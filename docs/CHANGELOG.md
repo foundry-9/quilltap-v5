@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6ay unit 12 (part 1 — the library + audit compute): `list_all_custom_tools`
+(v4 `listAllCustomTools` — every definition in every enabled store, sorted by
+mount id, NO shadowing / disabled-suppression / cap, every entry tier `'global'`
+— the authoring surface shows the whole table face up) and `simulate_outcomes`
+(v4 `simulateOutcomes` — the proving-bench table audit: one param resolution up
+front, dice parsed once, per-run draw → subjects → first matching outcome, with
+`render_template` deliberately skipped; per-outcome hits/share + value
+min/max/mean). Verified by `pascal_simulate_equivalence` (6-case deterministic
+differential — min===max ranges, single/banded/metadata-gated rows, param-scaled
+value, runs=0 — vs v4's real `simulateOutcomes`, exact hits/share and mean within
+1e-9; FixedBytes never consumed) + three in-crate statistical tests (band spread
+by width, metadata gate flipping 0→full, inverted-range refusal). The Workbench
+ROUTE surface (`/api/v1/custom-tools` library/destinations/preview/audit + the
+`workbench.rs` attachment survey + the four dispatch verbs) remains OPEN — see
+the status log. Versions: core 0.0.267, harness 0.0.235.
+
 P4.6ay unit 7: the `/api/v1/chats/{id}/custom-tools` route + the §4 dispatch
 verbs. `api/custom_tools.rs` ports v4's `handleList` (the merged-per-perspective
 roster — resolved once per character participant, identical variants collapsed

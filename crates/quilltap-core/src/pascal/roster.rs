@@ -371,6 +371,40 @@ fn list_tool_files_from_disk(base_path: &str) -> std::io::Result<Vec<String>> {
     Ok(out)
 }
 
+/// Every definition in every enabled store — the Workbench library (v4
+/// `CustomToolLibrary`).
+#[derive(Debug, Clone, Default)]
+pub struct CustomToolLibrary {
+    pub entries: Vec<DiscoveredCustomTool>,
+    pub errors: Vec<CustomToolLoadError>,
+}
+
+/// Enumerate every definition in every enabled store — the Workbench library
+/// (v4 `listAllCustomTools`).
+///
+/// Deliberately NOT the tiered roster: no shadowing, no `disabled` suppression,
+/// no per-invoker perspective, no cap. The library is the authoring surface, so
+/// it shows the whole table face up; which definition would win a given chat
+/// depends on the invoker and is not this function's question to answer. Tier
+/// attribution is meaningless without an invoker, so every entry carries
+/// `'global'` — callers should not read anything into it.
+pub fn list_all_custom_tools(mount: &Connection) -> CustomToolLibrary {
+    let mut mounts = match DocMountPointsRepository::new(mount).find_enabled_for_docedit() {
+        Ok(m) => m,
+        Err(_) => return CustomToolLibrary::default(),
+    };
+    // v4 sorts by `id.localeCompare` — code-unit order for the ASCII mount ids.
+    mounts.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut library = CustomToolLibrary::default();
+    for m in mounts {
+        let (found, errors) = load_tools_from_mount(mount, &m.id, MountTier::Global);
+        library.entries.extend(found);
+        library.errors.extend(errors);
+    }
+    library
+}
+
 /// Resolve the roster for one invoker, against the live DB.
 ///
 /// Iterates tier buckets explicitly rather than flattening the pool: flattening

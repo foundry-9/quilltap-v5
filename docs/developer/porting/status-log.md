@@ -19381,3 +19381,71 @@ self-activates. The server surface (this unit) is what unblocks it.
 
 **Versions:** core 0.0.266, harness 0.0.234, web 0.0.26.
 **Remaining OPEN:** unit 12 (the Workbench SERVER surface).
+
+---
+
+### P4.6ay unit 12 (part 1) — the Workbench library + audit compute
+
+**Landed** (the pure, differentiable foundation of the Workbench server surface):
+
+- **`pascal/roster.rs`: `list_all_custom_tools` + `CustomToolLibrary`** (v4
+  `listAllCustomTools`). Enumerates every definition in every ENABLED store via
+  `find_enabled_for_docedit()` + `load_tools_from_mount(_, id, MountTier::Global)`,
+  sorted by mount `id` (code-unit order = v4's `id.localeCompare` for ASCII mount
+  ids). Deliberately NOT the tiered roster — no shadowing, no `disabled`
+  suppression, no cap, every entry attributed tier `'global'` (the authoring
+  surface shows the whole table face up). Carries the why-comment.
+- **`pascal/custom_tools.rs`: `simulate_outcomes` + `CustomToolAuditResult` +
+  `AuditOutcome`** (v4 `simulateOutcomes`). Same draw / transform / `matches_when`
+  core as `execute_custom_tool`, run `runs` times with ONE `resolve_params` up
+  front, dice parsed ONCE (bad → `CustomToolRunError`); `render_template`
+  deliberately SKIPPED. Per-outcome `{index, hits, share}` + value min/max/mean
+  (0 when `runs==0`). Draws through the injected `rng` seam (v4 uses the crypto
+  directly).
+
+**Verification:**
+
+- `pascal_simulate_equivalence` (tier-1, 6 cases) vs v4's real `simulateOutcomes`.
+  **Deterministic-corpus strategy (decided in the order, recorded here):** v4's
+  `simulateOutcomes` draws through the crypto with no seam, so a draw-for-draw
+  cross-language diff is impossible; the corpus uses min===max ranges (no draw →
+  the injected `FixedBytes` is never consumed, asserted) + single/banded/
+  metadata-gated(empty vs supplied)/param-scaled rows + runs=0, so runs/hits/
+  share/min/max are exact and the accumulated mean matches within 1e-9. Regen:
+  `npx tsx <V5W>/harness/oracle/cases/pascal-simulate.ts >
+  /tmp/oracle-pascal-simulate.ndjson`; run with `QT_ORACLE_PASCAL_SIMULATE`.
+- Three in-crate statistical tests (`pascal::custom_tools::simulate_tests`)
+  mirror v4's own `custom-tools-simulate.test.ts`: a uniform roll spreads roughly
+  by band width, a metadata gate flips 0→full when the key arrives (deterministic
+  value), an inverted range refuses.
+
+**STILL OPEN under unit 12 (the Workbench ROUTE surface — the remainder):**
+
+- `pascal/workbench.rs` (new; v4 `lib/pascal/workbench.ts`, 305): the DTO types
+  (`MountAttachment`, `CustomToolLibraryEntry`/`Error`, `DestinationStore`,
+  `CustomToolDestinations`), `survey_attachments` (uses `characters.find_all_raw`
+  deliberately — a briefly-broken vault an author is repairing must still list),
+  `attachments_for_mount` (stable order general→character→group→project,
+  `unattached` fallback), `build_custom_tool_library` (folds `list_all_custom_tools`
+  + the survey into the library-entry shape), `list_custom_tool_destinations`
+  (claimed-set grouping into general/characters/groups(+`official`)/projects/other;
+  `existing_tool_names` from the library).
+- The `/api/v1/custom-tools` route (v4 route, 207): `AUDIT_RUNS = 10_000`; GET
+  (library), GET `?action=destinations`, POST `?action=preview` (execute one deal
+  — reuses `execute_custom_tool`), POST `?action=audit` (reuses
+  `simulate_outcomes`); `PreviewBodySchema`/`AuditBodySchema`; **`MetadataInputSchema`
+  is a UNION whose `{characterId}` branch MUST come first**; `resolve_metadata`
+  (plain object VERBATIM; `{characterId}` hydrates via find-by-id — missing →
+  notFound, broken vault → 422, NEVER papered with `{}`); the error arms
+  (badRequest with `format_definition_issues`; 422 for `CustomToolRunError`).
+- The four dispatch verbs (`customToolsLibrary` / `customToolsDestinations` /
+  `customToolPreview` / `customToolAudit`) + `api/engine.rs` arms + the
+  quilltap-web edge; a route differential over the extended pascal/mounts fixture
+  (name them in the §4 wire diff — server-only this round; the Workbench SPA is
+  P4.6bb).
+
+The pure compute this part lands is the differentiable foundation those consume
+(`build_custom_tool_library` folds `list_all_custom_tools`; preview/audit reuse
+`execute_custom_tool`/`simulate_outcomes`).
+
+**Versions:** core 0.0.267, harness 0.0.235.

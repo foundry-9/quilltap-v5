@@ -877,3 +877,197 @@ pub fn execute_custom_tool(
         metadata_tested,
     })
 }
+
+// ===========================================================================
+// Pascal's Workbench — the outcome-table audit (v4 `simulateOutcomes`)
+// ===========================================================================
+
+/// One outcome's share of the simulated deals.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuditOutcome {
+    pub index: usize,
+    pub hits: usize,
+    pub share: f64,
+}
+
+/// The result of a table audit (v4 `CustomToolAuditResult`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomToolAuditResult {
+    pub runs: usize,
+    pub outcomes: Vec<AuditOutcome>,
+    pub value_min: f64,
+    pub value_max: f64,
+    pub value_mean: f64,
+}
+
+/// Deal many hands and count where they land — the proving bench's table audit
+/// (v4 `simulateOutcomes`).
+///
+/// Same draw, same transform, same [`matches_when`] evaluation as
+/// [`execute_custom_tool`], run `runs` times with ONE param resolution up front.
+/// `render_template` is deliberately skipped: it is the expensive step and
+/// contributes nothing to hit rates. Draws through the injected `rng` seam (v4
+/// draws through the crypto directly); a deterministic corpus (min===max ranges)
+/// never consumes a byte, which is how the cross-language differential pins the
+/// exact hit counts.
+pub fn simulate_outcomes(
+    definition: &QtapCustomTool,
+    supplied_params: Option<&Map<String, Value>>,
+    runs: usize,
+    metadata: Option<&Map<String, Value>>,
+    rng: &mut dyn RandomBytes,
+) -> Result<CustomToolAuditResult, CustomToolRunError> {
+    let params = resolve_params(definition, supplied_params)?;
+
+    let mut parsed_dice = None;
+    let default_range = RollRange::default();
+    let mut range_roll: &RollRange = &default_range;
+    match &definition.roll {
+        Some(Roll::Dice(spec)) => {
+            parsed_dice = Some(parse_dice_notation(spec).ok_or_else(|| {
+                err(format!(
+                    "{}: \"{spec}\" is not dice notation this build can roll",
+                    definition.name
+                ))
+            })?);
+        }
+        Some(Roll::Range(r)) => range_roll = r,
+        None => {}
+    }
+
+    let mut hits = vec![0usize; definition.outcomes.len()];
+    let mut value_min = f64::INFINITY;
+    let mut value_max = f64::NEG_INFINITY;
+    let mut value_sum = 0.0;
+
+    for _ in 0..runs {
+        let (raw, value) = match &parsed_dice {
+            Some(notation) => {
+                let rolled = roll_notation(notation, rng);
+                (rolled.total as f64, rolled.total as f64)
+            }
+            None => roll_range(definition, range_roll, &params, rng)?,
+        };
+
+        let subjects = OutcomeSubjects {
+            value,
+            roll: raw,
+            params: &params,
+            metadata,
+        };
+        let mut outcome_index = None;
+        for (i, o) in definition.outcomes.iter().enumerate() {
+            if matches_when(&o.when, &subjects, &definition.name)? {
+                outcome_index = Some(i);
+                break;
+            }
+        }
+        let Some(outcome_index) = outcome_index else {
+            // The schema's mandatory trailing catch-all makes this unreachable.
+            return Err(err(format!(
+                "{}: no outcome matched {}",
+                definition.name,
+                format_value(value)
+            )));
+        };
+        hits[outcome_index] += 1;
+
+        if value < value_min {
+            value_min = value;
+        }
+        if value > value_max {
+            value_max = value;
+        }
+        value_sum += value;
+    }
+
+    Ok(CustomToolAuditResult {
+        runs,
+        outcomes: hits
+            .iter()
+            .enumerate()
+            .map(|(index, &count)| AuditOutcome {
+                index,
+                hits: count,
+                share: if runs > 0 {
+                    count as f64 / runs as f64
+                } else {
+                    0.0
+                },
+            })
+            .collect(),
+        value_min: if runs > 0 { value_min } else { 0.0 },
+        value_max: if runs > 0 { value_max } else { 0.0 },
+        value_mean: if runs > 0 {
+            value_sum / runs as f64
+        } else {
+            0.0
+        },
+    })
+}
+
+#[cfg(test)]
+mod simulate_tests {
+    use super::*;
+    use crate::pascal::custom_tool_types::safe_parse;
+    use crate::tools::rng::OsRandomBytes;
+
+    fn def(raw: serde_json::Value) -> QtapCustomTool {
+        safe_parse(&raw).unwrap()
+    }
+
+    #[test]
+    fn a_uniform_roll_spreads_roughly_by_band_width() {
+        // [0,1] uniform, a low band [.<0.3) and the rest. Over many runs the low
+        // band's share should sit near its 0.3 width (v4's own statistical shape).
+        let d = def(serde_json::json!({
+            "name": "spread", "description": "s",
+            "roll": { "min": 0, "max": 1 },
+            "outcomes": [
+                { "when": { "lt": 0.3 }, "message": "lo", "state": "info" },
+                { "when": true, "message": "hi", "state": "info" },
+            ],
+        }));
+        let mut rng = OsRandomBytes;
+        let r = simulate_outcomes(&d, None, 20_000, None, &mut rng).unwrap();
+        let low = r.outcomes[0].share;
+        assert!(
+            (0.2..0.4).contains(&low),
+            "low band share {low} not near 0.3"
+        );
+        assert!(r.value_min >= 0.0 && r.value_max <= 1.0);
+    }
+
+    #[test]
+    fn a_metadata_gate_flips_from_zero_to_full_when_the_key_arrives() {
+        // Deterministic value (min===max), so the gate is the only variable.
+        let d = def(serde_json::json!({
+            "name": "gate", "description": "g",
+            "roll": { "min": 0.7, "max": 0.7 },
+            "outcomes": [
+                { "when": { "metadata": { "luck": { "gte": 5 } } }, "message": "open", "state": "success" },
+                { "when": true, "message": "shut", "state": "failure" },
+            ],
+        }));
+        let mut rng = OsRandomBytes;
+        let empty =
+            simulate_outcomes(&d, None, 100, Some(&serde_json::Map::new()), &mut rng).unwrap();
+        assert_eq!(empty.outcomes[0].hits, 0);
+
+        let mut sheet = serde_json::Map::new();
+        sheet.insert("luck".into(), serde_json::json!(7));
+        let carrying = simulate_outcomes(&d, None, 100, Some(&sheet), &mut rng).unwrap();
+        assert_eq!(carrying.outcomes[0].hits, 100);
+    }
+
+    #[test]
+    fn an_inverted_range_refuses() {
+        let d = def(serde_json::json!({
+            "name": "bad", "description": "b",
+            "roll": { "min": 1, "max": 0 },
+            "outcomes": [{ "when": true, "message": "x", "state": "info" }],
+        }));
+        let mut rng = OsRandomBytes;
+        assert!(simulate_outcomes(&d, None, 10, None, &mut rng).is_err());
+    }
+}
