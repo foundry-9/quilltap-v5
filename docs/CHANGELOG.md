@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.9c unit 6: the /profile screen — the editable settings block, the
+read-only account information, and the data directory, over the three new
+verbs. Carries v4's cache-busted avatar src and its hasChanges rule, and
+a reduced avatar picker over the live files list (tier 2; importing a new
+image from inside the picker, tag filtering, and paging are deferred).
+The client OMITS an empty field where v4 sends null and takes a 400 from
+its own route. The data-directory open action always renders v4's
+non-openable box form, since v5 refuses the open action — with v4's
+Docker copy verbatim when the server really is in Docker, and an honest
+sentence otherwise. SPA 0.5.156.
+
 P4.9c unit 5: the /about screen — v4's AboutView content verbatim (what
 Quilltap is, the subsystem roll-call, 24 key features, the tech stack,
 links, authors, acknowledgments, computed copyright years). Three

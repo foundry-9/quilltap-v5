@@ -15,7 +15,8 @@ import { Routes } from '@angular/router';
  * `/scenarios` is the general (instance-wide) scenarios page;
  * `/custom-tools` is Pascal's Workbench (library ↔ editor in place, deep-linked
  * through `?mount=`/`?path=`/`?new=1` — v4's own no-workspace fallback);
- * `/about` is the static About screen.
+ * `/about` is the static About screen and `/profile` the account screen, both
+ * reached from the shell footer's user menu.
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -104,6 +105,10 @@ export const routes: Routes = [
   {
     path: 'about',
     loadComponent: () => import('./screens/about/about-page').then((m) => m.AboutPage),
+  },
+  {
+    path: 'profile',
+    loadComponent: () => import('./screens/profile/profile-page').then((m) => m.ProfilePage),
   },
   // === end P4.9c ===
   {
