@@ -20186,3 +20186,44 @@ failures (unchanged from main — this lane touches no Rust); ng test 140 files 
 1531; ng build clean; **full Playwright 67 passed / 4 skipped** — the 67 matches
 main's baseline exactly (zero regressions) and all four skips are this lane's
 probe-guarded beats.
+
+### P4.6bb — lane summary (COMPLETE)
+
+**Every tier-1 and tier-2 deliverable landed.** Nine commits on
+`claude/pascal-workbench-spa-porting-12c55b`, SPA 0.5.142 → 0.5.151.
+
+Tier 1: the §W1+§W2 wire mirror; the two pure-TS ports with real teeth (the
+client-safe schema module byte-diffed against a committed 115-row v4 corpus, and
+`tool-draft` carrying v4's own 408-line suite case-for-case); the `/custom-tools`
+route with its three-mode shell and deep links; WorkbenchLibrary; WorkbenchEditor
+with the dual mode, repair mode, verbatim JSON bytes, the picker, and the mtime
+conflict flow; the builder form family consuming `validateDraft`; the proving
+bench with both fact-sheet modes; and the left-rail entry.
+
+Tier 2: the other three entry points (Settings button, Scriptorium row action
+with the SVAR verification recorded, the three popup entries); the schema asset
+copied byte-identical; and the four probe-guarded e2e beats.
+
+**Tier 3 — DEFERRED, loud:**
+
+- **Workspace-tab intents (`p4.9j`).** v4's `redirectToWorkspaceTab` and
+  `workspace.openTab('custom-tools', …)` have no v5 counterpart; the human ruling
+  on workspace tabs is still open. Every opener ports v4's OWN no-workspace
+  fallback (the query-param push), which is a real v4 code path, not an
+  invention. Nothing else in the surveyed surface gates on workspace presence.
+- **The `finite` message arm.** `z.number().finite()` is reachable only via an
+  overflow literal. This JS port reaches it exactly as v4 does, but the oracle
+  corpus carries no such row (there is nothing there for the Rust side to
+  assert), so that one string is carried faithfully from the Rust port and is the
+  only message in `custom-tool-types.ts` NOT pinned by the differential. Closing
+  it means adding a corpus row, which is `harness/oracle/` — lane AY's ownership
+  this round.
+
+**For the unifier.** The wire diff should run name-for-name over the four §W1
+verbs and every DTO in the P4.6bb block at the end of `core-contract.ts`. One
+name to expect: the contract's pre-existing `CustomToolRunResult` (lane BA's name
+for the chat popup's five-field run summary, which v4 builds inline and never
+names) is RENAMED `CustomToolManualRunSummary`, so the authentic v4
+`CustomToolRunResult` — the thirteen-field record `customToolPreview` returns —
+takes the plain name. Entirely inside `apps/web/`; lane AY is unaffected. The
+four e2e beats self-activate on merge with no wire needed.
