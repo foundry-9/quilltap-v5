@@ -76,6 +76,34 @@ const WHISPERED = {
   outcomes: [{ when: true, message: 'psst — for you alone.', state: 'info' }],
 };
 
+/**
+ * The 616930db consult tool. This fixture carries NO connection profiles, which
+ * is deliberate: the consult therefore takes the `profiles.length === 0` arm on
+ * BOTH sides and fails soft with a fixed reason, so the whole seam — invoker
+ * construction, the fresh resolution, the failure→errorMessage translation, the
+ * `pascalMeta.llm` record, and the table branching on it — is exercised
+ * end-to-end without mocking a provider or spending a call.
+ *
+ * The table branches on `ok`, so the outcome index itself proves the consult
+ * ran and reported failure rather than being skipped.
+ */
+const ORACLE = {
+  name: 'oracle',
+  title: 'Consult The Oracle',
+  description: 'Ask the oracle.',
+  roll: { min: 0.7, max: 0.7 },
+  llm: {
+    prompt: 'The draw was {{value}}. Answer YES or NO: is it auspicious?',
+    errorMessage: 'The wire went dead, and the oracle with it.',
+    maxOutput: 120,
+  },
+  outcomes: [
+    { when: { llm: { ok: true, eq: 'YES' } }, message: 'The oracle says {{llm}}.', state: 'success' },
+    { when: { llm: { ok: false } }, message: 'Silence: {{llm}}', state: 'failure' },
+    { when: true, message: 'The oracle demurs.', state: 'info' },
+  ],
+};
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(readFileSync(join(here, 'pascal-run-custom.json'), 'utf8')) as Spec;
@@ -145,6 +173,14 @@ async function main(): Promise<void> {
   }
   const repos = getRepositories();
   await repos.docMountBlobs.listByMountPoint('00000000-0000-4000-8000-000000000000');
+  // Touch the two tables the 616930db LLM consult reads, so they EXIST (empty)
+  // in the fixture. v4's backend creates a collection lazily on first access,
+  // so it tolerates their absence; v5 reads a provisioned schema and would fail
+  // the read instead of reaching the `no connection profiles are configured`
+  // arm. A real instance always provisions both, so this is the fixture
+  // catching up to reality — not a divergence either side gets to keep.
+  await repos.chatSettings.findByUserId(spec.userId);
+  await repos.connections.findByUserId(spec.userId);
 
   await repos.users.create(
     { username: 'friday', email: null, name: 'Friday' } as never,
@@ -188,6 +224,7 @@ async function main(): Promise<void> {
   await writeVaultFile(vaultA, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultA, 'Tools/coin.tool.json', COIN);
   await writeVaultFile(vaultA, 'Tools/whispered.tool.json', WHISPERED);
+  await writeVaultFile(vaultA, 'Tools/oracle.tool.json', ORACLE);
   await writeVaultFile(vaultA, 'metadata.json', { hasAnsibleAccess: true, clearanceLevel: 3 });
 
   await writeVaultFile(vaultB, 'Tools/ansible.tool.json', ANSIBLE);

@@ -2,6 +2,45 @@
 
 ## Recent Changes
 
+P4.d8 units 4+5 - pascalMeta.llm and the run_custom tool + handler.
+PascalMetaIn gains a typed `llm` sub-object (PascalMetaLlmIn) at v4's
+declaration position, after metadataTested and before invokedBy, with
+each optional OMITTED rather than nulled; LlmConsultResult::to_wire is
+the single serializer all three writers share. run_custom gains v4's
+preamble sentence, the two COMPARATOR_SYMBOLS rows
+(contains / "does not contain"), describe_llm_comparator (ok reads as a
+sentence, the rest against "the consulted answer"), and the "Consults a
+separate model" description line - revealOdds-gated, with the prompt
+never rendered. The handler attaches pascalMeta.llm and builds the
+invoker only when the definition declares an llm block.
+
+Survey correction: v4's ChatMessageRowSchema is handed to
+ensureCollection (column typing), NOT applied per read, so there is no
+read-path strip of unknown pascalMeta keys and v5's raw pass-through was
+already correct. The order's "load-bearing on the read path" note is
+withdrawn; no v5 read change was needed.
+
+The pascal-run-custom fixture gained an `oracle` llm tool and now
+provisions chat_settings + connection_profiles (empty). v4 creates a
+collection lazily on first access so it tolerated their absence; v5
+reads a provisioned schema. With both tables present and no profiles,
+BOTH sides take the invoker's "no connection profiles are configured"
+arm - so the handler differential exercises the whole consult seam
+end-to-end without mocking a provider.
+pascal_run_custom_equivalence 9 -> 13 rows;
+pascal_run_custom_handler_equivalence 10 -> 12 cases (plus a new
+case-count assertion against the oracle, so a case added on one side
+cannot pass silently); pascal_custom_tools_route_equivalence
+regenerated over the rebuilt fixture.
+
+DEFERRED (loud): the live executor wire. execute_run_custom_tool keeps
+its four-argument form and a new
+execute_run_custom_tool_with_consult carries the seam, because
+ToolExecutionContext holds no CompletionProvider to build an invoker
+from and tools/executor.rs is outside this lane's ownership. A
+model-driven run_custom on an llm tool therefore takes the "no LLM
+invoker was available in this context" path today.
+
 P4.d8 unit 3 - the consult invoker and the CUSTOM_TOOL_CONSULT log type.
 New `quilltap-core::pascal::llm_consult`: CONSULT_TIMEOUT_MS,
 consult_max_tokens (ceil(chars/3) clamped to 2048..32768), and

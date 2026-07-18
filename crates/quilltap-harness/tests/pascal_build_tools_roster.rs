@@ -126,13 +126,15 @@ fn build_tools_resolves_and_offers_run_custom() {
         .unwrap();
     let expected_roster: Vec<_> = roster.tools.iter().map(|(_, t)| t.clone()).collect();
     // The handler oracle's `unknown-tool` case pins this order to v4:
-    // ansible, coin, whispered.
+    // ansible, coin, whispered, oracle (`oracle` is the 616930db consult tool
+    // the P4.d8 fixture rebuild added; v4's "Available: …" list at `616930db`
+    // reads exactly this, so the order is v4's, not a guess).
     assert_eq!(
         expected_roster
             .iter()
             .map(|t| t.definition.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["ansible", "coin", "whispered"]
+        vec!["ansible", "coin", "whispered", "oracle"]
     );
     assert_eq!(
         run_custom["function"]["description"].as_str().unwrap(),

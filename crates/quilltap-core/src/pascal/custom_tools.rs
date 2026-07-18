@@ -185,6 +185,28 @@ impl LlmConsultResult {
             output: self.output.clone(),
         }
     }
+
+    /// The consult as `pascalMeta.llm` / the preview response carries it: v4's
+    /// declaration order, with each optional OMITTED rather than nulled (v4
+    /// spreads `...(x ? { x } : {})`). The single source for all three writers —
+    /// the `run_custom` handler, the chat run, and the Workbench preview — so
+    /// the key order cannot drift between them.
+    pub fn to_wire(&self) -> Map<String, Value> {
+        let mut m = Map::new();
+        m.insert("ok".into(), Value::Bool(self.ok));
+        m.insert("output".into(), Value::String(self.output.clone()));
+        m.insert("prompt".into(), Value::String(self.prompt.clone()));
+        if let Some(reason) = &self.reason {
+            m.insert("reason".into(), Value::String(reason.clone()));
+        }
+        if let Some(provider) = &self.provider {
+            m.insert("provider".into(), Value::String(provider.clone()));
+        }
+        if let Some(model) = &self.model {
+            m.insert("model".into(), Value::String(model.clone()));
+        }
+        m
+    }
 }
 
 /// Everything a run produced — enough to post the message and fill `pascalMeta`.

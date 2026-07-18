@@ -166,6 +166,14 @@ async function main(): Promise<void> {
     { name: 'unknown-tool', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'nonexistent' } },
     { name: 'validation-fail', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { notTool: 1 } },
     { name: 'run-error', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin', parameters: { bad: 1 } } },
+    // The 616930db consult, end to end. The fixture carries no connection
+    // profiles, so BOTH sides take the invoker's `no connection profiles are
+    // configured` arm: the run does NOT fail, `pascalMeta.llm` records the
+    // rendered prompt + the technical reason + the author's errorMessage as the
+    // output, and the table branches to the `ok: false` row. Deterministic
+    // without mocking a provider.
+    { name: 'llm-consult-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' } },
+    { name: 'llm-consult-private', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle', private: true } },
   ];
 
   const out = fs.createWriteStream(outPath);

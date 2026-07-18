@@ -292,9 +292,37 @@ pub struct PascalMetaIn {
     /// number is stored JS-bare when the caller supplied it as an integer Value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata_tested: Option<serde_json::Map<String, serde_json::Value>>,
+    /// The LLM consult, when the definition declared one (v4 `616930db`).
+    /// Declared here — after `metadataTested`, before `invokedBy` — because
+    /// that is `chat.types.ts`'s declaration order, which is the key order
+    /// `JSON.stringify` emits and the wire therefore carries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<PascalMetaLlmIn>,
     pub invoked_by: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_participant_id: Option<String>,
+}
+
+/// The `pascalMeta.llm` record — v4's `LlmConsultResult` as the wire carries it
+/// (`chat.types.ts:378-385`). Field order is v4's declaration order; the three
+/// optionals are `.optional()` (never `.nullable()`), so an absent one is an
+/// OMITTED key, not a null.
+///
+/// `output` is the model's trimmed-capped-retrimmed answer on success, or the
+/// author's `errorMessage` on failure; `reason` is the technical cause and never
+/// appears in the fiction.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PascalMetaLlmIn {
+    pub ok: bool,
+    pub output: String,
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]

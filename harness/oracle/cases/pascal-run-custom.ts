@@ -132,6 +132,64 @@ const bandAndNeq = {
   ],
 };
 
+// ---- the 616930db consult block + containment comparators -----------------
+const llmTool = {
+  name: 'oracle',
+  description: 'ask the oracle',
+  parameters: { question: { type: 'string', default: 'is it safe?' } },
+  roll: { min: 1, max: 20 },
+  llm: {
+    prompt: 'Answer YES or NO: {{params.question}}',
+    errorMessage: 'The wire went dead.',
+    maxOutput: 40,
+  },
+  outcomes: [
+    // Every describeLlmComparator arm at once: ok, an ordering key, eq, and
+    // both containment keys — including a $param needle.
+    { when: { llm: { ok: true, eq: 'YES' } }, message: 'yes', state: 'success' },
+    { when: { llm: { ok: false } }, message: 'silence', state: 'failure' },
+    { when: { llm: { gte: 5 } }, message: 'numeric', state: 'info' },
+    { when: { llm: { contains: 'west door', ncontains: 'east' } }, message: 'door', state: 'info' },
+    { when: { llm: { contains: { $param: 'question' } } }, message: 'echo', state: 'info' },
+    { when: true, message: 'otherwise', state: 'info' },
+  ],
+};
+
+// An llm tool with revealOdds:false: the "Consults a separate model" line must
+// NOT appear, because the whole odds block is withheld.
+const llmSecret = {
+  name: 'sealed',
+  description: 'a sealed oracle',
+  revealOdds: false,
+  llm: { prompt: 'Speak.', errorMessage: 'nope' },
+  outcomes: [
+    { when: { llm: { ok: true } }, message: 'a', state: 'success' },
+    { when: true, message: 'b', state: 'failure' },
+  ],
+};
+
+// Containment on params and metadata, away from the llm subject.
+const containment = {
+  name: 'manifest',
+  description: 'search the manifest',
+  parameters: {
+    cargo: { type: 'string', default: 'silk' },
+    sought: { type: 'string', default: 'opium' },
+  },
+  roll: { min: 0, max: 1 },
+  outcomes: [
+    {
+      when: {
+        params: { cargo: { contains: { $param: 'sought' }, ncontains: 'tea' } },
+        metadata: { manifest: { contains: 'contraband' } },
+      },
+      message: 'seized',
+      state: 'failure',
+    },
+    { when: true, message: 'cleared', state: 'success' },
+  ],
+};
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -143,6 +201,11 @@ const cases: Array<[string, unknown[]]> = [
   ['band-and-neq', [bandAndNeq]],
   // A multi-tool roster exercises the per-tool `\n•` join.
   ['multi-tool', [minimal, dice, paramsBounds]],
+  // The 616930db additions.
+  ['llm-tool', [llmTool]],
+  ['llm-reveal-odds-false', [llmSecret]],
+  ['containment', [containment]],
+  ['multi-tool-with-llm', [minimal, llmTool, containment]],
 ];
 
 const rows: unknown[] = [];

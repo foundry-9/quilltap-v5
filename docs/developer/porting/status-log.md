@@ -21406,3 +21406,112 @@ PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
 QT_ORACLE_PASCAL_LLM_CONSULT=/tmp/oracle-pascal-llm-consult.ndjson \
   cargo test -p quilltap-harness --test pascal_llm_consult_equivalence
 ```
+
+### Units 4+5 — `pascalMeta.llm` + the `run_custom` tool and handler
+
+Committed together: unit 4 is a type and a serializer, inert until a
+writer uses it, so its proof lands with unit 5's handler differential.
+
+**⚠ SURVEY CORRECTION (the order's one wrong fact).** The order states
+that v4's `chats-messages.ops.ts` row-parse "STRIPPED unknown pascalMeta
+keys, so this +14 is load-bearing on the read path", and asks the port
+to "resolve the read-parse discipline". It is not load-bearing:
+`ChatMessageRowSchema` is passed to `ensureCollection(name, schema)`
+(`lib/database/manager.ts:233`), which hands it to the storage backend
+for column typing — it is NOT applied per read. v4's own comment on the
+block says as much ("shape only tells the backend that pascalMeta is a
+JSON column"). So there is no read-path strip, v5's `put_opt_json`
+pass-through was already correct, and **no v5 read change was needed**.
+Recorded rather than silently skipped.
+
+**Unit 4.** `PascalMetaIn` gains `llm: Option<PascalMetaLlmIn>` at v4's
+declaration position — after `metadataTested`, before `invokedBy` —
+because that is `chat.types.ts:378-385`'s order and therefore the key
+order the wire carries. The three optionals are `.optional()` in v4,
+never `.nullable()`, so they are OMITTED keys rather than nulls.
+`LlmConsultResult::to_wire()` is the single serializer all three writers
+share (the handler, the chat run, the Workbench preview), so the key
+order cannot drift between them.
+
+**Unit 5.** The preamble sentence; `COMPARATOR_SYMBOLS` 6 → 8 with
+`contains` / `does not contain`; `describe_string_operand`;
+`describe_llm_comparator` (v4 hands the whole comparator to
+`describeComparator`, so it is rendered here through a `ParamComparator`
+projection against "the consulted answer"); the `llm` clause appended
+AFTER metadata in `describe_when`; and the "Consults a separate model"
+line — placed after `Roll:` and therefore correctly withheld under
+`revealOdds: false`, which the corpus pins with a dedicated case. The
+prompt is never rendered, by design.
+
+**The handler seam is a SECOND entry point, and that is deliberate.**
+`execute_run_custom_tool` keeps its four-argument signature and
+delegates; `execute_run_custom_tool_with_consult` carries
+`Option<&dyn LlmInvoker>`. The reason is not squeamishness about the
+signature: the executor that calls it holds no `CompletionProvider` —
+`ToolExecutionContext` carries none — so it has nothing to build an
+invoker from, which is the same shape as the `emitPascalResult` sink
+already deferred at that call site. `tools/executor.rs` is also outside
+this lane's Ownership (and unclaimed by either sibling).
+**DEFERRAL (loud, named): the live executor wire.** A model-driven
+`run_custom` on an `llm` tool currently takes the "no LLM invoker was
+available in this context" path and shows the author's `errorMessage`.
+
+**Differentials.**
+  - `pascal_run_custom_equivalence` 9 → **13** rows: an `llm` tool
+    exercising every `describeLlmComparator` arm at once (ok + ordering
+    + eq + both containment keys + a `$param` needle), an
+    `revealOdds:false` llm tool (the line must NOT appear), a
+    params+metadata containment tool, and a mixed roster.
+  - `pascal_run_custom_handler_equivalence` 10 → **12** cases, and this
+    is the one that proves the seam is really wired. The fixture carries
+    **no connection profiles**, so BOTH sides take the invoker's
+    `no connection profiles are configured` arm — v5 reporting its own
+    `no LLM invoker was available in this context` instead would be an
+    immediate red. The v5 side therefore builds a real
+    `CustomToolLlmInvoker` over a `CannedCompletionProvider` that is
+    never reached. No provider mock, no spend, and the whole path
+    (invoker construction → fresh resolution → failure translation →
+    `pascalMeta.llm` persistence → the table branching to the `ok:false`
+    row) is covered end to end.
+  - Added a **case-count assertion** against the oracle. The first run
+    of the extended corpus reported "10 cases" against a 12-row oracle
+    because the Rust case list is declared separately — a silent
+    partial pass. It cannot recur.
+
+**Fixture changes (and what they invalidate).**
+`pascal-run-custom-{main,mount}.db` + `-main.db.meta.json` rebuilt:
+  1. a new `Tools/oracle.tool.json` on vault A (the consult tool);
+  2. **`chat_settings` and `connection_profiles` now exist (empty).**
+     They did not before. v4's backend creates a collection lazily on
+     first access so it tolerated their absence; v5 reads a provisioned
+     schema and failed the read with `no such table: chat_settings`
+     BEFORE reaching the zero-profiles arm. A real instance always
+     provisions both, so this is the fixture catching up to reality. The
+     builder now touches both repos, alongside the pre-existing
+     `docMountBlobs` touch that establishes the same precedent.
+Vault ids RE-MINT on every rebuild; nothing hardcodes them (verified by
+grep) — every consumer reads the `.meta.json` sidecar.
+**Regenerated because of this fixture:**
+`pascal_run_custom_handler_equivalence`,
+`pascal_custom_tools_route_equivalence`.
+
+**Tier-2 trip-check (the order's item 9) — RESULTS.** The preamble
+change reached two byte pins, exactly as predicted:
+  - `tools::run_custom::tests::empty_roster_description_matches_data_rs`
+    and `pascal_build_tools_roster` went RED. **`definitions/data.rs`
+    regenerated via `gen-tool-catalog.mjs`** (never hand-edited) from a
+    fresh `616930db` `tool-definitions.ts` dump — 58 entries, exactly
+    ONE line changed (the `run_custom` description).
+  - `pascal_build_tools_roster` also pinned the fixture roster order as
+    `ansible, coin, whispered`; updated to `ansible, coin, whispered,
+    oracle`, which is **v4's own order** — the fresh handler oracle's
+    `unknown-tool` case reads `Available: ansible, coin, whispered,
+    oracle.`
+  - Regenerated at `616930db` and GREEN: `tool_definitions_equivalence`
+    (58 byte-exact + the canonical spot-check), `tool_build_equivalence`,
+    `pascal_writers_equivalence` (8 + 10 bodies),
+    `pascal_roster_equivalence` (20 scenarios).
+  - Proved UNTOUCHED by this drift: nothing else in the five.
+
+Gate at this commit: `cargo test --workspace --no-fail-fast` **351
+binaries / 0 failed**; fmt + clippy clean on both feature sets.

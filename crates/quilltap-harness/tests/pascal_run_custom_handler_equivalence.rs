@@ -24,8 +24,12 @@ use std::path::PathBuf;
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::completion::CannedCompletionProvider;
+use quilltap_core::pascal::llm_consult::{CustomToolConsultContext, CustomToolLlmInvoker};
 use quilltap_core::tools::rng::FixedBytes;
-use quilltap_core::tools::run_custom::{execute_run_custom_tool, RunCustomToolContext};
+use quilltap_core::tools::run_custom::{
+    execute_run_custom_tool_with_consult, RunCustomToolContext,
+};
 use serde_json::{json, Map, Value};
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
@@ -248,7 +252,30 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin", "parameters": { "bad": 1 } }),
         },
+        // The 616930db consult, end to end over the real invoker.
+        Case {
+            name: "llm-consult-no-profiles",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "oracle" }),
+        },
+        Case {
+            name: "llm-consult-private",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "oracle", "private": true }),
+        },
     ];
+
+    // The corpus is declared on BOTH sides, so a case added to the oracle and
+    // forgotten here would pass silently on a smaller set. Pin the count.
+    assert_eq!(
+        cases.len(),
+        oracle.len(),
+        "the Rust case list and the oracle disagree: {} vs {}",
+        cases.len(),
+        oracle.len()
+    );
 
     let mut checked = 0usize;
     for case in &cases {
@@ -288,7 +315,28 @@ fn run_custom_handler_matches_oracle() {
             caller_participant_id: Some(P_A.to_string()),
         };
         let mut rng = FixedBytes::new(vec![]);
-        let (out, _posted) = rt.block_on(execute_run_custom_tool(&db, &ctx, &case.input, &mut rng));
+        // The REAL consult invoker, exactly as v4's handler builds one. The
+        // fixture carries no connection profiles, so the resolution fails at
+        // that arm and the canned provider is never reached — which is the
+        // point: both sides report v4's `no connection profiles are configured`
+        // rather than v5's would-be `no LLM invoker was available in this
+        // context`, so this case proves the invoker is really wired.
+        let completion = CannedCompletionProvider::new();
+        let invoker = CustomToolLlmInvoker::new(
+            &db,
+            &completion,
+            CustomToolConsultContext {
+                user_id: ctx.user_id.clone(),
+                chat_id: Some(ctx.chat_id.clone()),
+            },
+        );
+        let (out, _posted) = rt.block_on(execute_run_custom_tool_with_consult(
+            &db,
+            &ctx,
+            &case.input,
+            &mut rng,
+            Some(&invoker),
+        ));
 
         // min === max never draws.
         assert_eq!(rng.consumed(), 0, "case '{}' consumed bytes", case.name);

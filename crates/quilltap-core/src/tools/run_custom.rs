@@ -17,11 +17,12 @@ use serde_json::{json, Map, Value};
 use crate::db::characters_read;
 use crate::db::runtime::Db;
 use crate::pascal::custom_tool_types::{
-    display_title, AnyOperand, NumberOrParamRef, NumericComparator, ParamComparator, ParamRef,
-    Roll, RollRange, Visibility, When, WhenObject,
+    display_title, AnyOperand, LlmComparator, NumberOrParamRef, NumericComparator, ParamComparator,
+    ParamRef, Roll, RollRange, StringOperand, Visibility, When, WhenObject,
 };
 use crate::pascal::custom_tools::{
-    execute_custom_tool, CustomToolRunError, CustomToolRunResult, ResolvedParams, RollForm,
+    execute_custom_tool, CustomToolRunError, CustomToolRunResult, LlmInvoker, ResolvedParams,
+    RollForm,
 };
 use crate::pascal::js_value::{json_stringify, number_to_string};
 use crate::pascal::roster::{resolve_custom_tool_roster, DiscoveredCustomTool, RosterContext};
@@ -98,6 +99,7 @@ const RUN_CUSTOM_PREAMBLE: &str = concat!(
     "The roll happens server-side and its result is posted as a permanent message by Pascal the Croupier, so you cannot choose the outcome: run the tool and then narrate whatever it returns, including failure.\n",
     "Do not describe the result before calling, and do not re-run a tool to get a better answer.\n",
     "An outcome table may also consult your own character's metadata, so the same tool can deal differently to different characters.\n",
+    "Some tools additionally pose a question to a separate model mid-run and let its answer steer the outcome; that consult happens server-side too, and you never speak for it.\n",
     "\n",
     "Available tools:"
 );
@@ -147,14 +149,25 @@ fn describe_roll_range(range: &RollRange) -> String {
 }
 
 /// The comparator keys, paired with the operator a reader expects to see.
-const COMPARATOR_SYMBOLS: [(&str, &str); 6] = [
+const COMPARATOR_SYMBOLS: [(&str, &str); 8] = [
     ("gt", ">"),
     ("gte", ">="),
     ("lt", "<"),
     ("lte", "<="),
     ("eq", "="),
     ("neq", "!="),
+    ("contains", "contains"),
+    ("ncontains", "does not contain"),
 ];
+
+/// Render a containment operand: a literal string (JSON-quoted, exactly as
+/// `describe_any_operand` renders one) or the parameter it points at.
+fn describe_string_operand(operand: &StringOperand) -> String {
+    match operand {
+        StringOperand::ParamRef(ParamRef { param }) => param.clone(),
+        StringOperand::String(s) => json_stringify(&Value::String(s.clone())),
+    }
+}
 
 /// Render a comparator operand: a literal, or the parameter it points at
 /// (v4 `describeOperand`). A string operand is JSON-quoted; a number is
@@ -226,10 +239,48 @@ fn describe_param_comparator(cmp: &ParamComparator, subject: &str) -> Vec<String
                 .neq
                 .as_ref()
                 .map(|op| format!("{subject} {symbol} {}", describe_any_operand(op))),
+            "contains" => cmp
+                .contains
+                .as_ref()
+                .map(|op| format!("{subject} {symbol} {}", describe_string_operand(op))),
+            "ncontains" => cmp
+                .ncontains
+                .as_ref()
+                .map(|op| format!("{subject} {symbol} {}", describe_string_operand(op))),
             other => numeric(other)
                 .map(|op| format!("{subject} {symbol} {}", describe_numeric_operand(op))),
         })
         .collect()
+}
+
+/// Render an `llm` test (v4 `describeLlmComparator`): the `ok` flag reads as a
+/// sentence, the rest as ordinary comparators against "the consulted answer".
+fn describe_llm_comparator(cmp: &LlmComparator) -> Vec<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(ok) = cmp.ok {
+        parts.push(
+            if ok {
+                "the consult succeeded"
+            } else {
+                "the consult failed"
+            }
+            .to_string(),
+        );
+    }
+    // v4 hands the whole comparator to `describeComparator`, which reads it as a
+    // ParamComparator — so the eight keys render exactly as they do elsewhere.
+    let as_param = ParamComparator {
+        gt: cmp.gt.clone(),
+        gte: cmp.gte.clone(),
+        lt: cmp.lt.clone(),
+        lte: cmp.lte.clone(),
+        eq: cmp.eq.clone(),
+        neq: cmp.neq.clone(),
+        contains: cmp.contains.clone(),
+        ncontains: cmp.ncontains.clone(),
+    };
+    parts.extend(describe_param_comparator(&as_param, "the consulted answer"));
+    parts
 }
 
 /// The bare `value` comparator keys of a `when` object (all `NumberOrParamRef`).
@@ -271,6 +322,9 @@ fn describe_when(when: &When) -> String {
         for (key, cmp) in metadata {
             parts.extend(describe_param_comparator(cmp, &format!("your {key}")));
         }
+    }
+    if let Some(llm) = &when.llm {
+        parts.extend(describe_llm_comparator(llm));
     }
 
     parts.join(" and ")
@@ -331,6 +385,12 @@ pub fn build_run_custom_description(roster: &[DiscoveredCustomTool]) -> String {
         }
 
         lines.push(format!("    Roll: {}", describe_roll(&definition.roll)));
+        if definition.llm.is_some() {
+            // The consult's existence is part of the odds; the prompt itself is
+            // NOT rendered — it is instructions for a different model, and
+            // quoting it here would invite this one to answer it.
+            lines.push("    Consults a separate model; outcomes may test its answer.".to_string());
+        }
         for outcome in &definition.outcomes {
             lines.push(format!(
                 "    {} → {}",
@@ -436,6 +496,33 @@ pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
     input: &Value,
     rng: &mut R,
 ) -> (RunCustomToolOutput, Option<PostedPascalMessage>) {
+    execute_run_custom_tool_with_consult(db, ctx, input, rng, None).await
+}
+
+/// The same handler with the LLM-consult seam in hand (v4 `a2d9a3c8`'s
+/// `buildCustomToolLlmInvoker({ userId, chatId })` argument).
+///
+/// **Why the seam is a second entry point rather than a field on
+/// [`RunCustomToolContext`]:** the executor that calls this holds no
+/// `CompletionProvider` — `ToolExecutionContext` carries none — so it has
+/// nothing to build an invoker from. That is the same shape as the
+/// `emitPascalResult` sink already deferred at that call site. The consult
+/// LOGIC is complete and differential-covered here; the executor still calls
+/// the four-argument form, so a model-driven `run_custom` on an `llm` tool
+/// currently takes the "no LLM invoker was available in this context" path and
+/// shows the author's `errorMessage`.
+///
+/// **DEFERRAL (loud, named): the live executor wire.** Passing a real invoker
+/// requires threading a `CompletionProvider` into `ToolExecutionContext` /
+/// `tools/executor.rs`, which is outside lane P4.d8's Ownership. The chat-run
+/// entrance (`api::custom_tools::chat_custom_tool_run`) has the same shape.
+pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
+    db: &Db,
+    ctx: &RunCustomToolContext,
+    input: &Value,
+    rng: &mut R,
+    llm_invoke: Option<&dyn LlmInvoker>,
+) -> (RunCustomToolOutput, Option<PostedPascalMessage>) {
     let Some(parsed) = validate_run_custom_input(input) else {
         return (
             failure(
@@ -530,7 +617,10 @@ pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
         is_private,
         metadata_arg,
         rng,
-        None,
+        // v4 builds the invoker only when the definition declares an `llm`
+        // block; withholding it otherwise is the same thing, since a tool with
+        // no block never consults.
+        entry.definition.llm.as_ref().and(llm_invoke),
     )
     .await
     {
@@ -595,6 +685,9 @@ pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
             .map(|(k, v)| (k.clone(), v.to_value()))
             .collect();
         pascal_meta.insert("metadataTested".into(), Value::Object(obj));
+    }
+    if let Some(llm) = &result.llm {
+        pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
     }
     pascal_meta.insert("invokedBy".into(), json!("llm"));
     if let Some(caller) = &ctx.caller_participant_id {
