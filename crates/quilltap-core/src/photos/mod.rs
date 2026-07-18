@@ -21,3 +21,4 @@ pub mod photo_link_summary;
 pub mod photos_paths;
 pub mod resolve_character_avatar;
 pub mod save_image_to_album;
+pub mod user_gallery_service;

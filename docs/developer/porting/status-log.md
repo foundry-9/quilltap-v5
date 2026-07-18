@@ -21182,490 +21182,89 @@ etc.); the standing refusal-armed pools (unchanged).
 
 ---
 
-## P4.d8 — the `616930db` llm-consult drift re-port, server half (lane D8)
+## P4.9a (lane A) — the My Photos vertical
 
-Branch `claude/p4-d8-llm-consult-porting-857372`. Drift-check at lane
-start: v4 HEAD == `616930db`, tree CLEAN — oracles regenerate from the
-main checkout directly (no pinned worktree needed this round).
+Held back from the M6 items 1–4 unification at unit 1 (preserved branch
+`claude/photos-view-porting-3ee1fc`, commit `40c7da51`); RESUMED in the
+`616930db` drift-catch-up round on branch `claude/photos-view-porting-3d533e`,
+cherry-picked onto main `65c6cb95` (the core version bump accumulated upward:
+0.0.270 → 0.0.272). v4 baseline `616930db`, re-verified at resume
+(`git log 616930db..HEAD` empty, tree clean — the pinned-worktree requirement
+is lifted per the order's resume addendum).
 
-### Unit 1 — the definition schema (`custom_tool_types.rs`)
+### P4.9a unit 1 — `photos::user_gallery_service` (the v4 user-gallery service port)
 
-Ported v4 `a2d9a3c8` + `616930db`'s schema half. The three constants
-(`MAX_LLM_PROMPT_LENGTH` 4000, `MAX_LLM_OUTPUT_LENGTH` 8000,
-`MAX_LLM_OUTPUT_CEILING` 100_000); `CustomToolLlm` strictObject
-(`prompt` 1–4000, `errorMessage` 1–`MAX_MESSAGE_LENGTH` REQUIRED,
-`maxOutput` int 1–100_000 optional) mounted at v4's declaration
-position (after `roll`, before `outcomes`) and added to
-`KNOWN_TOP_LEVEL_KEYS` (10 → 11); `LlmComparator` (the wide comparator
-plus the non-comparator `ok`) mounted on `WhenObject` after `metadata`;
-`StringOperand` (non-empty literal, author's message, or `$param`);
-containment on Param/Metadata/Llm but NOT Numeric.
+Lane A of the M6 items 1–4 round. Ported v4
+`lib/photos/user-gallery-service.ts` (480 lines) to
+`crates/quilltap-core/src/photos/user_gallery_service.rs`, beside the
+already-ported `character_gallery_service` it closely rhymes with.
 
-**The one structural decision worth recording:** v4's `COMPARATOR_KEYS`
-widened 6 → 8, but its `NUMERIC_COMPARATOR_SHAPE` did NOT — a bare
-`when.contains` or `when.roll.contains` is an *unrecognized key*, not a
-comparator. v5 had been using the single `COMPARATOR_KEYS` array for
-both jobs (slot iteration + `unrecognized_keys`), so the widening was
-split: `COMPARATOR_KEYS: [&str; 8]` stays the public describe-order /
-`hasComparator` list, and a new private `NUMERIC_COMPARATOR_KEYS:
-[&str; 6]` drives `parse_numeric_comparator` and `parse_when_object`.
-Conflating them would have silently ACCEPTED `{"when":{"contains":"x"}}`.
-The corpus pins both arms (`contains-bare-value`, `contains-raw-roll`).
+**What landed.** All four legs: `list_user_gallery` (fan out over
+`find_enabled_for_docedit` → per-mount `find_by_mount_point_id`, filter to
+`photos/`, dedup by sha256 keeping the most-recent-`createdAt` primary,
+optional semantic ranking, tag filter, offset page, entry projection),
+`get_user_gallery_entry`, `remove_from_user_gallery` (link-only delete via the
+GC-safe `delete_with_gc` chokepoint), `save_to_user_gallery` (uploads-mount
+target, category/mime + ownership guards, byte-hash re-save guard, scene-state
+snapshot, kept-image markdown sidecar, `link_blob_content` + chunk rollup).
 
-`parse_bounded_int` is new (v4 `z.number().int().min().max()`); its
-three Zod sentences — `Invalid input: expected int, received number`,
-`Too small: expected number to be >=1`, `Too big: expected number to be
-<=100000` — are pinned by four corpus rows and matched byte-for-byte.
-`validate_comparator` gained the containment arm (both messages) and
-widened to 8 slots; `validate_metadata_operands` now delegates to a
-shared `validate_operand_refs` that the new `llm` subject reuses, so
-both fail-soft subjects check `$param` operands over all eight keys.
-The llm-without-block superRefine sits between the `params` loop and
-the `metadata` loop, matching v4's issue order.
+**Fidelity notes carried.**
 
-**Differential:** `pascal_custom_tool_definition_equivalence`, corpus
-**115 → 149 definition rows** (+47: the llm block accept/reject arms,
-the llm subject, containment across all four subjects, the maxOutput
-bounds) + the unchanged 10 title rows. Green byte-for-byte on the first
-run — verified load-bearing rather than vacuous by inspecting v4's
-actual `reason` strings for twenty of the new rows (each a distinct
-sentence) and by confirming the two PRE-EXISTING at-least-one rows
-moved with v4 (`metadata-empty-comparator` now reads the wide
-eight-key message, `when-empty-roll-comparator` still the narrow six).
+- `DEFAULT_LIMIT` is **24** here, not the character gallery's 60 — the two
+  services genuinely differ; `Math.max(1, Math.min(limit ?? 24, 200))` lowers to
+  `clamp(1, 200)` exactly (checked at 0 and negatives).
+- v4's `findEnabled()` is `findByFilter({enabled: true})` with **no ORDER BY**
+  (verified in `doc-mount-points.repository.ts:141`), matching v5's
+  `find_enabled_for_docedit`; both sides therefore walk rowid order, which is
+  what makes the dedup tie-break deterministic. The dedup comparison is v4's
+  STRICT `localeCompare(...) > 0`, so an exact `createdAt` tie keeps the FIRST
+  link encountered. (On ISO-8601 stamps ICU collation and byte order agree, so
+  the Rust `>` is exact — noted in the source.)
+- `by_sha` is a hand-rolled insertion-ordered map (`Vec` of slots + a lookup
+  `HashMap`) rather than a `HashMap`, because v4 iterates the JS `Map` and that
+  order reaches the wire through the ranking branch. `indexmap` is deliberately
+  NOT added as a dependency for this.
+- `relevanceScore` is `undefined` in the no-query branch and `JSON.stringify`
+  DROPS it, so the key must be **absent** there — the list projection splices it
+  in before `linkSummary` only when a query ran (key order matters;
+  `preserve_order` is on).
+- The service returns v4's raw thrown MESSAGE (`UserGalleryError::Message`)
+  rather than a typed 400/500 split, because v4's route decides the status by
+  substring-testing that message (`route.ts:92-99`) — and one message,
+  `Image … has empty bytes`, is deliberately NOT in the 400 list and falls
+  through to a 500. Unit 3's dispatch layer replicates the substring chain so
+  the quirk stays visible instead of being silently normalized.
+- `caption` here is `meta.caption` with **no** `description` fallback (unlike
+  the character gallery's projection).
+- The two host-side side effects v4 fires (`invalidateMountPoint`,
+  `emitDocumentWritten`, `refreshStats`, `enqueueEmbeddingJobsForMountPoint`)
+  stay recorded no-op seams, exactly as in `save_image_to_album`.
+- The ownership check re-reads the same `files` row through the `FileFull`
+  projection: the core's `FileEntry` carries the generation columns but not
+  `userId`, and `FileFull` the reverse. Two reads, one row, no new db surface.
 
-Regen recipe (v4 @ `616930db`, Node 24):
+**The regex.** v4's `extractPromptExcerpt` is
+`/##\s+Original prompt\s*\n+([^\n][^\n]*(?:\n[^\n#][^\n]*)*)/` plus a
+200-UTF-16-unit truncation. The core has no JS-regex engine, so it is
+hand-rolled — and therefore pinned against the REAL engine rather than against a
+reading of the pattern: `harness/oracle/cases/photos-prompt-excerpt.mjs` runs
+the verbatim v4 function under Node 24 over 15 vectors, whose outputs are
+transcribed into `prompt_excerpt_matches_the_js_regex_vectors`. Two
+non-obvious behaviors the vectors caught and now pin:
 
-```bash
-cd ~/source/quilltap-server
-PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
-  <v5>/harness/oracle/cases/pascal-custom-tool-definition.ts \
-  > /tmp/oracle-pascal-definition.ndjson
-QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
-  cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
-```
+- `### Original prompt` **matches** — the scan finds `##` at offset 1.
+- A `#` may START the captured paragraph but not CONTINUE it
+  (`[^\n][^\n]*` for the first line vs `\n[^\n#][^\n]*` for the rest).
 
-### Unit 2 — the execution core consult seam (`custom_tools.rs`)
+The table passed on the first run, so it was mutation-checked both ways
+(forbid `#` on the first line → the `#hash starts line` vector fails; allow `#`
+to continue → the `first line\n## Scene` vector fails). Both caught; reverted
+green.
 
-**The seam shape.** v4 made `executeCustomTool` async with an injected
-`llmInvoke`; v5's was sync and pure over `rng: &mut dyn RandomBytes`.
-Per the order's "frozen = behavior/args, not sync-ness", the port went
-async with an `Option<&dyn LlmInvoker>` parameter, where `LlmInvoker` is
-a `Send + Sync` trait returning `Pin<Box<dyn Future + Send>>`. The rng
-parameter tightened to `&mut (dyn RandomBytes + Send)` so the resulting
-future stays `Send` for the axum/tokio dispatch above it — every impl
-(`OsRandomBytes`, `FixedBytes`) already was. Three production call sites
-and two harness tests moved with it; `custom_tool_preview` became async
-(its engine dispatch arm now awaits).
+**Deferred to unit 2 (not a refusal — the next unit's scope):** the stateful
+differential over the new `photos-{main,mount}.db` fixture family. This unit's
+equivalence coverage is the tier-1 leaf (the regex vectors above) plus the
+compile-time guarantees; the list/save/remove legs are proven against v4's real
+service in unit 2.
 
-**`LlmInvokeResult` folds v4's two failure routes into one.** v4's
-invoker may either RETURN `{ok:false, reason}` or THROW, and
-`resolveLlmConsult` catches the throw into the identical shape. Rust has
-no throw to catch, so `LlmInvokeResult::Failed { reason }` carries both.
-The distinction was never observable downstream — the execution oracle
-pins this with an `llm-invoker-throws` case whose result is
-byte-identical to the reported-failure case.
-
-**`resolve_llm_consult`.** Every reason string verbatim (`no LLM invoker
-was available in this context`, the invoker's own reason, `the model
-returned an empty answer`). Success is trim → cap → RE-trim, the cap in
-UTF-16 code units via `jsstr::utf16_truncate` (v4's `.slice` counts
-those); `error_message` is never capped. `provider`/`model` ride only
-when TRUTHY, so an empty string is dropped exactly as v4's spread drops it.
-
-**`matches_llm_comparator`** — the forgiving reconciliation, ported
-key-for-key: `ok` first; `answer = trim(output)`; `numericAnswer` only
-when the trimmed answer is non-empty AND `Number(answer)` is finite (the
-empty string is excluded because `Number('')` is 0, not NaN — via the
-existing `js_value::to_number`); the ordering loop resolves its operand
-BEFORE the numeric check so an unresolvable `$param` still throws;
-eq/neq compare numerically when both sides are numbers, else trimmed
-case-insensitive with ONE forgiven trailing `.` or `!` and nothing else;
-contains/ncontains use that same reconciliation with NO punctuation
-forgiveness.
-
-**Containment, three different semantics — all three pinned.** params:
-STRICT, case-sensitive, untrimmed, and a non-string throws. metadata:
-FAIL-SOFT, and the subtle one — a non-string subject DECLINES even under
-`ncontains` ("absence is not a miss"), which a naive port would get
-backwards. llm: forgiving, per above.
-
-**A finding worth carrying:** `matches_comparator`'s strict
-`require_string` THROW is **unreachable from a loadable definition** —
-unit 1's `validate_comparator` containment check rejects a non-string
-haystack or needle at load, exactly as it already does for the ordering
-arm's `require_number`. Three corpus rows were written for it and had to
-be withdrawn: v4's own `define()` refuses the definition. The guard is
-kept on both sides as a regression tripwire; the DEFINITION corpus
-(`contains-numeric-param`, `ncontains-boolean-param`) pins the rejection
-instead. The one route to a non-string OPERAND at run time IS reachable:
-a `$param` needle naming a numeric parameter, because the llm/metadata
-subjects are only ref-checked, never type-checked
-(`llm-contains-numeric-param-needle`,
-`md-contains-numeric-param-needle-declines`).
-
-**Differentials.** `pascal_custom_tools_execution_equivalence`:
-matchesWhen 37 → **103**, executeCustomTool 23 → **37**, renderTemplate
-28 → **36**. The oracle case gained a serializable `LlmScript`
-(`{answer,provider?,model?} | {fail} | {throws} | null`) rebuilt on the
-Rust side as a `CannedInvoker`, so both runs hand the core the SAME
-oracle; the invoker also RECORDS what it was asked, and the row carries
-`llmPromptSeen` / `llmOptionsSeen` so the differential pins the rendered
-consult prompt and the advertised output cap — two facts the run result
-alone would not carry. `pascal_simulate_equivalence` 6 → **9** rows
-(scripted-answer hit, scripted-failure decline, absent-consult soft
-decline).
-
-**Mutation-verified, not merely green.** Both suites passed on the first
-run, so the punctuation-forgiveness arm was deliberately broken (the `!`
-branch removed) and the corpus went RED at `matchesWhen
-'llm-eq-trailing-bang'`. The new rows split 34 true / 32 false, so they
-discriminate rather than agreeing by construction.
-
-Regen recipes (v4 @ `616930db`, Node 24):
-
-```bash
-# execution (jest mirror — jest ignores .claude/ paths)
-N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
-TMPO=/tmp/qt-pascal-exec-oracle
-rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
-cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
-cd ~/source/quilltap-server
-QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
-  $N/npx jest --silent --watchman=false --testTimeout=120000 \
-    --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-execution
-
-# simulate (tsx)
-cd ~/source/quilltap-server
-PATH=$N:$PATH npx tsx "$V5W/harness/oracle/cases/pascal-simulate.ts" \
-  > /tmp/oracle-pascal-simulate.ndjson
-```
-
-### Unit 3 — `pascal/llm_consult.rs` + the `CUSTOM_TOOL_CONSULT` log type
-
-The new module ports v4's `lib/pascal/llm-consult.ts`. Structure follows
-the `title_update_job` precedent (the closest existing v5 caller of the
-same ladder): read chat settings + connection profiles off the `Db`,
-build the cheap-LLM config, `get_cheap_llm_provider` over `profiles[0]`
-as the last-resort "current profile", resolve the danger settings, and
-reroute through `resolve_uncensored_cheap_llm_selection` when
-`is_chat_active_dangerous`. A `None` chat_id never reads a chat and so
-is never dangerous — which is exactly how the Workbench bench run stays
-un-rerouted, without a second code path. The invoker builds its own
-`CheapLlmTaskExecutor::with_logging` per invocation so `chat_id` rides
-the `llm_logs` row (v4 passes `chatId` as `executeCheapLLMTask`'s 6th
-argument for the same reason). The prompt goes as ONE user message with
-no system framing, and `task.error ?? 'the model returned nothing'` is
-carried verbatim.
-
-`llm_logging.rs` gained `log_type::CUSTOM_TOOL_CONSULT` and the
-`"custom-tool-consult"` arm of `map_task_type_to_log_type`. **Without
-the arm the consult logs silently under the `SUMMARIZATION` default** —
-a wrong-but-plausible row, which is the failure mode worth naming.
-
-**Differential coverage, honestly bounded.** New tier-1
-`pascal_llm_consult_equivalence` over v4's REAL module: the three
-constants + **28** `consultMaxTokens` rows, clustered on the two clamp
-boundaries (6,141–6,148 around the 2,048 floor; 98,301–98,305 around the
-32,768 ceiling) because the floor-after-ceil ordering and the
-token-vs-character ceiling are what a port gets subtly wrong. What is
-NOT differential-covered, and why:
-  - `mapTaskTypeToLogType` is **not exported by v4** (module-private in
-    `core-execution.ts`), so no oracle can drive it. The new arm is
-    pinned by the in-crate test only. An enum-parity differential was
-    considered and REJECTED: v4's `LLMLogTypeEnum` carries 20 members
-    against v5's 13 emitted constants (CHARACTER_WIZARD, AI_IMPORT,
-    CHARACTER_OPTIMIZER, EXTERNAL_PROMPT, AUTO_CONFIGURE,
-    WARDROBE_IMAGE_ANALYSIS have no v5 emitter), so it would be red for
-    reasons this drift did not cause.
-  - The private `withTimeout` message is not exported either; pinned by
-    an in-crate test against the string read from v4 at `616930db`.
-  - The resolution plumbing itself is proven through unit 5's handler
-    differential with a canned provider on both sides.
-
-**DEFERRAL (loud, named): the 60 s timer is not wired.**
-`CONSULT_TIMEOUT_MS` and `consult_timeout_reason` are ported and tested;
-the timer is not, because `quilltap-core` has no tokio timer driver in
-its default build and `quilltap-host/src/spine.rs` — which owns the one
-existing `tokio::time::timeout` precedent — is outside this lane's
-Ownership. **Consequence: a hung provider blocks the tool call instead
-of becoming the author's `errorMessage` after 60 s.** Every other
-failure route (no invoker, reported failure, empty answer, provider
-error) is live and differential-checked. The wiring recipe is on the
-`CONSULT_TIMEOUT_MS` doc comment: a host-side decorator wrapping
-`CustomToolLlmInvoker` with
-`tokio::time::timeout(CONSULT_TIMEOUT_MS, …)`, elapsed →
-`LlmInvokeResult::Failed { reason: consult_timeout_reason(…) }`.
-
-Regen recipe (v4 @ `616930db`, Node 24):
-
-```bash
-cd ~/source/quilltap-server
-PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
-  <v5>/harness/oracle/cases/pascal-llm-consult.ts \
-  > /tmp/oracle-pascal-llm-consult.ndjson
-QT_ORACLE_PASCAL_LLM_CONSULT=/tmp/oracle-pascal-llm-consult.ndjson \
-  cargo test -p quilltap-harness --test pascal_llm_consult_equivalence
-```
-
-### Units 4+5 — `pascalMeta.llm` + the `run_custom` tool and handler
-
-Committed together: unit 4 is a type and a serializer, inert until a
-writer uses it, so its proof lands with unit 5's handler differential.
-
-**⚠ SURVEY CORRECTION (the order's one wrong fact).** The order states
-that v4's `chats-messages.ops.ts` row-parse "STRIPPED unknown pascalMeta
-keys, so this +14 is load-bearing on the read path", and asks the port
-to "resolve the read-parse discipline". It is not load-bearing:
-`ChatMessageRowSchema` is passed to `ensureCollection(name, schema)`
-(`lib/database/manager.ts:233`), which hands it to the storage backend
-for column typing — it is NOT applied per read. v4's own comment on the
-block says as much ("shape only tells the backend that pascalMeta is a
-JSON column"). So there is no read-path strip, v5's `put_opt_json`
-pass-through was already correct, and **no v5 read change was needed**.
-Recorded rather than silently skipped.
-
-**Unit 4.** `PascalMetaIn` gains `llm: Option<PascalMetaLlmIn>` at v4's
-declaration position — after `metadataTested`, before `invokedBy` —
-because that is `chat.types.ts:378-385`'s order and therefore the key
-order the wire carries. The three optionals are `.optional()` in v4,
-never `.nullable()`, so they are OMITTED keys rather than nulls.
-`LlmConsultResult::to_wire()` is the single serializer all three writers
-share (the handler, the chat run, the Workbench preview), so the key
-order cannot drift between them.
-
-**Unit 5.** The preamble sentence; `COMPARATOR_SYMBOLS` 6 → 8 with
-`contains` / `does not contain`; `describe_string_operand`;
-`describe_llm_comparator` (v4 hands the whole comparator to
-`describeComparator`, so it is rendered here through a `ParamComparator`
-projection against "the consulted answer"); the `llm` clause appended
-AFTER metadata in `describe_when`; and the "Consults a separate model"
-line — placed after `Roll:` and therefore correctly withheld under
-`revealOdds: false`, which the corpus pins with a dedicated case. The
-prompt is never rendered, by design.
-
-**The handler seam is a SECOND entry point, and that is deliberate.**
-`execute_run_custom_tool` keeps its four-argument signature and
-delegates; `execute_run_custom_tool_with_consult` carries
-`Option<&dyn LlmInvoker>`. The reason is not squeamishness about the
-signature: the executor that calls it holds no `CompletionProvider` —
-`ToolExecutionContext` carries none — so it has nothing to build an
-invoker from, which is the same shape as the `emitPascalResult` sink
-already deferred at that call site. `tools/executor.rs` is also outside
-this lane's Ownership (and unclaimed by either sibling).
-**DEFERRAL (loud, named): the live executor wire.** A model-driven
-`run_custom` on an `llm` tool currently takes the "no LLM invoker was
-available in this context" path and shows the author's `errorMessage`.
-
-**Differentials.**
-  - `pascal_run_custom_equivalence` 9 → **13** rows: an `llm` tool
-    exercising every `describeLlmComparator` arm at once (ok + ordering
-    + eq + both containment keys + a `$param` needle), an
-    `revealOdds:false` llm tool (the line must NOT appear), a
-    params+metadata containment tool, and a mixed roster.
-  - `pascal_run_custom_handler_equivalence` 10 → **12** cases, and this
-    is the one that proves the seam is really wired. The fixture carries
-    **no connection profiles**, so BOTH sides take the invoker's
-    `no connection profiles are configured` arm — v5 reporting its own
-    `no LLM invoker was available in this context` instead would be an
-    immediate red. The v5 side therefore builds a real
-    `CustomToolLlmInvoker` over a `CannedCompletionProvider` that is
-    never reached. No provider mock, no spend, and the whole path
-    (invoker construction → fresh resolution → failure translation →
-    `pascalMeta.llm` persistence → the table branching to the `ok:false`
-    row) is covered end to end.
-  - Added a **case-count assertion** against the oracle. The first run
-    of the extended corpus reported "10 cases" against a 12-row oracle
-    because the Rust case list is declared separately — a silent
-    partial pass. It cannot recur.
-
-**Fixture changes (and what they invalidate).**
-`pascal-run-custom-{main,mount}.db` + `-main.db.meta.json` rebuilt:
-  1. a new `Tools/oracle.tool.json` on vault A (the consult tool);
-  2. **`chat_settings` and `connection_profiles` now exist (empty).**
-     They did not before. v4's backend creates a collection lazily on
-     first access so it tolerated their absence; v5 reads a provisioned
-     schema and failed the read with `no such table: chat_settings`
-     BEFORE reaching the zero-profiles arm. A real instance always
-     provisions both, so this is the fixture catching up to reality. The
-     builder now touches both repos, alongside the pre-existing
-     `docMountBlobs` touch that establishes the same precedent.
-Vault ids RE-MINT on every rebuild; nothing hardcodes them (verified by
-grep) — every consumer reads the `.meta.json` sidecar.
-**Regenerated because of this fixture:**
-`pascal_run_custom_handler_equivalence`,
-`pascal_custom_tools_route_equivalence`.
-
-**Tier-2 trip-check (the order's item 9) — RESULTS.** The preamble
-change reached two byte pins, exactly as predicted:
-  - `tools::run_custom::tests::empty_roster_description_matches_data_rs`
-    and `pascal_build_tools_roster` went RED. **`definitions/data.rs`
-    regenerated via `gen-tool-catalog.mjs`** (never hand-edited) from a
-    fresh `616930db` `tool-definitions.ts` dump — 58 entries, exactly
-    ONE line changed (the `run_custom` description).
-  - `pascal_build_tools_roster` also pinned the fixture roster order as
-    `ansible, coin, whispered`; updated to `ansible, coin, whispered,
-    oracle`, which is **v4's own order** — the fresh handler oracle's
-    `unknown-tool` case reads `Available: ansible, coin, whispered,
-    oracle.`
-  - Regenerated at `616930db` and GREEN: `tool_definitions_equivalence`
-    (58 byte-exact + the canonical spot-check), `tool_build_equivalence`,
-    `pascal_writers_equivalence` (8 + 10 bodies),
-    `pascal_roster_equivalence` (20 scenarios).
-  - Proved UNTOUCHED by this drift: nothing else in the five.
-
-Gate at this commit: `cargo test --workspace --no-fail-fast` **351
-binaries / 0 failed**; fmt + clippy clean on both feature sets.
-
-### Units 6+7 — the Workbench + routes (§B), the §C corpus, and tier 2
-
-**§B, the payload additions.** Preview's body gains
-`llm?: {live:true} | {output} | {fail:true}`; audit's gains
-`{output} | {fail:true}` and **no live arm**. That last is the point
-worth carrying: v4 makes "audits never call live" a SHAPE — the audit
-body's union simply lacks the arm — not a runtime check, so the port
-does the same and `{"live":true}` on an audit is a 400 rather than a
-guarded no-op. `parse_bench_oracle(raw, allow_live)` is the one place
-both unions live; each arm is a `strictObject`, so an extra key is a
-rejection (pinned by `preview-llm-unknown-key`).
-
-The scripted invoker carries v4's bench identity verbatim —
-`provider: "bench"`, `model: "simulated"`, and
-`"a simulated failure, as the bench requested"` — so a scripted run is
-legible as one in the roll record. The audit's fixed subject applies the
-SAME trim-cap-retrim a live run would (`utf16_truncate` at the
-definition's own `maxOutput`), so the audit tests the answer the table
-would actually see; with nothing scripted it audits the FAILURE path,
-which is the honest default.
-
-Also landed: `run_result_to_value` appends the §A record last (so the
-preview RESPONSE is the whole run result, `llm` riding verbatim);
-`CustomToolLibraryEntry.llm: bool` at v4's declaration position (after
-`rollForm`); and the chat run's `pascalMeta.llm` — the **third and last**
-of the three writers, all three now going through
-`LlmConsultResult::to_wire`.
-
-**DEFERRALS (loud, named) — the provider seams.** Three entrances now
-have a typed consult seam and none of them is fed, for the same single
-reason: **nothing at the dispatch layer holds a `CompletionProvider`.**
-  1. `execute_run_custom_tool_with_consult` — the model entrance
-     (unit 5).
-  2. `custom_tool_preview`'s `{live:true}` arm — generic over
-     `C: CompletionProvider` (the trait has a generic method and so is
-     not dyn-compatible); the engine passes `None`.
-  3. `chat_custom_tool_run`'s `completion` — the composer entrance.
-Consequence in all three: an `llm` tool run for real shows the author's
-`errorMessage` with reason `no LLM invoker was available in this
-context`. Every SCRIPTED path — which is what the bench, the
-differentials and the SPA exercise — is fully live. Closing this is one
-host-side change (thread a provider into the engine assembly), and it
-pairs naturally with unit 3's un-wired 60 s timeout.
-
-**Differentials.**
-  - `pascal_workbench_route_equivalence` 24 → **43** cases: seven
-    preview arms (scripted / capped / other / fail / absent / explicit
-    null / on a tool with no `llm` block), five preview body
-    rejections, and seven audit arms including
-    `audit-llm-live-rejected`. Every case is scripted — no differential
-    ever spends a real LLM call.
-  - **`canon` now drops `details`** on both sides. v4's body rejections
-    carry a raw Zod issue list there; v5 emits the envelope without it
-    (the standing P4.6bb error-envelope deferral, not this drift's
-    doing). The STATUS and the `error` sentence — the contract the SPA
-    reads — stay fully compared.
-  - `pascal_custom_tools_route_equivalence` 9 → **10** with
-    `run-oracle-consult`, the chat entrance over the real invoker, which
-    is what covers the third writer.
-  - `pascal_workbench_equivalence`: the workbench fixture gained a
-    consulting tool (`Tools/zeta.tool.json`), because with none the
-    library's `llm` badge read `false` on all five entries — a port that
-    hardcoded the field would have passed. The coverage block now
-    asserts BOTH arms appear.
-  - **Two more case-count guards added** (`pascal_custom_tools_route`,
-    and the earlier `pascal_run_custom_handler`). Both differentials
-    declare their corpus on the Rust side separately from the oracle, so
-    a case added to one and forgotten in the other passed silently on
-    the smaller set — which is exactly what happened, twice, while
-    extending them.
-
-**§C — the SPA corpus.** Regenerated at `616930db`:
-**115 → 159 rows (10 title + 149 definition; 53 accept / 96 reject)**,
-verified byte-identical to the oracle the Rust differential consumed at
-the same commit. README provenance updated.
-**Lane BC's corpus-spec constants become: total 159, accept 53,
-reject 96.**
-
-**Tier-2 item 8 — the D23 zero-diff verification: PASSED.**
-`fresh_schema.json` re-dumped from v4 `616930db`
-(`harness/oracle/provision/dump-fresh-schema.ts`, 79 main + 29
-mount-index + 3 llm-logs statements over 43 repos) and diffed against
-the committed file — **zero change**. The `docs/developer/DDL.md` edit
-in `a2d9a3c8` was a COMMENT on the `pascalMeta` column; `generateDDL`
-emits bare DDL, so no re-dump was owed. Confirmed rather than assumed.
-
-**Final gate.** `cargo fmt --all --check` clean; clippy `-D warnings`
-clean on BOTH feature sets; `cargo test --workspace --no-fail-fast`
-**351 binaries / 0 failed**. The lane's **14 differentials run BY NAME
-with `--nocapture`, all fourteen printing `OK:`, zero `SKIP`** (the
-plain workspace run swallows those lines, so a SKIP count taken from it
-is meaningless — the by-name run is the one that proves it).
-
-### P4.d8 — lane close: dispositions, banks, and what remains OPEN
-
-Drift re-checked at close: v4 HEAD is still `616930db`, tree clean. All
-oracles in this lane were generated from the main checkout at that
-commit (no pinned worktree was needed).
-
-**Tier-3 dispositions (the order's own list, discharged).**
-  - **`979aec66` — Pascal in the Insert Announcement dialog: NO PORT,
-    BANKED.** Re-verified at lane time: v5 has no announcer service, no
-    announcement dispatch verb, and no SPA dialog, so there is nothing
-    for the change to attach to. **The bank:** when the
-    Insert-Announcement slice is ordered, its staff roster must include
-    `pascal` and its staffId enum must carry it. v4's change is a
-    one-line roster addition plus the dialog option; port it with the
-    slice, not before.
-  - **`qtap-export.schema.json`** — documented absence: v5 ships no
-    export schema asset, so there is nothing to mirror.
-  - **The Salon bubble display of `pascalMeta.llm`** — verified PARITY,
-    not a deferral: v4 renders nothing new in the bubble either (the
-    record is Inspector-only). Lane BC mirrors the type; neither side
-    adds rendering.
-  - **A live-consult e2e beat** — out of scope (real provider spend).
-    The scripted paths cover the seam; the workbench route corpus alone
-    exercises nineteen of them.
-
-**Fixture regeneration map (what a future change invalidates).**
-  - `pascal-run-custom-{main,mount}.db` (+ `.meta.json`) →
-    `pascal_run_custom_handler_equivalence`,
-    `pascal_custom_tools_route_equivalence`. Vault ids RE-MINT on every
-    rebuild; every consumer reads the `.meta.json` sidecar (verified by
-    grep — nothing hardcodes them).
-  - `workbench-{main,mount}.db` (+ `.meta.json`) →
-    `pascal_workbench_equivalence`,
-    `pascal_workbench_route_equivalence`.
-  - The `run_custom` PREAMBLE (or any tool description) →
-    `definitions/data.rs` via `gen-tool-catalog.mjs`, then
-    `tool_definitions_equivalence` + `tool_build_equivalence` +
-    `pascal_build_tools_roster` + the in-crate
-    `empty_roster_description_matches_data_rs`.
-
-**Still OPEN under this order — the consult is DARK end to end.** Every
-unit landed and every differential is green, but the three production
-entrances all pass `None` for the provider, because nothing at the
-dispatch layer holds a `CompletionProvider`:
-  1. `tools/executor.rs` → `execute_run_custom_tool` (the model
-     entrance);
-  2. the engine's `CustomToolPreview` arm → the `{live:true}` bench
-     oracle;
-  3. the engine's `ChatCustomToolRun` arm → the composer entrance.
-Plus unit 3's **un-wired 60 s timeout** (no tokio timer driver in
-core's default build). All four are one host-side change of the same
-shape — thread a provider (and a timeout decorator) through the engine
-assembly, in `quilltap-host`, which this lane does not own. **Until
-then a real `llm` tool always shows the author's `errorMessage` with
-reason `no LLM invoker was available in this context`.** That is the
-correct fail-soft behavior, not a crash — but it is not the feature.
-Recommend this be the unifier's wire, or the next order's first item.
-
-**Versions at lane close:** quilltap-core **0.0.276**, quilltap-harness
-**0.0.244**, quilltap-web **0.0.29** (+ `Cargo.lock`).
+**Versions:** quilltap-core 0.0.272.
