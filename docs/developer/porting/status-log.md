@@ -19921,3 +19921,60 @@ fine either way, which is what makes the trap easy to walk into mid-lane.
 Gate: ng test 136 files / 1445 (+16), ng build clean.
 
 **Versions:** SPA 0.5.146.
+
+### Unit 5 — BuilderForm + OutcomesSection + NumberOrParamField
+
+Three v4 files, 1,453 lines, ported to six Angular components:
+`number-or-param-field.ts` (v4 `NumberOrParamField.tsx`, 94);
+`outcomes-section.ts` (v4 `OutcomesSection.tsx`, 828 — split into
+`OperandField` / `ConditionChip` / `ConditionList` / `OutcomeMessageEditor` /
+`OutcomeRow` / `OutcomesSection`, mirroring v4's own internal component split);
+`builder-form.ts` (v4 `BuilderForm.tsx`, 531).
+
+Every one consumes `validateDraft`'s issues rather than re-deriving rules —
+which is the whole point of that function returning both blocking errors AND
+advisory warnings. Behaviors carried and asserted:
+
+- **Validity by construction wherever the format allows.** `coerceIdentifier`
+  strips a typed name to the grammar live; min/max **HIDE** rather than disable
+  on non-numeric parameters (a bound merely greyed out still reads as a bound in
+  force); roll `$param` pickers list only numeric parameters; the operand
+  picker's eligible set mirrors `validateComparator` exactly, including the
+  metadata branch where the stored type is unknowable and only ordering can be
+  ruled out.
+- **The title→slug link** (§4.1) tracks while the name is empty and breaks
+  permanently the moment a name is typed by hand.
+- **Rename on BLUR, not per keystroke** — a half-typed name must not thrash
+  every reference. Deleting a referenced parameter breaks **loudly**: the confirm
+  lists every site and states plainly that deletion will NOT rewrite them (§4.2).
+- **The pinned catch-all tail** makes the loader's ordering rule unviolatable by
+  construction: no move controls, no delete, the condition reading "otherwise",
+  and `addOutcome` inserting ABOVE it.
+- **The duplicate subject+comparator block** with `describeSlot`'s per-subject
+  sentence, and `addCondition` hunting a free slot so a fresh chip never lands on
+  a duplicate.
+- The range readout, including the resulting value bounds when every field is
+  literal and their deliberate ABSENCE when any is a `$param` (unknowable).
+
+**30 spec cases.** Three were wrong on the first run and each was a SPEC bug, not
+a port bug — worth recording because two of the three would have passed while
+asserting nothing: (1) an unscoped `Min`/`Max` text probe can never prove the
+parameter card hides its bounds, because the range-form ROLL block carries its
+own Min/Max labels — the probe has to be scoped to the Parameters `<section>`;
+(2)/(3) `update()` emits a full `{...draft, partial}` spread, so a field is
+always PRESENT — "the title change did not re-slug the name" has to be asserted
+as *unchanged*, never as `toBeUndefined()`.
+
+**Two Angular-specific divergences, both behavior-neutral and commented in
+place:** the `{{value}}` / `{{roll}}` / `{{dice}}` placeholder literals live in
+TS rather than the template, because `{{` opens an interpolation inside an
+Angular binding expression and cannot be written inline the way v4's JSX writes
+it; and `nameTracksTitle` seeds lazily on first use rather than in a field
+initializer, since an `input()` is not readable there — same one-shot `useState`
+semantics. v4's `String(param.defaultValue ?? '')` drops the `?? ''`:
+`defaultValue` is `string | boolean`, never nullish, so the operator is dead and
+Angular's NG8102 diagnostic flags it.
+
+Gate: ng test 137 files / 1470 (+25), ng build clean, zero warnings.
+
+**Versions:** SPA 0.5.147.

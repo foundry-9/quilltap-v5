@@ -1,0 +1,667 @@
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+
+import {
+  IDENTIFIER_PATTERN,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_PARAMETERS,
+  MAX_TITLE_LENGTH,
+  displayTitle,
+} from '../../pascal/custom-tool-types';
+import {
+  MAX_DICE_COUNT,
+  MAX_DIE_SIDES,
+  MIN_DIE_SIDES,
+  parseDiceNotation,
+} from '../../pascal/dice-notation';
+import {
+  findParameterReferences,
+  numericParamNames,
+  parseNumberText,
+  renameParameterEverywhere,
+  slugFromTitle,
+  type DraftIssue,
+  type DraftParameter,
+  type NumberOrParamValue,
+  type ToolDraft,
+} from '../../pascal/tool-draft';
+import { Icon } from '../../ui/icon';
+import { NumberOrParamField } from './number-or-param-field';
+
+/**
+ * BuilderForm — identity, options, parameters, and the roll, i.e. everything in
+ * the Workbench's form column except the outcome cascade (v4
+ * `components/custom-tools/BuilderForm.tsx`, 531).
+ *
+ * Validity is by construction wherever the format allows: the name field
+ * coerces to the identifier grammar as you type, min/max HIDE (not merely
+ * disable) on non-numeric parameters, and roll `$param` pickers only ever list
+ * numeric parameters. What cannot be prevented structurally arrives as issues
+ * from `validateDraft` and renders as inline error state.
+ */
+
+/** Strip a typed name down to the identifier grammar, live. */
+export function coerceIdentifier(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/^[^a-z]+/, '')
+    .slice(0, 64);
+}
+
+let paramIdCounter = 0;
+
+/** The four range fields, with their label and placeholder-default. */
+const RANGE_FIELDS = [
+  { field: 'min', label: 'Min', fallback: '0' },
+  { field: 'max', label: 'Max', fallback: '1' },
+  { field: 'multiplier', label: 'Multiplier', fallback: '×1' },
+  { field: 'offset', label: 'Offset', fallback: '+0' },
+] as const;
+
+type RangeField = (typeof RANGE_FIELDS)[number]['field'];
+
+@Component({
+  selector: 'qt-builder-form',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon, NumberOrParamField],
+  template: `
+    <div class="space-y-4">
+      <!-- Identity -->
+      <section class="qt-card p-4 space-y-3">
+        <h2 class="qt-card-title text-sm">The contrivance itself</h2>
+
+        <div>
+          <label for="wb-title" class="qt-label">Title</label>
+          <input
+            id="wb-title"
+            type="text"
+            [value]="draft().title"
+            [maxLength]="MAX_TITLE_LENGTH"
+            (input)="onTitleChange(inputValue($event))"
+            [placeholder]="titlePlaceholder()"
+            [disabled]="disabled()"
+            class="qt-input w-full"
+          />
+          <p class="qt-hint">
+            Optional. Leave it blank and the table announces {{ titleAnnouncement() }}.
+          </p>
+        </div>
+
+        <div>
+          <label for="wb-name" class="qt-label">Name</label>
+          <input
+            id="wb-name"
+            type="text"
+            [value]="draft().name"
+            (input)="onNameChange(inputValue($event))"
+            placeholder="force_the_lock"
+            [disabled]="disabled()"
+            class="qt-input w-full font-mono"
+            [class.qt-input-error]="nameError() !== null"
+            [attr.pattern]="IDENTIFIER_SOURCE"
+          />
+          <p [class]="nameError() ? 'text-xs qt-text-destructive mt-1' : 'qt-hint'">
+            {{
+              nameError() ??
+                'The tool’s identity: lowercase, starts with a letter, 1–64 characters.'
+            }}
+          </p>
+        </div>
+
+        <div>
+          <label for="wb-description" class="qt-label">Description</label>
+          <textarea
+            id="wb-description"
+            [value]="draft().description"
+            [maxLength]="MAX_DESCRIPTION_LENGTH"
+            (input)="update({ description: inputValue($event) })"
+            [disabled]="disabled()"
+            class="qt-textarea w-full"
+            [class.qt-input-error]="descriptionError() !== null"
+            rows="2"
+          ></textarea>
+          <p class="qt-hint flex justify-between">
+            <span
+              >What the tool does <em>in the fiction</em> — this is how a model decides to reach for
+              it.</span
+            >
+            <span>{{ draft().description.length }}/{{ MAX_DESCRIPTION_LENGTH }}</span>
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-4 text-sm">
+          <label
+            class="flex items-center gap-2"
+            title="Tombstone: suppresses this name at this tier and every farther one"
+          >
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="draft().disabled"
+              (change)="update({ disabled: checkedValue($event) })"
+              [disabled]="disabled()"
+            />
+            Disabled (tombstone)
+          </label>
+          <label
+            class="flex items-center gap-2"
+            title="Off: the house does not show the odds — models see only name, description, and parameters"
+          >
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="draft().revealOdds"
+              (change)="update({ revealOdds: checkedValue($event) })"
+              [disabled]="disabled()"
+            />
+            Reveal the odds
+          </label>
+          <label class="flex items-center gap-2">
+            Results
+            <select
+              [value]="draft().defaultVisibility"
+              (change)="onVisibilityChange(selectValue($event))"
+              [disabled]="disabled()"
+              class="qt-select qt-select-sm"
+              aria-label="Default visibility"
+            >
+              <option value="public">announced publicly</option>
+              <option value="whisper">whispered</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <!-- Parameters -->
+      <section class="qt-card p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="qt-card-title text-sm">Parameters</h2>
+          <button
+            type="button"
+            class="qt-button qt-button-secondary qt-button-sm"
+            (click)="addParam()"
+            [disabled]="disabled() || draft().parameters.length >= MAX_PARAMETERS"
+            [attr.title]="
+              draft().parameters.length >= MAX_PARAMETERS
+                ? 'At most ' + MAX_PARAMETERS + ' parameters'
+                : null
+            "
+          >
+            <qt-icon name="plus" class="w-3.5 h-3.5" />
+            Add parameter ({{ draft().parameters.length }}/{{ MAX_PARAMETERS }})
+          </button>
+        </div>
+
+        @if (draft().parameters.length === 0) {
+          <p class="text-xs qt-text-secondary">
+            None declared. Parameters let the caller weight the roll — a bonus, a difficulty, a
+            material.
+          </p>
+        }
+
+        @for (param of draft().parameters; track param.id) {
+          <div class="qt-card p-3 space-y-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <input
+                type="text"
+                [value]="param.name"
+                (input)="onParamNameChange(param, inputValue($event))"
+                (blur)="commitParamRename()"
+                placeholder="bonus"
+                [disabled]="disabled()"
+                class="qt-input w-36 font-mono"
+                [class.qt-input-error]="paramError(param.id, 'name') !== null"
+                aria-label="Parameter name"
+              />
+              <select
+                [value]="param.type"
+                (change)="onParamTypeChange(param, selectValue($event))"
+                [disabled]="disabled()"
+                class="qt-select qt-select-sm"
+                aria-label="Parameter type"
+              >
+                <option value="number">number</option>
+                <option value="integer">integer</option>
+                <option value="string">string</option>
+                <option value="boolean">boolean</option>
+              </select>
+              <button
+                type="button"
+                class="qt-button qt-button-ghost qt-button-sm ml-auto"
+                (click)="deleteParam(param)"
+                [disabled]="disabled()"
+                title="Delete this parameter"
+              >
+                <qt-icon name="trash" class="w-4 h-4" />
+              </button>
+            </div>
+
+            <div class="flex items-center gap-3 flex-wrap text-sm">
+              <label class="flex items-center gap-2">
+                Default
+                @if (param.type === 'boolean') {
+                  <input
+                    type="checkbox"
+                    class="qt-checkbox"
+                    [checked]="!!param.defaultValue"
+                    (change)="updateParam(param.id, { defaultValue: checkedValue($event) })"
+                    [disabled]="disabled()"
+                  />
+                } @else {
+                  <input
+                    [type]="param.type === 'string' ? 'text' : 'number'"
+                    [attr.step]="param.type === 'integer' ? 1 : 'any'"
+                    [value]="String(param.defaultValue)"
+                    (input)="updateParam(param.id, { defaultValue: inputValue($event) })"
+                    [disabled]="disabled()"
+                    class="qt-input w-28"
+                    [class.qt-input-error]="paramError(param.id, 'default') !== null"
+                  />
+                }
+              </label>
+              <!--
+                min/max HIDE rather than disable on non-numeric types: a bound
+                that is merely greyed out still reads as a bound in force.
+              -->
+              @if (param.type === 'number' || param.type === 'integer') {
+                <label class="flex items-center gap-2">
+                  Min
+                  <input
+                    type="number"
+                    step="any"
+                    [value]="param.min"
+                    (input)="updateParam(param.id, { min: inputValue($event) })"
+                    [disabled]="disabled()"
+                    class="qt-input w-24"
+                    [class.qt-input-error]="paramError(param.id, 'min') !== null"
+                  />
+                </label>
+                <label class="flex items-center gap-2">
+                  Max
+                  <input
+                    type="number"
+                    step="any"
+                    [value]="param.max"
+                    (input)="updateParam(param.id, { max: inputValue($event) })"
+                    [disabled]="disabled()"
+                    class="qt-input w-24"
+                    [class.qt-input-error]="paramError(param.id, 'max') !== null"
+                  />
+                </label>
+              }
+            </div>
+            @if (firstParamError(param.id); as message) {
+              <p class="text-xs qt-text-destructive">{{ message }}</p>
+            }
+
+            <input
+              type="text"
+              [value]="param.description"
+              (input)="updateParam(param.id, { description: inputValue($event) })"
+              placeholder="What this parameter means, in the fiction (optional)"
+              [disabled]="disabled()"
+              class="qt-input w-full text-sm"
+              aria-label="Parameter description"
+            />
+          </div>
+        }
+        <p class="qt-hint">
+          Every parameter needs a default, so a bare invocation can still roll.
+        </p>
+      </section>
+
+      <!-- Roll -->
+      <section class="qt-card p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="qt-card-title text-sm">The roll</h2>
+          <div class="flex rounded overflow-hidden border" role="radiogroup" aria-label="Roll form">
+            @for (form of ROLL_FORMS; track form) {
+              <button
+                type="button"
+                role="radio"
+                [attr.aria-checked]="draft().rollForm === form"
+                (click)="update({ rollForm: form })"
+                [disabled]="disabled()"
+                class="px-3 py-1 text-sm"
+                [class]="
+                  draft().rollForm === form
+                    ? 'qt-button-primary qt-button'
+                    : 'qt-button qt-button-ghost'
+                "
+              >
+                {{ form === 'range' ? 'Range' : 'Dice' }}
+              </button>
+            }
+          </div>
+        </div>
+
+        @if (draft().rollForm === 'dice') {
+          <div class="space-y-1">
+            <input
+              type="text"
+              [value]="draft().rollDice"
+              (input)="update({ rollDice: inputValue($event) })"
+              placeholder="3d6+2"
+              [disabled]="disabled()"
+              class="qt-input w-40 font-mono"
+              [class.qt-input-error]="diceError() !== null"
+              aria-label="Dice notation"
+            />
+            @if (parsedDice(); as dice) {
+              <p class="qt-hint">
+                {{ dice.count }} {{ dice.count === 1 ? 'die' : 'dice' }}, {{ dice.sides }} sides{{
+                  diceModifierText()
+                }}
+                — totals {{ dice.count + dice.modifier }}–{{
+                  dice.count * dice.sides + dice.modifier
+                }}
+              </p>
+            } @else {
+              <p class="text-xs qt-text-destructive">
+                Dice notation like &ldquo;3d6+2&rdquo; or &ldquo;1d20&rdquo; ({{ MIN_DIE_SIDES }}–{{
+                  MAX_DIE_SIDES
+                }}
+                sides, 1–{{ MAX_DICE_COUNT }} dice).
+              </p>
+            }
+            <p class="qt-hint">Dice carry their own modifier; the range transform does not apply.</p>
+          </div>
+        } @else {
+          <div class="space-y-2">
+            <div class="grid grid-cols-2 gap-3">
+              @for (spec of RANGE_FIELDS; track spec.field) {
+                <label class="flex items-center justify-between gap-2 text-sm">
+                  {{ spec.label }}
+                  <qt-number-or-param-field
+                    [value]="rangeValue(spec.field)"
+                    [paramNames]="numericNames()"
+                    [placeholder]="spec.fallback"
+                    [hasError]="rollFieldError(spec.field) !== null"
+                    [disabled]="disabled()"
+                    [label]="spec.label"
+                    (valueChange)="onRangeChange(spec.field, $event)"
+                  />
+                </label>
+              }
+            </div>
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                class="qt-checkbox"
+                [checked]="draft().rollRange.round"
+                (change)="onRoundChange(checkedValue($event))"
+                [disabled]="disabled()"
+              />
+              Round the final value
+            </label>
+            @if (firstRollFieldError(); as message) {
+              <p class="text-xs qt-text-destructive">{{ message }}</p>
+            }
+            <p class="qt-hint">{{ rangeReadout() }}</p>
+          </div>
+        }
+      </section>
+    </div>
+  `,
+})
+export class BuilderForm {
+  readonly draft = input.required<ToolDraft>();
+  readonly issues = input.required<DraftIssue[]>();
+  readonly disabled = input(false);
+
+  readonly draftChange = output<ToolDraft>();
+
+  /**
+   * While true, editing the title keeps regenerating the name slug (§4.1).
+   *
+   * v4 seeds this from `draft.name === ''` at mount (`useState`). An Angular
+   * `input()` is not readable in a field initializer, so the seed is taken
+   * lazily on first use — same one-shot semantics, same source of truth. Plain
+   * state rather than a signal: it steers behavior, never the template.
+   */
+  private nameTracksTitle: boolean | null = null;
+
+  private readonly pendingRename = signal<{ id: string; from: string; to: string } | null>(null);
+
+  protected readonly MAX_TITLE_LENGTH = MAX_TITLE_LENGTH;
+  protected readonly MAX_DESCRIPTION_LENGTH = MAX_DESCRIPTION_LENGTH;
+  protected readonly MAX_PARAMETERS = MAX_PARAMETERS;
+  protected readonly MIN_DIE_SIDES = MIN_DIE_SIDES;
+  protected readonly MAX_DIE_SIDES = MAX_DIE_SIDES;
+  protected readonly MAX_DICE_COUNT = MAX_DICE_COUNT;
+  protected readonly IDENTIFIER_SOURCE = IDENTIFIER_PATTERN.source;
+  protected readonly RANGE_FIELDS = RANGE_FIELDS;
+  protected readonly ROLL_FORMS = ['range', 'dice'] as const;
+  protected readonly String = String;
+
+  readonly numericNames = computed(() => numericParamNames(this.draft()));
+
+  private fieldError(predicate: (issue: DraftIssue) => boolean): string | null {
+    return (
+      this.issues().find((issue) => issue.severity === 'error' && predicate(issue))?.message ?? null
+    );
+  }
+
+  readonly nameError = computed(() =>
+    this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'name'),
+  );
+  readonly descriptionError = computed(() =>
+    this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'description'),
+  );
+  readonly diceError = computed(() =>
+    this.fieldError((i) => i.where.section === 'roll' && i.where.field === 'dice'),
+  );
+
+  rollFieldError(field: RangeField): string | null {
+    return this.fieldError((i) => i.where.section === 'roll' && i.where.field === field);
+  }
+
+  /** v4 renders ONE line for the whole range block, first error wins. */
+  firstRollFieldError(): string | null {
+    return (
+      this.rollFieldError('min') ??
+      this.rollFieldError('max') ??
+      this.rollFieldError('multiplier') ??
+      this.rollFieldError('offset')
+    );
+  }
+
+  paramError(id: string, field: 'name' | 'default' | 'min' | 'max'): string | null {
+    return this.fieldError(
+      (i) => i.where.section === 'parameter' && i.where.id === id && i.where.field === field,
+    );
+  }
+
+  /** v4's `name ?? default ?? min` line — max is deliberately not in it. */
+  firstParamError(id: string): string | null {
+    return (
+      this.paramError(id, 'name') ?? this.paramError(id, 'default') ?? this.paramError(id, 'min')
+    );
+  }
+
+  readonly titlePlaceholder = computed(() => {
+    const name = this.draft().name;
+    return name ? displayTitle({ name }) : 'Force the Lock';
+  });
+
+  readonly titleAnnouncement = computed(() => {
+    const name = this.draft().name;
+    return name ? `“${displayTitle({ name })}”` : 'a title-cased name';
+  });
+
+  readonly parsedDice = computed(() => parseDiceNotation(this.draft().rollDice.trim()));
+
+  readonly diceModifierText = computed(() => {
+    const dice = this.parsedDice();
+    if (!dice || dice.modifier === 0) return '';
+    return `, ${dice.modifier > 0 ? '+' : '−'}${Math.abs(dice.modifier)}`;
+  });
+
+  protected inputValue(event: Event): string {
+    return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+  }
+
+  protected selectValue(event: Event): string {
+    return (event.target as HTMLSelectElement).value;
+  }
+
+  protected checkedValue(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
+  }
+
+  rangeValue(field: RangeField): NumberOrParamValue {
+    return this.draft().rollRange[field];
+  }
+
+  update(partial: Partial<ToolDraft>): void {
+    this.draftChange.emit({ ...this.draft(), ...partial });
+  }
+
+  private tracksTitle(): boolean {
+    this.nameTracksTitle ??= this.draft().name === '';
+    return this.nameTracksTitle;
+  }
+
+  onTitleChange(title: string): void {
+    if (this.tracksTitle()) {
+      this.update({ title, name: slugFromTitle(title) });
+    } else {
+      this.update({ title });
+    }
+  }
+
+  /** Typing a name by hand breaks the title→slug link, permanently. */
+  onNameChange(raw: string): void {
+    this.nameTracksTitle = false;
+    this.update({ name: coerceIdentifier(raw) });
+  }
+
+  onVisibilityChange(raw: string): void {
+    this.update({ defaultVisibility: raw as 'public' | 'whisper' });
+  }
+
+  onRangeChange(field: RangeField, value: NumberOrParamValue): void {
+    this.update({ rollRange: { ...this.draft().rollRange, [field]: value } });
+  }
+
+  onRoundChange(round: boolean): void {
+    this.update({ rollRange: { ...this.draft().rollRange, round } });
+  }
+
+  // -- Parameters -----------------------------------------------------------
+
+  updateParam(id: string, partial: Partial<DraftParameter>): void {
+    this.update({
+      parameters: this.draft().parameters.map((p) => (p.id === id ? { ...p, ...partial } : p)),
+    });
+  }
+
+  addParam(): void {
+    paramIdCounter += 1;
+    this.update({
+      parameters: [
+        ...this.draft().parameters,
+        {
+          id: `new-param-${paramIdCounter}`,
+          name: '',
+          type: 'number',
+          defaultValue: '0',
+          description: '',
+          min: '',
+          max: '',
+        },
+      ],
+    });
+  }
+
+  onParamTypeChange(param: DraftParameter, raw: string): void {
+    const type = raw as DraftParameter['type'];
+    this.updateParam(param.id, {
+      type,
+      // A type change re-seats the default in the new type's widget.
+      defaultValue: type === 'boolean' ? false : String(param.defaultValue ?? ''),
+      ...(type === 'string' || type === 'boolean' ? { min: '', max: '' } : {}),
+    });
+  }
+
+  onParamNameChange(param: DraftParameter, raw: string): void {
+    const next = coerceIdentifier(raw);
+    const prev = this.pendingRename();
+    this.pendingRename.set(
+      prev && prev.id === param.id
+        ? { ...prev, to: next }
+        : { id: param.id, from: param.name, to: next },
+    );
+    this.updateParam(param.id, { name: next });
+  }
+
+  /**
+   * Renaming offers "rename everywhere" (safe, atomic). The commit happens on
+   * BLUR so half-typed names don't thrash every reference.
+   */
+  commitParamRename(): void {
+    const pending = this.pendingRename();
+    if (!pending) return;
+    const { from, to } = pending;
+    this.pendingRename.set(null);
+    if (from === '' || from === to) return;
+    this.draftChange.emit(renameParameterEverywhere(this.draft(), from, to));
+  }
+
+  /** Deleting a referenced parameter breaks LOUDLY, never rewrites (§4.2). */
+  deleteParam(param: DraftParameter): void {
+    const references = param.name ? findParameterReferences(this.draft(), param.name) : [];
+    if (references.length > 0) {
+      const listing = references.map((site) => `  • ${site}`).join('\n');
+      const confirmed = window.confirm(
+        `"${param.name}" is referenced here:\n${listing}\n\n` +
+          'Deleting it will NOT rewrite those references — each flips to an error for you to resolve. Delete anyway?',
+      );
+      if (!confirmed) return;
+    }
+    this.update({ parameters: this.draft().parameters.filter((p) => p.id !== param.id) });
+  }
+
+  // -- The range readout ----------------------------------------------------
+
+  readonly rangeReadout = computed(() => {
+    const r = this.draft().rollRange;
+    const part = (value: NumberOrParamValue, fallback: string) =>
+      value.kind === 'param'
+        ? `“${value.name}”`
+        : value.text.trim() === ''
+          ? fallback
+          : value.text.trim();
+
+    const min = part(r.min, '0');
+    const max = part(r.max, '1');
+    const pieces = [`Draws uniformly in [${min}, ${max})`];
+    const multiplier = part(r.multiplier, '1');
+    if (multiplier !== '1') pieces.push(`then ×${multiplier}`);
+    const offset = part(r.offset, '0');
+    if (offset !== '0') pieces.push(`then +${offset}`);
+    if (r.round) pieces.push('then rounds');
+
+    const sentence = `${pieces.join(', ')}.`;
+
+    // When fully literal, also show the resulting value bounds.
+    const allLiteral = [r.min, r.max, r.multiplier, r.offset].every((v) => v.kind === 'literal');
+    if (!allLiteral) return sentence;
+    const lit = (v: NumberOrParamValue, fallback: number) =>
+      v.kind === 'literal' && v.text.trim() !== '' ? parseNumberText(v.text) : fallback;
+    const minN = lit(r.min, 0);
+    const maxN = lit(r.max, 1);
+    const multiplierN = lit(r.multiplier, 1);
+    const offsetN = lit(r.offset, 0);
+    if (![minN, maxN, multiplierN, offsetN].every(Number.isFinite)) return sentence;
+    const lowRaw = minN * multiplierN + offsetN;
+    const highRaw = maxN * multiplierN + offsetN;
+    let low = Math.min(lowRaw, highRaw);
+    let high = Math.max(lowRaw, highRaw);
+    if (r.round) {
+      low = Math.round(low);
+      high = Math.round(high);
+    }
+    return `${sentence} Values land in [${low}, ${high}).`;
+  });
+}

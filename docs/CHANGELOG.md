@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6bb unit 5 (SPA): the builder form family. number-or-param-field.ts,
+outcomes-section.ts (with its operand field, condition chip, condition list,
+message editor, and outcome row), and builder-form.ts port v4's 1,453 lines of
+authoring UI, all consuming validateDraft's states rather than re-deriving
+rules. Carried faithfully: the live identifier coercion, the title-to-slug link
+and the one-way break when a name is typed, min/max hiding rather than
+disabling on non-numeric parameters, the rename-on-blur atomic pass, the loud
+delete-a-referenced-parameter confirm, the range readout with its resulting
+bounds, the pinned catch-all tail, and the duplicate subject+comparator block.
+30 spec cases. SPA 0.5.147.
+
 P4.6bb unit 4 (SPA): the Workbench API surface and the library. workbench.api.ts
 covers the four §W1 verbs (read structurally via dispatchData) plus the §W2 file
 I/O, which rides the existing mount-file verbs exactly as v4 does — the
