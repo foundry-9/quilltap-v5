@@ -8,12 +8,13 @@ import { homeKeys } from './home.api';
 
 /**
  * The quick-action buttons row (v4 `components/homepage/QuickActionsRow.tsx`).
- * v4's five actions, ported as four: Start a Chat, Start Autonomous Room,
- * Continue Last (disabled when there is no `lastChatId`), and New Project
- * (reuses the Prospero {@link ProjectCreateDialog}). v4's fifth action,
- * **Generate Image** (`/generate-image`, `GenerateImageView`), is OMITTED —
- * that screen is unported (the P4.6av tier-3 deferral, banked for the M6
- * screen-parity pool); no dead links.
+ * All five of v4's actions: Start a Chat, Start Autonomous Room, Continue Last
+ * (disabled when there is no `lastChatId`), New Project (reuses the Prospero
+ * {@link ProjectCreateDialog}), and Generate Image → `/generate-image`.
+ *
+ * The Generate Image action was omitted through the P4.6av round because the
+ * screen behind it was unported; P4.9b ported the screen, so the link is live
+ * and the home spec now asserts the navigation rather than the omission.
  */
 @Component({
   selector: 'qt-quick-actions-row',
@@ -69,6 +70,13 @@ import { homeKeys } from './home.api';
         <span class="hidden sm:inline">New Project</span>
         <span class="sm:hidden">Project</span>
       </button>
+
+      <!-- Generate Image (v4 QuickActionsRow :90-98) -->
+      <a routerLink="/generate-image" class="qt-button qt-button-secondary gap-2">
+        <qt-icon name="image" class="w-4 h-4" />
+        <span class="hidden sm:inline">Generate Image</span>
+        <span class="sm:hidden">Image</span>
+      </a>
     </div>
 
     <!-- Create Project Dialog -->

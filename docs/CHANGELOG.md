@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9b unit 3: the homepage Generate Image quick action is back. The fifth
+v4 quick action was omitted from the home row through the P4.6av round
+because /generate-image was unported; unit 2 ported the screen, so the
+action is restored in v4's position and links to /generate-image. The
+home spec flips with it — it asserted the omission, and now asserts the
+navigation. SPA 0.5.156.
+
 P4.9b unit 2: the standalone /generate-image screen. A port of v4's
 GenerateImageView: profile picker, prompt with {{placeholder}} inserts
 ({{me}}/{{char}} plus a character search capped at ten rows), a 1-4

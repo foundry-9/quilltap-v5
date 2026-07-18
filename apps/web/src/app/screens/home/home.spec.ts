@@ -218,9 +218,14 @@ describe('HomePage', () => {
     expect(hrefs).toContain('/salon/new?autonomous=1');
   });
 
-  it('omits the Generate Image action (tier-3 deferral — /generate-image is unported)', async () => {
+  it('links the Generate Image action to /generate-image (v4 QuickActionsRow :90-98)', async () => {
     const fixture = await render(homeClient(homeData()));
-    expect(fixture.nativeElement.textContent).not.toContain('Generate Image');
+    const links = Array.from(
+      fixture.nativeElement.querySelectorAll('.qt-quick-actions a'),
+    ) as HTMLAnchorElement[];
+    const generate = links.find((a) => a.textContent!.includes('Generate Image'));
+    expect(generate).toBeDefined();
+    expect(generate!.getAttribute('href')).toBe('/generate-image');
   });
 
   it('marks dangerous chats with the * marker (v4 RecentChatItem)', async () => {
