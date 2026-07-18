@@ -21182,387 +21182,150 @@ etc.); the standing refusal-armed pools (unchanged).
 
 ---
 
-## P4.9a (lane A) — the My Photos vertical
+## P4.6bc — the `616930db` llm-consult drift re-port, SPA half (lane BC, 2026-07-18)
 
-Held back from the M6 items 1–4 unification at unit 1 (preserved branch
-`claude/photos-view-porting-3ee1fc`, commit `40c7da51`); RESUMED in the
-`616930db` drift-catch-up round on branch `claude/photos-view-porting-3d533e`,
-cherry-picked onto main `65c6cb95` (the core version bump accumulated upward:
-0.0.270 → 0.0.272). v4 baseline `616930db`, re-verified at resume
-(`git log 616930db..HEAD` empty, tree clean — the pinned-worktree requirement
-is lifted per the order's resume addendum).
+**Branch:** `claude/p4-6bc-workbench-llm-spa-551958` (worktree). **v4
+baseline:** `616930db` (4.8.0-dev.75), drift-checked clean at lane start
+(`git log 616930db..HEAD` empty, tree clean) and re-verified at close.
+**Rust: UNTOUCHED** — `git diff --name-only main...HEAD` shows no
+`crates/**` or `harness/**` path; the workspace gate ran only as the
+order's baseline check.
 
-### P4.9a unit 1 — `photos::user_gallery_service` (the v4 user-gallery service port)
+### Unit 1 — the browser schema twin (`99ac8bf1`)
 
-Lane A of the M6 items 1–4 round. Ported v4
-`lib/photos/user-gallery-service.ts` (480 lines) to
-`crates/quilltap-core/src/photos/user_gallery_service.rs`, beside the
-already-ported `character_gallery_service` it closely rhymes with.
+`apps/web/src/app/pascal/custom-tool-types.ts` mirrors every §A-relevant
+change: the `llm` block (prompt 1–4000, errorMessage 1–1000, optional
+integer maxOutput 1–100,000), `LlmComparator` + its `ok` key and its own
+refine, `StringOperand`, `COMPARATOR_KEYS` widened 6 → 8, containment on
+params/metadata/llm but NOT on a numeric subject, both at-least-one
+messages, the two containment load-check sentences, the
+llm-test-without-block rejection, `llm` in `KNOWN_TOP_LEVEL_KEYS`.
 
-**What landed.** All four legs: `list_user_gallery` (fan out over
-`find_enabled_for_docedit` → per-mount `find_by_mount_point_id`, filter to
-`photos/`, dedup by sha256 keeping the most-recent-`createdAt` primary,
-optional semantic ranking, tag filter, offset page, entry projection),
-`get_user_gallery_entry`, `remove_from_user_gallery` (link-only delete via the
-GC-safe `delete_with_gc` chokepoint), `save_to_user_gallery` (uploads-mount
-target, category/mime + ownership guards, byte-hash re-save guard, scene-state
-snapshot, kept-image markdown sidecar, `link_blob_content` + chunk rollup).
+**A separate six-key `NUMERIC_COMPARATOR_KEYS` was required.** v4's
+`NumericComparatorSchema` and `WhenObjectSchema` both spread
+`NUMERIC_COMPARATOR_SHAPE`, so widening the shared `COMPARATOR_KEYS`
+would have made bare `{"contains": …}` on the value (and inside `roll`)
+a legal key instead of an unrecognized one. Two corpus rows pin it.
 
-**Fidelity notes carried.**
+**Teeth (`custom-tool-types.llm.spec.ts`, 52 rows).** The committed
+corpus NDJSON is lane D8's (§C), so the new arms are pinned by rows
+CAPTURED from v4's real `QtapCustomToolSchema.safeParse` +
+`formatDefinitionIssues` at `616930db`, byte-compared exactly as the
+corpus spec compares the corpus (verdict, `JSON.stringify(data)` — key
+order included — and the full sentence). A mutation check bit on 3 rows
+(and established that the `.int()` abort flag is NOT observable through
+this surface — only the suppression of the bound checks is, so the
+comment claims only that).
 
-- `DEFAULT_LIMIT` is **24** here, not the character gallery's 60 — the two
-  services genuinely differ; `Math.max(1, Math.min(limit ?? 24, 200))` lowers to
-  `clamp(1, 200)` exactly (checked at 0 and negatives).
-- v4's `findEnabled()` is `findByFilter({enabled: true})` with **no ORDER BY**
-  (verified in `doc-mount-points.repository.ts:141`), matching v5's
-  `find_enabled_for_docedit`; both sides therefore walk rowid order, which is
-  what makes the dedup tie-break deterministic. The dedup comparison is v4's
-  STRICT `localeCompare(...) > 0`, so an exact `createdAt` tie keeps the FIRST
-  link encountered. (On ISO-8601 stamps ICU collation and byte order agree, so
-  the Rust `>` is exact — noted in the source.)
-- `by_sha` is a hand-rolled insertion-ordered map (`Vec` of slots + a lookup
-  `HashMap`) rather than a `HashMap`, because v4 iterates the JS `Map` and that
-  order reaches the wire through the ranking branch. `indexmap` is deliberately
-  NOT added as a dependency for this.
-- `relevanceScore` is `undefined` in the no-query branch and `JSON.stringify`
-  DROPS it, so the key must be **absent** there — the list projection splices it
-  in before `linkSummary` only when a query ran (key order matters;
-  `preserve_order` is on).
-- The service returns v4's raw thrown MESSAGE (`UserGalleryError::Message`)
-  rather than a typed 400/500 split, because v4's route decides the status by
-  substring-testing that message (`route.ts:92-99`) — and one message,
-  `Image … has empty bytes`, is deliberately NOT in the 400 list and falls
-  through to a 500. Unit 3's dispatch layer replicates the substring chain so
-  the quirk stays visible instead of being silently normalized.
-- `caption` here is `meta.caption` with **no** `description` fallback (unlike
-  the character gallery's projection).
-- The two host-side side effects v4 fires (`invalidateMountPoint`,
-  `emitDocumentWritten`, `refreshStats`, `enqueueEmbeddingJobsForMountPoint`)
-  stay recorded no-op seams, exactly as in `save_image_to_album`.
-- The ownership check re-reads the same `files` row through the `FileFull`
-  projection: the core's `FileEntry` carries the generation columns but not
-  `userId`, and `FileFull` the reverse. Two reads, one row, no new db surface.
+**⚠ FOUR committed corpus rows DRIFTED in v4 — the order's premise that
+"the OLD 115-row corpus stays green" does not hold at `616930db`.**
+Established by replaying the committed NDJSON through v4's real Zod at
+`616930db`: exactly four rows change and no others —
+`when-tests-nothing` / `when-empty-params` / `metadata-empty-object`
+(the `when` refine sentence gained `` `llm` ``) and
+`metadata-empty-comparator` (the metadata comparator's at-least-one
+widened to eight keys). **This is v4 drift, not a BC porting bug, and
+D23 says v5 follows v4.** The corpus spec therefore carries a marked
+`REGENERATED_AT_616930DB` map plus a guard that its keys still exist in
+the fixture. **§C at unification: the unifier sets the map to `{}` and
+the counts to D8's recorded ones; the spec must then pass on the
+fixture's own bytes.**
 
-**The regex.** v4's `extractPromptExcerpt` is
-`/##\s+Original prompt\s*\n+([^\n][^\n]*(?:\n[^\n#][^\n]*)*)/` plus a
-200-UTF-16-unit truncation. The core has no JS-regex engine, so it is
-hand-rolled — and therefore pinned against the REAL engine rather than against a
-reading of the pattern: `harness/oracle/cases/photos-prompt-excerpt.mjs` runs
-the verbatim v4 function under Node 24 over 15 vectors, whose outputs are
-transcribed into `prompt_excerpt_matches_the_js_regex_vectors`. Two
-non-obvious behaviors the vectors caught and now pin:
+### Unit 2 — the tool-draft bijection (`9fc2d397`)
 
-- `### Original prompt` **matches** — the scan finds `##` at offset 1.
-- A `#` may START the captured paragraph but not CONTINUE it
-  (`[^\n][^\n]*` for the first line vs `\n[^\n#][^\n]*` for the rest).
+The four `llm*` draft fields (kept while disabled, the roll-field
+precedent), the `llm` / `llm-ok` chip kinds, `ok` lifted onto its own
+chip and folded back ("succeeded ≠ true" → `ok: false`), the block
+emitted at v4's `KNOWN_KEY_ORDER` position with maxOutput omitted while
+blank, the whole llm validation section with v4's verbatim sentences,
+`validateLlmPromptPlaceholders`, the `{{llm}}`-while-off message
+warning, the disabled-consult and llm-ok-comparator refusals, the
+containment audit with its early return, the slot keys, and the prompt
+reached by rename + reference finding. **v4's +12+3 new tool-draft cases
+ported case-for-case.** `subjectSelectValue` / `describeSlot` gained
+their arms here because the widened union forces them.
 
-The table passed on the first run, so it was mutation-checked both ways
-(forbid `#` on the first line → the `#hash starts line` vector fails; allow `#`
-to continue → the `first line\n## Scene` vector fails). Both caught; reverted
-green.
+### Unit 3 — the Workbench screens, the asset, the Inspector (`dd9a4c3e`)
 
-**Deferred to unit 2 (not a refusal — the next unit's scope):** the stateful
-differential over the new `photos-{main,mount}.db` fixture family. This unit's
-equivalence coverage is the tier-1 leaf (the regex vectors above) plus the
-compile-time guarantees; the list/save/remove legs are proven against v4's real
-service in unit 2.
+BuilderForm's "The consulted oracle" card; OutcomesSection's gated
+consult subjects, `typeOfSubject` comparator menus, the two labels, the
+text-only operand widget and its coercions, string-param filtering under
+containment, the three fail-soft hints, `{{llm}}` in the insert menu;
+ProvingBench's scripted/silence/live card + the bubble's consult line;
+the library `oracle` badge; `workbench.api.ts`'s §B bodies; the
+byte-copied schema asset (diff vs v4 `616930db` EMPTY); the Inspector's
+CUSTOM_TOOL_CONSULT badge/label/`other` group; the §A `LlmConsultRecord`
+on `PascalMeta` and `CustomToolRunResult`, and `llm: boolean` on the
+library entry. **v4's new nine-case `workbench-llm.test.tsx` ported
+case-for-case** (transport assertion moved from a `fetch` spy to the
+dispatch stub), plus one case for the §B audit-has-no-live invariant.
 
-**Versions:** quilltap-core 0.0.272.
+**Three traps, all recorded in the code:**
 
-### P4.9a unit 2 — the §3 dispatch verbs + the photos fixture family + the differential
+1. **Backticks in a component template comment end the template
+   literal.** An explanatory `<!-- … `[value]` … -->` broke the file into
+   nonsense TS. (The P4.6bb backtick trap, in a new dress.)
+2. **`[value]` on a `<select>` whose options sit behind an `@if`
+   silently falls back to the first option** — the subject select
+   rendered `value` where the chip held `llm`. Fixed the standing
+   dogfood-#6 way: `[selected]` per option, on BOTH the subject and
+   comparator selects. Caught by the ported chip test.
+3. **The new consult-off hint contains the phrase "the outcome table",**
+   which made a SIBLING e2e beat's `getByText('The outcome table')`
+   ambiguous (`[[added-affordance-breaks-sibling-by-name-locators]]`).
+   Fixed the locator to v4's own structure (`getByRole('heading', …)`),
+   not the copy.
 
-Resumed lane A, on branch `claude/photos-view-porting-3d533e` (unit 1
-cherry-picked forward as `6a867389`; core 0.0.270 → 0.0.272 to accumulate over
-main's 0.0.271).
+### Tier 2 — the e2e beats
 
-**What landed.** `crates/quilltap-core/src/api/photos.rs` — the four §3 verbs
-(`photoGalleryList` / `photoGallerySave` / `photoGalleryEntryGet` /
-`photoGalleryEntryRemove`) over unit 1's service, with their `Request`/`Response`
-arms (`Response::PhotoGallery`, one variant for all four bodies — v4 emits every
-one RAW) and the engine dispatch. The list arm rides `ready_memory_embedding`
-(v4's service calls `generateEmbeddingForUser` inline on the query branch); the
-save arm rides the existing `ready_save_image` bytes seam.
+Two beats added to this lane's own `e2e/workbench-flow.spec.ts`:
 
-**Why the route logic lives in `api::photos` and not the service.** v4 splits it
-the same way: the route Zod-parses, the service throws plain `Error`s, and the
-ROUTE decides 400-vs-500 by SUBSTRING-testing the message. So the service port
-carries only the raw message and this module replicates both the Zod strings and
-the substring chain — which is what keeps `Image {id} has empty bytes` falling
-through to a 500, as v4 intends (empty stored bytes are a server fault).
+- **Beat 5 — LIVE in-lane:** New contrivance → the consult is off and
+  says so → enable → the prompt/error fields and the inline "the consult
+  needs a prompt" → fill them → the bench's oracle card appears →
+  `add condition` offers `llm` and `llm-ok` → picking the answer subject
+  offers `contains`.
+- **Beat 6 — ACTIVATE-AT-UNIFY (§B):** a scripted `YES` decides which
+  row a preview roll lands on. **The probe had to be rewritten**: the
+  server does not reject an unknown `llm` body field, it IGNORES it, so
+  "no error" proved nothing. The probe now requires the §A record to
+  come BACK on the run result — only a server that honoured the scripted
+  oracle can produce it. The skip message names lane P4.d8.
 
-**The fixture family** (`crates/quilltap-web/tests/fixtures/photos-{main,mount}.db`
-+ `.meta.json`, built by `harness/oracle/fixtures/build-photos-fixture.ts` from
-`photos-web.json`): five mount points (two REAL character vaults minted by
-`repos.characters.create`, so `storeType` is genuinely `'character'`; Quilltap
-Uploads; a project store; and a DISABLED one), five images staged through the
-REAL `linkBlobContent`, and one chunk per photo link with a PINNED embedding.
-Deliberate shapes: sha A carries FOUR links (three `photos/` across three mounts
-plus one `notes/` link on the same bytes) so the dedup collapse, the linkSummary
-count, and the `isPhotoAlbum: false` arm all appear at once; the Uploads link is
-FIRST in the walk but OLDEST, so a fixture where walk order and `createdAt` order
-agree could not tell the tie-break apart. Timestamps are re-pinned by raw UPDATE
-after staging (`linkBlobContent` stamps a live clock, and the tie-break reads
-that column directly).
+### The gate
 
-**The differential** (`photos_routes_equivalence`, 32 checks + a key-order
-claim): 34 oracle cases over v4's real service and both real route handlers.
-Two seams are canned identically on both sides and nothing else is — the query
-embedding (keyed by query TEXT; everything below the model boundary, including
-`searchDocumentChunks`, the literal-phrase boost and the peak-gate/trail-band
-filter, runs for real) and the image bytes (reported by the oracle's own
-`*_bytes` cases from v4's UNMOCKED storage manager, so the save leg's recomputed
-sha256 is comparable at all).
+`ng test` **153 files / 1,788** green (incl. the 101 unchanged corpus
+rows, the 4 drift-mapped ones, the 52 captured arms, the extended
+tool-draft suite, and the ported component suite); `ng build` clean;
+**full Playwright 79 passed + 1 guarded skip**, run alone on 4319 from
+`apps/web` with this worktree's own Rust binaries. Rust baseline
+unchanged and re-verified: `cargo fmt --all --check` clean, clippy
+`-D warnings` clean on BOTH feature sets, `cargo test --workspace
+--no-fail-fast` **350 binaries / 1,433 / 0 failed**. Schema asset
+byte-diff vs v4 `616930db`: empty. SPA **0.5.172** (three patch bumps).
 
-**Three real divergences the differential caught** (fixed in the port, never the
-test):
-1. `relevanceScore` serialized as `1.0` where v4's `JSON.stringify` writes `1` —
-   a perfect cosine match is exactly whole. Routed through the existing
-   `db::js_number_to_json`.
-2. The save leg collapsed an ABSENT `fileId` into an explicit `null`, losing
-   Zod's `received undefined` vs `received null` split. The wire field is now a
-   double option (the P4.9c profile precedent).
-3. Two Zod bound messages named the FIELD (`expected limit to be <=200`) where
-   Zod v4 names the schema TYPE (`expected number to be <=200`).
+### Deferred, loud and named
 
-Mutation-checked: inverting the dedup tie-break (`>` → `<`) fails six cases;
-reverted green.
+- **Salon bubble display of `pascalMeta.llm`** — v4 renders nothing new
+  in the bubble either; Inspector-only. Verified parity, not a gap.
+- **The Insert-Announcement dialog (`979aec66`)** — the whole surface is
+  unported in v5; lane D8's disposition table banks it.
+- **A live-consult bench walk** — real provider spend; scripted covers
+  the UI.
+- **v4's `components/tools/llm-logs-card.tsx` label** (`'CUSTOM_TOOL_CONSULT':
+  'Custom Tool'`) — **the order expected a v5 counterpart under
+  `screens/settings/`; there is none.** That card is an UNPORTED v4
+  surface (grepped: no type-label map outside the Inspector). Nothing to
+  defer — the line has no v5 home until that card is ported; the
+  Inspector's own map (which v5 does have) carries the label.
 
-**⚠ An oracle-hygiene bug worth carrying forward.** v4's `saveToUserGallery`
-ends with three fire-and-forget promises (`refreshStats`,
-`enqueueEmbeddingJobsForMountPoint`, the emitted document event). They outlive
-the awaited response, land AFTER the case's `closeDatabase()`, and race the NEXT
-case's `initializeDatabase()` — whose `readSetting` then throws into
-`getUserUploadsStore`'s catch, surfacing as a bogus "Quilltap Uploads mount has
-not been provisioned" on whichever case happens to follow a mutating one. It
-moved when the cases were reordered, which is how it was identified as
-contamination rather than a real v4 behavior. The oracle now drains (250 ms)
-before closing. Any oracle whose subject has a fire-and-forget tail needs the
-same.
+### For the unifier
 
-**Regenerate recipe.** Fixture:
-
-    N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
-    cd ~/source/quilltap-server
-    QT_FIXTURE_PHOTOS_MAIN=$W/crates/quilltap-web/tests/fixtures/photos-main.db \
-    QT_FIXTURE_PHOTOS_MOUNT=$W/crates/quilltap-web/tests/fixtures/photos-mount.db \
-      $N/node --import tsx $W/harness/oracle/fixtures/build-photos-fixture.ts
-
-Oracle (jest ignores `.claude/` — mirror to /tmp), then the diff:
-
-    TMPO=/tmp/qt-photos-oracle
-    rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
-    cp "$W/harness/oracle/cases/photos-routes.test.ts" "$TMPO/cases/"
-    cp "$W/harness/oracle/fixtures/photos-web.json" "$TMPO/fixtures/"
-    cd ~/source/quilltap-server
-    QT_FIXTURE_PHOTOS_MAIN=… QT_FIXTURE_PHOTOS_MOUNT=… \
-    QT_ORACLE_OUT=/tmp/oracle-photos.ndjson \
-      $N/npx jest --silent --watchman=false --testTimeout=120000 \
-        --roots "$PWD" --roots "$TMPO/cases" -- photos-routes
-    cd $W && QT_ORACLE_PHOTOS=/tmp/oracle-photos.ndjson \
-      cargo test -p quilltap-web --test photos_routes_equivalence -- --nocapture
-
-Note the fixture regenerates the ingested save-source file ids and their
-`linkedAt` stamps, so the oracle MUST be regenerated with it — the `.meta.json`
-sidecar is what keeps the two in step.
-
-**Still OPEN in this lane:** the REST edges (`photos_routes.rs`), the `/photos`
-SPA screen + its §1 route block, the live Playwright beat, and tier 2
-(`imageInfoGet` + the deep gallery modal family).
-
-**Versions:** quilltap-core 0.0.273, quilltap-web 0.0.29.
-
-### P4.9a unit 3 — the REST edges + the web-edge legs
-
-`crates/quilltap-web/src/photos_routes.rs` + the two route registrations:
-`GET|POST /api/v1/photos`, `GET|DELETE /api/v1/photos/{id}`. Each dispatches
-its `Request` and UNWRAPS the envelope to v4's raw body (the P4.6ah lesson);
-POST answers **201**, because v4's `created(result)` does.
-
-**Two edge behaviors that needed care**, both mutation-checked in the new
-`photos_web_routes` end-to-end test:
-
-1. **`?tag=` repeats.** v4 reads them with `searchParams.getAll('tag')`, so
-   `?tag=a&tag=b` is a two-element filter. A `HashMap` query extractor would
-   silently keep one; the extractor is `Query<Vec<(String, String)>>`, which
-   serde_urlencoded fills preserving repeats in order. Mutation: `.take(1)` on
-   the collector fails the two-tag case.
-2. **`Number()` before Zod.** v4 reads `limit`/`offset` as
-   `has(k) ? Number(get(k)) : undefined`, so `?limit=abc` must reach the core as
-   NaN — not be dropped, and not be repaired into a valid number. Mutation:
-   parsing with `parse::<f64>().unwrap_or(1.0)` turns v4's 400 into a 200.
-
-**A unit-2 correction this unit makes.** The list dispatch arm rode
-`ready_memory_embedding`, which refuses when the seam is unwired. But a
-spine-less assembly gets `memory_embedding: None` (`host.rs:476`), and v4 only
-reaches the model on the QUERY branch — so that arm would have made a plain
-`/photos` listing fail on those hosts, dark-screening the whole feature for a
-capability it doesn't need. The arm now takes an OPTIONAL provider
-(`ready_db_and_memory_embedding`) and gates only the query branch; a SEARCH
-without the seam is still the loud named refusal, pinned by the web-edge test.
-
-**A DRY debt, recorded rather than paid.** `photos_routes.rs` carries a local
-JS `Number()` port. The core already has a private twin in
-`tools::text_block_parser`, and lifting it into `jsnum` would touch files
-outside this lane's ownership. The two follow the same spec and the arms this
-edge can reach are pinned by `list_limit_nan` / `list_limit_fraction`; the
-consolidation is a rider for a future DRY pass.
-
-**Versions:** quilltap-core 0.0.274, quilltap-web 0.0.30.
-
-### P4.9a unit 4 — the `/photos` SPA screen + the §1 route block
-
-`apps/web/src/app/screens/photos/` (`photos.api.ts`, `photos-page.ts`,
-`photos.spec.ts`) + the §1 `photos` route block and the routes doc-comment
-line. The screen is v4's `PhotosView.tsx` transcribed: header/counter/back
-link, the search form, the responsive PhotoCard grid with the "🔗 N" badge, the
-IntersectionObserver infinite scroll (`rootMargin: '600px 0px'`, no
-virtualization — v4 has none here), and the inline detail modal (Escape,
-Original prompt, read-only tag badges, the linker list with Vault-vs-Album,
-sha256/linkId identity, the one destructive "Remove from this album").
-
-**The §3 verbs ride a LOCAL typed module plus a cast** (`photos.api.ts`), the
-established `home.api.ts` pattern; the unifier folds them into `CoreRequest`
-and drops the casts.
-
-**Both staleness guards ported and mutation-checked.** v4's
-`fetchGenerationRef` (`:77`,`:97`) discards a load-more that outlived its
-query — without it, the old query's page 2 appends onto the new query's
-results. And the defensive linkId de-dupe on append (`:125-131`) catches the
-same row arriving on two pages when a save shifts the ordering mid-scroll.
-Removing either one fails its spec (checked both ways); the generation spec
-was deliberately rewritten from a weak inequality into a scripted
-release-the-late-page scenario so it can actually bite.
-
-**A subtle transcription worth naming:** the caption fallbacks are `||`
-chains, not `??`. `generationPromptExcerpt` is `''` (never null) when there is
-no prompt, so a `??` port would render blank labels. Pinned by its own spec.
-
-**Recorded divergences** (all in the component docstring):
-- **No subsystem background.** v4 wraps the page in
-  `useSubsystemBackgroundStyle('lantern')`; v5 has no subsystem-background
-  machinery at all (grep-verified) and this lane does not invent one. **DEFERRED
-  LOUD** — it is a visual affordance, not behavior, and the omission is named
-  here and in the component.
-- **Full-size images in the grid.** v4's cards render the full `blobUrl` with
-  `loading="lazy"` and no thumbnail route. Carried deliberately rather than
-  "fixed": no thumbnail route exists on this surface, and minting one would be
-  a v5-only behavior.
-- **`window.confirm`** for the delete gate, v5's established stand-in for v4's
-  promise-based `showConfirmation` (13 existing call sites).
-- **Tags are READ-ONLY** — not an omission; v4 has no tag editing anywhere in
-  this family (tier-3 deferral, as the order predicted).
-
-**Also:** `apps/web/package-lock.json`'s version field had drifted nine bumps
-behind `package.json` (0.5.160 vs 0.5.169) on main; `npm install` in this
-worktree synced it, and the fix rides here. A fresh worktree needs its own
-`npm install` before `ng test` will run at all.
-
-Gate: ng test 152 files / 1,718 (the 12 new specs by name), ng build clean.
-
-**Versions:** SPA 0.5.170.
-
-### P4.9a unit 5 — the live Playwright walk
-
-`apps/web/e2e/photos-flow.spec.ts` (three beats) + `support/seed-photos-fixture.ts`
-+ one call line in `global-setup.ts`.
-
-**The beats.** (1) `/photos` renders the gallery over the real
-`photoGalleryList` verb; (2) a card opens the detail modal with its prompt
-excerpt, linker list, read-only tags and identity block, and Escape closes it;
-(3) a link-only delete round-trips through `photoGalleryEntryRemove` **and
-survives a reload** — the reload is the point, because an optimistic-only UI
-would pass the first half and fail the second.
-
-**Why the walk seeds its own data.** The shared instance already carries a
-`photos/` link (Aria's vault avatar), but the characters walk DELETES gallery
-tiles on that same server. Asserting on whatever happened to be there would be
-reading a moving target, so global-setup seeds two rows with distinctive
-captions ("Zeppelin over the Ironworks" / "The Ironworks at dusk") and the walk
-finds, filters, and deletes only those. Ids are e2e-only (`9a…`), outside every
-fixture family's scheme. The destination mount is DISCOVERED by query rather
-than pinned — the salon fixture's mount ids are not this lane's to assume.
-
-The seeded `extractedText` is real kept-image markdown, because the gallery
-projection PARSES it: the caption, the tags and the prompt excerpt all come out
-of that text, not out of columns. Two schema facts cost a round each:
-`doc_mount_files` needs `fileType` + `source` (NOT NULL, no defaults), and
-`doc_mount_file_links` has NO `source`/`fileType`/`sha256` columns — those live
-on the file row — but does need `lastModified`.
-
-**⚠ NAVIGATION is by URL**, because the shell's photos nav item stays
-`route: null` until the §2a unifier flip. `gotoPhotos` carries an
-ACTIVATE-AT-UNIFY marker for the nav-click step.
-
-**NOT walked, deliberately: the semantic search.** v4's service calls
-`generateEmbeddingForUser` on the query branch, and the e2e instance has no
-default embedding profile — so a search on that server is the seam's loud
-refusal, not a narrowed list. Pinning the refusal belongs in
-`photos_web_routes` (where it is), and making the walk depend on a live
-embedding provider would be testing the provider, not this screen.
-
-**A Playwright gotcha worth a memory note:** `getByText(/^…/)` fails where
-`getByText('…')` succeeds — Playwright normalizes whitespace for STRING matches
-but NOT for regex ones, so a `^` anchor cannot match text inside an indented
-template element. The first suite run failed exactly there (80 passed / 1
-failed); with the anchor dropped the beat is green.
-
-**Versions:** SPA 0.5.171.
-
-### P4.9a lane close — tier 1 COMPLETE, tier 2 DEFERRED (loud, named)
-
-**Tier 1 landed whole** (units 1–5): the `user_gallery_service` port, the four
-§3 verbs + the REST edges, the committed `photos-{main,mount}.db` family and its
-34-case differential, the `/photos` screen + §1 route block, and the live
-three-beat Playwright walk.
-
-**Tier 2 is NOT started and is deferred as a unit** — `imageInfoGet` plus the
-deep gallery modal family. Deferring it whole rather than half-landing it is
-deliberate: the verb has no consumer without the modals, and a shipped-but-unused
-wire verb is the kind of thing that later reads as "already done".
-
-What the follow-up owes, precisely:
-
-1. **`imageInfoGet`** — v4 `GET /api/v1/images/[id]`, the `characterGalleryLinks`
-   read both deep modals open with. It rides the existing photos corpus; add its
-   cases to `photos-routes.test.ts` + `photos_routes_equivalence` (both already
-   have the shape for it — a new case name and a new `check` line each).
-2. **`image-detail/ImageDetailModal`** (v4 145 lines) + `ImageActions` /
-   `ImageMetadata` / `DeletedImagePlaceholder` + the `useImageNavigation`
-   keyboard nav, and **`ChatGalleryImageViewModal`** (v4
-   `components/chat/`). Every WRITE they need already exists in v5:
-   `characterPhotoSaveById`, `characterPhotoRemove`, `CharacterAvatar`, and this
-   lane's `photoGallerySave`. The only missing read is item 1.
-3. **The wiring**: `images/photo-gallery-modal.ts` routes `kind:'chat'` items to
-   `ChatGalleryImageViewModal` and image-mode items to `ImageDetailModal`
-   (v4 `PhotoGalleryModal.tsx:339`/`:354`); prev/next is index math (`:188-193`).
-   `screens/characters/view/tabs/gallery-tab.ts` gets the same hand-off.
-   Component specs pin the toggle-state derivation and the nav wrap-around.
-
-**Tier-3 deferrals, as the order predicted:**
-- **Tag editing** — v4 itself has NONE anywhere in this family. Recorded, not
-  invented.
-- **`useSubsystemBackgroundStyle('lantern')`** — v5 has no subsystem-background
-  machinery at all (grep-verified). Named in `photos-page.ts`'s docstring.
-- **The workspace-tab mount** (`redirectToWorkspaceTab('photos')`) — `p4.9j`'s.
-
-**Riders banked (not refusals — DRY debt):**
-- `quilltap-web/src/photos_routes.rs` carries a local JS `Number()` port that
-  duplicates the private twin in `quilltap-core::tools::text_block_parser`.
-  Lifting one into `jsnum` was outside this lane's ownership.
-
-**Still owed at unification** (the order's §2a): the shell's photos nav item
-flips from `route: null` to `route: '/photos'`, and `photos-flow.spec.ts`'s
-`gotoPhotos` gains its nav-click step (marked ACTIVATE-AT-UNIFY in the file).
-The §3 verbs fold from `photos.api.ts`'s local types into `CoreRequest`, and the
-two casts there come out.
-
-**Lane gate:** `cargo fmt --check` clean; `cargo clippy --workspace
---all-targets` clean on BOTH feature sets; `cargo test --workspace
---no-fail-fast` 352 binaries / 0 failed, with `photos_routes_equivalence` and
-`photos_web_routes` running by name (no SKIP); `ng test` 152 files / 1,718;
-`ng build` clean; full Playwright **81/81, zero skips**, all three photos beats
-live.
-
-**Versions at lane close:** quilltap-core 0.0.274, quilltap-web 0.0.30,
-SPA 0.5.171. (quilltap-harness untouched — the oracle case lives under
-`harness/oracle/`, not in the crate.)
+1. **§C:** set `REGENERATED_AT_616930DB` to `{}` and the three count
+   constants in `custom-tool-types.corpus.spec.ts` to D8's recorded
+   counts. A red row after that is a BC parser bug.
+2. **§B:** fold `llm` into `CustomToolPreviewRequest` /
+   `CustomToolAuditRequest` in `core-contract.ts` and drop the two
+   `as unknown as CoreRequest` casts in `workbench.api.ts` (both marked
+   `// §B:` in place).
+3. Beat 6 self-activates over D8's server — no wire needed.

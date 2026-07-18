@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6bc tier 2: two consulted-oracle e2e beats on the Workbench walk. The
+editor-side beat runs LIVE (enable the consult, see the card's fields
+and inline issue, see the bench's oracle card and the two consult
+subjects, see containment offered on the answer). The scripted-oracle
+beat is ACTIVATE-AT-UNIFY behind a loud probe naming lane P4.d8; the
+probe requires the consult record to come back on the run result,
+because a server that merely ignores the unknown llm field still answers
+with success. One sibling locator moved from getByText to getByRole: the
+new consult-off hint also contains "the outcome table". Playwright 79
+passed + 1 guarded skip. SPA 0.5.173.
+
 P4.6bc unit 3: the Workbench consult surfaces. BuilderForm grows v4's
 "The consulted oracle" card (enable toggle, prompt with its counter,
 "When the oracle is silent", the answer cap, inline llm-section issues

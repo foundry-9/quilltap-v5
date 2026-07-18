@@ -16,6 +16,11 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  *      fields hold — never a stochastic value.
  *   4. Authoring beat: create a new contrivance → save into a picked
  *      destination → it appears in the library.
+ *   5. Consult beat (P4.6bc, editor-side — LIVE in-lane): enabling "Consult an
+ *      LLM" raises the oracle card on the bench and the two consult subjects in
+ *      the outcome table.
+ *   6. Scripted-oracle beat (P4.6bc, §B — ACTIVATE-AT-UNIFY): a scripted answer
+ *      rides the preview body and the answer-gated row wins.
  *
  * PROBE-GUARDED, ACTIVATE-AT-UNIFY (the `m4b-salon` / `home-flow` pattern). The
  * four §W1 verbs land in lane AY (P4.6ay unit 12's route surface); in-lane the
@@ -30,6 +35,13 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  */
 
 let workbenchBackendReady = false;
+/**
+ * §B of the `616930db` round — does `customToolPreview` accept an `llm` body?
+ * Lane D8 owns the server half, so in-lane the field is an unknown one and beat
+ * 6 skips LOUDLY (never silently: the skip message names the lane). It
+ * self-activates the moment D8's variant merges.
+ */
+let scriptedOracleReady = false;
 
 /** The name beat 4 authors. Distinct enough that no sibling spec reads it. */
 const NEW_TOOL_NAME = 'e2e_probe_contrivance';
@@ -52,6 +64,35 @@ test.beforeAll(async () => {
     workbenchBackendReady = body != null && !isUnknownVariant;
   } catch {
     workbenchBackendReady = false;
+  }
+
+  // §B probe: preview a trivial consulting definition with a scripted oracle.
+  // An "unknown field `llm`" rejection means lane D8 has not landed.
+  try {
+    const ctx = await pwRequest.newContext();
+    const res = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'customToolPreview',
+        definition: {
+          name: 'e2e_oracle_probe',
+          description: 'Probe.',
+          llm: { prompt: 'Say YES.', errorMessage: 'The wire went dead.' },
+          outcomes: [{ when: true, message: 'Says {{llm}}.', state: 'info' }],
+        },
+        llm: { output: 'YES' },
+      },
+    });
+    const body = (await res.json().catch(() => null)) as
+      | { type?: string; data?: { message?: string; llm?: unknown } }
+      | null;
+    await ctx.dispose();
+    // NB: a server that merely IGNORES the unknown `llm` field still answers
+    // with a success envelope, so "no error" proves nothing. The tell is the
+    // §A record coming BACK on the run result — only a server that honoured
+    // the scripted oracle can produce it.
+    scriptedOracleReady = body?.type !== 'error' && body?.data?.llm != null;
+  } catch {
+    scriptedOracleReady = false;
   }
 });
 
@@ -112,7 +153,10 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
       'true',
     );
     await expect(page.locator('#wb-name')).not.toHaveValue('');
-    await expect(page.getByText('The outcome table')).toBeVisible();
+    // By ROLE, not by text: P4.6bc's consult-off hint also contains the phrase
+    // "the outcome table", which makes a bare getByText ambiguous
+    // ([[added-affordance-breaks-sibling-by-name-locators]]).
+    await expect(page.getByRole('heading', { name: 'The outcome table' })).toBeVisible();
 
     // The repair banner must NOT be showing for a definition that loads.
     await expect(page.getByText('Repair mode.')).toHaveCount(0);
@@ -141,6 +185,98 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     // Every outcome row is accounted for, the catch-all under its own label.
     await expect(page.getByText('otherwise').last()).toBeVisible();
     await expect(page.getByText(/%$/).first()).toBeVisible();
+  });
+
+  /**
+   * Beat 5 (P4.6bc) — everything editor-side about the consult walks LIVE
+   * in-lane: the toggle, the card's fields, the bench's oracle card, and the
+   * two consult subjects appearing in the outcome table's subject menu.
+   */
+  test('enabling the consult raises the oracle card and the consult subjects', async ({ page }) => {
+    test.skip(
+      !workbenchBackendReady,
+      'customToolsLibrary dispatch not on this server yet — activates at unification',
+    );
+    await page.goto('/custom-tools');
+    await maybeUnlock(page);
+
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
+    await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
+
+    // No oracle anywhere until the consult is switched on.
+    await expect(page.getByRole('radio', { name: 'Scripted answer' })).toHaveCount(0);
+    await expect(page.getByText('Off. Enable it and every run asks a model')).toBeVisible();
+
+    await page.getByLabel('Consult an LLM').check();
+
+    // The card's own fields, in v4's words.
+    await expect(page.locator('#wb-llm-prompt')).toBeVisible();
+    await expect(page.getByText('When the oracle is silent')).toBeVisible();
+    await expect(page.getByText('the consult needs a prompt')).toBeVisible();
+
+    await page.locator('#wb-llm-prompt').fill('In one word, YES or NO: does the mechanism yield?');
+    await page.locator('#wb-llm-error').fill('The wire crackles, and no answer comes.');
+    await expect(page.getByText('the consult needs a prompt')).toHaveCount(0);
+
+    // The bench's oracle card follows the toggle.
+    await expect(page.getByRole('radio', { name: 'Scripted answer' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Silence' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Ask it live' })).toBeVisible();
+
+    // …and so do the two subjects in the outcome table.
+    await page.getByRole('button', { name: 'add condition' }).first().click();
+    const subject = page.getByLabel('Condition subject').first();
+    await expect(subject.locator('option[value="llm"]')).toHaveCount(1);
+    await expect(subject.locator('option[value="llm-ok"]')).toHaveCount(1);
+
+    // Picking the answer subject offers containment, which no numeric subject does.
+    await subject.selectOption('llm');
+    const comparator = page.getByLabel('Comparator').first();
+    await expect(comparator.locator('option[value="contains"]')).toHaveCount(1);
+  });
+
+  /**
+   * Beat 6 (P4.6bc, §B) — the scripted answer rides the preview body and the
+   * answer-gated row wins. ACTIVATE-AT-UNIFY: the server half is lane D8's.
+   */
+  test('a scripted oracle answer decides which row a preview roll lands on', async ({ page }) => {
+    test.skip(
+      !workbenchBackendReady,
+      'customToolsLibrary dispatch not on this server yet — activates at unification',
+    );
+    test.skip(
+      !scriptedOracleReady,
+      'ACTIVATE-AT-UNIFY (P4.6bc §B): customToolPreview does not accept an `llm` body yet — lane P4.d8 owns the server half',
+    );
+    await page.goto('/custom-tools');
+    await maybeUnlock(page);
+
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
+    await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('#wb-title').fill('E2E Oracle Contrivance');
+    await page.locator('#wb-name').fill('e2e_oracle_contrivance');
+    await page.locator('#wb-description').fill('A consulting contrivance for the e2e walk.');
+
+    await page.getByLabel('Consult an LLM').check();
+    await page.locator('#wb-llm-prompt').fill('In one word, YES or NO: does the mechanism yield?');
+    await page.locator('#wb-llm-error').fill('The wire crackles, and no answer comes.');
+
+    // Row 1 fires only on the consulted answer; the catch-all takes the rest.
+    await page.getByRole('button', { name: 'add condition' }).first().click();
+    const subject = page.getByLabel('Condition subject').first();
+    await subject.selectOption('llm');
+    await page.getByLabel('Comparator').first().selectOption('eq');
+    await page.getByLabel('Operand text').first().fill('YES');
+    await page.getByLabel('Outcome message').first().fill('Assent: {{llm}}.');
+
+    // Script the oracle, then deal one hand.
+    await page.getByLabel('Scripted oracle answer').fill('YES');
+    await page.getByRole('button', { name: /Roll/ }).first().click();
+
+    // The answer-gated row won, and the bubble records the consult.
+    await expect(page.getByText(/Assent: YES/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/consult answered/)).toBeVisible();
   });
 
   test('authoring: a new contrivance saves into a picked store and joins the library', async ({
