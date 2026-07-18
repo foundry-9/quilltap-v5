@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.d8 unit 2 - the custom-tool execution core gains the LLM consult seam
+and the containment comparators. `execute_custom_tool` is now async and
+takes an injected `LlmInvoker` (a Send+Sync trait returning a boxed
+future); the consult runs after the roll and before the outcome table,
+with its prompt rendered without an `llm` var. `resolve_llm_consult`
+never fails a run: a missing invoker, a reported failure, or an empty
+answer all become `{ok:false}` carrying the author's errorMessage, with
+the technical reason recorded separately. Success is trim-cap-retrim
+(UTF-16 units, matching v4's slice); errorMessage is never capped.
+`{{llm}}` renders the consult output or stays verbatim when none ran.
+`matches_when` gains a fail-soft llm arm and `matches_llm_comparator`
+implements v4's forgiving reconciliation (numeric-when-both-numeric
+eq/neq, one forgiven trailing `.` or `!` and nothing else, ordering
+that declines on a non-numeric answer, case-insensitive trimmed
+containment). Containment lands on params (strict, case-sensitive) and
+metadata (fail-soft - absence is not a miss, including under ncontains).
+`simulate_outcomes` takes a fixed consult subject and never invokes.
+Differentials: pascal_custom_tools_execution_equivalence grew to 103
+matchesWhen / 37 executeCustomTool / 36 renderTemplate rows over a
+scripted-invoker corpus that also pins the rendered prompt and the
+advertised output cap; pascal_simulate_equivalence gained three
+fixed-consult cases.
+
 P4.d8 unit 1 - the custom-tool definition schema gains v4 616930db's
 `llm` block and the contains/ncontains comparators. New constants
 (MAX_LLM_PROMPT_LENGTH 4000, MAX_LLM_OUTPUT_LENGTH 8000,

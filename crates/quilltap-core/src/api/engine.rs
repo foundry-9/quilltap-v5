@@ -2765,13 +2765,16 @@ impl CoreEngine {
                 private,
                 metadata,
             } => match self.ready_db() {
-                Ok(db) => super::custom_tools::custom_tool_preview(
-                    &db,
-                    &definition,
-                    params.as_ref(),
-                    private,
-                    metadata.as_ref(),
-                ),
+                Ok(db) => {
+                    super::custom_tools::custom_tool_preview(
+                        &db,
+                        &definition,
+                        params.as_ref(),
+                        private,
+                        metadata.as_ref(),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::CustomToolAudit {

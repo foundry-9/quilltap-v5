@@ -121,7 +121,11 @@ describe('renderTemplate', () => {
       list: [1, 2],
     };
 
-    const messages: Array<[string, string]> = [
+    // The 616930db consult subject, threaded into every render. Rows that want
+    // the "no consult ran" path carry an explicit `null` third element.
+    const LLM = { ok: true, output: 'the West Door' };
+
+    const messages: Array<[string, string, ({ ok: boolean; output: string } | null)?]> = [
       ['value', 'rolled {{value}}'],
       ['roll', 'raw {{roll}}'],
       ['dice', 'dice {{dice}}'],
@@ -151,9 +155,22 @@ describe('renderTemplate', () => {
       ['metadata-non-primitive-list', 'l {{metadata.list}} m'],
       ['metadata-prefix-only', 'bare {{metadata.}}'],
       ['metadata-whitespace', '{{  metadata.house  }}'],
+      // The 616930db {{llm}} placeholder.
+      ['llm-renders-output', 'the oracle says {{llm}}'],
+      ['llm-whitespace', '{{  llm  }}'],
+      ['llm-repeated', '{{llm}} and {{llm}}'],
+      ['llm-with-value', '{{value}} — {{llm}}'],
+      ['llm-prefixed-key-unknown', 'x {{llm.output}} y'],
+      // No consult ran: the placeholder is left exactly as written.
+      ['llm-absent-left-verbatim', 'the oracle says {{llm}}', null],
+      // A failed consult still renders — its output is the author's errorMessage.
+      ['llm-failed-renders-error-message', 'the oracle says {{llm}}', { ok: false, output: 'The wire went dead.' }],
+      ['llm-empty-output', 'x{{llm}}y', { ok: true, output: '' }],
     ];
 
-    for (const [id, message] of messages) {
+    for (const entry of messages) {
+      const [id, message] = entry;
+      const llm = entry.length > 2 ? (entry[2] ?? undefined) : LLM;
       emit({
         kind: 'renderTemplate',
         id,
@@ -162,12 +179,14 @@ describe('renderTemplate', () => {
         tool,
         message,
         metadata: META,
+        llm: llm ?? null,
         out: renderTemplate(message, {
           value: 12.3456,
           roll: 0.6789,
           dice: '3d6: [4, 2, 6] = 12',
           params,
           metadata: META,
+          llm,
         }),
       });
     }
@@ -262,7 +281,13 @@ describe('matchesWhen', () => {
       list: [1, 2],
     };
 
-    const whens: Array<[string, unknown, Record<string, unknown>?]> = [
+    // The 616930db consult block a `when.llm` row needs on its definition, and
+    // the subject those rows are evaluated against.
+    const LLM_BLOCK = { llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' } };
+
+    const whens: Array<
+      [string, unknown, Record<string, unknown>?, { ok: boolean; output: string } | null?]
+    > = [
       ['catch-all', true],
       ['gt-holds', { gt: 5 }],
       ['gt-fails', { gt: 500 }],
@@ -303,35 +328,168 @@ describe('matchesWhen', () => {
       ['md-anded-value-holds', { gt: 5, metadata: { clearance: { gte: 3 } } }, SHEET],
       ['md-anded-value-fails', { gt: 50, metadata: { clearance: { gte: 3 } } }, SHEET],
       ['md-no-sheet-declines', { metadata: { clearance: { gte: 3 } } }, undefined],
+
+      // ---- the 616930db containment comparators: params (STRICT, throws) ----
+      ['params-contains-holds', { params: { material: { contains: 'ras' } } }],
+      ['params-contains-fails', { params: { material: { contains: 'iron' } } }],
+      ['params-contains-case-sensitive', { params: { material: { contains: 'BRASS' } } }],
+      ['params-contains-whole', { params: { material: { contains: 'brass' } } }],
+      ['params-contains-untrimmed', { params: { material: { contains: ' brass' } } }],
+      ['params-ncontains-holds', { params: { material: { ncontains: 'iron' } } }],
+      ['params-ncontains-fails', { params: { material: { ncontains: 'ras' } } }],
+      ['params-contains-anded', { params: { material: { contains: 'ra', ncontains: 'iron' } } }],
+      ['params-contains-param-needle', { params: { material: { contains: { $param: 'material' } } } }],
+      // NOTE: `matchesComparator`'s strict `requireString` THROW (a non-string
+      // haystack or needle) is UNREACHABLE from a loadable definition — the
+      // load-time containment check rejects those first, exactly as
+      // `requireNumber`'s ordering arm is unreachable. Both sides keep the guard
+      // as a regression tripwire; no corpus row can express it, because
+      // `define()` refuses the definition. The `contains-numeric-param` /
+      // `ncontains-boolean-param` rows in the DEFINITION corpus pin that
+      // rejection instead.
+
+      // ---- containment on metadata (FAIL-SOFT) ------------------------------
+      ['md-contains-holds', { metadata: { house: { contains: 'uru' } } }, SHEET],
+      ['md-contains-fails', { metadata: { house: { contains: 'Ferro' } } }, SHEET],
+      ['md-contains-case-sensitive', { metadata: { house: { contains: 'aurum' } } }, SHEET],
+      ['md-ncontains-holds', { metadata: { house: { ncontains: 'Ferro' } } }, SHEET],
+      ['md-ncontains-fails', { metadata: { house: { ncontains: 'uru' } } }, SHEET],
+      // Absence is not a miss: a number subject DECLINES even under ncontains.
+      ['md-ncontains-number-subject-declines', { metadata: { clearance: { ncontains: 'x' } } }, SHEET],
+      ['md-contains-number-subject-declines', { metadata: { clearance: { contains: '5' } } }, SHEET],
+      ['md-contains-absent-key-declines', { metadata: { missing: { ncontains: 'x' } } }, SHEET],
+      ['md-contains-non-primitive-declines', { metadata: { nested: { ncontains: 'x' } } }, SHEET],
+
+      // ---- the 616930db llm subject (FAIL-SOFT, forgiving) ------------------
+      ['llm-ok-true-holds', { llm: { ok: true } }, undefined, { ok: true, output: 'YES' }],
+      ['llm-ok-true-fails', { llm: { ok: true } }, undefined, { ok: false, output: 'The wire went dead.' }],
+      ['llm-ok-false-holds', { llm: { ok: false } }, undefined, { ok: false, output: 'The wire went dead.' }],
+      ['llm-no-consult-declines', { llm: { ok: true } }, undefined, null],
+      ['llm-no-consult-ok-false-still-declines', { llm: { ok: false } }, undefined, null],
+      // eq: case-insensitive, trimmed, forgiving ONE trailing `.` or `!`.
+      ['llm-eq-exact', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'YES' }],
+      ['llm-eq-case-folds', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'yes' }],
+      ['llm-eq-answer-padded', { llm: { eq: 'YES' } }, undefined, { ok: true, output: '  yes  ' }],
+      ['llm-eq-trailing-period', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'Yes.' }],
+      ['llm-eq-trailing-bang', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'Yes!' }],
+      ['llm-eq-trailing-question-not-forgiven', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'Yes?' }],
+      ['llm-eq-double-period-not-forgiven', { llm: { eq: 'YES' } }, undefined, { ok: true, output: 'Yes..' }],
+      ['llm-eq-operand-padded', { llm: { eq: '  YES  ' } }, undefined, { ok: true, output: 'yes' }],
+      ['llm-eq-numeric-both', { llm: { eq: 42 } }, undefined, { ok: true, output: '42' }],
+      ['llm-eq-numeric-answer-padded', { llm: { eq: 42 } }, undefined, { ok: true, output: ' 42 ' }],
+      ['llm-eq-numeric-answer-decimal', { llm: { eq: 42 } }, undefined, { ok: true, output: '42.0' }],
+      ['llm-eq-numeric-vs-prose', { llm: { eq: 42 } }, undefined, { ok: true, output: 'forty-two' }],
+      ['llm-eq-number-operand-vs-prose-string-path', { llm: { eq: 42 } }, undefined, { ok: true, output: '42 sir' }],
+      ['llm-eq-boolean-operand', { llm: { eq: true } }, undefined, { ok: true, output: 'TRUE' }],
+      ['llm-neq-holds', { llm: { neq: 'NO' } }, undefined, { ok: true, output: 'yes' }],
+      ['llm-neq-fails', { llm: { neq: 'NO' } }, undefined, { ok: true, output: 'no.' }],
+      // Ordering: needs a finite numeric answer AND a numeric operand.
+      ['llm-gte-numeric-holds', { llm: { gte: 5 } }, undefined, { ok: true, output: '7' }],
+      ['llm-gte-numeric-fails', { llm: { gte: 5 } }, undefined, { ok: true, output: '3' }],
+      ['llm-gte-boundary', { llm: { gte: 5 } }, undefined, { ok: true, output: '5' }],
+      ['llm-lt-holds', { llm: { lt: 5 } }, undefined, { ok: true, output: '4.5' }],
+      ['llm-gte-prose-declines', { llm: { gte: 5 } }, undefined, { ok: true, output: 'quite a lot' }],
+      ['llm-gte-empty-declines', { llm: { gte: 5 } }, undefined, { ok: true, output: '   ' }],
+      ['llm-gte-hex-answer', { llm: { gte: 5 } }, undefined, { ok: true, output: '0x10' }],
+      ['llm-gte-infinity-declines', { llm: { gte: 5 } }, undefined, { ok: true, output: 'Infinity' }],
+      ['llm-gt-string-operand-declines', { llm: { gt: { $param: 'material' } } }, undefined, { ok: true, output: '7' }],
+      ['llm-anded-ordering', { llm: { gte: 5, lte: 10 } }, undefined, { ok: true, output: '7' }],
+      ['llm-anded-ordering-one-fails', { llm: { gte: 5, lte: 6 } }, undefined, { ok: true, output: '7' }],
+      // contains/ncontains: trimmed, case-insensitive, NO punctuation forgiveness.
+      ['llm-contains-holds', { llm: { contains: 'west door' } }, undefined, { ok: true, output: 'the West Door' }],
+      ['llm-contains-fails', { llm: { contains: 'east door' } }, undefined, { ok: true, output: 'the West Door' }],
+      ['llm-contains-operand-padded', { llm: { contains: '  west  ' } }, undefined, { ok: true, output: 'the West Door' }],
+      ['llm-contains-no-punctuation-forgiveness', { llm: { contains: 'door.' } }, undefined, { ok: true, output: 'the West Door' }],
+      ['llm-ncontains-holds', { llm: { ncontains: 'east' } }, undefined, { ok: true, output: 'the West Door' }],
+      ['llm-ncontains-fails', { llm: { ncontains: 'west' } }, undefined, { ok: true, output: 'the West Door' }],
+      // A numeric needle can only arrive via a `$param` ref: the literal form is
+      // `StringOperandSchema` and a bare `42` is rejected at LOAD (pinned in the
+      // definition corpus). The ref form is only ref-checked, never type-checked,
+      // so this is the one route to `String(operand)` on a number.
+      ['llm-contains-numeric-param-needle', { llm: { contains: { $param: 'difficulty' } } }, undefined, { ok: true, output: 'exactly 10 of them' }],
+      ['llm-contains-numeric-param-needle-fails', { llm: { contains: { $param: 'difficulty' } } }, undefined, { ok: true, output: 'exactly 11 of them' }],
+      // The metadata twin: a numeric needle DECLINES fail-soft rather than
+      // stringifying, because that arm demands a string on both sides.
+      ['md-contains-numeric-param-needle-declines', { metadata: { house: { contains: { $param: 'difficulty' } } } }, SHEET],
+      ['llm-contains-on-failed-consult', { llm: { contains: 'wire' } }, undefined, { ok: false, output: 'The wire went dead.' }],
+      // ok ANDed with an answer comparator.
+      ['llm-ok-and-eq-both-hold', { llm: { ok: true, eq: 'YES' } }, undefined, { ok: true, output: 'yes' }],
+      ['llm-ok-and-eq-ok-fails-first', { llm: { ok: true, eq: 'YES' } }, undefined, { ok: false, output: 'yes' }],
+      // A $param operand resolves; an unresolvable one would throw (load-checked).
+      ['llm-param-operand-holds', { llm: { eq: { $param: 'material' } } }, undefined, { ok: true, output: 'BRASS' }],
+      ['llm-param-operand-contains', { llm: { contains: { $param: 'material' } } }, undefined, { ok: true, output: 'a Brass fitting' }],
+      // llm ANDed with the value subject.
+      ['llm-anded-with-value-holds', { gt: 5, llm: { ok: true } }, undefined, { ok: true, output: 'YES' }],
+      ['llm-anded-with-value-fails', { gt: 50, llm: { ok: true } }, undefined, { ok: true, output: 'YES' }],
     ];
 
-    for (const [id, when, metadata] of whens) {
+    for (const entry of whens) {
+      const [id, when, metadata] = entry;
+      const llm = entry.length > 3 ? (entry[3] ?? undefined) : undefined;
       // Parsed through the real schema, then evaluated at a fixed subject. A
-      // catch-all can only be the LAST outcome, so it stands alone.
+      // catch-all can only be the LAST outcome, so it stands alone. A `when.llm`
+      // row needs the tool to declare an `llm` block or it would not load.
       const outcomes =
         when === true ? [CATCH_ALL] : [{ when, message: '-', state: 'info' }, CATCH_ALL];
-      const def = define({ ...tool, outcomes });
+      const testsLlm = typeof when === 'object' && when !== null && 'llm' in when;
+      const def = define({ ...tool, ...(testsLlm ? LLM_BLOCK : {}), outcomes });
       const parsedWhen = def.outcomes[0].when as When;
       let out: unknown = null;
       let error: string | null = null;
       try {
-        out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params, metadata }, 'probe');
+        out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params, metadata, llm }, 'probe');
       } catch (e) {
         error = (e as Error).message;
       }
-      emit({ kind: 'matchesWhen', id, tool: def, when: parsedWhen, metadata: metadata ?? null, out, error });
+      emit({
+        kind: 'matchesWhen',
+        id,
+        tool: def,
+        when: parsedWhen,
+        metadata: metadata ?? null,
+        llm: llm ?? null,
+        out,
+        error,
+      });
     }
   });
 });
 
 // ------------------------------------------------------------ executeCustomTool
 describe('executeCustomTool', () => {
-  it('emits', () => {
+  it('emits', async () => {
     const OUTCOMES = [
       { when: { gte: 0.9 }, message: 'triumph at {{value}}', state: 'success' },
       { when: { gte: 0.5 }, message: 'partial at {{value}}', state: 'partial' },
       { when: true, message: 'failure at {{value}}', state: 'failure' },
     ];
+
+    /**
+     * The scripted oracle a case hands `executeCustomTool`, in a shape the port
+     * can rebuild byte-for-byte. `null`/absent leaves the seam UNWIRED, which is
+     * the "no invoker in this context" failure path.
+     */
+    type LlmScript =
+      | { answer: string; provider?: string; model?: string }
+      | { fail: string }
+      | { throws: string }
+      | null;
+
+    function invokerFor(script: LlmScript, seen: { options: unknown; prompt: string | null }) {
+      if (!script) return undefined;
+      return async (prompt: string, options?: { maxOutputChars: number }) => {
+        seen.prompt = prompt;
+        seen.options = options ?? null;
+        if ('throws' in script) throw new Error(script.throws);
+        if ('fail' in script) return { ok: false as const, reason: script.fail };
+        return {
+          ok: true as const,
+          output: script.answer,
+          ...(script.provider ? { provider: script.provider } : {}),
+          ...(script.model ? { model: script.model } : {}),
+        };
+      };
+    }
 
     const cases: Array<
       [
@@ -339,6 +497,7 @@ describe('executeCustomTool', () => {
         unknown,
         Record<string, unknown> | null | undefined,
         { private?: boolean; metadata?: Record<string, unknown> } | undefined,
+        LlmScript?,
       ]
     > = [
       ['default-range', { name: 'probe', description: 'd', outcomes: OUTCOMES }, {}, undefined],
@@ -525,17 +684,241 @@ describe('executeCustomTool', () => {
         {},
         { private: true, metadata: { clearance: 5 } },
       ],
+
+      // ---- the 616930db consult: the whole resolveLlmConsult table ----------
+      // The prompt is rendered from the ROLL, so it quotes a value the consult
+      // could not have known before the draw — and it carries no {{llm}}.
+      [
+        'llm-answered-branches-and-renders',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Is {{value}} auspicious? Answer YES or NO.', errorMessage: 'The wire went dead.' },
+          outcomes: [
+            { when: { llm: { eq: 'YES' } }, message: 'the oracle said {{llm}} at {{value}}', state: 'success' },
+            { when: true, message: 'the oracle said {{llm}}', state: 'failure' },
+          ],
+        },
+        {},
+        undefined,
+        { answer: '  Yes.  ', provider: 'openai', model: 'gpt-tiny' },
+      ],
+      // A failed consult never fails the run: output becomes the AUTHOR's words.
+      [
+        'llm-failed-becomes-error-message',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+          outcomes: [
+            { when: { llm: { ok: true } }, message: 'answered: {{llm}}', state: 'success' },
+            { when: true, message: 'silence: {{llm}}', state: 'failure' },
+          ],
+        },
+        {},
+        undefined,
+        { fail: 'the provider refused' },
+      ],
+      // An invoker that throws lands in the same place as one that reports failure.
+      [
+        'llm-invoker-throws',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        undefined,
+        { throws: 'the consult timed out after 60s' },
+      ],
+      // No invoker wired at all — the entrance that forgot, or the bench that
+      // scripted nothing.
+      [
+        'llm-no-invoker-wired',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        undefined,
+        null,
+      ],
+      // Empty after trim is a failure, not an empty answer.
+      [
+        'llm-empty-answer-is-a-failure',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: '   \n  ' },
+      ],
+      // trim, cap, RE-trim — the cap lands mid-word and the re-trim eats the
+      // space it exposed.
+      [
+        'llm-maxoutput-trim-cap-retrim',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'nope', maxOutput: 10 },
+          outcomes: [{ when: true, message: '[{{llm}}]', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: '   abcdefghi jklmnop   ' },
+      ],
+      // The author's errorMessage is NEVER capped by maxOutput.
+      [
+        'llm-error-message-never-capped',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'The wire went dead, and stayed that way.', maxOutput: 5 },
+          outcomes: [{ when: true, message: '[{{llm}}]', state: 'info' }],
+        },
+        {},
+        undefined,
+        { fail: 'nothing doing' },
+      ],
+      // The cap applies to the model's answer at the DEFAULT when unset.
+      [
+        'llm-default-cap-passed-to-invoker',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'nope' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: 'brief' },
+      ],
+      // provider/model ride only when the invoker offers them.
+      [
+        'llm-no-provider-or-model',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'nope' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: 'bare' },
+      ],
+      // The consult runs even when no outcome tests it — the record is kept.
+      [
+        'llm-untested-still-recorded',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'nope' },
+          outcomes: [{ when: true, message: 'nothing about the oracle', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: 'unheeded' },
+      ],
+      // A tool with no llm block never consults, even with an invoker in hand:
+      // `llm` is absent from the result and {{llm}} stays verbatim.
+      [
+        'llm-block-absent-invoker-ignored',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          outcomes: [{ when: true, message: 'x {{llm}} y', state: 'info' }],
+        },
+        {},
+        undefined,
+        { answer: 'never asked' },
+      ],
+      // The prompt renders params and metadata too, and the roll it quotes is
+      // the DICE total — so the consult sees the draw. Dice DO consume bytes.
+      [
+        'llm-prompt-renders-dice-and-params',
+        {
+          name: 'probe',
+          description: 'd',
+          parameters: { target: { type: 'string', default: 'the door' } },
+          roll: '3d6',
+          llm: { prompt: 'Rolled {{value}} ({{dice}}) against {{params.target}}; clearance {{metadata.clearance}}.', errorMessage: 'nope' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        { metadata: { clearance: 5 } },
+        { answer: 'noted' },
+      ],
+      // llm ANDed with metadata: both subjects on one row, metadataTested kept.
+      [
+        'llm-anded-with-metadata',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 7, max: 7 },
+          llm: { prompt: 'Speak.', errorMessage: 'nope' },
+          outcomes: [
+            { when: { llm: { contains: 'granted' }, metadata: { clearance: { gte: 3 } } }, message: 'in: {{llm}}', state: 'success' },
+            { when: true, message: 'out', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { clearance: 5 } },
+        { answer: 'Access GRANTED to the west wing.' },
+      ],
+      // A containment test on a string param, in a real run (the strict arm).
+      [
+        'params-containment-in-a-run',
+        {
+          name: 'probe',
+          description: 'd',
+          parameters: { cargo: { type: 'string', default: 'silk and opium' } },
+          roll: { min: 7, max: 7 },
+          outcomes: [
+            { when: { params: { cargo: { contains: 'opium' } } }, message: 'contraband', state: 'failure' },
+            { when: true, message: 'clean', state: 'success' },
+          ],
+        },
+        {},
+        undefined,
+      ],
     ];
 
-    cases.forEach(([id, doc, supplied, overrides], i) => {
+    let index = 0;
+    for (const entry of cases) {
+      const [id, doc, supplied, overrides] = entry;
+      const script: LlmScript = entry.length > 4 ? (entry[4] ?? null) : null;
+      const i = index++;
       const def = define(doc);
       const p = pool(i + 1);
       mockRngState = { pool: p, cursor: 0 };
 
+      const seen: { options: unknown; prompt: string | null } = { options: null, prompt: null };
+      const llmInvoke = invokerFor(script, seen);
+
       let out: unknown = null;
       let error: string | null = null;
       try {
-        out = executeCustomTool(def, supplied, overrides);
+        out = await executeCustomTool(def, supplied, {
+          ...(overrides ?? {}),
+          ...(llmInvoke ? { llmInvoke } : {}),
+        });
       } catch (e) {
         error = (e as Error).message;
       }
@@ -546,13 +929,19 @@ describe('executeCustomTool', () => {
         tool: def,
         supplied: supplied ?? null,
         overrides: overrides ?? null,
+        // The scripted oracle, in the shape the port rebuilds.
+        llmScript: script,
+        // What the core actually asked, and with what advertised cap — the two
+        // facts the result alone would not pin.
+        llmPromptSeen: seen.prompt,
+        llmOptionsSeen: seen.options,
         poolHex: p.toString('hex'),
         // The cursor is the point: a degenerate range draws NOTHING.
         bytesConsumed: mockRngState.cursor,
         out,
         error,
       });
-    });
+    }
   });
 });
 

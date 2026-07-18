@@ -31,10 +31,93 @@
 use quilltap_core::pascal::custom_tool_types::safe_parse;
 use quilltap_core::pascal::custom_tools::{
     execute_custom_tool, format_value, matches_when, render_template, CustomToolRunResult,
-    OutcomeSubjects, ResolvedParams, ResolvedValue, RollForm, TemplateVars,
+    LlmInvokeOptions, LlmInvokeResult, LlmInvoker, LlmSubject, OutcomeSubjects, ResolvedParams,
+    ResolvedValue, RollForm, TemplateVars,
 };
 use quilltap_core::pascal::dice::FixedBytes;
 use serde_json::{json, Map, Value};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Mutex;
+
+/// The oracle's `LlmScript`, rebuilt on this side so both runs hand the core the
+/// SAME canned oracle. `None` leaves the seam unwired.
+enum Script {
+    Answer {
+        answer: String,
+        provider: Option<String>,
+        model: Option<String>,
+    },
+    Fail(String),
+    /// v4's invoker THROWS; `resolveLlmConsult` catches it into the same
+    /// `{ok:false, reason}` an explicit failure produces, so this side reports
+    /// the throw message as a plain failure — identical downstream.
+    Throws(String),
+}
+
+fn script_of(v: &Value) -> Option<Script> {
+    let o = v.as_object()?;
+    if let Some(t) = o.get("throws").and_then(Value::as_str) {
+        return Some(Script::Throws(t.to_string()));
+    }
+    if let Some(f) = o.get("fail").and_then(Value::as_str) {
+        return Some(Script::Fail(f.to_string()));
+    }
+    Some(Script::Answer {
+        answer: o.get("answer")?.as_str()?.to_string(),
+        provider: o
+            .get("provider")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        model: o.get("model").and_then(Value::as_str).map(str::to_string),
+    })
+}
+
+/// A canned invoker that also RECORDS what the core asked, so the differential
+/// can pin the rendered prompt and the advertised cap — two facts the run result
+/// alone would not carry.
+struct CannedInvoker {
+    script: Script,
+    seen: Mutex<(Option<String>, Option<i64>)>,
+}
+
+impl LlmInvoker for CannedInvoker {
+    fn invoke<'a>(
+        &'a self,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> Pin<Box<dyn Future<Output = LlmInvokeResult> + Send + 'a>> {
+        {
+            let mut seen = self.seen.lock().unwrap();
+            *seen = (Some(prompt.to_string()), Some(options.max_output_chars));
+        }
+        Box::pin(async move {
+            match &self.script {
+                Script::Throws(m) | Script::Fail(m) => {
+                    LlmInvokeResult::Failed { reason: m.clone() }
+                }
+                Script::Answer {
+                    answer,
+                    provider,
+                    model,
+                } => LlmInvokeResult::Answered {
+                    output: answer.clone(),
+                    provider: provider.clone(),
+                    model: model.clone(),
+                },
+            }
+        })
+    }
+}
+
+/// The oracle's `{ok, output}` subject rows.
+fn llm_subject_of(v: Option<&Value>) -> Option<LlmSubject> {
+    let o = v?.as_object()?;
+    Some(LlmSubject {
+        ok: o.get("ok")?.as_bool()?,
+        output: o.get("output")?.as_str()?.to_string(),
+    })
+}
 
 /// v4's `ResolvedParams` is a plain record; render it as one, with JS numbers.
 fn params_to_json(params: &ResolvedParams) -> Value {
@@ -102,6 +185,24 @@ fn result_to_json(r: &CustomToolRunResult) -> Value {
         }
         m.insert("metadataTested".into(), Value::Object(mt));
     }
+    // `...(llm ? { llm } : {})` — last, and only when the definition declared one.
+    if let Some(llm) = &r.llm {
+        let mut lm = Map::new();
+        lm.insert("ok".into(), Value::Bool(llm.ok));
+        lm.insert("output".into(), Value::String(llm.output.clone()));
+        lm.insert("prompt".into(), Value::String(llm.prompt.clone()));
+        // v4 spreads reason/provider/model only when present, in that order.
+        if let Some(reason) = &llm.reason {
+            lm.insert("reason".into(), Value::String(reason.clone()));
+        }
+        if let Some(p) = &llm.provider {
+            lm.insert("provider".into(), Value::String(p.clone()));
+        }
+        if let Some(md) = &llm.model {
+            lm.insert("model".into(), Value::String(md.clone()));
+        }
+        m.insert("llm".into(), Value::Object(lm));
+    }
     Value::Object(m)
 }
 
@@ -126,6 +227,12 @@ fn tool_of(row: &Value, id: &str) -> quilltap_core::pascal::custom_tool_types::Q
 
 #[test]
 fn pascal_custom_tools_execution_matches_oracle() {
+    // The consult seam made `execute_custom_tool` async; everything else in this
+    // corpus stays sync, so a current-thread runtime drives just those rows.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("a current-thread runtime");
+
     let path = match std::env::var("QT_ORACLE_PASCAL_EXECUTION") {
         Ok(p) => p,
         Err(_) => {
@@ -155,6 +262,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let message = row["message"].as_str().unwrap();
                 let metadata = metadata_of(row.get("metadata"));
+                let llm = llm_subject_of(row.get("llm"));
                 let got = render_template(
                     message,
                     &TemplateVars {
@@ -163,6 +271,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         dice: "3d6: [4, 2, 6] = 12",
                         params: &params,
                         metadata: metadata.as_ref(),
+                        llm: llm.as_ref(),
                     },
                 );
                 assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
@@ -197,11 +306,13 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let when = &tool.outcomes[0].when;
                 let metadata = metadata_of(row.get("metadata"));
+                let llm = llm_subject_of(row.get("llm"));
                 let subjects = OutcomeSubjects {
                     value: 12.0,
                     roll: 0.6,
                     params: &params,
                     metadata: metadata.as_ref(),
+                    llm: llm.as_ref(),
                 };
                 match matches_when(when, &subjects, "probe") {
                     Ok(held) => {
@@ -227,19 +338,44 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let pool = hex_bytes(row["poolHex"].as_str().unwrap());
                 let mut rng = FixedBytes::new(pool);
 
-                let outcome = execute_custom_tool(
+                let invoker = script_of(&row["llmScript"]).map(|script| CannedInvoker {
+                    script,
+                    seen: Mutex::new((None, None)),
+                });
+
+                let outcome = rt.block_on(execute_custom_tool(
                     &tool,
                     supplied.as_ref(),
                     private,
                     metadata.as_ref(),
                     &mut rng,
-                );
+                    invoker.as_ref().map(|i| i as &dyn LlmInvoker),
+                ));
 
                 // The byte cursor is the assertion inspection cannot make.
                 assert_eq!(
                     rng.consumed(),
                     row["bytesConsumed"].as_u64().unwrap() as usize,
                     "executeCustomTool '{id}': bytes drawn differ"
+                );
+
+                // What the core ASKED, and with what advertised cap — the two
+                // facts the result alone would not pin.
+                let (prompt_seen, cap_seen) = match &invoker {
+                    Some(i) => i.seen.lock().unwrap().clone(),
+                    None => (None, None),
+                };
+                assert_eq!(
+                    prompt_seen.map(Value::String).unwrap_or(Value::Null),
+                    row["llmPromptSeen"],
+                    "executeCustomTool '{id}': the rendered consult prompt differs"
+                );
+                let want_cap = row["llmOptionsSeen"]
+                    .get("maxOutputChars")
+                    .and_then(Value::as_i64);
+                assert_eq!(
+                    cap_seen, want_cap,
+                    "executeCustomTool '{id}': the advertised output cap differs"
                 );
 
                 match outcome {

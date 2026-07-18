@@ -24,6 +24,12 @@ interface Case {
   params?: Record<string, unknown> | null;
   runs: number;
   metadata?: Record<string, unknown>;
+  /**
+   * The 616930db fixed consult, held constant across every draw. `simulateOutcomes`
+   * NEVER invokes — the audit must not spend ten thousand LLM calls — so this is
+   * a plain subject, not an invoker.
+   */
+  llm?: { ok: boolean; output: string };
 }
 
 const cases: Case[] = [
@@ -97,6 +103,55 @@ const cases: Case[] = [
     },
     runs: 200,
   },
+  // ---- the 616930db fixed consult -----------------------------------------
+  // An llm-gated row with a scripted ANSWER that satisfies it → outcome 0 100%.
+  {
+    id: 'llm-fixed-answer-hits',
+    definition: {
+      name: 'oracle',
+      description: 'oracle',
+      roll: { min: 0.7, max: 0.7 },
+      llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+      outcomes: [
+        { when: { llm: { eq: 'YES' } }, message: 'open', state: 'success' },
+        { when: true, message: 'shut', state: 'failure' },
+      ],
+    },
+    runs: 300,
+    llm: { ok: true, output: 'yes.' },
+  },
+  // The SAME table with a scripted FAILURE → the llm row declines every draw.
+  {
+    id: 'llm-fixed-failure-declines',
+    definition: {
+      name: 'oracle',
+      description: 'oracle',
+      roll: { min: 0.7, max: 0.7 },
+      llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+      outcomes: [
+        { when: { llm: { eq: 'YES' } }, message: 'open', state: 'success' },
+        { when: true, message: 'shut', state: 'failure' },
+      ],
+    },
+    runs: 300,
+    llm: { ok: false, output: 'The wire went dead.' },
+  },
+  // No consult supplied at all → the llm row fails SOFT on every draw, exactly
+  // like a metadata key the character lacks.
+  {
+    id: 'llm-absent-declines',
+    definition: {
+      name: 'oracle',
+      description: 'oracle',
+      roll: { min: 0.7, max: 0.7 },
+      llm: { prompt: 'Speak.', errorMessage: 'The wire went dead.' },
+      outcomes: [
+        { when: { llm: { ok: true } }, message: 'open', state: 'success' },
+        { when: true, message: 'shut', state: 'failure' },
+      ],
+    },
+    runs: 300,
+  },
   // runs = 0 → all-zero, min/max/mean 0.
   {
     id: 'zero-runs',
@@ -113,8 +168,16 @@ const cases: Case[] = [
 const rows: unknown[] = [];
 for (const c of cases) {
   const definition = QtapCustomToolSchema.parse(c.definition);
-  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata);
-  rows.push({ id: c.id, definition: c.definition, params: c.params ?? null, runs: c.runs, metadata: c.metadata ?? null, result });
+  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata, c.llm);
+  rows.push({
+    id: c.id,
+    definition: c.definition,
+    params: c.params ?? null,
+    runs: c.runs,
+    metadata: c.metadata ?? null,
+    llm: c.llm ?? null,
+    result,
+  });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

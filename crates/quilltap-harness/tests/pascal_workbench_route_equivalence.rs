@@ -188,13 +188,20 @@ fn workbench_route_matches_oracle() {
                 let params = case.get("params").cloned();
                 let metadata = metadata_for(case, characters);
                 match case["action"].as_str().unwrap() {
-                    "preview" => status_body(custom_tool_preview(
-                        &db,
-                        &definition,
-                        params.as_ref(),
-                        case.get("private").and_then(Value::as_bool),
-                        metadata.as_ref(),
-                    )),
+                    // The consult seam made preview async (it may pose a
+                    // consult); the route surface is otherwise unchanged.
+                    "preview" => status_body(
+                        tokio::runtime::Builder::new_current_thread()
+                            .build()
+                            .expect("a current-thread runtime")
+                            .block_on(custom_tool_preview(
+                                &db,
+                                &definition,
+                                params.as_ref(),
+                                case.get("private").and_then(Value::as_bool),
+                                metadata.as_ref(),
+                            )),
+                    ),
                     _ => status_body(custom_tool_audit(
                         &db,
                         &definition,

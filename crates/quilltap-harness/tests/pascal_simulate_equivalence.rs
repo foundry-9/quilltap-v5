@@ -13,7 +13,7 @@
 //!     cargo test -p quilltap-harness --test pascal_simulate_equivalence
 
 use quilltap_core::pascal::custom_tool_types::safe_parse;
-use quilltap_core::pascal::custom_tools::simulate_outcomes;
+use quilltap_core::pascal::custom_tools::{simulate_outcomes, LlmSubject};
 use quilltap_core::tools::rng::FixedBytes;
 use serde_json::Value;
 
@@ -37,6 +37,12 @@ fn simulate_outcomes_matches_oracle() {
         let params = row["params"].as_object().cloned();
         let runs = row["runs"].as_u64().unwrap() as usize;
         let metadata = row["metadata"].as_object().cloned();
+        // The fixed consult the whole audit shares; `simulate_outcomes` never
+        // invokes, so this is a plain subject on both sides.
+        let llm = row["llm"].as_object().map(|o| LlmSubject {
+            ok: o["ok"].as_bool().unwrap(),
+            output: o["output"].as_str().unwrap().to_string(),
+        });
 
         let mut rng = FixedBytes::new(vec![]);
         let got = simulate_outcomes(
@@ -44,6 +50,7 @@ fn simulate_outcomes_matches_oracle() {
             params.as_ref(),
             runs,
             metadata.as_ref(),
+            llm.as_ref(),
             &mut rng,
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));

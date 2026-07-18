@@ -530,7 +530,10 @@ pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
         is_private,
         metadata_arg,
         rng,
-    ) {
+        None,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(CustomToolRunError(reason)) => {
             let whisper = is_private.unwrap_or(default_whisper);

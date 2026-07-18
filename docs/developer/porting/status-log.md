@@ -21243,3 +21243,99 @@ PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
 QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
   cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
 ```
+
+### Unit 2 — the execution core consult seam (`custom_tools.rs`)
+
+**The seam shape.** v4 made `executeCustomTool` async with an injected
+`llmInvoke`; v5's was sync and pure over `rng: &mut dyn RandomBytes`.
+Per the order's "frozen = behavior/args, not sync-ness", the port went
+async with an `Option<&dyn LlmInvoker>` parameter, where `LlmInvoker` is
+a `Send + Sync` trait returning `Pin<Box<dyn Future + Send>>`. The rng
+parameter tightened to `&mut (dyn RandomBytes + Send)` so the resulting
+future stays `Send` for the axum/tokio dispatch above it — every impl
+(`OsRandomBytes`, `FixedBytes`) already was. Three production call sites
+and two harness tests moved with it; `custom_tool_preview` became async
+(its engine dispatch arm now awaits).
+
+**`LlmInvokeResult` folds v4's two failure routes into one.** v4's
+invoker may either RETURN `{ok:false, reason}` or THROW, and
+`resolveLlmConsult` catches the throw into the identical shape. Rust has
+no throw to catch, so `LlmInvokeResult::Failed { reason }` carries both.
+The distinction was never observable downstream — the execution oracle
+pins this with an `llm-invoker-throws` case whose result is
+byte-identical to the reported-failure case.
+
+**`resolve_llm_consult`.** Every reason string verbatim (`no LLM invoker
+was available in this context`, the invoker's own reason, `the model
+returned an empty answer`). Success is trim → cap → RE-trim, the cap in
+UTF-16 code units via `jsstr::utf16_truncate` (v4's `.slice` counts
+those); `error_message` is never capped. `provider`/`model` ride only
+when TRUTHY, so an empty string is dropped exactly as v4's spread drops it.
+
+**`matches_llm_comparator`** — the forgiving reconciliation, ported
+key-for-key: `ok` first; `answer = trim(output)`; `numericAnswer` only
+when the trimmed answer is non-empty AND `Number(answer)` is finite (the
+empty string is excluded because `Number('')` is 0, not NaN — via the
+existing `js_value::to_number`); the ordering loop resolves its operand
+BEFORE the numeric check so an unresolvable `$param` still throws;
+eq/neq compare numerically when both sides are numbers, else trimmed
+case-insensitive with ONE forgiven trailing `.` or `!` and nothing else;
+contains/ncontains use that same reconciliation with NO punctuation
+forgiveness.
+
+**Containment, three different semantics — all three pinned.** params:
+STRICT, case-sensitive, untrimmed, and a non-string throws. metadata:
+FAIL-SOFT, and the subtle one — a non-string subject DECLINES even under
+`ncontains` ("absence is not a miss"), which a naive port would get
+backwards. llm: forgiving, per above.
+
+**A finding worth carrying:** `matches_comparator`'s strict
+`require_string` THROW is **unreachable from a loadable definition** —
+unit 1's `validate_comparator` containment check rejects a non-string
+haystack or needle at load, exactly as it already does for the ordering
+arm's `require_number`. Three corpus rows were written for it and had to
+be withdrawn: v4's own `define()` refuses the definition. The guard is
+kept on both sides as a regression tripwire; the DEFINITION corpus
+(`contains-numeric-param`, `ncontains-boolean-param`) pins the rejection
+instead. The one route to a non-string OPERAND at run time IS reachable:
+a `$param` needle naming a numeric parameter, because the llm/metadata
+subjects are only ref-checked, never type-checked
+(`llm-contains-numeric-param-needle`,
+`md-contains-numeric-param-needle-declines`).
+
+**Differentials.** `pascal_custom_tools_execution_equivalence`:
+matchesWhen 37 → **103**, executeCustomTool 23 → **37**, renderTemplate
+28 → **36**. The oracle case gained a serializable `LlmScript`
+(`{answer,provider?,model?} | {fail} | {throws} | null`) rebuilt on the
+Rust side as a `CannedInvoker`, so both runs hand the core the SAME
+oracle; the invoker also RECORDS what it was asked, and the row carries
+`llmPromptSeen` / `llmOptionsSeen` so the differential pins the rendered
+consult prompt and the advertised output cap — two facts the run result
+alone would not carry. `pascal_simulate_equivalence` 6 → **9** rows
+(scripted-answer hit, scripted-failure decline, absent-consult soft
+decline).
+
+**Mutation-verified, not merely green.** Both suites passed on the first
+run, so the punctuation-forgiveness arm was deliberately broken (the `!`
+branch removed) and the corpus went RED at `matchesWhen
+'llm-eq-trailing-bang'`. The new rows split 34 true / 32 false, so they
+discriminate rather than agreeing by construction.
+
+Regen recipes (v4 @ `616930db`, Node 24):
+
+```bash
+# execution (jest mirror — jest ignores .claude/ paths)
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-pascal-exec-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-execution
+
+# simulate (tsx)
+cd ~/source/quilltap-server
+PATH=$N:$PATH npx tsx "$V5W/harness/oracle/cases/pascal-simulate.ts" \
+  > /tmp/oracle-pascal-simulate.ndjson
+```

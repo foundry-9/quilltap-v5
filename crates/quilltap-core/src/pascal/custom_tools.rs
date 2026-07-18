@@ -6,19 +6,22 @@
 //! roll means the same thing whoever asked for it.
 
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 
 use regex::{Captures, Regex};
 use serde_json::{Map, Value};
 use std::sync::LazyLock;
 
 use super::custom_tool_types::{
-    AnyOperand, CustomToolParameter, MetadataComparator, NumberOrParamRef, NumericComparator,
-    OutcomeState, ParamComparator, ParameterType, QtapCustomTool, Roll, RollRange, Visibility,
-    When, WhenObject,
+    AnyOperand, CustomToolLlm, CustomToolParameter, LlmComparator, MetadataComparator,
+    NumberOrParamRef, NumericComparator, OutcomeState, ParamComparator, ParameterType,
+    QtapCustomTool, Roll, RollRange, StringOperand, Visibility, When, WhenObject,
+    MAX_LLM_OUTPUT_LENGTH,
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number, to_precision};
-use crate::jsstr::js_trim;
+use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +110,83 @@ pub enum RollForm {
     Dice,
 }
 
+/// What an LLM invoker hands back: the model's raw answer, or the technical
+/// reason there is none. The invoker never sees the author's `errorMessage` —
+/// translating failure into the author's words is the execution core's job.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LlmInvokeResult {
+    Answered {
+        output: String,
+        provider: Option<String>,
+        model: Option<String>,
+    },
+    Failed {
+        reason: String,
+    },
+}
+
+/// What the core tells an invoker about the answer it is prepared to keep.
+///
+/// The effective output cap (the definition's `maxOutput`, or the default).
+/// Advisory: the real invoker scales the call's token budget from it, so a
+/// long-form consult is not starved at the provider. The core still enforces
+/// the cap on whatever comes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LlmInvokeOptions {
+    pub max_output_chars: i64,
+}
+
+/// The seam between the execution core and whatever actually talks to a model.
+/// Injected by the entrances (`pascal::llm_consult` builds the real one) so the
+/// core stays testable — and so the proving bench can hand in a pretend oracle
+/// instead of spending money.
+///
+/// v4's `LlmInvoker` is an async function that MAY throw; `resolveLlmConsult`
+/// catches the throw and folds it into the same `{ok:false, reason}` an explicit
+/// failure produces. Rust has no throw to catch, so [`LlmInvokeResult::Failed`]
+/// carries both — the distinction was never observable downstream.
+pub trait LlmInvoker: Send + Sync {
+    fn invoke<'a>(
+        &'a self,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> Pin<Box<dyn Future<Output = LlmInvokeResult> + Send + 'a>>;
+}
+
+/// The consult as the rest of a run sees it — subjects, templates, and the roll
+/// record all read from this one resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlmConsultResult {
+    /// Whether the consult produced an answer.
+    pub ok: bool,
+    /// The model's trimmed answer on success; the author's `errorMessage` on
+    /// failure.
+    pub output: String,
+    /// The rendered prompt actually posed — the record of what was asked.
+    pub prompt: String,
+    /// Technical failure reason. Logged and recorded, never spoken in the fiction.
+    pub reason: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
+/// The pair `when.llm` tests and `{{llm}}` renders (v4 `LlmSubject`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlmSubject {
+    pub ok: bool,
+    pub output: String,
+}
+
+impl LlmConsultResult {
+    /// The subject view of a resolved consult.
+    pub fn subject(&self) -> LlmSubject {
+        LlmSubject {
+            ok: self.ok,
+            output: self.output.clone(),
+        }
+    }
+}
+
 /// Everything a run produced — enough to post the message and fill `pascalMeta`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomToolRunResult {
@@ -127,6 +207,8 @@ pub struct CustomToolRunResult {
     /// The metadata keys the winning outcome tested, and what they held when it
     /// was tested. `None` when the winning row consulted no metadata.
     pub metadata_tested: Option<MetadataTested>,
+    /// The LLM consult, when the definition declares one.
+    pub llm: Option<LlmConsultResult>,
 }
 
 /// Validate and coerce caller-supplied parameters against the declarations.
@@ -378,6 +460,9 @@ pub struct OutcomeSubjects<'a> {
     /// empty map) when nobody in particular rolled — every `metadata` test then
     /// fails and the catch-all answers.
     pub metadata: Option<&'a Map<String, Value>>,
+    /// The LLM consult's result. `None` when the definition declares no `llm`
+    /// block — an `llm` test then fails soft and the table falls through.
+    pub llm: Option<&'a LlmSubject>,
 }
 
 /// A comparator operand as the evaluator sees it: a literal, or a reference.
@@ -440,11 +525,32 @@ fn require_number(
     }
 }
 
+/// Demand a string for a containment comparison. Load-time validation precedes
+/// this, so a failure here is a regression rather than an authoring error.
+///
+/// UNREACHABLE from a loadable definition — `validate_comparator`'s containment
+/// check rejects a non-string subject or needle first, exactly as it does for
+/// the ordering arm's `require_number`. Kept as v4 keeps it: a regression
+/// tripwire, not a live path.
+fn require_string(
+    tool_name: &str,
+    value: &ResolvedValue,
+    label: &str,
+) -> Result<String, CustomToolRunError> {
+    match value {
+        ResolvedValue::String(s) => Ok(s.clone()),
+        other => Err(err(format!(
+            "{tool_name}: {label} cannot be searched — it is {} rather than a string",
+            other.stringify()
+        ))),
+    }
+}
+
 /// Evaluate one comparator against one subject. Keys AND together, and an
 /// operand may be a `$param` reference rather than a literal.
 fn matches_comparator(
     tool_name: &str,
-    operands: [(&str, Option<OperandSpec>); 6],
+    operands: [(&str, Option<OperandSpec>); 8],
     subject: &ResolvedValue,
     subject_label: &str,
     params: &ResolvedParams,
@@ -471,6 +577,27 @@ fn matches_comparator(
             continue;
         }
 
+        if matches!(key, "contains" | "ncontains") {
+            // Containment is strict and case-sensitive here, matching eq's
+            // exactness on declared values; the forgiving variant lives with the
+            // LLM subject, whose text is a model's prose rather than an author's
+            // literal. v4 evaluates the SUBJECT first (it is the receiver of
+            // `.includes`), so a non-string subject is reported even when the
+            // operand is also broken.
+            let haystack = require_string(tool_name, subject, subject_label)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &label)?;
+            let needle = require_string(tool_name, &resolved, &label)?;
+            let held = haystack.contains(&needle);
+            if key == "contains" {
+                if !held {
+                    return Ok(false);
+                }
+            } else if held {
+                return Ok(false);
+            }
+            continue;
+        }
+
         let resolved = resolve_operand(tool_name, &operand, params, &label)?;
         let held = if key == "eq" {
             subject.strict_eq(&resolved)
@@ -485,7 +612,14 @@ fn matches_comparator(
     Ok(true)
 }
 
-fn numeric_operands(c: &NumericComparator) -> [(&'static str, Option<OperandSpec<'_>>); 6] {
+fn string_operand(v: &StringOperand) -> OperandSpec<'_> {
+    match v {
+        StringOperand::String(s) => OperandSpec::Literal(ResolvedValue::String(s.clone())),
+        StringOperand::ParamRef(r) => OperandSpec::Ref(&r.param),
+    }
+}
+
+fn numeric_operands(c: &NumericComparator) -> [(&'static str, Option<OperandSpec<'_>>); 8] {
     [
         ("gt", c.gt.as_ref().map(number_operand)),
         ("gte", c.gte.as_ref().map(number_operand)),
@@ -493,10 +627,13 @@ fn numeric_operands(c: &NumericComparator) -> [(&'static str, Option<OperandSpec
         ("lte", c.lte.as_ref().map(number_operand)),
         ("eq", c.eq.as_ref().map(number_operand)),
         ("neq", c.neq.as_ref().map(number_operand)),
+        // A numeric subject holds no substrings, so its schema carries neither key.
+        ("contains", None),
+        ("ncontains", None),
     ]
 }
 
-fn when_operands(w: &WhenObject) -> [(&'static str, Option<OperandSpec<'_>>); 6] {
+fn when_operands(w: &WhenObject) -> [(&'static str, Option<OperandSpec<'_>>); 8] {
     [
         ("gt", w.gt.as_ref().map(number_operand)),
         ("gte", w.gte.as_ref().map(number_operand)),
@@ -504,10 +641,12 @@ fn when_operands(w: &WhenObject) -> [(&'static str, Option<OperandSpec<'_>>); 6]
         ("lte", w.lte.as_ref().map(number_operand)),
         ("eq", w.eq.as_ref().map(number_operand)),
         ("neq", w.neq.as_ref().map(number_operand)),
+        ("contains", None),
+        ("ncontains", None),
     ]
 }
 
-fn param_operands(c: &ParamComparator) -> [(&'static str, Option<OperandSpec<'_>>); 6] {
+fn param_operands(c: &ParamComparator) -> [(&'static str, Option<OperandSpec<'_>>); 8] {
     [
         ("gt", c.gt.as_ref().map(number_operand)),
         ("gte", c.gte.as_ref().map(number_operand)),
@@ -515,6 +654,21 @@ fn param_operands(c: &ParamComparator) -> [(&'static str, Option<OperandSpec<'_>
         ("lte", c.lte.as_ref().map(number_operand)),
         ("eq", c.eq.as_ref().map(any_operand)),
         ("neq", c.neq.as_ref().map(any_operand)),
+        ("contains", c.contains.as_ref().map(string_operand)),
+        ("ncontains", c.ncontains.as_ref().map(string_operand)),
+    ]
+}
+
+fn llm_operands(c: &LlmComparator) -> [(&'static str, Option<OperandSpec<'_>>); 8] {
+    [
+        ("gt", c.gt.as_ref().map(number_operand)),
+        ("gte", c.gte.as_ref().map(number_operand)),
+        ("lt", c.lt.as_ref().map(number_operand)),
+        ("lte", c.lte.as_ref().map(number_operand)),
+        ("eq", c.eq.as_ref().map(any_operand)),
+        ("neq", c.neq.as_ref().map(any_operand)),
+        ("contains", c.contains.as_ref().map(string_operand)),
+        ("ncontains", c.ncontains.as_ref().map(string_operand)),
     ]
 }
 
@@ -571,6 +725,27 @@ fn matches_metadata_comparator(
             continue;
         }
 
+        if matches!(ck, "contains" | "ncontains") {
+            // Containment follows the same fail-soft rule as ordering: a key
+            // holding anything but a string cannot be searched, so the row
+            // declines — including under ncontains, where (as with neq)
+            // absence-of-a-string is not a miss.
+            let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+            let (ResolvedValue::String(hay), ResolvedValue::String(needle)) = (&subject, &resolved)
+            else {
+                return Ok(false);
+            };
+            let held = hay.contains(needle.as_str());
+            if ck == "contains" {
+                if !held {
+                    return Ok(false);
+                }
+            } else if held {
+                return Ok(false);
+            }
+            continue;
+        }
+
         let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
         let held = if ck == "eq" {
             subject.strict_eq(&resolved)
@@ -583,6 +758,134 @@ fn matches_metadata_comparator(
     }
 
     Ok(true)
+}
+
+/// Evaluate one comparator against the LLM consult — the second fail-soft
+/// evaluator, for the same reason as [`matches_metadata_comparator`]: the
+/// subject's run-time type is unknowable at load time, because the answer is
+/// whatever the model chose to say.
+///
+/// Reconciliation rules, chosen so an author testing an oracle they prompted
+/// for "YES", "42", or "the west door" gets the match they meant:
+///
+/// - `ok` tests the consult's success flag directly.
+/// - Ordering comparators need the answer to parse as a finite number; an
+///   answer that doesn't simply declines the row.
+/// - eq/neq compare numerically when both sides are numbers, and otherwise as
+///   trimmed, case-insensitive strings — a model that says "yes." instead of
+///   "YES" has still said yes. (A trailing `.` or `!` is forgiven for that
+///   reason, and NOTHING else is.)
+/// - contains/ncontains search the answer for the operand under that same
+///   trimmed, case-insensitive reconciliation, with NO punctuation forgiveness.
+///
+/// `$param` operands still throw when they fail to resolve: those are
+/// load-validated, so a failure is a regression, not a fact about the model.
+fn matches_llm_comparator(
+    tool_name: &str,
+    comparator: &LlmComparator,
+    llm: &LlmSubject,
+    params: &ResolvedParams,
+) -> Result<bool, CustomToolRunError> {
+    if let Some(want) = comparator.ok {
+        if want != llm.ok {
+            return Ok(false);
+        }
+    }
+
+    let answer = js_trim(&llm.output).to_string();
+    // v4: `answer !== '' && Number.isFinite(Number(answer))` — the empty string
+    // is excluded because `Number('')` is 0, not NaN.
+    let numeric_answer = if answer.is_empty() {
+        None
+    } else {
+        let n = to_number(&Value::String(answer.clone()));
+        n.is_finite().then_some(n)
+    };
+
+    let slots = llm_operands(comparator);
+
+    // The ordering loop first, exactly as v4 writes it: the operand resolves
+    // BEFORE the numeric check, so an unresolvable `$param` still throws.
+    for (key, operand) in &slots {
+        if !matches!(*key, "gt" | "gte" | "lt" | "lte") {
+            continue;
+        }
+        let Some(operand) = operand else { continue };
+        let label = format!("the llm answer {key}");
+        let resolved = resolve_operand(tool_name, operand, params, &label)?;
+        let (Some(a), ResolvedValue::Number(b)) = (numeric_answer, &resolved) else {
+            return Ok(false);
+        };
+        let held = match *key {
+            "gt" => a > *b,
+            "gte" => a >= *b,
+            "lt" => a < *b,
+            _ => a <= *b,
+        };
+        if !held {
+            return Ok(false);
+        }
+    }
+
+    let equals_answer = |operand: &ResolvedValue| -> bool {
+        if let (ResolvedValue::Number(n), Some(a)) = (operand, numeric_answer) {
+            return a == *n;
+        }
+        let operand_text = js_trim(&resolved_to_js_string(operand)).to_lowercase();
+        let answer_text = answer.to_lowercase();
+        answer_text == operand_text
+            || answer_text == format!("{operand_text}.")
+            || answer_text == format!("{operand_text}!")
+    };
+
+    // Containment under eq's reconciliation: trimmed, case-insensitive, and the
+    // operand stringified — an author hunting "west door" should find "the West
+    // Door", because the subject here is a model's prose, not a declared value.
+    let contains_answer = |operand: &ResolvedValue| -> bool {
+        answer.to_lowercase().contains(
+            js_trim(&resolved_to_js_string(operand))
+                .to_lowercase()
+                .as_str(),
+        )
+    };
+
+    for (key, operand) in &slots {
+        let Some(operand) = operand else { continue };
+        let label = format!("the llm answer {key}");
+        let held = match *key {
+            "eq" => {
+                let r = resolve_operand(tool_name, operand, params, &label)?;
+                equals_answer(&r)
+            }
+            "neq" => {
+                let r = resolve_operand(tool_name, operand, params, &label)?;
+                !equals_answer(&r)
+            }
+            "contains" => {
+                let r = resolve_operand(tool_name, operand, params, &label)?;
+                contains_answer(&r)
+            }
+            "ncontains" => {
+                let r = resolve_operand(tool_name, operand, params, &label)?;
+                !contains_answer(&r)
+            }
+            _ => continue,
+        };
+        if !held {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// JS `String(operand)` over the three types a resolved operand can hold.
+fn resolved_to_js_string(v: &ResolvedValue) -> String {
+    match v {
+        ResolvedValue::Number(n) => number_to_string(*n),
+        ResolvedValue::String(s) => s.clone(),
+        ResolvedValue::Bool(b) => b.to_string(),
+    }
 }
 
 /// The metadata a winning outcome consulted, for the roll record — only the keys
@@ -686,6 +989,18 @@ pub fn matches_when(
         }
     }
 
+    if let Some(comparator) = &when.llm {
+        // No consult ran (a definition without an `llm` block, or a simulation
+        // that supplied none): the test fails soft, exactly like a metadata key
+        // the character doesn't carry.
+        let Some(llm) = subjects.llm else {
+            return Ok(false);
+        };
+        if !matches_llm_comparator(tool_name, comparator, llm, params)? {
+            return Ok(false);
+        }
+    }
+
     Ok(true)
 }
 
@@ -710,6 +1025,8 @@ pub struct TemplateVars<'a> {
     pub dice: &'a str,
     pub params: &'a ResolvedParams,
     pub metadata: Option<&'a Map<String, Value>>,
+    /// The consult's result. `None` while rendering the consult's own prompt.
+    pub llm: Option<&'a LlmSubject>,
 }
 
 /// Substitute the four placeholder families. Plain string replacement — user
@@ -732,6 +1049,15 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
             }
             if key == "dice" {
                 return vars.dice.to_string();
+            }
+
+            if key == "llm" {
+                // No consult to render (the prompt's own pass, or a tool with no
+                // `llm` block): the placeholder is left as written.
+                return match vars.llm {
+                    Some(llm) => llm.output.clone(),
+                    None => whole.to_string(),
+                };
             }
 
             if let Some(name) = key.strip_prefix("params.") {
@@ -767,16 +1093,90 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
         .into_owned()
 }
 
-/// Run a definition: validate params, roll, transform, evaluate, render.
+/// Resolve a definition's LLM consult: render the prompt, pose it through the
+/// injected invoker, and translate whatever happens into the author's terms.
 ///
-/// Pure computation — no writes, no message posting. Both entrances call this
-/// and then decide how to announce the result.
-pub fn execute_custom_tool(
+/// Fail-soft by design — a consult NEVER fails the run. A provider error, a
+/// timeout, an empty answer, or an entrance that wired no invoker all land in
+/// the same place: `ok: false` with the author's `error_message` as the output,
+/// so the outcome table gets to deal with the silence the way its author wrote
+/// it to.
+async fn resolve_llm_consult(
+    spec: &CustomToolLlm,
+    prompt: String,
+    invoke: Option<&dyn LlmInvoker>,
+) -> LlmConsultResult {
+    let failed = |reason: String, prompt: String| LlmConsultResult {
+        ok: false,
+        output: spec.error_message.clone(),
+        prompt,
+        reason: Some(reason),
+        provider: None,
+        model: None,
+    };
+
+    let Some(invoke) = invoke else {
+        return failed(
+            "no LLM invoker was available in this context".into(),
+            prompt,
+        );
+    };
+
+    // The author's own leash, or the default. `error_message` is never subject
+    // to it — those are the author's words, kept whole.
+    let max_output = spec.max_output.unwrap_or(MAX_LLM_OUTPUT_LENGTH as i64);
+
+    let result = invoke
+        .invoke(
+            &prompt,
+            LlmInvokeOptions {
+                max_output_chars: max_output,
+            },
+        )
+        .await;
+
+    let (output, provider, model) = match result {
+        LlmInvokeResult::Failed { reason } => return failed(reason, prompt),
+        LlmInvokeResult::Answered {
+            output,
+            provider,
+            model,
+        } => (output, provider, model),
+    };
+
+    // Trim, cap, RE-trim — v4's exact sequence. The cap counts UTF-16 code
+    // units, because v4's `.slice` does.
+    let capped = jsstr::utf16_truncate(js_trim(&output), max_output.max(0) as usize);
+    let output = js_trim(&capped).to_string();
+    if output.is_empty() {
+        return failed("the model returned an empty answer".into(), prompt);
+    }
+
+    LlmConsultResult {
+        ok: true,
+        output,
+        prompt,
+        reason: None,
+        // v4 spreads these only when TRUTHY, so an empty string is dropped too.
+        provider: provider.filter(|p| !p.is_empty()),
+        model: model.filter(|m| !m.is_empty()),
+    }
+}
+
+/// Run a definition: validate params, roll, transform, consult (when declared),
+/// evaluate, render.
+///
+/// No writes, no message posting — both entrances call this and then decide how
+/// to announce the result. The one impurity is the optional LLM consult, which
+/// arrives as an injected [`LlmInvoker`] so this stays testable and the proving
+/// bench can substitute a pretend oracle.
+pub async fn execute_custom_tool(
     definition: &QtapCustomTool,
     supplied_params: Option<&serde_json::Map<String, Value>>,
     private: Option<bool>,
     metadata: Option<&Map<String, Value>>,
-    rng: &mut dyn RandomBytes,
+    rng: &mut (dyn RandomBytes + Send),
+    llm_invoke: Option<&dyn LlmInvoker>,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
     let params = resolve_params(definition, supplied_params)?;
 
@@ -820,11 +1220,34 @@ pub fn execute_custom_tool(
         }
     }
 
+    // The consult runs AFTER the roll — its prompt may quote the draw — and
+    // BEFORE the table, which may test its answer. The prompt is rendered
+    // WITHOUT an `llm` var: there is no answer yet to quote.
+    let llm = match &definition.llm {
+        Some(spec) => {
+            let prompt = render_template(
+                &spec.prompt,
+                &TemplateVars {
+                    value,
+                    roll: raw,
+                    dice: &dice_breakdown,
+                    params: &params,
+                    metadata,
+                    llm: None,
+                },
+            );
+            Some(resolve_llm_consult(spec, prompt, llm_invoke).await)
+        }
+        None => None,
+    };
+    let llm_subject = llm.as_ref().map(|c| c.subject());
+
     let subjects = OutcomeSubjects {
         value,
         roll: raw,
         params: &params,
         metadata,
+        llm: llm_subject.as_ref(),
     };
     let mut outcome_index = None;
     for (i, o) in definition.outcomes.iter().enumerate() {
@@ -851,6 +1274,7 @@ pub fn execute_custom_tool(
             dice: &dice_breakdown,
             params: &params,
             metadata,
+            llm: llm_subject.as_ref(),
         },
     );
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
@@ -875,6 +1299,7 @@ pub fn execute_custom_tool(
         dice_breakdown,
         visibility,
         metadata_tested,
+        llm,
     })
 }
 
@@ -915,6 +1340,11 @@ pub fn simulate_outcomes(
     supplied_params: Option<&Map<String, Value>>,
     runs: usize,
     metadata: Option<&Map<String, Value>>,
+    // `llm`: a pretend consult, held FIXED across every draw — the audit never
+    // spends a real LLM call, let alone ten thousand of them. Hit rates for a
+    // table that branches on the answer are therefore conditional on this one
+    // answer; the bench says so beside the field. This never invokes.
+    llm: Option<&LlmSubject>,
     rng: &mut dyn RandomBytes,
 ) -> Result<CustomToolAuditResult, CustomToolRunError> {
     let params = resolve_params(definition, supplied_params)?;
@@ -954,6 +1384,7 @@ pub fn simulate_outcomes(
             roll: raw,
             params: &params,
             metadata,
+            llm,
         };
         let mut outcome_index = None;
         for (i, o) in definition.outcomes.iter().enumerate() {
@@ -1029,7 +1460,7 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let r = simulate_outcomes(&d, None, 20_000, None, &mut rng).unwrap();
+        let r = simulate_outcomes(&d, None, 20_000, None, None, &mut rng).unwrap();
         let low = r.outcomes[0].share;
         assert!(
             (0.2..0.4).contains(&low),
@@ -1050,13 +1481,13 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let empty =
-            simulate_outcomes(&d, None, 100, Some(&serde_json::Map::new()), &mut rng).unwrap();
+        let empty = simulate_outcomes(&d, None, 100, Some(&serde_json::Map::new()), None, &mut rng)
+            .unwrap();
         assert_eq!(empty.outcomes[0].hits, 0);
 
         let mut sheet = serde_json::Map::new();
         sheet.insert("luck".into(), serde_json::json!(7));
-        let carrying = simulate_outcomes(&d, None, 100, Some(&sheet), &mut rng).unwrap();
+        let carrying = simulate_outcomes(&d, None, 100, Some(&sheet), None, &mut rng).unwrap();
         assert_eq!(carrying.outcomes[0].hits, 100);
     }
 
@@ -1068,6 +1499,6 @@ mod simulate_tests {
             "outcomes": [{ "when": true, "message": "x", "state": "info" }],
         }));
         let mut rng = OsRandomBytes;
-        assert!(simulate_outcomes(&d, None, 10, None, &mut rng).is_err());
+        assert!(simulate_outcomes(&d, None, 10, None, None, &mut rng).is_err());
     }
 }

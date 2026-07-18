@@ -460,7 +460,10 @@ pub async fn chat_custom_tool_run(
         private,
         metadata_arg,
         &mut rng,
-    ) {
+        None,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(CustomToolRunError(reason)) => {
             // Pascal never announces a run that did not happen — Prospero reports it.
@@ -769,7 +772,7 @@ fn run_result_to_value(r: &CustomToolRunResult) -> Value {
 }
 
 /// v4 `handlePreview` — one deal through the shared execution core.
-pub fn custom_tool_preview(
+pub async fn custom_tool_preview(
     db: &Db,
     definition: &Value,
     params: Option<&Value>,
@@ -796,7 +799,10 @@ pub fn custom_tool_preview(
         private,
         Some(&metadata),
         &mut rng,
-    ) {
+        None,
+    )
+    .await
+    {
         Ok(result) => Response::CustomToolPreview(run_result_to_value(&result)),
         Err(CustomToolRunError(reason)) => unprocessable(reason),
     }
@@ -828,6 +834,7 @@ pub fn custom_tool_audit(
         params.as_ref(),
         AUDIT_RUNS,
         Some(&metadata),
+        None,
         &mut rng,
     ) {
         Ok(result) => Response::CustomToolAudit(json!({
