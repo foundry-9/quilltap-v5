@@ -20469,3 +20469,65 @@ recounts the SPA union.
 **Baseline versions at planning:** main `abfd096d`; core 0.0.269,
 harness 0.0.237, host 0.0.20, web 0.0.27, quilltap-tauri 0.0.4, SPA
 0.5.153.
+
+---
+
+## P4.9c (lane C of the M6 items 1–4 round) — the About + Profile vertical
+
+Branch `claude/profile-docs-porting-edf018` off main `f8ebb5fa`. v4 baseline
+`d68638b4`, re-verified at lane start (`git log d68638b4..HEAD` empty). The v4
+checkout is DIRTY (the in-flight llm-consult feature), so **every oracle in this
+lane is generated from the pinned detached worktree** `/tmp/qt-v4-baseline`
+(`git worktree add --detach`, both `node_modules` symlinked — the
+`oracle-regen-pinned-v4-worktree` recipe).
+
+### Unit 1 — the data-directory resolver (`services::data_dir`)
+
+Ports the `lib/paths.ts` family v4's `GET /api/v1/system/data-dir` composes:
+`isLimaEnvironment`, `isDockerEnvironment`, `isElectronShell`,
+`getElectronShellVersion`, `getShellCapabilities`, `getPlatform`,
+`getPlatformDefaultBaseDir`, `getBaseDataDirWithSource`, `getHostDataDir`.
+
+**The shape decision:** v4 reads `process.env` + `os.homedir()` +
+`process.platform` + two fs probes at call time. Ported that way it would be
+neither testable nor differentiable (`std::env::set_var` is `unsafe` in the 2024
+edition and the harness runs tests in threads). So the family is a **pure
+function over a `DataDirEnv` snapshot**, with `DataDirEnv::from_process()` as the
+single impure edge.
+
+**Differential** `data_dir_paths_equivalence` — 20 cases, tier 1 (exact
+strings), driving v4's REAL `lib/paths` exports across an environment matrix.
+Two techniques worth reusing:
+
+- **The oracle row carries its own inputs.** Each NDJSON row is
+  `{name, snapshot, info}` — the ambient world as v4's calls saw it, plus the
+  resulting payload. The Rust side replays the snapshot, so there is no
+  duplicated case list to drift and a red case can only mean a logic
+  disagreement (contrast the shared-JSON corpus idiom — this is strictly
+  better when the inputs are small and fully capturable).
+- **Driving the unreachable arms.** `Object.defineProperty(process, 'platform',
+  …)` walks v4's real `getPlatform()` down darwin / linux / win32; the two
+  Docker filesystem markers are patched on the **CJS** `fs` object
+  (`createRequire(import.meta.url)('fs')`) — the ESM namespace
+  `import * as fs from 'node:fs'` is frozen and throws on assignment, and v4's
+  `import fs from 'fs'` resolves to the CJS object anyway.
+
+**Verified biting:** the suite passed 20/20 on the first run, so it was
+mutation-checked (`is_vm` → `is_docker`) — 5 cases went red, then restored.
+
+**Ported traps:** JS truthiness (`""` and unset both read as absent — v4's
+`if (envOverride)` / `!!raw`); the STRICT `=== 'true'` compares; `getShellCapabilities`'s
+`Set` dedupe that PRESERVES insertion order; the Lima-before-Docker ordering (a
+Docker-exported rootfs still carries `/.dockerenv` + `/app`); and a hand-rolled
+`js_path_join` — Node's `path.join('/home/me', '/qtdata')` concatenates while
+Rust's `Path::join` resets to `/qtdata`, which would have silently broken the
+`~`-expansion arm.
+
+**Named uncovered arm:** `getPlatformDefaultBaseDir`'s win32 branch is diffed
+only as v4 renders it on a POSIX host (forward slashes, since `path.join` uses
+the running platform's separator and both sides run on macOS). A real Windows
+host stays uncovered, consistent with the standing Windows deferral.
+
+Regen: `cd /tmp/qt-v4-baseline && QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson
+$N/node --import tsx $W/harness/oracle/cases/data-dir-paths.ts`; run with
+`QT_ORACLE_DATA_DIR=/tmp/oracle-data-dir.ndjson`.

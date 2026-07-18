@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.9c unit 1: ported v4's lib/paths.ts data-directory family
+(getPlatform, getPlatformDefaultBaseDir, getBaseDataDirWithSource,
+getHostDataDir, the Docker/Lima probes, the Electron shell fields) into
+quilltap-core as services::data_dir — a pure function over a captured
+DataDirEnv snapshot rather than inline process.env reads, so the matrix
+is testable. New 20-case tier-1 differential
+(data_dir_paths_equivalence) driving v4's real lib/paths across an
+environment matrix; the oracle emits the ambient snapshot alongside the
+expectation so both sides read identical inputs. Includes a JS
+path.join port (Rust's Path::join resets on an absolute second segment;
+Node's concatenates). The win32 default-dir arm is exercised only as v4
+renders it on a posix host. core 0.0.270, harness 0.0.238.
+
 Planned the M6 backlog items 1-4 round: four parallel work orders
 committed under docs/developer/porting/work-orders/ — p4.9a (the My
 Photos vertical: the user photo gallery server surface + /photos screen
