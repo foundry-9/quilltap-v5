@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+P4.6ay unit 9: `run_custom` orchestration / streaming wiring. `build_tools`
+gains a `custom_tool_context` and resolves the Pascal roster INSIDE it, at the
+last possible moment (after every early return — a Courier turn /
+`allowToolUse:false` / the legacy `disabledTools===undefined` bail all return
+before a mount is listed; a resolve failure is caught and `run_custom`
+withheld). The orchestrator constructs that context from the RESPONDING
+character's perspective (`characterId` required, the vault mount its fast path,
+the participant character ids the participant tier) and gates it on
+`chatSettings.customTools ?? true` — withholding the context is HOW the setting
+turns the feature off. `OrchestratorChatSettings` gains a `custom_tools` field
+(mapped in the host spine). The `pascalResult` SSE frame joins `carinaAnswer` /
+`hostAnnouncement` in `chat_events`. Carina and the Brahma Console pass `None`
+(neither offers `run_custom`, matching v4). The live mid-turn `pascalResult`
+splice follows the `ask_carina` no-sink precedent (persisted now, live emit
+deferred to the finalizer). `salon.rs` pascalMeta pass-through + `settings.rs`
+customTools already landed at unit 10/11. Verified: a real-DB `build_tools`
+roster test (run_custom offered with the roster-derived description; absent for
+a None context; the roster order pinned to v4 by the handler oracle's
+unknown-tool case) + the `pascalResult` single-key-frame test. Versions: core
+0.0.265, harness 0.0.233, host 0.0.20.
+
 P4.6ay unit 8: `run_custom` registration / catalogue / capabilities +
 `delegatedDisplay`. `build_tools_for_provider` gains a `custom_tools` roster
 option and offers `run_custom` only when the roster is non-empty, its

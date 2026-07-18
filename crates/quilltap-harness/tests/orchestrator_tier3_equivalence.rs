@@ -1228,6 +1228,7 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // true in W4.1a. Existing corpus content carries no RNG patterns, so it
             // fires only for the three rng_* cases.
             auto_detect_rng: true,
+            custom_tools: true,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             // Agent mode (W4.4): the fixture's single chat_settings row sets

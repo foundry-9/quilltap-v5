@@ -495,6 +495,9 @@ where
             sql_access: false,
             model_supports_native_tools: deps.model_supports_native_tools,
             provider_supports_web_search,
+            // Carina's answerer is never offered `run_custom` (v4's `buildTools`
+            // call omits `customToolContext`).
+            custom_tool_context: None,
         },
     ) {
         Ok(built) => built,

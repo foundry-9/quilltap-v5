@@ -334,6 +334,15 @@ pub enum ChatEvent {
         #[serde(rename = "hostAnnouncement")]
         host_announcement: serde_json::Value,
     },
+    /// `{pascalResult: <message>}` — a Pascal `run_custom` outcome persisted
+    /// mid-turn (v4 `encodePascalResultEvent`), so the Salon can splice the
+    /// croupier's bubble in the instant it lands rather than waiting for the
+    /// post-turn refetch. Carries the full posted `MessageEvent` object (a raw
+    /// `Value` — the shape is owned by the Pascal writer).
+    PascalResult {
+        #[serde(rename = "pascalResult")]
+        pascal_result: serde_json::Value,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -456,8 +465,15 @@ impl ChatEvent {
         }
     }
 
-    /// A Host announcement event carrying the full posted message object (v4
-    /// `encodeHostAnnouncementEvent`).
+    /// A Pascal `run_custom` outcome event carrying the full posted message
+    /// object (v4 `encodePascalResultEvent`).
+    pub fn pascal_result(message: serde_json::Value) -> Self {
+        ChatEvent::PascalResult {
+            pascal_result: message,
+        }
+    }
+
+    /// `{hostAnnouncement: <message>}` (v4 `encodeHostAnnouncementEvent`).
     pub fn host_announcement(message: serde_json::Value) -> Self {
         ChatEvent::HostAnnouncement {
             host_announcement: message,
@@ -745,6 +761,17 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&ev).unwrap(),
             json!({ "carinaAnswer": msg })
+        );
+    }
+
+    #[test]
+    fn pascal_result_is_a_single_key_frame() {
+        // v4 `encodePascalResultEvent` → `{pascalResult: <message>}`.
+        let msg = json!({ "type": "message", "id": "pascal-1", "systemSender": "pascal" });
+        let ev = ChatEvent::pascal_result(msg.clone());
+        assert_eq!(
+            serde_json::to_value(&ev).unwrap(),
+            json!({ "pascalResult": msg })
         );
     }
 

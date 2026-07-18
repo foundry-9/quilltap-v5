@@ -401,6 +401,8 @@ where
             sql_access: true,
             model_supports_native_tools: deps.model_supports_native_tools,
             provider_supports_web_search,
+            // The character-less Brahma Console never offers `run_custom`.
+            custom_tool_context: None,
         },
     ) {
         Ok(built) => built,

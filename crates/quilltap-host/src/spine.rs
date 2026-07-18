@@ -299,6 +299,10 @@ pub fn orchestrator_chat_settings_from_value(row: &Value) -> OrchestratorChatSet
             .get("autoDetectRng")
             .and_then(Value::as_bool)
             .unwrap_or(true),
+        custom_tools: row
+            .get("customTools")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         answer_confirmation_global_enabled: row
             .get("answerConfirmationSettings")
             .and_then(|v| v.get("enabled"))

@@ -215,6 +215,8 @@ fn tool_build_matches_oracle() {
                 sql_access: c.sql_access,
                 model_supports_native_tools: c.model_supports_native_tools,
                 provider_supports_web_search: c.provider_supports_web_search,
+                // The tool-build corpus has no Pascal roster; no run_custom.
+                custom_tool_context: None,
             },
         )
         .expect("build_tools");

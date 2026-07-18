@@ -429,6 +429,14 @@ pub struct BuildToolsInput<'a> {
     pub model_supports_native_tools: bool,
     /// Injected `provider.supportsWebSearch`.
     pub provider_supports_web_search: bool,
+    /// Pascal's custom-tool roster perspective — the RESPONDING character's,
+    /// since a character-tier store shadows the farther tiers. `Some` offers
+    /// `run_custom`; `None` (the `customTools` setting is off, or the surface has
+    /// no roster) leaves it unbuilt. The roster is resolved INSIDE `build_tools`,
+    /// at the last possible moment, so a Courier turn / `allowToolUse:false` /
+    /// the legacy `disabledTools===undefined` bail all return before a single
+    /// mount is listed (v4 `streaming.service.ts:186`).
+    pub custom_tool_context: Option<crate::pascal::roster::RosterContext>,
 }
 
 /// v4 `buildTools` return.
@@ -475,6 +483,26 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         });
     };
 
+    // Pascal's custom pseudo-tools. Resolved ONCE per turn, here at the last
+    // possible moment — every early return above skips it entirely. A roster that
+    // comes back empty (or a resolve that throws — a broken vault must not take
+    // the whole turn down) leaves `run_custom` unbuilt. Deliberately NOT cached:
+    // a `.tool.json` edited mid-chat is live on the next call (v4
+    // `streaming.service.ts:240`).
+    let custom_tools = match &input.custom_tool_context {
+        Some(ctx) => db
+            .read_main(|main| {
+                db.read_mount_index(|mount| {
+                    Ok(crate::pascal::roster::resolve_custom_tool_roster(
+                        ctx, main, mount,
+                    ))
+                })
+            })
+            .map(|roster| roster.tools.into_iter().map(|(_, t)| t).collect())
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+
     let options = BuildToolsForProviderOptions {
         image_generation: input.image_profile_id.is_some(),
         image_provider_constraints: input.image_provider_constraints.clone(),
@@ -498,10 +526,7 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         include_workspace_tools: input.include_workspace_tools,
         exclude_memory_search: input.exclude_memory_search,
         sql_access: input.sql_access,
-        // Unit 9 resolves the Pascal roster inside `build_tools` and fills this;
-        // until then it is empty (→ no `run_custom` offered), matching a scene
-        // with no custom tools.
-        custom_tools: Vec::new(),
+        custom_tools,
     };
     let mut tools = build_tools_for_provider(&options);
 

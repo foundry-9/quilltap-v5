@@ -19255,3 +19255,65 @@ named deferrals, not silent gaps.
 
 **Version:** core 0.0.264 (no new harness artifact this unit — the tests are
 in-crate). **Remaining OPEN:** units 9, 7, 12.
+
+---
+
+### P4.6ay unit 9 — orchestration / streaming wiring
+
+**Landed:**
+
+- **`build_tools` roster resolution** (`services/tool_build.rs`).
+  `BuildToolsInput` gains `custom_tool_context: Option<RosterContext>`; the
+  roster resolves INSIDE `build_tools`, AFTER the two early returns
+  (`allowToolUse:false`, `disabledTools===undefined`) so every skip path avoids
+  it, and BEFORE the options are built. A resolve error is caught → `run_custom`
+  withheld (a broken vault must not sink the turn). NOT cached (freshness). The
+  resolved `roster.tools` fill `options.custom_tools` (unit 8's push).
+- **The orchestrator's `custom_tool_context`** (`services/orchestrator.rs`).
+  Built in the non-Courier branch from the responding `character` (`id`,
+  `characterDocumentMountPointId`) + the chat's CHARACTER participant ids +
+  `projectId`, gated by `custom_tools_enabled = chat_settings.custom_tools ??
+  true` — `None` when off (the feature's off-switch). `OrchestratorChatSettings`
+  gained `custom_tools: bool` (defaults true); the host `spine.rs`
+  `orchestrator_chat_settings_from_value` maps it from `row.customTools ?? true`.
+- **The `pascalResult` SSE frame** (`services/chat_events.rs`). A `PascalResult`
+  `ChatEvent` variant + `ChatEvent::pascal_result(message)`, serializing to the
+  single-key `{pascalResult: <message>}` beside `carinaAnswer` /
+  `hostAnnouncement` (v4 `encodePascalResultEvent`).
+- **Carina + Brahma** (`services/carina_query.rs`, `services/brahma_console/mod.rs`)
+  pass `custom_tool_context: None` — v4's `buildTools` calls omit the roster for
+  both (Carina's answerer, the character-less Console).
+
+**The live-emit deferral (documented, the `ask_carina` precedent):** v4 wires
+`context.emitPascalResult` as the handler's `onPosted` for the mid-turn SSE
+splice. The v5 `ToolExecutionContext` carries no per-turn sink, so — exactly as
+`run_ask_carina` does with `emitCarinaAnswer` — the posted Pascal message is
+persisted (the load-bearing effect) and the live `pascalResult` splice is left
+to the post-turn refresh / the finalizer path. The `pascal_result` encoder is
+landed for unit 7's route (which returns `messages: [pascalMessage]` directly).
+
+**Verification:**
+
+- `pascal_build_tools_roster` (harness, real-DB over the committed
+  `pascal-run-custom` fixture, no oracle env var): `build_tools` with char A's
+  context offers `run_custom` with a description IDENTICAL to
+  `build_run_custom_description` over the roster `resolve_custom_tool_roster`
+  returns; a `None` context offers none. The two constituents are each a v4
+  differential (`pascal_roster_equivalence`, `pascal_run_custom_equivalence`);
+  the roster ORDER (ansible, coin, whispered) is pinned to v4 by the handler
+  oracle's `unknown-tool` case. This confirms the wiring composes them on a real
+  DB.
+- `services::chat_events::tests::pascal_result_is_a_single_key_frame` (in-crate)
+  — the `{pascalResult: …}` frame shape.
+- **Behavior-neutral for existing differentials:** `build_tools`/orchestrator
+  with no Pascal roster (every existing fixture) resolves an empty roster → no
+  `run_custom` → byte-identical slate; `tool_build_equivalence` +
+  orchestrator/enclave tier-3 unchanged (their `OrchestratorChatSettings` /
+  `BuildToolsInput` constructions gained the new field/None).
+
+**Note (ownership):** this RESUMED lane runs off main with no parallel siblings,
+so it touches `quilltap-host/src/spine.rs` (the `OrchestratorChatSettings`
+projection) directly — no collision risk.
+
+**Versions:** core 0.0.265, harness 0.0.233, host 0.0.20.
+**Remaining OPEN:** units 7 (route + §4 dispatch verbs), 12 (Workbench server).

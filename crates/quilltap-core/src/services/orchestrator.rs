@@ -240,6 +240,10 @@ pub struct OrchestratorChatSettings {
     pub project_context_reinject_interval: i64,
     /// `autoDetectRng ?? true`.
     pub auto_detect_rng: bool,
+    /// `customTools ?? true` — the chat-level Pascal-custom-tools toggle.
+    /// Withholding the `run_custom` roster context when this is false is HOW the
+    /// setting turns the feature off (v4 `orchestrator.service.ts:888`).
+    pub custom_tools: bool,
     /// `answerConfirmationSettings.enabled === true`.
     pub answer_confirmation_global_enabled: bool,
     /// `autonomousRoomSettings.destructiveToolPolicy ?? 'opt_in_per_room'` — the
@@ -286,6 +290,7 @@ impl OrchestratorChatSettings {
             compression_enabled: true,
             project_context_reinject_interval: 5,
             auto_detect_rng: true,
+            custom_tools: true,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,
@@ -1375,6 +1380,53 @@ where
             input.clock.now_ms,
             &pricing_ctx,
         );
+
+        // Pascal's custom pseudo-tools (`run_custom`). The roster's perspective is
+        // the RESPONDING character's, because a character-tier store shadows the
+        // farther tiers — two characters in one room can hold different definitions
+        // of the same tool name. `character_id` is REQUIRED (the group tier is keyed
+        // on the responding character's own memberships and silently resolves to []
+        // without it); `character_mount_point_id` is merely the fast path to their
+        // vault. Withholding the context entirely is HOW the chat-level `customTools`
+        // setting turns the feature off: `build_tools` then never lists a mount.
+        let custom_tools_enabled = chat_settings
+            .as_ref()
+            .map(|s| s.custom_tools)
+            .unwrap_or(true);
+        let custom_tool_context = if custom_tools_enabled {
+            let participant_character_ids: Vec<String> = chat
+                .get("participants")
+                .and_then(Value::as_array)
+                .map(|ps| {
+                    ps.iter()
+                        .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+                        .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(crate::pascal::roster::RosterContext {
+                user_id: user_id.clone(),
+                chat_id: chat_id.clone(),
+                character_id: character
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                character_mount_point_id: character
+                    .get("characterDocumentMountPointId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                character_ids: Some(participant_character_ids),
+                project_id: chat
+                    .get("projectId")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            })
+        } else {
+            None
+        };
+
         let built = tool_build::build_tools(
             db,
             &user_id,
@@ -1407,6 +1459,7 @@ where
                 sql_access: false,
                 model_supports_native_tools: model_supports,
                 provider_supports_web_search: input.provider_supports_web_search,
+                custom_tool_context,
             },
         )?;
         (
