@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The quick-hide menu section (P4.9d unit 3): v4's nav-user-menu-quick-hide
+ported as a self-contained component — one eye button per flagged tag, then the
+Dangerous Chats and Show Autonomous Rooms filters. The autonomous toggle keeps
+v4's inverted icon polarity: an open eye means shown, because it adds rows
+rather than hiding them. The tags section is omitted entirely when no tag is
+flagged. v4's dropdown-item CSS is reproduced as component-scoped styles rather
+than added to the shared stylesheet, so the component carries its own look
+wherever it is mounted. Also ships the QuickHideIcon badge for the menu entry.
+The component is standalone and not yet mounted; the user menu that hosts it
+arrives with the About/Profile lane, and the mount happens at unification. SPA
+0.5.156.
+
 The quick-hide consumers (P4.9d unit 2): the filter now applies across the
 Salon list, both homepage sections, the characters roster, the character detail
 screen and its Conversations tab, and both Prospero cards. Each site keeps v4's
