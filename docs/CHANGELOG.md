@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+The theme preview modal (P4.9d tier 2): each bundled theme card in Settings →
+Appearance gains a Preview button that opens v4's preview modal — a banner
+painted in the theme's own background with a contrast-computed foreground, a
+live element preview under a Light/Dark toggle, and Apply. Where v4 fetches
+tokens from a themes registry endpoint, v5 reads the pack's committed
+tokens.json, so no server work is involved. The preview repaints one container
+and never the live theme: the tokens become custom properties under a unique
+class, including the re-declared component variables without which the
+preview's buttons and cards would keep painting in the active theme's colors.
+One divergence needs a human nod: v4 previews a theme without dark support in
+LIGHT, but v5's own theme service forces the one such pack (Madman's Box) to
+DARK, so v5 reads the flag as "single-mode" rather than "light-only" — the
+preview follows v5's rule so it shows what applying will actually do.
+Deferred loudly, because v5's bundled packs cannot feed them: the image
+gallery, the icon sheet (its SVGs were never copied into public/themes), CSS
+overrides scoping, source/deprecation badges, and preview for the built-in
+default, which is a base stylesheet rather than a token bundle. SPA 0.5.159.
+
 The quick-hide live walk (P4.9d unit 5): a Playwright beat that seeds a tag
 onto a character, drives Settings → Appearance → Tags to style it and tick
 "Enable quick-hide button", reloads to prove the flag round-tripped to the

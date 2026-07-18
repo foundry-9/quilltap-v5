@@ -3,9 +3,10 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../core/core-client';
 import type { ChatSettingsDto } from '../../../core/core-contract';
-import { ThemeService, type ColorMode } from '../../../theme/theme.service';
+import { ThemeService, type ColorMode, type ThemeOption } from '../../../theme/theme.service';
 import { Icon } from '../../../ui/icon';
 import { SettingsTagsCard } from './tags-tab';
+import { ThemePreviewModal } from './theme-preview-modal';
 
 type AvatarDisplayMode = 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
 type AvatarDisplayStyle = 'CIRCULAR' | 'RECTANGULAR';
@@ -60,7 +61,7 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
 @Component({
   selector: 'qt-settings-appearance',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, SettingsTagsCard],
+  imports: [Icon, SettingsTagsCard, ThemePreviewModal],
   template: `
     <div class="space-y-8">
       <!-- Quick Theme Access -->
@@ -144,39 +145,71 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           @for (opt of themes(); track opt.id ?? 'default') {
-            <button
-              type="button"
+            <!-- The card is a DIV wrapping two buttons, not one big button:
+                 the Preview affordance can't nest inside the apply button
+                 (nested <button> is invalid HTML). v4 keeps its Preview
+                 alongside for the same reason (ThemeSelector.tsx:275-288). -->
+            <div
               [class]="
-                'text-left p-4 border rounded-lg transition-colors ' +
+                'p-4 border rounded-lg transition-colors ' +
                 (activeThemeId() === opt.id
                   ? 'qt-border-primary qt-bg-muted'
                   : 'qt-border-default qt-hover-accent')
               "
-              [attr.aria-pressed]="activeThemeId() === opt.id"
-              (click)="applyTheme(opt.id)"
             >
-              <div class="flex items-center justify-between gap-2 mb-2">
-                <span class="font-medium qt-text-primary">{{ opt.name }}</span>
-                @if (activeThemeId() === opt.id) {
-                  <qt-icon name="check" class="w-4 h-4 qt-text-primary" />
-                }
-              </div>
-              <div class="flex gap-1 mb-2">
-                <span
-                  class="w-6 h-6 rounded border qt-border-default"
-                  [style.background]="opt.previewColors.background"
-                ></span>
-                <span class="w-6 h-6 rounded" [style.background]="opt.previewColors.primary"></span>
-                <span
-                  class="w-6 h-6 rounded"
-                  [style.background]="opt.previewColors.secondary"
-                ></span>
-              </div>
-              <p class="qt-text-xs qt-text-muted">{{ opt.description }}</p>
-            </button>
+              <button
+                type="button"
+                class="text-left w-full"
+                [attr.aria-pressed]="activeThemeId() === opt.id"
+                (click)="applyTheme(opt.id)"
+              >
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="font-medium qt-text-primary">{{ opt.name }}</span>
+                  @if (activeThemeId() === opt.id) {
+                    <qt-icon name="check" class="w-4 h-4 qt-text-primary" />
+                  }
+                </div>
+                <div class="flex gap-1 mb-2">
+                  <span
+                    class="w-6 h-6 rounded border qt-border-default"
+                    [style.background]="opt.previewColors.background"
+                  ></span>
+                  <span
+                    class="w-6 h-6 rounded"
+                    [style.background]="opt.previewColors.primary"
+                  ></span>
+                  <span
+                    class="w-6 h-6 rounded"
+                    [style.background]="opt.previewColors.secondary"
+                  ></span>
+                </div>
+                <p class="qt-text-xs qt-text-muted">{{ opt.description }}</p>
+              </button>
+              @if (opt.id) {
+                <!-- Omitted for the built-in default: it has no token bundle
+                     to preview (see theme-preview-modal.ts). -->
+                <button
+                  type="button"
+                  class="qt-button-secondary qt-button-sm mt-3"
+                  [attr.aria-label]="'Preview ' + opt.name"
+                  (click)="previewTheme.set(opt)"
+                >
+                  Preview
+                </button>
+              }
+            </div>
           }
         </div>
       </div>
+
+      @if (previewTheme(); as opt) {
+        <qt-theme-preview-modal
+          [theme]="opt"
+          [isActive]="activeThemeId() === opt.id"
+          (close)="previewTheme.set(null)"
+          (apply)="applyFromPreview(opt)"
+        />
+      }
 
       <!-- Avatar display mode -->
       <div class="qt-card p-5">
@@ -274,8 +307,17 @@ export class AppearanceTab {
     () => (this.settingsQuery.data()?.avatarDisplayStyle as AvatarDisplayStyle) ?? 'CIRCULAR',
   );
 
+  /** The theme whose preview modal is open (v4's single `previewThemeId`). */
+  protected readonly previewTheme = signal<ThemeOption | null>(null);
+
   protected applyTheme(id: string | null): void {
     this.theme.applyTheme(id);
+  }
+
+  /** v4's modal Apply (`ThemePreviewModal.tsx:205`) applies, then closes. */
+  protected applyFromPreview(opt: ThemeOption): void {
+    this.theme.applyTheme(opt.id);
+    this.previewTheme.set(null);
   }
   protected setColorMode(mode: ColorMode): void {
     this.theme.setColorMode(mode);
