@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Plan the unit-12 / P4.6bb Workbench round (docs only). A round addendum on
+the open P4.6ay order frames its one remaining item (unit 12's
+/custom-tools route surface) as lane AY, with the workbench oracle and
+route-differential obligations and a new attachment-coverage fixture
+family; a new order, p4.6bb-pascal-workbench-spa.md, specifies the
+Workbench SPA vertical (library, editor, builder, proving bench,
+destination picker, the tool-draft and client-safe schema TS ports with a
+byte-level corpus differential, and the four accumulated entry-point
+omissions). Both orders carry the identical binding shared contract: the
+four workbench dispatch verbs, DTOs pinned to exact v4 lines, the
+characterId-first metadata union, server-fixed audit runs, and the rule
+that editor file I/O rides the existing mount-file verbs. Status log gains
+the round-planned record. v4 baseline re-verified at d68638b4; no version
+bumps.
+
 Unify the resumed P4.6ay carryout lane (the second d68638b4-round
 unification). Units 4/8/9/7 and the unit-12 compute half land on main:
 run_custom is live end-to-end — the LLM tool and handler, catalogue

@@ -9,6 +9,53 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round planned — the unit-12 ∥ P4.6bb Workbench round: P4.6ay(unit 12) ∥ P4.6bb (2026-07-18)
+
+**Drift check:** v4 HEAD is exactly `d68638b4` (4.8.0-dev.72), unmoved and
+clean since the d68638b4-round unifications — no classification needed; the
+baseline stands. v5 main at planning: `d029a892`.
+
+**The round** (the phase plan's named "natural pairing"): TWO lanes, one
+worktree each, ownership fully disjoint (Rust vs `apps/web/`).
+
+- **Lane AY — P4.6ay unit 12's route surface** (the ONE item keeping P4.6ay
+  open; also lane BB's server dependency). Operative spec: the **unit-12
+  round addendum** now at the top of
+  `work-orders/p4.6ay-pascal-custom-tools-server.md` (scope was already
+  fully specified by the order's "Unit 12 (NEW, LAST)" section + the
+  unit-12-part-1 record; the addendum adds the round framing, the
+  differential/fixture obligations — a jest real-DB workbench oracle
+  patterned on v4's own 329-line `workbench.test.ts` over a NEW
+  attachment-coverage fixture family, plus the four-leg route differential
+  on the unit-7 recipe — and the §W contract). Closes P4.6ay when done.
+- **Lane BB — the Workbench SPA** (`work-orders/p4.6bb-pascal-workbench-spa.md`,
+  NEW): the `/custom-tools` vertical (library / editor-in-place / deep
+  links), the tool-draft + client-safe-schema TS ports **with a byte-level
+  corpus differential** (the pascal-definition NDJSON regenerated at
+  `d68638b4`, a copy committed under `apps/web/src/testing/fixtures/`, Zod
+  messages byte-compared; v4's 408-line `tool-draft.test.ts` ported
+  case-for-case), the six components (library, editor, builder form,
+  outcomes section, proving bench, destination picker — reusing BA's
+  `qt-custom-tool-params-form`), the static schema asset, and the four
+  accumulated entry-point omissions (left rail, Settings-card button,
+  Scriptorium row action, composer-popup entries). e2e beats
+  ACTIVATE-AT-UNIFY over the already-seeded Aria Tools roster.
+
+**The §W shared contract** (verbatim and identical in both orders): the four
+dispatch verbs (`customToolsLibrary` / `customToolsDestinations` /
+`customToolPreview` / `customToolAudit`) + DTOs transcribed from pinned v4
+lines (`workbench.ts:22-77`, `custom-tools.ts:431-451`/`:962-968`), the
+`{characterId}`-branch-FIRST metadata union, server-fixed `AUDIT_RUNS`, the
+error arms the SPA renders verbatim; §W2 pins that the editor's file I/O
+rides the EXISTING `MountFileRead`/`MountFileWrite` verbs (BB mirrors them
+name-for-name; AY doesn't touch them); §W3 the slippage rules both
+directions. Version bumps: AY = core + harness + web; BB = the SPA.
+
+**Deliberately left out of the round:** the human M5 + finding-#12 walk
+(still outstanding — human, not a lane), the M6 backlog items 1–4, and the
+`p4.9j` workspace-tabs human ruling (BB ports v4's own no-workspace
+route-navigation fallback, so nothing in the round waits on that ruling).
+
 ## Round record — the P4.6ay resumed-carryout unification (2026-07-17, the second d68638b4-round unification)
 
 **On main** (`unify/p4.6ay-resumed`, fast-forwarded): P4.6ay **units 4, 8,
