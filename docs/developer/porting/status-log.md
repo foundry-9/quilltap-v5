@@ -20654,3 +20654,111 @@ the base dir actually in use, the `?action=open` refusal, and the health version
 It rides a new `common::materialize_profile_instance` (additive to
 `tests/common/mod.rs`, which is outside the order's enumerated Ownership — flagged
 for the unifier; lane A does not touch it).
+
+### Units 4–7 — the SPA vertical (the version carry, `/about`, `/profile`, the user menu)
+
+**Unit 4 — the §3 version carry (SPA half).** `HealthStatus`'s healthy and
+locked arms gain an optional `version`; `interpretHealth` reads it once, so both
+transports agree for free (the Tauri `health` command replies with the body
+`health.rs` builds). Optional because a server predating the carry omits it —
+no gate behavior depends on it. A non-string value is ignored rather than
+rendered. The existing health specs on BOTH sides were extended (the HTTP arms +
+the omitted/non-string cases; two version-bearing fixtures added to the Tauri
+parity table).
+
+**Unit 5 — `/about`.** v4's content verbatim. Three divergences, all in the
+component's docstring and all deliberate:
+- the five shields.io badges render as LOCAL styled links (the M6 offline
+  ruling) — link targets unchanged, and a spec asserts zero shields.io images;
+- the version badge shows the SERVER's version (see unit 3's finding) and says
+  so, rather than v4's build-time product version;
+- no background image — v4 points at `/images/about.webp` and the v5 static set
+  has no such asset. **Deferred loudly rather than invented.**
+- (minor) v4 inlines an octocat and a globe SVG on two link buttons; the v5 icon
+  set has neither name, so those links lose their glyph.
+
+**⚠ One thing for the human, not a bug:** the tech-stack card is v4's list
+verbatim — Next.js, React, Lexical, Electron, SQLCipher — which is the M6
+content-parity deliverable AND a description of a different program than the one
+rendering it. The order explicitly said to port it verbatim and flag rather than
+edit silently, so: flagged. (The SQLCipher line is doubly wrong — see the
+standing cipher note.)
+
+**Unit 6 — `/profile`.** The three sections over the new verbs. v4's
+cache-busted avatar `src` and its `hasChanges` rule are carried; the client
+OMITS an empty field where v4 sends `null` and takes a 400 from its own route
+(the server keeps v4's rejection — it is the client that stops walking into it).
+The data-directory section always renders v4's non-openable BOX rather than the
+button, since v5 refuses the open action: v4's Docker copy verbatim when the
+server really is in Docker, an honest sentence otherwise.
+
+**Tier 2 landed, REDUCED:** the avatar picker. v4's `AvatarSelector` composes
+`ImageGallery` (over `GET /api/v1/images`, which has no v5 verb — and
+`apps/web/src/app/images/**` is lane A's this round) plus `ImageUploadDialog`.
+The v5 picker reads the already-live `filesList` and shows the categories the
+server's avatar gate accepts. **Deferred loudly:** importing a NEW image from
+inside the picker, tag filtering by context, and paging.
+
+**Unit 7 — `qt-user-menu` + the walk.** v4 `profile-menu.tsx` in the shell
+footer, its user from `userProfileGet` (v4 uses a session provider; v5 has none).
+v5's rail is collapsed-only, so the COLLAPSED arm ports and the name/email live
+inside the dropdown. Carries the §2b mount marker verbatim. The F4 stale
+docstring at `shell.ts:19-20` is fixed. Navigation is a plain router push —
+v4's `useWorkspaceNavigate` opens these as workspace TABS, which is `p4.9j`'s.
+
+**The e2e beat** (`profile-flow.spec.ts`, sorts after `foundation`): user menu →
+About renders a semver-shaped version from the LIVE health carry (proving
+`health.rs` → the HTTP body → `interpretHealth` → the screen, not a constant) →
+Profile's three sections → a name edit that survives a full RELOAD → restore.
+
+**⚠ An e2e-infrastructure fix rides in unit 7, outside the order's enumerated
+Ownership — flagged for the unifier.** `e2e/global-setup.ts` rewrote every
+user-scoped table's `userId` to `SINGLE_USER_ID` but never the `users` row's own
+PRIMARY KEY, which that loop cannot reach. So `userProfileGet` found no acting
+user and the Profile screen answered "User not found" over a fixture that
+plainly has a user. One added `UPDATE users SET id = …`. This is the P4.6s
+"rewrite EVERY user-scoped table" lesson one level down: the users table is
+user-scoped by its own id. Any lane whose screen reads the acting user by id
+would have hit the same wall. Also touched additively outside the enumerated
+list: `crates/quilltap-web/tests/common/mod.rs` gained
+`materialize_profile_instance` (lane A does not touch that file).
+
+**Both SPA spec families were mutation-checked** after passing first try
+(breaking `updateProfile`'s name field reddened exactly the two specs that claim
+it).
+
+### P4.9c gate (lane close)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets`
+clean on BOTH feature sets; `cargo test --workspace --no-fail-fast` = 350 test
+binaries / 1433 passed / 0 failed, with this lane's suites RUN by name and zero
+SKIP (`data_dir_paths_match_oracle`, `profile_routes_match_oracle`,
+`p4_9c_wire_contract`, `profile_web_edges`, and the re-verified
+`users_tier2_matches_oracle`). `ng test` 143 files / 1557; `ng build` clean;
+full Playwright 73/73, zero skips, with both P4.9c beats LIVE. No `<select>`
+exists anywhere in this lane's SPA files, so the standing dogfood-#6 rule is
+vacuously satisfied.
+
+Versions at lane close: core 0.0.271, harness 0.0.239, web 0.0.28, SPA 0.5.157.
+
+**Oracles this lane authored** (all generated from the PINNED detached worktree
+`/tmp/qt-v4-baseline` at `d68638b4`; `N=~/.nvm/versions/node/v24.13.1/bin`,
+`W`/`V5W` = this worktree):
+
+1. `data-dir-paths` (20 cases) —
+   `cd /tmp/qt-v4-baseline && QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson
+   $N/node --import tsx $W/harness/oracle/cases/data-dir-paths.ts`;
+   run with `QT_ORACLE_DATA_DIR`.
+2. `profile-routes` (18 cases, jest — needs the /tmp mirror because jest ignores
+   `.claude/` paths; `--roots "$TMPO/cases"` ONLY, or v4's own suites join in):
+   copy the case + `profile-web.json` into `/tmp/qt-profile-oracle/{cases,fixtures}`,
+   then from `/tmp/qt-v4-baseline` with `QT_FIXTURE_PROFILE_{MAIN,MOUNT}` +
+   `QT_ORACLE_OUT=/tmp/oracle-profile.ndjson`,
+   `$N/npx jest --silent --watchman=false --testTimeout=120000 -- profile-routes`;
+   run with `QT_ORACLE_PROFILE`.
+
+**Fixtures delivered:** `crates/quilltap-web/tests/fixtures/profile-{main,mount}.db`
+(+ `harness/oracle/fixtures/profile-web.json` + `build-profile-fixture.ts`).
+**Fixtures changed: NONE** — no other lane's oracle is invalidated by this lane.
+The `users_tier2` oracle was regenerated only to re-verify the `UserUpdate.image`
+signature change; its committed inputs are unchanged.
