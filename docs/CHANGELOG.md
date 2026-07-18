@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+The global tags card (P4.9d unit 4): v4's tags-tab ported into Settings →
+Appearance as the last card, where v4 mounts it. Tag Appearance offers a picker
+that gives an unstyled tag the default style, then a card per styled tag with
+emoji, the four text toggles, both color pickers (debounced 500ms as in v4),
+Remove Style, and the quick-hide authoring checkbox. Ticking that checkbox
+persists to the server and refreshes the quick-hide list, so the tag appears in
+the menu section live. Tag Management lists every tag name-sorted with its
+usage count and a delete confirm that names how many items the tag will be
+removed from. There is deliberately NO create flow, matching v4 — tags are born
+by assignment elsewhere, which is what the empty state says. Two things worth
+flagging: the shared TagUpdateRequest type was wrong on both shape (the patch
+is nested under `tag`, not flat) and type (visualStyle is an object, not a
+string), and had no caller before now; this lane sends what the engine accepts
+via local types and leaves the shared contract for the unifier. And v5 has no
+toast system, so failures surface as a card-level alert and successes are
+silent, matching the established v5 idiom. SPA 0.5.157.
+
 The quick-hide menu section (P4.9d unit 3): v4's nav-user-menu-quick-hide
 ported as a self-contained component — one eye button per flagged tag, then the
 Dangerous Chats and Show Autonomous Rooms filters. The autonomous toggle keeps

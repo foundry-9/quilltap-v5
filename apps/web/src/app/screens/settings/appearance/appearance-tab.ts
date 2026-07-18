@@ -5,6 +5,7 @@ import { CoreClient } from '../../../core/core-client';
 import type { ChatSettingsDto } from '../../../core/core-contract';
 import { ThemeService, type ColorMode } from '../../../theme/theme.service';
 import { Icon } from '../../../ui/icon';
+import { SettingsTagsCard } from './tags-tab';
 
 type AvatarDisplayMode = 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
 type AvatarDisplayStyle = 'CIRCULAR' | 'RECTANGULAR';
@@ -59,7 +60,7 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
 @Component({
   selector: 'qt-settings-appearance',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, SettingsTagsCard],
   template: `
     <div class="space-y-8">
       <!-- Quick Theme Access -->
@@ -232,6 +233,12 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
             </label>
           }
         </div>
+      </div>
+
+      <!-- Tags — v4 mounts this LAST in the Appearance tab
+           (AppearanceTabContent.tsx:48-50), after Appearance and Avatar Settings. -->
+      <div class="qt-card p-5">
+        <qt-settings-tags />
       </div>
     </div>
   `,
