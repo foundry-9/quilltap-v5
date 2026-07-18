@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6bb unit 2 (SPA): the client-safe custom-tool schema, hand-ported with a
+byte-level corpus differential. The SPA has no zod, so app/pascal/
+custom-tool-types.ts reimplements the slice of Zod 4.4.3 that
+QtapCustomToolSchema needs — the abort/hoist rules, the union-result hoist, the
+strict-object tails, and every message string — because the rejection sentence
+is user-visible payload the server also produces. app/pascal/dice-notation.ts
+ports v4's pure grammar half (split out at d68638b4 to be client-bundle-safe).
+The teeth: a committed 115-row copy of the pascal-definition oracle corpus,
+generated from v4's real Zod at d68638b4, replayed row by row with the verdict,
+the parsed data (JSON.stringify, so key order and omitted optionals are pinned),
+the unknown-key report, and the full formatDefinitionIssues sentence all
+byte-compared. angular.json registers a .ndjson text loader so the fixture
+inlines verbatim. SPA 0.5.144.
+
 P4.6bb unit 1 (SPA): the Workbench wire mirror. core-contract.ts gains the
 four §W1 dispatch verbs (customToolsLibrary, customToolsDestinations,
 customToolPreview, customToolAudit) and every DTO transcribed from the same v4

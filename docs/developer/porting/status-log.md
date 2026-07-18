@@ -19788,3 +19788,62 @@ ripple outside the lane). **Lane AY is unaffected:** the Rust name it mirrors is
 the v4 one.
 
 **Versions:** SPA 0.5.143.
+
+### Unit 2 — the client-safe schema module + the corpus differential
+
+`app/pascal/custom-tool-types.ts` (v4 `lib/pascal/custom-tool.types.ts`, the
+validation half) and `app/pascal/dice-notation.ts` (v4's pure grammar, 162 —
+split out at `d68638b4` precisely so the schema can travel into a client
+bundle). Verified: the SPA has NO zod (absent from package.json, imported
+nowhere), so this is a hand port of the Zod slice, not a re-use.
+
+**Why the port had to be exact, not approximate.** `formatDefinitionIssues` is
+payload, not a debugging aid: `loadToolsFromMount` stores it as a load error's
+`reason`, and both the chat roster route and the Workbench library route return
+it verbatim. The editor renders the same sentence for a draft the author is
+repairing — a browser that phrased it differently would be disagreeing with the
+server about the same file. So the port carries Zod 4.4.3's own built-in
+messages AND its issue ORDER (the join is `'; '`), which means reproducing three
+rules: (1) an issue aborts unless a check raised it; (2) checks are SKIPPED once
+the value has an aborting issue; (3) `handleUnionResults` — a union whose
+branches all fail hoists the single non-aborted branch verbatim instead of
+wrapping, which is why a bad dice notation reads as its own sentence rather than
+a bare `Invalid input`. v5's Rust `pascal/custom_tool_types.rs` was the second
+reference throughout (already differential-verified against the same corpus).
+
+**The differential:** `custom-tool-types.corpus.spec.ts` replays a COMMITTED
+copy of the pascal-definition oracle NDJSON — 115 rows (10 titles + 105
+definitions) regenerated at `d68638b4` — and per row byte-compares the verdict,
+the parsed data via `JSON.stringify` (pinning key ORDER and omitted optionals,
+not merely field values), `collectUnknownKeys`, and the full rejection sentence.
+A shape guard asserts 115/10/105 so a truncated fixture cannot pass silently
+(`[[oracle-regen-silent-stale-pass]]`). **116/116 green.** Teeth confirmed by two
+deliberate mutations, each caught: altering one message string (2 rows red) and
+swapping the emission order of `title`/`description` in the parsed object (2 rows
+red).
+
+**No v4 drift.** The regenerated corpus was first run back through the existing
+Rust `pascal_custom_tool_definition_equivalence` differential — green, 10 titles
++ 105 definitions — so the tripwire the order warned about did not fire and the
+committed copy is byte-identical to what the Rust side consumes.
+
+**One arm the corpus cannot pin, recorded rather than hidden:** `z.number()
+.finite()` is reachable only via an overflow literal (`{"gt": 1e999}` → JS
+`Infinity`; JSON has no `Infinity`/`NaN` literal). Being JS, THIS port reaches
+that arm exactly as v4 does — the Rust port cannot, since serde_json rejects the
+literal one layer earlier at the parse, which is the divergence recorded in
+`custom_tool_types.rs`. Because the corpus carries no such row (there is nothing
+there for the Rust side to assert), `FINITE_EXPECTED` is carried faithfully from
+the Rust port but is the one message in the file NOT pinned by the differential.
+Extending the corpus would mean editing `harness/oracle/`, which is lane AY's
+ownership this round — so it is named here instead.
+
+**Tooling note:** the corpus reaches the spec through an esbuild `text` loader
+registered for `.ndjson` in `angular.json`'s build options (+ a `*.ndjson`
+module declaration). Vite's `?raw` suffix works under a bare `vitest run` but
+NOT through the Angular builder's esbuild, which wants the extension declared —
+`npm run test` is the gate that catches this, `npx vitest` is not.
+
+Gate: ng test 134 files / 1402 (+116), ng build clean.
+
+**Versions:** SPA 0.5.144.
