@@ -1704,6 +1704,19 @@ export interface CarinaMeta {
  * .optional()` in v4, so it's optional here (the read omits it when NULL, v4
  * `undefined`).
  */
+/**
+ * §A — the consult record that rides `pascalMeta.llm` and a bench run's
+ * result. Shape and key order mirror v4 `lib/schemas/chat.types.ts:378-385`.
+ */
+export interface LlmConsultRecord {
+  ok: boolean;
+  output: string;
+  prompt: string;
+  reason?: string;
+  provider?: string;
+  model?: string;
+}
+
 export interface PascalMeta {
   /** Identity — the declaration name. Always present. */
   tool: string;
@@ -1726,6 +1739,19 @@ export interface PascalMeta {
   /** The metadata keys the winning outcome consulted (primitives only); absent
    *  when it tested none. */
   metadataTested?: Record<string, number | string | boolean>;
+  /**
+   * §A — the LLM consult, when the definition declared one: what was asked
+   * (`prompt`, fully rendered), whether it was answered (`ok`), and the
+   * `output` the table tested — the model's trimmed answer, or the author's
+   * `errorMessage` when the consult failed. `reason` is the technical failure
+   * cause, recorded for the operator and NEVER spoken in the fiction. Absent
+   * on tools with no `llm` block; the optionals are OMITTED when absent, never
+   * null.
+   *
+   * Type-only this round: v4 renders nothing new in the Salon bubble either,
+   * so the consult surfaces through the Inspector alone (verified parity).
+   */
+  llm?: LlmConsultRecord;
   /** A model's reach for the tool vs a user's own Run-Tool. */
   invokedBy: 'llm' | 'user';
   callerParticipantId?: string;
@@ -4221,6 +4247,8 @@ export interface CustomToolLibraryEntry {
   disabled: boolean;
   defaultVisibility: 'public' | 'whisper';
   rollForm: 'range' | 'dice';
+  /** §B — true when the definition declares an `llm` consult block. */
+  llm: boolean;
   parameterCount: number;
   outcomeCount: number;
   mountPointId: string;
@@ -4306,6 +4334,11 @@ export interface CustomToolRunResult {
    * was tested. Absent when the winning row consulted no metadata.
    */
   metadataTested?: MetadataTested;
+  /**
+   * §A — the consult, when the tool declared one. On a BENCH run a scripted
+   * oracle carries `provider: 'bench', model: 'simulated'`.
+   */
+  llm?: LlmConsultRecord;
 }
 
 /**

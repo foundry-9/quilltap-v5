@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6bc unit 3: the Workbench consult surfaces. BuilderForm grows v4's
+"The consulted oracle" card (enable toggle, prompt with its counter,
+"When the oracle is silent", the answer cap, inline llm-section issues
+and warnings); OutcomesSection offers the Consult answer / Consult
+succeeded subjects while the consult is on, the typeOfSubject comparator
+menus (string: eq/neq/contains/ncontains; boolean: eq/neq; unknowable:
+all eight; number: no containment), the two comparator labels, the
+text-only operand widget with its coercions, string-param filtering
+under containment, the three fail-soft hints, and {{llm}} in the insert
+menu; ProvingBench grows the scripted/silence/live oracle card, with the
+audit's shape carrying no live arm at all; the library shows the oracle
+badge. workbench.api.ts mirrors the §B preview/audit bodies. The
+published JSON Schema asset is byte-copied from v4 616930db. The
+Inspector gains the CUSTOM_TOOL_CONSULT badge, label, and `other`
+filter-group membership, and PascalMeta mirrors the §A consult record.
+v4's nine-case workbench-llm suite ported case-for-case. SPA 0.5.172.
+
 P4.6bc unit 2: the tool-draft bijection carries the consult. ToolDraft
 gains llmEnabled/llmPrompt/llmErrorMessage/llmMaxOutput (kept while
 disabled, like the roll fields); ConditionSubject gains the llm and

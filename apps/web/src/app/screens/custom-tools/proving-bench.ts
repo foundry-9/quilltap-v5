@@ -37,6 +37,13 @@ interface BenchCharacter {
 /** The fact sheet, in one of its two modes (§4.5 card 2). */
 type FactSheet = { mode: 'character'; characterId: string } | { mode: 'manual'; text: string };
 
+/**
+ * The bench's oracle: script an answer, script a silence, or — for single rolls
+ * only — spend a real consult. The audit never goes live: ten thousand hands
+ * must not mean ten thousand LLM calls.
+ */
+type BenchOracle = { mode: 'scripted'; answer: string } | { mode: 'fail' } | { mode: 'live' };
+
 export function formatShort(value: number): string {
   if (Number.isInteger(value)) return String(value);
   return String(Number(value.toPrecision(4)));
@@ -129,6 +136,11 @@ export function extractErrorMessage(err: unknown): string {
               raw {{ short(entry.raw) }} → value {{ short(entry.value) }} · matched
               {{ rowLabel(entry.outcomeIndex) }} ({{ entry.state }}){{ sheetSuffix(entry) }}
             </p>
+            @if (entry.llm; as llm) {
+              <p class="text-xs qt-text-secondary font-mono">
+                consult {{ llm.ok ? 'answered' : failedSuffix(llm) }}: {{ jsonString(llm.output) }}
+              </p>
+            }
           </div>
         }
       </section>
@@ -209,6 +221,88 @@ export function extractErrorMessage(err: unknown): string {
           </p>
         }
       </section>
+
+      <!-- Card 2½ — The oracle (only when the tool consults one) -->
+      @if (draft().llmEnabled) {
+        <section class="qt-card p-3 space-y-2">
+          <h3 class="qt-card-title text-sm">The oracle</h3>
+          <p class="qt-hint">
+            This tool consults a model mid-run. Script its answer here, or spend a real consult on a
+            single roll.
+          </p>
+          <div
+            class="flex rounded overflow-hidden border w-fit"
+            role="radiogroup"
+            aria-label="Oracle mode"
+          >
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="oracle().mode === 'scripted'"
+              [class]="
+                oracle().mode === 'scripted'
+                  ? 'px-2 py-1 text-xs qt-button qt-button-primary'
+                  : 'px-2 py-1 text-xs qt-button qt-button-ghost'
+              "
+              (click)="pickScripted()"
+            >
+              Scripted answer
+            </button>
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="oracle().mode === 'fail'"
+              [class]="
+                oracle().mode === 'fail'
+                  ? 'px-2 py-1 text-xs qt-button qt-button-primary'
+                  : 'px-2 py-1 text-xs qt-button qt-button-ghost'
+              "
+              (click)="oracle.set({ mode: 'fail' })"
+              title="The consult fails; the run shows your error line"
+            >
+              Silence
+            </button>
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="oracle().mode === 'live'"
+              [class]="
+                oracle().mode === 'live'
+                  ? 'px-2 py-1 text-xs qt-button qt-button-primary'
+                  : 'px-2 py-1 text-xs qt-button qt-button-ghost'
+              "
+              (click)="oracle.set({ mode: 'live' })"
+              title="A single roll asks the real model — one paid consult per roll"
+            >
+              Ask it live
+            </button>
+          </div>
+
+          @if (oracle().mode === 'scripted') {
+            <div>
+              <textarea
+                [value]="scriptedAnswer()"
+                (input)="oracle.set({ mode: 'scripted', answer: inputValue($event) })"
+                rows="2"
+                class="qt-textarea w-full text-xs"
+                placeholder="What shall the oracle be made to say?"
+                aria-label="Scripted oracle answer"
+              ></textarea>
+              @if (scriptedAnswer().trim() === '') {
+                <p class="text-xs qt-text-secondary">
+                  Empty — the bench treats this as silence, and the run shows your error line.
+                </p>
+              }
+            </div>
+          }
+          @if (oracle().mode === 'live') {
+            <p class="text-xs qt-text-secondary">
+              Each roll pays for one real consult through the cheap-model machinery. The audit never
+              goes live — it deals its hands against the scripted answer, or silence.
+            </p>
+          }
+        </section>
+      }
 
       <!-- Card 3 — Table audit -->
       <section class="qt-card p-3 space-y-2">
@@ -291,6 +385,7 @@ export class ProvingBench {
   readonly values = signal<ParameterFormValues>({});
   readonly isPrivate = signal(false);
   readonly sheet = signal<FactSheet>({ mode: 'manual', text: '{}' });
+  readonly oracle = signal<BenchOracle>({ mode: 'scripted', answer: '' });
   readonly rolls = signal<CustomToolRunResult[]>([]);
   readonly audit = signal<CustomToolAuditResult | null>(null);
 
@@ -437,6 +532,38 @@ export class ProvingBench {
     }
   }
 
+  /** The scripted answer's text, or '' in the other two modes. */
+  readonly scriptedAnswer = computed(() => {
+    const o = this.oracle();
+    return o.mode === 'scripted' ? o.answer : '';
+  });
+
+  /** Switching TO scripted keeps an answer already typed, exactly as v4 does. */
+  protected pickScripted(): void {
+    const o = this.oracle();
+    this.oracle.set({ mode: 'scripted', answer: o.mode === 'scripted' ? o.answer : '' });
+  }
+
+  /** The oracle input for a single roll; undefined when the tool has no consult. */
+  private previewOracle(): api.PreviewOracle | undefined {
+    if (!this.draft().llmEnabled) return undefined;
+    const o = this.oracle();
+    if (o.mode === 'live') return { live: true };
+    if (o.mode === 'scripted' && o.answer.trim() !== '') return { output: o.answer };
+    return { fail: true };
+  }
+
+  /**
+   * The audit's oracle: the scripted answer, else silence. NEVER live — the
+   * return type has no such arm, which is the guard.
+   */
+  private auditOracle(): api.AuditOracle | undefined {
+    if (!this.draft().llmEnabled) return undefined;
+    const o = this.oracle();
+    if (o.mode === 'scripted' && o.answer.trim() !== '') return { output: o.answer };
+    return { fail: true };
+  }
+
   async roll(): Promise<void> {
     this.rolling.set(true);
     this.rollError.set(null);
@@ -446,6 +573,7 @@ export class ProvingBench {
         params: coerceParamValues(this.paramSpecs(), this.effectiveValues()),
         private: this.isPrivate(),
         metadata: this.benchMetadata(),
+        llm: this.previewOracle(),
       });
       this.rolls.update((prev) => [result, ...prev].slice(0, 10));
       this.matched.emit(this.draft().outcomes[result.outcomeIndex]?.id ?? null);
@@ -465,6 +593,7 @@ export class ProvingBench {
           definition: definitionFromDraft(this.draft()),
           params: coerceParamValues(this.paramSpecs(), this.effectiveValues()),
           metadata: this.benchMetadata(),
+          llm: this.auditOracle(),
         }),
       );
     } catch (err) {
@@ -475,6 +604,16 @@ export class ProvingBench {
   }
 
   // -- Row labelling --------------------------------------------------------
+
+  /** v4 `MiniPascalBubble` — the failure half of the consult debug line. */
+  protected failedSuffix(llm: { reason?: string }): string {
+    return `failed (${llm.reason ?? 'no reason recorded'})`;
+  }
+
+  /** The consult's answer, quoted the way v4's `JSON.stringify(output)` does. */
+  protected jsonString(value: string): string {
+    return JSON.stringify(value);
+  }
 
   protected rowLabel(index: number): string {
     return this.draft().outcomes[index]?.catchAll ? 'the catch-all' : `row ${index + 1}`;

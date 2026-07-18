@@ -489,3 +489,20 @@ describe('LLMInspectorEntry — the Usage tab (v4 :301-354)', () => {
     ).not.toContain('No usage data available');
   });
 });
+
+/**
+ * The `616930db` drift (P4.6bc): the custom-tool consult joins the type maps.
+ * v4 anchors: `LLMInspectorEntry.tsx:27` (badge class) and `:43` (label).
+ */
+describe('the CUSTOM_TOOL_CONSULT type (v4 616930db)', () => {
+  it('carries the info badge and reads "Consult"', () => {
+    const fixture = render(log({ type: 'CUSTOM_TOOL_CONSULT' }));
+    const el = fixture.nativeElement as HTMLElement;
+    const badge = Array.from(el.querySelectorAll('span')).find(
+      (s) => s.textContent?.trim() === 'Consult',
+    );
+    expect(badge).toBeDefined();
+    expect(badge?.className).toContain('qt-bg-info/15');
+    expect(badge?.className).toContain('qt-text-info');
+  });
+});

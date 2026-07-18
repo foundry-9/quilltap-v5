@@ -319,3 +319,23 @@ describe('LLMInspectorPanel — highlight + scroll-to-message (v4 :64-85, :153)'
     expect(entryIds(fixture)).toEqual([]);
   });
 });
+
+/**
+ * The `616930db` drift (P4.6bc): the consult joins the `other` filter group
+ * (v4 `LLMInspectorPanel.tsx:18`), so it is reachable outside `all`.
+ */
+describe('the CUSTOM_TOOL_CONSULT filter group (v4 616930db)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('is reachable under other, alongside Wizard and Import', () => {
+    const fixture = render({
+      logs: [
+        log({ id: 'consult', type: 'CUSTOM_TOOL_CONSULT' }),
+        log({ id: 'wizard', type: 'CHARACTER_WIZARD' }),
+        log({ id: 'chat', type: 'CHAT_MESSAGE' }),
+      ],
+    });
+    setFilter(fixture, 'other');
+    expect(entryIds(fixture).sort()).toEqual(['consult', 'wizard']);
+  });
+});

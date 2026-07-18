@@ -11,6 +11,7 @@ import {
 
 import { MAX_MESSAGE_LENGTH, MAX_OUTCOMES, type OutcomeState } from '../../pascal/custom-tool-types';
 import {
+  CONTAINMENT_COMPARATORS,
   ORDERING_COMPARATORS,
   conditionSlotKey,
   type ComparatorKey,
@@ -94,7 +95,11 @@ export function describeSlot(condition: Pick<DraftCondition, 'subject' | 'compar
   }
 }
 
-/** The value type a subject carries, or null for metadata (unknowable). */
+/**
+ * The value type a subject carries, or null where it is unknowable at authoring
+ * time — a metadata key's stored value, or whatever the consulted model chooses
+ * to answer.
+ */
 function subjectValueType(
   subject: ConditionSubject,
   paramByName: Map<string, DraftParameter>,
@@ -104,6 +109,8 @@ function subjectValueType(
     const p = paramByName.get(subject.name);
     return p ? (p.type === 'integer' ? 'number' : p.type) : null;
   }
+  if (subject.kind === 'llm-ok') return 'boolean';
+  // 'metadata' | 'llm'
   return null;
 }
 
@@ -210,10 +217,22 @@ export class OperandField {
 
   readonly operand = computed(() => this.condition().operand);
   private readonly ordering = computed(() => ORDERING_COMPARATORS.has(this.condition().comparator));
-  private readonly isMetadata = computed(() => this.condition().subject.kind === 'metadata');
+  private readonly containment = computed(() =>
+    CONTAINMENT_COMPARATORS.has(this.condition().comparator),
+  );
+  /** Metadata and the consult's answer both have an unknowable stored type. */
+  private readonly typeUnknowable = computed(() => {
+    const kind = this.condition().subject.kind;
+    return kind === 'metadata' || kind === 'llm';
+  });
 
+  // Containment needs no picker — the substring is always text.
   readonly showTypePicker = computed(
-    () => this.isMetadata() && !this.ordering() && this.operand().kind !== 'param',
+    () =>
+      this.typeUnknowable() &&
+      !this.ordering() &&
+      !this.containment() &&
+      this.operand().kind !== 'param',
   );
 
   /** Which widget the operand renders as — v4's nested ternary, named. */
@@ -221,7 +240,9 @@ export class OperandField {
     const o = this.operand();
     if (o.kind === 'param') return 'param';
     if (o.kind === 'boolean') return 'boolean';
-    if (o.kind === 'string' && this.subjectType() !== 'number') return 'string';
+    if (o.kind === 'string' && (this.containment() || this.subjectType() !== 'number')) {
+      return 'string';
+    }
     return 'number';
   });
 
@@ -280,10 +301,10 @@ export class OperandField {
     if (this.operand().kind === 'param') {
       const t = this.subjectType();
       this.setOperand(
-        t === 'boolean'
-          ? { kind: 'boolean', value: true }
-          : t === 'string'
-            ? { kind: 'string', text: '' }
+        this.containment() || t === 'string'
+          ? { kind: 'string', text: '' }
+          : t === 'boolean'
+            ? { kind: 'boolean', value: true }
             : { kind: 'number', text: '' },
       );
       return;
@@ -305,19 +326,49 @@ export class OperandField {
       class="flex items-center gap-1 flex-wrap rounded border px-2 py-1"
       [class.qt-input-error]="hasError()"
     >
+      <!--
+        selected-per-option, never a value binding on the select: two of the
+        options below sit behind an @if, and a value set before the matching
+        option exists silently falls back to the first one (the standing
+        dogfood-#6 rule; the P4.6j memory). NB no backticks in a template
+        comment - they end the literal.
+      -->
       <select
-        [value]="subjectValue()"
         (change)="onSubjectChange(selectValue($event))"
         [disabled]="disabled()"
         class="qt-select qt-select-sm"
         aria-label="Condition subject"
       >
-        <option value="value">Value</option>
-        <option value="roll" title="The raw pre-transform draw">Raw roll</option>
+        <option value="value" [selected]="subjectValue() === 'value'">Value</option>
+        <option
+          value="roll"
+          title="The raw pre-transform draw"
+          [selected]="subjectValue() === 'roll'"
+        >
+          Raw roll
+        </option>
         @for (p of namedParameters(); track p.id) {
-          <option [value]="'param:' + p.name">Parameter: {{ p.name }}</option>
+          <option [value]="'param:' + p.name" [selected]="subjectValue() === 'param:' + p.name">
+            Parameter: {{ p.name }}
+          </option>
         }
-        <option value="metadata">Metadata…</option>
+        <option value="metadata" [selected]="subjectValue() === 'metadata'">Metadata…</option>
+        @if (draft().llmEnabled) {
+          <option
+            value="llm"
+            title="What the consulted model answered"
+            [selected]="subjectValue() === 'llm'"
+          >
+            Consult answer
+          </option>
+          <option
+            value="llm-ok"
+            title="Whether the consult produced an answer at all"
+            [selected]="subjectValue() === 'llm-ok'"
+          >
+            Consult succeeded
+          </option>
+        }
       </select>
 
       @if (metadataKey() !== null) {
@@ -334,15 +385,18 @@ export class OperandField {
         />
       }
 
+      <!-- Same rule: the option list is @for-driven and its membership changes
+           with the subject's type. -->
       <select
-        [value]="condition().comparator"
         (change)="onComparatorChange(selectValue($event))"
         [disabled]="disabled()"
-        class="qt-select qt-select-sm w-14"
+        class="qt-select qt-select-sm min-w-14"
         aria-label="Comparator"
       >
         @for (key of comparators(); track key) {
-          <option [value]="key">{{ COMPARATOR_LABELS[key] }}</option>
+          <option [value]="key" [selected]="condition().comparator === key">
+            {{ COMPARATOR_LABELS[key] }}
+          </option>
         }
       </select>
 
@@ -354,10 +408,22 @@ export class OperandField {
         (conditionChange)="conditionChange.emit($event)"
       />
 
-      @if (metadataKey() !== null && ordering()) {
+      @if (metadataKey() !== null && (ordering() || containment())) {
+        <span class="text-xs qt-text-secondary" [title]="metadataHintTitle()">ⓘ</span>
+      }
+
+      @if (subjectKind() === 'llm' && ordering()) {
         <span
           class="text-xs qt-text-secondary"
-          title="Matches only when the stored value is a number — anything else declines the row at run time, fail-soft, never an error."
+          title="Matches only when the answer reads as a number — anything else declines the row at run time, fail-soft, never an error."
+          >ⓘ</span
+        >
+      }
+
+      @if (subjectKind() === 'llm' && containment()) {
+        <span
+          class="text-xs qt-text-secondary"
+          title="Searches the answer without regard to case — 'west door' finds 'the West Door'."
           >ⓘ</span
         >
       }
@@ -405,28 +471,45 @@ export class ConditionChip {
   );
 
   readonly ordering = computed(() => ORDERING_COMPARATORS.has(this.condition().comparator));
+  readonly containment = computed(() =>
+    CONTAINMENT_COMPARATORS.has(this.condition().comparator),
+  );
+
+  readonly subjectKind = computed(() => this.condition().subject.kind);
+
+  /** The metadata ⓘ carries a different sentence for ordering and containment. */
+  protected metadataHintTitle(): string {
+    return this.ordering()
+      ? 'Matches only when the stored value is a number — anything else declines the row at run time, fail-soft, never an error.'
+      : 'Matches only when the stored value is text — anything else declines the row at run time, fail-soft, never an error.';
+  }
 
   /**
-   * Metadata offers all six comparators — the stored type is unknowable at
-   * authoring time (§4.4.1). String/boolean params offer only = and ≠.
+   * Metadata and the consult's answer offer every comparator — the stored type
+   * is unknowable at authoring time (§4.4.1). String subjects offer equality
+   * and containment; boolean subjects only = and ≠; numbers cannot contain.
    */
   readonly comparators = computed<ComparatorKey[]>(() => {
     const t = this.subjectType();
-    return t === 'string' || t === 'boolean'
-      ? ['eq', 'neq']
-      : ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'];
+    if (t === 'string') return ['eq', 'neq', 'contains', 'ncontains'];
+    if (t === 'boolean') return ['eq', 'neq'];
+    if (t === null) return ['gt', 'gte', 'lt', 'lte', 'eq', 'neq', 'contains', 'ncontains'];
+    return ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'];
   });
 
   /** Parameters an operand reference may name, mirroring `validateComparator`. */
   readonly eligibleOperandParams = computed(() => {
     const subject = this.condition().subject;
     const ordering = this.ordering();
+    const containment = this.containment();
     const subjectType = this.subjectType();
     return this.draft()
       .parameters.filter((p) => {
         if (!p.name) return false;
-        if (subject.kind === 'metadata') {
-          // With the stored value's type unknown, no reference can be ruled
+        // A substring must be text whatever the subject turns out to hold.
+        if (containment) return p.type === 'string';
+        if (subject.kind === 'metadata' || subject.kind === 'llm') {
+          // With the subject's type unknown, no reference can be ruled
           // incompatible — ordering still demands a number, though.
           return !ordering || p.type === 'number' || p.type === 'integer';
         }
@@ -458,12 +541,17 @@ export class ConditionChip {
     else if (value === 'roll') nextSubject = { kind: 'roll' };
     else if (value === 'metadata') {
       nextSubject = { kind: 'metadata', key: subject.kind === 'metadata' ? subject.key : '' };
-    } else nextSubject = { kind: 'param', name: value.slice('param:'.length) };
+    } else if (value === 'llm') nextSubject = { kind: 'llm' };
+    else if (value === 'llm-ok') nextSubject = { kind: 'llm-ok' };
+    else nextSubject = { kind: 'param', name: value.slice('param:'.length) };
 
     // Re-legalize the comparator and operand for the new subject's type.
     let nextComparator = condition.comparator;
     const nextType = subjectValueType(nextSubject, this.paramByName());
     if ((nextType === 'string' || nextType === 'boolean') && ORDERING_COMPARATORS.has(nextComparator)) {
+      nextComparator = 'eq';
+    }
+    if ((nextType === 'number' || nextType === 'boolean') && CONTAINMENT_COMPARATORS.has(nextComparator)) {
       nextComparator = 'eq';
     }
     let nextOperand: ConditionOperand = condition.operand;
@@ -501,6 +589,16 @@ export class ConditionChip {
       nextOperand = {
         kind: 'number',
         text: nextOperand.kind === 'string' ? nextOperand.text : '',
+      };
+    }
+    if (
+      CONTAINMENT_COMPARATORS.has(comparator) &&
+      (nextOperand.kind === 'number' || nextOperand.kind === 'boolean')
+    ) {
+      // Containment looks for text (or a string-param reference) everywhere.
+      nextOperand = {
+        kind: 'string',
+        text: nextOperand.kind === 'number' ? nextOperand.text : '',
       };
     }
     this.conditionChange.emit({ ...condition, comparator, operand: nextOperand });
@@ -686,6 +784,16 @@ export class ConditionList {
               >
                 Metadata key…
               </button>
+              @if (draft().llmEnabled) {
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="block w-full text-left px-3 py-1 text-sm"
+                  (click)="insertConsultAnswer()"
+                >
+                  Consult answer
+                </button>
+              }
             </div>
           }
         </div>
@@ -741,6 +849,10 @@ export class OutcomeMessageEditor {
 
   protected insertParam(name: string): void {
     this.insertAtCursor(`{{params.${name}}}`);
+  }
+
+  protected insertConsultAnswer(): void {
+    this.insertAtCursor('{{llm}}');
   }
 
   insertAtCursor(placeholder: string): void {

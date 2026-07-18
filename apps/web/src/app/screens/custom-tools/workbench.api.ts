@@ -1,6 +1,7 @@
 import type { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
 import type {
+  CoreRequest,
   CustomToolAuditResult,
   CustomToolDestinations,
   CustomToolLibraryResponse,
@@ -48,6 +49,26 @@ export async function fetchDestinations(core: CoreClient): Promise<CustomToolDes
   return data as unknown as CustomToolDestinations;
 }
 
+/**
+ * §B of the `616930db` round — the bench's scripted oracle.
+ *
+ * Typed HERE rather than in `core-contract.ts` because these are request-body
+ * fields on two EXISTING verbs, not a new response shape; lane D8 owns the
+ * server-side union and the `p4_6ay_workbench_wire_contract` diff.
+ *
+ * Preview takes all three arms. **The audit has no `live` arm, and that is
+ * enforced by the SHAPE, not by a guard**: ten thousand hands must never mean
+ * ten thousand paid consults.
+ *
+ * The two dispatch calls below therefore widen through `CoreRequest` with a
+ * cast: `CustomToolPreviewRequest` / `CustomToolAuditRequest` do not carry
+ * `llm` yet, because lane D8 owns those variants this round. **At unification
+ * the field folds into core-contract.ts and BOTH casts come out** — the same
+ * wire the P4.6ao / P4.9c rounds took.
+ */
+export type PreviewOracle = { live: true } | { output: string } | { fail: true };
+export type AuditOracle = { output: string } | { fail: true };
+
 /** The shared body of a bench run: the raw definition + optional params/sheet. */
 export interface BenchArgs {
   /** The RAW document — the server validates and owns the rejection sentence. */
@@ -64,7 +85,7 @@ export interface BenchArgs {
 /** v4 `POST ?action=preview` — one deal through the real execution core. */
 export async function previewCustomTool(
   core: CoreClient,
-  args: BenchArgs & { private?: boolean },
+  args: BenchArgs & { private?: boolean; llm?: PreviewOracle | undefined },
 ): Promise<CustomToolRunResult> {
   const data = await core.dispatchData({
     type: 'customToolPreview',
@@ -72,7 +93,9 @@ export async function previewCustomTool(
     params: args.params,
     private: args.private,
     metadata: args.metadata,
-  });
+    // §B: unifier folds `llm` into CustomToolPreviewRequest and drops this cast.
+    llm: args.llm,
+  } as unknown as CoreRequest);
   return data as unknown as CustomToolRunResult;
 }
 
@@ -82,14 +105,16 @@ export async function previewCustomTool(
  */
 export async function auditCustomTool(
   core: CoreClient,
-  args: BenchArgs,
+  args: BenchArgs & { llm?: AuditOracle | undefined },
 ): Promise<CustomToolAuditResult> {
   const data = await core.dispatchData({
     type: 'customToolAudit',
     definition: args.definition,
     params: args.params,
     metadata: args.metadata,
-  });
+    // §B: unifier folds `llm` into CustomToolAuditRequest and drops this cast.
+    llm: args.llm,
+  } as unknown as CoreRequest);
   return data as unknown as CustomToolAuditResult;
 }
 

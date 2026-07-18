@@ -24,6 +24,7 @@ function tool(over: Partial<CustomToolLibraryEntry> = {}): CustomToolLibraryEntr
     disabled: false,
     defaultVisibility: 'public',
     rollForm: 'range',
+    llm: false,
     parameterCount: 0,
     outcomeCount: 2,
     mountPointId: 'm1',

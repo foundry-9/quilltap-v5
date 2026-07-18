@@ -286,6 +286,13 @@ interface OverCapStore {
           <span class="qt-badge qt-badge-outline">{{
             tool.rollForm === 'dice' ? 'dice' : 'range'
           }}</span>
+          @if (tool.llm) {
+            <span
+              class="qt-badge qt-badge-outline"
+              title="Consults an LLM mid-run; outcomes may test its answer"
+              >oracle</span
+            >
+          }
           @if (tool.parameterCount > 0) {
             <span class="qt-badge qt-badge-outline"
               >{{ tool.parameterCount }} param{{ tool.parameterCount === 1 ? '' : 's' }}</span

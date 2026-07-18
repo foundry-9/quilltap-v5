@@ -3,6 +3,10 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 import {
   IDENTIFIER_PATTERN,
   MAX_DESCRIPTION_LENGTH,
+  MAX_LLM_OUTPUT_CEILING,
+  MAX_LLM_OUTPUT_LENGTH,
+  MAX_LLM_PROMPT_LENGTH,
+  MAX_MESSAGE_LENGTH,
   MAX_PARAMETERS,
   MAX_TITLE_LENGTH,
   displayTitle,
@@ -47,6 +51,33 @@ export function coerceIdentifier(text: string): string {
     .replace(/^[^a-z]+/, '')
     .slice(0, 64);
 }
+
+/**
+ * The consulted-oracle card's prose (v4 `BuilderForm.tsx:536-640`). Held as
+ * module constants because each one embeds `{{…}}` placeholder text, which an
+ * Angular interpolation would truncate at the first inner `}}`.
+ */
+const PROMPT_PLACEHOLDER =
+  'The roll came up {{value}}. In one word, YES or NO: does the mechanism yield?';
+
+const PROMPT_HINT =
+  'Posed to the instance’s cheap utility model after the roll, before the outcome table. ' +
+  'Takes {{value}}, {{roll}}, {{dice}}, {{params.name}}, and {{metadata.key}}. ' +
+  'Ask for the answer shape the table means to test — a bare word, a number, a sentence.';
+
+const ERROR_MESSAGE_HINT =
+  'Stands in as the answer when the consult fails — your words, never the provider’s. ' +
+  'The table can test for it with a “Consult succeeded” condition, and {{llm}} renders it.';
+
+const ANSWER_CAP_HINT =
+  `Characters kept of the answer. Blank means ${MAX_LLM_OUTPUT_LENGTH.toLocaleString()}; ` +
+  `up to ${MAX_LLM_OUTPUT_CEILING.toLocaleString()}. Keep it short for a verdict, ` +
+  'or let a long-winded oracle run on — the call’s token budget follows suit.';
+
+const CONSULT_OFF_HINT =
+  'Off. Enable it and every run asks a model your question — the answer becomes {{llm}} in ' +
+  'messages and a testable subject in the outcome table, with your own error line when no ' +
+  'answer comes.';
 
 let paramIdCounter = 0;
 
@@ -401,6 +432,94 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
           </div>
         }
       </section>
+
+      <!-- LLM consult -->
+      <section class="qt-card p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="qt-card-title text-sm">The consulted oracle</h2>
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="draft().llmEnabled"
+              (change)="update({ llmEnabled: checkedValue($event) })"
+              [disabled]="disabled()"
+            />
+            Consult an LLM
+          </label>
+        </div>
+
+        @if (draft().llmEnabled) {
+          <div class="space-y-3">
+            <div>
+              <label for="wb-llm-prompt" class="qt-label">The question</label>
+              <textarea
+                id="wb-llm-prompt"
+                [value]="draft().llmPrompt"
+                [maxLength]="MAX_LLM_PROMPT_LENGTH"
+                (input)="update({ llmPrompt: inputValue($event) })"
+                [disabled]="disabled()"
+                rows="3"
+                class="qt-textarea w-full text-sm"
+                [class.qt-input-error]="llmError('prompt') !== null"
+                [placeholder]="PROMPT_PLACEHOLDER"
+              ></textarea>
+              <p [class]="llmError('prompt') ? 'text-xs qt-text-destructive mt-1' : 'qt-hint'">
+                {{ llmError('prompt') ?? PROMPT_HINT }}
+              </p>
+              <p class="qt-hint text-right">
+                {{ draft().llmPrompt.length }}/{{ MAX_LLM_PROMPT_LENGTH }}
+              </p>
+            </div>
+
+            <div>
+              <label for="wb-llm-error" class="qt-label">When the oracle is silent</label>
+              <input
+                id="wb-llm-error"
+                type="text"
+                [value]="draft().llmErrorMessage"
+                [maxLength]="MAX_MESSAGE_LENGTH"
+                (input)="update({ llmErrorMessage: inputValue($event) })"
+                [disabled]="disabled()"
+                class="qt-input w-full text-sm"
+                [class.qt-input-error]="llmError('errorMessage') !== null"
+                placeholder="The wire crackles, and no answer comes."
+              />
+              <p [class]="llmError('errorMessage') ? 'text-xs qt-text-destructive mt-1' : 'qt-hint'">
+                {{ llmError('errorMessage') ?? ERROR_MESSAGE_HINT }}
+              </p>
+            </div>
+
+            <div>
+              <label for="wb-llm-max-output" class="qt-label">Answer cap</label>
+              <input
+                id="wb-llm-max-output"
+                type="number"
+                [min]="1"
+                [max]="MAX_LLM_OUTPUT_CEILING"
+                step="1"
+                [value]="draft().llmMaxOutput"
+                (input)="update({ llmMaxOutput: inputValue($event) })"
+                [disabled]="disabled()"
+                [placeholder]="String(MAX_LLM_OUTPUT_LENGTH)"
+                class="qt-input w-36 text-sm"
+                [class.qt-input-error]="llmError('maxOutput') !== null"
+              />
+              <p [class]="llmError('maxOutput') ? 'text-xs qt-text-destructive mt-1' : 'qt-hint'">
+                {{ llmError('maxOutput') ?? ANSWER_CAP_HINT }}
+              </p>
+            </div>
+
+            @for (message of llmWarnings(); track message) {
+              <p class="text-xs qt-text-secondary">⚠ {{ message }}</p>
+            }
+          </div>
+        } @else {
+          <p class="text-xs qt-text-secondary">
+            {{ CONSULT_OFF_HINT }}
+          </p>
+        }
+      </section>
     </div>
   `,
 })
@@ -426,6 +545,21 @@ export class BuilderForm {
   protected readonly MAX_TITLE_LENGTH = MAX_TITLE_LENGTH;
   protected readonly MAX_DESCRIPTION_LENGTH = MAX_DESCRIPTION_LENGTH;
   protected readonly MAX_PARAMETERS = MAX_PARAMETERS;
+  protected readonly MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH;
+  protected readonly MAX_LLM_PROMPT_LENGTH = MAX_LLM_PROMPT_LENGTH;
+  protected readonly MAX_LLM_OUTPUT_CEILING = MAX_LLM_OUTPUT_CEILING;
+  protected readonly MAX_LLM_OUTPUT_LENGTH = MAX_LLM_OUTPUT_LENGTH;
+  /**
+   * The consult hints live in module constants, not inline in the template:
+   * every one of them CONTAINS `{{…}}` placeholder text, and Angular's parser
+   * would close the interpolation at the first inner `}}`. (The same trap the
+   * P4.6bb lane hit.) The bytes are v4's.
+   */
+  protected readonly PROMPT_PLACEHOLDER = PROMPT_PLACEHOLDER;
+  protected readonly PROMPT_HINT = PROMPT_HINT;
+  protected readonly ERROR_MESSAGE_HINT = ERROR_MESSAGE_HINT;
+  protected readonly ANSWER_CAP_HINT = ANSWER_CAP_HINT;
+  protected readonly CONSULT_OFF_HINT = CONSULT_OFF_HINT;
   protected readonly MIN_DIE_SIDES = MIN_DIE_SIDES;
   protected readonly MAX_DIE_SIDES = MAX_DIE_SIDES;
   protected readonly MAX_DICE_COUNT = MAX_DICE_COUNT;
@@ -448,6 +582,18 @@ export class BuilderForm {
   readonly descriptionError = computed(() =>
     this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'description'),
   );
+  /** The blocking error on one consult field, if any. */
+  llmError(field: 'prompt' | 'errorMessage' | 'maxOutput'): string | null {
+    return this.fieldError((i) => i.where.section === 'llm' && i.where.field === field);
+  }
+
+  /** The consult's advisory placeholder warnings, rendered under the fields. */
+  readonly llmWarnings = computed(() =>
+    this.issues()
+      .filter((i) => i.severity === 'warning' && i.where.section === 'llm')
+      .map((i) => i.message),
+  );
+
   readonly diceError = computed(() =>
     this.fieldError((i) => i.where.section === 'roll' && i.where.field === 'dice'),
   );
