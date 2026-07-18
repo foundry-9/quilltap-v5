@@ -11,38 +11,96 @@
       "name": "gated",
       "title": "The Gated Table",
       "description": "A table that consults the sheet.",
-      "roll": { "min": 0.8, "max": 0.8 },
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
       "outcomes": [
         {
-          "when": { "gt": 0.5, "metadata": { "hasKey": { "eq": true } } },
+          "when": {
+            "gt": 0.5,
+            "metadata": {
+              "hasKey": {
+                "eq": true
+              }
+            }
+          },
           "message": "The lock turns for {{value}}.",
           "state": "success"
         },
-        { "when": true, "message": "The lock holds.", "state": "failure" }
+        {
+          "when": true,
+          "message": "The lock holds.",
+          "state": "failure"
+        }
       ]
     },
     "plain": {
       "name": "plain",
       "description": "A table with no conditions worth the name.",
-      "roll": { "min": 3, "max": 3 },
-      "parameters": { "bonus": { "type": "integer", "default": 1, "min": 0, "max": 5 } },
-      "outcomes": [{ "when": true, "message": "Dealt {{value}} at {{params.bonus}}.", "state": "info" }]
+      "roll": {
+        "min": 3,
+        "max": 3
+      },
+      "parameters": {
+        "bonus": {
+          "type": "integer",
+          "default": 1,
+          "min": 0,
+          "max": 5
+        }
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "Dealt {{value}} at {{params.bonus}}.",
+          "state": "info"
+        }
+      ]
     },
     "banded": {
       "name": "banded",
       "description": "Three bands over one fixed draw.",
-      "roll": { "min": 0.25, "max": 0.25 },
+      "roll": {
+        "min": 0.25,
+        "max": 0.25
+      },
       "outcomes": [
-        { "when": { "gte": 0.75 }, "message": "high", "state": "success" },
-        { "when": { "gte": 0.5 }, "message": "mid", "state": "partial" },
-        { "when": true, "message": "low", "state": "failure" }
+        {
+          "when": {
+            "gte": 0.75
+          },
+          "message": "high",
+          "state": "success"
+        },
+        {
+          "when": {
+            "gte": 0.5
+          },
+          "message": "mid",
+          "state": "partial"
+        },
+        {
+          "when": true,
+          "message": "low",
+          "state": "failure"
+        }
       ]
     },
     "invertedRange": {
       "name": "inverted_range",
       "description": "A range the house cannot deal.",
-      "roll": { "min": 9, "max": 2 },
-      "outcomes": [{ "when": true, "message": "unreachable", "state": "info" }]
+      "roll": {
+        "min": 9,
+        "max": 2
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "unreachable",
+          "state": "info"
+        }
+      ]
     },
     "invalid": {
       "name": "Not An Identifier",
@@ -52,21 +110,85 @@
     "noCatchAll": {
       "name": "no_catch_all",
       "description": "Every row is conditional, so a deal could find no home.",
-      "roll": { "min": 0.5, "max": 0.5 },
-      "outcomes": [{ "when": { "gte": 0.9 }, "message": "only sometimes", "state": "info" }]
+      "roll": {
+        "min": 0.5,
+        "max": 0.5
+      },
+      "outcomes": [
+        {
+          "when": {
+            "gte": 0.9
+          },
+          "message": "only sometimes",
+          "state": "info"
+        }
+      ]
+    },
+    "oracle": {
+      "name": "oracle",
+      "title": "The Consulted Table",
+      "description": "A table that asks a separate model.",
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
+      "llm": {
+        "prompt": "The draw was {{value}}. Answer YES or NO.",
+        "errorMessage": "The wire went dead.",
+        "maxOutput": 12
+      },
+      "outcomes": [
+        {
+          "when": {
+            "llm": {
+              "ok": true,
+              "eq": "YES"
+            }
+          },
+          "message": "Granted: {{llm}}",
+          "state": "success"
+        },
+        {
+          "when": {
+            "llm": {
+              "ok": true
+            }
+          },
+          "message": "Answered: {{llm}}",
+          "state": "partial"
+        },
+        {
+          "when": true,
+          "message": "Silence: {{llm}}",
+          "state": "failure"
+        }
+      ]
     }
   },
   "cases": [
-    { "name": "library", "method": "GET" },
-    { "name": "destinations", "method": "GET", "action": "destinations" },
-
-    { "name": "preview-plain", "method": "POST", "action": "preview", "definition": "plain" },
+    {
+      "name": "library",
+      "method": "GET"
+    },
+    {
+      "name": "destinations",
+      "method": "GET",
+      "action": "destinations"
+    },
+    {
+      "name": "preview-plain",
+      "method": "POST",
+      "action": "preview",
+      "definition": "plain"
+    },
     {
       "name": "preview-plain-params",
       "method": "POST",
       "action": "preview",
       "definition": "plain",
-      "params": { "bonus": 4 }
+      "params": {
+        "bonus": 4
+      }
     },
     {
       "name": "preview-private",
@@ -86,7 +208,10 @@
       "method": "POST",
       "action": "preview",
       "definition": "gated",
-      "metadata": { "hasKey": true, "note": "typed by hand" }
+      "metadata": {
+        "hasKey": true,
+        "note": "typed by hand"
+      }
     },
     {
       "name": "preview-gated-as-imogen",
@@ -121,14 +246,19 @@
       "method": "POST",
       "action": "preview",
       "definition": "gated",
-      "metadata": { "characterId": "" }
+      "metadata": {
+        "characterId": ""
+      }
     },
     {
       "name": "preview-character-id-plus-key",
       "method": "POST",
       "action": "preview",
       "definition": "gated",
-      "metadata": { "characterId": "a1000000-0000-4000-8000-00000000000a", "hasKey": true }
+      "metadata": {
+        "characterId": "a1000000-0000-4000-8000-00000000000a",
+        "hasKey": true
+      }
     },
     {
       "name": "preview-invalid-definition",
@@ -147,7 +277,9 @@
       "method": "POST",
       "action": "preview",
       "definition": "plain",
-      "params": { "nonesuch": 1 }
+      "params": {
+        "nonesuch": 1
+      }
     },
     {
       "name": "preview-inverted-range",
@@ -155,10 +287,24 @@
       "action": "preview",
       "definition": "invertedRange"
     },
-
-    { "name": "audit-plain", "method": "POST", "action": "audit", "definition": "plain" },
-    { "name": "audit-banded", "method": "POST", "action": "audit", "definition": "banded" },
-    { "name": "audit-gated-no-metadata", "method": "POST", "action": "audit", "definition": "gated" },
+    {
+      "name": "audit-plain",
+      "method": "POST",
+      "action": "audit",
+      "definition": "plain"
+    },
+    {
+      "name": "audit-banded",
+      "method": "POST",
+      "action": "audit",
+      "definition": "banded"
+    },
+    {
+      "name": "audit-gated-no-metadata",
+      "method": "POST",
+      "action": "audit",
+      "definition": "gated"
+    },
     {
       "name": "audit-gated-as-imogen",
       "method": "POST",
@@ -184,6 +330,168 @@
       "action": "audit",
       "definition": "gated",
       "metadataCharacter": "cracked"
+    },
+    {
+      "name": "preview-llm-scripted",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "output": "  YES  "
+      }
+    },
+    {
+      "name": "preview-llm-scripted-capped",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "output": "absolutely so, without question"
+      }
+    },
+    {
+      "name": "preview-llm-scripted-other",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "output": "perhaps"
+      }
+    },
+    {
+      "name": "preview-llm-fail",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "fail": true
+      }
+    },
+    {
+      "name": "preview-llm-absent",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle"
+    },
+    {
+      "name": "preview-llm-null",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": null
+    },
+    {
+      "name": "preview-llm-on-a-plain-tool",
+      "method": "POST",
+      "action": "preview",
+      "definition": "plain",
+      "llm": {
+        "output": "ignored"
+      }
+    },
+    {
+      "name": "preview-llm-empty-output",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "output": ""
+      }
+    },
+    {
+      "name": "preview-llm-unknown-key",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "output": "YES",
+        "model": "gpt"
+      }
+    },
+    {
+      "name": "preview-llm-wrong-shape",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "nonsense": true
+      }
+    },
+    {
+      "name": "preview-llm-not-an-object",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": "YES"
+    },
+    {
+      "name": "preview-llm-fail-false",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "fail": false
+      }
+    },
+    {
+      "name": "audit-llm-scripted",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle",
+      "llm": {
+        "output": "  YES  "
+      }
+    },
+    {
+      "name": "audit-llm-scripted-capped",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle",
+      "llm": {
+        "output": "absolutely so, without question"
+      }
+    },
+    {
+      "name": "audit-llm-scripted-other",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle",
+      "llm": {
+        "output": "perhaps"
+      }
+    },
+    {
+      "name": "audit-llm-fail",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle",
+      "llm": {
+        "fail": true
+      }
+    },
+    {
+      "name": "audit-llm-absent",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle"
+    },
+    {
+      "name": "audit-llm-live-rejected",
+      "method": "POST",
+      "action": "audit",
+      "definition": "oracle",
+      "llm": {
+        "live": true
+      }
+    },
+    {
+      "name": "audit-llm-on-a-plain-tool",
+      "method": "POST",
+      "action": "audit",
+      "definition": "plain",
+      "llm": {
+        "output": "ignored"
+      }
     }
   ]
 }

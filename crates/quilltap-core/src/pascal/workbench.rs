@@ -56,6 +56,9 @@ pub struct CustomToolLibraryEntry {
     pub disabled: bool,
     pub default_visibility: Visibility,
     pub roll_form: RollForm,
+    /// Whether the tool consults an LLM mid-run (v4 `616930db`). Declared
+    /// after `rollForm` and before `parameterCount`, which is v4's own order.
+    pub llm: bool,
     pub parameter_count: usize,
     pub outcome_count: usize,
     pub mount_point_id: String,
@@ -363,6 +366,7 @@ pub fn build_custom_tool_library(
                 Some(Roll::Dice(_)) => RollForm::Dice,
                 _ => RollForm::Range,
             },
+            llm: entry.definition.llm.is_some(),
             parameter_count: entry
                 .definition
                 .parameters

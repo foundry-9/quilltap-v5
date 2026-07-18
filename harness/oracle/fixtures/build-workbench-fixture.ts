@@ -115,6 +115,23 @@ const GAMMA = {
   ],
 };
 
+/**
+ * The 616930db consult tool, so the library's `llm: boolean` badge has a TRUE
+ * arm to pin — without it every entry reads `false` and a port that hardcoded
+ * the field would pass.
+ */
+const ZETA = {
+  name: 'zeta',
+  title: 'The Consulted Table',
+  description: 'Ask a separate model, then deal.',
+  roll: { min: 0.4, max: 0.4 },
+  llm: { prompt: 'Answer YES or NO.', errorMessage: 'The wire went dead.' },
+  outcomes: [
+    { when: { llm: { ok: true, eq: 'YES' } }, message: 'Granted.', state: 'success' },
+    { when: true, message: 'Denied.', state: 'failure' },
+  ],
+};
+
 /** Lives in the BROKEN vault — the library must still list it, badged. */
 const DELTA = {
   name: 'delta',
@@ -269,6 +286,7 @@ async function main(): Promise<void> {
   await writeFile(spec.generalMountPointId, 'Tools/alpha.tool.json', ALPHA);
   await writeFile(spec.generalMountPointId, 'Tools/broken.tool.json', '{ not json');
   await writeFile(spec.generalMountPointId, 'Tools/sub/nested.tool.json', ALPHA);
+  await writeFile(spec.generalMountPointId, 'Tools/zeta.tool.json', ZETA);
 
   // 2. The unattached + disabled stores.
   await provisionStore(spec.looseMountPointId, 'Loose Papers');

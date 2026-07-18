@@ -1901,6 +1901,13 @@ pub enum Request {
         private: Option<bool>,
         #[serde(default)]
         metadata: Option<serde_json::Value>,
+        /// §B: which oracle answers the bench — the real one (`{live:true}`), a
+        /// scripted answer (`{output}`), or a scripted failure (`{fail:true}`).
+        /// Absent leaves the seam unwired, so the consult fails soft into the
+        /// author's `errorMessage` path — which is the one path every such table
+        /// must survive anyway.
+        #[serde(default)]
+        llm: Option<serde_json::Value>,
     },
     /// v4 `POST /api/v1/custom-tools?action=audit` → `AUDIT_RUNS` deals,
     /// reported by where they landed. The run count is server-fixed and never
@@ -1912,6 +1919,13 @@ pub enum Request {
         params: Option<serde_json::Value>,
         #[serde(default)]
         metadata: Option<serde_json::Value>,
+        /// §B: the fixed consult every draw shares. **No `live` arm** — an audit
+        /// is ten thousand hands, and the point of the bench is that it never
+        /// spends ten thousand LLM calls. v4 enforces that by SHAPE (the audit
+        /// body's union simply lacks the arm), not by a runtime check, so the
+        /// same is true here.
+        #[serde(default)]
+        llm: Option<serde_json::Value>,
     },
     // === end P4.6ay ===
     // === P4.6ar: the llm-logs read surface + the system aesthetics pair (lane A) ===

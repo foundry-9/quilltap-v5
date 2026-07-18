@@ -45,6 +45,8 @@ interface CaseSpec {
   private?: boolean;
   metadata?: Record<string, unknown>;
   metadataCharacter?: string;
+  /** §B: the bench oracle, sent verbatim (an explicit null is a distinct arm). */
+  llm?: unknown;
 }
 
 interface Corpus {
@@ -72,6 +74,10 @@ function bodyFor(c: CaseSpec, corpus: Corpus): Record<string, unknown> {
   if (c.metadataCharacter !== undefined) {
     body.metadata = { characterId: corpus.characters[c.metadataCharacter] };
   }
+  // §B: the bench oracle. `hasOwnProperty` rather than `!== undefined`, so a
+  // case carrying an explicit `null` still SENDS the null — that is a distinct
+  // arm (`.nullish()`) from omitting the field.
+  if (Object.prototype.hasOwnProperty.call(c, 'llm')) body.llm = (c as {llm: unknown}).llm;
   return body;
 }
 

@@ -195,6 +195,12 @@ async function main(): Promise<void> {
     { name: 'run-unknown-tool', method: 'POST', body: { tool: 'nope', asCharacterId: CHAR_A } },
     { name: 'run-unknown-character', method: 'POST', body: { tool: 'coin', asCharacterId: 'a1000000-0000-4000-8000-0000000000ff' } },
     { name: 'run-error', method: 'POST', body: { tool: 'coin', asCharacterId: CHAR_A, parameters: { bad: 1 } } },
+    // The 616930db consult through the CHAT entrance (v4 `handleRun` builds the
+    // invoker with `chatId: id`). The fixture has no connection profiles, so
+    // both sides take the `no connection profiles are configured` arm and the
+    // posted row carries `pascalMeta.llm` — this is what covers the chat-run
+    // writer, the third of the three.
+    { name: 'run-oracle-consult', method: 'POST', body: { tool: 'oracle', asCharacterId: CHAR_A } },
   ];
 
   const out = fs.createWriteStream(outPath);

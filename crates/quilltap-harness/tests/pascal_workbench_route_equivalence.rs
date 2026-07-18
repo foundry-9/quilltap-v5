@@ -40,7 +40,12 @@ use quilltap_core::api::custom_tools::{
 };
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::completion::CannedCompletionProvider;
 use serde_json::{json, Value};
+
+/// The fixture's user (`harness/oracle/fixtures/workbench.json`). Only reached
+/// by the `{live:true}` arm, which no corpus case takes.
+const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -118,6 +123,13 @@ fn canon(v: &Value) -> Value {
         Value::Array(a) => Value::Array(a.iter().map(canon).collect()),
         Value::Object(o) => Value::Object(
             o.iter()
+                // `details` is v4's raw Zod issue list on a BODY rejection. v5
+                // emits the envelope without it — the standing P4.6bb
+                // error-envelope `details` deferral, not this drift's doing —
+                // so it is dropped on BOTH sides here. The STATUS and the
+                // `error` sentence, which are the contract the SPA reads, stay
+                // fully compared.
+                .filter(|(k, _)| k.as_str() != "details")
                 .map(|(k, x)| {
                     (
                         k.clone(),
@@ -190,16 +202,25 @@ fn workbench_route_matches_oracle() {
                 match case["action"].as_str().unwrap() {
                     // The consult seam made preview async (it may pose a
                     // consult); the route surface is otherwise unchanged.
+                    // The consult seam made preview async (it may pose a
+                    // consult). §B: the bench oracle rides both bodies; an
+                    // explicit `null` is a distinct arm from an omitted field,
+                    // so the corpus value is forwarded as-is.
                     "preview" => status_body(
                         tokio::runtime::Builder::new_current_thread()
                             .build()
                             .expect("a current-thread runtime")
-                            .block_on(custom_tool_preview(
+                            .block_on(custom_tool_preview::<CannedCompletionProvider>(
                                 &db,
                                 &definition,
                                 params.as_ref(),
                                 case.get("private").and_then(Value::as_bool),
                                 metadata.as_ref(),
+                                case.get("llm"),
+                                USER,
+                                // Every corpus case is SCRIPTED: no differential
+                                // ever spends a real LLM call (§B).
+                                None,
                             )),
                     ),
                     _ => status_body(custom_tool_audit(
@@ -207,6 +228,7 @@ fn workbench_route_matches_oracle() {
                         &definition,
                         params.as_ref(),
                         metadata.as_ref(),
+                        case.get("llm"),
                     )),
                 }
             }

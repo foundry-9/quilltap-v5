@@ -38,6 +38,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: None,
             private: None,
             metadata: None,
+            llm: None,
         }
     );
 
@@ -55,6 +56,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: Some(json!({ "bonus": 2 })),
             private: Some(true),
             metadata: Some(json!({ "characterId": "c1" })),
+            llm: None,
         }
     );
 
@@ -69,6 +71,45 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             definition: json!({ "name": "x" }),
             params: None,
             metadata: Some(json!({ "str": 3 })),
+            llm: None,
+        }
+    );
+
+    // §B (P4.d8) — the bench oracle rides both bodies as an opaque Value; the
+    // core owns the union check, so the wire simply carries the object through.
+    // The preview union admits `{live:true}`; the audit union deliberately does
+    // NOT, and that is enforced in the core rather than here (a `live` audit
+    // body deserializes fine and is then refused with a 400 — the shape rule is
+    // v4's, and v4 enforces it at its own schema).
+    for (wire, want) in [
+        (r#"{"live":true}"#, json!({ "live": true })),
+        (r#"{"output":"YES"}"#, json!({ "output": "YES" })),
+        (r#"{"fail":true}"#, json!({ "fail": true })),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<Request>(&format!(
+                r#"{{"type":"customToolPreview","definition":{{"name":"x"}},"llm":{wire}}}"#
+            ))
+            .expect("customToolPreview with an llm oracle"),
+            Request::CustomToolPreview {
+                definition: json!({ "name": "x" }),
+                params: None,
+                private: None,
+                metadata: None,
+                llm: Some(want.clone()),
+            }
+        );
+    }
+    assert_eq!(
+        serde_json::from_str::<Request>(
+            r#"{"type":"customToolAudit","definition":{"name":"x"},"llm":{"output":"YES"}}"#
+        )
+        .expect("customToolAudit with a scripted oracle"),
+        Request::CustomToolAudit {
+            definition: json!({ "name": "x" }),
+            params: None,
+            metadata: None,
+            llm: Some(json!({ "output": "YES" })),
         }
     );
 

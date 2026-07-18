@@ -2737,7 +2737,9 @@ impl CoreEngine {
                 as_character_id,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::custom_tools::chat_custom_tool_run(
+                    super::custom_tools::chat_custom_tool_run::<
+                        crate::model::completion::CannedCompletionProvider,
+                    >(
                         &db,
                         SINGLE_USER_ID,
                         &chat_id,
@@ -2745,6 +2747,12 @@ impl CoreEngine {
                         parameters,
                         private,
                         as_character_id,
+                        // DEFERRAL (loud, named): the consult provider is
+                        // UNWIRED here, exactly as it is for the preview arm and
+                        // the `run_custom` executor — the engine holds no
+                        // `CompletionProvider`. A composer-run custom tool with
+                        // an `llm` block shows the author's `errorMessage`.
+                        None,
                     )
                     .await
                 }
@@ -2764,14 +2772,27 @@ impl CoreEngine {
                 params,
                 private,
                 metadata,
+                llm,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::custom_tools::custom_tool_preview(
+                    super::custom_tools::custom_tool_preview::<
+                        crate::model::completion::CannedCompletionProvider,
+                    >(
                         &db,
                         &definition,
                         params.as_ref(),
                         private,
                         metadata.as_ref(),
+                        llm.as_ref(),
+                        SINGLE_USER_ID,
+                        // DEFERRAL (loud, named): the `{live:true}` bench arm is
+                        // UNWIRED here. The engine holds no `CompletionProvider`
+                        // — the same gap as the `run_custom` executor wire — so a
+                        // live preview falls through to the unwired seam and
+                        // shows the author's `errorMessage`. The scripted and
+                        // fail arms, which the differentials and the SPA bench
+                        // exercise, are fully live.
+                        None,
                     )
                     .await
                 }
@@ -2781,12 +2802,14 @@ impl CoreEngine {
                 definition,
                 params,
                 metadata,
+                llm,
             } => match self.ready_db() {
                 Ok(db) => super::custom_tools::custom_tool_audit(
                     &db,
                     &definition,
                     params.as_ref(),
                     metadata.as_ref(),
+                    llm.as_ref(),
                 ),
                 Err(r) => r,
             },

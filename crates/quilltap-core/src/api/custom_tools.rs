@@ -27,8 +27,16 @@ use serde_json::{json, Map, Value};
 use super::types::{ErrorKind, Response};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
-use crate::pascal::custom_tool_types::{display_title, Visibility};
-use crate::pascal::custom_tools::{execute_custom_tool, CustomToolRunError, CustomToolRunResult};
+use crate::jsstr::js_trim;
+use crate::model::completion::CompletionProvider;
+use crate::pascal::custom_tool_types::{
+    display_title, Visibility, MAX_LLM_OUTPUT_CEILING, MAX_LLM_OUTPUT_LENGTH,
+};
+use crate::pascal::custom_tools::{
+    execute_custom_tool, CustomToolRunError, CustomToolRunResult, LlmInvokeOptions,
+    LlmInvokeResult, LlmInvoker, LlmSubject,
+};
+use crate::pascal::llm_consult::{CustomToolConsultContext, CustomToolLlmInvoker};
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
@@ -341,7 +349,8 @@ enum RunPrep {
 }
 
 /// v4 `handleRun` — run one tool at the operator's behest.
-pub async fn chat_custom_tool_run(
+#[allow(clippy::too_many_arguments)]
+pub async fn chat_custom_tool_run<C: CompletionProvider + Send + Sync>(
     db: &Db,
     user_id: &str,
     chat_id: &str,
@@ -349,6 +358,10 @@ pub async fn chat_custom_tool_run(
     parameters: Option<Map<String, Value>>,
     private: Option<bool>,
     as_character_id: Option<String>,
+    // `completion`: the provider the consult rides (v4 `handleRun` builds
+    // `buildCustomToolLlmInvoker({ userId, chatId: id })`). `None` leaves the
+    // seam unwired — see the DEFERRAL note at the call site.
+    completion: Option<&C>,
 ) -> Response {
     let user_id_owned = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
@@ -453,6 +466,18 @@ pub async fn chat_custom_tool_run(
     } else {
         Some(&metadata)
     };
+    let invoker = match (entry.definition.llm.as_ref(), completion) {
+        (Some(_), Some(completion)) => Some(CustomToolLlmInvoker::new(
+            db,
+            completion,
+            CustomToolConsultContext {
+                user_id: user_id.to_string(),
+                chat_id: Some(chat_id.to_string()),
+            },
+        )),
+        _ => None,
+    };
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     let result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
@@ -460,7 +485,10 @@ pub async fn chat_custom_tool_run(
         private,
         metadata_arg,
         &mut rng,
-        None,
+        // v4 builds the invoker only when the definition declares an `llm`
+        // block; the chat run attributes the consult to THIS chat, so a
+        // dangerous room reroutes to the uncensored profile.
+        invoker.as_ref().map(|i| i as &dyn LlmInvoker),
     )
     .await
     {
@@ -535,6 +563,9 @@ pub async fn chat_custom_tool_run(
                     .collect(),
             ),
         );
+    }
+    if let Some(llm) = &result.llm {
+        pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
     }
     pascal_meta.insert("invokedBy".into(), json!("user"));
 
@@ -768,16 +799,107 @@ fn run_result_to_value(r: &CustomToolRunResult) -> Value {
             ),
         );
     }
+    // `...(llm ? { llm } : {})` — last, mirroring v4's `CustomToolRunResult`
+    // declaration. The preview RESPONSE is the whole run result, so the §A
+    // record rides here verbatim.
+    if let Some(llm) = &r.llm {
+        m.insert("llm".into(), Value::Object(llm.to_wire()));
+    }
     Value::Object(m)
 }
 
+/// v4's `LlmSimulationSchema` + the preview body's `live` arm.
+///
+/// `{ live: true }` is preview-ONLY: the audit body's union simply lacks it, so
+/// "audits never call live" is a shape, not a runtime check.
+enum BenchOracle {
+    /// The real invoker, over the cheap-LLM machinery.
+    Live,
+    /// A pretend answer. Bounded by the CEILING, not the default — the
+    /// definition's own `maxOutput` governs what the core keeps, and the bench
+    /// must be able to script anything a tool could.
+    Scripted(String),
+    /// A pretend failure.
+    Fail,
+}
+
+/// Parse the `llm` field of a preview/audit body. `allow_live` is false for an
+/// audit. Returns `Ok(None)` for an absent or null field (the seam stays
+/// unwired, so the consult fails soft into the author's `errorMessage`).
+fn parse_bench_oracle(
+    raw: Option<&Value>,
+    allow_live: bool,
+) -> Result<Option<BenchOracle>, Response> {
+    let Some(raw) = raw else { return Ok(None) };
+    if raw.is_null() {
+        return Ok(None);
+    }
+    let Some(obj) = raw.as_object() else {
+        return Err(bad_request("Invalid request body"));
+    };
+
+    // Each arm is a `strictObject`, so an extra key is a rejection.
+    if allow_live && obj.len() == 1 && obj.get("live") == Some(&Value::Bool(true)) {
+        return Ok(Some(BenchOracle::Live));
+    }
+    if obj.len() == 1 {
+        if let Some(Value::String(output)) = obj.get("output") {
+            let len = crate::jsstr::utf16_len(output);
+            if len >= 1 && len as i64 <= MAX_LLM_OUTPUT_CEILING {
+                return Ok(Some(BenchOracle::Scripted(output.clone())));
+            }
+            return Err(bad_request("Invalid request body"));
+        }
+        if obj.get("fail") == Some(&Value::Bool(true)) {
+            return Ok(Some(BenchOracle::Fail));
+        }
+    }
+    Err(bad_request("Invalid request body"))
+}
+
+/// The scripted invoker a bench oracle becomes. `Live` has no canned form — the
+/// caller builds the real invoker for it.
+struct ScriptedBenchInvoker {
+    scripted: Option<String>,
+}
+
+impl LlmInvoker for ScriptedBenchInvoker {
+    fn invoke<'a>(
+        &'a self,
+        _prompt: &'a str,
+        _options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>> {
+        Box::pin(async move {
+            match &self.scripted {
+                Some(output) => LlmInvokeResult::Answered {
+                    output: output.clone(),
+                    // v4's bench identity, carried verbatim so a scripted run is
+                    // legible as one in the roll record.
+                    provider: Some("bench".into()),
+                    model: Some("simulated".into()),
+                },
+                None => LlmInvokeResult::Failed {
+                    reason: "a simulated failure, as the bench requested".into(),
+                },
+            }
+        })
+    }
+}
+
 /// v4 `handlePreview` — one deal through the shared execution core.
-pub async fn custom_tool_preview(
+/// Generic over the provider because [`CompletionProvider`] has a generic method
+/// and so is not dyn-compatible. `None` disables the `{live:true}` arm — see the
+/// DEFERRAL note on [`custom_tools_preview_live_unwired`].
+#[allow(clippy::too_many_arguments)]
+pub async fn custom_tool_preview<C: CompletionProvider + Send + Sync>(
     db: &Db,
     definition: &Value,
     params: Option<&Value>,
     private: Option<bool>,
     metadata: Option<&Value>,
+    llm: Option<&Value>,
+    user_id: &str,
+    completion: Option<&C>,
 ) -> Response {
     let params = match parse_params(params) {
         Ok(p) => p,
@@ -792,6 +914,39 @@ pub async fn custom_tool_preview(
         Err(r) => return r,
     };
 
+    // Which oracle answers the bench: the real one (live), a scripted one, or a
+    // scripted failure. Absent input leaves the seam unwired, so the consult
+    // fails soft into the author's errorMessage path.
+    let oracle = match parse_bench_oracle(llm, true) {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    let scripted = match &oracle {
+        Some(BenchOracle::Scripted(output)) => Some(ScriptedBenchInvoker {
+            scripted: Some(output.clone()),
+        }),
+        Some(BenchOracle::Fail) => Some(ScriptedBenchInvoker { scripted: None }),
+        _ => None,
+    };
+    let live = match (&oracle, completion) {
+        (Some(BenchOracle::Live), Some(completion)) => Some(CustomToolLlmInvoker::new(
+            db,
+            completion,
+            CustomToolConsultContext {
+                user_id: user_id.to_string(),
+                // A bench run belongs to no room, and is therefore never
+                // rerouted to the uncensored profile.
+                chat_id: None,
+            },
+        )),
+        _ => None,
+    };
+    let invoker: Option<&dyn LlmInvoker> = match (&scripted, &live) {
+        (Some(s), _) => Some(s),
+        (_, Some(l)) => Some(l),
+        _ => None,
+    };
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     match execute_custom_tool(
         &definition,
@@ -799,7 +954,7 @@ pub async fn custom_tool_preview(
         private,
         Some(&metadata),
         &mut rng,
-        None,
+        invoker,
     )
     .await
     {
@@ -814,6 +969,7 @@ pub fn custom_tool_audit(
     definition: &Value,
     params: Option<&Value>,
     metadata: Option<&Value>,
+    llm: Option<&Value>,
 ) -> Response {
     let params = match parse_params(params) {
         Ok(p) => p,
@@ -828,13 +984,41 @@ pub fn custom_tool_audit(
         Err(r) => return r,
     };
 
+    // The fixed consult every draw shares. A definition with an `llm` block and
+    // no scripted answer audits its FAILURE path — the honest default, since
+    // that is the path a live table must always survive.
+    let oracle = match parse_bench_oracle(llm, false) {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    let fixed_llm = definition.llm.as_ref().map(|spec| {
+        match &oracle {
+            // Trimmed and capped exactly as a live run would keep it, so the
+            // audit tests the answer the table would actually see.
+            Some(BenchOracle::Scripted(output)) => {
+                let max_output = spec.max_output.unwrap_or(MAX_LLM_OUTPUT_LENGTH as i64);
+                let capped =
+                    crate::jsstr::utf16_truncate(js_trim(output), max_output.max(0) as usize);
+                LlmSubject {
+                    ok: true,
+                    output: js_trim(&capped).to_string(),
+                }
+            }
+            // Both a scripted failure and an absent oracle audit the failure path.
+            _ => LlmSubject {
+                ok: false,
+                output: spec.error_message.clone(),
+            },
+        }
+    });
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     match crate::pascal::custom_tools::simulate_outcomes(
         &definition,
         params.as_ref(),
         AUDIT_RUNS,
         Some(&metadata),
-        None,
+        fixed_llm.as_ref(),
         &mut rng,
     ) {
         Ok(result) => Response::CustomToolAudit(json!({

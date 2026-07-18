@@ -150,7 +150,7 @@ fn workbench_matches_oracle() {
     // branch fails loudly rather than passing on a thinner world.
     let library = &oracle["library"]["value"];
     let tools = library["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 5, "library tool count");
+    assert_eq!(tools.len(), 6, "library tool count");
     assert_eq!(
         library["errors"].as_array().map(Vec::len),
         Some(1),
@@ -163,6 +163,16 @@ fn workbench_matches_oracle() {
     assert!(
         tools.iter().any(|t| t["rollForm"] == "dice"),
         "a dice-form definition"
+    );
+    // §B: the `llm: boolean` badge needs BOTH arms present, or a port that
+    // hardcoded the field would pass on an all-`false` world.
+    assert!(
+        tools.iter().any(|t| t["llm"] == Value::Bool(true)),
+        "a consulting definition"
+    );
+    assert!(
+        tools.iter().any(|t| t["llm"] == Value::Bool(false)),
+        "a non-consulting definition"
     );
     assert!(
         tools

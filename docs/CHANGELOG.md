@@ -2,6 +2,42 @@
 
 ## Recent Changes
 
+P4.d8 units 6+7 - the Workbench + route payloads, the SPA corpus, and
+the tier-2 checks. Preview and audit bodies gain the §B `llm` field:
+preview takes {live:true} | {output} | {fail:true}, audit takes
+{output} | {fail:true} with NO live arm - v4 enforces "audits never call
+live" by SHAPE, so v5 does too. Scripted previews carry v4's bench
+identity verbatim (provider 'bench', model 'simulated'); a scripted
+failure reports "a simulated failure, as the bench requested"; an absent
+or null oracle leaves the seam unwired and the consult fails soft into
+the author's errorMessage. The audit derives its fixed subject with the
+same trim-cap-retrim a live run would apply, and audits the FAILURE path
+when nothing is scripted. The preview response carries the §A record
+verbatim; the library entry gains `llm: boolean`; the chat run attaches
+pascalMeta.llm - the third and last writer.
+
+Differentials: pascal_workbench_route_equivalence 24 -> 43 cases (all
+19 new §B arms, scripted only - no differential ever spends an LLM
+call); pascal_custom_tools_route_equivalence 9 -> 10 with a chat-entrance
+consult case, plus a case-count assertion; the workbench fixture gained
+a consulting tool so the library's llm badge has a TRUE arm to pin;
+p4_6ay_workbench_wire_contract covers the three preview arms and the
+audit body.
+
+The §C corpus NDJSON regenerated at 616930db: 115 -> 159 rows (10 title
++ 149 definition, 53 accept / 96 reject), byte-identical to the Rust
+differential's oracle, with the README provenance updated.
+
+Tier-2 D23 verification: fresh_schema.json re-dumped from v4 616930db
+and diffed - ZERO change, confirming the DDL.md edit was comment-only
+and no re-dump was owed.
+
+DEFERRED (loud): the {live:true} preview arm and the chat run's consult
+provider are UNWIRED at the engine, which holds no CompletionProvider -
+the same gap as the run_custom executor wire. Both seams exist and are
+typed; a live preview or a composer-run llm tool shows the author's
+errorMessage today.
+
 P4.d8 units 4+5 - pascalMeta.llm and the run_custom tool + handler.
 PascalMetaIn gains a typed `llm` sub-object (PascalMetaLlmIn) at v4's
 declaration position, after metadataTested and before invokedBy, with

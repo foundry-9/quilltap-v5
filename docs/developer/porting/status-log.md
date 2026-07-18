@@ -21515,3 +21515,96 @@ change reached two byte pins, exactly as predicted:
 
 Gate at this commit: `cargo test --workspace --no-fail-fast` **351
 binaries / 0 failed**; fmt + clippy clean on both feature sets.
+
+### Units 6+7 — the Workbench + routes (§B), the §C corpus, and tier 2
+
+**§B, the payload additions.** Preview's body gains
+`llm?: {live:true} | {output} | {fail:true}`; audit's gains
+`{output} | {fail:true}` and **no live arm**. That last is the point
+worth carrying: v4 makes "audits never call live" a SHAPE — the audit
+body's union simply lacks the arm — not a runtime check, so the port
+does the same and `{"live":true}` on an audit is a 400 rather than a
+guarded no-op. `parse_bench_oracle(raw, allow_live)` is the one place
+both unions live; each arm is a `strictObject`, so an extra key is a
+rejection (pinned by `preview-llm-unknown-key`).
+
+The scripted invoker carries v4's bench identity verbatim —
+`provider: "bench"`, `model: "simulated"`, and
+`"a simulated failure, as the bench requested"` — so a scripted run is
+legible as one in the roll record. The audit's fixed subject applies the
+SAME trim-cap-retrim a live run would (`utf16_truncate` at the
+definition's own `maxOutput`), so the audit tests the answer the table
+would actually see; with nothing scripted it audits the FAILURE path,
+which is the honest default.
+
+Also landed: `run_result_to_value` appends the §A record last (so the
+preview RESPONSE is the whole run result, `llm` riding verbatim);
+`CustomToolLibraryEntry.llm: bool` at v4's declaration position (after
+`rollForm`); and the chat run's `pascalMeta.llm` — the **third and last**
+of the three writers, all three now going through
+`LlmConsultResult::to_wire`.
+
+**DEFERRALS (loud, named) — the provider seams.** Three entrances now
+have a typed consult seam and none of them is fed, for the same single
+reason: **nothing at the dispatch layer holds a `CompletionProvider`.**
+  1. `execute_run_custom_tool_with_consult` — the model entrance
+     (unit 5).
+  2. `custom_tool_preview`'s `{live:true}` arm — generic over
+     `C: CompletionProvider` (the trait has a generic method and so is
+     not dyn-compatible); the engine passes `None`.
+  3. `chat_custom_tool_run`'s `completion` — the composer entrance.
+Consequence in all three: an `llm` tool run for real shows the author's
+`errorMessage` with reason `no LLM invoker was available in this
+context`. Every SCRIPTED path — which is what the bench, the
+differentials and the SPA exercise — is fully live. Closing this is one
+host-side change (thread a provider into the engine assembly), and it
+pairs naturally with unit 3's un-wired 60 s timeout.
+
+**Differentials.**
+  - `pascal_workbench_route_equivalence` 24 → **43** cases: seven
+    preview arms (scripted / capped / other / fail / absent / explicit
+    null / on a tool with no `llm` block), five preview body
+    rejections, and seven audit arms including
+    `audit-llm-live-rejected`. Every case is scripted — no differential
+    ever spends a real LLM call.
+  - **`canon` now drops `details`** on both sides. v4's body rejections
+    carry a raw Zod issue list there; v5 emits the envelope without it
+    (the standing P4.6bb error-envelope deferral, not this drift's
+    doing). The STATUS and the `error` sentence — the contract the SPA
+    reads — stay fully compared.
+  - `pascal_custom_tools_route_equivalence` 9 → **10** with
+    `run-oracle-consult`, the chat entrance over the real invoker, which
+    is what covers the third writer.
+  - `pascal_workbench_equivalence`: the workbench fixture gained a
+    consulting tool (`Tools/zeta.tool.json`), because with none the
+    library's `llm` badge read `false` on all five entries — a port that
+    hardcoded the field would have passed. The coverage block now
+    asserts BOTH arms appear.
+  - **Two more case-count guards added** (`pascal_custom_tools_route`,
+    and the earlier `pascal_run_custom_handler`). Both differentials
+    declare their corpus on the Rust side separately from the oracle, so
+    a case added to one and forgotten in the other passed silently on
+    the smaller set — which is exactly what happened, twice, while
+    extending them.
+
+**§C — the SPA corpus.** Regenerated at `616930db`:
+**115 → 159 rows (10 title + 149 definition; 53 accept / 96 reject)**,
+verified byte-identical to the oracle the Rust differential consumed at
+the same commit. README provenance updated.
+**Lane BC's corpus-spec constants become: total 159, accept 53,
+reject 96.**
+
+**Tier-2 item 8 — the D23 zero-diff verification: PASSED.**
+`fresh_schema.json` re-dumped from v4 `616930db`
+(`harness/oracle/provision/dump-fresh-schema.ts`, 79 main + 29
+mount-index + 3 llm-logs statements over 43 repos) and diffed against
+the committed file — **zero change**. The `docs/developer/DDL.md` edit
+in `a2d9a3c8` was a COMMENT on the `pascalMeta` column; `generateDDL`
+emits bare DDL, so no re-dump was owed. Confirmed rather than assumed.
+
+**Final gate.** `cargo fmt --all --check` clean; clippy `-D warnings`
+clean on BOTH feature sets; `cargo test --workspace --no-fail-fast`
+**351 binaries / 0 failed**. The lane's **14 differentials run BY NAME
+with `--nocapture`, all fourteen printing `OK:`, zero `SKIP`** (the
+plain workspace run swallows those lines, so a SKIP count taken from it
+is meaningless — the by-name run is the one that proves it).

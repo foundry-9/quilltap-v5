@@ -177,6 +177,10 @@ pub async fn workbench_post(
     let definition = obj.get("definition").cloned().unwrap_or(Value::Null);
     let params = obj.get("params").cloned();
     let metadata = obj.get("metadata").cloned();
+    // §B: the bench's scripted oracle. The shape check lives in the core (the
+    // preview union admits `{live:true}`, the audit union deliberately does not),
+    // so the edge only forwards it.
+    let llm = obj.get("llm").cloned();
 
     let req = if action == Some("preview") {
         // `private` is `z.boolean().optional()`: a present non-boolean is a body
@@ -191,12 +195,14 @@ pub async fn workbench_post(
             params,
             private,
             metadata,
+            llm,
         }
     } else {
         CoreRequest::CustomToolAudit {
             definition,
             params,
             metadata,
+            llm,
         }
     };
 

@@ -26,6 +26,7 @@ use quilltap_core::api::custom_tools::{chat_custom_tool_run, chat_custom_tools_l
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::completion::CannedCompletionProvider;
 use serde_json::{json, Map, Value};
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
@@ -243,7 +244,25 @@ async fn custom_tools_route_matches_oracle() {
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "parameters": { "bad": 1 } }),
             ),
         ),
+        // The 616930db consult through the CHAT entrance — the third of the
+        // three pascalMeta.llm writers.
+        (
+            "run-oracle-consult",
+            Some(
+                json!({ "tool": "oracle", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+        ),
     ];
+
+    // Declared on BOTH sides, so a case added to the oracle and forgotten here
+    // would pass silently on a smaller set.
+    assert_eq!(
+        cases.len(),
+        oracle.len(),
+        "the Rust case list and the oracle disagree: {} vs {}",
+        cases.len(),
+        oracle.len()
+    );
 
     let mut checked = 0usize;
     for (name, body) in &cases {
@@ -265,6 +284,12 @@ async fn custom_tools_route_matches_oracle() {
                     .get("asCharacterId")
                     .and_then(Value::as_str)
                     .map(str::to_string);
+                // The REAL consult provider, exactly as v4's `handleRun`
+                // builds one. The fixture carries no connection profiles, so
+                // the resolution fails at that arm and the canned provider is
+                // never reached — which is the point: both sides report v4's
+                // `no connection profiles are configured`.
+                let completion = CannedCompletionProvider::new();
                 let (s, bd) = status_body(
                     chat_custom_tool_run(
                         &db,
@@ -274,6 +299,7 @@ async fn custom_tools_route_matches_oracle() {
                         parameters,
                         private,
                         as_character_id,
+                        Some(&completion),
                     )
                     .await,
                 );
