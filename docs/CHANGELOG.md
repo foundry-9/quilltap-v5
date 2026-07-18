@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+The P4.9c + P4.9b + P4.9d unification (the M6 items 1-4 round, PARTIAL):
+About + Profile + the shell user menu, the standalone Generate Image
+screen, and the quick-hide system are on main. Unification wires: the
+four P4.9c verbs folded into CoreRequest (casts removed), the quick-hide
+menu section mounted inside the user menu (v4's order), and the
+quick-hide hiding beat activated from a storage poke to real menu
+clicks. P4.9a (My Photos) is HELD BACK at unit 1 on its preserved
+branch; the photos nav item stays disabled until it lands. Gate: fmt +
+clippy (both feature sets) + release build clean; cargo test 350
+binaries / 1,433 tests / 0 failed with the three new differentials
+regenerated fresh from a pinned d68638b4 worktree (data-dir 20 cases,
+profile routes 18, users tier-2) and zero SKIPs; ng test 151 files /
+1,706; ng build clean; full Playwright 78/78 zero skips. Versions: core
+0.0.271, harness 0.0.239, web 0.0.28, SPA 0.5.169 (the recounted
+union). NOTE: v4 moved to 616930db (the llm-consult custom-tools
+feature) - a drift catch-up round is owed; it touches already-ported
+Pascal/workbench surfaces and none of this round's.
+
 Fix the theme Preview button's accessible name (P4.9d): it had been given an
 aria-label of "Preview <theme name>", which v4 does not do — v4's button is an
 eye icon plus the word "Preview" and nothing else. The invented label also made

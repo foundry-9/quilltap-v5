@@ -1828,3 +1828,35 @@ candidates: the human M5 + finding-#12 walk (STILL outstanding), the
 M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`), the
 `p4.9j-workspace-tabs` human ruling, or a Workbench/Pascal dogfood
 pass.** Round record: `status-log.md`.
+
+**The M6 items 1–4 round (P4.9a ∥ P4.9c ∥ P4.9b ∥ P4.9d) is PARTIALLY
+UNIFIED on main (2026-07-18) — P4.9c, P4.9b, and P4.9d CLOSED; P4.9a
+OPEN, held back at unit 1 (resume notes in its order header).** Landed:
+the About + Profile vertical (the `userProfileGet/Update/SetAvatar` +
+`systemDataDir` verbs + REST edges over three fresh pinned-`d68638b4`
+differentials; the health `version` carry — v5's UI can finally read its
+own version; the `/about` screen with the M6-ruled local-badge
+divergence; the `/profile` screen with the reduced avatar picker; the
+`qt-user-menu` shell-footer dropdown) ∥ the standalone Generate Image
+surface (the shared `ImageProfilePicker` + `provider-icon`, the
+`/generate-image` screen over the live four-param `imageProfileGenerate`,
+the restored homepage quick action, the standalone in-chat dialog + its
+single composer-gutter opener) ∥ the quick-hide system (the three-key
+signal service sharing v4's exact localStorage keys, the filter across
+salon list / home / roster / detail / Prospero, the menu section MOUNTED
+in the user menu at unification with its beat activated to real menu
+clicks, the global tags card in Settings → Appearance, and the
+ThemePreviewModal re-binned from `p4.9c`). Gate: 350 test binaries /
+1,433 / 0 failed (the three new differentials by name, zero SKIP), clippy
+both feature sets, release build, ng test 1,706 (151 files), ng build,
+full Playwright 78/78 zero skips. Versions: core 0.0.271, harness
+0.0.239, host 0.0.20, web 0.0.28, quilltap-tauri 0.0.4, SPA 0.5.169. **⚠
+v4 DRIFTED to `616930db` during the round** (the llm-consult
+custom-tools feature + Insert-Announcement Pascal + outcome-test
+comparators — it touches the PORTED Pascal/workbench surfaces; zero
+overlap with this round). The photos nav item stays disabled (`route:
+null`) until P4.9a lands (§2a). **Next candidates: the `616930db` drift
+catch-up round (classify → re-port; the natural next `/setupphase`),
+finishing P4.9a (resume at unit 2), the `p4.9j` workspace-tabs round
+(ruled: retirement gates on it), or the M6 backlog items 5+.** Round
+record: `status-log.md`.

@@ -21117,3 +21117,65 @@ main's baseline (no Rust touched). `ng test` 145 files / 1627 tests;
 
 **Versions:** SPA 0.5.153 → 0.5.160 (six unit bumps + the Preview-label
 fix). No crate bumps — `crates/**` untouched.
+
+## The P4.9c ∥ P4.9b ∥ P4.9d unification — the M6 items 1–4 round, PARTIAL (2026-07-18)
+
+Three of the round's four lanes unified onto main; **P4.9a (My Photos) is
+HELD BACK at unit 1** on its preserved branch
+`claude/photos-view-porting-3ee1fc` (worktree kept; the resume notes are
+in its order's status header — rebase first, its core 0.0.270 bump now
+conflicts with main's 0.0.271). Cherry-picked in dependency order (C →
+B → D) onto `unify/m6-items-1-4`; the CHANGELOG and status-log unions
+were rebuilt deterministically from the lanes' own verified pure
+appends/prepends after the mechanical three-way unions interleaved
+fragments and dropped lane D's CHANGELOG block (the repair commit
+records it).
+
+**The wires:** (1) the §3 fold — `userProfileGet` / `userProfileUpdate`
+(double-option `{name?, email?, image?}`) / `userProfileSetAvatar` /
+`systemDataDir` into `CoreRequest` name-for-name with `api/types.rs`'s
+`=== P4.9c ===` block; `profile.api.ts`'s casts removed. (2) the §2b
+mount — `qt-quick-hide-menu-section` inside `qt-user-menu` at the pinned
+marker, quick-hide content above the Profile/About entries per v4
+`sidebar-footer.tsx:302,:309`. (3) the quick-hide hiding beat ACTIVATED:
+the in-lane localStorage poke replaced with real user-menu toggle clicks
+(open menu → per-tag eye button → aria-pressed asserted → close), no
+reload — the service is signal-live. **(§2a NOT applied:** the photos
+nav flip gates on lane A's `/photos` route and lands when that lane
+unifies; the nav item stays `route: null`.)
+
+**The gate:** `cargo fmt --all --check` clean; clippy `-D warnings`
+clean on both feature sets; release build clean; `cargo test --workspace
+--no-fail-fast` **350 binaries / 1,433 tests / 0 failed**, with the
+three lane-C differentials regenerated FRESH from the re-created pinned
+detached worktree `/tmp/qt-v4-baseline` at `d68638b4`
+(`data_dir_paths_equivalence` 20 cases, `profile_routes_equivalence` 18
+jest-oracle rows, `users_tier2_equivalence` canonical dump) and run by
+name with `--nocapture` — zero SKIP; `profile_web_routes` green. SPA:
+`ng test` **151 files / 1,706**; `ng build` clean; **full Playwright
+78/78, zero skips**, run alone on 4319. Versions: core 0.0.271, harness
+0.0.239, host 0.0.20, web 0.0.28, quilltap-tauri 0.0.4, SPA **0.5.169**
+(the recounted union: main 0.5.153 + C's 4 + B's 5 + D's 7).
+
+**⚠ v4 DRIFTED during the round: HEAD is `616930db`** (three commits past
+the `d68638b4` baseline — `a2d9a3c8` "custom tools can consult an LLM"
+(the predicted llm-consult feature), `979aec66` "Pascal is selectable in
+the Insert Announcement dialog", `616930db` "contains/ncontains
+substring comparators in custom-tool outcome tests"; 42 files,
++2,415/−193, now a CLEAN tree). The drift is confined to the Pascal
+custom-tools family + `lib/services/announcer/writer.ts` +
+`chats-messages.ops.ts` + `llm-log.types.ts` + both public schemas — it
+touches ALREADY-PORTED v5 surfaces (P4.6ay `run_custom` + tool-draft +
+custom-tool types byte corpus, P4.6bb workbench + the committed schema
+asset, the post-office announcer writers) and NONE of this round's. **A
+drift catch-up round is owed**; until it moves the baseline, oracles
+keep regenerating from a pinned detached worktree at `d68638b4`. The
+main-checkout oracle recipes are unaffected (all committed oracle
+families still date to `d68638b4`/`e3593f75` regen).
+
+**Still OPEN → the next-order pool:** finish P4.9a (resume at unit 2;
+its §1/§2a/§3 obligations land with it); the `616930db` drift catch-up
+(classify → re-port — the natural next `/setupphase` alongside or before
+the P4.9a resume); the `p4.9j` workspace-tabs round (ruled: port it, v4
+retirement gates on it); the M6 backlog items 5+ (`p4.9g` Data & System
+etc.); the standing refusal-armed pools (unchanged).

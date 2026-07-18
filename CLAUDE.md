@@ -694,6 +694,28 @@ records THERE. Update this summary only when a phase or round completes.
   the M6 backlog items 1–4, ~~the `p4.9j` ruling~~ (RULED 2026-07-18:
   port the tabbed workspace, retirement gates on it), or a
   Workbench/Pascal dogfood pass — see phase-4.md.
+- **The M6 items 1–4 round (P4.9a ∥ P4.9c ∥ P4.9b ∥ P4.9d): PARTIALLY
+  UNIFIED on main (2026-07-18) — P4.9c/P4.9b/P4.9d CLOSED; P4.9a OPEN,
+  held back at unit 1** (branch preserved; resume notes in its order
+  header — the photos nav item stays disabled until it lands). Landed:
+  About + Profile (the four profile/data-dir verbs, three fresh
+  pinned-baseline differentials, the health `version` carry, both
+  screens, the `qt-user-menu` shell footer dropdown) ∥ the standalone
+  Generate Image surface (shared picker + `/generate-image` +
+  the restored home quick action + the in-chat standalone dialog with
+  its gutter opener) ∥ the quick-hide system (three-key service on v4's
+  exact localStorage keys, filters across salon/home/roster/detail/
+  Prospero, the menu section mounted at unification with its beat
+  activated, the global tags card in Appearance, ThemePreviewModal —
+  re-binned from p4.9c). Gate: 350 suites / 1,433 / 0, three new
+  differentials by name zero SKIP, clippy both feature sets, ng test
+  1,706 (151 files), full Playwright 78/78 zero skips. **⚠ v4 DRIFTED
+  to `616930db` during the round** (llm-consult + Insert-Announcement
+  Pascal + outcome comparators — touches the PORTED Pascal/workbench
+  surfaces; a drift catch-up round is owed; oracles keep regenerating
+  from a pinned `d68638b4` worktree until it runs). Next candidates:
+  the `616930db` drift catch-up, finishing P4.9a, `p4.9j` (workspace
+  tabs), or M6 items 5+ — see phase-4.md.
 - **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification** (every family the drift touched
   regenerated there; untouched families' committed oracles date to
@@ -728,7 +750,7 @@ records THERE. Update this summary only when a phase or round completes.
   to 4.8.0's two ALTERs before pointing v5 at it. Still NOT drift:
   v4's embedding blob-registration bug is structurally impossible in
   v5 (no registry exists; no `repair-text-embeddings` needed).
-  Versions: core 0.0.269, harness 0.0.237, host 0.0.20, web 0.0.27,
-  quilltap-tauri 0.0.3, SPA 0.5.151.
+  Versions: core 0.0.271, harness 0.0.239, host 0.0.20, web 0.0.28,
+  quilltap-tauri 0.0.4, SPA 0.5.169.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
