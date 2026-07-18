@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.9c unit 7: the qt-user-menu in the shell footer (v4 profile-menu.tsx)
+— an avatar/name trigger opening a dropdown with Profile and About, its
+user coming from userProfileGet. Carries the §2b mount marker for lane
+P4.9d's quick-hide section. Also fixes the stale shell docstring claiming
+only the Salon route is live, and adds the live Playwright walk (user
+menu, About with the live version string, a Profile name edit that
+survives a reload). The e2e global-setup now rewrites the users row's own
+PRIMARY KEY to SINGLE_USER_ID — the userId loop cannot reach it, so the
+Profile screen reported "User not found" on a fixture that plainly has a
+user. SPA 0.5.157.
+
 P4.9c unit 6: the /profile screen — the editable settings block, the
 read-only account information, and the data directory, over the three new
 verbs. Carries v4's cache-busted avatar src and its hasChanges rule, and

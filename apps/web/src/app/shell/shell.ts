@@ -6,6 +6,7 @@ import { FirstRunService } from '../startup/first-run.service';
 import { ThemeService } from '../theme/theme.service';
 import { ThemeSwitcher } from '../theme/theme-switcher';
 import { Icon, type IconName } from '../ui/icon';
+import { UserMenu } from './user-menu';
 
 interface NavItem {
   id: string;
@@ -16,8 +17,9 @@ interface NavItem {
   icon: IconName;
 }
 
-/** v4 `collapsed-nav.tsx` navItems — the foundation nav skeleton. Only the Salon
- *  (Chats) route is live this round; the rest stay disabled until their vertical. */
+/** v4 `collapsed-nav.tsx` navItems. Every entry whose vertical has landed carries
+ *  a real `route`; an entry still awaiting its vertical keeps `route: null` and
+ *  renders as a disabled placeholder. */
 const NAV_ITEMS: NavItem[] = [
   {
     id: 'projects',
@@ -74,7 +76,15 @@ const NAV_ITEMS: NavItem[] = [
 @Component({
   selector: 'qt-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ThemeSwitcher, RouterLink, RouterLinkActive, RouterOutlet, AutonomousRoomBadges],
+  imports: [
+    Icon,
+    ThemeSwitcher,
+    RouterLink,
+    RouterLinkActive,
+    RouterOutlet,
+    AutonomousRoomBadges,
+    UserMenu,
+  ],
   template: `
     <div class="qt-app-layout">
       <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
@@ -111,6 +121,8 @@ const NAV_ITEMS: NavItem[] = [
           <!-- Autonomous run-state badges (renders nothing when no rooms are live). -->
           <qt-autonomous-room-badges />
           <div class="qt-left-sidebar-footer-actions">
+            <!-- v4 sidebar-footer.tsx:309 — the profile dropdown. -->
+            <qt-user-menu />
             @if (showNavThemeSelector()) {
               <qt-theme-switcher />
             }

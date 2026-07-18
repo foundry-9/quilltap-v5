@@ -218,6 +218,17 @@ export default async function globalSetup(): Promise<void> {
       },
     );
   }
+  // P4.9c: the `users` ROW ITSELF, whose identity is its PRIMARY KEY and so is
+  // unreachable by the `userId` loop above. `userProfileGet` looks the acting
+  // user up by id, so without this the Profile screen answers "User not found"
+  // on a fixture that plainly has a user. (The same lesson as the P4.6s
+  // "rewrite EVERY user-scoped table" note, one level down: the user table is
+  // user-scoped by its own id.)
+  runCliWrite(
+    cli,
+    `UPDATE users SET id = '${SINGLE_USER_ID}' WHERE id = '${FIXTURE_USER}';`,
+    { allowFail: true },
+  );
   // The Salon fixture predates the `text_replacement_rules` table (v4 created
   // it by MIGRATION, so fresh-generateDDL fixtures never have it — the
   // `folders`/`terminal_sessions` precedent). The P4.6ak surface reads/writes
