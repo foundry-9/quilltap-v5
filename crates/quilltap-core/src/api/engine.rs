@@ -2722,6 +2722,35 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ao ===
+            // === P4.6ay: Pascal's custom-tools route ===
+            Request::ChatCustomToolsList { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::custom_tools::chat_custom_tools_list(&db, SINGLE_USER_ID, &chat_id)
+                }
+                Err(r) => r,
+            },
+            Request::ChatCustomToolRun {
+                chat_id,
+                tool,
+                parameters,
+                private,
+                as_character_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::custom_tools::chat_custom_tool_run(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &tool,
+                        parameters,
+                        private,
+                        as_character_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.6ay ===
             // === P4.6ar: the llm-logs read surface + the system aesthetics pair ===
             Request::LlmLogsList {
                 message_id,

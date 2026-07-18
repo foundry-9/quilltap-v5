@@ -1860,6 +1860,30 @@ pub enum Request {
         detailed: Option<bool>,
     },
     // === end P4.6ao ===
+    // === P4.6ay: Pascal's custom-tools route (the composer popup's surface) ===
+    /// v4 `GET /api/v1/chats/[id]/custom-tools` → `{tools, errors,
+    /// droppedForCap?}` — the merged-per-perspective roster. Missing chat →
+    /// `notFound('Chat')`.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolsList {
+        chat_id: String,
+    },
+    /// v4 `POST /api/v1/chats/[id]/custom-tools?action=run` → `{messages, result}`.
+    /// A manual (operator) run: `invokedBy:'user'`, the whisper target the
+    /// operator's `userId` (not a participant id). All four 400 arms + the
+    /// post-Prospero-and-400 path live in the handler.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolRun {
+        chat_id: String,
+        tool: String,
+        #[serde(default)]
+        parameters: Option<serde_json::Map<String, serde_json::Value>>,
+        #[serde(default)]
+        private: Option<bool>,
+        #[serde(default)]
+        as_character_id: Option<String>,
+    },
+    // === end P4.6ay ===
     // === P4.6ar: the llm-logs read surface + the system aesthetics pair (lane A) ===
     /// v4 `GET /api/v1/llm-logs` (all filter branches).
     #[serde(rename_all = "camelCase")]
@@ -1949,6 +1973,10 @@ pub enum Response {
     ChatSettings(serde_json::Value),
     /// v4 `handleTurnAction` body.
     TurnAction(serde_json::Value),
+    /// v4 `GET .../custom-tools` body (`{tools, errors, droppedForCap?}`).
+    CustomToolsList(serde_json::Value),
+    /// v4 `POST .../custom-tools?action=run` body (`{messages, result}`).
+    CustomToolRun(serde_json::Value),
     /// v4 message edit / swipe body (`{ message: {...} }`).
     Message(serde_json::Value),
     /// v4 message-delete body (the confirmation body OR `{ success, memoriesDeleted }`).

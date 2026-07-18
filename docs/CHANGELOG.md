@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.6ay unit 7: the `/api/v1/chats/{id}/custom-tools` route + the §4 dispatch
+verbs. `api/custom_tools.rs` ports v4's `handleList` (the merged-per-perspective
+roster — resolved once per character participant, identical variants collapsed
+to one unlabelled row, differing ones listed once per variant tagged with the
+character; the listing is odds-free, never the roll spec or the outcome table)
+and `handleRun` (`?action=run` — the operator's manual run: metadata from the
+as-character, the whisper target the operator's userId not a participant id,
+`invokedBy:'user'`, the four 400 arms, post-Prospero-and-400 on a run error).
+The `chatCustomToolsList` / `chatCustomToolRun` CoreRequest verbs +
+`CustomToolsList` / `CustomToolRun` responses, the engine dispatch, and the
+quilltap-web REST legs (`GET`/`POST /custom-tools`). A 9-case route differential
+(`pascal_custom_tools_route_equivalence`) over the committed pascal fixture vs
+v4's real route handlers (the merged roster + all POST arms + posted rows). The
+§4 wire contract verified name-for-name against lane BA's on-main SPA
+(`core-contract.ts`). Deferred loud: the e2e Tools-fixture activation of BA's
+probe-guarded flow beat (the e2e mount-db has no CLI write path; a recipe is in
+the status log; BA's beat self-activates once seeded). Versions: core 0.0.266,
+harness 0.0.234, web 0.0.26.
+
 P4.6ay unit 9: `run_custom` orchestration / streaming wiring. `build_tools`
 gains a `custom_tool_context` and resolves the Pascal roster INSIDE it, at the
 last possible moment (after every early return — a Courier turn /

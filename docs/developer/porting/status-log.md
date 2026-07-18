@@ -19317,3 +19317,67 @@ projection) directly — no collision risk.
 
 **Versions:** core 0.0.265, harness 0.0.233, host 0.0.20.
 **Remaining OPEN:** units 7 (route + §4 dispatch verbs), 12 (Workbench server).
+
+---
+
+### P4.6ay unit 7 — the /custom-tools route + the §4 dispatch verbs
+
+**Landed:**
+
+- **`api/custom_tools.rs`** (new) — `chat_custom_tools_list` (v4 `handleList`)
+  and `chat_custom_tool_run` (v4 `handleRun`). The list MERGES per-character
+  perspectives: resolve the roster once per CHARACTER participant, group by
+  `name`, dedup by `variantKey = mountPointId::definitionPath`; identical
+  variants → one unlabelled row (arbitrary-but-recorded `asCharacterId`),
+  differing → one labelled row per variant; errors unioned by `(mount::path)`;
+  sorted by `title` then `characterLabel`; `droppedForCap` only when non-empty.
+  The listing DTO is ODDS-FREE. The run path is the OPERATOR's (NOT
+  `execute_run_custom_tool`): metadata from the as-character (`{}` when nobody is
+  named), the whisper target the operator's `userId` (a userId, not a
+  participant id), `invokedBy:'user'`, no `callerParticipantId`; the four 400
+  arms; a `CustomToolRunError` posts the Prospero bubble AND returns 400.
+- **The §4 dispatch verbs** — `Request::ChatCustomToolsList { chat_id }` +
+  `Request::ChatCustomToolRun { chat_id, tool, parameters?, private?,
+  as_character_id? }`, `Response::CustomToolsList` / `CustomToolRun`, the
+  `engine.rs` arms (SINGLE_USER_ID), and the quilltap-web REST legs
+  (`custom_tools_routes.rs`: `GET`/`POST /api/v1/chats/{id}/custom-tools`, the
+  POST `?action=run` guard + body parse; unwrap the dispatch envelope).
+
+**Verification:**
+
+- `pascal_custom_tools_route_equivalence` (route differential, 9 cases) vs v4's
+  REAL GET/POST route handlers, driven by the jest oracle
+  `pascal-custom-tools-route.test.ts` over the committed `pascal-run-custom`
+  fixture. GET diffs the merged roster (ansible×3 labelled + coin/whispered
+  unlabelled — the fixture's three characters each carry their own ansible file
+  → the labelled branch; coin/whispered live only in char A's vault, seen by
+  B/C via the participant tier → one unlabelled row). POST diffs `{status, body}`
+  + the posted `chat_messages` system rows (mint-normalized): success
+  public/hit/miss/no-character/private, unknown-tool (400 Available),
+  unknown-character (400), run-error (Prospero + 400). Regen recipe: the test
+  header (jest, mirror to /tmp, env `QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE`).
+- **The §4 wire diff** ran name-for-name against lane BA's on-main SPA
+  (`apps/web/src/app/core/core-contract.ts`): the verb `type` strings
+  (`chatCustomToolsList`/`chatCustomToolRun`), the request fields, and every
+  `CustomToolListing` / `CustomToolLoadError` / `CustomToolsRosterData` /
+  `CustomToolRunData` field match the server output. The client reads the bodies
+  structurally via `dispatchData` (response `type` is AY-owned:
+  `customToolsList`/`customToolRun`).
+
+**DEFERRED LOUD — the e2e Tools fixture (BA's flow-beat activation):** BA's
+`apps/web/e2e/salon-custom-tools-flow.spec.ts` is probe-guarded and
+self-activates when the "Custom tools" button appears — i.e. when a salon e2e
+character carries a `Tools/*.tool.json`. The e2e `global-setup.ts` seeds MOUNT
+data only by copying a committed mount fixture's `doc_mount_*` rows
+(`seedCourierImagesFixture`) — the `quilltap db` CLI writes MAIN/llm-logs only,
+NOT the mount db, so there is no clean CLI path to inject a Tools file. **Recipe
+to activate (unification-time, Playwright-gated):** add a
+`seedPascalToolsFixture(cli)` modeled on `seedCourierImagesFixture` that copies
+the `pascal-run-custom-mount.db` `Tools/`-bearing `doc_mount_{folders,file_links,
+documents}` rows into the salon instance's mount, REMAPPING the `mountPointId`
+onto a salon character's vault (e.g. Aria `7e056034-…`) so the salon chat's
+roster resolves non-empty; then run the full Playwright — the flow beat
+self-activates. The server surface (this unit) is what unblocks it.
+
+**Versions:** core 0.0.266, harness 0.0.234, web 0.0.26.
+**Remaining OPEN:** unit 12 (the Workbench SERVER surface).

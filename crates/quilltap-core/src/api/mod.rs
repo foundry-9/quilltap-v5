@@ -29,6 +29,7 @@ pub mod chat_create;
 pub mod chat_media;
 // === end P4.6ab ===
 pub mod chat_send;
+pub mod custom_tools;
 pub mod documents;
 pub mod engine;
 pub mod groups;
