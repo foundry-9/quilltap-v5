@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The quick-hide live walk (P4.9d unit 5): a Playwright beat that seeds a tag
+onto a character, drives Settings → Appearance → Tags to style it and tick
+"Enable quick-hide button", reloads to prove the flag round-tripped to the
+server, then hides the tag and watches the tagged character leave the roster
+and come back when cleared. The hiding half writes the localStorage keys the
+menu section's toggles write, because the section ships unmounted this round;
+the menu-walk variant activates at unification. The beat was mutation-checked:
+with the roster filter disabled it fails, so it is proving the filter rather
+than passing vacuously. One behavior worth knowing: hiding only bites for tags
+actually flagged quick-hide, because the service prunes hidden ids down to the
+flagged set on every refresh — v4 does the same. SPA 0.5.158.
+
 The global tags card (P4.9d unit 4): v4's tags-tab ported into Settings →
 Appearance as the last card, where v4 mounts it. Tag Appearance offers a picker
 that gives an unstyled tag the default style, then a card per styled tag with
