@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.9c unit 5: the /about screen — v4's AboutView content verbatim (what
+Quilltap is, the subsystem roll-call, 24 key features, the tech stack,
+links, authors, acknowledgments, computed copyright years). Three
+recorded divergences: the five shields.io badges render as local styled
+links (the M6 offline ruling — link targets kept, remote images dropped),
+the version badge shows the SERVER's version from the health carry rather
+than v4's build-time product version, and there is no background image
+because the v5 static set has no about.webp. Two link glyphs are dropped
+(no octocat/globe icon in the v5 set). SPA 0.5.155.
+
 P4.9c unit 4: the SPA half of the health version carry —
 HealthStatus/interpretHealth gain an optional version field, read once and
 shared by both transports (the Tauri health command replies with the same

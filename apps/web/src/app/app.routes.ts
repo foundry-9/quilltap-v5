@@ -14,7 +14,8 @@ import { Routes } from '@angular/router';
  * `/settings` is the Settings hall and `/settings/wizard` the provider wizard;
  * `/scenarios` is the general (instance-wide) scenarios page;
  * `/custom-tools` is Pascal's Workbench (library ↔ editor in place, deep-linked
- * through `?mount=`/`?path=`/`?new=1` — v4's own no-workspace fallback).
+ * through `?mount=`/`?path=`/`?new=1` — v4's own no-workspace fallback);
+ * `/about` is the static About screen.
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -99,6 +100,12 @@ export const routes: Routes = [
     path: 'settings',
     loadComponent: () => import('./screens/settings/settings').then((m) => m.Settings),
   },
+  // === P4.9c (lane C) ===
+  {
+    path: 'about',
+    loadComponent: () => import('./screens/about/about-page').then((m) => m.AboutPage),
+  },
+  // === end P4.9c ===
   {
     path: '',
     pathMatch: 'full',
