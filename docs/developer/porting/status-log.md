@@ -9,6 +9,24 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## The P4.6ay-resumed §4 wire — the Pascal Tools e2e seed (unifier, 2026-07-17)
+
+The unit-7 e2e-fixture obligation is DISCHARGED: `apps/web/e2e/support/
+seed-pascal-tools-fixture.ts` (new; the `seedCourierImagesFixture` pattern cut
+down) copies the committed `pascal-run-custom-mount.db` vault-A `Tools/` rows
+(1 folder + 3 links + 3 files + 3 documents, all v4-minted ids) into the
+shared e2e instance's mount partition, remapping ONE value — vault A's
+`mountPointId` → Aria's salon vault (`7e056034-…`; survey-verified: the salon
+scaffold creates no Tools folder, so the NOCASE folder index cannot trip).
+Wired into `global-setup.ts` beside the courier seed (mount rows only — the
+userId rewrite is untouched). **The probe-guarded
+`salon-custom-tools-flow.spec.ts` beat self-activated as designed** — verified
+by the JSON reporter: no `activate-at-unification` annotation; the walk drives
+popup → roster → run → the Pascal bubble + header chip + the whisper
+carve-out, live against the unit-7 verbs. On the salon instance `coin` runs
+public, `whispered` private, and `ansible` (metadata-gated) deals its
+catch-all — Aria's vault hydrates `{}`. SPA 0.5.141.
+
 ## Round record — the d68638b4 drift catch-up: P4.d7 ∥ P4.6ay ∥ P4.6az ∥ P4.6ba (PARTIALLY UNIFIED 2026-07-17)
 
 **On main** (`unify/d68638b4-drift`, fast-forwarded): **P4.d7 CLOSED** (6

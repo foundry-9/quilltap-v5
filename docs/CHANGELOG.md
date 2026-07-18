@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+The P4.6ay-resumed unification wire: seed the Pascal Tools roster into the e2e
+instance. A new seedPascalToolsFixture (the courier-seed pattern, cut down)
+copies the committed pascal-run-custom fixture's vault-A Tools folder, its
+three tool files, and their documents into the shared salon instance's mount
+partition, remapped onto Aria's vault — which lights the composer's
+Custom-tools button and self-activates the probe-guarded
+salon-custom-tools-flow beat: the popup opens over the live roster verbs, a
+tool runs, and the Pascal bubble renders with its header chip (verified live,
+no guard annotation). Mount rows are v4-minted ids; the one remap is the
+mountPointId. SPA 0.5.141.
+
 P4.6ay unit 12 (part 1 — the library + audit compute): `list_all_custom_tools`
 (v4 `listAllCustomTools` — every definition in every enabled store, sorted by
 mount id, NO shadowing / disabled-suppression / cap, every entry tier `'global'`

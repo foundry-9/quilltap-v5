@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 import { makeDbKeyFile } from './support/dbkey';
 import { seedCourierImagesFixture } from './support/seed-courier-fixture';
+import { seedPascalToolsFixture } from './support/seed-pascal-tools-fixture';
 import {
   ARTIFACTS_DIR,
   BASE_URL,
@@ -158,6 +159,11 @@ export default async function globalSetup(): Promise<void> {
   // content and skip when absent). Runs BEFORE the userId rewrite below — the
   // courier fixture shares FIXTURE_USER, so the loop rewrites these rows too.
   seedCourierImagesFixture(cli);
+  // The d68638b4-round §4 wire: a Tools/ roster in Aria's vault, which lights
+  // the composer's Custom-tools button and self-activates the probe-guarded
+  // salon-custom-tools-flow beat (mount-partition rows only — the userId
+  // rewrite below does not touch them).
+  seedPascalToolsFixture(cli);
   for (const table of [
     'chats',
     'connection_profiles',
