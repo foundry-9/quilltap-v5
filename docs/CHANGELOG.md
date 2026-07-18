@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6bb unit 9 (SPA): the Workbench e2e beats. e2e/workbench-flow.spec.ts adds
+four probe-guarded beats — the rail opening the Workbench and the library
+listing the seeded roster, a definition opening the editor in place in form
+mode, the proving bench returning an audit hit table (shape and deterministic
+fields only, never a stochastic value), and an authoring walk that creates a
+contrivance, saves it into a picked destination, and finds it back in the
+library. They skip in-lane on an unknown-variant probe of customToolsLibrary and
+ACTIVATE AT UNIFICATION when lane AY's verbs merge. Full Playwright 67 passed,
+zero regressions. SPA 0.5.151.
+
 P4.6bb unit 8 (SPA): the four Workbench entry points and the schema asset. The
 left-rail item, the Settings-card "Open Pascal's Workbench" button (live even
 while the toggle is off — authoring while the table isn't dealing is

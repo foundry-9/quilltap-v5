@@ -20141,3 +20141,48 @@ TS and reach the template through a method.
 Gate: ng test 140 files / 1531 (+10 net), ng build clean.
 
 **Versions:** SPA 0.5.150.
+
+### Unit 9 — the e2e beats (ACTIVATE-AT-UNIFY)
+
+`e2e/workbench-flow.spec.ts` — four beats over the shared global-setup server
+(the filename sorts after `foundation.spec.ts`, as workers:1 alphabetical order
+requires):
+
+1. **Rail** — the left-rail wrench navigates to `/custom-tools` and the library
+   heading renders; then the seeded Tools roster lists.
+2. **Editor** — opening a definition renders the editor **IN PLACE** (the URL
+   stays `/custom-tools` — v4's keep-alive rule proven live, not asserted from
+   component state), in form mode, with the identity fields populated and NO
+   repair banner.
+3. **Bench** — the audit returns a hit table. Asserted by SHAPE and deterministic
+   fields only: the draws/values/mean line's structure and the catch-all's own
+   label. The run count is server-fixed and the shares are stochastic, so neither
+   is asserted by value.
+4. **Authoring** — create → fill identity → add a condition and a message → Save
+   → pick a destination → "Pascal has filed the contrivance." → back to the
+   library, where the new contrivance is on the table.
+
+**Probe-guarded, ACTIVATE-AT-UNIFY** (the `home-flow` record-and-fallback
+pattern): a `beforeAll` posts `{type:'customToolsLibrary'}` and treats an
+"unknown variant" error as not-ready. In-lane all four skip; they self-activate
+the moment lane AY's verbs merge — no unifier wire needed beyond the merge. Beat
+1's rail assertions run BEFORE its skip, so the entry point is verified live even
+in-lane.
+
+Beat 4 WRITES into the seeded store, which is safe because global-setup copies
+the fixture fresh each run (`[[e2e-fixture-before-run-order]]`) and the name is
+one no sibling spec reads.
+
+**One locator bug, caught by the live run and worth the note:** the library
+heading carries a TYPOGRAPHIC apostrophe (`&rsquo;`, as v4 writes it) while the
+rail label is ASCII, so `getByRole('heading', {name: "Pascal's Workbench"})`
+never matched. The locator is now a regex tolerating either. Same family as the
+P4.6ba case-insensitive tool-title fix: v4's user-facing copy uses typographic
+punctuation and e2e locators must not assume ASCII.
+
+**Gate (the whole lane):** `cargo fmt --all --check` clean; clippy clean on both
+feature sets; `cargo test --workspace --no-fail-fast` 344 test binaries, ZERO
+failures (unchanged from main — this lane touches no Rust); ng test 140 files /
+1531; ng build clean; **full Playwright 67 passed / 4 skipped** — the 67 matches
+main's baseline exactly (zero regressions) and all four skips are this lane's
+probe-guarded beats.
