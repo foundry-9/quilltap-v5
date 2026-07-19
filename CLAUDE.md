@@ -757,26 +757,60 @@ records THERE. Update this summary only when a phase or round completes.
   `wardrobePreviewAvatar` is half-live** — its render step is
   refusal-armed pending the `avatar_preview` host wire, which is blocked
   on the already-deferred production WebP codec seam; that wire is the
-  natural first item of the next order. **⚠ v4 has DRIFTED to
-  `b8b12695`** (LaTeX/KaTeX — it refactors `markdown-renderer.service.ts`
-  and touches PORTED markdown/message-rendering surfaces); deliberately
-  NOT absorbed, a catch-up round is owed. Next candidates: the
-  `avatar_preview` wire + the WebP codec, the `b8b12695` drift catch-up,
-  `p4.9j` (workspace tabs — retirement gates on it, wants a DEDICATED
-  round), `p4.9i1`/`p4.9i2`, or M6 rows 5+ — see phase-4.md.
-- **Oracle baseline: v4 `616930db` (4.8.0-dev.75), adopted 2026-07-18
-  at the drift-catch-up unification.** Every family the llm-consult
+  natural first item of the next order. (⚠ v4 had DRIFTED to `b8b12695`
+  — LaTeX/KaTeX — and this round deliberately did NOT absorb it;
+  **that catch-up ran as P4.d9 and is now CLOSED — see the next
+  bullet.**)
+- **The P4.d9 `b8b12695` KaTeX/markdown drift catch-up round: UNIFIED on
+  main (2026-07-19) — P4.d9 CLOSED; the oracle baseline MOVES to
+  `b8b12695`.** Single SPA-only lane (zero Rust source touched): the
+  shared math normalizer (`normalizeMathDelimiters` + `MATH_SKIP_PATTERN`
+  + `REMARK_MATH_OPTIONS`, single-dollar math deliberately OFF so
+  currency prose survives) + v4's `katexDepth` KaTeX-subtree skip in
+  `applyRoleplayPatterns`; `remark-math` + `rehype-katex` wired into the
+  ONE Salon renderer at v4's exact plugin positions (v5 needed one
+  pipeline where v4 needs two); the KaTeX stylesheet + `.katex-display`
+  overflow rule; `markdown-fixtures.json` regenerated from v4's REAL
+  renderer at `b8b12695` (23 → 34 fixtures, byte-parity); a live e2e math
+  beat. **The baseline-move neutrality proof:** all SEVEN oracle families
+  that transitively import v4's renderer (salon-reads/-mutations/-skip/
+  -swipe-generate, text-replacements-routes, cost-background-routes,
+  courier-images-routes) regenerated at `b8b12695` and re-run BY NAME,
+  all green with committed oracles behavior-unchanged — v4's
+  `renderedHtml` never reaches the diffed payloads. Gate: 354 binaries /
+  1,450 / 0, the seven differentials by name zero SKIP, clippy both
+  feature sets, release build, ng test 172 files / 2,029, full Playwright
+  87/87 zero skips. Unification wire: the new math beat was moved off
+  "Solo Voyage" onto "Group Expedition" — its sends shifted the P4.6ap
+  chat-totals baseline (15.4K → 15.5K); no spec asserts totals or counts
+  on the group chat. Deferred loud (unchanged by this round): help
+  `math-notation.md` (no v5 help surface — banked for `p4.9i2`),
+  FilePreviewText math (the P4.6af rich-stack deferral), and the composer
+  backslash-escape seam (`\(…\)` typed into qt-rich-editor serializes to
+  `\\(…\\)`; the `\(…\)` → `$$` normalization is proven by the captured-v4
+  fixtures instead). Next candidates: the `avatar_preview` wire + the WebP
+  codec (the named next Rust item), `p4.9j` (workspace tabs — retirement
+  gates on it, wants a DEDICATED round), `p4.9i1`/`p4.9i2`, or M6 rows 5+
+  — see phase-4.md.
+- **Oracle baseline: v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
+  at the P4.d9 KaTeX drift-catch-up unification.** All seven families the
+  KaTeX drift transitively touches regenerated there and proven
+  output-neutral (see the round bullet above); untouched families' committed
+  oracles keep their earlier regen vintages. v4's checkout was CLEAN at
+  `b8b12695` for this round, so oracles regenerate directly from
+  `~/source/quilltap-server` — **the old pin
+  `/private/tmp/qt-v4-pin-616930db` is RETIRED**; re-pin a detached worktree
+  only if the v4 tree is dirty at the next round's start. Versions (after
+  the 2026-07-19 P4.d9 unification): core 0.0.283, harness 0.0.246, host
+  0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.189.
+  The previous baseline paragraph follows for history:
+  v4 `616930db` (4.8.0-dev.75), adopted 2026-07-18
+  at the drift-catch-up unification. Every family the llm-consult
   drift touched regenerated there (the drift was
   Pascal-family-confined); untouched families' committed oracles keep
-  their earlier regen vintages. **⚠ v4 HEAD has since moved to
-  `b8b12695` (LaTeX/KaTeX math rendering) and the baseline deliberately
-  did NOT follow it** (the 2026-07-19 unification, by the human's
-  instruction) — regenerate every oracle from the PINNED detached
-  worktree `/private/tmp/qt-v4-pin-616930db` until a catch-up round
-  moves the baseline; that drift touches ported markdown surfaces, so
-  the markdown family is its classification target. Versions (after the
-  2026-07-19 unification): core 0.0.283, harness 0.0.246, host 0.0.22,
-  web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.183.
+  their earlier regen vintages. Versions at that unification: core
+  0.0.283, harness 0.0.246, host 0.0.22, web 0.0.34, quilltap-tauri
+  0.0.4, SPA 0.5.183.
   The previous baseline paragraph follows for history:
   v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification (every family the drift touched

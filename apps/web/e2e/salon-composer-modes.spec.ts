@@ -173,10 +173,14 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
   // normalization is proven byte-for-byte by the captured-v4 fixtures instead
   // (`math-inline-paren` & friends). A `$$` block serializes cleanly and renders
   // `.katex-display` wrapping a `.katex`, proving the pipeline is wired live.
+  // Sends land in "Group Expedition", NOT "Solo Voyage": the P4.6ap chat-totals
+  // beat (`salon-token-cost-flow.spec.ts`) asserts a hardcoded 15.4K-token
+  // baseline for Solo Voyage, and every message this beat sends shifts it. No
+  // spec asserts token totals or message counts on Group Expedition.
   test('a $$ math message renders KaTeX live; $50/$20 stays plain text', async ({ page }) => {
     await page.goto('/salon');
     await maybeUnlock(page);
-    await openChat(page, 'Solo Voyage');
+    await openChat(page, 'Group Expedition');
 
     // A display block: `$$` / `E = mc^2` / `$$` on their own lines (Shift+Enter
     // inserts a soft break in chat mode, Enter sends). remark-math renders it to

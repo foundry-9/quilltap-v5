@@ -1926,18 +1926,57 @@ Preview button reaches a loud refusal. **That wire is blocked on the
 already-deferred production WebP codec seam** (P4.6y), so closing it means
 porting that codec first. It is the natural first item of the next order.
 
-**⚠ v4 has DRIFTED to `b8b12695`** (one commit: LaTeX/KaTeX math rendering
+**⚠ v4 had DRIFTED to `b8b12695`** (one commit: LaTeX/KaTeX math rendering
 — it refactors `markdown-renderer.service.ts` and adds
 `markdown-postprocess.ts` + `lib/markdown/math.ts`, and **touches ported
-markdown/message-rendering surfaces**). Deliberately NOT absorbed this
-round, by the human's instruction. **The oracle baseline REMAINS
-`616930db`** and every oracle regenerates from the pinned detached worktree
-`/private/tmp/qt-v4-pin-616930db` until a catch-up round moves it.
+markdown/message-rendering surfaces**). Deliberately NOT absorbed in that
+round, by the human's instruction. **That catch-up has since RUN as P4.d9
+and is CLOSED — see the next section; the oracle baseline is now
+`b8b12695` and the pin `/private/tmp/qt-v4-pin-616930db` is retired.**
+
+---
+
+## The P4.d9 `b8b12695` KaTeX/markdown drift catch-up round — UNIFIED 2026-07-19
+
+**P4.d9 CLOSED** (`work-orders/p4.d9-katex-markdown-drift.md`). One SPA-only
+lane, zero Rust source touched — the drift is behavior-neutral for the Rust
+core because v4's renderer output only ever surfaces as `renderedHtml`,
+which v5 omits by locked decision and the salon tier-2 diffs strip.
+
+Landed: the shared math module (`normalizeMathDelimiters`,
+`MATH_SKIP_PATTERN`, `REMARK_MATH_OPTIONS` with single-dollar math OFF) +
+v4's `katexDepth` KaTeX-subtree skip in `applyRoleplayPatterns`;
+`remark-math` + `rehype-katex` wired into the one Salon renderer at v4's
+exact plugin positions (math parse between gfm and breaks, KaTeX render
+before highlight) with step 2.5 normalization ahead of
+`escapeMarkdownInBrackets`; the KaTeX stylesheet via `angular.json` + the
+`.katex-display` overflow rule; `markdown-fixtures.json` regenerated from
+v4's REAL renderer at `b8b12695` (23 → 34 fixtures); a live e2e math beat.
+
+**The baseline move is proven, not assumed:** all seven oracle families that
+transitively import v4's renderer (salon-reads/-mutations/-skip/
+-swipe-generate, text-replacements-routes, cost-background-routes,
+courier-images-routes) were regenerated at `b8b12695` and their differentials
+re-run by name — zero SKIP, all green, committed oracles behaviorally
+unchanged.
+
+Gate: 354 binaries / 1,450 / 0; the seven differentials by name zero SKIP;
+clippy both feature sets; release build; ng test 172 files / 2,029; ng build
+clean; full Playwright 87/87 zero skips. Versions: core 0.0.283, harness
+0.0.246, host 0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.189.
+
+**Deferrals this round did NOT close** (each tracked in the order header):
+v4's help `math-notation.md` (no v5 help-render surface — banked for
+`p4.9i2`); FilePreviewText math (the P4.6af rich-stack deferral); and the
+**composer backslash-escape seam** — qt-rich-editor's markdown serializer
+escapes typed `\(`/`\)` to `\\(…\\)`, so `\(…\)` typed into the composer does
+not render as math. The normalization itself is fixture-proven; closing the
+round-trip is a dialect-bridge change.
 
 **Next candidates:** the `avatar_preview` host wire + the WebP codec it
-needs; the **`b8b12695` markdown/KaTeX drift catch-up** (the markdown
-family is the classification target); `p4.9j` workspace tabs (v4 retirement
-gates on it — wants a DEDICATED round, since it rewrites the shell and
-`app.routes.ts` and would collide with any concurrent SPA lane);
-`p4.9i1`/`p4.9i2` (Brahma / HelpChat); M6 backlog rows 5/6/8–15; or the
+needs (**the named next Rust item**, blocked on the P4.6y codec seam);
+`p4.9j` workspace tabs (v4 retirement gates on it — wants a DEDICATED
+round, since it rewrites the shell and `app.routes.ts` and would collide
+with any concurrent SPA lane); `p4.9i1`/`p4.9i2` (Brahma / HelpChat); M6
+backlog rows 5/6/8–15; the composer backslash-escape seam; or the
 `js_number_to_json` serialization rider. Round record: `status-log.md`.

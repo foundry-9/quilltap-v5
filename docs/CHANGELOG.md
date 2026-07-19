@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+P4.d9 unification: the b8b12695 KaTeX/markdown drift catch-up round is on
+main, and the oracle baseline moves 616930db → b8b12695 (4.8.0-dev.76). One
+SPA-only lane, zero Rust source touched: the shared math normalizer and the
+katexDepth KaTeX-subtree skip, remark-math + rehype-katex wired into the one
+Salon renderer at v4's exact plugin positions, the KaTeX stylesheet and
+.katex-display rule, the 34-fixture byte-parity corpus regenerated from v4's
+real renderer, and a live e2e math beat.
+
+Unification wire: the new e2e math beat was moved off "Solo Voyage" onto
+"Group Expedition". Its two sent messages shifted the P4.6ap chat-totals
+baseline (15.4K → 15.5K tokens), which passes in isolation and only fails in
+a full-suite run; no spec asserts token totals or message counts on the group
+chat. The fix is to the beat's gesture, not to any assertion.
+
+Baseline move: v4 was clean at b8b12695, so oracles now regenerate directly
+from ~/source/quilltap-server and the pinned worktree
+/private/tmp/qt-v4-pin-616930db is retired.
+
+Gate: cargo fmt clean; release build clean; clippy --workspace --all-targets
+-D warnings clean on both feature sets (default and
+quilltap-core/native-transport); cargo test --workspace 354 binaries / 1,450
+tests / 0 failed; the seven affected differentials re-run by name against
+freshly regenerated b8b12695 oracles, zero SKIP, all green; ng test 172 files
+/ 2,029 passed; ng build clean (60 KaTeX font files emitted); full Playwright
+87/87 passed, zero skips. Final versions: core 0.0.283, harness 0.0.246, host
+0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.189.
+
 P4.d9 (KaTeX/markdown drift): the baseline-move neutrality proof. All seven
 oracle families that transitively import v4's renderer (salon-reads,
 salon-mutations, salon-skip, salon-swipe-generate, text-replacements-routes,

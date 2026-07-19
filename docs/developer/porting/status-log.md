@@ -23381,3 +23381,52 @@ building + running green. The full `cargo test --workspace` and the full
 Playwright suite should both be confirmed in the matched environment (see the
 Unit-5 sandbox gotcha — the repo pins Playwright browser 1228 but the image
 ships 1194; and the disk allowance here can't hold all debug test binaries).
+
+**Unification (2026-07-19).** Cherry-picked clean (the lane branched straight
+from main; single lane, no cross-lane conflicts). The two gate steps the lane
+could not complete in its sandbox were completed here in the matched
+environment:
+
+- **`cargo test --workspace --no-fail-fast`: 354 test binaries / 1,450 tests
+  / 0 failed** (the sandbox's disk allowance couldn't link all debug test
+  binaries; here it completes). The seven differentials were also re-run BY
+  NAME against freshly regenerated `b8b12695` oracles — see the trap below.
+- **Full Playwright: 87/87 passed, zero skips** against a fresh `ng build`
+  (the sandbox lacked the pinned chromium 1228).
+
+**⚠ The gate trap this round hit — wrong env var names silently SKIP.** Four
+of the seven differentials were first run with guessed env var names
+(`QT_ORACLE_SALON_SWIPE_GENERATE`, `QT_ORACLE_TEXT_REPLACEMENTS_ROUTES`,
+`QT_ORACLE_COST_BACKGROUND_ROUTES`, `QT_ORACLE_COURIER_IMAGES_ROUTES`) — the
+tests printed `SKIP: set QT_ORACLE_…` and still reported `ok. 1 passed`,
+finishing in 0.00s. The real names drop the `_ROUTES`/`_GENERATE` suffix
+(`QT_ORACLE_SALON_SWIPE`, `QT_ORACLE_TEXT_REPLACEMENTS`,
+`QT_ORACLE_COST_BACKGROUND`, `QT_ORACLE_COURIER_IMAGES`). **Read the names out
+of the test source** (`grep -oE 'QT_ORACLE_[A-Z_]+' tests/<name>.rs`) rather
+than inferring them from the test filename, and treat a 0.00s runtime as a
+skip until the per-case `OK` lines are visible under `--nocapture`.
+
+**The one unification wire — the math beat's chat.** The lane's new e2e math
+beat sent its two messages into **"Solo Voyage"**, which is also the chat the
+P4.6ap chat-totals beat asserts a hardcoded **15.4K-token** baseline on. The
+sends pushed the total to 15.5K, failing
+`salon-token-cost-flow.spec.ts:183` — but **only in a full-suite run**: the
+token-cost spec passes in isolation, and the pair
+`salon-composer-modes + salon-token-cost-flow` reproduces it exactly. Fixed
+per the standing rule (fix the gesture, never the assertion) by moving the
+beat to **"Group Expedition"**, the only other salon chat in the fixture and
+one that no spec asserts token totals or message counts on. This is the same
+class as the banked `added-affordance-breaks-sibling-by-name-locators` note:
+**a new beat that mutates shared fixture state can only be validated by a
+FULL-suite run**, since the e2e specs share one provisioned instance and the
+global setup copies it fresh once per run, not per spec file.
+
+**Docs at unification.** The oracle baseline paragraph in `CLAUDE.md` moved
+`616930db` → `b8b12695` (4.8.0-dev.76) with the retirement of the pin
+`/private/tmp/qt-v4-pin-616930db` (v4's checkout was clean at `b8b12695`, so
+oracles regenerate directly from `~/source/quilltap-server`); the prior
+baseline paragraph was kept for history. `phase-4.md` gained the round
+section and a corrected "next candidates" list; the order header moved to
+CLOSED with its NO-PORTS and the one surfaced-but-unclosed seam (the
+qt-rich-editor `\(`/`\)` backslash escape) enumerated. SPA 0.5.188 → 0.5.189
+for the wire commit.
