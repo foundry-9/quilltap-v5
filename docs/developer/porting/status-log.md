@@ -23269,3 +23269,15 @@ Regen recipe (this environment): v4 at `/workspace/quilltap-server`
 `./node_modules/.bin/tsx /Users/csebold/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts`
 (run FROM the v4 dir so its tsconfig `@/` aliases resolve; the tool's import
 path is the hardcoded macOS `/Users/csebold/...`). SPA 0.5.185 → 0.5.186.
+
+**Unit 4 — KaTeX CSS (commit "load KaTeX styles + the .katex-display
+rule").** Added `node_modules/katex/dist/katex.min.css` to `angular.json`'s
+build `styles` array (so the bundler resolves the font `url()`s into
+`dist/…/media/` — the Tauri one-origin build serves the same dist). Added
+v4's `.katex-display` rule (`overflow-x: auto; overflow-y: hidden; padding:
+0.25rem 0;`) to `src/styles/qt-components/_chat.css`, between the
+prose-inherit block and the MARKDOWN ELEMENT SPACING banner, v4's comment
+carried. `ng build` clean; 60 KaTeX font files emitted to
+`dist/quilltap/browser/media/`, both the vendor `.katex` CSS and the
+`.katex-display` overflow rule present in the styles bundle. SPA 0.5.186 →
+0.5.187.

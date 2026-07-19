@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): KaTeX styles. Load katex.min.css globally via
+the angular.json styles array (the bundler resolves its font url()s into the
+dist media dir; the Tauri one-origin build serves the same dist), and add
+v4's .katex-display rule (overflow-x scroll + vertical padding) to _chat.css.
+ng build clean; 60 KaTeX font files emitted. SPA 0.5.186 → 0.5.187.
+
 P4.d9 (KaTeX/markdown drift): wire math into the Salon renderer. The unified
 pipeline gains remark-math (between gfm and breaks) and rehype-katex (before
 highlight), and the render body gains step 2.5 (normalizeMathDelimiters on the
