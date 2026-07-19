@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { WORKSPACE_HANDLE } from '../../../workspace/workspace-contract';
 import { Icon } from '../../../ui/icon';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { ChatSettingsCard } from './chat-settings.api';
@@ -68,6 +69,8 @@ import { ChatSettingsCard } from './chat-settings.api';
 })
 export class CustomToolsSettings extends ChatSettingsCard {
   private readonly router = inject(Router);
+  /** Hosted ⇒ open the Workbench library as a tab (v4 redirectToWorkspaceTab). */
+  private readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });
 
   /**
    * Authoring while the toggle is off is legitimate — the link stays live
@@ -75,6 +78,10 @@ export class CustomToolsSettings extends ChatSettingsCard {
    */
   protected openWorkbench(event: Event): void {
     event.preventDefault();
+    if (this.workspace) {
+      this.workspace.openTab('custom-tools');
+      return;
+    }
     void this.router.navigate(['/custom-tools']);
   }
 

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the banked query-param openers gain their
+workspace-tab arm (v4 redirectToWorkspaceTab). When a WORKSPACE_HANDLE is
+present, the Workbench openers (composer Pascal popup, Scriptorium file table,
+Chat-settings custom-tools card) open/focus the custom-tools tab with the
+definition payload, and the home Generate Image quick action opens the
+generate-image tab; null handle keeps today's query-param/router push. The
+chat-scoped wardrobe opener stays a dialog (v4 rule — only the left rail opens
+the wardrobe tab, which is lane J1's).
+
+
 P4.9J2 (screen hostability, lane J2): the Salon reports its story background to
 the workspace backdrop registry (v4 useReportWorkspaceBackdrop) — { url, isSalon:
 true } under its WORKSPACE_TAB_ID, cleared on a background-less chat and on

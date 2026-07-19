@@ -23681,3 +23681,25 @@ backdrop — `.qt-chat-layout::before`, `background-attachment: fixed`
 color-theming hook, not a fixed image, so no split-overlap risk; nothing else
 reports (`isSalon: false` painters: none found). Spec: two tab-mode cases (raw
 URL reported + cleared on destroy; background-less chat clears). `ng test` 26/26.
+
+### Unit 12 — Workbench + generate-image opener intents (item 6) (SPA 0.5.201)
+
+The banked query-param openers gain their `openTab` arm (v4
+`redirectToWorkspaceTab`), guarded by an optional `WORKSPACE_HANDLE`; null ⇒
+today's push. Wired: `chat/custom-tools-popup.ts` (`openWorkbench` →
+`openTab('custom-tools', { mountPointId, path, create })`),
+`screens/scriptorium/file-table.ts` (`openInWorkbench` →
+`openTab('custom-tools', { mountPointId, path })`),
+`screens/settings/chat/custom-tools-settings.ts` (`openWorkbench` →
+`openTab('custom-tools')`), and `screens/home/quick-actions-row.ts` (the Generate
+Image action is a `openTab('generate-image')` button when hosted, the
+`/generate-image` link when routed). Specs: dedicated opener specs for FileTable
+(hosted payload / routed fallback) and QuickActionsRow (button-vs-anchor +
+openTab); the popup/settings arms are the identical guard, existing suites green.
+**Faithful non-change:** the character-screens' wardrobe opener stays a DIALOG
+(v4 rule — only the left rail opens the wardrobe TAB, which is lane J1's). **Named
+gap:** no J2 `/photos` opener exists (the gallery is reached from the left rail /
+character gallery — rail is J1's); nothing to arm there. `ng test` opener specs
+4/4. Also note: the other home/salon routerLinks (salon/new, salon/:id, …) rely
+on lane J1's route-guard redirect (`/workspace?open=…`), not per-opener arms —
+that's §4, J1's surface.

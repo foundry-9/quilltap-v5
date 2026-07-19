@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
+import { WORKSPACE_HANDLE } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
 import { formatBytes } from '../../ui/format-bytes';
 import { Icon } from '../../ui/icon';
@@ -237,13 +238,21 @@ const SORT_COLUMNS: [SortField, string][] = [
 })
 export class FileTable {
   private readonly router = inject(Router);
+  /** Hosted ⇒ open the Workbench as a tab (v4's preferred redirectToWorkspaceTab). */
+  private readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });
 
   /**
    * Open a `Tools/*.tool.json` on Pascal's Workbench (v4 `FileTable:105-113`).
-   * v4 prefers a workspace tab and falls back to this query-param push; v5 has
-   * no workspace tabs (`p4.9j`), so the fallback is the only path.
+   * v4 prefers a workspace tab and falls back to this query-param push.
    */
   protected openInWorkbench(relativePath: string): void {
+    if (this.workspace) {
+      this.workspace.openTab('custom-tools', {
+        mountPointId: this.mountPointId(),
+        path: relativePath,
+      });
+      return;
+    }
     void this.router.navigate(['/custom-tools'], {
       queryParams: { mount: this.mountPointId(), path: relativePath },
     });
