@@ -3645,7 +3645,12 @@ export type MemoryRequest =
   | UserProfileGetRequest
   | UserProfileUpdateRequest
   | UserProfileSetAvatarRequest
-  | SystemDataDirRequest;
+  | SystemDataDirRequest
+  // P4.9a (folded at unification; the block at the end of this file).
+  | PhotoGalleryListRequest
+  | PhotoGallerySaveRequest
+  | PhotoGalleryEntryGetRequest
+  | PhotoGalleryEntryRemoveRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -4387,6 +4392,13 @@ export interface CustomToolPreviewRequest {
   params?: Record<string, unknown> | null;
   private?: boolean;
   metadata?: CustomToolMetadataInput | null;
+  /**
+   * §B (the `616930db` round) — the bench's oracle for a consulting tool:
+   * `{live:true}` spends one real consult, `{output}` scripts the answer,
+   * `{fail:true}` scripts the silence. Absent → the seam stays unwired and a
+   * consulting tool takes its author's errorMessage path.
+   */
+  llm?: { live: true } | { output: string } | { fail: true } | null;
 }
 
 /** v4 `POST ?action=audit` — deal ten thousand hands and report where they landed. */
@@ -4395,6 +4407,12 @@ export interface CustomToolAuditRequest {
   definition: unknown;
   params?: Record<string, unknown> | null;
   metadata?: CustomToolMetadataInput | null;
+  /**
+   * §B — the audit's oracle has NO `live` arm, and that is the SHAPE of the
+   * contract, not a guard: ten thousand hands must never mean ten thousand
+   * paid consults. Scripted answer or silence only.
+   */
+  llm?: { output: string } | { fail: true } | null;
 }
 
 /**
@@ -4504,4 +4522,54 @@ export interface UserProfileSetAvatarRequest {
  */
 export interface SystemDataDirRequest {
   type: 'systemDataDir';
+}
+
+// ===========================================================================
+// P4.9a — the My Photos vertical (folded at unification).
+//
+// §3 of the `616930db` drift-catch-up + P4.9a-resume round, mirrored
+// NAME-FOR-NAME from `api/types.rs`'s `=== P4.9a ===` block (the wire diff ran
+// at unification). The response bodies (the gallery list/entry shapes) ride
+// the server's envelope and are read DEFENSIVELY via `CoreClient.dispatchData`
+// (the settings/home precedent — one `Response::PhotoGallery(Value)` variant
+// serves all four verbs server-side); their client shapes live in
+// `screens/photos/photos.api.ts` and are byte-pinned server-side by
+// `photos_routes_equivalence`. `photoGallerySave` / `photoGalleryEntryGet`
+// have no SPA consumer yet (the deep gallery modal family is the deferred
+// P4.9a tier 2) — the types mirror the wire, not a caller.
+// ===========================================================================
+
+/** v4 `GET /api/v1/photos` — the cross-mount `photos/` roll-up. */
+export interface PhotoGalleryListRequest {
+  type: 'photoGalleryList';
+  q?: string;
+  tag?: string[];
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * v4 `POST /api/v1/photos` — hard-link an image into the Quilltap Uploads
+ * `photos/` album. `fileId` is `unknown` because the server distinguishes
+ * absent (`received undefined`) from explicit `null` (`received null`) in its
+ * rejection — the Rust side decodes a double option.
+ */
+export interface PhotoGallerySaveRequest {
+  type: 'photoGallerySave';
+  fileId?: unknown;
+  caption?: string | null;
+  tags?: string[];
+  chatId?: string | null;
+}
+
+/** v4 `GET /api/v1/photos/{id}` — `id` is a `doc_mount_file_links.id`. */
+export interface PhotoGalleryEntryGetRequest {
+  type: 'photoGalleryEntryGet';
+  id: string;
+}
+
+/** v4 `DELETE /api/v1/photos/{id}` — link-only removal + last-link file GC. */
+export interface PhotoGalleryEntryRemoveRequest {
+  type: 'photoGalleryEntryRemove';
+  id: string;
 }

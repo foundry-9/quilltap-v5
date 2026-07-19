@@ -47,7 +47,7 @@ const NAV_ITEMS: NavItem[] = [
     id: 'photos',
     label: 'My Photos',
     tooltip: 'Your saved photo gallery',
-    route: null,
+    route: '/photos',
     icon: 'photos',
   },
   {

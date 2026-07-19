@@ -5,9 +5,8 @@
  * §3 (the P4.9a Shared contract): `photoGalleryList`, `photoGallerySave`,
  * `photoGalleryEntryGet`, `photoGalleryEntryRemove`. The field names and the
  * omit-vs-null splits are v4's verbatim — `photos_routes_equivalence` pins the
- * bytes. The request types are LOCAL here plus a cast at the dispatch site;
- * the unifier folds them into `CoreRequest` and drops the casts (the
- * established `home.api.ts` pattern).
+ * bytes. The request types live in `core-contract.ts` (folded from this
+ * file's locals at the round's unification, the `home.api.ts` pattern).
  *
  * `blobUrl` arrives as a server-RELATIVE path (dogfood finding #12), so every
  * consumer resolves it through the shared `apiUrl` helper and never inline.
@@ -15,6 +14,10 @@
 
 import { apiUrl } from '../../core/api-url';
 import type { CoreClient } from '../../core/core-client';
+import type {
+  PhotoGalleryEntryRemoveRequest,
+  PhotoGalleryListRequest,
+} from '../../core/core-contract';
 
 /** v4 `PhotosView.tsx:20-31`. */
 export interface PhotoLinker {
@@ -66,19 +69,6 @@ export interface ListResponse {
 /** v4 `PAGE_SIZE` (`PhotosView.tsx:61`). NOTE: 60, not the service's own 24. */
 export const PAGE_SIZE = 60;
 
-/** The §3 request shapes, local until the unifier folds them into CoreRequest. */
-interface PhotoGalleryListRequest {
-  type: 'photoGalleryList';
-  q?: string;
-  tag?: string[];
-  limit?: number;
-  offset?: number;
-}
-interface PhotoGalleryEntryRemoveRequest {
-  type: 'photoGalleryEntryRemove';
-  id: string;
-}
-
 /**
  * v4 `PhotosView.tsx:85-95` / `:113-119` — one list endpoint serves both the
  * initial load and every load-more; only `offset` moves.
@@ -97,7 +87,7 @@ export async function fetchGallery(
   if (trimmed) {
     request.q = trimmed;
   }
-  const data = await core.dispatchData(request as never);
+  const data = await core.dispatchData(request);
   return data as unknown as ListResponse;
 }
 
@@ -107,7 +97,7 @@ export async function removeGalleryEntry(core: CoreClient, linkId: string): Prom
     type: 'photoGalleryEntryRemove',
     id: linkId,
   };
-  await core.dispatchData(request as never);
+  await core.dispatchData(request);
 }
 
 /**

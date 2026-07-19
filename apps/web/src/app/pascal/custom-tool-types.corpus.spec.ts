@@ -72,32 +72,15 @@ const titleRows = rows.filter((r): r is TitleRow => r.kind === 'title');
 const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'definition');
 
 /**
- * ⚠ The committed corpus was generated at v4 `d68638b4`; this lane ports v4
- * `616930db`, and FOUR of its rows changed message there — verified by
- * replaying the committed corpus against v4's real Zod at `616930db`, where
- * exactly these four (and no others) drifted:
- *
- *  - three `when` refine rows gained `` `llm` `` in the at-least-one list;
- *  - one metadata comparator row widened to the eight-key list.
- *
- * This is v4 drift, not a v5 porting bug, and the port must follow v4 (D23).
- * Lane D8 owns the regenerated NDJSON (§C), so the correction lives here until
- * unification rather than in the fixture.
- *
- * §C: the unifier REPLACES this map with `{}` (and the counts below with D8's
- * recorded counts) once the regenerated corpus lands — every row must then pass
- * against the fixture's own bytes.
+ * The corpus is generated at v4 `616930db` (lane D8's §C regen, 159 rows).
+ * While the committed NDJSON still dated to `d68638b4`, this map carried the
+ * four rows whose sentences drifted at `616930db`; the regenerated corpus
+ * carries them natively, so the map is empty — every row passes against the
+ * fixture's own bytes. The map and its guard stay as the mechanism for the
+ * NEXT drift window (fill it only with replay-verified sentences, and empty
+ * it again when the corpus regenerates).
  */
-const REGENERATED_AT_616930DB: Record<string, string> = {
-  'when-tests-nothing':
-    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
-  'when-empty-params':
-    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
-  'metadata-empty-object':
-    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
-  'metadata-empty-comparator':
-    'outcomes.0.when.metadata.faction: must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains)',
-};
+const REGENERATED_AT_616930DB: Record<string, string> = {};
 
 /** The sentence v4 `616930db` renders for a row — the fixture's, unless drifted. */
 function expectedReason(row: DefinitionRow): string | null {
@@ -106,10 +89,11 @@ function expectedReason(row: DefinitionRow): string | null {
 
 describe('custom-tool schema — the committed v4 corpus', () => {
   it('the corpus is the expected shape (a truncated fixture must not pass silently)', () => {
-    // §C: unifier updates to D8's recorded counts
-    expect(rows.length).toBe(115);
+    // D8's recorded §C counts at `616930db`: 159 = 10 title + 149 definition
+    // (53 accept / 96 reject).
+    expect(rows.length).toBe(159);
     expect(titleRows.length).toBe(10);
-    expect(definitionRows.length).toBe(105);
+    expect(definitionRows.length).toBe(149);
   });
 
   it('the drift map names only rows the fixture actually carries', () => {

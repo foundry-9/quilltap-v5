@@ -58,13 +58,9 @@ export async function fetchDestinations(core: CoreClient): Promise<CustomToolDes
  *
  * Preview takes all three arms. **The audit has no `live` arm, and that is
  * enforced by the SHAPE, not by a guard**: ten thousand hands must never mean
- * ten thousand paid consults.
- *
- * The two dispatch calls below therefore widen through `CoreRequest` with a
- * cast: `CustomToolPreviewRequest` / `CustomToolAuditRequest` do not carry
- * `llm` yet, because lane D8 owns those variants this round. **At unification
- * the field folds into core-contract.ts and BOTH casts come out** — the same
- * wire the P4.6ao / P4.9c rounds took.
+ * ten thousand paid consults. (Folded into `core-contract.ts`'s
+ * `CustomToolPreviewRequest` / `CustomToolAuditRequest` at the round's
+ * unification; these aliases keep the callers' vocabulary.)
  */
 export type PreviewOracle = { live: true } | { output: string } | { fail: true };
 export type AuditOracle = { output: string } | { fail: true };
@@ -93,9 +89,8 @@ export async function previewCustomTool(
     params: args.params,
     private: args.private,
     metadata: args.metadata,
-    // §B: unifier folds `llm` into CustomToolPreviewRequest and drops this cast.
     llm: args.llm,
-  } as unknown as CoreRequest);
+  });
   return data as unknown as CustomToolRunResult;
 }
 
@@ -112,9 +107,8 @@ export async function auditCustomTool(
     definition: args.definition,
     params: args.params,
     metadata: args.metadata,
-    // §B: unifier folds `llm` into CustomToolAuditRequest and drops this cast.
     llm: args.llm,
-  } as unknown as CoreRequest);
+  });
   return data as unknown as CustomToolAuditResult;
 }
 

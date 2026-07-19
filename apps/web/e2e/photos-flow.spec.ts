@@ -45,9 +45,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 }
 
 async function gotoPhotos(page: Page): Promise<void> {
-  // ACTIVATE-AT-UNIFY: once §2a flips the nav item to `/photos`, this becomes a
-  // click on the shell's "Photos" entry, with the direct goto kept for the
-  // deep-link case.
+  // The deep-link entrance — beat 1 additionally walks the §2a nav click.
   await page.goto('/photos');
   await maybeUnlock(page);
   await expect(page.getByRole('heading', { name: 'My Photos' })).toBeVisible({
@@ -55,9 +53,19 @@ async function gotoPhotos(page: Page): Promise<void> {
   });
 }
 
+/** §2a (ACTIVATED at the round's unification): the shell nav entry is live. */
+async function gotoPhotosViaNav(page: Page): Promise<void> {
+  await page.goto('/');
+  await maybeUnlock(page);
+  await page.getByRole('link', { name: 'My Photos' }).click();
+  await expect(page.getByRole('heading', { name: 'My Photos' })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
 test.describe('P4.9a — My Photos', () => {
   test('the gallery lists the seeded entries over the live list verb', async ({ page }) => {
-    await gotoPhotos(page);
+    await gotoPhotosViaNav(page);
 
     // The two rows global-setup seeded for this walk are both on the wall.
     await expect(page.getByText(PHOTOS_E2E_CAPTION_A)).toBeVisible({ timeout: 15_000 });
