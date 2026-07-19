@@ -2085,6 +2085,82 @@ pub enum Request {
         id: String,
     },
     // === end P4.9a ===
+    // === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
+    /// v4 `GET /api/v1/chats/{id}?action=outfit` — the full equipped-outfit
+    /// state (`{equippedOutfit}`).
+    #[serde(rename_all = "camelCase")]
+    ChatOutfitGet {
+        chat_id: String,
+    },
+    /// v4 `POST /api/v1/chats/{id}?action=equip` — all SEVEN modes (`wear`,
+    /// `replace`, the deprecated `equip` alias, `add_to_slot`,
+    /// `remove_from_slot`, `clear_slot`, `set_all`). The v4 route body
+    /// (`{characterId, mode, slot?, itemId?, slots?}`) rides FLATTENED and raw
+    /// so the core's Zod-faithful parse sees exactly what v4's did (the P4.6w
+    /// documents idiom).
+    #[serde(rename_all = "camelCase")]
+    ChatEquip {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/chats/{id}?action=regenerate-avatar` — queues the
+    /// avatar job; body `{characterId, imageProfileId?, equippedSlots?}`
+    /// flattened raw.
+    #[serde(rename_all = "camelCase")]
+    ChatRegenerateAvatar {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/wardrobe/transfers` — the destination options.
+    WardrobeTransferDestinations,
+    /// v4 `POST /api/v1/wardrobe/transfers` — move/copy one item between
+    /// tiers; the v4 body (`{action, itemId, sourceCharacterId,
+    /// sourceProjectId?, destination}`) rides flattened raw.
+    WardrobeTransferApply {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/wardrobe` — the GLOBAL archetype tier listing.
+    WardrobeList,
+    /// v4 `POST /api/v1/wardrobe` — create a shared archetype (201).
+    WardrobeCreate {
+        item: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/wardrobe/{itemId}` — one archetype (an ADDITION beyond
+    /// the §1-pinned four: v4 ships the single-item GET on the same route
+    /// file, and the REST edge would otherwise 405 where v4 answers 200).
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemGet {
+        item_id: String,
+    },
+    /// v4 `PUT /api/v1/wardrobe/{itemId}` — patch a shared archetype.
+    #[serde(rename_all = "camelCase")]
+    WardrobeUpdate {
+        item_id: String,
+        item: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/wardrobe/{itemId}` — delete (equipped references
+    /// cleaned warn-and-proceed first).
+    #[serde(rename_all = "camelCase")]
+    WardrobeDelete {
+        item_id: String,
+    },
+    /// v4 `POST /api/v1/wardrobe/preview-avatar` — the SYNCHRONOUS one-off
+    /// avatar render against an arbitrary slot snapshot; body `{characterId,
+    /// equippedSlots, imageProfileId?}` flattened raw.
+    WardrobePreviewAvatar {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/wardrobe/analyze-image` — REFUSAL-ARMED (tier 3, §4:
+    /// a vision-LLM call with no Rust port this round).
+    WardrobeAnalyzeImage {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === end P4.9f1 ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2308,6 +2384,18 @@ pub enum Response {
     /// `image_aesthetics_routes_equivalence`.
     SystemAesthetic(serde_json::Value),
     // === end P4.6ar ===
+    // === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
+    /// A wardrobe-family body — the archetype tier (`{wardrobeItems}`,
+    /// `{wardrobeItem}`, `{success}`), the transfers pair (`{destinations}`,
+    /// `{wardrobeItem, action}`), and the avatar preview (`{fileId, url,
+    /// mimeType, prompt}`). The exact bytes are pinned by
+    /// `wardrobe_routes_equivalence`.
+    Wardrobe(serde_json::Value),
+    /// A chat-outfit body — `{equippedOutfit}`, `{equippedSlots}`, and the
+    /// regenerate-avatar `{message, queued}`. Pinned by
+    /// `wardrobe_routes_equivalence`.
+    ChatOutfit(serde_json::Value),
+    // === end P4.9f1 ===
     Error(CoreError),
 }
 

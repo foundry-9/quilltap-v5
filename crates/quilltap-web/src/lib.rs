@@ -48,6 +48,9 @@ pub mod terminal_routes;
 // === P4.6ak: text-replacements + get-background REST edges ===
 pub mod text_replacements_routes;
 // === end P4.6ak ===
+// === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
+pub mod wardrobe_routes;
+// === end P4.9f1 ===
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -182,9 +185,38 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/api/v1/chats/{id}",
-            get(text_replacements_routes::chat_get_background),
+            // P4.9f1 re-points the GET at the wardrobe fan-out (?action=outfit
+            // served there; every other action delegates to the P4.6ak handler
+            // untouched) and adds the POST action edge (equip |
+            // regenerate-avatar).
+            get(wardrobe_routes::chat_action_get).post(wardrobe_routes::chat_action_post),
         )
         // === end P4.6ak ===
+        // === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
+        .route(
+            "/api/v1/wardrobe",
+            get(wardrobe_routes::wardrobe_get).post(wardrobe_routes::wardrobe_post),
+        )
+        .route(
+            "/api/v1/wardrobe/transfers",
+            get(wardrobe_routes::wardrobe_transfers_get)
+                .post(wardrobe_routes::wardrobe_transfers_post),
+        )
+        .route(
+            "/api/v1/wardrobe/preview-avatar",
+            post(wardrobe_routes::wardrobe_preview_avatar_post),
+        )
+        .route(
+            "/api/v1/wardrobe/analyze-image",
+            post(wardrobe_routes::wardrobe_analyze_image_post),
+        )
+        .route(
+            "/api/v1/wardrobe/{itemId}",
+            get(wardrobe_routes::wardrobe_item_get)
+                .put(wardrobe_routes::wardrobe_item_put)
+                .delete(wardrobe_routes::wardrobe_item_delete),
+        )
+        // === end P4.9f1 ===
         // === P4.6ay: Pascal's custom-tools route ===
         .route(
             "/api/v1/chats/{id}/custom-tools",

@@ -39,6 +39,10 @@ pub mod engine;
 // === P4.9a: the user photo gallery (lane A, append-only) ===
 pub mod photos;
 // === end P4.9a ===
+// === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
+pub mod chat_outfits;
+pub mod wardrobe;
+// === end P4.9f1 ===
 pub mod groups;
 pub mod image_profiles;
 // === P4.6ar: the llm-logs read surface (lane A) ===

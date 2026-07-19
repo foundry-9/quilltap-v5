@@ -102,6 +102,33 @@ defaultImageId / Bramwell avatarOverrides usage staging;
 photos_routes_equivalence extended 32 to 40 checks (8 new imageInfo cases +
 an image-info key-order claim), green over a fresh 616930db oracle, mutation-
 checked.
+P4.9f1 (lane F1, the wardrobe server half): the whole wardrobe server
+surface lands in one unit — the chat-scoped outfit read (chatOutfitGet)
+and the seven-mode equip route (chatEquip: wear/replace/the deprecated
+equip alias/add_to_slot/remove_from_slot/clear_slot/set_all, with v4's
+three superRefine messages and Zod-4 enum/UUID message bytes carried
+verbatim), the wardrobe-transfers pair (wardrobeTransferDestinations /
+wardrobeTransferApply, thin verbs over the already-ported service), the
+GLOBAL archetype CRUD tier (wardrobeList/Create/ItemGet/Update/Delete —
+ItemGet is an addition beyond the four Shared-contract names because v4
+ships the single-item GET on the same route), chatRegenerateAvatar (the
+job enqueue over the landed trigger service), wardrobePreviewAvatar (the
+synchronous one-shot render: guard tiers + prompt + vault write + files
+row live; the render step runs behind a NEW ErasedAvatarPreview seam on
+EngineAssembly whose HOST WIRE is deferred to unification — until then
+the render answers a loud typed refusal), and the analyze-image refusal
+arm (tier 3, no provider path this round). REST edges mirror the v4
+URLs; the chat GET at /api/v1/chats/{id} is re-pointed at a fan-out that
+serves ?action=outfit and delegates get-background/cost to the landed
+handler untouched (outfit-summary is a named loud deferral). New
+committed fixture family wardrobe-routes-{main,mount}.db + sidecar +
+builder, a 66-case shared corpus JSON read by BOTH the oracle and the
+Rust differential (row-count asserted), and wardrobe_routes_equivalence
+green over fresh 616930db oracles: 74 checks (6 persistence-chain
+follow-ups + 2 raw key-order claims + the canned-transcode preview happy
+path); two deliberate mutations (skipped delete cleanup, dropped equip
+alias) confirmed caught. One sanctioned quilltap-host line (the
+avatar_preview: None assembly field — the order's named exception).
 
 Round planned - the consult-wire + image-detail + wardrobe round (P4.6bd
 + P4.9a2 + P4.9f1 + P4.9f2): four work orders committed, docs only. P4.6bd

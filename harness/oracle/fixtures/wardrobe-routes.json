@@ -1,0 +1,513 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11000000-0000-4000-8000-000000000001",
+  "otherUserId": "11000000-0000-4000-8000-000000000002",
+  "ids": {
+    "aria": "a1000000-0000-4000-8000-000000000001",
+    "bram": "a1000000-0000-4000-8000-000000000002",
+    "strangerChar": "a1000000-0000-4000-8000-000000000003",
+    "generalMountPointId": "b0000000-0000-4000-8000-000000000001",
+    "project": "d1000000-0000-4000-8000-000000000001",
+    "group": "d2000000-0000-4000-8000-000000000001",
+    "wTop": "e1000000-0000-4000-8000-000000000001",
+    "wDress": "e1000000-0000-4000-8000-000000000002",
+    "wBoots": "e1000000-0000-4000-8000-000000000003",
+    "wShared": "e1000000-0000-4000-8000-000000000004",
+    "gHat": "e2000000-0000-4000-8000-000000000001",
+    "gCoat": "e2000000-0000-4000-8000-000000000002",
+    "gComp": "e2000000-0000-4000-8000-000000000003",
+    "gArch": "e2000000-0000-4000-8000-000000000004",
+    "pScarf": "e3000000-0000-4000-8000-000000000001",
+    "chat1": "c1000000-0000-4000-8000-000000000001",
+    "chat2": "c1000000-0000-4000-8000-000000000002",
+    "chatMissing": "c1000000-0000-4000-8000-0000000000ff",
+    "profileOk": "f2000000-0000-4000-8000-000000000001",
+    "profileNoKey": "f2000000-0000-4000-8000-000000000002",
+    "profileBadKey": "f2000000-0000-4000-8000-000000000003",
+    "apiKey": "f3000000-0000-4000-8000-000000000001",
+    "apiKeyMissing": "f3000000-0000-4000-8000-0000000000ff",
+    "unknownItem": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  },
+  "preview": {
+    "providerImageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGIAAQAABQABDQottAAAAABJRU5ErkJggg==",
+    "providerMimeType": "image/png",
+    "revisedPrompt": "A solemn brass-lit portrait, revised."
+  },
+  "cases": [
+    { "name": "list_default", "kind": "wardrobeList" },
+    {
+      "name": "create_ok",
+      "kind": "wardrobeCreate",
+      "body": { "title": "Minted topper", "types": ["accessories"] },
+      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+    },
+    {
+      "name": "create_full",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "Full ensemble",
+        "description": "A complete look",
+        "imagePrompt": "a brass-buttoned ensemble",
+        "types": ["top", "bottom"],
+        "appropriateness": "formal",
+        "isDefault": true,
+        "componentItemIds": ["e2000000-0000-4000-8000-000000000002"],
+        "replace": true
+      },
+      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+    },
+    { "name": "create_missing_title", "kind": "wardrobeCreate", "body": { "types": ["top"] } },
+    { "name": "create_empty_types", "kind": "wardrobeCreate", "body": { "title": "x", "types": [] } },
+    { "name": "create_bad_type", "kind": "wardrobeCreate", "body": { "title": "x", "types": ["hat"] } },
+    {
+      "name": "create_null_flag",
+      "kind": "wardrobeCreate",
+      "body": { "title": "x", "types": ["top"], "isDefault": null }
+    },
+    { "name": "item_get_ok", "kind": "wardrobeItemGet", "itemId": "e2000000-0000-4000-8000-000000000002" },
+    { "name": "item_get_missing", "kind": "wardrobeItemGet", "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
+    { "name": "item_get_archived", "kind": "wardrobeItemGet", "itemId": "e2000000-0000-4000-8000-000000000004" },
+    {
+      "name": "update_ok",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": { "title": "Regreat coat" },
+      "normalize": ["wardrobeItem.updatedAt"]
+    },
+    {
+      "name": "update_clear_desc",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": { "description": null },
+      "normalize": ["wardrobeItem.updatedAt"]
+    },
+    {
+      "name": "update_missing",
+      "kind": "wardrobeUpdate",
+      "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "body": { "title": "x" }
+    },
+    {
+      "name": "update_invalid",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": { "types": [] }
+    },
+    {
+      "name": "update_cycle",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000003",
+      "body": { "componentItemIds": ["e2000000-0000-4000-8000-000000000003"] }
+    },
+    {
+      "name": "delete_ok",
+      "kind": "wardrobeDelete",
+      "itemId": "e2000000-0000-4000-8000-000000000001",
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001"
+    },
+    { "name": "delete_missing", "kind": "wardrobeDelete", "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
+    { "name": "dest_list", "kind": "transferDestinations" },
+    {
+      "name": "tr_copy_char_to_general",
+      "kind": "transferApply",
+      "body": {
+        "action": "copy",
+        "itemId": "e1000000-0000-4000-8000-000000000001",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "general" }
+      },
+      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+    },
+    {
+      "name": "tr_move_char_to_char",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "e1000000-0000-4000-8000-000000000003",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000002" }
+      }
+    },
+    {
+      "name": "tr_move_general_to_project",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "e2000000-0000-4000-8000-000000000002",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "project", "id": "d1000000-0000-4000-8000-000000000001" }
+      }
+    },
+    {
+      "name": "tr_copy_char_to_group",
+      "kind": "transferApply",
+      "body": {
+        "action": "copy",
+        "itemId": "e1000000-0000-4000-8000-000000000002",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "group", "id": "d2000000-0000-4000-8000-000000000001" }
+      },
+      "normalize": ["wardrobeItem.id", "wardrobeItem.createdAt", "wardrobeItem.updatedAt"]
+    },
+    {
+      "name": "tr_source_missing",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "general" }
+      }
+    },
+    {
+      "name": "tr_dest_invalid",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "e1000000-0000-4000-8000-000000000001",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "project", "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }
+      }
+    },
+    {
+      "name": "tr_same_location",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "e1000000-0000-4000-8000-000000000001",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000001" }
+      }
+    },
+    {
+      "name": "tr_collision",
+      "kind": "transferApply",
+      "body": {
+        "action": "move",
+        "itemId": "e1000000-0000-4000-8000-000000000004",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "character", "id": "a1000000-0000-4000-8000-000000000002" }
+      }
+    },
+    {
+      "name": "tr_zod_bad_action",
+      "kind": "transferApply",
+      "body": {
+        "action": "donate",
+        "itemId": "e1000000-0000-4000-8000-000000000001",
+        "sourceCharacterId": "a1000000-0000-4000-8000-000000000001",
+        "destination": { "scope": "general" }
+      }
+    },
+    { "name": "tr_zod_empty", "kind": "transferApply", "body": {} },
+    { "name": "outfit_preset", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-000000000001" },
+    { "name": "outfit_empty", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-000000000002" },
+    { "name": "outfit_missing_chat", "kind": "outfitGet", "chatId": "c1000000-0000-4000-8000-0000000000ff" },
+    {
+      "name": "eq_wear",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000002",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "e1000000-0000-4000-8000-000000000001"
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "eq_wear_replaceflag",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "e1000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "eq_alias",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000002",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "equip",
+        "itemId": "e1000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "eq_replace",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "replace",
+        "itemId": "e1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "eq_add_present",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "add_to_slot",
+        "slot": "accessories",
+        "itemId": "e2000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "eq_add_new",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "add_to_slot",
+        "slot": "footwear",
+        "itemId": "e1000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "eq_add_wrong_slot",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "add_to_slot",
+        "slot": "top",
+        "itemId": "e1000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "eq_remove",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "remove_from_slot",
+        "slot": "top",
+        "itemId": "e1000000-0000-4000-8000-000000000001"
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "eq_clear",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "clear_slot",
+        "slot": "accessories"
+      }
+    },
+    {
+      "name": "eq_set_all",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": {
+          "top": ["e1000000-0000-4000-8000-000000000002"],
+          "bottom": ["e1000000-0000-4000-8000-000000000002"],
+          "footwear": ["e1000000-0000-4000-8000-000000000003"],
+          "accessories": []
+        }
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "eq_set_all_partial",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000002",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": { "top": ["e1000000-0000-4000-8000-000000000001"] }
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "eq_set_all_unknown",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": { "top": ["eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"] }
+      }
+    },
+    {
+      "name": "eq_item_missing",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+      }
+    },
+    {
+      "name": "eq_missing_chat",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-0000000000ff",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "e1000000-0000-4000-8000-000000000001"
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-0000000000ff"
+    },
+    {
+      "name": "eq_zod_bad_mode",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "wearing" }
+    },
+    {
+      "name": "eq_zod_missing_itemid",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "wear" }
+    },
+    {
+      "name": "eq_zod_missing_slot",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "clear_slot" }
+    },
+    {
+      "name": "eq_zod_missing_slots",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001", "mode": "set_all" }
+    },
+    {
+      "name": "eq_zod_bad_uuid",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": { "top": ["nope"] }
+      }
+    },
+    { "name": "eq_zod_empty", "kind": "equip", "chatId": "c1000000-0000-4000-8000-000000000001", "body": {} },
+    {
+      "name": "eq_project_tier",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "e3000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "eq_general_tier",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000002",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "wear",
+        "itemId": "e2000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "regen_ok",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "imageProfileId": "f2000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "regen_default",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+    },
+    {
+      "name": "regen_slots_override",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "equippedSlots": { "top": ["e1000000-0000-4000-8000-000000000001"] }
+      }
+    },
+    {
+      "name": "regen_chat_missing",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-0000000000ff",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+    },
+    {
+      "name": "regen_not_participant",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000002" }
+    },
+    {
+      "name": "regen_zod",
+      "kind": "regenerateAvatar",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": { "characterId": "" }
+    },
+    {
+      "name": "pv_zod_missing_slots",
+      "kind": "previewAvatar",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000001" }
+    },
+    {
+      "name": "pv_char_missing",
+      "kind": "previewAvatar",
+      "body": { "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "equippedSlots": {} }
+    },
+    {
+      "name": "pv_not_owned",
+      "kind": "previewAvatar",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000003", "equippedSlots": {} }
+    },
+    {
+      "name": "pv_no_key",
+      "kind": "previewAvatar",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "equippedSlots": {},
+        "imageProfileId": "f2000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "pv_bad_key",
+      "kind": "previewAvatar",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "equippedSlots": {},
+        "imageProfileId": "f2000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "pv_no_appearance",
+      "kind": "previewAvatar",
+      "body": { "characterId": "a1000000-0000-4000-8000-000000000002", "equippedSlots": {} }
+    },
+    {
+      "name": "pv_ok",
+      "kind": "previewAvatar",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "equippedSlots": {
+          "top": ["e1000000-0000-4000-8000-000000000001"],
+          "bottom": [],
+          "footwear": ["e1000000-0000-4000-8000-000000000003"],
+          "accessories": []
+        },
+        "imageProfileId": "f2000000-0000-4000-8000-000000000001"
+      },
+      "emitBytes": true,
+      "normalize": ["fileId", "url"]
+    }
+  ]
+}

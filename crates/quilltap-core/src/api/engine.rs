@@ -135,6 +135,15 @@ pub struct EngineAssembly {
     /// fail-soft (see `tools/executor.rs`).
     pub consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
     // === end P4.6bd ===
+    // === P4.9f1: the avatar-preview render seam (lane F1, append-only) ===
+    /// The `wardrobePreviewAvatar` render seam (one raw portrait render +
+    /// WebP transcode — v4 `createImageProvider(...).generateImage` →
+    /// `convertToWebP`). `None` → the arm runs its guard tiers live and the
+    /// RENDER step answers the loud not-assembled refusal. **The host wire is
+    /// DEFERRED to unification** (lane P4.6bd owns `spine.rs`/`host.rs` this
+    /// round — the P4.9f1 lane record names the recipe).
+    pub avatar_preview: Option<super::wardrobe::ErasedAvatarPreview>,
+    // === end P4.9f1 ===
 }
 
 impl EngineAssembly {
@@ -155,6 +164,9 @@ impl EngineAssembly {
             image_generation: None,
             // === end P4.6ai ===
             consult: None,
+            // === P4.9f1 ===
+            avatar_preview: None,
+            // === end P4.9f1 ===
         }
     }
 }
@@ -246,9 +258,12 @@ impl std::fmt::Display for BootError {
 }
 impl std::error::Error for BootError {}
 
-// One instance per engine, held behind the state mutex — the size skew between
-// the seam-laden Ready and the two-field Locked is irrelevant here, and boxing
-// would only add a pointer chase to every dispatch.
+// One instance per engine, held behind the state mutex. `Ready` is the one
+// long-lived value (the engine spends its life there); `Locked` is a two-field
+// transient, so the size skew is harmless. Boxing `ReadyEngine` would touch
+// every construction site and add a pointer chase to every dispatch for no
+// runtime win — flagged twice (the P4.6bd and P4.9f1 seam additions), left
+// un-boxed deliberately both times.
 #[allow(clippy::large_enum_variant)]
 enum EngineState {
     Locked {
@@ -291,6 +306,9 @@ struct ReadyEngine {
     /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
     /// the composer/bench arms answer the loud not-assembled error).
     consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    /// The avatar-preview render seam (P4.9f1; `None` until the deferred host
+    /// wire — the render step then answers the loud refusal).
+    avatar_preview: Option<super::wardrobe::ErasedAvatarPreview>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -2960,6 +2978,75 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.9a ===
+            // === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
+            Request::ChatOutfitGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_outfits::chat_outfit_get(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatEquip { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_outfits::chat_equip(&db, SINGLE_USER_ID, &chat_id, body).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRegenerateAvatar { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_outfits::chat_regenerate_avatar(&db, SINGLE_USER_ID, &chat_id, body)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeTransferDestinations => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_transfer_destinations(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::WardrobeTransferApply { body } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe::wardrobe_transfer_apply(
+                        &db,
+                        SINGLE_USER_ID,
+                        body,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeList => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_list(&db),
+                Err(r) => r,
+            },
+            Request::WardrobeCreate { item } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_create(&db, item).await,
+                Err(r) => r,
+            },
+            Request::WardrobeItemGet { item_id } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),
+                Err(r) => r,
+            },
+            Request::WardrobeUpdate { item_id, item } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_update(&db, &item_id, item).await,
+                Err(r) => r,
+            },
+            Request::WardrobeDelete { item_id } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_delete(&db, &item_id).await,
+                Err(r) => r,
+            },
+            Request::WardrobePreviewAvatar { body } => match self.ready_avatar_preview() {
+                Ok((db, renderer)) => {
+                    super::wardrobe::wardrobe_preview_avatar(
+                        &db,
+                        &renderer,
+                        SINGLE_USER_ID,
+                        body,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeAnalyzeImage { .. } => super::wardrobe::wardrobe_analyze_image(),
+            // === end P4.9f1 ===
         }
     }
 
@@ -3061,6 +3148,23 @@ impl CoreEngine {
                     "image generation not assembled (image-generation seam deferral)",
                 )),
             },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + avatar-preview renderer under the readiness gate (P4.9f1). An
+    /// unwired seam is NOT an error here: the handler runs its guard tiers live
+    /// and only the RENDER step answers the loud not-assembled refusal (the
+    /// `ErasedAvatarPreview::none()` fold), so the whole verb stays
+    /// differential-drivable while the host wire is deferred to unification.
+    fn ready_avatar_preview(&self) -> Result<(Db, super::wardrobe::ErasedAvatarPreview), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((
+                r.db.clone(),
+                r.avatar_preview
+                    .clone()
+                    .unwrap_or_else(super::wardrobe::ErasedAvatarPreview::none),
+            )),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -3522,6 +3626,7 @@ fn open_ready(
         save_image_bytes: assembly.save_image_bytes,
         image_generation: assembly.image_generation,
         consult: assembly.consult,
+        avatar_preview: assembly.avatar_preview,
     })
 }
 

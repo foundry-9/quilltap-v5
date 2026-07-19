@@ -589,6 +589,14 @@ impl EngineAssembler for HostAssembler {
             // not-assembled error; the in-turn tool path stays fail-soft. ===
             consult,
             // === end P4.6bd ===
+            // === P4.9f1: the avatar-preview render seam — the SINGLE sanctioned
+            // quilltap-host line this lane touches (the order's named exception;
+            // P4.6bd owns this file this round). `None` = the render step
+            // answers the loud not-assembled refusal; the LIVE wire (a raw
+            // portrait render + WebP transcode over the W4.7f Real*Providers)
+            // is DEFERRED TO UNIFICATION — see the P4.9f1 lane record. ===
+            avatar_preview: None,
+            // === end P4.9f1 ===
         })
     }
 }

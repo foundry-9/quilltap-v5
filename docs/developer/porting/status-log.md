@@ -22649,3 +22649,168 @@ PORT IT and v4 retirement gates on it, but it rewrites the shell and
 DEDICATED round. Also out: `p4.9i1`/`p4.9i2`, `p4.9g`, `p4.9h`, the
 `p4.9e*` chat-dialog family, and the `js_number_to_json` serialization
 rider (~9 copies — a separate DRY pass from §3's parse-side lift).
+
+## P4.9f1 — the wardrobe server half (lane F1): CLOSED (2026-07-19)
+
+**Branch `claude/p4-9f1-wardrobe-porting-78a267`; v4 oracle baseline
+`616930db` (HEAD unmoved at lane start; the checkout was DIRTY with the
+in-flight markdown feature, so every oracle/fixture generation ran from
+the PINNED detached worktree `/private/tmp/qt-v4-pin-616930db`).**
+
+The whole wardrobe server surface, landed as one differential-verified
+unit (the families share one fixture + one shared-corpus differential,
+so they land together):
+
+- **`chatOutfitGet`** (v4 `GET /chats/{id}?action=outfit`) over the
+  landed `ChatOutfitsRepository::get_equipped_outfit`; missing chat and
+  outfit-less chat both fold to `{}` (v4's `?? {}`).
+- **`chatEquip`** (v4 `POST ?action=equip`) — ALL SEVEN modes in v4's
+  enum order, incl. the deprecated `equip`→`wear` alias as its own enum
+  member; the Zod-4 parse is MESSAGE-faithful (three superRefine arms
+  verbatim; enum messages carry NO `received` clause —
+  oracle-confirmed; `z.uuid()` ported from v4's own pattern incl. the
+  nil/max special cases). Mode arms dispatch to the landed
+  `wardrobe_shared::{equip_item, replace_item, add_to_slot,
+  remove_from_slot}` + `set_equipped_outfit`; `set_all` validates ids
+  via `find_by_ids_for_character` in slot order (first-seen dedupe, the
+  JS `Set` semantics). The two post-mutation legs
+  (`trigger_avatar_generation_if_enabled` +
+  `enqueue_wardrobe_outfit_announcement`) run failure-swallowed, in v4's
+  order. **The chat-existence looseness is pinned deliberately**: v4
+  never loads the chat in this handler, so an equip against a
+  nonexistent chat answers 200 with the computed slots and persists
+  nothing (`eq_missing_chat` + its `__outfit` follow-up).
+- **The transfers pair** — `wardrobeTransferDestinations` /
+  `wardrobeTransferApply`, thin verbs over the ALREADY-PORTED
+  `services::wardrobe_transfers` (the survey's leverage held: zero
+  service work). The POST parse joins Zod issues with `'; '` (v4's own
+  catch), the equip/regenerate/preview parses with `', '`.
+- **The GLOBAL archetype tier** — `wardrobeList` / `wardrobeCreate` /
+  `wardrobeItemGet` / `wardrobeUpdate` / `wardrobeDelete` over
+  `db::archetype_wardrobe` + `db::vault_wardrobe_public`.
+  **`wardrobeItemGet` is an ADDITION beyond §1's pinned four** — v4
+  ships GET on the same `[itemId]` route file (the order's "116 lines,
+  PUT + DELETE" survey line undercounted it); flagged for the unifier's
+  wire fold. The create/update routes do NOT catch ZodError in v4, so
+  their validation failure is the flat middleware
+  `{error: 'Validation error'}` (the `details` array stays the
+  project-wide deferral); a vault throw (cycle / no mount) surfaces as
+  v4's generic 500 `Internal server error` — `update_cycle` pins it.
+  The list-excludes-archived vs single-GET-includes-archived asymmetry
+  is pinned (`item_get_archived`). Delete's warn-and-proceed
+  `remove_equipped_item_from_all_chats` cleanup is pinned by a
+  persistence chain (`delete_ok__outfit`).
+- **`chatRegenerateAvatar`** (tier 2) — participant-gated enqueue over
+  the landed `avatar_generation::trigger_avatar_generation`; the
+  fitting-room `equippedSlots` rides as the one-shot override.
+- **`wardrobePreviewAvatar`** (tier 2) — the synchronous one-shot
+  render. Guard tiers (ownership, profile resolution incl.
+  default→first fallback, apiKeyId/api-key guards, `has_appearance`)
+  plus prompt (`avatar_prompt` + the global-tier Aurora aesthetic) plus
+  the persistence half (`write_character_avatar_to_vault` kind:history +
+  the `files` row + the `{fileId, url, mimeType, prompt}` body) all run
+  LIVE. **The render step rides a NEW `ErasedAvatarPreview` seam**
+  (defined in `api/wardrobe.rs`, field on `EngineAssembly`): one raw
+  portrait render at v4's fixed geometry PLUS the WebP transcode —
+  both host capabilities, hence one seam. **The HOST WIRE is DEFERRED
+  TO UNIFICATION** (lane P4.6bd owns `spine.rs`/`host.rs` this round);
+  until it lands the render answers a loud typed refusal naming this
+  lane record. ⚠ **The single sanctioned quilltap-host edit**: ONE
+  `avatar_preview: None,` line completing `host.rs:549`'s assembly
+  literal (the order's named exception, fenced `=== P4.9f1 ===`).
+  Unification recipe: implement `AvatarPreviewRenderer` host-side over
+  the W4.7f `Real*Provider`s (n=1, size `1024x1792`, style `natural`,
+  quality from `parameters.quality`, filename
+  `avatar_preview_<safeName>_<Date.now()>.<ext>`) + the codec's
+  `convert_to_webp` (NB the production WebP codec is itself a standing
+  refusal — the wire can land generation-real/transcode-passthrough,
+  matching the oracle-observed v4 behavior where a PNG the codec
+  declines passes through unconverted), then set the field.
+- **`wardrobeAnalyzeImage`** — REFUSAL-ARMED (tier 3, §4: a vision-LLM
+  path; no provider path this round), with its REST edge so the URL
+  answers the typed refusal rather than a 404.
+
+**REST edges** (`quilltap-web/src/wardrobe_routes.rs`, registered in
+`lib.rs`): `GET|POST /api/v1/wardrobe`, `GET|PUT|DELETE
+/api/v1/wardrobe/{itemId}`, `GET|POST /api/v1/wardrobe/transfers`,
+`POST /api/v1/wardrobe/preview-avatar`, `POST
+/api/v1/wardrobe/analyze-image`, and the chat action edges: the
+`GET /api/v1/chats/{id}` registration is RE-POINTED at
+`wardrobe_routes::chat_action_get`, which serves `?action=outfit`,
+refuses `?action=outfit-summary` loudly BY NAME, and DELEGATES every
+other action to the untouched P4.6ak
+`text_replacements_routes::chat_get_background`; `POST
+/api/v1/chats/{id}` is a NEW registration (equip | regenerate-avatar,
+loud pointer otherwise). Malformed-JSON bodies map to the exact v4
+throw-landing message per route. The REST edges are compile-proven thin
+unwraps over the differential-pinned dispatch handlers; no
+axum-integration differential was stood up (the established
+family-lane precedent).
+
+**The fixture family + differential:** NEW committed
+`crates/quilltap-web/tests/fixtures/wardrobe-routes-{main,mount}.db` +
+`wardrobe-routes-main.db.meta.json` sidecar (minted vault/store mount
+ids only — every case-referenced id is PINNED in the spec), built by
+`harness/oracle/fixtures/build-wardrobe-routes-fixture.ts` over
+`wardrobe-routes.json`. THE CASE LIST IS THE SHARED CORPUS
+(`wardrobe-routes.json#cases`, 66 cases): the oracle
+(`harness/oracle/cases/wardrobe-routes.test.ts`) and the Rust
+differential (`crates/quilltap-web/tests/wardrobe_routes_equivalence.rs`)
+both read it, and the Rust side asserts the oracle's row count against
+the corpus expectation (66 + 6 `__outfit` persistence chains + 1
+`pv_ok_bytes` = 73). Normalization is declared per-case in the corpus
+(dot-paths: minted ids/timestamps, the preview fileId/url) and applied
+to both sides; two raw key-order claims (`outfit_preset`, `eq_set_all`).
+The ONE injected seam is the preview render: the oracle cans
+`createImageProvider` and captures the REAL `convertToWebP` output as
+`pv_ok_bytes`; the Rust `CannedRenderer` replays it, so sha256 → vault
+write → files row → response all run real on both sides. Result: **74
+checks green**; two deliberate mutations (skipping the delete cleanup;
+dropping the `equip` alias) each tripped exactly the expected case.
+
+**Oracle regen recipe** (Node 24, from the pinned worktree):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+# fixture (only when the builder/spec changes):
+cd /private/tmp/qt-v4-pin-616930db
+QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db \
+QT_FIXTURE_WROUTES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-wardrobe-routes-fixture.ts
+# oracle (jest /tmp mirror; regenerate whenever the fixture regenerates):
+TMPO=/tmp/qt-wroutes-oracle; rm -rf $TMPO; mkdir -p $TMPO/cases $TMPO/fixtures
+cp $V5W/harness/oracle/cases/wardrobe-routes.test.ts $TMPO/cases/
+cp $V5W/harness/oracle/fixtures/wardrobe-routes.json $TMPO/fixtures/
+QT_FIXTURE_WROUTES_MAIN=... QT_FIXTURE_WROUTES_MOUNT=... \
+QT_ORACLE_OUT=/tmp/oracle-wardrobe-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=240000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- wardrobe-routes
+# diff:
+QT_ORACLE_WARDROBE_ROUTES=/tmp/oracle-wardrobe-routes.ndjson \
+  cargo test -p quilltap-web --test wardrobe_routes_equivalence -- --nocapture
+```
+
+**Gotchas banked:**
+- Zod-4 `z.enum` default messages carry NO `received …` clause (unlike
+  the string/object invalid-type messages) — the first oracle run
+  corrected the port.
+- `physicalDescription` is a full RECORD (id/name/timestamps +
+  prompt fields), not a string — the fixture builder learned it the
+  hard way.
+- `doc_mount_blobs` is lazily created by v4 and must be forced into any
+  fixture whose Rust-side path writes blobs (the P4.6bd lesson,
+  re-confirmed: the preview vault write was the one red case on the
+  first differential run).
+- v4's `enqueue*` fork-child (`child-entry.ts`) crashes on the `@/lib`
+  alias in the jest oracle env (ERR_MODULE_NOT_FOUND) — harmless and
+  deterministic: the enqueue row lands, the child dies before touching
+  anything, jobs stay PENDING.
+- `EngineState`'s `Ready` variant crossed clippy's `large_enum_variant`
+  threshold with the new seam field — allowed with a comment (boxing
+  `ReadyEngine` is a post-round cleanup candidate).
+
+**Deferred loud (the lane's standing set):** the preview-avatar HOST
+WIRE (unification; recipe above); `?action=outfit-summary` (v4's third
+handler in `outfit.ts:106` — unscoped by §1, refused by name at the
+edge); `wardrobeAnalyzeImage` (tier 3, §4); the `details` array on
+`Validation error` envelopes (project-wide); the archetype routes'
+`details`-bearing middleware envelope ditto.
