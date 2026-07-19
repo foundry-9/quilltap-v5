@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { Router, RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
@@ -68,7 +69,13 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
   template: `
     <div class="qt-page-container">
       <div class="mb-8">
-        <a routerLink="/characters" class="qt-link mb-4 inline-block">← Back to Characters</a>
+        @if (canClose()) {
+          <button type="button" class="qt-link mb-4 inline-block" (click)="closeSelf()">
+            ← Back to Characters
+          </button>
+        } @else {
+          <a routerLink="/characters" class="qt-link mb-4 inline-block">← Back to Characters</a>
+        }
         <div class="flex items-center justify-between">
           <h1 class="qt-heading-1">Create Character</h1>
           <button
@@ -272,9 +279,19 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           <button type="submit" class="qt-button flex-1 qt-button-primary" [disabled]="loading()">
             {{ loading() ? 'Creating...' : 'Create Character' }}
           </button>
-          <a routerLink="/characters" class="qt-button px-6 py-3 qt-button-secondary text-center">
-            Cancel
-          </a>
+          @if (canClose()) {
+            <button
+              type="button"
+              class="qt-button px-6 py-3 qt-button-secondary text-center"
+              (click)="closeSelf()"
+            >
+              Cancel
+            </button>
+          } @else {
+            <a routerLink="/characters" class="qt-button px-6 py-3 qt-button-secondary text-center">
+              Cancel
+            </a>
+          }
         </div>
       </form>
     </div>
@@ -283,6 +300,18 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
 export class NewCharacter {
   private readonly core = inject(CoreClient);
   private readonly router = inject(Router);
+  /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
+  private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** Both seams present ⇒ hosted; back/cancel/create close the tab (v4 `useCloseSelfTab`). */
+  protected canClose(): boolean {
+    return this.handle != null && this.tabId != null;
+  }
+
+  protected closeSelf(): void {
+    if (this.handle && this.tabId != null) this.handle.closeTab(this.tabId);
+  }
 
   protected readonly form = signal<NewCharacterFormData>(INITIAL_FORM);
   protected readonly loading = signal(false);
@@ -317,7 +346,10 @@ export class NewCharacter {
       if (!character?.id) {
         throw new Error('Failed to create character');
       }
-      this.router.navigate(['/characters', character.id]);
+      // Hosted ⇒ close the tab (v4 `useCloseSelfTab`), the opener refreshes;
+      // routed ⇒ open the freshly created character.
+      if (!this.canClose()) this.router.navigate(['/characters', character.id]);
+      else this.closeSelf();
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'An error occurred');
     } finally {

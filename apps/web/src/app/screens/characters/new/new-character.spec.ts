@@ -6,6 +6,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import { RichEditor } from '../../../editor/rich-editor';
+import {
+  WORKSPACE_HANDLE,
+  WORKSPACE_TAB_ID,
+  type WorkspaceHandle,
+} from '../../../workspace/workspace-contract';
 import { NewCharacter, buildCreateCharacterBag } from './new-character';
 
 function stubClient(
@@ -190,5 +195,78 @@ describe('NewCharacter', () => {
     // The native control (driven only by [selected]) reflects the model.
     expect(select.value).toBe('p1');
     expect(Array.from(select.options).find((o) => o.value === 'p1')!.selected).toBe(true);
+  });
+});
+
+/**
+ * Workspace-tab mode (p4.9j2, v4 `useCloseSelfTab`): back / Cancel / create all
+ * close the tab via the handle instead of navigating.
+ */
+describe('NewCharacter (workspace-tab mode)', () => {
+  function makeHandle(): { handle: WorkspaceHandle; closed: string[] } {
+    const closed: string[] = [];
+    return {
+      closed,
+      handle: {
+        openTab: vi.fn(() => 'x'),
+        closeTab: vi.fn((id: string) => closed.push(id)),
+        refreshTab: vi.fn(),
+      },
+    };
+  }
+
+  async function render(
+    client: Partial<CoreClient>,
+    h: WorkspaceHandle,
+  ): Promise<ComponentFixture<NewCharacter>> {
+    TestBed.configureTestingModule({
+      imports: [NewCharacter],
+      providers: [
+        provideRouter([{ path: '**', component: NewCharacter }]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+        { provide: WORKSPACE_HANDLE, useValue: h },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-new' },
+      ],
+    });
+    const fixture = TestBed.createComponent(NewCharacter);
+    fixture.detectChanges();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('renders back/Cancel as buttons (no /characters anchors) and closes on Cancel', async () => {
+    const { handle, closed } = makeHandle();
+    const fixture = await render(stubClient(), handle);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    expect(fixture.nativeElement.querySelector('a[href="/characters"]')).toBeNull();
+    const cancel = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Cancel',
+    ) as HTMLButtonElement;
+    cancel.click();
+    expect(closed).toEqual(['tab-new']);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('closes the tab after a successful create instead of navigating', async () => {
+    const { handle, closed } = makeHandle();
+    const fixture = await render(stubClient(), handle);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    setInput(fixture, 'name', 'Bertie Wooster');
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(closed).toEqual(['tab-new']);
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): NewCharacter and the provider WizardScreen
+gain the self-close seam (v4 useCloseSelfTab). When hosted (WORKSPACE_HANDLE +
+WORKSPACE_TAB_ID present) NewCharacter's back/Cancel/create and the wizard's
+complete/cancel close the tab instead of navigating; routed mode navigates as
+today. WizardScreen's ActivatedRoute is now optional.
+
+
 P4.9J2 (screen hostability, lane J2): CharacterEdit is workspace-tab hostable.
 It gains characterId + tab inputs (v4 CharacterEditTabPayload). When hosted
 (WORKSPACE_HANDLE + WORKSPACE_TAB_ID present) save/cancel/delete close the tab

@@ -23579,3 +23579,18 @@ onSubmit save, cancel, and delete each try it first and fall back to today's
 Spec: the six existing routed cases untouched + a `workspace-tab mode` describe
 (load-by-input no route; Cancel + Save close tab-4, no navigation). `ng test`
 9/9.
+
+### Unit 6 — NewCharacter + WizardScreen self-close seam (SPA 0.5.195)
+
+Both `settings-wizard` and `character-new` are self-close-only tabs (no payload
+inputs). `screens/characters/new/new-character.ts`: injects `WORKSPACE_HANDLE` +
+`WORKSPACE_TAB_ID` `{ optional: true }`; `canClose()` gates the two "/characters"
+anchors (top back + bottom Cancel) into `<button>`s that `closeSelf()`, and a
+successful create closes the tab instead of navigating to the new character (the
+opener refreshes) — v4 `useCloseSelfTab`. `screens/settings/wizard/wizard-screen.ts`:
+`onComplete`/`onCancel` try `closeSelfTab()` first, else navigate;
+`ActivatedRoute` optional so `mode()` falls back to 'settings' when hosted (the
+`settings-wizard` tab is always the settings-mode re-entry — fresh-instance setup
+is a routed pre-workspace flow). Specs: new-character gains a `workspace-tab mode`
+describe (back/Cancel are buttons, no anchors; Cancel + create close tab-new); new
+`wizard-screen.spec.ts` (routed navigates; hosted closes). `ng test` 10/10.
