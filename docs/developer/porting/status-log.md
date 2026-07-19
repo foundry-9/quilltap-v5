@@ -23703,3 +23703,29 @@ character gallery — rail is J1's); nothing to arm there. `ng test` opener spec
 4/4. Also note: the other home/salon routerLinks (salon/new, salon/:id, …) rely
 on lane J1's route-guard redirect (`/workspace?open=…`), not per-opener arms —
 that's §4, J1's surface.
+
+### Unit 13 — Salon child-tab source (SalonModePanes port) (item 4) (SPA 0.5.202)
+
+`screens/salon/salon-mode-panes.ts` ports v4
+`app/salon/[id]/components/SalonModePanes.tsx`. Routed mode (the three workspace
+tokens null): the existing `qt-split-layout` with the focused document —
+byte-identical (the salon spec's 26 cases stay green). Workspace mode: chat
+inline + one `document` child tab per open document + one `terminal` child tab,
+spawned via `handle.openTab(kind, payload, { parentTabId })`; close-a-document
+closes its tab. **The portal is manual embedded views, NOT moved `@for` DOM** —
+`@for`-managed nodes fight Angular's reconciliation (the first cut failed exactly
+there). Each pane is a `ViewContainerRef.createEmbeddedView(...)` whose root nodes
+are moved into a `.qt-salon-portaled-pane` wrapper, which an effect relocates
+(`appendChild`) into the node the child tab registers under `portalKey(...)` —
+exactly how CDK's `DomPortalOutlet` works (no CDK dep; CD keeps updating the moved
+nodes), so live PTY (xterm) / ProseMirror state survives. The v4 unit suite is
+ported case-for-case (legacy: chat body + focused-doc-only; workspace: one tab
+per doc + portal into host, close-only-the-affected) PLUS a keep-alive spec
+(stamped state on the moved element survives a re-relocation) and a terminal-tab
+case. Integration: `salon-conversation.ts` renders `qt-salon-mode-panes` (fed
+`documentMode.openDocs()` + `focusedDocId()`; `documentPaneTpl` now takes the
+entry as `let-entry` context), wiring `(closeDocument)`/`(closeTerminal)`. **The
+reverse — child-tab-close closing the document, and the parent-Salon-tab cascade
+— is reducer-side (lane J1): v5's reduced `WorkspaceHandle` exposes no tab map
+(v4 read `ws.state.tabs`), so J2 cannot poll it. Resolves at unify.** `ng test`
+salon-mode-panes 6/6, salon-conversation 26/26.

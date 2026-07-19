@@ -56,7 +56,7 @@ import type {
 } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
-import { SplitLayout } from '../../terminal/split-layout';
+import { SalonModePanes } from './salon-mode-panes';
 import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
 import { TerminalModeController } from '../../terminal/terminal-mode';
@@ -132,7 +132,7 @@ interface CascadePrompt {
     TurnControls,
     ChatComposer,
     MemoryCascadeDialog,
-    SplitLayout,
+    SalonModePanes,
     TerminalPane,
     TerminalSessionPicker,
     DocumentPane,
@@ -160,13 +160,20 @@ interface CascadePrompt {
             <a routerLink="/salon" class="qt-link">← Back to chats</a>
           </div>
         } @else {
-          <qt-split-layout
+          <qt-salon-mode-panes
+            [parentChatId]="chatId()!"
+            [chatTitle]="chat()?.title ?? null"
             [mode]="combinedMode()"
             [dividerPosition]="documentMode.dividerPosition()"
             [rightPaneVerticalSplit]="terminalMode.rightPaneVerticalSplit()"
             [chatContent]="chatContentTpl"
-            [documentContent]="documentPaneActive() ? documentPaneTpl : null"
+            [documentPaneTemplate]="documentPaneTpl"
+            [documentEntries]="documentMode.openDocs()"
+            [focusedDocId]="documentMode.focusedDocId()"
             [terminalContent]="terminalActive() ? terminalPaneTpl : null"
+            [terminalActive]="terminalActive()"
+            (closeDocument)="documentMode.closeDocument($event)"
+            (closeTerminal)="terminalMode.hidePane()"
             (dividerPositionChange)="documentMode.setDividerPosition($event)"
             (rightPaneVerticalSplitChange)="terminalMode.setRightPaneVerticalSplit($event)"
           />
@@ -274,19 +281,17 @@ interface CascadePrompt {
       />
     </ng-template>
 
-    <ng-template #documentPaneTpl>
-      @if (documentMode.activeEntry(); as entry) {
-        <qt-document-pane
-          [entry]="entry"
-          [mode]="documentMode.documentMode()"
-          (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
-          (blur)="documentMode.flushSave(entry.document.id)"
-          (rename)="documentMode.renameDocument(entry.document.id, $event)"
-          (close)="documentMode.closeDocument(entry.document.id)"
-          (delete)="documentMode.deleteDocument(entry.document.id)"
-          (toggleFocus)="documentMode.toggleFocusMode()"
-        />
-      }
+    <ng-template #documentPaneTpl let-entry>
+      <qt-document-pane
+        [entry]="entry"
+        [mode]="documentMode.documentMode()"
+        (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
+        (blur)="documentMode.flushSave(entry.document.id)"
+        (rename)="documentMode.renameDocument(entry.document.id, $event)"
+        (close)="documentMode.closeDocument(entry.document.id)"
+        (delete)="documentMode.deleteDocument(entry.document.id)"
+        (toggleFocus)="documentMode.toggleFocusMode()"
+      />
     </ng-template>
 
     <ng-template #terminalPaneTpl>

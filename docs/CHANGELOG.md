@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Salon child-tab source — a v5 port of
+v4 SalonModePanes. New qt-salon-mode-panes routes the Document/Terminal panes to
+the legacy in-chat SplitLayout (routed, one focused document, byte-identical) or,
+when hosted, to sibling child tabs: one document tab per open document + one
+terminal tab, spawned via openTab(kind, payload, {parentTabId}). Each pane is an
+embedded view (ViewContainerRef) whose root nodes are relocated (DOM appendChild,
+CDK-DomPortalOutlet-style) into the child tab's registered portal node, so live
+PTY/editor state survives the move. Close-document closes its tab; the reverse
+(tab close -> document close) is reducer-side (lane J1). salon-conversation now
+renders qt-salon-mode-panes instead of qt-split-layout. Inert in routed mode.
+
 P4.9J2 (screen hostability, lane J2): the banked query-param openers gain their
 workspace-tab arm (v4 redirectToWorkspaceTab). When a WORKSPACE_HANDLE is
 present, the Workbench openers (composer Pascal popup, Scriptorium file table,
