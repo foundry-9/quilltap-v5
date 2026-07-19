@@ -129,6 +129,22 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 3 (the wardrobe dialog SPA lane): the outfit substrate - the
+per-chat outfit store (v4 use-outfit: chatOutfitGet refresh with
+character-key merge, personal+archetype wardrobe cache with "(shared)"
+suffix and forced non-default archetypes, composite-to-leaf expansion
+with cycle/depth guards, the four per-mode chatEquip actions with
+optimistic displacement, chat-less no-op arm), computeDisplacedSlots
+added to the helper family, and the presentational trio: OutfitComposer
+(bundle cards above the four slot rows), EquippedSlotRow (chips + the
+"+" same-slot picker with Escape containment), EquippedBundleCard
+(partially-worn badge, take-off/break-apart), and the recursive
+WardrobeItemRow (two-line clamp title, slot chips, Wear/Try-on button,
+slot-picker popover, the kebab menu with shared-tier gating, composite
+expander). Specs pin the store's exact per-mode bodies (clear_slot omits
+itemId), the cache/invalidate cycle, chat-less no-ops, and the
+grouping render. SPA 0.5.178.
+
 P4.9f2 unit 2 (the wardrobe dialog SPA lane): the tier-routed item editor
 family - qt-wardrobe-item-editor with v4's five save routes transcribed
 exactly (edit-shared -> global PUT, edit-owned -> character PUT, create

@@ -240,6 +240,83 @@ export function breakApartBundleInSlots(
 }
 
 // ---------------------------------------------------------------------------
+// Optimistic-update displacement (v4 outfit-displacement.ts:192-256)
+// ---------------------------------------------------------------------------
+
+/** v4 `outfit-displacement.ts:194`. */
+export type DisplacementMode = 'wear' | 'replace' | 'add_to_slot' | 'remove_from_slot' | 'clear_slot';
+
+/** v4 `outfit-displacement.ts:196-205`. */
+export interface ComputeDisplacedOptions {
+  mode: DisplacementMode;
+  /** Required for `wear`, `replace`, and `add_to_slot`. `replace` (the flag)
+   *  drives `wear`'s layer-vs-replace behaviour (see `wearItemIntoSlots`). */
+  item?: { id: string; types: string[]; componentItemIds?: string[]; replace?: boolean };
+  /** Required for `add_to_slot`, `remove_from_slot`, `clear_slot`. */
+  slot?: WardrobeSlotType;
+  /** Filter target for `remove_from_slot`; omit to clear the slot. */
+  itemId?: string;
+}
+
+/**
+ * Pure-function displacement for frontend optimistic updates
+ * (v4 `outfit-displacement.ts:207-256`) — the client mirror of the server's
+ * per-mode equip arms.
+ */
+export function computeDisplacedSlots(
+  currentSlots: EquippedSlots,
+  options: ComputeDisplacedOptions,
+): EquippedSlots {
+  const slots = cloneSlots(currentSlots);
+
+  if (options.mode === 'wear') {
+    if (!options.item) return slots;
+    return wearItemIntoSlots(slots, {
+      id: options.item.id,
+      types: options.item.types as WardrobeSlotType[],
+      replace: options.item.replace,
+    });
+  }
+
+  if (options.mode === 'replace') {
+    if (!options.item) return slots;
+    // v4 `replaceItemIntoSlots` (:94-103): clear each covered slot and set it
+    // to just [item.id], regardless of the `replace` flag.
+    for (const slotType of options.item.types as WardrobeSlotType[]) {
+      slots[slotType] = [options.item.id];
+    }
+    return slots;
+  }
+
+  if (options.mode === 'add_to_slot') {
+    if (!options.item || !options.slot) return slots;
+    if (!slots[options.slot].includes(options.item.id)) {
+      slots[options.slot] = [...slots[options.slot], options.item.id];
+    }
+    return slots;
+  }
+
+  if (options.mode === 'remove_from_slot') {
+    if (!options.slot) return slots;
+    if (!options.itemId) {
+      slots[options.slot] = [];
+    } else {
+      const target = options.itemId;
+      slots[options.slot] = slots[options.slot].filter((id) => id !== target);
+    }
+    return slots;
+  }
+
+  if (options.mode === 'clear_slot') {
+    if (!options.slot) return slots;
+    slots[options.slot] = [];
+    return slots;
+  }
+
+  return slots;
+}
+
+// ---------------------------------------------------------------------------
 // Titles + type unions
 // ---------------------------------------------------------------------------
 

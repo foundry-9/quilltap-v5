@@ -22901,3 +22901,41 @@ Gate: `ng test` 157 files / 1,873 green (baseline 1,844 + 29 new);
   dispatch + `saved` emit.
 
 Gate: `ng test` 158 files / 1,889 green; SPA 0.5.177.
+
+## P4.9f2 unit 3 — the outfit store + the presentational wardrobe components (2026-07-19)
+
+- **`wardrobe/outfit-store.ts`** — v4 `lib/hooks/use-outfit.ts` whole as a
+  factory (`createOutfitStore(core, chatId, characterIds)`), chatId fixed
+  per instance because the inner dialog remounts per context key:
+  `refreshOutfit` (`chatOutfitGet`, the outfit-keys ∪ characterIds merge
+  `:234-237`, the has-items-or-outfit inclusion rule `:245`),
+  `fetchWardrobeForCharacter` (personal + GLOBAL archetype reads `:130-133`
+  — deliberately NOT the project tier, matching the hook; archetypes get
+  the `(shared)` title suffix and forced `isDefault:false`, `:159-161`;
+  fetched-set caching + `invalidateWardrobe` `:451-457`), the four
+  per-mode equip actions (`:296-444`) with `computeDisplacedSlots`
+  optimistic updates (that fn added to `equipped-slots.ts`, v4
+  `outfit-displacement.ts:192-256`), and the chat-less no-op arm
+  (`:15-17`). `expandSummaryComposites` (`:70-101`) and
+  `resolveItemDetails` (`:185-213`) ported as pure exports.
+- **`wardrobe/outfit-composer.ts` / `equipped-slot-row.ts` /
+  `equipped-bundle-card.ts`** — the controlled composer surface (v4
+  `outfit-composer.tsx`, `equipped-slot-row.tsx`,
+  `equipped-bundle-card.tsx`): bundle cards above the four slot rows,
+  removable chips (`· bundle` note), the same-slot "+" picker with search
+  and Escape containment, Clear-per-slot, partially-worn badge,
+  take-off / break-apart.
+- **`wardrobe/wardrobe-item-row.ts`** — v4 `wardrobe-item-row.tsx`: the
+  recursive row (self-referencing standalone component for nested
+  composite browse at `inChat=false`), Wear/Try-on primary button, the
+  single-vs-multi-slot "+" behavior (`:143-150`), the kebab menu with the
+  shared-tier gating (Edit/toggle-default/Duplicate/Delete hidden for
+  archetypes; Move/Copy always), Escape containment.
+- **Specs:** `outfit-store.spec.ts` (chat-less no-ops fire NOTHING; the
+  exact per-mode `chatEquip` bodies incl. clear_slot OMITTING `itemId`
+  `:419-424`; archetype suffix + non-default; cache short-circuit +
+  invalidate; refresh merge + exclusion rule; failed dispatch leaves
+  state untouched), `outfit-composer.spec.ts` (grouping render +
+  showBundleActions gate).
+
+Gate: `ng test` 160 files / 1,899 green. SPA 0.5.178.
