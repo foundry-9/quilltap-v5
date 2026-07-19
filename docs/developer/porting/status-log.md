@@ -23729,3 +23729,31 @@ reverse — child-tab-close closing the document, and the parent-Salon-tab casca
 — is reducer-side (lane J1): v5's reduced `WorkspaceHandle` exposes no tab map
 (v4 read `ws.state.tabs`), so J2 cannot poll it. Resolves at unify.** `ng test`
 salon-mode-panes 6/6, salon-conversation 26/26.
+
+### Tier-2 items — LOUD NAMED DEFERRALS (P4.9J2)
+
+Both tier-2 ("should land") items are DEFERRED, named here (never silently
+dropped) and in the lane's final report, for `p4.9j` follow-up:
+
+- **Item 7 — the standalone Document Mode surface (`document-standalone` tab).**
+  v4 `StandaloneDocumentView.tsx` is a ~400-line chat-less editor over
+  file-scoped I/O (open-existing by `standaloneDocKey`, new-blank +
+  `refreshTab` once the server names the file, save/rename keeping the docKey
+  stable). v5's `documents/document-api.ts` read/write/rename are all
+  CHAT-scoped (`chatId` + `chatDocumentId`); a standalone surface needs the
+  file-scoped mounts/files write path, so it is a genuinely new screen, not an
+  adaptation. DEFERRED whole (surface + its `openTab('document-standalone', …)`
+  opener arms). The `document-standalone` tab kind therefore has no J2 surface
+  yet — lane J1's host renders whatever placeholder it chooses for it until this
+  lands. Resolves the `doc_focus` scroll-to-anchor + maximize/focus deferrals
+  (`status-log.md:9096-9099` vintage) with it.
+- **Item 8 — the chat-sidebar narrow-pane overlay.** NOT APPLICABLE in v5 yet:
+  v4's `ChatSidebar` is UNPORTED (v5's Salon has only `conversation-header`, no
+  sidebar). There is no v5 surface to make container-width-collapse into a
+  click-away overlay. DEFERRED as the order explicitly permits ("The
+  chat-sidebar overlay, if it misses tier 2 — a NAMED deferral") — it will land
+  with the Salon sidebar itself when that surface is ported.
+
+Tier-3 deferrals from the order stand: `doc_focus` beats (fold into item 7),
+and cross-pane drag of the drill state (v4 doesn't have it either — recorded as
+not-a-gap).
