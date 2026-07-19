@@ -23311,3 +23311,73 @@ sandbox's debug binary. It is a cold-start artifact (identical `openChat`
 passes in every warm sibling, incl. the math beat) and is unrelated to this
 lane (no auth/DB/renderer-timing change). The full-suite green gate should be
 confirmed in the matched-browser environment.
+
+**Tier 2.7 — the baseline-neutrality proof (the b8b12695 baseline-move
+obligation).** All SEVEN oracle families that transitively import v4's
+renderer were regenerated from v4 at `b8b12695` and their Rust differentials
+run BY NAME with `--nocapture`, zero SKIP, ALL GREEN with the committed
+oracles unchanged in behavior — confirming the KaTeX drift is output-neutral
+for the dispatch surface (v4's `renderedHtml` never reaches the diffed
+payloads; the salon tier-2 diffs strip it, and the route families never
+carried it):
+
+| family | oracle cases | Rust test | result |
+|--------|--------------|-----------|--------|
+| salon-reads | 6 | `salon_reads_equivalence` | 6/6 OK |
+| salon-mutations | 14 | `salon_mutations_equivalence` | pass |
+| salon-skip | 2 | `salon_skip_equivalence` | 2/2 OK |
+| salon-swipe-generate | 4 | `salon_swipe_generate_equivalence` | pass |
+| text-replacements-routes | 15 | `text_replacements_routes_equivalence` | 10/10 OK |
+| cost-background-routes | 13 | `cost_background_routes_equivalence` | 8/8 OK |
+| courier-images-routes | 13 | `courier_images_routes_equivalence` | 15/15 OK |
+
+On the strength of this the unifier moves CLAUDE.md's oracle-baseline
+paragraph `616930db` → `b8b12695` (`4.8.0-dev.76`) and retires the old pin
+`/private/tmp/qt-v4-pin-616930db`.
+
+**Regen recipe (this lane, in this environment).** The v4 oracle was cloned
+to `/workspace/quilltap-server` (HEAD == `b8b12695`, clean; symlinked from
+`/Users/csebold/source/quilltap-server` so the capture tool's hardcoded macOS
+path resolves; `/home/user/quilltap-v5` symlinked from
+`/Users/csebold/source/quilltap-v5`). Node here is v22 (`/opt/node22/bin`),
+NOT the memory-note's Node 24 — jest + the native cipher ran fine under 22.
+v4 deps via `npm ci`; the oracle case loads the REAL cipher binding from
+`<cwd>/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers`, which
+the root install does NOT populate — **symlink it**:
+`mkdir -p packages/quilltap/node_modules && ln -sfn /workspace/quilltap-server/node_modules/better-sqlite3 packages/quilltap/node_modules/better-sqlite3-multiple-ciphers`
+(the root `better-sqlite3` alias IS the built multiple-ciphers package). v5
+here is NOT under a `.claude/` path, so no `/tmp` mirror is needed — run each
+case directly with `--roots "$PWD" --roots /home/user/quilltap-v5/harness/oracle/cases`,
+each in its OWN clean jest invocation with `QT_ORACLE_OUT` deleted first. Per
+family (from `/workspace/quilltap-server`, `PATH=/opt/node22/bin:$PATH`,
+`FIX=/home/user/quilltap-v5/crates/quilltap-web/tests/fixtures`):
+```
+# salon-{reads,mutations,skip,swipe-generate}: QT_FIXTURE_SALON_MAIN=$FIX/salon-main.db QT_FIXTURE_SALON_MOUNT=$FIX/salon-mount.db
+# text-replacements-routes:  QT_FIXTURE_TR_MAIN=$FIX/text-replacements-main.db QT_FIXTURE_TR_MOUNT=$FIX/text-replacements-mount.db
+# cost-background-routes:    QT_FIXTURE_CB_MAIN=$FIX/cost-background-main.db  QT_FIXTURE_CB_MOUNT=$FIX/cost-background-mount.db
+# courier-images-routes:     QT_FIXTURE_CI_MAIN=$FIX/courier-images-main.db  QT_FIXTURE_CI_MOUNT=$FIX/courier-images-mount.db QT_FIXTURE_CI_META=$FIX/courier-images-main.db.meta.json
+rm -f /tmp/oracle-<f>.ndjson; <fixture-envs> QT_ORACLE_OUT=/tmp/oracle-<f>.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots /home/user/quilltap-v5/harness/oracle/cases -- <case-name>
+# then (from /home/user/quilltap-v5): QT_ORACLE_<FAMILY>=/tmp/oracle-<f>.ndjson cargo test -p quilltap-harness --test <f>_equivalence -- --nocapture
+```
+The markdown-fixtures.json capture uses the SAME v4 checkout: from
+`/workspace/quilltap-server`, `./node_modules/.bin/tsx /Users/csebold/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts`.
+
+**Gate (this lane, this environment).** `ng test` 172 files / 2029 passed;
+`ng build` clean; the seven differentials by name zero SKIP (above);
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean on BOTH feature sets (default + `quilltap-core/native-transport`);
+`cargo test -p quilltap-core --lib` 992 passed. All cargo commands run with
+`--exclude quilltap-tauri` because the Tauri crate needs GTK/webkit system
+libs (`gdk-3.0.pc`) absent from this headless Linux sandbox (GUI-only).
+**`cargo test --workspace` could NOT complete in this sandbox: linking the
+~340 debug test binaries at once exhausts the fixed disk allowance ("No space
+left on device" — `target/` ballooned past 26 GB; not a code failure, and
+memory was fine at 14 GB free).** This lane touches ZERO Rust source, so the
+"guard against accidental Rust changes" is instead met by fmt + clippy
+`--all-targets` on both feature sets (which type-checks every lib/bin/test
+target), the `quilltap-core` lib suite, and the seven differentials actually
+building + running green. The full `cargo test --workspace` and the full
+Playwright suite should both be confirmed in the matched environment (see the
+Unit-5 sandbox gotcha — the repo pins Playwright browser 1228 but the image
+ships 1194; and the disk allowance here can't hold all debug test binaries).

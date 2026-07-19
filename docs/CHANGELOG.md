@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): the baseline-move neutrality proof. All seven
+oracle families that transitively import v4's renderer (salon-reads,
+salon-mutations, salon-skip, salon-swipe-generate, text-replacements-routes,
+cost-background-routes, courier-images-routes) regenerated from v4 at
+b8b12695 and their Rust differentials run by name, zero SKIP, all green with
+committed oracles behaviorally unchanged — the KaTeX drift is output-neutral
+for the dispatch surface (renderedHtml is stripped/normalized). Clears the
+unifier to move the oracle baseline 616930db → b8b12695. Docs only.
+
 P4.d9 (KaTeX/markdown drift): a live e2e math beat. A rider on
 salon-composer-modes sends a `$$` display block from the composer and asserts
 the rendered user message contains `.katex`/`.katex-display`, and that a
