@@ -23007,3 +23007,40 @@ Gate: `ng test` 162 files / 1,909 green. SPA 0.5.179.
   fetch → state set → effect) needs ~12 settle ticks, not 6.
 
 Gate: `ng test` 163 files / 1,919 green; `ng build` clean. SPA 0.5.180.
+
+## P4.9f2 unit 6 — the entry points; the stub retires (2026-07-19)
+
+- **`shell/shell.ts`** (the ONLY lane touching it this round): the
+  `qt-wardrobe-control-dialog` host mounted once at the layout level (v4
+  `app-layout.tsx:126-138`) + the footer Wardrobe button (v4
+  `sidebar-footer.tsx:227-253`, placed above Settings/Themes per v4's
+  footer order) with the chat-path arm (`:239-244`): no salon match →
+  plain `open()`; match → `resolveDefaultCharacterForChat` then
+  `open({chatId, characterId?})`. The `inWorkspace` arm
+  (`workspace.openTab('wardrobe')`) is `p4.9j`'s — not ported.
+- **`wardrobe/default-character.ts`** — `SALON_CHAT_PATH_RE` (`:39`) +
+  `resolveDefaultCharacterForChat` (`:60-101`). v5 adaptation
+  (documented): v4's two fetches (chat + messages) fold into ONE
+  `chatGet` (its payload carries participants AND messages); the role
+  comparison is v5's uppercase `'ASSISTANT'`.
+- **`screens/characters/view/tabs/wardrobe-tab.ts`** — THE STUB THIS
+  LANE RETIRES: `disabled` + the "not yet available" title + the `:3-7`
+  "its own future work order" comment are gone; the button opens the
+  dialog with `{characterId}` (v4 `CharacterDetailView.tsx:229`); the
+  intro prose stays verbatim. `character-detail.ts` now passes
+  `[characterId]="id()"`.
+- **`screens/characters/edit/character-edit.ts`** — v4's edit-view
+  Wardrobe tab (`CharacterEditView.tsx:313-331`) added between System
+  Prompts and Appearance (v4's tab order), prose verbatim, opener
+  `open({characterId: id})` (`:324`); the "wardrobe out of scope"
+  docstring note updated per the order.
+- **Tier-3 deferral (named):** the in-chat participant-card entry
+  (v4 `ParticipantCard.tsx:337`) — v5 has NO participant card (the
+  survey's finding); the entry travels with that unported surface. No
+  panel was invented to hang it on.
+- **Specs:** `default-character.spec.ts` (the strict-UUID salon regex,
+  priority 1 latest-assistant-author, priority 2 displayOrder fallback,
+  eligibility exclusions, fail-null), `wardrobe-tab.spec.ts` (ENABLED
+  button, no stale title, opens with `{characterId}`, prose verbatim).
+
+Gate: `ng test` 165 files / 1,925 green; `ng build` clean. SPA 0.5.181.

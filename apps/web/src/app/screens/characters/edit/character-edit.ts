@@ -17,6 +17,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters.api';
+import { WardrobeDialogService } from '../../../wardrobe/wardrobe-dialog.service';
 import { CharacterDeleteDialog, type DeleteChoice } from '../list/character-delete-dialog';
 import { CharacterAppearanceTab } from './appearance-tab';
 import {
@@ -32,6 +33,7 @@ import { CharacterSystemPromptsTab } from './system-prompts-tab';
 const EDIT_TABS: Tab[] = [
   { id: 'details', label: 'Details', icon: 'user' },
   { id: 'system-prompts', label: 'System Prompts', icon: 'code' },
+  { id: 'wardrobe', label: 'Wardrobe', icon: 'wardrobe' },
   { id: 'descriptions', label: 'Appearance', icon: 'file' },
 ];
 
@@ -41,8 +43,9 @@ const EDIT_TABS: Tab[] = [
  * System Prompts / Appearance tabs over `qt-entity-tabs`, and an explicit
  * "Save Character" that dispatches ONE `characterUpdate` with the whole
  * Details-tab form bag. Rename/Replace and the inline AI Wizard are named
- * deferrals (disabled affordances, v4 microcopy). Wardrobe is out of scope
- * for this vertical (the global Wardrobe dialog owns it in v4 too).
+ * deferrals (disabled affordances, v4 microcopy). The Wardrobe tab opens the
+ * global Wardrobe dialog with this character preselected (v4
+ * `CharacterEditView.tsx:313-331` — the P4.9f2 entry point).
  *
  * Simplification vs v4: the unsaved-changes guard here is a plain
  * `window.confirm` on Cancel (v4's three-way Save/Discard/Cancel `showAlert`)
@@ -142,6 +145,23 @@ const EDIT_TABS: Tab[] = [
                     [characterName]="character()!.name"
                   />
                 }
+                @case ('wardrobe') {
+                  <!-- v4 CharacterEditView.tsx:314-331 — prose + the dialog opener. -->
+                  <div class="space-y-2">
+                    <p class="qt-text-small qt-text-secondary">
+                      The wardrobe is managed in the global Wardrobe dialog so you can drop in from
+                      anywhere — including from inside a chat — and edit, layer, or save outfits
+                      without leaving the page you're on.
+                    </p>
+                    <button
+                      type="button"
+                      class="qt-button-primary"
+                      (click)="openWardrobe()"
+                    >
+                      Open wardrobe for {{ character()?.name || 'this character' }}
+                    </button>
+                  </div>
+                }
                 @case ('descriptions') {
                   <qt-character-appearance-tab [characterId]="characterId()!" />
                 }
@@ -207,6 +227,7 @@ const EDIT_TABS: Tab[] = [
 })
 export class CharacterEdit {
   private readonly core = inject(CoreClient);
+  private readonly wardrobeDialog = inject(WardrobeDialogService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
@@ -311,6 +332,14 @@ export class CharacterEdit {
       this.deleteOpen.set(false);
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
       this.router.navigate(['/characters']);
+    }
+  }
+
+  /** v4 `CharacterEditView.tsx:324` — the Wardrobe-tab dialog opener. */
+  protected openWardrobe(): void {
+    const id = this.characterId();
+    if (id) {
+      this.wardrobeDialog.open({ characterId: id });
     }
   }
 

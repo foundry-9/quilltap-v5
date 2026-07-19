@@ -2,10 +2,17 @@ import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/cor
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { AutonomousRoomBadges } from '../autonomous/autonomous-room-badges';
+import { CoreClient } from '../core/core-client';
 import { FirstRunService } from '../startup/first-run.service';
 import { ThemeService } from '../theme/theme.service';
 import { ThemeSwitcher } from '../theme/theme-switcher';
 import { Icon, type IconName } from '../ui/icon';
+import {
+  resolveDefaultCharacterForChat,
+  SALON_CHAT_PATH_RE,
+} from '../wardrobe/default-character';
+import { WardrobeControlDialog } from '../wardrobe/wardrobe-control-dialog';
+import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
 import { UserMenu } from './user-menu';
 
 interface NavItem {
@@ -84,6 +91,7 @@ const NAV_ITEMS: NavItem[] = [
     RouterOutlet,
     AutonomousRoomBadges,
     UserMenu,
+    WardrobeControlDialog,
   ],
   template: `
     <div class="qt-app-layout">
@@ -123,6 +131,18 @@ const NAV_ITEMS: NavItem[] = [
           <div class="qt-left-sidebar-footer-actions">
             <!-- v4 sidebar-footer.tsx:309 — the profile dropdown. -->
             <qt-user-menu />
+            <!-- v4 sidebar-footer.tsx:227-253 — the Wardrobe entry (above
+                 Settings/Themes in v4's footer order). A salon chat path
+                 passes its chat id + resolved default character along. -->
+            <button
+              type="button"
+              class="qt-collapsed-nav-button"
+              title="Wardrobe"
+              aria-label="Wardrobe"
+              (click)="openWardrobe()"
+            >
+              <qt-icon name="wardrobe" class="w-7 h-7" />
+            </button>
             @if (showNavThemeSelector()) {
               <qt-theme-switcher />
             }
@@ -149,6 +169,10 @@ const NAV_ITEMS: NavItem[] = [
           </div>
         </main>
       </div>
+
+      <!-- The global wardrobe dialog, mounted once at the layout level
+           (v4 app-layout.tsx:126-138). Renders nothing while closed. -->
+      <qt-wardrobe-control-dialog />
     </div>
   `,
 })
@@ -156,9 +180,28 @@ export class Shell implements OnInit {
   private readonly theme = inject(ThemeService);
   private readonly firstRun = inject(FirstRunService);
   private readonly router = inject(Router);
+  private readonly core = inject(CoreClient);
+  private readonly wardrobeDialog = inject(WardrobeDialogService);
 
   protected readonly navItems = NAV_ITEMS;
   protected readonly showNavThemeSelector = this.theme.showNavThemeSelector;
+
+  /**
+   * v4 `sidebar-footer.tsx:239-244`: a plain `open()` off a salon chat; on a
+   * salon chat path, resolve the default character first and pass the chat
+   * scope along. (The `inWorkspace` arm — `workspace.openTab('wardrobe')` —
+   * belongs to `p4.9j` workspace tabs and is not ported.)
+   */
+  protected async openWardrobe(): Promise<void> {
+    const chatMatch = this.router.url.match(SALON_CHAT_PATH_RE);
+    if (!chatMatch) {
+      this.wardrobeDialog.open();
+      return;
+    }
+    const chatId = chatMatch[1];
+    const characterId = await resolveDefaultCharacterForChat(this.core, chatId);
+    this.wardrobeDialog.open(characterId ? { chatId, characterId } : { chatId });
+  }
 
   ngOnInit(): void {
     // Re-apply the server-persisted theme preference (localStorage is the fallback).

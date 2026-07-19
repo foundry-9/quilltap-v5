@@ -1,10 +1,12 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+
+import { WardrobeDialogService } from '../../../../wardrobe/wardrobe-dialog.service';
 
 /**
- * The Wardrobe tab (v4 `CharacterDetailView.tsx` inline `'wardrobe'` case): v4
- * renders the intro prose plus a button that opens the global wardrobe dialog.
- * That dialog is its own future work order here, so the button renders
- * disabled with the same v4 copy.
+ * The Wardrobe tab (v4 `CharacterDetailView.tsx` inline `'wardrobe'` case,
+ * `:218-235`): v4 renders the intro prose plus a button that opens the global
+ * wardrobe dialog with `{characterId}` (`:229`). v4's `disabled={!wardrobeDialog}`
+ * arm collapses here — the root-provided service is always present.
  */
 @Component({
   selector: 'qt-character-wardrobe-tab',
@@ -17,9 +19,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       </p>
       <button
         type="button"
-        disabled
         class="qt-button-primary"
-        title="The wardrobe dialog is not yet available in this vertical"
+        (click)="wardrobeDialog.open({ characterId: characterId() })"
       >
         Open wardrobe for {{ characterName() }}
       </button>
@@ -27,5 +28,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   `,
 })
 export class CharacterWardrobeTab {
+  protected readonly wardrobeDialog = inject(WardrobeDialogService);
+
+  readonly characterId = input.required<string>();
   readonly characterName = input<string>('this character');
 }

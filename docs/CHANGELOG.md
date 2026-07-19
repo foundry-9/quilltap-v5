@@ -129,6 +129,22 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 6 (the wardrobe dialog SPA lane): the entry points, and the
+stub retires. The shell mounts the global dialog host once and gains the
+footer Wardrobe button with v4's chat-path resolution: on a salon chat
+path the chat id rides along with the default character resolved from
+one chatGet (most recent assistant message's author, else first
+non-user-controlled participant by display order, else none - v5 folds
+v4's two fetches into the one chatGet payload). The character detail
+Wardrobe tab's button loses its disabled state and "future work order"
+comment and opens the dialog with the character preselected; the
+character edit screen gains v4's Wardrobe tab (prose verbatim) with the
+same opener. The in-chat participant-card entry is a named tier-3
+deferral - v5 has no participant card surface to hang it on. Specs pin
+the salon-path regex, both resolution priorities + eligibility + the
+fail-null arm, and the enabled tab button opening with {characterId}.
+SPA 0.5.181.
+
 P4.9f2 unit 5 (the wardrobe dialog SPA lane): the wardrobe control dialog
 itself. The host renders nothing while closed and remounts the inner per
 characterId|chatId context via a keyed track (v4's inner key) so a

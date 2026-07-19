@@ -155,7 +155,7 @@ const CHARACTER_TABS: Tab[] = [
                 <qt-character-tags-tab [characterId]="id()" />
               }
               @case ('wardrobe') {
-                <qt-character-wardrobe-tab [characterName]="character.name" />
+                <qt-character-wardrobe-tab [characterId]="id()" [characterName]="character.name" />
               }
               @case ('defaults') {
                 <qt-character-defaults-tab
