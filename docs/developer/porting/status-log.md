@@ -23538,3 +23538,16 @@ hosted. Settings' own `ActivatedRoute` is likewise optional. New
 `ActivatedRoute` → placeholder renders, subsystem `prospero`, active tab
 "Data & System"); existing chat-tab spec untouched. `ng test` 4/4 across the
 two files.
+
+### Unit 3 — CustomToolsPage workspace-tab mode (SPA 0.5.192)
+
+`screens/custom-tools/custom-tools-page.ts` gains `mountPointId`/`path`/`create`
+inputs (v4 `CustomToolsTabPayload`). In tab mode (`WORKSPACE_TAB_ID` non-null)
+a one-shot `effect` seeds the initial `mode` from the payload — `create` ⇒ the
+builder on a fresh draft (destination = `mountPointId`); `mountPointId` + `path`
+⇒ the editor on that definition (v4 opens one tab per definition) — since signal
+inputs arrive after construction. Routed mode keeps the constructor's
+query-string read (v4's own no-workspace fallback), now via optional
+`ActivatedRoute`, byte-identical. New `custom-tools-page.spec.ts` tab-mode cases
+(library / edit / create seeds) over a permissive CoreClient stub, no
+`ActivatedRoute`. `ng test` 3/3.

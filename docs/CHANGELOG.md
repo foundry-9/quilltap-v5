@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Workbench page (/custom-tools) is
+workspace-tab hostable. It gains mountPointId/path/create inputs (v4
+CustomToolsTabPayload): create seeds the builder on a fresh draft, mountPointId
++ path seeds the editor on that definition (one tab per definition). A one-shot
+effect applies the payload (inputs arrive after construction). WORKSPACE_TAB_ID
+null keeps the routed query-string path byte-identical (v4's own no-workspace
+fallback); ActivatedRoute is now injected optionally.
+
+
 P4.9J2 (screen hostability, lane J2): the Settings shell is workspace-tab
 hostable. It gains tab/section inputs mirroring v4 SettingsViewProps: tab seeds
 the initial tab (via EntityTabs defaultTab) and the subsystem background;

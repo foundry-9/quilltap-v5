@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { WorkbenchEditor } from './workbench-editor';
 import { WorkbenchLibrary } from './workbench-library';
 
@@ -20,10 +29,12 @@ import { WorkbenchLibrary } from './workbench-library';
  *   `?mount=<mountPointId>&path=Tools/<file>` — open one definition to edit
  *   `?new=1&mount=<mountPointId>`             — create, destination preselected
  *
- * **Named omission (`p4.9j`):** v4 ALSO has `redirectToWorkspaceTab`, which
- * opens the Workbench as a workspace tab instead of navigating. v5 has no
- * workspace tabs — that ruling is still open — so the query-param fallback is
- * the only path here. It is v4's own fallback, not an invention.
+ * **Workspace-tab mode (p4.9j2).** When hosted, the `mountPointId`/`path`/`create`
+ * inputs (v4 `CustomToolsTabPayload`) seed the initial mode in place of the query
+ * string: `create` ⇒ builder on a fresh draft (destination = `mountPointId`);
+ * `mountPointId` + `path` ⇒ the editor on that definition (v4 opens one tab per
+ * definition). `WORKSPACE_TAB_ID` null ⇒ routed mode, reads the query string
+ * exactly as today (v4's own no-workspace fallback).
  */
 type WorkbenchMode =
   | { view: 'library' }
@@ -65,15 +76,39 @@ type WorkbenchMode =
   `,
 })
 export class CustomToolsPage {
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** Tab-mode payload (v4 `CustomToolsTabPayload`); null ⇒ routed (query string). */
+  readonly mountPointId = input<string | null>(null);
+  readonly path = input<string | null>(null);
+  readonly create = input<boolean>(false);
 
   readonly mode = signal<WorkbenchMode>({ view: 'library' });
 
   constructor() {
-    const params = this.route.snapshot.queryParamMap;
-    const mount = params.get('mount') ?? undefined;
-    const path = params.get('path') ?? undefined;
-    const isNew = params.get('new') === '1';
+    if (this.tabId != null) {
+      // Workspace-tab mode: seed the initial mode from the payload inputs, which
+      // arrive after construction — a one-shot effect applies them once.
+      let seeded = false;
+      effect(() => {
+        const mount = this.mountPointId() ?? undefined;
+        const path = this.path() ?? undefined;
+        const isNew = this.create();
+        if (seeded) return;
+        seeded = true;
+        if (isNew) this.mode.set({ view: 'create', mountPointId: mount });
+        else if (mount && path) this.mode.set({ view: 'edit', mountPointId: mount, path });
+      });
+      return;
+    }
+
+    // Routed mode (byte-identical): the query string is v4's own no-workspace
+    // fallback (`FileTable.tsx:113`, `CustomToolsDropdown.tsx:139`, …).
+    const params = this.route?.snapshot.queryParamMap;
+    const mount = params?.get('mount') ?? undefined;
+    const path = params?.get('path') ?? undefined;
+    const isNew = params?.get('new') === '1';
 
     if (isNew) {
       this.mode.set({ view: 'create', mountPointId: mount });
