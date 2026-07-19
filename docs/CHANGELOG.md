@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6bd tier 2, the jsnum canonicalization (SS-3): the duplicated JS
+Number(string) ports are lifted into jsnum::number_from_str, with
+tools/llm_number.rs:109's js_number_from_str (the most fully documented
+copy) as the canonical source; llm_number re-exports it under its old name,
+tools/text_block_parser.rs's local copy becomes a thin adapter (strictly
+MORE faithful: signed non-decimal literals like '+0x10' are now NaN as in
+JS), and model/tool_wire/text_parsers.rs keeps its deliberately narrower
+letter-gate grammar as an explicit narrowing wrapper (seam comment carried
+forward, grammar NOT widened). Proven by regenerated llm-number and
+pseudo-tool-parsers oracles plus the committed tool-wire corpus, all green.
+The photos_routes.rs twin is NOT touched (lane P4.9a2's file this round -
+its one call-site swap is deferred loudly as a follow-up rider), and the
+js_number_to_json serialization family stays out of scope (a separate
+rider).
+
 P4.6bd tier 1 (lane BD, the consult-wire round): the llm consult is LIVE on
 all three entrances. New ConsultRunner seam in pascal::llm_consult (erased
 runner, the image_generation idiom) with SeamConsultInvoker and

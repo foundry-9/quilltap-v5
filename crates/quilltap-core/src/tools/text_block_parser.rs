@@ -486,50 +486,20 @@ fn to_map(entries: Vec<(String, Value)>) -> Map<String, Value> {
     m
 }
 
-/// JS `Number(value)` for a string, over the realistic tool-arg subset: decimal
-/// (sign/fraction/exponent), hex/octal/binary literals, and `Infinity`. Returns
-/// `None` for `NaN`-producing inputs. Out-of-subset exotic forms are documented
-/// as a seam; the corpus stays within it.
+/// JS `Number(value)` for a string, over the realistic tool-arg subset. Since
+/// P4.6bd a thin adapter over the canonical [`crate::jsnum::number_from_str`]
+/// (NaN → `None`, which is how this parser signals "not a number"). The
+/// canonical fn is also strictly MORE faithful than the local copy it
+/// replaced (e.g. `Number('+0x10')` is NaN in JS — signed non-decimal
+/// literals are illegal — where the old copy accepted it); the corpus stays
+/// within the shared subset either way.
 fn js_number(s: &str) -> Option<f64> {
-    let t = js_trim(s);
-    if t.is_empty() {
-        return Some(0.0);
+    let f = crate::jsnum::number_from_str(s);
+    if f.is_nan() {
+        None
+    } else {
+        Some(f)
     }
-    match t {
-        "Infinity" | "+Infinity" => return Some(f64::INFINITY),
-        "-Infinity" => return Some(f64::NEG_INFINITY),
-        _ => {}
-    }
-    let (sign, body) = match t.strip_prefix('-') {
-        Some(rest) => (-1.0, rest),
-        None => (1.0, t.strip_prefix('+').unwrap_or(t)),
-    };
-    for (pfx, radix) in [
-        ("0x", 16),
-        ("0X", 16),
-        ("0o", 8),
-        ("0O", 8),
-        ("0b", 2),
-        ("0B", 2),
-    ] {
-        if let Some(digits) = body.strip_prefix(pfx) {
-            // JS: 0x/0o/0b literals do not take a sign; `Number('-0x1')` is NaN.
-            if sign < 0.0 {
-                return None;
-            }
-            if digits.is_empty() {
-                return None;
-            }
-            return u128::from_str_radix(digits, radix).ok().map(|v| v as f64);
-        }
-    }
-    // Reject Rust-accepted-but-JS-rejected alphabetic forms (inf/nan/infinity).
-    if t.chars()
-        .any(|c| c.is_ascii_alphabetic() && !matches!(c, 'e' | 'E'))
-    {
-        return None;
-    }
-    t.parse::<f64>().ok()
 }
 
 /// Integer-valued finite float → JSON integer (mirrors JS `JSON.stringify`).

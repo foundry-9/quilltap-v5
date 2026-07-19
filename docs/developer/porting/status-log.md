@@ -9,6 +9,29 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.6bd tier 2 — the §3 `jsnum` canonicalization (lane BD, 2026-07-18)
+
+`jsnum::number_from_str` is the ONE JS `Number(string)` now. The canonical
+body is `llm_number.rs:109`'s (moved verbatim with its helpers
+`parse_radix`/`is_js_decimal_literal`/`take_digits`); `llm_number`
+re-exports it as `js_number_from_str` (the name the 28-field lenient-number
+surface and the annotations failure-echo import).
+`text_block_parser::js_number` became a thin adapter (NaN → `None`) — and
+strictly MORE JS-faithful than the local copy it replaced (`Number('+0x10')`
+is NaN in JS; the old copy stripped the sign first and accepted it; the
+overflow fallback also now matches the canonical f64-accumulation).
+`text_parsers::js_number` keeps its deliberately narrower letter-gate
+grammar as an explicit NARROWING wrapper over the canonical fn — the
+hex/`Infinity` rejection is the documented seam and was NOT widened.
+
+Proof: regenerated `llm-number` + `pseudo-tool-parsers` oracles (tsx, v4 @
+`616930db`) → `llm_number_equivalence` + `pseudo_tool_parsers_equivalence`
+green; the committed-corpus `tool_wire_equivalence` green in the workspace
+run. Deferred loudly per §3: the `quilltap-web/src/photos_routes.rs:63-100`
+call-site swap (lane P4.9a2 owns that file this round — a follow-up rider),
+and the `js_number_to_json` SERIALIZATION family (~9 copies, a separate
+rider). Versions: core 0.0.281.
+
 ## P4.6bd tier 1 — the consult wire, end to end (lane BD, 2026-07-18)
 
 **The mandate's dark seam is LIT.** One commit carries the whole tier-1 set

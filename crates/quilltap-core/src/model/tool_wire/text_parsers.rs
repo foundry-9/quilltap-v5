@@ -329,6 +329,11 @@ static SPACES_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"  +").expect("
 /// trimmed-empty → 0; a plain decimal int/float/exponent → that value; anything
 /// with a non-`e` letter (hex `0x…`, `Infinity`, `NaN`) → `None` (a documented
 /// seam, absent from real emissions). Returns `None` on `isNaN`.
+///
+/// Since P4.6bd this is an explicit NARROWING wrapper over the canonical
+/// [`crate::jsnum::number_from_str`]: the letter gate above stays (do NOT widen
+/// this grammar — rejecting hex/`Infinity` here is the documented seam), and
+/// only what passes it reaches the shared fn.
 fn js_number(s: &str) -> Option<f64> {
     let t = s.trim();
     if t.is_empty() {
@@ -339,7 +344,12 @@ fn js_number(s: &str) -> Option<f64> {
     {
         return None;
     }
-    t.parse::<f64>().ok().filter(|f| !f.is_nan())
+    let f = crate::jsnum::number_from_str(t);
+    if f.is_nan() {
+        None
+    } else {
+        Some(f)
+    }
 }
 
 // ============================================================================

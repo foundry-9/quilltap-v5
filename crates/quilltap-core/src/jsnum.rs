@@ -1,8 +1,13 @@
-//! JS number-formatting semantics — the companion to [`crate::jsstr`].
+//! JS number semantics — the companion to [`crate::jsstr`].
 //!
-//! Currently this is [`to_fixed`], reproducing `Number.prototype.toFixed` as V8
-//! implements it. V8's rounding differs from Rust's float formatter in two ways
-//! that matter for byte-exact equivalence, and both are handled here.
+//! Two residents: [`to_fixed`], reproducing `Number.prototype.toFixed` as V8
+//! implements it (V8's rounding differs from Rust's float formatter in two ways
+//! that matter for byte-exact equivalence, and both are handled here), and
+//! [`number_from_str`], the canonical JS `Number(string)` (the spec's
+//! StringToNumber) the tool-argument seams share (P4.6bd — lifted from
+//! `tools::llm_number`, the most fully documented of the duplicated ports;
+//! `tools::text_block_parser` and `model::tool_wire::text_parsers` consume it,
+//! the latter through an explicit narrowing wrapper).
 
 /// Format `x` with exactly `digits` fractional digits, matching V8's
 /// `Number.prototype.toFixed(digits)`.
@@ -102,4 +107,136 @@ fn round_scaled(a: f64, f: u32) -> u128 {
             q
         }
     }
+}
+
+/// JS `Number(s)` for a string — the spec's StringToNumber. The CANONICAL copy
+/// (P4.6bd): `tools::llm_number` re-exports it as `js_number_from_str`, and the
+/// tool-wire text parsers wrap it.
+///
+/// Shared with the annotations failure-echo path, which genuinely does compute a
+/// JS `Number(x)` (for its error message, NOT for validation — do not mistake it
+/// for the lenient-number seam). The string arm is the only subtle part of
+/// `Number()`, so it is the only part worth having once; the `true`→1 / `null`→0
+/// arms are three obvious lines that belong at the one call site that needs
+/// them.
+///
+/// Trims JS whitespace (a wider set than Rust's — see [`crate::jsstr`]), then:
+/// empty → 0; `Infinity`/`+Infinity`/`-Infinity` (case-SENSITIVE) → ±∞;
+/// `0x`/`0o`/`0b` integer literals (unsigned only) → their value; a decimal
+/// literal → its value; anything else → NaN.
+///
+/// The explicit grammar check is what keeps Rust's `parse::<f64>` from
+/// accepting spellings JS rejects (`inf`, `infinity`, `nan`, `+nan`).
+pub fn number_from_str(s: &str) -> f64 {
+    let t = crate::jsstr::js_trim(s);
+    if t.is_empty() {
+        return 0.0;
+    }
+
+    // StrNumericLiteral :: Infinity — case-sensitive; `Number('infinity')` is NaN.
+    match t {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+
+    // NonDecimalIntegerLiteral — no sign is permitted: `Number('-0x10')` is NaN.
+    for (prefix_lower, prefix_upper, radix) in
+        [("0x", "0X", 16u32), ("0o", "0O", 8), ("0b", "0B", 2)]
+    {
+        if let Some(digits) = t
+            .strip_prefix(prefix_lower)
+            .or(t.strip_prefix(prefix_upper))
+        {
+            return parse_radix(digits, radix);
+        }
+    }
+
+    if !is_js_decimal_literal(t) {
+        return f64::NAN;
+    }
+    // The grammar above is a subset of what Rust's parser accepts, and Rust
+    // rounds to nearest as the spec requires.
+    t.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+/// The value of a non-decimal integer literal's digits, or NaN when the digit
+/// string is empty or contains a digit illegal for the radix.
+///
+/// Accumulates in `u128` and falls back to `f64` accumulation past its range.
+/// The fallback can round differently from the spec's exact-then-round rule for
+/// literals beyond ~2^128; every field the lenient-number seam guards is bounded
+/// far below that (the widest is `max(1000)`), so such a value is rejected by
+/// its bound either way.
+fn parse_radix(digits: &str, radix: u32) -> f64 {
+    if digits.is_empty() {
+        return f64::NAN;
+    }
+    let mut acc: u128 = 0;
+    let mut overflowed: Option<f64> = None;
+    for c in digits.chars() {
+        let Some(d) = c.to_digit(radix) else {
+            return f64::NAN;
+        };
+        match overflowed {
+            Some(v) => overflowed = Some(v * radix as f64 + d as f64),
+            None => match acc
+                .checked_mul(radix as u128)
+                .and_then(|a| a.checked_add(d as u128))
+            {
+                Some(next) => acc = next,
+                None => overflowed = Some(acc as f64 * radix as f64 + d as f64),
+            },
+        }
+    }
+    overflowed.unwrap_or(acc as f64)
+}
+
+/// Whether `t` is a JS `StrDecimalLiteral`:
+/// `[+-]? ( digits ('.' digits?)? | '.' digits ) ([eE] [+-]? digits)?`
+///
+/// Rust's `parse::<f64>` also accepts `inf`, `infinity`, and `nan` (all
+/// case-insensitively), which `Number()` does not; this gate excludes them.
+fn is_js_decimal_literal(t: &str) -> bool {
+    let b = t.as_bytes();
+    let mut i = 0usize;
+
+    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+        i += 1;
+    }
+
+    let int_digits = take_digits(b, &mut i);
+    let mut frac_digits = 0usize;
+    let mut has_dot = false;
+    if i < b.len() && b[i] == b'.' {
+        has_dot = true;
+        i += 1;
+        frac_digits = take_digits(b, &mut i);
+    }
+    // Need at least one digit overall; a bare '.' or '' is not a literal. With a
+    // dot, either side may be empty ('1.' and '.5' are both legal) but not both.
+    if int_digits == 0 && (!has_dot || frac_digits == 0) {
+        return false;
+    }
+
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        i += 1;
+        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+            i += 1;
+        }
+        if take_digits(b, &mut i) == 0 {
+            return false;
+        }
+    }
+
+    i == b.len()
+}
+
+/// Advance `i` past ASCII digits, returning how many were consumed.
+fn take_digits(b: &[u8], i: &mut usize) -> usize {
+    let start = *i;
+    while *i < b.len() && b[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    *i - start
 }
