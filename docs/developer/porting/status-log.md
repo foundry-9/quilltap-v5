@@ -23430,3 +23430,65 @@ section and a corrected "next candidates" list; the order header moved to
 CLOSED with its NO-PORTS and the one surfaced-but-unclosed seam (the
 qt-rich-editor `\(`/`\)` backslash escape) enumerated. SPA 0.5.188 → 0.5.189
 for the wire commit.
+
+## Round planned — the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2), 2026-07-19
+
+The dedicated round the 2026-07-18 human ruling ordered (`m6-screen-parity.md`
+F1/§5.1 option b — port the tabbed workspace; v4 retirement gates on it) is
+scoped. **Drift check first:** v4 HEAD is `70baaa74`, ONE commit past the
+`b8b12695` baseline — docs-only (`docs/developer/features/state-cascade.md`,
+a 102-line feature *plan* for a chat → project → group → general state
+cascade; zero `lib/` changes; v4 tree clean). Dispositioned behavior-free
+(the `444c7fd6` precedent) and mirrored under
+`docs/v4/developer/features/state-cascade.md`. ⚠ Like the custom-tools plan
+before the d68638b4 round, this PREDICTS an in-flight v4 feature touching the
+PORTED Pascal/state surfaces — both lane preambles order a STOP if HEAD moves
+beyond `70baaa74`, and the next drift check should expect it.
+
+**The round: two pure-SPA lanes + a pre-committed contract.** Zero Rust; the
+only harness artifact is a Node oracle case driving v4's REAL
+`lib/workspace/*` + `lib/navigation/route-to-intent.ts` into a committed
+JSON corpus (the markdown-fixtures precedent) that the v5 TS core replays —
+the tier-1 differential the ruling requires for `workspace-reducer.ts` (441
+ln pure) + `workspace-persistence.ts` (270 ln).
+
+- **P4.9J1 (`p4.9j1-workspace-core-shell.md`)** — the corpus + pure core
+  port, the signal-store `WorkspaceService`, the two-pane keep-alive host
+  and all chrome (strip / divider / drop-zones / backdrop arbitration /
+  portal hosts / Ctrl-Alt shortcuts / capture-phase link interceptor /
+  `?open=` intent with the hydration-race guard), the workspace flag
+  (localStorage opt-out, default ON — documented divergence from v4's
+  build-time env), the 16 redirect guards, the shell/rail cutover, the
+  `_workspace.css` + six theme accents, and the dual-mode e2e harness
+  (existing suite pinned to route mode via a global opt-out; new
+  flag-on workspace beats). Owns `app.routes.ts` + `shell/shell.ts`.
+- **P4.9J2 (`p4.9j2-screen-hostability.md`)** — every input-driven screen
+  goes dual-mode (route params in routed mode, signal inputs in tab mode),
+  the self-close seam, the v4 `inTab` in-place drill for the
+  characters/prospero/scriptorium lists (survey-verified against v4
+  `AuroraView.tsx:85+` et al.), the Salon side of the terminal/document
+  child-tab system (portal source + lifecycle over the v4 `SalonModePanes`
+  port), backdrop reporting, the banked opener intents
+  (Workbench/wardrobe/photos/generate-image `openTab` arms), and the
+  standalone document surface (tier 2). All inert in-lane (contract tokens
+  resolve null ⇒ routed mode byte-identical — the existing suites are the
+  lane's own regression oracle); ACTIVATE-AT-UNIFY per the §2 hosting table.
+
+**The contract-as-code wrinkle (new for this round):**
+`apps/web/src/app/workspace/workspace-contract.ts` is pre-committed ON MAIN
+at round setup — 22 `TabKind`s + payloads + `WorkspaceState` (v4
+`types.ts` shapes, corpus-locked), `standaloneDocKey`/`portalKey`, and the
+four injection seams (`WORKSPACE_HANDLE`, `WORKSPACE_TAB_ID`,
+`WORKSPACE_PORTAL_REGISTRY`, `WORKSPACE_BACKDROP_REGISTRY`). Because
+InjectionToken identity is the meeting point, both lanes must import ONE
+file from main rather than fold local mirrors at unify; it is types + two
+pure helpers only, typecheck-verified against the app's strict flags, and
+BINDING (neither lane edits it). Scaffolding-only ⇒ no SPA bump; lanes
+start from SPA 0.5.189.
+
+**Deliberately out of the round:** the `avatar_preview` host wire + WebP
+codec (the named next RUST item — this round is SPA-only; it stays first in
+the next-order pool), `p4.9i1` Brahma (its tab kind renders a loud refusal
+pane), the help doc (`p4.9i2`), per-instance layout-key scoping (named
+deferral), and the `616930db`-style catch-up for the predicted state-cascade
+feature (not yet landed in v4 — watch it).

@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Round planning: the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2) is scoped
+and its two work orders are committed (docs/developer/porting/work-orders/
+p4.9j1-workspace-core-shell.md, p4.9j2-screen-hostability.md), alongside the
+pre-committed binding contract file
+apps/web/src/app/workspace/workspace-contract.ts (types + injection tokens
+only; typecheck-verified; neither lane edits it). Drift check: v4 moved one
+commit past the b8b12695 baseline — 70baaa74, docs-only (the state-cascade
+feature plan) — dispositioned behavior-free and mirrored under
+docs/v4/developer/features/state-cascade.md. No code behavior changes in
+this commit.
+
 P4.d9 unification: the b8b12695 KaTeX/markdown drift catch-up round is on
 main, and the oracle baseline moves 616930db → b8b12695 (4.8.0-dev.76). One
 SPA-only lane, zero Rust source touched: the shared math normalizer and the
