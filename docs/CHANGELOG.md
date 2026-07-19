@@ -57,6 +57,230 @@ refine sentences gained `llm`, one metadata comparator widened); the
 corpus spec carries a marked drift map until lane D8's regenerated
 NDJSON lands. SPA 0.5.170.
 
+P4.9a lane close: tier 1 of the My Photos vertical is complete (the service
+port, the four dispatch verbs, the REST edges, the committed fixture family and
+its 34-case differential, the /photos screen, and the live walk). Tier 2 —
+imageInfoGet plus the deep gallery modal family — is deferred as a unit rather
+than half-landed, because the verb has no consumer without the modals and a
+shipped-but-unused wire verb reads later as work already done; the status log
+enumerates exactly what the follow-up owes. Docs only; no version bumps.
+
+P4.9a unit 5: a live Playwright walk of the My Photos vertical — the gallery
+renders over the real photoGalleryList verb, a card opens the detail modal with
+its prompt excerpt, linker list, read-only tags and identity block (Escape
+closes it), and a link-only delete round-trips through photoGalleryEntryRemove
+and survives a reload, which is what proves the server actually removed the
+link rather than the UI merely forgetting it. Global-setup seeds two photos/
+entries with distinctive captions so the walk asserts only on its own rows: the
+instance is shared and the characters walk deletes gallery tiles. The walk
+reaches /photos by URL because the shell's photos nav item stays disabled until
+the §2a unifier flip; the nav-click step is marked ACTIVATE-AT-UNIFY.
+
+The search box's semantic query is deliberately not walked: v4's service calls
+generateEmbeddingForUser on the query branch and the e2e instance has no default
+embedding profile, so a search there is the seam's loud refusal rather than a
+narrowed list. That refusal is pinned by photos_web_routes instead. SPA 0.5.171.
+
+P4.9a unit 4: the My Photos screen at /photos (v4 app/photos/PhotosView.tsx) —
+header and counter, the search form, the responsive card grid with the
+"linked in N places" badge, infinite scroll, and the inline detail modal with
+its linker list (Vault for a character store, Album otherwise), read-only tags,
+sha256/linkId identity, and a confirm-gated link-only delete. Both of v4's
+staleness guards are carried and mutation-checked: the fetch-generation counter
+that stops a load-more outliving its query from appending onto a new search's
+results, and the linkId de-dupe that catches the same row arriving on two pages
+when a save shifts the ordering mid-scroll. Also syncs the SPA lockfile version,
+which had drifted nine bumps behind package.json.
+
+Three recorded divergences: no subsystem background (v4 wraps the page in
+useSubsystemBackgroundStyle('lantern'); v5 has no such machinery and this lane
+does not invent one), full-size images in the grid (a v4 performance quirk
+carried deliberately — there is no thumbnail route on this surface), and
+window.confirm for the delete gate (v5's established stand-in for v4's
+showConfirmation modal). Tags are read-only because v4 has no tag editing
+anywhere in this family. SPA 0.5.170.
+
+P4.9a unit 3: the photos REST edges (quilltap-web/src/photos_routes.rs) —
+GET|POST /api/v1/photos and GET|DELETE /api/v1/photos/{id}, each unwrapping the
+dispatch envelope to v4's raw body, with POST answering 201 as v4's `created`
+does. Two edge behaviors needed care: ?tag= REPEATS (v4 reads them with
+getAll, so the extractor is a pair list, not a map — a map would silently keep
+one) and the JS Number() coercion that v4 runs BEFORE Zod (so ?limit=abc must
+reach the core as NaN and earn Zod's NaN message rather than being repaired or
+dropped). Both are mutation-checked in the new photos_web_routes end-to-end
+test. Also corrects the dispatch arm from unit 2: the list verb now takes an
+OPTIONAL embedding provider and gates only the query branch on it. Gating the
+whole verb would have made a plain /photos listing fail on any spine-less
+assembly, where the seam is None — stricter than v4, and it would have
+dark-screened the feature; a search without the seam is still the loud named
+refusal. core 0.0.274, web 0.0.30.
+
+P4.9a unit 2: the four photo-gallery dispatch verbs (photoGalleryList /
+photoGallerySave / photoGalleryEntryGet / photoGalleryEntryRemove) over the
+unit-1 service, plus the committed photos-{main,mount}.db fixture family and a
+34-case differential driving v4's REAL exported service and both real route
+handlers. The verbs carry v4's route-layer behavior verbatim: Zod's messages
+for limit/offset (v4 runs Number() BEFORE Zod, so a non-numeric query param is
+"received NaN" and a fractional one is "received int" — different messages, so
+the wire type is f64), and the substring chain by which v4's routes decide
+400-vs-500 from a thrown message (the empty-bytes message deliberately falls
+through to a 500). The differential caught three real divergences, all fixed in
+the port: relevanceScore was emitting 1.0 where JSON.stringify writes 1 (a
+perfect cosine match is exactly whole — routed through js_number_to_json); the
+save leg collapsed an absent fileId into an explicit null, losing Zod's
+"received undefined" vs "received null" split (now a double option); and two Zod
+bound messages named the field where Zod names the type. Also fixes an oracle
+hygiene bug worth knowing about: v4's save leg ends with three fire-and-forget
+promises that outlive the awaited response, land after the case closes its DB,
+and poison whichever case runs next — the oracle now drains before closing.
+core 0.0.273, web 0.0.29.
+
+P4.9a unit 1: ported v4's user photo gallery service
+(lib/photos/user-gallery-service.ts) to quilltap-core as
+photos::user_gallery_service — the cross-mount photos/ roll-up with
+sha256 dedup, the semantic-query branch with v4's two-stage peak-gate /
+trail-band filter, the tag filter, offset pagination, blobUrl minting,
+plus the save / get-entry / link-only-remove legs. The query embedding
+and the image bytes stay injected seams so the service body is sync.
+v4's extractPromptExcerpt regex is hand-rolled (the core has no
+JS-regex engine) and pinned against the real JS engine by a 15-vector
+table test generated from harness/oracle/cases/photos-prompt-excerpt.mjs.
+The stateful differential over the photos fixture family lands in unit 2.
+quilltap-core 0.0.272.
+
+P4.d8 units 6+7 - the Workbench + route payloads, the SPA corpus, and
+the tier-2 checks. Preview and audit bodies gain the §B `llm` field:
+preview takes {live:true} | {output} | {fail:true}, audit takes
+{output} | {fail:true} with NO live arm - v4 enforces "audits never call
+live" by SHAPE, so v5 does too. Scripted previews carry v4's bench
+identity verbatim (provider 'bench', model 'simulated'); a scripted
+failure reports "a simulated failure, as the bench requested"; an absent
+or null oracle leaves the seam unwired and the consult fails soft into
+the author's errorMessage. The audit derives its fixed subject with the
+same trim-cap-retrim a live run would apply, and audits the FAILURE path
+when nothing is scripted. The preview response carries the §A record
+verbatim; the library entry gains `llm: boolean`; the chat run attaches
+pascalMeta.llm - the third and last writer.
+
+Differentials: pascal_workbench_route_equivalence 24 -> 43 cases (all
+19 new §B arms, scripted only - no differential ever spends an LLM
+call); pascal_custom_tools_route_equivalence 9 -> 10 with a chat-entrance
+consult case, plus a case-count assertion; the workbench fixture gained
+a consulting tool so the library's llm badge has a TRUE arm to pin;
+p4_6ay_workbench_wire_contract covers the three preview arms and the
+audit body.
+
+The §C corpus NDJSON regenerated at 616930db: 115 -> 159 rows (10 title
++ 149 definition, 53 accept / 96 reject), byte-identical to the Rust
+differential's oracle, with the README provenance updated.
+
+Tier-2 D23 verification: fresh_schema.json re-dumped from v4 616930db
+and diffed - ZERO change, confirming the DDL.md edit was comment-only
+and no re-dump was owed.
+
+DEFERRED (loud): the {live:true} preview arm and the chat run's consult
+provider are UNWIRED at the engine, which holds no CompletionProvider -
+the same gap as the run_custom executor wire. Both seams exist and are
+typed; a live preview or a composer-run llm tool shows the author's
+errorMessage today.
+
+P4.d8 units 4+5 - pascalMeta.llm and the run_custom tool + handler.
+PascalMetaIn gains a typed `llm` sub-object (PascalMetaLlmIn) at v4's
+declaration position, after metadataTested and before invokedBy, with
+each optional OMITTED rather than nulled; LlmConsultResult::to_wire is
+the single serializer all three writers share. run_custom gains v4's
+preamble sentence, the two COMPARATOR_SYMBOLS rows
+(contains / "does not contain"), describe_llm_comparator (ok reads as a
+sentence, the rest against "the consulted answer"), and the "Consults a
+separate model" description line - revealOdds-gated, with the prompt
+never rendered. The handler attaches pascalMeta.llm and builds the
+invoker only when the definition declares an llm block.
+
+Survey correction: v4's ChatMessageRowSchema is handed to
+ensureCollection (column typing), NOT applied per read, so there is no
+read-path strip of unknown pascalMeta keys and v5's raw pass-through was
+already correct. The order's "load-bearing on the read path" note is
+withdrawn; no v5 read change was needed.
+
+The pascal-run-custom fixture gained an `oracle` llm tool and now
+provisions chat_settings + connection_profiles (empty). v4 creates a
+collection lazily on first access so it tolerated their absence; v5
+reads a provisioned schema. With both tables present and no profiles,
+BOTH sides take the invoker's "no connection profiles are configured"
+arm - so the handler differential exercises the whole consult seam
+end-to-end without mocking a provider.
+pascal_run_custom_equivalence 9 -> 13 rows;
+pascal_run_custom_handler_equivalence 10 -> 12 cases (plus a new
+case-count assertion against the oracle, so a case added on one side
+cannot pass silently); pascal_custom_tools_route_equivalence
+regenerated over the rebuilt fixture.
+
+DEFERRED (loud): the live executor wire. execute_run_custom_tool keeps
+its four-argument form and a new
+execute_run_custom_tool_with_consult carries the seam, because
+ToolExecutionContext holds no CompletionProvider to build an invoker
+from and tools/executor.rs is outside this lane's ownership. A
+model-driven run_custom on an llm tool therefore takes the "no LLM
+invoker was available in this context" path today.
+
+P4.d8 unit 3 - the consult invoker and the CUSTOM_TOOL_CONSULT log type.
+New `quilltap-core::pascal::llm_consult`: CONSULT_TIMEOUT_MS,
+consult_max_tokens (ceil(chars/3) clamped to 2048..32768), and
+CustomToolLlmInvoker over the cheap-LLM pipeline - settings and profiles
+resolved FRESH per invocation, zero profiles reported as "no connection
+profiles are configured", the uncensored reroute on a dangerous chat
+(and never for a null-chat bench run), the author's rendered prompt sent
+as the whole conversation with no framing, and the
+'custom-tool-consult' task type. llm_logging gains the
+CUSTOM_TOOL_CONSULT constant and its map_task_type_to_log_type arm -
+without it a consult would have logged silently as SUMMARIZATION. New
+tier-1 differential pascal_llm_consult_equivalence (3 constants + 28
+budget rows) over v4's real llm-consult module.
+
+DEFERRED (loud): the 60s consult timeout is ported as a constant and a
+message builder but the timer is NOT wired - core has no tokio timer
+driver by default and quilltap-host, which owns the one timeout
+precedent, is outside this lane. A hung provider currently blocks the
+tool call instead of failing soft after 60s.
+
+P4.d8 unit 2 - the custom-tool execution core gains the LLM consult seam
+and the containment comparators. `execute_custom_tool` is now async and
+takes an injected `LlmInvoker` (a Send+Sync trait returning a boxed
+future); the consult runs after the roll and before the outcome table,
+with its prompt rendered without an `llm` var. `resolve_llm_consult`
+never fails a run: a missing invoker, a reported failure, or an empty
+answer all become `{ok:false}` carrying the author's errorMessage, with
+the technical reason recorded separately. Success is trim-cap-retrim
+(UTF-16 units, matching v4's slice); errorMessage is never capped.
+`{{llm}}` renders the consult output or stays verbatim when none ran.
+`matches_when` gains a fail-soft llm arm and `matches_llm_comparator`
+implements v4's forgiving reconciliation (numeric-when-both-numeric
+eq/neq, one forgiven trailing `.` or `!` and nothing else, ordering
+that declines on a non-numeric answer, case-insensitive trimmed
+containment). Containment lands on params (strict, case-sensitive) and
+metadata (fail-soft - absence is not a miss, including under ncontains).
+`simulate_outcomes` takes a fixed consult subject and never invokes.
+Differentials: pascal_custom_tools_execution_equivalence grew to 103
+matchesWhen / 37 executeCustomTool / 36 renderTemplate rows over a
+scripted-invoker corpus that also pins the rendered prompt and the
+advertised output cap; pascal_simulate_equivalence gained three
+fixed-consult cases.
+
+P4.d8 unit 1 - the custom-tool definition schema gains v4 616930db's
+`llm` block and the contains/ncontains comparators. New constants
+(MAX_LLM_PROMPT_LENGTH 4000, MAX_LLM_OUTPUT_LENGTH 8000,
+MAX_LLM_OUTPUT_CEILING 100000); CustomToolLlm strictObject
+(prompt/errorMessage/maxOutput); the `llm` mount on the definition and
+in KNOWN_TOP_LEVEL_KEYS; LlmComparator (the wide comparator plus `ok`);
+StringOperand (non-empty literal or $param); COMPARATOR_KEYS widened
+6->8 with NUMERIC_COMPARATOR_KEYS kept narrow so a bare/roll `contains`
+stays an unrecognized key; the narrow-vs-wide at-least-one messages;
+containment load-checks in validate_comparator; the llm-without-block
+superRefine; and $param operand checks over all eight keys for the two
+fail-soft subjects. The definition oracle corpus grew 115 -> 149 rows
+(47 new); pascal_custom_tool_definition_equivalence green byte-for-byte
+against v4 616930db.
+
 Plan the 616930db drift-catch-up + P4.9a-resume round: two new work
 orders (p4.d8-llm-consult-server, p4.6bc-workbench-llm-spa) plus a
 resume addendum on p4.9a-photos-view. The round adopts v4 616930db
