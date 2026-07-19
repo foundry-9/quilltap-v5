@@ -22968,3 +22968,42 @@ Gate: `ng test` 160 files / 1,899 green. SPA 0.5.178.
   the download filename, microcopy verbatim).
 
 Gate: `ng test` 162 files / 1,909 green. SPA 0.5.179.
+
+## P4.9f2 unit 5 — the wardrobe control dialog + host (2026-07-19)
+
+- **`wardrobe/wardrobe-control-dialog.ts`** — v4
+  `wardrobe-control-dialog.tsx` `WardrobeControlDialogInner` (`:166`) +
+  the wrapper (`:87-98`) as `qt-wardrobe-dialog-inner` +
+  `qt-wardrobe-control-dialog`. **The remount key is reproduced with a
+  keyed `@for` track over `[service.remountKey()]`** — a context change
+  destroys and recreates the inner, discarding all staged state (v4
+  `:92-93`; the host spec pins same-key-preserves /
+  different-key-remounts). The chat-aware core:
+  `isInChat`/`rightTab` default (`:203-204`); the staging map
+  `liveStagedByChar` + baseline refs (`:227-238`); the four staging
+  handlers as pure state (`:476/:484/:499/:514`); the one-`set_all`-per-
+  dirty-character Done flush (`:648-685`, baseline-diffed, failures keep
+  the dialog open); `wearFitting` (`:700-722`); `useFittingActions`
+  (`:730`) + row routing (`:732-754`); the fitting room (`:196-202`,
+  seeds `:299-320`, live seed `:322-335`, resets `:551-587`);
+  Save-as-outfit (`:589-609`); avatar generation (`:759-817` — preview
+  URL resolved through `apiUrl`, finding-#12); filters (`:340-352`);
+  loads (`:249-296` — characters sorted + auto-select-first, image
+  profiles preselect-default); stacked editor/transfer wiring
+  (`:1213-1269`).
+- Divergences recorded in the docstring: `window.confirm` for v4's
+  `showConfirmation` (collapses the `confirming` suspension `:213-225` —
+  native confirm is modal); toasts → inline notices; **the
+  Import-from-image button is NOT shipped** (tier 3 — `analyze-image`
+  refusal-armed in F1 per §4); the `asTab` `WardrobeView` (`:105`) is
+  `p4.9j`'s.
+- **Spec (`wardrobe-control-dialog.spec.ts`)** — the order's mandated
+  pins: tab defaults; the four staging handlers fire NO route; ONE
+  `set_all` per dirty character with the exact staged slots (and none
+  when clean); failed flush keeps the dialog open; Try on's `set_all` +
+  close; **the out-of-chat no-equip invariant asserted as "the dispatch
+  log holds only reads"**; both fitting-room seed sources; the host
+  remount key. Spec gotcha: the in-chat seed chain (outfit GET → wardrobe
+  fetch → state set → effect) needs ~12 settle ticks, not 6.
+
+Gate: `ng test` 163 files / 1,919 green; `ng build` clean. SPA 0.5.180.

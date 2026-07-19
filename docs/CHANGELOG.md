@@ -129,6 +129,33 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 5 (the wardrobe dialog SPA lane): the wardrobe control dialog
+itself. The host renders nothing while closed and remounts the inner per
+characterId|chatId context via a keyed track (v4's inner key) so a
+context change discards all staged state. The inner carries both modes:
+in chat, the Live outfit tab stages every mutation client-side into a
+per-character map (the four staging handlers are pure state) and Done
+fires ONE set_all per dirty character (baseline-diffed; failures keep
+the dialog open), with Try on sending the same set_all shape from the
+fitting room then closing; out of chat there is no live tab, fitting
+actions are forced, and no equip call ever fires - avatar generation
+goes to the non-persisting preview verb with the download filename
+derived from the character name. Also: the header character dropdown
+(sorted, auto-select-first), the three-tier item load per character with
+resolved project scope, the search/kind/slot filters, row actions
+(toggle-default, delete with confirm, duplicate with copy-title), Save
+as outfit pre-populating the bundle editor, the Reset menu (worn/
+defaults/clear-all with discard confirms), and the stacked editor/
+transfer wiring with reload + outfit refresh on save. window.confirm
+stands in for v4's showConfirmation (which also collapses the confirming
+click-outside suspension - native confirm is modal); the Import from
+image button is NOT shipped (tier 3, analyze-image refusal-armed in
+P4.9f1). Specs pin the remount key, the tab defaults, the write-free
+staging handlers, one-set_all-per-dirty-character (and none when clean),
+failed-flush-stays-open, Try on, the out-of-chat never-equip invariant
+(the dispatch log holds only reads), and both fitting-room seeds. SPA
+0.5.180.
+
 P4.9f2 unit 4 (the wardrobe dialog SPA lane): the transfer dialog and the
 avatar-generation pane. WardrobeTransferDialog ports v4's move/copy modal
 over lane P4.9f1's transfers pair (destinations GET with
