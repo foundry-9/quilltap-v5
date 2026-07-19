@@ -53,6 +53,15 @@ diffs green over fresh 616930db oracles, mutation-checked. Consults on the
 composer, workbench {live:true} bench, and model-driven run_custom paths
 are now REAL SPEND against the configured cheap-LLM provider (the round's
 §4 note).
+P4.9a2 lane complete: both tiers landed. Gate on the lane tree: fmt clean,
+clippy clean on both feature sets, cargo test 353 binaries / 1,444 / 0 with
+the photos differential at 40 checks + two key-order claims (zero SKIP,
+fresh 616930db oracle, mutation-checked both sides), ng test 160 files /
+1,923, ng build clean, full Playwright 84/84 zero skips including the new
+salon-image-detail-flow beat. Deferred loud: the images DELETE port (edge
+refusal in place), image tag editing (no v4 UI), the dead character/
+user-character gallery hosts, the photos_routes js_number-to-jsnum rider.
+
 P4.9a2 unit 2 - the deep image-detail modal family (SPA): ImageDetailModal
 (overlay + ImageActions toolbar/arrows + the ImageMetadata character-album
 panel over the new imageInfoGet read-back - "In Photo Albums", per-character

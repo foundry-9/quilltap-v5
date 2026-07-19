@@ -171,10 +171,43 @@ Versions: core 0.0.280, host 0.0.21, harness 0.0.245.
 
 ## Round record — the unit-12 ∥ P4.6bb Workbench round (UNIFIED 2026-07-18)
 ## Lane P4.9a2 — the image-detail modal family (in progress, 2026-07-18)
+## Lane P4.9a2 — the image-detail modal family (LANE COMPLETE 2026-07-19)
 
 Branch `claude/image-detail-modals-porting-d2ab4d`, v4 baseline `616930db`
 (drift-checked clean at lane start). Order:
 `docs/developer/porting/work-orders/p4.9a2-image-detail-modals.md`.
+**Both tiers landed; tier 3 deferred loud as ordered.**
+
+**The lane gate (all on the lane tree):** `cargo fmt --all --check` clean;
+`cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH
+feature sets; `cargo test --workspace --no-fail-fast` **353 binaries /
+1,444 / 0 failed** with `QT_ORACLE_PHOTOS` set (the lane's checks live
+INSIDE the existing `photos_routes_equivalence` binary, so the totals match
+main's baseline); the differential BY NAME with `--nocapture`: **40 checks
+green (+ the two key-order claims), zero SKIP**, over a fresh `616930db`
+oracle (42 NDJSON rows), mutation-checked on the server (source remap) AND
+the SPA (the nested-Escape suppression); `ng test` **160 files / 1,923**
+(main baseline 154 / 1,844); `ng build` clean; **full Playwright 84/84
+zero skips** (main baseline 83 + the new `salon-image-detail-flow` beat),
+run alone on 4319 with this worktree's own Rust binaries.
+
+**Fixture changes:** the committed `photos-{main,mount}.db` family + its
+`.meta.json` sidecar REGENERATED (five new pinned `f2…` image-info rows,
+the Aria `defaultImageId` / Bramwell `avatarOverrides` staging; every prior
+row unchanged in kind). The ONLY oracle over that family is
+`photos-routes.test.ts` — regenerated this lane; no other differential
+consumes it. The e2e locked instance is UNCHANGED (the new beat seeds its
+images at runtime over the live multipart leg).
+
+**For the unifier:** fold `ImageInfoGetRequest`
+(`apps/web/src/app/images/images.api.ts`) into `CoreRequest` and retire the
+stale "no SPA consumer yet (the deep gallery modal family is the deferred
+P4.9a tier 2)" comment at `core-contract.ts:4535-4539`; mark `p4.9a` fully
+CLOSED and record the P4.9a2 rename in `m6-screen-parity.md` (the order's
+header instruction). Two e2e spec files OUTSIDE the lane's new file were
+edited (no sibling owns them this round): `characters-flow.spec.ts` (the two
+gallery beats follow the parity tab's confirm-double-click + avatar-tile
+semantics) and nothing else.
 
 **Unit 2 — the deep modal family (SPA) + the aurora gallery parity.** New
 `apps/web/src/app/images/` members: `images.api.ts` (the LOCAL
