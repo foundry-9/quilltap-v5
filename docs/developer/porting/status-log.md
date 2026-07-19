@@ -23677,3 +23677,24 @@ ignores `defaultPrevented`); `/salon/new` passes through (v5 has no NewChatModal
 — the `mode=setup` query is dropped (the intent parser has no `mode` arm). The
 e2e suite runs flag-OFF (the global opt-out), so first-run flows there are
 unaffected; carrying `mode` through is a named follow-up.
+### Unit 6 — the e2e dual-mode harness (SPA 0.5.194)
+
+- **Global opt-out** `apps/web/e2e/support/fixtures.ts`: a Playwright `test`
+  wrapper that overrides the `context` fixture to `addInitScript` the per-browser
+  opt-out (`quilltap.workspace.tabs = '0'`) before app boot on every context, so
+  the ENTIRE existing suite keeps running v4's supported ROUTE mode
+  byte-unchanged. Re-exports `expect`, `request`, and `export type *` so the only
+  per-spec change is the module specifier. All 33 existing specs re-pointed from
+  `@playwright/test` to `./support/fixtures`.
+- **Flag-on beats** `apps/web/e2e/workspace-flow.spec.ts` (imports the BASE
+  `@playwright/test`, so the flag stays ON): `/` redirects to
+  `/workspace?open=home` → a Home tab with the URL stripped clean; a rail click
+  opens a second tab and re-clicking de-dupes (focuses); `Ctrl+Alt+\` splits the
+  workspace and a reload restores the layout from localStorage; a deep-link
+  `/settings?tab=…&section=…` redirect carries its intent, strips the URL, and
+  lands on the loud not-yet-wired settings pane (its real screen at unify).
+- New beats that mutate shared fixture state are only validated by a FULL-suite
+  run (the P4.d9 memory) — workspace-flow sorts LAST ('w') and each Playwright
+  test gets a fresh context (clean localStorage → flag ON), so it never disturbs
+  the route-mode specs.
+

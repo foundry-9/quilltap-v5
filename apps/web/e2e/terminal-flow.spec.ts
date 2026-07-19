@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
 

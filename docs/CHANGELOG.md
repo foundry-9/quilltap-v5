@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) unit 6: the e2e dual-mode harness. A shared Playwright test
+wrapper (apps/web/e2e/support/fixtures.ts) overrides the context fixture to
+addInitScript the per-browser opt-out (quilltap.workspace.tabs = '0') before app
+boot, so the ENTIRE existing suite keeps running v4's supported ROUTE mode
+byte-unchanged; all 33 existing specs re-pointed to import from it. A new
+workspace-flow.spec.ts (imports the base @playwright/test, flag ON) walks the
+flag-on beats: / redirects to /workspace?open=home with a Home tab and the URL
+stripped; a rail click opens a second tab and re-clicking de-dupes; Ctrl+Alt+\
+splits and a reload restores the layout; a deep-link /settings redirect carries
+its intent, strips the URL, and lands on the loud not-yet-wired settings pane.
+
 P4.9J1 (lane J1) unit 4: the flag, the redirects, and the shell cutover.
 isWorkspaceTabsEnabled() reads localStorage['quilltap.workspace.tabs'] !== '0'
 once at bootstrap (default ON; the v5 opt-out for v4's build-time env var). A

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixtures';
 
 import { ARTIFACTS_DIR, spaDir, webBinary } from './support/env';
 

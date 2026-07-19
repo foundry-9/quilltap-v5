@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';

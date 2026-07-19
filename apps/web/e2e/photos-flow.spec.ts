@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
 import { PHOTOS_E2E_CAPTION_A, PHOTOS_E2E_CAPTION_B } from './support/seed-photos-fixture';
