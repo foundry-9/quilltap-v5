@@ -22863,3 +22863,41 @@ v4 work, irrelevant here — this pure-SPA lane regenerates no oracles).
 
 Gate: `ng test` 157 files / 1,873 green (baseline 1,844 + 29 new);
 `ng build` clean. No Rust touched. SPA 0.5.176.
+
+## P4.9f2 unit 2 — the tier-routed item editor family (2026-07-19)
+
+- **`apps/web/src/app/wardrobe/wardrobe-item-editor.ts`** — v4
+  `components/wardrobe/wardrobe-item-editor.tsx` whole: the create-scope
+  radiogroup (`:429-468`, the project arm only when a project resolved),
+  the single/bundle mode tabs (`:470-502`), the shared-item warning
+  (`:505-509`), title/types/appropriateness/portrait-cue/description
+  fields with v4's microcopy verbatim, and **the five save routes
+  transcribed exactly from `:358-369`** in `buildSaveRequest()` (a public
+  seam so the spec pins every branch): edit+shared → `wardrobeUpdate`
+  (F1's global tier), edit+owned → `characterWardrobeUpdate`,
+  create-project → `projectWardrobeCreate`, create-global →
+  `wardrobeCreate` (F1), else `characterWardrobeCreate`. Payload `:342-352`
+  verbatim (blanks → null; `replace` forced false for leaf items).
+- **`wardrobe/item-editor/{types,constants}.ts`** — v4's subdirectory
+  files ported one-for-one (CandidateItem/Group, GROUP_LABEL/ORDER,
+  TYPE_BADGE_CLASS, `getCandidateGroup`).
+- **`wardrobe/item-editor/wardrobe-component-picker.ts`** — the bundle
+  components section (coverage badges, selected chips, searchable grouped
+  list, the replace-slots designation with locked union slots).
+- **`wardrobe/item-editor/wardrobe-mode-change-prompt.ts`** — the
+  bundle→single keep/reset confirmation (z-[90]/[100] stacking carried).
+- Divergences recorded in the docstring: toasts → inline `qt-alert-error`
+  (no toast system; the `project-wardrobe-manager` precedent);
+  `MarkdownLexicalEditor` → the shared `qt-markdown-field`
+  (`minHeight="10rem"`, v4 `:679`; its absorb-once seam covers the
+  markdown-field-load-must-not-emit trap).
+- **Spec (`wardrobe-item-editor.spec.ts`)**: all five routes + the
+  no-projectId fall-through, payload nulls + forced `replace:false`,
+  three-tier candidate load order + shared flags + pre-unify fail-soft on
+  `wardrobeList`, `computedTypes` union order, replace-designation
+  widening + locked union slots + additive no-op, the keep/reset prompt
+  semantics, seeding (components imply bundle; `initialMode` wins), the
+  v4 validation-message order firing no dispatch, and the routed
+  dispatch + `saved` emit.
+
+Gate: `ng test` 158 files / 1,889 green; SPA 0.5.177.

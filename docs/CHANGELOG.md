@@ -129,6 +129,21 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 2 (the wardrobe dialog SPA lane): the tier-routed item editor
+family - qt-wardrobe-item-editor with v4's five save routes transcribed
+exactly (edit-shared -> global PUT, edit-owned -> character PUT, create
+project/global/character by scope), the single-garment vs outfit-bundle
+mode machinery (component-union auto-types, replace-composite slot
+designation with locked union slots, the bundle-to-single keep/reset
+prompt), the three-tier candidate load with per-tier fail-soft, the
+grouped searchable component picker, and the mode-change prompt. The
+description rides the shared qt-markdown-field (minHeight 10rem, v4's
+value); success/error toasts become inline alerts (no toast system in
+v5, the project-wardrobe-manager precedent). Unit specs pin all five
+routes, the payload nulls, the union/designation rules, the validation
+message order, and the pre-unify fail-soft on the global tier. SPA
+0.5.177.
+
 P4.9f2 unit 1 (the wardrobe dialog SPA lane): the wardrobe foundation -
 the pure equipped-slots helper family ported from v4's client wardrobe
 libs (wear rule, default-outfit seeding, bundle grouping/take-off/
