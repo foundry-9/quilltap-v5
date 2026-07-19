@@ -49,64 +49,20 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
     }
 }
 
-/// JS `Number(string)`, for the two numeric query params.
-///
-/// A local implementation rather than a shared one on purpose: the core already
-/// carries a private twin in `tools::text_block_parser`, and lifting that into
-/// `jsnum` would touch a file outside this lane's ownership. The consolidation
-/// is recorded as a rider in this lane's status-log entry — it is a DRY debt,
-/// not a behavior difference (both follow the same spec, and the arms this edge
-/// can actually reach are pinned by `list_limit_nan` / `list_limit_fraction`).
-///
-/// `None` means NaN — which is a VALUE here, not a failure: v4 hands NaN to Zod
-/// and Zod produces its own message for it.
-fn js_number(s: &str) -> Option<f64> {
-    let t = s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
-    if t.is_empty() {
-        // `Number('')` and `Number('   ')` are both 0.
-        return Some(0.0);
-    }
-    match t {
-        "Infinity" | "+Infinity" => return Some(f64::INFINITY),
-        "-Infinity" => return Some(f64::NEG_INFINITY),
-        _ => {}
-    }
-    let (negative, body) = match t.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, t.strip_prefix('+').unwrap_or(t)),
-    };
-    for (prefix, radix) in [
-        ("0x", 16),
-        ("0X", 16),
-        ("0o", 8),
-        ("0O", 8),
-        ("0b", 2),
-        ("0B", 2),
-    ] {
-        if let Some(digits) = body.strip_prefix(prefix) {
-            // JS radix literals take no sign: `Number('-0x1')` is NaN.
-            if negative || digits.is_empty() {
-                return None;
-            }
-            return u128::from_str_radix(digits, radix).ok().map(|v| v as f64);
-        }
-    }
-    // Rust's `parse::<f64>` accepts `inf`/`nan`/`infinity`; JS does not.
-    if t.chars()
-        .any(|c| c.is_ascii_alphabetic() && !matches!(c, 'e' | 'E'))
-    {
-        return None;
-    }
-    t.parse::<f64>().ok()
-}
-
 /// `searchParams.has(k) ? Number(searchParams.get(k)) : undefined`, over the
 /// repeat-preserving pair list. `has`/`get` read the FIRST occurrence.
 fn number_param(pairs: &[(String, String)], key: &str) -> Option<f64> {
     pairs
         .iter()
         .find(|(k, _)| k == key)
-        .map(|(_, v)| js_number(v).unwrap_or(f64::NAN))
+        // §3 of the consult-wire round: the local `js_number` twin retired at
+        // unification in favour of the canonical `jsnum::number_from_str`
+        // (lane P4.6bd lifted it; both lanes recorded this rider). The
+        // canonical port is STRICTER and matches v4 where the twin did not:
+        // JS takes no sign on a radix literal, so `Number('+0x10')` is NaN,
+        // where the twin returned 16. NaN is a VALUE here, not a failure — v4
+        // hands it to Zod, which produces its own message.
+        .map(|(_, v)| quilltap_core::jsnum::number_from_str(v))
 }
 
 /// `searchParams.get(k)` — the first occurrence, or absent.

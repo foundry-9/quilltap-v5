@@ -7,12 +7,11 @@
  * incl. the deprecated `equip` alias for `wear`), `wardrobeTransferDestinations`
  * / `wardrobeTransferApply`, the GLOBAL archetype tier `wardrobeList` /
  * `wardrobeCreate` / `wardrobeUpdate` / `wardrobeDelete`, and (tier 2)
- * `wardrobePreviewAvatar` + `chatRegenerateAvatar` — live HERE as a LOCAL typed
- * module behind an `as unknown as CoreRequest` cast (the established
- * `home.api.ts` / `photos.api.ts` pattern). The unifier folds them into
- * `core-contract.ts` and runs the name-for-name wire diff. Field names are
- * v4's route bodies verbatim; do NOT rename without editing the sibling order
- * in the same commit (§2 — a divergence is a round-breaking defect).
+ * `wardrobePreviewAvatar` + `chatRegenerateAvatar` — were FOLDED into
+ * `core-contract.ts` at the round's unification and the cast retired; the
+ * name-for-name wire diff ran there against `api/types.rs` and every §1 name
+ * and payload matched. They are re-exported below so this module stays the
+ * wardrobe data-layer entry point. Field names are v4's route bodies verbatim.
  *
  * Landed verbs consumed directly (no §1 dependency):
  * `characterWardrobe{List,Create,Get,Update,Delete}`, `projectWardrobe*`,
@@ -20,114 +19,41 @@
  */
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
+import type {
+  ChatEquipRequest,
+  ChatOutfitGetRequest,
+  ChatRegenerateAvatarRequest,
+  WardrobeCreateRequest,
+  WardrobeDeleteRequest,
+  WardrobeListRequest,
+  WardrobePreviewAvatarRequest,
+  WardrobeTransferApplyRequest,
+  WardrobeTransferDestinationsRequest,
+  WardrobeUpdateRequest,
+  WardrobeItemDto,
+} from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
 
 // ---------------------------------------------------------------------------
-// §1 — lane P4.9f1's request types (LOCAL until the unify fold)
+// §1 — lane P4.9f1's request types (FOLDED into core-contract at unification)
 // ---------------------------------------------------------------------------
 
-/** v4 `GET /api/v1/chats/{id}?action=outfit` (`outfit.ts` `handleGetOutfit`). */
-export interface ChatOutfitGetRequest {
-  type: 'chatOutfitGet';
-  chatId: string;
-}
+export type {
+  ChatOutfitGetRequest,
+  ChatEquipMode,
+  ChatEquipRequest,
+  WardrobeTransferDestinationsRequest,
+  WardrobeTransferScope,
+  WardrobeTransferApplyRequest,
+  WardrobeListRequest,
+  WardrobeCreateRequest,
+  WardrobeUpdateRequest,
+  WardrobeDeleteRequest,
+  WardrobePreviewAvatarRequest,
+  ChatRegenerateAvatarRequest,
+} from '../core/core-contract';
 
-/**
- * The seven equip modes, in v4's own enum order
- * (`app/api/v1/chats/[id]/actions/outfit.ts:37-79`). v4's comment: "`wear`
- * honors the item's `replace` flag; `replace` force-swaps the slots it covers.
- * `equip` is a deprecated alias for `wear`" — the alias is the easy-to-miscount
- * seventh; it is carried faithfully, not collapsed into `wear`.
- */
-export type ChatEquipMode =
-  | 'wear'
-  | 'replace'
-  | 'equip'
-  | 'add_to_slot'
-  | 'remove_from_slot'
-  | 'clear_slot'
-  | 'set_all';
-
-/**
- * v4 `POST /api/v1/chats/{id}?action=equip` (`outfit.ts:35-79` schema,
- * `handleEquipSlot:193`). `slot` is required for `add_to_slot` /
- * `remove_from_slot` / `clear_slot`; `itemId` for `wear` / `replace` / `equip`
- * / `add_to_slot`; `slots` for `set_all` (the superRefine arms — the server
- * enforces them; the client sends exactly what v4's callers send).
- */
-export interface ChatEquipRequest {
-  type: 'chatEquip';
-  chatId: string;
-  characterId: string;
-  mode: ChatEquipMode;
-  slot?: 'top' | 'bottom' | 'footwear' | 'accessories';
-  itemId?: string | null;
-  slots?: EquippedSlots;
-}
-
-/** v4 `GET /api/v1/wardrobe/transfers` (`transfers/route.ts:236-260`). */
-export interface WardrobeTransferDestinationsRequest {
-  type: 'wardrobeTransferDestinations';
-}
-
-/** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */
-export type WardrobeTransferScope = 'general' | 'project' | 'group' | 'character';
-
-/** v4 `POST /api/v1/wardrobe/transfers` (`transfers/route.ts:47-57` schema). */
-export interface WardrobeTransferApplyRequest {
-  type: 'wardrobeTransferApply';
-  action: 'move' | 'copy';
-  itemId: string;
-  sourceCharacterId: string;
-  sourceProjectId: string | null;
-  destination: { scope: WardrobeTransferScope; id?: string };
-}
-
-/** v4 `GET /api/v1/wardrobe` (the global archetype tier). */
-export interface WardrobeListRequest {
-  type: 'wardrobeList';
-}
-
-/** v4 `POST /api/v1/wardrobe` — the `item` bag mirrors `projectWardrobeCreate`. */
-export interface WardrobeCreateRequest {
-  type: 'wardrobeCreate';
-  item: Record<string, unknown>;
-}
-
-/** v4 `PUT /api/v1/wardrobe/{itemId}`. */
-export interface WardrobeUpdateRequest {
-  type: 'wardrobeUpdate';
-  itemId: string;
-  item: Record<string, unknown>;
-}
-
-/** v4 `DELETE /api/v1/wardrobe/{itemId}`. */
-export interface WardrobeDeleteRequest {
-  type: 'wardrobeDelete';
-  itemId: string;
-}
-
-/** v4 `POST /api/v1/wardrobe/preview-avatar` (tier 2; non-persisting —
- *  touches neither `avatarOverrides` nor any chat, the route's `:1-15` note). */
-export interface WardrobePreviewAvatarRequest {
-  type: 'wardrobePreviewAvatar';
-  characterId: string;
-  equippedSlots: EquippedSlots;
-  imageProfileId?: string;
-}
-
-/** v4 `POST /api/v1/chats/{id}?action=regenerate-avatar` (tier 2; QUEUES a
- *  background job — the fitting-room slots ride as a one-shot override). */
-export interface ChatRegenerateAvatarRequest {
-  type: 'chatRegenerateAvatar';
-  chatId: string;
-  characterId: string;
-  equippedSlots: EquippedSlots;
-  imageProfileId?: string;
-}
-
-/** The §1 union — cast through this at the dispatch sites. */
+/** The §1 union — every arm now lives in `CoreRequest`. */
 export type WardrobeLaneRequest =
   | ChatOutfitGetRequest
   | ChatEquipRequest
@@ -140,12 +66,12 @@ export type WardrobeLaneRequest =
   | WardrobePreviewAvatarRequest
   | ChatRegenerateAvatarRequest;
 
-/** One choke-point for the §1 cast (folded away at unification). */
+/** The wardrobe dispatch choke-point (the §1 cast retired at unification). */
 export function dispatchWardrobe(
   core: CoreClient,
   request: WardrobeLaneRequest,
 ): Promise<Record<string, unknown>> {
-  return core.dispatchData(request as unknown as CoreRequest);
+  return core.dispatchData(request);
 }
 
 // ---------------------------------------------------------------------------

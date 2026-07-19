@@ -17,6 +17,8 @@ apps/web/dist
 apps/web/.angular
 apps/web/playwright-report
 apps/web/test-results
+test-results
+playwright-report
 apps/web/e2e/.artifacts
 
 # Real instance data — NEVER commit a database or a pepper

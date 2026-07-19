@@ -3,23 +3,20 @@
  * v4 `components/images/image-detail/types.ts` interfaces the deep modal
  * family shares.
  *
- * `ImageInfoGetRequest` is LOCAL to this module with an
- * `as unknown as CoreRequest` cast (the `home.api.ts` pattern) — the unifier
- * folds it into `CoreRequest` in `core-contract.ts` and runs the name-for-name
- * wire diff against `crates/quilltap-core/src/api/types.rs` (§1 of the round's
- * Shared contract pins the name and payload).
+ * `ImageInfoGetRequest` was FOLDED into `CoreRequest` (`core-contract.ts`) at
+ * the round's unification and the `as unknown as CoreRequest` cast retired;
+ * the name-for-name wire diff ran there against
+ * `crates/quilltap-core/src/api/types.rs`. It is re-exported below so this
+ * module stays the images-family entry point.
  *
  * @module images/images.api
  */
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest } from '../core/core-contract';
+import type { ImageInfoGetRequest } from '../core/core-contract';
 
 /** §1: `imageInfoGet` — v4 `GET /api/v1/images/{id}` (`route.ts:39-128`). */
-export interface ImageInfoGetRequest {
-  type: 'imageInfoGet';
-  id: string;
-}
+export type { ImageInfoGetRequest };
 
 /** v4 `image-detail/types.ts:5-9`. */
 export interface CharacterGalleryLink {
@@ -101,7 +98,7 @@ export async function fetchCharacterGalleryLinks(
   try {
     const request: ImageInfoGetRequest = { type: 'imageInfoGet', id: imageId };
     const data = (await core.dispatchData(
-      request as unknown as CoreRequest,
+      request,
     )) as unknown as ImageInfoEnvelope;
     return data?.data?.characterGalleryLinks ?? [];
   } catch {

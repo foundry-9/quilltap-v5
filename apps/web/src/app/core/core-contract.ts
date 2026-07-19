@@ -3650,7 +3650,22 @@ export type MemoryRequest =
   | PhotoGalleryListRequest
   | PhotoGallerySaveRequest
   | PhotoGalleryEntryGetRequest
-  | PhotoGalleryEntryRemoveRequest;
+  | PhotoGalleryEntryRemoveRequest
+  // P4.9a2 (folded at the consult-wire round's unification).
+  | ImageInfoGetRequest
+  // P4.9f1 (folded at the consult-wire round's unification; §1 of that
+  // round's Shared contract pins every name and payload below).
+  | ChatOutfitGetRequest
+  | ChatEquipRequest
+  | ChatRegenerateAvatarRequest
+  | WardrobeTransferDestinationsRequest
+  | WardrobeTransferApplyRequest
+  | WardrobeListRequest
+  | WardrobeCreateRequest
+  | WardrobeItemGetRequest
+  | WardrobeUpdateRequest
+  | WardrobeDeleteRequest
+  | WardrobePreviewAvatarRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -4534,9 +4549,10 @@ export interface SystemDataDirRequest {
 // (the settings/home precedent — one `Response::PhotoGallery(Value)` variant
 // serves all four verbs server-side); their client shapes live in
 // `screens/photos/photos.api.ts` and are byte-pinned server-side by
-// `photos_routes_equivalence`. `photoGallerySave` / `photoGalleryEntryGet`
-// have no SPA consumer yet (the deep gallery modal family is the deferred
-// P4.9a tier 2) — the types mirror the wire, not a caller.
+// `photos_routes_equivalence`. (`photoGallerySave` / `photoGalleryEntryGet`
+// had no SPA consumer while the deep gallery modal family was deferred; that
+// deferral CLOSED with lane P4.9a2 — see the P4.9a2 block at the end of this
+// file.)
 // ===========================================================================
 
 /** v4 `GET /api/v1/photos` — the cross-mount `photos/` roll-up. */
@@ -4572,4 +4588,155 @@ export interface PhotoGalleryEntryGetRequest {
 export interface PhotoGalleryEntryRemoveRequest {
   type: 'photoGalleryEntryRemove';
   id: string;
+}
+
+// ===========================================================================
+// P4.9a2 + P4.9f1 — folded at the consult-wire + image-detail + wardrobe
+// round's unification, mirrored NAME-FOR-NAME from `api/types.rs` (the wire
+// diff ran here). Both lanes shipped these as LOCAL typed modules behind an
+// `as unknown as CoreRequest` cast (the `home.api.ts` pattern); the casts are
+// gone and the local declarations now re-export from this file.
+// ===========================================================================
+
+/** v4 `GET /api/v1/images/{id}` (`route.ts:39-128`) — P4.9a2's only verb. */
+export interface ImageInfoGetRequest {
+  type: 'imageInfoGet';
+  id: string;
+}
+
+/**
+ * Per-character equipped slots (v4 `EquippedSlotsSchema`,
+ * `lib/schemas/wardrobe.types.ts:121-126`). Each slot holds an array of
+ * wardrobe item IDs; multiple items per slot represent layering (t-shirt +
+ * sweater). Composite items appear as a single ID and are expanded at read
+ * time. It lives HERE because it is a wire payload shape;
+ * `wardrobe/equipped-slots.ts` re-exports it (the `WardrobeItemDto`
+ * precedent) so this file keeps its no-imports rule.
+ */
+export interface EquippedSlots {
+  top: string[];
+  bottom: string[];
+  footwear: string[];
+  accessories: string[];
+}
+
+/** v4 `GET /api/v1/chats/{id}?action=outfit` (`outfit.ts` `handleGetOutfit`). */
+export interface ChatOutfitGetRequest {
+  type: 'chatOutfitGet';
+  chatId: string;
+}
+
+/**
+ * The seven equip modes, in v4's own enum order
+ * (`app/api/v1/chats/[id]/actions/outfit.ts:37-79`). v4's comment: "`wear`
+ * honors the item's `replace` flag; `replace` force-swaps the slots it
+ * covers. `equip` is a deprecated alias for `wear`" — the alias is the
+ * easy-to-miscount seventh; it is carried faithfully, never collapsed into
+ * `wear`. The server matches `"wear" | "equip" | "replace"` in one arm and
+ * branches only on `replace` (`api/chat_outfits.rs:422,441-446`).
+ */
+export type ChatEquipMode =
+  | 'wear'
+  | 'replace'
+  | 'equip'
+  | 'add_to_slot'
+  | 'remove_from_slot'
+  | 'clear_slot'
+  | 'set_all';
+
+/**
+ * v4 `POST /api/v1/chats/{id}?action=equip` (`outfit.ts:35-79` schema,
+ * `handleEquipSlot:193`). `slot` is required for `add_to_slot` /
+ * `remove_from_slot` / `clear_slot`; `itemId` for `wear` / `replace` /
+ * `equip` / `add_to_slot`; `slots` for `set_all` (the superRefine arms).
+ */
+export interface ChatEquipRequest {
+  type: 'chatEquip';
+  chatId: string;
+  characterId: string;
+  mode: ChatEquipMode;
+  slot?: 'top' | 'bottom' | 'footwear' | 'accessories';
+  itemId?: string | null;
+  slots?: EquippedSlots;
+}
+
+/** v4 `GET /api/v1/wardrobe/transfers` (`transfers/route.ts:236-260`). */
+export interface WardrobeTransferDestinationsRequest {
+  type: 'wardrobeTransferDestinations';
+}
+
+/** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */
+export type WardrobeTransferScope =
+  | 'general'
+  | 'project'
+  | 'group'
+  | 'character';
+
+/** v4 `POST /api/v1/wardrobe/transfers` (`transfers/route.ts:47-57`). */
+export interface WardrobeTransferApplyRequest {
+  type: 'wardrobeTransferApply';
+  action: 'move' | 'copy';
+  itemId: string;
+  sourceCharacterId: string;
+  sourceProjectId: string | null;
+  destination: { scope: WardrobeTransferScope; id?: string };
+}
+
+/** v4 `GET /api/v1/wardrobe` (the global archetype tier). */
+export interface WardrobeListRequest {
+  type: 'wardrobeList';
+}
+
+/** v4 `POST /api/v1/wardrobe` — the `item` bag mirrors `projectWardrobeCreate`. */
+export interface WardrobeCreateRequest {
+  type: 'wardrobeCreate';
+  item: Record<string, unknown>;
+}
+
+/**
+ * `GET /api/v1/wardrobe/{itemId}` — lane P4.9f1 shipped this BEYOND §1's four
+ * archetype verbs (self-flagged in its lane record; additive, accepted at
+ * unification). No SPA consumer yet — the type mirrors the wire.
+ */
+export interface WardrobeItemGetRequest {
+  type: 'wardrobeItemGet';
+  itemId: string;
+}
+
+/** v4 `PUT /api/v1/wardrobe/{itemId}`. */
+export interface WardrobeUpdateRequest {
+  type: 'wardrobeUpdate';
+  itemId: string;
+  item: Record<string, unknown>;
+}
+
+/** v4 `DELETE /api/v1/wardrobe/{itemId}`. */
+export interface WardrobeDeleteRequest {
+  type: 'wardrobeDelete';
+  itemId: string;
+}
+
+/**
+ * v4 `POST /api/v1/wardrobe/preview-avatar` — non-persisting (touches neither
+ * `avatarOverrides` nor any chat, the route's `:1-15` note). ⚠ The RENDER step
+ * answers a loud typed refusal until the `avatar_preview` host wire lands —
+ * see the round record; the guard tiers, prompt, and response shape are live.
+ */
+export interface WardrobePreviewAvatarRequest {
+  type: 'wardrobePreviewAvatar';
+  characterId: string;
+  equippedSlots: EquippedSlots;
+  imageProfileId?: string;
+}
+
+/**
+ * v4 `POST /api/v1/chats/{id}?action=regenerate-avatar` — QUEUES a background
+ * job; the fitting-room slots ride as a one-shot `equippedSlots` override.
+ */
+export interface ChatRegenerateAvatarRequest {
+  type: 'chatRegenerateAvatar';
+  chatId: string;
+  characterId: string;
+  equippedSlots: EquippedSlots;
+  imageProfileId?: string;
 }

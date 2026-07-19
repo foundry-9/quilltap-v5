@@ -19,24 +19,20 @@
  */
 
 import { WARDROBE_SLOT_TYPES } from '../screens/prospero/wardrobe.api';
-import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
+import type {
+  EquippedSlots,
+  WardrobeItemDto,
+  WardrobeSlotType,
+} from '../core/core-contract';
 
 export { WARDROBE_SLOT_TYPES };
-export type { WardrobeItemDto, WardrobeSlotType };
+export type { EquippedSlots, WardrobeItemDto, WardrobeSlotType };
 
-/**
- * Per-character equipped slots (v4 `EquippedSlotsSchema`,
- * `lib/schemas/wardrobe.types.ts:121-126`). Each slot holds an array of
- * wardrobe item IDs; multiple items per slot represent layering (t-shirt +
- * sweater). Composite items appear as a single ID and are expanded at read
- * time.
- */
-export interface EquippedSlots {
-  top: string[];
-  bottom: string[];
-  footwear: string[];
-  accessories: string[];
-}
+// `EquippedSlots` itself moved to `core-contract.ts` at the round's
+// unification (it is a wire payload shape — the `chatEquip` /
+// `wardrobePreviewAvatar` bodies carry it) and is re-exported above, the
+// `WardrobeItemDto` precedent. Its v4 source is unchanged:
+// `lib/schemas/wardrobe.types.ts:121-126`.
 
 /** Per-chat equipped outfit state, keyed by characterId (v4 `:131`). */
 export type EquippedOutfitState = Record<string, EquippedSlots>;
