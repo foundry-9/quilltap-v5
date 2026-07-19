@@ -14,6 +14,11 @@
  * output depends on the transitive highlight.js version, so labeled blocks would
  * couple the fixtures to a highlighter version. Unlabeled fences (detect:false)
  * are plain <pre><code> and safe to pin.
+ *
+ * The `math-*` fixtures couple to the KaTeX version the same way — KaTeX 0.18's
+ * markup is what these bytes pin — which is why v5 pins `katex` at v4's exact
+ * resolved 0.18.0 (see apps/web/package.json). remark-math/rehype-katex were
+ * added at v4 b8b12695; regenerate this file from a v4 checkout at that baseline.
  */
 
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -47,6 +52,21 @@ const CORPUS: { name: string; input: string }[] = [
   { name: 'soft-break', input: 'line one\nline two' },
   { name: 'inline-code', input: 'Use the `render()` function.' },
   { name: 'escapes-in-brackets', input: '[she said *softly* with _weight_]' },
+  // --- math (b8b12695): remark-math + rehype-katex, normalizeMathDelimiters ---
+  { name: 'math-inline-paren', input: 'Euler said \\(e^{i\\pi} + 1 = 0\\) once.' },
+  { name: 'math-display-bracket', input: 'Behold the identity \\[x = 2\\] in a paragraph.' },
+  { name: 'math-dollar-inline', input: 'Inline $$a^2 + b^2$$ math.' },
+  { name: 'math-dollar-block', input: '$$\n\\int_0^1 x\\,dx\n$$' },
+  { name: 'currency-prose', input: 'He slid $50 across the table, then another $20.' },
+  { name: 'math-in-code-span', input: 'Use `\\(escaped\\)` literally.' },
+  { name: 'math-in-fence', input: '```\n\\(not math\\)\n```' },
+  {
+    name: 'math-matrix-rowspacing',
+    input: '$$\n\\begin{pmatrix} a \\\\[3pt] b \\end{pmatrix}\n$$',
+  },
+  { name: 'math-invalid-tex', input: 'Broken math: \\(\\frac{1}\\) here.' },
+  { name: 'math-with-narration', input: '*She writes* \\(x = 1\\) on the board.' },
+  { name: 'math-in-dialogue', input: '"The answer is \\(x^2\\)," she said.' },
 ];
 
 async function main() {

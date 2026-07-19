@@ -1,24 +1,33 @@
 /**
  * The Salon message renderer — a faithful TS port of v4's SERVER renderer
- * `lib/services/markdown-renderer.service.ts` (HEAD a7b1398d), which produces the
+ * `lib/services/markdown-renderer.service.ts` (HEAD b8b12695), which produces the
  * `renderedHtml` v4 injects. v5 drops the server `renderedHtml` fast path and
  * renders every message client-side through this service instead, so it must
  * match v4 byte-for-byte (proven by `markdown-renderer.spec.ts` against captured
  * v4 output).
  *
- * The one deliberate mechanical change: v4 uses `processor.process` (async); this
- * uses `processor.processSync` (all plugins are synchronous, so the output is
- * identical) so the rendering is a pure sync function a component can call.
+ * Two deliberate divergences from v4:
+ * - v4 uses `processor.process` (async); this uses `processor.processSync` (all
+ *   plugins are synchronous, so the output is identical) so the rendering is a
+ *   pure sync function a component can call.
+ * - Since b8b12695 v4 keeps the HTML post-processing helpers
+ *   (`applyRoleplayPatterns` & friends) in `lib/services/markdown-postprocess.ts`,
+ *   split out so Jest can import them past the service's ESM-only unified deps.
+ *   v5 keeps them inline in this file — its spec runner is vitest, which loads
+ *   ESM fine, so the split buys nothing here.
  */
 
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import remarkMath from 'remark-math';
 import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
 
+import { REMARK_MATH_OPTIONS, normalizeMathDelimiters } from './math';
 import {
   type CompiledRule,
   type DialogueDetection,
@@ -191,8 +200,14 @@ function createMarkdownProcessor() {
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
+    // remark-math parses $$…$$ math (single-dollar math is off — see math.ts);
+    // rehype-katex below renders it. Sits between gfm and breaks, matching v4.
+    .use(remarkMath, REMARK_MATH_OPTIONS)
     .use(remarkBreaks)
     .use(remarkRehype)
+    // Render math to KaTeX markup BEFORE highlight, so highlight never touches
+    // the math subtrees (matches v4's plugin order).
+    .use(rehypeKatex)
     .use(rehypeHighlight, { ignoreMissing: true, detect: false })
     .use(rehypeStringify);
 }
@@ -227,7 +242,15 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
     const compiledRules = compileRenderingPatterns(patterns);
 
     const trimmedContent = content.trim();
-    const escapedContent = escapeMarkdownInBrackets(trimmedContent, patterns);
+
+    // Step 2.5: Normalize `\(...\)`/`\[...\]` math delimiters to `$$` form.
+    // Must run before bracket escaping (which would otherwise claim `\[...\]`
+    // as a roleplay bracket span). v4 also logs a debug line here when the
+    // normalized content contains `$$`; v5's renderer has no logger, and that
+    // line is output-neutral, so it is omitted.
+    const mathNormalizedContent = normalizeMathDelimiters(trimmedContent);
+
+    const escapedContent = escapeMarkdownInBrackets(mathNormalizedContent, patterns);
     const linkifiedContent = linkifyBareQtapUris(escapedContent);
 
     const processor = getProcessor();

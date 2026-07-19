@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): wire math into the Salon renderer. The unified
+pipeline gains remark-math (between gfm and breaks) and rehype-katex (before
+highlight), and the render body gains step 2.5 (normalizeMathDelimiters on the
+trimmed content, before bracket escaping). `$$…$$`, `\(...\)`, and `\[...\]`
+now render as KaTeX; single-dollar amounts stay plain text. The capture
+corpus grows 11 math fixtures (inline/display/native-$$/currency/code-span/
+fenced/matrix-rowspacing/invalid-tex/narration-adjacent/dialogue), regenerated
+from v4 at b8b12695; the v5 processSync pipeline matches byte-for-byte (45
+renderer-spec tests green). SPA 0.5.185 → 0.5.186.
+
 P4.d9 (KaTeX/markdown drift): port the shared math normalizer and the
 KaTeX-subtree roleplay skip. New `chat/render/math.ts` (the `\(...\)` /
 `\[...\]` → `$$` delimiter rewrite, single-dollar math off so currency

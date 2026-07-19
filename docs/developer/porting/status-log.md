@@ -23242,3 +23242,30 @@ vitest, which loads ESM fine). Equivalence: `math.spec.ts` ports v4's
 asserting against the v5 renderer helper), plus one extra streaming pin (an
 unterminated `$$` region passes through untouched — tier 2.8). `ng test`
 render+math specs: 51 passed (37 existing + 14). SPA 0.5.184 → 0.5.185.
+
+**Unit 3 — the renderer pipeline + the fixture corpus (commit "wire
+remark-math + rehype-katex into the Salon renderer + math fixtures").**
+`markdown-renderer.ts`: added `remarkMath(REMARK_MATH_OPTIONS)` between
+`remarkGfm` and `remarkBreaks`, and `rehypeKatex` after `remarkRehype` /
+before `rehypeHighlight` (v4's exact positions); inserted step 2.5
+(`normalizeMathDelimiters` on the trimmed content, before
+`escapeMarkdownInBrackets`). v4's `logger.debug` in step 2.5 is omitted
+(v5's renderer has no logger; output-neutral). Module header provenance
+`a7b1398d` → `b8b12695`, with the `markdown-postprocess.ts`-split note.
+Extended `capture-markdown-fixtures.mts` with 11 math cases (inline
+`\(...\)`; display `\[...\]` in a paragraph; native `$$` inline + block;
+currency prose `$50…$20`; delimiters in an inline code span + a fenced
+block; the `\\[3pt]` matrix-rowspacing lookalike inside existing `$$`;
+invalid TeX → `.katex-error`; `*narration*` + `\(x\)` on one line; math
+inside a quoted dialogue paragraph — the last two exercise the katexDepth
+skip in the captured bytes), with a katex-version-coupling comment mirroring
+the rehype-highlight note. **Regenerated `markdown-fixtures.json` from v4 at
+`b8b12695`** (23 → 34 fixtures); the v5 `processSync` pipeline matches v4's
+async output byte-for-byte — `markdown-renderer.spec.ts` 45 tests green.
+
+Regen recipe (this environment): v4 at `/workspace/quilltap-server`
+(symlinked from `/Users/csebold/source/quilltap-server`), deps installed via
+`npm ci`; from the v4 checkout run
+`./node_modules/.bin/tsx /Users/csebold/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts`
+(run FROM the v4 dir so its tsconfig `@/` aliases resolve; the tool's import
+path is the hardcoded macOS `/Users/csebold/...`). SPA 0.5.185 → 0.5.186.
