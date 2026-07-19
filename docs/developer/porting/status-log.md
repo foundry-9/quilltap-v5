@@ -9,6 +9,31 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.6bd tier 2 — the live-wire bench differential (lane BD, 2026-07-18)
+
+The shared corpus (`workbench-route-cases.json`, read by BOTH sides) gains
+`preview-live-consult`: `{live:true}` on the `oracle` definition, profile:
+true. The oracle installs the recording canned provider + api-key pin + real
+`logLLMCall` (per-case llm-logs DB) and inserts the shared consult profile;
+the Rust side passes a `ProviderConsultRunner` over the oracle-recorded rows
+— exactly the shape the engine passes since tier 1 — and diffs the
+`CUSTOM_TOOL_CONSULT` `llm_logs` row per case (chatId NULL: a bench run
+belongs to no room and is never rerouted; the workbench route differential
+now runs every case over a materialized llm-logs partition, empty dumps
+pinned).
+
+**Gotcha worth carrying:** the committed `workbench-main.db` fixture has
+NEITHER `connection_profiles` NOR `chat_settings` — v4's
+`initializeDatabase` materializes every missing table on open
+(`ensureCollection`), v5's `Db::open` materializes nothing, so the consult's
+first read errored and failed soft while v4 sailed on. The test replays the
+two tables' DDL from the D23 `fresh_schema.json` artifact (never
+hand-written) before inserting. Any future profile-bearing case over an old
+fixture family will hit the same asymmetry.
+
+`workbench_route_equivalence` 43 → 44 cases green over a fresh `616930db`
+oracle. NO committed fixture changed. Versions: harness 0.0.246.
+
 ## P4.6bd tier 2 — the §3 `jsnum` canonicalization (lane BD, 2026-07-18)
 
 `jsnum::number_from_str` is the ONE JS `Number(string)` now. The canonical

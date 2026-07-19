@@ -434,6 +434,17 @@
       }
     },
     {
+      "name": "preview-live-consult",
+      "_comment": "P4.6bd: the {live:true} bench arm through the ASSEMBLED seam - profile-bearing (both sides insert the shared consult profile); the recording provider answers YES, the eq:'YES' outcome fires, and the CUSTOM_TOOL_CONSULT llm-log row is diffed.",
+      "method": "POST",
+      "action": "preview",
+      "definition": "oracle",
+      "llm": {
+        "live": true
+      },
+      "profile": true
+    },
+    {
       "name": "audit-llm-scripted",
       "method": "POST",
       "action": "audit",

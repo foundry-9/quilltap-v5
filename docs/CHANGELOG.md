@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6bd tier 2, the live-wire bench differential: the shared workbench route
+corpus gains preview-live-consult - the {live:true} bench arm exercised
+through the ASSEMBLED consult seam. Profile-bearing (both sides insert the
+shared consult profile through their real repos; the v5 side first replays
+the connection_profiles + chat_settings DDL from the D23 fresh_schema
+artifact, since the committed workbench fixture predates both tables and
+v4's initializeDatabase materializes missing tables on open), resolved via
+oracle-recorded canned completions, with the persisted CUSTOM_TOOL_CONSULT
+llm_logs row (chatId null - a bench run belongs to no room) diffed per case
+over a fresh llm-logs partition. workbench_route_equivalence 43 -> 44 cases,
+green over a fresh 616930db oracle. No committed fixture changed.
+
 P4.6bd tier 2, the jsnum canonicalization (SS-3): the duplicated JS
 Number(string) ports are lifted into jsnum::number_from_str, with
 tools/llm_number.rs:109's js_number_from_str (the most fully documented

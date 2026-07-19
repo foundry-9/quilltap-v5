@@ -47,6 +47,54 @@ interface CaseSpec {
   metadataCharacter?: string;
   /** §B: the bench oracle, sent verbatim (an explicit null is a distinct arm). */
   llm?: unknown;
+  /**
+   * P4.6bd: insert ONE cheap connection profile before the run, so a
+   * `{live:true}` consult RESOLVES through the (mocked, recording) provider.
+   * The committed fixture itself stays profile-free.
+   */
+  profile?: boolean;
+}
+
+/** The same profile the pascal handler/route oracles insert (P4.6bd). */
+const CONSULT_PROFILE = {
+  name: 'Consult Canned',
+  provider: 'Anthropic',
+  transport: 'api',
+  courierDeltaMode: false,
+  apiKeyId: null,
+  baseUrl: null,
+  modelName: 'consult-canned-model',
+  parameters: {},
+  isDefault: true,
+  isCheap: true,
+  allowWebSearch: false,
+  useNativeWebSearch: false,
+  allowToolUse: false,
+  pseudoToolMode: 'auto',
+  modelClass: null,
+  maxContext: null,
+  maxTokens: null,
+  isDangerousCompatible: false,
+  supportsImageUpload: false,
+  tags: [],
+  sortIndex: 0,
+  totalTokens: 0,
+  totalPromptTokens: 0,
+  totalCompletionTokens: 0,
+  messageCount: 0,
+};
+const CONSULT_PROFILE_ID = 'cc000000-0000-4000-8000-000000000001';
+const CONSULT_PROFILE_TS = '2026-03-01T00:00:00.000Z';
+
+/** The canned consult answer: `YES` hits the oracle definition's `eq: 'YES'` row. */
+const CONSULT_ANSWER = 'YES';
+const CONSULT_USAGE = { promptTokens: 42, completionTokens: 3, totalTokens: 45 };
+
+function canonValue(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('hex');
+  if (v instanceof Uint8Array) return Buffer.from(v).toString('hex');
+  return v;
 }
 
 interface Corpus {
@@ -90,11 +138,70 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
 
+  // P4.6bd: recorded canned-completion entries (the key format MUST match
+  // `quilltap_core::model::completion::canned_completion_key`).
+  const cannedRecorded = new Map<
+    string,
+    {
+      provider: string;
+      model: string;
+      temperature: number | null;
+      messages: Array<{ role: string; content: string }>;
+      response: string;
+      usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    }
+  >();
+
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
   );
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+  // P4.6bd: the consult's provider seam — a recording canned provider. Only a
+  // resolving `{live:true}` consult ever reaches it.
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
+    return {
+      __esModule: true,
+      ...actual,
+      createLLMProvider: async (provider: string, _baseUrl?: string) => ({
+        sendMessage: async (
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+          },
+          _apiKey: string,
+        ) => {
+          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
+          if (!cannedRecorded.has(key)) {
+            cannedRecorded.set(key, {
+              provider,
+              model: params.model,
+              temperature: params.temperature ?? null,
+              messages,
+              response: CONSULT_ANSWER,
+              usage: CONSULT_USAGE,
+            });
+          }
+          return { content: CONSULT_ANSWER, finishReason: 'stop', usage: CONSULT_USAGE };
+        },
+      }),
+    };
+  });
+  jest.doMock('@/lib/services/api-key.service', () => {
+    const actual = jest.requireActual('@/lib/services/api-key.service');
+    return {
+      __esModule: true,
+      ...actual,
+      getApiKeyForCheapLLMSelection: async () => 'test-key',
+    };
+  });
+  // Run the REAL logLLMCall so the CUSTOM_TOOL_CONSULT row lands and is diffed.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service'),
+  );
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/database/repositories', () =>
     jest.requireActual('@/lib/database/repositories'),
@@ -129,13 +236,30 @@ async function runCase(
   copyFileSync(fixtures.mount, mountWork);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+  // A fresh llm-logs DB per case for the un-mocked logLLMCall (P4.6bd).
+  process.env.SQLITE_LLM_LOGS_PATH = join(work, 'llm-logs.db');
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { closeLLMLogsSQLiteClient, getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
 
   await initializeDatabase();
+
+  if (c.profile) {
+    const { ConnectionProfilesRepository } = await import(
+      '@/lib/database/repositories/connection-profiles.repository'
+    );
+    const repo = new ConnectionProfilesRepository();
+    await repo.create({ ...CONSULT_PROFILE, userId: spec.userId } as never, {
+      id: CONSULT_PROFILE_ID,
+      createdAt: CONSULT_PROFILE_TS,
+      updatedAt: CONSULT_PROFILE_TS,
+    });
+  }
 
   try {
     const base = 'http://localhost/api/v1/custom-tools';
@@ -148,10 +272,59 @@ async function runCase(
       const { POST } = await import('@/app/api/v1/custom-tools/route');
       response = (await POST(mockRequest(url, bodyFor(c, corpus)) as never, {} as never)) as never;
     }
-    return { name: c.name, status: response.status, body: await response.json() };
+    const status = response.status;
+    const body = await response.json();
+
+    // Let the fire-and-forget logLLMCall settle before dumping (the
+    // oracle-fire-and-forget-tail rule: stray promises poison the NEXT case).
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // P4.6bd: the llm_logs rows this case wrote (id/timestamps placeholdered,
+    // sorted by canonical JSON — the memory-processor dump shape).
+    let llmLogs: { columns: string[]; rows: Array<Record<string, unknown>> } = {
+      columns: [],
+      rows: [],
+    };
+    const lldb = getRawLLMLogsDatabase();
+    if (lldb) {
+      try {
+        const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+          (col) => col.name,
+        );
+        const llRaw = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+          Record<string, unknown>
+        >;
+        const llRows = llRaw
+          .map((r) => {
+            const out: Record<string, unknown> = {};
+            for (const col of llColumns) out[col] = canonValue(r[col]);
+            out.id = '<id>';
+            out.createdAt = '<ts>';
+            out.updatedAt = '<ts>';
+            return out;
+          })
+          .sort((a, b) => {
+            const sa = JSON.stringify(a);
+            const sb = JSON.stringify(b);
+            return sa < sb ? -1 : sa > sb ? 1 : 0;
+          });
+        llmLogs = { columns: llColumns, rows: llRows };
+      } catch {
+        // No llm_logs table (the case never logged) — keep the empty dump.
+      }
+    }
+
+    return {
+      name: c.name,
+      status,
+      body,
+      canned: Array.from(cannedRecorded.values()),
+      llmLogs,
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
+    closeLLMLogsSQLiteClient();
     rmSync(work, { recursive: true, force: true });
   }
 }
