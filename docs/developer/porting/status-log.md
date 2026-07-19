@@ -22814,3 +22814,52 @@ handler in `outfit.ts:106` — unscoped by §1, refused by name at the
 edge); `wardrobeAnalyzeImage` (tier 3, §4); the `details` array on
 `Validation error` envelopes (project-wide); the archetype routes'
 `details`-bearing middleware envelope ditto.
+## P4.9f2 unit 1 — the wardrobe SPA foundation: helpers, the §1 local verb module, the dialog service (2026-07-19)
+
+Lane F2 of the consult-wire + image-detail + wardrobe round (branch
+`claude/wardrobe-dialog-spa-porting-5256c3`). Drift check at lane start:
+v4 HEAD exactly `616930db`, no movement (the tree is dirty with in-flight
+v4 work, irrelevant here — this pure-SPA lane regenerates no oracles).
+
+- **`apps/web/src/app/wardrobe/equipped-slots.ts`** — the pure helper
+  family, each fn citing its v4 source: `EquippedSlots` /
+  `EMPTY_EQUIPPED_SLOTS` (`lib/schemas/wardrobe.types.ts:121-159`),
+  `cloneSlots` + the bundle mutations (`lib/wardrobe/bundle-mutations.ts`),
+  `wearItemIntoSlots` (`lib/wardrobe/outfit-displacement.ts:74-87`),
+  `buildDefaultOutfit` (`lib/wardrobe/default-outfit.ts`),
+  `groupEquippedSlots` (`lib/wardrobe/group-equipped.ts:61-113`),
+  `nextCopyTitle` (`lib/wardrobe/next-copy-title.ts`), `unionTypes`
+  (`lib/wardrobe/composite-types.ts`), `equippedSlotsEqual`
+  (`wardrobe-control-dialog.tsx:71-81`). The slot vocabulary is
+  RE-EXPORTED from the landed `screens/prospero/wardrobe.api.ts`
+  `WARDROBE_SLOT_TYPES`, not re-derived (the order's anti-drift rule).
+- **`wardrobe/wardrobe.api.ts`** — the §1 LOCAL typed module
+  (`chatOutfitGet`, `chatEquip` — mode union in v4's enum order with the
+  deprecated `equip` alias carried, `wardrobeTransferDestinations` /
+  `wardrobeTransferApply`, `wardrobeList/Create/Update/Delete`,
+  `wardrobePreviewAvatar`, `chatRegenerateAvatar`) behind one
+  `dispatchWardrobe` cast choke-point (fold target for the unifier);
+  the three-tier loader (`use-character-wardrobe-items.ts:57-114` — an
+  explicit projectId wins, else ONE `chatGet` resolves the project tier
+  where v4 fetches the chat solely for `projectId`; per-tier fail-soft
+  so the global tier degrades gracefully until F1 lands); the
+  tier-routed row mutations (toggle-default `:361/:362`, delete
+  `:386-388`, duplicate `:421-433` — payload verbatim, no imagePrompt).
+- **`wardrobe/wardrobe-dialog.service.ts`** — v4's provider as a root
+  signal service: `isOpen`/`context`/`open(ctx?)`/`close`, plus
+  `remountKey` = `${characterId ?? 'auto'}|${chatId ?? 'no-chat'}`
+  (`wardrobe-control-dialog.tsx:92`). Divergence recorded: v4's
+  `useWardrobeDialogOptional` + `disabled={!wardrobeDialog}` arm
+  collapse (a root service is always present).
+- **Specs (the lane's fidelity proof — v4 has ZERO component tests for
+  this family):** `equipped-slots.spec.ts` (wear layer/replace, bundle
+  grouping rules 1-4 + partial-worn, take-off/break-apart, default
+  seeding skips archived, copy-title escalation + case-insensitive
+  collision, canonical union order), `wardrobe.api.spec.ts` (three-tier
+  merge precedence + de-dup, explicit-projectId short-circuit, per-tier
+  fail-soft incl. the unknown-`wardrobeList` pre-unify arm, the tier
+  pair on toggle/delete, the duplicate payload), `wardrobe-dialog.service.spec.ts`
+  (open/close/context semantics, the remount-key fallbacks).
+
+Gate: `ng test` 157 files / 1,873 green (baseline 1,844 + 29 new);
+`ng build` clean. No Rust touched. SPA 0.5.176.

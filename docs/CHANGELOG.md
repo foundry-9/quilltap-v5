@@ -129,6 +129,21 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 1 (the wardrobe dialog SPA lane): the wardrobe foundation -
+the pure equipped-slots helper family ported from v4's client wardrobe
+libs (wear rule, default-outfit seeding, bundle grouping/take-off/
+break-apart, copy-title escalation, type union, slots equality), the
+local typed module for lane P4.9f1's Section-1 verbs (chatOutfitGet,
+chatEquip with all seven modes incl. the deprecated equip alias, the
+transfers pair, the global wardrobe CRUD tier, the two tier-2 avatar
+verbs) behind the established local-cast pattern, the three-tier
+character wardrobe loader (personal > project > general, per-tier
+fail-soft), the tier-routed row mutations (toggle-default / delete pick
+the character vs global route by item.characterId; duplicate always
+POSTs the character route), and the root WardrobeDialogService (open/
+close/context signals + the characterId|chatId remount key). Every
+transcribed behavior carries its v4 file:line in a unit spec (v4 ships
+zero component tests for this family). SPA 0.5.176.
 
 Round planned - the consult-wire + image-detail + wardrobe round (P4.6bd
 + P4.9a2 + P4.9f1 + P4.9f2): four work orders committed, docs only. P4.6bd
