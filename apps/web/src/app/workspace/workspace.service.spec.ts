@@ -16,7 +16,7 @@ import { WORKSPACE_STORAGE_KEY_BASE } from './core/persistence';
 
 function makeCore(chatIds: string[] = []): CoreClient {
   return {
-    dispatchExpect: vi.fn(async () => chatIds.map((id) => ({ id }))),
+    dispatchExpect: vi.fn(async () => ({ type: 'chats', data: chatIds.map((id) => ({ id })) })),
   } as unknown as CoreClient;
 }
 
@@ -108,8 +108,8 @@ describe('WorkspaceService', () => {
     localStorage.setItem(WORKSPACE_STORAGE_KEY_BASE, JSON.stringify(seed));
     const svc = make(['c1']); // only c1 still exists
     await svc.hydrateOnce();
-    expect(svc.state().tabs.s1).toBeDefined();
-    expect(svc.state().tabs.s2).toBeUndefined(); // dead chat pruned
+    expect(svc.state().tabs['s1']).toBeDefined();
+    expect(svc.state().tabs['s2']).toBeUndefined(); // dead chat pruned
     expect(svc.state().panes.left.order).toEqual(['home', 's1']);
   });
 

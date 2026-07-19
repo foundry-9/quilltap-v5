@@ -102,8 +102,8 @@ export class WorkspaceService implements WorkspaceHandle {
   private async runHydrate(): Promise<void> {
     let isChatValid: (id: string) => boolean = () => true;
     try {
-      const chats = await this.core.dispatchExpect({ type: 'listChats' }, 'chats');
-      const ids = new Set(chats.map((c) => c.id));
+      const resp = await this.core.dispatchExpect({ type: 'listChats' }, 'chats');
+      const ids = new Set(resp.data.map((c) => c.id));
       isChatValid = (id) => ids.has(id);
     } catch {
       // Chats unavailable — keep every tab (best-effort, v4-faithful default).

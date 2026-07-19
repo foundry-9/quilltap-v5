@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) units 3+5: the workspace chrome + in-lane hosting. The
+two-pane WorkspaceHost (one CSS grid, a flat always-mounted tab list positioned
+by grid-column and hidden — never unmounted — via display:none, the
+childActive salon-stays-mounted rule, the empty-pane affordance, the split
+drop-zone), TabStrip (drag reorder/move + close + active scrollIntoView),
+WorkspaceDivider (pointer drag + arrow nudge + reset), the arbitrated
+WorkspaceBackdrop, the portal + backdrop registries under the contract tokens,
+TabView (the lazy-mount latch + a per-tab injector providing WORKSPACE_TAB_ID +
+NgComponentOutlet with cached component/injector refs for keep-alive), the
+kind->component tab registry (in-lane real screens for the 12 no-input kinds,
+TabPortalHost for terminal/document, and loud NotWiredPane refusal panes for
+the ACTIVATE-AT-UNIFY kinds + a permanent brahma refusal naming p4.9i1), the
+Ctrl/Cmd+Alt keyboard shortcuts, the hydration-gated URL-stripping ?open=
+intent consumer, the capture-phase link interceptor (preventDefault +
+stopImmediatePropagation so Angular RouterLink never fires; /salon/new passes
+through), the /workspace route, and the six per-theme --qt-workspace-accent
+overrides. The mandatory keep-alive mount-counter spec proves lazy-mount +
+no-re-instantiation across active toggles and payload refreshes; shortcuts,
+intent, interceptor, and backdrop arbitration each get a pure spec. 183
+workspace specs green; ng build clean.
+
 P4.9J1 (lane J1) unit 2: the WorkspaceService store. A signal-based store
 wrapping the pure reducer with v4 workspace-provider semantics: uuid minting,
 de-dupe-resolved openTab return id, refreshTab (the focus:false payload

@@ -125,6 +125,13 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/photos/photos-page').then((m) => m.PhotosPage),
   },
   // === end P4.9a ===
+  // === P4.9J1: the tabbed workspace (v4's default shell) ===
+  {
+    path: 'workspace',
+    loadComponent: () =>
+      import('./workspace/chrome/workspace-host').then((m) => m.WorkspaceHost),
+  },
+  // === end P4.9J1 ===
   {
     path: '',
     pathMatch: 'full',

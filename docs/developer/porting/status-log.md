@@ -23586,3 +23586,59 @@ openTab mint-vs-dedupe id, salon dedupe by chatId, refreshTab in-place refresh
 without focus, no-persist-before-hydration, debounced-persist-after-hydration,
 hydrate restore + dead-chat prune, hydrateOnce idempotency. Green under vitest
 + jsdom (and under `ng test`, which provides the DOM env).
+
+### Units 3 + 5 — the chrome + in-lane hosting (SPA 0.5.192)
+
+The whole two-pane host and its chrome, Angular-idiomatic (standalone, signals,
+OnPush), under `apps/web/src/app/workspace/chrome/` + the `/workspace` route +
+the per-theme CSS accents. Deliverables 3 and 5 land together (they share the
+TabView + tab-registry files).
+
+- **WorkspaceHost** (routed at `/workspace`): one CSS grid; `grid-template-columns`
+  from `splitRatio`; a FLAT `@for`-over-`Object.values(tabs)` (keyed by tab id)
+  content list, each pane positioned by `grid-column`, hidden via
+  `display:none` + `aria-hidden` (never unmounted); the childActive
+  salon-stays-mounted rule; empty-pane affordance; the unsplit→center split
+  drop-zone; `(mousedown)` focused-pane tracking (v4's `onMouseDownCapture`
+  — bubble in Angular, documented). Provides the four contract tokens
+  (`WORKSPACE_HANDLE`=WorkspaceService, the portal + backdrop registries,
+  `TAB_VIEW_REGISTRY`=DEFAULT). Owns hydration (`hydrateOnce()`), the
+  hydration-gated + URL-stripping `?open=` intent consumer (snapshot after
+  hydrate + `queryParamMap` for later in-workspace navigations), the
+  document-level capture-phase link interceptor, and the window keydown
+  shortcuts; all torn down on destroy.
+- **TabView**: the lazy-mount latch (`everActive`, effect-driven), a per-tab
+  `Injector.create` providing `WORKSPACE_TAB_ID` (parented to the host injector
+  so hosted screens resolve the other tokens), `NgComponentOutlet` with
+  **cached component + injector references** so neither changes across CD —
+  the keep-alive guarantee. Inputs are reactive (a payload refresh re-applies
+  without recreating).
+- **tab-registry** (`TAB_VIEW_REGISTRY` token + `DEFAULT_TAB_REGISTRY`): the
+  kind→component map = deliverable 5. In-lane real screens for the 12 no-input
+  kinds (home/aurora/prospero/scriptorium/files/photos/scenarios/generate-image/
+  about/profile/character-new/settings-wizard); `TabPortalHost` for
+  terminal/document; `NotWiredPane` (loud) for the seven ACTIVATE-AT-UNIFY
+  kinds (salon/settings/wardrobe/character-edit/character-view/custom-tools/
+  document-standalone) + a permanent brahma refusal naming `p4.9i1`.
+- **TabStrip / WorkspaceDivider / WorkspaceBackdrop / TabPortalHost /
+  registries / NotWiredPane** — direct ports. Backdrop arbitration extracted to
+  a pure `arbitrateBackdrop`. Shortcuts / intent / interceptor extracted to pure
+  functions (`applyWorkspaceShortcut` / `parseOpenIntent` /
+  `interpretWorkspaceLinkClick`).
+- **CSS**: `_workspace.css` was already byte-identical to v4 on main; appended
+  six `[data-theme] { --qt-workspace-accent }` blocks (outside `@layer`). ⚠
+  The exact v4 per-theme accent values live in the runtime theme packs (out of
+  this repo's committed tree); v5's committed accents are signature hues —
+  the cross-theme screenshot check is the named tier-2 follow-up.
+
+**Specs (183 workspace tests green under `ng test`; `ng build` clean):** the
+corpus replay (144), the store (8), and the chrome — the **mandatory keep-alive
+mount-counter spec** (lazy-mount; no re-instantiation across active toggles AND
+a same-id payload refresh), shortcuts (10 arms), intent (10 arms), link
+interceptor (jsdom anchors), backdrop arbitration.
+
+**Angular divergences (documented):** the per-tab `WORKSPACE_TAB_ID` is provided
+via a cached `Injector.create` + `NgComponentOutlet` (v4 uses a React context);
+the link interceptor also `stopImmediatePropagation`s (Angular `RouterLink`
+ignores `defaultPrevented`); `/salon/new` passes through (v5 has no NewChatModal
+— P4.6q); focused-pane tracking is bubble `(mousedown)` not capture.
