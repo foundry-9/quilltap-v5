@@ -23202,3 +23202,43 @@ the shell); `p4.9i1`/`p4.9i2` (Brahma / HelpChat, split at planning);
 family's own named deferrals (`analyze-image`, `outfit-summary`, the
 import-from-image modal, the `asTab` WardrobeView, the participant-card
 entry that awaits a participant card existing at all).
+
+---
+
+## Round: the P4.d9 b8b12695 KaTeX/markdown drift catch-up (lane `claude/katex-markdown-drift-mtzyuh`, 2026-07-19)
+
+Single lane, SPA + fixtures + docs only (no Rust source). Absorbs v4
+`b8b12695` (`4.8.0-dev.76`, "feat: LaTeX math rendering via KaTeX in chat,
+help docs, and file previews") into the Salon renderer and moves the oracle
+baseline `616930db` → `b8b12695`. Drift-checked at lane start: v4 HEAD ==
+`b8b12695`, working tree clean, `git log b8b12695..HEAD` empty. In this
+environment the v4 oracle is cloned to `/workspace/quilltap-server`
+(symlinked from `/Users/csebold/source/quilltap-server` so the capture
+tool's hardcoded macOS path resolves); v5 is `/home/user/quilltap-v5`.
+
+**Unit 1 — deps (commit "add KaTeX math dependencies to the SPA").**
+`katex 0.18.0`, `remark-math 6.0.0`, `rehype-katex 7.0.1` added to
+`apps/web/package.json`, exact-pinned at v4's `b8b12695`-resolved versions
+(read from v4's `package-lock.json`). `npm install` also synced the
+committed lockfile's stale self-version (0.5.175 → 0.5.184). No consumers
+yet. SPA 0.5.183 → 0.5.184.
+
+**Unit 2 — the shared math module + the katexDepth skip (commit "port the
+shared math normalizer + KaTeX-subtree roleplay skip").** Ported v4
+`lib/markdown/math.ts` → `apps/web/src/app/chat/render/math.ts`
+(`REMARK_MATH_OPTIONS = { singleDollarTextMath: false }`, `MATH_SKIP_PATTERN`,
+`normalizeMathDelimiters`), all why-comments carried; the module doc adapted
+to note v5 has ONE renderer (no client/server split to keep in sync). Added
+v4's `katexDepth` counter to `applyRoleplayPatterns` in `markdown-renderer.ts`
+verbatim (open/close depth tracking; `<span class="katex` root sets depth 1;
+text inside math returned untouched like code blocks; the "katex 0.18 has no
+void/self-closing tags → generic counter is sound" soundness comment carried).
+v5 keeps the post-processing helpers inline in the renderer rather than
+mirroring v4's new `lib/services/markdown-postprocess.ts` split (v4 split them
+so Jest could import past the service's ESM-only unified deps; v5's runner is
+vitest, which loads ESM fine). Equivalence: `math.spec.ts` ports v4's
+`__tests__/unit/lib/markdown/math.test.ts` 14 cases case-for-case (9
+`normalizeMathDelimiters` + 5 `applyRoleplayPatterns` KaTeX-skip, the latter
+asserting against the v5 renderer helper), plus one extra streaming pin (an
+unterminated `$$` region passes through untouched — tier 2.8). `ng test`
+render+math specs: 51 passed (37 existing + 14). SPA 0.5.184 → 0.5.185.

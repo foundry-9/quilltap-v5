@@ -57,10 +57,27 @@ export function applyRoleplayPatterns(html: string, compiledRules: CompiledRule[
 
   let inCodeBlock = 0;
 
+  // Track nesting depth while inside a KaTeX-rendered subtree. Roleplay
+  // patterns must never rewrite math markup: KaTeX output is dense with text
+  // runs (HTML glyph spans, MathML, the raw-LaTeX <annotation>) that patterns
+  // like *emphasis* or "quotes" could match and corrupt. KaTeX markup contains
+  // no void or self-closing tags (verified against katex 0.18 output), so a
+  // generic open/close counter is sound here.
+  let katexDepth = 0;
+
   const processedParts = parts.map((part, index) => {
     if (index % 2 === 1) {
       const lowerPart = part.toLowerCase();
-      if (lowerPart.startsWith('<code') || lowerPart.startsWith('<pre')) {
+      if (katexDepth > 0) {
+        if (lowerPart.startsWith('</')) {
+          katexDepth--;
+        } else if (!lowerPart.endsWith('/>')) {
+          katexDepth++;
+        }
+      } else if (lowerPart.startsWith('<span class="katex')) {
+        // Root of a KaTeX subtree: .katex, .katex-display, or .katex-error.
+        katexDepth = 1;
+      } else if (lowerPart.startsWith('<code') || lowerPart.startsWith('<pre')) {
         inCodeBlock++;
       } else if (lowerPart === '</code>' || lowerPart === '</pre>') {
         inCodeBlock = Math.max(0, inCodeBlock - 1);
@@ -68,7 +85,7 @@ export function applyRoleplayPatterns(html: string, compiledRules: CompiledRule[
       return part;
     }
 
-    if (inCodeBlock > 0) {
+    if (inCodeBlock > 0 || katexDepth > 0) {
       return part;
     }
 

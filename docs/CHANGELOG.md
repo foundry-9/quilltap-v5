@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): port the shared math normalizer and the
+KaTeX-subtree roleplay skip. New `chat/render/math.ts` (the `\(...\)` /
+`\[...\]` → `$$` delimiter rewrite, single-dollar math off so currency
+prose is never mangled), a faithful port of v4's `lib/markdown/math.ts`.
+`applyRoleplayPatterns` gains v4's `katexDepth` counter so roleplay spans
+never rewrite rendered KaTeX markup. Equivalence: `math.spec.ts` ports v4's
+14-case unit test plus a streaming pin (unterminated `$$` passes through).
+SPA 0.5.184 → 0.5.185.
+
 P4.d9 (KaTeX/markdown drift): add the KaTeX math dependencies to the SPA —
 katex 0.18.0, remark-math 6.0.0, rehype-katex 7.0.1 (exact-pinned at v4's
 resolved versions). No consumers yet; wired into the renderer in the next
