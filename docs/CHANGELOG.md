@@ -129,6 +129,19 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 4 (the wardrobe dialog SPA lane): the transfer dialog and the
+avatar-generation pane. WardrobeTransferDialog ports v4's move/copy modal
+over lane P4.9f1's transfers pair (destinations GET with
+General-preselect, the grouped General/Projects/Groups/Users select via
+[selected]-per-option, the POST body with scope-only general
+destinations, working-state close suspension). AvatarGenerationPane
+ports the dialog's inline image-model select (v4's own label format and
+default-preselect, distinct from the shared ImageProfilePicker), the
+Generate-avatar vs Preview button, and the out-of-chat preview image
+with Download/discard. Specs pin the encode/decode round-trip, the POST
+bodies, the option labels, the in-chat vs out-of-chat arms, and the
+pre-unify fail-soft error surface. SPA 0.5.179.
+
 P4.9f2 unit 3 (the wardrobe dialog SPA lane): the outfit substrate - the
 per-chat outfit store (v4 use-outfit: chatOutfitGet refresh with
 character-key merge, personal+archetype wardrobe cache with "(shared)"

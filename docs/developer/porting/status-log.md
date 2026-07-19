@@ -22939,3 +22939,32 @@ Gate: `ng test` 158 files / 1,889 green; SPA 0.5.177.
   showBundleActions gate).
 
 Gate: `ng test` 160 files / 1,899 green. SPA 0.5.178.
+
+## P4.9f2 unit 4 — the transfer dialog + the avatar-generation pane (2026-07-19)
+
+- **`wardrobe/wardrobe-transfer-dialog.ts`** — v4
+  `components/wardrobe/WardrobeTransferDialog.tsx` over F1's
+  `wardrobeTransferDestinations` / `wardrobeTransferApply` (§1):
+  destination `encode`/`decode` (`:38-50`, exported for the spec), the
+  on-open destinations load with General preselect (`:73-83`), the
+  grouped select (General/Projects/Groups/Users — `[selected]` per
+  option, dogfood-#6), the `:107-116` POST body verbatim (`id` rides
+  only when the selection has one), close suspension while working
+  (`:137`). Toasts → inline alert (divergence recorded).
+- **`wardrobe/avatar-generation-pane.ts`** — v4's in-file
+  `AvatarGenerationPane` (`:1291-1391`, props `:1278-1289`) as its own
+  component: the pane's OWN inline image-model select (v4's
+  `{name}{ (default)} — {provider}/{modelName}` labels `:1330-1333`; NOT
+  the shared ImageProfilePicker, which has different labels and no
+  auto-select), Generate-avatar/Preview/Generating… button states
+  (`:1342`), the in-chat vs out-of-chat microcopy (`:1346-1350`), and
+  the out-of-chat preview + hidden download anchor + discard (`:1352-1388`).
+- **Specs:** `wardrobe-transfer-dialog.spec.ts` (encode/decode
+  round-trip + unknown-scope rejection, the destinations load +
+  preselect, both POST bodies — general omits `id`, a scoped destination
+  carries it — the transferred emit, the pre-unify inline error),
+  `avatar-generation-pane.spec.ts` (option label format, the three
+  button states, the no-profiles disable, preview only out of chat with
+  the download filename, microcopy verbatim).
+
+Gate: `ng test` 162 files / 1,909 green. SPA 0.5.179.
