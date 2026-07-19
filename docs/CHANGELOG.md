@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Settings shell is workspace-tab
+hostable. It gains tab/section inputs mirroring v4 SettingsViewProps: tab seeds
+the initial tab (via EntityTabs defaultTab) and the subsystem background;
+section is accepted for the SettingsTabPayload contract but unused, exactly as
+v4's _section (v4 does not thread it to hosted sub-tabs' ?section= force-open).
+The five settings sub-tabs (providers/chat/memory/images/templates) now inject
+ActivatedRoute optionally so they render when hosted without a route; the
+?section= deep-link falls back to null there. Routed mode byte-identical.
+
 P4.9J2 (screen hostability, lane J2): EntityTabs gains a workspace-tab mode.
 When a WORKSPACE_TAB_ID is provided (hosted as a workspace tab) the active tab
 is local state seeded from defaultTab and tab switching no longer touches the

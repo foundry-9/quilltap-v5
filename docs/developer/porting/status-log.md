@@ -23517,3 +23517,24 @@ hosted subtree without an `ActivatedRoute` never throws. Spec: the three
 existing routed cases untouched + a new `workspace-tab mode` describe proving
 default-tab render and no-navigation tab switching under a provided
 `WORKSPACE_TAB_ID`. `ng test` (entity-tabs) 4/4.
+
+### Unit 2 — Settings workspace-tab mode (SPA 0.5.191)
+
+The Settings shell (`screens/settings/settings.ts`) gains `tab`/`section`
+inputs mirroring v4 `SettingsViewProps`. `tab` seeds the initial tab (passed
+to `EntityTabs` as `[defaultTab]="tab() ?? 'providers'"`, exactly as v4
+`SettingsView` does `defaultTab={tab || 'providers'}`) and the subsystem
+background (`subsystem()` = `tab() ?? ?tab= ?? 'providers'`, v4
+`useSettingsBackgroundStyle(tabOverride)`). `section` is accepted for the
+`SettingsTabPayload` contract but UNUSED — this is faithful: v4's
+`SettingsView({ section: _section })` prefixes it `_` and never threads it to
+the hosted sub-tabs. The five settings sub-tabs
+(providers/chat/memory/images/templates) each read `?section=` via their own
+`ActivatedRoute`; that injection is now `{ optional: true }` with the
+query-param signal guarded, so they render when hosted (no route) and the
+force-open deep-link falls back to null — matching v4 ignoring `section` when
+hosted. Settings' own `ActivatedRoute` is likewise optional. New
+`settings.spec.ts` tab-mode case (hosted with `tab='system'`, no
+`ActivatedRoute` → placeholder renders, subsystem `prospero`, active tab
+"Data & System"); existing chat-tab spec untouched. `ng test` 4/4 across the
+two files.
