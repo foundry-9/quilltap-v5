@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): SalonConversation is workspace-tab
+hostable. It gains a chatId input (v4 SalonTabPayload) that wins over the route
+:id. The id-dependent wiring (terminal/document controller configure + the
+tool-result stream subscription) moves from the constructor into a one-shot,
+guarded effect so it fires once the id resolves — in routed mode on the first
+change detection (ordering preserved), in tab mode once the input arrives.
+ActivatedRoute is now optional. Routed mode byte-identical.
+
+
 P4.9J2 (screen hostability, lane J2): NewCharacter and the provider WizardScreen
 gain the self-close seam (v4 useCloseSelfTab). When hosted (WORKSPACE_HANDLE +
 WORKSPACE_TAB_ID present) NewCharacter's back/Cancel/create and the wizard's

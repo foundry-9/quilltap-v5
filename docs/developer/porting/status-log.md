@@ -23594,3 +23594,19 @@ opener refreshes) — v4 `useCloseSelfTab`. `screens/settings/wizard/wizard-scre
 is a routed pre-workspace flow). Specs: new-character gains a `workspace-tab mode`
 describe (back/Cancel are buttons, no anchors; Cancel + create close tab-new); new
 `wizard-screen.spec.ts` (routed navigates; hosted closes). `ng test` 10/10.
+
+### Unit 7 — SalonConversation chatId input + reactive wiring (SPA 0.5.196)
+
+`screens/salon/salon-conversation.ts` gains a `chatId` input (aliased, v4
+`SalonTabPayload`); `chatId` becomes a computed (`input ?? route :id`),
+`ActivatedRoute` optional. The load-bearing subtlety: signal inputs are unset at
+construction, but the constructor read `this.chatId()` synchronously to
+`terminalMode.configure` / `documentMode.configure` and to open the
+tool-result `events$` subscription. Those three id-captures move into a SINGLE
+one-shot `effect` guarded by `wiredChatId` — in routed mode the route param is
+synchronous so it fires on the first CD with the id already resolved (effect
+registration order preserves the prior configure→hydrate ordering); in tab mode
+it fires once the input arrives. The two `hydrate` effects and all window/inspector
+listeners (which read `chatId()` dynamically) are unchanged. Spec: the 22
+existing routed cases untouched + a `workspace-tab mode` describe (render + logs
+by input id, no `ActivatedRoute`). `ng test` 24/24.

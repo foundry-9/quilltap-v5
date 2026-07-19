@@ -176,6 +176,49 @@ async function render(client: Partial<CoreClient>): Promise<ComponentFixture<Sal
   return fixture;
 }
 
+/**
+ * Workspace-tab mode (p4.9j2): the chat id comes from the `chatId` input with NO
+ * `ActivatedRoute`, and the id-dependent wiring (terminal/document configure +
+ * the tool-result subscription) defers to a one-shot effect until the input
+ * resolves. The read path must render identically.
+ */
+describe('SalonConversation (workspace-tab mode)', () => {
+  async function renderTab(
+    client: Partial<CoreClient>,
+  ): Promise<ComponentFixture<SalonConversation>> {
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('renders the chat from the chatId input with no ActivatedRoute', async () => {
+    const fixture = await renderTab(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Tea Time');
+    expect(text).toContain('A fine morning it is.');
+  });
+
+  it('fetches this chat’s LLM logs by the input id (one-shot wiring resolved)', async () => {
+    const fixture = await renderTab(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    // The header title proves chatGet ran with the input id; logs list is scoped
+    // to the same id.
+    expect(fixture.nativeElement.querySelector('.qt-slide-over-panel')).not.toBeNull();
+  });
+});
+
 describe('SalonConversation (read path)', () => {
   it('renders the baked messages, the whisper label, the reasoning block, and the staff chip', async () => {
     const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));

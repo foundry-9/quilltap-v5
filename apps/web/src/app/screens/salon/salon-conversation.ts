@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -402,7 +403,7 @@ interface CascadePrompt {
   `,
 })
 export class SalonConversation {
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
@@ -414,8 +415,17 @@ export class SalonConversation {
   /** The Open-Document picker's visibility (local UX). */
   protected readonly showDocumentPicker = signal(false);
 
-  private readonly params = toSignal(this.route.paramMap, { requireSync: true });
-  protected readonly chatId = computed(() => this.params().get('id'));
+  /**
+   * Tab-mode identity (v4 `SalonTabPayload.chatId`); when set, wins over the
+   * route `:id`. Null ⇒ routed mode, byte-identical.
+   */
+  readonly chatIdInput = input<string | null>(null, { alias: 'chatId' });
+  private readonly routeParams = this.route
+    ? toSignal(this.route.paramMap, { requireSync: true })
+    : undefined;
+  protected readonly chatId = computed(
+    () => this.chatIdInput() ?? this.routeParams?.().get('id') ?? null,
+  );
 
   /** The terminal pane is showing when a session is bound and mode isn't normal (v4). */
   protected readonly terminalActive = computed(
@@ -442,10 +452,18 @@ export class SalonConversation {
   });
 
   constructor() {
-    // Bind the terminal controller to this conversation (refetch after spawn so
-    // the Ariel session-opened announcement appears) and hydrate on chat load.
-    const chatId = this.chatId();
-    if (chatId) {
+    // Bind the id-dependent wiring once the chat id is known. In routed mode the
+    // route param is synchronous, so this runs on the first change detection with
+    // the id already resolved (ordering preserved); in workspace-tab mode the
+    // `chatId` input arrives after construction, so the one-shot effect defers the
+    // wiring until it does. The `wiredChatId` guard makes it fire exactly once.
+    let wiredChatId: string | null = null;
+    effect(() => {
+      const chatId = this.chatId();
+      if (!chatId || wiredChatId === chatId) return;
+      wiredChatId = chatId;
+      // Bind the terminal controller (refetch after spawn so the Ariel
+      // session-opened announcement appears).
       this.terminalMode.configure(chatId, () => {
         void this.chatQuery.refetch();
       });
@@ -455,14 +473,10 @@ export class SalonConversation {
       this.documentMode.configure(chatId, () => {
         void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
       });
-    }
-    effect(() => this.terminalMode.hydrate(this.chat()));
-    effect(() => this.documentMode.hydrate(this.chat()));
 
-    // React to the LLM's document tools on the live stream (v4 SalonView
-    // `onToolResult`): open/close/write/move/delete → reload from server;
-    // doc_focus → route to the pane that owns the target document.
-    if (chatId) {
+      // React to the LLM's document tools on the live stream (v4 SalonView
+      // `onToolResult`): open/close/write/move/delete → reload from server;
+      // doc_focus → route to the pane that owns the target document.
       const sub = this.core.events$
         .pipe(filter((frame) => frame.chatId === chatId))
         .subscribe((frame) => {
@@ -476,7 +490,10 @@ export class SalonConversation {
           }
         });
       this.destroyRef.onDestroy(() => sub.unsubscribe());
-    }
+    });
+
+    effect(() => this.terminalMode.hydrate(this.chat()));
+    effect(() => this.documentMode.hydrate(this.chat()));
 
     // A terminal announcement (open/close/periodic summary) landed → refetch the
     // chat so the new Ariel message appears (v4's salon-page listeners).
