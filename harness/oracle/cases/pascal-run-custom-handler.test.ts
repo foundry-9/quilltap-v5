@@ -51,7 +51,53 @@ interface CaseSpec {
   vaultKey: 'vaultA' | 'vaultB' | 'vaultC' | null;
   characterIds: string[];
   input: unknown;
+  /**
+   * P4.6bd: insert ONE cheap connection profile before the run, so the consult
+   * RESOLVES through the (mocked, recording) provider instead of stopping at
+   * `no connection profiles are configured`. The committed fixture itself stays
+   * profile-free — the no-profiles cases depend on that.
+   */
+  profile?: boolean;
 }
+
+/**
+ * The one profile a `profile: true` case inserts (both sides insert the SAME
+ * row through their real repos — the Rust differential mirrors these fields).
+ */
+const CONSULT_PROFILE = {
+  userId: '', // filled from the spec at insert time
+  name: 'Consult Canned',
+  provider: 'Anthropic',
+  transport: 'api',
+  courierDeltaMode: false,
+  apiKeyId: null,
+  baseUrl: null,
+  modelName: 'consult-canned-model',
+  parameters: {},
+  isDefault: true,
+  isCheap: true,
+  allowWebSearch: false,
+  useNativeWebSearch: false,
+  allowToolUse: false,
+  pseudoToolMode: 'auto',
+  modelClass: null,
+  maxContext: null,
+  maxTokens: null,
+  isDangerousCompatible: false,
+  supportsImageUpload: false,
+  tags: [],
+  sortIndex: 0,
+  totalTokens: 0,
+  totalPromptTokens: 0,
+  totalCompletionTokens: 0,
+  messageCount: 0,
+};
+const CONSULT_PROFILE_ID = 'cc000000-0000-4000-8000-000000000001';
+const CONSULT_PROFILE_TS = '2026-03-01T00:00:00.000Z';
+
+/** The canned consult answer: `YES` hits the oracle tool's `eq: 'YES'` row. */
+const CONSULT_ANSWER = 'YES';
+const CONSULT_USAGE = { promptTokens: 42, completionTokens: 3, totalTokens: 45 };
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -69,6 +115,20 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
 
+  // P4.6bd: recorded canned-completion entries, deduped by the exact call key.
+  // The key format MUST match `quilltap_core::model::completion::canned_completion_key`.
+  const cannedRecorded = new Map<
+    string,
+    {
+      provider: string;
+      model: string;
+      temperature: number | null;
+      messages: Array<{ role: string; content: string }>;
+      response: string;
+      usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    }
+  >();
+
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
@@ -79,6 +139,52 @@ async function runCase(
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // P4.6bd: the consult's provider seam — a recording canned provider (the
+  // memory-processor recipe). Only a resolving consult ever reaches it.
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
+    return {
+      __esModule: true,
+      ...actual,
+      createLLMProvider: async (provider: string, _baseUrl?: string) => ({
+        sendMessage: async (
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+          },
+          _apiKey: string,
+        ) => {
+          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
+          if (!cannedRecorded.has(key)) {
+            cannedRecorded.set(key, {
+              provider,
+              model: params.model,
+              temperature: params.temperature ?? null,
+              messages,
+              response: CONSULT_ANSWER,
+              usage: CONSULT_USAGE,
+            });
+          }
+          return { content: CONSULT_ANSWER, finishReason: 'stop', usage: CONSULT_USAGE };
+        },
+      }),
+    };
+  });
+  // The v5 side has no API-key step in the cheap path — pin v4's to a constant.
+  jest.doMock('@/lib/services/api-key.service', () => {
+    const actual = jest.requireActual('@/lib/services/api-key.service');
+    return {
+      __esModule: true,
+      ...actual,
+      getApiKeyForCheapLLMSelection: async () => 'test-key',
+    };
+  });
+  // Run the REAL logLLMCall so the CUSTOM_TOOL_CONSULT row lands and is diffed.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service'),
+  );
 
   const work = mkdtempSync(join(scratch, 'pascal-'));
   const mainWork = join(work, 'main.db');
@@ -87,15 +193,32 @@ async function runCase(
   copyFileSync(fixtures.mount, mountWork);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+  // A fresh llm-logs DB per case for the un-mocked logLLMCall (P4.6bd).
+  process.env.SQLITE_LLM_LOGS_PATH = join(work, 'llm-logs.db');
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { closeLLMLogsSQLiteClient, getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
   const { executeRunCustomTool } = await import('@/lib/tools/handlers/run-custom-handler');
 
   await initializeDatabase();
+
+  if (c.profile) {
+    const { ConnectionProfilesRepository } = await import(
+      '@/lib/database/repositories/connection-profiles.repository'
+    );
+    const repo = new ConnectionProfilesRepository();
+    await repo.create({ ...CONSULT_PROFILE, userId: spec.userId } as never, {
+      id: CONSULT_PROFILE_ID,
+      createdAt: CONSULT_PROFILE_TS,
+      updatedAt: CONSULT_PROFILE_TS,
+    });
+  }
 
   try {
     const context = {
@@ -108,6 +231,10 @@ async function runCase(
       callerParticipantId: P_A,
     };
     const output = await executeRunCustomTool(c.input, context as never);
+
+    // Let the fire-and-forget logLLMCall settle before dumping (the
+    // oracle-fire-and-forget-tail rule: stray promises poison the NEXT case).
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     const mdb = getRawDatabase();
     if (!mdb) throw new Error('main DB handle unavailable');
@@ -122,10 +249,54 @@ async function runCase(
       for (const col of columns) out[col] = canonValue(r[col]);
       return out;
     });
-    return { name: c.name, output, columns, rows };
+
+    // P4.6bd: the llm_logs rows this case wrote (id/timestamps placeholdered,
+    // sorted by canonical JSON — the memory-processor dump shape).
+    let llmLogs: { columns: string[]; rows: Array<Record<string, unknown>> } = {
+      columns: [],
+      rows: [],
+    };
+    const lldb = getRawLLMLogsDatabase();
+    if (lldb) {
+      try {
+        const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+          (col) => col.name,
+        );
+        const llRaw = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+          Record<string, unknown>
+        >;
+        const llRows = llRaw
+          .map((r) => {
+            const out: Record<string, unknown> = {};
+            for (const col of llColumns) out[col] = canonValue(r[col]);
+            out.id = '<id>';
+            out.createdAt = '<ts>';
+            out.updatedAt = '<ts>';
+            return out;
+          })
+          .sort((a, b) => {
+            const sa = JSON.stringify(a);
+            const sb = JSON.stringify(b);
+            return sa < sb ? -1 : sa > sb ? 1 : 0;
+          });
+        llmLogs = { columns: llColumns, rows: llRows };
+      } catch {
+        // No llm_logs table (the case never logged) — keep the empty dump.
+      }
+    }
+
+    return {
+      name: c.name,
+      output,
+      columns,
+      rows,
+      canned: Array.from(cannedRecorded.values()),
+      llmLogs,
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
+    closeLLMLogsSQLiteClient();
     rmSync(work, { recursive: true, force: true });
   }
 }
@@ -174,6 +345,10 @@ async function main(): Promise<void> {
     // without mocking a provider.
     { name: 'llm-consult-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' } },
     { name: 'llm-consult-private', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle', private: true } },
+    // P4.6bd: the consult RESOLVES — a profile is inserted, the (recording)
+    // provider answers 'YES', the `eq: 'YES'` outcome row fires, and the
+    // CUSTOM_TOOL_CONSULT llm-log row lands. The tier-1 proof of the wire.
+    { name: 'llm-consult-resolved', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' }, profile: true },
   ];
 
   const out = fs.createWriteStream(outPath);

@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+P4.6bd tier 1 (lane BD, the consult-wire round): the llm consult is LIVE on
+all three entrances. New ConsultRunner seam in pascal::llm_consult (erased
+runner, the image_generation idiom) with SeamConsultInvoker and
+ProviderConsultRunner; EngineAssembly/ReadyEngine/SpineBundle grow a consult
+field; the host builds HostConsultRunner (holds WireConfig, rebuilds the
+provider per consult) wrapped in the new TimeoutConsult decorator (v4's 60s
+withTimeout at the invoker boundary, unit-tested to the exact ported reason
+string; the P4.d8 timeout deferral is closed). chat_custom_tool_run and
+custom_tool_preview drop the dead CompletionProvider generic and take the
+seam; the two engine dispatch DEFERRAL comments are gone; a consult-wanting
+request against a seamless assembly answers a loud not-assembled internal
+error (composer/bench arms) while the run_custom tool path inside a live
+turn stays fail-soft by design (why-comment at the executor). The executor
+threads the seam through BuiltInToolRunner::with_consult. Ported v4's
+consult-dispatching logger.debug line (eprintln, same eight fields). The
+run_custom-handler and custom-tools-route differentials are now
+PROFILE-BEARING: each gains a resolved-consult case (both sides insert the
+same connection profile through their real repos, oracle-recorded canned
+completions, and the persisted CUSTOM_TOOL_CONSULT llm_logs row diffed per
+case over a fresh llm-logs partition) — 13-case handler + 11-case route
+diffs green over fresh 616930db oracles, mutation-checked. Consults on the
+composer, workbench {live:true} bench, and model-driven run_custom paths
+are now REAL SPEND against the configured cheap-LLM provider (the round's
+§4 note).
+
 Round planned - the consult-wire + image-detail + wardrobe round (P4.6bd
 + P4.9a2 + P4.9f1 + P4.9f2): four work orders committed, docs only. P4.6bd
 wires the llm consult live (an erased consult seam on EngineAssembly

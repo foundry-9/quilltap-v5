@@ -5,7 +5,13 @@
 //! `{status, body}` + the posted `chat_messages` system rows (minted id +
 //! createdAt normalized positionally). Rolls are `min === max` (deterministic).
 //!
-//! Generate the oracle (v4 @ d68638b4, Node 24 — mirror to /tmp; jest ignores
+//! P4.6bd: the `run-oracle-consult-resolved` case is PROFILE-BEARING — both
+//! sides insert the same connection profile through their real repos, the
+//! consult RESOLVES through a recorded canned completion (the
+//! `tier3-completion-oracle` keying), and the persisted `CUSTOM_TOOL_CONSULT`
+//! `llm_logs` row is diffed alongside the posted system rows.
+//!
+//! Generate the oracle (v4 @ 616930db, Node 24 — mirror to /tmp; jest ignores
 //! `.claude/`):
 //!   cd ~/source/quilltap-server
 //!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
@@ -19,14 +25,22 @@
 //!   QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE=/tmp/oracle-pascal-custom-tools-route.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_custom_tools_route_equivalence
 
+mod common;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::custom_tools::{chat_custom_tool_run, chat_custom_tools_list};
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::db::connection_profiles::{CpCreate, CreateOptions};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::completion::CannedCompletionProvider;
+use quilltap_core::db::Writer;
+use quilltap_core::model::completion::{
+    CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
+};
+use quilltap_core::pascal::llm_consult::ProviderConsultRunner;
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
@@ -37,24 +51,140 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-fn open(case: &str) -> Db {
+fn open(case: &str, profile: bool) -> Db {
     let scratch =
         std::env::temp_dir().join(format!("qt-pascal-route-{}-{case}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
+    let llm_logs = scratch.join("llm-logs.db");
     std::fs::copy(fixtures_dir().join("pascal-run-custom-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("pascal-run-custom-mount.db"), &mount).unwrap();
+    // A fresh llm-logs partition per case (P4.6bd): the resolved consult's
+    // CUSTOM_TOOL_CONSULT row is part of the diff.
+    common::materialize_llm_logs(&llm_logs, PEPPER);
+    if profile {
+        insert_consult_profile(&main);
+    }
     Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
-            llm_logs: None,
+            llm_logs: Some(llm_logs),
         },
         PEPPER,
     )
     .expect("open db")
+}
+
+/// The one profile a `profile: true` case inserts — field-for-field the
+/// oracle's `CONSULT_PROFILE` (both sides go through their real repos).
+fn insert_consult_profile(main: &std::path::Path) {
+    let writer = Writer::open_writable(main, PEPPER).expect("open main for profile insert");
+    writer
+        .connection_profiles()
+        .create(
+            &CpCreate {
+                user_id: USER.to_string(),
+                name: "Consult Canned".into(),
+                provider: "Anthropic".into(),
+                transport: "api".into(),
+                courier_delta_mode: false,
+                api_key_id: None,
+                base_url: None,
+                model_name: "consult-canned-model".into(),
+                parameters: json!({}),
+                is_default: true,
+                is_cheap: true,
+                allow_web_search: false,
+                use_native_web_search: false,
+                allow_tool_use: false,
+                pseudo_tool_mode: "auto".into(),
+                model_class: None,
+                max_context: None,
+                max_tokens: None,
+                is_dangerous_compatible: false,
+                supports_image_upload: false,
+                tags: Vec::new(),
+                sort_index: 0.0,
+                total_tokens: 0.0,
+                total_prompt_tokens: 0.0,
+                total_completion_tokens: 0.0,
+                message_count: 0.0,
+            },
+            &CreateOptions {
+                id: "cc000000-0000-4000-8000-000000000001".into(),
+                created_at: "2026-03-01T00:00:00.000Z".into(),
+                updated_at: "2026-03-01T00:00:00.000Z".into(),
+            },
+        )
+        .expect("insert consult profile");
+}
+
+// The recorded canned-completion rows the oracle emits per case
+// (`tier3-completion-oracle`: replaying EXACTLY what v4's mock answered turns
+// any Rust prompt/selection/temperature divergence into a loud canned-miss).
+#[derive(Deserialize)]
+struct CannedMsg {
+    role: String,
+    content: String,
+}
+#[derive(Deserialize)]
+struct CannedUsage {
+    #[serde(rename = "promptTokens")]
+    prompt_tokens: i64,
+    #[serde(rename = "completionTokens")]
+    completion_tokens: i64,
+    #[serde(rename = "totalTokens")]
+    total_tokens: i64,
+}
+#[derive(Deserialize)]
+struct CannedRow {
+    provider: String,
+    model: String,
+    temperature: Option<f64>,
+    messages: Vec<CannedMsg>,
+    response: String,
+    usage: CannedUsage,
+}
+
+/// Build the per-case canned provider from the oracle's recorded rows.
+fn canned_provider(want: &Value) -> CannedCompletionProvider {
+    let rows: Vec<CannedRow> = want
+        .get("canned")
+        .cloned()
+        .map(|v| serde_json::from_value(v).expect("parse canned rows"))
+        .unwrap_or_default();
+    let mut provider = CannedCompletionProvider::new();
+    for row in &rows {
+        let messages: Vec<CompletionMessage> = row
+            .messages
+            .iter()
+            .map(|m| CompletionMessage {
+                role: match m.role.as_str() {
+                    "system" => CompletionRole::System,
+                    "user" => CompletionRole::User,
+                    "assistant" => CompletionRole::Assistant,
+                    other => panic!("unexpected role {other}"),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+        provider = provider.with_response(
+            &row.provider,
+            &row.model,
+            row.temperature,
+            &messages,
+            row.response.clone(),
+            Some(CompletionUsage {
+                prompt_tokens: row.usage.prompt_tokens,
+                completion_tokens: row.usage.completion_tokens,
+                total_tokens: row.usage.total_tokens,
+            }),
+        );
+    }
+    provider
 }
 
 /// Map a v5 `Response` into the `{status, body}` the oracle records.
@@ -198,51 +328,58 @@ async fn custom_tools_route_matches_oracle() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
-    // (name, POST body or None for GET)
-    let cases: Vec<(&str, Option<Value>)> = vec![
-        ("list", None),
+    // (name, POST body or None for GET, profile-bearing)
+    let cases: Vec<(&str, Option<Value>, bool)> = vec![
+        ("list", None, false),
         (
             "run-coin-as-a",
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
+            false,
         ),
         (
             "run-ansible-hit",
             Some(
                 json!({ "tool": "ansible", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
+            false,
         ),
         (
             "run-ansible-miss",
             Some(
                 json!({ "tool": "ansible", "asCharacterId": "a1000000-0000-4000-8000-00000000000b" }),
             ),
+            false,
         ),
-        ("run-no-character", Some(json!({ "tool": "coin" }))),
+        ("run-no-character", Some(json!({ "tool": "coin" })), false),
         (
             "run-private",
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "private": true }),
             ),
+            false,
         ),
         (
             "run-unknown-tool",
             Some(
                 json!({ "tool": "nope", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
+            false,
         ),
         (
             "run-unknown-character",
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-0000000000ff" }),
             ),
+            false,
         ),
         (
             "run-error",
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "parameters": { "bad": 1 } }),
             ),
+            false,
         ),
         // The 616930db consult through the CHAT entrance — the third of the
         // three pascalMeta.llm writers.
@@ -251,6 +388,18 @@ async fn custom_tools_route_matches_oracle() {
             Some(
                 json!({ "tool": "oracle", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
+            false,
+        ),
+        // P4.6bd: the consult RESOLVES through the CHAT entrance — the inserted
+        // profile carries the ladder, the oracle-recorded canned rows answer
+        // 'YES', the `eq: 'YES'` outcome fires, and the CUSTOM_TOOL_CONSULT
+        // llm-log row is diffed.
+        (
+            "run-oracle-consult-resolved",
+            Some(
+                json!({ "tool": "oracle", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            true,
         ),
     ];
 
@@ -265,11 +414,11 @@ async fn custom_tools_route_matches_oracle() {
     );
 
     let mut checked = 0usize;
-    for (name, body) in &cases {
+    for (name, body, profile) in &cases {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("oracle missing case '{name}'"));
-        let db = open(name);
+        let db = open(name, *profile);
 
         let (status, resp_body, sys) = match body {
             None => {
@@ -284,12 +433,15 @@ async fn custom_tools_route_matches_oracle() {
                     .get("asCharacterId")
                     .and_then(Value::as_str)
                     .map(str::to_string);
-                // The REAL consult provider, exactly as v4's `handleRun`
-                // builds one. The fixture carries no connection profiles, so
-                // the resolution fails at that arm and the canned provider is
-                // never reached — which is the point: both sides report v4's
-                // `no connection profiles are configured`.
-                let completion = CannedCompletionProvider::new();
+                // The REAL consult seam, exactly as the engine passes it since
+                // P4.6bd: a `ProviderConsultRunner` over the canned provider —
+                // the handler builds the real `CustomToolLlmInvoker` through
+                // it. Profile-free cases stop at v4's `no connection profiles
+                // are configured`; the `profile: true` case resolves through
+                // the oracle-recorded canned rows.
+                let runner = ProviderConsultRunner {
+                    completion: canned_provider(want),
+                };
                 let (s, bd) = status_body(
                     chat_custom_tool_run(
                         &db,
@@ -299,7 +451,7 @@ async fn custom_tools_route_matches_oracle() {
                         parameters,
                         private,
                         as_character_id,
-                        Some(&completion),
+                        Some(&runner),
                     )
                     .await,
                 );
@@ -307,6 +459,12 @@ async fn custom_tools_route_matches_oracle() {
                 (s, bd, rows)
             }
         };
+
+        // The persisted llm_logs rows (P4.6bd): the resolved consult writes ONE
+        // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
+        let got_logs = common::dump_llm_logs(&db);
+        let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
+        assert_eq!(got_logs, want_logs, "case '{name}' llm_logs rows");
 
         assert_eq!(
             status as u64,

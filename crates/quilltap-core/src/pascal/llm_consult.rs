@@ -15,17 +15,16 @@
 //! `LlmInvokeResult::Failed { reason }`, and the execution core swaps in the
 //! author's `errorMessage`. Nothing that fails here ever reaches the fiction.
 //!
-//! ## The one carried-but-not-wired piece: the 60 s timeout
+//! ## The 60 s timeout
 //!
 //! v4 wraps each consult in `withTimeout(…, CONSULT_TIMEOUT_MS)`, rejecting a
 //! hung provider so it becomes the author's error message rather than a wedged
 //! chat. Timers are host-side in this port (the standing rule the
-//! answer-confirmation service records, and the one live precedent —
-//! `quilltap-host`'s spine ceiling — lives in the host crate). So
-//! [`CONSULT_TIMEOUT_MS`] and [`consult_timeout_reason`] are ported here, and
-//! the composition root wraps the invoker: see the DEFERRAL note on
-//! [`CONSULT_TIMEOUT_MS`]. Everything else about the failure path — including
-//! that a timeout arrives as an ordinary `Failed { reason }` — is live.
+//! answer-confirmation service records), so [`CONSULT_TIMEOUT_MS`] and
+//! [`consult_timeout_reason`] live here while the timer itself is
+//! `quilltap-host`'s `TimeoutConsult` decorator (P4.6bd), which wraps the WHOLE
+//! invoker — the boundary v4 puts `withTimeout` at — and maps elapsed to the
+//! ordinary `Failed { reason }` this module's reason string names.
 
 use serde_json::Value;
 
@@ -50,15 +49,12 @@ use crate::services::llm_logging::LogContext;
 /// govern), but a consult blocks a tool call in a live turn — a hung provider
 /// must become the author's error message, not a wedged chat.
 ///
-/// **DEFERRAL (loud, named): the timer itself is not wired.** `quilltap-core`
-/// has no tokio timer driver in its default build, and the crate that owns the
-/// one timeout precedent (`quilltap-host/src/spine.rs`) is outside lane P4.d8's
-/// Ownership. Until a host-side decorator wraps
-/// [`CustomToolLlmInvoker`] with `tokio::time::timeout(CONSULT_TIMEOUT_MS, …)`
+/// The timer itself is host-side (`quilltap-core` has no tokio timer driver in
+/// its default build): `quilltap-host/src/spine.rs`'s `TimeoutConsult` wraps
+/// [`CustomToolLlmInvoker`] with `tokio::time::timeout(CONSULT_TIMEOUT_MS, …)`,
 /// mapping elapsed → `LlmInvokeResult::Failed { reason:
-/// consult_timeout_reason(CONSULT_TIMEOUT_MS) }`, a hung provider blocks the
-/// tool call instead of failing soft after 60 s. Every other failure route is
-/// live and differential-checked.
+/// consult_timeout_reason(CONSULT_TIMEOUT_MS) }` (the P4.d8 deferral, closed by
+/// P4.6bd).
 pub const CONSULT_TIMEOUT_MS: i64 = 60_000;
 
 /// v4's timeout rejection message, verbatim:
@@ -80,6 +76,73 @@ pub struct CustomToolConsultContext {
     /// attribution. `None` for Pascal's Workbench, whose bench runs belong to
     /// no room and are never rerouted.
     pub chat_id: Option<String>,
+}
+
+/// The assembly-level consult seam (P4.6bd). v4 needs no such thing — its
+/// `buildCustomToolLlmInvoker` reaches the wire ambiently — but v5's engine
+/// holds no `CompletionProvider` (the trait is RPITIT, so it cannot be erased
+/// directly; see `api::custom_tools`'s dyn-compatibility note). So the erased
+/// object is this RUNNER, matching the `image_generation` idiom: the host's
+/// impl holds the wire config and rebuilds the concrete provider per consult,
+/// which is what keeps a cheap-model change live on the very next roll and
+/// puts the request's user/chat on the log row. The per-request `db` +
+/// `context` are passed per call because the seam is assembled once per unlock
+/// while every consult belongs to a specific request.
+pub trait ConsultRunner: Send + Sync {
+    fn consult<'a>(
+        &'a self,
+        db: &'a Db,
+        context: CustomToolConsultContext,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>>;
+}
+
+/// The per-request [`LlmInvoker`] an entrance builds over the assembled
+/// [`ConsultRunner`] — the shape `execute_custom_tool`'s `llm_invoke` seam
+/// consumes. One per run, like v4's one-invoker-per-context.
+pub struct SeamConsultInvoker<'a> {
+    pub runner: &'a dyn ConsultRunner,
+    pub db: &'a Db,
+    pub context: CustomToolConsultContext,
+}
+
+impl LlmInvoker for SeamConsultInvoker<'_> {
+    fn invoke<'b>(
+        &'b self,
+        prompt: &'b str,
+        options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'b>> {
+        self.runner
+            .consult(self.db, self.context.clone(), prompt, options)
+    }
+}
+
+/// A [`ConsultRunner`] over one held provider — the differential harness's
+/// runner (a `CannedCompletionProvider` behind the real invoker), and the
+/// simplest possible host wiring. The production host does NOT use this: its
+/// runner rebuilds the wire provider per consult and adds the 60 s timeout
+/// decorator (`quilltap-host`'s spine).
+pub struct ProviderConsultRunner<C> {
+    pub completion: C,
+}
+
+impl<C> ConsultRunner for ProviderConsultRunner<C>
+where
+    C: CompletionProvider + Send + Sync,
+{
+    fn consult<'a>(
+        &'a self,
+        db: &'a Db,
+        context: CustomToolConsultContext,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>> {
+        Box::pin(async move {
+            let invoker = CustomToolLlmInvoker::new(db, &self.completion, context);
+            invoker.invoke(prompt, options).await
+        })
+    }
 }
 
 /// Token budget for one consult, scaled from the effective output cap so a
@@ -203,6 +266,23 @@ where
         }
 
         let max_tokens = consult_max_tokens(options.max_output_chars as f64);
+
+        // v4's `logger.debug('Custom-tool consult dispatching', {…})` — the
+        // same eight fields at the same point. The core has no logging crate;
+        // `eprintln!` is the module convention (as in `help_doc_sync`).
+        // `promptLength` is JS `prompt.length`, a UTF-16 count.
+        eprintln!(
+            "[pascal.llm-consult] Custom-tool consult dispatching \
+             (chatId {}, provider {}, model {}, dangerous {}, promptLength {}, \
+             maxOutputChars {}, maxTokens {})",
+            chat_id.as_deref().unwrap_or("null"),
+            selection.provider,
+            selection.model_name,
+            dangerous,
+            crate::jsstr::utf16_len(prompt),
+            options.max_output_chars,
+            max_tokens
+        );
 
         let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
             db: self.db.clone(),

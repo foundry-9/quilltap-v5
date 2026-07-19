@@ -67,6 +67,8 @@ use super::{
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider};
+use crate::pascal::custom_tools::LlmInvoker;
+use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
 use crate::photos::save_image_to_album::{
     FileBytesStore, NoSideEffects, NotConfiguredBytes, SaveImageSideEffects,
 };
@@ -366,6 +368,15 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// moving `ask_carina` into the dispatched set is inert until a real engine is
     /// wired (production + the differential build one host-side).
     ask_carina: ask_carina::ErasedAskCarina,
+    /// The custom-tool consult seam the `run_custom` tool rides (P4.6bd — v4's
+    /// `buildCustomToolLlmInvoker` at `run-custom-handler.ts:187`). Defaults to
+    /// `None`: with no runner the handler passes no invoker and an `llm`-bearing
+    /// definition takes the fail-soft "no LLM invoker was available in this
+    /// context" path (the author's `errorMessage`). DELIBERATELY fail-soft, not
+    /// the loud composer/bench error — this runner executes inside a live model
+    /// turn, and a wedged tool call is worse than an author's `errorMessage`.
+    /// Production wires the host's timeout-decorated wire runner.
+    consult: Option<Arc<dyn ConsultRunner>>,
     fallback: F,
 }
 
@@ -383,6 +394,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             photo_side_effects: Arc::new(NoSideEffects),
             image_generation: generate_image::ErasedImageGeneration::none(),
             ask_carina: ask_carina::ErasedAskCarina::not_available(),
+            consult: None,
             fallback: LoudFallbackRunner,
         }
     }
@@ -402,8 +414,17 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             photo_side_effects: self.photo_side_effects,
             image_generation: self.image_generation,
             ask_carina: self.ask_carina,
+            consult: self.consult,
             fallback,
         }
+    }
+
+    /// Inject the custom-tool consult runner the `run_custom` tool consults
+    /// through (P4.6bd; production wires the host's timeout-decorated wire
+    /// runner, the differential a canned-provider runner).
+    pub fn with_consult(mut self, consult: Arc<dyn ConsultRunner>) -> Self {
+        self.consult = Some(consult);
+        self
     }
 
     /// Inject the Carina engine the `ask_carina` tool dispatches to (production +
@@ -571,9 +592,30 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         // posted message is persisted (the load-bearing effect) and the live
         // `pascalResult` splice is left to the post-turn refresh / the finalizer
         // path where the sink is in hand (unit 9's `pascal_result` encoder).
-        let (out, _posted) =
-            run_custom::execute_run_custom_tool(&self.db, &rc_ctx, &tc.arguments, &mut source)
-                .await;
+        //
+        // The consult seam (P4.6bd): built per run over the assembled runner,
+        // exactly as v4's handler builds `buildCustomToolLlmInvoker({userId,
+        // chatId})`. With no runner (read-only/canned assemblies) the invoker is
+        // withheld and an `llm`-bearing definition fails SOFT into the author's
+        // `errorMessage` — deliberately NOT the composer/bench loud error,
+        // because this path runs inside a live model turn and a wedged tool
+        // call is worse than the author's own failure text.
+        let invoker = self.consult.as_ref().map(|runner| SeamConsultInvoker {
+            runner: runner.as_ref(),
+            db: &self.db,
+            context: CustomToolConsultContext {
+                user_id: ctx.user_id.clone(),
+                chat_id: Some(ctx.chat_id.clone()),
+            },
+        });
+        let (out, _posted) = run_custom::execute_run_custom_tool_with_consult(
+            &self.db,
+            &rc_ctx,
+            &tc.arguments,
+            &mut source,
+            invoker.as_ref().map(|i| i as &dyn LlmInvoker),
+        )
+        .await;
 
         if out.success {
             let formatted = run_custom::format_run_custom_results(&out);

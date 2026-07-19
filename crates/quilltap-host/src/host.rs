@@ -459,6 +459,7 @@ impl EngineAssembler for HostAssembler {
             courier_resolve,
             save_image_bytes,
             image_generation,
+            consult,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -473,9 +474,10 @@ impl EngineAssembler for HostAssembler {
                     bundle.courier_resolve,
                     bundle.save_image_bytes,
                     bundle.image_generation,
+                    bundle.consult,
                 )
             }
-            None => (None, None, None, None, None, None, None, None),
+            None => (None, None, None, None, None, None, None, None, None),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -581,6 +583,12 @@ impl EngineAssembler for HostAssembler {
             // embedders) keep `None` → the loud not-assembled refusal. ===
             image_generation,
             // === end P4.6ai ===
+            // === P4.6bd: the custom-tool consult seam, wired LIVE from the
+            // spine's wire-config runner (60 s timeout decorated). Spine-less
+            // assemblies keep `None` → the composer/bench arms answer the loud
+            // not-assembled error; the in-turn tool path stays fail-soft. ===
+            consult,
+            // === end P4.6bd ===
         })
     }
 }

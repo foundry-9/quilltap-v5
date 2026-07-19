@@ -88,6 +88,11 @@ use quilltap_core::model::embedding::EmbeddingProvider;
 use quilltap_core::model::stream::StreamingCompletionProvider;
 use quilltap_core::model::streaming_provider::ProviderKeySource;
 use quilltap_core::model_context::get_model_context_limit;
+use quilltap_core::pascal::custom_tools::{LlmInvokeOptions, LlmInvokeResult, LlmInvoker};
+use quilltap_core::pascal::llm_consult::{
+    consult_timeout_reason, ConsultRunner, CustomToolConsultContext, CustomToolLlmInvoker,
+    CONSULT_TIMEOUT_MS,
+};
 use quilltap_core::provider_manifest::{Capability, Registry};
 use quilltap_core::services::answer_confirmation::AnswerConfirmationOutcome;
 use quilltap_core::services::api_key_service;
@@ -438,6 +443,75 @@ impl<R: AnswerConfirmationRunner + Sync> AnswerConfirmationRunner for TimeoutCon
     }
 }
 
+/// v4's consult `withTimeout` (`lib/pascal/llm-consult.ts:159`) as a host
+/// decorator around the WHOLE invoker — exactly where v4 puts it, at the
+/// invoker boundary rather than inside `consult`. Shaped on
+/// [`TimeoutConfirmation`]: one ceiling of `CONSULT_TIMEOUT_MS`, and an elapsed
+/// timer maps to the ordinary fail-soft outcome
+/// (`LlmInvokeResult::Failed { reason: consult_timeout_reason(…) }`) so a hung
+/// provider becomes the author's `errorMessage`, never a wedged tool call. The
+/// timer lives here because `quilltap-core` has no tokio timer driver in its
+/// default build (the standing host-side-timers rule).
+pub struct TimeoutConsult<I> {
+    pub inner: I,
+    pub ceiling: std::time::Duration,
+}
+
+impl<I> TimeoutConsult<I> {
+    pub fn new(inner: I) -> Self {
+        Self {
+            inner,
+            ceiling: std::time::Duration::from_millis(CONSULT_TIMEOUT_MS as u64),
+        }
+    }
+}
+
+impl<I: LlmInvoker> LlmInvoker for TimeoutConsult<I> {
+    fn invoke<'a>(
+        &'a self,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>> {
+        Box::pin(async move {
+            match tokio::time::timeout(self.ceiling, self.inner.invoke(prompt, options)).await {
+                Ok(result) => result,
+                Err(_) => LlmInvokeResult::Failed {
+                    reason: consult_timeout_reason(CONSULT_TIMEOUT_MS),
+                },
+            }
+        })
+    }
+}
+
+/// The custom-tool consult runner (P4.6bd) — the host's live
+/// `EngineAssembly.consult` seam, behind all three entrances (the `run_custom`
+/// executor, the composer's `chatCustomToolRun`, the workbench `{live:true}`
+/// bench). Mirrors [`HostImageGenerationRunner`]: it holds only the
+/// [`WireConfig`] and rebuilds `wire.completion(db)` per consult, so a
+/// key/profile change is live on the very next roll and the request's own
+/// user/chat land on the `CUSTOM_TOOL_CONSULT` log row (the invoker constructs
+/// its logging executor from the per-call context). Each consult is wrapped in
+/// [`TimeoutConsult`] — v4's 60 s `withTimeout` at the invoker boundary.
+pub struct HostConsultRunner {
+    pub wire: WireConfig,
+}
+
+impl ConsultRunner for HostConsultRunner {
+    fn consult<'a>(
+        &'a self,
+        db: &'a Db,
+        context: CustomToolConsultContext,
+        prompt: &'a str,
+        options: LlmInvokeOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>> {
+        Box::pin(async move {
+            let completion = self.wire.completion(db);
+            let invoker = TimeoutConsult::new(CustomToolLlmInvoker::new(db, &completion, context));
+            invoker.invoke(prompt, options).await
+        })
+    }
+}
+
 /// The pricing-backed [`CostTracker`] (v4 `estimateMessageCost` — the W4.7e
 /// cascade over the held fetcher + a per-call [`PricingContext`]).
 pub struct PricingCostTracker<'a, PF: PricingFetch> {
@@ -542,6 +616,10 @@ where
     /// The terminal scrollback source for `terminal_read` (P4.1c), when the
     /// host runs a terminal manager.
     pub scrollback: Option<Arc<PtyScrollbackSource>>,
+    /// The custom-tool consult runner the `run_custom` tool consults through
+    /// (P4.6bd; `None` for canned test spines — the tool then fails soft into
+    /// the author's `errorMessage`, the pre-wire behavior).
+    pub consult: Option<Arc<dyn ConsultRunner>>,
 }
 
 impl<EMB, CMP, STR, PF> ChatSpine<EMB, CMP, STR, PF>
@@ -564,6 +642,7 @@ where
             file_bytes: Arc::clone(&self.file_bytes),
             image_transcoder: Arc::clone(&self.image_transcoder),
             scrollback: self.scrollback.clone(),
+            consult: self.consult.clone(),
         }
     }
 
@@ -573,6 +652,9 @@ where
         let mut runner = BuiltInToolRunner::new(self.db.clone(), self.env.clone());
         if let Some(sb) = &self.scrollback {
             runner = runner.with_scrollback(Arc::clone(sb) as _);
+        }
+        if let Some(consult) = &self.consult {
+            runner = runner.with_consult(Arc::clone(consult));
         }
         runner
     }
@@ -2086,6 +2168,9 @@ pub struct SpineBundle {
     /// The `imageProfileGenerate` runner (P4.6ai, the unification wire; `None` for
     /// canned test factories — the arm answers the loud not-assembled refusal).
     pub image_generation: Option<ErasedImageGeneration>,
+    /// The custom-tool consult runner (P4.6bd; `None` for canned test factories —
+    /// the composer/bench arms answer the loud not-assembled error).
+    pub consult: Option<Arc<dyn ConsultRunner>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2161,6 +2246,11 @@ impl SpineFactory for ProductionSpineFactory {
             codec: Arc::new(HostImageCodec),
         });
         let scrollback = terminal.map(|m| Arc::new(PtyScrollbackSource::new(m, db.clone())));
+        // P4.6bd: ONE consult runner per assembly, shared by the spine's tool
+        // runners (the `run_custom` entrance) and the dispatch arms (composer +
+        // workbench bench). It holds only the wire config — the provider and
+        // the logging executor are rebuilt per consult.
+        let consult: Arc<dyn ConsultRunner> = Arc::new(HostConsultRunner { wire: wire.clone() });
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
@@ -2173,6 +2263,7 @@ impl SpineFactory for ProductionSpineFactory {
             file_bytes,
             image_transcoder: Arc::new(HostImageCodec),
             scrollback,
+            consult: Some(Arc::clone(&consult)),
         });
         let chat_create: Arc<dyn ChatCreateDriver> = Arc::new(ChatCreateSpine {
             db: db.clone(),
@@ -2253,6 +2344,9 @@ impl SpineFactory for ProductionSpineFactory {
             image_generation: Some(ErasedImageGeneration::new(HostImageGenerationRunner {
                 wire: wire.clone(),
             })),
+            // P4.6bd: the consult seam, wired LIVE — the composer + workbench
+            // bench entrances consult for real spend from here on.
+            consult: Some(consult),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),
@@ -2265,6 +2359,91 @@ impl SpineFactory for ProductionSpineFactory {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// An invoker that never resolves — the hung-provider shape the timeout
+    /// decorator exists for.
+    struct PendingInvoker;
+    impl LlmInvoker for PendingInvoker {
+        fn invoke<'a>(
+            &'a self,
+            _prompt: &'a str,
+            _options: LlmInvokeOptions,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>>
+        {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// An invoker that answers immediately (the pass-through side).
+    struct EchoInvoker;
+    impl LlmInvoker for EchoInvoker {
+        fn invoke<'a>(
+            &'a self,
+            prompt: &'a str,
+            _options: LlmInvokeOptions,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = LlmInvokeResult> + Send + 'a>>
+        {
+            let out = LlmInvokeResult::Answered {
+                output: prompt.to_string(),
+                provider: Some("echo".into()),
+                model: Some("echo-1".into()),
+            };
+            Box::pin(async move { out })
+        }
+    }
+
+    /// The elapsed branch maps to EXACTLY the ported reason string — the
+    /// message has no v4 export to diff against (it stays pinned by
+    /// `llm_consult`'s in-crate test), so the decorator carries its own pin.
+    #[test]
+    fn timeout_consult_elapsed_maps_to_the_ported_reason() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        // A short test ceiling; the REASON always names the production
+        // CONSULT_TIMEOUT_MS, exactly as v4's withTimeout message does.
+        let decorated = TimeoutConsult {
+            inner: PendingInvoker,
+            ceiling: std::time::Duration::from_millis(5),
+        };
+        let out = rt.block_on(decorated.invoke(
+            "the author's prompt",
+            LlmInvokeOptions {
+                max_output_chars: 8000,
+            },
+        ));
+        assert_eq!(
+            out,
+            LlmInvokeResult::Failed {
+                reason: "the consult timed out after 60s".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn timeout_consult_passes_an_answer_through() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let decorated = TimeoutConsult::new(EchoInvoker);
+        assert_eq!(decorated.ceiling.as_millis() as i64, CONSULT_TIMEOUT_MS);
+        let out = rt.block_on(decorated.invoke(
+            "pass me through",
+            LlmInvokeOptions {
+                max_output_chars: 8000,
+            },
+        ));
+        assert_eq!(
+            out,
+            LlmInvokeResult::Answered {
+                output: "pass me through".to_string(),
+                provider: Some("echo".into()),
+                model: Some("echo-1".into()),
+            }
+        );
+    }
 
     #[test]
     fn chat_settings_mapping_defaults() {

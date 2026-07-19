@@ -503,19 +503,15 @@ pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
 /// `buildCustomToolLlmInvoker({ userId, chatId })` argument).
 ///
 /// **Why the seam is a second entry point rather than a field on
-/// [`RunCustomToolContext`]:** the executor that calls this holds no
-/// `CompletionProvider` — `ToolExecutionContext` carries none — so it has
-/// nothing to build an invoker from. That is the same shape as the
-/// `emitPascalResult` sink already deferred at that call site. The consult
-/// LOGIC is complete and differential-covered here; the executor still calls
-/// the four-argument form, so a model-driven `run_custom` on an `llm` tool
-/// currently takes the "no LLM invoker was available in this context" path and
-/// shows the author's `errorMessage`.
-///
-/// **DEFERRAL (loud, named): the live executor wire.** Passing a real invoker
-/// requires threading a `CompletionProvider` into `ToolExecutionContext` /
-/// `tools/executor.rs`, which is outside lane P4.d8's Ownership. The chat-run
-/// entrance (`api::custom_tools::chat_custom_tool_run`) has the same shape.
+/// [`RunCustomToolContext`]:** the invoker is per-run machinery, not run
+/// context — v4 builds it fresh at the call site for the same reason. Since
+/// P4.6bd the production executor (`tools/executor.rs`) builds a
+/// `SeamConsultInvoker` over the assembled `ConsultRunner` and calls THIS
+/// form, so a model-driven `run_custom` on an `llm` tool consults for real.
+/// The four-argument wrapper above remains for callers that legitimately hold
+/// no provider (focused tests, seamless assemblies); through it an
+/// `llm`-bearing definition takes the fail-soft "no LLM invoker was available
+/// in this context" path and shows the author's `errorMessage`.
 pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     db: &Db,
     ctx: &RunCustomToolContext,

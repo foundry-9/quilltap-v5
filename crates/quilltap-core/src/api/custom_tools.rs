@@ -28,7 +28,6 @@ use super::types::{ErrorKind, Response};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr::js_trim;
-use crate::model::completion::CompletionProvider;
 use crate::pascal::custom_tool_types::{
     display_title, Visibility, MAX_LLM_OUTPUT_CEILING, MAX_LLM_OUTPUT_LENGTH,
 };
@@ -36,7 +35,7 @@ use crate::pascal::custom_tools::{
     execute_custom_tool, CustomToolRunError, CustomToolRunResult, LlmInvokeOptions,
     LlmInvokeResult, LlmInvoker, LlmSubject,
 };
-use crate::pascal::llm_consult::{CustomToolConsultContext, CustomToolLlmInvoker};
+use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
@@ -350,7 +349,7 @@ enum RunPrep {
 
 /// v4 `handleRun` — run one tool at the operator's behest.
 #[allow(clippy::too_many_arguments)]
-pub async fn chat_custom_tool_run<C: CompletionProvider + Send + Sync>(
+pub async fn chat_custom_tool_run(
     db: &Db,
     user_id: &str,
     chat_id: &str,
@@ -358,10 +357,12 @@ pub async fn chat_custom_tool_run<C: CompletionProvider + Send + Sync>(
     parameters: Option<Map<String, Value>>,
     private: Option<bool>,
     as_character_id: Option<String>,
-    // `completion`: the provider the consult rides (v4 `handleRun` builds
-    // `buildCustomToolLlmInvoker({ userId, chatId: id })`). `None` leaves the
-    // seam unwired — see the DEFERRAL note at the call site.
-    completion: Option<&C>,
+    // The assembled consult seam (v4 `handleRun` builds
+    // `buildCustomToolLlmInvoker({ userId, chatId: id })` — always live there).
+    // `None` is a v5-only state (read-only/canned assemblies); a tool whose
+    // definition declares an `llm` block then answers the LOUD not-assembled
+    // error rather than silently taking the fail-soft consult path.
+    consult: Option<&dyn ConsultRunner>,
 ) -> Response {
     let user_id_owned = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
@@ -466,15 +467,27 @@ pub async fn chat_custom_tool_run<C: CompletionProvider + Send + Sync>(
     } else {
         Some(&metadata)
     };
-    let invoker = match (entry.definition.llm.as_ref(), completion) {
-        (Some(_), Some(completion)) => Some(CustomToolLlmInvoker::new(
+    let invoker = match (entry.definition.llm.as_ref(), consult) {
+        (Some(_), Some(runner)) => Some(SeamConsultInvoker {
+            runner,
             db,
-            completion,
-            CustomToolConsultContext {
+            context: CustomToolConsultContext {
                 user_id: user_id.to_string(),
                 chat_id: Some(chat_id.to_string()),
             },
-        )),
+        }),
+        // The composer arm surfaces the LOUD not-assembled error (mirroring
+        // `ready_memory_embedding`): a canned/read-only assembly must answer
+        // loudly, not slip into the fail-soft "no LLM invoker" consult path a
+        // live turn deliberately keeps (see `tools/executor.rs`, where a wedged
+        // tool call is worse than the author's `errorMessage`).
+        (Some(_), None) => {
+            return Response::error(
+                ErrorKind::Internal,
+                "custom-tool consult not assembled (the consult seam — this assembly holds no \
+                 completion provider)",
+            )
+        }
         _ => None,
     };
 
@@ -887,11 +900,13 @@ impl LlmInvoker for ScriptedBenchInvoker {
 }
 
 /// v4 `handlePreview` — one deal through the shared execution core.
-/// Generic over the provider because [`CompletionProvider`] has a generic method
-/// and so is not dyn-compatible. `None` disables the `{live:true}` arm — see the
-/// DEFERRAL note on [`custom_tools_preview_live_unwired`].
+/// `consult` is the assembled seam behind the `{live:true}` bench arm
+/// (`CompletionProvider` itself is RPITIT and so not dyn-compatible — the
+/// erased object is the [`ConsultRunner`], per `pascal::llm_consult`). A live
+/// request against a `None` seam (read-only/canned assemblies — a v5-only
+/// state) answers the LOUD not-assembled error.
 #[allow(clippy::too_many_arguments)]
-pub async fn custom_tool_preview<C: CompletionProvider + Send + Sync>(
+pub async fn custom_tool_preview(
     db: &Db,
     definition: &Value,
     params: Option<&Value>,
@@ -899,7 +914,7 @@ pub async fn custom_tool_preview<C: CompletionProvider + Send + Sync>(
     metadata: Option<&Value>,
     llm: Option<&Value>,
     user_id: &str,
-    completion: Option<&C>,
+    consult: Option<&dyn ConsultRunner>,
 ) -> Response {
     let params = match parse_params(params) {
         Ok(p) => p,
@@ -928,17 +943,28 @@ pub async fn custom_tool_preview<C: CompletionProvider + Send + Sync>(
         Some(BenchOracle::Fail) => Some(ScriptedBenchInvoker { scripted: None }),
         _ => None,
     };
-    let live = match (&oracle, completion) {
-        (Some(BenchOracle::Live), Some(completion)) => Some(CustomToolLlmInvoker::new(
+    let live = match (&oracle, consult) {
+        (Some(BenchOracle::Live), Some(runner)) => Some(SeamConsultInvoker {
+            runner,
             db,
-            completion,
-            CustomToolConsultContext {
+            context: CustomToolConsultContext {
                 user_id: user_id.to_string(),
                 // A bench run belongs to no room, and is therefore never
                 // rerouted to the uncensored profile.
                 chat_id: None,
             },
-        )),
+        }),
+        // The bench arm surfaces the LOUD not-assembled error (mirroring
+        // `ready_memory_embedding`) — an explicit `{live:true}` request against
+        // a seamless assembly must not silently fail soft into the author's
+        // `errorMessage`.
+        (Some(BenchOracle::Live), None) => {
+            return Response::error(
+                ErrorKind::Internal,
+                "custom-tool consult not assembled (the consult seam — this assembly holds no \
+                 completion provider)",
+            )
+        }
         _ => None,
     };
     let invoker: Option<&dyn LlmInvoker> = match (&scripted, &live) {

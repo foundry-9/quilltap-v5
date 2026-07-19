@@ -153,6 +153,7 @@ impl SpineFactory for SmokeSpineFactory {
             }),
             image_transcoder: Arc::new(HostImageCodec),
             scrollback: None,
+            consult: None,
         });
         let chat_create = Arc::new(ChatCreateSpine {
             db: db.clone(),
@@ -174,6 +175,7 @@ impl SpineFactory for SmokeSpineFactory {
             courier_resolve: None,
             save_image_bytes: None,
             image_generation: None,
+            consult: None,
             job_handlers: Vec::new(),
         }
     }

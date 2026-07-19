@@ -5,7 +5,13 @@
 //! posted `chat_messages` system rows are diffed. Rolls are `min === max` (no
 //! draw), so the FixedBytes source is never consumed.
 //!
-//! Generate the oracle (v4 @ d68638b4, Node 24 — jest ignores `.claude/`, so
+//! P4.6bd: the `llm-consult-resolved` case is PROFILE-BEARING — both sides
+//! insert the same connection profile through their real repos, the consult
+//! RESOLVES through a recorded canned completion (the `tier3-completion-oracle`
+//! keying), and the persisted `CUSTOM_TOOL_CONSULT` `llm_logs` row is diffed
+//! alongside the Pascal message.
+//!
+//! Generate the oracle (v4 @ 616930db, Node 24 — jest ignores `.claude/`, so
 //! mirror the case file to /tmp; see the case-file header):
 //!   cd ~/source/quilltap-server
 //!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
@@ -19,17 +25,24 @@
 //!   QT_ORACLE_PASCAL_RUN_CUSTOM_HANDLER=/tmp/oracle-pascal-run-custom-handler.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_run_custom_handler_equivalence
 
+mod common;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use quilltap_core::db::connection_profiles::{CpCreate, CreateOptions};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::completion::CannedCompletionProvider;
+use quilltap_core::db::Writer;
+use quilltap_core::model::completion::{
+    CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
+};
 use quilltap_core::pascal::llm_consult::{CustomToolConsultContext, CustomToolLlmInvoker};
 use quilltap_core::tools::rng::FixedBytes;
 use quilltap_core::tools::run_custom::{
     execute_run_custom_tool_with_consult, RunCustomToolContext,
 };
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
@@ -66,6 +79,118 @@ struct Case {
     character_id: Option<&'static str>,
     vault: Option<String>,
     input: Value,
+    /// P4.6bd: insert the shared consult profile before the run (mirrors the
+    /// oracle's `profile: true` — the same row through both sides' real repos).
+    profile: bool,
+}
+
+// The recorded canned-completion rows the oracle emits per case
+// (`tier3-completion-oracle`: replaying EXACTLY what v4's mock answered turns
+// any Rust prompt/selection/temperature divergence into a loud canned-miss).
+#[derive(Deserialize)]
+struct CannedMsg {
+    role: String,
+    content: String,
+}
+#[derive(Deserialize)]
+struct CannedUsage {
+    #[serde(rename = "promptTokens")]
+    prompt_tokens: i64,
+    #[serde(rename = "completionTokens")]
+    completion_tokens: i64,
+    #[serde(rename = "totalTokens")]
+    total_tokens: i64,
+}
+#[derive(Deserialize)]
+struct CannedRow {
+    provider: String,
+    model: String,
+    temperature: Option<f64>,
+    messages: Vec<CannedMsg>,
+    response: String,
+    usage: CannedUsage,
+}
+
+/// Build the per-case canned provider from the oracle's recorded rows.
+fn canned_provider(want: &Value) -> CannedCompletionProvider {
+    let rows: Vec<CannedRow> = want
+        .get("canned")
+        .cloned()
+        .map(|v| serde_json::from_value(v).expect("parse canned rows"))
+        .unwrap_or_default();
+    let mut provider = CannedCompletionProvider::new();
+    for row in &rows {
+        let messages: Vec<CompletionMessage> = row
+            .messages
+            .iter()
+            .map(|m| CompletionMessage {
+                role: match m.role.as_str() {
+                    "system" => CompletionRole::System,
+                    "user" => CompletionRole::User,
+                    "assistant" => CompletionRole::Assistant,
+                    other => panic!("unexpected role {other}"),
+                },
+                content: m.content.clone(),
+            })
+            .collect();
+        provider = provider.with_response(
+            &row.provider,
+            &row.model,
+            row.temperature,
+            &messages,
+            row.response.clone(),
+            Some(CompletionUsage {
+                prompt_tokens: row.usage.prompt_tokens,
+                completion_tokens: row.usage.completion_tokens,
+                total_tokens: row.usage.total_tokens,
+            }),
+        );
+    }
+    provider
+}
+
+/// The one profile a `profile: true` case inserts — field-for-field the
+/// oracle's `CONSULT_PROFILE` (both sides go through their real repos).
+fn insert_consult_profile(main: &std::path::Path, pepper: &str, user_id: &str) {
+    let writer = Writer::open_writable(main, pepper).expect("open main for profile insert");
+    writer
+        .connection_profiles()
+        .create(
+            &CpCreate {
+                user_id: user_id.to_string(),
+                name: "Consult Canned".into(),
+                provider: "Anthropic".into(),
+                transport: "api".into(),
+                courier_delta_mode: false,
+                api_key_id: None,
+                base_url: None,
+                model_name: "consult-canned-model".into(),
+                parameters: json!({}),
+                is_default: true,
+                is_cheap: true,
+                allow_web_search: false,
+                use_native_web_search: false,
+                allow_tool_use: false,
+                pseudo_tool_mode: "auto".into(),
+                model_class: None,
+                max_context: None,
+                max_tokens: None,
+                is_dangerous_compatible: false,
+                supports_image_upload: false,
+                tags: Vec::new(),
+                sort_index: 0.0,
+                total_tokens: 0.0,
+                total_prompt_tokens: 0.0,
+                total_completion_tokens: 0.0,
+                message_count: 0.0,
+            },
+            &CreateOptions {
+                id: "cc000000-0000-4000-8000-000000000001".into(),
+                created_at: "2026-03-01T00:00:00.000Z".into(),
+                updated_at: "2026-03-01T00:00:00.000Z".into(),
+            },
+        )
+        .expect("insert consult profile");
 }
 
 /// The system-sender rows (pascal / prospero), minted id + createdAt normalized
@@ -197,60 +322,70 @@ fn run_custom_handler_matches_oracle() {
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "ansible" }),
+            profile: false,
         },
         Case {
             name: "gated-miss",
             character_id: Some(CHAR_B),
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "ansible" }),
+            profile: false,
         },
         Case {
             name: "gated-empty",
             character_id: Some(CHAR_C),
             vault: Some(meta.vault_c.clone()),
             input: json!({ "tool": "ansible" }),
+            profile: false,
         },
         Case {
             name: "public-coin",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin" }),
+            profile: false,
         },
         Case {
             name: "whispered-default",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "whispered" }),
+            profile: false,
         },
         Case {
             name: "private-override",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin", "private": true }),
+            profile: false,
         },
         Case {
             name: "public-override",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "whispered", "private": false }),
+            profile: false,
         },
         Case {
             name: "unknown-tool",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "nonexistent" }),
+            profile: false,
         },
         Case {
             name: "validation-fail",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "notTool": 1 }),
+            profile: false,
         },
         Case {
             name: "run-error",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin", "parameters": { "bad": 1 } }),
+            profile: false,
         },
         // The 616930db consult, end to end over the real invoker.
         Case {
@@ -258,12 +393,25 @@ fn run_custom_handler_matches_oracle() {
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "oracle" }),
+            profile: false,
         },
         Case {
             name: "llm-consult-private",
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "oracle", "private": true }),
+            profile: false,
+        },
+        // P4.6bd: the consult RESOLVES — the inserted profile carries the
+        // ladder, the canned provider answers 'YES' (the oracle-recorded key),
+        // the `eq: 'YES'` outcome row fires, and the CUSTOM_TOOL_CONSULT
+        // llm-log row is diffed. The tier-1 proof of the wire.
+        Case {
+            name: "llm-consult-resolved",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "oracle" }),
+            profile: true,
         },
     ];
 
@@ -289,13 +437,21 @@ fn run_custom_handler_matches_oracle() {
         std::fs::create_dir_all(&scratch).unwrap();
         let main = scratch.join("main.db");
         let mount = scratch.join("mount.db");
+        let llm_logs = scratch.join("llm-logs.db");
         std::fs::copy(fixtures_dir().join("pascal-run-custom-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("pascal-run-custom-mount.db"), &mount).unwrap();
+        // A fresh llm-logs partition per case (P4.6bd): the resolved consult's
+        // CUSTOM_TOOL_CONSULT row is part of the diff, and the empty dump pins
+        // that no other case logs.
+        common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
+        if case.profile {
+            insert_consult_profile(&main, &spec.test_pepper_base64, &spec.user_id);
+        }
         let db = Db::open(
             DbPaths {
                 main,
                 mount_index: Some(mount),
-                llm_logs: None,
+                llm_logs: Some(llm_logs),
             },
             &spec.test_pepper_base64,
         )
@@ -315,13 +471,13 @@ fn run_custom_handler_matches_oracle() {
             caller_participant_id: Some(P_A.to_string()),
         };
         let mut rng = FixedBytes::new(vec![]);
-        // The REAL consult invoker, exactly as v4's handler builds one. The
-        // fixture carries no connection profiles, so the resolution fails at
-        // that arm and the canned provider is never reached — which is the
-        // point: both sides report v4's `no connection profiles are configured`
-        // rather than v5's would-be `no LLM invoker was available in this
-        // context`, so this case proves the invoker is really wired.
-        let completion = CannedCompletionProvider::new();
+        // The REAL consult invoker, exactly as v4's handler builds one. For the
+        // profile-free cases the resolution stops at v4's `no connection
+        // profiles are configured` (proving the invoker is wired past v5's
+        // would-be "no LLM invoker" arm); for `profile: true` cases the ladder
+        // resolves and the oracle-RECORDED canned rows answer — any prompt/
+        // selection/temperature divergence is a loud canned-miss.
+        let completion = canned_provider(want);
         let invoker = CustomToolLlmInvoker::new(
             &db,
             &completion,
@@ -344,8 +500,14 @@ fn run_custom_handler_matches_oracle() {
         let msgs = db
             .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
             .unwrap();
+        // The persisted llm_logs rows (P4.6bd): the resolved consult writes ONE
+        // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
+        let got_logs = common::dump_llm_logs(&db);
+        let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
+
+        assert_eq!(got_logs, want_logs, "case '{}' llm_logs rows", case.name);
 
         assert_eq!(
             canon(&v5_output(&out)),

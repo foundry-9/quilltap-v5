@@ -126,6 +126,15 @@ pub struct EngineAssembly {
     /// the un-refusal deferred).
     pub image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
     // === end P4.6ai ===
+    // === P4.6bd: the custom-tool consult seam ===
+    /// The custom-tool consult runner (P4.6bd, wired LIVE in the host — the
+    /// spine's wire-config runner with the 60 s timeout decorator). Behind the
+    /// `ChatCustomToolRun` / `CustomToolPreview` arms and the `run_custom` tool
+    /// path. `None` (read-only embedders, canned assemblies) → the dispatch
+    /// arms answer the loud not-assembled error; the in-turn tool path stays
+    /// fail-soft (see `tools/executor.rs`).
+    pub consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    // === end P4.6bd ===
 }
 
 impl EngineAssembly {
@@ -145,6 +154,7 @@ impl EngineAssembly {
             // === P4.6ai ===
             image_generation: None,
             // === end P4.6ai ===
+            consult: None,
         }
     }
 }
@@ -236,6 +246,10 @@ impl std::fmt::Display for BootError {
 }
 impl std::error::Error for BootError {}
 
+// One instance per engine, held behind the state mutex — the size skew between
+// the seam-laden Ready and the two-field Locked is irrelevant here, and boxing
+// would only add a pointer chase to every dispatch.
+#[allow(clippy::large_enum_variant)]
 enum EngineState {
     Locked {
         pepper_state: PepperState,
@@ -274,6 +288,9 @@ struct ReadyEngine {
     /// The `imageProfileGenerate` runner (P4.6ai; `None` for spine-less assemblies —
     /// the arm answers the loud not-assembled refusal).
     image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
+    /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
+    /// the composer/bench arms answer the loud not-assembled error).
+    consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -2735,11 +2752,9 @@ impl CoreEngine {
                 parameters,
                 private,
                 as_character_id,
-            } => match self.ready_db() {
-                Ok(db) => {
-                    super::custom_tools::chat_custom_tool_run::<
-                        crate::model::completion::CannedCompletionProvider,
-                    >(
+            } => match self.ready_db_and_consult() {
+                Ok((db, consult)) => {
+                    super::custom_tools::chat_custom_tool_run(
                         &db,
                         SINGLE_USER_ID,
                         &chat_id,
@@ -2747,12 +2762,9 @@ impl CoreEngine {
                         parameters,
                         private,
                         as_character_id,
-                        // DEFERRAL (loud, named): the consult provider is
-                        // UNWIRED here, exactly as it is for the preview arm and
-                        // the `run_custom` executor — the engine holds no
-                        // `CompletionProvider`. A composer-run custom tool with
-                        // an `llm` block shows the author's `errorMessage`.
-                        None,
+                        // The assembled consult seam (P4.6bd) — a composer-run
+                        // custom tool with an `llm` block consults for real.
+                        consult.as_deref(),
                     )
                     .await
                 }
@@ -2773,11 +2785,9 @@ impl CoreEngine {
                 private,
                 metadata,
                 llm,
-            } => match self.ready_db() {
-                Ok(db) => {
-                    super::custom_tools::custom_tool_preview::<
-                        crate::model::completion::CannedCompletionProvider,
-                    >(
+            } => match self.ready_db_and_consult() {
+                Ok((db, consult)) => {
+                    super::custom_tools::custom_tool_preview(
                         &db,
                         &definition,
                         params.as_ref(),
@@ -2785,14 +2795,10 @@ impl CoreEngine {
                         metadata.as_ref(),
                         llm.as_ref(),
                         SINGLE_USER_ID,
-                        // DEFERRAL (loud, named): the `{live:true}` bench arm is
-                        // UNWIRED here. The engine holds no `CompletionProvider`
-                        // — the same gap as the `run_custom` executor wire — so a
-                        // live preview falls through to the unwired seam and
-                        // shows the author's `errorMessage`. The scripted and
-                        // fail arms, which the differentials and the SPA bench
-                        // exercise, are fully live.
-                        None,
+                        // The assembled consult seam (P4.6bd) — the `{live:true}`
+                        // bench arm consults for real. The scripted and fail
+                        // arms never touch it.
+                        consult.as_deref(),
                     )
                     .await
                 }
@@ -3115,6 +3121,28 @@ impl CoreEngine {
                     "memory embedding not assembled (create/search embedding-seam deferral)",
                 )),
             },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + the OPTIONAL custom-tool consult seam under the readiness gate
+    /// (P4.6bd; the `ready_db_and_memory_embedding` shape). The arm's HANDLER
+    /// decides what a `None` seam means: the composer/bench arms answer the
+    /// loud not-assembled error only when a request actually wants a consult
+    /// (an `llm`-bearing definition / `{live:true}`), so seamless assemblies
+    /// keep serving every consult-free custom tool.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_consult(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.consult.clone())),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -3489,6 +3517,7 @@ fn open_ready(
         courier_resolve: assembly.courier_resolve,
         save_image_bytes: assembly.save_image_bytes,
         image_generation: assembly.image_generation,
+        consult: assembly.consult,
     })
 }
 

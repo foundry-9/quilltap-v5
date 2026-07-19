@@ -9,6 +9,103 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.6bd tier 1 — the consult wire, end to end (lane BD, 2026-07-18)
+
+**The mandate's dark seam is LIT.** One commit carries the whole tier-1 set
+(items 1–6 of the order): the erased consult seam, the host construction, the
+timeout decorator, all three entrances, the readiness gate, and the
+profile-bearing differentials.
+
+- **The seam (form (1), the `image_generation` idiom):** `ConsultRunner` in
+  `pascal::llm_consult` — `consult(db, context, prompt, options)` returning a
+  boxed future; the per-request `db`/`context` ride each call because the seam
+  is assembled once per unlock. `SeamConsultInvoker` adapts a runner + db +
+  context into the `LlmInvoker` the execution core consumes;
+  `ProviderConsultRunner<C>` is the provider-backed runner the harness uses.
+  `CompletionProvider` itself stays un-erased (RPITIT).
+- **The chain, mirroring `memory_embedding`:** `EngineAssembly.consult` +
+  `None` in `shutdown_only`; `ReadyEngine.consult` + the boot copy;
+  `ready_db_and_consult()` (the `ready_db_and_memory_embedding` shape — the
+  HANDLER decides what `None` means, so consult-free custom tools keep working
+  on seamless assemblies); `SpineBundle.consult`; the host.rs 9-tuple plumb.
+- **Host construction:** `HostConsultRunner { wire: WireConfig }` rebuilds
+  `wire.completion(db)` per consult (a key/profile change is live on the next
+  roll; the request's user/chat land on the log row) and wraps the invoker in
+  `TimeoutConsult` — shaped on `TimeoutConfirmation`, ceiling
+  `CONSULT_TIMEOUT_MS`, elapsed → `Failed { reason: consult_timeout_reason }`.
+  v4 puts `withTimeout` at the invoker boundary (`llm-consult.ts:159`); so does
+  this. Two spine unit tests pin the elapsed branch to the EXACT ported string
+  (the message has no v4 export) and the pass-through. The `llm_consult.rs`
+  DEFERRAL notes are retired in the same commit.
+- **The three entrances:** (a) `BuiltInToolRunner.consult` +
+  `with_consult`, threaded in `ChatSpine::tool_runner`; `run_run_custom` builds
+  a `SeamConsultInvoker` per run and calls the `_with_consult` form — the
+  4-arg wrapper stays for provider-less callers, its deferral note rewritten to
+  what is now true. (b)+(c) the two engine dispatch arms drop the
+  `CannedCompletionProvider` turbofish + `None` + DEFERRAL comments and pass
+  the assembled seam. `CustomToolAudit` keeps `allow_live = false` BY DESIGN.
+- **The readiness asymmetry (decided + documented):** the composer arm
+  (`chat_custom_tool_run`, llm-bearing definition) and the bench arm
+  (`custom_tool_preview`, `{live:true}`) answer the LOUD
+  `custom-tool consult not assembled (the consult seam — this assembly holds
+  no completion provider)` internal error when the seam is `None`; the
+  `run_custom` tool path inside a live model turn stays FAIL-SOFT (a wedged
+  tool call is worse than the author's `errorMessage` — why-comment at the
+  executor field and call site).
+- **The differentials, made profile-bearing (the tier-1 proof):**
+  `pascal_run_custom_handler_equivalence` grew `llm-consult-resolved` (13
+  cases) and `pascal_custom_tools_route_equivalence` grew
+  `run-oracle-consult-resolved` (11 cases). Both sides insert the SAME
+  connection profile through their real repos per case (the committed
+  fixture stays profile-free — the no-profiles cases depend on that); the v4
+  oracle mocks `createLLMProvider` with a recording canned provider
+  (`tier3-completion-oracle` keying: the exact
+  provider|model|temperature|messages entry is emitted and replayed into
+  `CannedCompletionProvider`, so any prompt/selection divergence is a loud
+  canned-miss), pins `getApiKeyForCheapLLMSelection`, and runs the REAL
+  `logLLMCall` into a per-case llm-logs DB; the Rust side materializes the
+  llm-logs partition per case (`common::materialize_llm_logs`) and diffs the
+  persisted `CUSTOM_TOOL_CONSULT` row (+ the empty dump pinned on every other
+  case). The resolved case's answer `YES` drives the oracle tool's
+  `eq: 'YES'` outcome row — output, provider, model, pascalMeta.llm, the
+  Pascal message, and the llm-log row all agree. Mutation-checked (a one-byte
+  prompt perturbation fails the llm_logs diff loudly). Oracles regenerated
+  fresh from v4 at `616930db` (clean tree).
+- **Tier-2 item 8 rode along:** v4's consult-dispatching `logger.debug` line
+  (`llm-consult.ts:119-128`) ported as the module-convention `eprintln!` with
+  the same eight fields at the same point (promptLength is UTF-16).
+- **Also:** `EngineState` gained `#[allow(clippy::large_enum_variant)]` (one
+  instance per engine, boxing buys nothing); the two quilltap-web canned spine
+  test factories (`chat_send_smoke`, `chat_create_end_to_end`) mechanically
+  gained `consult: None` (a struct-literal field addition — flagged for the
+  unifier; no behavior change).
+- **NO new committed `.db` family; no fixture regenerated** (the per-case
+  profile insert keeps `pascal-run-custom-{main,mount}.db` byte-identical, so
+  no other oracle family and no e2e seed is invalidated).
+- **Standing note (§4):** consults are now REAL SPEND on all three entrances.
+  The e2e salon custom-tools beat runs the roster's FIRST tool; if a future
+  fixture reorder ever puts an `llm`-bearing tool first, the beat would
+  attempt a live consult (fail-soft against the e2e instance's profiles) —
+  worth remembering, not currently the case.
+
+Oracle regen (each in its own invocation, Node 24, v4 checkout CLEAN at
+`616930db`):
+```
+cd ~/source/quilltap-server
+M=/tmp/qt-pascal-mirror; rm -rf $M; mkdir -p $M/cases $M/fixtures
+cp <V5W>/harness/oracle/cases/pascal-run-custom-handler.test.ts $M/cases/
+cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
+ln -sfn $PWD/node_modules $M/node_modules
+QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
+QT_FIXTURE_PASCAL_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson \
+  npx jest --silent --watchman=false --roots "$PWD" --roots "$M/cases" \
+  --testTimeout=180000 -- pascal-run-custom-handler
+# likewise pascal-custom-tools-route.test.ts (its own mirror + invocation)
+```
+
+Versions: core 0.0.280, host 0.0.21, harness 0.0.245.
+
 ## Round record — the unit-12 ∥ P4.6bb Workbench round (UNIFIED 2026-07-18)
 
 **On main** (`unify/unit12-p4.6bb`, fast-forwarded): lane AY's two commits
