@@ -8,10 +8,16 @@
  *    (home/aurora/prospero/scriptorium/files/photos/scenarios/generate-image/
  *    about/profile/character-new/settings-wizard).
  *  - **portal host** — terminal/document render the J1 portal-host chrome
- *    (`TabPortalHost`); lane J2 supplies the salon-side portal SOURCE at unify.
- *  - **loud not-yet-wired pane** — salon/settings/wardrobe/character-edit/
- *    character-view/custom-tools/document-standalone render `NotWiredPane`
- *    (ACTIVATE-AT-UNIFY over lane J2's §2 inputs); `brahma` renders a permanent
+ *    (`TabPortalHost`); the Salon (lane J2's `SalonModePanes`) supplies the
+ *    portal SOURCE.
+ *  - **input-driven screen** — salon/settings/character-edit/character-view/
+ *    custom-tools bind lane J2's §2 signal inputs from the tab payload
+ *    (ACTIVATED at the p4.9j unification).
+ *  - **loud not-yet-wired pane** — `wardrobe` (the `asTab` WardrobeView
+ *    variant was ported by NEITHER p4.9j lane — the P4.9f2 "not ported"
+ *    marker stands; a named p4.9j follow-up) and `document-standalone`
+ *    (lane J2's tier-2 item 7, deferred whole — needs the file-scoped
+ *    document surface) render `NotWiredPane`; `brahma` renders a permanent
  *    refusal pane naming `p4.9i1`.
  *
  * The map is behind an injection token so the keep-alive spec can substitute a
@@ -40,6 +46,20 @@ import { AboutPage } from '../../screens/about/about-page';
 import { ProfilePage } from '../../screens/profile/profile-page';
 import { NewCharacter } from '../../screens/characters/new/new-character';
 import { WizardScreen } from '../../screens/settings/wizard/wizard-screen';
+
+// Input-driven screens (lane J2's §2 dual-mode inputs, bound at unification).
+import { SalonConversation } from '../../screens/salon/salon-conversation';
+import { Settings } from '../../screens/settings/settings';
+import { CharacterEdit } from '../../screens/characters/edit/character-edit';
+import { CharacterDetail } from '../../screens/characters/view/character-detail';
+import { CustomToolsPage } from '../../screens/custom-tools/custom-tools-page';
+import type {
+  CharacterEditTabPayload,
+  CharacterViewTabPayload,
+  CustomToolsTabPayload,
+  SalonTabPayload,
+  SettingsTabPayload,
+} from '../workspace-contract';
 
 export interface TabViewEntry {
   component: Type<unknown>;
@@ -87,13 +107,42 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
     },
   },
 
-  // --- loud not-yet-wired panes (ACTIVATE-AT-UNIFY) + permanent brahma refusal ---
-  salon: refusal('salon'),
-  settings: refusal('settings'),
+  // --- input-driven screens (lane J2's §2 inputs, activated at unification) ---
+  salon: {
+    component: SalonConversation,
+    inputs: (tab) => ({ chatId: (tab.payload as SalonTabPayload | undefined)?.chatId ?? null }),
+  },
+  settings: {
+    component: Settings,
+    inputs: (tab) => {
+      const p = tab.payload as SettingsTabPayload | undefined;
+      return { tab: p?.tab ?? null, section: p?.section ?? null };
+    },
+  },
+  'character-edit': {
+    component: CharacterEdit,
+    inputs: (tab) => {
+      const p = tab.payload as CharacterEditTabPayload | undefined;
+      return { characterId: p?.characterId ?? null, tab: p?.tab ?? null };
+    },
+  },
+  'character-view': {
+    component: CharacterDetail,
+    inputs: (tab) => {
+      const p = tab.payload as CharacterViewTabPayload | undefined;
+      return { characterId: p?.characterId ?? null, tab: p?.tab ?? null };
+    },
+  },
+  'custom-tools': {
+    component: CustomToolsPage,
+    inputs: (tab) => {
+      const p = tab.payload as CustomToolsTabPayload | undefined;
+      return { mountPointId: p?.mountPointId ?? null, path: p?.path ?? null, create: p?.create ?? false };
+    },
+  },
+
+  // --- loud not-yet-wired panes (named deferrals) + permanent brahma refusal ---
   wardrobe: refusal('wardrobe'),
-  'character-edit': refusal('character-edit'),
-  'character-view': refusal('character-view'),
-  'custom-tools': refusal('custom-tools'),
   'document-standalone': refusal('document-standalone'),
   brahma: refusal('brahma'),
 };

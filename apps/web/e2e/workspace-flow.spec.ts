@@ -18,8 +18,14 @@ import { E2E_PASSPHRASE } from './support/env';
  *   2. a rail click opens a second tab; re-clicking de-dupes (focuses, no dup).
  *   3. `Ctrl+Alt+\` splits off the active tab; a reload restores the layout.
  *   4. a deep-link `/settings?tab=…&section=…` redirect carries its intent and
- *      strips the URL — the settings tab is a loud not-yet-wired pane in-lane
- *      (its real screen lands at unification).
+ *      strips the URL — landing on the REAL Settings screen with the payload
+ *      tab active (activated at the p4.9j unification).
+ *   5. (unify) the salon funnel: the rail's Chats leaves the workspace for the
+ *      standalone `/salon` list (v4-faithful); a chat click funnels back in
+ *      through the redirect guard and the salon tab renders the live
+ *      conversation.
+ *   6. (unify) the characters in-tab drill: a roster card click drills to the
+ *      detail IN PLACE (no navigation); back restores the list.
  */
 
 async function openWorkspace(page: Page): Promise<void> {
@@ -79,7 +85,7 @@ test('Ctrl+Alt+\\ splits the workspace; a reload restores the layout', async ({ 
   await expect(tabs(page)).toHaveCount(2);
 });
 
-test('a deep-link /settings redirect carries its intent and lands on a not-wired pane', async ({
+test('a deep-link /settings redirect carries its intent onto the real Settings screen', async ({
   page,
 }) => {
   await page.goto('/settings?tab=system&section=memory');
@@ -95,6 +101,50 @@ test('a deep-link /settings redirect carries its intent and lands on a not-wired
   await expect(page).toHaveURL(/\/workspace$/);
   // The settings tab opened (v4 default title "The Foundry")…
   await expect(tabLabel(page, 'The Foundry')).toBeVisible();
-  // …and renders the loud not-yet-wired pane in-lane (real screen at unify).
-  await expect(page.locator('[data-not-wired][data-kind="settings"]')).toBeVisible();
+  // …and renders the REAL Settings screen (activated at unification) with the
+  // payload's tab seeded active — no not-wired pane in sight.
+  await expect(page.locator('[data-not-wired]')).toHaveCount(0);
+  await expect(
+    page.locator('.qt-tab-group .qt-tab-active', { hasText: 'Data & System' }),
+  ).toBeVisible();
+});
+
+test('a chat opened from the salon list funnels into a live workspace salon tab', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  // The rail's Chats leaves the workspace for the standalone /salon list
+  // (v4-faithful: the salon LIST is not a tab kind).
+  await railLink(page, 'Chats').click();
+  const soloCard = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
+  await expect(soloCard).toBeVisible({ timeout: 15_000 });
+  // The chat click hits /salon/:id, whose redirect guard funnels straight back
+  // into the workspace as a salon tab carrying the chatId.
+  await soloCard.click();
+  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  // The REAL conversation renders inside the tab (activated at unification).
+  await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.qt-chat-composer-input .qt-rich-editor-content')).toBeVisible();
+});
+
+test('the characters tab drills to a detail in place and back restores the roster', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  await railLink(page, 'Characters').click();
+  await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  const aria = page
+    .locator('.character-card-grid .character-card')
+    .filter({ hasText: 'Aria' })
+    .first();
+  await aria.locator('p.line-clamp-3').click();
+  // The drill renders the detail IN PLACE — still /workspace, no navigation.
+  await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  // Back restores the kept-alive roster.
+  await page.getByRole('button', { name: '← Back to Characters' }).click();
+  await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
 });

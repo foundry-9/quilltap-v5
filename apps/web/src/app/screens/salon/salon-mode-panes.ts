@@ -49,10 +49,14 @@ interface PortaledPane {
  *
  * Lifecycle THIS lane drives (from the document set): opening a document spawns
  * its child tab; closing the document (it leaves `documentEntries`) closes the
- * tab. The REVERSE — closing the child tab closing the document, and the parent
- * Salon tab cascading — is reducer-side (lane J1); v5's reduced
- * {@link WorkspaceHandle} exposes no tab map, so J2 cannot poll it (v4 read
- * `ws.state.tabs`). That coordination lands at unify. Inert in routed mode (the
+ * tab. The REVERSE — closing the child tab closing the document / toggling the
+ * terminal off — is driven from the portal registry (the p4.9j unification
+ * wire): a child tab's `TabPortalHost` unregisters its node ONLY when the tab
+ * is closed (keep-alive tabs stay mounted hidden), so a previously-seen portal
+ * key with no node IS the close-tab signal. v4 read `ws.state.tabs` for this;
+ * v5's reduced {@link WorkspaceHandle} exposes no tab map, and the registry
+ * disappearance is the equivalent. The parent-Salon-tab cascade itself is
+ * reducer-side (lane J1's `CLOSE_TAB` child cascade). Inert in routed mode (the
  * three workspace tokens resolve null ⇒ the SplitLayout branch, byte-identical).
  */
 @Component({
@@ -141,6 +145,10 @@ export class SalonModePanes {
   /** docId → the child tab id this view opened. */
   private readonly docTabs = new Map<string, string>();
   private termTab: string | null = null;
+  /** Portal keys whose child-tab host has been seen registered — a seen key
+   * with no node means the child tab was CLOSED (the reverse-close signal). */
+  private readonly seenPortalKeys = new Set<string>();
+  private destroyed = false;
   /** docId → its live portaled pane; plus the single terminal pane. */
   private readonly docPanes = new Map<string, PortaledPane>();
   private termPane: PortaledPane | null = null;
@@ -175,6 +183,7 @@ export class SalonModePanes {
         if (!openIds.has(docId)) {
           ws.closeTab(tabId);
           this.docTabs.delete(docId);
+          this.seenPortalKeys.delete(this.docPortalKey(docId));
         }
       }
     });
@@ -195,6 +204,7 @@ export class SalonModePanes {
       } else if (this.termTab) {
         ws.closeTab(this.termTab);
         this.termTab = null;
+        this.seenPortalKeys.delete(this.terminalPortalKey());
       }
     });
 
@@ -262,7 +272,36 @@ export class SalonModePanes {
       }
     });
 
+    // The REVERSE close direction (the p4.9j unification wire): react to a
+    // previously-registered portal node disappearing — the child tab was
+    // closed — and close the document / toggle the terminal off. Guarded by
+    // `destroyed` so the teardown path (which also unregisters nodes via the
+    // hosts' own destroy) can never fire spurious server-visible closes.
+    effect(() => {
+      if (!this.inWorkspace() || !this.registry || this.destroyed) return;
+      const nodes = this.registry.nodes();
+      for (const docId of [...this.docTabs.keys()]) {
+        const key = this.docPortalKey(docId);
+        if (nodes[key]) this.seenPortalKeys.add(key);
+        else if (this.seenPortalKeys.has(key)) {
+          this.seenPortalKeys.delete(key);
+          this.docTabs.delete(docId);
+          this.closeDocument.emit(docId);
+        }
+      }
+      if (this.termTab) {
+        const termKey = this.terminalPortalKey();
+        if (nodes[termKey]) this.seenPortalKeys.add(termKey);
+        else if (this.seenPortalKeys.has(termKey)) {
+          this.seenPortalKeys.delete(termKey);
+          this.termTab = null;
+          this.closeTerminal.emit();
+        }
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
       this.teardownDocPanes();
       if (this.termPane) {
         this.destroyPane(this.termPane);

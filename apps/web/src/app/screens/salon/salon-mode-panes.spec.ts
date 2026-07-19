@@ -53,6 +53,7 @@ function entry(id: string, over: Partial<OpenDocEntry['document']> = {}): OpenDo
       [terminalContent]="terminalActive() ? term : null"
       [terminalActive]="terminalActive()"
       (closeDocument)="closeDoc($event)"
+      (closeTerminal)="terminalActive.set(false)"
     />
     <div #hostD1 data-testid="host-d1"></div>
     <div #hostD2 data-testid="host-d2"></div>
@@ -235,5 +236,61 @@ describe('SalonModePanes — workspace branch', () => {
     await settle(fixture);
     const still = hostEl(fixture, 'host-d1').querySelector('.qt-salon-portaled-pane') as HTMLElement;
     expect((still as unknown as { __live?: string }).__live).toBe('pty-attached');
+  });
+
+  // The REVERSE close direction (the p4.9j unification wire): the child tab's
+  // portal host unregisters ONLY on tab close, so a seen-then-vanished node is
+  // the close-tab signal (v4 polled `ws.state.tabs`; v5 has no tab map).
+  it('closes the document when its child tab closes (portal node vanishes)', async () => {
+    const { fixture, reg } = await render();
+    const key = portalKey('document', 'c1', 'd1');
+    reg.set(key, hostEl(fixture, 'host-d1'));
+    fixture.componentInstance.openDoc('d1');
+    await settle(fixture);
+    expect(fixture.componentInstance.entries().length).toBe(1);
+
+    // The user closes the child tab → its TabPortalHost unregisters the node.
+    reg.set(key, null);
+    await settle(fixture);
+    expect(fixture.componentInstance.entries().length).toBe(0);
+  });
+
+  it('does NOT close a document whose host never registered (no false positive)', async () => {
+    const { fixture } = await render();
+    fixture.componentInstance.openDoc('d1');
+    await settle(fixture);
+    // No node was ever registered under d1's key — nothing to vanish.
+    expect(fixture.componentInstance.entries().length).toBe(1);
+  });
+
+  it('toggles the terminal off when its child tab closes (portal node vanishes)', async () => {
+    const { fixture, reg } = await render();
+    const key = portalKey('terminal', 'c1');
+    fixture.componentInstance.terminalActive.set(true);
+    await settle(fixture);
+    reg.set(key, hostEl(fixture, 'host-d1'));
+    await settle(fixture);
+
+    reg.set(key, null);
+    await settle(fixture);
+    expect(fixture.componentInstance.terminalActive()).toBe(false);
+  });
+
+  it('reopening a document after a tab-close spawns a fresh child tab (no stale close)', async () => {
+    const { fixture, ws, reg } = await render();
+    const key = portalKey('document', 'c1', 'd1');
+    reg.set(key, hostEl(fixture, 'host-d1'));
+    fixture.componentInstance.openDoc('d1');
+    await settle(fixture);
+
+    reg.set(key, null); // child tab closed → doc closes
+    await settle(fixture);
+    expect(fixture.componentInstance.entries().length).toBe(0);
+
+    fixture.componentInstance.openDoc('d1'); // reopen — its host has not registered yet
+    await settle(fixture);
+    // The stale `seen` entry must not close the just-reopened document.
+    expect(fixture.componentInstance.entries().length).toBe(1);
+    expect(ws.docTabCount()).toBeGreaterThan(0);
   });
 });

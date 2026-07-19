@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.9J unification wires (SPA 0.5.208): the five ACTIVATE-AT-UNIFY tab kinds
+(salon, settings, character-edit, character-view, custom-tools) now bind lane
+J2's dual-mode inputs from their tab payloads in the workspace tab registry,
+replacing the not-yet-wired panes. The reverse close direction lands in
+SalonModePanes: a child tab's portal host unregisters its node only when the
+tab is closed (keep-alive tabs never unmount hidden), so a previously-seen
+portal key with no node closes the document / toggles the terminal off (v4
+polled ws.state.tabs; v5's reduced handle has no tab map) — with four new spec
+cases including the no-false-positive and stale-reopen guards. The
+workspace-flow e2e settings beat now asserts the real Settings screen with the
+payload tab active, plus two new activation beats: the salon-list funnel into
+a live salon tab, and the characters in-tab drill with back restoring the
+roster. Wardrobe and document-standalone remain loud not-wired panes (named
+p4.9j follow-ups: the asTab WardrobeView variant was ported by neither lane;
+the standalone document surface is lane J2's deferred tier-2 item 7); the pane
+copy now names each accurately.
+
 P4.9J1 (lane J1) unit 6: the e2e dual-mode harness. A shared Playwright test
 wrapper (apps/web/e2e/support/fixtures.ts) overrides the context fixture to
 addInitScript the per-browser opt-out (quilltap.workspace.tabs = '0') before app

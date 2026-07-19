@@ -24005,3 +24005,43 @@ dropped) and in the lane's final report, for `p4.9j` follow-up:
 Tier-3 deferrals from the order stand: `doc_focus` beats (fold into item 7),
 and cross-pane drag of the drill state (v4 doesn't have it either — recorded as
 not-a-gap).
+
+---
+
+## P4.9J unification wires (2026-07-19, SPA 0.5.208)
+
+The cross-lane proof obligations neither lane could do alone (the §2/§3
+AT-UNIFY column):
+
+- **The tab registry activation** (`workspace/chrome/tab-registry.ts`): salon →
+  `SalonConversation` (`chatId`), settings → `Settings` (`tab`/`section`),
+  character-edit → `CharacterEdit` (`characterId`/`tab`), character-view →
+  `CharacterDetail` (`characterId`/`tab`), custom-tools → `CustomToolsPage`
+  (`mountPointId`/`path`/`create`) — each `inputs` factory maps the §1 payload
+  onto lane J2's input aliases; a payload refresh re-applies through TabView's
+  reactive binding. Still `NotWiredPane` (copy updated to name each):
+  `wardrobe` (the `asTab` WardrobeView variant was ported by NEITHER lane —
+  the P4.9f2 "not ported" marker stands; §2 listed it AT-UNIFY but lane J2
+  delivered no wardrobe adaptation, so it stays a named p4.9j follow-up; the
+  character-screen wardrobe DIALOG entry points keep working) and
+  `document-standalone` (J2's tier-2 item 7, deferred whole). `brahma` stays
+  the permanent `p4.9i1` refusal.
+- **The reverse close direction** (`screens/salon/salon-mode-panes.ts`): a
+  child tab's `TabPortalHost` unregisters its portal node ONLY when the tab is
+  closed (keep-alive tabs stay mounted hidden), so a previously-seen key with
+  no node IS the close-tab signal. A new effect tracks `seenPortalKeys` and
+  emits `closeDocument`/`closeTerminal` on disappearance; the forward-close
+  branches drop their seen keys (no stale close on reopen); a `destroyed`
+  guard keeps teardown from firing spurious server-visible closes. Four new
+  spec cases (child-tab close closes the doc; never-registered host is not a
+  false positive; terminal toggle-off; reopen after tab-close spawns fresh).
+  The parent-Salon cascade itself is lane J1's reducer `CLOSE_TAB` arm,
+  already corpus-proven.
+- **The e2e activation beats** (`e2e/workspace-flow.spec.ts`): the settings
+  deep-link beat now lands on the REAL Settings screen (`Data & System`
+  active, zero `[data-not-wired]`); a new salon-funnel beat (rail Chats →
+  standalone /salon list → chat click → redirect guard → live conversation in
+  a salon tab); a new characters drill beat (roster card → detail in place at
+  /workspace → back restores). All read-only — no shared-fixture mutation.
+- `apps/web/package-lock.json` version fields synced (0.5.207 at the merge,
+  0.5.208 with this wire).
