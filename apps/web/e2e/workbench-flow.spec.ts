@@ -267,6 +267,10 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     const subject = page.getByLabel('Condition subject').first();
     await subject.selectOption('llm');
     await page.getByLabel('Comparator').first().selectOption('eq');
+    // llm/metadata eq defaults its literal to NUMBER with a type picker (v4
+    // `OutcomesSection.tsx:361`/`:681` — the beat's first live run caught the
+    // missing gesture); pick text before filling the answer.
+    await page.getByLabel('Literal type').first().selectOption('string');
     await page.getByLabel('Operand text').first().fill('YES');
     await page.getByLabel('Outcome message').first().fill('Assent: {{llm}}.');
 

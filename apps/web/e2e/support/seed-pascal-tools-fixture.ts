@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { makeDbKeyFile } from './dbkey';
@@ -39,8 +39,19 @@ import { ARTIFACTS_DIR, E2E_PASSPHRASE, FIXTURES_DIR, INSTANCE_DIR, TEST_PEPPER 
  * mutated.
  */
 
-/** Vault A's minted mount id, from `pascal-run-custom-main.db.meta.json`. */
-const PASCAL_VAULT_A = '67d3538d-54bf-49b7-be86-08d02654cb0c';
+/**
+ * Vault A's minted mount id, READ from `pascal-run-custom-main.db.meta.json`
+ * at seed time. The fixture's vault ids RE-MINT on every rebuild, so a
+ * transcribed literal here goes stale the moment the fixture regenerates —
+ * which is exactly what broke the first post-rebuild global-setup (the
+ * `616930db` round's unification). Every consumer reads the sidecar; so does
+ * this one now.
+ */
+const PASCAL_VAULT_A = (
+  JSON.parse(
+    readFileSync(resolve(FIXTURES_DIR, 'pascal-run-custom-main.db.meta.json'), 'utf8'),
+  ) as { vaultA: string }
+).vaultA;
 /** Aria's vault in the committed salon fixture (survey-verified 2026-07-17). */
 const ARIA_VAULT = '7e056034-f5ae-4fc6-a6ec-6c646b72d016';
 
