@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) unit 2: the WorkspaceService store. A signal-based store
+wrapping the pure reducer with v4 workspace-provider semantics: uuid minting,
+de-dupe-resolved openTab return id, refreshTab (the focus:false payload
+refresh), one-shot HOST-triggered hydration from localStorage (chat existence
+via CoreClient listChats — v4's isChatValid seam) with a hydrated signal
+gating intent, and debounced persist (250 ms) that never runs pre-hydration.
+Constructor-injected CoreClient so the store unit-constructs with a stub. Null
+instanceId (scoped storage-key form stays corpus-proven) is a named deferral.
+
 P4.9J1 (lane J1) unit 1: the workspace pure core + its tier-1 corpus. A new
 Node oracle case (harness/oracle/cases/workspace-core.ts) drives v4's real
 lib/workspace (reducer/persistence/tab-meta) and lib/navigation/route-to-intent

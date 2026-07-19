@@ -23556,3 +23556,33 @@ npx tsx ~/source/quilltap-v5/harness/oracle/cases/workspace-core.ts \
 Never hand-edit the fixture; regen + grep a known row (e.g.
 `combined-split-move-close`). Lane J1 owns regeneration whenever the v4 baseline
 moves.
+
+### Unit 2 — the WorkspaceService store (SPA 0.5.191)
+
+`apps/web/src/app/workspace/workspace.service.ts` — the concrete
+`WorkspaceHandle`, signal-based, port of v4 `workspace-provider.tsx`:
+
+- `state`/`hydrated` signals; uuid minting (`crypto.randomUUID`, defensive
+  fallback); `openTab` returns the de-dupe-resolved id (existing on a dup);
+  `refreshTab` = `openTab(..., { focus:false })` (the v4 payload-refresh path);
+  `closeTab`/`moveTab`/`reorderTab`/`setActive`/`setFocusedPane`/`splitTo`/
+  `unsplit`/`setSplitRatio`.
+- **Hydration is HOST-triggered** (`hydrateOnce()`, idempotent) rather than run
+  in a mount effect — the store stays inert (no chat fetch, no layout write) in
+  routed/flag-off mode until a host actually mounts. It fetches valid chat ids
+  via `CoreClient.dispatchExpect({type:'listChats'},'chats')` (v4's `isChatValid`
+  seam), reads localStorage, prunes, flips `hydrated`, and persists once.
+- **Debounced persist** (`PERSIST_DEBOUNCE_MS = 250`) fires on every dispatch
+  but returns early until `hydrated` (never clobbers a stored layout with the
+  pre-hydration default) — implemented as a direct `schedulePersist()` on
+  dispatch (equivalent to v4's state-effect; deterministic to test).
+- **Constructor injection** of `CoreClient` (not `inject()`) so the store
+  unit-constructs with a stub — no TestBed / Angular test env needed.
+- **Storage key**: `workspaceStorageKey(null)` — the unscoped form; per-instance
+  scoping is a NAMED tier-3 deferral (no client-visible instance id yet).
+
+Spec `workspace.service.spec.ts` (8 tests): default single-home + not-hydrated,
+openTab mint-vs-dedupe id, salon dedupe by chatId, refreshTab in-place refresh
+without focus, no-persist-before-hydration, debounced-persist-after-hydration,
+hydrate restore + dead-chat prune, hydrateOnce idempotency. Green under vitest
++ jsdom (and under `ng test`, which provides the DOM env).
