@@ -22,7 +22,7 @@
  *     `*_bytes` cases emit those bytes so the Rust canned `FileBytesStore`
  *     replays them exactly and the computed sha256 agrees.
  *
- * ── CASE COVERAGE (33) ───────────────────────────────────────────────────────
+ * ── CASE COVERAGE (41) ───────────────────────────────────────────────────────
  *   - the ROUTE envelope cases (list / entry / save / delete) — v4's
  *     `successResponse` is the RAW payload and `created` is RAW at 201;
  *   - list: default order (dedup collapse + the linkSummary counts), the three
@@ -38,6 +38,11 @@
  *     (404), and an unknown id (404);
  *   - save: the happy path (MUTATING — 201), the sha256 duplicate, the
  *     not-an-image / not-owned / not-found guards, and the two Zod fileId arms;
+ *   - image-info (P4.9a2, `GET /api/v1/images/[id]`): the populated
+ *     characterGalleryLinks (both gate legs), the documents-only-linkers empty
+ *     array, the minimal UPLOADED payload, the AVATAR+SYSTEM arm, the
+ *     blanked-sha 404 (read-side Zod re-validate), the no-ownership-check
+ *     quirk, and the two notFound('Image') arms;
  *   - delete: a link-only removal (fileGC false — two hard links survive), the
  *     LAST-link removal (fileGC true), the non-gallery link (400) and an unknown
  *     id (404).
@@ -83,10 +88,16 @@ interface Meta {
   saveNotImageFileId: string;
   saveNotOwnedFileId: string;
   missingFileId: string;
+  imageInfoLinkedId: string;
+  imageInfoDocLinksId: string;
+  imageInfoPlainId: string;
+  imageInfoAvatarId: string;
+  imageInfoNoShaId: string;
 }
 
 const LIST_ROUTE = '@/app/api/v1/photos/route';
 const ITEM_ROUTE = '@/app/api/v1/photos/[id]/route';
+const IMAGE_ROUTE = '@/app/api/v1/images/[id]/route';
 
 function mockRequest(url: string, method = 'GET', body?: unknown): unknown {
   return {
@@ -192,6 +203,13 @@ async function deleteRoute(id: string): Promise<{ status: number; body: unknown 
     }),
   );
 }
+/** P4.9a2 — the REAL `GET /api/v1/images/[id]` handler. */
+async function imageRoute(id: string): Promise<{ status: number; body: unknown }> {
+  const mod = (await import(IMAGE_ROUTE)) as { GET: (...a: unknown[]) => Promise<unknown> };
+  return respond(
+    await mod.GET(mockRequest(`${B}/images/${id}`), { params: Promise.resolve({ id }) }),
+  );
+}
 
 interface CaseSpec {
   name: string;
@@ -255,6 +273,28 @@ function buildCases(): CaseSpec[] {
     { name: 'save_missing_file', run: (_s, m) => saveRoute({ fileId: m.missingFileId }) },
     { name: 'save_absent_field', run: () => saveRoute({}) },
     { name: 'save_empty_field', run: () => saveRoute({ fileId: '' }) },
+
+    // ── IMAGE INFO (P4.9a2 — read-only; `GET /api/v1/images/[id]`) ──
+    // sha A → the two vault links pass the character+isPhotoAlbum gate; the
+    // Uploads copy and the notes/ link must not. Also the CHARACTER/THEME
+    // tagType split and the _count pair (Aria default + Bramwell's overrides).
+    { name: 'imageInfo_linked', run: (_s, m) => imageRoute(m.imageInfoLinkedId) },
+    // sha B → linkers exist but all live in 'documents' mounts → empty array.
+    { name: 'imageInfo_doc_links_only', run: (_s, m) => imageRoute(m.imageInfoDocLinksId) },
+    // An unlinked UPLOADED image — the minimal payload (width/height/generation
+    // fields omitted) and the UPLOADED→upload remap.
+    { name: 'imageInfo_plain_upload', run: (_s, m) => imageRoute(m.imageInfoPlainId) },
+    // category AVATAR passes the guard; source SYSTEM hits the 'upload' fallback.
+    { name: 'imageInfo_avatar_system', run: (_s, m) => imageRoute(m.imageInfoAvatarId) },
+    // The blanked-sha legacy row: the read-side Zod re-validate fails inside
+    // safeQuery's null-fallback, so findById reports it ABSENT → 404.
+    { name: 'imageInfo_no_sha', run: (_s, m) => imageRoute(m.imageInfoNoShaId) },
+    // The GET has NO ownership check (only auth) — the stranger's IMAGE row
+    // resolves, with the counts computed over the SESSION user's roster.
+    { name: 'imageInfo_not_owned', run: (_s, m) => imageRoute(m.saveNotOwnedFileId) },
+    // category ATTACHMENT → notFound('Image').
+    { name: 'imageInfo_not_image', run: (_s, m) => imageRoute(m.saveNotImageFileId) },
+    { name: 'imageInfo_unknown', run: (_s, m) => imageRoute(m.missingFileId) },
 
     // ── DELETE ──
     // A's Uploads link — two hard links survive, so no GC.

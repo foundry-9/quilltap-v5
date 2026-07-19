@@ -41,7 +41,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use quilltap_core::api::photos::{
-    photo_gallery_entry_get, photo_gallery_entry_remove, photo_gallery_list, photo_gallery_save,
+    image_info_get, photo_gallery_entry_get, photo_gallery_entry_remove, photo_gallery_list,
+    photo_gallery_save,
 };
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::files::FileEntry;
@@ -72,6 +73,11 @@ struct Meta {
     save_not_image_file_id: String,
     save_not_owned_file_id: String,
     missing_file_id: String,
+    image_info_linked_id: String,
+    image_info_doc_links_id: String,
+    image_info_plain_id: String,
+    image_info_avatar_id: String,
+    image_info_no_sha_id: String,
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -314,6 +320,45 @@ fn check_key_order(oracle: &HashMap<String, Value>, resp: &Response, failed: &mu
     }
 }
 
+/// Pin the RAW key sequence of the richest image-info payload (P4.9a2) — the
+/// `data` object's field order is v4's literal order at `route.ts:101-123`
+/// (with the nullable-optional keys present here), and the nested `tags[]` /
+/// `characterGalleryLinks[]` / `_count` objects each carry their own order.
+fn check_image_info_key_order(
+    oracle: &HashMap<String, Value>,
+    resp: &Response,
+    failed: &mut Vec<String>,
+) {
+    const CASE: &str = "imageInfo_linked_key_order";
+    let Some(got) = success_body(resp) else {
+        failed.push(CASE.to_string());
+        return;
+    };
+    let want = &oracle["imageInfo_linked"]["body"];
+    let keys = |v: &Value| -> Vec<String> {
+        v.as_object()
+            .map(|o| o.keys().cloned().collect())
+            .unwrap_or_default()
+    };
+    for (label, g, w) in [
+        ("envelope", &got, want),
+        ("data", &got["data"], &want["data"]),
+        ("tags[0]", &got["data"]["tags"][0], &want["data"]["tags"][0]),
+        (
+            "characterGalleryLinks[0]",
+            &got["data"]["characterGalleryLinks"][0],
+            &want["data"]["characterGalleryLinks"][0],
+        ),
+        ("_count", &got["data"]["_count"], &want["data"]["_count"]),
+    ] {
+        if keys(g) != keys(w) {
+            eprintln!("[{CASE}] {label}: got {:?} want {:?}", keys(g), keys(w));
+            failed.push(CASE.to_string());
+            return;
+        }
+    }
+}
+
 fn decode_bytes(oracle: &HashMap<String, Value>, case: &str) -> Vec<u8> {
     use base64::Engine;
     let b64 = oracle[case]["body"]["base64"].as_str().unwrap_or_default();
@@ -446,6 +491,23 @@ async fn photos_routes_equivalence() {
         let resp = photo_gallery_entry_get(&db, id);
         check(&oracle, name, &resp, &mut failed);
     }
+
+    // ── IMAGE INFO (P4.9a2 — read-only, shares the list copy) ─────────────
+    let linked = image_info_get(&db, user, &meta.image_info_linked_id);
+    check(&oracle, "imageInfo_linked", &linked, &mut failed);
+    check_image_info_key_order(&oracle, &linked, &mut failed);
+    for (name, id) in [
+        ("imageInfo_doc_links_only", &meta.image_info_doc_links_id),
+        ("imageInfo_plain_upload", &meta.image_info_plain_id),
+        ("imageInfo_avatar_system", &meta.image_info_avatar_id),
+        ("imageInfo_no_sha", &meta.image_info_no_sha_id),
+        ("imageInfo_not_owned", &meta.save_not_owned_file_id),
+        ("imageInfo_not_image", &meta.save_not_image_file_id),
+        ("imageInfo_unknown", &meta.missing_file_id),
+    ] {
+        let resp = image_info_get(&db, user, id);
+        check(&oracle, name, &resp, &mut failed);
+    }
     drop(db);
 
     // ── SAVE (each on its OWN copy — the happy path mutates) ──────────────
@@ -529,5 +591,5 @@ async fn photos_routes_equivalence() {
         failed.is_empty(),
         "photos routes differential failures: {failed:?}"
     );
-    eprintln!("photos_routes_equivalence: 32 checks green (+ the key-order claim)");
+    eprintln!("photos_routes_equivalence: 40 checks green (+ the two key-order claims)");
 }

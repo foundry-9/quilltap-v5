@@ -2955,6 +2955,10 @@ impl CoreEngine {
                 Ok(db) => super::photos::photo_gallery_entry_remove(&db, id).await,
                 Err(r) => r,
             },
+            Request::ImageInfoGet { id } => match self.ready_db() {
+                Ok(db) => super::photos::image_info_get(&db, SINGLE_USER_ID, &id),
+                Err(r) => r,
+            },
             // === end P4.9a ===
         }
     }

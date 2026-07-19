@@ -2075,6 +2075,15 @@ pub enum Request {
     PhotoGalleryEntryRemove {
         id: String,
     },
+    /// v4 `GET /api/v1/images/{id}` (`app/api/v1/images/[id]/route.ts:39-128`)
+    /// — the image-info read the deep detail modals hang off (P4.9a2): the file
+    /// row's metadata plus the DERIVED `tags[].tagType`, the
+    /// `characterGalleryLinks` reverse index (which character photo albums hold
+    /// a copy of these bytes), and the `_count` usage pair.
+    #[serde(rename_all = "camelCase")]
+    ImageInfoGet {
+        id: String,
+    },
     // === end P4.9a ===
 }
 
@@ -2238,8 +2247,9 @@ pub enum Response {
     // === end P4.9c ===
     // === P4.9a: the user photo gallery (lane A, append-only) ===
     /// A user-photo-gallery body: the list `{entries, total, hasMore}`, one
-    /// entry object, the save receipt `{linkId, mountPointId, …}`, or the
-    /// delete `{deleted, fileGC}`. Every one is emitted RAW by v4's
+    /// entry object, the save receipt `{linkId, mountPointId, …}`, the
+    /// delete `{deleted, fileGC}`, or the image-info `{data: {…}}` envelope
+    /// (P4.9a2 `ImageInfoGet`). Every one is emitted RAW by v4's
     /// `successResponse`/`created`, so the REST edge unwraps this variant and
     /// writes the value straight out. Pinned by `photos_routes_equivalence`.
     PhotoGallery(serde_json::Value),

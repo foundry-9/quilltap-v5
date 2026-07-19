@@ -53,6 +53,23 @@ diffs green over fresh 616930db oracles, mutation-checked. Consults on the
 composer, workbench {live:true} bench, and model-driven run_custom paths
 are now REAL SPEND against the configured cheap-LLM provider (the round's
 §4 note).
+P4.9a2 (image-detail modal family, lane A2) unit 1 - the imageInfoGet verb:
+v4's GET /api/v1/images/[id] read (app/api/v1/images/[id]/route.ts:39-128)
+ported whole - the {data} envelope with the source remap
+(UPLOADED/IMPORTED/GENERATED to upload/import/generated, SYSTEM falling back
+to upload), the DERIVED tags[].tagType (CHARACTER when the tagId is a
+character id, else THEME), the characterGalleryLinks reverse index gated on
+sha256 + mountStoreType 'character' + isPhotoAlbum, the _count usage pair,
+both notFound('Image') arms, and the read-side Zod re-validate mirror (an
+invalid sha256 row reads as absent, so it 404s - v4's safeQuery null
+fallback). Dispatch arm in the P4.9a engine fence; REST edge GET
+/api/v1/images/{id} in photos_routes. The photos-{main,mount}.db fixture
+family regrew five image-info rows (sha-A-linked, documents-only-linked,
+plain upload, AVATAR+SYSTEM, blanked-sha legacy) plus the Aria
+defaultImageId / Bramwell avatarOverrides usage staging;
+photos_routes_equivalence extended 32 to 40 checks (8 new imageInfo cases +
+an image-info key-order claim), green over a fresh 616930db oracle, mutation-
+checked.
 
 Round planned - the consult-wire + image-detail + wardrobe round (P4.6bd
 + P4.9a2 + P4.9f1 + P4.9f2): four work orders committed, docs only. P4.6bd

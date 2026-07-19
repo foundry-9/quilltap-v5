@@ -107,6 +107,24 @@ const DISABLED_MP = 'b0000000-0000-4000-8000-00000000dead';
 const SAVE_NOT_IMG = 'f1000000-0000-4000-8000-000000000001';
 const SAVE_NOT_OWN = 'f1000000-0000-4000-8000-000000000002';
 
+// The image-info rows (P4.9a2 — `GET /api/v1/images/{id}`). Each pins one arm
+// of the route: LINKED carries sha A (so its characterGalleryLinks resolve
+// through the two vault links, and NOT the Uploads/documents or notes/
+// non-album links); DOC carries sha B (linkers exist, none pass the
+// character+isPhotoAlbum gate → empty array); PLAIN/AVATAR/NOSHA pin the
+// UPLOADED/SYSTEM source remaps, the AVATAR category pass, and the
+// invalid-sha row v4's read-side Zod re-validate turns into a 404.
+const IMG_LINKED = 'f2000000-0000-4000-8000-000000000001';
+const IMG_DOC = 'f2000000-0000-4000-8000-000000000002';
+const IMG_PLAIN = 'f2000000-0000-4000-8000-000000000003';
+const IMG_AVATAR = 'f2000000-0000-4000-8000-000000000004';
+const IMG_NOSHA = 'f2000000-0000-4000-8000-000000000005';
+/** A non-character tag id — derives `tagType: 'THEME'` on the wire. */
+const THEME_TAG = 'e7000000-0000-4000-8000-000000000077';
+/** The two avatar-override chat ids Bramwell's `_count` arm carries. */
+const OVERRIDE_CHAT_1 = 'c1000000-0000-4000-8000-000000000001';
+const OVERRIDE_CHAT_2 = 'c1000000-0000-4000-8000-000000000002';
+
 // The four photo images + the disabled-mount one. Distinct bytes → distinct
 // sha256, which is what the dedup collapse is keyed on.
 const PNG_HEAD = [
@@ -496,6 +514,110 @@ async function main(): Promise<void> {
     { id: SAVE_NOT_OWN, createdAt: TS, updatedAt: TS } as never,
   );
 
+  // 6b. The image-info rows (P4.9a2). IMG_LINKED reuses sha A, so the route's
+  //     characterGalleryLinks walk resolves the SAME mount links staged in
+  //     step 4: Aria's + Bramwell's vault `photos/` links pass the
+  //     `character && isPhotoAlbum` gate; the Uploads copy (storeType
+  //     'documents') and the `notes/` link (not an album path) must NOT.
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      // ARIA is a character id → tagType CHARACTER; THEME_TAG is not → THEME.
+      tags: [ARIA, THEME_TAG],
+      sha256: shas.A,
+      originalFilename: 'dawn-flight.webp',
+      mimeType: 'image/webp',
+      size: 2048,
+      width: 1024,
+      height: 768,
+      source: 'GENERATED',
+      category: 'IMAGE',
+      generationPrompt: 'An aeronaut catching the first light above a district of brass lanterns.',
+      generationModel: 'fixture-model',
+    } as never,
+    { id: IMG_LINKED, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      tags: [THEME_TAG],
+      sha256: shas.B,
+      originalFilename: 'covenant-vigil.webp',
+      mimeType: 'image/webp',
+      size: 512,
+      source: 'IMPORTED',
+      category: 'IMAGE',
+    } as never,
+    { id: IMG_DOC, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      tags: [],
+      sha256: 'eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555eeee5555',
+      originalFilename: 'plain-upload.png',
+      mimeType: 'image/png',
+      size: 100,
+      source: 'UPLOADED',
+      category: 'IMAGE',
+    } as never,
+    { id: IMG_PLAIN, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      tags: [],
+      sha256: 'aaaa7777aaaa7777aaaa7777aaaa7777aaaa7777aaaa7777aaaa7777aaaa7777',
+      originalFilename: 'system-avatar.png',
+      mimeType: 'image/png',
+      size: 256,
+      width: 256,
+      height: 256,
+      source: 'SYSTEM',
+      category: 'AVATAR',
+    } as never,
+    { id: IMG_AVATAR, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      linkedTo: [],
+      tags: [],
+      sha256: 'bbbb8888bbbb8888bbbb8888bbbb8888bbbb8888bbbb8888bbbb8888bbbb8888',
+      originalFilename: 'legacy-no-sha.png',
+      mimeType: 'image/png',
+      size: 64,
+      source: 'UPLOADED',
+      category: 'IMAGE',
+    } as never,
+    { id: IMG_NOSHA, createdAt: TS, updatedAt: TS } as never,
+  );
+  // The legacy-shaped row: blank the hash AFTER the Zod-validated create. An
+  // empty string fails `z.string().length(64)` on the READ side, so v4's
+  // `findById` (validate inside safeQuery's null-fallback) reports the row
+  // ABSENT and the route 404s — the arm the differential pins.
+  await rawQuery('UPDATE "files" SET "sha256" = ? WHERE "id" = ?', ['', IMG_NOSHA]);
+
+  // 6c. The `_count` usage pair (route.ts:56-59): Aria uses IMG_LINKED as her
+  //     default image (→ charactersUsingAsDefault 1); Bramwell overrides his
+  //     avatar with it in two chats (→ chatAvatarOverrides 2). Raw UPDATEs so
+  //     the characters' pinned `updatedAt` stamps survive.
+  await rawQuery('UPDATE "characters" SET "defaultImageId" = ? WHERE "id" = ?', [
+    IMG_LINKED,
+    ARIA,
+  ]);
+  await rawQuery('UPDATE "characters" SET "avatarOverrides" = ? WHERE "id" = ?', [
+    JSON.stringify([
+      { chatId: OVERRIDE_CHAT_1, imageId: IMG_LINKED },
+      { chatId: OVERRIDE_CHAT_2, imageId: IMG_LINKED },
+    ]),
+    BRAMWELL,
+  ]);
+
   // 7. Force the empty tables the read path touches into existence (the salon
   //    fixture's lesson — the Rust side has no lazy CREATE TABLE).
   await ensureCollection('memories', (await import('@/lib/schemas/memory.types')).MemorySchema);
@@ -527,6 +649,11 @@ async function main(): Promise<void> {
     saveNotImageFileId: SAVE_NOT_IMG,
     saveNotOwnedFileId: SAVE_NOT_OWN,
     missingFileId: '00000000-0000-4000-8000-00000000ffff',
+    imageInfoLinkedId: IMG_LINKED,
+    imageInfoDocLinksId: IMG_DOC,
+    imageInfoPlainId: IMG_PLAIN,
+    imageInfoAvatarId: IMG_AVATAR,
+    imageInfoNoShaId: IMG_NOSHA,
   };
   writeFileSync(mainOut + '.meta.json', JSON.stringify(meta));
 

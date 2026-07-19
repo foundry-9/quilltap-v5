@@ -170,6 +170,34 @@ QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson \
 Versions: core 0.0.280, host 0.0.21, harness 0.0.245.
 
 ## Round record — the unit-12 ∥ P4.6bb Workbench round (UNIFIED 2026-07-18)
+## Lane P4.9a2 — the image-detail modal family (in progress, 2026-07-18)
+
+Branch `claude/image-detail-modals-porting-d2ab4d`, v4 baseline `616930db`
+(drift-checked clean at lane start). Order:
+`docs/developer/porting/work-orders/p4.9a2-image-detail-modals.md`.
+
+**Unit 1 — `imageInfoGet` (the verb + fixture + differential).** v4
+`GET /api/v1/images/[id]` (`route.ts:39-128`) → `api::photos::image_info_get`
+(a nested main+mount read, the `chat_media::read_both` idiom): the raw
+`files` row SELECT (numeric cells through `js_number_to_json` — REAL
+affinity), the read-side Zod re-validate MIRROR (v4 validates every read
+against `FileEntrySchema` inside `safeQuery`'s null-fallback,
+`base.repository.ts:121`/`:246`, so an invalid-sha row reads as ABSENT and
+404s — the ORDER's "no sha256 → empty array" parenthetical was wrong, the
+oracle confirmed 404), the roster-derived `tagType`, the `source` remap with
+`SYSTEM→upload` fallback (a FOURTH enum value the order's list omitted), the
+sha256 + `character`+`isPhotoAlbum` gate over the ported
+`photo_link_summary`, the `_count` pair over `characters_read::find_by_user_id`,
+and the nullable-optional omit-when-NULL split (`width`/`height`/
+`generationPrompt`/`generationModel`). Engine arm inside the `=== P4.9a ===`
+fence; REST edge `GET /api/v1/images/{id}` (raw body, both 404 arms). The
+GET has NO ownership check in v4 (auth only) — pinned by `imageInfo_not_owned`.
+Fixture: five new pinned `f2…` file rows + the Aria/Bramwell usage staging
+(raw UPDATEs to preserve pinned `updatedAt`); sidecar meta grew the five ids.
+Differential: `photos_routes_equivalence` 32 → 40 checks + the
+`imageInfo_linked` key-order claim (envelope/data/tags/links/_count),
+mutation-checked (a broken source remap fails). Oracle regen recipe
+unchanged (the case-file header); fresh `616930db` run: 42 NDJSON rows.
 
 **On main** (`unify/unit12-p4.6bb`, fast-forwarded): lane AY's two commits
 (unit 12 parts 2a + 2b — cherry-picked first, the server before its

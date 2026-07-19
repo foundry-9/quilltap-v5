@@ -188,3 +188,21 @@ pub async fn photo_entry_delete(
         Err(r) => r,
     }
 }
+
+// ===========================================================================
+// /api/v1/images/{id} (P4.9a2 — the image-info read)
+// ===========================================================================
+
+/// v4 `GET /api/v1/images/[id]` — the `{data: {…}}` image-info envelope the
+/// deep detail modals read (`ImageDetailModal.tsx:43-46`,
+/// `ChatGalleryImageViewModal.tsx:63`). RAW body at 200; both 404 arms answer
+/// v4's `notFound('Image')`.
+pub async fn image_info_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+) -> AxumResponse {
+    match dispatch_core(&state, CoreRequest::ImageInfoGet { id }).await {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}

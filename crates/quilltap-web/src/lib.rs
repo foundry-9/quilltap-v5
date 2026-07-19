@@ -231,6 +231,8 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/photos/{id}",
             get(photos_routes::photo_entry_get).delete(photos_routes::photo_entry_delete),
         )
+        // P4.9a2: the image-info read the deep detail modals hang off.
+        .route("/api/v1/images/{id}", get(photos_routes::image_info_get))
         // === end P4.9a ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
