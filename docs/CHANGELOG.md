@@ -2,6 +2,40 @@
 
 ## Recent Changes
 
+The P4.6bd + P4.9a2 + P4.9f1 + P4.9f2 unification (the consult-wire +
+image-detail + wardrobe round, COMPLETE): all four lanes land, all four
+orders CLOSE, and p4.9a closes with P4.9a2. The llm consult is LIVE in
+production on all three entrances (the erased ConsultRunner seam, the host
+runner rebuilding the provider per consult, the 60s TimeoutConsult
+decorator - the P4.d8 timeout deferral closes with it), so custom-tool
+consults now cost real money. The deep image-detail modal family lands with
+the imageInfoGet verb (photos_routes_equivalence 32 -> 40 checks) and closes
+P4.9a's deferred tier 2. The wardrobe pair lands whole: the server surface
+(chat equip with all seven modes incl. v4's deprecated equip alias, outfit
+read, the transfers pair, the global archetype tier; a new committed
+wardrobe-routes fixture family and a 74-check/66-case differential) and the
+SPA dialog family (control dialog in both modes, tier-routed item editor,
+transfer dialog, three entry points, the disabled wardrobe-tab stub
+retired). Unification wires: the SS-1 CoreRequest folds for imageInfoGet
+and the eleven wardrobe verbs with both lanes' casts retired, EquippedSlots
+moved into core-contract as a wire shape, and the SS-3 rider swapping
+photos_routes.rs onto the canonical jsnum::number_from_str (stricter, and
+matching v4 where the local twin did not: Number('+0x10') is NaN). F2's
+ACTIVATE-AT-UNIFY in-chat beat self-activated over F1's server. Gate: fmt +
+clippy -D warnings on both feature sets + release build clean; cargo test
+354 binaries / 1,450 / 0 failed with the round's 7 differentials run by name
+over oracles regenerated at the PINNED 616930db, zero SKIP; ng test 171
+files / 2,004; ng build clean; full Playwright 86/86 zero skips. Versions
+recounted from the commits (two silent collisions caught): core 0.0.283,
+web 0.0.34, host 0.0.22, harness 0.0.246, SPA 0.5.183. KNOWN GAP:
+wardrobePreviewAvatar is half-live - its render step answers a typed
+refusal until the avatar_preview host wire lands, which is blocked on the
+already-deferred WebP codec seam, so the out-of-chat Preview button reaches
+a loud refusal. DRIFT: v4 has moved to b8b12695 (LaTeX/KaTeX math rendering
+- it refactors markdown-renderer.service.ts and adds markdown-postprocess.ts
++ lib/markdown/math.ts), deliberately NOT absorbed this round; the oracle
+baseline stays 616930db and a catch-up round is owed.
+
 P4.6bd tier 2, the live-wire bench differential: the shared workbench route
 corpus gains preview-live-consult - the {live:true} bench arm exercised
 through the ASSEMBLED consult seam. Profile-bearing (both sides insert the

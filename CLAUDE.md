@@ -738,12 +738,45 @@ records THERE. Update this summary only when a phase or round completes.
   natural first item of the next order. Next candidates: that consult
   wire, P4.9a tier 2 (deep gallery modals), `p4.9j` (workspace tabs —
   retirement gates on it), or M6 items 5+ — see phase-4.md.
+- **The consult-wire + image-detail + wardrobe round (P4.6bd ∥ P4.9a2 ∥
+  P4.9f1 ∥ P4.9f2): UNIFIED on main (2026-07-19) — ALL FOUR CLOSED, and
+  `p4.9a` closes with P4.9a2.** The consult wire (the erased
+  `ConsultRunner` seam + `HostConsultRunner` + the 60 s `TimeoutConsult`
+  — **the llm consult is LIVE on all three entrances and now costs real
+  money**; the P4.d8 timeout deferral closes with it) + the `jsnum`
+  canonicalization ∥ the image-detail modal family (`imageInfoGet`, the
+  deep modals, prev/next with the nested-Escape suppression, the aurora
+  gallery tab) ∥ the wardrobe server surface (chat equip **all seven
+  modes incl. v4's deprecated `equip` alias**, outfit read, transfers,
+  the global archetype tier; new `wardrobe-routes-{main,mount}.db` +
+  74 checks / 66 cases) ∥ the wardrobe SPA (the control dialog in both
+  modes, the tier-routed item editor, three entry points, the stub
+  retired). Gate: 354 binaries / 1,450 / 0, the round's 7 differentials
+  by name zero SKIP, clippy both feature sets, ng test 171 files /
+  2,004, full Playwright 86/86 zero skips. **⚠ One user-visible gap:
+  `wardrobePreviewAvatar` is half-live** — its render step is
+  refusal-armed pending the `avatar_preview` host wire, which is blocked
+  on the already-deferred production WebP codec seam; that wire is the
+  natural first item of the next order. **⚠ v4 has DRIFTED to
+  `b8b12695`** (LaTeX/KaTeX — it refactors `markdown-renderer.service.ts`
+  and touches PORTED markdown/message-rendering surfaces); deliberately
+  NOT absorbed, a catch-up round is owed. Next candidates: the
+  `avatar_preview` wire + the WebP codec, the `b8b12695` drift catch-up,
+  `p4.9j` (workspace tabs — retirement gates on it, wants a DEDICATED
+  round), `p4.9i1`/`p4.9i2`, or M6 rows 5+ — see phase-4.md.
 - **Oracle baseline: v4 `616930db` (4.8.0-dev.75), adopted 2026-07-18
   at the drift-catch-up unification.** Every family the llm-consult
   drift touched regenerated there (the drift was
   Pascal-family-confined); untouched families' committed oracles keep
-  their earlier regen vintages. Versions: core 0.0.279, harness
-  0.0.244, host 0.0.20, web 0.0.31, quilltap-tauri 0.0.4, SPA 0.5.175.
+  their earlier regen vintages. **⚠ v4 HEAD has since moved to
+  `b8b12695` (LaTeX/KaTeX math rendering) and the baseline deliberately
+  did NOT follow it** (the 2026-07-19 unification, by the human's
+  instruction) — regenerate every oracle from the PINNED detached
+  worktree `/private/tmp/qt-v4-pin-616930db` until a catch-up round
+  moves the baseline; that drift touches ported markdown surfaces, so
+  the markdown family is its classification target. Versions (after the
+  2026-07-19 unification): core 0.0.283, harness 0.0.246, host 0.0.22,
+  web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.183.
   The previous baseline paragraph follows for history:
   v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification (every family the drift touched

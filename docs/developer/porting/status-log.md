@@ -23078,3 +23078,127 @@ worktree's own binaries; `cargo fmt/clippy/test` baseline confirmed
 untouched (`git diff main -- crates/ Cargo.toml Cargo.lock harness/` is
 EMPTY — this pure-SPA lane changed no Rust); `ng test` / `ng build`
 clean. Results recorded in the lane's final report. SPA 0.5.182.
+
+---
+
+## The P4.6bd ∥ P4.9a2 ∥ P4.9f1 ∥ P4.9f2 unification — the consult-wire + image-detail + wardrobe round, COMPLETE (2026-07-19)
+
+All four lanes unified onto main; **the round closes whole** — P4.6bd,
+P4.9a2, P4.9f1, P4.9f2 all CLOSED, and **`p4.9a` closes with P4.9a2**
+(no residual tier 2). Cherry-picked in dependency order (BD → A2 → F1 →
+F2) onto `unify/consult-image-wardrobe`; CHANGELOG and status-log
+unions rebuilt both-sides; versions RECOUNTED from the commits.
+
+**Scope was audited item-by-item against each order's tier list rather
+than trusted.** Both audits came back complete: BD 6/6 tier 1 + 3/3
+tier 2; A2 6/6 + 4/4; F1 5/5 tier 1 (tier 2 with one named gap); F2
+5/5 + 3/3. **§2 contract fidelity verified name-for-name**: every verb
+and payload F2 sends matches F1's implementation, the seven-mode union
+byte-identical in membership and order. No round-breaking divergence.
+
+**The wires.** (1) **§1 folds** — `imageInfoGet` and the eleven wardrobe
+verbs (incl. the additive `wardrobeItemGet`) folded into `CoreRequest`
+name-for-name against `api/types.rs`; both lanes' `as unknown as
+CoreRequest` casts retired at their choke-points
+(`images.api.ts`'s `fetchCharacterGalleryLinks`, `wardrobe.api.ts`'s
+`dispatchWardrobe`); the local declarations became re-exports.
+`EquippedSlots` moved INTO `core-contract.ts` as a wire payload shape,
+re-exported by `wardrobe/equipped-slots.ts` (the `WardrobeItemDto`
+precedent) so core-contract keeps its no-imports rule. (2) **§3 rider,
+finally actionable** — `photos_routes.rs`'s local `js_number` twin
+retired onto BD's canonical `jsnum::number_from_str`; both lanes had
+independently recorded the rider. **The swap also closes a latent
+fidelity gap:** JS takes no sign on a radix literal, so
+`Number('+0x10')` is NaN where the twin returned 16. (3) **F2's
+ACTIVATE-AT-UNIFY beat SELF-ACTIVATED** over F1's server — its
+"unknown variant" probe needed no manual un-skip.
+
+**Two silent version collisions, caught by recounting from the
+COMMITS** (the standing `p4.6aw/ax` lesson, firing exactly as
+documented): `quilltap-host` had BOTH BD and F1 bump `0.0.20 → 0.0.21`
+(recounted to **0.0.22**), and the SPA had A2 and F2 both start from
+`0.5.175` (recounted to **0.5.183**). Final: core **0.0.283**, web
+**0.0.34**, host **0.0.22**, harness **0.0.246**, SPA **0.5.183**.
+
+**Three things the gate caught that a lane could not:**
+
+1. **A stale oracle nearly passed as fresh.** The workbench-route regen
+   "failed" in 0.24 s yet `/tmp/oracle-pascal-workbench-route.ndjson`
+   held 44 plausible rows — left over from the LANE's own run in a
+   different worktree, since `/tmp` is shared. Deleting the file first
+   proved it had never regenerated (two missing inputs: the
+   `workbench.json` spec alongside the corpus, and the
+   `QT_FIXTURE_WORKBENCH_*` vars). **Delete the target before every
+   regen**; `oracle-regen-silent-stale-pass` now has a sharper edge —
+   a shared `/tmp` makes lane artifacts look like unifier output.
+2. **A tsx oracle cannot run from the v5 path.** `llm-number.ts`
+   imports bare `zod` + `@/lib/...`, which resolve only inside the v4
+   tree; run from the pin it died with `ERR_MODULE_NOT_FOUND`. Fix:
+   mirror the case INTO the pin (`$PIN/qt-oracle-tmp/`) and run it
+   there, so both the package and the tsconfig alias resolve.
+3. **F2 committed a stray Playwright artifact** —
+   `test-results/.last-run.json`, reading `{"status":"failed"}` with an
+   empty failure list, which contradicts the lane's green gate on a
+   casual read. Dropped, and `.gitignore` grew the root-level
+   `test-results/` + `playwright-report/` rules that let it through
+   (only `apps/web/test-results` was ignored).
+
+**Two accepted deviations, both self-flagged by their lane** (recorded
+in the order headers): F1 added a NEW `ErasedAvatarPreview` seam where
+its order said reuse `image_generation` — accepted, since that seam is
+a prompt→image generation runner while preview-avatar needs a raw
+portrait render + WebP transcode, so the order's instruction rested on
+an incomplete survey; and A2 shipped a refusal-armed
+`DELETE /api/v1/images/{id}` the order did not authorize — accepted,
+because v4's orphan-cleanup handler is genuinely outside §1 and a mute
+405 would have hidden the gap.
+
+**The gate** (on the unify branch; oracles regenerated at the PINNED
+`616930db`, since v4 has drifted — see below): `cargo fmt --all
+--check` clean; clippy `-D warnings` clean on BOTH feature sets;
+release build clean; `cargo test --workspace --no-fail-fast` **354 test
+binaries / 1,450 tests / 0 failed**; the round's **7 differentials run
+BY NAME** with `--nocapture`, **zero SKIP** — wardrobe-routes 74 checks
+/ 66 cases, photos 40 checks, run-custom handler 13, custom-tools route
+11, workbench route 44, llm-number 54+19, pseudo-tool-parsers 138. SPA:
+`ng test` **171 files / 2,004**; `ng build` clean; **full Playwright
+86/86, zero skips** (main was 83/83; +3: the image-detail beat and both
+wardrobe beats, the in-chat one self-activated).
+
+**⚠ THE ROUND'S ONE USER-VISIBLE GAP: `wardrobePreviewAvatar` is
+half-live.** Its guards, prompt, vault write, files row and response
+shape run live; the RENDER step answers a typed refusal until the
+`avatar_preview` host wire lands, so F2's out-of-chat Preview button
+reaches a loud refusal. **The wire is blocked on an already-known
+refusing seam — the production WebP codec** (a standing P4.6y
+deferral), which is why it could not simply be closed here. Closing it
+means porting that codec first. **This is the natural first item of the
+next order.**
+
+**⚠ v4 HAS DRIFTED — deliberately not absorbed (the human's
+instruction: "we'll fix drift in the next iteration").** v4 HEAD moved
+`616930db` → **`b8b12695`**, ONE commit: *"LaTeX math rendering via
+KaTeX in chat, help docs, and file previews."* Classification: it
+**refactors `lib/services/markdown-renderer.service.ts` (-207/+…)**,
+adds `lib/services/markdown-postprocess.ts` (+198) and
+`lib/markdown/math.ts` (+63), plus `MessageContent.tsx`,
+`FilePreviewText.tsx`, `HelpTopicReader.tsx`, `_chat.css`,
+`help/math-notation.md`, and `lib/help-guide/categories.ts`. **This
+touches PORTED surfaces** — v5's markdown dialect / `qt-rich-editor` /
+message rendering — so a catch-up round is owed and the markdown
+family is its classification target (exactly as the P4.6bd addendum
+predicted). **The oracle baseline REMAINS `616930db`**; every oracle
+this round regenerated came from the pinned detached worktree
+`/private/tmp/qt-v4-pin-616930db`. Keep using that pin until the
+catch-up round moves the baseline.
+
+**Standing after this round (the next-order pool):** the
+`avatar_preview` host wire + the WebP codec it needs (the named first
+item); the **`b8b12695` markdown/KaTeX drift catch-up**; the
+`js_number_to_json` serialization rider (~9 copies); `p4.9j` workspace
+tabs (v4 retirement gates on it — wants a DEDICATED round, it rewrites
+the shell); `p4.9i1`/`p4.9i2` (Brahma / HelpChat, split at planning);
+`p4.9g`, `p4.9h`, the `p4.9e*` chat-dialog family; and the wardrobe
+family's own named deferrals (`analyze-image`, `outfit-summary`, the
+import-from-image modal, the `asTab` WardrobeView, the participant-card
+entry that awaits a participant card existing at all).

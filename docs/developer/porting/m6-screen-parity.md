@@ -618,13 +618,13 @@ lanes). These are liftable straight into `/setupphase`.
 
 | # | Slug | What | Size | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | ~~`p4.9a-photos-view`~~ → `p4.9a2-image-detail-modals` | **CLOSED in part 2026-07-18.** `/photos` + PhotosView + the nav flip LANDED. The remainder is re-scoped: `/photos` is 100% ported (v4's screen opens only a private inline modal), so what is left is the IMAGES family — `imageInfoGet`, `image-detail/`, ChatGalleryImageViewModal, prev/next, `EmbeddedPhotoGallery`. **Tag edit is OUT: it does not exist in v4's UI** (endpoints live, no caller) | lane | photo-album verbs (P4.6ab, landed) |
+| 1 | ~~`p4.9a-photos-view`~~ → ~~`p4.9a2-image-detail-modals`~~ **DONE 2026-07-19** | **CLOSED in part 2026-07-18.** `/photos` + PhotosView + the nav flip LANDED. The remainder is re-scoped: `/photos` is 100% ported (v4's screen opens only a private inline modal), so what is left is the IMAGES family — `imageInfoGet`, `image-detail/`, ChatGalleryImageViewModal, prev/next, `EmbeddedPhotoGallery`. **Tag edit is OUT: it does not exist in v4's UI** (endpoints live, no caller) | lane | photo-album verbs (P4.6ab, landed) |
 | 2 | `p4.9c-about-profile` | `/about` + `/profile` + ThemePreviewModal; render the version **locally** (divergence from v4's shields.io fetch) | rider | none |
 | 3 | `p4.9b-generate-image-screen` | `/generate-image` route + StandaloneGenerateImageDialog + ImageProfilePicker; un-omits the homepage quick action | lane | `image_generation` seam (P4.6ai, LIVE) |
 | 4 | `p4.9d-quick-hide-provider` | the provider + tag-hide + hide-dangerous across salon list, home, characters, prospero; the `tags-tab` `quickHide` authoring column | lane | tags surface (landed) |
 | 5 | `p4.9g-data-system-tab` | the Data & System tab + its 8 dialogs (LLMLogViewer ×2 hosts, backup, restore, export, import, capabilities, search) + image-profile validate/list-models | round | llm-logs reads (P4.6ar, landed); live providers for validate |
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
-| 7 | `p4.9f` → **`p4.9f1` + `p4.9f2`** | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
+| 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |
 | 9 | `p4.9e2-chat-post-office-dialogs` | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points + DnD upload** | lane | post-office writers (landed) |
 | 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | `?action=update-tool-settings` (`core-contract.ts:858`) |
@@ -634,6 +634,16 @@ lanes). These are liftable straight into `/setupphase`.
 | 14 | `p4.9l-salon-composer-toolbar` | `roleplayTemplateId`-aware toolbar delimiters — a composer vertical, **not** a rider (`phase-4.md:1615-1618`) | lane | a composer toolbar must exist first |
 | 15 | `p4.9m-toast-bus` | a toast bus; terminal exit/kill toasts; `chat-update` side effects; xterm optional addons | rider | none |
 | 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | ~~a human ruling first~~ **RULED 2026-07-18: port it** — see §5.1/F1 |
+
+Sequencing note (updated 2026-07-19): rows **1 and 7 are DONE** — the
+consult-wire + image-detail + wardrobe round (P4.6bd ∥ P4.9a2 ∥ P4.9f1 ∥
+P4.9f2) unified 2026-07-19, closing `p4.9a` with it. Rows 5/6/8–15 are
+unstarted; row 16 (`p4.9j`) still gates v4 retirement and still wants a
+dedicated round. Two non-M6 items now sit ahead of the backlog in the
+next-order pool: the `avatar_preview` host wire (+ the WebP codec it needs)
+and the `b8b12695` markdown/KaTeX drift catch-up.
+
+The previous note follows for history.
 
 Sequencing note (updated 2026-07-18): ~~items 1–4 are the natural next
 round~~ — **items 1–4 RAN** (the M6 items 1–4 round, 2026-07-18): `p4.9c`,

@@ -1890,3 +1890,54 @@ item of the next order) — **plus P4.9a tier 2** (`imageInfoGet` + the
 deep gallery modal family), the `979aec66` Insert-Announcement bank,
 the `jsnum` DRY rider, `p4.9j` workspace tabs (v4 retirement gates on
 it), and the M6 backlog items 5+. Round record: `status-log.md`.
+
+**The consult-wire + image-detail + wardrobe round (P4.6bd ∥ P4.9a2 ∥
+P4.9f1 ∥ P4.9f2) is UNIFIED on main (2026-07-19) — ALL FOUR CLOSED, and
+`p4.9a` closes with P4.9a2.** Landed: the consult wire (the erased
+`ConsultRunner` seam on `EngineAssembly`, `HostConsultRunner` rebuilding
+the provider per consult, the `TimeoutConsult` decorator carrying v4's 60 s
+`withTimeout` — **the llm consult is LIVE on all three entrances and now
+costs real money**; the P4.d8 timeout deferral closes with it) + the §3
+`jsnum` canonicalization ∥ the image-detail modal family (`imageInfoGet`,
+the deep `ImageDetailModal` + `ImageMetadata` panel, prev/next with the
+nested-Escape suppression, `ChatGalleryImageViewModal`, the aurora gallery
+tab at `EmbeddedPhotoGallery` parity) ∥ the wardrobe server surface (chat
+equip with **all seven modes incl. v4's deprecated `equip` alias**, outfit
+read, the transfers pair over the already-ported service, the global
+archetype tier; a new committed `wardrobe-routes-{main,mount}.db` family +
+a 74-check / 66-case differential) ∥ the wardrobe SPA (the control dialog
+in BOTH modes — in-chat staging with the one-shot `set_all` flush,
+out-of-chat fitting room firing NO equip route — the tier-routed item
+editor, the transfer dialog, three entry points, and the disabled
+`wardrobe-tab.ts` stub retired). Wires: the §1 `CoreRequest` folds with
+both casts retired, `EquippedSlots` moved into `core-contract.ts`, the §3
+`photos_routes.rs` swap (which also fixed a latent `Number('+0x10')`
+divergence), and F2's ACTIVATE-AT-UNIFY beat self-activating. Gate: 354
+binaries / 1,450 / 0 failed with the round's 7 differentials by name zero
+SKIP, clippy both feature sets, release build, ng test 171 files / 2,004,
+full Playwright 86/86 zero skips. Versions (recounted from the commits —
+two silent collisions): core 0.0.283, harness 0.0.246, host 0.0.22, web
+0.0.34, SPA 0.5.183.
+
+**⚠ The round's one user-visible gap: `wardrobePreviewAvatar` is
+half-live** — the render step answers a typed refusal until the
+`avatar_preview` host wire lands, so the wardrobe dialog's out-of-chat
+Preview button reaches a loud refusal. **That wire is blocked on the
+already-deferred production WebP codec seam** (P4.6y), so closing it means
+porting that codec first. It is the natural first item of the next order.
+
+**⚠ v4 has DRIFTED to `b8b12695`** (one commit: LaTeX/KaTeX math rendering
+— it refactors `markdown-renderer.service.ts` and adds
+`markdown-postprocess.ts` + `lib/markdown/math.ts`, and **touches ported
+markdown/message-rendering surfaces**). Deliberately NOT absorbed this
+round, by the human's instruction. **The oracle baseline REMAINS
+`616930db`** and every oracle regenerates from the pinned detached worktree
+`/private/tmp/qt-v4-pin-616930db` until a catch-up round moves it.
+
+**Next candidates:** the `avatar_preview` host wire + the WebP codec it
+needs; the **`b8b12695` markdown/KaTeX drift catch-up** (the markdown
+family is the classification target); `p4.9j` workspace tabs (v4 retirement
+gates on it — wants a DEDICATED round, since it rewrites the shell and
+`app.routes.ts` and would collide with any concurrent SPA lane);
+`p4.9i1`/`p4.9i2` (Brahma / HelpChat); M6 backlog rows 5/6/8–15; or the
+`js_number_to_json` serialization rider. Round record: `status-log.md`.
