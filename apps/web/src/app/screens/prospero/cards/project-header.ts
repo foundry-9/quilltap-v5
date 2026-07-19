@@ -25,9 +25,16 @@ export interface ProjectEditForm {
       class="flex flex-wrap items-start justify-between gap-4 border-b qt-border-default/60 pb-6"
     >
       <div class="flex items-center gap-4">
-        <a routerLink="/prospero" class="qt-text-primary hover:underline text-sm"
-          >&larr; Projects</a
-        >
+        @if (inTab()) {
+          <!-- Drilled inside the Prospero tab: back restores the list (v4 onBack). -->
+          <button type="button" class="qt-text-primary hover:underline text-sm" (click)="back.emit()">
+            &larr; Projects
+          </button>
+        } @else {
+          <a routerLink="/prospero" class="qt-text-primary hover:underline text-sm"
+            >&larr; Projects</a
+          >
+        }
         <div
           class="w-12 h-12 rounded-lg flex items-center justify-center text-xl"
           [style.backgroundColor]="project().color || 'var(--muted)'"
@@ -105,11 +112,14 @@ export class ProjectHeader {
   readonly project = input.required<ProjectDetail>();
   readonly editing = input(false);
   readonly form = input.required<ProjectEditForm>();
+  /** Drilled inside the Prospero workspace tab ⇒ back emits instead of routing. */
+  readonly inTab = input(false);
 
   readonly formChange = output<Partial<ProjectEditForm>>();
   readonly editClick = output<void>();
   readonly cancelEdit = output<void>();
   readonly save = output<void>();
+  readonly back = output<void>();
 
   protected patch(key: keyof ProjectEditForm, event: Event): void {
     this.formChange.emit({ [key]: (event.target as HTMLInputElement).value });

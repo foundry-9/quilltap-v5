@@ -4,6 +4,8 @@ import {
   computed,
   effect,
   inject,
+  input,
+  output,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -72,7 +74,7 @@ import {
       <div class="flex min-h-[50vh] items-center justify-center">
         <div class="text-center">
           <p class="text-lg qt-text-destructive mb-4">{{ loadErrorMessage() }}</p>
-          <button type="button" class="qt-text-primary hover:underline" (click)="back()">
+          <button type="button" class="qt-text-primary hover:underline" (click)="goBack()">
             Back to Projects
           </button>
         </div>
@@ -83,10 +85,12 @@ import {
           [project]="project()!"
           [editing]="isEditing()"
           [form]="editForm()"
+          [inTab]="embedded()"
           (formChange)="patchForm($event)"
           (editClick)="isEditing.set(true)"
           (cancelEdit)="cancelEdit()"
           (save)="save()"
+          (back)="goBack()"
         />
 
         @if (saveError(); as msg) {
@@ -94,26 +98,26 @@ import {
         }
 
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 grid-flow-row-dense">
-          <qt-project-files-card [projectId]="id()" [defaultOpen]="firstVisit" />
+          <qt-project-files-card [projectId]="id()" [defaultOpen]="firstVisit()" />
           <qt-group-stores-card
             [stores]="stores()"
             [unlinking]="storeUnlinking()"
             (unlink)="onUnlinkStore($event)"
           />
 
-          <qt-project-scenarios-card [projectId]="id()" [defaultOpen]="firstVisit" />
-          <qt-project-wardrobe-card [projectId]="id()" [defaultOpen]="firstVisit" />
+          <qt-project-scenarios-card [projectId]="id()" [defaultOpen]="firstVisit()" />
+          <qt-project-wardrobe-card [projectId]="id()" [defaultOpen]="firstVisit()" />
 
-          <qt-project-characters-card [project]="project()!" [defaultOpen]="firstVisit" />
-          <qt-project-model-behavior-card [project]="project()!" [defaultOpen]="firstVisit" />
+          <qt-project-characters-card [project]="project()!" [defaultOpen]="firstVisit()" />
+          <qt-project-model-behavior-card [project]="project()!" [defaultOpen]="firstVisit()" />
           <qt-project-settings-card
             [project]="project()!"
             [form]="editForm()"
-            [defaultOpen]="firstVisit"
+            [defaultOpen]="firstVisit()"
             (formChange)="patchForm($event)"
             (save)="save()"
           />
-          <qt-project-image-generation-card [project]="project()!" [defaultOpen]="firstVisit" />
+          <qt-project-image-generation-card [project]="project()!" [defaultOpen]="firstVisit()" />
         </div>
 
         <qt-project-chats-section [projectId]="id()" />
@@ -125,14 +129,28 @@ export class ProjectDetailScreen {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
 
-  protected readonly id = toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), {
-    initialValue: '',
-  });
+  /**
+   * In-tab drill (p4.9j2, v4 `ProsperoView` `selectedProjectId`): when the list
+   * renders this detail in place it supplies `projectId` (wins over the route
+   * `:id`) and binds `(back)` to restore the list. Null ⇒ routed `/prospero/:id`.
+   */
+  readonly projectIdInput = input<string | null>(null, { alias: 'projectId' });
+  readonly back = output<void>();
+  protected readonly embedded = computed(() => this.projectIdInput() != null);
 
-  /** First-visit resolves once at construction (before the cards mount). */
-  protected readonly firstVisit = resolveFirstVisit(this.route.snapshot.paramMap.get('id') ?? '');
+  private readonly routeId = this.route
+    ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { initialValue: '' })
+    : undefined;
+  protected readonly id = computed(() => this.projectIdInput() ?? this.routeId?.() ?? '');
+
+  /**
+   * First-visit resolves once the id is known (routed: the snapshot at
+   * construction; drill: when the `projectId` input lands). `resolveFirstVisit`
+   * marks the id visited, so it must run with the REAL id exactly once.
+   */
+  protected readonly firstVisit = signal(false);
 
   protected readonly isEditing = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -157,6 +175,22 @@ export class ProjectDetailScreen {
   protected readonly stores = computed(() => this.storesQuery.data() ?? []);
 
   constructor() {
+    // Resolve first-visit from the real id, exactly once. Routed mode has the
+    // snapshot at construction (byte-identical); drill mode waits for the input.
+    const routedId = this.route?.snapshot.paramMap.get('id') ?? '';
+    if (routedId) {
+      this.firstVisit.set(resolveFirstVisit(routedId));
+    } else {
+      let visitResolved = false;
+      effect(() => {
+        const pid = this.projectIdInput();
+        if (pid && !visitResolved) {
+          visitResolved = true;
+          this.firstVisit.set(resolveFirstVisit(pid));
+        }
+      });
+    }
+
     // Seed the edit form from the loaded project ONCE per id (v4 sets editForm in
     // fetchProject). Guard so keystrokes aren't clobbered by re-renders.
     let seededFor: string | null = null;
@@ -178,7 +212,12 @@ export class ProjectDetailScreen {
     return err instanceof Error ? err.message : 'Project not found';
   }
 
-  protected back(): void {
+  protected goBack(): void {
+    // Drill mode ⇒ hand control back to the list; routed ⇒ navigate.
+    if (this.embedded()) {
+      this.back.emit();
+      return;
+    }
     void this.router.navigate(['/prospero']);
   }
 

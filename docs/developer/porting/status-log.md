@@ -23610,3 +23610,20 @@ it fires once the input arrives. The two `hydrate` effects and all window/inspec
 listeners (which read `chatId()` dynamically) are unchanged. Spec: the 22
 existing routed cases untouched + a `workspace-tab mode` describe (render + logs
 by input id, no `ActivatedRoute`). `ng test` 24/24.
+
+### Unit 8 — Prospero in-tab drill (item 3a) (SPA 0.5.197)
+
+v4 `ProsperoView` drills into `selectedProjectId` in place when `inTab`; v5
+ports it. `ProsperoList` injects `WORKSPACE_TAB_ID` `{ optional: true }`, gains a
+`selectedProjectId` signal + `inTab` computed; `openProject`/`onCreated` set the
+signal (render `qt-project-detail` embedded) instead of routing when hosted.
+`ProjectDetailScreen` gains a `projectId` input (wins over route `:id`), a `back`
+output, `embedded` computed; `firstVisit` resolves from the real id exactly once
+(routed: the snapshot at construction; drill: a one-shot effect on the input) and
+becomes a signal (`resolveFirstVisit` marks visited, must run with the real id).
+The back cascade mirrors v4's `onBack` prop: `ProjectHeader` + `ProjectCard` gain
+`inTab` inputs that render their back/open affordances as `<button>`s emitting
+outputs (drill) vs `routerLink` anchors (routed); `ProjectDetail.goBack()`
+(renamed from `back()` to free the `back` output name) emits when embedded, else
+navigates. New drill spec (Open is a button, drills in place, header back restores
+the list); the 17 existing prospero cases untouched. `ng test` 18/18.

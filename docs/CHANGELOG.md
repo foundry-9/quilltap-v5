@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): Prospero gains the in-tab drill (v4
+ProsperoView selectedProjectId). When hosted as a workspace tab, a project
+card's Open drills IN PLACE (renders qt-project-detail embedded) via list state
+instead of routing; the detail header's back restores the list. ProjectDetail
+gains a projectId input + back output; ProjectCard + ProjectHeader render their
+open/back affordances as buttons (not routerLink anchors) when in a tab. Routed
+mode navigates as today.
+
+
 P4.9J2 (screen hostability, lane J2): SalonConversation is workspace-tab
 hostable. It gains a chatId input (v4 SalonTabPayload) that wins over the route
 :id. The id-dependent wiring (terminal/document controller configure + the

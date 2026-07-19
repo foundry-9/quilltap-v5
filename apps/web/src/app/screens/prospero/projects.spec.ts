@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { RichEditor } from '../../editor/rich-editor';
 import type { ProjectDetail, ProjectFileDto } from '../../core/core-contract';
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
 import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
@@ -150,6 +151,80 @@ describe('ProsperoList', () => {
     await settle(fixture);
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
     expect(fixture.nativeElement.textContent).toContain('Failed to delete project');
+  });
+});
+
+/**
+ * In-tab drill (p4.9j2, v4 `ProsperoView` `selectedProjectId`): hosted as a
+ * workspace tab, a card's Open drills IN PLACE (renders the detail embedded);
+ * the detail header's back restores the list.
+ */
+describe('ProsperoList (in-tab drill)', () => {
+  const card = {
+    id: 'p1',
+    name: 'Airship Saga',
+    description: null,
+    color: null,
+    icon: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    _count: { chats: 0, files: 0, characters: 0 },
+  };
+
+  function handler(r: DispatchReq): unknown {
+    switch (r.type) {
+      case 'projectList':
+        return { projects: [card] };
+      case 'projectGet':
+        return { project: project({ id: 'p1', name: 'Airship Saga' }) };
+      case 'projectMountPointList':
+        return { mountPoints: [] };
+      case 'projectChatList':
+        return { chats: [], total: 0 };
+      default:
+        return {};
+    }
+  }
+
+  async function render(): Promise<ComponentFixture<ProsperoList>> {
+    TestBed.configureTestingModule({
+      imports: [ProsperoList],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(handler) },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-p' },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProsperoList);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('Open drills in place (no /prospero/:id anchor) and back restores the list', async () => {
+    const fixture = await render();
+    // The Open affordance is a button, not a routerLink anchor.
+    expect(fixture.nativeElement.querySelector('a[href="/prospero/p1"]')).toBeNull();
+    const open = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Open',
+    ) as HTMLButtonElement;
+    expect(open).toBeTruthy();
+
+    open.click();
+    await settle(fixture);
+    // The detail renders in place.
+    expect(fixture.nativeElement.querySelector('qt-project-detail')).toBeTruthy();
+
+    // The header's back restores the list.
+    const back = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Projects') && !b.textContent?.includes('Create'),
+    ) as HTMLButtonElement;
+    expect(back).toBeTruthy();
+    back.click();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-project-detail')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Create Project');
   });
 });
 
