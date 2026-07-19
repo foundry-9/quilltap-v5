@@ -23492,3 +23492,28 @@ the next-order pool), `p4.9i1` Brahma (its tab kind renders a loud refusal
 pane), the help doc (`p4.9i2`), per-instance layout-key scoping (named
 deferral), and the `616930db`-style catch-up for the predicted state-cascade
 feature (not yet landed in v4 — watch it).
+
+## P4.9J2 lane (screen hostability) — records (2026-07-19)
+
+Lane branch `claude/p4-9j2-screen-hostability-lg2r7t`. Pure-SPA, zero
+`crates/**`. Every unit lands inert-in-lane (contract tokens resolve null ⇒
+routed mode byte-identical); the existing ng + Playwright suites are the
+lane's own regression oracle for "byte-identical when null". Equivalence for
+these component ports = (a) v4's own suites ported case-for-case where they
+exist, (b) the UNCHANGED existing suites (routed mode frozen), (c) a tab-mode
+spec per adapted screen.
+
+### Unit 1 — EntityTabs workspace-tab mode (SPA 0.5.190)
+
+The shared `ui/entity-tabs.ts` tab shell (settings + character detail/edit
+delegate tab selection to it) gains a hosted mode. v4 `EntityTabs` already
+has the pattern: `persistToUrl` (default true = URL) vs local `useState`.
+v5 keys it off the optional `WORKSPACE_TAB_ID` injection — non-null ⇒ local
+`localTab` signal seeded from `defaultTab` (the host passes the payload's tab
+as `defaultTab`, exactly as v4 `SettingsView` does with `defaultTab={tab}`),
+`select()` sets local state and never navigates; null ⇒ the `?tab=` URL path,
+byte-identical. Router + ActivatedRoute now injected `{ optional: true }` so a
+hosted subtree without an `ActivatedRoute` never throws. Spec: the three
+existing routed cases untouched + a new `workspace-tab mode` describe proving
+default-tab render and no-navigation tab switching under a provided
+`WORKSPACE_TAB_ID`. `ng test` (entity-tabs) 4/4.

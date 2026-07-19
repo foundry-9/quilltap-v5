@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 
+import { WORKSPACE_TAB_ID } from '../workspace/workspace-contract';
 import { EntityTabs, type Tab } from './entity-tabs';
 
 @Component({
@@ -78,5 +79,46 @@ describe('EntityTabs (deep links)', () => {
       [],
       expect.objectContaining({ queryParams: { tab: null, section: null } }),
     );
+  });
+});
+
+/**
+ * Workspace-tab mode (p4.9j2) — v4 `EntityTabs` `persistToUrl={false}` local
+ * state. With `WORKSPACE_TAB_ID` provided, tab switching is local state and the
+ * router is never touched (a hosted tab has no URL to persist to).
+ */
+describe('EntityTabs (workspace-tab mode)', () => {
+  async function renderTab(): Promise<ComponentFixture<Host>> {
+    TestBed.configureTestingModule({
+      imports: [Host],
+      providers: [provideRouter([]), { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' }],
+    });
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('shows the default tab and switches tabs WITHOUT navigating', async () => {
+    const fixture = await renderTab();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    expect(fixture.nativeElement.querySelector('.active-content').textContent.trim()).toBe(
+      'providers',
+    );
+
+    const appearanceButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.includes('Appearance'),
+    ) as HTMLButtonElement;
+    appearanceButton.click();
+    fixture.detectChanges();
+
+    // Local state moved; the router was never touched.
+    expect(fixture.nativeElement.querySelector('.active-content').textContent.trim()).toBe(
+      'appearance',
+    );
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

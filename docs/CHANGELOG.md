@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): EntityTabs gains a workspace-tab mode.
+When a WORKSPACE_TAB_ID is provided (hosted as a workspace tab) the active tab
+is local state seeded from defaultTab and tab switching no longer touches the
+router — there is no URL to persist to (v4 EntityTabs persistToUrl={false}).
+Router and ActivatedRoute are injected optionally so a hosted subtree without
+a route never throws. Routed mode is byte-identical (WORKSPACE_TAB_ID null).
+
 Round planning: the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2) is scoped
 and its two work orders are committed (docs/developer/porting/work-orders/
 p4.9j1-workspace-core-shell.md, p4.9j2-screen-hostability.md), alongside the
