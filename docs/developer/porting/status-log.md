@@ -23281,3 +23281,33 @@ carried. `ng build` clean; 60 KaTeX font files emitted to
 `dist/quilltap/browser/media/`, both the vendor `.katex` CSS and the
 `.katex-display` overflow rule present in the styles bundle. SPA 0.5.186 →
 0.5.187.
+
+**Unit 5 — the live e2e math beat (commit "add a live KaTeX e2e beat").**
+Rider on `apps/web/e2e/salon-composer-modes.spec.ts`: from the Salon composer,
+send a `$$` display block (`$$` / `E = mc^2` / `$$` via Shift+Enter soft
+breaks, Enter to send) and assert the rendered USER message contains
+`.katex-display` (which wraps a `.katex`); then send `He slid $50 … $20` and
+assert its content has zero `.katex`. A USER message renders through the same
+client pipeline, so this exercises the LIVE remark-math + rehype-katex render
+with no LLM leg. **Deliberately uses `$$`, not `\(E=mc^2\)`:** the qt-rich-editor
+markdown serializer backslash-escapes typed `\(`/`\)` (prosemirror-markdown
+`esc()`; v5's `stripMarkdownEscapes` preserves backslash), so `\(…\)` typed
+into the composer serializes to `\\(…\\)` — the composer's backslash handling,
+explicitly OUT of this lane's scope (the order forbids touching the dialect
+bridge). The `\(…\)` → `$$` normalization is proven byte-for-byte by the
+captured-v4 fixtures (`math-inline-paren` & friends) instead. Verified GREEN
+(the beat + the two sibling warm tests pass).
+
+**⚠ Sandbox-only e2e gotcha (not a lane regression, for the unifier):** in
+THIS build environment the pre-installed Playwright browser is chromium
+**1194**, but the repo pins `@playwright/test` 1.61.1 which wants chromium
+**1228** — so the suite was run against the pre-installed full chromium via a
+LOCAL, uncommitted `launchOptions.executablePath` override (reverted before
+commit; the environment guidance forbids `playwright install`). With that
+substituted, slower browser the FIRST test after a cold server boot
+(`composition mode …`) times out at its 5s default `toBeVisible` on the
+post-unlock `Chats` heading — the cold DB-decrypt unlock exceeds 5s on the
+sandbox's debug binary. It is a cold-start artifact (identical `openChat`
+passes in every warm sibling, incl. the math beat) and is unrelated to this
+lane (no auth/DB/renderer-timing change). The full-suite green gate should be
+confirmed in the matched-browser environment.

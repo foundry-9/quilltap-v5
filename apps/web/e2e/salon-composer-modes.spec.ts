@@ -162,4 +162,49 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
       expect(deleted.status()).toBe(204);
     }
   });
+
+  // P4.d9 (KaTeX/markdown drift): a USER message renders through the same client
+  // pipeline as any message, so this exercises the LIVE remark-math + rehype-katex
+  // render with no LLM leg. We send a `$$` DISPLAY block rather than `\(E=mc^2\)`
+  // on purpose: the qt-rich-editor's markdown serializer backslash-escapes typed
+  // `\(`/`\)` (prosemirror-markdown `esc()`; v5's stripMarkdownEscapes preserves
+  // backslash), so `\(…\)` typed into the composer serializes to `\\(…\\)` — the
+  // composer's own backslash handling, out of this lane's scope. The `\(…\)` → `$$`
+  // normalization is proven byte-for-byte by the captured-v4 fixtures instead
+  // (`math-inline-paren` & friends). A `$$` block serializes cleanly and renders
+  // `.katex-display` wrapping a `.katex`, proving the pipeline is wired live.
+  test('a $$ math message renders KaTeX live; $50/$20 stays plain text', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Solo Voyage');
+
+    // A display block: `$$` / `E = mc^2` / `$$` on their own lines (Shift+Enter
+    // inserts a soft break in chat mode, Enter sends). remark-math renders it to
+    // a `.katex-display` subtree (which itself contains a `.katex`).
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('$$');
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type('E = mc^2');
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type('$$');
+    await page.keyboard.press('Enter');
+
+    await expect(page.locator('.qt-chat-message-row-user .katex-display').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator('.qt-chat-message-row-user .katex').first()).toBeVisible();
+
+    // The negative: paired dollar amounts are NOT math (singleDollarTextMath off),
+    // so the message renders as plain prose with no KaTeX subtree.
+    await composerEditor(page).click();
+    await page.keyboard.type('He slid $50 across the table, then another $20.');
+    await page.keyboard.press('Enter');
+
+    const currencyMsg = page.locator('.qt-chat-message-row-user .qt-chat-message-content', {
+      hasText: '$50',
+    });
+    await expect(currencyMsg.first()).toBeVisible({ timeout: 15_000 });
+    await expect(currencyMsg.first().locator('.katex')).toHaveCount(0);
+  });
 });

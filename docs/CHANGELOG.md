@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): a live e2e math beat. A rider on
+salon-composer-modes sends a `$$` display block from the composer and asserts
+the rendered user message contains `.katex`/`.katex-display`, and that a
+`$50/$20` message renders no KaTeX — proving the remark-math + rehype-katex
+render is wired live. Uses `$$` (not `\(…\)`) because the qt-rich-editor
+serializer backslash-escapes typed `\(`, out of this lane's scope; the
+`\(…\)` → `$$` normalization is proven by the captured-v4 fixtures. SPA
+0.5.187 → 0.5.188.
+
 P4.d9 (KaTeX/markdown drift): KaTeX styles. Load katex.min.css globally via
 the angular.json styles array (the bundler resolves its font url()s into the
 dist media dir; the Tauri one-origin build serves the same dist), and add
