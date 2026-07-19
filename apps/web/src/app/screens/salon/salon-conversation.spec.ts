@@ -29,6 +29,12 @@ import type {
   ParticipantDetail,
   ScopedEvent,
 } from '../../core/core-contract';
+import {
+  WORKSPACE_BACKDROP_REGISTRY,
+  WORKSPACE_TAB_ID,
+  type WorkspaceBackdropEntry,
+  type WorkspaceBackdropRegistry,
+} from '../../workspace/workspace-contract';
 import { SalonConversation } from './salon-conversation';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
@@ -216,6 +222,75 @@ describe('SalonConversation (workspace-tab mode)', () => {
     // The header title proves chatGet ran with the input id; logs list is scoped
     // to the same id.
     expect(fixture.nativeElement.querySelector('.qt-slide-over-panel')).not.toBeNull();
+  });
+
+  it('reports the story background to the backdrop registry (v4 useReportWorkspaceBackdrop)', async () => {
+    const reports: { tabId: string; entry: WorkspaceBackdropEntry }[] = [];
+    const cleared: string[] = [];
+    const registry: WorkspaceBackdropRegistry = {
+      report: (tabId, entry) => reports.push({ tabId, entry }),
+      clear: (tabId) => cleared.push(tabId),
+    };
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: stubClient(chatDetail(), new Subject<ScopedEvent>(), {
+            backgroundUrl: '/v4/path/bg.webp',
+            fileId: 'bg-7',
+            filename: 'bg.webp',
+            sha256: 's',
+            linkSummary: null,
+          }),
+        },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' },
+        { provide: WORKSPACE_BACKDROP_REGISTRY, useValue: registry },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // The raw file URL is reported with isSalon: true.
+    const last = reports.at(-1);
+    expect(last?.tabId).toBe('tab-1');
+    expect(last?.entry).toEqual({ url: '/api/v1/files/bg-7', isSalon: true });
+
+    // On destroy it clears its slot.
+    fixture.destroy();
+    expect(cleared).toContain('tab-1');
+  });
+
+  it('clears the backdrop for a background-less chat', async () => {
+    const cleared: string[] = [];
+    const registry: WorkspaceBackdropRegistry = {
+      report: () => {},
+      clear: (tabId) => cleared.push(tabId),
+    };
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(chatDetail(), new Subject<ScopedEvent>()) },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' },
+        { provide: WORKSPACE_BACKDROP_REGISTRY, useValue: registry },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(cleared).toContain('tab-1');
   });
 });
 

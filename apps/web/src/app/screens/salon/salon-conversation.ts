@@ -74,6 +74,10 @@ import {
 } from './story-background.api';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
+import {
+  WORKSPACE_BACKDROP_REGISTRY,
+  WORKSPACE_TAB_ID,
+} from '../../workspace/workspace-contract';
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -411,6 +415,9 @@ export class SalonConversation {
   protected readonly terminalMode = inject(TerminalModeController);
   /** Document Mode state for this conversation (v4 `useDocumentMode`). */
   protected readonly documentMode = inject(DocumentModeController);
+  /** Workspace backdrop seams (p4.9j2, v4 `useReportWorkspaceBackdrop`); null ⇒ routed. */
+  private readonly backdropRegistry = inject(WORKSPACE_BACKDROP_REGISTRY, { optional: true });
+  private readonly workspaceTabId = inject(WORKSPACE_TAB_ID, { optional: true });
 
   /** The Open-Document picker's visibility (local UX). */
   protected readonly showDocumentPicker = signal(false);
@@ -494,6 +501,22 @@ export class SalonConversation {
 
     effect(() => this.terminalMode.hydrate(this.chat()));
     effect(() => this.documentMode.hydrate(this.chat()));
+
+    // Report this Salon's story background to the workspace backdrop registry
+    // (v4 `useReportWorkspaceBackdrop(url, isSalon: true)`). The host arbitrates
+    // (a Salon with a background wins full-screen). Report the raw file URL
+    // (`isSalon: true`); clear on a background-less chat and on destroy. Inert in
+    // routed mode (the registry token resolves null).
+    const registry = this.backdropRegistry;
+    const tabId = this.workspaceTabId;
+    if (registry && tabId != null) {
+      effect(() => {
+        const raw = rawBackdropUrl(this.backgroundVar());
+        if (raw) registry.report(tabId, { url: raw, isSalon: true });
+        else registry.clear(tabId);
+      });
+      this.destroyRef.onDestroy(() => registry.clear(tabId));
+    }
 
     // A terminal announcement (open/close/periodic summary) landed → refetch the
     // chat so the new Ariel message appears (v4's salon-page listeners).
@@ -1373,4 +1396,14 @@ export class SalonConversation {
 /** Resolve a participant's avatar src (explicit URL → default image filepath). */
 function participantAvatar(p: ParticipantDetail): string | null {
   return p.character?.avatarUrl ?? p.character?.defaultImage?.filepath ?? null;
+}
+
+/**
+ * Unwrap the CSS `url('…')` story-background value into the raw URL the backdrop
+ * registry reports (v4 `BackdropEntry.url` is a plain URL). Null when unset.
+ */
+function rawBackdropUrl(cssVar: string | null): string | null {
+  if (!cssVar) return null;
+  const m = /^url\((['"]?)(.*)\1\)$/.exec(cssVar);
+  return m ? m[2] : cssVar;
 }

@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Salon reports its story background to
+the workspace backdrop registry (v4 useReportWorkspaceBackdrop) — { url, isSalon:
+true } under its WORKSPACE_TAB_ID, cleared on a background-less chat and on
+destroy, so the host can arbitrate one full-screen backdrop across a split.
+Inert in routed mode (the registry token resolves null). Survey: only the Salon
+paints a viewport-fixed image backdrop; settings/about/photos data-subsystem is
+color theming, not a fixed image, so nothing else reports.
+
+
 P4.9J2 (screen hostability, lane J2): the Characters roster gains the in-tab
 drill (v4 AuroraView selectedCharacterId / selectedGroupId). When hosted, a
 character card drills into the detail IN PLACE and a group Edit drills into the

@@ -23665,3 +23665,19 @@ Chat action's v4 `openChatOnMount` auto-start — in tab mode it drills to the
 detail without auto-starting a chat; and the roster's Create-Character anchor
 still routes when hosted (a `character-new` openTab is opener-intent, item 6 /
 lane J1).
+
+### Unit 11 — Salon backdrop reporting (item 5) (SPA 0.5.200)
+
+The Salon reports its story background to `WORKSPACE_BACKDROP_REGISTRY` (v4
+`useReportWorkspaceBackdrop(url, isSalon: true)`). `salon-conversation.ts`
+injects the registry + `WORKSPACE_TAB_ID` `{ optional: true }`; an effect reads
+`backgroundVar()`, unwraps the CSS `url('…')` into the raw file URL
+(`rawBackdropUrl`, matching v4 `BackdropEntry.url`'s plain-URL shape), and
+`report(tabId, { url, isSalon: true })` when set / `clear(tabId)` when null;
+`destroyRef.onDestroy` clears. Inert in routed mode (registry resolves null).
+**Survey (recorded per the order):** only the Salon paints a viewport-fixed image
+backdrop — `.qt-chat-layout::before`, `background-attachment: fixed`
+(`_chat.css:1777`). The settings/about/photos `data-subsystem` attribute is a
+color-theming hook, not a fixed image, so no split-overlap risk; nothing else
+reports (`isSalon: false` painters: none found). Spec: two tab-mode cases (raw
+URL reported + cleared on destroy; background-less chat clears). `ng test` 26/26.
