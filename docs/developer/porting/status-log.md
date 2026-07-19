@@ -23566,3 +23566,16 @@ byte-identical. `ActivatedRoute` optional. Spec: the five existing routed cases
 untouched + a new `workspace-tab mode` describe (load-by-input with no route;
 back is a button that closes tab-9; `tab='conversations'` deep-links).
 `ng test` 8/8.
+
+### Unit 5 — CharacterEdit workspace-tab mode + save/cancel self-close (SPA 0.5.194)
+
+`screens/characters/edit/character-edit.ts` gains `characterId` (aliased) +
+`tab` inputs (v4 `CharacterEditTabPayload`); `characterId` computed
+(`input ?? route :id`), `tab` seeds `EntityTabs` `[defaultTab]`. Self-close via
+a `closeSelfTab()` helper (injects `WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID`
+`{ optional: true }`; both non-null ⇒ `handle.closeTab(tabId)`, returns true):
+onSubmit save, cancel, and delete each try it first and fall back to today's
+`router.navigate` when routed (v4 `useCloseSelfTab`). `ActivatedRoute` optional.
+Spec: the six existing routed cases untouched + a `workspace-tab mode` describe
+(load-by-input no route; Cancel + Save close tab-4, no navigation). `ng test`
+9/9.

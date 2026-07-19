@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterDetail, CoreRequest } from '../../../core/core-contract';
+import {
+  WORKSPACE_HANDLE,
+  WORKSPACE_TAB_ID,
+  type WorkspaceHandle,
+} from '../../../workspace/workspace-contract';
 import { CharacterEdit } from './character-edit';
 
 function character(over: Partial<CharacterDetail> = {}): CharacterDetail {
@@ -279,5 +284,84 @@ describe('CharacterEdit', () => {
       coreWhisperEnabled: null,
       canBeCarina: false,
     });
+  });
+});
+
+/**
+ * Workspace-tab mode (p4.9j2, v4 `useCloseSelfTab`): identity comes from the
+ * `characterId` input (NO `ActivatedRoute`); save/cancel close the tab via the
+ * handle instead of navigating.
+ */
+describe('CharacterEdit (workspace-tab mode)', () => {
+  function makeHandle(): { handle: WorkspaceHandle; closed: string[] } {
+    const closed: string[] = [];
+    return {
+      closed,
+      handle: {
+        openTab: vi.fn(() => 'x'),
+        closeTab: vi.fn((id: string) => closed.push(id)),
+        refreshTab: vi.fn(),
+      },
+    };
+  }
+
+  async function render(
+    client: Partial<CoreClient>,
+    h: WorkspaceHandle,
+  ): Promise<ComponentFixture<CharacterEdit>> {
+    TestBed.configureTestingModule({
+      imports: [CharacterEdit],
+      providers: [
+        provideRouter([{ path: '**', component: CharacterEdit }]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+        { provide: WORKSPACE_HANDLE, useValue: h },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-4' },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharacterEdit);
+    fixture.componentRef.setInput('characterId', 'char-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('loads from the characterId input with no ActivatedRoute', async () => {
+    const { handle } = makeHandle();
+    const fixture = await render(stubClient(character()), handle);
+    expect(fixture.nativeElement.textContent).toContain('Edit: Bertie Wooster');
+  });
+
+  it('Cancel closes the tab instead of navigating (unchanged form)', async () => {
+    const { handle, closed } = makeHandle();
+    const fixture = await render(stubClient(character()), handle);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    const cancelButton = findByText(fixture, 'button', 'Cancel') as HTMLButtonElement;
+    cancelButton.click();
+    fixture.detectChanges();
+
+    expect(closed).toEqual(['tab-4']);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('Save closes the tab instead of navigating', async () => {
+    const { handle, closed } = makeHandle();
+    const fixture = await render(stubClient(character()), handle);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(closed).toEqual(['tab-4']);
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 });

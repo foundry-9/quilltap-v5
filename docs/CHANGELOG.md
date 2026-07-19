@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): CharacterEdit is workspace-tab hostable.
+It gains characterId + tab inputs (v4 CharacterEditTabPayload). When hosted
+(WORKSPACE_HANDLE + WORKSPACE_TAB_ID present) save/cancel/delete close the tab
+(v4 useCloseSelfTab) instead of navigating; routed mode navigates as today.
+ActivatedRoute now optional.
+
+
 P4.9J2 (screen hostability, lane J2): CharacterDetail is workspace-tab hostable.
 It gains characterId + tab inputs (v4 CharacterViewTabPayload): characterId
 supplies identity in place of the route :id, tab deep-links a sub-tab (via
