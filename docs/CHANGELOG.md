@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): CharacterDetail is workspace-tab hostable.
+It gains characterId + tab inputs (v4 CharacterViewTabPayload): characterId
+supplies identity in place of the route :id, tab deep-links a sub-tab (via
+EntityTabs defaultTab). When hosted (WORKSPACE_HANDLE + WORKSPACE_TAB_ID both
+present) the "Back to Characters" affordance is a button that closes the tab
+(v4 CharacterViewTab back), returning to the kept-alive opener; routed mode
+keeps the routerLink anchor, byte-identical. ActivatedRoute now optional.
+
+
 P4.9J2 (screen hostability, lane J2): the Workbench page (/custom-tools) is
 workspace-tab hostable. It gains mountPointId/path/create inputs (v4
 CustomToolsTabPayload): create seeds the builder on a fresh draft, mountPointId

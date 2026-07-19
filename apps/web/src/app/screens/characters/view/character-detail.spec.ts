@@ -2,10 +2,15 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterDetail as CharacterDetailDto } from '../../../core/core-contract';
+import {
+  WORKSPACE_HANDLE,
+  WORKSPACE_TAB_ID,
+  type WorkspaceHandle,
+} from '../../../workspace/workspace-contract';
 import { CharacterDetail } from './character-detail';
 
 function character(over: Partial<CharacterDetailDto> = {}): CharacterDetailDto {
@@ -208,5 +213,76 @@ describe('CharacterDetail', () => {
     const update = seen.find((r) => r.type === 'characterUpdate');
     expect(update).toBeTruthy();
     expect(update!['character']).toEqual({ npc: true });
+  });
+});
+
+/**
+ * Workspace-tab mode (p4.9j2, v4 `CharacterViewTab`): the identity comes from
+ * the `characterId` input (NO `ActivatedRoute`), `tab` deep-links a sub-tab, and
+ * "back" closes the tab via the handle instead of routing.
+ */
+describe('CharacterDetail (workspace-tab mode)', () => {
+  function handle(): { handle: WorkspaceHandle; closed: string[] } {
+    const closed: string[] = [];
+    return {
+      closed,
+      handle: {
+        openTab: vi.fn(() => 'x'),
+        closeTab: vi.fn((id: string) => closed.push(id)),
+        refreshTab: vi.fn(),
+      },
+    };
+  }
+
+  async function render(
+    client: Partial<CoreClient>,
+    h: WorkspaceHandle,
+    tab?: string,
+  ): Promise<ComponentFixture<CharacterDetail>> {
+    TestBed.configureTestingModule({
+      imports: [CharacterDetail],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+        { provide: WORKSPACE_HANDLE, useValue: h },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-9' },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharacterDetail);
+    fixture.componentRef.setInput('characterId', 'c1');
+    if (tab) fixture.componentRef.setInput('tab', tab);
+    fixture.detectChanges();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('loads the character from the characterId input with no ActivatedRoute', async () => {
+    const { handle: h } = handle();
+    const fixture = await render(stubClient(character({})), h);
+    expect(fixture.nativeElement.textContent).toContain('Bertie');
+  });
+
+  it('renders "back" as a button that closes the tab (v4 CharacterViewTab)', async () => {
+    const { handle: h, closed } = handle();
+    const fixture = await render(stubClient(character({})), h);
+    const back = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.includes('Back to Characters'),
+    ) as HTMLButtonElement;
+    expect(back).toBeTruthy();
+    // No routerLink anchor in tab mode.
+    expect(fixture.nativeElement.querySelector('a[href="/characters"]')).toBeNull();
+    back.click();
+    expect(closed).toEqual(['tab-9']);
+  });
+
+  it('deep-links a sub-tab from the tab input', async () => {
+    const { handle: h } = handle();
+    const fixture = await render(stubClient(character({})), h, 'conversations');
+    const active = fixture.nativeElement.querySelector('.qt-tab-active') as HTMLElement;
+    expect(active.textContent).toContain('Conversations');
   });
 });

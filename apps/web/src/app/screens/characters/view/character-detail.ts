@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   inject,
+  input,
   signal,
   type WritableSignal,
 } from '@angular/core';
@@ -11,6 +12,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 import { map } from 'rxjs';
 
+import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type {
   CharacterConnectionProfile,
@@ -89,12 +91,24 @@ const CHARACTER_TABS: Tab[] = [
   ],
   template: `
     <div class="character-view qt-page-container min-h-screen text-foreground">
-      <a
-        routerLink="/characters"
-        class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80"
-      >
-        ← Back to Characters
-      </a>
+      @if (canClose()) {
+        <!-- Hosted as a workspace tab: "back" closes this tab, returning to the
+             kept-alive opener (v4 CharacterViewTab back semantics). -->
+        <button
+          type="button"
+          class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80"
+          (click)="closeSelf()"
+        >
+          ← Back to Characters
+        </button>
+      } @else {
+        <a
+          routerLink="/characters"
+          class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80"
+        >
+          ← Back to Characters
+        </a>
+      }
 
       @if (characterQuery.isPending()) {
         <qt-loading-state message="Loading character..." class="mt-12" />
@@ -124,7 +138,7 @@ const CHARACTER_TABS: Tab[] = [
           (toggleNpc)="toggleNpc()"
         />
 
-        <qt-entity-tabs [tabs]="tabs" defaultTab="details">
+        <qt-entity-tabs [tabs]="tabs" [defaultTab]="tab() ?? 'details'">
           <ng-template let-active>
             @switch (active) {
               @case ('details') {
@@ -181,9 +195,30 @@ const CHARACTER_TABS: Tab[] = [
 })
 export class CharacterDetail {
   private readonly core = inject(CoreClient);
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
+  /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
+  private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /**
+   * Tab-mode inputs (v4 `CharacterViewTabPayload`): `characterId` supplies the
+   * identity in place of the route `:id`; `tab` deep-links a sub-tab. Null ⇒
+   * routed mode, byte-identical.
+   */
+  readonly characterIdInput = input<string | null>(null, { alias: 'characterId' });
+  readonly tab = input<string | null>(null);
+
+  /** Both seams present ⇒ hosted as a workspace tab; "back" closes the tab. */
+  protected canClose(): boolean {
+    return this.handle != null && this.tabId != null;
+  }
+
+  /** v4 `CharacterViewTab` back — closes this tab, returning to the opener. */
+  protected closeSelf(): void {
+    if (this.handle && this.tabId != null) this.handle.closeTab(this.tabId);
+  }
 
   /**
    * v4 `CharacterDetailView.tsx:54,:316` — the deep-link guard. Note v4's extra
@@ -201,9 +236,10 @@ export class CharacterDetail {
 
   protected readonly tabs = CHARACTER_TABS;
 
-  protected readonly id = toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), {
-    requireSync: true,
-  });
+  private readonly routeId = this.route
+    ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { requireSync: true })
+    : undefined;
+  protected readonly id = computed(() => this.characterIdInput() ?? this.routeId?.() ?? '');
 
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.id()),

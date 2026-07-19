@@ -23551,3 +23551,18 @@ query-string read (v4's own no-workspace fallback), now via optional
 `ActivatedRoute`, byte-identical. New `custom-tools-page.spec.ts` tab-mode cases
 (library / edit / create seeds) over a permissive CoreClient stub, no
 `ActivatedRoute`. `ng test` 3/3.
+
+### Unit 4 — CharacterDetail workspace-tab mode + back self-close (SPA 0.5.193)
+
+`screens/characters/view/character-detail.ts` gains `characterId` (aliased) +
+`tab` inputs (v4 `CharacterViewTabPayload`). `id` becomes a computed
+(`characterId input ?? route :id`); `tab` seeds `EntityTabs`
+`[defaultTab]="tab() ?? 'details'"`. The self-close seam: injects
+`WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID` `{ optional: true }`; when both non-null
+(`canClose()`) the "← Back to Characters" affordance renders as a `<button>`
+that calls `handle.closeTab(tabId)` (v4 `CharacterViewTab` back returns to the
+kept-alive opener); null ⇒ today's `routerLink="/characters"` anchor,
+byte-identical. `ActivatedRoute` optional. Spec: the five existing routed cases
+untouched + a new `workspace-tab mode` describe (load-by-input with no route;
+back is a button that closes tab-9; `tab='conversations'` deep-links).
+`ng test` 8/8.
