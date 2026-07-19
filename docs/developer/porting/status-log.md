@@ -24045,3 +24045,82 @@ AT-UNIFY column):
   /workspace → back restores). All read-only — no shared-fixture mutation.
 - `apps/web/package-lock.json` version fields synced (0.5.207 at the merge,
   0.5.208 with this wire).
+
+---
+
+## Round record — the P4.9J1 ∥ P4.9J2 workspace-tabs round: UNIFIED on main (2026-07-19)
+
+**P4.9J1 and P4.9J2 both CLOSED; `p4.9j` (v4's DEFAULT shell — the tabbed
+workspace, the 2026-07-18 F1 ruling's v4-retirement gate) is LANDED and ON
+by default.** Two pure-SPA lanes (zero Rust source; the only Rust-adjacent
+artifact is the new Node oracle case `harness/oracle/cases/workspace-core.ts`),
+both branched from `a3e6462d`, reconciled by MERGE (clean fork — one conflict
+session: `apps/web/package.json` + the two append-only docs), then the
+unification wires as their own commit. SPA version accumulation:
+0.5.189 + J1's 5 + J2's 13 = 0.5.207 at the merge; 0.5.208 at the wires;
+0.5.209 at the round-closing commit.
+
+Lane records are above (P4.9J1 units 1–6 + lane gate; P4.9J2 units 1–13 +
+tier-2 deferrals). The unification-wires record is above ("P4.9J unification
+wires").
+
+**The gate (all run on this Mac — J1's lane gate ran in a Linux container
+that could not run the full workspace suite or the committed Playwright
+config; this run is the round's authoritative gate):**
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean for BOTH feature sets (default +
+  `quilltap-core/native-transport`); release build clean; `cargo test
+  --workspace --no-fail-fast` = **354 test binaries / 1,450 tests / 0
+  failed** — exactly main's baseline (zero Rust changed; `git diff main --
+  crates/ Cargo.toml Cargo.lock` empty).
+- **The corpus differential:** `workspace-core-fixtures.json` regenerated
+  from a PINNED detached v4 worktree at `b8b12695`
+  (`/private/tmp/qt-v4-pin-b8b12695`; node_modules symlinked: root +
+  `packages/{quilltap,plugin-types,plugin-utils}`) — **byte-identical** to
+  the committed fixture, known row (`combined-split-move-close`) grepped;
+  the 144-assertion replay spec green over the fresh regen (inside the ng
+  run below).
+- `ng test` **187 files / 2,258 specs / 0 failed** (main's baseline
+  172/2,029); `ng build` clean.
+- **Full Playwright 93/93, zero skips** — the ENTIRE pre-existing suite in
+  ROUTE mode (the global opt-out) byte-unchanged, plus all SIX workspace
+  flag-on beats (J1's four + the two unification activation beats). One
+  pre-existing beat needed a GESTURE fix (never the assertion):
+  `salon-composer-modes.spec.ts`'s P4.d9 math/currency beat sent into
+  Group Expedition unpaused, so each send fired the group turn chain —
+  whose TERMINAL STATE is not deterministic across a full-suite run (the
+  inherited turn pointer varies with earlier specs): it can park on a
+  user-controlled turn ("type as them", composer enabled — the green case)
+  or on an AI turn (the Nudge affordance, **composer disabled** — the
+  second send is swallowed; J1 saw the same red in its container run, and
+  two full runs here parked differently). The fix: the beat now PAUSES
+  auto-responses before sending (the m4b-proven toggle) so no chain fires
+  at all — it tests rendering, not turns — and on unpause lets any resumed
+  chain drain via a canned-reply-count stabilization poll before handing
+  the chat to sibling specs.
+
+**⚠ v4 DRIFTED past the baseline during the round — a catch-up round is
+OWED.** v4 HEAD is `c53510c7`, four commits past `b8b12695`: `70baaa74`
+(docs-only state-cascade plan — dispositioned at round setup), `f48f34dc`
+(**the cascading-state feature LANDED**: chat → project → group → general
+state with Pascal `$state` — touches the PORTED Pascal/custom-tools
+surfaces), `77fa8c73` (version bump), `c53510c7` (a universal system-prompt
+note on KaTeX `$$` delimiters — touches the ported system-prompt surface).
+The oracle baseline STAYS `b8b12695`; until the catch-up runs, regenerate
+oracles from the pinned worktree `/private/tmp/qt-v4-pin-b8b12695` (kept
+alive deliberately — do NOT `git worktree remove` it during cleanup).
+
+**Named follow-ups left OPEN by this round** (also in the two order status
+headers): the wardrobe `asTab` tab surface (neither lane ported it; the
+rail wardrobe button in workspace mode lands on the loud pane; the
+character-screen wardrobe DIALOG entry points keep working); the standalone
+document surface (`document-standalone` tab — J2 tier-2 item 7 + the
+`doc_focus` beats); the chat-sidebar narrow-pane overlay (lands with the
+unported ChatSidebar); `brahma` (p4.9i1); the workspace help doc (p4.9i2);
+per-instance storage-key scoping; the wizard-handoff `mode=setup` query
+drop; v4's runtime per-theme `--qt-workspace-accent` values (committed
+accents are signature hues; cross-theme screenshot check not run); the
+HTML5 drag-split e2e beat (keyboard floor shipped); tab-mode card-Chat
+without `openChatOnMount`; the hosted roster's Create-Character anchor
+still routes.

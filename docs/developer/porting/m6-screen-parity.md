@@ -633,15 +633,18 @@ lanes). These are liftable straight into `/setupphase`.
 | 13 | `p4.9n-files-fidelity` | rich text/pdf preview, rich FolderPicker, cross-mount move/copy UI, drag relocation | lane | pdf/docx extractor (refusing seam) |
 | 14 | `p4.9l-salon-composer-toolbar` | `roleplayTemplateId`-aware toolbar delimiters — a composer vertical, **not** a rider (`phase-4.md:1615-1618`) | lane | a composer toolbar must exist first |
 | 15 | `p4.9m-toast-bus` | a toast bus; terminal exit/kill toasts; `chat-update` side effects; xterm optional addons | rider | none |
-| 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | ~~a human ruling first~~ **RULED 2026-07-18: port it** — see §5.1/F1 |
+| 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | ~~a human ruling first~~ **RULED 2026-07-18: port it** — **DONE 2026-07-19** (the P4.9J1 ∥ P4.9J2 round) |
 
-Sequencing note (updated 2026-07-19): rows **1 and 7 are DONE** — the
-consult-wire + image-detail + wardrobe round (P4.6bd ∥ P4.9a2 ∥ P4.9f1 ∥
-P4.9f2) unified 2026-07-19, closing `p4.9a` with it. Rows 5/6/8–15 are
-unstarted; row 16 (`p4.9j`) still gates v4 retirement and still wants a
-dedicated round. Two non-M6 items now sit ahead of the backlog in the
-next-order pool: the `avatar_preview` host wire (+ the WebP codec it needs)
-and the `b8b12695` markdown/KaTeX drift catch-up.
+Sequencing note (updated 2026-07-19, post-p4.9j): rows **1, 7, and 16 are
+DONE** — the consult-wire + image-detail + wardrobe round closed `p4.9a`
+and `p4.9f`, and the P4.9J1 ∥ P4.9J2 workspace-tabs round landed row 16
+(2026-07-19; the workspace is v5's default shell). **The F1 retirement
+gate is now substantively met**, with three tab kinds still loud not-wired
+panes (wardrobe `asTab`, `document-standalone`, `brahma`) — whether v4
+retirement waits on those is a human call. Rows 5/6/8–15 are unstarted.
+Ahead of the backlog in the next-order pool: the `c53510c7` v4 drift
+catch-up (the cascading-state feature — OWED) and the `avatar_preview`
+host wire (+ the WebP codec it needs).
 
 The previous note follows for history.
 

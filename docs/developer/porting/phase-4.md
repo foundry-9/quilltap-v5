@@ -1980,3 +1980,64 @@ round, since it rewrites the shell and `app.routes.ts` and would collide
 with any concurrent SPA lane); `p4.9i1`/`p4.9i2` (Brahma / HelpChat); M6
 backlog rows 5/6/8–15; the composer backslash-escape seam; or the
 `js_number_to_json` serialization rider. Round record: `status-log.md`.
+
+---
+
+## The P4.9J1 ∥ P4.9J2 workspace-tabs round — UNIFIED 2026-07-19
+
+**Both orders CLOSED** (`work-orders/p4.9j1-workspace-core-shell.md`,
+`p4.9j2-screen-hostability.md`); **`p4.9j` — v4's DEFAULT shell and the F1
+v4-retirement gate — is LANDED and ON by default.** Two pure-SPA lanes over
+the pre-committed contract file
+(`apps/web/src/app/workspace/workspace-contract.ts`, unchanged by both):
+
+- **P4.9J1**: the pure core (reducer/persistence/tab-meta/route-to-intent)
+  with the captured-corpus tier-1 differential against v4's REAL
+  `lib/workspace` + `lib/navigation` (committed
+  `workspace-core-fixtures.json`, 144 replay assertions; lane J1 owns
+  regen); the signal `WorkspaceService`; the two-pane keep-alive host +
+  chrome (strip/divider/backdrop/portals/shortcuts/interceptor/intent);
+  the flag (default ON, `quilltap.workspace.tabs !== '0'`) + 16 redirect
+  guards + the shell cutover; in-lane hosting (12 no-input kinds); the e2e
+  dual-mode harness (global route-mode opt-out for the whole existing
+  suite; `workspace-flow.spec.ts` runs flag-on).
+- **P4.9J2**: dual-mode signal inputs for the five param/query screens (+
+  EntityTabs hosted mode); the self-close seam; the three in-tab drills
+  (characters incl. group editor / prospero / scriptorium); the
+  `SalonModePanes` child-tab source (per-document + terminal sibling tabs
+  via embedded-view DOM-move portals — PTY/editor state survives, spec-
+  proven); Salon backdrop reporting; the opener intents.
+- **Unification wires**: the five AT-UNIFY kinds bound in the tab registry
+  (salon/settings/character-edit/character-view/custom-tools); the REVERSE
+  child-tab close via portal-registry disappearance (a seen key with no
+  node ⇔ tab closed); the settings e2e beat extended onto the real screen
+  + salon-funnel and characters-drill activation beats.
+
+Gate: 354 Rust binaries / 1,450 / 0 (zero Rust changed); the corpus
+byte-identical from the pinned `b8b12695` worktree; ng test 187 files /
+2,258; ng build clean; full Playwright green zero skips (a pre-existing
+composer-modes beat gained a pause-before-send gesture fix (the group turn chain's terminal state is run-order-dependent and can disable the composer)). Versions: crates
+unchanged; SPA 0.5.209.
+
+**Still not-wired tab kinds (loud, named):** `wardrobe` (the `asTab`
+WardrobeView variant — ported by NEITHER lane; the dialog entry points on
+the character screens keep working), `document-standalone` (J2 tier-2
+item 7 — needs file-scoped document I/O; `doc_focus` folds in), `brahma`
+(p4.9i1). Other named follow-ups: the round record in `status-log.md`.
+
+**⚠ v4 DRIFTED to `c53510c7` during the round** — `f48f34dc` landed the
+cascading-state feature (chat → project → group → general + Pascal
+`$state`; touches the PORTED Pascal/custom-tools surfaces) and `c53510c7`
+adds a system-prompt KaTeX note (touches the ported system-prompt
+surface). **A drift catch-up round is OWED** and is the natural next
+`/setupphase` item. The oracle baseline stays `b8b12695`; regenerate
+oracles from the pinned worktree `/private/tmp/qt-v4-pin-b8b12695` until
+the catch-up lands.
+
+**Next candidates:** the `c53510c7` drift catch-up (state-cascade +
+KaTeX-prompt-note — owed); the `avatar_preview` host wire + the WebP codec
+(the named next Rust item); the wardrobe `asTab` tab surface + the
+standalone document surface (the two not-wired workspace kinds); a
+workspace dogfood pass (the shell just changed by default — high value);
+`p4.9i1`/`p4.9i2`; M6 backlog rows 5/6/8–15; the composer
+backslash-escape seam. Round record: `status-log.md`.

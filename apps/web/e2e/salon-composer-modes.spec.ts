@@ -182,6 +182,20 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
+    // Deterministic ground: PAUSE auto-responses before sending. The group's
+    // inherited turn state varies across a full-suite run, and an unpaused
+    // send fires a turn chain whose terminal state is not deterministic — it
+    // can park on an AI turn (Nudge affordance, composer DISABLED), swallowing
+    // this beat's second send. The beat is about RENDERING, not turns; with
+    // the chat paused, both sends post as plain user messages and no chain
+    // ever runs. (The m4b pause round-trip proves the toggle end-to-end.)
+    const pauseButton = page.locator('.qt-chat-pause-button');
+    await expect(pauseButton).toBeVisible();
+    if (!(((await pauseButton.textContent()) ?? '').includes('Resume'))) {
+      await pauseButton.click();
+      await expect(pauseButton).toContainText('Resume');
+    }
+
     // A display block: `$$` / `E = mc^2` / `$$` on their own lines (Shift+Enter
     // inserts a soft break in chat mode, Enter sends). remark-math renders it to
     // a `.katex-display` subtree (which itself contains a `.katex`).
@@ -210,5 +224,21 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     });
     await expect(currencyMsg.first()).toBeVisible({ timeout: 15_000 });
     await expect(currencyMsg.first().locator('.katex')).toHaveCount(0);
+
+    // Restore the running state for sibling specs, then let the resumed chain
+    // (if the turn pointer sits on an AI participant) drain: poll until the
+    // canned-reply count stops growing.
+    await pauseButton.click();
+    await expect(pauseButton).toContainText('Pause');
+    await expect
+      .poll(
+        async () => {
+          const before = await page.getByText(MOCK_LLM_REPLY).count();
+          await page.waitForTimeout(1000);
+          return (await page.getByText(MOCK_LLM_REPLY).count()) - before;
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(0);
   });
 });

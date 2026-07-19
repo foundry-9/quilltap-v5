@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+The P4.9J1 + P4.9J2 workspace-tabs round unified onto main (2026-07-19, SPA
+0.5.209): the tabbed workspace — v4's default shell — is live and ON by
+default. Lane J1 delivered the pure workspace core (reducer / persistence /
+tab-meta / route-to-intent) with a captured-corpus tier-1 differential
+against v4's real lib/workspace code (144 replay assertions; the corpus
+regenerates byte-identically from a pinned v4 worktree at b8b12695), the
+WorkspaceService store, the two-pane keep-alive host with all chrome (tab
+strip, divider, backdrop arbitration, portal hosts, shortcuts, link
+interceptor, ?open= intent), the workspace-tabs flag + 16 redirect guards +
+the shell cutover, in-lane hosting for the 12 no-input tab kinds, and the
+e2e dual-mode harness (the whole existing suite runs route mode unchanged
+via a global opt-out). Lane J2 made every input-driven screen hostable:
+dual-mode signal inputs (salon, settings, character detail/edit,
+custom-tools), the self-close seam, in-tab drills for characters (incl.
+group editor), prospero, and scriptorium, the SalonModePanes child-tab
+source (documents + terminal as sibling child tabs via DOM-move portals
+that keep PTY/editor state alive), Salon backdrop reporting, and the opener
+intents. Unification wires activated the five AT-UNIFY tab kinds, added the
+reverse child-tab-close direction, and grew the workspace e2e walk to six
+beats. Gate: 354 Rust test binaries / 1,450 / 0 (no Rust changed), ng test
+187 files / 2,258, ng build clean, full Playwright green (a pre-existing
+composer-modes beat gained a pause-before-send gesture fix (the group turn chain's terminal state is run-order-dependent and can disable the composer)). Still not-wired
+panes (named): wardrobe (asTab variant), document-standalone, brahma
+(p4.9i1). ⚠ v4 drifted to c53510c7 during the round (the cascading-state
+feature landed, touching ported Pascal surfaces) — a drift catch-up round
+is owed; oracles regenerate from the pinned b8b12695 worktree until then.
+
 P4.9J unification wires (SPA 0.5.208): the five ACTIVATE-AT-UNIFY tab kinds
 (salon, settings, character-edit, character-view, custom-tools) now bind lane
 J2's dual-mode inputs from their tab payloads in the workspace tab registry,

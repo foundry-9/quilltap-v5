@@ -792,17 +792,46 @@ records THERE. Update this summary only when a phase or round completes.
   codec (the named next Rust item), `p4.9j` (workspace tabs — retirement
   gates on it, wants a DEDICATED round), `p4.9i1`/`p4.9i2`, or M6 rows 5+
   — see phase-4.md.
+- **The P4.9J1 ∥ P4.9J2 workspace-tabs round: UNIFIED on main (2026-07-19)
+  — BOTH CLOSED; `p4.9j` LANDED (v4's DEFAULT shell; the F1 v4-retirement
+  gate) and ON by default.** The pure workspace core (reducer / persistence
+  / tab-meta / route-to-intent, captured-corpus tier-1 differential against
+  v4's real `lib/workspace` — 144 replay assertions, corpus regen owned by
+  the workspace lane) + the signal store + the two-pane keep-alive host and
+  all chrome + the flag (default ON) + 16 redirect guards + shell cutover +
+  the e2e dual-mode harness ∥ every input-driven screen made hostable
+  (dual-mode inputs, self-close, the three in-tab drills, the SalonModePanes
+  child-tab source with DOM-move portals, backdrop reporting, opener
+  intents). Unification wired the five AT-UNIFY kinds, the reverse
+  child-tab close (portal-registry disappearance), and grew the workspace
+  walk to six beats. Gate: 354 binaries / 1,450 / 0 (zero Rust changed),
+  corpus byte-identical from the pinned `b8b12695` worktree, ng 187 files /
+  2,258, full Playwright green zero skips (one pre-existing composer beat
+  gained a pause-before-send gesture fix (the group turn chain's terminal state is run-order-dependent and can disable the composer)). Still not-wired (loud): the wardrobe
+  `asTab` surface, `document-standalone`, `brahma` (p4.9i1). **⚠ v4
+  DRIFTED to `c53510c7` during the round** (the cascading-state feature —
+  Pascal `$state`, touches PORTED surfaces — + a system-prompt KaTeX note):
+  **a drift catch-up round is OWED**; oracles keep regenerating from the
+  pinned worktree `/private/tmp/qt-v4-pin-b8b12695` (kept alive) until it
+  runs. Next candidates: that catch-up, the `avatar_preview` wire + WebP
+  codec, the two not-wired workspace kinds, or a workspace dogfood pass —
+  see phase-4.md.
 - **Oracle baseline: v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
-  at the P4.d9 KaTeX drift-catch-up unification.** All seven families the
+  at the P4.d9 KaTeX drift-catch-up unification. ⚠ v4 HEAD has since
+  drifted to `c53510c7` (the state-cascade feature + a system-prompt KaTeX
+  note — catch-up round OWED, see the p4.9j round bullet); the baseline
+  STAYS `b8b12695` and oracles regenerate from the pinned detached worktree
+  `/private/tmp/qt-v4-pin-b8b12695` (node_modules symlinked: root +
+  `packages/{quilltap,plugin-types,plugin-utils}`) — NOT from the drifted
+  checkout.** All seven families the
   KaTeX drift transitively touches regenerated there and proven
   output-neutral (see the round bullet above); untouched families' committed
-  oracles keep their earlier regen vintages. v4's checkout was CLEAN at
-  `b8b12695` for this round, so oracles regenerate directly from
-  `~/source/quilltap-server` — **the old pin
-  `/private/tmp/qt-v4-pin-616930db` is RETIRED**; re-pin a detached worktree
-  only if the v4 tree is dirty at the next round's start. Versions (after
-  the 2026-07-19 P4.d9 unification): core 0.0.283, harness 0.0.246, host
-  0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.189.
+  oracles keep their earlier regen vintages. (The P4.d9-era note that
+  oracles regenerate directly from `~/source/quilltap-server` is
+  SUPERSEDED by the drift warning above — use the `b8b12695` pin. The old
+  pin `/private/tmp/qt-v4-pin-616930db` stays RETIRED.) Versions (after
+  the 2026-07-19 p4.9j workspace-tabs unification): core 0.0.283, harness
+  0.0.246, host 0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.209.
   The previous baseline paragraph follows for history:
   v4 `616930db` (4.8.0-dev.75), adopted 2026-07-18
   at the drift-catch-up unification. Every family the llm-consult
