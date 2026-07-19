@@ -1860,3 +1860,33 @@ catch-up round (classify → re-port; the natural next `/setupphase`),
 finishing P4.9a (resume at unit 2), the `p4.9j` workspace-tabs round
 (ruled: retirement gates on it), or the M6 backlog items 5+.** Round
 record: `status-log.md`.
+
+**The `616930db` drift-catch-up + P4.9a-resume round (P4.d8 ∥ P4.6bc ∥
+P4.9a) is UNIFIED on main (2026-07-18) — ALL THREE CLOSED; P4.9a closes
+with tier 2 deferred whole; the oracle baseline is now `616930db`.**
+Landed: the llm-consult server re-port (the `llm` definition block +
+contains/ncontains across the schema, the async consult seam through
+`execute_custom_tool`, the `pascal::llm_consult` invoker over the
+cheap-LLM ladder, `CUSTOM_TOOL_CONSULT`, `pascalMeta.llm` through all
+three writers, the workbench scripted-oracle params — audit has no
+live arm BY SHAPE — with 14 differentials over fresh `616930db`
+oracles and the §C corpus regen 115 → 159) ∥ the Workbench SPA half
+(the browser schema twin + tool-draft bijection + the consulted-oracle
+card / condition chips / bench oracle card / library badge + the
+byte-copied schema asset + the Inspector consult type; v4's new suites
+ported case-for-case) ∥ the My Photos tier-1 vertical (the 811-line
+user-gallery service, the four `photoGallery*` verbs + REST edges, the
+committed `photos-{main,mount}.db` family + 34-case differential, the
+`/photos` screen, the three-beat live walk). Wires: §B/§3 CoreRequest
+folds, §C counts, the §2a photos nav flip (LIVE), BC's beat 6
+self-activated. Gate: 353 binaries / 1,444 / 0; the 17 differentials
+by name zero SKIP; ng 154 files / 1,844; full Playwright 83/83 zero
+skips. Versions: core 0.0.279, harness 0.0.244, web 0.0.31, SPA
+0.5.175. **Standing (the next-order pool): the consult is DARK in
+production** — the three entrances hold no `CompletionProvider` and
+the 60 s timeout decorator is unwired; one host-side erased-provider
+thread through `EngineAssembly` closes all four (the natural first
+item of the next order) — **plus P4.9a tier 2** (`imageInfoGet` + the
+deep gallery modal family), the `979aec66` Insert-Announcement bank,
+the `jsnum` DRY rider, `p4.9j` workspace tabs (v4 retirement gates on
+it), and the M6 backlog items 5+. Round record: `status-log.md`.

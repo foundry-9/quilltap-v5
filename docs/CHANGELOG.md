@@ -2,6 +2,35 @@
 
 ## Recent Changes
 
+The P4.d8 + P4.6bc + P4.9a unification (the 616930db drift-catch-up +
+P4.9a-resume round, COMPLETE): the llm-consult re-port lands whole on
+both sides (the llm definition block, the consult seam through the
+execution core, contains/ncontains with per-subject semantics, the
+CUSTOM_TOOL_CONSULT log type, pascalMeta.llm, the Workbench
+scripted-oracle bench + consult surfaces + the byte-copied schema
+asset), and the My Photos vertical lands tier-1 whole (the
+user-gallery service, four photoGallery* verbs + REST edges, the
+/photos screen, the live three-beat walk). Unification wires: the SS-B
+llm fields folded into CustomToolPreviewRequest/CustomToolAuditRequest
+(casts out), the SS-C corpus counts moved to 159/10/149 with the drift
+map emptied, the four photos verbs folded into CoreRequest, and the
+photos nav item flipped LIVE (SS-2a) with the walk entering by nav
+click. Two cross-lane gate fixes: the pascal e2e seed now reads vault
+A's minted id from the fixture sidecar (D8's rebuild re-minted it),
+and the scripted-oracle beat picks its literal type before filling
+the answer (v4 defaults unknowable-subject eq to a number widget).
+Gate: fmt + clippy -D warnings (both feature sets) + release build
+clean; cargo test 353 binaries / 1,444 / 0 failed with the round's 17
+differentials run by name over fresh 616930db oracles, zero SKIPs; ng
+test 154 files / 1,844; ng build clean; full Playwright 83/83 zero
+skips (the scripted-oracle and photos nav beats ACTIVE). The oracle
+baseline moves to 616930db. STANDING: the consult is DARK in
+production (all three entrances lack a CompletionProvider; the 60s
+timeout decorator unwired) - the named first item for a next order.
+P4.9a tier 2 (imageInfoGet + the deep gallery modals) stays a deferred
+follow-up. Versions: core 0.0.279, harness 0.0.244, web 0.0.31, SPA
+0.5.175.
+
 P4.6bc tier 2: two consulted-oracle e2e beats on the Workbench walk. The
 editor-side beat runs LIVE (enable the consult, see the card's fields
 and inline issue, see the bench's oracle card and the two consult

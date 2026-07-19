@@ -716,8 +716,37 @@ records THERE. Update this summary only when a phase or round completes.
   from a pinned `d68638b4` worktree until it runs). Next candidates:
   the `616930db` drift catch-up, finishing P4.9a, `p4.9j` (workspace
   tabs), or M6 items 5+ — see phase-4.md.
-- **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
-  at the d68638b4-round unification** (every family the drift touched
+- **The P4.d8 ∥ P4.6bc ∥ P4.9a `616930db` drift-catch-up + P4.9a-resume
+  round: UNIFIED on main (2026-07-18) — ALL THREE CLOSED; P4.9a closes
+  with tier 2 deferred whole.** The llm-consult re-port both sides (the
+  `llm` block + contains/ncontains, the async consult seam,
+  `pascal::llm_consult` + CUSTOM_TOOL_CONSULT, `pascalMeta.llm`, the
+  workbench scripted-oracle params — audit has no live arm by shape —
+  the Workbench consulted-oracle SPA surfaces + the byte-copied schema
+  asset + the Inspector consult type; the §C corpus 115 → 159) ∥ the
+  My Photos tier-1 vertical (user-gallery service, four `photoGallery*`
+  verbs + REST edges, committed `photos-{main,mount}.db` + 34-case
+  differential, the `/photos` screen + the LIVE nav item, three live
+  beats). `979aec66` (Pascal in Insert Announcement) dispositioned
+  NO-PORT-NOW (announcer surface unported; BANKED for that slice).
+  Gate: 353 suites / 1,444 / 0, the round's 17 differentials by name
+  zero SKIP over fresh `616930db` oracles, clippy both feature sets,
+  ng 1,844 (154 files), full Playwright 83/83 zero skips. **Standing:
+  the consult is DARK in production** (no dispatch-layer
+  `CompletionProvider`; the 60 s timeout unwired) — one host-side
+  erased-provider thread through `EngineAssembly` closes it; the
+  natural first item of the next order. Next candidates: that consult
+  wire, P4.9a tier 2 (deep gallery modals), `p4.9j` (workspace tabs —
+  retirement gates on it), or M6 items 5+ — see phase-4.md.
+- **Oracle baseline: v4 `616930db` (4.8.0-dev.75), adopted 2026-07-18
+  at the drift-catch-up unification.** Every family the llm-consult
+  drift touched regenerated there (the drift was
+  Pascal-family-confined); untouched families' committed oracles keep
+  their earlier regen vintages. Versions: core 0.0.279, harness
+  0.0.244, host 0.0.20, web 0.0.31, quilltap-tauri 0.0.4, SPA 0.5.175.
+  The previous baseline paragraph follows for history:
+  v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
+  at the d68638b4-round unification (every family the drift touched
   regenerated there; untouched families' committed oracles date to
   `e3593f75`, verified behavior-neutral across the gap at round
   planning). The previous baseline paragraph follows for history:

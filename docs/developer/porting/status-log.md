@@ -22206,3 +22206,94 @@ byte-diff vs v4 `616930db`: empty. SPA **0.5.172** (three patch bumps).
    `as unknown as CoreRequest` casts in `workbench.api.ts` (both marked
    `// §B:` in place).
 3. Beat 6 self-activates over D8's server — no wire needed.
+
+---
+
+## The P4.d8 ∥ P4.6bc ∥ P4.9a unification — the `616930db` drift-catch-up + P4.9a-resume round, COMPLETE (2026-07-18)
+
+All three lanes unified onto main; **the round closes whole** — P4.d8
+CLOSED, P4.6bc CLOSED, P4.9a CLOSED (tier 1 whole; tier 2 deferred as
+the enumerated follow-up). Cherry-picked in dependency order (D8 → A →
+BC) onto `unify/616930db-drift`; the CHANGELOG and status-log unions
+rebuilt deterministically from the lanes' verified pure appends (the
+M6-round repair pattern), versions recounted from the COMMITS rather
+than the lane records — BC's own close record said "three patch bumps"
+but its commits carry four (169→173), so the recounted union is SPA
+**0.5.175** (main 169 + A's 2 + BC's 4), core **0.0.279** (271 + D8's 5
++ A's 3), harness **0.0.244**, web **0.0.31**.
+
+**The wires.** (1) §B — `llm` folded into `CustomToolPreviewRequest` /
+`CustomToolAuditRequest` in `core-contract.ts` (the audit union has no
+`live` arm, by shape); both `workbench.api.ts` casts out. (2) §C — the
+corpus spec's counts set to D8's recorded 159 = 10 title + 149
+definition (53 accept / 96 reject); the `REGENERATED_AT_616930DB`
+drift map emptied (the mechanism kept for the next drift window).
+(3) §3 — the four `photoGallery*` request types folded into
+`CoreRequest` name-for-name with `api/types.rs`'s `=== P4.9a ===`
+block; `photos.api.ts`'s local types and both casts out. (4) §2a — the
+shell's My Photos nav item flipped `route: null` → `/photos`; the
+photos walk's beat 1 enters by the nav click. (5) BC's beat 6
+self-activated over D8's server by its own §A-record probe, as
+designed.
+
+**Two cross-lane breaks the gate caught — both only reachable at
+unification:**
+
+1. **The pascal e2e seed had transcribed vault A's minted id.**
+   `seed-pascal-tools-fixture.ts` carried the mount id as a literal
+   (its own comment said "from `pascal-run-custom-main.db.meta.json`"),
+   and D8's fixture rebuild re-minted every vault id — D8's "nothing
+   hardcodes them" grep covered the harness consumers but not this
+   `apps/web/e2e` one. Global-setup threw before any spec ran. The
+   helper now READS `vaultA` from the sidecar like every other
+   consumer. The lesson for the fixture-regen map: `apps/web/e2e/
+   support/` is a fixture consumer too.
+2. **Beat 6's gesture was wrong, and its first-ever execution said
+   so.** The ACTIVATE-AT-UNIFY scripted-oracle walk (never runnable
+   in-lane) filled `Operand text` straight after picking `llm` + `eq`
+   — but v4 defaults an unknowable subject's eq literal to NUMBER
+   behind a "Literal type" picker (`OutcomesSection.tsx:361`/`:681`),
+   and the v5 component faithfully mirrors that. The beat now picks
+   `text` first. Spec gesture fixed; assertion untouched.
+
+Also transient: one release-build failure of `quilltap-tauri` during
+the gate — its dist embedding raced the concurrent `ng build`
+rewriting `dist/`; clean on re-run with dist stable. Don't run the two
+concurrently.
+
+**The gate (all on the unify branch, oracles fresh at `616930db`):**
+`cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+feature sets; release build clean; `cargo test --workspace
+--no-fail-fast` **353 binaries / 1,444 tests / 0 failed**; the round's
+**17 differentials run BY NAME** (14 pascal/tool + `photos_routes_equivalence`
++ `photos_web_routes` + the wire-contract pin), zero SKIP — one regen
+lesson: a jest `--` filter of `pascal-workbench` also matches
+`pascal-workbench-route` and the two cases then clobber one
+`QT_ORACLE_OUT` file (the workbench differential read the route rows'
+shape and failed against `null`); anchor the filter
+(`"pascal-workbench\.test\.ts$"`). SPA: `ng test` **154 files /
+1,844**; `ng build` clean; **full Playwright 83/83, zero skips** —
+the scripted-oracle beat and the photos nav-click beat both ACTIVE.
+
+**Standing after this round (the next-order pool):**
+- **The consult is DARK in production** (P4.d8's named deferral): the
+  three entrances (`run_custom` executor, composer
+  `chatCustomToolRun`, bench `{live:true}`) pass `None` — nothing at
+  the dispatch layer holds a `CompletionProvider` (not
+  dyn-compatible; needs an erased adapter through `EngineAssembly` in
+  quilltap-host) — and the 60 s timeout decorator is unwired with it.
+  A real `llm` tool fails soft into the author's `errorMessage`.
+  **The natural first item of the next order.**
+- **P4.9a tier 2**, deferred whole: `imageInfoGet` + the deep gallery
+  modal family + the photo-gallery-modal/gallery-tab hand-offs (the
+  precise list in the P4.9a lane close).
+- The `979aec66` BANK (Pascal joins the staff roster when the
+  Insert-Announcement slice is ordered); the `jsnum` JS-`Number()`
+  DRY rider; `p4.9j` workspace tabs (retirement gates on it); the M6
+  backlog items 5+.
+
+**Oracle baseline: v4 `616930db` (4.8.0-dev.75), adopted at this
+unification.** Every family this round touched regenerated there;
+untouched families' committed oracles remain at their `d68638b4`-era
+regen (the drift was Pascal-family-confined — verified in the round's
+classification).
