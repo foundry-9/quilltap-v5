@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Characters roster gains the in-tab
+drill (v4 AuroraView selectedCharacterId / selectedGroupId). When hosted, a
+character card drills into the detail IN PLACE and a group Edit drills into the
+group editor, both embedded via list state instead of routing; the detail/editor
+back restores the list. CharacterDetail gains an embedded input + back output
+(distinct from its standalone-tab self-close); GroupEditor gains a groupId input
++ back output; CharacterCard/GroupCard render their open affordances as
+buttons/nulled-links when in a tab; GroupsSection emits openGroup when hosted.
+Routed mode navigates as today. (Named deferral: the card Chat action's
+openChatOnMount auto-start drills to the detail without auto-starting.)
+
+
 P4.9J2 (screen hostability, lane J2): the Scriptorium gains the in-tab drill (v4
 ScriptoriumView selectedStoreId). When hosted, a store card's Open drills IN
 PLACE (renders qt-store-detail embedded) instead of routing; the detail's back

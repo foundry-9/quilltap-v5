@@ -4,6 +4,8 @@ import {
   computed,
   effect,
   inject,
+  input,
+  output,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -49,7 +51,7 @@ import {
       <div class="flex min-h-[50vh] items-center justify-center">
         <div class="text-center">
           <p class="text-lg qt-text-destructive mb-4">Error: {{ loadErrorMessage() }}</p>
-          <button type="button" class="qt-text-primary hover:text-primary/80" (click)="back()">
+          <button type="button" class="qt-text-primary hover:text-primary/80" (click)="goBack()">
             Back to groups
           </button>
         </div>
@@ -62,7 +64,7 @@ import {
             class="inline-flex items-center justify-center rounded-lg border qt-border-default qt-bg-muted/70 p-2 qt-shadow-sm transition hover:qt-bg-muted"
             title="Go back"
             aria-label="Go back"
-            (click)="back()"
+            (click)="goBack()"
           >
             <qt-icon name="chevron-left" class="w-5 h-5" />
           </button>
@@ -175,12 +177,22 @@ export class GroupEditor {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
 
-  /** The `:id` route param as a signal (v5 has no component-input binding). */
-  protected readonly id = toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), {
-    initialValue: '',
-  });
+  /**
+   * In-tab drill (p4.9j2, v4 `AuroraView` `selectedGroupId`): the list supplies
+   * `groupId` (wins over the route `:id`) and binds `(back)` to restore the
+   * list. Null ⇒ routed `/characters/groups/:id`.
+   */
+  readonly groupIdInput = input<string | null>(null, { alias: 'groupId' });
+  readonly back = output<void>();
+  protected readonly embedded = computed(() => this.groupIdInput() != null);
+
+  /** The `:id` (route or drill input) as a signal. */
+  private readonly routeId = this.route
+    ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { initialValue: '' })
+    : undefined;
+  protected readonly id = computed(() => this.groupIdInput() ?? this.routeId?.() ?? '');
 
   protected readonly name = signal('');
   protected readonly description = signal('');
@@ -241,7 +253,12 @@ export class GroupEditor {
     return err instanceof Error ? err.message : 'Group not found';
   }
 
-  protected back(): void {
+  protected goBack(): void {
+    // Drill mode ⇒ hand control back to the list; routed ⇒ navigate.
+    if (this.embedded()) {
+      this.back.emit();
+      return;
+    }
     void this.router.navigate(['/characters']);
   }
 

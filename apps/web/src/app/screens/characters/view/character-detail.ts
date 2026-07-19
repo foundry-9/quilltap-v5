@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   input,
+  output,
   signal,
   type WritableSignal,
 } from '@angular/core';
@@ -91,13 +92,13 @@ const CHARACTER_TABS: Tab[] = [
   ],
   template: `
     <div class="character-view qt-page-container min-h-screen text-foreground">
-      @if (canClose()) {
-        <!-- Hosted as a workspace tab: "back" closes this tab, returning to the
-             kept-alive opener (v4 CharacterViewTab back semantics). -->
+      @if (embedded() || canClose()) {
+        <!-- Hosted: drilled inside the aurora list ⇒ back restores the list (v4
+             onBack); standalone tab ⇒ back closes the tab (v4 CharacterViewTab). -->
         <button
           type="button"
           class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80"
-          (click)="closeSelf()"
+          (click)="onBack()"
         >
           ← Back to Characters
         </button>
@@ -209,14 +210,24 @@ export class CharacterDetail {
    */
   readonly characterIdInput = input<string | null>(null, { alias: 'characterId' });
   readonly tab = input<string | null>(null);
+  /**
+   * Drilled inside the aurora list (v4 `AuroraView` `selectedCharacterId`) ⇒
+   * back restores the list via `(back)` rather than closing a tab.
+   */
+  readonly embedded = input<boolean>(false);
+  readonly back = output<void>();
 
-  /** Both seams present ⇒ hosted as a workspace tab; "back" closes the tab. */
+  /** Both seams present ⇒ hosted as a standalone workspace tab; "back" closes it. */
   protected canClose(): boolean {
     return this.handle != null && this.tabId != null;
   }
 
-  /** v4 `CharacterViewTab` back — closes this tab, returning to the opener. */
-  protected closeSelf(): void {
+  /** Drill ⇒ restore the list; standalone tab ⇒ close it (v4 `CharacterViewTab`). */
+  protected onBack(): void {
+    if (this.embedded()) {
+      this.back.emit();
+      return;
+    }
     if (this.handle && this.tabId != null) this.handle.closeTab(this.tabId);
   }
 

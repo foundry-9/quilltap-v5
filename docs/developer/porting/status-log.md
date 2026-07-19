@@ -23642,3 +23642,26 @@ set before `ngOnInit`), `ActivatedRoute` optional; `back()` renamed `goBack()`
 call it. `StoreCard` needed no change (its open is a card-body emit, not a
 routerLink). New drill spec (card click drills, detail back restores the list);
 the 13 existing scriptorium cases untouched. `ng test` 14/14.
+
+### Unit 10 — Characters in-tab drill (item 3c) (SPA 0.5.199)
+
+v4 `AuroraView` drills into `selectedCharacterId` AND `selectedGroupId` in place
+when `inTab`. v5 `CharactersList` injects `WORKSPACE_TAB_ID`, gains
+`selectedCharacterId`/`selectedGroupId` signals + `inTab`; a card `(view)` sets
+the character target (render `qt-character-detail [embedded]` in place),
+`GroupsSection`'s new `(openGroup)` output sets the group target (render
+`qt-group-editor` in place), each back restores the list (group back refetches).
+`CharacterDetail` (unit 4) grew an `embedded` input + `back` output — `onBack()`
+emits when embedded (drill) else closes the standalone tab (`canClose`), and the
+template shows the back button for either; `GroupEditor` gains a `groupId` input
+(wins over route), `back` output, `embedded`, `goBack()` (renamed). Card
+affordances: `CharacterCard` gains `inTab` + `view` (card click + the nulled
+avatar/Chat routerLinks emit `view`); `GroupCard` gains `inTab` (Edit becomes a
+button emitting `open`); `GroupsSection` routes vs emits by `tabId`. New drill
+specs (card→detail, group Edit→editor, back restores); the existing characters +
+groups suites untouched. `ng test` characters-list 10/10, character-detail 8,
+character-edit 9, groups green. **Named deferral (`p4.9j` follow-up):** the card
+Chat action's v4 `openChatOnMount` auto-start — in tab mode it drills to the
+detail without auto-starting a chat; and the roster's Create-Character anchor
+still routes when hosted (a `character-new` openTab is opener-intent, item 6 /
+lane J1).

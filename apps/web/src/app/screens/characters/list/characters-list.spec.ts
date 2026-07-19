@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterListItem } from '../../../core/core-contract';
+import { WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CharactersList, sortCharacters } from './characters-list';
 
 function character(over: Partial<CharacterListItem>): CharacterListItem {
@@ -232,5 +233,144 @@ describe('CharactersList', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('⭐');
     expect(seen).toContain('characterFavorite');
+  });
+});
+
+/**
+ * In-tab drill (p4.9j2, v4 `AuroraView` `selectedCharacterId` / `selectedGroupId`):
+ * hosted as a workspace tab, a card drills IN PLACE (renders the detail /
+ * group-editor embedded); the detail's back restores the list.
+ */
+describe('CharactersList (in-tab drill)', () => {
+  function drillClient(): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        switch (req.type) {
+          case 'characterList':
+            return { characters: [character({ id: 'c1', name: 'Bertie' })] };
+          case 'connectionProfileList':
+            return { profiles: [] };
+          case 'groupList':
+            return {
+              groups: [
+                {
+                  id: 'g1',
+                  name: 'The Drones',
+                  description: null,
+                  color: null,
+                  icon: null,
+                  createdAt: '2024-01-01T00:00:00.000Z',
+                  updatedAt: '2024-01-01T00:00:00.000Z',
+                  _count: { members: 0, documentStores: 0 },
+                },
+              ],
+            };
+          case 'characterGet':
+            return {
+              character: {
+                ...character({ id: 'c1', name: 'Bertie', title: 'The Valet' }),
+                identity: 'A gentleman.',
+                manifesto: null,
+                personality: null,
+                firstMessage: null,
+                exampleDialogues: null,
+                physicalDescription: null,
+                defaultConnectionProfileId: null,
+                defaultAgentModeEnabled: null,
+                defaultHelpToolsEnabled: null,
+                canDressThemselves: null,
+                canCreateOutfits: null,
+                aliases: [],
+                pronouns: null,
+                characterDocumentMountPointId: null,
+              },
+            };
+          case 'characterStats':
+            return {
+              stats: {
+                memories: 0,
+                conversations: 0,
+                wardrobeItems: 0,
+                photos: 0,
+                scenarios: 0,
+                knowledge: 0,
+                core: 0,
+                characterFiles: 0,
+                characterFilesTotal: 0,
+              },
+              groups: [],
+            };
+          case 'characterDefaultPartner':
+            return { partnerId: null };
+          case 'groupGet':
+            return {
+              group: {
+                id: 'g1',
+                name: 'The Drones',
+                description: null,
+                color: null,
+                icon: null,
+                createdAt: '2024-01-01T00:00:00.000Z',
+                updatedAt: '2024-01-01T00:00:00.000Z',
+              },
+            };
+          default:
+            return {};
+        }
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  async function renderTab(): Promise<ComponentFixture<CharactersList>> {
+    TestBed.configureTestingModule({
+      imports: [CharactersList],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: drillClient() },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-a' },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharactersList);
+    fixture.detectChanges();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('a card click drills into the character detail in place; back restores the list', async () => {
+    const fixture = await renderTab();
+    const card = fixture.nativeElement.querySelector('.character-card') as HTMLElement;
+    card.click();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.querySelector('qt-character-detail')).toBeTruthy();
+
+    const back = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Back to Characters'),
+    ) as HTMLButtonElement;
+    expect(back).toBeTruthy();
+    back.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('qt-character-detail')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Create Character');
+  });
+
+  it('a group Edit drills into the group editor in place', async () => {
+    const fixture = await renderTab();
+    const edit = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Edit',
+    ) as HTMLButtonElement;
+    expect(edit).toBeTruthy();
+    edit.click();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.querySelector('qt-group-editor')).toBeTruthy();
   });
 });

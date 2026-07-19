@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
@@ -16,10 +17,12 @@ import {
   triggerJsonDownload,
 } from '../characters.api';
 import { GroupsSection } from '../../groups/groups-section';
+import { GroupEditor } from '../../groups/group-editor';
 import { CharacterCard } from './character-card';
 import { CharacterDeleteDialog, type DeleteChoice } from './character-delete-dialog';
 import { CharacterImportDialog } from './character-import-dialog';
 import { ResetBuiltinsDialog } from './reset-builtins-dialog';
+import { CharacterDetail } from '../view/character-detail';
 
 /** v4 `AuroraView.tsx:125-140` sort: NPCs last → favorites first → chats desc → name. */
 export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
@@ -58,8 +61,20 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     CharacterImportDialog,
     ResetBuiltinsDialog,
     GroupsSection,
+    CharacterDetail,
+    GroupEditor,
   ],
   template: `
+    @if (selectedCharacterId(); as cid) {
+      <!-- In-tab drill (v4 AuroraView selectedCharacterId): the detail in place. -->
+      <qt-character-detail
+        [characterId]="cid"
+        [embedded]="true"
+        (back)="selectedCharacterId.set(null)"
+      />
+    } @else if (selectedGroupId(); as gid) {
+      <qt-group-editor [groupId]="gid" (back)="onGroupBack()" />
+    } @else {
     <div class="character-page qt-page-container text-foreground">
       <div
         class="flex flex-wrap items-center justify-between gap-4 border-b qt-border-default/60 pb-6"
@@ -111,7 +126,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
       }
 
       <!-- Groups section (v4 AuroraView.tsx) — above the characters grid. -->
-      <qt-groups-section #groupsSection />
+      <qt-groups-section #groupsSection (openGroup)="selectedGroupId.set($event)" />
 
       @if (charactersQuery.isPending()) {
         <qt-loading-state message="Loading characters..." class="mt-12" />
@@ -137,6 +152,8 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
             <qt-character-card
               [character]="character"
               [profile]="profileFor(character.defaultConnectionProfileId)"
+              [inTab]="inTab()"
+              (view)="selectedCharacterId.set(character.id)"
               (favorite)="toggleFavorite(character)"
               (toggleCarina)="toggleCarina(character)"
               (toggleControlledBy)="toggleControlledBy(character)"
@@ -165,12 +182,26 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     @if (resetOpen()) {
       <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset($event)" />
     }
+    }
   `,
 })
 export class CharactersList {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
+  /** Non-null ⇒ hosted as a workspace tab; card / group opens drill in place. */
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** v4 `AuroraView` `selectedCharacterId` / `selectedGroupId` — the drill targets. */
+  protected readonly selectedCharacterId = signal<string | null>(null);
+  protected readonly selectedGroupId = signal<string | null>(null);
+  protected readonly inTab = computed(() => this.tabId != null);
+
+  /** Drilled group's back — restore the list AND refetch (v4 refetches on remount). */
+  protected onGroupBack(): void {
+    this.selectedGroupId.set(null);
+    void this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+  }
 
   protected readonly importOpen = signal(false);
   protected readonly resetOpen = signal(false);

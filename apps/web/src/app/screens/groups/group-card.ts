@@ -45,14 +45,25 @@ import type { GroupCardModel } from './groups.api';
       }
 
       <div class="qt-entity-card-actions flex gap-2">
-        <a
-          [routerLink]="['/characters/groups', group().id]"
-          class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
-          title="Edit group"
-          (click)="$event.stopPropagation()"
-        >
-          Edit
-        </a>
+        @if (inTab()) {
+          <button
+            type="button"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
+            title="Edit group"
+            (click)="$event.stopPropagation(); open.emit(group().id)"
+          >
+            Edit
+          </button>
+        } @else {
+          <a
+            [routerLink]="['/characters/groups', group().id]"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
+            title="Edit group"
+            (click)="$event.stopPropagation()"
+          >
+            Edit
+          </a>
+        }
         <button
           type="button"
           class="qt-button-destructive qt-shadow-sm"
@@ -68,6 +79,8 @@ import type { GroupCardModel } from './groups.api';
 })
 export class GroupCard {
   readonly group = input.required<GroupCardModel>();
+  /** Hosted as a workspace tab ⇒ the Edit affordance drills in place (emits). */
+  readonly inTab = input<boolean>(false);
   readonly open = output<string>();
   readonly delete = output<string>();
 
