@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.9J2 (screen hostability, lane J2): the Scriptorium gains the in-tab drill (v4
+ScriptoriumView selectedStoreId). When hosted, a store card's Open drills IN
+PLACE (renders qt-store-detail embedded) instead of routing; the detail's back
+restores the list (and refetches). StoreDetail gains a storeId input + back
+output; its back buttons emit when embedded, else navigate. StoreCard needed no
+change (its open is already an emit). Routed mode navigates as today.
+
+
 P4.9J2 (screen hostability, lane J2): Prospero gains the in-tab drill (v4
 ProsperoView selectedProjectId). When hosted as a workspace tab, a project
 card's Open drills IN PLACE (renders qt-project-detail embedded) via list state

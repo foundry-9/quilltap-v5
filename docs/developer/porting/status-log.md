@@ -23627,3 +23627,18 @@ outputs (drill) vs `routerLink` anchors (routed); `ProjectDetail.goBack()`
 (renamed from `back()` to free the `back` output name) emits when embedded, else
 navigates. New drill spec (Open is a button, drills in place, header back restores
 the list); the 17 existing prospero cases untouched. `ng test` 18/18.
+
+### Unit 9 — Scriptorium in-tab drill (item 3b) (SPA 0.5.198)
+
+v4 `ScriptoriumView` drills into `selectedStoreId` in place when `inTab`. v5
+`ScriptoriumList` injects `WORKSPACE_TAB_ID` `{ optional: true }`, gains
+`selectedStoreId` + `inTab`; `openStore` sets the signal (render
+`qt-store-detail` embedded) instead of routing when hosted; `onDrillBack()`
+clears it and refetches (v4 refetches on remount). `StoreDetail` gains a
+`storeId` input (wins over route `:id`), a `back` output, `embedded` computed;
+`storeId` is a computed (`input ?? route`), read in `ngOnInit` (signal inputs are
+set before `ngOnInit`), `ActivatedRoute` optional; `back()` renamed `goBack()`
+(frees the `back` output), emits when embedded else navigates — both back buttons
+call it. `StoreCard` needed no change (its open is a card-body emit, not a
+routerLink). New drill spec (card click drills, detail back restores the list);
+the 13 existing scriptorium cases untouched. `ng test` 14/14.

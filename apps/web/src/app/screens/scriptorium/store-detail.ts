@@ -1,8 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+  output,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
 import { FileManager } from '../../files/file-manager/file-manager';
 import type { MountType } from '../../files/types';
@@ -47,7 +57,7 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
       <div class="flex min-h-screen items-center justify-center">
         <div class="text-center">
           <p class="text-lg qt-text-destructive mb-4">{{ error() || 'Document store not found' }}</p>
-          <button type="button" class="qt-button-secondary" (click)="back()">Back to The Scriptorium</button>
+          <button type="button" class="qt-button-secondary" (click)="goBack()">Back to The Scriptorium</button>
         </div>
       </div>
     } @else if (store(); as s) {
@@ -55,7 +65,7 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
         <div class="mb-6">
           <button
             type="button"
-            (click)="back()"
+            (click)="goBack()"
             class="inline-flex items-center gap-1 text-sm qt-text-secondary hover:text-foreground mb-4 transition-colors"
           >
             <qt-icon name="chevron-left" class="w-4 h-4" />
@@ -212,12 +222,24 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
 })
 export class StoreDetail implements OnInit {
   private readonly core = inject(CoreClient);
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router);
 
-  protected readonly storeId = toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), {
-    initialValue: '',
-  });
+  /**
+   * In-tab drill (p4.9j2, v4 `ScriptoriumView` `selectedStoreId`): the list
+   * supplies `storeId` (wins over the route `:id`) and binds `(back)` to restore
+   * the list. Null ⇒ routed `/scriptorium/:id`.
+   */
+  readonly storeIdInput = input<string | null>(null, { alias: 'storeId' });
+  readonly back = output<void>();
+  protected readonly embedded = computed(() => this.storeIdInput() != null);
+
+  private readonly routeStoreId = this.route
+    ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { initialValue: '' })
+    : undefined;
+  protected readonly storeId = computed(
+    () => this.storeIdInput() ?? this.routeStoreId?.() ?? '',
+  );
 
   protected readonly store = signal<DocumentStore | null>(null);
   protected readonly files = signal<DocumentStoreFile[]>([]);
@@ -251,7 +273,12 @@ export class StoreDetail implements OnInit {
     void this.loadFiles();
   }
 
-  protected back(): void {
+  protected goBack(): void {
+    // Drill mode ⇒ hand control back to the list; routed ⇒ navigate.
+    if (this.embedded()) {
+      this.back.emit();
+      return;
+    }
     void this.router.navigate(['/scriptorium']);
   }
 
