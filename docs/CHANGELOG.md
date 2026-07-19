@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) unit 1: the workspace pure core + its tier-1 corpus. A new
+Node oracle case (harness/oracle/cases/workspace-core.ts) drives v4's real
+lib/workspace (reducer/persistence/tab-meta) and lib/navigation/route-to-intent
+and emits a committed deterministic JSON corpus (92 reducer steps, 17 identity
+arms, selector probes, the full persistence branch set, 44 route hrefs, the
+DEFAULT_TAB_META table). The v5 pure-core port lives under
+apps/web/src/app/workspace/core/ (reducer/persistence/tab-meta/route-to-intent,
+re-exporting the contract types, no Angular imports; persistence validation
+hand-ported from Zod since the SPA has no zod). A vitest replay spec runs every
+corpus row through the port (144 assertions green). v5-only /characters route
+adaptations are unit-tested separately (they diverge from v4 by design).
+
 Round planning: the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2) is scoped
 and its two work orders are committed (docs/developer/porting/work-orders/
 p4.9j1-workspace-core-shell.md, p4.9j2-screen-hostability.md), alongside the

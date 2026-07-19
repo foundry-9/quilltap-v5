@@ -23492,3 +23492,67 @@ the next-order pool), `p4.9i1` Brahma (its tab kind renders a loud refusal
 pane), the help doc (`p4.9i2`), per-instance layout-key scoping (named
 deferral), and the `616930db`-style catch-up for the predicted state-cascade
 feature (not yet landed in v4 — watch it).
+
+---
+
+## P4.9J1 (lane J1) — the workspace core, chrome, and shell cutover (IN PROGRESS)
+
+Branch `claude/p4-9j1-workspace-core-shell-9prx7q`. Pure-SPA lane (zero Rust
+source; the only Rust-adjacent artifact is the Node oracle case). Baseline v4
+`b8b12695`; drift-checked clean (HEAD at `70baaa74`, the docs-only state-cascade
+plan, already dispositioned). SPA base 0.5.189.
+
+### Unit 1 — the pure core + the tier-1 corpus (SPA 0.5.190)
+
+The differential heart. New oracle case `harness/oracle/cases/workspace-core.ts`
+imports v4's REAL `lib/workspace/{workspace-reducer,workspace-persistence,
+tab-meta}` and `lib/navigation/route-to-intent` (never reimplements them) and
+emits ONE deterministic pretty-JSON corpus committed at
+`apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json`:
+
+- **reducer**: 44 scripted scenarios / 92 steps recording the COMPLETE state
+  after every action — every action type, every `tabIdentity` arm, de-dupe
+  payload/title refresh (incl. a same-keys-different-insertion-order row pinning
+  the `JSON.stringify` semantics), `focus:false` (incl. into an empty right
+  pane), right-pane creation both ways, child cascade, neighbour-pick forward
+  AND backward, collapse + right→left promotion, last-tab home reset, ratio
+  clamp edges (NaN/∞/negative), out-of-range MOVE index, UNSPLIT, REPLACE_STATE,
+  a combined split/move/close run.
+- **tabIdentity**: 17 rows (every arm, incl. the missing-id fallbacks).
+- **selectors**: paneOfTab / getPaneState / isActiveInItsPane / isSplit over a
+  split probe state.
+- **persistence**: storageKey (±instanceId); deserialize (null/garbage/missing
+  panes/bad focusedPane/tabs-not-object/non-number ratio → null; valid + every-
+  TabKind round-trip; unknown-kind-tab-dropped; **extra tab/pane/top-level keys
+  stripped** — the Zod `.strip()` behaviour the hand-port must match); prune
+  (all-valid, drop-invalid-salon, orphan child, orphan CHAIN fixpoint, missing
+  chatDocumentId, standalone with/without filePath, dangling active + stray
+  order, total-loss home fallback); hydrate; serialize round-trips.
+- **routeIntent**: 44 hrefs (the v4 table + query/hash/trailing-slash/external
+  edges + v5-null bare project/store details).
+- **tabMeta**: the full `DEFAULT_TAB_META` table.
+
+The v5 port lives under `apps/web/src/app/workspace/core/`
+(`reducer.ts`/`persistence.ts`/`tab-meta.ts`/`route-to-intent.ts`), pure TS,
+re-exporting the contract types; **no Angular imports**. Persistence validation
+is hand-ported from v4's Zod (the Workbench client-safe schema-port precedent) —
+the corpus proves the strip/drop semantics match. `route-to-intent.ts` replays
+every v4 corpus row byte-identically AND adds the documented v5 `/characters*`
+route names (`/characters`→aurora, `/characters/new`→character-new,
+`/characters/<id>`→character-view — v5 has no `/view` suffix), which are
+unit-tested v5-side (they diverge from v4 by design, so are NOT in the corpus).
+
+Replay spec `workspace-core.spec.ts` runs EVERY corpus row through the port and
+asserts deep equality (states — deep equal; strings — exact): **144 assertions
+green**. Corpus is byte-deterministic (regenerated twice, identical).
+
+**Regen recipe** (v4 checkout at `b8b12695`, Node 22 `/opt/node22/bin` here /
+Node 24 elsewhere; regenerate in its OWN clean invocation):
+```
+cd ~/source/quilltap-server
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/workspace-core.ts \
+  > ~/source/quilltap-v5/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json
+```
+Never hand-edit the fixture; regen + grep a known row (e.g.
+`combined-split-move-close`). Lane J1 owns regeneration whenever the v4 baseline
+moves.
