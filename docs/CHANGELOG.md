@@ -53,6 +53,29 @@ diffs green over fresh 616930db oracles, mutation-checked. Consults on the
 composer, workbench {live:true} bench, and model-driven run_custom paths
 are now REAL SPEND against the configured cheap-LLM provider (the round's
 §4 note).
+P4.9a2 unit 2 - the deep image-detail modal family (SPA): ImageDetailModal
+(overlay + ImageActions toolbar/arrows + the ImageMetadata character-album
+panel over the new imageInfoGet read-back - "In Photo Albums", per-character
+remove, Set Avatar, "Save to photo album", the linkId-vs-fileId save split),
+ChatGalleryImageViewModal (kind:'chat' routing, hard chat-file delete, the
+two album toggles with already-saved state), the applyImageNavigation port of
+useImageNavigation (Escape/arrows/body-scroll with the handleEscape
+suppression), DeletedImagePlaceholder + the input-driven ImageGallery port
+(missing-image detection incl. the zero-dimension onLoad arm), and
+PhotoGalleryModal rebuilt to v4 parity: all three modes, host index
+arithmetic with conditionally-undefined arrow ends, the nested-Escape
+suppression (z-50 gallery / z-[60] detail). The aurora Photo Gallery tab
+reached EmbeddedPhotoGallery parity (count/zoom/Clear-Avatar header, avatar
+ring+badge, hover set-avatar + confirm-double-click delete, the link-relink
+detail modal with onAvatarSet). The four v4 RTL suites ported case-for-case
+(useImageNavigation, deleted-image-placeholder, photo-gallery-modal-deleted-
+handling, image-gallery-deleted-handling) plus pinning suites for the four
+v4-uncovered components; a live Playwright beat walks gallery -> detail ->
+arrow -> nested Escape. DELETE /api/v1/images/{id} answers a named loud
+refusal (v4's orphan-cleanup delete is unported); image tag editing is out of
+scope (no v4 UI exists); the dead character/user-character gallery hosts are
+typed but not invented.
+
 P4.9a2 (image-detail modal family, lane A2) unit 1 - the imageInfoGet verb:
 v4's GET /api/v1/images/[id] read (app/api/v1/images/[id]/route.ts:39-128)
 ported whole - the {data} envelope with the source remap

@@ -24,18 +24,35 @@ function entry(overrides: Partial<CharacterPhoto>): CharacterPhoto {
   };
 }
 
-function stubClient(
-  photos: CharacterPhoto[],
-  onDispatch?: (req: { type: string; [k: string]: unknown }) => void,
-): Partial<CoreClient> {
+interface SeenRequest {
+  type: string;
+  [k: string]: unknown;
+}
+
+function stubClient(options: {
+  photos: CharacterPhoto[];
+  defaultImageId?: string | null;
+  onRequest?: (req: SeenRequest) => void;
+}): Partial<CoreClient> {
   return {
-    dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
-      onDispatch?.(req);
+    dispatchData: (async (req: SeenRequest) => {
+      options.onRequest?.(req);
       if (req.type === 'characterPhotoList') {
-        return { entries: photos, total: photos.length, hasMore: false };
+        return { entries: options.photos, total: options.photos.length, hasMore: false };
       }
+      if (req.type === 'characterGet') {
+        return {
+          character: { id: 'c1', name: 'Aria', defaultImageId: options.defaultImageId ?? null },
+        };
+      }
+      if (req.type === 'characterList') return { characters: [] };
+      if (req.type === 'imageInfoGet') return { data: { characterGalleryLinks: [] } };
       return {};
     }) as CoreClient['dispatchData'],
+    dispatch: (async (req: SeenRequest) => {
+      options.onRequest?.(req);
+      return { type: 'ack', data: {} };
+    }) as CoreClient['dispatch'],
   };
 }
 
@@ -47,46 +64,134 @@ async function render(client: Partial<CoreClient>): Promise<ComponentFixture<Cha
   const fixture = TestBed.createComponent(CharacterGalleryTab);
   fixture.componentRef.setInput('characterId', 'c1');
   fixture.detectChanges();
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
   }
   return fixture;
 }
 
-describe('CharacterGalleryTab', () => {
-  it('shows the empty state when there are no photos', async () => {
-    const fixture = await render(stubClient([]));
+async function flush(fixture: ComponentFixture<CharacterGalleryTab>): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+/**
+ * The Photo Gallery tab at `EmbeddedPhotoGallery` parity. The v4 embedded
+ * gallery family has no test of its own — the cases pin transcribed behaviors
+ * by `file:line` (`EmbeddedPhotoGallery.tsx`, `GalleryImage.tsx`,
+ * `GalleryControls.tsx`, `GalleryEmpty.tsx`, `useGalleryData.ts`).
+ */
+describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
+  afterEach(() => {
+    document.body.style.overflow = '';
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  // GalleryEmpty.tsx:11-20 — the empty card with the entity name.
+  it('shows the v4 empty state with the character name', async () => {
+    const fixture = await render(stubClient({ photos: [] }));
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('No photos yet');
+    expect(text).toContain('No photos in Aria’s album yet');
+    expect(text).toContain('keep_image');
+  });
+
+  // GalleryControls.tsx:31-33 — the count line.
+  it('renders the photo count line', async () => {
+    const fixture = await render(
+      stubClient({ photos: [entry({ linkId: 'a' }), entry({ linkId: 'b' })] }),
+    );
+    expect(fixture.nativeElement.textContent).toContain('2 photos');
   });
 
   it('renders a thumbnail per entry from its blobUrl', async () => {
-    const fixture = await render(stubClient([entry({ linkId: 'link-1' })]));
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'link-1' })] }));
     const imgs = fixture.nativeElement.querySelectorAll('img');
     expect(imgs.length).toBe(1);
     expect((imgs[0] as HTMLImageElement).src).toContain('/api/v1/mount-points/mp-1/blobs/');
   });
 
-  it('renders the caption as alt text and an overlay', async () => {
+  // GalleryImage.tsx:32-34/:53-58 — the avatar tile carries the success ring
+  // and badge; GalleryControls.tsx:49-58 — Clear Avatar appears only then.
+  it('marks the current avatar tile and offers Clear Avatar', async () => {
     const fixture = await render(
-      stubClient([entry({ linkId: 'link-9', caption: 'By the sea', tags: ['beach'] })]),
+      stubClient({ photos: [entry({ linkId: 'link-1' })], defaultImageId: 'link-1' }),
     );
-    const img = fixture.nativeElement.querySelector('img') as HTMLImageElement;
-    expect(img.alt).toBe('By the sea');
-    expect(fixture.nativeElement.textContent).toContain('By the sea');
+    expect(fixture.nativeElement.textContent).toContain('Avatar');
+    expect(fixture.nativeElement.querySelector('.ring-success')).toBeTruthy();
+    const clear = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      ((b as HTMLElement).textContent ?? '').includes('Clear Avatar'),
+    );
+    expect(clear).toBeTruthy();
   });
 
-  it('dispatches characterPhotoRemove with the linkId when a photo is deleted', async () => {
-    const seen: Array<{ type: string; [k: string]: unknown }> = [];
-    const fixture = await render(stubClient([entry({ linkId: 'link-1' })], (r) => seen.push(r)));
-    const deleteButton = fixture.nativeElement.querySelector(
-      'button[title="Delete this photo"]',
+  // useGalleryData.ts:88-113 — set avatar dispatches `characterAvatar` with
+  // the link id (vault photos ARE the avatar ids).
+  it('sets the avatar from the tile overlay', async () => {
+    const seen: SeenRequest[] = [];
+    const fixture = await render(
+      stubClient({ photos: [entry({ linkId: 'link-1' })], onRequest: (r) => seen.push(r) }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Set as avatar"]') as HTMLButtonElement
+    ).click();
+    await flush(fixture);
+    expect(seen.find((r) => r.type === 'characterAvatar')).toEqual({
+      type: 'characterAvatar',
+      characterId: 'c1',
+      imageId: 'link-1',
+    });
+  });
+
+  // useGalleryData.ts:115-140 — clear avatar sends `imageId: null`.
+  it('clears the avatar with imageId null', async () => {
+    const seen: SeenRequest[] = [];
+    const fixture = await render(
+      stubClient({
+        photos: [entry({ linkId: 'link-1' })],
+        defaultImageId: 'link-1',
+        onRequest: (r) => seen.push(r),
+      }),
+    );
+    const clear = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      ((b as HTMLElement).textContent ?? '').includes('Clear Avatar'),
     ) as HTMLButtonElement;
-    expect(deleteButton).toBeTruthy();
+    clear.click();
+    await flush(fixture);
+    expect(seen.find((r) => r.type === 'characterAvatar')).toEqual({
+      type: 'characterAvatar',
+      characterId: 'c1',
+      imageId: null,
+    });
+  });
+
+  // EmbeddedPhotoGallery.tsx:84-98 — delete is a CONFIRM-DOUBLE-CLICK: the
+  // first click arms ("Click again to confirm delete"), the second deletes.
+  it('deletes a photo on the confirming second click', async () => {
+    const seen: SeenRequest[] = [];
+    const fixture = await render(
+      stubClient({ photos: [entry({ linkId: 'link-1' })], onRequest: (r) => seen.push(r) }),
+    );
+    const deleteButton = fixture.nativeElement.querySelector(
+      'button[title="Delete image"]',
+    ) as HTMLButtonElement;
     deleteButton.click();
-    await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
+    expect(seen.find((r) => r.type === 'characterPhotoRemove')).toBeUndefined();
+    expect(
+      fixture.nativeElement.querySelector('button[title="Click again to confirm delete"]'),
+    ).toBeTruthy();
+
+    (
+      fixture.nativeElement.querySelector(
+        'button[title="Click again to confirm delete"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flush(fixture);
     expect(seen.find((r) => r.type === 'characterPhotoRemove')).toEqual({
       type: 'characterPhotoRemove',
       characterId: 'c1',
@@ -94,11 +199,30 @@ describe('CharacterGalleryTab', () => {
     });
   });
 
-  // --- Upload Photo rider (multipart web route, B↔C contract) ---
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  // EmbeddedPhotoGallery.tsx:170-196 — a tile click opens the deep detail
+  // modal with `linkId: selectedImage.id` (the LINK-RELINK branch) and this
+  // host alone passes onAvatarSet.
+  it('opens the deep detail modal with the link-relink identity', async () => {
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'link-7' })] }));
+    (
+      fixture.nativeElement.querySelector('button.aspect-square') as HTMLButtonElement
+    ).click();
+    await flush(fixture);
+    const modal = fixture.nativeElement.querySelector('qt-image-detail-modal');
+    expect(modal).toBeTruthy();
   });
+
+  // GalleryImage.tsx:36-39 — a failed thumbnail collapses to the icon tile.
+  it('shows the missing-image icon when a thumbnail errors', async () => {
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'link-1' })] }));
+    (fixture.nativeElement.querySelector('img') as HTMLImageElement).dispatchEvent(
+      new Event('error'),
+    );
+    await flush(fixture);
+    expect(fixture.nativeElement.querySelector('img')).toBeNull();
+  });
+
+  // --- Upload Photo rider (multipart web route, B↔C contract) ---
 
   function pickFile(fixture: ComponentFixture<CharacterGalleryTab>): void {
     const input = fixture.nativeElement.querySelector(
@@ -128,7 +252,7 @@ describe('CharacterGalleryTab', () => {
         } as Response;
       }),
     );
-    const fixture = await render(stubClient([]));
+    const fixture = await render(stubClient({ photos: [] }));
     pickFile(fixture);
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
@@ -150,7 +274,7 @@ describe('CharacterGalleryTab', () => {
           }) as Response,
       ),
     );
-    const fixture = await render(stubClient([]));
+    const fixture = await render(stubClient({ photos: [] }));
     pickFile(fixture);
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 0));

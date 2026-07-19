@@ -176,6 +176,60 @@ Branch `claude/image-detail-modals-porting-d2ab4d`, v4 baseline `616930db`
 (drift-checked clean at lane start). Order:
 `docs/developer/porting/work-orders/p4.9a2-image-detail-modals.md`.
 
+**Unit 2 — the deep modal family (SPA) + the aurora gallery parity.** New
+`apps/web/src/app/images/` members: `images.api.ts` (the LOCAL
+`ImageInfoGetRequest` + cast — §1's fold-at-unify pattern; the `ImageData`
+type carries v4's `linkId`-vs-`id` comment VERBATIM), `image-navigation.ts`
+(`applyImageNavigation` — the `useImageNavigation` port; one call per effect
+run, disposer = the hook cleanup), `deleted-image-placeholder.ts` (the
+`styleClass` prop carries v4's className sniffing rules — `!p-2` compact,
+`w-full`/`h-full` suppress dims), `image-actions.ts` + `image-metadata.ts` +
+`image-detail-modal.ts` (the ImageDetailModal + useImageActions port:
+parallel `characterList`+`imageInfoGet` load, the album panel, the
+linkId/fileId save split, set-avatar via `characterAvatar`, `photoGallerySave`
+toolbar save; **the v4 stale-`internalCharacters` quirk is REPRODUCED and
+documented** — the add-toast name lookup misses by design),
+`chat-gallery-image-view-modal.ts` (the `kind:'chat'` viewer: already-saved
+state from `imageInfoGet`, both album toggles, host-delegated hard delete),
+`image-gallery.ts` (**input-driven divergence, loud**: v4 self-fetches
+`GET /api/v1/images?tagType&tagId`, a LIST route v5 has not ported — the
+component takes `images`/`loading`/`error` inputs and emits `reloadImages`;
+no v5 host exists, v4's two mount sites are unported). `photo-gallery-modal.ts`
+REBUILT to v4 parity (the qt-modal + range-slider divergence retired): all
+three union modes implemented with NO host invented for the dead two, the
+z-50 overlay + zoom buttons header, the missing-tile div-vs-button split, the
+host index arithmetic + conditionally-undefined arrow ends, and the
+nested-Escape suppression (`handleEscape: selectedIndex === -1`) — its old
+header's named deferral sentence retired. `gallery-tab.ts` reached
+`EmbeddedPhotoGallery` parity (count/zoom/Clear-Avatar header, avatar
+ring+badge, hover set-avatar + 3s confirm-double-click delete, missing-icon
+tiles, the link-relink detail modal — the ONLY `onAvatarSet` host; the
+character's `defaultImageId`/`name` ride the shared `characterKeys.detail`
+query so the host screen is untouched). Server rider:
+`DELETE /api/v1/images/{id}` answers the NAMED loud refusal
+(`image_delete_not_available` — v4's orphan-cleanup handler `route.ts:134-237`
+is outside §1; a mute 405 would have hidden the gap). Specs: the four v4 RTL
+suites case-for-case (`image-navigation.spec.ts` 14, 
+`deleted-image-placeholder.spec.ts` 11, the gallery deleted-handling cases in
+`photo-gallery-modal.spec.ts`, `image-gallery.spec.ts` 9 — the
+loading/error/empty cases drive the inputs; v4's `isOpen:false` case maps to
+the host's `@if` gate) + pinning suites for the four v4-UNCOVERED components
+(`image-detail-modal.spec.ts`, `chat-gallery-image-view-modal.spec.ts`,
+`image-metadata.spec.ts`, the rebuilt `gallery-tab.spec.ts`) — every case
+cites its v4 `file:line`; that citation trail is the only fidelity record
+those components have. The nested-Escape spec MUTATION-CHECKED (forcing
+`handleEscape: true` fails it). e2e: the new
+`salon-image-detail-flow.spec.ts` beat (seeds two distinct PNGs over the live
+chat-files multipart leg → gallery → detail → arrow → one-Escape-one-layer);
+the two `characters-flow.spec.ts` gallery beats updated to the parity tab's
+confirm-double-click delete + GalleryEmpty copy. `ng test` 160 files / 1,923.
+Deferred loud: the images DELETE port (the refusal above), image tag editing
+(NO v4 UI exists — net-new design, out of scope), the dead
+`character`/`user-character` gallery hosts (typed, unmounted), the
+`imageInfoGet` fold into `CoreRequest` + the stale "no SPA consumer yet"
+comment at `core-contract.ts:4535-4539` (the unifier retires it when
+folding), the `js_number` → `jsnum` swap in `photos_routes.rs` (§3's rider).
+
 **Unit 1 — `imageInfoGet` (the verb + fixture + differential).** v4
 `GET /api/v1/images/[id]` (`route.ts:39-128`) → `api::photos::image_info_get`
 (a nested main+mount read, the `chat_media::read_both` idiom): the raw

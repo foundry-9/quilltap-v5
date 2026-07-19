@@ -297,13 +297,26 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Photo Gallery' }).click();
-    // Count gallery tiles by their delete affordance — a bare `img` count
-    // would also catch the detail header's avatar.
-    const deleteButtons = page.getByTitle('Delete this photo');
+    // P4.9a2 brought the tab to EmbeddedPhotoGallery parity: delete is now
+    // v4's CONFIRM-DOUBLE-CLICK (the first click arms "Click again to
+    // confirm delete", the second deletes — EmbeddedPhotoGallery.tsx:84-98),
+    // and the AVATAR tile carries no delete affordance at all
+    // (GalleryImage.tsx:85: `!isAvatar || isMissingImage`). Aria's fixture
+    // photo IS her avatar, so clear the avatar first to surface the button.
+    const tiles = page.locator('button.aspect-square');
+    await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+    const before = await tiles.count();
+    const clearAvatar = page.getByRole('button', { name: 'Clear Avatar' });
+    if (await clearAvatar.isVisible().catch(() => false)) {
+      await clearAvatar.click();
+      await expect(clearAvatar).toHaveCount(0, { timeout: 10_000 });
+    }
+    const deleteButtons = page.getByTitle('Delete image');
+    await tiles.first().hover();
     await expect(deleteButtons.first()).toBeVisible({ timeout: 10_000 });
-    const before = await deleteButtons.count();
     await deleteButtons.first().click();
-    await expect(deleteButtons).toHaveCount(before - 1, { timeout: 10_000 });
+    await page.getByTitle('Click again to confirm delete').click();
+    await expect(tiles).toHaveCount(before - 1, { timeout: 10_000 });
   });
 
   // The two P4.6l riders over lane C's byte-leg web routes, live at unification.
@@ -318,13 +331,13 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Photo Gallery' }).click();
-    const deleteButtons = page.getByTitle('Delete this photo');
-    // The earlier gallery beat may have removed Aria's only photo — wait for
-    // the tab to settle on EITHER a tile or the empty state, then count.
+    // P4.9a2 parity: tiles are the aspect-square buttons; the empty state
+    // carries v4's GalleryEmpty copy ("No photos in …'s album yet").
+    const tiles = page.locator('button.aspect-square');
     await expect(
-      deleteButtons.first().or(page.getByText('No photos yet')),
+      tiles.first().or(page.getByText(/No photos in .*album yet/)),
     ).toBeVisible({ timeout: 10_000 });
-    const before = await deleteButtons.count();
+    const before = await tiles.count();
 
     // A 1×1 transparent PNG; the route validates non-empty image/* bytes and
     // dedups by sha — fresh per run since beforeAll recreates the instance.
@@ -337,7 +350,7 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
       mimeType: 'image/png',
       buffer: tinyPng,
     });
-    await expect(deleteButtons).toHaveCount(before + 1, { timeout: 15_000 });
+    await expect(tiles).toHaveCount(before + 1, { timeout: 15_000 });
   });
 
   test('Export as SillyTavern PNG downloads a PNG card', async ({ page }, testInfo) => {
