@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Round planned: the b8b12695 KaTeX/markdown drift catch-up (one order,
+P4.d9). The single-lane work order absorbs v4's LaTeX/KaTeX commit into the
+Salon message renderer (remark-math + rehype-katex, the shared
+normalizeMathDelimiters port, the KaTeX-subtree skip in roleplay
+post-processing, KaTeX CSS, an extended byte-parity fixture corpus
+regenerated at b8b12695) and moves the oracle baseline from 616930db to
+b8b12695 with a regen-verified neutrality proof for the seven oracle
+families that transitively import v4's renderer. Explicit no-ports recorded:
+the help math-notation doc (no v5 help surface yet), file-preview math (the
+rich-stack deferral), and the editor/dialect (verified untouched). Docs
+only; no version bumps.
+
 The P4.6bd + P4.9a2 + P4.9f1 + P4.9f2 unification (the consult-wire +
 image-detail + wardrobe round, COMPLETE): all four lanes land, all four
 orders CLOSE, and p4.9a closes with P4.9a2. The llm consult is LIVE in
