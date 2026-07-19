@@ -23642,3 +23642,38 @@ via a cached `Injector.create` + `NgComponentOutlet` (v4 uses a React context);
 the link interceptor also `stopImmediatePropagation`s (Angular `RouterLink`
 ignores `defaultPrevented`); `/salon/new` passes through (v5 has no NewChatModal
 — P4.6q); focused-pane tracking is bubble `(mousedown)` not capture.
+
+### Unit 4 — the flag, the redirects, the shell (SPA 0.5.193)
+
+- **Flag** `apps/web/src/app/workspace/workspace-flag.ts`:
+  `isWorkspaceTabsEnabled()` = `localStorage['quilltap.workspace.tabs'] !== '0'`,
+  read ONCE and cached (default ON). Documented divergence: v4 gates via the
+  build-time `NEXT_PUBLIC_WORKSPACE_TABS`; v5 ships one binary, so the supported
+  opt-out is a per-browser key with identical `!== '0'` semantics.
+- **Redirects** `workspace-redirect.guard.ts`: a `CanActivateFn` factory
+  (`workspaceRedirectGuard(open, paramMapper?)`) returning a `UrlTree` to
+  `/workspace?open=<open>` with the v4 param names when the flag is on, else
+  `true`. Bound in `app.routes.ts` on exactly the **16** §4 routes (`''`→home,
+  salon/:id→salon+chatId, characters→aurora, characters/new→character-new,
+  characters/:id/edit→character-edit+characterId+tab, files, prospero,
+  scenarios, scriptorium, custom-tools+mount/path/new, settings/wizard,
+  settings+tab/section, about, profile, generate-image, photos). NOT bound
+  (v4-faithful): the salon list, `salon/new`, the terminal popout, and the bare
+  detail routes (`characters/:id`, `characters/groups/:id`, `prospero/:id`,
+  `scriptorium/:id`), `workspace`, `**`.
+- **Shell** `shell/shell.ts`: `openWardrobe()` gains the ported v4 `inWorkspace`
+  arm — while the flag is on and the URL is `/workspace`, it opens a rail-scoped
+  wardrobe tab (`workspace.openTab('wardrobe')`) instead of the modal dialog.
+  The rail items + footer Settings anchor need no change — the host's
+  capture-phase link interceptor funnels their clicks to `openTab` while in the
+  workspace (the `<router-outlet>` body is preserved for routed mode).
+- Specs: `workspace-flag.spec.ts` (default ON / `'0'` off / caching),
+  `workspace-redirect.guard.spec.ts` (TestBed: flag-off no-op, singleton
+  redirect, salon chatId carry, settings tab/section with empty-drop,
+  custom-tools mount/path/new). 192 workspace specs green; `ng build` clean.
+
+**Known edge (documented deferral):** the first-run wizard handoff
+(`/settings/wizard?mode=setup`) redirects to `/workspace?open=settings-wizard`
+— the `mode=setup` query is dropped (the intent parser has no `mode` arm). The
+e2e suite runs flag-OFF (the global opt-out), so first-run flows there are
+unaffected; carrying `mode` through is a named follow-up.

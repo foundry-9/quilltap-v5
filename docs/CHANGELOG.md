@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) unit 4: the flag, the redirects, and the shell cutover.
+isWorkspaceTabsEnabled() reads localStorage['quilltap.workspace.tabs'] !== '0'
+once at bootstrap (default ON; the v5 opt-out for v4's build-time env var). A
+workspaceRedirectGuard on the 16 legacy surface routes ('' , salon/:id,
+characters, characters/new, characters/:id/edit, files, prospero, scenarios,
+scriptorium, custom-tools, settings/wizard, settings, about, profile,
+generate-image, photos) redirects into /workspace?open=... with the v4 param
+names when the flag is on, and is a no-op when off. The /workspace route
+renders the two-pane host inside the shell; the shell's openWardrobe() gains
+its workspace arm (open a rail-scoped wardrobe tab while in the workspace). The
+rail/footer anchors funnel through the host's link interceptor. Not redirected:
+the salon list, salon/new, the terminal popout, and the bare detail routes.
+
 P4.9J1 (lane J1) units 3+5: the workspace chrome + in-lane hosting. The
 two-pane WorkspaceHost (one CSS grid, a flat always-mounted tab list positioned
 by grid-column and hidden — never unmounted — via display:none, the
