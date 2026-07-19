@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
@@ -55,7 +56,7 @@ import type {
 } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
-import { SplitLayout } from '../../terminal/split-layout';
+import { SalonModePanes } from './salon-mode-panes';
 import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
 import { TerminalModeController } from '../../terminal/terminal-mode';
@@ -73,6 +74,10 @@ import {
 } from './story-background.api';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
+import {
+  WORKSPACE_BACKDROP_REGISTRY,
+  WORKSPACE_TAB_ID,
+} from '../../workspace/workspace-contract';
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -127,7 +132,7 @@ interface CascadePrompt {
     TurnControls,
     ChatComposer,
     MemoryCascadeDialog,
-    SplitLayout,
+    SalonModePanes,
     TerminalPane,
     TerminalSessionPicker,
     DocumentPane,
@@ -155,13 +160,20 @@ interface CascadePrompt {
             <a routerLink="/salon" class="qt-link">← Back to chats</a>
           </div>
         } @else {
-          <qt-split-layout
+          <qt-salon-mode-panes
+            [parentChatId]="chatId()!"
+            [chatTitle]="chat()?.title ?? null"
             [mode]="combinedMode()"
             [dividerPosition]="documentMode.dividerPosition()"
             [rightPaneVerticalSplit]="terminalMode.rightPaneVerticalSplit()"
             [chatContent]="chatContentTpl"
-            [documentContent]="documentPaneActive() ? documentPaneTpl : null"
+            [documentPaneTemplate]="documentPaneTpl"
+            [documentEntries]="documentMode.openDocs()"
+            [focusedDocId]="documentMode.focusedDocId()"
             [terminalContent]="terminalActive() ? terminalPaneTpl : null"
+            [terminalActive]="terminalActive()"
+            (closeDocument)="documentMode.closeDocument($event)"
+            (closeTerminal)="terminalMode.hidePane()"
             (dividerPositionChange)="documentMode.setDividerPosition($event)"
             (rightPaneVerticalSplitChange)="terminalMode.setRightPaneVerticalSplit($event)"
           />
@@ -269,19 +281,17 @@ interface CascadePrompt {
       />
     </ng-template>
 
-    <ng-template #documentPaneTpl>
-      @if (documentMode.activeEntry(); as entry) {
-        <qt-document-pane
-          [entry]="entry"
-          [mode]="documentMode.documentMode()"
-          (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
-          (blur)="documentMode.flushSave(entry.document.id)"
-          (rename)="documentMode.renameDocument(entry.document.id, $event)"
-          (close)="documentMode.closeDocument(entry.document.id)"
-          (delete)="documentMode.deleteDocument(entry.document.id)"
-          (toggleFocus)="documentMode.toggleFocusMode()"
-        />
-      }
+    <ng-template #documentPaneTpl let-entry>
+      <qt-document-pane
+        [entry]="entry"
+        [mode]="documentMode.documentMode()"
+        (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
+        (blur)="documentMode.flushSave(entry.document.id)"
+        (rename)="documentMode.renameDocument(entry.document.id, $event)"
+        (close)="documentMode.closeDocument(entry.document.id)"
+        (delete)="documentMode.deleteDocument(entry.document.id)"
+        (toggleFocus)="documentMode.toggleFocusMode()"
+      />
     </ng-template>
 
     <ng-template #terminalPaneTpl>
@@ -402,7 +412,7 @@ interface CascadePrompt {
   `,
 })
 export class SalonConversation {
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
@@ -410,12 +420,24 @@ export class SalonConversation {
   protected readonly terminalMode = inject(TerminalModeController);
   /** Document Mode state for this conversation (v4 `useDocumentMode`). */
   protected readonly documentMode = inject(DocumentModeController);
+  /** Workspace backdrop seams (p4.9j2, v4 `useReportWorkspaceBackdrop`); null ⇒ routed. */
+  private readonly backdropRegistry = inject(WORKSPACE_BACKDROP_REGISTRY, { optional: true });
+  private readonly workspaceTabId = inject(WORKSPACE_TAB_ID, { optional: true });
 
   /** The Open-Document picker's visibility (local UX). */
   protected readonly showDocumentPicker = signal(false);
 
-  private readonly params = toSignal(this.route.paramMap, { requireSync: true });
-  protected readonly chatId = computed(() => this.params().get('id'));
+  /**
+   * Tab-mode identity (v4 `SalonTabPayload.chatId`); when set, wins over the
+   * route `:id`. Null ⇒ routed mode, byte-identical.
+   */
+  readonly chatIdInput = input<string | null>(null, { alias: 'chatId' });
+  private readonly routeParams = this.route
+    ? toSignal(this.route.paramMap, { requireSync: true })
+    : undefined;
+  protected readonly chatId = computed(
+    () => this.chatIdInput() ?? this.routeParams?.().get('id') ?? null,
+  );
 
   /** The terminal pane is showing when a session is bound and mode isn't normal (v4). */
   protected readonly terminalActive = computed(
@@ -442,10 +464,18 @@ export class SalonConversation {
   });
 
   constructor() {
-    // Bind the terminal controller to this conversation (refetch after spawn so
-    // the Ariel session-opened announcement appears) and hydrate on chat load.
-    const chatId = this.chatId();
-    if (chatId) {
+    // Bind the id-dependent wiring once the chat id is known. In routed mode the
+    // route param is synchronous, so this runs on the first change detection with
+    // the id already resolved (ordering preserved); in workspace-tab mode the
+    // `chatId` input arrives after construction, so the one-shot effect defers the
+    // wiring until it does. The `wiredChatId` guard makes it fire exactly once.
+    let wiredChatId: string | null = null;
+    effect(() => {
+      const chatId = this.chatId();
+      if (!chatId || wiredChatId === chatId) return;
+      wiredChatId = chatId;
+      // Bind the terminal controller (refetch after spawn so the Ariel
+      // session-opened announcement appears).
       this.terminalMode.configure(chatId, () => {
         void this.chatQuery.refetch();
       });
@@ -455,14 +485,10 @@ export class SalonConversation {
       this.documentMode.configure(chatId, () => {
         void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
       });
-    }
-    effect(() => this.terminalMode.hydrate(this.chat()));
-    effect(() => this.documentMode.hydrate(this.chat()));
 
-    // React to the LLM's document tools on the live stream (v4 SalonView
-    // `onToolResult`): open/close/write/move/delete → reload from server;
-    // doc_focus → route to the pane that owns the target document.
-    if (chatId) {
+      // React to the LLM's document tools on the live stream (v4 SalonView
+      // `onToolResult`): open/close/write/move/delete → reload from server;
+      // doc_focus → route to the pane that owns the target document.
       const sub = this.core.events$
         .pipe(filter((frame) => frame.chatId === chatId))
         .subscribe((frame) => {
@@ -476,6 +502,25 @@ export class SalonConversation {
           }
         });
       this.destroyRef.onDestroy(() => sub.unsubscribe());
+    });
+
+    effect(() => this.terminalMode.hydrate(this.chat()));
+    effect(() => this.documentMode.hydrate(this.chat()));
+
+    // Report this Salon's story background to the workspace backdrop registry
+    // (v4 `useReportWorkspaceBackdrop(url, isSalon: true)`). The host arbitrates
+    // (a Salon with a background wins full-screen). Report the raw file URL
+    // (`isSalon: true`); clear on a background-less chat and on destroy. Inert in
+    // routed mode (the registry token resolves null).
+    const registry = this.backdropRegistry;
+    const tabId = this.workspaceTabId;
+    if (registry && tabId != null) {
+      effect(() => {
+        const raw = rawBackdropUrl(this.backgroundVar());
+        if (raw) registry.report(tabId, { url: raw, isSalon: true });
+        else registry.clear(tabId);
+      });
+      this.destroyRef.onDestroy(() => registry.clear(tabId));
     }
 
     // A terminal announcement (open/close/periodic summary) landed → refetch the
@@ -1356,4 +1401,14 @@ export class SalonConversation {
 /** Resolve a participant's avatar src (explicit URL → default image filepath). */
 function participantAvatar(p: ParticipantDetail): string | null {
   return p.character?.avatarUrl ?? p.character?.defaultImage?.filepath ?? null;
+}
+
+/**
+ * Unwrap the CSS `url('…')` story-background value into the raw URL the backdrop
+ * registry reports (v4 `BackdropEntry.url` is a plain URL). Null when unset.
+ */
+function rawBackdropUrl(cssVar: string | null): string | null {
+  if (!cssVar) return null;
+  const m = /^url\((['"]?)(.*)\1\)$/.exec(cssVar);
+  return m ? m[2] : cssVar;
 }

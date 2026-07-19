@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { DocMountPointDto } from '../../core/core-contract';
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { CreateStoreDialog } from './create-store-dialog';
 import { DirectoryPicker } from './directory-picker';
 import { FileTable } from './file-table';
@@ -187,6 +188,61 @@ describe('ScriptoriumList', () => {
     );
     expect(fixture.nativeElement.textContent).toContain('Grimoire');
     expect(fixture.nativeElement.textContent).toContain('The Scriptorium');
+  });
+});
+
+/**
+ * In-tab drill (p4.9j2, v4 `ScriptoriumView` `selectedStoreId`): hosted as a
+ * workspace tab, a card's Open drills IN PLACE (renders the store detail
+ * embedded); the detail's back restores the list.
+ */
+describe('ScriptoriumList (in-tab drill)', () => {
+  function handler(r: DispatchReq): unknown {
+    switch (r.type) {
+      case 'mountPointList':
+        return { mountPoints: [store({ id: 'm1', name: 'Grimoire' })] };
+      case 'mountPointGet':
+        return { mountPoint: store({ id: 'm1', name: 'Grimoire' }) };
+      case 'mountFilesList':
+        return { files: [] };
+      default:
+        return {};
+    }
+  }
+
+  async function render(): Promise<ComponentFixture<ScriptoriumList>> {
+    TestBed.configureTestingModule({
+      imports: [ScriptoriumList],
+      providers: [
+        provideRouter([]),
+        { provide: CoreClient, useValue: stubClient(handler) },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-s' },
+      ],
+    });
+    const fixture = TestBed.createComponent(ScriptoriumList);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('a card click drills in place and the detail back restores the list', async () => {
+    const fixture = await render();
+    // Click the card body (not an action button) → open emits → drill.
+    const card = fixture.nativeElement.querySelector('.qt-entity-card') as HTMLElement;
+    card.click();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-store-detail')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Indexed Files');
+
+    // The detail's back button restores the list.
+    const back = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Back to The Scriptorium'),
+    ) as HTMLButtonElement;
+    expect(back).toBeTruthy();
+    back.click();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-store-detail')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Add Document Store');
   });
 });
 

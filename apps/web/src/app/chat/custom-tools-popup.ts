@@ -12,6 +12,7 @@ import {
 import { Router } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_HANDLE } from '../workspace/workspace-contract';
 import { CoreClient } from '../core/core-client';
 import { CoreDispatchError, type CustomToolListing } from '../core/core-contract';
 import { Icon } from '../ui/icon';
@@ -233,6 +234,8 @@ export class CustomToolsPopup {
   private readonly core = inject(CoreClient);
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly router = inject(Router);
+  /** Hosted as a workspace tab ⇒ open the Workbench as a tab (v4 redirectToWorkspaceTab). */
+  private readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });
 
   readonly chatId = input.required<string>();
   readonly disabled = input(false);
@@ -269,6 +272,16 @@ export class CustomToolsPopup {
   }): void {
     this.isOpen.set(false);
     this.expandedKey.set(null);
+    // Hosted ⇒ open (or focus) the Workbench tab with the same payload (v4's
+    // redirectToWorkspaceTab); routed ⇒ the query-param push, unchanged.
+    if (this.workspace) {
+      this.workspace.openTab('custom-tools', {
+        mountPointId: payload?.mountPointId,
+        path: payload?.path,
+        create: payload?.create,
+      });
+      return;
+    }
     const queryParams: Record<string, string> = {};
     if (payload?.create) queryParams['new'] = '1';
     if (payload?.mountPointId) queryParams['mount'] = payload.mountPointId;

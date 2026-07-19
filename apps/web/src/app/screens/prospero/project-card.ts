@@ -43,13 +43,24 @@ import type { ProjectCardModel } from './projects.api';
       }
 
       <div class="qt-entity-card-actions flex gap-2">
-        <a
-          [routerLink]="['/prospero', project().id]"
-          class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
-          (click)="$event.stopPropagation()"
-        >
-          Open
-        </a>
+        @if (inTab()) {
+          <!-- Hosted as a workspace tab: drilling is state, not navigation. -->
+          <button
+            type="button"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
+            (click)="$event.stopPropagation(); open.emit(project().id)"
+          >
+            Open
+          </button>
+        } @else {
+          <a
+            [routerLink]="['/prospero', project().id]"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-sm transition hover:qt-bg-primary/90"
+            (click)="$event.stopPropagation()"
+          >
+            Open
+          </a>
+        }
         <button
           type="button"
           class="qt-button-destructive qt-shadow-sm"
@@ -65,6 +76,8 @@ import type { ProjectCardModel } from './projects.api';
 })
 export class ProjectCard {
   readonly project = input.required<ProjectCardModel>();
+  /** Hosted as a workspace tab ⇒ the Open affordance drills in place (emits). */
+  readonly inTab = input<boolean>(false);
   readonly open = output<string>();
   readonly delete = output<string>();
 

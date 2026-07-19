@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_HANDLE } from '../../workspace/workspace-contract';
 import { ProjectCreateDialog } from '../prospero/project-create-dialog';
 import { Icon } from '../../ui/icon';
 import { homeKeys } from './home.api';
@@ -71,12 +72,25 @@ import { homeKeys } from './home.api';
         <span class="sm:hidden">Project</span>
       </button>
 
-      <!-- Generate Image (v4 QuickActionsRow :90-98) -->
-      <a routerLink="/generate-image" class="qt-button qt-button-secondary gap-2">
-        <qt-icon name="image" class="w-4 h-4" />
-        <span class="hidden sm:inline">Generate Image</span>
-        <span class="sm:hidden">Image</span>
-      </a>
+      <!-- Generate Image (v4 QuickActionsRow :90-98). Hosted ⇒ open the
+           standalone image tab directly; routed ⇒ the /generate-image link. -->
+      @if (workspace) {
+        <button
+          type="button"
+          class="qt-button qt-button-secondary gap-2"
+          (click)="workspace.openTab('generate-image')"
+        >
+          <qt-icon name="image" class="w-4 h-4" />
+          <span class="hidden sm:inline">Generate Image</span>
+          <span class="sm:hidden">Image</span>
+        </button>
+      } @else {
+        <a routerLink="/generate-image" class="qt-button qt-button-secondary gap-2">
+          <qt-icon name="image" class="w-4 h-4" />
+          <span class="hidden sm:inline">Generate Image</span>
+          <span class="sm:hidden">Image</span>
+        </a>
+      }
     </div>
 
     <!-- Create Project Dialog -->
@@ -90,6 +104,8 @@ import { homeKeys } from './home.api';
 })
 export class QuickActionsRow {
   readonly lastChatId = input.required<string | null>();
+  /** Hosted ⇒ the Generate Image action opens a workspace tab (item 6). */
+  protected readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });
 
   private readonly queryClient = injectQueryClient();
   protected readonly projectDialogOpen = signal(false);

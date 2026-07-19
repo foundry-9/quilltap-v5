@@ -67,6 +67,121 @@ re-exporting the contract types, no Angular imports; persistence validation
 hand-ported from Zod since the SPA has no zod). A vitest replay spec runs every
 corpus row through the port (144 assertions green). v5-only /characters route
 adaptations are unit-tested separately (they diverge from v4 by design).
+P4.9J2 (screen hostability, lane J2): the Salon child-tab source — a v5 port of
+v4 SalonModePanes. New qt-salon-mode-panes routes the Document/Terminal panes to
+the legacy in-chat SplitLayout (routed, one focused document, byte-identical) or,
+when hosted, to sibling child tabs: one document tab per open document + one
+terminal tab, spawned via openTab(kind, payload, {parentTabId}). Each pane is an
+embedded view (ViewContainerRef) whose root nodes are relocated (DOM appendChild,
+CDK-DomPortalOutlet-style) into the child tab's registered portal node, so live
+PTY/editor state survives the move. Close-document closes its tab; the reverse
+(tab close -> document close) is reducer-side (lane J1). salon-conversation now
+renders qt-salon-mode-panes instead of qt-split-layout. Inert in routed mode.
+
+P4.9J2 (screen hostability, lane J2): the banked query-param openers gain their
+workspace-tab arm (v4 redirectToWorkspaceTab). When a WORKSPACE_HANDLE is
+present, the Workbench openers (composer Pascal popup, Scriptorium file table,
+Chat-settings custom-tools card) open/focus the custom-tools tab with the
+definition payload, and the home Generate Image quick action opens the
+generate-image tab; null handle keeps today's query-param/router push. The
+chat-scoped wardrobe opener stays a dialog (v4 rule — only the left rail opens
+the wardrobe tab, which is lane J1's).
+
+
+P4.9J2 (screen hostability, lane J2): the Salon reports its story background to
+the workspace backdrop registry (v4 useReportWorkspaceBackdrop) — { url, isSalon:
+true } under its WORKSPACE_TAB_ID, cleared on a background-less chat and on
+destroy, so the host can arbitrate one full-screen backdrop across a split.
+Inert in routed mode (the registry token resolves null). Survey: only the Salon
+paints a viewport-fixed image backdrop; settings/about/photos data-subsystem is
+color theming, not a fixed image, so nothing else reports.
+
+
+P4.9J2 (screen hostability, lane J2): the Characters roster gains the in-tab
+drill (v4 AuroraView selectedCharacterId / selectedGroupId). When hosted, a
+character card drills into the detail IN PLACE and a group Edit drills into the
+group editor, both embedded via list state instead of routing; the detail/editor
+back restores the list. CharacterDetail gains an embedded input + back output
+(distinct from its standalone-tab self-close); GroupEditor gains a groupId input
++ back output; CharacterCard/GroupCard render their open affordances as
+buttons/nulled-links when in a tab; GroupsSection emits openGroup when hosted.
+Routed mode navigates as today. (Named deferral: the card Chat action's
+openChatOnMount auto-start drills to the detail without auto-starting.)
+
+
+P4.9J2 (screen hostability, lane J2): the Scriptorium gains the in-tab drill (v4
+ScriptoriumView selectedStoreId). When hosted, a store card's Open drills IN
+PLACE (renders qt-store-detail embedded) instead of routing; the detail's back
+restores the list (and refetches). StoreDetail gains a storeId input + back
+output; its back buttons emit when embedded, else navigate. StoreCard needed no
+change (its open is already an emit). Routed mode navigates as today.
+
+
+P4.9J2 (screen hostability, lane J2): Prospero gains the in-tab drill (v4
+ProsperoView selectedProjectId). When hosted as a workspace tab, a project
+card's Open drills IN PLACE (renders qt-project-detail embedded) via list state
+instead of routing; the detail header's back restores the list. ProjectDetail
+gains a projectId input + back output; ProjectCard + ProjectHeader render their
+open/back affordances as buttons (not routerLink anchors) when in a tab. Routed
+mode navigates as today.
+
+
+P4.9J2 (screen hostability, lane J2): SalonConversation is workspace-tab
+hostable. It gains a chatId input (v4 SalonTabPayload) that wins over the route
+:id. The id-dependent wiring (terminal/document controller configure + the
+tool-result stream subscription) moves from the constructor into a one-shot,
+guarded effect so it fires once the id resolves — in routed mode on the first
+change detection (ordering preserved), in tab mode once the input arrives.
+ActivatedRoute is now optional. Routed mode byte-identical.
+
+
+P4.9J2 (screen hostability, lane J2): NewCharacter and the provider WizardScreen
+gain the self-close seam (v4 useCloseSelfTab). When hosted (WORKSPACE_HANDLE +
+WORKSPACE_TAB_ID present) NewCharacter's back/Cancel/create and the wizard's
+complete/cancel close the tab instead of navigating; routed mode navigates as
+today. WizardScreen's ActivatedRoute is now optional.
+
+
+P4.9J2 (screen hostability, lane J2): CharacterEdit is workspace-tab hostable.
+It gains characterId + tab inputs (v4 CharacterEditTabPayload). When hosted
+(WORKSPACE_HANDLE + WORKSPACE_TAB_ID present) save/cancel/delete close the tab
+(v4 useCloseSelfTab) instead of navigating; routed mode navigates as today.
+ActivatedRoute now optional.
+
+
+P4.9J2 (screen hostability, lane J2): CharacterDetail is workspace-tab hostable.
+It gains characterId + tab inputs (v4 CharacterViewTabPayload): characterId
+supplies identity in place of the route :id, tab deep-links a sub-tab (via
+EntityTabs defaultTab). When hosted (WORKSPACE_HANDLE + WORKSPACE_TAB_ID both
+present) the "Back to Characters" affordance is a button that closes the tab
+(v4 CharacterViewTab back), returning to the kept-alive opener; routed mode
+keeps the routerLink anchor, byte-identical. ActivatedRoute now optional.
+
+
+P4.9J2 (screen hostability, lane J2): the Workbench page (/custom-tools) is
+workspace-tab hostable. It gains mountPointId/path/create inputs (v4
+CustomToolsTabPayload): create seeds the builder on a fresh draft, mountPointId
++ path seeds the editor on that definition (one tab per definition). A one-shot
+effect applies the payload (inputs arrive after construction). WORKSPACE_TAB_ID
+null keeps the routed query-string path byte-identical (v4's own no-workspace
+fallback); ActivatedRoute is now injected optionally.
+
+
+P4.9J2 (screen hostability, lane J2): the Settings shell is workspace-tab
+hostable. It gains tab/section inputs mirroring v4 SettingsViewProps: tab seeds
+the initial tab (via EntityTabs defaultTab) and the subsystem background;
+section is accepted for the SettingsTabPayload contract but unused, exactly as
+v4's _section (v4 does not thread it to hosted sub-tabs' ?section= force-open).
+The five settings sub-tabs (providers/chat/memory/images/templates) now inject
+ActivatedRoute optionally so they render when hosted without a route; the
+?section= deep-link falls back to null there. Routed mode byte-identical.
+
+P4.9J2 (screen hostability, lane J2): EntityTabs gains a workspace-tab mode.
+When a WORKSPACE_TAB_ID is provided (hosted as a workspace tab) the active tab
+is local state seeded from defaultTab and tab switching no longer touches the
+router — there is no URL to persist to (v4 EntityTabs persistToUrl={false}).
+Router and ActivatedRoute are injected optionally so a hosted subtree without
+a route never throws. Routed mode is byte-identical (WORKSPACE_TAB_ID null).
 
 Round planning: the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2) is scoped
 and its two work orders are committed (docs/developer/porting/work-orders/

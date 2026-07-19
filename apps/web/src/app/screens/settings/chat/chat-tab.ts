@@ -235,10 +235,14 @@ import { TokenDisplaySettings } from './token-display-settings';
   `,
 })
 export class ChatTab implements OnInit {
-  private readonly route = inject(ActivatedRoute);
-  private readonly queryParams = toSignal(this.route.queryParamMap, { requireSync: true });
+  // Optional so the tab renders when hosted as a workspace tab (no ActivatedRoute);
+  // v4 ignores `?section=` when hosted, so the deep-link simply falls back to null.
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly queryParams = this.route
+    ? toSignal(this.route.queryParamMap, { requireSync: true })
+    : undefined;
 
-  protected readonly section = computed(() => this.queryParams().get('section'));
+  protected readonly section = computed(() => this.queryParams?.().get('section') ?? null);
   protected readonly defaultOpen = signal(false);
 
   ngOnInit(): void {

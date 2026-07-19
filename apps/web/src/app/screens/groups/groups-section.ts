@@ -1,7 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
 import { ErrorAlert } from '../../ui/error-alert';
 import { GroupCard } from './group-card';
@@ -43,7 +52,12 @@ import { deleteGroup, fetchGroups, groupKeys, type GroupCardModel } from './grou
       } @else {
         <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           @for (group of groups(); track group.id) {
-            <qt-group-card [group]="group" (open)="openGroup($event)" (delete)="onDelete($event)" />
+            <qt-group-card
+              [group]="group"
+              [inTab]="tabId != null"
+              (open)="onOpenGroup($event)"
+              (delete)="onDelete($event)"
+            />
           }
         </div>
       }
@@ -58,6 +72,11 @@ export class GroupsSection {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
+  /** Non-null ⇒ hosted; a group opens via the `openGroup` output for in-tab drill. */
+  protected readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** Emitted (instead of routing) when hosted, so the aurora list drills in place. */
+  readonly openGroup = output<string>();
 
   protected readonly createOpen = signal(false);
   protected readonly deleteError = signal<string | null>(null);
@@ -74,13 +93,21 @@ export class GroupsSection {
     this.createOpen.set(true);
   }
 
-  protected openGroup(id: string): void {
+  protected onOpenGroup(id: string): void {
+    if (this.tabId != null) {
+      this.openGroup.emit(id);
+      return;
+    }
     void this.router.navigate(['/characters/groups', id]);
   }
 
   protected onCreated(id: string): void {
     this.createOpen.set(false);
     void this.queryClient.invalidateQueries({ queryKey: groupKeys.list() });
+    if (this.tabId != null) {
+      this.openGroup.emit(id);
+      return;
+    }
     void this.router.navigate(['/characters/groups', id]);
   }
 

@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { LoadingState } from '../../ui/loading-state';
 import { ConvertStoreDialog } from './convert-store-dialog';
 import { CreateStoreDialog } from './create-store-dialog';
@@ -8,6 +9,7 @@ import { DeconvertStoreDialog } from './deconvert-store-dialog';
 import { DeleteStoreDialog } from './delete-store-dialog';
 import { EditStoreDialog } from './edit-store-dialog';
 import { StoreCard } from './store-card';
+import { StoreDetail } from './store-detail';
 import { ScriptoriumStore } from './scriptorium.store';
 import type {
   CreateDocumentStoreData,
@@ -18,9 +20,14 @@ import type {
 /**
  * The Scriptorium list page (v4 `ScriptoriumView.tsx`): a title + Add Document
  * Store button, the card grid over `mountPointList`, and the five dialogs
- * (create / edit / delete / convert / deconvert). Drilling a card routes to
- * `/scriptorium/:id` (v5 has no workspace-tab in-place drill — a named tier-3
- * deferral). Scan/convert/deconvert use the store's patch-not-refetch shape.
+ * (create / edit / delete / convert / deconvert). Scan/convert/deconvert use the
+ * store's patch-not-refetch shape.
+ *
+ * **In-tab drill (p4.9j2, v4 `ScriptoriumView` `selectedStoreId`).** When hosted
+ * as a workspace tab (`WORKSPACE_TAB_ID` non-null), a card's Open drills IN PLACE
+ * via internal state (rendering `qt-store-detail` embedded) instead of routing to
+ * `/scriptorium/:id`; the detail's `(back)` restores the list. Routed mode
+ * navigates exactly as today.
  */
 @Component({
   selector: 'qt-scriptorium-list',
@@ -29,6 +36,7 @@ import type {
   imports: [
     LoadingState,
     StoreCard,
+    StoreDetail,
     CreateStoreDialog,
     EditStoreDialog,
     DeleteStoreDialog,
@@ -36,6 +44,9 @@ import type {
     DeconvertStoreDialog,
   ],
   template: `
+    @if (selectedStoreId(); as sid) {
+      <qt-store-detail [storeId]="sid" (back)="onDrillBack()" />
+    } @else {
     @if (store.loading()) {
       <div class="flex min-h-screen items-center justify-center">
         <qt-loading-state message="Loading document stores..." />
@@ -125,11 +136,18 @@ import type {
         (confirm)="handleDeconvert($event)"
       />
     }
+    }
   `,
 })
 export class ScriptoriumList implements OnInit {
   protected readonly store = inject(ScriptoriumStore);
   private readonly router = inject(Router);
+  /** Non-null ⇒ hosted as a workspace tab; drill in place instead of routing. */
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** v4 `ScriptoriumView` `selectedStoreId` — the in-tab drill target. */
+  protected readonly selectedStoreId = signal<string | null>(null);
+  protected readonly inTab = computed(() => this.tabId != null);
 
   protected readonly createOpen = signal(false);
   protected readonly editStore = signal<DocumentStore | null>(null);
@@ -143,7 +161,17 @@ export class ScriptoriumList implements OnInit {
   }
 
   protected openStore(id: string): void {
+    if (this.tabId != null) {
+      this.selectedStoreId.set(id);
+      return;
+    }
     void this.router.navigate(['/scriptorium', id]);
+  }
+
+  /** Drilled detail's back — restore the list and refetch (v4 refetches on remount). */
+  protected onDrillBack(): void {
+    this.selectedStoreId.set(null);
+    void this.store.fetchStores();
   }
 
   protected async handleCreate(data: CreateDocumentStoreData): Promise<void> {

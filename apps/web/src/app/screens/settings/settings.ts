@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
@@ -18,6 +18,14 @@ import { TemplatesTab } from './templates/templates-tab';
  * (v4 `--story-background-url`; here a `data-subsystem` attribute the theme CSS
  * can hook), and one populated slice — AI Providers + Appearance. The remaining
  * five tabs render the "not yet fitted out" placeholder.
+ *
+ * **Workspace-tab mode (p4.9j2).** `tab`/`section` inputs mirror v4's
+ * `SettingsViewProps`. When hosted, `tab` seeds the initial tab (via
+ * `EntityTabs`' `defaultTab`) and the subsystem background (v4
+ * `useSettingsBackgroundStyle(tabOverride)`); `section` is accepted for the
+ * contract's `SettingsTabPayload` but — exactly as v4's `_section` — is NOT
+ * threaded to the sub-tabs' `?section=` force-open (v4 ignores it when hosted).
+ * `WORKSPACE_TAB_ID` null ⇒ routed mode, reads `?tab=`, byte-identical.
  */
 @Component({
   selector: 'qt-settings',
@@ -42,7 +50,11 @@ import { TemplatesTab } from './templates/templates-tab';
         </p>
       </div>
 
-      <qt-entity-tabs [tabs]="tabs" [defaultTab]="'providers'" contentClassName="qt-settings-panel">
+      <qt-entity-tabs
+        [tabs]="tabs"
+        [defaultTab]="tab() ?? 'providers'"
+        contentClassName="qt-settings-panel"
+      >
         <ng-template let-active>
           @switch (active) {
             @case ('providers') {
@@ -76,8 +88,19 @@ import { TemplatesTab } from './templates/templates-tab';
   `,
 })
 export class Settings {
-  private readonly route = inject(ActivatedRoute);
-  private readonly queryParams = toSignal(this.route.queryParamMap, { requireSync: true });
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly queryParams = this.route
+    ? toSignal(this.route.queryParamMap, { requireSync: true })
+    : undefined;
+
+  /** Deep-link target tab (v4 `SettingsViewProps.tab`); falls back to `?tab=`. */
+  readonly tab = input<string | null>(null);
+  /**
+   * Deep-link target section (v4 `SettingsViewProps.section`). Accepted for the
+   * `SettingsTabPayload` contract but, exactly as v4's `_section`, unused —
+   * v4 does not thread it to the hosted sub-tabs' `?section=` force-open.
+   */
+  readonly section = input<string | null>(null);
 
   protected readonly tabs: Tab[] = [
     { id: 'providers', label: 'AI Providers', icon: 'wrench' },
@@ -101,7 +124,8 @@ export class Settings {
   };
 
   protected readonly subsystem = computed(() => {
-    const tab = this.queryParams().get('tab') ?? 'providers';
+    // v4 `useSettingsBackgroundStyle`: the `tab` override wins, else the URL.
+    const tab = this.tab() ?? this.queryParams?.().get('tab') ?? 'providers';
     return this.subsystemMap[tab] ?? 'forge';
   });
 }

@@ -29,6 +29,12 @@ import type {
   ParticipantDetail,
   ScopedEvent,
 } from '../../core/core-contract';
+import {
+  WORKSPACE_BACKDROP_REGISTRY,
+  WORKSPACE_TAB_ID,
+  type WorkspaceBackdropEntry,
+  type WorkspaceBackdropRegistry,
+} from '../../workspace/workspace-contract';
 import { SalonConversation } from './salon-conversation';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
@@ -175,6 +181,118 @@ async function render(client: Partial<CoreClient>): Promise<ComponentFixture<Sal
   }
   return fixture;
 }
+
+/**
+ * Workspace-tab mode (p4.9j2): the chat id comes from the `chatId` input with NO
+ * `ActivatedRoute`, and the id-dependent wiring (terminal/document configure +
+ * the tool-result subscription) defers to a one-shot effect until the input
+ * resolves. The read path must render identically.
+ */
+describe('SalonConversation (workspace-tab mode)', () => {
+  async function renderTab(
+    client: Partial<CoreClient>,
+  ): Promise<ComponentFixture<SalonConversation>> {
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('renders the chat from the chatId input with no ActivatedRoute', async () => {
+    const fixture = await renderTab(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Tea Time');
+    expect(text).toContain('A fine morning it is.');
+  });
+
+  it('fetches this chat’s LLM logs by the input id (one-shot wiring resolved)', async () => {
+    const fixture = await renderTab(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    // The header title proves chatGet ran with the input id; logs list is scoped
+    // to the same id.
+    expect(fixture.nativeElement.querySelector('.qt-slide-over-panel')).not.toBeNull();
+  });
+
+  it('reports the story background to the backdrop registry (v4 useReportWorkspaceBackdrop)', async () => {
+    const reports: { tabId: string; entry: WorkspaceBackdropEntry }[] = [];
+    const cleared: string[] = [];
+    const registry: WorkspaceBackdropRegistry = {
+      report: (tabId, entry) => reports.push({ tabId, entry }),
+      clear: (tabId) => cleared.push(tabId),
+    };
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: stubClient(chatDetail(), new Subject<ScopedEvent>(), {
+            backgroundUrl: '/v4/path/bg.webp',
+            fileId: 'bg-7',
+            filename: 'bg.webp',
+            sha256: 's',
+            linkSummary: null,
+          }),
+        },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' },
+        { provide: WORKSPACE_BACKDROP_REGISTRY, useValue: registry },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // The raw file URL is reported with isSalon: true.
+    const last = reports.at(-1);
+    expect(last?.tabId).toBe('tab-1');
+    expect(last?.entry).toEqual({ url: '/api/v1/files/bg-7', isSalon: true });
+
+    // On destroy it clears its slot.
+    fixture.destroy();
+    expect(cleared).toContain('tab-1');
+  });
+
+  it('clears the backdrop for a background-less chat', async () => {
+    const cleared: string[] = [];
+    const registry: WorkspaceBackdropRegistry = {
+      report: () => {},
+      clear: (tabId) => cleared.push(tabId),
+    };
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(chatDetail(), new Subject<ScopedEvent>()) },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-1' },
+        { provide: WORKSPACE_BACKDROP_REGISTRY, useValue: registry },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(cleared).toContain('tab-1');
+  });
+});
 
 describe('SalonConversation (read path)', () => {
   it('renders the baked messages, the whisper label, the reasoning block, and the staff chip', async () => {

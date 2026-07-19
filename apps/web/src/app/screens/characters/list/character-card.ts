@@ -28,7 +28,8 @@ import { processTemplate, resolveUserToken } from '../templates';
       <div class="flex items-start justify-between mb-4">
         <a
           class="flex items-center flex-grow gap-4 min-w-0 cursor-pointer"
-          [routerLink]="['/characters', character().id]"
+          [routerLink]="inTab() ? null : ['/characters', character().id]"
+          (click)="inTab() && onDrillView($event)"
         >
           @if (avatarSrc()) {
             <img
@@ -109,8 +110,9 @@ import { processTemplate, resolveUserToken } from '../templates';
 
       <div class="qt-entity-card-actions character-card-actions">
         <a
-          [routerLink]="['/characters', character().id]"
-          [queryParams]="{ action: 'chat' }"
+          [routerLink]="inTab() ? null : ['/characters', character().id]"
+          [queryParams]="inTab() ? null : { action: 'chat' }"
+          (click)="inTab() && onDrillView($event)"
           class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground qt-shadow-sm transition hover:qt-bg-success/90"
           title="Start a chat with this character"
         >
@@ -151,6 +153,8 @@ export class CharacterCard {
   readonly character = input.required<CharacterListItem>();
   /** Resolved by the list from `connectionProfileList` (v4 `getProfileProvider`). */
   readonly profile = input<CharacterConnectionProfile | null>(null);
+  /** Hosted as a workspace tab ⇒ open drills in place (emits `view`). */
+  readonly inTab = input<boolean>(false);
 
   readonly favorite = output<void>();
   readonly toggleCarina = output<void>();
@@ -158,17 +162,34 @@ export class CharacterCard {
   readonly exportCharacter = output<void>();
   readonly exportPng = output<void>();
   readonly deleteCharacter = output<void>();
+  /** Drill target (v4 `AuroraView` `setSelectedCharacterId`). */
+  readonly view = output<void>();
 
   /**
    * v4 `handleCardClick`: don't navigate if the click landed on a button, link,
-   * or other interactive element — those own their own behavior.
+   * or other interactive element — those own their own behavior. Hosted ⇒ drill
+   * in place (emit) rather than route.
    */
   protected onCardClick(e: MouseEvent): void {
     const target = e.target as HTMLElement;
     if (target.closest('button') || target.closest('a')) {
       return;
     }
+    if (this.inTab()) {
+      this.view.emit();
+      return;
+    }
     void this.router.navigate(['/characters', this.character().id]);
+  }
+
+  /**
+   * The avatar/name and Chat affordances in tab mode: suppress navigation (the
+   * routerLink is nulled) and drill in place. The Chat action's auto-start (v4
+   * `openChatOnMount`) is a named deferral — it drills to the detail for now.
+   */
+  protected onDrillView(e: Event): void {
+    e.preventDefault();
+    this.view.emit();
   }
 
   protected readonly avatarSrc = computed(() =>

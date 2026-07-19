@@ -23741,3 +23741,267 @@ empty — the only Rust-adjacent artifact is the new Node oracle case
   unlock/setup/scroll beats time out on PBKDF2 latency, all cleared in RELEASE.
 - **No `[value]` binding on any async/`@if`-gated `<select>`** (the dogfood-#6
   rule) — this lane adds no `<select>`.
+## P4.9J2 lane (screen hostability) — records (2026-07-19)
+
+Lane branch `claude/p4-9j2-screen-hostability-lg2r7t`. Pure-SPA, zero
+`crates/**`. Every unit lands inert-in-lane (contract tokens resolve null ⇒
+routed mode byte-identical); the existing ng + Playwright suites are the
+lane's own regression oracle for "byte-identical when null". Equivalence for
+these component ports = (a) v4's own suites ported case-for-case where they
+exist, (b) the UNCHANGED existing suites (routed mode frozen), (c) a tab-mode
+spec per adapted screen.
+
+### Unit 1 — EntityTabs workspace-tab mode (SPA 0.5.190)
+
+The shared `ui/entity-tabs.ts` tab shell (settings + character detail/edit
+delegate tab selection to it) gains a hosted mode. v4 `EntityTabs` already
+has the pattern: `persistToUrl` (default true = URL) vs local `useState`.
+v5 keys it off the optional `WORKSPACE_TAB_ID` injection — non-null ⇒ local
+`localTab` signal seeded from `defaultTab` (the host passes the payload's tab
+as `defaultTab`, exactly as v4 `SettingsView` does with `defaultTab={tab}`),
+`select()` sets local state and never navigates; null ⇒ the `?tab=` URL path,
+byte-identical. Router + ActivatedRoute now injected `{ optional: true }` so a
+hosted subtree without an `ActivatedRoute` never throws. Spec: the three
+existing routed cases untouched + a new `workspace-tab mode` describe proving
+default-tab render and no-navigation tab switching under a provided
+`WORKSPACE_TAB_ID`. `ng test` (entity-tabs) 4/4.
+
+### Unit 2 — Settings workspace-tab mode (SPA 0.5.191)
+
+The Settings shell (`screens/settings/settings.ts`) gains `tab`/`section`
+inputs mirroring v4 `SettingsViewProps`. `tab` seeds the initial tab (passed
+to `EntityTabs` as `[defaultTab]="tab() ?? 'providers'"`, exactly as v4
+`SettingsView` does `defaultTab={tab || 'providers'}`) and the subsystem
+background (`subsystem()` = `tab() ?? ?tab= ?? 'providers'`, v4
+`useSettingsBackgroundStyle(tabOverride)`). `section` is accepted for the
+`SettingsTabPayload` contract but UNUSED — this is faithful: v4's
+`SettingsView({ section: _section })` prefixes it `_` and never threads it to
+the hosted sub-tabs. The five settings sub-tabs
+(providers/chat/memory/images/templates) each read `?section=` via their own
+`ActivatedRoute`; that injection is now `{ optional: true }` with the
+query-param signal guarded, so they render when hosted (no route) and the
+force-open deep-link falls back to null — matching v4 ignoring `section` when
+hosted. Settings' own `ActivatedRoute` is likewise optional. New
+`settings.spec.ts` tab-mode case (hosted with `tab='system'`, no
+`ActivatedRoute` → placeholder renders, subsystem `prospero`, active tab
+"Data & System"); existing chat-tab spec untouched. `ng test` 4/4 across the
+two files.
+
+### Unit 3 — CustomToolsPage workspace-tab mode (SPA 0.5.192)
+
+`screens/custom-tools/custom-tools-page.ts` gains `mountPointId`/`path`/`create`
+inputs (v4 `CustomToolsTabPayload`). In tab mode (`WORKSPACE_TAB_ID` non-null)
+a one-shot `effect` seeds the initial `mode` from the payload — `create` ⇒ the
+builder on a fresh draft (destination = `mountPointId`); `mountPointId` + `path`
+⇒ the editor on that definition (v4 opens one tab per definition) — since signal
+inputs arrive after construction. Routed mode keeps the constructor's
+query-string read (v4's own no-workspace fallback), now via optional
+`ActivatedRoute`, byte-identical. New `custom-tools-page.spec.ts` tab-mode cases
+(library / edit / create seeds) over a permissive CoreClient stub, no
+`ActivatedRoute`. `ng test` 3/3.
+
+### Unit 4 — CharacterDetail workspace-tab mode + back self-close (SPA 0.5.193)
+
+`screens/characters/view/character-detail.ts` gains `characterId` (aliased) +
+`tab` inputs (v4 `CharacterViewTabPayload`). `id` becomes a computed
+(`characterId input ?? route :id`); `tab` seeds `EntityTabs`
+`[defaultTab]="tab() ?? 'details'"`. The self-close seam: injects
+`WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID` `{ optional: true }`; when both non-null
+(`canClose()`) the "← Back to Characters" affordance renders as a `<button>`
+that calls `handle.closeTab(tabId)` (v4 `CharacterViewTab` back returns to the
+kept-alive opener); null ⇒ today's `routerLink="/characters"` anchor,
+byte-identical. `ActivatedRoute` optional. Spec: the five existing routed cases
+untouched + a new `workspace-tab mode` describe (load-by-input with no route;
+back is a button that closes tab-9; `tab='conversations'` deep-links).
+`ng test` 8/8.
+
+### Unit 5 — CharacterEdit workspace-tab mode + save/cancel self-close (SPA 0.5.194)
+
+`screens/characters/edit/character-edit.ts` gains `characterId` (aliased) +
+`tab` inputs (v4 `CharacterEditTabPayload`); `characterId` computed
+(`input ?? route :id`), `tab` seeds `EntityTabs` `[defaultTab]`. Self-close via
+a `closeSelfTab()` helper (injects `WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID`
+`{ optional: true }`; both non-null ⇒ `handle.closeTab(tabId)`, returns true):
+onSubmit save, cancel, and delete each try it first and fall back to today's
+`router.navigate` when routed (v4 `useCloseSelfTab`). `ActivatedRoute` optional.
+Spec: the six existing routed cases untouched + a `workspace-tab mode` describe
+(load-by-input no route; Cancel + Save close tab-4, no navigation). `ng test`
+9/9.
+
+### Unit 6 — NewCharacter + WizardScreen self-close seam (SPA 0.5.195)
+
+Both `settings-wizard` and `character-new` are self-close-only tabs (no payload
+inputs). `screens/characters/new/new-character.ts`: injects `WORKSPACE_HANDLE` +
+`WORKSPACE_TAB_ID` `{ optional: true }`; `canClose()` gates the two "/characters"
+anchors (top back + bottom Cancel) into `<button>`s that `closeSelf()`, and a
+successful create closes the tab instead of navigating to the new character (the
+opener refreshes) — v4 `useCloseSelfTab`. `screens/settings/wizard/wizard-screen.ts`:
+`onComplete`/`onCancel` try `closeSelfTab()` first, else navigate;
+`ActivatedRoute` optional so `mode()` falls back to 'settings' when hosted (the
+`settings-wizard` tab is always the settings-mode re-entry — fresh-instance setup
+is a routed pre-workspace flow). Specs: new-character gains a `workspace-tab mode`
+describe (back/Cancel are buttons, no anchors; Cancel + create close tab-new); new
+`wizard-screen.spec.ts` (routed navigates; hosted closes). `ng test` 10/10.
+
+### Unit 7 — SalonConversation chatId input + reactive wiring (SPA 0.5.196)
+
+`screens/salon/salon-conversation.ts` gains a `chatId` input (aliased, v4
+`SalonTabPayload`); `chatId` becomes a computed (`input ?? route :id`),
+`ActivatedRoute` optional. The load-bearing subtlety: signal inputs are unset at
+construction, but the constructor read `this.chatId()` synchronously to
+`terminalMode.configure` / `documentMode.configure` and to open the
+tool-result `events$` subscription. Those three id-captures move into a SINGLE
+one-shot `effect` guarded by `wiredChatId` — in routed mode the route param is
+synchronous so it fires on the first CD with the id already resolved (effect
+registration order preserves the prior configure→hydrate ordering); in tab mode
+it fires once the input arrives. The two `hydrate` effects and all window/inspector
+listeners (which read `chatId()` dynamically) are unchanged. Spec: the 22
+existing routed cases untouched + a `workspace-tab mode` describe (render + logs
+by input id, no `ActivatedRoute`). `ng test` 24/24.
+
+### Unit 8 — Prospero in-tab drill (item 3a) (SPA 0.5.197)
+
+v4 `ProsperoView` drills into `selectedProjectId` in place when `inTab`; v5
+ports it. `ProsperoList` injects `WORKSPACE_TAB_ID` `{ optional: true }`, gains a
+`selectedProjectId` signal + `inTab` computed; `openProject`/`onCreated` set the
+signal (render `qt-project-detail` embedded) instead of routing when hosted.
+`ProjectDetailScreen` gains a `projectId` input (wins over route `:id`), a `back`
+output, `embedded` computed; `firstVisit` resolves from the real id exactly once
+(routed: the snapshot at construction; drill: a one-shot effect on the input) and
+becomes a signal (`resolveFirstVisit` marks visited, must run with the real id).
+The back cascade mirrors v4's `onBack` prop: `ProjectHeader` + `ProjectCard` gain
+`inTab` inputs that render their back/open affordances as `<button>`s emitting
+outputs (drill) vs `routerLink` anchors (routed); `ProjectDetail.goBack()`
+(renamed from `back()` to free the `back` output name) emits when embedded, else
+navigates. New drill spec (Open is a button, drills in place, header back restores
+the list); the 17 existing prospero cases untouched. `ng test` 18/18.
+
+### Unit 9 — Scriptorium in-tab drill (item 3b) (SPA 0.5.198)
+
+v4 `ScriptoriumView` drills into `selectedStoreId` in place when `inTab`. v5
+`ScriptoriumList` injects `WORKSPACE_TAB_ID` `{ optional: true }`, gains
+`selectedStoreId` + `inTab`; `openStore` sets the signal (render
+`qt-store-detail` embedded) instead of routing when hosted; `onDrillBack()`
+clears it and refetches (v4 refetches on remount). `StoreDetail` gains a
+`storeId` input (wins over route `:id`), a `back` output, `embedded` computed;
+`storeId` is a computed (`input ?? route`), read in `ngOnInit` (signal inputs are
+set before `ngOnInit`), `ActivatedRoute` optional; `back()` renamed `goBack()`
+(frees the `back` output), emits when embedded else navigates — both back buttons
+call it. `StoreCard` needed no change (its open is a card-body emit, not a
+routerLink). New drill spec (card click drills, detail back restores the list);
+the 13 existing scriptorium cases untouched. `ng test` 14/14.
+
+### Unit 10 — Characters in-tab drill (item 3c) (SPA 0.5.199)
+
+v4 `AuroraView` drills into `selectedCharacterId` AND `selectedGroupId` in place
+when `inTab`. v5 `CharactersList` injects `WORKSPACE_TAB_ID`, gains
+`selectedCharacterId`/`selectedGroupId` signals + `inTab`; a card `(view)` sets
+the character target (render `qt-character-detail [embedded]` in place),
+`GroupsSection`'s new `(openGroup)` output sets the group target (render
+`qt-group-editor` in place), each back restores the list (group back refetches).
+`CharacterDetail` (unit 4) grew an `embedded` input + `back` output — `onBack()`
+emits when embedded (drill) else closes the standalone tab (`canClose`), and the
+template shows the back button for either; `GroupEditor` gains a `groupId` input
+(wins over route), `back` output, `embedded`, `goBack()` (renamed). Card
+affordances: `CharacterCard` gains `inTab` + `view` (card click + the nulled
+avatar/Chat routerLinks emit `view`); `GroupCard` gains `inTab` (Edit becomes a
+button emitting `open`); `GroupsSection` routes vs emits by `tabId`. New drill
+specs (card→detail, group Edit→editor, back restores); the existing characters +
+groups suites untouched. `ng test` characters-list 10/10, character-detail 8,
+character-edit 9, groups green. **Named deferral (`p4.9j` follow-up):** the card
+Chat action's v4 `openChatOnMount` auto-start — in tab mode it drills to the
+detail without auto-starting a chat; and the roster's Create-Character anchor
+still routes when hosted (a `character-new` openTab is opener-intent, item 6 /
+lane J1).
+
+### Unit 11 — Salon backdrop reporting (item 5) (SPA 0.5.200)
+
+The Salon reports its story background to `WORKSPACE_BACKDROP_REGISTRY` (v4
+`useReportWorkspaceBackdrop(url, isSalon: true)`). `salon-conversation.ts`
+injects the registry + `WORKSPACE_TAB_ID` `{ optional: true }`; an effect reads
+`backgroundVar()`, unwraps the CSS `url('…')` into the raw file URL
+(`rawBackdropUrl`, matching v4 `BackdropEntry.url`'s plain-URL shape), and
+`report(tabId, { url, isSalon: true })` when set / `clear(tabId)` when null;
+`destroyRef.onDestroy` clears. Inert in routed mode (registry resolves null).
+**Survey (recorded per the order):** only the Salon paints a viewport-fixed image
+backdrop — `.qt-chat-layout::before`, `background-attachment: fixed`
+(`_chat.css:1777`). The settings/about/photos `data-subsystem` attribute is a
+color-theming hook, not a fixed image, so no split-overlap risk; nothing else
+reports (`isSalon: false` painters: none found). Spec: two tab-mode cases (raw
+URL reported + cleared on destroy; background-less chat clears). `ng test` 26/26.
+
+### Unit 12 — Workbench + generate-image opener intents (item 6) (SPA 0.5.201)
+
+The banked query-param openers gain their `openTab` arm (v4
+`redirectToWorkspaceTab`), guarded by an optional `WORKSPACE_HANDLE`; null ⇒
+today's push. Wired: `chat/custom-tools-popup.ts` (`openWorkbench` →
+`openTab('custom-tools', { mountPointId, path, create })`),
+`screens/scriptorium/file-table.ts` (`openInWorkbench` →
+`openTab('custom-tools', { mountPointId, path })`),
+`screens/settings/chat/custom-tools-settings.ts` (`openWorkbench` →
+`openTab('custom-tools')`), and `screens/home/quick-actions-row.ts` (the Generate
+Image action is a `openTab('generate-image')` button when hosted, the
+`/generate-image` link when routed). Specs: dedicated opener specs for FileTable
+(hosted payload / routed fallback) and QuickActionsRow (button-vs-anchor +
+openTab); the popup/settings arms are the identical guard, existing suites green.
+**Faithful non-change:** the character-screens' wardrobe opener stays a DIALOG
+(v4 rule — only the left rail opens the wardrobe TAB, which is lane J1's). **Named
+gap:** no J2 `/photos` opener exists (the gallery is reached from the left rail /
+character gallery — rail is J1's); nothing to arm there. `ng test` opener specs
+4/4. Also note: the other home/salon routerLinks (salon/new, salon/:id, …) rely
+on lane J1's route-guard redirect (`/workspace?open=…`), not per-opener arms —
+that's §4, J1's surface.
+
+### Unit 13 — Salon child-tab source (SalonModePanes port) (item 4) (SPA 0.5.202)
+
+`screens/salon/salon-mode-panes.ts` ports v4
+`app/salon/[id]/components/SalonModePanes.tsx`. Routed mode (the three workspace
+tokens null): the existing `qt-split-layout` with the focused document —
+byte-identical (the salon spec's 26 cases stay green). Workspace mode: chat
+inline + one `document` child tab per open document + one `terminal` child tab,
+spawned via `handle.openTab(kind, payload, { parentTabId })`; close-a-document
+closes its tab. **The portal is manual embedded views, NOT moved `@for` DOM** —
+`@for`-managed nodes fight Angular's reconciliation (the first cut failed exactly
+there). Each pane is a `ViewContainerRef.createEmbeddedView(...)` whose root nodes
+are moved into a `.qt-salon-portaled-pane` wrapper, which an effect relocates
+(`appendChild`) into the node the child tab registers under `portalKey(...)` —
+exactly how CDK's `DomPortalOutlet` works (no CDK dep; CD keeps updating the moved
+nodes), so live PTY (xterm) / ProseMirror state survives. The v4 unit suite is
+ported case-for-case (legacy: chat body + focused-doc-only; workspace: one tab
+per doc + portal into host, close-only-the-affected) PLUS a keep-alive spec
+(stamped state on the moved element survives a re-relocation) and a terminal-tab
+case. Integration: `salon-conversation.ts` renders `qt-salon-mode-panes` (fed
+`documentMode.openDocs()` + `focusedDocId()`; `documentPaneTpl` now takes the
+entry as `let-entry` context), wiring `(closeDocument)`/`(closeTerminal)`. **The
+reverse — child-tab-close closing the document, and the parent-Salon-tab cascade
+— is reducer-side (lane J1): v5's reduced `WorkspaceHandle` exposes no tab map
+(v4 read `ws.state.tabs`), so J2 cannot poll it. Resolves at unify.** `ng test`
+salon-mode-panes 6/6, salon-conversation 26/26.
+
+### Tier-2 items — LOUD NAMED DEFERRALS (P4.9J2)
+
+Both tier-2 ("should land") items are DEFERRED, named here (never silently
+dropped) and in the lane's final report, for `p4.9j` follow-up:
+
+- **Item 7 — the standalone Document Mode surface (`document-standalone` tab).**
+  v4 `StandaloneDocumentView.tsx` is a ~400-line chat-less editor over
+  file-scoped I/O (open-existing by `standaloneDocKey`, new-blank +
+  `refreshTab` once the server names the file, save/rename keeping the docKey
+  stable). v5's `documents/document-api.ts` read/write/rename are all
+  CHAT-scoped (`chatId` + `chatDocumentId`); a standalone surface needs the
+  file-scoped mounts/files write path, so it is a genuinely new screen, not an
+  adaptation. DEFERRED whole (surface + its `openTab('document-standalone', …)`
+  opener arms). The `document-standalone` tab kind therefore has no J2 surface
+  yet — lane J1's host renders whatever placeholder it chooses for it until this
+  lands. Resolves the `doc_focus` scroll-to-anchor + maximize/focus deferrals
+  (`status-log.md:9096-9099` vintage) with it.
+- **Item 8 — the chat-sidebar narrow-pane overlay.** NOT APPLICABLE in v5 yet:
+  v4's `ChatSidebar` is UNPORTED (v5's Salon has only `conversation-header`, no
+  sidebar). There is no v5 surface to make container-width-collapse into a
+  click-away overlay. DEFERRED as the order explicitly permits ("The
+  chat-sidebar overlay, if it misses tier 2 — a NAMED deferral") — it will land
+  with the Salon sidebar itself when that surface is ported.
+
+Tier-3 deferrals from the order stand: `doc_focus` beats (fold into item 7),
+and cross-pane drag of the drill state (v4 doesn't have it either — recorded as
+not-a-gap).

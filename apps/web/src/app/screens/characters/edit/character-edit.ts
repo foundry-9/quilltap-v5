@@ -4,12 +4,14 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterDetail } from '../../../core/core-contract';
 import { EntityTabs, type Tab } from '../../../ui/entity-tabs';
@@ -130,7 +132,7 @@ const EDIT_TABS: Tab[] = [
         }
 
         <form (submit)="onSubmit($event)">
-          <qt-entity-tabs [tabs]="tabs" defaultTab="details">
+          <qt-entity-tabs [tabs]="tabs" [defaultTab]="tab() ?? 'details'">
             <ng-template let-active>
               @switch (active) {
                 @case ('details') {
@@ -228,14 +230,41 @@ const EDIT_TABS: Tab[] = [
 export class CharacterEdit {
   private readonly core = inject(CoreClient);
   private readonly wardrobeDialog = inject(WardrobeDialogService);
-  private readonly route = inject(ActivatedRoute);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
+  /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
+  private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /**
+   * Tab-mode inputs (v4 `CharacterEditTabPayload`): `characterId` supplies the
+   * identity in place of the route `:id`; `tab` deep-links a sub-tab. Null ⇒
+   * routed mode, byte-identical.
+   */
+  readonly characterIdInput = input<string | null>(null, { alias: 'characterId' });
+  readonly tab = input<string | null>(null);
 
   protected readonly tabs = EDIT_TABS;
 
-  private readonly params = toSignal(this.route.paramMap, { requireSync: true });
-  protected readonly characterId = computed(() => this.params().get('id'));
+  private readonly params = this.route
+    ? toSignal(this.route.paramMap, { requireSync: true })
+    : undefined;
+  protected readonly characterId = computed(
+    () => this.characterIdInput() ?? this.params?.().get('id') ?? null,
+  );
+
+  /**
+   * Both seams present ⇒ hosted as a workspace tab; save/cancel/delete close the
+   * tab instead of navigating (v4 `useCloseSelfTab`). Returns true when it closed.
+   */
+  private closeSelfTab(): boolean {
+    if (this.handle && this.tabId != null) {
+      this.handle.closeTab(this.tabId);
+      return true;
+    }
+    return false;
+  }
 
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.characterId() ?? ''),
@@ -301,7 +330,8 @@ export class CharacterEdit {
       });
       this.originalFormData.set(this.formData());
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(id) });
-      this.router.navigate(['/characters', id]);
+      // Hosted ⇒ close the tab (v4 `useCloseSelfTab`); routed ⇒ back to detail.
+      if (!this.closeSelfTab()) this.router.navigate(['/characters', id]);
     } catch (err) {
       this.saveError.set(err instanceof Error ? err.message : 'Failed to update character');
     } finally {
@@ -331,7 +361,8 @@ export class CharacterEdit {
     } finally {
       this.deleteOpen.set(false);
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
-      this.router.navigate(['/characters']);
+      // Hosted ⇒ close the tab; routed ⇒ the character's pages are gone, so leave.
+      if (!this.closeSelfTab()) this.router.navigate(['/characters']);
     }
   }
 
@@ -350,6 +381,8 @@ export class CharacterEdit {
         return;
       }
     }
+    // Hosted ⇒ close the tab (v4 `useCloseSelfTab`); routed ⇒ back to the detail.
+    if (this.closeSelfTab()) return;
     const id = this.characterId();
     this.router.navigate(id ? ['/characters', id] : ['/characters']);
   }

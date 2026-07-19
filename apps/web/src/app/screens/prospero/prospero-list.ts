@@ -2,12 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
 import { ProjectCard } from './project-card';
 import { ProjectCreateDialog } from './project-create-dialog';
 import { ProjectDeleteDialog } from './project-delete-dialog';
+import { ProjectDetailScreen } from './project-detail';
 import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from './projects.api';
 
 /**
@@ -15,12 +17,28 @@ import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from
  * Create Project button, a 1/2/3-col card grid over the `projectList` dispatch
  * (createdAt desc, no search/sort), an empty state, and a delete-with-confirm
  * flow. Card click / post-create navigate into the routed detail (`/prospero/:id`).
+ *
+ * **In-tab drill (p4.9j2, v4 `ProsperoView` `selectedProjectId`).** When hosted
+ * as a workspace tab (`WORKSPACE_TAB_ID` non-null), a card click / post-create
+ * drills IN PLACE via internal state (rendering `qt-project-detail` embedded)
+ * instead of routing; the detail's `(back)` restores the list. Routed mode
+ * navigates exactly as today.
  */
 @Component({
   selector: 'qt-prospero-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LoadingState, ErrorAlert, ProjectCard, ProjectCreateDialog, ProjectDeleteDialog],
+  imports: [
+    LoadingState,
+    ErrorAlert,
+    ProjectCard,
+    ProjectCreateDialog,
+    ProjectDeleteDialog,
+    ProjectDetailScreen,
+  ],
   template: `
+    @if (selectedProjectId(); as pid) {
+      <qt-project-detail [projectId]="pid" (back)="selectedProjectId.set(null)" />
+    } @else {
     <div class="qt-page-container text-foreground">
       <div
         class="flex flex-wrap items-center justify-between gap-4 border-b qt-border-default/60 pb-6"
@@ -66,6 +84,7 @@ import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from
             @for (project of projects(); track project.id) {
               <qt-project-card
                 [project]="project"
+                [inTab]="inTab()"
                 (open)="openProject($event)"
                 (delete)="deleteTarget.set($event)"
               />
@@ -82,12 +101,19 @@ import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from
     @if (deleteTarget()) {
       <qt-project-delete-dialog (close)="deleteTarget.set(null)" (confirm)="onDeleteConfirm()" />
     }
+    }
   `,
 })
 export class ProsperoList {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
+  /** Non-null ⇒ hosted as a workspace tab; drill in place instead of routing. */
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+
+  /** v4 `ProsperoView` `selectedProjectId` — the in-tab drill target. */
+  protected readonly selectedProjectId = signal<string | null>(null);
+  protected readonly inTab = computed(() => this.tabId != null);
 
   protected readonly createOpen = signal(false);
   protected readonly deleteTarget = signal<string | null>(null);
@@ -106,12 +132,20 @@ export class ProsperoList {
   }
 
   protected openProject(id: string): void {
+    if (this.tabId != null) {
+      this.selectedProjectId.set(id);
+      return;
+    }
     void this.router.navigate(['/prospero', id]);
   }
 
   protected onCreated(id: string): void {
     this.createOpen.set(false);
     void this.queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    if (this.tabId != null) {
+      this.selectedProjectId.set(id);
+      return;
+    }
     void this.router.navigate(['/prospero', id]);
   }
 
