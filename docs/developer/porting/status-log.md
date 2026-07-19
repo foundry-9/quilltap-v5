@@ -9,6 +9,21 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.6bd lane addendum — oracle provenance re-pinned (lane BD, 2026-07-18)
+
+**⚠ The v4 working tree went DIRTY mid-lane** (HEAD unchanged at `616930db`;
+the dirt is an in-flight markdown/math-notation feature — `lib/markdown/`,
+`markdown-postprocess.ts`, renderer/help/UI files, package.json — NONE of it
+in the import graph any of this lane's oracles drive, but the standing rule
+is the standing rule). All five of the lane's oracles were REGENERATED from
+a pinned detached worktree at `616930db` (`/tmp/qt-v4-pin-616930db`, both
+`node_modules` symlinked — the `oracle-regen-pinned-v4-worktree` recipe;
+jest mirrors symlink the WORKTREE's `node_modules`) and every differential
+re-ran green with zero SKIP: handler 13, chat route 11, workbench route 44,
+llm-number 54+19, pseudo-tool-parsers 138. **The next round's drift check
+should expect that feature to land** — when it does, the markdown/help
+surfaces are the classification targets, not Pascal.
+
 ## P4.6bd tier 2 — the live-wire bench differential (lane BD, 2026-07-18)
 
 The shared corpus (`workbench-route-cases.json`, read by BOTH sides) gains
