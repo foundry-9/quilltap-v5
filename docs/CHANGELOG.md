@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+P4.d9 (KaTeX/markdown drift): add the KaTeX math dependencies to the SPA —
+katex 0.18.0, remark-math 6.0.0, rehype-katex 7.0.1 (exact-pinned at v4's
+resolved versions). No consumers yet; wired into the renderer in the next
+commit. SPA 0.5.183 → 0.5.184.
+
 Round planned: the b8b12695 KaTeX/markdown drift catch-up (one order,
 P4.d9). The single-lane work order absorbs v4's LaTeX/KaTeX commit into the
 Salon message renderer (remark-math + rehype-katex, the shared
