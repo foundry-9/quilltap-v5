@@ -23698,3 +23698,46 @@ unaffected; carrying `mode` through is a named follow-up.
   test gets a fresh context (clean localStorage → flag ON), so it never disturbs
   the route-mode specs.
 
+
+### Lane gate (P4.9J1 — verification before hand-off)
+
+Pure-SPA lane; **zero Rust source changed** (`git diff --stat main -- crates/`
+empty — the only Rust-adjacent artifact is the new Node oracle case
+`harness/oracle/cases/workspace-core.ts`, which is not a Rust crate).
+
+- **Rust don't-regress guard:** `cargo fmt --all --check` clean;
+  `cargo test -p quilltap-core -p quilltap-host` = **1075 passed / 0 failed**;
+  `cargo clippy -p quilltap-core -p quilltap-host --all-targets -- -D warnings`
+  clean for BOTH feature sets (default + `--features
+  quilltap-core/native-transport`); all non-tauri crates compile (`cargo build`
+  reached tauri before the GTK error; `cargo build -p quilltap-web -p
+  quilltap-cli` succeeded in debug AND release). ⚠ TWO environment limits, both
+  documented, neither a code issue: (1) **`quilltap-tauri` cannot build here** —
+  it needs GTK (`gdk-3.0.pc` / webkit2gtk) not installed in this Linux
+  container; it is a leaf binary no crate depends on, and this lane changed no
+  Rust. (2) **The full `cargo test --workspace` cannot run here** — the debug
+  workspace test build (~30 GB of deps + per-file differential test binaries)
+  exceeds the container's fixed disk allowance (~38 GB shared with node_modules
+  / release artifacts); it died linking test binaries with `No space left on
+  device`. core + host (the behavioral crates) were run as the representative
+  guard; since no Rust changed, the harness/web/cli differentials cannot have
+  regressed.
+- **SPA:** `ng test` **181 files / 2,221 specs green** (grew from 172 / 2,029);
+  `ng build` clean.
+- **Corpus:** `workspace-core-fixtures.json` regenerates byte-identically from
+  the v4 checkout at `b8b12695`; the replay spec is green over the fresh regen.
+- **Playwright (ALONE on port 4319, this worktree's RELEASE binaries):**
+  **90/91 — the entire existing suite in ROUTE mode (the global opt-out) + all
+  4 new flag-on workspace beats green.** The one red is
+  `salon-composer-modes.spec.ts:180` (the P4.d9 `$$` KaTeX / `$50`-currency
+  beat), which **passes cleanly in isolation (2.4 s)** and times out only under
+  full-suite load — the P4.d9-documented full-suite shared-state/timing
+  sensitivity, a route-mode salon-render beat wholly outside this lane (the
+  workspace code is lazy and never reached in route mode). Environment caveats:
+  the container ships Chromium build 1194 but `@playwright/test@1.61.1` pins
+  1228 (headless-shell absent), so the run used a throwaway (gitignored)
+  `pw-local.config.ts` pointing at `/opt/pw-browsers/chromium` — the committed
+  `playwright.config.ts` is untouched; and a first DEBUG-binary run had five
+  unlock/setup/scroll beats time out on PBKDF2 latency, all cleared in RELEASE.
+- **No `[value]` binding on any async/`@if`-gated `<select>`** (the dogfood-#6
+  rule) — this lane adds no `<select>`.
