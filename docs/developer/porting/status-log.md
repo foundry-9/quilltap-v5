@@ -22297,3 +22297,80 @@ unification.** Every family this round touched regenerated there;
 untouched families' committed oracles remain at their `d68638b4`-era
 regen (the drift was Pascal-family-confined — verified in the round's
 classification).
+
+---
+
+## Round planned — the consult-wire + image-detail + wardrobe round (P4.6bd ∥ P4.9a2 ∥ P4.9f1 ∥ P4.9f2), 2026-07-18
+
+**Drift check: CLEAN.** `git log 616930db..HEAD --oneline` in
+`~/source/quilltap-server` is empty and the tree is clean — v4 HEAD is
+still the adopted baseline `616930db` (4.8.0-dev.75), so oracles
+regenerate from the checkout directly (no pinned worktree needed unless
+that changes mid-round).
+
+**The four lanes** (orders committed under `work-orders/`):
+
+- **P4.6bd — the consult wire** (`p4.6bd-consult-wire.md`, Rust-only).
+  The status log's named "first item of the next order": the consult is
+  DARK in production. An erased consult seam on `EngineAssembly`
+  following the `image_generation` idiom (erase the RUNNER, not the
+  RPITIT `CompletionProvider`), host construction rebuilding the provider
+  per request like `HostImageGenerationRunner`, the `TimeoutConsult`
+  decorator shaped like `TimeoutConfirmation`, all three dark entrances
+  wired, a `ready_*`-style loud not-assembled gate. Tier 2 carries the
+  §3 `jsnum` canonicalization (core-only) and v4's missing
+  consult-dispatching debug line.
+- **P4.9a2 — the image-detail modal family**
+  (`p4.9a2-image-detail-modals.md`, server + SPA). Renamed from "P4.9a
+  tier 2" because that name was wrong (see the corrections below).
+  `imageInfoGet` + the deep `ImageDetailModal` / `ChatGalleryImageViewModal`
+  family + prev/next + the `ImageMetadata` album panel.
+- **P4.9f1 ∥ P4.9f2 — the wardrobe pair** (`p4.9f1-wardrobe-server.md`,
+  `p4.9f2-wardrobe-dialog-spa.md`). Server half delivers the seven
+  missing verb families over already-ported services; SPA half ports the
+  dialog family against §1's pinned verbs with ACTIVATE-AT-UNIFY beats.
+
+**Five survey corrections, all recorded in `m6-screen-parity.md`:**
+
+1. **`/photos` is already 100% ported.** v4's `PhotosView.tsx` opens only
+   a PRIVATE inline `PhotoDetailModal` (`:383-511`), which
+   `screens/photos/photos-page.ts` already mirrors. The deferral P4.9a
+   banked was never about that screen — it was the deep modal family
+   P4.6ac deferred and P4.9a inherited by adjacency. Hence the rename.
+2. **Image tag editing does not exist in v4's UI.** `tag-editor.tsx`'s
+   `getApiBasePath` (`:38-47`) has no image arm; the image tag endpoints
+   are live but have NO caller, and the modals render tags read-only /
+   hardcoded `tags: []`. Porting it would be net-new design → tier 3.
+3. **`p4.9f` is a PAIR, not a lane.** Seven verb families are missing
+   (equip's modes, outfit read, the transfers wrapper, the global
+   archetype tier, preview/regenerate avatar, analyze-image) — the
+   backlog's "equip verbs (landed)" dependency was wrong. The services
+   underneath ARE ported, so the server half is mostly dispatch +
+   differential.
+4. **The Brahma row was stale** ("3 hits, all non-UI" → ~30, and
+   `services/brahma_console/` holds a working one-shot engine with a
+   green tier-3 differential). The real gap is v4's unported multi-turn
+   `orchestrator.service.ts` + dispatch + UI. `p4.9i` also split into
+   `p4.9i1` (Brahma) / `p4.9i2` (HelpChat) — two backends, ~2,500 LOC,
+   and Brahma hard-depends on `HelpChatComposer` + the `qt-help-*`
+   styles.
+5. **`p4.9j` is a committed RULING, not a committed order** — no
+   `p4.9j-*.md` exists; the F1 wording implied otherwise.
+
+**A defect in the round's own Shared contract, caught during drafting
+and fixed before commit:** §1 listed SIX equip modes while calling them
+seven. v4's enum (`outfit.ts:40`) is `wear`, `replace`, **`equip`**,
+`add_to_slot`, `remove_from_slot`, `clear_slot`, `set_all` — **`equip` is
+a deprecated alias for `wear`** (v4's own comment, `:37-39`) and is
+exactly the sort of thing a port silently drops. Because §1 is
+reproduced verbatim in all four orders, the fix was applied identically
+to all four; the four `## Shared contract …`-onward blocks now hash
+identically (`shasum` verified). Had it shipped, F1 would have built a
+six-mode enum and F2 would have coded against it.
+
+**Deliberately NOT in this round:** `p4.9j` (workspace tabs) — ruled
+PORT IT and v4 retirement gates on it, but it rewrites the shell and
+`app.routes.ts` and would collide with every SPA lane here; it wants a
+DEDICATED round. Also out: `p4.9i1`/`p4.9i2`, `p4.9g`, `p4.9h`, the
+`p4.9e*` chat-dialog family, and the `js_number_to_json` serialization
+rider (~9 copies — a separate DRY pass from §3's parse-side lift).

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Round planned - the consult-wire + image-detail + wardrobe round (P4.6bd
++ P4.9a2 + P4.9f1 + P4.9f2): four work orders committed, docs only. P4.6bd
+wires the llm consult live (an erased consult seam on EngineAssembly
+following the image_generation idiom, host construction rebuilding the
+provider per request, the 60s TimeoutConsult decorator, all three dark
+entrances) and lifts the duplicated JS Number() ports into jsnum. P4.9a2
+carries the deep image-detail modal family plus the imageInfoGet verb.
+P4.9f1 and P4.9f2 are the wardrobe server/SPA pair. Planning surveys
+corrected the M6 checklist in four places: /photos is already 100% ported
+(so P4.9a's "tier 2" is really an images-family lane, and image tag editing
+does not exist in v4's UI at all), p4.9f needs seven missing verb families
+so it is a pair rather than a lane, the Brahma row's "3 hits, all non-UI"
+was stale (the one-shot engine is ported; the gap is orchestrator.service),
+and p4.9j is a committed ruling rather than a committed order. Oracle
+baseline unchanged at v4 616930db; no crate source touched.
+
 The P4.d8 + P4.6bc + P4.9a unification (the 616930db drift-catch-up +
 P4.9a-resume round, COMPLETE): the llm-consult re-port lands whole on
 both sides (the llm definition block, the consult seam through the

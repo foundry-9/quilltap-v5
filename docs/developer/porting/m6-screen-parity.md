@@ -80,7 +80,10 @@ tabbed workspace to accept single-surface navigation. §5 states it as an
 explicit retirement gate requiring a human ruling rather than assuming it.
 
 > **RULED (2026-07-18, the human): §5.1 option (b) — port it, and v4
-> retirement gates on it.** `p4.9j` is a committed order: the tabbed
+> retirement gates on it.** `p4.9j` is a committed *ruling*; the order
+> document itself is written when the round is scoped (as of 2026-07-18
+> no `p4.9j-*.md` exists under `work-orders/` — do not go looking for
+> one). The tabbed
 > workspace ports at full parity (the pure `workspace-reducer.ts` +
 > `workspace-persistence.ts` arrive with tier-1 differentials against
 > v4's real code, per the standing discipline), and v4 does not retire
@@ -283,7 +286,7 @@ document.
 | **GenerateImageView** `/generate-image` | `app/generate-image/page.tsx:11` → `GenerateImageView.tsx` (13.9 KB) | no route; omission pinned at `quick-actions-row.ts:14-16`, `home.spec.ts:221` | **MISSING** → `p4.9b` |
 | **ProfileView** `/profile` | `app/profile/page.tsx:11` → `ProfileView.tsx` (2.5 KB); entry `profile-menu.tsx:40-43` | `git grep -niE "path: *'(profile\|about)'"` → 0 | **MISSING** → `p4.9c` |
 | **AboutView** `/about` | `app/about/page.tsx:11` → `AboutView.tsx` (21 KB); version badge `:52-55`; entry `profile-menu.tsx:45-48` | `git grep -niE "appVersion\|app_version\|versionBadge\|shields\.io"` → 0 | **MISSING** → `p4.9c` |
-| **BrahmaConsoleView** | `components/brahma-console/BrahmaConsoleView.tsx:14-16`; dialog `BrahmaConsoleDialog.tsx`; entry `sidebar-footer.tsx:213-226` | `git grep -ni "brahma"` → 3 hits, **all non-UI**: `core-contract.ts:1514,1668` (wire enum), `ui/icon.ts:22` (orphaned icon) | **MISSING** → `p4.9i` |
+| **BrahmaConsoleView** | `components/brahma-console/BrahmaConsoleView.tsx:14-16`; dialog `BrahmaConsoleDialog.tsx`; entry `sidebar-footer.tsx:213-226` | no SPA surface — the UI-adjacent hits are orphans: `core-contract.ts:1622,1841` (wire enum), `ui/icon.ts:22` + `_icons.css:132` (icon + mask, waiting for a caller). **The Rust side is NOT empty** — see the correction below | **MISSING (UI only)** → `p4.9i1` |
 | **Tabbed workspace** | `app/workspace/page.tsx:21-32`, `WorkspaceHost.tsx:29`, 21 tab kinds `TabView.tsx:71-119` | `git grep -niE "tabstrip\|tab-strip\|workspaceTab\|openTabs\|redirectToWorkspace"` → 0 | **MISSING** → `p4.9j` — see F1 |
 
 `/photos` is the most user-visible of these: v5 **renders the nav item and
@@ -296,8 +299,49 @@ locally and record that as a deliberate divergence.
 
 `BrahmaConsoleView.tsx` is a 460-byte `asTab` re-skin returning
 `<BrahmaConsoleDialog asTab />` — the console's real body is the dialog, so
-`p4.9i` ports one surface, not two. Its services already exist (W4.5b);
-only the UI never landed.
+the Brahma port covers one surface, not two.
+
+> **CORRECTED 2026-07-18 (the consult-wire round's planning survey).** Two
+> claims in the rows above were wrong, and the backlog's `p4.9i` sizing with
+> them:
+>
+> 1. **"`git grep -ni brahma` → 3 hits, all non-UI" is stale — the real
+>    count is ~30, and the Rust side is substantially ported.**
+>    `crates/quilltap-core/src/services/brahma_console/` holds
+>    `resolve_brahma_connection_profile:97`, `normalize_tool_call_signature:122`,
+>    `build_brahma_system_prompt:205`, `run_brahma_query:338`,
+>    `RealBrahmaConsole:702`, the prompt text, and a green
+>    `brahma_console_tier3_equivalence`; `services/carina_query.rs` holds the
+>    frozen `RunBrahmaConsole` seam (`:112-118`) and `answer_as_brahma:672`.
+>    **What W4.5b landed is the ONE-SHOT query engine** (v4
+>    `lib/services/brahma-console/one-shot.service.ts`) — the `@Brahma`
+>    answerer reachable from a Salon. **What is missing is v4's
+>    `orchestrator.service.ts`** (the multi-turn path the messages route
+>    actually calls, `[id]/messages/route.ts:11,41`), the chat-CRUD dispatch
+>    family, the wire verbs, and the UI. Scoping against the stale line would
+>    have re-ported landed work.
+> 2. **`p4.9i` is two lanes, not one.** It bundles ~2,500 LOC of v4 UI across
+>    two surfaces with different backends: Brahma (engine ported, needs the
+>    orchestrator + dispatch + dialog) and HelpChat (a 9-component family plus
+>    eligibility / context-resolver / categories libs, a wider stream
+>    vocabulary, and **nothing ported above `services/help_doc_sync.rs`** — the
+>    sync writes help-doc rows that no verb can yet read). They are re-binned
+>    as **`p4.9i1` (Brahma)** and **`p4.9i2` (HelpChat)**. Note the coupling:
+>    `BrahmaConsoleDialog.tsx:20` imports `HelpChatComposer` and
+>    `BrahmaConsoleMessageList.tsx:9` reuses the `qt-help-*` styles, so
+>    `p4.9i1` must carry that 76-LOC composer and those styles even though
+>    HelpChat itself is deferred.
+>
+> One piece of good news for whoever takes `p4.9i1`: **no new event family is
+> needed.** Brahma's seven stream frames are a strict subset of what
+> `api/types.rs`'s `ChatEvent` and `apps/web/src/app/core/chat-stream.reducer.ts`
+> already model, and a Brahma chat is just a `chats` row with
+> `chatType='brahma'`, so `Event::chat(chat_id, frame)` scope-tagging works
+> unchanged. The one thing to VERIFY rather than assume: v4's Brahma
+> `toolResult` carries a batch-relative `index`
+> (`useBrahmaConsoleStreaming.ts:165`) while the v5 reducer marks against the
+> most recent batch (`chat-stream.reducer.ts:17`) — if those disagree, the SQL
+> result cards bind to the wrong call.
 
 ### 1.7 Setup / unlock / startup
 
@@ -574,28 +618,34 @@ lanes). These are liftable straight into `/setupphase`.
 
 | # | Slug | What | Size | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | `p4.9a-photos-view` | `/photos` route + PhotosView; the deep gallery modals (`image-detail/`, ChatGalleryImageViewModal, tag edit, prev/next); flips `shell.ts:44-50` off `route: null` | lane | photo-album verbs (P4.6ab, landed) |
+| 1 | ~~`p4.9a-photos-view`~~ → `p4.9a2-image-detail-modals` | **CLOSED in part 2026-07-18.** `/photos` + PhotosView + the nav flip LANDED. The remainder is re-scoped: `/photos` is 100% ported (v4's screen opens only a private inline modal), so what is left is the IMAGES family — `imageInfoGet`, `image-detail/`, ChatGalleryImageViewModal, prev/next, `EmbeddedPhotoGallery`. **Tag edit is OUT: it does not exist in v4's UI** (endpoints live, no caller) | lane | photo-album verbs (P4.6ab, landed) |
 | 2 | `p4.9c-about-profile` | `/about` + `/profile` + ThemePreviewModal; render the version **locally** (divergence from v4's shields.io fetch) | rider | none |
 | 3 | `p4.9b-generate-image-screen` | `/generate-image` route + StandaloneGenerateImageDialog + ImageProfilePicker; un-omits the homepage quick action | lane | `image_generation` seam (P4.6ai, LIVE) |
 | 4 | `p4.9d-quick-hide-provider` | the provider + tag-hide + hide-dangerous across salon list, home, characters, prospero; the `tags-tab` `quickHide` authoring column | lane | tags surface (landed) |
 | 5 | `p4.9g-data-system-tab` | the Data & System tab + its 8 dialogs (LLMLogViewer ×2 hosts, backup, restore, export, import, capabilities, search) + image-profile validate/list-models | round | llm-logs reads (P4.6ar, landed); live providers for validate |
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
-| 7 | `p4.9f-wardrobe-dialog` | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor | lane | `image_generation` (LIVE); equip verbs |
+| 7 | `p4.9f` → **`p4.9f1` + `p4.9f2`** | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |
 | 9 | `p4.9e2-chat-post-office-dialogs` | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points + DnD upload** | lane | post-office writers (landed) |
 | 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | `?action=update-tool-settings` (`core-contract.ts:858`) |
-| 11 | `p4.9i-brahma-help-consoles` | BrahmaConsoleDialog (+ its `asTab` re-skin) + HelpChatDialog | lane | W4.5b services (landed) |
+| 11 | `p4.9i` → **`p4.9i1` + `p4.9i2`** | BrahmaConsoleDialog (+ its `asTab` re-skin) ∥ HelpChatDialog. **SPLIT 2026-07-18** — two surfaces, two backends, ~2,500 LOC (see the §1.6 correction). `p4.9i1` = the unported multi-turn `orchestrator.service.ts` + chat-CRUD dispatch + the dialog (and it must carry `HelpChatComposer` + the `qt-help-*` styles, which Brahma depends on). `p4.9i2` = the 9-component help family + read verbs for the help docs `help_doc_sync.rs` already writes | lane each | `p4.9i1`: W4.5b one-shot engine (landed). `p4.9i2`: nothing above `help_doc_sync.rs` |
 | 12 | `p4.9k-character-ai-dialogs` | AIWizard, Optimizer, system-prompts import/preview, ExternalPrompt/ReverseUser | round | tier-3 LLM services |
 | 13 | `p4.9n-files-fidelity` | rich text/pdf preview, rich FolderPicker, cross-mount move/copy UI, drag relocation | lane | pdf/docx extractor (refusing seam) |
 | 14 | `p4.9l-salon-composer-toolbar` | `roleplayTemplateId`-aware toolbar delimiters — a composer vertical, **not** a rider (`phase-4.md:1615-1618`) | lane | a composer toolbar must exist first |
 | 15 | `p4.9m-toast-bus` | a toast bus; terminal exit/kill toasts; `chat-update` side effects; xterm optional addons | rider | none |
-| 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | **a human ruling first** — see §5.1 |
+| 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | ~~a human ruling first~~ **RULED 2026-07-18: port it** — see §5.1/F1 |
 
-Sequencing note: items 1–4 are small, high-visibility, and unblocked —
-they are the natural next round, and 1/2/3 are close enough in shape
-(routes + image surfaces) to run as parallel lanes. Item 16 should not be
-scoped until §5.1 is answered; it is plausibly larger than every other row
-combined.
+Sequencing note (updated 2026-07-18): ~~items 1–4 are the natural next
+round~~ — **items 1–4 RAN** (the M6 items 1–4 round, 2026-07-18): `p4.9c`,
+`p4.9b`, `p4.9d` CLOSED whole and `p4.9a` CLOSED tier 1, with its remainder
+re-scoped into `p4.9a2` (row 1). The round after them is **P4.6bd ∥ P4.9a2
+∥ P4.9f1 ∥ P4.9f2** (the consult-wire + image-detail + wardrobe round) —
+row 1's remainder plus row 7's re-sized pair, alongside the non-M6 consult
+wire. Rows 5/6/8–15 are unstarted. Item 16 is now RULED and gates v4
+retirement; it is still plausibly larger than every other row combined and
+wants a DEDICATED round — it rewrites the shell and `app.routes.ts`, so it
+collides with any concurrent SPA lane and should not share a round with
+surface work.
 
 ---
 
