@@ -4,7 +4,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';

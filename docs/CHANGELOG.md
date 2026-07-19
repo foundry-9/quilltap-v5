@@ -2,6 +2,72 @@
 
 ## Recent Changes
 
+P4.9J1 (lane J1) unit 6: the e2e dual-mode harness. A shared Playwright test
+wrapper (apps/web/e2e/support/fixtures.ts) overrides the context fixture to
+addInitScript the per-browser opt-out (quilltap.workspace.tabs = '0') before app
+boot, so the ENTIRE existing suite keeps running v4's supported ROUTE mode
+byte-unchanged; all 33 existing specs re-pointed to import from it. A new
+workspace-flow.spec.ts (imports the base @playwright/test, flag ON) walks the
+flag-on beats: / redirects to /workspace?open=home with a Home tab and the URL
+stripped; a rail click opens a second tab and re-clicking de-dupes; Ctrl+Alt+\
+splits and a reload restores the layout; a deep-link /settings redirect carries
+its intent, strips the URL, and lands on the loud not-yet-wired settings pane.
+
+P4.9J1 (lane J1) unit 4: the flag, the redirects, and the shell cutover.
+isWorkspaceTabsEnabled() reads localStorage['quilltap.workspace.tabs'] !== '0'
+once at bootstrap (default ON; the v5 opt-out for v4's build-time env var). A
+workspaceRedirectGuard on the 16 legacy surface routes ('' , salon/:id,
+characters, characters/new, characters/:id/edit, files, prospero, scenarios,
+scriptorium, custom-tools, settings/wizard, settings, about, profile,
+generate-image, photos) redirects into /workspace?open=... with the v4 param
+names when the flag is on, and is a no-op when off. The /workspace route
+renders the two-pane host inside the shell; the shell's openWardrobe() gains
+its workspace arm (open a rail-scoped wardrobe tab while in the workspace). The
+rail/footer anchors funnel through the host's link interceptor. Not redirected:
+the salon list, salon/new, the terminal popout, and the bare detail routes.
+
+P4.9J1 (lane J1) units 3+5: the workspace chrome + in-lane hosting. The
+two-pane WorkspaceHost (one CSS grid, a flat always-mounted tab list positioned
+by grid-column and hidden — never unmounted — via display:none, the
+childActive salon-stays-mounted rule, the empty-pane affordance, the split
+drop-zone), TabStrip (drag reorder/move + close + active scrollIntoView),
+WorkspaceDivider (pointer drag + arrow nudge + reset), the arbitrated
+WorkspaceBackdrop, the portal + backdrop registries under the contract tokens,
+TabView (the lazy-mount latch + a per-tab injector providing WORKSPACE_TAB_ID +
+NgComponentOutlet with cached component/injector refs for keep-alive), the
+kind->component tab registry (in-lane real screens for the 12 no-input kinds,
+TabPortalHost for terminal/document, and loud NotWiredPane refusal panes for
+the ACTIVATE-AT-UNIFY kinds + a permanent brahma refusal naming p4.9i1), the
+Ctrl/Cmd+Alt keyboard shortcuts, the hydration-gated URL-stripping ?open=
+intent consumer, the capture-phase link interceptor (preventDefault +
+stopImmediatePropagation so Angular RouterLink never fires; /salon/new passes
+through), the /workspace route, and the six per-theme --qt-workspace-accent
+overrides. The mandatory keep-alive mount-counter spec proves lazy-mount +
+no-re-instantiation across active toggles and payload refreshes; shortcuts,
+intent, interceptor, and backdrop arbitration each get a pure spec. 183
+workspace specs green; ng build clean.
+
+P4.9J1 (lane J1) unit 2: the WorkspaceService store. A signal-based store
+wrapping the pure reducer with v4 workspace-provider semantics: uuid minting,
+de-dupe-resolved openTab return id, refreshTab (the focus:false payload
+refresh), one-shot HOST-triggered hydration from localStorage (chat existence
+via CoreClient listChats — v4's isChatValid seam) with a hydrated signal
+gating intent, and debounced persist (250 ms) that never runs pre-hydration.
+Constructor-injected CoreClient so the store unit-constructs with a stub. Null
+instanceId (scoped storage-key form stays corpus-proven) is a named deferral.
+
+P4.9J1 (lane J1) unit 1: the workspace pure core + its tier-1 corpus. A new
+Node oracle case (harness/oracle/cases/workspace-core.ts) drives v4's real
+lib/workspace (reducer/persistence/tab-meta) and lib/navigation/route-to-intent
+and emits a committed deterministic JSON corpus (92 reducer steps, 17 identity
+arms, selector probes, the full persistence branch set, 44 route hrefs, the
+DEFAULT_TAB_META table). The v5 pure-core port lives under
+apps/web/src/app/workspace/core/ (reducer/persistence/tab-meta/route-to-intent,
+re-exporting the contract types, no Angular imports; persistence validation
+hand-ported from Zod since the SPA has no zod). A vitest replay spec runs every
+corpus row through the port (144 assertions green). v5-only /characters route
+adaptations are unit-tested separately (they diverge from v4 by design).
+
 Round planning: the p4.9j workspace-tabs round (P4.9J1 ∥ P4.9J2) is scoped
 and its two work orders are committed (docs/developer/porting/work-orders/
 p4.9j1-workspace-core-shell.md, p4.9j2-screen-hostability.md), alongside the

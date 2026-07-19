@@ -23492,3 +23492,252 @@ the next-order pool), `p4.9i1` Brahma (its tab kind renders a loud refusal
 pane), the help doc (`p4.9i2`), per-instance layout-key scoping (named
 deferral), and the `616930db`-style catch-up for the predicted state-cascade
 feature (not yet landed in v4 — watch it).
+
+---
+
+## P4.9J1 (lane J1) — the workspace core, chrome, and shell cutover (IN PROGRESS)
+
+Branch `claude/p4-9j1-workspace-core-shell-9prx7q`. Pure-SPA lane (zero Rust
+source; the only Rust-adjacent artifact is the Node oracle case). Baseline v4
+`b8b12695`; drift-checked clean (HEAD at `70baaa74`, the docs-only state-cascade
+plan, already dispositioned). SPA base 0.5.189.
+
+### Unit 1 — the pure core + the tier-1 corpus (SPA 0.5.190)
+
+The differential heart. New oracle case `harness/oracle/cases/workspace-core.ts`
+imports v4's REAL `lib/workspace/{workspace-reducer,workspace-persistence,
+tab-meta}` and `lib/navigation/route-to-intent` (never reimplements them) and
+emits ONE deterministic pretty-JSON corpus committed at
+`apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json`:
+
+- **reducer**: 44 scripted scenarios / 92 steps recording the COMPLETE state
+  after every action — every action type, every `tabIdentity` arm, de-dupe
+  payload/title refresh (incl. a same-keys-different-insertion-order row pinning
+  the `JSON.stringify` semantics), `focus:false` (incl. into an empty right
+  pane), right-pane creation both ways, child cascade, neighbour-pick forward
+  AND backward, collapse + right→left promotion, last-tab home reset, ratio
+  clamp edges (NaN/∞/negative), out-of-range MOVE index, UNSPLIT, REPLACE_STATE,
+  a combined split/move/close run.
+- **tabIdentity**: 17 rows (every arm, incl. the missing-id fallbacks).
+- **selectors**: paneOfTab / getPaneState / isActiveInItsPane / isSplit over a
+  split probe state.
+- **persistence**: storageKey (±instanceId); deserialize (null/garbage/missing
+  panes/bad focusedPane/tabs-not-object/non-number ratio → null; valid + every-
+  TabKind round-trip; unknown-kind-tab-dropped; **extra tab/pane/top-level keys
+  stripped** — the Zod `.strip()` behaviour the hand-port must match); prune
+  (all-valid, drop-invalid-salon, orphan child, orphan CHAIN fixpoint, missing
+  chatDocumentId, standalone with/without filePath, dangling active + stray
+  order, total-loss home fallback); hydrate; serialize round-trips.
+- **routeIntent**: 44 hrefs (the v4 table + query/hash/trailing-slash/external
+  edges + v5-null bare project/store details).
+- **tabMeta**: the full `DEFAULT_TAB_META` table.
+
+The v5 port lives under `apps/web/src/app/workspace/core/`
+(`reducer.ts`/`persistence.ts`/`tab-meta.ts`/`route-to-intent.ts`), pure TS,
+re-exporting the contract types; **no Angular imports**. Persistence validation
+is hand-ported from v4's Zod (the Workbench client-safe schema-port precedent) —
+the corpus proves the strip/drop semantics match. `route-to-intent.ts` replays
+every v4 corpus row byte-identically AND adds the documented v5 `/characters*`
+route names (`/characters`→aurora, `/characters/new`→character-new,
+`/characters/<id>`→character-view — v5 has no `/view` suffix), which are
+unit-tested v5-side (they diverge from v4 by design, so are NOT in the corpus).
+
+Replay spec `workspace-core.spec.ts` runs EVERY corpus row through the port and
+asserts deep equality (states — deep equal; strings — exact): **144 assertions
+green**. Corpus is byte-deterministic (regenerated twice, identical).
+
+**Regen recipe** (v4 checkout at `b8b12695`, Node 22 `/opt/node22/bin` here /
+Node 24 elsewhere; regenerate in its OWN clean invocation):
+```
+cd ~/source/quilltap-server
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/workspace-core.ts \
+  > ~/source/quilltap-v5/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json
+```
+Never hand-edit the fixture; regen + grep a known row (e.g.
+`combined-split-move-close`). Lane J1 owns regeneration whenever the v4 baseline
+moves.
+
+### Unit 2 — the WorkspaceService store (SPA 0.5.191)
+
+`apps/web/src/app/workspace/workspace.service.ts` — the concrete
+`WorkspaceHandle`, signal-based, port of v4 `workspace-provider.tsx`:
+
+- `state`/`hydrated` signals; uuid minting (`crypto.randomUUID`, defensive
+  fallback); `openTab` returns the de-dupe-resolved id (existing on a dup);
+  `refreshTab` = `openTab(..., { focus:false })` (the v4 payload-refresh path);
+  `closeTab`/`moveTab`/`reorderTab`/`setActive`/`setFocusedPane`/`splitTo`/
+  `unsplit`/`setSplitRatio`.
+- **Hydration is HOST-triggered** (`hydrateOnce()`, idempotent) rather than run
+  in a mount effect — the store stays inert (no chat fetch, no layout write) in
+  routed/flag-off mode until a host actually mounts. It fetches valid chat ids
+  via `CoreClient.dispatchExpect({type:'listChats'},'chats')` (v4's `isChatValid`
+  seam), reads localStorage, prunes, flips `hydrated`, and persists once.
+- **Debounced persist** (`PERSIST_DEBOUNCE_MS = 250`) fires on every dispatch
+  but returns early until `hydrated` (never clobbers a stored layout with the
+  pre-hydration default) — implemented as a direct `schedulePersist()` on
+  dispatch (equivalent to v4's state-effect; deterministic to test).
+- **Constructor injection** of `CoreClient` (not `inject()`) so the store
+  unit-constructs with a stub — no TestBed / Angular test env needed.
+- **Storage key**: `workspaceStorageKey(null)` — the unscoped form; per-instance
+  scoping is a NAMED tier-3 deferral (no client-visible instance id yet).
+
+Spec `workspace.service.spec.ts` (8 tests): default single-home + not-hydrated,
+openTab mint-vs-dedupe id, salon dedupe by chatId, refreshTab in-place refresh
+without focus, no-persist-before-hydration, debounced-persist-after-hydration,
+hydrate restore + dead-chat prune, hydrateOnce idempotency. Green under vitest
++ jsdom (and under `ng test`, which provides the DOM env).
+
+### Units 3 + 5 — the chrome + in-lane hosting (SPA 0.5.192)
+
+The whole two-pane host and its chrome, Angular-idiomatic (standalone, signals,
+OnPush), under `apps/web/src/app/workspace/chrome/` + the `/workspace` route +
+the per-theme CSS accents. Deliverables 3 and 5 land together (they share the
+TabView + tab-registry files).
+
+- **WorkspaceHost** (routed at `/workspace`): one CSS grid; `grid-template-columns`
+  from `splitRatio`; a FLAT `@for`-over-`Object.values(tabs)` (keyed by tab id)
+  content list, each pane positioned by `grid-column`, hidden via
+  `display:none` + `aria-hidden` (never unmounted); the childActive
+  salon-stays-mounted rule; empty-pane affordance; the unsplit→center split
+  drop-zone; `(mousedown)` focused-pane tracking (v4's `onMouseDownCapture`
+  — bubble in Angular, documented). Provides the four contract tokens
+  (`WORKSPACE_HANDLE`=WorkspaceService, the portal + backdrop registries,
+  `TAB_VIEW_REGISTRY`=DEFAULT). Owns hydration (`hydrateOnce()`), the
+  hydration-gated + URL-stripping `?open=` intent consumer (snapshot after
+  hydrate + `queryParamMap` for later in-workspace navigations), the
+  document-level capture-phase link interceptor, and the window keydown
+  shortcuts; all torn down on destroy.
+- **TabView**: the lazy-mount latch (`everActive`, effect-driven), a per-tab
+  `Injector.create` providing `WORKSPACE_TAB_ID` (parented to the host injector
+  so hosted screens resolve the other tokens), `NgComponentOutlet` with
+  **cached component + injector references** so neither changes across CD —
+  the keep-alive guarantee. Inputs are reactive (a payload refresh re-applies
+  without recreating).
+- **tab-registry** (`TAB_VIEW_REGISTRY` token + `DEFAULT_TAB_REGISTRY`): the
+  kind→component map = deliverable 5. In-lane real screens for the 12 no-input
+  kinds (home/aurora/prospero/scriptorium/files/photos/scenarios/generate-image/
+  about/profile/character-new/settings-wizard); `TabPortalHost` for
+  terminal/document; `NotWiredPane` (loud) for the seven ACTIVATE-AT-UNIFY
+  kinds (salon/settings/wardrobe/character-edit/character-view/custom-tools/
+  document-standalone) + a permanent brahma refusal naming `p4.9i1`.
+- **TabStrip / WorkspaceDivider / WorkspaceBackdrop / TabPortalHost /
+  registries / NotWiredPane** — direct ports. Backdrop arbitration extracted to
+  a pure `arbitrateBackdrop`. Shortcuts / intent / interceptor extracted to pure
+  functions (`applyWorkspaceShortcut` / `parseOpenIntent` /
+  `interpretWorkspaceLinkClick`).
+- **CSS**: `_workspace.css` was already byte-identical to v4 on main; appended
+  six `[data-theme] { --qt-workspace-accent }` blocks (outside `@layer`). ⚠
+  The exact v4 per-theme accent values live in the runtime theme packs (out of
+  this repo's committed tree); v5's committed accents are signature hues —
+  the cross-theme screenshot check is the named tier-2 follow-up.
+
+**Specs (183 workspace tests green under `ng test`; `ng build` clean):** the
+corpus replay (144), the store (8), and the chrome — the **mandatory keep-alive
+mount-counter spec** (lazy-mount; no re-instantiation across active toggles AND
+a same-id payload refresh), shortcuts (10 arms), intent (10 arms), link
+interceptor (jsdom anchors), backdrop arbitration.
+
+**Angular divergences (documented):** the per-tab `WORKSPACE_TAB_ID` is provided
+via a cached `Injector.create` + `NgComponentOutlet` (v4 uses a React context);
+the link interceptor also `stopImmediatePropagation`s (Angular `RouterLink`
+ignores `defaultPrevented`); `/salon/new` passes through (v5 has no NewChatModal
+— P4.6q); focused-pane tracking is bubble `(mousedown)` not capture.
+
+### Unit 4 — the flag, the redirects, the shell (SPA 0.5.193)
+
+- **Flag** `apps/web/src/app/workspace/workspace-flag.ts`:
+  `isWorkspaceTabsEnabled()` = `localStorage['quilltap.workspace.tabs'] !== '0'`,
+  read ONCE and cached (default ON). Documented divergence: v4 gates via the
+  build-time `NEXT_PUBLIC_WORKSPACE_TABS`; v5 ships one binary, so the supported
+  opt-out is a per-browser key with identical `!== '0'` semantics.
+- **Redirects** `workspace-redirect.guard.ts`: a `CanActivateFn` factory
+  (`workspaceRedirectGuard(open, paramMapper?)`) returning a `UrlTree` to
+  `/workspace?open=<open>` with the v4 param names when the flag is on, else
+  `true`. Bound in `app.routes.ts` on exactly the **16** §4 routes (`''`→home,
+  salon/:id→salon+chatId, characters→aurora, characters/new→character-new,
+  characters/:id/edit→character-edit+characterId+tab, files, prospero,
+  scenarios, scriptorium, custom-tools+mount/path/new, settings/wizard,
+  settings+tab/section, about, profile, generate-image, photos). NOT bound
+  (v4-faithful): the salon list, `salon/new`, the terminal popout, and the bare
+  detail routes (`characters/:id`, `characters/groups/:id`, `prospero/:id`,
+  `scriptorium/:id`), `workspace`, `**`.
+- **Shell** `shell/shell.ts`: `openWardrobe()` gains the ported v4 `inWorkspace`
+  arm — while the flag is on and the URL is `/workspace`, it opens a rail-scoped
+  wardrobe tab (`workspace.openTab('wardrobe')`) instead of the modal dialog.
+  The rail items + footer Settings anchor need no change — the host's
+  capture-phase link interceptor funnels their clicks to `openTab` while in the
+  workspace (the `<router-outlet>` body is preserved for routed mode).
+- Specs: `workspace-flag.spec.ts` (default ON / `'0'` off / caching),
+  `workspace-redirect.guard.spec.ts` (TestBed: flag-off no-op, singleton
+  redirect, salon chatId carry, settings tab/section with empty-drop,
+  custom-tools mount/path/new). 192 workspace specs green; `ng build` clean.
+
+**Known edge (documented deferral):** the first-run wizard handoff
+(`/settings/wizard?mode=setup`) redirects to `/workspace?open=settings-wizard`
+— the `mode=setup` query is dropped (the intent parser has no `mode` arm). The
+e2e suite runs flag-OFF (the global opt-out), so first-run flows there are
+unaffected; carrying `mode` through is a named follow-up.
+### Unit 6 — the e2e dual-mode harness (SPA 0.5.194)
+
+- **Global opt-out** `apps/web/e2e/support/fixtures.ts`: a Playwright `test`
+  wrapper that overrides the `context` fixture to `addInitScript` the per-browser
+  opt-out (`quilltap.workspace.tabs = '0'`) before app boot on every context, so
+  the ENTIRE existing suite keeps running v4's supported ROUTE mode
+  byte-unchanged. Re-exports `expect`, `request`, and `export type *` so the only
+  per-spec change is the module specifier. All 33 existing specs re-pointed from
+  `@playwright/test` to `./support/fixtures`.
+- **Flag-on beats** `apps/web/e2e/workspace-flow.spec.ts` (imports the BASE
+  `@playwright/test`, so the flag stays ON): `/` redirects to
+  `/workspace?open=home` → a Home tab with the URL stripped clean; a rail click
+  opens a second tab and re-clicking de-dupes (focuses); `Ctrl+Alt+\` splits the
+  workspace and a reload restores the layout from localStorage; a deep-link
+  `/settings?tab=…&section=…` redirect carries its intent, strips the URL, and
+  lands on the loud not-yet-wired settings pane (its real screen at unify).
+- New beats that mutate shared fixture state are only validated by a FULL-suite
+  run (the P4.d9 memory) — workspace-flow sorts LAST ('w') and each Playwright
+  test gets a fresh context (clean localStorage → flag ON), so it never disturbs
+  the route-mode specs.
+
+
+### Lane gate (P4.9J1 — verification before hand-off)
+
+Pure-SPA lane; **zero Rust source changed** (`git diff --stat main -- crates/`
+empty — the only Rust-adjacent artifact is the new Node oracle case
+`harness/oracle/cases/workspace-core.ts`, which is not a Rust crate).
+
+- **Rust don't-regress guard:** `cargo fmt --all --check` clean;
+  `cargo test -p quilltap-core -p quilltap-host` = **1075 passed / 0 failed**;
+  `cargo clippy -p quilltap-core -p quilltap-host --all-targets -- -D warnings`
+  clean for BOTH feature sets (default + `--features
+  quilltap-core/native-transport`); all non-tauri crates compile (`cargo build`
+  reached tauri before the GTK error; `cargo build -p quilltap-web -p
+  quilltap-cli` succeeded in debug AND release). ⚠ TWO environment limits, both
+  documented, neither a code issue: (1) **`quilltap-tauri` cannot build here** —
+  it needs GTK (`gdk-3.0.pc` / webkit2gtk) not installed in this Linux
+  container; it is a leaf binary no crate depends on, and this lane changed no
+  Rust. (2) **The full `cargo test --workspace` cannot run here** — the debug
+  workspace test build (~30 GB of deps + per-file differential test binaries)
+  exceeds the container's fixed disk allowance (~38 GB shared with node_modules
+  / release artifacts); it died linking test binaries with `No space left on
+  device`. core + host (the behavioral crates) were run as the representative
+  guard; since no Rust changed, the harness/web/cli differentials cannot have
+  regressed.
+- **SPA:** `ng test` **181 files / 2,221 specs green** (grew from 172 / 2,029);
+  `ng build` clean.
+- **Corpus:** `workspace-core-fixtures.json` regenerates byte-identically from
+  the v4 checkout at `b8b12695`; the replay spec is green over the fresh regen.
+- **Playwright (ALONE on port 4319, this worktree's RELEASE binaries):**
+  **90/91 — the entire existing suite in ROUTE mode (the global opt-out) + all
+  4 new flag-on workspace beats green.** The one red is
+  `salon-composer-modes.spec.ts:180` (the P4.d9 `$$` KaTeX / `$50`-currency
+  beat), which **passes cleanly in isolation (2.4 s)** and times out only under
+  full-suite load — the P4.d9-documented full-suite shared-state/timing
+  sensitivity, a route-mode salon-render beat wholly outside this lane (the
+  workspace code is lazy and never reached in route mode). Environment caveats:
+  the container ships Chromium build 1194 but `@playwright/test@1.61.1` pins
+  1228 (headless-shell absent), so the run used a throwaway (gitignored)
+  `pw-local.config.ts` pointing at `/opt/pw-browsers/chromium` — the committed
+  `playwright.config.ts` is untouched; and a first DEBUG-binary run had five
+  unlock/setup/scroll beats time out on PBKDF2 latency, all cleared in RELEASE.
+- **No `[value]` binding on any async/`@if`-gated `<select>`** (the dogfood-#6
+  rule) — this lane adds no `<select>`.

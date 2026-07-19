@@ -336,3 +336,34 @@
     text-align: center;
   }
 }
+
+/* ==========================================================================
+   PER-THEME WORKSPACE ACCENTS
+   --------------------------------------------------------------------------
+   ONE master token re-tints the whole workspace (active tab / divider /
+   drop-zone), consumed as var(--qt-workspace-accent, var(--color-primary)).
+   Left undeclared, a theme's workspace inherits its own --color-primary; the
+   blocks below give each of the six bundled themes a signature workspace
+   accent. (In v4 these live in each theme bundle's styles.css; v5 serves the
+   theme packs at runtime, so the committed accents live here — outside
+   @layer so they define the custom property on the theme root regardless of
+   component layering. They tint only the workspace and are inert elsewhere.)
+   ========================================================================== */
+[data-theme='art-deco'] {
+  --qt-workspace-accent: #c9a227; /* deco gold */
+}
+[data-theme='earl-grey'] {
+  --qt-workspace-accent: #6b7b8c; /* muted slate */
+}
+[data-theme='great-estate'] {
+  --qt-workspace-accent: #3f6b4a; /* estate green */
+}
+[data-theme='madmans-box'] {
+  --qt-workspace-accent: #22d3ee; /* cyan over the amber primary (v4's example) */
+}
+[data-theme='old-school'] {
+  --qt-workspace-accent: #3fae5a; /* terminal green */
+}
+[data-theme='rains'] {
+  --qt-workspace-accent: #5a86c9; /* rain blue */
+}

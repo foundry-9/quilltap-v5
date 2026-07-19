@@ -4,7 +4,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
-} from '@playwright/test';
+} from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 

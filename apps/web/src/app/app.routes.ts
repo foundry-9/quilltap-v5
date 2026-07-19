@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 
+import { workspaceRedirectGuard } from './workspace/workspace-redirect.guard';
+
 /**
  * The in-shell routes (v5 introduces real routing this round). The startup gate
  * (`App`) still owns the pre-operational states and only mounts `Shell` — which
@@ -21,6 +23,15 @@ import { Routes } from '@angular/router';
  * `/photos` is the My Photos gallery — the deduped roll-up of every `photos/`
  * folder across the instance.
  * Every other path redirects to the Salon.
+ *
+ * **P4.9J1 (the tabbed workspace, v4's default shell):** `/workspace` renders
+ * the two-pane host. When the workspace-tabs flag is ON (the default), the 16
+ * legacy surface routes carry a `workspaceRedirectGuard` that redirects into
+ * `/workspace?open=…` with the v4 param names; when the flag is off the guard is
+ * a no-op and the old routes render as before. NOT redirected: the salon list,
+ * `/salon/new`, the terminal popout, and the bare detail routes
+ * (`/characters/:id`, `/characters/groups/:id`, `/prospero/:id`,
+ * `/scriptorium/:id`) — v4-faithful, they render standalone / in-place.
  */
 export const routes: Routes = [
   {
@@ -37,16 +48,19 @@ export const routes: Routes = [
   },
   {
     path: 'salon/:id',
+    canActivate: [workspaceRedirectGuard('salon', (r) => ({ chatId: r.paramMap.get('id') }))],
     loadComponent: () =>
       import('./screens/salon/salon-conversation').then((m) => m.SalonConversation),
   },
   {
     path: 'characters',
+    canActivate: [workspaceRedirectGuard('aurora')],
     loadComponent: () =>
       import('./screens/characters/list/characters-list').then((m) => m.CharactersList),
   },
   {
     path: 'characters/new',
+    canActivate: [workspaceRedirectGuard('character-new')],
     loadComponent: () =>
       import('./screens/characters/new/new-character').then((m) => m.NewCharacter),
   },
@@ -56,6 +70,12 @@ export const routes: Routes = [
   },
   {
     path: 'characters/:id/edit',
+    canActivate: [
+      workspaceRedirectGuard('character-edit', (r) => ({
+        characterId: r.paramMap.get('id'),
+        tab: r.queryParamMap.get('tab'),
+      })),
+    ],
     loadComponent: () =>
       import('./screens/characters/edit/character-edit').then((m) => m.CharacterEdit),
   },
@@ -66,10 +86,12 @@ export const routes: Routes = [
   },
   {
     path: 'files',
+    canActivate: [workspaceRedirectGuard('files')],
     loadComponent: () => import('./screens/files/files-browser').then((m) => m.FilesBrowser),
   },
   {
     path: 'prospero',
+    canActivate: [workspaceRedirectGuard('prospero')],
     loadComponent: () => import('./screens/prospero/prospero-list').then((m) => m.ProsperoList),
   },
   {
@@ -79,10 +101,12 @@ export const routes: Routes = [
   },
   {
     path: 'scenarios',
+    canActivate: [workspaceRedirectGuard('scenarios')],
     loadComponent: () => import('./screens/scenarios/scenarios-page').then((m) => m.ScenariosPage),
   },
   {
     path: 'scriptorium',
+    canActivate: [workspaceRedirectGuard('scriptorium')],
     loadComponent: () =>
       import('./screens/scriptorium/scriptorium-list').then((m) => m.ScriptoriumList),
   },
@@ -92,42 +116,68 @@ export const routes: Routes = [
   },
   {
     path: 'custom-tools',
+    canActivate: [
+      workspaceRedirectGuard('custom-tools', (r) => ({
+        mount: r.queryParamMap.get('mount'),
+        path: r.queryParamMap.get('path'),
+        new: r.queryParamMap.get('new'),
+      })),
+    ],
     loadComponent: () =>
       import('./screens/custom-tools/custom-tools-page').then((m) => m.CustomToolsPage),
   },
   {
     path: 'settings/wizard',
+    canActivate: [workspaceRedirectGuard('settings-wizard')],
     loadComponent: () =>
       import('./screens/settings/wizard/wizard-screen').then((m) => m.WizardScreen),
   },
   {
     path: 'settings',
+    canActivate: [
+      workspaceRedirectGuard('settings', (r) => ({
+        tab: r.queryParamMap.get('tab'),
+        section: r.queryParamMap.get('section'),
+      })),
+    ],
     loadComponent: () => import('./screens/settings/settings').then((m) => m.Settings),
   },
   // === P4.9c (lane C) ===
   {
     path: 'about',
+    canActivate: [workspaceRedirectGuard('about')],
     loadComponent: () => import('./screens/about/about-page').then((m) => m.AboutPage),
   },
   {
     path: 'profile',
+    canActivate: [workspaceRedirectGuard('profile')],
     loadComponent: () => import('./screens/profile/profile-page').then((m) => m.ProfilePage),
   },
   // === end P4.9c ===
   {
     path: 'generate-image',
+    canActivate: [workspaceRedirectGuard('generate-image')],
     loadComponent: () =>
       import('./screens/generate-image/generate-image-page').then((m) => m.GenerateImagePage),
   },
   // === P4.9a: the My Photos vertical (lane A, append-only) ===
   {
     path: 'photos',
+    canActivate: [workspaceRedirectGuard('photos')],
     loadComponent: () => import('./screens/photos/photos-page').then((m) => m.PhotosPage),
   },
   // === end P4.9a ===
+  // === P4.9J1: the tabbed workspace (v4's default shell) ===
+  {
+    path: 'workspace',
+    loadComponent: () =>
+      import('./workspace/chrome/workspace-host').then((m) => m.WorkspaceHost),
+  },
+  // === end P4.9J1 ===
   {
     path: '',
     pathMatch: 'full',
+    canActivate: [workspaceRedirectGuard('home')],
     loadComponent: () => import('./screens/home/home-page').then((m) => m.HomePage),
   },
   { path: '**', redirectTo: 'salon' },

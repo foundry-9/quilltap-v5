@@ -13,6 +13,8 @@ import {
 } from '../wardrobe/default-character';
 import { WardrobeControlDialog } from '../wardrobe/wardrobe-control-dialog';
 import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
+import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
+import { WorkspaceService } from '../workspace/workspace.service';
 import { UserMenu } from './user-menu';
 
 interface NavItem {
@@ -182,6 +184,7 @@ export class Shell implements OnInit {
   private readonly router = inject(Router);
   private readonly core = inject(CoreClient);
   private readonly wardrobeDialog = inject(WardrobeDialogService);
+  private readonly workspace = inject(WorkspaceService);
 
   protected readonly navItems = NAV_ITEMS;
   protected readonly showNavThemeSelector = this.theme.showNavThemeSelector;
@@ -189,10 +192,15 @@ export class Shell implements OnInit {
   /**
    * v4 `sidebar-footer.tsx:239-244`: a plain `open()` off a salon chat; on a
    * salon chat path, resolve the default character first and pass the chat
-   * scope along. (The `inWorkspace` arm — `workspace.openTab('wardrobe')` —
-   * belongs to `p4.9j` workspace tabs and is not ported.)
+   * scope along. The `inWorkspace` arm (v4) opens the Wardrobe as a rail-scoped
+   * tab instead of the modal — ported here (P4.9J1): while the flag is on and we
+   * are in the workspace, `workspace.openTab('wardrobe')`.
    */
   protected async openWardrobe(): Promise<void> {
+    if (isWorkspaceTabsEnabled() && this.router.url.split('?')[0] === '/workspace') {
+      this.workspace.openTab('wardrobe');
+      return;
+    }
     const chatMatch = this.router.url.match(SALON_CHAT_PATH_RE);
     if (!chatMatch) {
       this.wardrobeDialog.open();
