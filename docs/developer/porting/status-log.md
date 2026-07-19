@@ -23044,3 +23044,37 @@ Gate: `ng test` 163 files / 1,919 green; `ng build` clean. SPA 0.5.180.
   button, no stale title, opens with `{characterId}`, prose verbatim).
 
 Gate: `ng test` 165 files / 1,925 green; `ng build` clean. SPA 0.5.181.
+
+## P4.9f2 unit 7 — the live Playwright walk (2026-07-19)
+
+- **`apps/web/e2e/wardrobe-flow.spec.ts`** — a spec-private server (port
+  4329) over the committed `characters-{main,mount}.db` fixture pair (the
+  `characters-flow` recipe: copy pair → locked `.dbkey` → per-table
+  userId rewrite via `quilltap db --write` → boot `quilltap-web`).
+  - **LIVE beat (the out-of-chat arm — landed verbs only):** unlock →
+    Aria's detail (card-body click, finding #4) → the Wardrobe tab's
+    now-enabled button opens the dialog → `+ New Item` → the editor
+    creates "Brass Goggles" (accessories) → the row appears in the
+    character tier → kebab → "★ Mark as default outfit item" →
+    `· default` renders → the Outfit Builder's Accessories row "+"
+    picker composes it (pure client state) → Done → reopen → the item
+    persists server-side with its default flag. PASSED live in-lane.
+  - **ACTIVATE-AT-UNIFY beat (in-chat staging + flush):** probes
+    `chatOutfitGet` at `/api/dispatch` post-unlock (the courier-probe
+    precedent — "unknown variant" → skip naming lane P4.9f1) and, once
+    live, walks: Conversations tab → "Solo Voyage" → the shell footer
+    Wardrobe button (chat scope + default-character resolution) → the
+    Live tab's staging microcopy → Wear → Done (the one-shot `set_all`)
+    → reopen → the worn snapshot shows the item. SKIPPED in-lane by the
+    probe; self-activates at unification.
+  - Locator care: the new shell footer button and the detail tab BOTH
+    answer to "Wardrobe" (the added-affordance trap) — the tab click is
+    scoped to `.character-view`, the footer uses `getByTitle`; the
+    editor's type checkbox uses substring `hasText` (regex would trip on
+    un-normalized whitespace, the P4.9a memory).
+
+Gate (the lane's close-out): full Playwright suite run alone on this
+worktree's own binaries; `cargo fmt/clippy/test` baseline confirmed
+untouched (`git diff main -- crates/ Cargo.toml Cargo.lock harness/` is
+EMPTY — this pure-SPA lane changed no Rust); `ng test` / `ng build`
+clean. Results recorded in the lane's final report. SPA 0.5.182.

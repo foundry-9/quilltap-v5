@@ -129,6 +129,18 @@ follow-ups + 2 raw key-order claims + the canned-transcode preview happy
 path); two deliberate mutations (skipped delete cleanup, dropped equip
 alias) confirmed caught. One sanctioned quilltap-host line (the
 avatar_preview: None assembly field — the order's named exception).
+P4.9f2 unit 7 (the wardrobe dialog SPA lane): the live Playwright walk.
+A new spec-private server over the committed characters fixture walks the
+out-of-chat arm end to end: unlock, Aria's detail, the Wardrobe tab
+button opens the dialog, an item is created through the editor and lands
+in the character tier, marked default via the kebab, composed into the
+Outfit Builder, and survives close/reopen server-side. The in-chat
+staging + one-shot set_all flush beat probes the dispatch surface and
+self-activates when lane P4.9f1's chatOutfitGet/chatEquip land
+(ACTIVATE-AT-UNIFY). Locators avoid the Wardrobe name collision between
+the new shell footer button and the detail tab (scoped tab click;
+getByTitle for the footer). SPA 0.5.182.
+
 P4.9f2 unit 6 (the wardrobe dialog SPA lane): the entry points, and the
 stub retires. The shell mounts the global dialog host once and gains the
 footer Wardrobe button with v4's chat-path resolution: on a salon chat
