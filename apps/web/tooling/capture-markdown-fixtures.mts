@@ -6,9 +6,11 @@
  * `{ input, html }` pairs, which `markdown-renderer.spec.ts` byte-compares against
  * the v5 port. This is the tier-4/5 "capture from v4" step.
  *
- * Regenerate (from the v4 checkout so its tsconfig `@/` aliases resolve):
- *   cd ~/source/quilltap-server && npx tsx \
- *     ~/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts
+ * Regenerate (from the pinned v4 worktree so its tsconfig `@/` aliases
+ * resolve, and so the capture reads the round's baseline even when the live
+ * checkout has drifted — the import below points INTO the pin):
+ *   cd /private/tmp/qt-v4-pin-7e6d13e5 && ./node_modules/.bin/tsx \
+ *     <v5>/apps/web/tooling/capture-markdown-fixtures.mts
  *
  * The corpus deliberately avoids language-LABELED code fences: rehype-highlight's
  * output depends on the transitive highlight.js version, so labeled blocks would
@@ -17,16 +19,19 @@
  *
  * The `math-*` fixtures couple to the KaTeX version the same way — KaTeX 0.18's
  * markup is what these bytes pin — which is why v5 pins `katex` at v4's exact
- * resolved 0.18.0 (see apps/web/package.json). remark-math/rehype-katex were
- * added at v4 b8b12695; regenerate this file from a v4 checkout at that baseline.
+ * resolved 0.18.1 (see apps/web/package.json). remark-math/rehype-katex were
+ * added at v4 b8b12695; the single-dollar promotion (`math-single-*`,
+ * `math-bare-token-*`) landed at v4 5915b04e — regenerate this file from a v4
+ * worktree at 7e6d13e5 or later.
  */
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// v4's real server renderer (absolute path into the reference checkout).
-import { renderMarkdownToHtml } from '/Users/csebold/source/quilltap-server/lib/services/markdown-renderer.service.ts';
+// v4's real server renderer (absolute path into the PINNED baseline worktree —
+// never the live checkout, which may have drifted past the round's baseline).
+import { renderMarkdownToHtml } from '/private/tmp/qt-v4-pin-7e6d13e5/lib/services/markdown-renderer.service.ts';
 
 const CORPUS: { name: string; input: string }[] = [
   { name: 'plain', input: 'Just a plain sentence.' },
@@ -67,6 +72,13 @@ const CORPUS: { name: string; input: string }[] = [
   { name: 'math-invalid-tex', input: 'Broken math: \\(\\frac{1}\\) here.' },
   { name: 'math-with-narration', input: '*She writes* \\(x = 1\\) on the board.' },
   { name: 'math-in-dialogue', input: '"The answer is \\(x^2\\)," she said.' },
+  // --- single-dollar promotion (5915b04e): promoteSingleDollarMath ---
+  { name: 'math-single-dollar-command', input: 'where $\\mathcal{P}$ is the invariant' },
+  { name: 'math-single-dollar-scripts', input: 'the term $T_{CMB}$ and $x^2$' },
+  { name: 'math-single-dollar-currency-mix', input: 'The $50 fee scales as $\\pi r^2$ per unit.' },
+  { name: 'math-bare-token-companion', input: 'where $K$ is the scalar and $\\mathcal{P}$ the invariant' },
+  { name: 'math-bare-token-alone', input: 'where $K$ is the Kretschmann scalar' },
+  { name: 'math-single-dollar-in-code', input: 'Run `echo $\\HOME{}` please.' },
 ];
 
 async function main() {

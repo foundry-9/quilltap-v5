@@ -119,6 +119,15 @@ extended `state-sql-tools` fixture family (four groups + memberships +
 the union chat + the seeded general mount), with the existing 34-case
 `state_sql_tools_equivalence` regenerated and green at v4 `7e6d13e5`.
 
+Lane P4.d11 unit 2: the markdown byte-parity fixtures are regenerated
+from v4's real renderer at the round pin (`7e6d13e5`, katex 0.18.1 both
+sides), with six new single-dollar fixtures (promotion via
+backslash-command and scripts, the currency-mix release case, the
+bare-token companion/alone pair, the code-span skip); 34 → 40 fixtures,
+purely additive, parity loop green. The capture tool now imports v4's
+renderer from the pinned worktree instead of the live checkout. SPA
+0.5.211 → 0.5.212.
+
 Lane P4.d11 (katex parity bump): `apps/web` katex 0.18.0 → 0.18.1,
 matching v4's `f495c9c9` dep update (v4 declares `^0.18.1`, resolves
 0.18.1). The patch is markup-neutral for the committed fixture corpus —

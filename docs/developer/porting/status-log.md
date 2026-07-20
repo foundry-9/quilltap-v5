@@ -24801,3 +24801,30 @@ committed corpus: the parity loop's 45 tests pass against the
 0.18.0-captured fixtures unchanged. Sequenced out of order (tier 2
 before tier-1 unit 2) precisely for the capture-version coupling. SPA
 0.5.210 → 0.5.211.
+
+**Unit 2 — the byte-parity fixture regen (commit "regenerate the markdown
+parity fixtures from the 7e6d13e5 pin + single-dollar corpus").**
+`capture-markdown-fixtures.mts`: the v4-renderer import now points INTO
+the round pin (`/private/tmp/qt-v4-pin-7e6d13e5/lib/services/
+markdown-renderer.service.ts` — the `oracle-regen-from-worktree-path`
+memory: the capture must import the PIN's files, never the live checkout,
+which can drift mid-round), the regen-recipe + katex-coupling doc
+comments updated (0.18.1; regenerate from a worktree at `7e6d13e5`+),
+and six single-dollar fixtures added off v4's test-vector menu:
+`math-single-dollar-command` (backslash-command promotion),
+`math-single-dollar-scripts` (sub/superscript), `math-single-dollar-
+currency-mix` (the "$50 fee scales as $\pi r^2$" currency-release case),
+`math-bare-token-companion`, `math-bare-token-alone` (stays literal),
+`math-single-dollar-in-code` (code-span skip). Regenerated from the pin
+(`cd /private/tmp/qt-v4-pin-7e6d13e5 && ./node_modules/.bin/tsx
+<v5-worktree>/apps/web/tooling/capture-markdown-fixtures.mts`): 34 → 40
+fixtures, the diff purely ADDITIVE — zero pre-existing fixtures changed,
+matching prediction (the only committed single-`$` input,
+`currency-prose`, is promotion-invariant; the order's "expect changes"
+warning covered inputs this corpus doesn't have). Stale-pass guard run
+(the `oracle-regen-silent-stale-pass` memory): the new names grepped
+present, captured HTML eyeballed (promotion → `.katex` markup, currency
+→ prose, bare-token-alone → literal `$K$`, code-span untouched). Parity
+loop 45 → 51 tests, render suite 83 green — v5's pipeline matches v4's
+REAL renderer byte-for-byte on all 40, both sides on katex 0.18.1. SPA
+0.5.211 → 0.5.212.
