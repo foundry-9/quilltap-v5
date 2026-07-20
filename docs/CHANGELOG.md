@@ -11,7 +11,12 @@ case-for-case from v4 with its 10-case spec). The state service
 (`BrahmaConsoleService`) — the provider analogue: `isOpen`/open/close,
 `currentChatId` on v4's exact localStorage key, `activeConnectionProfileId`
 + optimistic-then-PATCH `setModel`, `profiles` off the shared
-`connectionProfileList` query, `isEligible = profiles.length > 0`.
+`connectionProfileList` query, `isEligible = profiles.length > 0`. The leaf
+components: `qt-help-composer` (the HelpChatComposer analogue — Enter sends,
+Shift+Enter newline, 120px auto-grow), `qt-brahma-model-picker` (the
+inline connection-profile dropdown, outside-click/Escape close), and
+`qt-brahma-tool-call` (the run_sql card — Query pane via the shared markdown
+renderer, Result pane as a table or error text). Each with a component spec.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
