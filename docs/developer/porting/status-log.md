@@ -9,6 +9,88 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the `7e6d13e5` state-cascade drift catch-up: P4.d10 ∥ P4.6be ∥ P4.d11 (UNIFIED 2026-07-20)
+
+The full-drift catch-up round the p4.9j workspace-tabs round left OWED,
+unified on `unify/state-cascade` and fast-forwarded to main. **The oracle
+baseline MOVES to `7e6d13e5` (4.8.0-dev.92) — the drift debt is CLEARED**;
+v4 HEAD was still exactly `7e6d13e5` at unification (drift-checked).
+
+**Reconciliation.** Three lanes cherry-picked in dependency order (D10
+server → BE SPA → D11 SPA), 18 commits total: D10's six clean (it forked
+from current main); BE's six with the expected CHANGELOG/status-log
+both-sides unions (BE forked one commit back, before the re-baseline
+docs); D11's six with the same unions plus the §E version recount — BE
+and D11 had independently bumped the SPA 0.5.209→214, so D11's picks
+renumbered to 0.5.215–219 (the katex-bump pick hand-merged: ours +
+katex 0.18.1 + version, lock resynced via `npm install
+--package-lock-only`). Per-lane owned-file diffs against the lane
+branches: all three byte-identical on the unify branch.
+
+**The unification wires (two commits).** (1) The §C corpus wire: the
+count literals in `custom-tool-types.corpus.spec.ts` moved to lane D10's
+recorded `7e6d13e5` regen — 175 rows = 10 title + 165 definition (58
+accept / 107 reject); the drift map renamed `REGENERATED_AT_7E6D13E5`
+(emptied); the fixtures README provenance block updated; both §C
+consumers re-run green (BE's designed 4-row tripwire resolved against the
+regenerated corpus; the 2 llm.spec rows BE re-captured in-lane pass
+unchanged). The §A nine-verb + §B contract diffed name-for-name across
+`core-contract.ts` and `p4_d10_wire_contract.rs`: tags, field names,
+`GroupTier`, the `state` response tag, the workbench `state` field — zero
+mismatches. (2) A gesture fix at beat activation: BE's Group State and
+General State beats (probe-gated, never run in-lane) tripped two latent
+locator traps on their FIRST live run — the `qt-state-editor-modal` host
+has no layout box (assert the inner `[role=dialog]`, the established
+idiom) and the dialog carries two "Close"-named buttons (the chrome X is
+aria-labelled; filter on the visible text). The saves themselves
+round-tripped live through `groupStateSet`/`generalStateSet` first try —
+the port was never at fault. The workbench mock-state beat activated
+clean without any fix.
+
+**The gate (all on the unify branch).** `cargo fmt` clean; clippy BOTH
+feature sets clean; release build clean; `cargo test --workspace
+--no-fail-fast` **357 test binaries / 1,454 tests / 0 failed** with the
+full differential env set; the round's 24 differentials re-run BY NAME
+(`--nocapture`, grep SKIP → **zero SKIPs, all green**) over oracles
+regenerated FRESH from the `/private/tmp/qt-v4-pin-7e6d13e5` pin (22
+oracle families regenerated in their own invocations; the fresh §C
+definition output byte-identical (`cmp`) to the committed corpus): the
+state family (cascade 57 rows / sql-tools 54 / routes 19), the
+tool-definition pair + tool_wire + pseudo_tool_prompts guards, the full
+pascal family (definition 175 / execution 259 / run-custom 13 / handler
+15 / simulate 12 / roster 20 / custom-tools-route 13 / workbench 2 /
+workbench-route 50 / llm-consult 31 / build-tools-roster),
+system_prompt (54, the math note on both sides), the
+`p4_d10_wire_contract` pin, and the five tier-3 turn guards
+(orchestrator 200 / primary-stream 38 / native-tool-loop 22 /
+text-tool-loop 43 / message-finalizer 44). Harness self-test (no env)
+green. SPA: `ng test` **190 files / 2,342** green; `ng build` clean;
+**full Playwright 96/96, ZERO skips** — the three ACTIVATE-AT-UNIFY
+state beats ran LIVE (General State card round-trip on the shared
+server, Group State round-trip on the groups fixture server, the
+workbench `$state` mock-state bench beat). One regen note: the first
+state-routes jest run hit a worker SIGSEGV; `--runInBand` cured it
+(output-neutral, execution detail only).
+
+**Deferrals standing at round close (loud, named):** the chat-tier
+State-Editor opener (the modal's `chat` mode ships DORMANT — v4's opener
+lives in the unported ChatSidebar, a named p4.9j follow-up); Pascal
+`persist` (deferred in v4 itself — the schema tolerates unknown keys so
+a future `persist` file parses); help/*.md incl. the `math-notation.md`
+rewrite + `qtap-export.schema.json` (documented absences; banked on the
+p4.9i2 row); the four remaining `8ee56f6e` regression families banked as
+corpus-enrichment seeds (messages/[id] edit+delete, wardrobe itemId
+vault-aware lookup, run_custom listing, file-attachment fallback);
+FilePreviewText math (the P4.6af rich-stack deferral); the composer
+backslash-escape seam.
+
+**Versions at unification:** core 0.0.288, harness 0.0.250, host 0.0.23,
+web 0.0.35, quilltap-tauri 0.0.4, SPA 0.5.221. Both pins
+(`qt-v4-pin-b8b12695`, `qt-v4-pin-7e6d13e5`) retired at cleanup — the
+checkout `~/source/quilltap-server` is clean at the `7e6d13e5` baseline
+and oracles regenerate from it directly again (pin only on future drift
+or a dirty tree, per the standing recipe).
+
 ## P4.d10 gate addendum — the stale no-tools prompt assertion (lane D10, 2026-07-20)
 
 The lane-close `cargo test --workspace` caught ONE red the per-unit gates

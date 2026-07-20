@@ -2,6 +2,35 @@
 
 ## Recent Changes
 
+The `7e6d13e5` state-cascade drift catch-up round is UNIFIED on main
+(2026-07-20) — P4.d10, P4.6be, and P4.d11 all CLOSED, and the oracle
+baseline MOVES to v4 `7e6d13e5` (4.8.0-dev.92): the drift debt from the
+p4.9j round is cleared. On main: the whole four-tier state cascade
+server-side (the pure `state` modules, the general-state mount document +
+host-boot seed, the four-tier state tool + updated definition bytes, the
+nine §A state dispatch verbs, Pascal `$state` end-to-end incl. the
+workbench mock-state param, the universal math-notation system-prompt
+note, and the release-sweep neutrality verification incl. the D23
+zero-diff re-dump) ∥ the state-cascade SPA (the four-entity State Editor
+modal, the Group State and General State entries, workbench mock-state +
+read-only `$state` pills, the tool-draft `$state` kind, the re-copied
+schema asset) ∥ the release-sweep SPA slice (single-dollar math
+promotion + regenerated markdown parity fixtures 34 → 40, katex 0.18.1,
+the workbench dialog backdrops on `qt-dialog-overlay`). Unifier wires:
+the §C corpus count literals (175 = 10 title + 165 definition, 58
+accept / 107 reject) with both consumers green; the §A/§B contract
+diffed name-for-name (zero mismatches); the two state beats' locator
+gesture fix at activation (host-has-no-box → inner `[role=dialog]`; the
+two-Close ambiguity). Gate: 357 test binaries / 1,454 / 0; the round's
+24 differentials by name over fresh `7e6d13e5` oracles, zero SKIPs;
+clippy both feature sets; release build; ng test 190 files / 2,342; ng
+build clean; full Playwright 96/96 zero skips with all three
+ACTIVATE-AT-UNIFY state beats LIVE. Versions: core 0.0.288, harness
+0.0.250, host 0.0.23, web 0.0.35, quilltap-tauri 0.0.4, SPA 0.5.221.
+Deferred loud: the chat-tier State-Editor opener (ChatSidebar, p4.9j
+follow-up), Pascal `persist` (deferred in v4 itself), the `8ee56f6e`
+corpus-seed bank, help/math-notation (p4.9i2).
+
 P4.d10 gate fix: the in-crate `system_prompt_no_tools_is_just_stack`
 expectation predated the unconditional math note and failed the full
 workspace gate; renamed and updated to expect the identity stack + the

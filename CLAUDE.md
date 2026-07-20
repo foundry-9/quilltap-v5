@@ -808,33 +808,66 @@ records THERE. Update this summary only when a phase or round completes.
   corpus byte-identical from the pinned `b8b12695` worktree, ng 187 files /
   2,258, full Playwright green zero skips (one pre-existing composer beat
   gained a pause-before-send gesture fix (the group turn chain's terminal state is run-order-dependent and can disable the composer)). Still not-wired (loud): the wardrobe
-  `asTab` surface, `document-standalone`, `brahma` (p4.9i1). **⚠ v4
-  DRIFTED to `c53510c7` during the round** (the cascading-state feature —
-  Pascal `$state`, touches PORTED surfaces — + a system-prompt KaTeX note),
-  **then to `7e6d13e5` (the 4.8.0 release sweep) before the catch-up
-  started: the catch-up round is PLANNED and RE-BASELINED at `7e6d13e5`**
-  (P4.d10 ∥ P4.6be[carried out on its branch] ∥ P4.d11 — orders in
-  `work-orders/`, round record 2026-07-20 in the status log); oracles for
-  OTHER work keep regenerating from the pinned worktree
-  `/private/tmp/qt-v4-pin-b8b12695` (kept alive) until it unifies. Next:
-  run D10 ∥ D11, then unify all three lanes; after that the
+  `asTab` surface, `document-standalone`, `brahma` (p4.9i1). v4 drifted
+  to `c53510c7` then `7e6d13e5` during/after the round; **the catch-up
+  round ran and is UNIFIED — see the next bullet.**
+- **The `7e6d13e5` state-cascade drift catch-up round (P4.d10 ∥ P4.6be ∥
+  P4.d11): UNIFIED on main (2026-07-20) — ALL THREE CLOSED; the oracle
+  baseline MOVES to `7e6d13e5` (4.8.0-dev.92) and the drift debt is
+  CLEARED.** The four-tier state cascade server-side (the pure
+  `state::{paths,cascade}` modules + the general-state mount document
+  with its host-boot seed, the four-tier state tool + v4's new definition
+  bytes, the nine §A chat/group/general state dispatch verbs with the
+  enriched cascade get-state, Pascal `$state` end-to-end incl. the
+  workbench mock-state `state` param, the universal math-notation
+  system-prompt note, and the release-sweep verification — the
+  `93604767`/`28e89f51` "no functional change" claims proven by a
+  53-family regen-and-re-run sweep, the D23 re-dump ZERO-diff, the
+  Anthropic model-family boundary pinned into the request-envelope
+  corpus 31 → 34) ∥ the state-cascade SPA (the four-entity State Editor
+  modal, Group State on the group editor, the General State card, the
+  workbench mock-state card + read-only `$state` pills, the tool-draft
+  `state` kind, the re-copied `qtap-custom-tool.schema.json`) ∥ the
+  release-sweep SPA slice (single-dollar math promotion + the markdown
+  parity fixtures regenerated 34 → 40, katex 0.18.1, the workbench
+  dialog backdrops on `qt-dialog-overlay`). Wires: the §C corpus counts
+  (175 = 10 title + 165 definition, 58 accept / 107 reject) + both
+  consumers green; the §A/§B name-for-name contract diff clean; a
+  two-trap locator gesture fix as the state beats first ran live. Gate:
+  357 binaries / 1,454 / 0; the round's 24 differentials by name over
+  fresh `7e6d13e5` oracles zero SKIPs; clippy both feature sets; release
+  build; ng 190 files / 2,342; full Playwright 96/96 zero skips, the
+  three ACTIVATE-AT-UNIFY state beats LIVE. Deferred loud: the chat-tier
+  State-Editor opener (rides the ChatSidebar follow-up), Pascal
+  `persist` (deferred in v4 itself), the `8ee56f6e` corpus-seed bank,
+  help/`math-notation.md` (p4.9i2). Next candidates: the
   `avatar_preview` wire + WebP codec, the two not-wired workspace kinds,
-  or a workspace dogfood pass — see phase-4.md.
-- **Oracle baseline: v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
-  at the P4.d9 KaTeX drift-catch-up unification. ⚠ v4 HEAD has since
-  drifted to `7e6d13e5` (4.8.0-dev.92 — the state-cascade feature + the
-  4.8.0 release sweep; the catch-up round is PLANNED at that baseline,
-  see the p4.9j round bullet — its lanes regenerate from
-  `/private/tmp/qt-v4-pin-7e6d13e5`); for everything else the baseline
-  STAYS `b8b12695` and oracles regenerate from the pinned detached worktree
-  `/private/tmp/qt-v4-pin-b8b12695` (node_modules symlinked: root +
-  `packages/{quilltap,plugin-types,plugin-utils}`) — NOT from the drifted
-  checkout.** All seven families the
+  a workspace/state dogfood pass, or M6 rows 5+ — see phase-4.md.
+- **Oracle baseline: v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
+  the state-cascade drift-catch-up unification.** v4 HEAD == the baseline
+  and the checkout is clean, so **oracles regenerate directly from
+  `~/source/quilltap-server` again**; pin a detached worktree only when
+  v4 drifts or the tree goes dirty (recipe: the
+  `oracle-regen-pinned-v4-worktree` memory — symlink node_modules at
+  root + `packages/{quilltap,plugin-types,plugin-utils}` +
+  `plugins/dist/*`). Both prior pins (`qt-v4-pin-b8b12695`,
+  `qt-v4-pin-7e6d13e5`) are RETIRED. Every family the state-cascade +
+  release-sweep drift touched regenerated at `7e6d13e5` (incl. the
+  53-family neutrality sweep for v4's dedup/logging refactors and the
+  seven renderer-transitive families for the single-dollar promotion);
+  untouched families' committed oracles keep their earlier regen
+  vintages. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version commit
+  may land any day; drift-check before every round. Versions (after the
+  2026-07-20 state-cascade unification): core 0.0.288, harness 0.0.250,
+  host 0.0.23, web 0.0.35, quilltap-tauri 0.0.4, SPA 0.5.221.
+  The previous baseline paragraph follows for history:
+  v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
+  at the P4.d9 KaTeX drift-catch-up unification; oracles regenerated
+  from the pinned detached worktree `/private/tmp/qt-v4-pin-b8b12695`
+  after the `c53510c7`/`7e6d13e5` drift. All seven families the
   KaTeX drift transitively touches regenerated there and proven
-  output-neutral (see the round bullet above); untouched families' committed
-  oracles keep their earlier regen vintages. (The P4.d9-era note that
-  oracles regenerate directly from `~/source/quilltap-server` is
-  SUPERSEDED by the drift warning above — use the `b8b12695` pin. The old
+  output-neutral; untouched families' committed
+  oracles keep their earlier regen vintages. (The old
   pin `/private/tmp/qt-v4-pin-616930db` stays RETIRED.) Versions (after
   the 2026-07-19 p4.9j workspace-tabs unification): core 0.0.283, harness
   0.0.246, host 0.0.22, web 0.0.34, quilltap-tauri 0.0.4, SPA 0.5.209.

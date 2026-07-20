@@ -2025,19 +2025,28 @@ the character screens keep working), `document-standalone` (J2 tier-2
 item 7 — needs file-scoped document I/O; `doc_focus` folds in), `brahma`
 (p4.9i1). Other named follow-ups: the round record in `status-log.md`.
 
-**⚠ v4 DRIFTED to `c53510c7` during the round** — `f48f34dc` landed the
-cascading-state feature (chat → project → group → general + Pascal
-`$state`; touches the PORTED Pascal/custom-tools surfaces) and `c53510c7`
-adds a system-prompt KaTeX note (touches the ported system-prompt
-surface). **A drift catch-up round is OWED** and is the natural next
-`/setupphase` item. The oracle baseline stays `b8b12695`; regenerate
-oracles from the pinned worktree `/private/tmp/qt-v4-pin-b8b12695` until
-the catch-up lands.
+**The drift catch-up ran and UNIFIED (2026-07-20): the state-cascade
+round (P4.d10 ∥ P4.6be ∥ P4.d11), re-baselined at `7e6d13e5` after the
+4.8.0 release sweep — all three orders CLOSED.** The oracle baseline is
+now **`7e6d13e5` (4.8.0-dev.92)**; both pins retired — oracles
+regenerate from the clean `~/source/quilltap-server` checkout directly
+(pin again only on drift or a dirty tree). Landed: the four-tier state
+cascade end-to-end (server modules + nine §A verbs + the four-tier
+state tool + Pascal `$state` incl. workbench mock-state + the
+math-notation prompt note) ∥ the state-cascade SPA (four-entity State
+Editor, Group/General State entries, `$state` pills + tool-draft kind)
+∥ the release-sweep SPA slice (single-dollar math promotion, katex
+0.18.1, workbench backdrops). The release sweep's "no functional
+change" commits (`93604767` dedup, `28e89f51` logging prune) were
+VERIFIED, not ported — 53 oracle families regenerated + re-run by name,
+all green. Round record: `status-log.md` (2026-07-20).
 
-**Next candidates:** the `c53510c7` drift catch-up (state-cascade +
-KaTeX-prompt-note — owed); the `avatar_preview` host wire + the WebP codec
+**Next candidates:** the `avatar_preview` host wire + the WebP codec
 (the named next Rust item); the wardrobe `asTab` tab surface + the
 standalone document surface (the two not-wired workspace kinds); a
-workspace dogfood pass (the shell just changed by default — high value);
+workspace dogfood pass (the shell changed by default — high value; a
+state-cascade dogfood beat would also exercise the new editor);
 `p4.9i1`/`p4.9i2`; M6 backlog rows 5/6/8–15; the composer
-backslash-escape seam. Round record: `status-log.md`.
+backslash-escape seam; the chat-tier State-Editor opener rides the
+ChatSidebar follow-up. Watch v4 for the 4.8.0 release tag (v4 is
+mid-release-checklist — drift-check before every round).
