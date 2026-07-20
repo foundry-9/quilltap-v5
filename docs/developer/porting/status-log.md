@@ -24828,3 +24828,16 @@ present, captured HTML eyeballed (promotion → `.katex` markup, currency
 loop 45 → 51 tests, render suite 83 green — v5's pipeline matches v4's
 REAL renderer byte-for-byte on all 40, both sides on katex 0.18.1. SPA
 0.5.211 → 0.5.212.
+
+**Unit 3 — the workbench backdrop swap (commit "theme the workbench
+dialog backdrops via qt-dialog-overlay").** v4 `8f24ccc9` re-ported:
+in `workbench-editor.ts` (the mtime-conflict dialog) and
+`destination-picker.ts` the hardcoded backdrop wrapper
+`class="fixed inset-0 z-50 flex items-center justify-center
+bg-black/40"` becomes `class="qt-dialog-overlay"` (already defined in
+`src/styles/qt-components/_surfaces.css:203` with the themed
+`--qt-dialog-backdrop` background and z-[60]; the `_content.css`
+stacking-context escape applies), `role="dialog"`/`aria-modal="true"`
+kept. No spec asserted the old classes (grepped); the custom-tools
+suite through `ng test` (raw vitest lacks the Angular JIT setup — 7
+files / 111 tests) green. SPA 0.5.212 → 0.5.213.

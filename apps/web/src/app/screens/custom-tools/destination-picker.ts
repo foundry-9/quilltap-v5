@@ -41,11 +41,7 @@ export function allStores(data: CustomToolDestinations): DestinationStore[] {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet],
   template: `
-    <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      role="dialog"
-      aria-modal="true"
-    >
+    <div class="qt-dialog-overlay" role="dialog" aria-modal="true">
       <div
         class="qt-card qt-shadow-lg rounded-lg border w-full max-w-lg max-h-[80vh] overflow-y-auto p-4 space-y-3"
       >

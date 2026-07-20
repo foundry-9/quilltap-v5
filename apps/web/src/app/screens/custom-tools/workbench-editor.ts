@@ -269,11 +269,7 @@ interface JsonState {
 
         <!-- Conflict dialog -->
         @if (conflictContent() !== null && location(); as where) {
-          <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            role="dialog"
-            aria-modal="true"
-          >
+          <div class="qt-dialog-overlay" role="dialog" aria-modal="true">
             <div class="qt-card qt-shadow-lg rounded-lg border w-full max-w-md p-4 space-y-3">
               <h2 class="qt-card-title text-base">The file has moved under your hand</h2>
               <p class="text-sm">
