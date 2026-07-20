@@ -2,14 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   output,
   signal,
+  untracked,
   type WritableSignal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 import { map } from 'rxjs';
 
@@ -197,6 +199,7 @@ const CHARACTER_TABS: Tab[] = [
 export class CharacterDetail {
   private readonly core = inject(CoreClient);
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
   /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
@@ -215,6 +218,13 @@ export class CharacterDetail {
    * back restores the list via `(back)` rather than closing a tab.
    */
   readonly embedded = input<boolean>(false);
+  /**
+   * v4 `CharacterDetailView` `openChatOnMount` (`:44,:136-143`): open the
+   * start-chat flow ONCE as soon as the character loads. Set true by the
+   * in-tab drill arm (the roster card's Chat action); the routed `?action=chat`
+   * deep-link is honored in parallel below.
+   */
+  readonly openChatOnMount = input<boolean>(false);
   readonly back = output<void>();
 
   /** Both seams present ⇒ hosted as a standalone workspace tab; "back" closes it. */
@@ -251,6 +261,37 @@ export class CharacterDetail {
     ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { requireSync: true })
     : undefined;
   protected readonly id = computed(() => this.characterIdInput() ?? this.routeId?.() ?? '');
+
+  /**
+   * v4 `page.tsx:21` — the routed `?action=chat` deep-link. Reactive (not a
+   * snapshot) so the header's own "Start Chat" link, which appends the param on
+   * the same route, re-triggers the guard without a remount. Null route (tab
+   * mode) ⇒ never.
+   */
+  private readonly routedChatAction = this.route
+    ? toSignal(this.route.queryParamMap.pipe(map((p) => p.get('action') === 'chat')), {
+        initialValue: false,
+      })
+    : undefined;
+  private chatStartInitialized = false;
+
+  constructor() {
+    // v4 `CharacterDetailView.tsx:136-143` — auto-open the start-chat flow ONCE
+    // on mount when arriving via `?action=chat` (routed) or `openChatOnMount`
+    // (the in-tab drill), and only after the character has loaded. v5 DIVERGENCE:
+    // there is no in-place NewChatModal — starting a chat navigates to the
+    // established `/salon/new?characterId=` entry (the P4.6q precedent the home
+    // character card also uses). The guard field keeps it to a single fire.
+    effect(() => {
+      const want = this.openChatOnMount() || (this.routedChatAction?.() ?? false);
+      const character = this.character();
+      if (!want || this.chatStartInitialized || !character) return;
+      this.chatStartInitialized = true;
+      untracked(() =>
+        this.router.navigate(['/salon/new'], { queryParams: { characterId: this.id() } }),
+      );
+    });
+  }
 
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.id()),

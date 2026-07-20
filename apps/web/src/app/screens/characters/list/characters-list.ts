@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
-import { WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
+import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
@@ -66,11 +66,13 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
   ],
   template: `
     @if (selectedCharacterId(); as cid) {
-      <!-- In-tab drill (v4 AuroraView selectedCharacterId): the detail in place. -->
+      <!-- In-tab drill (v4 AuroraView selectedCharacterId): the detail in place.
+           openChatForSelected auto-opens the start-chat flow (v4 :325-335). -->
       <qt-character-detail
         [characterId]="cid"
         [embedded]="true"
-        (back)="selectedCharacterId.set(null)"
+        [openChatOnMount]="openChatForSelected()"
+        (back)="onDetailBack()"
       />
     } @else if (selectedGroupId(); as gid) {
       <qt-group-editor [groupId]="gid" (back)="onGroupBack()" />
@@ -113,7 +115,8 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
             Create Group
           </button>
           <a
-            routerLink="/characters/new"
+            [routerLink]="inTab() ? null : '/characters/new'"
+            (click)="inTab() && openNewCharacter($event)"
             class="qt-button character-toolbar__button character-toolbar__button--primary inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-md transition hover:qt-bg-primary/90"
           >
             Create Character
@@ -142,7 +145,11 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
           class="character-empty-state mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"
         >
           <p class="mb-4 text-lg qt-text-secondary">No characters yet</p>
-          <a routerLink="/characters/new" class="qt-text-primary hover:text-primary/80">
+          <a
+            [routerLink]="inTab() ? null : '/characters/new'"
+            (click)="inTab() && openNewCharacter($event)"
+            class="qt-text-primary hover:text-primary/80"
+          >
             Create your first character
           </a>
         </div>
@@ -153,7 +160,8 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
               [character]="character"
               [profile]="profileFor(character.defaultConnectionProfileId)"
               [inTab]="inTab()"
-              (view)="selectedCharacterId.set(character.id)"
+              (view)="drillView(character.id)"
+              (openChat)="drillChat(character.id)"
               (favorite)="toggleFavorite(character)"
               (toggleCarina)="toggleCarina(character)"
               (toggleControlledBy)="toggleControlledBy(character)"
@@ -191,11 +199,40 @@ export class CharactersList {
   private readonly quickHide = inject(QuickHideService);
   /** Non-null ⇒ hosted as a workspace tab; card / group opens drill in place. */
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
+  /** Hosted ⇒ Create-Character opens a tab rather than routing (v4 openTab). */
+  private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
 
   /** v4 `AuroraView` `selectedCharacterId` / `selectedGroupId` — the drill targets. */
   protected readonly selectedCharacterId = signal<string | null>(null);
   protected readonly selectedGroupId = signal<string | null>(null);
+  /** v4 `AuroraView` `openChatForSelected` (`:87`): the drilled detail's Chat
+   *  auto-open, set only by the card's in-tab Chat arm. */
+  protected readonly openChatForSelected = signal(false);
   protected readonly inTab = computed(() => this.tabId != null);
+
+  /** Drill into a character's detail (v4 `setSelectedCharacterId`). */
+  protected drillView(id: string): void {
+    this.openChatForSelected.set(false);
+    this.selectedCharacterId.set(id);
+  }
+
+  /** Card Chat drill (v4 `:509-521`): drill AND flag the start-chat auto-open. */
+  protected drillChat(id: string): void {
+    this.openChatForSelected.set(true);
+    this.selectedCharacterId.set(id);
+  }
+
+  /** Restore the roster (v4 `onBack`, `:328-331`): clear the drill + the flag. */
+  protected onDetailBack(): void {
+    this.selectedCharacterId.set(null);
+    this.openChatForSelected.set(false);
+  }
+
+  /** Hosted ⇒ Create-Character opens a `character-new` tab (v4 redirectToWorkspaceTab). */
+  protected openNewCharacter(event: Event): void {
+    event.preventDefault();
+    this.handle?.openTab('character-new');
+  }
 
   /** Drilled group's back — restore the list AND refetch (v4 refetches on remount). */
   protected onGroupBack(): void {

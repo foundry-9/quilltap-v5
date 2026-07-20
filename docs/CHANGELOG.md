@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the roster's in-tab
+Chat and Create-Character arms (v4 `AuroraView` `openChatForSelected` /
+`openTab`). The character card's Chat action, in a workspace tab, drills
+into the detail with a start-chat auto-open flag; CharacterDetail gains an
+`openChatOnMount` input and honors the routed `?action=chat` deep-link,
+navigating ONCE (after the character loads) to `/salon/new?characterId=`
+(the v5 divergence — there is no in-place NewChatModal). Create-Character,
+when hosted, opens a `character-new` tab instead of routing out and
+bouncing through the redirect guard.
+
 P4.9J3 (the wardrobe-tab + workspace-riders lane) — the `asTab`
 WardrobeView surface: an `asTab` input on the wardrobe dialog renders
 its body bare in a `qt-wardrobe-tab` scroll container (no overlay,
