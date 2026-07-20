@@ -3,10 +3,13 @@ import { expect, request as pwRequest, test, type Page } from '@playwright/test'
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
 /**
- * ORDERING: rides the SHARED global-setup server (unlocked by foundation.spec).
- * "brahma-console-flow" ('b') sorts BEFORE foundation ('f') — but the beats here
- * all self-unlock (maybeUnlock) and are PROBE-GUARDED, so they skip cleanly if
- * they happen to run first against a still-locked/not-live server.
+ * ORDERING: rides the SHARED global-setup server, so the filename must sort
+ * AFTER foundation.spec.ts (workers: 1, alphabetical file order) — foundation
+ * asserts a LOCKED-first server, and every beat here unlocks (`openWorkspace`)
+ * before its guard, so it must never run before foundation. "workspace-brahma-
+ * console-flow" ('w') sorts after "foundation" ('f'). (It also sorts before
+ * lane J3's "workspace-flow" — both ride the shared server with the flag ON and
+ * self-unlock idempotently.)
  *
  * P4.9I1B — a LIVE browser walk of the Brahma Console, entirely
  * ACTIVATE-AT-UNIFY. In-lane NONE of this can run: the eight `brahmaConsole*`

@@ -25099,7 +25099,7 @@ Commits (small units, one per):
    component) and branches `inWorkspace ? openTab('brahma') : openConsole()`.
    5-case spec.
 7. **The e2e beats + AT-UNIFY table** (this commit) —
-   `e2e/brahma-console-flow.spec.ts`: 5 guarded ACTIVATE-AT-UNIFY beats (rail
+   `e2e/workspace-brahma-console-flow.spec.ts`: 5 guarded ACTIVATE-AT-UNIFY beats (rail
    → tab → console launcher; send → assistant bubble; new-conversation →
    past-chats; set-model round-trip; delete). Each skips loudly unless the
    server verb answers AND the rail entry is mounted.
