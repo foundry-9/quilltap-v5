@@ -24745,3 +24745,48 @@ crates/harness vs the render pipeline + two backdrop files); BE waits
 for the unifier. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version
 commit may land any day; every lane drift-checks at start and STOPS
 on movement.
+
+## Round: lane P4.d11 — the `7e6d13e5` release-sweep SPA slice (lane `claude/p4-d11-release-sweep-spa-a37835`, 2026-07-20)
+
+Lane D11 of the re-baselined `7e6d13e5` drift catch-up round (siblings:
+D10 — Rust/harness, running in parallel; BE — already carried out).
+SPA-only: the `5915b04e` single-dollar math promotion, the `8f24ccc9`
+workbench backdrop swap, the katex 0.18.1 parity bump. Drift-checked at
+lane start: v4 HEAD == `7e6d13e5`, tree clean, `git log 7e6d13e5..HEAD`
+empty. The round pin `/private/tmp/qt-v4-pin-7e6d13e5` was found already
+created (lane D10, minutes before this lane's start) with all four
+`node_modules` symlinks — consumed as-is per §P. Fresh survey at lane
+start matched the order's survey-verified starting points on every
+anchor (v4 `lib/markdown/math.ts` 196 lines with the seven-symbol shape;
+v4's test diff `b8b12695..7e6d13e5` purely additive — the 15-case
+promotion family, no existing case changed; v4's renderer comments
+unchanged, so v5's `markdown-renderer.ts:203` comment stands; both v5
+workbench dialogs carry the old hardcoded backdrop string; katex pinned
+0.18.0 vs v4 `^0.18.1`).
+
+**Unit 1 — the promotion port (commit "port the single-dollar math
+promotion into the SPA normalizer").** Restructured
+`apps/web/src/app/chat/render/math.ts` (67 → 205 lines) to v4's
+`7e6d13e5` shape near-verbatim: `LATEX_MARKER` (`/\\[a-zA-Z]|[_^{}]/`),
+`BARE_TOKEN` (`/^[A-Za-z][A-Za-z0-9]{0,2}$/`, letter-anchored so `$5$`
+never qualifies), `mapPlainRegions` (the extracted skip-region walker),
+`promoteSingleDollarMath` (per plain region, per line),
+`lineHasMarkerPair` (same left-to-right pairing as `promoteLine`),
+`promoteLine` (nearest-`$` pairing; accept iff non-empty AND
+marker-or-companioned-bare-token; rejected pairs emit through the
+opening `$` and resume at `open + 1` so the closing `$` can re-open),
+`rewriteBackslashDelimiters` (the old rewrite re-expressed via
+`mapPlainRegions`, behavior unchanged), and the two-pass
+`normalizeMathDelimiters` (promotion FIRST so its minted `$$` becomes a
+protected region for the backslash pass). All three called-out
+why-comments carried (currency-release pairing, bare-token
+line-scoping, pass ordering); the v5 module header keeps its
+single-renderer adaptation, provenance `b8b12695` → `7e6d13e5`.
+`REMARK_MATH_OPTIONS` unchanged. Equivalence: `math.spec.ts` extended
+with v4's 15-case `normalizeMathDelimiters — single-dollar promotion`
+family case-for-case (header count 14 → 29); all 29 green, and the
+render suite (77 tests incl. the byte-parity loop) green — the only
+committed fixture containing single-`$` input (`currency-prose`) is
+promotion-invariant by design, so the parity loop needs no regen for
+this unit (the regen with new single-`$` fixtures is unit 2). SPA
+0.5.209 → 0.5.210.

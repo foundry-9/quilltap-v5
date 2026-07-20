@@ -6,9 +6,9 @@ import { DEFAULT_RENDERING_PATTERNS, compileRenderingPatterns } from './roleplay
 
 /**
  * Case-for-case port of v4's `__tests__/unit/lib/markdown/math.test.ts` (HEAD
- * `b8b12695`, 14 cases):
- * - normalizeMathDelimiters (`./math`) — the `\(...\)`/`\[...\]` → `$$` rewrite
- *   step 2.5 runs before parsing.
+ * `7e6d13e5`, 29 cases):
+ * - normalizeMathDelimiters (`./math`) — the single-`$` → `$$` promotion plus
+ *   the `\(...\)`/`\[...\]` → `$$` rewrite, step 2.5 before parsing.
  * - applyRoleplayPatterns (`./markdown-renderer`) — its KaTeX-subtree skip,
  *   which keeps roleplay patterns from rewriting rendered math markup. v4 keeps
  *   this helper in `lib/services/markdown-postprocess.ts` (split out so Jest can
@@ -77,6 +77,92 @@ describe('normalizeMathDelimiters', () => {
 
   it('converts multiple delimiters in one string', () => {
     expect(normalizeMathDelimiters('\\(a\\) and \\(b\\)')).toBe('$$a$$ and $$b$$');
+  });
+});
+
+describe('normalizeMathDelimiters — single-dollar promotion', () => {
+  it('promotes single-$ spans with a backslash-command to $$', () => {
+    expect(normalizeMathDelimiters('where $\\mathcal{P}$ is the invariant')).toBe(
+      'where $$\\mathcal{P}$$ is the invariant',
+    );
+  });
+
+  it('promotes single-$ spans with a sub/superscript to $$', () => {
+    expect(normalizeMathDelimiters('the term $T_{CMB}$ and $x^2$')).toBe(
+      'the term $$T_{CMB}$$ and $$x^2$$',
+    );
+  });
+
+  it('leaves a plain currency amount untouched', () => {
+    const input = 'It cost me $50 today.';
+    expect(normalizeMathDelimiters(input)).toBe(input);
+  });
+
+  it('does not swallow paired dollar amounts in prose as math', () => {
+    const input = 'He slid $50 across the table, then another $20.';
+    expect(normalizeMathDelimiters(input)).toBe(input);
+  });
+
+  it('leaves a bare single-letter span ($K$) literal when it stands alone', () => {
+    const input = 'where $K$ is the Kretschmann scalar';
+    expect(normalizeMathDelimiters(input)).toBe(input);
+  });
+
+  it('promotes a bare token when a marker span shares its line', () => {
+    expect(
+      normalizeMathDelimiters('where $K$ is the scalar and $\\mathcal{P}$ the invariant'),
+    ).toBe('where $$K$$ is the scalar and $$\\mathcal{P}$$ the invariant');
+  });
+
+  it('does not promote a bare token whose marker sibling is on another line', () => {
+    const input = 'first $K$ alone\nthen $\\pi r^2$ elsewhere';
+    expect(normalizeMathDelimiters(input)).toBe('first $K$ alone\nthen $$\\pi r^2$$ elsewhere');
+  });
+
+  it('does not treat a lone currency figure ($5$) as a bare token', () => {
+    // Even with a marker span present, a digit-led span is not a bare token.
+    expect(normalizeMathDelimiters('the $5$ note beside $x_1$')).toBe(
+      'the $5$ note beside $$x_1$$',
+    );
+  });
+
+  it('leaves currency untouched even on a line that also has real math', () => {
+    expect(normalizeMathDelimiters('The $50 fee, where $n$ scales as $2^n$')).toBe(
+      'The $50 fee, where $$n$$ scales as $$2^n$$',
+    );
+  });
+
+  it('promotes only the mathy spans, leaving currency in the same sentence alone', () => {
+    expect(
+      normalizeMathDelimiters('The $50 fee scales as $\\pi r^2$ per unit.'),
+    ).toBe('The $50 fee scales as $$\\pi r^2$$ per unit.');
+  });
+
+  it('does not touch single-$ inside inline code', () => {
+    const input = 'Run `echo $\\HOME{}` please.';
+    expect(normalizeMathDelimiters(input)).toBe(input);
+  });
+
+  it('does not touch single-$ inside fenced code blocks', () => {
+    const input = '```sh\nx=$\\{FOO}\n```';
+    expect(normalizeMathDelimiters(input)).toBe(input);
+  });
+
+  it('does not reach into existing $$ display math', () => {
+    const input = '$$ a_{ij} $$ and then $\\vec{v}$';
+    expect(normalizeMathDelimiters(input)).toBe('$$ a_{ij} $$ and then $$\\vec{v}$$');
+  });
+
+  it('promotes several inline spans across one message', () => {
+    expect(
+      normalizeMathDelimiters('$\\mathcal{P}$, $\\mathcal{E}$, and $\\vec{\\ell}_i$'),
+    ).toBe('$$\\mathcal{P}$$, $$\\mathcal{E}$$, and $$\\vec{\\ell}_i$$');
+  });
+
+  it('composes with the backslash-delimiter rewrite', () => {
+    expect(normalizeMathDelimiters('inline $x_1$ and \\(y_2\\) here')).toBe(
+      'inline $$x_1$$ and $$y_2$$ here',
+    );
   });
 });
 

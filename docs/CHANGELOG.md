@@ -119,6 +119,20 @@ extended `state-sql-tools` fixture family (four groups + memberships +
 the union chat + the seeded general mount), with the existing 34-case
 `state_sql_tools_equivalence` regenerated and green at v4 `7e6d13e5`.
 
+Lane P4.d11 unit 1: the v4 `5915b04e` single-dollar LaTeX promotion is
+re-ported into the SPA math normalizer (`apps/web/src/app/chat/render/math.ts`
+restructured to v4's `7e6d13e5` shape — `mapPlainRegions`,
+`promoteSingleDollarMath`, `lineHasMarkerPair`, `promoteLine`,
+`rewriteBackslashDelimiters`, the two-pass `normalizeMathDelimiters`).
+Single-`$` spans whose interior is unmistakably LaTeX (a backslash-command,
+sub/superscript, or braces) are promoted to `$$…$$` before parsing; a bare
+token (`$K$`) is promoted only when a marker span shares its line; currency
+prose ("He slid $50 … another $20") is untouched. `REMARK_MATH_OPTIONS`
+stays `{ singleDollarTextMath: false }` — promotion happens in
+preprocessing, never at the parser. v4's 15-case promotion test family
+carried case-for-case in `math.spec.ts` (29 cases green). SPA 0.5.209 →
+0.5.210.
+
 The drift catch-up round is re-baselined at v4 `7e6d13e5` (4.8.0-dev.92)
 and extended (2026-07-20, docs only): v4 landed twelve more commits (the
 4.8.0 release sweep) before lane D10 started. `p4.d10-state-cascade-server.md`
