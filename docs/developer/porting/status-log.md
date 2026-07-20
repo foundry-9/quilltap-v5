@@ -25138,5 +25138,18 @@ DTOs into `core-contract.ts` + wire diff + drop the one cast; confirm/seed a
 default connection profile for the send beat.
 
 Gate (this worktree, its own node_modules symlinked from main — deps
-byte-identical): every `brahma/**` spec green (targeted runs), `ng build`
-clean; full `ng test` + full Playwright reported in the lane's final report.
+byte-identical; its own debug Rust binaries built once): full `ng test`
+**198 files / 2397 tests, 0 failed**; `ng build` clean;
+`git diff main -- crates/ Cargo.toml Cargo.lock harness/` **empty**; full
+Playwright ALONE **96 passed / 5 skipped / 0 failed** — the 5 skips are
+exactly this lane's guarded ACTIVATE-AT-UNIFY beats (they report their
+guarded state; they self-activate at unification). ⚠ Gotcha hit: the e2e
+`PORT` (4319) is HARD-CODED in `e2e/support/env.ts` and SHARED across
+worktrees, and a sibling worktree's Playwright setup force-kills whatever
+listens on :4319 — a concurrent sibling run silently kills THIS worktree's
+shared server mid-suite (every shared-server spec then fails
+`ERR_CONNECTION_REFUSED`; own-server specs like characters/groups still
+pass). The clean run above was taken with `env.ts` PORT/MOCK_LLM_PORT
+temporarily moved to 4419/45401 (reverted, never committed) to dodge the
+collision. Run Playwright when no sibling worktree is mid-suite, or isolate
+the ports.
