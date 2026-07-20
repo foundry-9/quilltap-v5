@@ -9,6 +9,53 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 unit 5 — Pascal `$state` end-to-end (lane D10, 2026-07-20)
+
+**Schema (`custom_tool_types.rs`):** `StateRef`/`StateRefFallback` +
+`parse_state_ref` (strict object; `$state` = `z.string().min(1)`;
+`fallback` = the number|string|boolean union) appended as the LAST branch
+of `NumberOrParamRef` / `AnyOperand` / `StringOperand` and the parameter
+`default` union (a `$state` default stays its RAW Value — the runtime
+rehydrates); the default-type refine checks the FALLBACK (integer
+whole-number rule included); `validate_roll_refs` gains the
+fallback-not-a-number arm verbatim; `resolve_operand_type` types a
+`$state` operand by its fallback. **The union-arity drift on EXISTING
+rejection strings reproduced first-try** — the §C differential passed
+without a single message fix.
+
+**Execution (`custom_tools.rs`):** `resolve_state_value` (typeof-match +
+finite guard, total); threading as surveyed — params (a `$state` default
+resolves against the merged state), roll fields (the non-finite arm
+THROWS v4's message), operands (never throw — the metadata doctrine),
+`{{state.path}}` (the metadata leave-it-standing doctrine),
+`OutcomeSubjects.state`, `simulate_outcomes`' trailing state (held fixed
+per draw). **Entrances:** `tools/run_custom.rs` + the chat custom-tool
+run resolve the cascade scoped `asCharacterId`/`ctx.character_id` → 
+Character else None, fail-soft `{}`; the workbench preview/audit verbs
+gain §B `state` (parse = `z.record().nullish()`, non-object → the flat
+400) threaded to execute/simulate; the REST leg forwards it opaquely.
+Roster rendering: v4's `describeOperand`/`${v}` has NO `$state` arm — a
+ref renders **"[object Object]"**, ported faithfully.
+
+**Differentials (all fresh `7e6d13e5` oracles, by name):** §C corpus
+REGENERATED **159 → 175 rows (10 title + 165 definition: 58 accept /
+107 reject)** — committed to
+`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`
+(the unifier updates the SPA count literals per §C);
+`pascal_custom_tool_definition_equivalence` green; execution 227 → 259
+rows (the $state template/params/when/execute families);
+`pascal_simulate_equivalence` 9 → 12; **`pascal-run-custom-{main,mount}.db`
+REBUILT + RECOMMITTED** (chat state {difficulty:6, banner}, the Table
+Stakes group [charA] with overlay state {gscore:4}, the general mount +
+pointer + state.json {gen_tier, difficulty:9}, the `stateful` tool in
+vaults A+B) — handler 13 → 15 (state-cascade-hit / state-no-group);
+custom-tools route 11 → 13 (run-stateful-as-a/b); workbench route 44 → 50
+(§B: with/omitted/null/invalid + both audits) over the extended
+`workbench-route-cases.json` (+ the `stateGate` definition); build-tools
+roster re-pinned to the five-tool fixture; workbench §W (2) + llm-consult
+(3+28) green. Consumers invalidated by the fixture rebuild: everything
+over `pascal-run-custom-*` — all regenerated this unit.
+
 ## P4.d10 unit 4 — the nine state dispatch verbs (lane D10, 2026-07-20)
 
 §A verbatim: nine `CoreRequest` variants (`chatStateGet/Set/Reset`,

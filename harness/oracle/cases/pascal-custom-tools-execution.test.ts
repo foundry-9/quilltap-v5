@@ -898,6 +898,86 @@ describe('executeCustomTool', () => {
         {},
         undefined,
       ],
+      // ---- $state end-to-end (P4.d10, f48f34dc) ----
+      // A $state roll bound engages the value (min == max → deterministic, no draw).
+      [
+        'state-roll-bounds-present',
+        {
+          name: 'fixed',
+          description: 'd',
+          roll: { min: { $state: 'game.n', fallback: 2 }, max: { $state: 'game.n', fallback: 2 } },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { state: { game: { n: 9 } } },
+      ],
+      [
+        'state-roll-bounds-absent',
+        {
+          name: 'fixed',
+          description: 'd',
+          roll: { min: { $state: 'game.n', fallback: 2 }, max: { $state: 'game.n', fallback: 2 } },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { state: {} },
+      ],
+      // A $state operand decides which outcome wins.
+      [
+        'state-operand-gate-passes',
+        {
+          name: 'gate',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          outcomes: [
+            { when: { gte: { $state: 'game.difficulty', fallback: 10 } }, message: 'passed', state: 'success' },
+            CATCH_ALL,
+          ],
+        },
+        {},
+        { state: { game: { difficulty: 3 } } },
+      ],
+      [
+        'state-operand-gate-falls-back',
+        {
+          name: 'gate',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          outcomes: [
+            { when: { gte: { $state: 'game.difficulty', fallback: 10 } }, message: 'passed', state: 'success' },
+            CATCH_ALL,
+          ],
+        },
+        {},
+        { state: {} },
+      ],
+      // {{state.path}} in the winning message + a $state parameter default.
+      [
+        'state-template-and-default',
+        {
+          name: 'weather',
+          description: 'd',
+          parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: true, message: 'It is {{state.weather}} (depth {{state.depth.z}}), bonus {{params.bonus}}.', state: 'info' },
+          ],
+        },
+        {},
+        { state: { weather: 'foggy', depth: { z: 3 }, player: { bonus: 7 } } },
+      ],
+      // No state offered at all: every ref falls back (overrides.state omitted).
+      [
+        'state-omitted-entirely',
+        {
+          name: 'gate',
+          description: 'd',
+          roll: { min: { $state: 'game.n', fallback: 4 }, max: { $state: 'game.n', fallback: 4 } },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
     ];
 
     let index = 0;
@@ -941,6 +1021,130 @@ describe('executeCustomTool', () => {
         out,
         error,
       });
+    }
+  });
+});
+
+// ------------------------------------------------------- $state (P4.d10, f48f34dc)
+describe('$state resolution', () => {
+  it('emits', async () => {
+    // The mock merged state every row resolves against.
+    const STATE: Record<string, unknown> = {
+      weather: 'foggy',
+      crew: [1, 2],
+      depth: { z: 3 },
+      lamp: true,
+      n: 7,
+      frac: 1.5,
+    };
+
+    // renderTemplate: the {{state.path}} arm.
+    const tmplTool = define({ name: 'probe', description: 'd', outcomes: [CATCH_ALL] });
+    const tmplParams = resolveParams(tmplTool, {}, STATE);
+    const templates: Array<[string, string]> = [
+      ['state-string', 'It is {{state.weather}}.'],
+      ['state-nested-number', 'depth {{state.depth.z}}'],
+      ['state-boolean', 'lamp {{state.lamp}}'],
+      ['state-float-formats', 'f {{state.frac}}'],
+      ['state-missing-left-verbatim', 'x {{state.ghost}} y'],
+      ['state-non-primitive-left-verbatim', 'crew {{state.crew}} here'],
+      ['state-prefix-only', 'bare {{state.}}'],
+      ['state-whitespace', '{{  state.weather  }}'],
+    ];
+    for (const [id, message] of templates) {
+      emit({
+        kind: 'renderTemplate',
+        id,
+        tool: tmplTool,
+        message,
+        metadata: {},
+        llm: null,
+        state: STATE,
+        out: renderTemplate(message, {
+          value: 12.3456,
+          roll: 0.6789,
+          dice: '3d6: [4, 2, 6] = 12',
+          params: tmplParams,
+          metadata: {},
+          state: STATE,
+        }),
+      });
+    }
+
+    // resolveParams: a $state default across present / absent / wrong-type.
+    const defTool = define({
+      name: 'draw',
+      description: 'd',
+      parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+      outcomes: [CATCH_ALL],
+    });
+    const paramCases: Array<[string, Record<string, unknown>]> = [
+      ['state-default-present', { player: { bonus: 7 } }],
+      ['state-default-absent', {}],
+      ['state-default-wrong-type', { player: { bonus: 'huge' } }],
+      ['state-default-non-finite-guard', { player: { bonus: 7.25 } }],
+    ];
+    for (const [id, state] of paramCases) {
+      let out: unknown = null;
+      let error: string | null = null;
+      try {
+        out = resolveParams(defTool, {}, state);
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      emit({ kind: 'resolveParams', id, tool: defTool, supplied: null, state, out, error });
+    }
+
+    // matchesWhen: $state operands on ordering / eq / containment / metadata.
+    const whenTool = (when: unknown, extra: Record<string, unknown> = {}) =>
+      define({
+        name: 'probe',
+        description: 'd',
+        ...extra,
+        outcomes: [
+          { when, message: '-', state: 'info' },
+          CATCH_ALL,
+        ],
+      });
+    const whenCases: Array<[string, QtapCustomTool, Record<string, unknown>, Record<string, unknown> | null]> = [
+      // value 12 >= difficulty(3) → true; absent → fallback 20 → false.
+      ['state-gte-present', whenTool({ gte: { $state: 'game.difficulty', fallback: 20 } }), { game: { difficulty: 3 } }, null],
+      ['state-gte-falls-back', whenTool({ gte: { $state: 'game.difficulty', fallback: 20 } }), {}, null],
+      // eq against a $state string on a string param.
+      ['state-eq-string-param', whenTool(
+        { params: { material: { eq: { $state: 'game.mat', fallback: 'iron' } } } },
+        { parameters: { material: { type: 'string', default: 'brass' } } },
+      ), { game: { mat: 'brass' } }, null],
+      ['state-eq-string-param-falls-back', whenTool(
+        { params: { material: { eq: { $state: 'game.mat', fallback: 'iron' } } } },
+        { parameters: { material: { type: 'string', default: 'brass' } } },
+      ), {}, null],
+      // containment with a $state needle.
+      ['state-contains-needle', whenTool(
+        { params: { cargo: { contains: { $state: 'game.needle', fallback: 'silk' } } } },
+        { parameters: { cargo: { type: 'string', default: 'silk and opium' } } },
+      ), { game: { needle: 'opium' } }, null],
+      // a metadata comparator with a $state operand.
+      ['state-metadata-operand', whenTool(
+        { metadata: { clearance: { gte: { $state: 'game.bar', fallback: 9 } } } },
+      ), { game: { bar: 2 } }, { clearance: 5 }],
+      // wrong-typed state value at the path → the fallback decides.
+      ['state-wrong-type-falls-back', whenTool({ gte: { $state: 'game.difficulty', fallback: 20 } }), { game: { difficulty: 'hard' } }, null],
+    ];
+    for (const [id, tool, state, metadata] of whenCases) {
+      const params = resolveParams(tool, {}, state);
+      let out: unknown = null;
+      let error: string | null = null;
+      try {
+        out = matchesWhen(
+          tool.outcomes[0].when as When,
+          { value: 12, roll: 0.6, params, metadata: metadata ?? {}, state },
+          'probe',
+        );
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      emit({ kind: 'matchesWhen', id, tool, metadata: metadata ?? null, llm: null, state, out, error });
     }
   });
 });

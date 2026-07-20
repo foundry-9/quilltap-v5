@@ -38,6 +38,36 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: None,
             private: None,
             metadata: None,
+            state: None,
+            llm: None,
+        }
+    );
+
+    // §B (P4.d10) — the optional mock-state field on both bench verbs.
+    assert_eq!(
+        serde_json::from_str::<Request>(
+            r#"{"type":"customToolPreview","definition":{"name":"x"},"state":{"player":{"hp":3}}}"#
+        )
+        .expect("customToolPreview with state"),
+        Request::CustomToolPreview {
+            definition: json!({ "name": "x" }),
+            params: None,
+            private: None,
+            metadata: None,
+            state: Some(json!({ "player": { "hp": 3 } })),
+            llm: None,
+        }
+    );
+    assert_eq!(
+        serde_json::from_str::<Request>(
+            r#"{"type":"customToolAudit","definition":{"name":"x"},"state":{"k":1}}"#
+        )
+        .expect("customToolAudit with state"),
+        Request::CustomToolAudit {
+            definition: json!({ "name": "x" }),
+            params: None,
+            metadata: None,
+            state: Some(json!({ "k": 1 })),
             llm: None,
         }
     );
@@ -56,6 +86,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: Some(json!({ "bonus": 2 })),
             private: Some(true),
             metadata: Some(json!({ "characterId": "c1" })),
+            state: None,
             llm: None,
         }
     );
@@ -71,6 +102,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             definition: json!({ "name": "x" }),
             params: None,
             metadata: Some(json!({ "str": 3 })),
+            state: None,
             llm: None,
         }
     );
@@ -96,6 +128,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
                 params: None,
                 private: None,
                 metadata: None,
+                state: None,
                 llm: Some(want.clone()),
             }
         );
@@ -109,6 +142,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             definition: json!({ "name": "x" }),
             params: None,
             metadata: None,
+            state: None,
             llm: Some(json!({ "output": "YES" })),
         }
     );

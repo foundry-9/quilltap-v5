@@ -379,6 +379,7 @@ fn workbench_route_matches_oracle() {
                                     params.as_ref(),
                                     case.get("private").and_then(Value::as_bool),
                                     metadata.as_ref(),
+                                    case.get("state"),
                                     case.get("llm"),
                                     USER,
                                     Some(&runner),
@@ -390,6 +391,7 @@ fn workbench_route_matches_oracle() {
                         &definition,
                         params.as_ref(),
                         metadata.as_ref(),
+                        case.get("state"),
                         case.get("llm"),
                     )),
                 }

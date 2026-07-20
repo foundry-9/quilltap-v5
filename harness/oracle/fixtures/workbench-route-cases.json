@@ -163,6 +163,38 @@
           "state": "failure"
         }
       ]
+    },
+    "stateGate": {
+      "name": "state_gate",
+      "title": "The State Gate",
+      "description": "A table that reads the merged state.",
+      "roll": {
+        "min": {
+          "$state": "game.n",
+          "fallback": 4
+        },
+        "max": {
+          "$state": "game.n",
+          "fallback": 4
+        }
+      },
+      "outcomes": [
+        {
+          "when": {
+            "gte": {
+              "$state": "game.difficulty",
+              "fallback": 10
+            }
+          },
+          "message": "Cleared at {{value}} ({{state.banner}}).",
+          "state": "success"
+        },
+        {
+          "when": true,
+          "message": "Short at {{value}}.",
+          "state": "failure"
+        }
+      ]
     }
   },
   "cases": [
@@ -503,6 +535,57 @@
       "llm": {
         "output": "ignored"
       }
+    },
+    {
+      "name": "preview-with-mock-state",
+      "method": "POST",
+      "action": "preview",
+      "definition": "stateGate",
+      "state": {
+        "game": {
+          "n": 6,
+          "difficulty": 2
+        },
+        "banner": "bench"
+      }
+    },
+    {
+      "name": "preview-state-omitted",
+      "method": "POST",
+      "action": "preview",
+      "definition": "stateGate"
+    },
+    {
+      "name": "preview-state-null",
+      "method": "POST",
+      "action": "preview",
+      "definition": "stateGate",
+      "state": null
+    },
+    {
+      "name": "preview-state-invalid",
+      "method": "POST",
+      "action": "preview",
+      "definition": "stateGate",
+      "state": "nope"
+    },
+    {
+      "name": "audit-with-mock-state",
+      "method": "POST",
+      "action": "audit",
+      "definition": "stateGate",
+      "state": {
+        "game": {
+          "n": 6,
+          "difficulty": 2
+        }
+      }
+    },
+    {
+      "name": "audit-state-omitted",
+      "method": "POST",
+      "action": "audit",
+      "definition": "stateGate"
     }
   ]
 }

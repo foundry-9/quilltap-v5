@@ -110,6 +110,8 @@ fn render_nopr(v: &NumberOrParamRef) -> String {
     match v {
         NumberOrParamRef::ParamRef(ParamRef { param }) => param.clone(),
         NumberOrParamRef::Number(n) => number_to_string(*n),
+        // v4's `${v}` template coercion on a $state object → "[object Object]".
+        NumberOrParamRef::StateRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -166,6 +168,8 @@ fn describe_string_operand(operand: &StringOperand) -> String {
     match operand {
         StringOperand::ParamRef(ParamRef { param }) => param.clone(),
         StringOperand::String(s) => json_stringify(&Value::String(s.clone())),
+        // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
+        StringOperand::StateRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -184,6 +188,8 @@ fn describe_any_operand(operand: &AnyOperand) -> String {
                 "false".to_string()
             }
         }
+        // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
+        AnyOperand::StateRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -192,6 +198,8 @@ fn describe_numeric_operand(operand: &NumberOrParamRef) -> String {
     match operand {
         NumberOrParamRef::ParamRef(ParamRef { param }) => param.clone(),
         NumberOrParamRef::Number(n) => number_to_string(*n),
+        // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
+        NumberOrParamRef::StateRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -607,11 +615,43 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     } else {
         Some(&metadata)
     };
+
+    // The merged state cascade (chat → project → group → general) the run's
+    // `$state` references resolve against (v4 `f48f34dc`). Scoped to the
+    // rolling character's own groups (Knowledge's rule). Fail-soft: every
+    // `$state` ref carries a required fallback, so a run is always dealable
+    // even if state can't be read.
+    let tool_state: Value = {
+        use crate::state::cascade::{resolve_state_cascade, GroupScope};
+        let cid = ctx.chat_id.clone();
+        let scope = match &ctx.character_id {
+            Some(id) if !id.is_empty() => GroupScope::Character {
+                character_id: id.clone(),
+            },
+            _ => GroupScope::None,
+        };
+        db.read_main(|main| {
+            let Some(chat) = crate::db::chats_read::find_by_id(main, &cid)? else {
+                return Ok(Value::Object(Map::new()));
+            };
+            // A degraded (no mount-index) open still resolves the chat tier.
+            let merged = match db.read_mount_index(|mount| {
+                Ok(resolve_state_cascade(main, Some(mount), &chat, &scope).merged)
+            }) {
+                Ok(m) => m,
+                Err(_) => resolve_state_cascade(main, None, &chat, &scope).merged,
+            };
+            Ok(merged)
+        })
+        .unwrap_or_else(|_| Value::Object(Map::new()))
+    };
+
     let result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
         parameters.as_ref(),
         is_private,
         metadata_arg,
+        Some(&tool_state),
         rng,
         // v4 builds the invoker only when the definition declares an `llm`
         // block; withholding it otherwise is the same thing, since a tool with

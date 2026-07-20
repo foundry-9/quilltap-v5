@@ -346,25 +346,69 @@ impl OutcomeState {
     }
 }
 
-/// A roll field: a literal number, or a reference to a numeric parameter.
+/// A roll field: a literal number, a `$param`, or a `$state` reference.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum NumberOrParamRef {
     #[serde(serialize_with = "ser_js_number")]
     Number(f64),
     ParamRef(ParamRef),
+    StateRef(StateRef),
 }
 
 /// A reference to a declared numeric parameter, usable anywhere a roll takes a
-/// number. The ONLY form of indirection in the format.
+/// number. One of the two forms of indirection in the format (the other is
+/// [`StateRef`], `f48f34dc`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParamRef {
     #[serde(rename = "$param")]
     pub param: String,
 }
 
+/// A reference into the merged persistent state (chat → project → group →
+/// general), usable anywhere a `$param` reference is (v4 `StateRefSchema`,
+/// `f48f34dc`). Its `fallback` is required and load-bearing: it types the
+/// reference at load time and guarantees that run-time resolution can never
+/// fail — an absent path or a value of the wrong type simply resolves to the
+/// fallback. A run is therefore always dealable.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StateRef {
+    #[serde(rename = "$state")]
+    pub state: String,
+    pub fallback: StateRefFallback,
+}
+
+/// The `fallback` literal: `z.union([z.number().finite(), z.string(), z.boolean()])`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum StateRefFallback {
+    #[serde(serialize_with = "ser_js_number")]
+    Number(f64),
+    String(String),
+    Bool(bool),
+}
+
+impl StateRefFallback {
+    /// JS `typeof fallback` — the load-time type the reference carries.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            StateRefFallback::Number(_) => "number",
+            StateRefFallback::String(_) => "string",
+            StateRefFallback::Bool(_) => "boolean",
+        }
+    }
+}
+
+/// v4 `isStateRef` — true when a raw value is a `$state` reference rather than
+/// a literal or `$param` (`'$state' in value`). Used on the raw stored
+/// parameter `default`.
+pub fn is_state_ref_value(value: &Value) -> bool {
+    value.as_object().is_some_and(|o| o.contains_key("$state"))
+}
+
 /// A comparator operand for eq/neq, which may address a parameter of any
-/// declared type — `{ "eq": "brass" }` is a legitimate test of a string.
+/// declared type — `{ "eq": "brass" }` is a legitimate test of a string — or a
+/// `$state` reference typed by its fallback.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum AnyOperand {
@@ -373,17 +417,20 @@ pub enum AnyOperand {
     String(String),
     Bool(bool),
     ParamRef(ParamRef),
+    StateRef(StateRef),
 }
 
 /// A comparator operand for contains/ncontains: the substring to look for — a
-/// literal string, or a `$param` reference to a declared string parameter. The
-/// literal must be non-empty because every string contains "", which makes an
-/// empty needle a typo wearing a comparator's clothes.
+/// literal string, a `$param` reference to a declared string parameter, or a
+/// `$state` reference whose fallback is a string. The literal must be non-empty
+/// because every string contains "", which makes an empty needle a typo wearing
+/// a comparator's clothes.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum StringOperand {
     String(String),
     ParamRef(ParamRef),
+    StateRef(StateRef),
 }
 
 /// A declared parameter. Every parameter requires a `default` so that a
@@ -869,8 +916,57 @@ fn parse_param_ref(input: Option<&Value>) -> Res<ParamRef> {
     Res { value, issues }
 }
 
+/// v4 `StateRefSchema` (`f48f34dc`) — a strict object `{ $state, fallback }`:
+/// `$state` is `z.string().min(1)`; `fallback` is the required
+/// number|string|boolean union.
+fn parse_state_ref(input: Option<&Value>) -> Res<StateRef> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let path = parse_string(obj.get("$state"), Some(1), None, false);
+    issues.extend(prefix("$state", path.issues));
+
+    let fallback = {
+        let input = obj.get("fallback");
+        let n = parse_finite_number(input);
+        let n = Res {
+            value: n.value.map(StateRefFallback::Number),
+            issues: n.issues,
+        };
+        let s = parse_string(input, None, None, false);
+        let s = Res {
+            value: s.value.map(StateRefFallback::String),
+            issues: s.issues,
+        };
+        let b = parse_bool(input);
+        let b = Res {
+            value: b.value.map(StateRefFallback::Bool),
+            issues: b.issues,
+        };
+        let r = union(vec![n, s, b]);
+        issues.extend(prefix("fallback", r.issues));
+        r.value
+    };
+    issues.extend(unrecognized_keys(obj, &["$state", "fallback"]));
+
+    let value = match (path.value, fallback) {
+        (Some(state), Some(fallback)) if !aborted(&issues) => Some(StateRef { state, fallback }),
+        _ => None,
+    };
+    Res { value, issues }
+}
+
 /// v4 `NumberOrParamRefSchema` / `NumberOperandSchema` — the two are the same
-/// union, and both roll fields and ordering operands take it.
+/// union (number | `$param` | `$state`, in that order), and both roll fields
+/// and ordering operands take it.
 fn parse_number_or_param_ref(input: Option<&Value>) -> Res<NumberOrParamRef> {
     let n = parse_finite_number(input);
     let n = Res {
@@ -882,7 +978,12 @@ fn parse_number_or_param_ref(input: Option<&Value>) -> Res<NumberOrParamRef> {
         value: p.value.map(NumberOrParamRef::ParamRef),
         issues: p.issues,
     };
-    union(vec![n, p])
+    let st = parse_state_ref(input);
+    let st = Res {
+        value: st.value.map(NumberOrParamRef::StateRef),
+        issues: st.issues,
+    };
+    union(vec![n, p, st])
 }
 
 /// v4 `AnyOperandSchema` — number | string | boolean | ParamRef, in that order.
@@ -907,7 +1008,12 @@ fn parse_any_operand(input: Option<&Value>) -> Res<AnyOperand> {
         value: p.value.map(AnyOperand::ParamRef),
         issues: p.issues,
     };
-    union(vec![n, s, b, p])
+    let st = parse_state_ref(input);
+    let st = Res {
+        value: st.value.map(AnyOperand::StateRef),
+        issues: st.issues,
+    };
+    union(vec![n, s, b, p, st])
 }
 
 /// v4 `StringOperandSchema` — a non-empty string literal (with the author's own
@@ -934,7 +1040,12 @@ fn parse_string_operand(input: Option<&Value>) -> Res<StringOperand> {
         value: p.value.map(StringOperand::ParamRef),
         issues: p.issues,
     };
-    union(vec![s, p])
+    let st = parse_state_ref(input);
+    let st = Res {
+        value: st.value.map(StringOperand::StateRef),
+        issues: st.issues,
+    };
+    union(vec![s, p, st])
 }
 
 fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
@@ -1227,17 +1338,28 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
     );
     issues.extend(prefix("type", ty.issues));
 
-    // `default: z.union([number, string, boolean])` — no `.finite()` here.
+    // `default: z.union([number, string, boolean, StateRefSchema])` — no
+    // `.finite()` on the number branch. A `$state` default is kept as its raw
+    // object (the runtime resolves it against the merged state).
     let default = match obj.get("default") {
         Some(v @ (Value::Number(_) | Value::String(_) | Value::Bool(_))) => Some(v.clone()),
         other => {
-            let branches = vec![
-                Res::<()>::hard(invalid_type("number", other)),
-                Res::<()>::hard(invalid_type("string", other)),
-                Res::<()>::hard(invalid_type("boolean", other)),
-            ];
-            issues.extend(prefix("default", union(branches).issues));
-            None
+            let st = parse_state_ref(other);
+            if st.value.is_some() && st.issues.is_empty() {
+                other.cloned()
+            } else {
+                let branches = vec![
+                    Res::<()>::hard(invalid_type("number", other)),
+                    Res::<()>::hard(invalid_type("string", other)),
+                    Res::<()>::hard(invalid_type("boolean", other)),
+                    Res::<()> {
+                        value: if st.issues.is_empty() { Some(()) } else { None },
+                        issues: st.issues,
+                    },
+                ];
+                issues.extend(prefix("default", union(branches).issues));
+                None
+            }
         }
     };
 
@@ -1296,8 +1418,15 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
         }
     }
 
-    // The declared default must satisfy the parameter's own declared type.
-    if numeric && !default.is_number() {
+    // The declared default must satisfy the parameter's own declared type. A
+    // `$state` default is typed by its fallback (which run-time resolution is
+    // guaranteed to fall back to), so the fallback is what must match the type.
+    let effective_default: &Value = if is_state_ref_value(&default) {
+        default.get("fallback").unwrap_or(&Value::Null)
+    } else {
+        &default
+    };
+    if numeric && !effective_default.is_number() {
         issues.push(
             Issue::check(format!(
                 "default must be a number for type {}",
@@ -1306,8 +1435,8 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
             .at("default"),
         );
     }
-    if param_type == ParameterType::Integer && default.is_number() {
-        let is_int = default
+    if param_type == ParameterType::Integer && effective_default.is_number() {
+        let is_int = effective_default
             .as_f64()
             .is_some_and(|f| f.fract() == 0.0 && f.is_finite());
         if !is_int {
@@ -1316,10 +1445,10 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
             );
         }
     }
-    if param_type == ParameterType::String && !default.is_string() {
+    if param_type == ParameterType::String && !effective_default.is_string() {
         issues.push(Issue::check("default must be a string for type string").at("default"));
     }
-    if param_type == ParameterType::Boolean && !default.is_boolean() {
+    if param_type == ParameterType::Boolean && !effective_default.is_boolean() {
         issues.push(Issue::check("default must be a boolean for type boolean").at("default"));
     }
 
@@ -1986,6 +2115,20 @@ fn validate_roll_refs(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
     ];
 
     for (field, value) in fields {
+        // A `$state` roll field must carry a numeric fallback — the only thing
+        // knowable about it at load time (v4 `f48f34dc`).
+        if let Some(NumberOrParamRef::StateRef(r)) = value {
+            if !matches!(r.fallback, StateRefFallback::Number(_)) {
+                issues.push(issue_at(
+                    format!(
+                        "roll.{field} uses a $state reference whose fallback is {} rather than a number",
+                        r.fallback.type_name()
+                    ),
+                    &["roll".to_string(), field.to_string()],
+                ));
+            }
+            continue;
+        }
         let Some(NumberOrParamRef::ParamRef(r)) = value else {
             continue;
         };
@@ -2024,12 +2167,23 @@ enum Operand<'a> {
     String,
     Bool,
     Ref(&'a str),
+    /// A `$state` reference, typed by its fallback (v4 `resolveOperandType`).
+    StateFallback(ValueType),
+}
+
+fn fallback_value_type(f: &StateRefFallback) -> ValueType {
+    match f {
+        StateRefFallback::Number(_) => ValueType::Number,
+        StateRefFallback::String(_) => ValueType::String,
+        StateRefFallback::Bool(_) => ValueType::Boolean,
+    }
 }
 
 fn number_operand(v: &NumberOrParamRef) -> Operand<'_> {
     match v {
         NumberOrParamRef::Number(_) => Operand::Number,
         NumberOrParamRef::ParamRef(r) => Operand::Ref(&r.param),
+        NumberOrParamRef::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
     }
 }
 
@@ -2039,6 +2193,7 @@ fn any_operand(v: &AnyOperand) -> Operand<'_> {
         AnyOperand::String(_) => Operand::String,
         AnyOperand::Bool(_) => Operand::Bool,
         AnyOperand::ParamRef(r) => Operand::Ref(&r.param),
+        AnyOperand::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
     }
 }
 
@@ -2046,6 +2201,7 @@ fn string_operand(v: &StringOperand) -> Operand<'_> {
     match v {
         StringOperand::String(_) => Operand::String,
         StringOperand::ParamRef(r) => Operand::Ref(&r.param),
+        StringOperand::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
     }
 }
 
@@ -2207,6 +2363,10 @@ fn resolve_operand_type(
         Operand::Number => Some(ValueType::Number),
         Operand::String => Some(ValueType::String),
         Operand::Bool => Some(ValueType::Boolean),
+        // A `$state` operand carries the type of its (required) fallback —
+        // that is what run-time resolution is guaranteed to produce when the
+        // path misses (v4 `f48f34dc`).
+        Operand::StateFallback(t) => Some(*t),
     }
 }
 

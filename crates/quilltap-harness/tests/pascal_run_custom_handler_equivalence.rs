@@ -413,6 +413,23 @@ fn run_custom_handler_matches_oracle() {
             input: json!({ "tool": "oracle" }),
             profile: true,
         },
+        // P4.d10 `$state`: the entrance cascade, scoped to the rolling
+        // character's own groups (hit for CHAR_A in Table Stakes; fallback for
+        // group-less CHAR_B).
+        Case {
+            name: "state-cascade-hit",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "stateful" }),
+            profile: false,
+        },
+        Case {
+            name: "state-no-group-falls-back",
+            character_id: Some(CHAR_B),
+            vault: Some(meta.vault_b.clone()),
+            input: json!({ "tool": "stateful" }),
+            profile: false,
+        },
     ];
 
     // The corpus is declared on BOTH sides, so a case added to the oracle and

@@ -2839,6 +2839,7 @@ impl CoreEngine {
                 params,
                 private,
                 metadata,
+                state,
                 llm,
             } => match self.ready_db_and_consult() {
                 Ok((db, consult)) => {
@@ -2848,6 +2849,7 @@ impl CoreEngine {
                         params.as_ref(),
                         private,
                         metadata.as_ref(),
+                        state.as_ref(),
                         llm.as_ref(),
                         SINGLE_USER_ID,
                         // The assembled consult seam (P4.6bd) — the `{live:true}`
@@ -2863,6 +2865,7 @@ impl CoreEngine {
                 definition,
                 params,
                 metadata,
+                state,
                 llm,
             } => match self.ready_db() {
                 Ok(db) => super::custom_tools::custom_tool_audit(
@@ -2870,6 +2873,7 @@ impl CoreEngine {
                     &definition,
                     params.as_ref(),
                     metadata.as_ref(),
+                    state.as_ref(),
                     llm.as_ref(),
                 ),
                 Err(r) => r,

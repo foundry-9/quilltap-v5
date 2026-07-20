@@ -105,6 +105,7 @@ const NUM_PARAM = { parameters: { scale: { type: 'number', default: 1 } } };
 const INT_PARAM = { parameters: { steps: { type: 'integer', default: 2 } } };
 const STR_PARAM = { parameters: { material: { type: 'string', default: 'brass' } } };
 const BOOL_PARAM = { parameters: { lit: { type: 'boolean', default: true } } };
+const CATCH_ALL = { when: true, message: 'fallback', state: 'info' };
 
 const corpus: Array<[string, unknown]> = [
   // ---- accepted -----------------------------------------------------------
@@ -324,6 +325,70 @@ const corpus: Array<[string, unknown]> = [
     { metadata: { faction: { contains: { $param: 'ghost' } } } },
     STR_PARAM
   )],
+
+  // ---- $state references (P4.d10, v4 f48f34dc) ----------------------------
+  // accepted: the two closed indirection forms side by side.
+  ['state-roll-numeric-fallback', {
+    name: 'draw', description: 'A draw.',
+    roll: { min: { $state: 'game.low', fallback: 0 }, max: { $state: 'game.high', fallback: 6 } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-operand-and-param-default', {
+    name: 'draw', description: 'A draw.',
+    parameters: { threshold: { type: 'number', default: { $state: 'game.threshold', fallback: 5 } } },
+    outcomes: [
+      { when: { gte: { $state: 'game.difficulty', fallback: 3 } }, message: 'hard', state: 'success' },
+      CATCH_ALL,
+    ],
+  }],
+  ['state-string-operand-contains', withWhen(
+    { params: { material: { contains: { $state: 'game.needle', fallback: 'brass' } } } },
+    STR_PARAM
+  )],
+  ['state-eq-bool-fallback', withWhen(
+    { params: { lit: { eq: { $state: 'game.lamp', fallback: true } } } },
+    BOOL_PARAM
+  )],
+  ['state-integer-default-whole-fallback', {
+    name: 'draw', description: 'A draw.',
+    parameters: { count: { type: 'integer', default: { $state: 'game.count', fallback: 3 } } },
+    outcomes: [CATCH_ALL],
+  }],
+  // rejected: the fallback is required and load-bearing.
+  ['state-missing-fallback', {
+    name: 'draw', description: 'A draw.',
+    roll: { min: { $state: 'game.low' } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-roll-string-fallback', {
+    name: 'draw', description: 'A draw.',
+    roll: { min: { $state: 'game.low', fallback: 'nope' } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-roll-bool-fallback', {
+    name: 'draw', description: 'A draw.',
+    roll: { multiplier: { $state: 'game.x', fallback: true } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-default-type-mismatch', {
+    name: 'draw', description: 'A draw.',
+    parameters: { count: { type: 'integer', default: { $state: 'game.count', fallback: 'x' } } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-default-fractional-integer-fallback', {
+    name: 'draw', description: 'A draw.',
+    parameters: { count: { type: 'integer', default: { $state: 'game.count', fallback: 1.5 } } },
+    outcomes: [CATCH_ALL],
+  }],
+  ['state-empty-path', withWhen({ gt: { $state: '', fallback: 1 } })],
+  ['state-extra-key', withWhen({ gt: { $state: 'a', fallback: 1, persist: 'x' } })],
+  ['state-array-fallback', withWhen({ gt: { $state: 'a', fallback: [1] } })],
+  ['state-ordering-string-fallback', withWhen({ gt: { $state: 'a', fallback: 's' } })],
+  ['state-contains-number-fallback', withWhen(
+    { params: { material: { contains: { $state: 'a', fallback: 3 } } } },
+    STR_PARAM
+  )],
+  ['state-not-quite-a-ref', withWhen({ gt: { $state: 'a', fallbak: 1 } })],
 
   // ---- shape / non-object -------------------------------------------------
   ['not-an-object', 'nope'],

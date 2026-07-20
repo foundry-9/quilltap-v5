@@ -401,6 +401,22 @@ async fn custom_tools_route_matches_oracle() {
             ),
             true,
         ),
+        // P4.d10 `$state`: the manual-run entrance cascade, scoped to
+        // `asCharacterId`'s own groups.
+        (
+            "run-stateful-as-a",
+            Some(
+                json!({ "tool": "stateful", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-stateful-as-b",
+            Some(
+                json!({ "tool": "stateful", "asCharacterId": "a1000000-0000-4000-8000-00000000000b" }),
+            ),
+            false,
+        ),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here

@@ -9,15 +9,16 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::state::paths::{get_at_path, parse_path};
 use regex::{Captures, Regex};
 use serde_json::{Map, Value};
 use std::sync::LazyLock;
 
 use super::custom_tool_types::{
-    AnyOperand, CustomToolLlm, CustomToolParameter, LlmComparator, MetadataComparator,
-    NumberOrParamRef, NumericComparator, OutcomeState, ParamComparator, ParameterType,
-    QtapCustomTool, Roll, RollRange, StringOperand, Visibility, When, WhenObject,
-    MAX_LLM_OUTPUT_LENGTH,
+    is_state_ref_value, AnyOperand, CustomToolLlm, CustomToolParameter, LlmComparator,
+    MetadataComparator, NumberOrParamRef, NumericComparator, OutcomeState, ParamComparator,
+    ParameterType, QtapCustomTool, Roll, RollRange, StateRef, StateRefFallback, StringOperand,
+    Visibility, When, WhenObject, MAX_LLM_OUTPUT_LENGTH,
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number, to_precision};
@@ -37,6 +38,50 @@ impl std::error::Error for CustomToolRunError {}
 
 fn err(message: impl Into<String>) -> CustomToolRunError {
     CustomToolRunError(message.into())
+}
+
+/// The persistent-state view a run resolves `$state` references against — the
+/// merged cascade (chat → project → group → general), always a JSON object; an
+/// entrance that has no state to offer passes `None` (v4 `{}`).
+///
+/// v4 `resolveStateValue` (`f48f34dc`): pure and total — the value at the path
+/// when present AND of the fallback's type (a found number must also be
+/// finite), and the fallback otherwise. It never fails — the required fallback
+/// is exactly what makes a run always dealable.
+pub fn resolve_state_value(r: &StateRef, state: Option<&Value>) -> ResolvedValue {
+    let empty = Value::Object(Map::new());
+    let state = state.unwrap_or(&empty);
+    let found = get_at_path(state, &parse_path(Some(&r.state)));
+    match (&found, &r.fallback) {
+        (Some(Value::Number(n)), StateRefFallback::Number(fb)) => {
+            // `typeof found === 'number'` + the finite guard.
+            match n.as_f64() {
+                Some(f) if f.is_finite() => ResolvedValue::Number(f),
+                _ => ResolvedValue::Number(*fb),
+            }
+        }
+        (Some(Value::String(s)), StateRefFallback::String(_)) => ResolvedValue::String(s.clone()),
+        (Some(Value::Bool(b)), StateRefFallback::Bool(_)) => ResolvedValue::Bool(*b),
+        _ => match &r.fallback {
+            StateRefFallback::Number(f) => ResolvedValue::Number(*f),
+            StateRefFallback::String(s) => ResolvedValue::String(s.clone()),
+            StateRefFallback::Bool(b) => ResolvedValue::Bool(*b),
+        },
+    }
+}
+
+/// Rehydrate a schema-validated `$state` parameter default (stored as its raw
+/// JSON object) into a [`StateRef`].
+fn state_ref_from_default(v: &Value) -> Option<StateRef> {
+    let obj = v.as_object()?;
+    let state = obj.get("$state")?.as_str()?.to_string();
+    let fallback = match obj.get("fallback")? {
+        Value::Number(n) => StateRefFallback::Number(n.as_f64()?),
+        Value::String(s) => StateRefFallback::String(s.clone()),
+        Value::Bool(b) => StateRefFallback::Bool(*b),
+        _ => return None,
+    };
+    Some(StateRef { state, fallback })
 }
 
 /// One resolved parameter value: v4's `number | string | boolean`.
@@ -241,6 +286,7 @@ pub struct CustomToolRunResult {
 pub fn resolve_params(
     definition: &QtapCustomTool,
     supplied: Option<&serde_json::Map<String, Value>>,
+    state: Option<&Value>,
 ) -> Result<ResolvedParams, CustomToolRunError> {
     let empty = Vec::new();
     let declared = definition.parameters.as_ref().unwrap_or(&empty);
@@ -267,7 +313,7 @@ pub fn resolve_params(
         let given = supplied.and_then(|g| g.get(name));
         resolved.push((
             name.clone(),
-            coerce_param(&definition.name, name, spec, given)?,
+            coerce_param(&definition.name, name, spec, given, state)?,
         ));
     }
     Ok(resolved)
@@ -282,10 +328,21 @@ fn coerce_param(
     name: &str,
     spec: &CustomToolParameter,
     value: Option<&Value>,
+    state: Option<&Value>,
 ) -> Result<ResolvedValue, CustomToolRunError> {
-    // `undefined` and `null` both fall back to the declared default.
+    // `undefined` and `null` both fall back to the declared default, which may
+    // itself be a `$state` reference resolved against the merged state (its
+    // fallback is type-checked against this parameter's type at load time, so
+    // it always fits).
     let value = match value {
-        None | Some(Value::Null) => return Ok(default_value(spec)),
+        None | Some(Value::Null) => {
+            if is_state_ref_value(&spec.default) {
+                if let Some(r) = state_ref_from_default(&spec.default) {
+                    return Ok(resolve_state_value(&r, state));
+                }
+            }
+            return Ok(default_value(spec));
+        }
         Some(v) => v,
     };
 
@@ -375,12 +432,27 @@ fn resolve_roll_field(
     spec: Option<&NumberOrParamRef>,
     params: &ResolvedParams,
     fallback: f64,
+    state: Option<&Value>,
 ) -> Result<f64, CustomToolRunError> {
     let Some(spec) = spec else {
         return Ok(fallback);
     };
 
     match spec {
+        // A `$state` roll field resolves to its (numeric, load-checked) value
+        // or its numeric fallback — never a failure, so a roll is always
+        // dealable. The throw arm is a regression tripwire (a non-numeric
+        // fallback is rejected at load time).
+        NumberOrParamRef::StateRef(r) => {
+            let value = resolve_state_value(r, state);
+            match value {
+                ResolvedValue::Number(n) if n.is_finite() => Ok(n),
+                other => Err(err(format!(
+                    "{tool_name}: roll.{field} $state reference resolved to {} rather than a finite number",
+                    other.stringify()
+                ))),
+            }
+        }
         NumberOrParamRef::ParamRef(r) => {
             let value = lookup(params, &r.param);
             match value {
@@ -428,14 +500,21 @@ fn roll_range(
     definition: &QtapCustomTool,
     range: &RollRange,
     params: &ResolvedParams,
+    state: Option<&Value>,
     rng: &mut dyn RandomBytes,
 ) -> Result<(f64, f64), CustomToolRunError> {
     let name = &definition.name;
-    let min = resolve_roll_field(name, "min", range.min.as_ref(), params, 0.0)?;
-    let max = resolve_roll_field(name, "max", range.max.as_ref(), params, 1.0)?;
-    let multiplier =
-        resolve_roll_field(name, "multiplier", range.multiplier.as_ref(), params, 1.0)?;
-    let offset = resolve_roll_field(name, "offset", range.offset.as_ref(), params, 0.0)?;
+    let min = resolve_roll_field(name, "min", range.min.as_ref(), params, 0.0, state)?;
+    let max = resolve_roll_field(name, "max", range.max.as_ref(), params, 1.0, state)?;
+    let multiplier = resolve_roll_field(
+        name,
+        "multiplier",
+        range.multiplier.as_ref(),
+        params,
+        1.0,
+        state,
+    )?;
+    let offset = resolve_roll_field(name, "offset", range.offset.as_ref(), params, 0.0, state)?;
 
     if min > max {
         return Err(err(format!(
@@ -485,18 +564,25 @@ pub struct OutcomeSubjects<'a> {
     /// The LLM consult's result. `None` when the definition declares no `llm`
     /// block — an `llm` test then fails soft and the table falls through.
     pub llm: Option<&'a LlmSubject>,
+    /// The merged persistent state (chat → project → group → general) that
+    /// `$state` comparator operands resolve against. `None` → treated as `{}`,
+    /// so every `$state` operand falls to its own fallback.
+    pub state: Option<&'a Value>,
 }
 
-/// A comparator operand as the evaluator sees it: a literal, or a reference.
+/// A comparator operand as the evaluator sees it: a literal, a `$param`
+/// reference, or a `$state` reference.
 enum OperandSpec<'a> {
     Literal(ResolvedValue),
     Ref(&'a str),
+    State(&'a StateRef),
 }
 
 fn number_operand(v: &NumberOrParamRef) -> OperandSpec<'_> {
     match v {
         NumberOrParamRef::Number(n) => OperandSpec::Literal(ResolvedValue::Number(*n)),
         NumberOrParamRef::ParamRef(r) => OperandSpec::Ref(&r.param),
+        NumberOrParamRef::StateRef(r) => OperandSpec::State(r),
     }
 }
 
@@ -506,6 +592,7 @@ fn any_operand(v: &AnyOperand) -> OperandSpec<'_> {
         AnyOperand::String(s) => OperandSpec::Literal(ResolvedValue::String(s.clone())),
         AnyOperand::Bool(b) => OperandSpec::Literal(ResolvedValue::Bool(*b)),
         AnyOperand::ParamRef(r) => OperandSpec::Ref(&r.param),
+        AnyOperand::StateRef(r) => OperandSpec::State(r),
     }
 }
 
@@ -520,9 +607,14 @@ fn resolve_operand(
     operand: &OperandSpec,
     params: &ResolvedParams,
     label: &str,
+    state: Option<&Value>,
 ) -> Result<ResolvedValue, CustomToolRunError> {
     match operand {
         OperandSpec::Literal(v) => Ok(v.clone()),
+        // A `$state` operand resolves against the merged state, falling back to
+        // its own (load-typed) fallback — it never throws, matching the
+        // metadata doctrine.
+        OperandSpec::State(r) => Ok(resolve_state_value(r, state)),
         OperandSpec::Ref(name) => match lookup(params, name) {
             Some(v) => Ok(v.clone()),
             None => Err(err(format!(
@@ -576,6 +668,7 @@ fn matches_comparator(
     subject: &ResolvedValue,
     subject_label: &str,
     params: &ResolvedParams,
+    state: Option<&Value>,
 ) -> Result<bool, CustomToolRunError> {
     for (key, operand) in operands {
         let Some(operand) = operand else { continue };
@@ -585,7 +678,7 @@ fn matches_comparator(
             // v4 evaluates the SUBJECT first, so a non-orderable subject is what
             // is reported even when the operand is also broken.
             let a = require_number(tool_name, subject, subject_label)?;
-            let resolved = resolve_operand(tool_name, &operand, params, &label)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
             let b = require_number(tool_name, &resolved, &label)?;
             let held = match key {
                 "gt" => a > b,
@@ -607,7 +700,7 @@ fn matches_comparator(
             // `.includes`), so a non-string subject is reported even when the
             // operand is also broken.
             let haystack = require_string(tool_name, subject, subject_label)?;
-            let resolved = resolve_operand(tool_name, &operand, params, &label)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
             let needle = require_string(tool_name, &resolved, &label)?;
             let held = haystack.contains(&needle);
             if key == "contains" {
@@ -620,7 +713,7 @@ fn matches_comparator(
             continue;
         }
 
-        let resolved = resolve_operand(tool_name, &operand, params, &label)?;
+        let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
         let held = if key == "eq" {
             subject.strict_eq(&resolved)
         } else {
@@ -638,6 +731,7 @@ fn string_operand(v: &StringOperand) -> OperandSpec<'_> {
     match v {
         StringOperand::String(s) => OperandSpec::Literal(ResolvedValue::String(s.clone())),
         StringOperand::ParamRef(r) => OperandSpec::Ref(&r.param),
+        StringOperand::StateRef(r) => OperandSpec::State(r),
     }
 }
 
@@ -712,6 +806,7 @@ fn matches_metadata_comparator(
     key: &str,
     metadata: &Map<String, Value>,
     params: &ResolvedParams,
+    state: Option<&Value>,
 ) -> Result<bool, CustomToolRunError> {
     // The character has no such metadata key — decline before touching operands,
     // so a `$param` operand is never even resolved (let alone thrown over).
@@ -731,7 +826,7 @@ fn matches_metadata_comparator(
         if matches!(ck, "gt" | "gte" | "lt" | "lte") {
             // v4 resolves the operand FIRST (so a `$param` still throws), THEN
             // declines when either side is not a number.
-            let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
             let (ResolvedValue::Number(s), ResolvedValue::Number(o)) = (&subject, &resolved) else {
                 return Ok(false);
             };
@@ -752,7 +847,7 @@ fn matches_metadata_comparator(
             // holding anything but a string cannot be searched, so the row
             // declines — including under ncontains, where (as with neq)
             // absence-of-a-string is not a miss.
-            let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
             let (ResolvedValue::String(hay), ResolvedValue::String(needle)) = (&subject, &resolved)
             else {
                 return Ok(false);
@@ -768,7 +863,7 @@ fn matches_metadata_comparator(
             continue;
         }
 
-        let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+        let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
         let held = if ck == "eq" {
             subject.strict_eq(&resolved)
         } else {
@@ -807,6 +902,7 @@ fn matches_llm_comparator(
     comparator: &LlmComparator,
     llm: &LlmSubject,
     params: &ResolvedParams,
+    state: Option<&Value>,
 ) -> Result<bool, CustomToolRunError> {
     if let Some(want) = comparator.ok {
         if want != llm.ok {
@@ -834,7 +930,7 @@ fn matches_llm_comparator(
         }
         let Some(operand) = operand else { continue };
         let label = format!("the llm answer {key}");
-        let resolved = resolve_operand(tool_name, operand, params, &label)?;
+        let resolved = resolve_operand(tool_name, operand, params, &label, state)?;
         let (Some(a), ResolvedValue::Number(b)) = (numeric_answer, &resolved) else {
             return Ok(false);
         };
@@ -876,19 +972,19 @@ fn matches_llm_comparator(
         let label = format!("the llm answer {key}");
         let held = match *key {
             "eq" => {
-                let r = resolve_operand(tool_name, operand, params, &label)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state)?;
                 equals_answer(&r)
             }
             "neq" => {
-                let r = resolve_operand(tool_name, operand, params, &label)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state)?;
                 !equals_answer(&r)
             }
             "contains" => {
-                let r = resolve_operand(tool_name, operand, params, &label)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state)?;
                 contains_answer(&r)
             }
             "ncontains" => {
-                let r = resolve_operand(tool_name, operand, params, &label)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state)?;
                 !contains_answer(&r)
             }
             _ => continue,
@@ -955,6 +1051,9 @@ pub fn matches_when(
     };
 
     let params = subjects.params;
+    // v4 `subjects.state ?? {}` — `None` behaves as the empty object, so every
+    // `$state` operand falls to its own fallback.
+    let state = subjects.state;
     let value = ResolvedValue::Number(subjects.value);
 
     if !matches_comparator(
@@ -963,6 +1062,7 @@ pub fn matches_when(
         &value,
         "the rolled value",
         params,
+        state,
     )? {
         return Ok(false);
     }
@@ -975,6 +1075,7 @@ pub fn matches_when(
             &raw,
             "the raw roll",
             params,
+            state,
         )? {
             return Ok(false);
         }
@@ -994,6 +1095,7 @@ pub fn matches_when(
             subject,
             &label,
             params,
+            state,
         )? {
             return Ok(false);
         }
@@ -1005,7 +1107,7 @@ pub fn matches_when(
         let empty = Map::new();
         let metadata = subjects.metadata.unwrap_or(&empty);
         for (key, comparator) in entries {
-            if !matches_metadata_comparator(tool_name, comparator, key, metadata, params)? {
+            if !matches_metadata_comparator(tool_name, comparator, key, metadata, params, state)? {
                 return Ok(false);
             }
         }
@@ -1018,7 +1120,7 @@ pub fn matches_when(
         let Some(llm) = subjects.llm else {
             return Ok(false);
         };
-        if !matches_llm_comparator(tool_name, comparator, llm, params)? {
+        if !matches_llm_comparator(tool_name, comparator, llm, params, state)? {
             return Ok(false);
         }
     }
@@ -1049,6 +1151,8 @@ pub struct TemplateVars<'a> {
     pub metadata: Option<&'a Map<String, Value>>,
     /// The consult's result. `None` while rendering the consult's own prompt.
     pub llm: Option<&'a LlmSubject>,
+    /// The merged persistent state, for `{{state.path}}` placeholders.
+    pub state: Option<&'a Value>,
 }
 
 /// Substitute the four placeholder families. Plain string replacement — user
@@ -1100,6 +1204,25 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                     .and_then(|m| m.get(name))
                     .and_then(js_primitive)
                 {
+                    return match v {
+                        ResolvedValue::Number(n) => format_value(n),
+                        ResolvedValue::String(s) => s,
+                        ResolvedValue::Bool(b) => b.to_string(),
+                    };
+                }
+                return whole.to_string();
+            }
+
+            if let Some(state_path) = key.strip_prefix("state.") {
+                // `{{state.path}}` follows the `{{metadata.*}}` doctrine: render
+                // the value when the path holds a primitive, otherwise leave the
+                // placeholder as written so the hole in the sentence is visible
+                // rather than silently eaten. `state.` is stripped and the
+                // remainder is a full state path (v4 `f48f34dc`).
+                let empty = Value::Object(Map::new());
+                let found =
+                    get_at_path(vars.state.unwrap_or(&empty), &parse_path(Some(state_path)));
+                if let Some(v) = found.as_ref().and_then(js_primitive) {
                     return match v {
                         ResolvedValue::Number(n) => format_value(n),
                         ResolvedValue::String(s) => s,
@@ -1197,10 +1320,13 @@ pub async fn execute_custom_tool(
     supplied_params: Option<&serde_json::Map<String, Value>>,
     private: Option<bool>,
     metadata: Option<&Map<String, Value>>,
+    // Merged persistent state for `$state` refs and `{{state.path}}` — v4
+    // `overrides.state ?? {}` (pass `None` for the empty view).
+    state: Option<&Value>,
     rng: &mut (dyn RandomBytes + Send),
     llm_invoke: Option<&dyn LlmInvoker>,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
-    let params = resolve_params(definition, supplied_params)?;
+    let params = resolve_params(definition, supplied_params, state)?;
 
     let raw: f64;
     let value: f64;
@@ -1236,7 +1362,7 @@ pub async fn execute_custom_tool(
                 Some(Roll::Range(r)) => r,
                 _ => &default,
             };
-            let (drawn_raw, drawn_value) = roll_range(definition, range, &params, rng)?;
+            let (drawn_raw, drawn_value) = roll_range(definition, range, &params, state, rng)?;
             raw = drawn_raw;
             value = drawn_value;
         }
@@ -1256,6 +1382,7 @@ pub async fn execute_custom_tool(
                     params: &params,
                     metadata,
                     llm: None,
+                    state,
                 },
             );
             Some(resolve_llm_consult(spec, prompt, llm_invoke).await)
@@ -1270,6 +1397,7 @@ pub async fn execute_custom_tool(
         params: &params,
         metadata,
         llm: llm_subject.as_ref(),
+        state,
     };
     let mut outcome_index = None;
     for (i, o) in definition.outcomes.iter().enumerate() {
@@ -1297,6 +1425,7 @@ pub async fn execute_custom_tool(
             params: &params,
             metadata,
             llm: llm_subject.as_ref(),
+            state,
         },
     );
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
@@ -1367,9 +1496,12 @@ pub fn simulate_outcomes(
     // table that branches on the answer are therefore conditional on this one
     // answer; the bench says so beside the field. This never invokes.
     llm: Option<&LlmSubject>,
+    // Mock merged state for `$state` refs, held fixed across every draw (v4's
+    // trailing `state: CustomToolState = {}`).
+    state: Option<&Value>,
     rng: &mut dyn RandomBytes,
 ) -> Result<CustomToolAuditResult, CustomToolRunError> {
-    let params = resolve_params(definition, supplied_params)?;
+    let params = resolve_params(definition, supplied_params, state)?;
 
     let mut parsed_dice = None;
     let default_range = RollRange::default();
@@ -1398,7 +1530,7 @@ pub fn simulate_outcomes(
                 let rolled = roll_notation(notation, rng);
                 (rolled.total as f64, rolled.total as f64)
             }
-            None => roll_range(definition, range_roll, &params, rng)?,
+            None => roll_range(definition, range_roll, &params, state, rng)?,
         };
 
         let subjects = OutcomeSubjects {
@@ -1407,6 +1539,7 @@ pub fn simulate_outcomes(
             params: &params,
             metadata,
             llm,
+            state,
         };
         let mut outcome_index = None;
         for (i, o) in definition.outcomes.iter().enumerate() {
@@ -1482,7 +1615,7 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let r = simulate_outcomes(&d, None, 20_000, None, None, &mut rng).unwrap();
+        let r = simulate_outcomes(&d, None, 20_000, None, None, None, &mut rng).unwrap();
         let low = r.outcomes[0].share;
         assert!(
             (0.2..0.4).contains(&low),
@@ -1503,13 +1636,22 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let empty = simulate_outcomes(&d, None, 100, Some(&serde_json::Map::new()), None, &mut rng)
-            .unwrap();
+        let empty = simulate_outcomes(
+            &d,
+            None,
+            100,
+            Some(&serde_json::Map::new()),
+            None,
+            None,
+            &mut rng,
+        )
+        .unwrap();
         assert_eq!(empty.outcomes[0].hits, 0);
 
         let mut sheet = serde_json::Map::new();
         sheet.insert("luck".into(), serde_json::json!(7));
-        let carrying = simulate_outcomes(&d, None, 100, Some(&sheet), None, &mut rng).unwrap();
+        let carrying =
+            simulate_outcomes(&d, None, 100, Some(&sheet), None, None, &mut rng).unwrap();
         assert_eq!(carrying.outcomes[0].hits, 100);
     }
 
@@ -1521,6 +1663,6 @@ mod simulate_tests {
             "outcomes": [{ "when": true, "message": "x", "state": "info" }],
         }));
         let mut rng = OsRandomBytes;
-        assert!(simulate_outcomes(&d, None, 10, None, None, &mut rng).is_err());
+        assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng).is_err());
     }
 }

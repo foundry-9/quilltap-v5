@@ -343,8 +343,9 @@ enum RunPrep {
     UnknownTool {
         available: Vec<String>,
     },
-    /// Boxed — the discovered definition dwarfs the other variants.
-    Ready(Box<(DiscoveredCustomTool, Map<String, Value>)>),
+    /// Boxed — the discovered definition dwarfs the other variants. Carries the
+    /// tool entry, the AS-character's fact sheet, and the merged state cascade.
+    Ready(Box<(DiscoveredCustomTool, Map<String, Value>, Value)>),
 }
 
 /// v4 `handleRun` — run one tool at the operator's behest.
@@ -419,13 +420,37 @@ pub async fn chat_custom_tool_run(
                     } else {
                         Map::new()
                     };
-                    Ok(RunPrep::Ready(Box::new((entry.clone(), metadata))))
+                    // The merged state cascade the run's `$state` references
+                    // resolve against (v4 `f48f34dc`). The group tier follows
+                    // the same asymmetry as metadata above: scoped to the named
+                    // character's own groups, or skipped entirely for a run
+                    // nobody made (no `asCharacterId`), rather than borrowing an
+                    // arbitrary participant's groups. Fail-soft — required
+                    // fallbacks keep every run dealable.
+                    let scope = match &as_char {
+                        Some(cid) => crate::state::cascade::GroupScope::Character {
+                            character_id: cid.clone(),
+                        },
+                        None => crate::state::cascade::GroupScope::None,
+                    };
+                    let tool_state = crate::state::cascade::resolve_state_cascade(
+                        main,
+                        Some(mount),
+                        &chat,
+                        &scope,
+                    )
+                    .merged;
+                    Ok(RunPrep::Ready(Box::new((
+                        entry.clone(),
+                        metadata,
+                        tool_state,
+                    ))))
                 }
             }
         })
     });
 
-    let (entry, metadata) = match prep {
+    let (entry, metadata, tool_state) = match prep {
         Ok(RunPrep::NoChat) => return not_found("Chat"),
         Ok(RunPrep::NoPerspectives) => {
             return bad_request(
@@ -448,8 +473,8 @@ pub async fn chat_custom_tool_run(
             })
         }
         Ok(RunPrep::Ready(boxed)) => {
-            let (entry, metadata) = *boxed;
-            (entry, metadata)
+            let (entry, metadata, tool_state) = *boxed;
+            (entry, metadata, tool_state)
         }
         Err(e) => return internal(e),
     };
@@ -497,6 +522,7 @@ pub async fn chat_custom_tool_run(
         parameters.as_ref(),
         private,
         metadata_arg,
+        Some(&tool_state),
         &mut rng,
         // v4 builds the invoker only when the definition declares an `llm`
         // block; the chat run attributes the consult to THIS chat, so a
@@ -686,6 +712,16 @@ fn parse_params(raw: Option<&Value>) -> Result<Option<Map<String, Value>>, Respo
     match raw {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Object(o)) => Ok(Some(o.clone())),
+        Some(_) => Err(bad_request("Invalid request body")),
+    }
+}
+
+/// §B (P4.d10): the `state` field — `z.record(z.string(), z.unknown()).nullish()`,
+/// with v4's `?? {}` collapse applied by the CALLER (absent/null → `None` here).
+fn parse_state(raw: Option<&Value>) -> Result<Option<Value>, Response> {
+    match raw {
+        None | Some(Value::Null) => Ok(None),
+        Some(v @ Value::Object(_)) => Ok(Some(v.clone())),
         Some(_) => Err(bad_request("Invalid request body")),
     }
 }
@@ -912,12 +948,18 @@ pub async fn custom_tool_preview(
     params: Option<&Value>,
     private: Option<bool>,
     metadata: Option<&Value>,
+    state: Option<&Value>,
     llm: Option<&Value>,
     user_id: &str,
     consult: Option<&dyn ConsultRunner>,
 ) -> Response {
     let params = match parse_params(params) {
         Ok(p) => p,
+        Err(r) => return r,
+    };
+    // §B: mock merged state for `$state` refs (v4 `body.value.state ?? {}`).
+    let state = match parse_state(state) {
+        Ok(s) => s,
         Err(r) => return r,
     };
     let definition = match parse_definition(definition) {
@@ -979,6 +1021,7 @@ pub async fn custom_tool_preview(
         params.as_ref(),
         private,
         Some(&metadata),
+        state.as_ref(),
         &mut rng,
         invoker,
     )
@@ -995,10 +1038,16 @@ pub fn custom_tool_audit(
     definition: &Value,
     params: Option<&Value>,
     metadata: Option<&Value>,
+    state: Option<&Value>,
     llm: Option<&Value>,
 ) -> Response {
     let params = match parse_params(params) {
         Ok(p) => p,
+        Err(r) => return r,
+    };
+    // §B: mock merged state, held fixed across every draw.
+    let state = match parse_state(state) {
+        Ok(s) => s,
         Err(r) => return r,
     };
     let definition = match parse_definition(definition) {
@@ -1045,6 +1094,7 @@ pub fn custom_tool_audit(
         AUDIT_RUNS,
         Some(&metadata),
         fixed_llm.as_ref(),
+        state.as_ref(),
         &mut rng,
     ) {
         Ok(result) => Response::CustomToolAudit(json!({

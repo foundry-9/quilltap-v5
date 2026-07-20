@@ -349,6 +349,13 @@ async function main(): Promise<void> {
     // provider answers 'YES', the `eq: 'YES'` outcome row fires, and the
     // CUSTOM_TOOL_CONSULT llm-log row lands. The tier-1 proof of the wire.
     { name: 'llm-consult-resolved', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' }, profile: true },
+    // P4.d10 `$state`: the entrance resolves the merged cascade scoped to the
+    // ROLLING character's own groups. CHAR_A (in Table Stakes): roll = chat
+    // difficulty 6 (over general's 9), 6 >= gscore 4 → success, with
+    // {{state.*}} rendered from all three tiers. CHAR_B (no group): gscore
+    // falls back to 99 → failure — the scoping made visible in the outcome.
+    { name: 'state-cascade-hit', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'stateful' } },
+    { name: 'state-no-group-falls-back', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'stateful' } },
   ];
 
   const out = fs.createWriteStream(outPath);

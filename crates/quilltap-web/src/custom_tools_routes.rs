@@ -181,6 +181,9 @@ pub async fn workbench_post(
     // preview union admits `{live:true}`, the audit union deliberately does not),
     // so the edge only forwards it.
     let llm = obj.get("llm").cloned();
+    // §B (P4.d10): the mock merged state — forwarded opaquely, validated in the
+    // core (`z.record(...).nullish()`). Named apart from the web `state` handle.
+    let mock_state = obj.get("state").cloned();
 
     let req = if action == Some("preview") {
         // `private` is `z.boolean().optional()`: a present non-boolean is a body
@@ -195,6 +198,7 @@ pub async fn workbench_post(
             params,
             private,
             metadata,
+            state: mock_state,
             llm,
         }
     } else {
@@ -202,6 +206,7 @@ pub async fn workbench_post(
             definition,
             params,
             metadata,
+            state: mock_state,
             llm,
         }
     };

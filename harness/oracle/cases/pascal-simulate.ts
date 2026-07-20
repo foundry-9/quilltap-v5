@@ -24,6 +24,8 @@ interface Case {
   params?: Record<string, unknown> | null;
   runs: number;
   metadata?: Record<string, unknown>;
+  /** P4.d10: mock merged state for `$state` refs, held fixed across every draw. */
+  state?: Record<string, unknown>;
   /**
    * The 616930db fixed consult, held constant across every draw. `simulateOutcomes`
    * NEVER invokes — the audit must not spend ten thousand LLM calls — so this is
@@ -163,12 +165,53 @@ const cases: Case[] = [
     },
     runs: 0,
   },
+  // ---- $state threading (P4.d10, f48f34dc): the mock state steers hit rates,
+  // held fixed across every draw.
+  {
+    id: 'state-gate-passes-every-draw',
+    definition: {
+      name: 'gate',
+      description: 'g',
+      roll: { min: 5, max: 5 },
+      outcomes: [
+        { when: { gte: { $state: 'game.difficulty', fallback: 10 } }, message: 'passed', state: 'success' },
+        { when: true, message: 'fallback', state: 'info' },
+      ],
+    },
+    runs: 50,
+    state: { game: { difficulty: 1 } },
+  },
+  {
+    id: 'state-gate-falls-back-every-draw',
+    definition: {
+      name: 'gate',
+      description: 'g',
+      roll: { min: 5, max: 5 },
+      outcomes: [
+        { when: { gte: { $state: 'game.difficulty', fallback: 10 } }, message: 'passed', state: 'success' },
+        { when: true, message: 'fallback', state: 'info' },
+      ],
+    },
+    runs: 50,
+  },
+  // A $state roll bound under the audit (deterministic min == max).
+  {
+    id: 'state-roll-bound-in-audit',
+    definition: {
+      name: 'fixed',
+      description: 'f',
+      roll: { min: { $state: 'game.n', fallback: 2 }, max: { $state: 'game.n', fallback: 2 } },
+      outcomes: [{ when: true, message: 'x', state: 'success' }],
+    },
+    runs: 25,
+    state: { game: { n: 9 } },
+  },
 ];
 
 const rows: unknown[] = [];
 for (const c of cases) {
   const definition = QtapCustomToolSchema.parse(c.definition);
-  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata, c.llm);
+  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata, c.llm, c.state ?? {});
   rows.push({
     id: c.id,
     definition: c.definition,
@@ -176,6 +219,7 @@ for (const c of cases) {
     runs: c.runs,
     metadata: c.metadata ?? null,
     llm: c.llm ?? null,
+    state: c.state ?? null,
     result,
   });
 }

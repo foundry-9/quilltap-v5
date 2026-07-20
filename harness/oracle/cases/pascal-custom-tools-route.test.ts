@@ -369,6 +369,11 @@ async function main(): Promise<void> {
     // inserted, the (recording) provider answers 'YES', the `eq: 'YES'` outcome
     // row fires, and the CUSTOM_TOOL_CONSULT llm-log row lands.
     { name: 'run-oracle-consult-resolved', method: 'POST', body: { tool: 'oracle', asCharacterId: CHAR_A }, profile: true },
+    // P4.d10 `$state`: the manual-run entrance resolves the cascade scoped to
+    // `asCharacterId`'s own groups (hit for CHAR_A; group-less fallback for
+    // CHAR_B) — the same asymmetry as metadata.
+    { name: 'run-stateful-as-a', method: 'POST', body: { tool: 'stateful', asCharacterId: CHAR_A } },
+    { name: 'run-stateful-as-b', method: 'POST', body: { tool: 'stateful', asCharacterId: CHAR_B } },
   ];
 
   const out = fs.createWriteStream(outPath);

@@ -1955,6 +1955,10 @@ pub enum Request {
         private: Option<bool>,
         #[serde(default)]
         metadata: Option<serde_json::Value>,
+        /// §B (P4.d10): mock merged state for `$state` refs and
+        /// `{{state.path}}` templates. Absent/null → `{}`.
+        #[serde(default)]
+        state: Option<serde_json::Value>,
         /// §B: which oracle answers the bench — the real one (`{live:true}`), a
         /// scripted answer (`{output}`), or a scripted failure (`{fail:true}`).
         /// Absent leaves the seam unwired, so the consult fails soft into the
@@ -1973,6 +1977,10 @@ pub enum Request {
         params: Option<serde_json::Value>,
         #[serde(default)]
         metadata: Option<serde_json::Value>,
+        /// §B (P4.d10): mock merged state for `$state` refs, held fixed across
+        /// every draw. Absent/null → `{}`.
+        #[serde(default)]
+        state: Option<serde_json::Value>,
         /// §B: the fixed consult every draw shares. **No `live` arm** — an audit
         /// is ten thousand hands, and the point of the bench is that it never
         /// spends ten thousand LLM calls. v4 enforces that by SHAPE (the audit

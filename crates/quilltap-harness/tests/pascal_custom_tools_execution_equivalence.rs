@@ -211,6 +211,14 @@ fn supplied_of(row: &Value) -> Option<Map<String, Value>> {
 }
 
 /// The metadata sheet a row carries, if any (`null`/absent → `None`).
+/// The oracle row's mock merged state (absent → the empty view).
+fn state_of(v: Option<&Value>) -> Option<Value> {
+    match v {
+        Some(o @ Value::Object(_)) => Some(o.clone()),
+        _ => None,
+    }
+}
+
 fn metadata_of(v: Option<&Value>) -> Option<Map<String, Value>> {
     v.and_then(|v| v.as_object()).cloned()
 }
@@ -258,8 +266,13 @@ fn pascal_custom_tools_execution_matches_oracle() {
 
             "renderTemplate" => {
                 let tool = tool_of(&row, &id);
-                let params = quilltap_core::pascal::custom_tools::resolve_params(&tool, None)
-                    .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
+                let state = state_of(row.get("state"));
+                let params = quilltap_core::pascal::custom_tools::resolve_params(
+                    &tool,
+                    None,
+                    state.as_ref(),
+                )
+                .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let message = row["message"].as_str().unwrap();
                 let metadata = metadata_of(row.get("metadata"));
                 let llm = llm_subject_of(row.get("llm"));
@@ -272,6 +285,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         params: &params,
                         metadata: metadata.as_ref(),
                         llm: llm.as_ref(),
+                        state: state.as_ref(),
                     },
                 );
                 assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
@@ -280,8 +294,12 @@ fn pascal_custom_tools_execution_matches_oracle() {
             "resolveParams" => {
                 let tool = tool_of(&row, &id);
                 let supplied = supplied_of(&row);
-                match quilltap_core::pascal::custom_tools::resolve_params(&tool, supplied.as_ref())
-                {
+                let state = state_of(row.get("state"));
+                match quilltap_core::pascal::custom_tools::resolve_params(
+                    &tool,
+                    supplied.as_ref(),
+                    state.as_ref(),
+                ) {
                     Ok(params) => {
                         assert!(
                             row["error"].is_null(),
@@ -302,8 +320,13 @@ fn pascal_custom_tools_execution_matches_oracle() {
 
             "matchesWhen" => {
                 let tool = tool_of(&row, &id);
-                let params = quilltap_core::pascal::custom_tools::resolve_params(&tool, None)
-                    .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
+                let state = state_of(row.get("state"));
+                let params = quilltap_core::pascal::custom_tools::resolve_params(
+                    &tool,
+                    None,
+                    state.as_ref(),
+                )
+                .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let when = &tool.outcomes[0].when;
                 let metadata = metadata_of(row.get("metadata"));
                 let llm = llm_subject_of(row.get("llm"));
@@ -313,6 +336,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     params: &params,
                     metadata: metadata.as_ref(),
                     llm: llm.as_ref(),
+                    state: state.as_ref(),
                 };
                 match matches_when(when, &subjects, "probe") {
                     Ok(held) => {
@@ -334,6 +358,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let supplied = supplied_of(&row);
                 let private = row["overrides"].get("private").and_then(Value::as_bool);
                 let metadata = metadata_of(row["overrides"].get("metadata"));
+                let state = state_of(row["overrides"].get("state"));
 
                 let pool = hex_bytes(row["poolHex"].as_str().unwrap());
                 let mut rng = FixedBytes::new(pool);
@@ -348,6 +373,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     supplied.as_ref(),
                     private,
                     metadata.as_ref(),
+                    state.as_ref(),
                     &mut rng,
                     invoker.as_ref().map(|i| i as &dyn LlmInvoker),
                 ));

@@ -44,6 +44,11 @@ fn simulate_outcomes_matches_oracle() {
             output: o["output"].as_str().unwrap().to_string(),
         });
 
+        // The mock merged state, held fixed across every draw (P4.d10).
+        let state = match row.get("state") {
+            Some(s @ Value::Object(_)) => Some(s.clone()),
+            _ => None,
+        };
         let mut rng = FixedBytes::new(vec![]);
         let got = simulate_outcomes(
             &definition,
@@ -51,6 +56,7 @@ fn simulate_outcomes_matches_oracle() {
             runs,
             metadata.as_ref(),
             llm.as_ref(),
+            state.as_ref(),
             &mut rng,
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));

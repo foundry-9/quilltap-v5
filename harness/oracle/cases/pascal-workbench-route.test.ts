@@ -47,6 +47,8 @@ interface CaseSpec {
   metadataCharacter?: string;
   /** §B: the bench oracle, sent verbatim (an explicit null is a distinct arm). */
   llm?: unknown;
+  /** P4.d10 §B: the mock merged state, sent verbatim (null is a distinct arm). */
+  state?: unknown;
   /**
    * P4.6bd: insert ONE cheap connection profile before the run, so a
    * `{live:true}` consult RESOLVES through the (mocked, recording) provider.
@@ -126,6 +128,8 @@ function bodyFor(c: CaseSpec, corpus: Corpus): Record<string, unknown> {
   // case carrying an explicit `null` still SENDS the null — that is a distinct
   // arm (`.nullish()`) from omitting the field.
   if (Object.prototype.hasOwnProperty.call(c, 'llm')) body.llm = (c as {llm: unknown}).llm;
+  // P4.d10 §B: the mock merged state rides the same hasOwnProperty rule.
+  if (Object.prototype.hasOwnProperty.call(c, 'state')) body.state = (c as {state: unknown}).state;
   return body;
 }
 

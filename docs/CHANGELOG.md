@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.d10 unit 5 (Pascal `$state` end-to-end): the second closed indirection
+form. `StateRefSchema` (`{ $state, fallback }`, strict, fallback required
+and typing the ref) joins the roll-field / eq-neq / containment operand
+unions and the parameter-default union in the definition schema port, with
+the fallback-typed load validation (`validateRollRefs`'s numeric-fallback
+message, `resolveOperandType` by fallback type, the parameter default
+checked against its fallback). `resolve_state_value` (pure, total,
+typeof-matched with the finite guard) threads through params / rolls /
+operands / templates (`{{state.path}}` — primitives render, everything
+else leaves the placeholder standing) / subjects / simulate. Both run
+entrances resolve the merged cascade scoped to the ROLLING character's own
+groups (or none) fail-soft; the workbench preview/audit verbs gain the §B
+optional `state` field (mock state, held fixed across every audit draw),
+forwarded by the REST leg and validated as v4's `z.record(...).nullish()`.
+The §C corpus regenerated at `7e6d13e5`: 159 → 175 rows (10 title + 165
+definition; 58 accept / 107 reject) — the union-arity drift on existing
+rejection strings reproduced exactly. The pascal-run-custom fixture
+rebuilt with the cascade seeds (a group, the general mount, chat state,
+the `stateful` tool); the execution (259 rows), simulate (12), run-custom
+handler (15), custom-tools route (13), workbench route (50, incl. the
+six §B mock-state cases), workbench §W, build-tools roster, definition,
+and llm-consult differentials all green over fresh `7e6d13e5` oracles.
+
 P4.d10 unit 4 (the nine state dispatch verbs): `chatStateGet`/`Set`/`Reset`
 (the merged four-tier cascade GET under the participants-union scope, with
 the empty-tier omission convention and the `groupTier` enrichment; set/reset

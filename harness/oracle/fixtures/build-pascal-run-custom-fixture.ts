@@ -41,6 +41,8 @@ const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
 
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
+const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
+const GENERAL_MP = '93000000-0000-4000-8000-0000000000aa';
 const P_A = 'e1000000-0000-4000-8000-00000000000a';
 const P_B = 'e1000000-0000-4000-8000-00000000000b';
 const P_C = 'e1000000-0000-4000-8000-00000000000c';
@@ -87,6 +89,31 @@ const WHISPERED = {
  * The table branches on `ok`, so the outcome index itself proves the consult
  * ran and reported failure rather than being skipped.
  */
+/**
+ * The P4.d10 `$state` tool: a $state roll bound (min == max → deterministic, no
+ * draw), a $state comparator operand, and `{{state.path}}` templates. The
+ * cascade for CHAR_A merges chat {difficulty:6, banner:'chat'} over group
+ * {gscore:4} over general {gen_tier:true, difficulty:9} → roll 6, 6 >= 4 →
+ * success. CHAR_B has no group, so gscore falls back to 99 → failure — the
+ * per-entrance character scoping made visible in the outcome index.
+ */
+const STATEFUL = {
+  name: 'stateful',
+  description: 'Roll against the table stakes.',
+  roll: {
+    min: { $state: 'difficulty', fallback: 5 },
+    max: { $state: 'difficulty', fallback: 5 },
+  },
+  outcomes: [
+    {
+      when: { gte: { $state: 'gscore', fallback: 99 } },
+      message: 'Cleared the stakes ({{state.banner}}, g {{state.gscore}}, gen {{state.gen_tier}}).',
+      state: 'success',
+    },
+    { when: true, message: 'Short of the stakes.', state: 'failure' },
+  ],
+};
+
 const ORACLE = {
   name: 'oracle',
   title: 'Consult The Oracle',
@@ -140,6 +167,8 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { CharacterSchema, ChatMetadataSchema } = await import('@/lib/schemas/types');
+  const { GroupSchema } = await import('@/lib/schemas/group.types');
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { UserSchema } = await import('@/lib/schemas/auth.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
@@ -149,12 +178,15 @@ async function main(): Promise<void> {
     DocMountFolderSchema,
     DocMountFileLinkSchema,
     DocMountChunkSchema,
+    GroupCharacterMemberSchema,
+    GroupDocMountLinkSchema,
     ProjectDocMountLinkSchema,
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
   await ensureCollection('users', UserSchema);
   await ensureCollection('characters', CharacterSchema);
+  await ensureCollection('groups', GroupSchema);
   await ensureCollection('chats', ChatMetadataSchema);
 
   const midb = getRawMountIndexDatabase();
@@ -166,6 +198,8 @@ async function main(): Promise<void> {
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
     ['doc_mount_chunks', DocMountChunkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
+    ['group_doc_mount_links', GroupDocMountLinkSchema],
     ['project_doc_mount_links', ProjectDocMountLinkSchema],
   ];
   for (const [name, schema] of ddl) {
@@ -225,13 +259,61 @@ async function main(): Promise<void> {
   await writeVaultFile(vaultA, 'Tools/coin.tool.json', COIN);
   await writeVaultFile(vaultA, 'Tools/whispered.tool.json', WHISPERED);
   await writeVaultFile(vaultA, 'Tools/oracle.tool.json', ORACLE);
+  await writeVaultFile(vaultA, 'Tools/stateful.tool.json', STATEFUL);
   await writeVaultFile(vaultA, 'metadata.json', { hasAnsibleAccess: true, clearanceLevel: 3 });
 
   await writeVaultFile(vaultB, 'Tools/ansible.tool.json', ANSIBLE);
+  await writeVaultFile(vaultB, 'Tools/stateful.tool.json', STATEFUL);
   await writeVaultFile(vaultB, 'metadata.json', { faction: 'Ordo Ferrum' });
 
   await writeVaultFile(vaultC, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultC, 'metadata.json', {});
+
+  // P4.d10: the state-cascade seeds. A group for CHAR_A (store-backed state via
+  // the overlay), the singleton "Quilltap General" mount with its root
+  // state.json, and chat-tier state on the salon chat below.
+  const group = await repos.groups.create(
+    { name: 'Table Stakes', description: null, color: null, icon: null, state: {} } as never,
+    { id: GROUP, createdAt: TS, updatedAt: TS } as never,
+  );
+  if ((group as { id: string }).id !== GROUP) throw new Error('group id drift');
+  await repos.groups.update(GROUP, { state: { gscore: 4 } } as never);
+  await repos.groupCharacterMembers.addMember(GROUP, CHAR_A);
+
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: GENERAL_MP, createdAt: TS, updatedAt: TS } as never,
+  );
+  const mainDbRaw = getRawDatabase();
+  if (!mainDbRaw) throw new Error('main DB handle unavailable');
+  mainDbRaw.exec(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  mainDbRaw
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('generalMountPointId', GENERAL_MP);
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  await writeDatabaseDocument(
+    GENERAL_MP,
+    'state.json',
+    JSON.stringify({ gen_tier: true, difficulty: 9 }, null, 2),
+  );
 
   const mkParticipant = (id: string, characterId: string, controlledBy: string) => ({
     id,
@@ -256,6 +338,8 @@ async function main(): Promise<void> {
         mkParticipant(P_C, CHAR_C, 'llm'),
         mkParticipant(P_USER, CHAR_A, 'user'),
       ],
+      // P4.d10: the chat tier of the cascade (narrowest — wins on collision).
+      state: { difficulty: 6, banner: 'chat' },
       tags: [],
     } as never,
     { id: CHAT, createdAt: TS, updatedAt: TS } as never,
