@@ -1125,6 +1125,72 @@ where
         Ok(dto)
     }
 
+    /// One Brahma Console send turn (the orchestrator — `chat_send`'s sibling).
+    /// A far simpler composition than [`Self::run_send`]: no participants / turn
+    /// chain / carina / danger / confirmation / compression — just the streaming
+    /// provider + the operator tool runner/detector + the pricing cost tracker,
+    /// around the ported [`handle_brahma_console_message`]. Returns the send reply
+    /// body; on failure emits v4's transport-shell error frame (`fatal_error`) and
+    /// returns the `CoreError`.
+    async fn run_brahma_send(
+        self,
+        req: quilltap_core::api::brahma::BrahmaConsoleSendRequest,
+    ) -> Result<serde_json::Value, CoreError> {
+        use quilltap_core::services::brahma_console::orchestrator::{
+            handle_brahma_console_message, BrahmaConsoleSendOptions, BrahmaSendDeps,
+        };
+
+        let db = self.db.clone();
+        let chat_id = req.chat_id.clone();
+        let sink = BroadcastSink {
+            chat_id: chat_id.clone(),
+            tx: self.events.clone(),
+        };
+        let detector = RegistryToolCallDetector::built_in();
+        let runner = self.tool_runner();
+        let mut cost = PricingCostTracker {
+            fetcher: &self.pricing,
+            ctx: build_pricing_context(&db, &req.user_id),
+        };
+        let mut deps = BrahmaSendDeps {
+            db: &db,
+            streaming: &*self.streaming,
+            tool_runner: &runner,
+            tool_detector: &detector,
+            cost: &mut cost,
+            // `model_supports_native_tools: true` matches v4's checkModelSupportsTools
+            // default for models absent from the fallback table (the console resolves
+            // its own per-chat profile, which the spine cannot know here) — the same
+            // choice run_send makes for the carina/Brahma engines.
+            model_supports_native_tools: true,
+        };
+        let opts = BrahmaConsoleSendOptions {
+            content: req.content.clone(),
+            file_ids: req.file_ids.clone(),
+        };
+        match handle_brahma_console_message(&mut deps, &sink, &req.user_id, &chat_id, &opts).await {
+            Ok(result) => Ok(serde_json::json!({ "messageId": result.message_id })),
+            Err(e) => {
+                // v4 `encodeErrorEvent(message, 'fatal_error', '')`.
+                let _ = self.events.send(Event::chat_error(
+                    &chat_id,
+                    ChatErrorPayload {
+                        error: e.message.clone(),
+                        error_type: "fatal_error".to_string(),
+                        details: String::new(),
+                    },
+                ));
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: e.message,
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                })
+            }
+        }
+    }
+
     /// One autonomous-room step (the `AUTONOMOUS_ROOM_TURN` runner body): the
     /// same deps construction as [`Self::run_send`] around the ported
     /// [`enclave_step`]. The step selects its own speaker, so the profile
@@ -1543,6 +1609,52 @@ where
                 Err(CoreError {
                     kind: ErrorKind::Internal,
                     message: "chat send thread panicked".to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                })
+            })
+        })
+    }
+}
+
+impl<EMB, CMP, STR, PF> quilltap_core::api::brahma::BrahmaConsoleSendDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn send(
+        &self,
+        req: quilltap_core::api::brahma::BrahmaConsoleSendRequest,
+    ) -> quilltap_core::api::brahma::BrahmaConsoleSendFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The Send bridge (module header): the turn runs on its own thread +
+            // current-thread runtime; the driver future awaits a oneshot.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(state.run_brahma_send(req)),
+                    Err(e) => Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("spine runtime: {e}"),
+                        pepper_state: None,
+                        code: None,
+                        associations: None,
+                    }),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: "brahma send thread panicked".to_string(),
                     pepper_state: None,
                     code: None,
                     associations: None,
@@ -2171,6 +2283,9 @@ pub struct SpineBundle {
     /// The custom-tool consult runner (P4.6bd; `None` for canned test factories —
     /// the composer/bench arms answer the loud not-assembled error).
     pub consult: Option<Arc<dyn ConsultRunner>>,
+    /// The Brahma Console send driver (P4.9I1A — the orchestrator; `None` for
+    /// canned test factories — the arm answers "not assembled").
+    pub brahma_console_send: Option<Arc<dyn quilltap_core::api::brahma::BrahmaConsoleSendDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2347,6 +2462,9 @@ impl SpineFactory for ProductionSpineFactory {
             // P4.6bd: the consult seam, wired LIVE — the composer + workbench
             // bench entrances consult for real spend from here on.
             consult: Some(consult),
+            // P4.9I1A: the Brahma Console orchestrator — the same spine backs it
+            // (streaming + tool runner + pricing), on real spend.
+            brahma_console_send: Some(Arc::clone(&spine) as _),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),

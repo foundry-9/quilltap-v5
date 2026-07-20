@@ -144,6 +144,13 @@ pub struct EngineAssembly {
     /// round — the P4.9f1 lane record names the recipe).
     pub avatar_preview: Option<super::wardrobe::ErasedAvatarPreview>,
     // === end P4.9f1 ===
+    // === P4.9I1A: the Brahma Console orchestrator send driver ===
+    /// The Brahma Console send driver (the orchestrator — `chat_send`'s sibling;
+    /// only the composing host can construct the streaming/tool/cost bundle).
+    /// `None` (read-only embedders) → the `BrahmaConsoleSend` arm answers a plain
+    /// internal error.
+    pub brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
+    // === end P4.9I1A ===
 }
 
 impl EngineAssembly {
@@ -152,6 +159,7 @@ impl EngineAssembly {
         EngineAssembly {
             shutdown,
             chat_send: None,
+            brahma_console_send: None,
             chat_create: None,
             swipe_generate: None,
             provider_actions: None,
@@ -309,6 +317,9 @@ struct ReadyEngine {
     /// The avatar-preview render seam (P4.9f1; `None` until the deferred host
     /// wire — the render step then answers the loud refusal).
     avatar_preview: Option<super::wardrobe::ErasedAvatarPreview>,
+    /// The Brahma Console send driver (P4.9I1A; `None` for read-only embedders —
+    /// the `BrahmaConsoleSend` arm answers a plain internal error).
+    brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -3088,6 +3099,84 @@ impl CoreEngine {
             },
             Request::WardrobeAnalyzeImage { .. } => super::wardrobe::wardrobe_analyze_image(),
             // === end P4.9f1 ===
+
+            // === P4.9I1A: the Brahma Console dispatch family ===
+            Request::BrahmaConsoleList => match self.ready_db() {
+                Ok(db) => super::brahma::brahma_console_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleCreate {
+                console_connection_profile_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::brahma::brahma_console_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        console_connection_profile_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::brahma::brahma_console_get(&db, SINGLE_USER_ID, &chat_id),
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleRename { chat_id, title } => match self.ready_db() {
+                Ok(db) => {
+                    super::brahma::brahma_console_rename(&db, SINGLE_USER_ID, &chat_id, &title)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleSetModel {
+                chat_id,
+                connection_profile_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::brahma::brahma_console_set_model(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &connection_profile_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleDelete { chat_id } => match self.ready_db() {
+                Ok(db) => super::brahma::brahma_console_delete(&db, SINGLE_USER_ID, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleMessages { chat_id } => match self.ready_db() {
+                Ok(db) => super::brahma::brahma_console_messages(&db, SINGLE_USER_ID, &chat_id),
+                Err(r) => r,
+            },
+            Request::BrahmaConsoleSend {
+                chat_id,
+                content,
+                file_ids,
+            } => {
+                // The owner/brahma-type gate, before the driver runs (v4's route
+                // calls `verifyBrahmaChat` before `handleBrahmaConsoleMessage`).
+                match self.ready_db() {
+                    Ok(db) => {
+                        match super::brahma::verify_brahma_chat(&db, &chat_id, SINGLE_USER_ID) {
+                            Ok(_) => {
+                                self.brahma_console_send(super::brahma::BrahmaConsoleSendRequest {
+                                    user_id: SINGLE_USER_ID.to_string(),
+                                    chat_id,
+                                    content,
+                                    file_ids,
+                                })
+                                .await
+                            }
+                            Err(r) => r,
+                        }
+                    }
+                    Err(r) => r,
+                }
+            } // === end P4.9I1A ===
         }
     }
 
@@ -3340,6 +3429,33 @@ impl CoreEngine {
         };
         match driver.send(req).await {
             Ok(dto) => Response::ChatSend(dto),
+            Err(e) => Response::Error(e),
+        }
+    }
+
+    /// The `BrahmaConsoleSend` arm: readiness-gated (D2), then delegated to the
+    /// assembly's orchestrator driver (mirrors [`Self::chat_send`]). A ready engine
+    /// without a driver (read-only embedder) answers a plain internal error.
+    async fn brahma_console_send(&self, req: super::brahma::BrahmaConsoleSendRequest) -> Response {
+        let driver = {
+            let state = self.inner.state.lock().unwrap();
+            match &*state {
+                EngineState::Ready(r) => match &r.brahma_console_send {
+                    Some(d) => Arc::clone(d),
+                    None => {
+                        return Response::error(
+                            ErrorKind::Internal,
+                            "brahma console dispatch not assembled",
+                        );
+                    }
+                },
+                EngineState::Locked { pepper_state, .. } => {
+                    return Response::locked(*pepper_state);
+                }
+            }
+        };
+        match driver.send(req).await {
+            Ok(dto) => Response::BrahmaConsoleSend(dto),
             Err(e) => Response::Error(e),
         }
     }
@@ -3668,6 +3784,7 @@ fn open_ready(
         image_generation: assembly.image_generation,
         consult: assembly.consult,
         avatar_preview: assembly.avatar_preview,
+        brahma_console_send: assembly.brahma_console_send,
     })
 }
 

@@ -25036,3 +25036,170 @@ item-8 narrow-pane overlay with it), p4.9i2 (HelpChat — its help-doc
 read surface has nothing ported above `services/help_doc_sync.rs`), a
 workspace/state dogfood pass (run `/dogfood` after this round unifies),
 and the M6 backlog rows 5/6/8+.
+
+---
+
+## P4.9I1A — the Brahma server lane (in progress, own branch `claude/p4.9i1a-brahma-server`)
+
+v4 baseline `7e6d13e5` (drift-checked clean at lane start). This lane
+ports the Brahma Console **server half** (the multi-turn orchestrator +
+the eight-verb dispatch family + the REST edges + differentials); the
+SPA half is P4.9I1B. §B wire contract binds the two.
+
+### Unit 1 — the orchestrator (LANDED)
+
+`quilltap-core` `services/brahma_console/orchestrator.rs` — v4
+`orchestrator.service.ts` (`handleBrahmaConsoleMessage` +
+`processBrahmaResponse`), the interactive, transcript-persisting console
+(the SEPARATE engine from the ported one-shot `run_brahma_query`; they
+share only `build_brahma_system_prompt` + the two helpers). Ported: the
+25-turn agent loop, the streamed content/reasoning frames, native +
+text-block tool detection (`simple-json` → text-block downgrade), the
+`submit_final_response` arm + raw-JSON fallback, the duplicate +
+stale stuck-loop guards, per-turn model + api-key resolution, persistence
+(user / assistant tool-call / TOOL / final assistant rows via the
+writer), the six SSE frames on the `ChatEvent` sink
+(content/reasoning/toolsDetected/status/toolResult/done —
+`process_tool_calls` emits the tool frames), the done payload in v4's
+exact field order (`reasoning_segments` Absent so the serialized shape is
+`{done, messageId, usage, cacheUsage, attachmentResults, toolsExecuted,
+provider, modelName, reasoningContent}`), and the `CostTracker`-seam
+token/cost tracking (`estimateMessageCost` + the chat-aggregate
+`increment_token_aggregates`). The generic seam surface mirrors the
+one-shot's (`StreamingCompletionProvider` / `ToolRunner` /
+`ToolCallDetector`) plus the `CostTracker`.
+
+The v5 shape differs from v4's `ReadableStream` by design (the locked
+boundary): frames ride the engine's global `Event` broadcast via an
+`EventSink` (scope-tagged by `chatId`, exactly as `ChatSend`), and the
+function returns the typed `BrahmaSendResult` (the final message id).
+v4's `encodeErrorEvent` frame is the transport-shell `ChatErrorPayload`
+the HOST driver emits on `Err` (the `ChatSend` split).
+
+**Deferred loud (documented):** the async context-summary tail
+(`triggerContextSummaryCheck`, auto-titling) — the DRIVE is deferred
+exactly as the production chat finalizer defers its own context-summary
+drive; no cheap-LLM auto-title generation is wired. Memory extraction is
+NEVER fired (v4's load-bearing guarantee — satisfied by absence).
+
+**Fixture (delivered):** new committed `brahma-{main,mount}.db` (built
+by `harness/oracle/fixtures/build-brahma-console-web-fixture.ts` over
+`brahma-console-web.json`) — 2 users, an api key, 3 connection profiles
+(P1 default + key, P2 set-model target, P3 `pseudoToolMode: text-block`),
+6 brahma chats (CHAT_A with a 4-message transcript incl. an empty
+tool-turn + a TOOL row; CHAT_B/C/E/F empty native; CHAT_D text-block;
+CHAT_C unpinned), and 1 non-brahma salon chat.
+
+**Differential:** `brahma_orchestrator_tier3_equivalence` (mocked-LLM) —
+canned streams keyed by `canned_stream_key`, marker-canned detection,
+REAL `run_sql` + `save_tool_messages`; per case the emitted frame
+sequence AND the persisted message rows (projected to stable columns;
+minted ids/timestamps dropped) byte-match v4's real
+`handleBrahmaConsoleMessage`. Arms: plain, run_sql (native tool +
+persistence + threading), text-block, submit_final, duplicate-stuck.
+Green (5/5, frames + rows). The 25-turn cap (a shared structural
+constant `MAX_AGENT_TURNS`) is proven by the
+`loop_bound_forces_a_final_answer_at_the_cap` unit test over a temp
+fixture copy (mirroring the one-shot engine's).
+
+Regen recipe (Node 24, from `~/source/quilltap-server`):
+```
+W=~/source/quilltap-v5/.claude/worktrees/p4.9i1a-brahma-server
+# fixture (re-copy the committed .db):
+QT_FIXTURE_BRAHMA_MAIN=$W/crates/quilltap-web/tests/fixtures/brahma-main.db \
+QT_FIXTURE_BRAHMA_MOUNT=$W/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+  node --import tsx $W/harness/oracle/fixtures/build-brahma-console-web-fixture.ts
+# tier-3 oracle (mirror to /tmp — jest ignores .claude/):
+mkdir -p /tmp/brahma-orch/cases /tmp/brahma-orch/fixtures
+cp $W/harness/oracle/cases/brahma-orchestrator-tier3.test.ts /tmp/brahma-orch/cases/
+cp $W/harness/oracle/fixtures/brahma-orchestrator-tier3.json /tmp/brahma-orch/fixtures/
+QT_FIXTURE_BRAHMA_MAIN=$W/.../brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=$W/.../brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma-orch.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/brahma-orch/cases -- brahma-orchestrator-tier3
+# run: QT_ORACLE_BRAHMA_ORCH=/tmp/oracle-brahma-orch.ndjson \
+#   cargo test -p quilltap-harness --test brahma_orchestrator_tier3_equivalence
+```
+
+### Units 2–4 — the dispatch family + send seam + REST edges (LANDED)
+
+**The CRUD dispatch family** (`api/brahma.rs` + `api/types.rs` +
+`api/engine.rs`): eight `Request` variants (`BrahmaConsoleList` /
+`Create` / `Get` / `Rename` / `SetModel` / `Delete` / `Messages` /
+`Send`). Seven are plain readiness-gated DB ops; `verify_brahma_chat`
+mirrors v4 `_shared.ts` (404 unless owner + `chatType==='brahma'`).
+Create resolves the requested profile (else the user's default),
+seeds the exact v4 title, and returns the created chat WITH the six
+explicit-null fields v4's `handleCreate` echoes (`contextSummary` /
+`roleplayTemplateId` / `timestampConfig` / `lastMessageAt` /
+`projectId` / `imageProfileId`) — v4's create-return is the input
+object, NOT a re-read, and `find_by_id` omits nulls (matching v4's
+update-return). Set-model writes `consoleConnectionProfileId` via a
+raw single-column `UPDATE chats` (+ `updatedAt`) — the standalone-write
+precedent, since `ChatUpdate` carries no such setter. Responses are the
+new `Response::BrahmaConsole(Value)` variant, mirroring v4's route JSON
+name-for-name.
+
+**The send seam** (unit 3): `BrahmaConsoleSend` rides a NEW host
+driver seam — `api::brahma::BrahmaConsoleSendDriver` (the `ChatSendDriver`
+precedent; only the composing host can construct the streaming/tool/cost
+bundle). Wired: `EngineAssembly::brahma_console_send` + the `ReadyEngine`
+copy + the `brahma_console_send` accessor (mirrors `chat_send`) + the
+dispatch arm (verify_brahma_chat gate → the driver). Implemented on the
+host `ChatSpine` (`run_brahma_send` — a far simpler composition than
+`run_send`: streaming + operator tool runner/detector + PricingCostTracker,
+around `handle_brahma_console_message`, on the same thread-bridge). **The
+Brahma send is LIVE — real spend.** (⚠ This is the genuinely-new host
+seam the order gated on a flag — the human APPROVED landing it;
+`quilltap-host` bumped 0.0.23 → 0.0.24.) On `Err` the host emits v4's
+transport-shell error frame (`fatal_error`) + returns the `CoreError`.
+The send dispatch reply is `{ messageId }`; the six SSE frames ride the
+global `/api/events` channel scope-tagged by `chatId` (the locked
+boundary — v5 has no per-request SSE endpoint).
+
+**The REST edges** (unit 4): `quilltap-web/src/brahma_routes.rs` +
+`lib.rs` — GET|POST `/api/v1/brahma-console`; GET|PATCH|DELETE
+`…/{id}` (+ `?action=set-model`); GET|POST `…/{id}/messages`. Each
+dispatches the `Request` and UNWRAPS the envelope to v4's raw route
+body; POST create answers 201; the PATCH action arbitration + the
+rename/set-model/send body validation mirror v4's zod messages. Two
+canned web-test `SpineBundle` factories gained `brahma_console_send:
+None`.
+
+**Differential** (tier-2): `brahma_console_routes_equivalence` —
+direct-drives `api::brahma::*` over a fresh copy of the committed
+fixture per case, diffing status + body against v4's REAL route
+handlers (a route oracle: `getServerSession` + the startup gate mocked,
+fresh copy + `resetModules` per case). 14 cases: list (6 chats) /
+list-other-user (0) / create-default (201) / create-with-profile (201)
+/ create-bad-profile (400) / get / get-salon-404 / get-missing-404 /
+get-other-user-404 / rename / set-model / set-model-bad-profile-400 /
+delete / get-messages. Green (14/14). The create 201 (a REST-edge
+concern; the dispatch `Response::BrahmaConsole` carries no per-verb
+status) is encoded per-case in the harness.
+
+Regen recipe (Node 24, from `~/source/quilltap-server`):
+```
+W=~/source/quilltap-v5/.claude/worktrees/p4.9i1a-brahma-server
+mkdir -p /tmp/brahma-routes/cases /tmp/brahma-routes/fixtures
+cp $W/harness/oracle/cases/brahma-console-routes.test.ts /tmp/brahma-routes/cases/
+cp $W/harness/oracle/fixtures/brahma-console-web.json /tmp/brahma-routes/fixtures/
+QT_FIXTURE_BRAHMA_MAIN=$W/crates/quilltap-web/tests/fixtures/brahma-main.db \
+QT_FIXTURE_BRAHMA_MOUNT=$W/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma-routes.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/brahma-routes/cases -- brahma-console-routes
+# run: QT_ORACLE_BRAHMA_ROUTES=/tmp/oracle-brahma-routes.ndjson \
+#   cargo test -p quilltap-harness --test brahma_console_routes_equivalence
+```
+
+**Gate (full lane):** `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets` clean BOTH feature sets (default +
+`quilltap-core/native-transport`); `cargo test --workspace` green with
+both `QT_ORACLE_BRAHMA_ORCH` + `QT_ORACLE_BRAHMA_ROUTES` set (zero
+SKIP). Versions: core 0.0.290, harness 0.0.252, web 0.0.36, host
+0.0.24.
+
+**Open under the order:** the SPA half is P4.9I1B (the console dialog
+family, streaming consumer, rail entry) — binds to this lane at §B/§W.
+No refusal arms remain in the server surface.

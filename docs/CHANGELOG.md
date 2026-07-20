@@ -2,6 +2,39 @@
 
 ## Recent Changes
 
+P4.9I1A (the Brahma server lane) unit 1: ported the Brahma Console
+multi-turn orchestrator (v4 `orchestrator.service.ts`
+`handleBrahmaConsoleMessage` + `processBrahmaResponse`) to
+`quilltap-core` `services/brahma_console/orchestrator.rs` — the
+transcript-persisting 25-turn agent loop emitting the six
+content/reasoning/toolsDetected/status/toolResult/done frames on the
+`ChatEvent` sink, the duplicate + stale stuck-loop guards, the
+`simple-json` → text-block downgrade, per-turn model resolution, and
+token/cost tracking. The async context-summary tail is a documented
+deferral (matching the chat finalizer); memory extraction never fires.
+New committed `brahma-{main,mount}.db` fixture family + a tier-3
+orchestrator differential (plain / run_sql / text-block /
+submit_final / duplicate-stuck arms — emitted frames and persisted
+message rows byte-match v4) + a 25-turn-cap unit test.
+
+P4.9I1A (the Brahma server lane) — the dedicated brahma-console CRUD
+dispatch family + the send seam + the REST edges. Eight `Request`
+variants (`brahmaConsoleList` / `Create` / `Get` / `Rename` /
+`SetModel` / `Delete` / `Messages` / `Send`) + `api/brahma.rs` handlers
++ `engine.rs` wiring; `verifyBrahmaChat` (404 unless owner +
+`chatType==='brahma'`); create seeds the exact v4 title "A Fresh
+Audience at the Console" (201); set-model writes `consoleConnectionProfileId`
+via a raw single-column `UPDATE chats`. `BrahmaConsoleSend` rides a new
+host `BrahmaConsoleSendDriver` seam on `EngineAssembly` (the orchestrator
+— `ChatSend`'s sibling), implemented on the host `ChatSpine` (streaming +
+tool runner + pricing; live, real spend); the reply is `{ messageId }`,
+frames ride `/api/events`. New `quilltap-web` `brahma_routes.rs` REST
+edges (GET|POST `/api/v1/brahma-console`; GET|PATCH|DELETE `…/{id}`
+[+ `?action=set-model`]; GET|POST `…/{id}/messages`). Tier-2 CRUD/route
+differential (14 cases: list filtering, create seed+profile, get,
+rename, set-model, delete, get-messages, the three verify 404 arms +
+the bad-profile 400) byte-matches v4's real route handlers.
+
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
 orchestrator + the eight-verb brahma-console dispatch family + REST

@@ -20,6 +20,7 @@
 //! `Request`/`Response`/`Event` contract; every decision lives behind
 //! `CoreEngine::dispatch` (or, for the byte routes, the ported repo reads).
 
+pub mod brahma_routes;
 pub mod characters_routes;
 pub mod custom_tools_routes;
 pub mod dispatch;
@@ -242,6 +243,24 @@ pub fn build_router(state: SharedState) -> Router {
         // === P4.6au: the home dashboard ===
         .route("/api/v1/system/home", get(system_routes::system_home_get))
         // === end P4.6au ===
+        // === P4.9I1A: the dedicated brahma-console CRUD + send surface ===
+        .route(
+            "/api/v1/brahma-console",
+            get(brahma_routes::brahma_console_collection_get)
+                .post(brahma_routes::brahma_console_collection_post),
+        )
+        .route(
+            "/api/v1/brahma-console/{id}",
+            get(brahma_routes::brahma_console_item_get)
+                .patch(brahma_routes::brahma_console_item_patch)
+                .delete(brahma_routes::brahma_console_item_delete),
+        )
+        .route(
+            "/api/v1/brahma-console/{id}/messages",
+            get(brahma_routes::brahma_console_messages_get)
+                .post(brahma_routes::brahma_console_messages_post),
+        )
+        // === end P4.9I1A ===
         // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
         .route(
             "/api/v1/user/profile",

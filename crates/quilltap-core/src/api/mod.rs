@@ -22,6 +22,7 @@
 
 // === P4.6ad: autonomous rooms ===
 pub mod autonomous_rooms;
+pub mod brahma;
 // === end P4.6ad ===
 pub mod characters;
 pub mod chat_create;

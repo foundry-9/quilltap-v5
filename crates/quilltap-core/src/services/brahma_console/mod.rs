@@ -31,6 +31,7 @@
 //! resolver seam is needed (both differential sides read the same fixture; the
 //! plaintext key value never reaches the diffed surface — the stream is canned).
 
+pub mod orchestrator;
 pub mod prompt_text;
 
 use std::future::Future;
@@ -78,10 +79,10 @@ const MAX_DUPLICATE_TOOL_CALLS: usize = 2;
 // Small JSON accessors (private, mirrors carina_query's).
 // ===========================================================================
 
-fn s(v: &Value, key: &str) -> Option<String> {
+pub(super) fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
-fn b(v: &Value, key: &str) -> Option<bool> {
+pub(super) fn b(v: &Value, key: &str) -> Option<bool> {
     v.get(key).and_then(Value::as_bool)
 }
 
@@ -187,7 +188,7 @@ fn is_js_whitespace(ch: char) -> bool {
 
 /// v4 `requiresApiKey(provider)`: the manifest's `config.requiresApiKey`, DEFAULT
 /// TRUE when the provider is unknown (v4's `?? true`).
-fn requires_api_key(provider: &str) -> bool {
+pub(super) fn requires_api_key(provider: &str) -> bool {
     Registry::built_in()
         .get_provider(provider)
         .map(|m| m.config_requirements.requires_api_key)
@@ -252,7 +253,7 @@ impl EventSink for NoopSink {
 /// `ThreadedMessage[]` straight to `streamMessage`; the v5 stream boundary carries
 /// role+content only — `toolCalls`/reasoning are request-local continuation state
 /// the provider request builder reconstructs, as `native_tool_loop` does).
-fn to_completion_messages(messages: &[ThreadedMessage]) -> Vec<CompletionMessage> {
+pub(super) fn to_completion_messages(messages: &[ThreadedMessage]) -> Vec<CompletionMessage> {
     messages
         .iter()
         .map(|m| CompletionMessage {
@@ -679,7 +680,7 @@ where
 }
 
 /// A role+content-only [`ThreadedMessage`] (no tool-call / reasoning fields).
-fn plain_message(role: &str, content: &str) -> ThreadedMessage {
+pub(super) fn plain_message(role: &str, content: &str) -> ThreadedMessage {
     ThreadedMessage {
         role: role.to_string(),
         content: content.to_string(),

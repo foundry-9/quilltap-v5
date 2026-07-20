@@ -2223,6 +2223,54 @@ pub enum Request {
         body: serde_json::Value,
     },
     // === end P4.9f1 ===
+
+    // === P4.9I1A: the Brahma Console dedicated dispatch family ===
+    /// v4 `GET /api/v1/brahma-console` — the user's brahma chats.
+    BrahmaConsoleList,
+    /// v4 `POST /api/v1/brahma-console` — create a brahma chat (optional starting
+    /// profile, else the user's default).
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleCreate {
+        #[serde(default)]
+        console_connection_profile_id: Option<String>,
+    },
+    /// v4 `GET /api/v1/brahma-console/{id}` — chat detail.
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleGet {
+        chat_id: String,
+    },
+    /// v4 `PATCH /api/v1/brahma-console/{id}` (no action) — rename.
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleRename {
+        chat_id: String,
+        title: String,
+    },
+    /// v4 `PATCH /api/v1/brahma-console/{id}?action=set-model` — switch profile.
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleSetModel {
+        chat_id: String,
+        connection_profile_id: String,
+    },
+    /// v4 `DELETE /api/v1/brahma-console/{id}` — delete.
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleDelete {
+        chat_id: String,
+    },
+    /// v4 `GET /api/v1/brahma-console/{id}/messages` — the transcript.
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleMessages {
+        chat_id: String,
+    },
+    /// v4 `POST /api/v1/brahma-console/{id}/messages` — send + stream (the
+    /// orchestrator; frames ride the Event channel, chat-scoped).
+    #[serde(rename_all = "camelCase")]
+    BrahmaConsoleSend {
+        chat_id: String,
+        content: String,
+        #[serde(default)]
+        file_ids: Vec<String>,
+    },
+    // === end P4.9I1A ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2277,6 +2325,14 @@ pub enum Response {
     CustomToolAudit(serde_json::Value),
     /// v4 message edit / swipe body (`{ message: {...} }`).
     Message(serde_json::Value),
+    /// v4 brahma-console CRUD bodies (`{ chats }` / `{ chat }` / `{ messages }` /
+    /// `{ message }`) — the P4.9I1A dedicated dispatch family. Send's reply is the
+    /// separate `BrahmaConsoleSend` variant.
+    BrahmaConsole(serde_json::Value),
+    /// v4 brahma-console send reply (`{ messageId }`) — the orchestrator's typed
+    /// dispatch result; the stream frames ride the Event channel (the `ChatSend`
+    /// architecture).
+    BrahmaConsoleSend(serde_json::Value),
     /// v4 message-delete body (the confirmation body OR `{ success, memoriesDeleted }`).
     MessageDelete(serde_json::Value),
     /// v4 impersonation-verb body (`{ success, ... }`).

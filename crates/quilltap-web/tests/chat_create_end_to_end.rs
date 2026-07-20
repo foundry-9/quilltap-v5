@@ -176,6 +176,7 @@ impl SpineFactory for CreateSpineFactory {
             save_image_bytes: None,
             image_generation: None,
             consult: None,
+            brahma_console_send: None,
             job_handlers: Vec::new(),
         }
     }

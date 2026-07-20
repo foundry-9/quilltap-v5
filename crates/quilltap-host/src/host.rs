@@ -460,6 +460,7 @@ impl EngineAssembler for HostAssembler {
             save_image_bytes,
             image_generation,
             consult,
+            brahma_console_send,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -475,9 +476,10 @@ impl EngineAssembler for HostAssembler {
                     bundle.save_image_bytes,
                     bundle.image_generation,
                     bundle.consult,
+                    bundle.brahma_console_send,
                 )
             }
-            None => (None, None, None, None, None, None, None, None, None),
+            None => (None, None, None, None, None, None, None, None, None, None),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -597,6 +599,11 @@ impl EngineAssembler for HostAssembler {
             // is DEFERRED TO UNIFICATION — see the P4.9f1 lane record. ===
             avatar_preview: None,
             // === end P4.9f1 ===
+            // === P4.9I1A: the Brahma Console orchestrator send driver, wired LIVE
+            // from the spine (streaming + tool runner + pricing). Spine-less
+            // assemblies keep `None` → the arm answers "not assembled". ===
+            brahma_console_send,
+            // === end P4.9I1A ===
         })
     }
 }
