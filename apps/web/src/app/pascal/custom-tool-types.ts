@@ -10,9 +10,10 @@
  * loader runs on the server, which is the whole design.
  *
  * Design constraint that shapes everything below: **no expression evaluation,
- * anywhere.** Outcome tests are AND-composed comparator objects, and the only
- * indirection is a `{ "$param": "name" }` reference. There is no string grammar
- * to parse, so there is nothing to inject into.
+ * anywhere.** Outcome tests are AND-composed comparator objects, and indirection
+ * is limited to two closed forms — a `{ "$param": "name" }` reference and a
+ * `{ "$state": "path", "fallback": <literal> }` reference. There is no string
+ * grammar to parse, so there is nothing to inject into.
  *
  * # Why this file reimplements a slice of Zod
  *
@@ -164,32 +165,53 @@ export type OutcomeState = 'success' | 'partial' | 'failure' | 'info';
 
 /**
  * A reference to a declared numeric parameter, usable anywhere a roll takes a
- * number. The ONLY form of indirection in the format.
+ * number. One of the two forms of indirection in the format (the other is
+ * {@link StateRef}).
  */
 export interface ParamRef {
   $param: string;
 }
 
-/** A roll field: a literal number, or a reference to a numeric parameter. */
-export type NumberOrParamRef = number | ParamRef;
+/**
+ * A reference into the merged persistent state (chat → project → group →
+ * general), usable anywhere a `$param` reference is. Its `fallback` is required
+ * and load-bearing: it types the reference at load time (a numeric fallback
+ * makes it a number, a string fallback a string, and so on) and guarantees that
+ * run-time resolution can never fail — an absent path or a value of the wrong
+ * type simply resolves to the fallback. A run is therefore always dealable.
+ */
+export interface StateRef {
+  $state: string;
+  fallback: number | string | boolean;
+}
+
+/** A roll field: a literal number, a `$param`, or a `$state` reference. */
+export type NumberOrParamRef = number | ParamRef | StateRef;
 
 /**
  * A comparator operand for eq/neq, which may address a parameter of any
- * declared type — `{ "eq": "brass" }` is a legitimate test of a string.
+ * declared type — `{ "eq": "brass" }` is a legitimate test of a string — or a
+ * `$state` reference typed by its fallback.
  */
-export type AnyOperand = number | string | boolean | ParamRef;
+export type AnyOperand = number | string | boolean | ParamRef | StateRef;
 
 /**
  * A comparator operand for contains/ncontains: the substring to look for — a
- * literal string, or a `$param` reference to a declared string parameter. The
- * literal must be non-empty because every string contains "", which makes an
- * empty needle a typo wearing a comparator's clothes.
+ * literal string, a `$param` reference to a declared string parameter, or a
+ * `$state` reference whose fallback is a string. The literal must be non-empty
+ * because every string contains "", which makes an empty needle a typo wearing
+ * a comparator's clothes.
  */
-export type StringOperand = string | ParamRef;
+export type StringOperand = string | ParamRef | StateRef;
 
 /** True when a roll field is a `$param` reference rather than a literal. */
 export function isParamRef(value: unknown): value is ParamRef {
   return typeof value === 'object' && value !== null && '$param' in value;
+}
+
+/** True when a value is a `$state` reference rather than a literal or `$param`. */
+export function isStateRef(value: unknown): value is StateRef {
+  return typeof value === 'object' && value !== null && '$state' in value;
 }
 
 /**
@@ -199,7 +221,7 @@ export function isParamRef(value: unknown): value is ParamRef {
  */
 export interface CustomToolParameter {
   type: ParameterType;
-  default: number | string | boolean;
+  default: number | string | boolean | StateRef;
   description?: string;
   min?: number;
   max?: number;
@@ -572,30 +594,72 @@ function parseParamRef(input: unknown): Res<ParamRef> {
 }
 
 /**
+ * v4 `StateRefSchema`'s `fallback` — `z.union([z.number().finite(), z.string(),
+ * z.boolean()])`, in that order. Note the `.finite()` (unlike a parameter
+ * `default`), so an overflow literal fails the number branch.
+ */
+function parseStateFallback(input: unknown): Res<number | string | boolean> {
+  const n = parseFiniteNumber(input);
+  const s = parseString(input, undefined, undefined, false);
+  const b = parseBool(input);
+  return union<number | string | boolean>([n, s, b]);
+}
+
+/**
+ * v4 `StateRefSchema` — `z.strictObject({ $state: z.string().min(1), fallback:
+ * <the union above> })`. The `$state` `min(1)` is a CHECK (continuable), which
+ * is what lets an empty path stay the single non-aborted branch in a union and
+ * hoist its own sentence rather than being buried under "Invalid input".
+ */
+function parseStateRef(input: unknown): Res<StateRef> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const path = parseString(input['$state'], 1, undefined, false);
+  issues.push(...prefix('$state', path.issues));
+
+  const fallback = parseStateFallback(input['fallback']);
+  issues.push(...prefix('fallback', fallback.issues));
+
+  issues.push(...unrecognizedKeys(input, ['$state', 'fallback']));
+
+  const value =
+    path.value !== undefined && fallback.value !== undefined && !aborted(issues)
+      ? { $state: path.value, fallback: fallback.value }
+      : undefined;
+  return { value, issues };
+}
+
+/**
  * v4 `NumberOrParamRefSchema` / `NumberOperandSchema` — the two are the same
  * union, and both roll fields and ordering operands take it.
  */
 function parseNumberOrParamRef(input: unknown): Res<NumberOrParamRef> {
   const n = parseFiniteNumber(input);
   const p = parseParamRef(input);
-  return union<NumberOrParamRef>([n, p]);
+  const st = parseStateRef(input);
+  return union<NumberOrParamRef>([n, p, st]);
 }
 
-/** v4 `AnyOperandSchema` — number | string | boolean | ParamRef, in that order. */
+/**
+ * v4 `AnyOperandSchema` — number | string | boolean | ParamRef | StateRef, in
+ * that order.
+ */
 function parseAnyOperand(input: unknown): Res<AnyOperand> {
   const n = parseFiniteNumber(input);
   const s = parseString(input, undefined, undefined, false);
   const b = parseBool(input);
   const p = parseParamRef(input);
-  return union<AnyOperand>([n, s, b, p]);
+  const st = parseStateRef(input);
+  return union<AnyOperand>([n, s, b, p, st]);
 }
 
 /**
- * v4 `StringOperandSchema` — `z.string().min(1, …) | ParamRefSchema`. The
- * empty-string case leans on the union's hoist rule: the string branch's `min`
- * is a CHECK (continuable) while the `$param` branch aborts on shape, so
- * exactly one branch is non-aborted and its authored sentence surfaces instead
- * of a bare "Invalid input".
+ * v4 `StringOperandSchema` — `z.string().min(1, …) | ParamRefSchema |
+ * StateRefSchema`. The empty-string case leans on the union's hoist rule: the
+ * string branch's `min` is a CHECK (continuable) while the `$param`/`$state`
+ * branches abort on shape, so exactly one branch is non-aborted and its
+ * authored sentence surfaces instead of a bare "Invalid input".
  */
 function parseStringOperand(input: unknown): Res<StringOperand> {
   const s: Res<StringOperand> =
@@ -603,7 +667,8 @@ function parseStringOperand(input: unknown): Res<StringOperand> {
       ? { value: input, issues: input.length < 1 ? [checkIssue(EMPTY_SUBSTRING)] : [] }
       : resHard(invalidType('string', input));
   const p = parseParamRef(input);
-  return union<StringOperand>([s, p]);
+  const st = parseStateRef(input);
+  return union<StringOperand>([s, p, st]);
 }
 
 function parseNumericComparator(input: unknown): Res<NumericComparator> {
@@ -732,18 +797,22 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   const ty = parseEnum<ParameterType>(input['type'], ['number', 'integer', 'string', 'boolean']);
   issues.push(...prefix('type', ty.issues));
 
-  // `default: z.union([number, string, boolean])` — no `.finite()` here.
-  let defaultValue: number | string | boolean | undefined;
+  // `default: z.union([number, string, boolean, StateRefSchema])` — no
+  // `.finite()` on the number arm here (unlike a `$state` fallback).
+  let defaultValue: number | string | boolean | StateRef | undefined;
   const rawDefault = input['default'];
   if (typeof rawDefault === 'number' || typeof rawDefault === 'string' || typeof rawDefault === 'boolean') {
     defaultValue = rawDefault;
   } else {
-    const branches: Res<never>[] = [
+    const branches: Res<number | string | boolean | StateRef>[] = [
       resHard(invalidType('number', rawDefault)),
       resHard(invalidType('string', rawDefault)),
       resHard(invalidType('boolean', rawDefault)),
+      parseStateRef(rawDefault),
     ];
-    issues.push(...prefix('default', union(branches).issues));
+    const r = union<number | string | boolean | StateRef>(branches);
+    issues.push(...prefix('default', r.issues));
+    defaultValue = r.value;
   }
 
   let description: string | undefined;
@@ -782,12 +851,15 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
     issues.push(checkIssue('min must not exceed max', ['min']));
   }
 
-  // The declared default must satisfy the parameter's own declared type.
-  const defaultType = typeof defaultValue;
+  // The declared default must satisfy the parameter's own declared type. A
+  // `$state` default is typed by its fallback (which run-time resolution is
+  // guaranteed to fall back to), so the fallback is what must match the type.
+  const effectiveDefault = isStateRef(defaultValue) ? defaultValue.fallback : defaultValue;
+  const defaultType = typeof effectiveDefault;
   if (numeric && defaultType !== 'number') {
     issues.push(checkIssue(`default must be a number for type ${paramType}`, ['default']));
   }
-  if (paramType === 'integer' && defaultType === 'number' && !Number.isInteger(defaultValue)) {
+  if (paramType === 'integer' && defaultType === 'number' && !Number.isInteger(effectiveDefault)) {
     issues.push(checkIssue('default must be a whole number for type integer', ['default']));
   }
   if (paramType === 'string' && defaultType !== 'string') {
@@ -1297,7 +1369,11 @@ function validateMetadataOperands(
   }
 }
 
-/** Roll fields are numeric, so every `$param` in one must name a numeric parameter. */
+/**
+ * Roll fields are numeric, so every reference in one must resolve to a number:
+ * a `$param` must name a numeric parameter, and a `$state` ref must carry a
+ * numeric fallback (the only thing knowable about it at load time).
+ */
 function validateRollRefs(
   declared: Record<string, CustomToolParameter>,
   roll: Roll | undefined,
@@ -1306,6 +1382,18 @@ function validateRollRefs(
   if (!roll || typeof roll === 'string') return;
 
   for (const [field, value] of Object.entries(roll)) {
+    if (isStateRef(value)) {
+      if (typeof value.fallback !== 'number') {
+        issues.push(
+          checkIssue(
+            `roll.${field} uses a $state reference whose fallback is ${typeof value.fallback} rather than a number`,
+            ['roll', field],
+          ),
+        );
+      }
+      continue;
+    }
+
     if (!isParamRef(value)) continue;
 
     const target = declared[value.$param];
@@ -1405,6 +1493,17 @@ function resolveOperandType(
       return null;
     }
     return valueTypeOf(target.type);
+  }
+
+  // A `$state` operand carries the type of its (required) fallback — that is
+  // what run-time resolution is guaranteed to produce when the path misses.
+  if (isStateRef(operand)) {
+    const fallbackType = typeof operand.fallback;
+    if (fallbackType === 'number' || fallbackType === 'string' || fallbackType === 'boolean') {
+      return fallbackType;
+    }
+    // Unreachable: the schema types the fallback before this runs.
+    return null;
   }
 
   const literal = typeof operand;

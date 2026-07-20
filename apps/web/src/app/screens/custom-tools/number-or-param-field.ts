@@ -31,6 +31,14 @@ import { Icon } from '../../ui/icon';
           [attr.aria-label]="label()"
           step="any"
         />
+      } @else if (value().kind === 'state') {
+        <span
+          class="qt-text-xs qt-text-secondary font-mono rounded qt-bg-muted px-2 py-1"
+          [class.qt-input-error]="hasError()"
+          title="This field draws from persistent state. Edit $state references in the raw JSON, or swap to a literal."
+        >
+          {{ statePillText() }}
+        </span>
       } @else {
         <select
           [value]="paramName()"
@@ -90,13 +98,22 @@ export class NumberOrParamField {
     return v.kind === 'param' ? v.name : '';
   }
 
+  /** The read-only pill for a carried `$state` roll field (v4's markup). */
+  protected statePillText(): string {
+    const v = this.value();
+    return v.kind === 'state' ? `$state: ${v.path} → ${v.fallback}` : '';
+  }
+
   protected toggleTitle(): string {
-    if (this.value().kind === 'literal') {
+    const v = this.value();
+    if (v.kind === 'literal') {
       return this.noParams()
         ? 'Declare a numeric parameter first'
         : 'Use a parameter instead of a number';
     }
-    return 'Use a literal number instead';
+    return v.kind === 'state'
+      ? 'Replace this $state reference with a literal number'
+      : 'Use a literal number instead';
   }
 
   protected onLiteralInput(event: Event): void {

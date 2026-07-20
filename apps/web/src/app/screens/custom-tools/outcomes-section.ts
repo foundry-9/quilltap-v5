@@ -143,6 +143,14 @@ function subjectValueType(
       }
 
       @switch (widget()) {
+        @case ('state') {
+          <span
+            class="qt-text-xs qt-text-secondary font-mono rounded qt-bg-muted px-2 py-1"
+            title="This operand draws from persistent state. Edit $state references in the raw JSON."
+          >
+            {{ statePillText() }}
+          </span>
+        }
         @case ('param') {
           <select
             [value]="operandName()"
@@ -226,18 +234,21 @@ export class OperandField {
     return kind === 'metadata' || kind === 'llm';
   });
 
-  // Containment needs no picker — the substring is always text.
+  // Containment needs no picker — the substring is always text. A `$state`
+  // operand is a read-only pill, so it takes no picker either.
   readonly showTypePicker = computed(
     () =>
       this.typeUnknowable() &&
       !this.ordering() &&
       !this.containment() &&
-      this.operand().kind !== 'param',
+      this.operand().kind !== 'param' &&
+      this.operand().kind !== 'state',
   );
 
   /** Which widget the operand renders as — v4's nested ternary, named. */
-  readonly widget = computed<'param' | 'boolean' | 'string' | 'number'>(() => {
+  readonly widget = computed<'state' | 'param' | 'boolean' | 'string' | 'number'>(() => {
     const o = this.operand();
+    if (o.kind === 'state') return 'state';
     if (o.kind === 'param') return 'param';
     if (o.kind === 'boolean') return 'boolean';
     if (o.kind === 'string' && (this.containment() || this.subjectType() !== 'number')) {
@@ -245,6 +256,12 @@ export class OperandField {
     }
     return 'number';
   });
+
+  /** The read-only pill for a carried `$state` operand (v4's markup). */
+  protected statePillText(): string {
+    const o = this.operand();
+    return o.kind === 'state' ? `$state: ${o.path} → ${String(o.fallback)}` : '';
+  }
 
   protected operandName(): string {
     const o = this.operand();

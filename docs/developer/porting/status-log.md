@@ -260,6 +260,95 @@ chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
 staged outside `.claude/`, from the pin, `-- state-cascade` also matches
 v4's own unit suite — harmless, both pass).
 
+## P4.6be unit 1 — Pascal `$state` schema + tool-draft ports (lane BE, 2026-07-19)
+
+SPA half of the `c53510c7` state-cascade round (lane BE; sibling D10 owns
+`crates/**` + `harness/**` + the §C corpus NDJSON). Drift-checked at lane
+start: v4 HEAD is exactly `c53510c7` (`git log c53510c7..HEAD` empty). Ports
+v4 `f48f34dc`'s client-side `lib/pascal/custom-tool.types.ts` +
+`lib/pascal/tool-draft.ts` diffs into the SPA twins.
+
+**`custom-tool-types.ts` (the hand-rolled Zod twin, no zod dep):** added the
+`StateRef` type + `isStateRef`; `parseStateRef` (mirrors `z.strictObject({
+$state: z.string().min(1), fallback: z.union([number.finite, string, boolean])
+})`) + `parseStateFallback`; wired `StateRef` into `parseNumberOrParamRef`,
+`parseAnyOperand`, `parseStringOperand` (matching v4's union order), and the
+parameter-`default` union; parameter-default typing now checks the fallback
+(`isStateRef(default) ? default.fallback : default`); `validateRollRefs` gained
+the `$state`-fallback-must-be-number arm; `resolveOperandType` types a `$state`
+operand by its fallback. `NumberOrParamRef` / `AnyOperand` / `StringOperand` /
+`CustomToolParameter.default` widened to include `StateRef`.
+
+**`tool-draft.ts`:** the `state` draft kind on `NumberOrParamValue`
+(`{path, fallback:string}`) and `ConditionOperand` (`{path, fallback:number|
+string|boolean}`); `DraftParameter.defaultValue` widened to carry a `StateRef`
+verbatim; `rollFieldToValue` / `operandToDraft` / `parameterToDraft` /
+`valueToRollField` / `operandFromDraft` / `parameterFromDraft` extended
+case-for-case; `validateNumberOrParam` gained the `${field} $state fallback
+must be a number` arm. Doctrine carried: the builder ROUND-TRIPS `$state` but
+never authors it.
+
+**Differential (the equivalence test):** `custom-tool-types.state.spec.ts` —
+19 rows byte-CAPTURED from v4's real `QtapCustomToolSchema.safeParse` +
+`formatDefinitionIssues` at `c53510c7` (scratch capture script; the ROWS are
+the artifact), compared success/reason/data exactly as the corpus spec does.
+Covers acceptance (roll fields, operands, param defaults, string/boolean
+fallbacks, transforms) and rejection (missing fallback, non-number roll
+fallback, type-mismatched default, strict extra key, empty path, object/null
+fallback, ordering-against-string, containment-of-number, integer fractional
+fallback, bare-value type mismatch). `tool-draft.spec.ts` gained a `$state`
+round-trip block (roll field + transform, comparator operands, param default —
+each via the existing `expectRoundTrip` load→emit→reparse harness — plus the
+`validateNumberOrParam` state arm both ways).
+
+**Drift caught:** the `$state` feature adds a `StateRefSchema` branch to
+`StringOperandSchema`/`AnyOperandSchema`, so a literal that satisfies neither
+the string nor the `$param` branch now reports one extra `Invalid input:
+expected object, received <type>` union arm. Two `custom-tool-types.llm.spec.ts`
+rows (`contains-number-literal`, `contains-boolean-literal`) re-captured at
+`c53510c7` accordingly (verified byte-identical to v4's real Zod). The §C
+corpus file and its count guards (159/10/149) are UNTOUCHED — lane D10
+regenerates them at `c53510c7`; the unifier updates the count literals.
+
+**Workbench `$state` surface (folded into this unit — type-coupled to the
+widened `NumberOrParamValue`/`ConditionOperand` unions):** `proving-bench.ts`
+gained the "Mock state" card (v4's exact copy + `aria-label="Mock merged state
+(JSON object)"`, 3-row textarea), `mockStateText` signal, `testsState` (operand
+∨ range-field ∨ param-default ∨ `/\{\{\s*state\./` message probe), `mockStateError`
+(single-object validation), the `noMockStateHint`, `benchState()`, the
+`mockStateError` gate on `benchDisabled`, and `state: benchState()` on BOTH the
+preview and audit dispatch bodies (§B). `workbench.api.ts` + `core-contract.ts`
+gained the optional `state` field on `customToolPreview`/`customToolAudit`.
+Read-only `$state` pills added to `builder-form.ts` (parameter default +
+`rangeReadout`'s `state:${path}` part), `number-or-param-field.ts` (pill +
+"Replace this $state reference with a literal number" toggle title), and
+`outcomes-section.ts` (pill + `showTypePicker`/`widget` `state` exclusion) —
+the builder ROUND-TRIPS `$state` but never AUTHORS it (pills are read-only;
+editing is in raw JSON). New component specs: `proving-bench.spec.ts`
+(mock-state validation, disabled gate, both bodies carry `state`, `testsState`
+across all four surfaces, the empty-mock hint) and `builder-form.spec.ts` (the
+`state:` readout, the default pill, the operand pill + no-picker).
+
+**§C tripwire (expected-red, lane D10's to clear):** widening
+`StringOperandSchema`/`AnyOperandSchema` with the `StateRefSchema` branch adds
+one `Invalid input: expected object, received <type>` arm to the invalid-union
+sentence for a literal that satisfies neither the string nor the `$param`
+branch. FOUR rows of the committed §C corpus
+(`string-compared-with-value`, `unknown-key-inside-param-ref`,
+`roll-range-and-dice-both-broken`, `contains-number-substring`) were captured
+at `616930db` and therefore report the SPA schema as diverged — verified
+against v4's real Zod at `c53510c7` that my port matches `c53510c7` exactly for
+all four (the extra union arm). These stay red on this branch by design; lane
+D10 regenerates the corpus at `c53510c7` and the unifier re-runs both consumers.
+`ng test`: 2288 passed / 4 failed (the four §C corpus rows only) / 188 files;
+`ng build` clean.
+
+**Regen recipe:** in `~/source/quilltap-server` @ `c53510c7`, Node 24
+(`~/.nvm/versions/node/v24.13.1/bin`), `npx tsx <capture>` driving
+`QtapCustomToolSchema.safeParse` + `formatDefinitionIssues` over each input →
+`{success, reason, data}`; paste rows into the spec. (Capture script is scratch;
+the committed rows are the artifact.)
+
 ## P4.6bd lane addendum — oracle provenance re-pinned (lane BD, 2026-07-18)
 
 **⚠ The v4 working tree went DIRTY mid-lane** (HEAD unchanged at `616930db`;

@@ -49,7 +49,16 @@ interface Row {
   data: string | null;
 }
 
-/** Captured from v4's real Zod at `616930db`. Do not hand-edit a message. */
+/**
+ * Captured from v4's real Zod at `616930db`. Do not hand-edit a message.
+ *
+ * TWO rows (`contains-number-literal`, `contains-boolean-literal`) were
+ * re-captured at `c53510c7` when the `$state` feature (v4 `f48f34dc`) added a
+ * `StateRefSchema` branch to `StringOperandSchema` — a literal that satisfies
+ * neither the string nor the `$param` branch now reports one extra
+ * `Invalid input: expected object, received <type>` arm (the new `$state`
+ * branch). Verified byte-identical to v4's real Zod at `c53510c7`.
+ */
 const ROWS: Row[] = [
   {
     id: "llm-block-ok",
@@ -286,7 +295,7 @@ const ROWS: Row[] = [
     id: "contains-number-literal",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"params\":{\"material\":{\"contains\":42}}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}],\"parameters\":{\"material\":{\"type\":\"string\",\"default\":\"brass\"}}}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received number \u2014 or \u2014 Invalid input: expected object, received number",
+    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received number \u2014 or \u2014 Invalid input: expected object, received number \u2014 or \u2014 Invalid input: expected object, received number",
     data: null,
   },
   {
@@ -307,7 +316,7 @@ const ROWS: Row[] = [
     id: "contains-boolean-literal",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"params\":{\"material\":{\"contains\":true}}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}],\"parameters\":{\"material\":{\"type\":\"string\",\"default\":\"brass\"}}}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean",
+    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean",
     data: null,
   },
   {

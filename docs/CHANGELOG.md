@@ -136,6 +136,35 @@ CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
 across the gap. Round record in the status log; the round pin moves to
 `qt-v4-pin-7e6d13e5`.
 
+Lane P4.6be (SPA half of the `c53510c7` state-cascade round), unit 1 —
+the Pascal `$state` schema + tool-draft ports and the Workbench `$state`
+surface (SPA 0.5.210): the browser custom-tool schema twin gained the
+`StateRef` type + `isStateRef`, the `StateRefSchema` validator (strict
+`{$state, fallback}`, `$state` min-1, fallback a
+finite-number/string/boolean union), the reference added to the
+roll-field / any-operand / string-operand / parameter-default unions,
+parameter-default typing off the fallback, and the `validateRollRefs` /
+`resolveOperandType` `$state` arms. tool-draft gained the `state` draft
+kind on `NumberOrParamValue` / `ConditionOperand`, the `StateRef` default
+carried verbatim, the six round-trip functions, and the `$state fallback
+must be a number` validation arm. The Workbench gained the mock-state
+card (`benchState` + `testsState` detection + single-object validation +
+the fallback hint) with `state` carried onto both the preview and audit
+dispatch bodies (§B, folded into `core-contract`'s
+`CustomToolPreviewRequest`/`CustomToolAuditRequest`), and the read-only
+`$state` pills across `builder-form` (default + `rangeReadout` `state:`
+part), `number-or-param-field`, and `outcomes-section` (the
+round-trips-but-never-authors doctrine; the type picker excludes `state`).
+Proven by a new capture-based differential
+(`custom-tool-types.state.spec.ts`, 19 rows byte-captured from v4's real
+Zod at `c53510c7`), new tool-draft round-trip cases, and new
+proving-bench / builder-form component specs; two
+`custom-tool-types.llm.spec.ts` operand-union rows re-captured at
+`c53510c7` (the new `StateRef` branch adds one union arm to the rejection
+sentence). The §C corpus and its count guards are untouched (lane D10's);
+its four operand-union rows are the designed tripwire and stay red until
+lane D10 regenerates the corpus at `c53510c7`.
+
 The `c53510c7` state-cascade drift catch-up round is planned (2026-07-19,
 docs only): two work orders committed — `p4.d10-state-cascade-server.md`
 (the Rust half: the four-tier state cascade with its new pure modules,

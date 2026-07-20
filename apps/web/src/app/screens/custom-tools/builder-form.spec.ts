@@ -1,7 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { newDraft, validateDraft, type ToolDraft } from '../../pascal/tool-draft';
+import {
+  draftFromDefinition,
+  newDraft,
+  validateDraft,
+  type ToolDraft,
+} from '../../pascal/tool-draft';
 import { BuilderForm, coerceIdentifier } from './builder-form';
 import { OutcomesSection } from './outcomes-section';
 
@@ -311,6 +316,38 @@ describe('BuilderForm (v4 BuilderForm.tsx)', () => {
     );
     expect(fixture.componentInstance.descriptionError()).toBe('description is required');
   });
+
+  it('reads out a $state roll field as `state:path` (v4 BuilderForm rangeReadout)', async () => {
+    const fixture = await renderForm(
+      draftWith({
+        rollRange: {
+          ...newDraft().rollRange,
+          min: { kind: 'state', path: 'game.low', fallback: '0' },
+        },
+      }),
+    );
+    const readout = fixture.componentInstance.rangeReadout();
+    expect(readout).toContain('state:game.low');
+    // A $state field is not literal, so the resulting-bounds tail is omitted.
+    expect(readout).not.toContain('Values land in');
+  });
+
+  it('renders a $state parameter default as a READ-ONLY pill (never authored)', async () => {
+    const draft = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+      outcomes: [{ when: true, message: 'f', state: 'info' }],
+    })!;
+    const fixture = await renderForm(draft);
+    expect(parametersSection(fixture)).toContain('$state: player.bonus → 1');
+    // No number/text input is offered for a $state default — it is a pill.
+    const defaultInputs = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('input'),
+    ].filter((i) => i.type === 'number' || i.type === 'text');
+    // (Only the min/max numeric inputs remain; the default is a pill, not an input.)
+    expect(defaultInputs.every((i) => i.getAttribute('value') !== '[object Object]')).toBe(true);
+  });
 });
 
 describe('OutcomesSection (v4 OutcomesSection.tsx)', () => {
@@ -327,6 +364,24 @@ describe('OutcomesSection (v4 OutcomesSection.tsx)', () => {
       (b) => b.getAttribute('aria-label')?.startsWith('Delete outcome'),
     );
     expect(deletes).toHaveLength(1);
+  });
+
+  it('renders a $state operand as a READ-ONLY pill with no type picker', async () => {
+    const draft = draftFromDefinition({
+      name: 'gate',
+      description: 'x',
+      outcomes: [
+        { when: { gte: { $state: 'game.diff', fallback: 3 } }, message: 'a', state: 'success' },
+        { when: true, message: 'f', state: 'info' },
+      ],
+    })!;
+    const fixture = await renderOutcomes(draft);
+    expect(text(fixture)).toContain('$state: game.diff → 3');
+    // No literal-type picker is offered for a $state operand.
+    const typePickers = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('select'),
+    ].filter((s) => s.getAttribute('aria-label') === 'Literal type');
+    expect(typePickers).toHaveLength(0);
   });
 
   it('inserts a new outcome ABOVE the catch-all', async () => {

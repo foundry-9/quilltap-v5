@@ -81,7 +81,16 @@ export interface BenchArgs {
 /** v4 `POST ?action=preview` — one deal through the real execution core. */
 export async function previewCustomTool(
   core: CoreClient,
-  args: BenchArgs & { private?: boolean; llm?: PreviewOracle | undefined },
+  args: BenchArgs & {
+    private?: boolean;
+    llm?: PreviewOracle | undefined;
+    /**
+     * §B (the `c53510c7` round) — the mock merged state (chat → project →
+     * group → general) `$state` refs + `{{state.path}}` templates resolve
+     * against. Absent/null → `{}`.
+     */
+    state?: Record<string, unknown> | undefined;
+  },
 ): Promise<CustomToolRunResult> {
   const data = await core.dispatchData({
     type: 'customToolPreview',
@@ -89,6 +98,7 @@ export async function previewCustomTool(
     params: args.params,
     private: args.private,
     metadata: args.metadata,
+    state: args.state,
     llm: args.llm,
   });
   return data as unknown as CustomToolRunResult;
@@ -100,13 +110,18 @@ export async function previewCustomTool(
  */
 export async function auditCustomTool(
   core: CoreClient,
-  args: BenchArgs & { llm?: AuditOracle | undefined },
+  args: BenchArgs & {
+    llm?: AuditOracle | undefined;
+    /** §B — the mock merged state, held FIXED across every one of the draws. */
+    state?: Record<string, unknown> | undefined;
+  },
 ): Promise<CustomToolAuditResult> {
   const data = await core.dispatchData({
     type: 'customToolAudit',
     definition: args.definition,
     params: args.params,
     metadata: args.metadata,
+    state: args.state,
     llm: args.llm,
   });
   return data as unknown as CustomToolAuditResult;

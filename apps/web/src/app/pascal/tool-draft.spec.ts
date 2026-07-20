@@ -298,6 +298,110 @@ describe('when chips ⇄ JSON bijection', () => {
   });
 });
 
+describe('$state references round-trip (v4 f48f34dc)', () => {
+  it('round-trips a $state roll field and transform, carrying it verbatim', () => {
+    const draft = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      roll: {
+        min: { $state: 'game.low', fallback: 0 },
+        max: { $state: 'game.high', fallback: 6 },
+        multiplier: { $state: 'game.mult', fallback: 2 },
+      },
+      outcomes: [{ when: true, message: 'fall', state: 'info' }],
+    })!;
+    // The builder does not author `$state`, but the draft carries it as a
+    // `state` kind (fallback as text), and re-emits it byte-identically.
+    expect(draft.rollRange.min).toEqual({ kind: 'state', path: 'game.low', fallback: '0' });
+    expect(draft.rollRange.multiplier).toEqual({ kind: 'state', path: 'game.mult', fallback: '2' });
+    expectRoundTrip({
+      name: 'draw',
+      description: 'x',
+      roll: {
+        min: { $state: 'game.low', fallback: 0 },
+        max: { $state: 'game.high', fallback: 6 },
+        multiplier: { $state: 'game.mult', fallback: 2 },
+      },
+      outcomes: [{ when: true, message: 'fall', state: 'info' }],
+    });
+  });
+
+  it('round-trips $state comparator operands (ordering, eq, containment)', () => {
+    const draft = draftFromDefinition({
+      name: 'gate',
+      description: 'x',
+      parameters: { material: { type: 'string', default: 'brass' } },
+      outcomes: [
+        { when: { gte: { $state: 'game.difficulty', fallback: 3 } }, message: 'a', state: 'success' },
+        {
+          when: { params: { material: { contains: { $state: 'clue.needle', fallback: 'ras' } } } },
+          message: 'b',
+          state: 'partial',
+        },
+        { when: true, message: 'fall', state: 'info' },
+      ],
+    })!;
+    const stateChips = draft.outcomes.flatMap((o) => o.conditions).filter((c) => c.operand.kind === 'state');
+    expect(stateChips).toHaveLength(2);
+    expect(stateChips[0].operand).toEqual({ kind: 'state', path: 'game.difficulty', fallback: 3 });
+    expect(stateChips[1].operand).toEqual({ kind: 'state', path: 'clue.needle', fallback: 'ras' });
+    expectRoundTrip({
+      name: 'gate',
+      description: 'x',
+      parameters: { material: { type: 'string', default: 'brass' } },
+      outcomes: [
+        { when: { gte: { $state: 'game.difficulty', fallback: 3 } }, message: 'a', state: 'success' },
+        {
+          when: { params: { material: { contains: { $state: 'clue.needle', fallback: 'ras' } } } },
+          message: 'b',
+          state: 'partial',
+        },
+        { when: true, message: 'fall', state: 'info' },
+      ],
+    });
+  });
+
+  it('round-trips a $state parameter default verbatim', () => {
+    const draft = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+      outcomes: [{ when: true, message: 'fall', state: 'info' }],
+    })!;
+    expect(draft.parameters[0].defaultValue).toEqual({ $state: 'player.bonus', fallback: 1 });
+    expectRoundTrip({
+      name: 'draw',
+      description: 'x',
+      parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+      outcomes: [{ when: true, message: 'fall', state: 'info' }],
+    });
+  });
+
+  it('validateDraft rejects a $state roll field whose fallback is not a number', () => {
+    // The visual builder never authors this — construct it directly to exercise
+    // the load-time rule (`validateRollRefs`' `$state` arm, mirrored in the draft).
+    const draft = newDraft();
+    draft.rollForm = 'range';
+    draft.rollRange = {
+      ...draft.rollRange,
+      min: { kind: 'state', path: 'game.low', fallback: 'nope' },
+    };
+    const issues = validateDraft(draft);
+    expect(issues.some((i) => i.message === 'min $state fallback must be a number')).toBe(true);
+  });
+
+  it('validateDraft accepts a $state roll field whose fallback IS a number', () => {
+    const draft = newDraft();
+    draft.rollForm = 'range';
+    draft.rollRange = {
+      ...draft.rollRange,
+      min: { kind: 'state', path: 'game.low', fallback: '2' },
+    };
+    const issues = validateDraft(draft);
+    expect(issues.some((i) => i.message === 'min $state fallback must be a number')).toBe(false);
+  });
+});
+
 describe('validateDraft', () => {
   it('accepts a well-formed loaded draft', () => {
     const draft = draftFromDefinition({

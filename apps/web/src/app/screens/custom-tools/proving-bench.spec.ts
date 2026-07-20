@@ -305,6 +305,112 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
     expect(preview).toContain('\n  "name": "unlock"');
   });
 
+  it('validates the mock state as a single JSON object (v4 ProvingBench:mockStateError)', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    const bench = fixture.componentInstance;
+
+    expect(bench.mockStateError()).toBeNull(); // '{}' default
+    bench.mockStateText.set('{oops');
+    expect(bench.mockStateError()).toBe('Mock state is not valid JSON.');
+    bench.mockStateText.set('[1,2]');
+    expect(bench.mockStateError()).toBe('Mock state must be a single JSON object.');
+    bench.mockStateText.set('"nope"');
+    expect(bench.mockStateError()).toBe('Mock state must be a single JSON object.');
+    bench.mockStateText.set('{"game": {"diff": 5}}');
+    expect(bench.mockStateError()).toBeNull();
+  });
+
+  it('blocks the bench while the mock state will not parse', async () => {
+    const fixture = await render(validDraft(), stubClient(), true);
+    expect(fixture.componentInstance.benchDisabled()).toBe(false);
+    fixture.componentInstance.mockStateText.set('{oops');
+    expect(fixture.componentInstance.benchDisabled()).toBe(true);
+  });
+
+  it('carries the mock state onto BOTH the preview and audit bodies (§B)', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult(), audit: auditResult() }),
+    );
+    fixture.componentInstance.mockStateText.set('{"game": {"diff": 5}}');
+    await fixture.componentInstance.roll();
+    await fixture.componentInstance.runAudit();
+
+    expect(seen.find((r) => r.type === 'customToolPreview')?.['state']).toEqual({ game: { diff: 5 } });
+    expect(seen.find((r) => r.type === 'customToolAudit')?.['state']).toEqual({ game: { diff: 5 } });
+  });
+
+  it('sends undefined state when the mock will not parse to a single object', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
+    );
+    // A malformed mock disables the bench, but benchState() itself is fail-soft.
+    fixture.componentInstance.mockStateText.set('[1,2]');
+    await fixture.componentInstance.roll();
+    expect(seen.find((r) => r.type === 'customToolPreview')?.['state']).toBeUndefined();
+  });
+
+  it('detects $state use across operands, roll fields, defaults, and templates', async () => {
+    const plain = await render(validDraft(), stubClient());
+    expect(plain.componentInstance.testsState()).toBe(false);
+
+    const stateOperand = draftFromDefinition({
+      name: 'gate',
+      description: 'x',
+      outcomes: [
+        { when: { gte: { $state: 'game.diff', fallback: 3 } }, message: 'a', state: 'success' },
+        { when: true, message: 'f', state: 'info' },
+      ],
+    })!;
+    expect((await render(stateOperand, stubClient())).componentInstance.testsState()).toBe(true);
+
+    const stateRoll = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      roll: { min: { $state: 'game.low', fallback: 0 } },
+      outcomes: [{ when: true, message: 'f', state: 'info' }],
+    })!;
+    expect((await render(stateRoll, stubClient())).componentInstance.testsState()).toBe(true);
+
+    const stateDefault = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      parameters: { bonus: { type: 'number', default: { $state: 'player.bonus', fallback: 1 } } },
+      outcomes: [{ when: true, message: 'f', state: 'info' }],
+    })!;
+    expect((await render(stateDefault, stubClient())).componentInstance.testsState()).toBe(true);
+
+    const stateTemplate = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      outcomes: [{ when: true, message: 'It is {{ state.weather }}.', state: 'info' }],
+    })!;
+    expect((await render(stateTemplate, stubClient())).componentInstance.testsState()).toBe(true);
+  });
+
+  it('hints that $state refs will use fallbacks when the mock is empty — and not otherwise', async () => {
+    const stateOperand = draftFromDefinition({
+      name: 'gate',
+      description: 'x',
+      outcomes: [
+        { when: { gte: { $state: 'game.diff', fallback: 3 } }, message: 'a', state: 'success' },
+        { when: true, message: 'f', state: 'info' },
+      ],
+    })!;
+    const fixture = await render(stateOperand, stubClient());
+    expect(fixture.componentInstance.noMockStateHint()).toBe(true);
+    fixture.componentInstance.mockStateText.set('{  }');
+    expect(fixture.componentInstance.noMockStateHint()).toBe(true);
+    fixture.componentInstance.mockStateText.set('{"game": {"diff": 5}}');
+    expect(fixture.componentInstance.noMockStateHint()).toBe(false);
+
+    // A tool with no $state never nags about the mock.
+    expect((await render(validDraft(), stubClient())).componentInstance.noMockStateHint()).toBe(false);
+  });
+
   it('carries a declared parameter into the bench spec, bounds included', async () => {
     const draft = newDraft();
     draft.parameters = [

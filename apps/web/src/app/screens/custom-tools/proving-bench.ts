@@ -13,7 +13,7 @@ import type {
   CustomToolParameterSpec,
   CustomToolRunResult,
 } from '../../core/core-contract';
-import { displayTitle } from '../../pascal/custom-tool-types';
+import { displayTitle, isStateRef } from '../../pascal/custom-tool-types';
 import { definitionFromDraft, type ToolDraft } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
@@ -222,6 +222,33 @@ export function extractErrorMessage(err: unknown): string {
         }
       </section>
 
+      <!-- Card 2¾ — Mock state, for $state references -->
+      <section class="qt-card p-3 space-y-2">
+        <h3 class="qt-card-title text-sm">Mock state</h3>
+        <p class="qt-hint">
+          The merged state (chat → project → group → general) a roll resolves
+          <code>$state</code> references against. A path that is absent or the wrong type falls back
+          to the reference&rsquo;s own fallback.
+        </p>
+        <textarea
+          [value]="mockStateText()"
+          (input)="mockStateText.set(inputValue($event))"
+          rows="3"
+          class="qt-textarea w-full font-mono text-xs"
+          [class.qt-input-error]="mockStateError() !== null"
+          aria-label="Mock merged state (JSON object)"
+          spellcheck="false"
+        ></textarea>
+        @if (mockStateError(); as message) {
+          <p class="text-xs qt-text-destructive">{{ message }}</p>
+        }
+        @if (noMockStateHint()) {
+          <p class="text-xs qt-text-secondary">
+            No mock state supplied — every <code>$state</code> reference will use its fallback.
+          </p>
+        }
+      </section>
+
       <!-- Card 2½ — The oracle (only when the tool consults one) -->
       @if (draft().llmEnabled) {
         <section class="qt-card p-3 space-y-2">
@@ -385,6 +412,7 @@ export class ProvingBench {
   readonly values = signal<ParameterFormValues>({});
   readonly isPrivate = signal(false);
   readonly sheet = signal<FactSheet>({ mode: 'manual', text: '{}' });
+  readonly mockStateText = signal('{}');
   readonly oracle = signal<BenchOracle>({ mode: 'scripted', answer: '' });
   readonly rolls = signal<CustomToolRunResult[]>([]);
   readonly audit = signal<CustomToolAuditResult | null>(null);
@@ -457,8 +485,42 @@ export class ProvingBench {
     }
   });
 
+  /** Whether the draft references `$state` anywhere (v4 `ProvingBench` :137). */
+  readonly testsState = computed(() => {
+    const d = this.draft();
+    return (
+      d.outcomes.some((o) => o.conditions.some((c) => c.operand.kind === 'state')) ||
+      (d.rollForm === 'range' &&
+        (['min', 'max', 'multiplier', 'offset'] as const).some(
+          (f) => d.rollRange[f].kind === 'state',
+        )) ||
+      d.parameters.some((p) => isStateRef(p.defaultValue)) ||
+      /\{\{\s*state\./.test(d.outcomes.map((o) => o.message).join('\n'))
+    );
+  });
+
+  readonly mockStateError = computed(() => {
+    try {
+      const parsed: unknown = JSON.parse(this.mockStateText());
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return 'Mock state must be a single JSON object.';
+      }
+      return null;
+    } catch {
+      return 'Mock state is not valid JSON.';
+    }
+  });
+
+  /** The note that fires when a tool tests `$state` but the mock is empty. */
+  readonly noMockStateHint = computed(
+    () => this.testsState() && this.mockStateText().trim().replace(/\s/g, '') === '{}',
+  );
+
   readonly benchDisabled = computed(
-    () => !this.valid() || (this.sheet().mode === 'manual' && this.manualSheetError() !== null),
+    () =>
+      !this.valid() ||
+      (this.sheet().mode === 'manual' && this.manualSheetError() !== null) ||
+      this.mockStateError() !== null,
   );
 
   readonly jsonPreview = computed(
@@ -532,6 +594,18 @@ export class ProvingBench {
     }
   }
 
+  /** The mock merged state a bench roll or audit resolves `$state` against. */
+  private benchState(): Record<string, unknown> | undefined {
+    try {
+      const parsed: unknown = JSON.parse(this.mockStateText());
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The scripted answer's text, or '' in the other two modes. */
   readonly scriptedAnswer = computed(() => {
     const o = this.oracle();
@@ -573,6 +647,7 @@ export class ProvingBench {
         params: coerceParamValues(this.paramSpecs(), this.effectiveValues()),
         private: this.isPrivate(),
         metadata: this.benchMetadata(),
+        state: this.benchState(),
         llm: this.previewOracle(),
       });
       this.rolls.update((prev) => [result, ...prev].slice(0, 10));
@@ -593,6 +668,7 @@ export class ProvingBench {
           definition: definitionFromDraft(this.draft()),
           params: coerceParamValues(this.paramSpecs(), this.effectiveValues()),
           metadata: this.benchMetadata(),
+          state: this.benchState(),
           llm: this.auditOracle(),
         }),
       );

@@ -4408,6 +4408,12 @@ export interface CustomToolPreviewRequest {
   private?: boolean;
   metadata?: CustomToolMetadataInput | null;
   /**
+   * §B (the `c53510c7` state-cascade round) — the mock merged state
+   * (chat → project → group → general) that `$state` references and
+   * `{{state.path}}` templates resolve against. Absent/null → `{}`.
+   */
+  state?: Record<string, unknown> | null;
+  /**
    * §B (the `616930db` round) — the bench's oracle for a consulting tool:
    * `{live:true}` spends one real consult, `{output}` scripts the answer,
    * `{fail:true}` scripts the silence. Absent → the seam stays unwired and a
@@ -4422,6 +4428,11 @@ export interface CustomToolAuditRequest {
   definition: unknown;
   params?: Record<string, unknown> | null;
   metadata?: CustomToolMetadataInput | null;
+  /**
+   * §B (the `c53510c7` round) — the mock merged state, held FIXED across every
+   * one of the audit's draws. Absent/null → `{}`.
+   */
+  state?: Record<string, unknown> | null;
   /**
    * §B — the audit's oracle has NO `live` arm, and that is the SHAPE of the
    * contract, not a guard: ten thousand hands must never mean ten thousand

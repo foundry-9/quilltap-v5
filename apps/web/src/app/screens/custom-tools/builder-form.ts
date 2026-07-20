@@ -10,6 +10,7 @@ import {
   MAX_PARAMETERS,
   MAX_TITLE_LENGTH,
   displayTitle,
+  isStateRef,
 } from '../../pascal/custom-tool-types';
 import {
   MAX_DICE_COUNT,
@@ -270,7 +271,14 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
             <div class="flex items-center gap-3 flex-wrap text-sm">
               <label class="flex items-center gap-2">
                 Default
-                @if (param.type === 'boolean') {
+                @if (isStateRef(param.defaultValue)) {
+                  <span
+                    class="qt-text-xs qt-text-secondary font-mono rounded qt-bg-muted px-2 py-1"
+                    title="This default draws from persistent state. Edit $state references in the raw JSON."
+                  >
+                    {{ stateDefaultText(param.defaultValue) }}
+                  </span>
+                } @else if (param.type === 'boolean') {
                   <input
                     type="checkbox"
                     class="qt-checkbox"
@@ -567,6 +575,12 @@ export class BuilderForm {
   protected readonly RANGE_FIELDS = RANGE_FIELDS;
   protected readonly ROLL_FORMS = ['range', 'dice'] as const;
   protected readonly String = String;
+  protected readonly isStateRef = isStateRef;
+
+  /** The read-only pill text for a `$state` parameter default (v4's markup). */
+  protected stateDefaultText(value: DraftParameter['defaultValue']): string {
+    return isStateRef(value) ? `$state: ${value.$state} → ${String(value.fallback)}` : '';
+  }
 
   readonly numericNames = computed(() => numericParamNames(this.draft()));
 
@@ -775,9 +789,11 @@ export class BuilderForm {
     const part = (value: NumberOrParamValue, fallback: string) =>
       value.kind === 'param'
         ? `“${value.name}”`
-        : value.text.trim() === ''
-          ? fallback
-          : value.text.trim();
+        : value.kind === 'state'
+          ? `state:${value.path}`
+          : value.text.trim() === ''
+            ? fallback
+            : value.text.trim();
 
     const min = part(r.min, '0');
     const max = part(r.max, '1');
