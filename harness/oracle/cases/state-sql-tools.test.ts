@@ -50,14 +50,23 @@ interface Spec {
   chatProjectId: string;
   chatSoloId: string;
   projectId: string;
+  charAId: string;
+  charBId: string;
+  charDId: string;
+  groupAlphaId: string;
+  groupTwin2Id: string;
 }
 
 interface StateCase {
   label: string;
   kind: 'state';
   chatKey: 'chatProjectId' | 'chatSoloId' | 'bogus';
+  /** Responding character (the group-tier scope); absent -> no characterId. */
+  charKey?: 'charAId' | 'charBId' | 'charDId';
   useWrongUser?: boolean;
   args: unknown;
+  /** Resolve spec-relative values in args (e.g. the group-by-id ref). */
+  argsFrom?: (spec: Spec) => unknown;
 }
 interface SqlCase {
   label: string;
@@ -87,6 +96,27 @@ const STATE_CASES: StateCase[] = [
   { label: 'chat_not_found', kind: 'state', chatKey: 'bogus', args: { operation: 'fetch', context: 'chat' } },
   { label: 'validation_bad_op', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'bogus' } },
   { label: 'validation_nonobject', kind: 'state', chatKey: 'chatProjectId', args: 'nope' },
+  // ── P4.d10: the four-tier families (f48f34dc) ──
+  { label: 'fetch_merged_zero_groups', kind: 'state', chatKey: 'chatProjectId', charKey: 'charDId', args: { operation: 'fetch', path: 'gscore' } },
+  { label: 'fetch_merged_one_group', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'fetch', path: 'gscore' } },
+  { label: 'fetch_merged_two_groups', kind: 'state', chatKey: 'chatProjectId', charKey: 'charBId', args: { operation: 'fetch', path: 'twin' } },
+  { label: 'fetch_merged_general_key', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'fetch', path: 'gen_only' } },
+  { label: 'fetch_group_sole', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'fetch', context: 'group', path: 'gscore' } },
+  { label: 'fetch_group_by_id', kind: 'state', chatKey: 'chatProjectId', charKey: 'charBId', args: {}, argsFrom: (s) => ({ operation: 'fetch', context: 'group', group: s.groupTwin2Id, path: 'twin' }) },
+  { label: 'fetch_group_by_name', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'fetch', context: 'group', group: 'alpha lodge', path: 'k' } },
+  { label: 'fetch_group_ambiguous_name', kind: 'state', chatKey: 'chatProjectId', charKey: 'charBId', args: { operation: 'fetch', context: 'group', group: 'TWIN LODGE', path: 'twin' } },
+  { label: 'fetch_group_ref_required', kind: 'state', chatKey: 'chatProjectId', charKey: 'charBId', args: { operation: 'fetch', context: 'group', path: 'twin' } },
+  { label: 'fetch_group_no_character', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'fetch', context: 'group', path: 'twin' } },
+  { label: 'fetch_general', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'fetch', context: 'general', path: 'gen_only' } },
+  { label: 'fetch_general_root', kind: 'state', chatKey: 'chatSoloId', args: { operation: 'fetch', context: 'general' } },
+  { label: 'set_group_sole', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'set', context: 'group', path: 'gscore', value: 2 } },
+  { label: 'set_group_underscore_refused', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'set', context: 'group', path: '_hidden', value: 1 } },
+  { label: 'set_general_new_key', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'set', context: 'general', path: 'new_flag', value: 'lit' } },
+  { label: 'set_general_overwrite', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'set', context: 'general', path: 'k', value: 'general2' } },
+  { label: 'delete_group_key', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'delete', context: 'group', path: 'gscore' } },
+  { label: 'delete_general_key', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'delete', context: 'general', path: 'gen_only' } },
+  { label: 'delete_general_underscore_refused', kind: 'state', chatKey: 'chatProjectId', args: { operation: 'delete', context: 'general', path: '_secret' } },
+  { label: 'delete_group_missing_key', kind: 'state', chatKey: 'chatProjectId', charKey: 'charAId', args: { operation: 'delete', context: 'group', path: 'nope' } },
 ];
 
 const SQL_CASES: SqlCase[] = [
@@ -174,10 +204,12 @@ async function main(): Promise<void> {
         c.chatKey === 'bogus'
           ? 'deadbeef-0000-4000-8000-000000000000'
           : (spec[c.chatKey] as string);
-      const out = await executeStateTool(c.args, {
+      const args = c.argsFrom ? c.argsFrom(spec) : c.args;
+      const out = await executeStateTool(args, {
         userId: c.useWrongUser ? spec.wrongUserId : spec.userId,
         chatId,
         // projectId omitted → the handler falls back to chat.projectId.
+        ...(c.charKey ? { characterId: spec[c.charKey] as string } : {}),
       });
       const resultJson = JSON.stringify(out);
       const formatted = formatStateResults(out);
@@ -198,6 +230,13 @@ async function main(): Promise<void> {
       const project = await getRepositories().projects.findById(spec.projectId);
       projectState = project ? (project.state ?? null) : null;
 
+      // Read back the Alpha group state + the general state (prove the P4.d10
+      // group/general-tier writes the same way).
+      const alpha = await getRepositories().groups.findById(spec.groupAlphaId);
+      const groupAlphaState: unknown = alpha ? ((alpha as { state?: unknown }).state ?? null) : null;
+      const { readGeneralState } = await import('@/lib/mount-index/general-state');
+      const generalState = await readGeneralState();
+
       // Close the mount-index client so the NEXT case's fresh copy is read
       // through a fresh client (closeDatabase() does NOT close it, so a
       // persistent singleton would otherwise leak this case's writes forward).
@@ -206,7 +245,7 @@ async function main(): Promise<void> {
       );
       closeMountIndexSQLiteClient();
 
-      lines.push(JSON.stringify({ label: c.label, kind: 'state', resultJson, formatted, chatsDump, projectState }));
+      lines.push(JSON.stringify({ label: c.label, kind: 'state', resultJson, formatted, chatsDump, projectState, groupAlphaState, generalState }));
     } else {
       const { executeRunSqlTool } = await import('@/lib/tools/handlers/run-sql-handler');
       // Touch the llm-logs client so getRawLLMLogsDatabase() returns a handle.

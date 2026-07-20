@@ -9,6 +9,85 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 unit 3 — the four-tier state tool (lane D10, 2026-07-20)
+
+`tools::state` rewritten to v4's `f48f34dc` handler: 4-valued `context`
+enum + the `group` ref param in `validate_input`; `StateToolContext.character_id`
+(the executor's state branch passes `ctx.character_id` — v4
+tool-executor.ts's one-line wire); fetch routes explicit tiers
+(project-absent → `'Chat is not part of a project'`; group via the
+v4 `resolveGroupOrError` shape — candidates from the character scope, then
+`resolve_group_for_context`, error message straight into the tool error;
+general via `read_general_state`) and NO-context fetch through
+`resolve_state_cascade` — NB the cascade reads the CHAT's projectId, not
+the `context.projectId` override (v4-faithful asymmetry vs the explicit
+project tier). set/delete: `targetContext = stateContext || 'chat'`;
+underscore refusal BEFORE the branch (set/delete only, fetch allowed);
+group persist via `repos.groups.update`-equivalent overlay write
+(`write_group_state`), general via `write_general_state` (degraded no-mount
+open surfaces the VERBATIM unprovisioned message); delete persists only
+`if deleted`. Definition bytes in `definitions/data.rs` spliced to v4's
+new JSON (dumped from the pin via tsx, byte-verified by the differential).
+
+**Differentials:** `state_sql_tools_equivalence` 34 → 54 cases (the 20
+four-tier families: merged 0/1/2-group + general-key fetches; group
+context by-sole/by-id/by-name/ambiguous/ref-required/no-character;
+general fetch+root; group/general set incl. overwrite; underscore
+refusals on group set + general delete; group delete + missing-key), every
+state case now also read-back-diffing `groupAlphaState` (via the groups
+overlay) and `generalState`. Guards re-run green over fresh `7e6d13e5`
+oracles: `tool_definitions_equivalence` (58 tools byte-exact) + canonical,
+`pseudo_tool_prompts_equivalence` (40), `tool_wire_equivalence`
+(committed fixture — synthetic tools, no regen needed, re-run as guard).
+
+## P4.d10 units 1–2 — the state family modules + the general-state seed (lane D10, 2026-07-20)
+
+Lane start: v4 HEAD exactly `7e6d13e5`, tree clean (no drift); the round pin
+`/private/tmp/qt-v4-pin-7e6d13e5` created per the order (both `node_modules`
+sets symlinked). **Unit 1:** `quilltap-core::state::paths` (the pure path
+helpers extracted from `tools::state` the way v4's `f48f34dc` extracted
+`lib/state/state-paths.ts`; `tools::state` now imports them) +
+`state::cascade` (GroupScope / GroupCandidate / GroupTier /
+StateCascadeResult / StateGroupResolutionError with the four codes;
+`resolve_group_candidates` fail-soft per group; `resolve_state_cascade`
+with the exactly-one rule + the participants-union filter carrying v4's
+controlledBy why-comment; `resolve_group_for_context` with v4's verbatim
+messages — id-first, case-insensitive-name-among-candidates). **Unit 2:**
+`services::mount_index::general_state` (`GENERAL_STATE_JSON_PATH`,
+presence-check never-heal ensure seeding the literal 2-byte `{}`, the
+always-`{}` fail-soft read incl. the `JSON.parse(...) ?? {}` null-body arm,
+the pretty-2-space wholesale write with the VERBATIM
+`'Quilltap General mount has not been provisioned yet'` unprovisioned
+error via a dedicated `GeneralStateWriteError`), wired into
+`quilltap-host::host::seed_built_ins` after `ensure_general_scenarios_folder`
+(log-on-seed, warn-and-continue — v4 instrumentation.ts:760-780), asserted
+by `host_builtin_seeds` (the seeded `{}` body read back).
+
+**One real fix caught by the differential:** JSON-object key deletion used
+`serde_json::Map::remove`, which under `preserve_order` is a **swap_remove**
+(the last key moves into the hole); JS `delete` preserves order. Fixed to
+`shift_remove` in `state::paths::delete_at_path`; caught by the regenerated
+state-sql `delete_chat` chats-dump (4-key state, middle key deleted) and now
+pinned by the dedicated `delete_middle_key_order` corpus row.
+
+**Differential:** the new jest oracle `harness/oracle/cases/state-cascade.test.ts`
+(57 rows: 32 pure-paths incl. the regex-grammar edges — hyphen/space splits,
+`x[abc]` → `['x','abc']`, `x[1` → `['x','1']` — 9 general-state incl.
+corrupt/array/null bodies + the unprovisioned triple, 8 cascade incl. the
+synthetic USER-type-skip + missing-project rows, 8 group-ref covering all
+four codes + whitespace-ref) over the EXTENDED `state-sql-tools` fixture
+family — the builder + spec grew four groups (Alpha Lodge; the
+case-colliding "Twin Lodge"/"twin lodge" pair; Hermit Hut reachable only
+through a REMOVED participant) + memberships + the union chat (charB
+controlledBy:'user' proving the no-filter) + charD (membership-free, the
+NO_GROUPS arm) + the seeded "Quilltap General" mount with pointer +
+state.json. `state_cascade_equivalence` green; `state_sql_tools_equivalence`
+regenerated at the pin and green (34 rows — the extension shifted its
+chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
+`QT_FIXTURE_TMP_{MAIN,MOUNT}` (regen recipe in both test headers; jest run
+staged outside `.claude/`, from the pin, `-- state-cascade` also matches
+v4's own unit suite — harmless, both pass).
+
 ## P4.6bd lane addendum — oracle provenance re-pinned (lane BD, 2026-07-18)
 
 **⚠ The v4 working tree went DIRTY mid-lane** (HEAD unchanged at `616930db`;

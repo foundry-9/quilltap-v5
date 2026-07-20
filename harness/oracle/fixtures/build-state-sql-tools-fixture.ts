@@ -30,13 +30,33 @@ interface Spec {
   userId: string;
   chatProjectId: string;
   chatSoloId: string;
+  chatUnionId: string;
   projectId: string;
   projectName: string;
   charAId: string;
+  charBId: string;
+  charCId: string;
+  /** No memberships — the NO_GROUPS arm. Nothing to seed. */
+  charDId: string;
   seedTimestamp: string;
   chatState: Record<string, unknown>;
   chatSoloState: Record<string, unknown>;
+  chatUnionState: Record<string, unknown>;
   projectState: Record<string, unknown>;
+  groupAlphaId: string;
+  groupAlphaName: string;
+  groupAlphaState: Record<string, unknown>;
+  groupTwin1Id: string;
+  groupTwin1Name: string;
+  groupTwin1State: Record<string, unknown>;
+  groupTwin2Id: string;
+  groupTwin2Name: string;
+  groupTwin2State: Record<string, unknown>;
+  groupHermitId: string;
+  groupHermitName: string;
+  groupHermitState: Record<string, unknown>;
+  generalMountPointId: string;
+  generalState: Record<string, unknown>;
   memoryId: string;
   memoryEmbedding: number[];
   llmLogId: string;
@@ -82,6 +102,8 @@ async function main(): Promise<void> {
   const { CharacterSchema, ProjectSchema, ChatMetadataSchema, MemorySchema } = await import(
     '@/lib/schemas/types'
   );
+  const { GroupSchema } = await import('@/lib/schemas/group.types');
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -90,6 +112,8 @@ async function main(): Promise<void> {
     DocMountFolderSchema,
     DocMountFileLinkSchema,
     DocMountChunkSchema,
+    GroupCharacterMemberSchema,
+    GroupDocMountLinkSchema,
     ProjectDocMountLinkSchema,
   } = await import('@/lib/schemas/mount-index.types');
   const { LLMLogsRepository } = await import(
@@ -98,6 +122,7 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   await ensureCollection('characters', CharacterSchema);
+  await ensureCollection('groups', GroupSchema);
   await ensureCollection('projects', ProjectSchema);
   await ensureCollection('chats', ChatMetadataSchema);
   await ensureCollection('memories', MemorySchema);
@@ -113,6 +138,8 @@ async function main(): Promise<void> {
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
     ['doc_mount_chunks', DocMountChunkSchema],
+    ['group_character_members', GroupCharacterMemberSchema],
+    ['group_doc_mount_links', GroupDocMountLinkSchema],
     ['project_doc_mount_links', ProjectDocMountLinkSchema],
   ];
   for (const [name, schema] of ddl) {
@@ -134,11 +161,82 @@ async function main(): Promise<void> {
   );
   await repos.projects.update(spec.projectId, { state: spec.projectState } as never);
 
-  // 2. Chats (real create) with initial state. Chat scoped to project P; solo chat.
-  const participant = (order: number) => ({
+  // 1b. Groups (P4.d10 — the state-cascade group tier). Each create provisions the
+  // group's official store; the state lands via the overlay update (the same
+  // create-then-update recipe the project uses above).
+  //   Alpha Lodge — member charA (the single-group character).
+  //   Twin Lodge / twin lodge — both member charB (case-insensitive name
+  //     collision → GROUP_AMBIGUOUS; two memberships → ambiguous cascade tier).
+  //   Hermit Hut — member charC (only reachable through a REMOVED participant —
+  //     proves the participants-union removed-skip).
+  const groupSeeds = [
+    { id: spec.groupAlphaId, name: spec.groupAlphaName, state: spec.groupAlphaState, member: spec.charAId },
+    { id: spec.groupTwin1Id, name: spec.groupTwin1Name, state: spec.groupTwin1State, member: spec.charBId },
+    { id: spec.groupTwin2Id, name: spec.groupTwin2Name, state: spec.groupTwin2State, member: spec.charBId },
+    { id: spec.groupHermitId, name: spec.groupHermitName, state: spec.groupHermitState, member: spec.charCId },
+  ];
+  for (const g of groupSeeds) {
+    const created = await repos.groups.create(
+      { name: g.name, description: null, color: null, icon: null, state: {} } as never,
+      { id: g.id, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+    );
+    if ((created as { id: string }).id !== g.id) {
+      throw new Error(`group id drift: got ${(created as { id: string }).id}, expected ${g.id}`);
+    }
+    await repos.groups.update(g.id, { state: g.state } as never);
+    await repos.groupCharacterMembers.addMember(g.id, g.member);
+  }
+
+  // 1c. The singleton "Quilltap General" mount + instance_settings pointer + the
+  // root state.json (the bottom cascade tier), per the groups-projects builder
+  // precedent.
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: spec.generalMountPointId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+  );
+  const mainDbRaw = getRawDatabase();
+  if (!mainDbRaw) throw new Error('main DB handle unavailable');
+  mainDbRaw.exec(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  mainDbRaw
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('generalMountPointId', spec.generalMountPointId);
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  await writeDatabaseDocument(
+    spec.generalMountPointId,
+    'state.json',
+    JSON.stringify(spec.generalState, null, 2),
+  );
+
+  // 2. Chats (real create) with initial state. Chat scoped to project P; solo chat;
+  // the union chat (three character participants: charA active/llm, charB
+  // active/USER-controlled — the union deliberately does NOT filter by
+  // controlledBy — and charC REMOVED, whose Hermit Hut must NOT surface).
+  const participant = (
+    order: number,
+    characterId: string = spec.charAId,
+    overrides: Record<string, unknown> = {},
+  ) => ({
     id: `fa000000-0000-4000-8000-00000000000${order}`,
     type: 'CHARACTER',
-    characterId: spec.charAId,
+    characterId,
     controlledBy: 'llm',
     displayOrder: 0,
     isActive: true,
@@ -146,6 +244,7 @@ async function main(): Promise<void> {
     hasHistoryAccess: false,
     createdAt: spec.seedTimestamp,
     updatedAt: spec.seedTimestamp,
+    ...overrides,
   });
   await repos.chats.create(
     {
@@ -165,6 +264,19 @@ async function main(): Promise<void> {
       state: spec.chatSoloState,
     } as never,
     { id: spec.chatSoloId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+  );
+  await repos.chats.create(
+    {
+      userId: spec.userId,
+      title: 'Union Chat',
+      participants: [
+        participant(3, spec.charAId),
+        participant(4, spec.charBId, { controlledBy: 'user' }),
+        participant(5, spec.charCId, { status: 'removed', isActive: false }),
+      ],
+      state: spec.chatUnionState,
+    } as never,
+    { id: spec.chatUnionId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
   );
 
   // 3. One memory with an embedding BLOB (run_sql blob-sanitize on main).

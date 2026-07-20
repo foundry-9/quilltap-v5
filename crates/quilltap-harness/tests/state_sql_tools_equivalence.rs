@@ -63,6 +63,16 @@ struct Spec {
     chat_solo_id: String,
     #[serde(rename = "projectId")]
     project_id: String,
+    #[serde(rename = "charAId")]
+    char_a_id: String,
+    #[serde(rename = "charBId")]
+    char_b_id: String,
+    #[serde(rename = "charDId")]
+    char_d_id: String,
+    #[serde(rename = "groupAlphaId")]
+    group_alpha_id: String,
+    #[serde(rename = "groupTwin2Id")]
+    group_twin2_id: String,
 }
 
 #[derive(Deserialize)]
@@ -77,6 +87,10 @@ struct OracleRow {
     chats_dump: Option<Vec<Value>>,
     #[serde(default, rename = "projectState")]
     project_state: Option<Value>,
+    #[serde(default, rename = "groupAlphaState")]
+    group_alpha_state: Option<Value>,
+    #[serde(default, rename = "generalState")]
+    general_state: Option<Value>,
 }
 
 fn spec_path() -> PathBuf {
@@ -148,6 +162,7 @@ fn open_three_db(main: &Path, mount: &Path, llm: &Path, pepper: &str) -> Db {
 struct StateCase {
     label: &'static str,
     chat_key: ChatKey,
+    character_key: Option<CharKey>,
     wrong_user: bool,
     args: Value,
 }
@@ -155,6 +170,21 @@ enum ChatKey {
     Project,
     Solo,
     Bogus,
+}
+#[derive(Clone, Copy)]
+enum CharKey {
+    A,
+    B,
+    D,
+}
+impl CharKey {
+    fn resolve(self, spec: &Spec) -> String {
+        match self {
+            CharKey::A => spec.char_a_id.clone(),
+            CharKey::B => spec.char_b_id.clone(),
+            CharKey::D => spec.char_d_id.clone(),
+        }
+    }
 }
 
 struct SqlCase {
@@ -196,128 +226,295 @@ async fn run_state_cases(
         StateCase {
             label: "fetch_chat_root",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "chat" }),
         },
         StateCase {
             label: "fetch_chat_path",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "chat", "path": "hp" }),
         },
         StateCase {
             label: "fetch_chat_nested",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "chat", "path": "flags.seen" }),
         },
         StateCase {
             label: "fetch_chat_missing",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "chat", "path": "nope" }),
         },
         StateCase {
             label: "fetch_project_path",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "project", "path": "weather" }),
         },
         StateCase {
             label: "fetch_merged_project_key",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "path": "difficulty" }),
         },
         StateCase {
             label: "fetch_merged_chat_key",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "path": "hp" }),
         },
         StateCase {
             label: "fetch_project_not_in_project",
             chat_key: ChatKey::Solo,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "project", "path": "x" }),
         },
         StateCase {
             label: "set_chat_new",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "set", "context": "chat", "path": "score", "value": 42 }),
         },
         StateCase {
             label: "set_chat_overwrite",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "set", "context": "chat", "path": "hp", "value": 5 }),
         },
         StateCase {
             label: "set_chat_nested_create",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "set", "context": "chat", "path": "stats.level", "value": 3 }),
         },
         StateCase {
             label: "set_project",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "set", "context": "project", "path": "weather", "value": "stormy" }),
         },
         StateCase {
             label: "set_underscore_refused",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "set", "path": "_secret", "value": 1 }),
         },
         StateCase {
             label: "delete_chat",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "delete", "context": "chat", "path": "mood" }),
         },
         StateCase {
             label: "delete_chat_missing",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "delete", "context": "chat", "path": "nope" }),
         },
         StateCase {
             label: "delete_project",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "delete", "context": "project", "path": "difficulty" }),
         },
         StateCase {
             label: "permission_denied",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: true,
             args: json!({ "operation": "fetch", "context": "chat" }),
         },
         StateCase {
             label: "chat_not_found",
             chat_key: ChatKey::Bogus,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "fetch", "context": "chat" }),
         },
         StateCase {
             label: "validation_bad_op",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: json!({ "operation": "bogus" }),
         },
         StateCase {
             label: "validation_nonobject",
             chat_key: ChatKey::Project,
+            character_key: None,
             wrong_user: false,
             args: Value::String("nope".into()),
+        },
+        // ── P4.d10: the four-tier families (f48f34dc) ──
+        StateCase {
+            label: "fetch_merged_zero_groups",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::D),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "path": "gscore" }),
+        },
+        StateCase {
+            label: "fetch_merged_one_group",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "path": "gscore" }),
+        },
+        StateCase {
+            label: "fetch_merged_two_groups",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::B),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "path": "twin" }),
+        },
+        StateCase {
+            label: "fetch_merged_general_key",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "path": "gen_only" }),
+        },
+        StateCase {
+            label: "fetch_group_sole",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "group", "path": "gscore" }),
+        },
+        StateCase {
+            label: "fetch_group_by_id",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::B),
+            wrong_user: false,
+            args: Value::Null, // resolved below (group-by-id needs the spec)
+        },
+        StateCase {
+            label: "fetch_group_by_name",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "group", "group": "alpha lodge", "path": "k" }),
+        },
+        StateCase {
+            label: "fetch_group_ambiguous_name",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::B),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "group", "group": "TWIN LODGE", "path": "twin" }),
+        },
+        StateCase {
+            label: "fetch_group_ref_required",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::B),
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "group", "path": "twin" }),
+        },
+        StateCase {
+            label: "fetch_group_no_character",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "group", "path": "twin" }),
+        },
+        StateCase {
+            label: "fetch_general",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "general", "path": "gen_only" }),
+        },
+        StateCase {
+            label: "fetch_general_root",
+            chat_key: ChatKey::Solo,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "fetch", "context": "general" }),
+        },
+        StateCase {
+            label: "set_group_sole",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "set", "context": "group", "path": "gscore", "value": 2 }),
+        },
+        StateCase {
+            label: "set_group_underscore_refused",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "set", "context": "group", "path": "_hidden", "value": 1 }),
+        },
+        StateCase {
+            label: "set_general_new_key",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "set", "context": "general", "path": "new_flag", "value": "lit" }),
+        },
+        StateCase {
+            label: "set_general_overwrite",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "set", "context": "general", "path": "k", "value": "general2" }),
+        },
+        StateCase {
+            label: "delete_group_key",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "delete", "context": "group", "path": "gscore" }),
+        },
+        StateCase {
+            label: "delete_general_key",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "delete", "context": "general", "path": "gen_only" }),
+        },
+        StateCase {
+            label: "delete_general_underscore_refused",
+            chat_key: ChatKey::Project,
+            character_key: None,
+            wrong_user: false,
+            args: json!({ "operation": "delete", "context": "general", "path": "_secret" }),
+        },
+        StateCase {
+            label: "delete_group_missing_key",
+            chat_key: ChatKey::Project,
+            character_key: Some(CharKey::A),
+            wrong_user: false,
+            args: json!({ "operation": "delete", "context": "group", "path": "nope" }),
         },
     ];
 
     for c in &cases {
         let (main, mount, llm) = fresh_copy(main_fx, mount_fx, llm_fx, c.label);
         let db = open_three_db(&main, &mount, &llm, &spec.test_pepper_base64);
+        // The one spec-dependent args literal (group-by-id).
+        let args = if c.label == "fetch_group_by_id" {
+            json!({ "operation": "fetch", "context": "group", "group": spec.group_twin2_id, "path": "twin" })
+        } else {
+            c.args.clone()
+        };
         let chat_id = match c.chat_key {
             ChatKey::Project => spec.chat_project_id.clone(),
             ChatKey::Solo => spec.chat_solo_id.clone(),
@@ -331,8 +528,9 @@ async fn run_state_cases(
             },
             chat_id,
             project_id: None,
+            character_id: c.character_key.map(|k| k.resolve(spec)),
         };
-        let out = execute_state_tool(&db, &ctx, &c.args).await;
+        let out = execute_state_tool(&db, &ctx, &args).await;
         let got_json = serde_json::to_string(&out).unwrap();
         let got_fmt = format_state_results(&out);
 
@@ -362,6 +560,10 @@ async fn run_state_cases(
             .cloned()
             .unwrap_or_default();
         let want_rows = want.chats_dump.clone().unwrap_or_default();
+        if got_rows != want_rows {
+            eprintln!("GOT:  {}", serde_json::to_string(&got_rows).unwrap());
+            eprintln!("WANT: {}", serde_json::to_string(&want_rows).unwrap());
+        }
         assert_eq!(got_rows, want_rows, "chats dump diverged for {}", c.label);
 
         // Read back the project state through the store overlay.
@@ -386,6 +588,47 @@ async fn run_state_cases(
         assert_eq!(
             project_state, want_state,
             "project state diverged for {}",
+            c.label
+        );
+
+        // Read back the Alpha group state + the general state (the P4.d10
+        // group/general-tier write proofs).
+        let alpha_id = spec.group_alpha_id.clone();
+        let (group_alpha_state, general_state) = db
+            .write(move |writers| {
+                let mount_c = writers
+                    .mount_index()
+                    .expect("mount-index present")
+                    .connection();
+                let main_c = writers.main().connection();
+                let alpha = quilltap_core::db::groups::GroupsRepository::new(main_c, mount_c)
+                    .find_by_id(&alpha_id)
+                    .map_err(|e| quilltap_core::db::DbError::Key(e.to_string()))?;
+                let alpha_state = alpha
+                    .and_then(|g| match g.get("state") {
+                        Some(Value::Null) | None => None,
+                        Some(v) => Some(v.clone()),
+                    })
+                    .unwrap_or(Value::Null);
+                let general =
+                    quilltap_core::services::mount_index::general_state::read_general_state(
+                        main_c,
+                        Some(mount_c),
+                    );
+                Ok((alpha_state, general))
+            })
+            .await
+            .expect("read back group/general state");
+        assert_eq!(
+            group_alpha_state,
+            want.group_alpha_state.clone().unwrap_or(Value::Null),
+            "group state diverged for {}",
+            c.label
+        );
+        assert_eq!(
+            general_state,
+            want.general_state.clone().unwrap_or(Value::Null),
+            "general state diverged for {}",
             c.label
         );
 

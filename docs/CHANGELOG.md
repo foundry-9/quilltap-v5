@@ -2,6 +2,42 @@
 
 ## Recent Changes
 
+P4.d10 unit 3 (the four-tier state tool): `tools::state` rewritten over the
+shared cascade — contexts `group`/`general`, the optional `group` ref param
+(id-first, then case-insensitive name among the responding character's own
+candidate groups), `character_id` threaded through the executor's state
+branch (the whole group-tier scope wire), underscore protection on the new
+tiers (set/delete only — fetch of `_` keys stays allowed), the merged fetch
+via `resolve_state_cascade` (which deliberately reads the CHAT's own
+projectId, not the context override — v4-faithful), group writes through
+the groups store overlay and general writes through the mount-root
+`state.json`, and the state tool definition updated to v4's new four-tier
+bytes verbatim. The state-sql differential grew 20 four-tier cases (34 →
+54) with group-state + general-state read-backs on every case;
+tool-definitions (58 tools byte-exact) + canonical + pseudo-tool-prompts +
+tool-wire guards all re-ran green over fresh `7e6d13e5` oracles.
+
+P4.d10 units 1–2 (the state-cascade drift re-port, server half): the new
+`quilltap-core::state` family — `state::paths` (the pure path helpers,
+extracted from the state tool the way v4 extracted `lib/state/state-paths.ts`;
+one real fix rode along: JSON-object key deletion now shift-removes, matching
+JS `delete`'s order preservation — serde_json's `Map::remove` swap-removes
+under `preserve_order`) and `state::cascade` (the four-tier chat → project →
+group → general resolver: shallow merge with narrower-tier wins, the
+group-tier exactly-one rule, the participants-union scope with removed-skip
+and no controlledBy filter, per-tier fail-soft degradation, and
+`resolve_group_for_context` with the four typed resolution codes and v4's
+verbatim messages) — plus `services::mount_index::general_state` (the
+`state.json` document at the "Quilltap General" mount root: presence-checked
+never-heal ensure, always-`{}`-fail-soft read, pretty-printed wholesale
+write that errors verbatim when the mount is unprovisioned), and the
+host-boot companion seed wired into `seed_built_ins` after the general
+Scenarios ensure. Verified by the new 57-row `state_cascade_equivalence`
+differential (paths / general / cascade / group-ref sections) over the
+extended `state-sql-tools` fixture family (four groups + memberships +
+the union chat + the seeded general mount), with the existing 34-case
+`state_sql_tools_equivalence` regenerated and green at v4 `7e6d13e5`.
+
 The drift catch-up round is re-baselined at v4 `7e6d13e5` (4.8.0-dev.92)
 and extended (2026-07-20, docs only): v4 landed twelve more commits (the
 4.8.0 release sweep) before lane D10 started. `p4.d10-state-cascade-server.md`

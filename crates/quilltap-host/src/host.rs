@@ -608,6 +608,7 @@ impl EngineAssembler for HostAssembler {
 /// main-only instance (no mount-index partition).
 fn seed_built_ins(db: &Db) -> Result<(), String> {
     use quilltap_core::db::DbError;
+    use quilltap_core::services::mount_index::general_state;
     use quilltap_core::services::{builtin_mounts, builtin_templates};
 
     let db = db.clone();
@@ -619,6 +620,19 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 let mount_index = mi.connection();
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
                 builtin_mounts::ensure_general_scenarios_folder(main, mount_index)?;
+                // Companion (v4 instrumentation.ts Phase 3 tail, `f48f34dc`):
+                // ensure the general mount's root state.json (the bottom tier
+                // of the state cascade). Idempotent; never heals existing
+                // content; warn-and-continue on error (v4's try/catch).
+                match general_state::ensure_general_state_file(main, mount_index) {
+                    Ok(true) => {
+                        eprintln!("Seeded general state.json in the Quilltap General mount")
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        eprintln!("Error ensuring general state.json, continuing startup: {e}")
+                    }
+                }
             }
             Ok(())
         })

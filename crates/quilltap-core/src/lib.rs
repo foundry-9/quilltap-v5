@@ -213,6 +213,7 @@ pub mod select_speaker;
 pub mod semver;
 pub mod services;
 pub mod skip_signal;
+pub mod state;
 pub mod system_prompt;
 pub mod tag_style;
 pub mod template_prompt_hint;

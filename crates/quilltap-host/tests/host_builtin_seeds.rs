@@ -99,4 +99,23 @@ async fn assemble_seeds_and_adopts_builtins() {
         1,
         "expected the General Scenarios folder"
     );
+    // The general state.json companion seed (P4.d10 — v4 `f48f34dc`): exactly one
+    // root state.json link on the general mount, seeded with the literal `{}`.
+    let state_body = db
+        .read_mount_index(|conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT d.content FROM doc_mount_file_links l \
+                     JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                     WHERE l.relativePath = 'state.json'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap_or_default())
+        })
+        .unwrap();
+    assert_eq!(
+        state_body, "{}",
+        "expected the seeded general state.json body"
+    );
 }

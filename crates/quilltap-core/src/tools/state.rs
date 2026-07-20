@@ -1,10 +1,12 @@
 //! Port of v4's `state` tool (`lib/tools/handlers/state-handler.ts` +
 //! `lib/tools/state-tool.ts`).
 //!
-//! Persistent per-chat / per-project key-value state for games, inventory, and
-//! session data. Path-based access with dot notation + array indexing; chat state
-//! overrides project state when merged. `fetch` reads, `set` writes, `delete`
-//! removes.
+//! Persistent key-value state for games, inventory, and session data across the
+//! FOUR-tier cascade (chat → project → group → general, `f48f34dc`). Path-based
+//! access with dot notation + array indexing; a merged fetch resolves the shared
+//! cascade (narrower tiers win). `fetch` reads, `set` writes, `delete` removes.
+//! The group tier is scoped to the responding character's own memberships
+//! (Knowledge's rule) and pinned down via `resolve_group_for_context`.
 //!
 //! ## The writes, faithfully
 //!
@@ -13,6 +15,9 @@
 //! - Project state → `repos.projects.update(projectId, { state })` — routed to the
 //!   store-backed `state.json` overlay (the project slim row's `updatedAt` is NOT
 //!   bumped by a store-only update).
+//! - Group state → `repos.groups.update(groupId, { state })` — the same overlay
+//!   shape on the group's official store.
+//! - General state → `writeGeneralState` (the mount-root `state.json`).
 //!
 //! Both run on the writer connections inside one [`Db::write`] closure (reads +
 //! writes on the same borrowed connections, serialized on the writer thread).
@@ -39,6 +44,7 @@ use serde_json::{Map, Value};
 use crate::db::chats_read;
 use crate::db::projects::ProjectsRepository;
 use crate::db::runtime::Db;
+use crate::state::paths::{delete_at_path, get_at_path, parse_path, set_at_path, PathKey};
 
 /// Context required for state tool execution (v4 `StateToolContext`).
 #[derive(Debug, Clone)]
@@ -48,15 +54,16 @@ pub struct StateToolContext {
     /// The dispatcher passes `context.projectId` (the chat's project override);
     /// when absent the handler falls back to the chat's own `projectId`.
     pub project_id: Option<String>,
+    /// Responding character ID (optional, `f48f34dc`). Scopes the group tier to
+    /// this character's own memberships (Knowledge's rule). Absent -> no group
+    /// tier.
+    pub character_id: Option<String>,
 }
 
-/// A single key in a parsed path — a property name or an array index (v4's
-/// `(string | number)[]`).
-#[derive(Debug, Clone, PartialEq)]
-enum PathKey {
-    Prop(String),
-    Index(usize),
-}
+// The pure path helpers (`PathKey`, `parse_path`, `get_at_path`, `set_at_path`,
+// `delete_at_path`) moved to `crate::state::paths` at the v4 `f48f34dc`
+// extraction (v4's handler re-exports them for back-compat; this module simply
+// imports them).
 
 /// v4's `StateToolOutput`. Serialized in a fixed field order that reproduces
 /// every per-branch object literal (see the module docs). `operation` is a raw
@@ -129,274 +136,8 @@ impl StateToolOutput {
     }
 }
 
-/// v4 `parsePath`: split `"player.inventory[0].name"` into keys. Regex
-/// `(\w+)|\[(\d+)\]` — JS `\w`/`\d` are ASCII, so `[A-Za-z0-9_]+` / `[0-9]+`.
-fn parse_path(path: Option<&str>) -> Vec<PathKey> {
-    let Some(path) = path else {
-        return Vec::new();
-    };
-    if path.trim().is_empty() {
-        return Vec::new();
-    }
-    let bytes = path.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let c = bytes[i];
-        if c.is_ascii_alphanumeric() || c == b'_' {
-            // A property-name run: [A-Za-z0-9_]+.
-            let start = i;
-            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                i += 1;
-            }
-            out.push(PathKey::Prop(path[start..i].to_string()));
-        } else if c == b'[' {
-            // An array index: \[(\d+)\]. Only matches when digits + `]` follow.
-            let mut j = i + 1;
-            let dstart = j;
-            while j < bytes.len() && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > dstart && j < bytes.len() && bytes[j] == b']' {
-                // parseInt(_, 10). JS numbers are f64; a path index in range fits usize.
-                if let Ok(idx) = path[dstart..j].parse::<usize>() {
-                    out.push(PathKey::Index(idx));
-                }
-                i = j + 1;
-            } else {
-                // `[` not opening a valid index — the regex would skip this char.
-                i += 1;
-            }
-        } else {
-            // Any other char is between tokens; the global regex skips it.
-            i += 1;
-        }
-    }
-    out
-}
-
-/// v4 `getAtPath`: walk `path`, returning `None` (JS `undefined`) when a segment
-/// is missing or the current node is not indexable, and `Some(Value::Null)` when
-/// the resolved value is an explicit stored `null` (v4's `getAtPath` returns a
-/// final null as-is; an INTERMEDIATE null short-circuits to undefined). Empty path
-/// → the whole object.
-fn get_at_path(obj: &Value, path: &[PathKey]) -> Option<Value> {
-    // `Option<Value>`: `None` = JS undefined, `Some(Null)` = a null value.
-    let mut current: Option<Value> = Some(obj.clone());
-    for key in path {
-        match current {
-            // v4 top-of-loop guard: `current === null || undefined → undefined`.
-            None => return None,
-            Some(Value::Null) => return None,
-            // typeof current !== 'object' → undefined (arrays are objects in JS).
-            Some(ref v) if !v.is_object() && !v.is_array() => return None,
-            Some(container) => {
-                current = index_value(&container, key);
-            }
-        }
-    }
-    current
-}
-
-/// Index `container[key]` the JS way: `None` for a missing key/out-of-range index
-/// (undefined), else `Some(value)` (possibly `Some(Null)`).
-fn index_value(container: &Value, key: &PathKey) -> Option<Value> {
-    match container {
-        Value::Object(map) => {
-            let k = match key {
-                PathKey::Prop(s) => s.clone(),
-                // JS coerces a numeric object key to string.
-                PathKey::Index(n) => n.to_string(),
-            };
-            map.get(&k).cloned()
-        }
-        Value::Array(arr) => match key {
-            PathKey::Index(n) => arr.get(*n).cloned(),
-            // JS `array["foo"]` → undefined (non-index property).
-            PathKey::Prop(_) => None,
-        },
-        _ => None,
-    }
-}
-
-/// v4 `setAtPath`: set `value` at `path`, creating intermediate arrays/objects
-/// based on the next key's type. Mutates `obj` in place. An empty path replaces the
-/// root (must be an object). Returns `Err` for the "root to non-object" case (v4
-/// throws a `VALIDATION_ERROR`), surfaced by the caller as the catch path.
-fn set_at_path(obj: &mut Value, path: &[PathKey], value: Value) -> Result<(), String> {
-    if path.is_empty() {
-        // Setting root — value must be a plain object.
-        if value.is_object() {
-            *obj = value;
-            return Ok(());
-        }
-        return Err("Cannot set root state to non-object value".to_string());
-    }
-    let mut current = obj;
-    for i in 0..path.len() - 1 {
-        let key = &path[i];
-        let next_is_index = matches!(path[i + 1], PathKey::Index(_));
-        current = descend_or_create(current, key, next_is_index);
-    }
-    let last = &path[path.len() - 1];
-    assign(current, last, value);
-    Ok(())
-}
-
-/// Ensure `current[key]` is an object/array (creating it, or overwriting a
-/// primitive/null) based on whether the NEXT key is an index, then return `&mut`
-/// to it — v4's intermediate-structure creation. `current` is always a container
-/// (the root object, or the slot created by a prior step).
-fn descend_or_create<'a>(
-    current: &'a mut Value,
-    key: &PathKey,
-    next_is_index: bool,
-) -> &'a mut Value {
-    let fresh = if next_is_index {
-        Value::Array(Vec::new())
-    } else {
-        Value::Object(Map::new())
-    };
-    match current {
-        Value::Object(map) => {
-            let k = match key {
-                PathKey::Prop(s) => s.clone(),
-                PathKey::Index(n) => n.to_string(),
-            };
-            let entry = map.entry(k).or_insert(Value::Null);
-            // Create/overwrite when absent, null, or a primitive.
-            if !entry.is_object() && !entry.is_array() {
-                *entry = fresh;
-            }
-            entry
-        }
-        Value::Array(arr) => {
-            let idx = match key {
-                PathKey::Index(n) => *n,
-                PathKey::Prop(s) => s.parse::<usize>().unwrap_or(0),
-            };
-            if idx >= arr.len() {
-                arr.resize(idx + 1, Value::Null);
-            }
-            let entry = &mut arr[idx];
-            if !entry.is_object() && !entry.is_array() {
-                *entry = fresh;
-            }
-            entry
-        }
-        // Reached only with a container (root or a created slot).
-        _ => current,
-    }
-}
-
-/// Assign `value` at `current[last]` (v4's final `current[lastKey] = value`).
-fn assign(current: &mut Value, last: &PathKey, value: Value) {
-    match current {
-        Value::Object(map) => {
-            let k = match last {
-                PathKey::Prop(s) => s.clone(),
-                PathKey::Index(n) => n.to_string(),
-            };
-            map.insert(k, value);
-        }
-        Value::Array(arr) => {
-            let idx = match last {
-                PathKey::Index(n) => *n,
-                // JS assigns a string key onto an array as a property; the corpus
-                // never mixes shapes here, but keep it faithful by coercing to 0.
-                PathKey::Prop(_) => 0,
-            };
-            if idx >= arr.len() {
-                arr.resize(idx + 1, Value::Null);
-            }
-            arr[idx] = value;
-        }
-        _ => {}
-    }
-}
-
-/// v4 `deleteAtPath`: remove the value at `path`. Returns whether anything was
-/// deleted. Empty path (cannot delete root) → false. Array + numeric last key →
-/// splice; otherwise `delete`.
-fn delete_at_path(obj: &mut Value, path: &[PathKey]) -> bool {
-    if path.is_empty() {
-        return false;
-    }
-    // Walk to the parent of the last key.
-    let mut current = obj;
-    for key in &path[..path.len() - 1] {
-        let next = match current {
-            Value::Object(map) => {
-                let k = match key {
-                    PathKey::Prop(s) => s.clone(),
-                    PathKey::Index(n) => n.to_string(),
-                };
-                match map.get_mut(&k) {
-                    Some(v) if v.is_object() || v.is_array() => v,
-                    Some(_) => return false, // primitive → not indexable
-                    None => return false,    // undefined/null
-                }
-            }
-            Value::Array(arr) => match key {
-                PathKey::Index(n) => match arr.get_mut(*n) {
-                    Some(v) if v.is_object() || v.is_array() => v,
-                    Some(_) => return false,
-                    None => return false,
-                },
-                PathKey::Prop(_) => return false,
-            },
-            _ => return false,
-        };
-        current = next;
-    }
-    let last = &path[path.len() - 1];
-    match current {
-        Value::Object(map) => {
-            let k = match last {
-                PathKey::Prop(s) => s.clone(),
-                PathKey::Index(n) => n.to_string(),
-            };
-            if !map.contains_key(&k) {
-                return false;
-            }
-            map.remove(&k);
-            true
-        }
-        Value::Array(arr) => match last {
-            PathKey::Index(n) => {
-                if *n >= arr.len() {
-                    return false;
-                }
-                arr.remove(*n); // Array.splice(n, 1)
-                true
-            }
-            // `!(lastKey in current)` for a string key on an array → false.
-            PathKey::Prop(_) => false,
-        },
-        _ => false,
-    }
-}
-
-/// v4 `mergeState`: `{ ...projectState, ...chatState }` (chat overrides project,
-/// top-level keys only). Insertion order: project keys first, then chat keys
-/// (chat-overridden keys keep their PROJECT position — JS spread semantics).
-fn merge_state(project_state: &Value, chat_state: &Value) -> Value {
-    let mut out = Map::new();
-    if let Value::Object(p) = project_state {
-        for (k, v) in p {
-            out.insert(k.clone(), v.clone());
-        }
-    }
-    if let Value::Object(c) = chat_state {
-        for (k, v) in c {
-            out.insert(k.clone(), v.clone());
-        }
-    }
-    Value::Object(out)
-}
-
-/// Extract the state object from a hydrated chat/project row (`state` is
-/// `object_or_empty` → an object, or `{}`).
+/// Extract the state object from a hydrated chat/project/group row (`state` is
+/// `object_or_empty` -> an object, or `{}`).
 fn state_object(row: &Value) -> Value {
     match row.get("state") {
         Some(v) if v.is_object() => v.clone(),
@@ -405,9 +146,9 @@ fn state_object(row: &Value) -> Value {
 }
 
 /// v4 `validateStateInput` (`stateToolInputSchema.safeParse().success`): `operation`
-/// must be one of the three enum members; `context` if present must be `chat`/
-/// `project`; `path` if present must be a string; `value` is `unknown`. Extra keys
-/// are stripped (not rejected) by a plain `z.object`.
+/// must be one of the three enum members; `context` if present must be one of the
+/// FOUR tiers (`f48f34dc`); `group` / `path` if present must be strings; `value`
+/// is `unknown`. Extra keys are stripped (not rejected) by a plain `z.object`.
 fn validate_input(args: &Value) -> bool {
     let Some(obj) = args.as_object() else {
         return false;
@@ -418,8 +159,13 @@ fn validate_input(args: &Value) -> bool {
     }
     if let Some(c) = obj.get("context") {
         match c.as_str() {
-            Some("chat" | "project") => {}
+            Some("chat" | "project" | "group" | "general") => {}
             _ => return false,
+        }
+    }
+    if let Some(g) = obj.get("group") {
+        if !g.is_string() {
+            return false;
         }
     }
     if let Some(p) = obj.get("path") {
@@ -455,12 +201,18 @@ pub async fn execute_state_tool(db: &Db, ctx: &StateToolContext, args: &Value) -
     }
 }
 
-/// The synchronous body, run on the writer connections.
+/// The synchronous body, run on the writer connections (v4's rewritten
+/// four-tier `executeStateTool`, `f48f34dc`).
 fn run_state(
     writers: &mut crate::db::runtime::WriterSet,
     ctx: &StateToolContext,
     args: &Value,
 ) -> StateToolOutput {
+    use crate::services::mount_index::general_state::{read_general_state, write_general_state};
+    use crate::state::cascade::{
+        resolve_group_candidates, resolve_group_for_context, resolve_state_cascade, GroupScope,
+    };
+
     if !validate_input(args) {
         return StateToolOutput::fail(
             fallback_operation(args),
@@ -477,8 +229,9 @@ fn run_state(
         .get("context")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let group_ref = obj.get("group").and_then(Value::as_str).map(str::to_string);
     let path = obj.get("path").and_then(Value::as_str).map(str::to_string);
-    // v4: `value` is the raw input value; absent key → undefined (no set).
+    // v4: `value` is the raw input value; absent key -> undefined (no set).
     let value_present = obj.contains_key("value");
     let value = obj.get("value").cloned();
     let parsed_path = parse_path(path.as_deref());
@@ -517,7 +270,7 @@ fn run_state(
     let project = match &project_id {
         Some(pid) => match writers.mount_index() {
             Some(mount_w) => {
-                // v4 `repos.projects.findById(projectId)` — hydrated (overlaid state).
+                // v4 `repos.projects.findById(projectId)` -- hydrated (overlaid state).
                 let repo = ProjectsRepository::new(main, mount_w.connection());
                 match repo.find_by_id(pid) {
                     Ok(p) => p,
@@ -526,7 +279,7 @@ fn run_state(
                     }
                 }
             }
-            // No mount-index → the project store is unreachable (degraded); treat
+            // No mount-index -> the project store is unreachable (degraded); treat
             // as "no project" (the corpus always provisions the store).
             None => None,
         },
@@ -539,267 +292,349 @@ fn run_state(
         .map(state_object)
         .unwrap_or(Value::Object(Map::new()));
 
+    // The group tier follows the responding character's own memberships
+    // (Knowledge's rule). Absent characterId -> no group tier at all.
+    let group_scope = match &ctx.character_id {
+        Some(character_id) if !character_id.is_empty() => GroupScope::Character {
+            character_id: character_id.clone(),
+        },
+        _ => GroupScope::None,
+    };
+
+    // Resolve one group for an explicit group-context op, returning a typed
+    // tool error (never propagating) when it can't be pinned down — v4
+    // `resolveGroupOrError`. Returns the hydrated group row.
+    let resolve_group_or_error = |writers: &mut crate::db::runtime::WriterSet| {
+        let mount = writers.mount_index().map(|w| w.connection());
+        let main = writers.main().connection();
+        let candidates = resolve_group_candidates(main, mount, &chat, &group_scope);
+        match resolve_group_for_context(group_ref.as_deref(), &candidates) {
+            Ok(g) => Ok(g.clone()),
+            Err(e) => Err(e.message),
+        }
+    };
+
+    // Underscore-prefixed user-only keys are off-limits to the AI (SET and
+    // DELETE only -- fetch of `_` keys is allowed).
+    let underscore_denied = |verb: &str| -> Option<StateToolOutput> {
+        if is_underscore_key(&parsed_path) {
+            return Some(StateToolOutput {
+                success: false,
+                operation: Value::String(operation.clone()),
+                context: state_context.clone(),
+                path: path.clone(),
+                value: None,
+                previous_value: None,
+                error: Some(format!(
+                    "Keys starting with underscore are user-only and cannot be {verb} by AI"
+                )),
+            });
+        }
+        None
+    };
+
     match operation.as_str() {
-        "fetch" => run_fetch(
-            operation,
-            state_context,
-            path,
-            &parsed_path,
-            &chat_state,
-            &project_state,
-            project.is_some(),
-        ),
-        "set" => run_set(
-            writers,
-            ctx,
-            operation,
-            state_context,
-            path,
-            &parsed_path,
-            &chat_state,
-            &project_state,
-            project.as_ref(),
-            value_present,
-            value,
-        ),
-        "delete" => run_delete(
-            writers,
-            ctx,
-            operation,
-            state_context,
-            path,
-            &parsed_path,
-            &chat_state,
-            &project_state,
-            project.as_ref(),
-        ),
+        "fetch" => {
+            let result_value = match state_context.as_deref() {
+                Some("chat") => get_at_path(&chat_state, &parsed_path),
+                Some("project") => {
+                    if project.is_none() {
+                        return StateToolOutput {
+                            success: false,
+                            operation: Value::String(operation),
+                            context: state_context,
+                            path,
+                            value: None,
+                            previous_value: None,
+                            error: Some("Chat is not part of a project".to_string()),
+                        };
+                    }
+                    get_at_path(&project_state, &parsed_path)
+                }
+                Some("group") => match resolve_group_or_error(writers) {
+                    Ok(group) => get_at_path(&state_object(&group), &parsed_path),
+                    Err(error) => {
+                        return StateToolOutput {
+                            success: false,
+                            operation: Value::String(operation),
+                            context: state_context,
+                            path,
+                            value: None,
+                            previous_value: None,
+                            error: Some(error),
+                        }
+                    }
+                },
+                Some("general") => {
+                    let mount = writers.mount_index().map(|w| w.connection());
+                    let main = writers.main().connection();
+                    let general_state = read_general_state(main, mount);
+                    get_at_path(&general_state, &parsed_path)
+                }
+                _ => {
+                    // Merged cascade (chat over project over group over general).
+                    // NB v4's cascade reads the CHAT's own projectId (no
+                    // context.projectId override on this path).
+                    let mount = writers.mount_index().map(|w| w.connection());
+                    let main = writers.main().connection();
+                    let cascade = resolve_state_cascade(main, mount, &chat, &group_scope);
+                    get_at_path(&cascade.merged, &parsed_path)
+                }
+            };
+            StateToolOutput {
+                success: true,
+                operation: Value::String(operation),
+                context: state_context,
+                path,
+                // v4: `value: resultValue` -- undefined (`None`) dropped, an explicit
+                // stored null (`Some(Null)`) kept.
+                value: result_value,
+                previous_value: None,
+                error: None,
+            }
+        }
+
+        "set" => {
+            if let Some(denied) = underscore_denied("modified") {
+                return denied;
+            }
+            // v4: `stateContext || 'chat'`.
+            let target = state_context.clone().unwrap_or_else(|| "chat".to_string());
+            let set_value = value.clone().unwrap_or(Value::Null); // `value` may be undefined
+
+            let (previous, write_result): (Option<Value>, Result<(), String>) = match target
+                .as_str()
+            {
+                "project" => {
+                    let Some(project) = project.as_ref() else {
+                        return StateToolOutput {
+                            success: false,
+                            operation: Value::String(operation),
+                            context: Some(target),
+                            path,
+                            value: None,
+                            previous_value: None,
+                            error: Some("Chat is not part of a project".to_string()),
+                        };
+                    };
+                    let previous = get_at_path(&project_state, &parsed_path);
+                    let mut new_state = project_state.clone();
+                    if let Err(e) = set_at_path(&mut new_state, &parsed_path, set_value.clone()) {
+                        return StateToolOutput::fail(Value::String(operation), e);
+                    }
+                    let pid = project
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    (
+                        previous,
+                        write_project_state(writers, &pid, &new_state).map_err(|e| e.to_string()),
+                    )
+                }
+                "group" => {
+                    let group = match resolve_group_or_error(writers) {
+                        Ok(g) => g,
+                        Err(error) => {
+                            return StateToolOutput {
+                                success: false,
+                                operation: Value::String(operation),
+                                context: Some(target),
+                                path,
+                                value: None,
+                                previous_value: None,
+                                error: Some(error),
+                            }
+                        }
+                    };
+                    let group_state = state_object(&group);
+                    let previous = get_at_path(&group_state, &parsed_path);
+                    let mut new_state = group_state.clone();
+                    if let Err(e) = set_at_path(&mut new_state, &parsed_path, set_value.clone()) {
+                        return StateToolOutput::fail(Value::String(operation), e);
+                    }
+                    let gid = group
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    (
+                        previous,
+                        write_group_state(writers, &gid, &new_state).map_err(|e| e.to_string()),
+                    )
+                }
+                "general" => {
+                    let mount = writers.mount_index().map(|w| w.connection());
+                    let main = writers.main().connection();
+                    let general_state = read_general_state(main, mount);
+                    let previous = get_at_path(&general_state, &parsed_path);
+                    let mut new_state = general_state.clone();
+                    if let Err(e) = set_at_path(&mut new_state, &parsed_path, set_value.clone()) {
+                        return StateToolOutput::fail(Value::String(operation), e);
+                    }
+                    let write = match writers.mount_index() {
+                        Some(mount_w) => {
+                            let mount_c = mount_w.connection();
+                            let main_c = writers.main().connection();
+                            write_general_state(main_c, mount_c, &new_state)
+                                .map_err(|e| e.to_string())
+                        }
+                        // Degraded open: the unprovisioned arm (v4 throws).
+                        None => {
+                            Err("Quilltap General mount has not been provisioned yet".to_string())
+                        }
+                    };
+                    (previous, write)
+                }
+                _ => {
+                    let previous = get_at_path(&chat_state, &parsed_path);
+                    let mut new_state = chat_state.clone();
+                    if let Err(e) = set_at_path(&mut new_state, &parsed_path, set_value.clone()) {
+                        return StateToolOutput::fail(Value::String(operation), e);
+                    }
+                    (
+                        previous,
+                        write_chat_state(writers, &ctx.chat_id, &new_state)
+                            .map_err(|e| e.to_string()),
+                    )
+                }
+            };
+            if let Err(e) = write_result {
+                return StateToolOutput::fail(Value::String(operation), e);
+            }
+            StateToolOutput {
+                success: true,
+                operation: Value::String(operation),
+                context: Some(target),
+                path,
+                value: if value_present { value } else { None },
+                previous_value: previous,
+                error: None,
+            }
+        }
+
+        "delete" => {
+            if let Some(denied) = underscore_denied("deleted") {
+                return denied;
+            }
+            let target = state_context.clone().unwrap_or_else(|| "chat".to_string());
+
+            let (previous, write_result): (Option<Value>, Result<(), String>) =
+                match target.as_str() {
+                    "project" => {
+                        let Some(project) = project.as_ref() else {
+                            return StateToolOutput {
+                                success: false,
+                                operation: Value::String(operation),
+                                context: Some(target),
+                                path,
+                                value: None,
+                                previous_value: None,
+                                error: Some("Chat is not part of a project".to_string()),
+                            };
+                        };
+                        let previous = get_at_path(&project_state, &parsed_path);
+                        let mut new_state = project_state.clone();
+                        let deleted = delete_at_path(&mut new_state, &parsed_path);
+                        let write = if deleted {
+                            let pid = project
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string();
+                            write_project_state(writers, &pid, &new_state)
+                                .map_err(|e| e.to_string())
+                        } else {
+                            Ok(())
+                        };
+                        (previous, write)
+                    }
+                    "group" => {
+                        let group = match resolve_group_or_error(writers) {
+                            Ok(g) => g,
+                            Err(error) => {
+                                return StateToolOutput {
+                                    success: false,
+                                    operation: Value::String(operation),
+                                    context: Some(target),
+                                    path,
+                                    value: None,
+                                    previous_value: None,
+                                    error: Some(error),
+                                }
+                            }
+                        };
+                        let group_state = state_object(&group);
+                        let previous = get_at_path(&group_state, &parsed_path);
+                        let mut new_state = group_state.clone();
+                        let deleted = delete_at_path(&mut new_state, &parsed_path);
+                        let write = if deleted {
+                            let gid = group
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string();
+                            write_group_state(writers, &gid, &new_state).map_err(|e| e.to_string())
+                        } else {
+                            Ok(())
+                        };
+                        (previous, write)
+                    }
+                    "general" => {
+                        let mount = writers.mount_index().map(|w| w.connection());
+                        let main = writers.main().connection();
+                        let general_state = read_general_state(main, mount);
+                        let previous = get_at_path(&general_state, &parsed_path);
+                        let mut new_state = general_state.clone();
+                        let deleted = delete_at_path(&mut new_state, &parsed_path);
+                        let write = if deleted {
+                            match writers.mount_index() {
+                                Some(mount_w) => {
+                                    let mount_c = mount_w.connection();
+                                    let main_c = writers.main().connection();
+                                    write_general_state(main_c, mount_c, &new_state)
+                                        .map_err(|e| e.to_string())
+                                }
+                                None => Err("Quilltap General mount has not been provisioned yet"
+                                    .to_string()),
+                            }
+                        } else {
+                            Ok(())
+                        };
+                        (previous, write)
+                    }
+                    _ => {
+                        let previous = get_at_path(&chat_state, &parsed_path);
+                        let mut new_state = chat_state.clone();
+                        let deleted = delete_at_path(&mut new_state, &parsed_path);
+                        let write = if deleted {
+                            write_chat_state(writers, &ctx.chat_id, &new_state)
+                                .map_err(|e| e.to_string())
+                        } else {
+                            Ok(())
+                        };
+                        (previous, write)
+                    }
+                };
+            if let Err(e) = write_result {
+                return StateToolOutput::fail(Value::String(operation), e);
+            }
+            StateToolOutput {
+                success: true,
+                operation: Value::String(operation),
+                context: Some(target),
+                path,
+                value: None,
+                previous_value: previous,
+                error: None,
+            }
+        }
+
         // v4: `Unknown operation: ${operation}` (validation already gates this).
         other => StateToolOutput::fail(
             Value::String(operation.clone()),
             format!("Unknown operation: {other}"),
         ),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_fetch(
-    operation: String,
-    state_context: Option<String>,
-    path: Option<String>,
-    parsed_path: &[PathKey],
-    chat_state: &Value,
-    project_state: &Value,
-    has_project: bool,
-) -> StateToolOutput {
-    let result_value = match state_context.as_deref() {
-        Some("chat") => get_at_path(chat_state, parsed_path),
-        Some("project") => {
-            if !has_project {
-                return StateToolOutput {
-                    success: false,
-                    operation: Value::String(operation),
-                    context: state_context,
-                    path,
-                    value: None,
-                    previous_value: None,
-                    error: Some("Chat is not part of a project".to_string()),
-                };
-            }
-            get_at_path(project_state, parsed_path)
-        }
-        _ => {
-            let merged = merge_state(project_state, chat_state);
-            get_at_path(&merged, parsed_path)
-        }
-    };
-    StateToolOutput {
-        success: true,
-        operation: Value::String(operation),
-        context: state_context,
-        path,
-        // v4: `value: resultValue` — undefined (`None`) dropped, an explicit stored
-        // null (`Some(Null)`) kept.
-        value: result_value,
-        previous_value: None,
-        error: None,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_set(
-    writers: &mut crate::db::runtime::WriterSet,
-    ctx: &StateToolContext,
-    operation: String,
-    state_context: Option<String>,
-    path: Option<String>,
-    parsed_path: &[PathKey],
-    chat_state: &Value,
-    project_state: &Value,
-    project: Option<&Value>,
-    value_present: bool,
-    value: Option<Value>,
-) -> StateToolOutput {
-    // Underscore-prefixed user-only keys are off-limits to the AI.
-    if is_underscore_key(parsed_path) {
-        return StateToolOutput {
-            success: false,
-            operation: Value::String(operation),
-            context: state_context,
-            path,
-            value: None,
-            previous_value: None,
-            error: Some(
-                "Keys starting with underscore are user-only and cannot be modified by AI"
-                    .to_string(),
-            ),
-        };
-    }
-    // v4: `stateContext || 'chat'`.
-    let target = state_context.clone().unwrap_or_else(|| "chat".to_string());
-    let set_value = value.clone().unwrap_or(Value::Null); // `value` may be undefined
-
-    if target == "project" {
-        let Some(project) = project else {
-            return StateToolOutput {
-                success: false,
-                operation: Value::String(operation),
-                context: Some(target),
-                path,
-                value: None,
-                previous_value: None,
-                error: Some("Chat is not part of a project".to_string()),
-            };
-        };
-        let previous = get_at_path(project_state, parsed_path);
-        let mut new_state = project_state.clone();
-        if let Err(e) = set_at_path(&mut new_state, parsed_path, set_value.clone()) {
-            return StateToolOutput::fail(Value::String(operation), e);
-        }
-        let pid = project
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if let Err(e) = write_project_state(writers, pid, &new_state) {
-            return StateToolOutput::fail(Value::String(operation), e.to_string());
-        }
-        set_result(operation, target, path, value_present, value, previous)
-    } else {
-        let previous = get_at_path(chat_state, parsed_path);
-        let mut new_state = chat_state.clone();
-        if let Err(e) = set_at_path(&mut new_state, parsed_path, set_value.clone()) {
-            return StateToolOutput::fail(Value::String(operation), e);
-        }
-        if let Err(e) = write_chat_state(writers, &ctx.chat_id, &new_state) {
-            return StateToolOutput::fail(Value::String(operation), e.to_string());
-        }
-        set_result(operation, target, path, value_present, value, previous)
-    }
-}
-
-/// The `set` success output: `{ success, operation, context, path, value,
-/// previousValue }`. `value` is the raw input value (undefined → dropped);
-/// `previousValue` undefined → dropped.
-fn set_result(
-    operation: String,
-    target: String,
-    path: Option<String>,
-    value_present: bool,
-    value: Option<Value>,
-    previous: Option<Value>,
-) -> StateToolOutput {
-    StateToolOutput {
-        success: true,
-        operation: Value::String(operation),
-        context: Some(target),
-        path,
-        value: if value_present { value } else { None },
-        previous_value: previous,
-        error: None,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_delete(
-    writers: &mut crate::db::runtime::WriterSet,
-    ctx: &StateToolContext,
-    operation: String,
-    state_context: Option<String>,
-    path: Option<String>,
-    parsed_path: &[PathKey],
-    chat_state: &Value,
-    project_state: &Value,
-    project: Option<&Value>,
-) -> StateToolOutput {
-    if is_underscore_key(parsed_path) {
-        return StateToolOutput {
-            success: false,
-            operation: Value::String(operation),
-            context: state_context,
-            path,
-            value: None,
-            previous_value: None,
-            error: Some(
-                "Keys starting with underscore are user-only and cannot be deleted by AI"
-                    .to_string(),
-            ),
-        };
-    }
-    let target = state_context.clone().unwrap_or_else(|| "chat".to_string());
-
-    if target == "project" {
-        let Some(project) = project else {
-            return StateToolOutput {
-                success: false,
-                operation: Value::String(operation),
-                context: Some(target),
-                path,
-                value: None,
-                previous_value: None,
-                error: Some("Chat is not part of a project".to_string()),
-            };
-        };
-        let previous = get_at_path(project_state, parsed_path);
-        let mut new_state = project_state.clone();
-        let deleted = delete_at_path(&mut new_state, parsed_path);
-        if deleted {
-            let pid = project
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if let Err(e) = write_project_state(writers, pid, &new_state) {
-                return StateToolOutput::fail(Value::String(operation), e.to_string());
-            }
-        }
-        delete_result(operation, target, path, previous)
-    } else {
-        let previous = get_at_path(chat_state, parsed_path);
-        let mut new_state = chat_state.clone();
-        let deleted = delete_at_path(&mut new_state, parsed_path);
-        if deleted {
-            if let Err(e) = write_chat_state(writers, &ctx.chat_id, &new_state) {
-                return StateToolOutput::fail(Value::String(operation), e.to_string());
-            }
-        }
-        delete_result(operation, target, path, previous)
-    }
-}
-
-/// The `delete` success output: `{ success, operation, context, path,
-/// previousValue }` (no `value`).
-fn delete_result(
-    operation: String,
-    target: String,
-    path: Option<String>,
-    previous: Option<Value>,
-) -> StateToolOutput {
-    StateToolOutput {
-        success: true,
-        operation: Value::String(operation),
-        context: Some(target),
-        path,
-        value: None,
-        previous_value: previous,
-        error: None,
     }
 }
 
@@ -838,6 +673,25 @@ fn write_project_state(
     let mut patch = Map::new();
     patch.insert("state".to_string(), new_state.clone());
     repo.update(project_id, &patch)
+        .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
+    Ok(())
+}
+
+/// Write the group's `state.json` overlay (`repos.groups.update(id, { state })`).
+fn write_group_state(
+    writers: &mut crate::db::runtime::WriterSet,
+    group_id: &str,
+    new_state: &Value,
+) -> Result<(), crate::db::DbError> {
+    let mount = writers
+        .mount_index()
+        .ok_or_else(|| crate::db::DbError::Key("group state requires mount-index".into()))?
+        .connection();
+    let main = writers.main().connection();
+    let repo = crate::db::groups::GroupsRepository::new(main, mount);
+    let mut patch = Map::new();
+    patch.insert("state".to_string(), new_state.clone());
+    repo.update(group_id, &patch)
         .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
     Ok(())
 }
@@ -906,82 +760,6 @@ fn json_compact(v: &Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn parse_path_dot_and_index() {
-        assert_eq!(parse_path(None), vec![]);
-        assert_eq!(parse_path(Some("")), vec![]);
-        assert_eq!(
-            parse_path(Some("player.inventory[0].name")),
-            vec![
-                PathKey::Prop("player".into()),
-                PathKey::Prop("inventory".into()),
-                PathKey::Index(0),
-                PathKey::Prop("name".into()),
-            ]
-        );
-        assert_eq!(
-            parse_path(Some("gameState.turn")),
-            vec![
-                PathKey::Prop("gameState".into()),
-                PathKey::Prop("turn".into())
-            ]
-        );
-    }
-
-    #[test]
-    fn get_at_path_walks() {
-        let obj = json!({ "player": { "health": 5, "inv": [ { "name": "sword" } ] } });
-        assert_eq!(
-            get_at_path(&obj, &parse_path(Some("player.health"))),
-            Some(json!(5))
-        );
-        assert_eq!(
-            get_at_path(&obj, &parse_path(Some("player.inv[0].name"))),
-            Some(json!("sword"))
-        );
-        assert_eq!(get_at_path(&obj, &parse_path(Some("player.missing"))), None);
-        assert_eq!(get_at_path(&obj, &[]), Some(obj.clone()));
-    }
-
-    #[test]
-    fn set_at_path_creates_intermediate() {
-        let mut obj = json!({});
-        set_at_path(&mut obj, &parse_path(Some("a.b.c")), json!(1)).unwrap();
-        assert_eq!(obj, json!({ "a": { "b": { "c": 1 } } }));
-
-        let mut obj2 = json!({});
-        set_at_path(&mut obj2, &parse_path(Some("list[2]")), json!("x")).unwrap();
-        assert_eq!(obj2, json!({ "list": [null, null, "x"] }));
-
-        // Root set to non-object → error.
-        let mut obj3 = json!({ "k": 1 });
-        assert!(set_at_path(&mut obj3, &[], json!(5)).is_err());
-    }
-
-    #[test]
-    fn delete_at_path_object_and_array() {
-        let mut obj = json!({ "a": { "b": 1, "c": 2 } });
-        assert!(delete_at_path(&mut obj, &parse_path(Some("a.b"))));
-        assert_eq!(obj, json!({ "a": { "c": 2 } }));
-        // Missing → false.
-        assert!(!delete_at_path(&mut obj, &parse_path(Some("a.z"))));
-
-        let mut arr = json!({ "l": [10, 20, 30] });
-        assert!(delete_at_path(&mut arr, &parse_path(Some("l[1]"))));
-        assert_eq!(arr, json!({ "l": [10, 30] }));
-    }
-
-    #[test]
-    fn merge_chat_overrides_project() {
-        let p = json!({ "shared": "p", "onlyP": 1 });
-        let c = json!({ "shared": "c", "onlyC": 2 });
-        // Chat overrides `shared`; project position preserved.
-        assert_eq!(
-            merge_state(&p, &c),
-            json!({ "shared": "c", "onlyP": 1, "onlyC": 2 })
-        );
-    }
 
     #[test]
     fn output_serializes_in_fixed_order() {

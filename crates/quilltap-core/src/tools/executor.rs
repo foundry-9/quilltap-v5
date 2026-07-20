@@ -1036,6 +1036,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             user_id: ctx.user_id.clone(),
             chat_id: ctx.chat_id.clone(),
             project_id: ctx.project_id.clone(),
+            // The whole group-tier scope wire (v4 tool-executor.ts ~:698, +1).
+            character_id: ctx.character_id.clone(),
         };
         let out = state::execute_state_tool(&self.db, &context, &tc.arguments).await;
         let formatted = state::format_state_results(&out);
