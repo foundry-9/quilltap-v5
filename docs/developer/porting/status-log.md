@@ -24790,3 +24790,14 @@ committed fixture containing single-`$` input (`currency-prose`) is
 promotion-invariant by design, so the parity loop needs no regen for
 this unit (the regen with new single-`$` fixtures is unit 2). SPA
 0.5.209 → 0.5.210.
+
+**Tier-2 item 1 — the katex parity bump (commit "bump katex to 0.18.1").**
+`apps/web` katex 0.18.0 → 0.18.1 (v4's `f495c9c9` declares `^0.18.1`;
+its installed tree — which the round pin's `node_modules` symlinks
+resolve to — has 0.18.1, so this bump had to land BEFORE the unit-2
+fixture regen or the capture would emit 0.18.1 markup against a v5
+rendering 0.18.0). Verified the patch is markup-neutral for the
+committed corpus: the parity loop's 45 tests pass against the
+0.18.0-captured fixtures unchanged. Sequenced out of order (tier 2
+before tier-1 unit 2) precisely for the capture-version coupling. SPA
+0.5.210 → 0.5.211.

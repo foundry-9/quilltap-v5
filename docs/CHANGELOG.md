@@ -119,6 +119,13 @@ extended `state-sql-tools` fixture family (four groups + memberships +
 the union chat + the seeded general mount), with the existing 34-case
 `state_sql_tools_equivalence` regenerated and green at v4 `7e6d13e5`.
 
+Lane P4.d11 (katex parity bump): `apps/web` katex 0.18.0 → 0.18.1,
+matching v4's `f495c9c9` dep update (v4 declares `^0.18.1`, resolves
+0.18.1). The patch is markup-neutral for the committed fixture corpus —
+the byte-parity loop passes against the 0.18.0-captured fixtures
+unchanged (they are regenerated on 0.18.1 in the next unit anyway). SPA
+0.5.210 → 0.5.211.
+
 Lane P4.d11 unit 1: the v4 `5915b04e` single-dollar LaTeX promotion is
 re-ported into the SPA math normalizer (`apps/web/src/app/chat/render/math.ts`
 restructured to v4's `7e6d13e5` shape — `mapPlainRegions`,
