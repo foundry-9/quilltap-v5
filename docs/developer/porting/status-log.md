@@ -24962,3 +24962,77 @@ impact for the unifier: `markdown-fixtures.json` is now captured at
 `7e6d13e5` on katex 0.18.1 (34 → 40, purely additive — no other oracle
 family consumes this file); the capture tool now imports from the round
 pin, which the unifier retires AFTER any final regen need.
+
+---
+
+## Round planned — the workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥ P4.9J4), 2026-07-20
+
+The round the p4.9j workspace-tabs round's remainders have been waiting
+for: the three not-wired tab kinds close together. **Drift check first:**
+v4 HEAD is exactly the `7e6d13e5` baseline, tree clean — no drift; the
+predicted 4.8.0 release tag has NOT landed (every order carries the
+drift-check-and-STOP preamble; v4 is mid-release-checklist).
+
+Scope sources: the p4.9j1/j2 status headers' named follow-ups, the p4.9j
+round record, the M6 §1.6 Brahma correction block (`m6-screen-parity.md:
+304-344` — the one-shot engine is ported; the orchestrator + dispatch +
+UI are not), and three fresh 2026-07-20 surveys (wardrobe asTab /
+standalone documents / Brahma, all pinned into the orders). The
+standalone-document survey settled the open sizing question: **all seven
+standalone document verbs already exist server-side** (P4.6w —
+`api/types.rs:1565-1595`), so that lane is pure SPA.
+
+Four lanes, four orders (all committed in this round-planning commit):
+
+- **P4.9I1A** (`work-orders/p4.9i1a-brahma-server.md`) — the round's ONLY
+  Rust lane: the multi-turn Brahma orchestrator port
+  (`orchestrator.service.ts`, 619 LOC — independent of the ported
+  one-shot engine), the eight-verb brahma-console dispatch family +
+  `verify_brahma_chat`, the seven stream frames on the Event channel
+  (`ChatSend` architecture), `brahma_routes.rs` REST edges, a new
+  committed brahma fixture family, tier-2 CRUD + tier-3 mocked-LLM
+  differentials.
+- **P4.9I1B** (`work-orders/p4.9i1b-brahma-spa.md`) — the Brahma SPA:
+  the dialog family in both modes, the provider-service analogue
+  (eligibility = profiles.length > 0), the streaming consumer over the
+  shared reducer (whose most-recent-batch bookkeeping is
+  verified-compatible with the batch-relative `toolResult.index` wire),
+  the HelpChatComposer analogue + `qt-help-*` styles (carried even though
+  HelpChat stays p4.9i2), the rail entry; inert-in-lane, beats
+  ACTIVATE-AT-UNIFY.
+- **P4.9J3** (`work-orders/p4.9j3-wardrobe-tab-riders.md`) — the `asTab`
+  WardrobeView (the bare-render branch on the ported dialog inner; v4
+  `WardrobeShell:128-164`) + the p4.9j small follow-ups: tab-mode
+  card-Chat `openChatOnMount`, the hosted roster's Create-Character
+  in-tab arm, the `mode=setup` pass-through (prescribed as a
+  no-redirect exemption — the frozen contract has no wizard payload),
+  the HTML5 drag-split beat, the cross-theme accent check + ruling.
+  Single-owner of `app.routes.ts`, the redirect guard, and
+  `workspace-flow.spec.ts`.
+- **P4.9J4** (`work-orders/p4.9j4-document-standalone-spa.md`) — the
+  chat-less Document Mode surface over the EXISTING standalone verbs:
+  the `document*` wire types (lane-local, §W.3 fold), the
+  `StandaloneDocumentApi`, the `StandaloneDocumentView` port (30 s
+  autosave / flush-on-blur / absorb baseline / 409 reload / docKey
+  stability), the picker-based rail opener. Closes P4.9J2 tier-2 item 7
+  + the doc_focus-beats fold (doc_focus itself stays chat-scoped,
+  v4-faithful).
+
+**The meeting points** are §W (byte-identical in all four orders,
+md5-verified): the workspace contract FROZEN; `tab-registry.ts` /
+`not-wired-pane.ts` / `shell.ts` UNIFIER-ONLY (registry row swaps + two
+shell mounts at unify); `core-contract.ts` folds at unify from the two
+lane-local wire modules + the name-for-name wire diff; P4.9J3 owns
+`app.routes.ts` + the guard; per-lane version-bump ownership assigned.
+§B (the brahma wire contract — verbs, REST edges, frame semantics, the
+batch-relative index note, the seed-title literal) is byte-identical in
+P4.9I1A and P4.9I1B, md5-verified.
+
+Deliberately left OUT of this round: the `avatar_preview` host wire +
+WebP codec (the standing named next Rust item — it wants its own lane
+and would collide with nothing here; next round), the ChatSidebar
+surface (p4.9h — carries the chat-tier State-Editor opener and the J2
+item-8 narrow-pane overlay with it), p4.9i2 (HelpChat — its help-doc
+read surface has nothing ported above `services/help_doc_sync.rs`), a
+workspace/state dogfood pass (run `/dogfood` after this round unifies),
+and the M6 backlog rows 5/6/8+.

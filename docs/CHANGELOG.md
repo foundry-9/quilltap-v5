@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Docs only: the workspace-tabs remainder round is PLANNED — four work
+orders committed (P4.9I1A the Brahma server lane: the multi-turn
+orchestrator + the eight-verb brahma-console dispatch family + REST
+edges + differentials; P4.9I1B the Brahma SPA lane: the console dialog
+family, streaming consumer, rail entry; P4.9J3 the wardrobe-asTab +
+workspace-riders lane: the bare-render tab surface, openChatOnMount,
+the Create-Character in-tab arm, the mode=setup pass-through, the
+drag-split beat, the accent check; P4.9J4 the standalone-document lane:
+the chat-less Document Mode surface over the existing P4.6w standalone
+verbs — pure SPA, survey-confirmed). The three not-wired workspace tab
+kinds (wardrobe / document-standalone / brahma) all close at this
+round's unification. Binding §W (all four orders) and §B (the two
+Brahma lanes) contract blocks are byte-identical, md5-verified. Round
+record: `docs/developer/porting/status-log.md` ("Round planned —
+the workspace-tabs remainder round"). No drift: v4 HEAD == the
+`7e6d13e5` baseline, tree clean.
+
 The `7e6d13e5` state-cascade drift catch-up round is UNIFIED on main
 (2026-07-20) — P4.d10, P4.6be, and P4.d11 all CLOSED, and the oracle
 baseline MOVES to v4 `7e6d13e5` (4.8.0-dev.92): the drift debt from the
