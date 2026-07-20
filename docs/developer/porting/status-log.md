@@ -25066,3 +25066,23 @@ name-for-name against `api/types.rs:1565-1595` (the unifier's wire diff),
   `document-api.ts`). 11-case spec pins each request `{type,…}` shape +
   response field extraction (incl. the null-mountPoint→undefined map and
   the conflict/error write split). apps/web 0.5.222.
+
+- **Unit 2 — the screen** (`documents/standalone-document-view.ts` +
+  `.spec.ts`). `qt-standalone-document-view` — the port of v4
+  `components/workspace/StandaloneDocumentView.tsx` (baseline `7e6d13e5`),
+  which re-implements the per-document mechanics INLINE (v4 does NOT reuse
+  `useDocumentMode` here): mount-once open (an `opened` guard so a payload
+  refresh never re-opens), 30 s autosave debounce, flush-on-blur, the
+  absorb-first-serialization baseline (reuses `computeAbsorbNext` —
+  markdown + non-empty + rich-editor), the 409 → `read` reload (no local
+  edits → adopt disk; else keep the unsaved content and refresh mtime
+  only), rename that updates the payload's `filePath` but keeps the
+  `docKey` stable, delete → self-close, and the blank-document payload
+  refresh (`WORKSPACE_HANDLE.refreshTab`). Hosts the existing
+  `qt-document-pane` (mode `'split'`, toggle-focus a no-op as v4). Self-close
+  via `WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID` (both optional; the tab host
+  always provides them). 12-case spec: mount-open + tab refresh, failed-open
+  load error, absorb baseline, the 30 s debounce under fake clocks + re-arm,
+  flush-on-blur, 409 keep-content + mtime, rename keeps docKey, rename no-op,
+  delete closes / failed-delete keeps open, close flushes then closes.
+  apps/web 0.5.223.

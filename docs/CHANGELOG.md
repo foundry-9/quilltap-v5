@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9J4 (standalone Document Mode, unit 2): the `qt-standalone-document-view`
+screen — the chat-less Document Mode tab. Ports v4's inline per-document
+mechanics: 30 s autosave debounce, flush-on-blur, absorb-first-serialization
+baseline, 409-conflict reload, rename that keeps the docKey stable, and
+delete that closes the tab. Hosts the existing document pane; opens once on
+mount and refreshes a blank document's tab payload with the server filepath.
+
 P4.9J4 (standalone Document Mode, unit 1): the lane-local `document*`
 wire module — the seven standalone document request interfaces
 (name-for-name against `api/types.rs`, folded into `core-contract.ts` at
