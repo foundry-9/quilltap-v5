@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+The drift catch-up round is re-baselined at v4 `7e6d13e5` (4.8.0-dev.92)
+and extended (2026-07-20, docs only): v4 landed twelve more commits (the
+4.8.0 release sweep) before lane D10 started. `p4.d10-state-cascade-server.md`
+gains the sweep's disposition table, a neutrality tripwire sweep for the
+dedup-refactor and logging-prune commits (regenerate + re-run every
+affected differential family by name), the seven-family renderer-transitive
+re-proof for the math drift, and three new tier-2 checks (import-parse
+tolerance, OpenRouter pricing disposition, the 4.8 regression-test corpus
+bank). A new lane `p4.d11-release-sweep-spa.md` re-ports the single-dollar
+LaTeX promotion into the SPA math normalizer (with the byte-parity fixture
+regen from the new pin), swaps the two workbench dialog backdrops to
+`qt-dialog-overlay`, and bumps katex to 0.18.1. `p4.6be-state-cascade-spa.md`
+(found already carried out on its branch at `c53510c7`) is marked
+CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
+across the gap. Round record in the status log; the round pin moves to
+`qt-v4-pin-7e6d13e5`.
+
 The `c53510c7` state-cascade drift catch-up round is planned (2026-07-19,
 docs only): two work orders committed — `p4.d10-state-cascade-server.md`
 (the Rust half: the four-tier state cascade with its new pure modules,

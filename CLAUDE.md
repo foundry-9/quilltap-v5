@@ -810,16 +810,22 @@ records THERE. Update this summary only when a phase or round completes.
   gained a pause-before-send gesture fix (the group turn chain's terminal state is run-order-dependent and can disable the composer)). Still not-wired (loud): the wardrobe
   `asTab` surface, `document-standalone`, `brahma` (p4.9i1). **⚠ v4
   DRIFTED to `c53510c7` during the round** (the cascading-state feature —
-  Pascal `$state`, touches PORTED surfaces — + a system-prompt KaTeX note):
-  **a drift catch-up round is OWED**; oracles keep regenerating from the
-  pinned worktree `/private/tmp/qt-v4-pin-b8b12695` (kept alive) until it
-  runs. Next candidates: that catch-up, the `avatar_preview` wire + WebP
-  codec, the two not-wired workspace kinds, or a workspace dogfood pass —
-  see phase-4.md.
+  Pascal `$state`, touches PORTED surfaces — + a system-prompt KaTeX note),
+  **then to `7e6d13e5` (the 4.8.0 release sweep) before the catch-up
+  started: the catch-up round is PLANNED and RE-BASELINED at `7e6d13e5`**
+  (P4.d10 ∥ P4.6be[carried out on its branch] ∥ P4.d11 — orders in
+  `work-orders/`, round record 2026-07-20 in the status log); oracles for
+  OTHER work keep regenerating from the pinned worktree
+  `/private/tmp/qt-v4-pin-b8b12695` (kept alive) until it unifies. Next:
+  run D10 ∥ D11, then unify all three lanes; after that the
+  `avatar_preview` wire + WebP codec, the two not-wired workspace kinds,
+  or a workspace dogfood pass — see phase-4.md.
 - **Oracle baseline: v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
   at the P4.d9 KaTeX drift-catch-up unification. ⚠ v4 HEAD has since
-  drifted to `c53510c7` (the state-cascade feature + a system-prompt KaTeX
-  note — catch-up round OWED, see the p4.9j round bullet); the baseline
+  drifted to `7e6d13e5` (4.8.0-dev.92 — the state-cascade feature + the
+  4.8.0 release sweep; the catch-up round is PLANNED at that baseline,
+  see the p4.9j round bullet — its lanes regenerate from
+  `/private/tmp/qt-v4-pin-7e6d13e5`); for everything else the baseline
   STAYS `b8b12695` and oracles regenerate from the pinned detached worktree
   `/private/tmp/qt-v4-pin-b8b12695` (node_modules symlinked: root +
   `packages/{quilltap,plugin-types,plugin-utils}`) — NOT from the drifted

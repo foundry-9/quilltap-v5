@@ -24193,3 +24193,84 @@ workbench `state` field, the §C corpus wire, the StateRef JSON shape,
 version-bump ownership). Ownership: D10 = `crates/**` + `harness/**` +
 `docs/v4/**` + the corpus carve-out; BE = `apps/web/**` minus the
 corpus; CHANGELOG + status-log append-only for both.
+
+## Round re-baselined + extended — the full-drift catch-up (P4.d10 ∥ P4.6be[carried out] ∥ P4.d11) at `7e6d13e5`, 2026-07-20
+
+The `c53510c7` round planned 2026-07-19 was overtaken before lane D10
+started: **v4 moved twelve more commits — the 4.8.0 release landing —
+and sits CLEAN at `7e6d13e5` (4.8.0-dev.92).** Per the standing rule
+(the D10 preamble's own STOP clause), planning halted, the full
+`b8b12695..7e6d13e5` drift was re-classified, and the round was
+re-baselined at `7e6d13e5` with one NEW lane. The round pin becomes
+`/private/tmp/qt-v4-pin-7e6d13e5` (the never-created `c53510c7` pin is
+moot; the old `b8b12695` pin stays alive until the unifier retires
+both).
+
+**The twelve new commits, classified** (full disposition table in the
+D10 order): THREE carry portable behavior — `5915b04e` (single-dollar
+LaTeX promotion inside `lib/markdown/math.ts`'s
+`normalizeMathDelimiters` — a real drift on the P4.d9-ported renderer
+surface → **lane D11**), `8f24ccc9` (workbench dialog backdrops →
+`qt-dialog-overlay`; v5 carried the old hardcoded backdrop verbatim →
+**lane D11**, 2 lines), and the katex 0.18.0→0.18.1 runtime bump
+(rider in `f495c9c9` → **lane D11** tier 2). TWO claim
+behavior-neutrality across ~19+29 PORTED `lib/` files — `93604767`
+(the dedup refactor: strings verified moving verbatim into shared
+helpers) and `28e89f51` (logger.debug prune) — dispositioned
+**VERIFY-DON'T-PORT**: D10's new unit 8 regenerates + re-runs every
+affected differential family by name at the pin (all green = done;
+any red = the tripwire firing → stop and classify). `5915b04e` also
+gets D10's unit 9: the P4.d9-style seven-family renderer-transitive
+neutrality re-proof. The rest: `2363c518` (.qtap EXPORT writer strips
+two ephemeral Commonplace fields — export unported, NO-PORT + an
+import-parse tolerance check), `bfc2c08c` (QtapDocLink SPA dead-code
+sweep — v5 never ported the chain, verified: only `qtap-linkify.ts` +
+the produce-only `qtap-uri.ts` exist and v4 keeps both → NO-PORT),
+`8ee56f6e` (tests-only regression coverage for pre-baseline fixes →
+corpus bank + an Anthropic model-family-params spot-check, D10 tier-2
+item 6), `f495c9c9`'s pricing-fetcher rider (OpenRouter SDK 0.13
+pagination — v4-SDK-internal; v5 hits the REST endpoint → disposition
+check, D10 tier-2 item 5), and dep/docs/infra (`a4ad1e83`,
+`60572405`, `d0a13d9a`, `3dfcb4b4`, `7e6d13e5` → NO-PORT / mirror
+sweep). No schema surface moved (no `lib/database` DDL file in the
+sweep; `better-sqlite3-multiple-ciphers` untouched) — the D23
+zero-diff re-dump expectation stands.
+
+**Lane BE was found already CARRIED OUT** (branch
+`claude/p4-6be-state-cascade-spa-bd6ade`, six commits, units 1–5 +
+gate recorded 2026-07-19/20) — executed against `c53510c7`. Its work
+STANDS at the new baseline: every v4 surface it ported/byte-copied
+verified byte-unchanged across `c53510c7..7e6d13e5` except the two
+backdrop lines (→ D11, which touches only files BE's branch did not —
+overlap checked file-by-file). Its status header carries the
+re-baseline addendum; the branch is PRESERVED for unification.
+
+**The round now:**
+
+- **P4.d10** (`p4.d10-state-cascade-server.md`, OPEN, re-baselined) —
+  unchanged mandate (the state cascade + Pascal `$state` + the math
+  note, all at `7e6d13e5`) + new units 8 (the release-sweep neutrality
+  tripwire) and 9 (the renderer-transitive re-proof) + tier-2 items
+  4–6 (import-parse check, OpenRouter pricing disposition, the
+  `8ee56f6e` corpus bank). Survey line numbers taken at `c53510c7`
+  may shift a few lines where the logging prune deleted lines —
+  re-anchor locally, STOP only on substantive contradiction.
+- **P4.6be** (CARRIED OUT, unify-pending) — no rework.
+- **P4.d11** (`p4.d11-release-sweep-spa.md`, NEW, OPEN) — the
+  release sweep's SPA slice: the `promoteSingleDollarMath` port into
+  `apps/web/src/app/chat/render/math.ts` (v4's 15-case family
+  case-for-case + the `markdown-fixtures.json` byte-parity regen from
+  the pin via `apps/web/tooling/capture-markdown-fixtures.mts`), the
+  two-line backdrop swap, the katex 0.18.1 bump, and the e2e
+  single-dollar extension of the EXISTING math beat (no new sends).
+
+Binding contracts: §A–§E unchanged (D10 ↔ BE, §C now regenerating at
+`7e6d13e5` — updated verbatim-identically in both); D11 adds §P (one
+shared pin, D10 creates it, D11 creates-if-absent) and §V (D11 bumps
+`apps/web/package.json` only; BE's branch also bumped it — the
+unifier RECOUNTS, per the identical-bumps-merge-silently memory).
+Execution: D10 and D11 run in parallel (disjoint ownership:
+crates/harness vs the render pipeline + two backdrop files); BE waits
+for the unifier. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version
+commit may land any day; every lane drift-checks at start and STOPS
+on movement.
