@@ -25036,3 +25036,137 @@ item-8 narrow-pane overlay with it), p4.9i2 (HelpChat — its help-doc
 read surface has nothing ported above `services/help_doc_sync.rs`), a
 workspace/state dogfood pass (run `/dogfood` after this round unifies),
 and the M6 backlog rows 5/6/8+.
+
+## Round: lane P4.9J3 — the wardrobe-tab + workspace-riders lane (branch `claude/wardrobe-tab-riders-porting-4ab448`, 2026-07-20)
+
+Pure-SPA lane of the workspace-tabs remainder round (see "Round planned —
+the workspace-tabs remainder round"). Zero Rust source touched
+(`git diff main -- crates/ Cargo.toml Cargo.lock` empty). Baseline v4
+`7e6d13e5`, drift-clean at lane start (`git log 7e6d13e5..HEAD` empty).
+Four commits, SPA 0.5.221 → 0.5.225.
+
+**Item 1 — the `asTab` WardrobeView surface (SPA 0.5.222).** An `asTab`
+input (default false) on `WardrobeControlDialogInner` implements v4's
+`WardrobeShell` chrome switch (`wardrobe-control-dialog.tsx:128-164`): the
+shared dialog body moved into an `#body` `<ng-template>` rendered either
+bare in a `qt-wardrobe-tab flex flex-col h-full min-h-0 overflow-y-auto p-4`
+scroll container (asTab) or inside the existing `qt-dialog-overlay` modal
+(header/footer/close). `onEscape` early-returns in tab mode (v4 renders no
+`BaseModal`; the Reset-menu arm still fires). New `WardrobeTabView`
+(`qt-wardrobe-tab-view`, co-located as in v4) hosts the inner with
+`asTab=true`, `chatId=null`, a `characterId?` input from the payload, and a
+no-op `closed` — so `isInChat` is false ⇒ no Live-outfit tab, no equip
+route. Docstring "not ported" marker removed. Specs (3 new): bare vs modal
+chrome; no Live tab + reads-only dispatch when chatId null; payload-less
+auto-selects the first character. **AT-UNIFY (§W.2, unifier-only files):**
+swap `tab-registry.ts:145` `wardrobe: refusal('wardrobe')` →
+`{ component: WardrobeTabView, inputs: (tab) => ({ characterId: (tab.payload
+as WardrobeTabPayload | undefined)?.characterId }) }` (import from
+`../../wardrobe/wardrobe-control-dialog`), and prune the `wardrobe` arms
+from `not-wired-pane.ts` (headline/detail switches). The
+`workspace-flow.spec.ts` wardrobe-tab probe self-activates at the swap.
+
+**Items 2 & 3 — the roster in-tab Chat + Create-Character arms (SPA
+0.5.223).** Item 2 (`openChatOnMount`, v4 `AuroraView` `:87,:325-335,:509-521`
++ `CharacterDetailView` `:136-143`): `CharacterDetail` gains an
+`openChatOnMount` input and a reactive routed `?action=chat` signal
+(`toSignal(queryParamMap…)`), with a once-only constructor `effect` +
+plain-field latch that — after the character loads — navigates to
+`/salon/new?characterId=`. **v5 DIVERGENCE:** v5 has NO in-place
+NewChatModal and the routed detail did NOT honor `?action=chat` (verified —
+no handler existed); starting a chat navigates to the established
+`/salon/new?characterId=` entry (the P4.6q precedent `home-character-card`
+uses; pinned by `home.spec.ts:366`). This makes the previously-dead
+`character-header` "Start Chat" button (which routes to `?action=chat`)
+functional. The card's Chat action emits a new `openChat` output in tab
+mode → the roster's `drillChat` sets `openChatForSelected` + drills.
+Item 3 (Create-Character): both anchors (`characters-list.ts:115`, the
+empty-state twin) suppress their routerLink when `inTab()` and call
+`WORKSPACE_HANDLE.openTab('character-new')`. Specs (6 new): the once-only
+guard (both arms + negative); the card Chat drill-and-auto-open;
+Create-Character opens a `character-new` tab and does not route.
+
+**Item 4 — the `mode=setup` guard pass-through (SPA 0.5.224).**
+`workspaceRedirectGuard` gains an optional third `bypass` predicate; when it
+returns true the legacy route renders standalone even with the flag on. The
+`settings/wizard` binding passes `(r) => r.queryParamMap.get('mode') ===
+'setup'`, so the shell's first-run handoff `/settings/wizard?mode=setup`
+renders the fresh-instance wizard routed rather than losing the param under
+the FROZEN contract (no `SettingsWizardTabPayload`). A DOCUMENTED DIVERGENCE
+— v4 has no equivalent workspace arm (setup pages, `m6` §1.7); no oracle
+violated. Guard specs (2 new): flag on + mode=setup ⇒ pass through; flag on
+without it ⇒ redirect.
+
+**Items 5 & 6 — workspace-flow e2e beats + the accent ruling (SPA 0.5.225).**
+Item 5: a real HTML5 drag-split beat (native `dragstart`/`dragover`/`drop`
+dispatched with a shared `DataTransfer` opens the split; a `page.mouse`
+pointer drag of the divider re-ratios it, asserted within `[MIN_SPLIT_RATIO,
+MAX_SPLIT_RATIO]` = [20, 80]) — the p4.9j1 tier-2 divider deferral CLOSED.
+Plus the ACTIVATE-AT-UNIFY wardrobe-tab probe (`/workspace?open=wardrobe`):
+skips while the registry still renders `[data-not-wired][data-kind=
+"wardrobe"]`, self-activates asserting the bare `qt-wardrobe-tab` (no
+overlay/footer) once the swap lands.
+
+Item 6 (a cross-theme accent beat + ruling) — **CORRECTED mid-lane after a
+full-suite failure exposed a survey gap.** The runtime theme packs
+(`public/themes/*/styles.css`) ALREADY declare `--qt-workspace-accent` with
+v4's LIVE `var()` token references (art-deco `var(--deco-gold)`, rains
+`hsl(var(--accent-brand))`, earl-grey `hsl(var(--accent-secondary-100))`,
+great-estate `var(--estate-gold)`, madmans-box `var(--rotor-cyan)`,
+old-school `var(--color-primary)`), under a `[data-theme="X"].dark/.light`
+selector (specificity 0,2,0) that OUTRANKS the bundled `_workspace.css`
+`[data-theme="X"]` block (0,1,0). So once a theme is active (the app always
+adds a `.dark`/`.light` class) the pack's live token WINS — **v5 is already
+v4-faithful**; the committed hexes are the pre-pack-load / no-pack fallback,
+not a divergence to reconcile. **RULING: NO CHANGE.** (The initial "keep
+static hex as a divergence" ruling missed the pack-side declarations.) The
+beat was rewritten order-independent: it reads `_workspace.css` (Node fs,
+available in the Playwright runtime) to assert the six bundled defaults are
+distinct hexes, plus a browser check that each `[data-theme]` root resolves
+the accent to a real non-transparent colour (true whether the bundled hex or
+a pack's live token applies). The first version asserted the RAW custom
+property was hex — which a loaded pack overrides with `var(...)`, so it flaked
+at position 99 in full-suite order (passed in isolation). Corrected in the
+follow-up commit (SPA 0.5.226).
+
+**Loud deferrals (unchanged by this lane):** `wardrobePreviewAvatar`'s
+render step stays refusal-armed (blocked on the WebP-codec `avatar_preview`
+host wire — the standing next Rust item); per-instance workspace
+storage-key scoping stays deferred (no client-visible instance id, p4.9j1
+tier 3).
+
+**The gate (all on this Mac):** `ng test` = **190 files / 2,352 tests / 0
+failed** (+10 from this lane's new specs); `ng build` clean (only the
+pre-existing xterm/unified CommonJS warnings). Playwright ALONE on port 4319
+with this worktree's own `target/debug` binaries + freshly built dist —
+99-test suite: **96 passed / 2 failed / 1 skipped** (the wardrobe-tab probe
+skips by design). BOTH failures triaged and NOT lane regressions:
+(1) `workspace-flow.spec.ts` accent beat — MY fragility (the raw-property
+assertion a loaded pack overrides); rewritten order-independent and RE-RUN
+GREEN (8 passed / 1 skip in isolation, SPA 0.5.226). (2)
+`wardrobe-flow.spec.ts:214` (the in-chat set_all-flush round-trip beat) —
+PRE-EXISTING order/timing flakiness, PROVEN by re-running wardrobe-flow in
+isolation: **2 passed** (:214 in 548ms vs the 10.6s full-suite timeout); my
+modal template change is byte-equivalent DOM (ngTemplateOutlet) and every
+wardrobe unit spec is green, so it is not a regression. ⚠ Note for the
+unifier: the full 99-beat suite ran ONLY in a killed/backgrounded harness
+context (the background-task duration cap + shared-port 4319 contention with
+the concurrently-running sibling brahma-spa lane made a single clean
+full-suite pass unreachable in-lane — the p4.9j-round precedent: the
+unifier's local serialized run is the authoritative gate); this lane's
+CHANGED e2e surface (`workspace-flow.spec.ts`) is green in isolation, and
+`wardrobe-flow.spec.ts` (the spec most exercising the touched wardrobe
+component) is green in isolation. `git diff main -- crates/ Cargo.toml
+Cargo.lock` empty.
+
+**AT-UNIFY table (for the unifier):**
+- `tab-registry.ts:145` `wardrobe` row → `WardrobeTabView` (import
+  `../../wardrobe/wardrobe-control-dialog`), inputs bind `characterId` from
+  `WardrobeTabPayload`.
+- `not-wired-pane.ts` → drop the two `wardrobe` cases (headline + detail).
+- The `workspace-flow.spec.ts` wardrobe-tab probe + salon fixtures already
+  seed a character with wardrobe rows (P4.9f2-era e2e seeding) — no shared
+  e2e-setup edits.
+- No `core-contract.ts` / `shell.ts` edits from this lane. SPA bumps:
+  0.5.222 / 0.5.223 / 0.5.224 / 0.5.225 / 0.5.226 (recount against sibling
+  lanes — identical bumps merge silently).
