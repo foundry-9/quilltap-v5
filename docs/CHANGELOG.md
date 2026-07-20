@@ -17,6 +17,12 @@ Shift+Enter newline, 120px auto-grow), `qt-brahma-model-picker` (the
 inline connection-profile dropdown, outside-click/Escape close), and
 `qt-brahma-tool-call` (the run_sql card — Query pane via the shared markdown
 renderer, Result pane as a table or error text). Each with a component spec.
+The transcript renderer (`qt-brahma-console-message-list`) — user/assistant
+bubbles on the `qt-help-*` styles (assistant hidden when its prose is empty),
+run_sql TOOL cards, reasoning via `qt-thinking-block`, a copy-as-Markdown
+affordance, and the live streaming block (reasoning + live run_sql cards +
+prose + the "Consulting the stacks…"/"Thinking…" indicators). Live tool cards
+consume the shared reducer's flattened batch list.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
