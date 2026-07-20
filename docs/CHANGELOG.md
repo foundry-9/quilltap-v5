@@ -33,7 +33,13 @@ streaming consumer: subscribe the global event stream scope-tagged by
 `chatId`, fold the seven frames through the shared reducer, reconcile against
 the reloaded transcript on completion. Plus `qt-brahma-console-view` (the
 `asTab` wrapper the tab registry mounts at unification). Specs: 7 cases incl.
-the live-fold-then-reconcile beat.
+the live-fold-then-reconcile beat. The rail entry (`qt-brahma-entry`) — the
+eligibility-gated sidebar-footer button that hosts the floating dialog and
+branches `inWorkspace ? openTab('brahma') : openConsole()` (v4
+`sidebar-footer.tsx`); the unifier mounts this one component in `shell.ts`
+(§W.2). Inert-in-lane: the `brahmaConsole*` verbs and the shell/registry
+mounts land at the p4.9i1 unification, so the whole lane ships behind guarded
+ACTIVATE-AT-UNIFY e2e beats.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
