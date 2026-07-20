@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9I1B (the Brahma SPA lane — in progress): the Brahma Console UI half.
+The lane-local wire contract (`brahma/brahma-wire.ts` — the eight §B
+`brahmaConsole*` request/response DTOs + the `BrahmaConsoleApi` dispatch
+client; inert-in-lane, folded into `core-contract.ts` at unification) and
+the `run_sql` tool-call parser (`brahma-sql-tool-call.ts`, ported
+case-for-case from v4 with its 10-case spec).
+
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
 orchestrator + the eight-verb brahma-console dispatch family + REST
