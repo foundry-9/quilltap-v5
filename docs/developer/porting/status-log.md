@@ -24858,3 +24858,25 @@ stands. Full `ng test` at this point: 187 files / 2,279 tests green
 (main +21: the 15 promotion cases + 6 new parity fixtures). The live
 walk runs in the lane gate's FULL Playwright pass (sending-beat rule).
 SPA 0.5.213 → 0.5.214.
+
+**Lane P4.d11 gate + close (docs-only commit "close out lane P4.d11").**
+Gate on the lane branch at SPA 0.5.214: full `ng test` FROM `apps/web`
+— 187 files / 2,279 tests, 0 failed; `ng build` clean (the standing
+CommonJS-bailout note only); FULL Playwright from `apps/web` against a
+REBUILT dist and freshly built worktree binaries (`cargo build -p
+quilltap-web -p quilltap-cli`) — **93 passed / 0 failed / 0 skipped
+(15.2 m)**, the extended math beat live among them (the sending-beat
+full-suite rule honored); `cargo test -p quilltap-harness` no-env-vars
+self-test green (zero Rust changed — belt-and-suspenders only);
+ownership proven by `git diff --stat main...HEAD` — every touched file
+inside the Ownership list, zero edits to `crates/**`, `Cargo.lock`,
+`harness/**`, the §C corpus, or any lane-BE file. Tier-3 deferrals
+stand as ordered: `help/math-notation.md` REWRITTEN at `5915b04e` (the
+"discreet doorman" copy) — noted in the p4.9i2 bank row in
+`m6-screen-parity.md` (this commit); the composer backslash-escape seam
+and FilePreviewText math unchanged, still deferred from P4.d9/P4.6af.
+The order's status header marked CARRIED OUT, unify-pending. Fixture
+impact for the unifier: `markdown-fixtures.json` is now captured at
+`7e6d13e5` on katex 0.18.1 (34 → 40, purely additive — no other oracle
+family consumes this file); the capture tool now imports from the round
+pin, which the unifier retires AFTER any final regen need.
