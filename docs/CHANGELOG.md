@@ -119,6 +119,11 @@ extended `state-sql-tools` fixture family (four groups + memberships +
 the union chat + the seeded general mount), with the existing 34-case
 `state_sql_tools_equivalence` regenerated and green at v4 `7e6d13e5`.
 
+Lane P4.d11 (e2e): the live Salon math beat now also proves the
+single-dollar promotion end-to-end — the currency message gains an
+`$x^2$` span in-place (no new sends), asserting one KaTeX subtree and
+untouched `$50`/`$20` prose. SPA 0.5.213 → 0.5.214.
+
 Lane P4.d11 unit 3: the Pascal's Workbench dialog backdrops (the
 editor's mtime-conflict dialog and the destination picker) drop their
 hardcoded `bg-black/40` wrapper for the themed `qt-dialog-overlay`

@@ -177,7 +177,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
   // beat (`salon-token-cost-flow.spec.ts`) asserts a hardcoded 15.4K-token
   // baseline for Solo Voyage, and every message this beat sends shifts it. No
   // spec asserts token totals or message counts on Group Expedition.
-  test('a $$ math message renders KaTeX live; $50/$20 stays plain text', async ({ page }) => {
+  test('a $$ math message renders KaTeX live; single-$ math promotes; $50/$20 stays plain text', async ({ page }) => {
     await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
@@ -213,17 +213,26 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     });
     await expect(page.locator('.qt-chat-message-row-user .katex').first()).toBeVisible();
 
-    // The negative: paired dollar amounts are NOT math (singleDollarTextMath off),
-    // so the message renders as plain prose with no KaTeX subtree.
+    // The P4.d11 (5915b04e) extension rides the SAME send — no new sends, the
+    // chat-totals coupling note above stands: one message carrying paired
+    // currency amounts AND a clearly-LaTeX single-`$` span. The promotion pass
+    // (`promoteSingleDollarMath`) must lift `$x^2$` to KaTeX while both dollar
+    // amounts stay prose (`$50…$20` pairs carry no marker and are released).
+    // `$x^2$` rather than `$\pi r^2$` on purpose: the composer serializer
+    // backslash-escapes typed `\` (the same seam the `$$`-block comment above
+    // documents), while `^` serializes cleanly — and `^` is a LATEX_MARKER.
     await composerEditor(page).click();
-    await page.keyboard.type('He slid $50 across the table, then another $20.');
+    await page.keyboard.type('He slid $50 across the table, then another $20, as $x^2$ glowed on the board.');
     await page.keyboard.press('Enter');
 
     const currencyMsg = page.locator('.qt-chat-message-row-user .qt-chat-message-content', {
       hasText: '$50',
     });
     await expect(currencyMsg.first()).toBeVisible({ timeout: 15_000 });
-    await expect(currencyMsg.first().locator('.katex')).toHaveCount(0);
+    // Exactly ONE KaTeX subtree: the promoted formula — not the currency.
+    await expect(currencyMsg.first().locator('.katex')).toHaveCount(1);
+    // The currency prose survives verbatim around it, dollar signs intact.
+    await expect(currencyMsg.first()).toContainText('He slid $50 across the table, then another $20,');
 
     // Restore the running state for sibling specs, then let the resumed chain
     // (if the turn pointer sits on an AI participant) drain: poll until the

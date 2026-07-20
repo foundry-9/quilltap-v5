@@ -24841,3 +24841,20 @@ stacking-context escape applies), `role="dialog"`/`aria-modal="true"`
 kept. No spec asserted the old classes (grepped); the custom-tools
 suite through `ng test` (raw vitest lacks the Angular JIT setup — 7
 files / 111 tests) green. SPA 0.5.212 → 0.5.213.
+
+**Tier-2 item 2 — the e2e single-dollar extension (commit "extend the
+live math beat with single-dollar promotion").** The P4.d9 math beat in
+`salon-composer-modes.spec.ts` (Group Expedition, pause-first — both
+standing memories honored) keeps its two sends; the currency send's
+message grows the promotion case in-place: "He slid $50 across the
+table, then another $20, as $x^2$ glowed on the board." — asserting
+exactly ONE `.katex` subtree in the rendered message (the promoted
+`$x^2$`) and the currency prose verbatim around it (the `$50…$20` pairs
+carry no marker and are released). `$x^2$` rather than a
+backslash-command on purpose: the composer serializer backslash-escapes
+typed `\` (the documented P4.d9 seam), while `^` serializes cleanly and
+is a `LATEX_MARKER`. No new sends — the P4.6ap chat-totals coupling
+stands. Full `ng test` at this point: 187 files / 2,279 tests green
+(main +21: the 15 promotion cases + 6 new parity fixtures). The live
+walk runs in the lane gate's FULL Playwright pass (sending-beat rule).
+SPA 0.5.213 → 0.5.214.
