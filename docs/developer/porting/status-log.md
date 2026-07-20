@@ -9,6 +9,24 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 unit 6 — the universal math-notation note (lane D10, 2026-07-20)
+
+`MATH_FORMATTING_INSTRUCTION` in `system_prompt.rs` (v4
+`lib/chat/context/system-prompt-builder.ts:22` at `c53510c7`; the const
+holds the RESOLVED bytes — single-backslash LaTeX), pushed UNCONDITIONALLY
+after the roleplay-template push and before the tool-instructions push
+(v4 :281); the join/trim rule untouched. v4's cache-determinism golden
+hash moved `cd1a16cf903c655a` → `bd27b1ca407d9901` — v5 has no hash
+mirror; the differential is the proof. **Differentials:**
+`system_prompt_equivalence` regenerated at the pin (54 rows, the note in
+the composed prompts on both sides, TZ=UTC) and the five tier-3 turn
+guards regenerated + re-run BY NAME green (orchestrator 29-chat fixture,
+primary-stream 12 calls / 6 llm_logs rows, native-tool-loop 7,
+text-tool-loop 9, message-finalizer) — all over fresh `7e6d13e5`
+oracles, zero SKIPs (regen gotcha for the round record: the /tmp stage
+needs the fixture spec JSONs + `tool-wire/` copied alongside the cases,
+or the jest oracles ENOENT).
+
 ## P4.d10 unit 5 — Pascal `$state` end-to-end (lane D10, 2026-07-20)
 
 **Schema (`custom_tool_types.rs`):** `StateRef`/`StateRefFallback` +

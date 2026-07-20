@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d10 unit 6 (the universal math-notation note): v4 `c53510c7`'s
+`MATH_FORMATTING_INSTRUCTION` (the KaTeX `$$...$$` guidance — single-dollar
+deliberately unrecognized so currency prose survives) as a const in
+`system_prompt.rs`, pushed unconditionally between the roleplay-template
+and tool-instructions pushes, bytes identical to v4's resolved template
+literal. Proven by the regenerated 54-row `system_prompt_equivalence`
+(the note present on both sides) and the five tier-3 turn guards
+(orchestrator / primary-stream / native-tool-loop / text-tool-loop /
+message-finalizer) re-run green over fresh `7e6d13e5` oracles.
+
 P4.d10 unit 5 (Pascal `$state` end-to-end): the second closed indirection
 form. `StateRefSchema` (`{ $state, fallback }`, strict, fallback required
 and typing the ref) joins the roll-field / eq-neq / containment operand

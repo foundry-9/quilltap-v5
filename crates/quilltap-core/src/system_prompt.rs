@@ -394,6 +394,15 @@ pub struct BuildSystemPromptOptions<'a> {
     pub local_offset_minutes: i64,
 }
 
+/// v4 `MATH_FORMATTING_INSTRUCTION` (`c53510c7`) — the universal math-notation
+/// note. Salon messages render as Markdown with KaTeX math, and the renderer
+/// only recognizes double-dollar `$$...$$` — single-dollar `$x$` is
+/// deliberately disabled so ordinary prose like "$50 ... $20" isn't swallowed
+/// as math. Without this note, models default to single-`$`/`\(...\)` habits
+/// and their formulas render as literal text. The bytes are v4's template
+/// literal AFTER escape resolution (single-backslash LaTeX).
+const MATH_FORMATTING_INSTRUCTION: &str = "[FORMATTING: MATHEMATICAL NOTATION]\nResponses render as Markdown with KaTeX math support. To display a formula, wrap the LaTeX in DOUBLE dollar signs — $$...$$ — which renders correctly both inline within a sentence and as its own centered block. Do NOT use single dollar signs ($x$), single quotes, or backticks for math; only $$...$$ is recognized.\n- Inline example: The area of a circle is $$A = \\pi r^2$$ for radius r.\n- Block example:\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$";
+
 /// Build the per-turn system prompt for a character — v4 `buildSystemPrompt`
 /// (system-prompt-builder.ts:206).
 ///
@@ -453,6 +462,11 @@ pub fn build_system_prompt(
             parts.push(process_template(rt, &ctx));
         }
     }
+
+    // Universal math-notation formatting note (v4 `c53510c7`) — applies to
+    // every character regardless of the selected roleplay template, pushed
+    // UNCONDITIONALLY between the template and the tool instructions.
+    parts.push(MATH_FORMATTING_INSTRUCTION.to_string());
 
     // Tool instructions (per-turn dynamic). `if (toolInstructions)` — non-empty.
     let has_tools = matches!(options.tool_instructions, Some(t) if !t.is_empty());
