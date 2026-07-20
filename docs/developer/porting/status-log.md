@@ -25108,3 +25108,57 @@ name-for-name against `api/types.rs:1565-1595` (the unifier's wire diff),
   pulls in the real `CoreClient`). 15 specs (9 picker incl. 3 standalone,
   6 rail: same-docKey reopen, distinct-uuid blanks, project→general map,
   routed fallback). apps/web 0.5.224.
+
+- **Unit 4 — e2e beats + the AT-UNIFY table**
+  (`e2e/workspace-document-standalone-flow.spec.ts`; the order's status
+  header). Guarded ACTIVATE-AT-UNIFY probes (flag-ON, BASE `@playwright/test`
+  import like `workspace-flow.spec`; a rail-button `isWired` probe is the
+  gate — the standalone verbs already live server-side, so the guard is the
+  SPA wiring the unifier lands). Beat 1 (ALWAYS runs): a
+  `?open=document-standalone&scope=general` intent mints a tab — pre-unify the
+  loud not-wired pane (proving the tab kind round-trips through the layout),
+  post-unify the live editor + blank-doc create. Beat 2 (unify): rail →
+  picker → New blank → edit → flush-on-blur autosave (→ Saved) → rename
+  (title + tab label) → delete closes the tab. Beat 3 (unify):
+  reopen-focuses-same-tab — a renamed file reopened from the picker recents
+  keeps ONE tab (docKey identity). apps/web 0.5.225.
+  ⚠ **The e2e could NOT be run to completion in-lane:** this round ran FOUR
+  worktrees in parallel, all sharing the hardcoded e2e port 4319, and sibling
+  setups actively `lsof -ti :4319 | xargs kill -9` — so a solo server window
+  never held. The beats are guarded and self-activate at unification (when the
+  unifier runs the full suite ALONE post-registry-swap); the lane's logic is
+  fully covered by the 38 new unit specs (`ng test` 193 files / 2374 green).
+  The unifier's live run is the beats' first real execution — by design.
+
+**Tier-3 deferrals (loud, recorded so they are not re-reported as gaps):**
+- `doc_focus` stays chat-scoped (v4-faithful — `StandaloneDocumentView` does
+  not consume the LLM `doc_focus` UI tool; it is a chat-pane concern). The
+  P4.9J2 `doc_focus`-beats deferral folds into this: there is no standalone
+  `doc_focus` surface to build.
+- FilePreviewText math + the rich-stack preview deferrals (P4.6af-era) are
+  untouched by this lane.
+
+**AT-UNIFY table (P4.9J4) — the unifier performs these (mirrored in the order
+header):**
+1. `workspace/chrome/tab-registry.ts`: `document-standalone` →
+   `{ component: StandaloneDocumentView, inputs: (tab) => ({ payload: tab.payload as DocumentStandaloneTabPayload }) }`
+   (replacing `refusal('document-standalone')`; import from
+   `../../documents/standalone-document-view`).
+2. `workspace/chrome/not-wired-pane.ts`: drop the `document-standalone`
+   headline/detail arms (only `wardrobe` + `brahma` remain).
+3. `shell/shell.ts`: import `DocumentsRailEntry` from
+   `../documents/documents-rail-entry`, add to `imports`, mount
+   `<qt-documents-rail-entry />` in the footer actions right after the
+   Wardrobe button (v4 order: Wardrobe → Document Mode → Settings).
+4. `core/core-contract.ts` (§W.3): fold the seven `document*` request
+   interfaces from `documents/standalone-wire.ts`, run the name-for-name wire
+   diff vs `api/types.rs:1565-1595`, retire the two `as unknown as CoreRequest`
+   casts and re-export the interfaces (the P4.9a2/P4.9f1 fold precedent).
+5. e2e: no shared setup change; the beats self-activate at the wire.
+
+**Gate at lane close:** `ng test` 193 files / 2374 green; `ng build` clean;
+`cargo fmt --all --check` OK; `cargo clippy --workspace --all-targets` +
+`--features quilltap-core/native-transport` both `-D warnings` clean;
+`cargo test --workspace` 357 suites / exit 0 (zero Rust changed —
+`git diff main -- crates/ Cargo.toml Cargo.lock` empty). The full Playwright
+run is deferred to the unifier (shared-port contention this round).

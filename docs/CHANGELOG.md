@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J4 (standalone Document Mode, unit 4): e2e beats for the chat-less
+Document Mode tab — guarded ACTIVATE-AT-UNIFY probes (tab-kind round-trip,
+rail → picker → open → edit → autosave → rename → delete, reopen-focuses),
+plus the AT-UNIFY table in the order header (the registry swap, the shell
+mount of the rail entry, and the core-contract wire fold the unifier lands).
+The interactive beats self-activate at unification; the lane's logic is fully
+covered by 38 unit specs. Closes the P4.9J2 tier-2 item 7 (and its
+doc_focus-beats fold — doc_focus stays chat-scoped, v4-faithful).
+
 P4.9J4 (standalone Document Mode, unit 3): the rail "Document Mode" opener
 and the picker's standalone (chat-less) variant. The Open-Document modal now
 serves both entries v4's one modal serves — a `chatId` scopes the chat-side
