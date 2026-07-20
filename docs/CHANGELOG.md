@@ -7,7 +7,11 @@ The lane-local wire contract (`brahma/brahma-wire.ts` — the eight §B
 `brahmaConsole*` request/response DTOs + the `BrahmaConsoleApi` dispatch
 client; inert-in-lane, folded into `core-contract.ts` at unification) and
 the `run_sql` tool-call parser (`brahma-sql-tool-call.ts`, ported
-case-for-case from v4 with its 10-case spec).
+case-for-case from v4 with its 10-case spec). The state service
+(`BrahmaConsoleService`) — the provider analogue: `isOpen`/open/close,
+`currentChatId` on v4's exact localStorage key, `activeConnectionProfileId`
++ optimistic-then-PATCH `setModel`, `profiles` off the shared
+`connectionProfileList` query, `isEligible = profiles.length > 0`.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
