@@ -16,6 +16,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../core/core-client';
 import type { GroupMemberSummary, GroupSummary } from '../../core/core-contract';
+import { StateEditorModal } from '../../shared/state/state-editor-modal';
 import { ErrorAlert } from '../../ui/error-alert';
 import { Icon } from '../../ui/icon';
 import { LoadingState } from '../../ui/loading-state';
@@ -43,7 +44,15 @@ import {
 @Component({
   selector: 'qt-group-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Icon, LoadingState, ErrorAlert, GroupMembersCard, GroupStoresCard],
+  imports: [
+    FormsModule,
+    Icon,
+    LoadingState,
+    ErrorAlert,
+    GroupMembersCard,
+    GroupStoresCard,
+    StateEditorModal,
+  ],
   template: `
     @if (groupQuery.isPending()) {
       <qt-loading-state message="Loading group..." class="mt-12" />
@@ -151,6 +160,13 @@ import {
             >
               {{ saving() ? 'Saving...' : 'Save Changes' }}
             </button>
+            <button
+              type="button"
+              class="qt-button qt-button-secondary inline-flex items-center rounded-lg px-6 py-2 font-semibold qt-shadow-sm"
+              (click)="showStateModal.set(true)"
+            >
+              Group State
+            </button>
           </div>
         </form>
 
@@ -169,6 +185,15 @@ import {
             (unlink)="onUnlinkStore($event)"
           />
         </div>
+
+        @if (showStateModal()) {
+          <qt-state-editor-modal
+            entityType="group"
+            [entityId]="id()"
+            [entityName]="groupName()"
+            (close)="showStateModal.set(false)"
+          />
+        }
       </div>
     }
   `,
@@ -204,6 +229,7 @@ export class GroupEditor {
   protected readonly memberBusy = signal(false);
   protected readonly memberRemoving = signal<string | null>(null);
   protected readonly storeUnlinking = signal<string | null>(null);
+  protected readonly showStateModal = signal(false);
 
   protected readonly groupQuery = injectQuery(() => ({
     queryKey: groupKeys.detail(this.id()),
@@ -231,6 +257,8 @@ export class GroupEditor {
   protected readonly members = computed(() => this.membersQuery.data() ?? []);
   protected readonly stores = computed(() => this.storesQuery.data() ?? []);
   protected readonly allCharacters = computed(() => this.charactersQuery.data() ?? []);
+  /** The loaded group's name for the State modal title (v4 `group.name`). */
+  protected readonly groupName = computed(() => this.groupQuery.data()?.name ?? '');
 
   constructor() {
     // Seed the form from the loaded group ONCE per group id (v4 sets formData in

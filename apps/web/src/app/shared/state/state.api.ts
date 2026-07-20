@@ -13,6 +13,12 @@
 
 import type { CoreClient } from '../../core/core-client';
 import type { GroupTier } from '../../core/core-contract';
+import { fetchGroupState, resetGroupState, setGroupState } from '../../screens/groups/groups.api';
+import {
+  fetchProjectState,
+  resetProjectState,
+  setProjectState,
+} from '../../screens/prospero/projects.api';
 
 /** The four tiers the shared editor spans. `general` is instance-wide (no id). */
 export type StateEntityType = 'chat' | 'project' | 'group' | 'general';
@@ -66,14 +72,10 @@ export async function fetchState(
         projectId: data['projectId'] as string | undefined,
       };
     }
-    case 'project': {
-      const data = await core.dispatchData({ type: 'projectStateGet', projectId: entityId });
-      return { state: (data['state'] as Record<string, unknown>) ?? {} };
-    }
-    case 'group': {
-      const data = await core.dispatchData({ type: 'groupStateGet', groupId: entityId });
-      return { state: (data['state'] as Record<string, unknown>) ?? {} };
-    }
+    case 'project':
+      return { state: await fetchProjectState(core, entityId) };
+    case 'group':
+      return { state: await fetchGroupState(core, entityId) };
     case 'general': {
       const data = await core.dispatchData({ type: 'generalStateGet' });
       return { state: (data['state'] as Record<string, unknown>) ?? {} };
@@ -88,19 +90,20 @@ export async function setState(
   entityId: string,
   state: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const data = await (async () => {
-    switch (entityType) {
-      case 'chat':
-        return core.dispatchData({ type: 'chatStateSet', chatId: entityId, state });
-      case 'project':
-        return core.dispatchData({ type: 'projectStateSet', projectId: entityId, state });
-      case 'group':
-        return core.dispatchData({ type: 'groupStateSet', groupId: entityId, state });
-      case 'general':
-        return core.dispatchData({ type: 'generalStateSet', state });
+  switch (entityType) {
+    case 'project':
+      return setProjectState(core, entityId, state);
+    case 'group':
+      return setGroupState(core, entityId, state);
+    case 'chat': {
+      const data = await core.dispatchData({ type: 'chatStateSet', chatId: entityId, state });
+      return (data['state'] as Record<string, unknown>) ?? {};
     }
-  })();
-  return (data['state'] as Record<string, unknown>) ?? {};
+    case 'general': {
+      const data = await core.dispatchData({ type: 'generalStateSet', state });
+      return (data['state'] as Record<string, unknown>) ?? {};
+    }
+  }
 }
 
 /** DELETE the tier's state; returns the `previousState` the server reports. */
@@ -109,17 +112,18 @@ export async function resetState(
   entityType: StateEntityType,
   entityId: string,
 ): Promise<Record<string, unknown>> {
-  const data = await (async () => {
-    switch (entityType) {
-      case 'chat':
-        return core.dispatchData({ type: 'chatStateReset', chatId: entityId });
-      case 'project':
-        return core.dispatchData({ type: 'projectStateReset', projectId: entityId });
-      case 'group':
-        return core.dispatchData({ type: 'groupStateReset', groupId: entityId });
-      case 'general':
-        return core.dispatchData({ type: 'generalStateReset' });
+  switch (entityType) {
+    case 'project':
+      return resetProjectState(core, entityId);
+    case 'group':
+      return resetGroupState(core, entityId);
+    case 'chat': {
+      const data = await core.dispatchData({ type: 'chatStateReset', chatId: entityId });
+      return (data['previousState'] as Record<string, unknown>) ?? {};
     }
-  })();
-  return (data['previousState'] as Record<string, unknown>) ?? {};
+    case 'general': {
+      const data = await core.dispatchData({ type: 'generalStateReset' });
+      return (data['previousState'] as Record<string, unknown>) ?? {};
+    }
+  }
 }

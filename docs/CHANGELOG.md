@@ -136,6 +136,21 @@ CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
 across the gap. Round record in the status log; the round pin moves to
 `qt-v4-pin-7e6d13e5`.
 
+Lane P4.6be unit 4 — the Group State + General State entry points (SPA
+0.5.213): a "Group State" secondary button on the group editor's action
+row (immediately after Save Changes, v4's placement) opening the shared
+editor with `entityType="group"` and the loaded group's id/name;
+`groups.api.ts` gains `fetchGroupState`/`setGroupState`/`resetGroupState`
++ `groupKeys.state(id)`. A new `general-state-settings` card (intro + "Edit
+General State" button → the shared editor in `general` mode, no id)
+inserted into the Chat settings tab as `sectionId="general-state"` between
+Custom Tools (#10) and Agent Mode (#12) — v4's position #11. The shared
+`state.api` now delegates its project/group get/set/reset through the
+vertical `projects.api`/`groups.api` layers (DRY); chat + general stay
+inline. Unit specs: the Group State open round-trip, the General State
+card render + open, and the chat-tab card-order test extended to eighteen
+cards with the new ordinal.
+
 Lane P4.6be unit 3 — the shared four-entity state editor + the §A
 dispatch types (SPA 0.5.212): the Prospero-only state modal is generalized
 into `shared/state/qt-state-editor-modal` over an `entityType` input

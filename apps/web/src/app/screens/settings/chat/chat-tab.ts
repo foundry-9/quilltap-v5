@@ -22,6 +22,7 @@ import { ContextCompressionSettings } from './context-compression-settings';
 import { CustomToolsSettings } from './custom-tools-settings';
 import { DangerousContentSettings } from './dangerous-content-settings';
 import { DataRetentionSettings } from './data-retention-settings';
+import { GeneralStateSettings } from './general-state-settings';
 import { ImageDescriptionSettings } from './image-description-settings';
 import { MemoryCascadeSettings } from './memory-cascade-settings';
 import { TextReplacementSettings } from './text-replacement-settings';
@@ -30,16 +31,18 @@ import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`) — now FULLY fitted out: all seventeen v4 cards, in v4's
+ * subsystem `salon`) — now FULLY fitted out: all eighteen v4 cards, in v4's
  * exact order, with v4's titles/descriptions + `sectionId`s (the `?section=`
  * deep link) ported verbatim.
  *
  * The order is v4's, and is reproduced rather than tidied: Composer and
  * Auto-Scroll sit BETWEEN Composition Mode and Text Replacement, Custom Tools
- * sits BETWEEN Automation and Agent Mode, and the engine-facing cards sit
- * between Text Replacement and Data Retention. Every card reads and writes the
- * one `chat_settings` row through the shared `chatSettings` query
- * (`chat-settings.api.ts`), so mounting seventeen of them costs ONE GET.
+ * and General State sit BETWEEN Automation and Agent Mode, and the
+ * engine-facing cards sit between Text Replacement and Data Retention. Most
+ * cards read and write the one `chat_settings` row through the shared
+ * `chatSettings` query (`chat-settings.api.ts`), so mounting them costs ONE GET;
+ * General State is the exception — it edits its own instance-wide tier through
+ * the shared state editor, not the chat-settings row.
  *
  * Cards by lineage: Composition Mode + Text Replacement (P4.6al), Data
  * Retention (P4.d3), the two autonomous cards (P4.6ad), the eleven landed by
@@ -63,6 +66,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     CustomToolsSettings,
     DangerousContentSettings,
     DataRetentionSettings,
+    GeneralStateSettings,
     ImageDescriptionSettings,
     MemoryCascadeSettings,
     TextReplacementSettings,
@@ -166,6 +170,15 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'custom-tools'"
         >
           <qt-custom-tools-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="General State"
+          description="Instance-wide persistent state shared by every chat (bottom tier of the state cascade)"
+          sectionId="general-state"
+          [forceOpen]="section() === 'general-state'"
+        >
+          <qt-general-state-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

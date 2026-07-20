@@ -242,4 +242,30 @@ describe('GroupEditor', () => {
     // No `[value]` binding on the <select> itself — options carry [selected].
     expect(select.getAttribute('ng-reflect-value')).toBeNull();
   });
+
+  it('opens the Group State editor and round-trips the group state verbs', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        if (r.type === 'groupStateGet') return { success: true, state: { gold: 7 } };
+        if (r.type === 'groupStateSet') return { success: true, state: r['state'] };
+        if (r.type === 'groupStateReset') return { success: true, previousState: { gold: 7 } };
+        return baseHandler()(r);
+      }),
+    );
+
+    const stateBtn = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Group State',
+    ) as HTMLButtonElement;
+    expect(stateBtn).toBeTruthy();
+    stateBtn.click();
+    await settle(fixture);
+
+    // The modal loaded THIS group's own state tier (no cascade), titled by name.
+    expect(seen.some((r) => r.type === 'groupStateGet' && r['groupId'] === 'g1')).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Group State - Adventuring Party');
+    // The group tier never renders the chat cascade note.
+    expect(fixture.nativeElement.textContent).not.toContain('narrower tiers win');
+  });
 });

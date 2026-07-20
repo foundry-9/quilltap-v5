@@ -260,6 +260,30 @@ chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
 staged outside `.claude/`, from the pin, `-- state-cascade` also matches
 v4's own unit suite — harmless, both pass).
 
+## P4.6be unit 4 — the Group State + General State entries (lane BE, 2026-07-19)
+
+The two remaining entry points into the shared editor. **Group** (v4
+`GroupDetailView.tsx` +17): a "Group State" secondary button in the group
+editor's form action row IMMEDIATELY after "Save Changes" (v4's placement +
+label), opening the modal with `entityType="group"`, the `:id`, and the loaded
+group's name (`groupName` computed off `groupQuery.data()`). `groups.api.ts`
+gains `fetchGroupState`/`setGroupState`/`resetGroupState` + `groupKeys.state(id)`
+(v4 `queryKeys.groups.state`). **General** (v4 `GeneralStateSettings.tsx`, 37
+lines): a new `general-state-settings` card (intro paragraph + "Edit General
+State" button → the shared editor `entityType="general"`, no id) inserted into
+`chat-tab.ts` as `sectionId="general-state"` between Custom Tools and Agent Mode
+— v4 position #11, with v4's title/description verbatim.
+
+DRY: `state.api`'s project + group get/set/reset now DELEGATE through the
+existing `projects.api` + the new `groups.api` state functions (one dispatch
+site per verb); chat (enriched) + general (no vertical home) stay inline. Unit
+specs: `groups.spec.ts` gains the Group State open→`groupStateGet` round-trip
+(titled by the loaded name, no cascade note); `general-state-settings.spec.ts`
+(render with modal closed + no fetch; open → `generalStateGet` no-id, no cascade
+note); `chat-tab.spec.ts`'s card-order table extended to eighteen cards with the
+`General State`/`general-state` ordinal at #11. `ng test` 2301 passed / 4 failed
+(§C corpus only) / 190 files; `ng build` clean.
+
 ## P4.6be unit 3 — the shared four-entity state editor + §A types (lane BE, 2026-07-19)
 
 Generalizes the Prospero-only `qt-state-editor-modal` (v4

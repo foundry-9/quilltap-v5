@@ -23,6 +23,8 @@ export const groupKeys = {
   detail: (id: string) => ['groups', 'detail', id] as const,
   members: (id: string) => ['groups', 'members', id] as const,
   stores: (id: string) => ['groups', 'stores', id] as const,
+  /** v4 `queryKeys.groups.state(id)` — the group's OWN persistent state tier. */
+  state: (id: string) => ['groups', id, 'state'] as const,
 };
 
 /** A group as the card consumes it: the row plus the mapped `memberCount`. */
@@ -116,4 +118,34 @@ export async function unlinkGroupStore(
   mountPointId: string,
 ): Promise<void> {
   await core.dispatchData({ type: 'groupMountPointUnlink', groupId, mountPointId });
+}
+
+// --- State (§A of the `c53510c7` round) — the group's OWN tier, no cascade ---
+
+/** GET the group's persistent state (v4 `?action=get-state`). */
+export async function fetchGroupState(
+  core: CoreClient,
+  groupId: string,
+): Promise<Record<string, unknown>> {
+  const data = await core.dispatchData({ type: 'groupStateGet', groupId });
+  return (data['state'] as Record<string, unknown>) ?? {};
+}
+
+/** PUT the group's state (REPLACES wholesale); returns the persisted object. */
+export async function setGroupState(
+  core: CoreClient,
+  groupId: string,
+  state: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const data = await core.dispatchData({ type: 'groupStateSet', groupId, state });
+  return (data['state'] as Record<string, unknown>) ?? {};
+}
+
+/** DELETE the group's state; returns the `previousState` the server reports. */
+export async function resetGroupState(
+  core: CoreClient,
+  groupId: string,
+): Promise<Record<string, unknown>> {
+  const data = await core.dispatchData({ type: 'groupStateReset', groupId });
+  return (data['previousState'] as Record<string, unknown>) ?? {};
 }

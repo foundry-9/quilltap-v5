@@ -29,6 +29,7 @@ const V4_CARD_ORDER = [
   ['Image Description', 'image-description'],
   ['Automation', 'automation'],
   ['Custom Tools', 'custom-tools'],
+  ['General State', 'general-state'],
   ['Agent Mode', 'agent-mode'],
   ['Thinking / Reasoning', 'thinking-display'],
   ['Answer Confirmation', 'answer-confirmation'],
@@ -69,7 +70,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all seventeen v4 cards in v4\'s exact order', () => {
+  it('mounts all eighteen v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
