@@ -176,7 +176,9 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
 
     // The card is open on its deep link; the entry button reveals the editor.
     await page.getByRole('button', { name: 'Edit General State' }).click();
-    const modal = page.locator('qt-state-editor-modal');
+    // The host element has no layout box (the dialog child is fixed-position);
+    // assert the inner [role=dialog], per the established idiom.
+    const modal = page.locator('qt-state-editor-modal').getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 15_000 });
     await expect(modal).toContainText('General State');
     // The instance-wide tier never shows the chat cascade note.
@@ -197,14 +199,16 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     await saved;
 
     // Close and reopen — the saved key survives the round-trip through the tier.
-    await modal.getByRole('button', { name: 'Close' }).click();
+    // Two Close buttons share the accessible name (the chrome X is
+    // aria-labelled); the footer button is the one with visible text.
+    await modal.getByRole('button', { name: 'Close' }).filter({ hasText: 'Close' }).click();
     await page.getByRole('button', { name: 'Edit General State' }).click();
     await expect(page.locator('qt-state-editor-modal textarea')).toHaveValue(/_e2e_general/, {
       timeout: 15_000,
     });
 
     // Reset the tier so the shared instance is left clean (re-runnable).
-    const reset = page.locator('qt-state-editor-modal');
+    const reset = page.locator('qt-state-editor-modal').getByRole('dialog');
     await reset.getByRole('button', { name: 'Reset State' }).click();
     await reset.getByRole('button', { name: 'Confirm Reset' }).click();
     await expect(reset.locator('textarea')).toHaveValue('{}', { timeout: 15_000 });

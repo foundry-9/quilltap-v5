@@ -179,7 +179,9 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
 
     // The Group State button sits in the action row, right after Save Changes.
     await page.getByRole('button', { name: 'Group State' }).click();
-    const modal = page.locator('qt-state-editor-modal');
+    // The host element has no layout box (the dialog child is fixed-position);
+    // assert the inner [role=dialog], per the established idiom.
+    const modal = page.locator('qt-state-editor-modal').getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 15_000 });
     await expect(modal).toContainText('Group State');
     // The group tier edits its OWN state — never the chat cascade note.
@@ -196,7 +198,9 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
     );
     await modal.getByRole('button', { name: 'Save', exact: true }).click();
     await saved;
-    await modal.getByRole('button', { name: 'Close' }).click();
+    // Two Close buttons share the accessible name (the chrome X is
+    // aria-labelled); the footer button is the one with visible text.
+    await modal.getByRole('button', { name: 'Close' }).filter({ hasText: 'Close' }).click();
 
     await page.getByRole('button', { name: 'Group State' }).click();
     await expect(page.locator('qt-state-editor-modal textarea')).toHaveValue(/_e2e_group/, {
@@ -204,7 +208,7 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
     });
 
     // Reset the tier so the fixture-backed instance is left clean.
-    const reopened = page.locator('qt-state-editor-modal');
+    const reopened = page.locator('qt-state-editor-modal').getByRole('dialog');
     await reopened.getByRole('button', { name: 'Reset State' }).click();
     await reopened.getByRole('button', { name: 'Confirm Reset' }).click();
     await expect(reopened.locator('textarea')).toHaveValue('{}', { timeout: 15_000 });
