@@ -1640,6 +1640,43 @@ impl CoreEngine {
                 Ok(db) => super::projects::project_state_reset(&db, &project_id).await,
                 Err(r) => r,
             },
+            // --- The chat / group / general state tiers (P4.d10 §A) ---
+            Request::ChatStateGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::salon::chat_state_get(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::ChatStateSet { chat_id, state } => match self.ready_db() {
+                Ok(db) => super::salon::chat_state_set(&db, &chat_id, state).await,
+                Err(r) => r,
+            },
+            Request::ChatStateReset { chat_id } => match self.ready_db() {
+                Ok(db) => super::salon::chat_state_reset(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::GroupStateGet { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_state_get(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupStateSet { group_id, state } => match self.ready_db() {
+                Ok(db) => super::groups::group_state_set(&db, &group_id, state).await,
+                Err(r) => r,
+            },
+            Request::GroupStateReset { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_state_reset(&db, &group_id).await,
+                Err(r) => r,
+            },
+            Request::GeneralStateGet {} => match self.ready_db() {
+                Ok(db) => super::settings::general_state_get(&db).await,
+                Err(r) => r,
+            },
+            Request::GeneralStateSet { state } => match self.ready_db() {
+                Ok(db) => super::settings::general_state_set(&db, state).await,
+                Err(r) => r,
+            },
+            Request::GeneralStateReset {} => match self.ready_db() {
+                Ok(db) => super::settings::general_state_reset(&db).await,
+                Err(r) => r,
+            },
             Request::ProjectBackgroundGet { project_id } => match self.ready_db() {
                 Ok(db) => super::projects::project_background_get(&db, &project_id),
                 Err(r) => r,

@@ -9,6 +9,38 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 unit 4 — the nine state dispatch verbs (lane D10, 2026-07-20)
+
+§A verbatim: nine `CoreRequest` variants (`chatStateGet/Set/Reset`,
+`groupStateGet/Set/Reset`, `generalStateGet/Set/Reset`) + ONE new response
+variant `State(Value)` (tag `state`; lane BE's `dispatchData` reads only
+`data`). Handlers: `salon::chat_state_*` (GET = `resolve_state_cascade`
+under participants-union, `Object.keys(tier).length > 0`-omission for the
+three inherited tiers, `projectId` omitted when absent; set/reset via the
+chats `state` column with v4's `updated?.state || validated.state` /
+`entity.state || {}` arms), `groups::group_state_*` (own state only, the
+`?? {}` nullish arm on GET, overlay writes), `settings::general_state_*`
+(bespoke; PUT echoes the PARSED body — not a read-back; the
+unprovisioned-write arm surfaces v4's fixed
+`'Failed to update general state'` 500; non-object `state` → the flat 400
+`Validation error` — the Zod `details` array stays a named deferral).
+Engine dispatch arms follow the ProjectState* pattern; NO web-edge change
+(the single `POST /api/dispatch`).
+
+**Differential:** the new `state-routes` jest oracle
+(`harness/oracle/cases/state-routes.test.ts`, 19 cases) direct-drives v4's
+REAL route modules (chats/[id] + groups/[id] `?action=*-state`,
+settings/general-state GET/PUT/DELETE) with mocked auth + the
+markdown-renderer stub (the salon-reads ESM precedent), fresh fixture
+copies per case, `(status, body[, afterBody])` compared key-order-exact;
+covers the full/solo/union-ambiguous/missing chat GETs, set+re-read /
+invalid / missing arms on all three tiers, reset+re-read, and the
+unprovisioned general PUT/GET. The fixture builder gained the USER row
+(route middleware resolves the session user — a fixture-family change:
+state-sql + state-cascade oracles regenerated over the rebuilt fixture,
+both green). `p4_d10_wire_contract` pins the §A tags. Env:
+`QT_ORACLE_STATE_ROUTES` + `QT_FIXTURE_TMP_{MAIN,MOUNT}`.
+
 ## P4.d10 unit 3 — the four-tier state tool (lane D10, 2026-07-20)
 
 `tools::state` rewritten to v4's `f48f34dc` handler: 4-valued `context`

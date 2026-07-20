@@ -958,6 +958,60 @@ pub enum Request {
     ProjectStateReset {
         project_id: String,
     },
+    // --- The chat / group / general state tiers (P4.d10 §A, v4 `f48f34dc`) ---
+    /// v4 `GET /api/v1/chats/[id]?action=get-state` — the merged four-tier
+    /// cascade under the participants-union group scope. Body:
+    /// `{ success, state, chatState, projectState?, groupState?,
+    /// generalState?, groupTier, projectId? }` — the three inherited tiers
+    /// OMITTED when empty; `projectId` omitted when the chat has none.
+    #[serde(rename_all = "camelCase")]
+    ChatStateGet {
+        chat_id: String,
+    },
+    /// v4 `PUT /api/v1/chats/[id]?action=set-state` — REPLACES the chat's own
+    /// state wholesale. Body `{ success, state }`.
+    #[serde(rename_all = "camelCase")]
+    ChatStateSet {
+        chat_id: String,
+        state: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/chats/[id]?action=reset-state`. Body
+    /// `{ success, previousState }`.
+    #[serde(rename_all = "camelCase")]
+    ChatStateReset {
+        chat_id: String,
+    },
+    /// v4 `GET /api/v1/groups/[id]?action=get-state` — the group's OWN state
+    /// only, NO cascade (the merge happens on the chat route). Body
+    /// `{ success, state }`.
+    #[serde(rename_all = "camelCase")]
+    GroupStateGet {
+        group_id: String,
+    },
+    /// v4 `PUT /api/v1/groups/[id]?action=set-state`.
+    #[serde(rename_all = "camelCase")]
+    GroupStateSet {
+        group_id: String,
+        state: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]?action=reset-state`.
+    #[serde(rename_all = "camelCase")]
+    GroupStateReset {
+        group_id: String,
+    },
+    /// v4 `GET /api/v1/settings/general-state` — the instance-wide bottom tier.
+    #[serde(rename_all = "camelCase")]
+    GeneralStateGet {},
+    /// v4 `PUT /api/v1/settings/general-state` — replaces wholesale
+    /// (`stateBodySchema`: `state` must be a JSON object).
+    #[serde(rename_all = "camelCase")]
+    GeneralStateSet {
+        state: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/settings/general-state` — resets to `{}`. Body
+    /// `{ success, previousState }`.
+    #[serde(rename_all = "camelCase")]
+    GeneralStateReset {},
     /// v4 `GET /api/v1/projects/[id]?action=get-background`.
     #[serde(rename_all = "camelCase")]
     ProjectBackgroundGet {
@@ -2260,6 +2314,13 @@ pub enum Response {
     /// `{wardrobeItem}`, …). The exact bytes are pinned by
     /// `projects_routes_equivalence`.
     Project(serde_json::Value),
+    /// A state-tier body (P4.d10 §A, v4 `f48f34dc`): the chat merged-cascade
+    /// GET (`{success, state, chatState, projectState?, groupState?,
+    /// generalState?, groupTier, projectId?}`), the group/general own-state
+    /// GETs (`{success, state}`), the sets (`{success, state}`), and the
+    /// resets (`{success, previousState}`). The exact bytes are pinned by
+    /// `state_routes_equivalence`.
+    State(serde_json::Value),
     /// A general (instance-wide) scenarios-family body (`{mountPointId, scenarios,
     /// warnings}`, `{mountPointId, path, scenarios, warnings}`, `{scenario}`,
     /// `{path, scenarios, warnings}`, `{scenarios, warnings}`). The exact bytes are

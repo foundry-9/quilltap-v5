@@ -16,7 +16,7 @@
 //! passes `SINGLE_USER_ID`. v4's `checkOwnership` collapses to NotFound-on-absent
 //! for the single-user v5.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::collation::locale_compare;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -703,5 +703,103 @@ pub async fn group_scenarios_union(db: &Db, character_ids: Vec<String>) -> Respo
     match out {
         Ok(entries) => Response::Group(json!({ "groupScenarios": entries })),
         Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Group state (P4.d10 §A — v4 `app/api/v1/groups/[id]/actions/state.ts` at
+// `f48f34dc` + the shared `lib/api/state-handlers.ts` factory)
+// ===========================================================================
+
+/// v4 `handleGetState` (group): the group's OWN state only — NO cascade (the
+/// merge happens on the chat get-state route). Body `{ success, state }`.
+pub fn group_state_get(db: &Db, group_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let result = read_both(db, move |main, mount| {
+        let repo = GroupsRepository::new(main, mount);
+        let Some(group) = repo.find_by_id(&gid).map_err(overlay_to_db)? else {
+            return Ok(None);
+        };
+        // v4: `(group.state ?? {})` — nullish coalescing.
+        Ok(Some(match group.get("state") {
+            Some(Value::Null) | None => json!({}),
+            Some(v) => v.clone(),
+        }))
+    });
+    match result {
+        Ok(Some(state)) => Response::State(json!({ "success": true, "state": state })),
+        Ok(None) => not_found("Group"),
+        // v4's catch answers the fixed `serverError('Failed to get state')`.
+        Err(e) => {
+            eprintln!("[Groups v1] Error getting state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to get state")
+        }
+    }
+}
+
+/// v4 `createSetStateHandler` (group config: existence-only check — groups are
+/// instance-global). Body `{ success, state: updated?.state || validated.state }`.
+pub async fn group_state_set(db: &Db, group_id: &str, state: Value) -> Response {
+    if !state.is_object() {
+        return Response::error(ErrorKind::BadRequest, "Validation error");
+    }
+    let gid = group_id.to_string();
+    let state_clone = state.clone();
+    let out = with_both_conns(db, move |main, mount| {
+        let repo = GroupsRepository::new(main, mount);
+        if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
+            return Ok(None);
+        }
+        let mut patch = Map::new();
+        patch.insert("state".into(), state_clone.clone());
+        let updated = repo.update(&gid, &patch).map_err(overlay_to_db)?;
+        // v4: `updated?.state || validated.state` (an object, even {}, is truthy).
+        let stored = updated
+            .as_ref()
+            .and_then(|g| match g.get("state") {
+                Some(Value::Null) | None => None,
+                Some(v) => Some(v.clone()),
+            })
+            .unwrap_or(state_clone);
+        Ok(Some(stored))
+    })
+    .await;
+    match out {
+        Ok(Some(state)) => Response::State(json!({ "success": true, "state": state })),
+        Ok(None) => not_found("Group"),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `createResetStateHandler` (group): `previousState = entity.state || {}`,
+/// then replace with `{}`. Body `{ success, previousState }`.
+pub async fn group_state_reset(db: &Db, group_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let repo = GroupsRepository::new(main, mount);
+        let Some(group) = repo.find_by_id(&gid).map_err(overlay_to_db)? else {
+            return Ok(None);
+        };
+        // v4 `entity.state || {}`.
+        let previous = match group.get("state") {
+            Some(v) if v.is_object() => v.clone(),
+            _ => json!({}),
+        };
+        let mut patch = Map::new();
+        patch.insert("state".into(), json!({}));
+        repo.update(&gid, &patch).map_err(overlay_to_db)?;
+        Ok(Some(previous))
+    })
+    .await;
+    match out {
+        Ok(Some(previous)) => {
+            Response::State(json!({ "success": true, "previousState": previous }))
+        }
+        Ok(None) => not_found("Group"),
+        // v4's reset handler's own catch → `serverError('Failed to reset state')`.
+        Err(e) => {
+            eprintln!("[Groups v1] Error resetting state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to reset state")
+        }
     }
 }

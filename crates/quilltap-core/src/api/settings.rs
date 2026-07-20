@@ -2006,6 +2006,107 @@ pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
 
 // === end P4.d3 ===
 
+// ===========================================================================
+// General state (P4.d10 §A — v4 `app/api/v1/settings/general-state/route.ts`
+// at `f48f34dc`): the bottom cascade tier, a `state.json` document at the
+// "Quilltap General" mount root — no entity row, hence bespoke.
+// ===========================================================================
+
+/// v4 general-state GET: `{ success, state }` (`readGeneralState` — always
+/// fail-soft `{}`).
+pub async fn general_state_get(db: &Db) -> Response {
+    use crate::services::mount_index::general_state::read_general_state;
+    let out = db
+        .write(move |writers| {
+            let mount = writers.mount_index().map(|w| w.connection());
+            let main = writers.main().connection();
+            Ok(read_general_state(main, mount))
+        })
+        .await;
+    match out {
+        Ok(state) => Response::State(json!({ "success": true, "state": state })),
+        Err(e) => {
+            eprintln!("[Settings v1] Error reading general state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to read general state")
+        }
+    }
+}
+
+/// v4 general-state PUT: `stateBodySchema` parse (failure → the 400
+/// `Validation error`), then `writeGeneralState` (wholesale). Body
+/// `{ success, state: parsed.state }` — the ECHOED body, not a read-back.
+pub async fn general_state_set(db: &Db, state: Value) -> Response {
+    use crate::services::mount_index::general_state::write_general_state;
+    if !state.is_object() {
+        return Response::error(ErrorKind::BadRequest, "Validation error");
+    }
+    let state_clone = state.clone();
+    let out = db
+        .write(move |writers| {
+            let write = match writers.mount_index() {
+                Some(mount_w) => {
+                    let mount_c = mount_w.connection();
+                    let main_c = writers.main().connection();
+                    write_general_state(main_c, mount_c, &state_clone).map_err(|e| e.to_string())
+                }
+                // Degraded open == unprovisioned (v4's write throws).
+                None => Err("Quilltap General mount has not been provisioned yet".to_string()),
+            };
+            Ok(write)
+        })
+        .await;
+    match out {
+        Ok(Ok(())) => Response::State(json!({ "success": true, "state": state })),
+        // v4's catch → the fixed `serverError('Failed to update general state')`.
+        Ok(Err(e)) => {
+            eprintln!("[Settings v1] Error updating general state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to update general state")
+        }
+        Err(e) => {
+            eprintln!("[Settings v1] Error updating general state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to update general state")
+        }
+    }
+}
+
+/// v4 general-state DELETE: read the previous, write `{}`. Body
+/// `{ success, previousState }`.
+pub async fn general_state_reset(db: &Db) -> Response {
+    use crate::services::mount_index::general_state::{read_general_state, write_general_state};
+    let out = db
+        .write(move |writers| {
+            let previous = {
+                let mount = writers.mount_index().map(|w| w.connection());
+                let main = writers.main().connection();
+                read_general_state(main, mount)
+            };
+            let write = match writers.mount_index() {
+                Some(mount_w) => {
+                    let mount_c = mount_w.connection();
+                    let main_c = writers.main().connection();
+                    write_general_state(main_c, mount_c, &json!({})).map_err(|e| e.to_string())
+                }
+                None => Err("Quilltap General mount has not been provisioned yet".to_string()),
+            };
+            Ok((previous, write))
+        })
+        .await;
+    match out {
+        Ok((previous, Ok(()))) => {
+            Response::State(json!({ "success": true, "previousState": previous }))
+        }
+        // v4's catch → the fixed `serverError('Failed to reset general state')`.
+        Ok((_, Err(e))) => {
+            eprintln!("[Settings v1] Error resetting general state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to reset general state")
+        }
+        Err(e) => {
+            eprintln!("[Settings v1] Error resetting general state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to reset general state")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

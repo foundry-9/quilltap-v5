@@ -148,6 +148,13 @@ async function main(): Promise<void> {
 
   const repos = getRepositories();
 
+  // 0. The single user (the route middleware resolves the session user against
+  // the users table — the P4.d10 state-routes oracle drives real routes).
+  await repos.users.create(
+    { username: 'friday', email: null, name: 'Friday' } as never,
+    { id: spec.userId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+  );
+
   // 1. Project P (mints its store) + set the initial state.json via the overlay.
   await repos.projects.create(
     {

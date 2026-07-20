@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.d10 unit 4 (the nine state dispatch verbs): `chatStateGet`/`Set`/`Reset`
+(the merged four-tier cascade GET under the participants-union scope, with
+the empty-tier omission convention and the `groupTier` enrichment; set/reset
+touch only the chat's own state column), `groupStateGet`/`Set`/`Reset`
+(own state, no cascade — instance-global existence check), and
+`generalStateGet`/`Set`/`Reset` (the bespoke mount-root document route,
+incl. the unprovisioned-write 500 and the flat validation-error envelope),
+all through the single dispatch edge (no new REST legs). The
+`p4_d10_wire_contract` test pins the nine tags + the `state` response tag
+name-for-name against lane BE's `core-contract.ts`. Verified by the new
+19-case `state_routes_equivalence` differential (direct-driving v4's real
+route modules with mocked auth over the state fixture family, with
+persistence re-reads after every mutation); the state fixture gained its
+user row (the route middleware resolves the session user), and the
+state-sql + state-cascade differentials re-ran green over the rebuilt
+fixture.
+
 P4.d10 unit 3 (the four-tier state tool): `tools::state` rewritten over the
 shared cascade — contexts `group`/`general`, the optional `group` ref param
 (id-first, then case-insensitive name among the responding character's own

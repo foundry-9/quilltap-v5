@@ -1650,3 +1650,139 @@ pub async fn chat_set_active_speaker(db: &Db, chat_id: &str, participant_id: &st
         "impersonatingParticipantIds": impersonating,
     }))
 }
+
+// ===========================================================================
+// Chat state (P4.d10 §A — v4 `app/api/v1/chats/[id]/actions/state.ts` at
+// `f48f34dc` + the shared `lib/api/state-handlers.ts` factory)
+// ===========================================================================
+
+/// v4 `handleGetState` (chat): the merged four-tier cascade under the
+/// participants-union group scope. The three inherited tiers are OMITTED when
+/// empty (the "undefined when empty" back-compat convention); `state` +
+/// `chatState` + `groupTier` always present; `projectId` is
+/// `chat.projectId || undefined`.
+pub async fn chat_state_get(db: &Db, chat_id: &str) -> Response {
+    use crate::state::cascade::{resolve_state_cascade, GroupScope};
+    let cid = chat_id.to_string();
+    let out = db
+        .write(move |writers| {
+            let mount = writers.mount_index().map(|w| w.connection());
+            let main = writers.main().connection();
+            let Some(chat) = chats_read::find_by_id(main, &cid)? else {
+                return Ok(None);
+            };
+            let cascade = resolve_state_cascade(main, mount, &chat, &GroupScope::ParticipantsUnion);
+            let mut body = serde_json::Map::new();
+            body.insert("success".into(), json!(true));
+            body.insert("state".into(), cascade.merged);
+            body.insert("chatState".into(), cascade.chat_state);
+            // `Object.keys(tier).length > 0 ? tier : undefined` — JSON-omitted
+            // when empty.
+            let keep = |v: &Value| v.as_object().map(|m| !m.is_empty()).unwrap_or(false);
+            if keep(&cascade.project_state) {
+                body.insert("projectState".into(), cascade.project_state);
+            }
+            if keep(&cascade.group_state) {
+                body.insert("groupState".into(), cascade.group_state);
+            }
+            if keep(&cascade.general_state) {
+                body.insert("generalState".into(), cascade.general_state);
+            }
+            body.insert(
+                "groupTier".into(),
+                serde_json::to_value(&cascade.group_tier)
+                    .map_err(|e| DbError::Key(e.to_string()))?,
+            );
+            if let Some(pid) = cascade.project_id {
+                body.insert("projectId".into(), Value::String(pid));
+            }
+            Ok(Some(Value::Object(body)))
+        })
+        .await;
+    match out {
+        Ok(Some(body)) => Response::State(body),
+        Ok(None) => Response::error(ErrorKind::NotFound, "Chat not found"),
+        // v4's catch answers the fixed `serverError('Failed to get state')`.
+        Err(e) => {
+            eprintln!("[Chats v1] Error getting state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to get state")
+        }
+    }
+}
+
+/// v4 `createSetStateHandler` (chat config: existence-only check): validate
+/// `stateBodySchema` (`state` must be a JSON object — a Zod failure surfaces
+/// as the middleware `Validation error` 400), replace the chat's own state
+/// wholesale. Body `{ success, state: updated?.state || validated.state }`.
+pub async fn chat_state_set(db: &Db, chat_id: &str, state: Value) -> Response {
+    if !state.is_object() {
+        return Response::error(ErrorKind::BadRequest, "Validation error");
+    }
+    let cid = chat_id.to_string();
+    let state_clone = state.clone();
+    let out = db
+        .write(move |writers| {
+            let main = writers.main().connection();
+            if chats_read::find_by_id(main, &cid)?.is_none() {
+                return Ok(None);
+            }
+            let update = crate::db::chats::ChatUpdate {
+                state: Some(state_clone.clone()),
+                ..Default::default()
+            };
+            writers.main().chats().update(&cid, &update)?;
+            // v4: `updated?.state || validated.state` — the read-back state when
+            // truthy (an object always is), else the validated body.
+            let main = writers.main().connection();
+            let stored = chats_read::find_by_id(main, &cid)?
+                .and_then(|c| match c.get("state") {
+                    Some(Value::Null) | None => None,
+                    Some(v) => Some(v.clone()),
+                })
+                .unwrap_or(state_clone);
+            Ok(Some(stored))
+        })
+        .await;
+    match out {
+        Ok(Some(stored)) => Response::State(json!({ "success": true, "state": stored })),
+        Ok(None) => Response::error(ErrorKind::NotFound, "Chat not found"),
+        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+    }
+}
+
+/// v4 `createResetStateHandler` (chat): `previousState = entity.state || {}`,
+/// then replace with `{}`. Body `{ success, previousState }`.
+pub async fn chat_state_reset(db: &Db, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    let out = db
+        .write(move |writers| {
+            let main = writers.main().connection();
+            let Some(chat) = chats_read::find_by_id(main, &cid)? else {
+                return Ok(None);
+            };
+            // v4 `entity.state || {}` — null/absent → {} (an object, even empty,
+            // is truthy and passes through).
+            let previous = match chat.get("state") {
+                Some(v) if v.is_object() => v.clone(),
+                _ => json!({}),
+            };
+            let update = crate::db::chats::ChatUpdate {
+                state: Some(json!({})),
+                ..Default::default()
+            };
+            writers.main().chats().update(&cid, &update)?;
+            Ok(Some(previous))
+        })
+        .await;
+    match out {
+        Ok(Some(previous)) => {
+            Response::State(json!({ "success": true, "previousState": previous }))
+        }
+        Ok(None) => Response::error(ErrorKind::NotFound, "Chat not found"),
+        // v4's reset handler has its own catch → `serverError('Failed to reset state')`.
+        Err(e) => {
+            eprintln!("[Chats v1] Error resetting state: {e}");
+            Response::error(ErrorKind::Internal, "Failed to reset state")
+        }
+    }
+}
