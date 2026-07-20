@@ -1,6 +1,6 @@
 # Feature: Custom Tools — Pascal's Table (`run_custom`)
 
-**Status:** Implemented (shipped). Kept current in place: "Correction" notes record where implementation amended the design, and the sections below include the **`metadata` test subject** — outcome tables branching on the invoking character's `metadata.json` fact sheet — added after the initial ship by the [character `metadata.json` feature](complete/character-metadata-json.md).
+**Status:** Implemented (shipped). Kept current in place: "Correction" notes record where implementation amended the design, and the sections below include two post-ship additions — the **`metadata` test subject** (outcome tables branching on the invoking character's `metadata.json` fact sheet, added by the [character `metadata.json` feature](complete/character-metadata-json.md)) and the **`llm` consult block** (a per-run question posed to the cheap utility model, whose answer outcomes may test — see [The `llm` consult](#the-llm-consult)).
 **Owner subsystem:** Pascal the Croupier (RNG / game-state — `lib/foundry/subsystem-defaults.ts:134`, settings under `/settings?tab=chat`).
 **Implementation note:** This spec is written to be executed by Claude Code (Opus) with minimal further design input. Where a choice existed, it has been made — see [Design Decisions](#design-decisions-resolved). Follow CLAUDE.md standing rules throughout (changelog, help docs, logging, migration pretty-labels, tool chokepoints).
 
@@ -95,7 +95,7 @@ A dice-driven example:
 
 ### `roll` — the two forms
 
-**Form A — numeric range object.** Fields (all optional): `min` (default 0), `max` (default 1), `multiplier` (default 1), `offset` (default 0), `round` (default false). Each numeric field accepts either a JSON number or a `{ "$param": "<name>" }` reference to a declared numeric parameter — **`$param` references are the only indirection; no expression strings anywhere.** Raw value = uniform float in `[min, max)` from **crypto-strength randomness** (`crypto.randomInt`/`randomBytes`-derived, not `Math.random`).
+**Form A — numeric range object.** Fields (all optional): `min` (default 0), `max` (default 1), `multiplier` (default 1), `offset` (default 0), `round` (default false). Each numeric field accepts a JSON number, a `{ "$param": "<name>" }` reference to a declared numeric parameter, or a `{ "$state": "<path>", "fallback": <number> }` reference into merged persistent state — **`$param` and `$state` are the two forms of indirection; no expression strings anywhere.** A `$state` roll field requires a **numeric** fallback (load-checked in `validateRollRefs`). Raw value = uniform float in `[min, max)` from **crypto-strength randomness** (`crypto.randomInt`/`randomBytes`-derived, not `Math.random`).
 
 **Form B — dice notation string.** A string like `"3d6+2"`, `"1d20"`, `"2d10-1"`. Parsed and rolled by the **existing dice system** in `lib/tools/rng-tool.ts` — extract its dice parser/roller into a shared module (`lib/pascal/dice.ts`) and have both `rng-tool` and `run_custom` consume it, rather than duplicating (single source of truth). Raw value = the dice total. Dice form does not accept `$param` references inside the notation string (v1); if parameterized dice are needed later, that is a v2 extension.
 
@@ -122,8 +122,9 @@ If `$param` substitution yields `min > max`, or any substituted value is non-fin
 | the raw roll | `roll: { … }` | the raw pre-transform draw |
 | a parameter | `params: { <name>: { … } }` | the resolved (post-default, post-clamp) parameter |
 | the invoker's metadata | `metadata: { <key>: { … } }` | one key of the invoking character's `metadata.json` fact sheet |
+| the LLM consult | `llm: { … }` | the consult's answer (comparator keys) and/or its success (`ok`) — see [The `llm` consult](#the-llm-consult) |
 
-Comparator keys are drawn from `gt`, `gte`, `lt`, `lte`, `eq`, `neq`, and AND together, so `>= 0.30 && <= 0.60` is `{ "gte": 0.30, "lte": 0.60 }`. Bare keys mean the value, which is what makes the extension **backward compatible** — every definition written before `roll`/`params` existed still means exactly what it meant. `"value > 1 && params.scale > 12"` is:
+Comparator keys are drawn from `gt`, `gte`, `lt`, `lte`, `eq`, `neq`, `contains`, `ncontains`, and AND together, so `>= 0.30 && <= 0.60` is `{ "gte": 0.30, "lte": 0.60 }`. Bare keys mean the value, which is what makes the extension **backward compatible** — every definition written before `roll`/`params` existed still means exactly what it meant. (`contains`/`ncontains` are string comparators, so the bare-value and `roll` subjects — always numbers — do not take them.) `"value > 1 && params.scale > 12"` is:
 
 ```json
 { "when": { "gt": 1, "params": { "scale": { "gt": 12 } } }, "message": "…", "state": "success" }
@@ -131,13 +132,35 @@ Comparator keys are drawn from `gt`, `gte`, `lt`, `lte`, `eq`, `neq`, and AND to
 
 `roll` exists because a transform moves the value away from what was drawn: a raw draw in the bottom 2% is a fumble however the multiplier has since scaled it, and only `roll` can express that. It is degenerate for the dice form (raw == total) but harmless there.
 
-**Operands** are a literal or a `{ "$param": "<name>" }` reference — the same indirection the roll fields already take, reused rather than reinvented. `{ "gte": { "$param": "difficulty" } }` is the opposed check: a test against a number the caller supplied rather than one fixed at authoring time.
+**Operands** are a literal, a `{ "$param": "<name>" }` reference, or a `{ "$state": "<path>", "fallback": <literal> }` reference — the same indirection the roll fields take, reused rather than reinvented. `{ "gte": { "$param": "difficulty" } }` is the opposed check: a test against a number the caller supplied rather than one fixed at authoring time; `{ "gte": { "$state": "encounter.difficulty", "fallback": 10 } }` tests against a number the running scene carries. A `$state` operand is typed by its fallback (`resolveOperandType`), so the same load-time type rules that catch a mistyped `$param` catch a mistyped `$state`.
 
 **Types.** Ordering comparators (`gt`/`gte`/`lt`/`lte`) demand a number on both sides. `eq`/`neq` on a `params` subject widen to strings and booleans, since a parameter need not be a number — `{ "params": { "material": { "eq": "brass" } } }`. A mismatch is a load-time rejection, not a test that quietly never fires (see [Validation rules](#validation-rules-load-time)).
 
-**Metadata.** The `metadata` subject (added by [character `metadata.json`](complete/character-metadata-json.md)) is shape-identical to `params` — the same six comparator keys, the same `eq`/`neq` widening to strings and booleans, the same `$param` operands (`{ "metadata": { "clearanceLevel": { "gte": { "$param": "required" } } } }`). What differs is what can be known at load time. A `params` test names something the file itself declares, so a misspelling is a rejection; a `metadata` test names a key on a character the file has never met — keys are the *user's* vocabulary (`hasAnsibleAccess`), any non-empty string, not identifiers — so the loader can check only the comparator's shape and its `$param` references. The gap closes at run time, **fail-soft**: a key that is absent, holds a non-primitive (array/object/null), or type-mismatches its comparator (an ordering comparator against a string) makes that comparator **false**. The row declines, evaluation falls through — ultimately to the mandatory trailing `when: true` — and a debug log records the tool, key, and reason. Never a throw, never an error bubble: a lockpicking table that branches on `hasSkeletonKey` must still deal sensibly to the character who has never heard of one, and the catch-all row is the author's "otherwise."
+**Containment.** `contains`/`ncontains` (added post-ship) test whether a string subject holds — or lacks — a substring: `{ "params": { "cargo": { "contains": "opium" } } }`. The substring operand is a non-empty literal string (non-empty because every string contains `""`) or a `$param` reference to a **string** parameter, so one input can be sought inside another — "does the consult's answer mention `params.searchTerm`". Valid on `params` (string parameters only — both sides load-checked), `metadata`, and `llm` subjects; never on the bare value or `roll`. Matching is case-sensitive and exact on `params`/`metadata` (the `eq` precedent there), and trimmed/case-insensitive on `llm` (that context's `eq` precedent — the subject is a model's prose). On `metadata` it is fail-soft like everything else there: a key that is absent or holds a non-string declines the row, including under `ncontains` — as with `neq`, absence is not a miss.
+
+**Metadata.** The `metadata` subject (added by [character `metadata.json`](complete/character-metadata-json.md)) is shape-identical to `params` — the same comparator keys, the same `eq`/`neq` widening to strings and booleans, the same `contains`/`ncontains`, the same `$param` operands (`{ "metadata": { "clearanceLevel": { "gte": { "$param": "required" } } } }`). What differs is what can be known at load time. A `params` test names something the file itself declares, so a misspelling is a rejection; a `metadata` test names a key on a character the file has never met — keys are the *user's* vocabulary (`hasAnsibleAccess`), any non-empty string, not identifiers — so the loader can check only the comparator's shape and its `$param` references. The gap closes at run time, **fail-soft**: a key that is absent, holds a non-primitive (array/object/null), or type-mismatches its comparator (an ordering comparator against a string) makes that comparator **false**. The row declines, evaluation falls through — ultimately to the mandatory trailing `when: true` — and a debug log records the tool, key, and reason. Never a throw, never an error bubble: a lockpicking table that branches on `hasSkeletonKey` must still deal sensibly to the character who has never heard of one, and the catch-all row is the author's "otherwise."
 
 Evaluation lives in `matchesWhen(when, subjects, toolName)` (`lib/pascal/custom-tools.ts`), which takes `{ value, roll, params, metadata }` and throws rather than returning false when a comparison is impossible at run time — for `value`/`roll`/`params`, that state is a regression past load-time validation, and returning false would look like the table skipping a row. `metadata` is the deliberate exception: there an impossible comparison is an expected state, handled fail-soft as above.
+
+### The `llm` consult
+
+*(Added post-ship.)* A definition may carry a top-level `llm` block beside `roll`:
+
+```json
+"llm": {
+  "prompt": "The roll gave {{value}} for {{metadata.faction}}. Answer YES or NO: does the mechanism yield?",
+  "errorMessage": "The wire crackles, and no answer comes."
+}
+```
+
+- **When it runs:** after the roll/transform (so the prompt can quote `{{value}}`/`{{roll}}`/`{{dice}}`), before outcome evaluation (so the table can test the answer). The prompt takes every placeholder a message does except `{{llm}}` itself. Caps: prompt ≤ 4,000 chars (`MAX_LLM_PROMPT_LENGTH`), errorMessage ≤ 1,000; the answer is trimmed and truncated to the block's optional `maxOutput` (integer, 1–100,000 = `MAX_LLM_OUTPUT_CEILING`), defaulting to 8,000 (`MAX_LLM_OUTPUT_LENGTH`). The effective cap is passed to the invoker as `LlmInvokeOptions.maxOutputChars`, and the real invoker scales the call's token budget from it (`consultMaxTokens`: ~chars/3, floored at the pipeline's 2,048, ceilinged at 32,768) so a long-form consult is not starved at the provider. `errorMessage` is never subject to `maxOutput` — those are the author's words, kept whole.
+- **What it produces:** a pair `{ ok, output }`. Success → the model's trimmed answer. Failure — provider error, 60 s timeout (`CONSULT_TIMEOUT_MS`), empty answer, no cheap model configured, no invoker wired — → `ok: false` with `output` set to the author's `errorMessage`. **A failed consult never fails the run**: no Prospero bubble, no throw; the table deals with silence the way its author wrote it to. The technical `reason` goes to `pascalMeta.llm` and the logs only.
+- **The `llm` when-subject:** the comparator keys against the answer plus a non-comparator `ok: boolean`. Type reconciliation is fail-soft (the metadata precedent — the answer's type is the model's business): ordering comparators apply when the trimmed answer parses as a finite number, else the row declines with a debug log; `eq`/`neq` compare numerically when both sides are numbers, otherwise as trimmed case-insensitive strings with a trailing `.`/`!` forgiven; `contains`/`ncontains` search the answer under that same trimmed case-insensitive reconciliation. `$param` operands work as everywhere. Load-time validation rejects an `llm` test on a definition with no `llm` block (a dead branch), and checks `$param` operand resolution; everything else waits for run time.
+- **`{{llm}}` template family:** renders the output (answer or errorMessage). Verbatim-with-debug-log when no consult ran, per the unknown-placeholder convention.
+- **Who answers:** `lib/pascal/llm-consult.ts` builds the invoker — standard cheap-LLM selection (`getCheapLLMProvider` over `chatSettings.cheapLLMSettings`), Concierge uncensored rerouting when the chat is active-dangerous, `executeCheapLLMTask` with the rendered prompt as a single user message and **no framing of ours**, logged as `CUSTOM_TOOL_CONSULT`. The execution core takes it as an injected `llmInvoke` seam on `executeCustomTool` (now async), so tests and the proving bench substitute scripted oracles. Job-child safe.
+- **Record:** `pascalMeta.llm = { ok, output, prompt, reason?, provider?, model? }` — the rendered prompt is the record of what was asked. Mirrored in the row schema, export schema, and DDL.md.
+- **Simulation:** `simulateOutcomes` takes an optional fixed `llm` subject; the Workbench audit never spends real calls (scripted answer or silence), while single preview rolls may go live via `{ llm: { live: true } }`.
+- **Roster:** the `run_custom` preamble notes that some tools consult a separate model server-side; with odds revealed, `llm` clauses render and the tool gets a "consults a separate model" line — the prompt itself is never quoted to scene models (it is instructions for a different model, and quoting it would invite this one to answer it).
 
 ### `outcomes` entries
 
@@ -154,8 +177,22 @@ Evaluation lives in `matchesWhen(when, subjects, toolName)` (`lib/pascal/custom-
 - `{{dice}}` — dice form only: the breakdown, e.g. `3d6+2: [4, 2, 6] + 2 = 14`. Empty string for Form A.
 - `{{params.<name>}}` — the resolved (post-clamp, post-default) value of a declared parameter.
 - `{{metadata.<key>}}` — the invoking character's metadata value for that key. Primitives render like `{{params.<name>}}`; an absent key or non-primitive value leaves the placeholder verbatim (with a debug log), the same convention as unknown placeholders.
+- `{{state.<path>}}` — a path into merged persistent state (see below). Primitives render like `{{params.<name>}}`; an absent path or non-primitive value leaves the placeholder verbatim (with a debug log) — the `{{metadata.*}}` doctrine, applied to state.
+- `{{llm}}` — the consult's output: the model's trimmed answer, or the `llm` block's `errorMessage` after a failed consult. Verbatim when the tool declares no `llm` block.
 
 Unknown placeholders are left verbatim (and logged at debug level).
+
+### `$state` — drawing on persistent state
+
+A definition may reach into the chat's persistent **state** — the four-tier cascade (chat → project → group → general) shared with the `state` tool. The reference is a closed object, `{ "$state": "<path>", "fallback": <number|string|boolean> }`, usable in every position a `{ "$param": … }` is: roll fields, comparator operands, and a parameter's `default`. Messages (and the `llm` prompt) render `{{state.<path>}}`.
+
+- **The fallback is required, and load-bearing.** It types the reference at load time (a numeric fallback makes it a number, a string a string — so `resolveOperandType` / `validateRollRefs` / the parameter-default `superRefine` type-check `$state` exactly as they do `$param`) and it guarantees run-time resolution never fails: `resolveStateValue(ref, state)` returns the value at the path **only when its `typeof` matches the fallback**, and the fallback otherwise. A run is therefore always dealable, whatever state holds. `resolveStateValue` is pure and never throws.
+- **Path syntax** is the shared `parsePath` from `@/lib/state/state-paths` (dot + bracket). Its `\w+` segments mean keys containing spaces or literal dots are unreachable by a path — a pre-existing limitation, documented here beside `$state`.
+- **Per-entrance cascade resolution.** The merged state is resolved once per run and passed as `overrides.state` into `executeCustomTool`, threaded through `resolveParams`/`coerceParam`, `resolveRollField`/`rollRange`, the `matchesWhen` → `matchesComparator`/`matchesLlmComparator`/`matchesMetadataComparator` chain, and `renderTemplate`. Each entrance scopes the group tier differently:
+  - **LLM path** (`run_custom`, `lib/tools/handlers/run-custom-handler.ts`): `resolveStateCascade` with `{ kind: 'character', characterId }` — the responding character's own groups (Knowledge's rule). Fail-soft to `{}`.
+  - **Manual popup** (`app/api/v1/chats/[id]/custom-tools/route.ts` `handleRun`): character scope when `asCharacterId` names a character, else `{ kind: 'none' }` — the same asymmetry the metadata rule uses (a run nobody made borrows no one's groups). Fail-soft to `{}`.
+  - **Workbench** (`app/api/v1/custom-tools/route.ts` preview/audit): an optional mock `state` object on the request body, exactly like the mock `metadata`; `simulateOutcomes` takes it as a trailing `state` argument (default `{}`). The proving bench exposes a **Mock state** JSON field.
+- **`persist` stays deferred.** Writing state back from a roll (the reserved v2 `persist` key) remains out of scope; `$state` is read-only. The top-level schema still tolerates unknown keys so a future `persist` file won't break older builds.
 
 ### Validation rules (load-time)
 
@@ -163,7 +200,7 @@ Files are validated with `QtapCustomToolSchema.safeParse` at roster-resolution t
 
 1. JSON parse failure or schema mismatch.
 2. `outcomes` is empty, or the **final** outcome's `when` is not the literal `true`. Requiring a trailing catch-all makes coverage gaps structurally impossible; earlier `when: true` entries are also invalid (unreachable outcomes below them).
-3. Any `$param` — in a roll field or in a comparator operand — references an undeclared parameter, or a non-numeric one where a number is required.
+3. Any `$param` — in a roll field or in a comparator operand — references an undeclared parameter, or a non-numeric one where a number is required, or a non-string one as a `contains`/`ncontains` substring on a `params` subject.
 4. An outcome's `params` names an undeclared parameter, orders a non-numeric one, or compares one against a literal of the wrong type. All of these are tests that could never hold; left to run time they read as dead branches rather than the typos they are.
 5. Dice notation fails to parse via the shared dice module.
 6. Duplicate `name` **within the same file set of a single mount** (across mounts/tiers, shadowing rules apply instead).
@@ -281,6 +318,13 @@ New nullable TEXT (JSON) column on `chat_messages`, following the `carinaMeta` p
                                                  // and what they held at roll time, primitives only —
                                                  // the transcript records what the table saw. Absent
                                                  // when the winning row tested no metadata.
+  "llm": {                                       // optional; present iff the definition declares an `llm` block.
+    "ok": true,                                  // whether the consult produced an answer
+    "output": "YES",                             // the trimmed answer — or the author's errorMessage on failure
+    "prompt": "The roll gave 42. YES or NO?",    // the rendered prompt actually posed
+    "reason": "…",                               // failure only: the technical cause, never spoken in the fiction
+    "provider": "ANTHROPIC", "model": "…"        // success only, when known
+  },
   "invokedBy": "llm" | "user",
   "callerParticipantId": "…"             // LLM path only
 }
@@ -424,3 +468,5 @@ Load-time validation failures do not error at run time; they simply keep the too
 11. **`persist`/ratcheting deferred to v2**, with the schema tolerating the key today.
 12. **Roster is resolved per call, never cached across turns.** New chats get the full roster on turn one with no initialization step; mid-chat definition changes take effect on the next LLM call and the next popup open. Mount-index invalidation was rejected because document edits inside a mount don't reliably touch the index; per-call listing is cheap enough.
 13. **Character metadata is a fourth test subject** (added post-ship; full design in [character `metadata.json`](complete/character-metadata-json.md)): same comparators and `$param` operands as `params`, shape-only load-time validation, fail-soft run-time misses (absent/non-primitive/mistyped keys decline the row, never throw), a `{{metadata.<key>}}` template family, `pascalMeta.metadataTested` in the roll record, and a roster that says only that the sheet *may* be consulted — never which keys or values exist.
+14. **The LLM consult is a fifth test subject, and its failure is an outcome, not an error** (added post-ship; see [The `llm` consult](#the-llm-consult)). The author supplies the failure's words (`errorMessage`, required), the run never fails because the oracle went quiet, and the technical reason stays out of the fiction. The provider call arrives through an injected `llmInvoke` seam so the core stays testable and the audit stays free; answer comparisons are deliberately forgiving (trim, case-insensitive eq, numeric coercion for ordering) because the subject is a model's prose, not a declared value.
+15. **`contains`/`ncontains` are substring comparators, not a grammar** (added post-ship; see [Containment](#when--comparators-not-expressions)). Two more AND-composed keys rather than any pattern language: no regex, no globs, nothing to parse or inject. Per-context strictness follows each subject's `eq` precedent — exact and case-sensitive on `params`/`metadata`, trimmed case-insensitive on `llm` — and the operand is a non-empty string literal or a `$param` to a string parameter, so an outcome can ask whether one input appears inside another (or inside the consult's answer).

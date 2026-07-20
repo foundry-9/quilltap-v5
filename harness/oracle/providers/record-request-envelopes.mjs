@@ -105,6 +105,14 @@ function casesFor(provider) {
     add('tools-stop', { ...base, model: 'claude-opus-4-6', tools: [{ name: 'search', description: 'Search.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }], stop: ['STOP', 'END'] });
     add('caching', { ...base, model: 'claude-opus-4-6', profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });
     add('tool-roundtrip', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
+    // P4.d10 tier-2 item 6 (the 8ee56f6e corpus bank): the EXACT new-generation
+    // prefix boundary. claude-opus-4-7 is the first new-gen opus (sampling
+    // rejected, adaptive thinking); a DATED claude-opus-4-8 snapshot is still
+    // new-gen; claude-opus-4-6 with a thinking budget stays the classic
+    // fixed-budget shape (covered by 'thinking' above).
+    add('boundary-first-new-gen-4-7', { ...base, model: 'claude-opus-4-7', messages: [SYS, USER] });
+    add('boundary-dated-new-gen-4-8', { ...base, model: 'claude-opus-4-8-20260215', messages: [SYS, USER] });
+    add('boundary-new-gen-thinking', { ...base, model: 'claude-opus-4-8', profileParameters: { thinkingBudget: 2048 } });
   } else if (provider === 'deepseek') {
     add('plain', { ...base, model: 'deepseek-chat' });
     add('tools', { ...base, model: 'deepseek-chat', tools: [TOOL], toolChoice: 'auto' });

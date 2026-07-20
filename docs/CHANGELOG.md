@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+P4.d10 units 8-9 + tier 2 (the release-sweep verification): the neutrality
+tripwire sweep for v4's dedup refactor (`93604767`) and logging prune
+(`28e89f51`) — 53 oracle families enumerated by grepping the oracle cases'
+imports against the two commits' file lists, every one regenerated from the
+`7e6d13e5` pin and re-run by name: ALL GREEN, zero SKIPs, so both
+"no functional change" claims hold and no v5 source changed for them. The
+seven renderer-transitive families (salon reads/mutations/skip/
+swipe-generate, text-replacements, cost-background, courier-images)
+regenerated and re-run green — the single-dollar math promotion
+(`5915b04e`) stays out of every diffed payload at this baseline (the SPA
+re-port itself is lane D11's). Tier 2: the D23 re-dump of
+`fresh_schema.json` from `7e6d13e5`'s live generateDDL is BYTE-IDENTICAL
+(zero diff — neither the feature nor the sweep touches the schema); the
+docs/v4 mirror refreshed (state-cascade.md, pascal-custom-tools.md,
+API.md, DDL.md, DEAD-CODE-REPORT.md, releases/4.8.0.md); the import-side
+checks confirmed no-ops (the seed subset parses only characters+memories,
+so neither the dropped commonplace chat fields nor the new json/jsonl
+documentStore fileType can reach a parser that demands them); the
+OpenRouter pricing drift is SDK-internal pagination (v5 fetches the
+un-paginated REST endpoint directly — no work); and the Anthropic
+model-family params boundary (`8ee56f6e`'s sharpest family) gained three
+request-envelope corpus rows (claude-opus-4-7 first-new-gen, a dated
+claude-opus-4-8 snapshot, new-gen adaptive thinking) — v5 already
+matched, now pinned (31 → 34 rows).
+
 P4.d10 unit 6 (the universal math-notation note): v4 `c53510c7`'s
 `MATH_FORMATTING_INSTRUCTION` (the KaTeX `$$...$$` guidance — single-dollar
 deliberately unrecognized so currency prose survives) as a const in

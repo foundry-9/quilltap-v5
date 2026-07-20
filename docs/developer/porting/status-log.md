@@ -9,6 +9,69 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 units 8–9 + tier 2 — the release-sweep verification (lane D10, 2026-07-20)
+
+**Unit 8 (the neutrality tripwire, `93604767` + `28e89f51`):** the two
+commits' `lib/`+`app/` file lists grepped against the oracle cases'
+imports enumerated 53 families beyond those this lane already re-ran.
+All regenerated from the pin and re-run BY NAME, `--nocapture`, ZERO
+SKIPs, ALL GREEN — the sweep is DONE with no v5 source change. The roll:
+memory-weighting, ranking-blend, skip-signal, turn-state/-order/
+-predicates/-pause-filters, select-speaker, message-formatter,
+cheap-model, core-whisper, canon-scenario, chat-tasks,
+context-feeders-leaves, help-doc-slug, stable-uuid, mount-chunker,
+documents-rename-target, the four vault parser leaves +
+vault-legacy-wardrobe + vault-wardrobe-item-file, rng-patterns,
+canonicalize, pseudo-tool-parsers, llm-number, whisper-tool,
+wardrobe-tools, image-generation tier-3, rng-executor, dice-notation,
+answer-confirmation tier-3, conversation-chunks, doc-mount-file-links,
+mount-case-moves, memories tier-2, metadata-vault-roundtrip,
+ensure-character-metadata-file, vault-character-write,
+characters-scaffold, tool-build, turn-orchestrator tier-2,
+chat-create-capstone, compression tier-3, build-context tier-3,
+brahma-console tier-3, carina-query tier-3, regenerate-swipe tier-3,
+enclave-step tier-3, mail+carina tools, documents-routes, mount-refresh,
+home-routes (quilltap-web), memory-tasks. Regen gotchas for the round
+record: the PIN worktree needs the per-plugin `plugins/dist/*/node_modules`
+symlinked too (message-formatter imports the anthropic plugin);
+`dump-fresh-schema` wants `QT_SCHEMA_OUT`; the enclave-step jest oracle
+REQUIRES `TZ=UTC` ON THE INVOCATION (the in-case `process.env.TZ` pin is
+not enough for croner) — the one red of the sweep was that slip, not a
+tripwire, green on the pinned regen.
+
+**Unit 9 (the renderer-transitive re-proof, `5915b04e`):** the seven
+families (salon-reads / salon-mutations / salon-skip /
+salon-swipe-generate / text-replacements-routes / cost-background-routes
+/ courier-images-routes) regenerated at the pin and re-run by name — all
+green with committed fixtures unchanged, re-proving `renderedHtml` never
+reaches the diffed payloads at this baseline. Lane D11 owns the SPA-side
+math re-port.
+
+**Tier 2:** (1) the D23 re-dump: `fresh_schema.json` from `7e6d13e5`'s
+live generateDDL — **BYTE-IDENTICAL, zero diff** (79 main + 29
+mount-index + 3 llm-logs statements). (2) the docs/v4 mirror refreshed
+(state-cascade.md was already current from round planning; API.md, DDL.md,
+DEAD-CODE-REPORT.md, pascal-custom-tools.md updated; releases/4.8.0.md
+NEW). (3+4) import-side dispositions: `parse_export_file` keeps `data`
+opaque and the seed subset consumes ONLY `characters`+`memories`, so
+chat records missing `commonplaceRecallHistory`/`commonplaceSceneCache`
+and documentStore rows with `fileType: json|jsonl` are both structurally
+incapable of breaking the import — no code change, recorded. (5) the
+OpenRouter pricing drift (`f495c9c9`) is SDK-internal: v4 iterates
+`@openrouter/sdk` 0.13 pages (`page.result.data`); v5's
+`LivePricingFetch::openrouter_sdk_models` GETs the REST
+`/api/v1/models` endpoint, which returns the FULL un-paginated list —
+same observable output, no work. (6) the `8ee56f6e` bank: the Anthropic
+model-family boundary spot-check — the request-envelope corpus grew
+`boundary-first-new-gen-4-7`, `boundary-dated-new-gen-4-8`
+(claude-opus-4-8-20260215), and `boundary-new-gen-thinking` (31 → 34
+recorded rows, `request_builder_equivalence` green first run — behavior
+already matched). The other four `8ee56f6e` families (messages/[id]
+edit+delete, wardrobe itemId vault-aware lookup, run_custom listing,
+file-attachment fallback) are BANKED as corpus-enrichment seeds for
+their surfaces' next rounds — all four fixes are pre-baseline and
+already absorbed by the existing differentials.
+
 ## P4.d10 unit 6 — the universal math-notation note (lane D10, 2026-07-20)
 
 `MATH_FORMATTING_INSTRUCTION` in `system_prompt.rs` (v4
