@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the `asTab`
+WardrobeView surface: an `asTab` input on the wardrobe dialog renders
+its body bare in a `qt-wardrobe-tab` scroll container (no overlay,
+title, footer, or Escape/backdrop close) instead of the floating modal,
+plus a thin `qt-wardrobe-tab-view` component (v4 `WardrobeView`) that
+hosts it with `chatId=null` — browse/edit only, no Live-outfit tab and
+no equip route. AT-UNIFY: the tab-registry `wardrobe` row swaps to
+`WardrobeTabView` and the not-wired-pane wardrobe arm is pruned.
+
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
 orchestrator + the eight-verb brahma-console dispatch family + REST
