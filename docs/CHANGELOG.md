@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+The `c53510c7` state-cascade drift catch-up round is planned (2026-07-19,
+docs only): two work orders committed — `p4.d10-state-cascade-server.md`
+(the Rust half: the four-tier state cascade with its new pure modules,
+the general-state mount document + host-boot seed, the four-tier state
+tool + updated definition bytes, nine new state dispatch verbs including
+the previously-unported chat-tier state actions, Pascal `$state`
+end-to-end with the workbench mock-state param, and the universal KaTeX
+system-prompt note) and `p4.6be-state-cascade-spa.md` (the SPA half: the
+shared four-entity state editor modal, the Group State button, the
+General State chat-tab card at v4's position #11, Workbench mock-state +
+read-only `$state` pills, the `$state` schema and tool-draft ports, the
+schema-asset re-copy). The round's oracle baseline is v4 `c53510c7`;
+lanes regenerate from a new pinned worktree at that commit. Blast-radius
+survey recorded in the status log ("Round planned — the `c53510c7`
+state-cascade drift catch-up").
+
 The P4.9J1 + P4.9J2 workspace-tabs round unified onto main (2026-07-19, SPA
 0.5.209): the tabbed workspace — v4's default shell — is live and ON by
 default. Lane J1 delivered the pure workspace core (reducer / persistence /

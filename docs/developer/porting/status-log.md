@@ -24124,3 +24124,72 @@ accents are signature hues; cross-theme screenshot check not run); the
 HTML5 drag-split e2e beat (keyboard floor shipped); tab-mode card-Chat
 without `openChatOnMount`; the hosted roster's Create-Character anchor
 still routes.
+
+---
+
+## Round planned — the `c53510c7` state-cascade drift catch-up (P4.d10 ∥ P4.6be), 2026-07-19
+
+The catch-up the p4.9j workspace-tabs round left OWED is scoped. **Drift
+check first:** v4 HEAD is `c53510c7`, exactly the four commits the p4.9j
+round record predicted — no further movement, tree clean. Classified:
+`70baaa74` (docs-only state-cascade plan — already dispositioned and
+mirrored at p4.9j round setup), **`f48f34dc` (the cascading-state feature:
+chat → project → group → general with Pascal `$state` — RE-PORT, both
+lanes)**, `77fa8c73` (version bump — no action), **`c53510c7` (the
+universal KaTeX `$$…$$` system-prompt note — RE-PORT, server lane; the SPA
+renderer has handled `$$` since P4.d9)**. The round's oracle baseline is
+`c53510c7`; lanes regenerate from a NEW pinned detached worktree
+`/private/tmp/qt-v4-pin-c53510c7` (recipe in the D10 preamble); the old
+`b8b12695` pin stays alive until the unifier retires it.
+
+**Blast-radius survey (2026-07-19, three-agent fan-out; the key finding):**
+NO committed v5 fixture embeds the composed system prompt or the state
+tool description — both live only as source constants
+(`tools/definitions/data.rs:237`, `system_prompt.rs`) and every affected
+differential reads env-var `/tmp` oracles regenerated at test time. The
+committed artifacts that DO change: the §C definition corpus
+(`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`,
+159 rows — grows with the `$state` schema families; single-file
+`apps/web` carve-out owned by the server lane, guard counts folded at
+unify — the P4.d8 precedent), the state-sql fixture family (extends:
+groups + general-mount seeds), the `pascal-run-custom-{main,mount}.db`
+rebuild, `workbench-route-cases.json` (extends), and lane BE's byte
+re-copy of `qtap-custom-tool.schema.json` (+55, `$defs/StateRef`).
+
+**Pre-existing gap folded in:** v5 never ported the CHAT-tier state
+actions (`chats/[id]/actions/state.ts` — only the project tier landed,
+P2-era) and has no refusal arm for them; the drift's get-state cascade
+enrichment lands there, so lane D10 ports the whole chat/group/general
+state verb surface (nine new dispatch verbs, §A of the shared contract).
+v4's chat-tier state editor OPENER lives in the unported `ChatSidebar` —
+the SPA modal ships its chat mode dormant (a named deferral riding the
+existing ChatSidebar follow-up).
+
+- **P4.d10 (`p4.d10-state-cascade-server.md`)** — the Rust half:
+  `state_paths`/`state_cascade` modules (verbatim merge order,
+  exactly-one group rule, the four resolution error codes), the
+  general-state mount-root document + the idempotent host-boot seed
+  (never-heal), the four-tier state tool + `characterId` scope wire +
+  the new tool-definition bytes, the nine §A dispatch verbs with the
+  enriched (omit-when-empty) chat get-state, Pascal `$state` end-to-end
+  (StateRefSchema, `resolveStateValue`, threading, both entrance
+  cascades, the workbench §B `state` param), the math note between the
+  roleplay-template and tool-instructions pushes, the §C corpus regen,
+  and the full regen-by-name gate. Tier 2: the D23 zero-diff re-dump,
+  the docs/v4 mirror refresh, the import fileType-acceptance check.
+- **P4.6be (`p4.6be-state-cascade-spa.md`)** — the SPA half: the
+  Prospero state editor generalized into the shared four-entity
+  `qt-state-editor-modal` (inherited-layers note, ambiguous-group copy),
+  the Group State button, the General State card at v4's Chat-tab
+  position #11 (between custom-tools and agent-mode — the tab goes 17 →
+  18 cards), the Workbench mock-state card + read-only `$state` pills
+  (round-trip-never-author), the `$state` schema + tool-draft ports
+  case-for-case, the schema-asset byte re-copy, three ACTIVATE-AT-UNIFY
+  e2e beats.
+
+Shared contract §A–§E binding and verbatim-identical in both orders
+(verb names/payloads/response bodies incl. the GroupTier shape, the
+workbench `state` field, the §C corpus wire, the StateRef JSON shape,
+version-bump ownership). Ownership: D10 = `crates/**` + `harness/**` +
+`docs/v4/**` + the corpus carve-out; BE = `apps/web/**` minus the
+corpus; CHANGELOG + status-log append-only for both.
