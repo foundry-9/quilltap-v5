@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — item-6 accent
+correction. A fuller survey found the runtime theme packs already declare
+`--qt-workspace-accent` with v4's live `var()` token references, under a
+`[data-theme].dark/.light` selector that outranks the bundled
+`[data-theme]` hex — so v5 is already v4-faithful and the bundled hexes are
+just the pre-pack-load fallback (no change to make). Corrected the
+stylesheet ruling comment, and rewrote the cross-theme accent e2e beat to be
+order-independent: it reads `_workspace.css` (Node fs) to assert the six
+bundled defaults are distinct hexes, plus a browser check that each
+`[data-theme]` root resolves the accent to a real colour. (The prior beat
+read the raw custom property, which a loaded theme pack overrides — flaky in
+full-suite order.)
+
 P4.9J3 (the wardrobe-tab + workspace-riders lane) — the workspace-flow
 e2e beats and the cross-theme accent ruling. New Playwright beats: a real
 HTML5 tab drag onto the drop-zone opens the split and a pointer drag of the

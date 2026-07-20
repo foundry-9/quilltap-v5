@@ -344,25 +344,25 @@
    drop-zone), consumed as var(--qt-workspace-accent, var(--color-primary)).
    Left undeclared, a theme's workspace inherits its own --color-primary; the
    blocks below give each of the six bundled themes a signature workspace
-   accent. (In v4 these live in each theme bundle's styles.css; v5 serves the
-   theme packs at runtime, so the committed accents live here — outside
-   @layer so they define the custom property on the theme root regardless of
-   component layering. They tint only the workspace and are inert elsewhere.)
+   accent, outside @layer so they define the custom property on the theme root
+   regardless of component layering. They tint only the workspace.
 
-   RULING (p4.9j3 item 6, 2026-07-20): KEEP the static hex — a DOCUMENTED
-   DIVERGENCE from v4's live token references. v5 DOES expose the six accent
-   source tokens, but split across provenance and load-timing: four live in
-   async runtime theme packs served by <link> at /themes/<id>/styles.css
-   (`--rotor-cyan` madmans-box, `--estate-gold` great-estate, `--accent-brand`
-   rains, `--accent-secondary-100` earl-grey) and two are compiled
-   (`--deco-gold` in _surfaces.css, `--color-primary` in styles.css).
-   Re-referencing them from this bundled stylesheet would (a) couple the
-   workspace accent to pack-internal token names — a silent break if a pack
-   renames one — and (b) resolve to the fallback until the async pack <link>
-   loads (accent FOUC on theme switch), for no user-visible gain over the
-   deterministic hex. The cross-theme resolution is pinned by the
-   `workspace-flow.spec.ts` accent beat (real-browser getComputedStyle over all
-   six [data-theme] roots).
+   RULING (p4.9j3 item 6, 2026-07-20, CORRECTED): NO CHANGE — v5 is already
+   v4-faithful. Each runtime theme pack (served by <link> at
+   /themes/<id>/styles.css) ALSO declares --qt-workspace-accent, as v4's LIVE
+   token reference (art-deco var(--deco-gold), rains hsl(var(--accent-brand)),
+   earl-grey hsl(var(--accent-secondary-100)), great-estate var(--estate-gold),
+   madmans-box var(--rotor-cyan), old-school var(--color-primary)). The pack
+   declares it under `[data-theme="X"].dark/.light` (specificity 0,2,0), which
+   OUTRANKS this bundled `[data-theme="X"]` block (0,1,0) — so once a theme is
+   active (the app always sets a .dark/.light class) the pack's LIVE token wins.
+   These committed hexes are therefore the pre-pack-load / no-pack FALLBACK
+   (kept: they avoid an accent FOUC before the async pack <link> resolves), not
+   a divergence to reconcile. (The earlier "keep static hex as a divergence"
+   ruling missed the pack-side declarations — the packs already re-reference the
+   live tokens.) The bundled defaults are pinned distinct by the
+   `workspace-flow.spec.ts` accent beat (reads THIS file + a browser resolution
+   check).
    ========================================================================== */
 [data-theme='art-deco'] {
   --qt-workspace-accent: #c9a227; /* deco gold */

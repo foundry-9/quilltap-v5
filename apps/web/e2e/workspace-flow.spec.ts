@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
 
 import { E2E_PASSPHRASE } from './support/env';
@@ -240,51 +243,56 @@ test('the wardrobe tab renders the bare asTab surface (activate-at-unify)', asyn
   await expect(page.locator('#wardrobe-char-select')).toBeVisible();
 });
 
-test('every bundled theme gives the workspace a distinct accent (cross-theme)', async ({
+test('every bundled theme gives the workspace a distinct accent (cross-theme, p4.9j3 item 6)', async ({
   page,
 }) => {
-  await openWorkspace(page);
   const THEMES = ['art-deco', 'earl-grey', 'great-estate', 'madmans-box', 'old-school', 'rains'];
 
-  // Drive each [data-theme] root and read the ACCENT resolved through the same
-  // fallback the consumers use, alongside the bare --color-primary fallback.
-  // The bundled _workspace.css supplies the accents, so no runtime theme pack
-  // needs to load for this — only the data-theme attribute.
-  const results = await page.evaluate((themes: string[]) => {
+  // (a) The DETERMINISTIC bundled-default contract: read the committed
+  // _workspace.css and confirm each [data-theme] root declares a concrete,
+  // DISTINCT hex accent. This is order-independent — unlike the raw runtime
+  // custom-property value, which the higher-specificity runtime theme pack
+  // overrides with v4's live var() token once its <link> loads (the corrected
+  // item-6 ruling). Node fs is available in the Playwright test runtime.
+  const css = readFileSync(
+    resolve(__dirname, '../src/styles/qt-components/_workspace.css'),
+    'utf8',
+  );
+  const bundled = new Map<string, string>();
+  for (const t of THEMES) {
+    const m = css.match(
+      new RegExp(`\\[data-theme='${t}'\\]\\s*\\{[^}]*?--qt-workspace-accent:\\s*([^;]+);`),
+    );
+    expect(m, `_workspace.css declares a bundled accent for ${t}`).not.toBeNull();
+    const hex = m![1].trim();
+    expect(hex, `${t} bundled accent is a concrete hex`).toMatch(/^#[0-9a-fA-F]{3,8}$/);
+    bundled.set(t, hex);
+  }
+  expect(new Set(bundled.values()).size, 'the six bundled accents are distinct').toBe(THEMES.length);
+
+  // (b) A browser resolution check (order-independent): each [data-theme] root
+  // resolves --qt-workspace-accent to a real, non-transparent colour — whether
+  // that is the bundled hex (no pack loaded) or the pack's live token (pack
+  // loaded). This proves the accent wires into the DOM for all six roots.
+  await openWorkspace(page);
+  const resolved = await page.evaluate((themes: string[]) => {
     const root = document.documentElement;
     const prev = root.getAttribute('data-theme');
-    const out: Record<string, { accent: string; fallback: string; declared: string }> = {};
+    const out: Record<string, string> = {};
     for (const t of themes) {
       root.setAttribute('data-theme', t);
       const probe = document.createElement('div');
       probe.style.color = 'var(--qt-workspace-accent, var(--color-primary))';
       document.body.appendChild(probe);
-      const fallbackProbe = document.createElement('div');
-      fallbackProbe.style.color = 'var(--color-primary)';
-      document.body.appendChild(fallbackProbe);
-      out[t] = {
-        accent: getComputedStyle(probe).color,
-        fallback: getComputedStyle(fallbackProbe).color,
-        declared: getComputedStyle(root).getPropertyValue('--qt-workspace-accent').trim(),
-      };
+      out[t] = getComputedStyle(probe).color;
       probe.remove();
-      fallbackProbe.remove();
     }
     if (prev) root.setAttribute('data-theme', prev);
     else root.removeAttribute('data-theme');
     return out;
   }, THEMES);
-
-  const accents = new Set<string>();
   for (const t of THEMES) {
-    const r = results[t];
-    // Declared as a concrete hex (the static-hex ruling), resolving to real rgb…
-    expect(r.declared, `${t} declares an accent`).toMatch(/^#[0-9a-fA-F]{3,8}$/);
-    expect(r.accent, `${t} accent resolves to rgb`).toMatch(/^rgba?\(/);
-    // …and differing from the default --color-primary fallback.
-    expect(r.accent, `${t} accent differs from the fallback`).not.toBe(r.fallback);
-    accents.add(r.accent);
+    expect(resolved[t], `${t} accent resolves to an rgb colour`).toMatch(/^rgba?\(/);
+    expect(resolved[t], `${t} accent is not transparent`).not.toMatch(/rgba?\([^)]*,\s*0\)/);
   }
-  // Each of the six themes has its own signature accent.
-  expect(accents.size).toBe(THEMES.length);
 });
