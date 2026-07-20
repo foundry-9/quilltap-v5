@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9I1A (the Brahma server lane) — extended the orchestrator's test
+coverage (Tier-2 item 5): the tier-3 `plain` arm now carries reasoning
+("thinking") chunks, proving the live cumulative-reasoning frames + the
+persisted `reasoningContent`; a stale-result-guard unit test (distinct
+signatures, identical results → the stale branch forces a final answer)
+joins the 25-turn-cap test. Test/oracle-only.
+
 P4.9I1A (the Brahma server lane) unit 1: ported the Brahma Console
 multi-turn orchestrator (v4 `orchestrator.service.ts`
 `handleBrahmaConsoleMessage` + `processBrahmaResponse`) to

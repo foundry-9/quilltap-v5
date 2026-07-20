@@ -25203,3 +25203,19 @@ SKIP). Versions: core 0.0.290, harness 0.0.252, web 0.0.36, host
 **Open under the order:** the SPA half is P4.9I1B (the console dialog
 family, streaming consumer, rail entry) — binds to this lane at §B/§W.
 No refusal arms remain in the server surface.
+
+### Unit 1 follow-up — reasoning + stale-guard coverage (LANDED)
+
+Extended the orchestrator differential + unit tests (the order's Tier-2
+item 5, `orchestrator.service.test.ts` cases) without touching
+production code: the tier-3 `plain` arm now carries reasoning
+("thinking") chunks — proving the live cumulative-reasoning frames
+(`priorReasoning`/`runReasoning` fold) AND the persisted
+`reasoningContent` — and a `stale_guard_forces_a_final_when_results_repeat`
+unit test (four distinct signatures, a `ConstResultRunner` returning
+identical content → `staleIterations` trips the stale branch, not the
+dup branch) joins `loop_bound_forces_a_final_answer_at_the_cap`. The
+`[Tool Result]` history-replay case is covered by composition
+(`build_conversation_messages` is separately differential-proven and the
+orchestrator threads it identically). Versions: core 0.0.291, harness
+0.0.253.

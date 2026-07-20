@@ -28,6 +28,7 @@ use crate::services::brahma_console::MAX_AGENT_TURNS;
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 const CHAT_B: &str = "c1000000-0000-4000-8000-00000000000b"; // empty brahma chat, pinned P1
+const CHAT_C: &str = "c1000000-0000-4000-8000-00000000000c"; // empty brahma chat, unpinned
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
@@ -115,6 +116,29 @@ impl ToolRunner for EchoRunner {
     }
 }
 
+/// Returns the SAME result content for every call (so distinct signatures still
+/// produce identical fingerprints — the stale path).
+struct ConstResultRunner;
+impl ToolRunner for ConstResultRunner {
+    fn run(
+        &self,
+        tool_call: &ToolCall,
+        _ctx: &ToolExecutionContext,
+    ) -> impl Future<Output = ToolResult> + Send {
+        let name = tool_call.name.clone();
+        async move {
+            ToolResult {
+                tool_name: name,
+                success: true,
+                result: json!({ "same": "result" }),
+                error: None,
+                message: None,
+                metadata: None,
+            }
+        }
+    }
+}
+
 /// Open a fresh temp copy of the committed brahma fixture (never write the seed).
 fn fixture_copy() -> (tempfile::TempDir, Db) {
     let dir = tempfile::tempdir().unwrap();
@@ -198,4 +222,61 @@ async fn loop_bound_forces_a_final_answer_at_the_cap() {
         .filter(|e| e.get("done").is_some())
         .count();
     assert_eq!(done_frames, 1);
+}
+
+#[tokio::test]
+async fn stale_guard_forces_a_final_when_results_repeat() {
+    let (_dir, db) = fixture_copy();
+
+    // Four DISTINCT signatures (distinct args ⇒ duplicateCount stays 0) but the
+    // ConstResultRunner returns IDENTICAL content, so `staleIterations` climbs to
+    // the cap and trips the STALE branch (not the dup branch); the final stream
+    // returns text → done. Mirrors the one-shot engine's stale-guard test.
+    let mut by_marker = HashMap::new();
+    let mut seqs = Vec::new();
+    for n in 1..=4 {
+        let marker = format!("s{n}");
+        seqs.push(tool_stream(&marker));
+        by_marker.insert(
+            marker,
+            vec![ToolCall {
+                name: "run_sql".into(),
+                arguments: json!({ "sql": format!("distinct-{n}") }),
+                call_id: Some(format!("id{n}")),
+            }],
+        );
+    }
+    seqs.push(text_stream("HALTED BY STALE GUARD"));
+
+    let streaming = ScriptedStream::new(seqs);
+    let detector = MarkerDetector { by_marker };
+    let runner = ConstResultRunner;
+    let sink = RecordingSink::new();
+    let mut cost = NoCostTracking;
+    let mut deps = BrahmaSendDeps {
+        db: &db,
+        streaming: &streaming,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        cost: &mut cost,
+        model_supports_native_tools: true,
+    };
+    let opts = BrahmaConsoleSendOptions {
+        content: "same thing over and over".into(),
+        file_ids: Vec::new(),
+    };
+    let result = handle_brahma_console_message(&mut deps, &sink, USER, CHAT_C, &opts)
+        .await
+        .expect("send ok");
+
+    assert!(result.message_id.is_some());
+    assert_eq!(streaming.remaining(), 0);
+    let messages = db
+        .read_main(|c| crate::db::chats_messages_read::get_messages(c, CHAT_C))
+        .unwrap();
+    let last = messages.last().expect("messages present");
+    assert_eq!(
+        last.get("content").and_then(Value::as_str),
+        Some("HALTED BY STALE GUARD")
+    );
 }

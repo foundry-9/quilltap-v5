@@ -114,6 +114,8 @@ struct ChunkW {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
     done: Option<bool>,
     #[serde(default)]
     usage: Option<UsageW>,
@@ -160,6 +162,12 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
         });
         let mut chunk = StreamChunk::done(usage);
         chunk.raw_response = c.raw_response.clone();
+        return Ok(chunk);
+    }
+    if let Some(r) = &c.reasoning {
+        // A reasoning ("thinking") chunk: empty content + cumulative reasoning.
+        let mut chunk = StreamChunk::content("");
+        chunk.reasoning_content = Some(r.clone());
         return Ok(chunk);
     }
     Ok(StreamChunk::content(c.content.clone().unwrap_or_default()))

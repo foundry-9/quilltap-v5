@@ -56,6 +56,7 @@ import { tmpdir } from 'node:os';
 
 interface ChunkSpec {
   content?: string;
+  reasoning?: string;
   done?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   rawResponse?: unknown;
@@ -166,6 +167,8 @@ async function main(): Promise<void> {
         for (const chunk of seq) {
           if (chunk.done) {
             yield { done: true, usage: chunk.usage ?? undefined, rawResponse: chunk.rawResponse };
+          } else if (chunk.reasoning !== undefined) {
+            yield { content: '', reasoningContent: chunk.reasoning };
           } else {
             yield { content: chunk.content };
           }

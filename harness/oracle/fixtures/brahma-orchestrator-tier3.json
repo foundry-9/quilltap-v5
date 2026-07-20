@@ -31,6 +31,8 @@
       "content": "Hello there, Console.",
       "streams": [
         [
+          { "reasoning": "Let me think about this." },
+          { "reasoning": "Let me think about this. A greeting will do." },
           { "content": "Greetings from the Console." },
           { "done": true, "usage": { "promptTokens": 12, "completionTokens": 6, "totalTokens": 18 } }
         ]
