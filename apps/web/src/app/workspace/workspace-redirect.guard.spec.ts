@@ -77,4 +77,19 @@ describe('workspaceRedirectGuard', () => {
     const tree = run(guard, snap({}, { mount: 'm1', new: '1' })) as UrlTree;
     expect(tree.queryParams).toEqual({ open: 'custom-tools', mount: 'm1', new: '1' });
   });
+
+  // p4.9j3 item 4: the settings-wizard bypass for the fresh-instance handoff.
+  const wizardBypass = (r: ActivatedRouteSnapshot) => r.queryParamMap.get('mode') === 'setup';
+
+  it('flag ON + mode=setup ⇒ passes through (no redirect; the fresh wizard renders standalone)', () => {
+    const guard = workspaceRedirectGuard('settings-wizard', undefined, wizardBypass);
+    expect(run(guard, snap({}, { mode: 'setup' }))).toBe(true);
+  });
+
+  it('flag ON without mode=setup ⇒ redirects into the workspace as today', () => {
+    const guard = workspaceRedirectGuard('settings-wizard', undefined, wizardBypass);
+    const tree = run(guard, snap()) as UrlTree;
+    expect(tree).toBeInstanceOf(UrlTree);
+    expect(tree.queryParams).toEqual({ open: 'settings-wizard' });
+  });
 });

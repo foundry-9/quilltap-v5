@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the fresh-instance
+wizard handoff `/settings/wizard?mode=setup` now renders standalone under
+the workspace flag instead of redirecting into a tab. The redirect guard
+gains an optional bypass predicate; the settings-wizard binding uses it for
+`mode=setup` only (the frozen workspace contract declares no wizard tab
+payload to carry the param, and v4 has no equivalent workspace arm — a
+documented divergence). Without `mode=setup`, the Providers-tab re-entry
+redirects into the workspace as before.
+
 P4.9J3 (the wardrobe-tab + workspace-riders lane) — the roster's in-tab
 Chat and Create-Character arms (v4 `AuroraView` `openChatForSelected` /
 `openTab`). The character card's Chat action, in a workspace tab, drills
