@@ -348,6 +348,21 @@
    theme packs at runtime, so the committed accents live here — outside
    @layer so they define the custom property on the theme root regardless of
    component layering. They tint only the workspace and are inert elsewhere.)
+
+   RULING (p4.9j3 item 6, 2026-07-20): KEEP the static hex — a DOCUMENTED
+   DIVERGENCE from v4's live token references. v5 DOES expose the six accent
+   source tokens, but split across provenance and load-timing: four live in
+   async runtime theme packs served by <link> at /themes/<id>/styles.css
+   (`--rotor-cyan` madmans-box, `--estate-gold` great-estate, `--accent-brand`
+   rains, `--accent-secondary-100` earl-grey) and two are compiled
+   (`--deco-gold` in _surfaces.css, `--color-primary` in styles.css).
+   Re-referencing them from this bundled stylesheet would (a) couple the
+   workspace accent to pack-internal token names — a silent break if a pack
+   renames one — and (b) resolve to the fallback until the async pack <link>
+   loads (accent FOUC on theme switch), for no user-visible gain over the
+   deterministic hex. The cross-theme resolution is pinned by the
+   `workspace-flow.spec.ts` accent beat (real-browser getComputedStyle over all
+   six [data-theme] roots).
    ========================================================================== */
 [data-theme='art-deco'] {
   --qt-workspace-accent: #c9a227; /* deco gold */

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the workspace-flow
+e2e beats and the cross-theme accent ruling. New Playwright beats: a real
+HTML5 tab drag onto the drop-zone opens the split and a pointer drag of the
+divider re-ratios it within [MIN, MAX] (the p4.9j1 tier-2 divider
+deferral); an ACTIVATE-AT-UNIFY probe for the wardrobe tab (skips while the
+registry still shows the not-wired pane, self-activates at the swap); and a
+cross-theme accent check that drives all six `[data-theme]` roots asserting
+`--qt-workspace-accent` resolves to a distinct colour differing from the
+`--color-primary` fallback. Ruling (item 6): KEEP the static hex — a
+documented divergence from v4's live token references, since the equivalent
+tokens are split across async runtime theme packs and compiled files (a
+FOUC + coupling risk for no gain). Recorded in the stylesheet comment.
+
 P4.9J3 (the wardrobe-tab + workspace-riders lane) — the fresh-instance
 wizard handoff `/settings/wizard?mode=setup` now renders standalone under
 the workspace flag instead of redirecting into a tab. The redirect guard
