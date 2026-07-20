@@ -260,6 +260,18 @@ chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
 staged outside `.claude/`, from the pin, `-- state-cascade` also matches
 v4's own unit suite — harmless, both pass).
 
+## P4.6be unit 2 — the schema asset re-copy (lane BE, 2026-07-19)
+
+Byte-for-byte re-copy of v4 `c53510c7`'s
+`public/schemas/qtap-custom-tool.schema.json` over the v5 asset (headers
+already identical — same `$id`, same `$schema`). Adds `$defs/StateRef`
+(`required ["$state","fallback"]`, `additionalProperties: false`, fallback
+`oneOf` number/string/boolean) `$ref`'d from `parameter.default`,
+`NumberOrParamRef`, `AnyOperand`, `StringOperand`; the `{{state.path}}`
+placeholder mentions in `llm.prompt` + outcome `message`. `diff` against
+v4 confirms byte-identical. No content-asserting spec pins the asset (the
+specs only reference the `$schema` string), so nothing else moves.
+
 ## P4.6be unit 1 — Pascal `$state` schema + tool-draft ports (lane BE, 2026-07-19)
 
 SPA half of the `c53510c7` state-cascade round (lane BE; sibling D10 owns

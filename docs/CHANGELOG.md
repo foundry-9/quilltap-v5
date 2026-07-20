@@ -136,6 +136,15 @@ CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
 across the gap. Round record in the status log; the round pin moves to
 `qt-v4-pin-7e6d13e5`.
 
+Lane P4.6be unit 2 — the `qtap-custom-tool.schema.json` asset re-copy
+(SPA 0.5.211): byte-for-byte re-copy of v4 `c53510c7`'s published JSON
+schema, adding the `$defs/StateRef` definition (strict, `required
+["$state","fallback"]`, fallback `oneOf` number/string/boolean) referenced
+from `parameter.default`, `NumberOrParamRef`, `AnyOperand`, and
+`StringOperand`, plus the `{{state.path}}` mentions in the `llm.prompt`
+and outcome `message` descriptions. No spec asserts the asset's content
+(only the `$schema` string value), so nothing else changes.
+
 Lane P4.6be (SPA half of the `c53510c7` state-cascade round), unit 1 —
 the Pascal `$state` schema + tool-draft ports and the Workbench `$state`
 surface (SPA 0.5.210): the browser custom-tool schema twin gained the
