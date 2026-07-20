@@ -7,8 +7,8 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 115 rows generated from v4's REAL
- * `QtapCustomToolSchema` at `d68638b4` (see
+ * This replays the COMMITTED oracle corpus — 175 rows generated from v4's REAL
+ * `QtapCustomToolSchema` at `7e6d13e5` (see
  * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
  * byte-compares four things per row:
  *
@@ -72,35 +72,33 @@ const titleRows = rows.filter((r): r is TitleRow => r.kind === 'title');
 const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'definition');
 
 /**
- * The corpus is generated at v4 `616930db` (lane D8's §C regen, 159 rows).
- * While the committed NDJSON still dated to `d68638b4`, this map carried the
- * four rows whose sentences drifted at `616930db`; the regenerated corpus
- * carries them natively, so the map is empty — every row passes against the
- * fixture's own bytes. The map and its guard stay as the mechanism for the
- * NEXT drift window (fill it only with replay-verified sentences, and empty
- * it again when the corpus regenerates).
+ * The corpus is generated at v4 `7e6d13e5` (lane D10's §C regen, 175 rows —
+ * the `$state` schema families joined at the state-cascade round). The map is
+ * empty — every row passes against the fixture's own bytes. The map and its
+ * guard stay as the mechanism for the NEXT drift window (fill it only with
+ * replay-verified sentences, and empty it again when the corpus regenerates).
  */
-const REGENERATED_AT_616930DB: Record<string, string> = {};
+const REGENERATED_AT_7E6D13E5: Record<string, string> = {};
 
-/** The sentence v4 `616930db` renders for a row — the fixture's, unless drifted. */
+/** The sentence v4 `7e6d13e5` renders for a row — the fixture's, unless drifted. */
 function expectedReason(row: DefinitionRow): string | null {
-  return REGENERATED_AT_616930DB[row.id] ?? row.reason;
+  return REGENERATED_AT_7E6D13E5[row.id] ?? row.reason;
 }
 
 describe('custom-tool schema — the committed v4 corpus', () => {
   it('the corpus is the expected shape (a truncated fixture must not pass silently)', () => {
-    // D8's recorded §C counts at `616930db`: 159 = 10 title + 149 definition
-    // (53 accept / 96 reject).
-    expect(rows.length).toBe(159);
+    // D10's recorded §C counts at `7e6d13e5`: 175 = 10 title + 165 definition
+    // (58 accept / 107 reject).
+    expect(rows.length).toBe(175);
     expect(titleRows.length).toBe(10);
-    expect(definitionRows.length).toBe(149);
+    expect(definitionRows.length).toBe(165);
   });
 
   it('the drift map names only rows the fixture actually carries', () => {
-    // Guards the map against outliving its rows: once D8's regenerated corpus
-    // lands the map goes to `{}`, and a stale key here would pass unnoticed.
+    // Guards the map against outliving its rows: a regenerated corpus empties
+    // the map, and a stale key here would pass unnoticed.
     const ids = new Set(definitionRows.map((r) => r.id));
-    for (const id of Object.keys(REGENERATED_AT_616930DB)) {
+    for (const id of Object.keys(REGENERATED_AT_7E6D13E5)) {
       expect(ids.has(id), `drift map names "${id}", which the corpus does not`).toBe(true);
     }
   });

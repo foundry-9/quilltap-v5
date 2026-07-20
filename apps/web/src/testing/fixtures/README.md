@@ -6,7 +6,7 @@ and investigate the diff — do not patch the fixture.
 
 ## `pascal-custom-tool-definition.oracle.ndjson`
 
-**159 rows** (10 `title` + 149 `definition`; 53 accept / 96 reject). Drives
+**175 rows** (10 `title` + 165 `definition`; 58 accept / 107 reject). Drives
 `app/pascal/custom-tool-types.corpus.spec.ts`, which replays every row through
 the SPA's hand-ported schema module and byte-compares the verdict, the parsed
 data (`JSON.stringify`), the unknown-key report, and the full
@@ -18,16 +18,15 @@ roster route and the Workbench library route return it verbatim — so a browser
 that phrased it differently would be disagreeing with the server about the same
 file.
 
-- **Provenance:** v4 `616930db` (4.8.0-dev.75), regenerated 2026-07-18 (P4.d8
-  unit 1 / §C). Byte-identical to the copy the Rust
+- **Provenance:** v4 `7e6d13e5` (4.8.0-dev.92), regenerated 2026-07-20 (P4.d10
+  unit 5 / §C, from the `/private/tmp/qt-v4-pin-7e6d13e5` pinned worktree).
+  Byte-identical to the copy the Rust
   `pascal_custom_tool_definition_equivalence` differential consumed at the same
-  commit — that differential was re-run green over this exact output, confirming
-  no v4 drift since the corpus was authored. The `d68638b4` corpus was 115 rows
-  (10 title + 105 definition); the `616930db` llm-consult + contains/ncontains
-  drift added **44 definition rows** (the `llm` block accept/reject arms, the
-  `llm` subject, containment across all four subjects, the `maxOutput` bounds)
-  and moved two PRE-EXISTING rows, whose at-least-one message widened to the
-  eight-key form.
+  commit — that differential was re-run green over this exact output. The
+  `616930db` corpus was 159 rows (10 title + 149 definition; 53 accept / 96
+  reject); the `f48f34dc` state-cascade drift added **16 definition rows** (the
+  `$state` reference accept/reject arms across the roll-field / operand /
+  parameter-default unions and the fallback-typing validation).
 - **Owner of the generator:** `harness/oracle/cases/pascal-custom-tool-definition.ts`
   (lane AY's tree — this is a consumer copy).
 - **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
@@ -39,5 +38,5 @@ file.
   ```
 
   If the v4 tree is dirty, generate from a pinned detached worktree at the
-  baseline instead. Expect 159 lines; a shorter file means the generator errored
+  baseline instead. Expect 175 lines; a shorter file means the generator errored
   and left the old one in place.
