@@ -9,6 +9,18 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.d10 gate addendum — the stale no-tools prompt assertion (lane D10, 2026-07-20)
+
+The lane-close `cargo test --workspace` caught ONE red the per-unit gates
+missed: `system_prompt::tests::system_prompt_no_tools_is_just_stack`
+asserted a no-tools prompt equals the bare identity stack — stale since
+unit 6 made the math note unconditional (unit 6's own gate ran the
+differentials + clippy but not the full workspace suite; the lesson is
+the full-suite rule exists for exactly this). Renamed to
+`system_prompt_no_tools_is_stack_plus_math_note`, expecting
+`identity stack + "\n\n" + MATH_FORMATTING_INSTRUCTION`. Full workspace
+re-run green after the fix.
+
 ## P4.d10 units 8–9 + tier 2 — the release-sweep verification (lane D10, 2026-07-20)
 
 **Unit 8 (the neutrality tripwire, `93604767` + `28e89f51`):** the two

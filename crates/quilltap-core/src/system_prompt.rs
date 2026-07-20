@@ -674,10 +674,18 @@ mod tests {
     }
 
     #[test]
-    fn system_prompt_no_tools_is_just_stack() {
+    fn system_prompt_no_tools_is_stack_plus_math_note() {
+        // Since v4 `c53510c7` the universal math-notation note is pushed
+        // UNCONDITIONALLY, so a no-tools prompt is the identity stack + the note.
         let ch = char_named("Ada");
         let s = build_system_prompt(&prompt_opts(&ch)).unwrap();
-        assert_eq!(s, build_identity_stack(&stack_opts(&ch)));
+        assert_eq!(
+            s,
+            format!(
+                "{}\n\n{MATH_FORMATTING_INSTRUCTION}",
+                build_identity_stack(&stack_opts(&ch))
+            )
+        );
     }
 
     #[test]

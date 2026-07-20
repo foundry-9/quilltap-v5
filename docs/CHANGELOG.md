@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d10 gate fix: the in-crate `system_prompt_no_tools_is_just_stack`
+expectation predated the unconditional math note and failed the full
+workspace gate; renamed and updated to expect the identity stack + the
+note (the differential proof was already green — this was the stale
+sibling assertion, caught by the lane-close gate).
+
 P4.d10 units 8-9 + tier 2 (the release-sweep verification): the neutrality
 tripwire sweep for v4's dedup refactor (`93604767`) and logging prune
 (`28e89f51`) — 53 oracle families enumerated by grepping the oracle cases'
