@@ -25036,3 +25036,33 @@ item-8 narrow-pane overlay with it), p4.9i2 (HelpChat — its help-doc
 read surface has nothing ported above `services/help_doc_sync.rs`), a
 workspace/state dogfood pass (run `/dogfood` after this round unifies),
 and the M6 backlog rows 5/6/8+.
+
+---
+
+## P4.9J4 lane — the standalone (chat-less) Document Mode surface (in progress)
+
+Branch `claude/document-standalone-spa-69384f`. Drift-check at lane start:
+v4 HEAD == `7e6d13e5` (the baseline), tree clean. SPA-ONLY lane —
+`git diff main -- crates/ Cargo.toml Cargo.lock` is empty; all seven
+standalone document verbs already exist and are engine-wired (P4.6w), so
+this lane adds NO Rust and NO oracle. Fidelity is (a) the wire module
+name-for-name against `api/types.rs:1565-1595` (the unifier's wire diff),
+(b) the screen's mechanics specced against the pre-surveyed v4
+`StandaloneDocumentView.tsx`, (c) the editor path reuses the gated
+`qt-rich-editor` bridge untouched.
+
+- **Unit 1 — the wire module** (`documents/standalone-wire.ts` + `.spec.ts`).
+  The seven `document*` request interfaces (`documentStores`,
+  `documentsRecent`, `documentOpen`, `documentRead`, `documentWrite`,
+  `documentRename`, `documentDelete`) name-for-name against
+  `api/types.rs:1565-1595` (the `Request` enum
+  `#[serde(tag="type", rename_all="camelCase")]`, each standalone variant a
+  flattened `body`), declared LANE-LOCALLY behind the
+  `as unknown as CoreRequest` cast (the `file-manager-transport.ts` /
+  `home.api.ts` precedent; the unifier folds them into `core-contract.ts`
+  and runs the diff, §W.3). Plus the root-provided `StandaloneDocumentApi`
+  dispatch client (one method per verb; response DTOs mirror the Rust
+  handlers' JSON; the write conflict → the `conflict` outcome exactly as
+  `document-api.ts`). 11-case spec pins each request `{type,…}` shape +
+  response field extraction (incl. the null-mountPoint→undefined map and
+  the conflict/error write split). apps/web 0.5.222.

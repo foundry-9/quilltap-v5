@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9J4 (standalone Document Mode, unit 1): the lane-local `document*`
+wire module — the seven standalone document request interfaces
+(name-for-name against `api/types.rs`, folded into `core-contract.ts` at
+unification) plus a root `StandaloneDocumentApi` dispatch client (one
+method per verb; the write conflict maps to the `conflict` outcome).
+SPA-only; no server verbs added (all seven already exist from P4.6w).
+
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
 orchestrator + the eight-verb brahma-console dispatch family + REST
