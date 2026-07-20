@@ -7,6 +7,7 @@ import { CollapsibleCard } from '../ui/collapsible-card';
 import { formatBytes } from '../ui/format-bytes';
 import type { AccessibleStoreDto, DocMountFileDto, DocumentScope, RecentDocumentDto } from '../core/core-contract';
 import { DocumentApi } from './document-api';
+import { StandaloneDocumentApi } from './standalone-wire';
 
 /** How many recent documents the picker shows (v4 `MAX_RECENT_DOCUMENTS`). */
 const MAX_RECENT_DOCUMENTS = 10;
@@ -26,10 +27,17 @@ interface SelectedMount {
 }
 
 /**
- * `qt-document-picker` — the Open-Document modal (v4 `DocumentPickerModal`), the
- * chat-scoped surface. Two steps: (1) source — new blank, recents, and the
- * store accordions (+ look-everywhere); (2) browse — a mount point's folder tree
- * over lane A's `mountFilesList`, with folder navigation and "new document here".
+ * `qt-document-picker` — the Open-Document modal (v4 `DocumentPickerModal`).
+ * Two steps: (1) source — new blank, recents, and the store accordions
+ * (+ look-everywhere); (2) browse — a mount point's folder tree over lane A's
+ * `mountFilesList`, with folder navigation and "new document here".
+ *
+ * Serves BOTH entries v4's one modal serves (P4.9J4): a `chatId` scopes the
+ * chat-side picker (recents/stores from the chat's reach via {@link DocumentApi});
+ * a NULL `chatId` is the standalone (chat-less) rail surface — recents + stores
+ * come from {@link StandaloneDocumentApi} (`/api/v1/documents`), every enabled
+ * store shows ("look everywhere" is implicit, its checkbox hidden), exactly as
+ * v4's `chatId === null` arm.
  *
  * DEFERRED LOUDLY this round (enumerated in the status header): the
  * project/general **FileBrowser** path (needs a project/general file-listing
@@ -96,20 +104,24 @@ interface SelectedMount {
 
           <!-- Right column: store accordions -->
           <div class="flex-1 min-w-0 space-y-2">
-            <label class="flex items-start gap-3 px-1 pb-1 cursor-pointer">
-              <input
-                type="checkbox"
-                class="qt-checkbox mt-0.5"
-                [checked]="lookEverywhere()"
-                (change)="setLookEverywhere($any($event.target).checked)"
-              />
-              <span>
-                <span class="block text-sm font-medium qt-text-primary">Look everywhere</span>
-                <span class="block text-xs qt-text-secondary"
-                  >Show every store, not just the ones reachable from this chat</span
-                >
-              </span>
-            </label>
+            <!-- The standalone surface is always "everywhere" (v4 hides the
+                 toggle when chatId === null). -->
+            @if (!standalone()) {
+              <label class="flex items-start gap-3 px-1 pb-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  class="qt-checkbox mt-0.5"
+                  [checked]="lookEverywhere()"
+                  (change)="setLookEverywhere($any($event.target).checked)"
+                />
+                <span>
+                  <span class="block text-sm font-medium qt-text-primary">Look everywhere</span>
+                  <span class="block text-xs qt-text-secondary"
+                    >Show every store, not just the ones reachable from this chat</span
+                  >
+                </span>
+              </label>
+            }
 
             @if (ready()) {
             <qt-collapsible-card
@@ -281,12 +293,19 @@ interface SelectedMount {
   `,
 })
 export class DocumentPicker implements OnInit {
-  private readonly api = inject(DocumentApi);
+  // Chat mode uses the per-conversation DocumentApi (optional: absent on the
+  // rail); standalone mode uses the root StandaloneDocumentApi.
+  private readonly api = inject(DocumentApi, { optional: true });
+  private readonly standaloneApi = inject(StandaloneDocumentApi);
 
-  readonly chatId = input.required<string>();
+  /** The chat whose reach scopes the picker; `null` = the standalone surface. */
+  readonly chatId = input<string | null>(null);
 
   readonly selectDocument = output<DocumentSelection>();
   readonly close = output<void>();
+
+  /** True when there is no chat context (the rail Document-Mode entry). */
+  protected readonly standalone = computed(() => this.chatId() == null);
 
   protected readonly maxRecent = MAX_RECENT_DOCUMENTS;
 
@@ -302,7 +321,8 @@ export class DocumentPicker implements OnInit {
    */
   protected readonly ready = signal(false);
   protected readonly lookEverywhere = signal(false);
-  protected readonly everywhere = computed(() => this.lookEverywhere());
+  /** Standalone is implicitly everywhere; chat mode follows the checkbox. */
+  protected readonly everywhere = computed(() => this.standalone() || this.lookEverywhere());
 
   protected readonly selectedMount = signal<SelectedMount | null>(null);
   protected readonly mountFiles = signal<DocMountFileDto[]>([]);
@@ -316,7 +336,10 @@ export class DocumentPicker implements OnInit {
 
   private async loadRecents(): Promise<void> {
     try {
-      this.recents.set(await this.api.fetchRecentDocuments(this.chatId()));
+      const chatId = this.chatId();
+      this.recents.set(
+        chatId ? await this.api!.fetchRecentDocuments(chatId) : await this.standaloneApi.fetchRecent(),
+      );
     } catch {
       // leave recents empty
     }
@@ -325,8 +348,13 @@ export class DocumentPicker implements OnInit {
   private async loadStores(): Promise<void> {
     this.loading.set(true);
     try {
-      const result = await this.api.fetchAccessibleStores(this.chatId(), this.lookEverywhere());
-      this.stores.set(result.stores);
+      const chatId = this.chatId();
+      if (chatId) {
+        const result = await this.api!.fetchAccessibleStores(chatId, this.lookEverywhere());
+        this.stores.set(result.stores);
+      } else {
+        this.stores.set(await this.standaloneApi.fetchStores());
+      }
     } catch {
       // leave stores empty
     } finally {
@@ -360,7 +388,10 @@ export class DocumentPicker implements OnInit {
     this.currentFolder.set('');
     this.filesLoading.set(true);
     try {
-      const result = await this.api.listMountFiles(store.mountPointId);
+      const chatId = this.chatId();
+      const result = chatId
+        ? await this.api!.listMountFiles(store.mountPointId)
+        : await this.standaloneApi.listMountFiles(store.mountPointId);
       this.mountFiles.set(result.files);
       this.mountFolders.set(result.folders);
     } catch {

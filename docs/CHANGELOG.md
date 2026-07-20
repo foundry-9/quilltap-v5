@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.9J4 (standalone Document Mode, unit 3): the rail "Document Mode" opener
+and the picker's standalone (chat-less) variant. The Open-Document modal now
+serves both entries v4's one modal serves — a `chatId` scopes the chat-side
+picker, a null `chatId` is the standalone rail surface (recents + every
+enabled store from `/api/v1/documents`, the look-everywhere toggle hidden).
+The rail entry opens the standalone picker and opens the picked file as a
+`document-standalone` workspace tab (reopening the same file focuses its tab).
+
 P4.9J4 (standalone Document Mode, unit 2): the `qt-standalone-document-view`
 screen — the chat-less Document Mode tab. Ports v4's inline per-document
 mechanics: 30 s autosave debounce, flush-on-blur, absorb-first-serialization

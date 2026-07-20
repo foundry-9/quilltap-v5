@@ -25086,3 +25086,25 @@ name-for-name against `api/types.rs:1565-1595` (the unifier's wire diff),
   flush-on-blur, 409 keep-content + mtime, rename keeps docKey, rename no-op,
   delete closes / failed-delete keeps open, close flushes then closes.
   apps/web 0.5.223.
+
+- **Unit 3 — the opener + the picker's standalone variant**
+  (`documents/document-picker.ts` + `.spec.ts`;
+  `documents/documents-rail-entry.ts` + `.spec.ts`). The picker gained v4's
+  `chatId === null` arm (this lane owns the picker file this round): `chatId`
+  is now `string | null`, `DocumentApi` is injected `{ optional: true }` (the
+  chat path) and the root `StandaloneDocumentApi` drives the standalone path
+  (recents from `documentsRecent`, stores from `documentStores`, mount browse
+  from the shared `mountFilesList`); standalone is implicitly "everywhere" so
+  the look-everywhere checkbox is hidden (v4 `chatId !== null &&`). The rail
+  entry `qt-documents-rail-entry` mirrors v4 `sidebar-footer.tsx:255-262` +
+  `handleSelectDocument:163-197`: a "Document Mode" button opens the standalone
+  picker; a selection builds `DocumentStandaloneTabPayload` (docKey via
+  `standaloneDocKey` — identity-keyed so reopening the same file focuses the
+  tab; a fresh uuid per blank) and calls
+  `openTab('document-standalone', payload, { title })`, with the
+  `?open=document-standalone&…` intent as the routed (off-/workspace)
+  fallback. Existing chat-scoped picker specs stay green (the chat-mode
+  render now also stubs `StandaloneDocumentApi` so the root injection never
+  pulls in the real `CoreClient`). 15 specs (9 picker incl. 3 standalone,
+  6 rail: same-docKey reopen, distinct-uuid blanks, project→general map,
+  routed fallback). apps/web 0.5.224.
