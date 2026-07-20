@@ -294,8 +294,31 @@ no unifier wire beyond the merge.
   catch-all "Blocked by the gate." No consult, no spend.
 
 `playwright test --list` enumerates all three new beats (15 tests across
-the three files). Full-suite run pending the worktree's Rust binaries
-(`quilltap-web`/`quilltap-cli`) — recorded at the lane's verification gate.
+the three files).
+
+**Verification gate (2026-07-19, worktree binaries built):** `ng test` 2301
+passed / 4 failed (exclusively the four §C corpus rows — the designed
+tripwire; verified my SPA port matches v4's real Zod at `c53510c7` for all
+four) / 190 files; `ng build` clean; `cargo build -p quilltap-web -p
+quilltap-cli` (for the e2e servers). Playwright per-spec (full suite exceeds
+one window at ~6.7m/5 tests, 1 worker): `settings-chat-cards-flow` 4 passed /
+1 skipped (General State beat gated; the card-order render test PASSES with
+`General State` at #11); `groups-flow` Group State beat SKIPPED (`-`) with the
+other two green; `workbench-flow` 5 passed / 2 skipped (the `$state` beat gated
+on `mockStateReady`; the pre-existing scripted-oracle §B beat also gated) — all
+three new beats skip CLEANLY on main-without-D10, no regressions. Ownership:
+`git diff --stat main...HEAD` touches only `apps/web/**` + append-only
+`CHANGELOG`/`status-log` — zero edits to `crates/**`, `harness/**`, the §C
+corpus, or its count literals.
+
+**Tier 3 deferrals (loud, at lane close):** (1) the CHAT-tier opener — the
+modal's `chat` mode ships DORMANT (no component opens `entityType="chat"`);
+v4's opener lives in the unported `ChatSidebar`, a named p4.9j follow-up. (2)
+the §C corpus + its count guards (159/10/149) stay lane D10's / the unifier's.
+Tier 2.2 query-key hygiene: `groupKeys.state(id)` added (mirrors v4
+`queryKeys.groups.state`); the `settings.generalState` key was NOT added — the
+shared modal is direct-fetch (no TanStack cache), matching the existing v5
+project-state modal idiom, so a general-state key would be dead code (YAGNI).
 
 ## P4.6be unit 4 — the Group State + General State entries (lane BE, 2026-07-19)
 
