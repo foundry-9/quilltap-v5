@@ -153,6 +153,63 @@ test.describe('P4.6l — Groups vertical (section → editor → rename → pers
     ).toHaveCount(1, { timeout: 10_000 });
   });
 
+  test('Group State: the button opens the editor and round-trips (§A)', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${GROUPS_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    // ACTIVATE-AT-UNIFY: the §A `groupState*` verbs land in lane D10. Probe the
+    // now-unlocked private server — in-lane the request deserialization fails
+    // with an "unknown variant" error (no state arms); at unification it runs.
+    const probe = await page.request.post(`${GROUPS_BASE_URL}/api/dispatch`, {
+      data: { type: 'groupStateGet', groupId: '00000000-0000-0000-0000-000000000000' },
+    });
+    const pbody = (await probe.json().catch(() => null)) as
+      | { type?: string; data?: { message?: string } }
+      | null;
+    const unknownVariant =
+      pbody?.type === 'error' && /unknown variant/i.test(String(pbody?.data?.message ?? ''));
+    test.skip(pbody == null || unknownVariant, 'awaits lane D10 state dispatch (activates at unification)');
+
+    // Open the first group's editor.
+    await expect(page.locator('qt-group-card').first()).toBeVisible({ timeout: 10_000 });
+    await page.locator('qt-group-card').first().getByRole('link', { name: 'Edit' }).click();
+    await expect(page).toHaveURL(/\/characters\/groups\/[^/]+$/);
+    await expect(page.locator('#qt-group-name')).toBeVisible({ timeout: 10_000 });
+
+    // The Group State button sits in the action row, right after Save Changes.
+    await page.getByRole('button', { name: 'Group State' }).click();
+    const modal = page.locator('qt-state-editor-modal');
+    await expect(modal).toBeVisible({ timeout: 15_000 });
+    await expect(modal).toContainText('Group State');
+    // The group tier edits its OWN state — never the chat cascade note.
+    await expect(modal).not.toContainText('narrower tiers win');
+
+    // Edit → save a key → survives a close/reopen round-trip.
+    await modal.getByRole('button', { name: 'Edit' }).click();
+    await modal.locator('textarea').fill('{\n  "_e2e_group": 42\n}');
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        r.request().method() === 'POST' &&
+        (r.request().postData() ?? '').includes('groupStateSet'),
+    );
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await saved;
+    await modal.getByRole('button', { name: 'Close' }).click();
+
+    await page.getByRole('button', { name: 'Group State' }).click();
+    await expect(page.locator('qt-state-editor-modal textarea')).toHaveValue(/_e2e_group/, {
+      timeout: 15_000,
+    });
+
+    // Reset the tier so the fixture-backed instance is left clean.
+    const reopened = page.locator('qt-state-editor-modal');
+    await reopened.getByRole('button', { name: 'Reset State' }).click();
+    await reopened.getByRole('button', { name: 'Confirm Reset' }).click();
+    await expect(reopened.locator('textarea')).toHaveValue('{}', { timeout: 15_000 });
+  });
+
   test('create a throwaway group through the toolbar dialog', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${GROUPS_BASE_URL}/characters`);

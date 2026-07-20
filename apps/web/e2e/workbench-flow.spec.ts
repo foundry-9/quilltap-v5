@@ -42,9 +42,31 @@ let workbenchBackendReady = false;
  * self-activates the moment D8's variant merges.
  */
 let scriptedOracleReady = false;
+/**
+ * §B of the `c53510c7` state-cascade round — does `customToolPreview` honor a
+ * `state` body and the `$state` schema? Lane D10 owns the server half, so in-lane
+ * the `$state` definition is rejected (the Rust schema lacks `StateRef`) and the
+ * mock-state beat skips LOUDLY. It self-activates when D10's arms merge.
+ */
+let mockStateReady = false;
 
 /** The name beat 4 authors. Distinct enough that no sibling spec reads it. */
 const NEW_TOOL_NAME = 'e2e_probe_contrivance';
+
+/** A fixed-roll, $state-gated definition: difficulty 1 clears, absent falls back. */
+const STATE_GATED_DEFINITION = {
+  name: 'e2e_state_gate',
+  description: 'A state-gated contrivance for the e2e walk.',
+  roll: { min: 5, max: 5 },
+  outcomes: [
+    {
+      when: { gte: { $state: 'game.difficulty', fallback: 10 } },
+      message: 'Cleared the gate.',
+      state: 'success',
+    },
+    { when: true, message: 'Blocked by the gate.', state: 'info' },
+  ],
+};
 
 test.beforeAll(async () => {
   // Probe: is `customToolsLibrary` handled? In-lane the Rust core has no such
@@ -93,6 +115,27 @@ test.beforeAll(async () => {
     scriptedOracleReady = body?.type !== 'error' && body?.data?.llm != null;
   } catch {
     scriptedOracleReady = false;
+  }
+
+  // §B state probe: preview the $state-gated definition with a mock state that
+  // clears the gate. A server with the cascade resolves the operand from `state`
+  // and the gated row wins; one without it rejects the `$state` definition.
+  try {
+    const ctx = await pwRequest.newContext();
+    const res = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'customToolPreview',
+        definition: STATE_GATED_DEFINITION,
+        state: { game: { difficulty: 1 } },
+      },
+    });
+    const body = (await res.json().catch(() => null)) as
+      | { type?: string; data?: { message?: string } }
+      | null;
+    await ctx.dispose();
+    mockStateReady = body?.type !== 'error' && body?.data?.message === 'Cleared the gate.';
+  } catch {
+    mockStateReady = false;
   }
 });
 
@@ -281,6 +324,53 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     // The answer-gated row won, and the bubble records the consult.
     await expect(page.getByText(/Assent: YES/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/consult answered/)).toBeVisible();
+  });
+
+  /**
+   * Beat 7 (P4.6be, §B) — a $state operand + mock state steers a preview
+   * outcome. The builder never AUTHORS $state, so the definition is pasted in
+   * JSON mode; switching to Form renders it as a read-only pill and reveals the
+   * bench with its mock-state card. No consult, so no spend. ACTIVATE-AT-UNIFY:
+   * the server half (the $state schema + the `state` body) is lane D10's.
+   */
+  test('a $state operand + mock state decides which row a preview roll lands on', async ({
+    page,
+  }) => {
+    test.skip(
+      !workbenchBackendReady,
+      'customToolsLibrary dispatch not on this server yet — activates at unification',
+    );
+    test.skip(
+      !mockStateReady,
+      'ACTIVATE-AT-UNIFY (P4.6be §B): customToolPreview does not honor a `state` body / `$state` schema yet — lane P4.d10 owns the server half',
+    );
+    await page.goto('/custom-tools');
+    await maybeUnlock(page);
+
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
+    await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
+
+    // Author the $state definition in JSON mode (the builder never authors it).
+    await page.getByRole('radio', { name: 'JSON' }).click();
+    await page.getByLabel('Definition JSON').fill(JSON.stringify(STATE_GATED_DEFINITION, null, 2));
+
+    // Back to Form: the $state operand renders as a READ-ONLY pill, and the
+    // bench (with its mock-state card) reappears.
+    await page.getByRole('radio', { name: 'Form' }).click();
+    await expect(page.getByText('$state: game.difficulty → 10')).toBeVisible({ timeout: 15_000 });
+    const mock = page.getByLabel('Mock merged state (JSON object)');
+    await expect(mock).toBeVisible();
+
+    // Mock state that clears the gate → the gated row wins.
+    await mock.fill('{"game": {"difficulty": 1}}');
+    await page.getByRole('button', { name: /Roll/ }).first().click();
+    await expect(page.getByText('Cleared the gate.')).toBeVisible({ timeout: 30_000 });
+
+    // Empty mock → the fallback (10) holds, and 5 ≥ 10 fails → the catch-all.
+    await mock.fill('{}');
+    await expect(page.getByText('No mock state supplied')).toBeVisible();
+    await page.getByRole('button', { name: /Roll/ }).first().click();
+    await expect(page.getByText('Blocked by the gate.').first()).toBeVisible({ timeout: 30_000 });
   });
 
   test('authoring: a new contrivance saves into a picked store and joins the library', async ({

@@ -260,6 +260,43 @@ chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
 staged outside `.claude/`, from the pin, `-- state-cascade` also matches
 v4's own unit suite — harmless, both pass).
 
+## P4.6be unit 5 — the gated e2e beats (lane BE, 2026-07-19)
+
+Three live Playwright beats, each ACTIVATE-AT-UNIFY behind a §A/§B
+server-surface probe (the established pattern — the probe POSTs to
+`/api/dispatch` and treats an "unknown variant" deserialization error as
+not-ready; anything else means the handler exists). All three skip cleanly
+in-lane (main-without-D10) and self-activate when lane D10's verbs merge —
+no unifier wire beyond the merge.
+
+- **`settings-chat-cards-flow.spec.ts`** — a `beforeAll` probes
+  `generalStateGet` against the shared global-setup server (already
+  unlocked). The new beat opens the General State card → "Edit General
+  State" → the shared editor → Edit → saves `{"_e2e_general":"brass"}` (an
+  underscore key, user-only, never AI-touched) → close/reopen shows it →
+  Reset State leaves the shared instance clean. The always-on card-order
+  render check gained `General State` between `Automation` and `Agent
+  Mode`.
+- **`groups-flow.spec.ts`** — this file spins its OWN private server over
+  lane A's `groups-projects` fixture; the beat probes `groupStateGet` via
+  `page.request` AFTER the UI unlock (the private server unlocks
+  process-wide), then walks: open a group editor → "Group State" → the
+  editor (titled by the group name, no cascade note) → Edit → save
+  `{"_e2e_group":42}` → close/reopen shows it → Reset clean.
+- **`workbench-flow.spec.ts`** — a §B `mockStateReady` probe previews a
+  fixed-roll `$state`-gated definition with `state:{game:{difficulty:1}}`
+  and checks the gated row's message comes back (a server without the
+  cascade rejects the `$state` schema). The beat: New contrivance → JSON
+  mode → paste the `$state` definition (the builder never AUTHORS `$state`)
+  → Form mode renders the read-only pill `$state: game.difficulty → 10` and
+  reveals the bench → mock `{game:{difficulty:1}}` → Roll → "Cleared the
+  gate." wins → empty mock (the "No mock state supplied" hint) → Roll → the
+  catch-all "Blocked by the gate." No consult, no spend.
+
+`playwright test --list` enumerates all three new beats (15 tests across
+the three files). Full-suite run pending the worktree's Rust binaries
+(`quilltap-web`/`quilltap-cli`) — recorded at the lane's verification gate.
+
 ## P4.6be unit 4 — the Group State + General State entries (lane BE, 2026-07-19)
 
 The two remaining entry points into the shared editor. **Group** (v4

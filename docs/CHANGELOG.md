@@ -136,6 +136,21 @@ CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
 across the gap. Round record in the status log; the round pin moves to
 `qt-v4-pin-7e6d13e5`.
 
+Lane P4.6be unit 5 — the gated e2e beats (SPA 0.5.214): three live
+Playwright beats, each ACTIVATE-AT-UNIFY behind a §A/§B server-surface
+probe (skip cleanly on main-without-D10, self-activate when lane D10's
+verbs merge). (a) `settings-chat-cards-flow`: the General State card opens
+the shared editor, saves an underscore key, survives a close/reopen, and
+resets clean; the card-order render check gains 'General State' at #11.
+(b) `groups-flow`: the Group State button opens the editor and round-trips
+the `groupState*` verbs (probed via the unlocked private server). (c)
+`workbench-flow`: a `$state` operand pasted in JSON mode renders as a
+read-only pill in Form mode, and mock state steers a preview outcome (the
+gated row wins with difficulty 1; the fallback holds when the mock is
+empty) — no consult, no spend. The probes: `generalStateGet` for the
+settings card, `groupStateGet` for the group beat, and a `$state`-gated
+`customToolPreview` with a `state` body for the workbench beat.
+
 Lane P4.6be unit 4 — the Group State + General State entry points (SPA
 0.5.213): a "Group State" secondary button on the group editor's action
 row (immediately after Save Changes, v4's placement) opening the shared

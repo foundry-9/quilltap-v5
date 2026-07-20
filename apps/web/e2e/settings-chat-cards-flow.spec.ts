@@ -1,6 +1,6 @@
-import { expect, test, type Page } from './support/fixtures';
+import { expect, request as pwRequest, test, type Page } from './support/fixtures';
 
-import { E2E_PASSPHRASE } from './support/env';
+import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
 /**
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so its
@@ -20,6 +20,31 @@ import { E2E_PASSPHRASE } from './support/env';
  * patch would silently drop sibling keys, and only a real round-trip proves it
  * doesn't.
  */
+
+/**
+ * ACTIVATE-AT-UNIFY: the General State card edits its instance-wide tier through
+ * the §A `generalState*` verbs, which land in lane D10. This probe skips the
+ * General State beat in-lane (the Rust core has no state arms — the request
+ * deserialization fails with an "unknown variant" error) and runs it live once
+ * lane D10's arms merge.
+ */
+let stateBackendReady = false;
+
+test.beforeAll(async () => {
+  try {
+    const ctx = await pwRequest.newContext();
+    const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'generalStateGet' } });
+    const body = (await res.json().catch(() => null)) as
+      | { type?: string; data?: { message?: string } }
+      | null;
+    await ctx.dispose();
+    const isUnknownVariant =
+      body?.type === 'error' && /unknown variant/i.test(String(body?.data?.message ?? ''));
+    stateBackendReady = body != null && !isUnknownVariant;
+  } catch {
+    stateBackendReady = false;
+  }
+});
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -61,6 +86,7 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
       'Memory Cascade',
       'Image Description',
       'Automation',
+      'General State',
       'Agent Mode',
       'Thinking / Reasoning',
       'Answer Confirmation',
@@ -139,6 +165,49 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     const restored = waitForSave(page, 'dangerousContentSettings');
     await page.locator('#danger-mode').selectOption('OFF');
     await restored;
+  });
+
+  test('General State: open the editor → save a key → reload → sees it (§A)', async ({ page }) => {
+    test.skip(!stateBackendReady, 'awaits lane D10 state dispatch (activates at unification)');
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=chat&section=general-state');
+
+    // The card is open on its deep link; the entry button reveals the editor.
+    await page.getByRole('button', { name: 'Edit General State' }).click();
+    const modal = page.locator('qt-state-editor-modal');
+    await expect(modal).toBeVisible({ timeout: 15_000 });
+    await expect(modal).toContainText('General State');
+    // The instance-wide tier never shows the chat cascade note.
+    await expect(modal).not.toContainText('narrower tiers win');
+
+    // Edit → type a JSON object with an underscore key (user-only, never
+    // AI-modified) so the beat leaves no live-facing state behind → Save.
+    await modal.getByRole('button', { name: 'Edit' }).click();
+    const textarea = modal.locator('textarea');
+    await textarea.fill('{\n  "_e2e_general": "brass"\n}');
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        r.request().method() === 'POST' &&
+        (r.request().postData() ?? '').includes('generalStateSet'),
+    );
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await saved;
+
+    // Close and reopen — the saved key survives the round-trip through the tier.
+    await modal.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Edit General State' }).click();
+    await expect(page.locator('qt-state-editor-modal textarea')).toHaveValue(/_e2e_general/, {
+      timeout: 15_000,
+    });
+
+    // Reset the tier so the shared instance is left clean (re-runnable).
+    const reset = page.locator('qt-state-editor-modal');
+    await reset.getByRole('button', { name: 'Reset State' }).click();
+    await reset.getByRole('button', { name: 'Confirm Reset' }).click();
+    await expect(reset.locator('textarea')).toHaveValue('{}', { timeout: 15_000 });
   });
 
   test('the cron next-run preview computes as you type', async ({ page }) => {
