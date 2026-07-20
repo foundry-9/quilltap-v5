@@ -22,7 +22,18 @@ bubbles on the `qt-help-*` styles (assistant hidden when its prose is empty),
 run_sql TOOL cards, reasoning via `qt-thinking-block`, a copy-as-Markdown
 affordance, and the live streaming block (reasoning + live run_sql cards +
 prose + the "Consulting the stacks…"/"Thinking…" indicators). Live tool cards
-consume the shared reducer's flattened batch list.
+consume the shared reducer's flattened batch list. The console dialog
+(`qt-brahma-console-dialog`) in both modes — floating (a `qt-dialog-overlay`
+modal, gated on the service's `isOpen`; v4's draggable FloatingDialog has no
+v5 primitive, a documented divergence) and `asTab` (bare body + inline header,
+live regardless of `isOpen`; past-chats fetch gated
+`(isOpen || asTab) && !currentChatId`) — with the launcher (eligibility notice
+/ past-chats rows / opening composer), the conversation view, and the
+streaming consumer: subscribe the global event stream scope-tagged by
+`chatId`, fold the seven frames through the shared reducer, reconcile against
+the reloaded transcript on completion. Plus `qt-brahma-console-view` (the
+`asTab` wrapper the tab registry mounts at unification). Specs: 7 cases incl.
+the live-fold-then-reconcile beat.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
