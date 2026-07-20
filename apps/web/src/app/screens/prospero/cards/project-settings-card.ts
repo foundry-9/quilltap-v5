@@ -2,15 +2,15 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
 
 import type { ProjectDetail } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
+import { StateEditorModal } from '../../../shared/state/state-editor-modal';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { StateEditorModal } from '../state-editor-modal';
 import type { ProjectEditForm } from './project-header';
 
 /**
  * The project Settings card (v4 `SettingsCard.tsx`, full-width): a Project
  * Instructions markdown field (v4 `:68`, its `minHeight="14rem"` and
  * `remountKey={project.id}`) with an explicit Save, and a Project State row
- * opening the {@link StateEditorModal} JSON editor.
+ * opening the shared {@link StateEditorModal} JSON editor (entityType project).
  *
  * NOTE: v4 renders this same instructions editor in TWO places — this card and
  * `SettingsTab.tsx:35`, which passes `minHeight="10rem"`. v5 has only the card,
@@ -68,8 +68,9 @@ import type { ProjectEditForm } from './project-header';
 
     @if (stateOpen()) {
       <qt-state-editor-modal
-        [projectId]="project().id"
-        [projectName]="project().name"
+        entityType="project"
+        [entityId]="project().id"
+        [entityName]="project().name"
         (close)="stateOpen.set(false)"
       />
     }

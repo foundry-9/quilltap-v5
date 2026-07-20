@@ -260,6 +260,41 @@ chats-dump baselines by design). Envs: `QT_ORACLE_STATE_CASCADE` +
 staged outside `.claude/`, from the pin, `-- state-cascade` also matches
 v4's own unit suite — harmless, both pass).
 
+## P4.6be unit 3 — the shared four-entity state editor + §A types (lane BE, 2026-07-19)
+
+Generalizes the Prospero-only `qt-state-editor-modal` (v4
+`components/state/StateEditorModal.tsx`) into
+`apps/web/src/app/shared/state/state-editor-modal.ts` over an `entityType`
+input, backed by `shared/state/state.api.ts` (the per-tier get/set/reset
+dispatch; `fetchState` returns a normalized `StateFetchResult` — chat brings
+the inherited slices + `groupTier` + `projectId`; the others carry just
+`state`; `general` takes no id). The chat tier alone renders the inherited-
+layers note (v4's copy verbatim, `inheritedLayers` built from the non-empty
+project/group/general slices in v4's order; the ambiguous-groups line when
+`groupTier.status === 'ambiguous'`). Save validation rejects a non-object with
+`State must be a JSON object`; reset returns the editor to `{}`.
+
+`core-contract.ts` gains the nine §A request types (`chatStateGet/Set/Reset`,
+`groupStateGet/Set/Reset`, `generalStateGet/Set/Reset`) name-for-name (camelCase
+`chatId`/`groupId`; general takes no id) + `GroupTier` and `ChatStateGetResult`,
+all added to the `CoreRequest` union — lane D10's wire-contract test pins the
+tags. The Prospero `project-settings-card` now hosts the shared modal via
+`entityType="project"` (no behavior change); the old
+`screens/prospero/state-editor-modal.ts` is retired.
+
+**Gotcha banked:** the modal loads in `ngOnInit`, NOT the constructor — reading
+a required `input()` in the constructor throws, and because the loader is an
+`async` fire-and-forget the throw becomes a lost rejection (silent no-dispatch).
+The spec's render helper flushes a macrotask (`setTimeout`) + re-`detectChanges`
+after the load, since zoneless `whenStable` does not track the fetch microtask
+(the P4.6x gotcha).
+
+Unit spec (`state-editor-modal.spec.ts`, 10 cases): per-tier verb payloads
+(project/group with id, general with none), the enriched-body inherited note
+with omit-when-empty, the ambiguous arm, the non-chat no-note, the
+non-object save guard, `generalStateSet` no-id, and the reset flow. `ng test`
+2298 passed / 4 failed (the §C corpus rows only) / 189 files.
+
 ## P4.6be unit 2 — the schema asset re-copy (lane BE, 2026-07-19)
 
 Byte-for-byte re-copy of v4 `c53510c7`'s

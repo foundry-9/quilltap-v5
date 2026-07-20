@@ -136,6 +136,23 @@ CARRIED OUT with a re-baseline addendum — its work verified byte-unchanged
 across the gap. Round record in the status log; the round pin moves to
 `qt-v4-pin-7e6d13e5`.
 
+Lane P4.6be unit 3 — the shared four-entity state editor + the §A
+dispatch types (SPA 0.5.212): the Prospero-only state modal is generalized
+into `shared/state/qt-state-editor-modal` over an `entityType` input
+(`chat` | `project` | `group` | `general`), backed by a new
+`shared/state/state.api.ts` (per-tier get/set/reset dispatch; the chat GET
+brings the inherited cascade; `general` takes no id). The chat tier alone
+renders the inherited-layers note (v4's copy verbatim: "narrower tiers
+win", one line per non-empty inherited tier, and the ambiguous-groups
+line). `core-contract.ts` gains the nine §A request types (`chatState*` /
+`groupState*` / `generalState*`) name-for-name + `GroupTier` and
+`ChatStateGetResult`. The Prospero project-settings card now hosts the
+shared modal via `entityType="project"` (no behavior change); the old
+`screens/prospero/state-editor-modal.ts` is retired. Unit spec covers the
+per-tier verb payloads (incl. general's no-id), the inherited-layers note
+(with omit-when-empty), the ambiguous arm, the `State must be a JSON
+object` guard, and the reset flow.
+
 Lane P4.6be unit 2 — the `qtap-custom-tool.schema.json` asset re-copy
 (SPA 0.5.211): byte-for-byte re-copy of v4 `c53510c7`'s published JSON
 schema, adding the `$defs/StateRef` definition (strict, `required

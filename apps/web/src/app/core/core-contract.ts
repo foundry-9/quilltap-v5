@@ -940,6 +940,81 @@ export interface ProjectStateResetRequest {
   projectId: string;
 }
 
+/**
+ * §A (the `c53510c7` state-cascade round) — the chat / group / general state
+ * verbs, mirroring lane D10's `CoreRequest` variants name-for-name (the wire
+ * contract test pins the tags). Set REPLACES wholesale; reset returns previous.
+ *
+ * The CHAT tier is the only one that surfaces the inherited cascade beneath its
+ * own state; its GET body carries the merged `state` plus the per-tier slices
+ * (see {@link ChatStateGetResult}). Group/general edit a single tier directly.
+ */
+export interface ChatStateGetRequest {
+  type: 'chatStateGet';
+  chatId: string;
+}
+export interface ChatStateSetRequest {
+  type: 'chatStateSet';
+  chatId: string;
+  state: Record<string, unknown>;
+}
+export interface ChatStateResetRequest {
+  type: 'chatStateReset';
+  chatId: string;
+}
+export interface GroupStateGetRequest {
+  type: 'groupStateGet';
+  groupId: string;
+}
+export interface GroupStateSetRequest {
+  type: 'groupStateSet';
+  groupId: string;
+  state: Record<string, unknown>;
+}
+export interface GroupStateResetRequest {
+  type: 'groupStateReset';
+  groupId: string;
+}
+export interface GeneralStateGetRequest {
+  type: 'generalStateGet';
+}
+export interface GeneralStateSetRequest {
+  type: 'generalStateSet';
+  state: Record<string, unknown>;
+}
+export interface GeneralStateResetRequest {
+  type: 'generalStateReset';
+}
+
+/**
+ * How many groups apply to a chat's cascade. `single` merges that one group's
+ * state; `ambiguous` (more than one) merges NONE — the UI directs the author to
+ * each group's own page (v4 `GroupTier`).
+ */
+export interface GroupTier {
+  status: 'none' | 'single' | 'ambiguous';
+  candidates: Array<{ id: string; name: string }>;
+  /** Present only when `status === 'single'`. */
+  appliedGroupId?: string;
+}
+
+/**
+ * The `chatStateGet` body — the merged `state` plus the per-tier slices the
+ * inherited-layers note reads. `projectState`/`groupState`/`generalState` are
+ * OMITTED by the server when their tier has zero keys; `projectId` is omitted
+ * when the chat has no project. `state`/`chatState`/`groupTier` always present.
+ */
+export interface ChatStateGetResult {
+  success: boolean;
+  state: Record<string, unknown>;
+  chatState: Record<string, unknown>;
+  projectState?: Record<string, unknown>;
+  groupState?: Record<string, unknown>;
+  generalState?: Record<string, unknown>;
+  groupTier: GroupTier;
+  projectId?: string;
+}
+
 /** The story-background URL resolution by display mode (v4 `?action=background`). */
 export interface ProjectBackgroundGetRequest {
   type: 'projectBackgroundGet';
@@ -1471,6 +1546,15 @@ export type CoreRequest =
   | ProjectStateGetRequest
   | ProjectStateSetRequest
   | ProjectStateResetRequest
+  | ChatStateGetRequest
+  | ChatStateSetRequest
+  | ChatStateResetRequest
+  | GroupStateGetRequest
+  | GroupStateSetRequest
+  | GroupStateResetRequest
+  | GeneralStateGetRequest
+  | GeneralStateSetRequest
+  | GeneralStateResetRequest
   | ProjectBackgroundGetRequest
   | ProjectAestheticGetRequest
   | ProjectAestheticSetRequest

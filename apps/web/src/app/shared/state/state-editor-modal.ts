@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  type OnInit,
   computed,
   inject,
   input,
@@ -9,23 +10,42 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import type { GroupTier } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { Modal } from '../../ui/modal';
-import { fetchProjectState, resetProjectState, setProjectState } from './projects.api';
+import {
+  fetchState,
+  resetState,
+  setState,
+  stateLabel,
+  type StateEntityType,
+} from './state.api';
+
+/** One inherited tier's summary — the label + the keys it contributes. */
+interface InheritedLayer {
+  label: string;
+  keys: string[];
+}
 
 /**
- * The project State editor (v4 `components/state/StateEditorModal.tsx`,
- * project arm): a read/edit JSON textarea over `projectStateGet/Set/Reset`. View
- * mode is read-only; Edit reveals the textarea with live JSON validation; Save
- * REPLACES the state wholesale; Reset clears it (with a confirm). Keys starting
- * with `_` are user-only (v4 help text carried over).
+ * The four-entity State editor (v4 `components/state/StateEditorModal.tsx`): a
+ * read/edit JSON textarea over the §A state verbs, generalized across the four
+ * tiers (`chat` | `project` | `group` | `general`). View mode is read-only; Edit
+ * reveals the textarea with live JSON validation; Save REPLACES the state
+ * wholesale; Reset clears it (with a confirm). Keys starting with `_` are
+ * user-only (v4 help text carried over).
+ *
+ * The CHAT tier alone surfaces the inherited cascade beneath its own state: a
+ * note explaining that narrower tiers win, one line per non-empty inherited
+ * tier, and — when more than one group applies — that group state is not merged.
+ * The `general` tier takes no `entityId`.
  */
 @Component({
   selector: 'qt-state-editor-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, ErrorAlert],
   template: `
-    <qt-modal [title]="'Project State - ' + projectName()" maxWidth="2xl" (close)="close.emit()">
+    <qt-modal [title]="title()" maxWidth="2xl" (close)="close.emit()">
       @if (saveError(); as msg) {
         <qt-error-alert [message]="msg" class="mb-3" />
       }
@@ -35,6 +55,25 @@ import { fetchProjectState, resetProjectState, setProjectState } from './project
         </div>
       } @else {
         <div class="space-y-4">
+          @if (entityType() === 'chat' && (inheritedLayers().length > 0 || ambiguousGroups())) {
+            <div class="qt-text-xs p-3 qt-bg-muted rounded-md">
+              <p class="mb-1">
+                <strong>Note:</strong> The merged state below layers the cascade (chat over project
+                over group over general — narrower tiers win).
+              </p>
+              @for (layer of inheritedLayers(); track layer.label) {
+                <p class="qt-text-secondary">
+                  Inherited from {{ layer.label }}: {{ layer.keys.join(', ') }}
+                </p>
+              }
+              @if (ambiguousGroups()) {
+                <p class="qt-text-secondary mt-1">
+                  {{ groupTier()!.candidates.length }} groups apply — group state is not merged here.
+                  Edit each group&rsquo;s state from its own page.
+                </p>
+              }
+            </div>
+          }
           <div>
             <label class="qt-label mb-2 flex items-center justify-between">
               <span>State (JSON)</span>
@@ -142,9 +181,12 @@ import { fetchProjectState, resetProjectState, setProjectState } from './project
     </qt-modal>
   `,
 })
-export class StateEditorModal {
-  readonly projectId = input.required<string>();
-  readonly projectName = input('');
+export class StateEditorModal implements OnInit {
+  /** Which tier this modal edits. */
+  readonly entityType = input.required<StateEntityType>();
+  /** The tier's entity id. Ignored for the instance-wide `general` tier. */
+  readonly entityId = input('');
+  readonly entityName = input<string | undefined>(undefined);
   readonly close = output<void>();
   readonly saved = output<void>();
 
@@ -158,23 +200,62 @@ export class StateEditorModal {
   protected readonly editing = signal(false);
   protected readonly showResetConfirm = signal(false);
   protected readonly jsonError = signal<string | null>(null);
-  protected readonly saveError = signal<string | null>(null);
-  protected readonly stateText = signal('{}');
+  // Public (read by the template AND asserted by the spec, the proving-bench idiom).
+  readonly saveError = signal<string | null>(null);
+  readonly stateText = signal('{}');
   private readonly state = signal<Record<string, unknown>>({});
 
-  protected readonly busy = computed(() => this.loading() || this.saving() || this.resetting());
-  protected readonly hasState = computed(() => Object.keys(this.state()).length > 0);
+  // Chat-tier only: the inherited slices, kept for the cascade note.
+  private readonly projectState = signal<Record<string, unknown> | undefined>(undefined);
+  private readonly groupState = signal<Record<string, unknown> | undefined>(undefined);
+  private readonly generalState = signal<Record<string, unknown> | undefined>(undefined);
+  protected readonly groupTier = signal<GroupTier | undefined>(undefined);
 
-  constructor() {
+  protected readonly busy = computed(() => this.loading() || this.saving() || this.resetting());
+  readonly hasState = computed(() => Object.keys(this.state()).length > 0);
+
+  /** v4's per-entity title — `General State`, else `Chat State - Aria` etc. */
+  protected readonly title = computed(() => {
+    if (this.entityType() === 'general') return 'General State';
+    const name = this.entityName();
+    return `${stateLabel(this.entityType())} State${name ? ` - ${name}` : ''}`;
+  });
+
+  /** The inherited-tier summaries the chat cascade note renders (v4's order). */
+  protected readonly inheritedLayers = computed<InheritedLayer[]>(() => {
+    if (this.entityType() !== 'chat') return [];
+    const layers: InheritedLayer[] = [];
+    const push = (label: string, slice: Record<string, unknown> | undefined) => {
+      if (slice && Object.keys(slice).length > 0) layers.push({ label, keys: Object.keys(slice) });
+    };
+    push('project', this.projectState());
+    push('group', this.groupState());
+    push('general', this.generalState());
+    return layers;
+  });
+
+  protected readonly ambiguousGroups = computed(
+    () => this.entityType() === 'chat' && this.groupTier()?.status === 'ambiguous',
+  );
+
+  ngOnInit(): void {
+    // Inputs (entityType/entityId) resolve by ngOnInit — reading a required
+    // input in the constructor would throw (and the async throw would be lost).
     void this.load();
   }
 
   private async load(): Promise<void> {
     this.loading.set(true);
     try {
-      const state = await fetchProjectState(this.core, this.projectId());
-      this.state.set(state);
-      this.stateText.set(JSON.stringify(state, null, 2));
+      const result = await fetchState(this.core, this.entityType(), this.entityId());
+      this.state.set(result.state);
+      this.stateText.set(JSON.stringify(result.state, null, 2));
+      if (this.entityType() === 'chat') {
+        this.projectState.set(result.projectState);
+        this.groupState.set(result.groupState);
+        this.generalState.set(result.generalState);
+        this.groupTier.set(result.groupTier);
+      }
       this.editing.set(false);
     } catch (err) {
       this.saveError.set(err instanceof Error ? err.message : 'Failed to load state');
@@ -194,7 +275,7 @@ export class StateEditorModal {
     }
   }
 
-  protected async save(): Promise<void> {
+  async save(): Promise<void> {
     this.saveError.set(null);
     let parsed: unknown;
     try {
@@ -209,9 +290,10 @@ export class StateEditorModal {
     }
     this.saving.set(true);
     try {
-      const next = await setProjectState(
+      const next = await setState(
         this.core,
-        this.projectId(),
+        this.entityType(),
+        this.entityId(),
         parsed as Record<string, unknown>,
       );
       this.state.set(next);
@@ -225,11 +307,11 @@ export class StateEditorModal {
     }
   }
 
-  protected async reset(): Promise<void> {
+  async reset(): Promise<void> {
     this.saveError.set(null);
     this.resetting.set(true);
     try {
-      await resetProjectState(this.core, this.projectId());
+      await resetState(this.core, this.entityType(), this.entityId());
       this.state.set({});
       this.stateText.set('{}');
       this.editing.set(false);

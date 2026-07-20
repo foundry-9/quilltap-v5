@@ -1,0 +1,125 @@
+/**
+ * The four-entity state dispatch layer (v4 `components/state/StateEditorModal`'s
+ * `endpointConfig` + fetchers), shared by the Prospero card, the Group editor,
+ * and the General State settings card.
+ *
+ * Each tier reads through {@link CoreClient.dispatchData} (the §A verbs); the
+ * `c53510c7` Shared contract pins the response BODIES. Only the CHAT tier
+ * surfaces the inherited cascade beneath its own state — the others edit a
+ * single tier directly.
+ *
+ * @module shared/state/state.api
+ */
+
+import type { CoreClient } from '../../core/core-client';
+import type { GroupTier } from '../../core/core-contract';
+
+/** The four tiers the shared editor spans. `general` is instance-wide (no id). */
+export type StateEntityType = 'chat' | 'project' | 'group' | 'general';
+
+/**
+ * A state read, normalized across tiers. Only a CHAT read fills the inherited
+ * slices + `groupTier` + `projectId`; the others carry just `state`. A tier
+ * slice that is present but empty is omitted by the server, so `undefined` here
+ * means "no keys at that tier" — exactly what the inherited-layers note wants.
+ */
+export interface StateFetchResult {
+  state: Record<string, unknown>;
+  chatState?: Record<string, unknown>;
+  projectState?: Record<string, unknown>;
+  groupState?: Record<string, unknown>;
+  generalState?: Record<string, unknown>;
+  groupTier?: GroupTier;
+  projectId?: string;
+}
+
+/** The human label per tier (v4 `endpointConfig().label`). */
+export function stateLabel(entityType: StateEntityType): string {
+  switch (entityType) {
+    case 'chat':
+      return 'Chat';
+    case 'project':
+      return 'Project';
+    case 'group':
+      return 'Group';
+    case 'general':
+      return 'General';
+  }
+}
+
+/** GET the tier's state (the chat tier also brings the inherited cascade). */
+export async function fetchState(
+  core: CoreClient,
+  entityType: StateEntityType,
+  entityId: string,
+): Promise<StateFetchResult> {
+  switch (entityType) {
+    case 'chat': {
+      const data = await core.dispatchData({ type: 'chatStateGet', chatId: entityId });
+      return {
+        state: (data['state'] as Record<string, unknown>) ?? {},
+        chatState: data['chatState'] as Record<string, unknown> | undefined,
+        projectState: data['projectState'] as Record<string, unknown> | undefined,
+        groupState: data['groupState'] as Record<string, unknown> | undefined,
+        generalState: data['generalState'] as Record<string, unknown> | undefined,
+        groupTier: data['groupTier'] as GroupTier | undefined,
+        projectId: data['projectId'] as string | undefined,
+      };
+    }
+    case 'project': {
+      const data = await core.dispatchData({ type: 'projectStateGet', projectId: entityId });
+      return { state: (data['state'] as Record<string, unknown>) ?? {} };
+    }
+    case 'group': {
+      const data = await core.dispatchData({ type: 'groupStateGet', groupId: entityId });
+      return { state: (data['state'] as Record<string, unknown>) ?? {} };
+    }
+    case 'general': {
+      const data = await core.dispatchData({ type: 'generalStateGet' });
+      return { state: (data['state'] as Record<string, unknown>) ?? {} };
+    }
+  }
+}
+
+/** PUT the tier's state (REPLACES wholesale); returns the persisted object. */
+export async function setState(
+  core: CoreClient,
+  entityType: StateEntityType,
+  entityId: string,
+  state: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const data = await (async () => {
+    switch (entityType) {
+      case 'chat':
+        return core.dispatchData({ type: 'chatStateSet', chatId: entityId, state });
+      case 'project':
+        return core.dispatchData({ type: 'projectStateSet', projectId: entityId, state });
+      case 'group':
+        return core.dispatchData({ type: 'groupStateSet', groupId: entityId, state });
+      case 'general':
+        return core.dispatchData({ type: 'generalStateSet', state });
+    }
+  })();
+  return (data['state'] as Record<string, unknown>) ?? {};
+}
+
+/** DELETE the tier's state; returns the `previousState` the server reports. */
+export async function resetState(
+  core: CoreClient,
+  entityType: StateEntityType,
+  entityId: string,
+): Promise<Record<string, unknown>> {
+  const data = await (async () => {
+    switch (entityType) {
+      case 'chat':
+        return core.dispatchData({ type: 'chatStateReset', chatId: entityId });
+      case 'project':
+        return core.dispatchData({ type: 'projectStateReset', projectId: entityId });
+      case 'group':
+        return core.dispatchData({ type: 'groupStateReset', groupId: entityId });
+      case 'general':
+        return core.dispatchData({ type: 'generalStateReset' });
+    }
+  })();
+  return (data['previousState'] as Record<string, unknown>) ?? {};
+}
