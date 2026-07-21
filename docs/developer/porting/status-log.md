@@ -26793,3 +26793,36 @@ family and are NOT ported here; the disabled Compose radio (with its "not yet
 available in this build" title) is that deferral's already-visible surface. When
 the new-chat composer family lands, this seed is the hook point for the
 provisional→auto-resolve refinement.
+
+**Unit 4 — the e2e beat + the help-doc disposition + the full gate.** Added a
+LIVE Playwright beat to `e2e/new-chat-flow.spec.ts`: it seeds a uniquely-named
+default-user persona through `POST /api/dispatch` (`characterQuickCreate` →
+`characterToggleControlledBy` — quick-create defaults to `llm`, one toggle flips
+it to `user`), navigates `/salon/new`, confirms the persona now appears in the
+Select Characters roster (full-roster re-port), adds it to the cast alongside a
+favorite LLM speaker, drives the form-level Play-As dropdown to the persona and
+then back to "Chat as yourself", and asserts the cast count stays 2 (keep-on-revert
+— the OLD behavior would have removed the default-user persona, dropping to 1).
+The persona is API-deleted in a `finally` so the shared roster is left clean.
+
+**Help doc (Tier 2) — out-of-repo, skipped-not-invented.** v4 `e2eb3d21` edits
+`help/chats.md` ("Taking a Character's Chair — Play As"). v5 has NO `help/chats.md`
+checked in — help syncs from a runtime `<cwd>/help/` tree (`quilltap-host`
+`files_store.rs` reads `cwd.join("help")`); the only in-repo `help/` is the CLI
+usage-text dir (`crates/quilltap-cli/src/help/`, unrelated). Per the order's
+instruction ("otherwise note it as an out-of-repo doc-only edit and skip — do not
+invent a tree"), the prose sync is deferred to whoever owns the production `help/`
+tree. Flagged for the unifier/parent.
+
+**Lane gate (SPA-only, no Rust):** `ng test` **203 files / 2,448 / 0 failed**
+(the lane's new specs — choose-outfit-card 5, wardrobe-tab +1, outfit-selector 6,
+plus the updated new-chat logic/form specs — all green); `ng build` clean (only
+the pre-existing CommonJS-interop warnings). Full Playwright: see the round record.
+**Confirmed: this lane touched only `apps/web` + the two append-only round docs
+(`CHANGELOG.md`, `status-log.md`).** No Rust, no `fresh_schema.json`, no memory
+subsystem.
+
+**Lane status: OPEN items — NONE. Tier 1 complete (slices 1–3 + specs + e2e).**
+Tier 2 (help prose) is the out-of-repo deferral above. Tier 3 loud deferral:
+the v4 outfit-selector auto-resolve + collapsed mode badges + wardrobe `fetched`
+distinction ride v5's deferred wardrobe-composer family (unit 3 record).

@@ -98,6 +98,13 @@ flag is a vault file, not a column) and no create-side change (v4's
 character create is unchanged). Verified against v4 8bf3cb5f with tier-1
 parse, character route (create/update/read), and the properties.json
 byte-level write differentials.
+P4.6bi (round 1 / lane 3), unit 4 — the New-Chat picker e2e beat. A live
+Playwright walk seeds a default-user persona, confirms it now appears in
+the Select Characters roster, and confirms reverting Play As to "Chat as
+yourself" keeps it in the cast. The `help/chats.md` prose edit is an
+out-of-repo runtime doc (v5 syncs help from a `<cwd>/help/` tree at
+runtime, none checked in) — noted, not invented.
+
 P4.6bi (round 1 / lane 3), unit 3 — the outfit-selector `canChooseOutfit`
 default (v4 8bf3cb5f). A new chat now seeds each cast member's Starting
 Outfit from the character's `canChooseOutfit` flag: an LLM-controlled
