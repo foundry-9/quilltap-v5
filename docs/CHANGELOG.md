@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Ported the injector's dated dynamic head (P4.d12 unit 6): every head
+entry now carries the event-clock age label ([m_xxxx] [3 days ago] ...)
+with narrativeTime riding verbatim when present, and the Relevant
+Memories context lines gained the same narrative rider. The RETRO_HEAD
+constants stay unported (the enlarged retrospective head is round 3).
+Injector differential 69 -> 72 rows, regenerated at v4 8bf3cb5f.
+
 Ported the memory-weighting episodic deltas (P4.d12 unit 5): the
 episodicBonus protection term (0.10 for kind:'episodic' rows, folded
 into the clamped protection score) and the event-clock age label

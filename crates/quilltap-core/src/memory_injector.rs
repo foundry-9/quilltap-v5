@@ -163,6 +163,8 @@ pub struct InjectorMemory {
     /// Pre-parsed event time (build via [`crate::episodic::event_time_ms`]) —
     /// the age labels read this clock when present.
     pub occurred_at_ms: Option<f64>,
+    /// Free-text in-story time — rides the age tag verbatim when present.
+    pub narrative_time: Option<String>,
 }
 
 impl InjectorMemory {
@@ -505,6 +507,14 @@ pub fn format_memories_for_context(
 
     for (r, weight) in &with_weight {
         let age = format_relative_age(&r.memory.weighting(), now_ms);
+        // Episodic spine (v4 8bf3cb5f): narrativeTime rides the age tag
+        // verbatim so fictional-timeline anchors reach the model too.
+        let narrative = r
+            .memory
+            .narrative_time
+            .as_deref()
+            .map(js_trim)
+            .filter(|s| !s.is_empty());
         let body = r.memory.body();
         let meta = format_memory_metadata_tag(&MetadataTagOpts {
             importance: Some(r.memory.importance),
@@ -513,7 +523,11 @@ pub fn format_memories_for_context(
             keywords: Some(&r.memory.keywords),
             adjustments: None,
         });
-        let memory_line = format!("- [{age}] {body}{meta}");
+        let when_tag = match narrative {
+            Some(n) => format!("{age} · {n}"),
+            None => age,
+        };
+        let memory_line = format!("- [{when_tag}] {body}{meta}");
         let line_tokens = estimate_tokens(&format!("{memory_line}\n"));
 
         if current_tokens + line_tokens > max_tokens {
@@ -873,6 +887,22 @@ pub fn format_dynamic_memory_head(
         }
         // `[m_${memory.id.slice(0, 4)}]` — JS slice on UTF-16 code units.
         let id_tag = format!("[m_{}]", js_slice_0_4(&r.memory.id));
+        // Episodic spine (v4 8bf3cb5f): date every head entry. The age label
+        // reads off the event clock (occurredAt ?? write clock — see
+        // format_relative_age), and narrativeTime rides along verbatim so
+        // fictional-timeline anchors reach the model too. Without this, even
+        // a retrieval hit couldn't confirm "last week".
+        let age = format_relative_age(&r.memory.weighting(), now_ms);
+        let when_tag = match r
+            .memory
+            .narrative_time
+            .as_deref()
+            .map(js_trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(n) => format!("[{age} · {n}]"),
+            None => format!("[{age}]"),
+        };
         let fired = r.recall_adjustment.as_ref().map(|adj| adj.fired.clone());
         let meta = format_memory_metadata_tag(&MetadataTagOpts {
             importance: Some(r.memory.importance),
@@ -881,7 +911,7 @@ pub fn format_dynamic_memory_head(
             keywords: Some(&r.memory.keywords),
             adjustments: fired.as_deref(),
         });
-        let entry = format!("{id_tag} {summary}{meta}");
+        let entry = format!("{id_tag} {when_tag} {summary}{meta}");
         let candidate_tokens = estimate_tokens(&format!("{entry}\n"));
         if current_tokens + candidate_tokens > max_tokens {
             break;

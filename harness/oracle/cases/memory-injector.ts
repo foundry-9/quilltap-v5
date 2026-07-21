@@ -96,6 +96,16 @@ function wireMem(m: Memory): Record<string, unknown> {
     lastAccessedAtMs: toMs(mm.lastAccessedAt as string | null | undefined),
     reinforcementCount: mm.reinforcementCount ?? null,
     graphDegree: Array.isArray(mm.relatedMemoryIds) ? mm.relatedMemoryIds.length : 0,
+    // Episodic spine (v4 8bf3cb5f): the declared kind, the pre-parsed event
+    // clock (null when absent/empty/unparsable — mirrors eventReferenceTimeMs's
+    // fallback contract), and the verbatim in-story time.
+    kindEpisodic: mm.kind === 'episodic',
+    occurredAtMs:
+      typeof mm.occurredAt === 'string' && mm.occurredAt !== '' &&
+      Number.isFinite(Date.parse(mm.occurredAt as string))
+        ? Date.parse(mm.occurredAt as string)
+        : null,
+    narrativeTime: mm.narrativeTime ?? null,
   };
 }
 
@@ -411,6 +421,45 @@ memoriesCase(
   1000,
 );
 
+// Episodic spine (v4 8bf3cb5f): the event-clock age + the narrativeTime rider.
+memoriesCase(
+  'ctx-episodic-event-clock',
+  [
+    res(
+      mem({
+        id: 'ep1', summary: 'Lighthouse visit', content: 'We visited Lighthouse Point.',
+        importance: 0.8, createdAt: '2026-06-25T00:00:00.000Z',
+        occurredAt: '2026-05-20T00:00:00.000Z', kind: 'episodic',
+      }),
+      0.9,
+    ),
+  ],
+  2000,
+);
+memoriesCase(
+  'ctx-narrative-time',
+  [
+    res(
+      mem({
+        id: 'ep2', summary: 'Night watch', content: 'Stood the night watch together.',
+        importance: 0.7, createdAt: '2026-06-25T00:00:00.000Z',
+        occurredAt: '2026-06-20T00:00:00.000Z', narrativeTime: 'the third night at sea',
+        kind: 'episodic',
+      }),
+      0.8,
+    ),
+    res(
+      mem({
+        id: 'ep3', summary: 'Blank narrative trims away', content: 'Rigging lesson.',
+        importance: 0.6, createdAt: '2026-06-25T00:00:00.000Z',
+        narrativeTime: '   ',
+      }),
+      0.7,
+    ),
+  ],
+  2000,
+);
+
 // ===========================================================================
 // formatInterCharacterMemoriesForContext
 // ===========================================================================
@@ -656,6 +705,38 @@ headCase(
 headCase(
   'head-raw-weight',
   [res(m('rwxxxx', { summary: 'raw', importance: 0.8 }), 0.6, { rawWeight: 0.42 })],
+  {},
+);
+
+// Episodic spine (v4 8bf3cb5f): every head entry is dated; narrativeTime rides.
+headCase(
+  'head-episodic-dated',
+  [
+    res(
+      mem({
+        id: 'hd1aaaa', summary: 'Dated head entry.', importance: 0.9,
+        createdAt: '2026-06-25T00:00:00.000Z',
+        occurredAt: '2026-05-20T00:00:00.000Z', kind: 'episodic',
+      }),
+      0.9,
+    ),
+    res(
+      mem({
+        id: 'hd2bbbb', summary: 'Narrative head entry.', importance: 0.8,
+        createdAt: '2026-06-20T00:00:00.000Z',
+        occurredAt: '2026-06-24T00:00:00.000Z',
+        narrativeTime: 'midwinter', kind: 'episodic',
+      }),
+      0.8,
+    ),
+    res(
+      mem({
+        id: 'hd3cccc', summary: 'Semantic write-clock entry.', importance: 0.7,
+        createdAt: '2026-06-26T00:00:00.000Z',
+      }),
+      0.7,
+    ),
+  ],
   {},
 );
 

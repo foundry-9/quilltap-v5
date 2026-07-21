@@ -53,6 +53,8 @@ struct WireMem {
     kind_episodic: bool,
     #[serde(rename = "occurredAtMs", default)]
     occurred_at_ms: Option<f64>,
+    #[serde(rename = "narrativeTime", default)]
+    narrative_time: Option<String>,
 }
 
 impl WireMem {
@@ -72,6 +74,7 @@ impl WireMem {
             graph_degree: self.graph_degree,
             kind_episodic: self.kind_episodic,
             occurred_at_ms: self.occurred_at_ms,
+            narrative_time: self.narrative_time,
         }
     }
 }

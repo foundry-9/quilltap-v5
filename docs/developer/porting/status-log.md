@@ -26522,3 +26522,26 @@ green over the oracle regenerated from v4 `8bf3cb5f` with the per-row
 as an inertness proof (the order's leave-list entry, confirmed
 empirically — its corpus has no occurredAt rows). Full workspace gate
 361 binaries / 0 failed.
+
+### P4.d12 unit 6: the injector dated dynamic head + narrativeTime riders (2026-07-21)
+
+Core `0.0.302 → 0.0.303`, harness `0.0.260 → 0.0.261`.
+
+**Landed:** `format_dynamic_memory_head` dates EVERY entry —
+`[m_xxxx] [<age>] summary…` / `[<age> · <narrativeTime>]` (v4's
+why-comment carried: without this, even a retrieval hit couldn't
+confirm "last week"); `format_memories_for_context` gains the same
+narrativeTime rider on its age tag (blank narrative trims away).
+`InjectorMemory.narrative_time` + the build_context / carina_query
+constructors + the injector wire spec. The `RETRO_HEAD_*` constants are
+deliberately NOT added — the enlarged retrospective head is round 3 and
+the budget stays 200/5 (the order's round-1 values).
+
+**Verified:** `memory_injector_equivalence` 69 → 72 rows (new:
+`ctx-episodic-event-clock`, `ctx-narrative-time` incl. the blank-trim
+arm, `head-episodic-dated` — event-clock vs write-clock labels proven
+in the same head), green over the oracle regenerated from v4
+`8bf3cb5f`. Consequence for unit 7: the dated head bleeds into
+build-context's rendered output, so the build-context family MOVES from
+the leave-list to the REBASE set (regen at `8bf3cb5f`, expect green —
+both sides date identically on null-occurredAt fixtures).

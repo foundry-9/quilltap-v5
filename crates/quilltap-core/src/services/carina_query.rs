@@ -1171,6 +1171,7 @@ fn injector_memory_from_json(v: &Value) -> crate::memory_injector::InjectorMemor
         // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
         kind_episodic: s(v, "kind").as_deref() == Some("episodic"),
         occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
+        narrative_time: s(v, "narrativeTime"),
     }
 }
 
