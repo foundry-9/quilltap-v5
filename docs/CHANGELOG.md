@@ -41,6 +41,46 @@ edges (GET|POST `/api/v1/brahma-console`; GET|PATCH|DELETE `…/{id}`
 differential (14 cases: list filtering, create seed+profile, get,
 rename, set-model, delete, get-messages, the three verify 404 arms +
 the bad-profile 400) byte-matches v4's real route handlers.
+P4.9I1B (the Brahma SPA lane — in progress): the Brahma Console UI half.
+The lane-local wire contract (`brahma/brahma-wire.ts` — the eight §B
+`brahmaConsole*` request/response DTOs + the `BrahmaConsoleApi` dispatch
+client; inert-in-lane, folded into `core-contract.ts` at unification) and
+the `run_sql` tool-call parser (`brahma-sql-tool-call.ts`, ported
+case-for-case from v4 with its 10-case spec). The state service
+(`BrahmaConsoleService`) — the provider analogue: `isOpen`/open/close,
+`currentChatId` on v4's exact localStorage key, `activeConnectionProfileId`
++ optimistic-then-PATCH `setModel`, `profiles` off the shared
+`connectionProfileList` query, `isEligible = profiles.length > 0`. The leaf
+components: `qt-help-composer` (the HelpChatComposer analogue — Enter sends,
+Shift+Enter newline, 120px auto-grow), `qt-brahma-model-picker` (the
+inline connection-profile dropdown, outside-click/Escape close), and
+`qt-brahma-tool-call` (the run_sql card — Query pane via the shared markdown
+renderer, Result pane as a table or error text). Each with a component spec.
+The transcript renderer (`qt-brahma-console-message-list`) — user/assistant
+bubbles on the `qt-help-*` styles (assistant hidden when its prose is empty),
+run_sql TOOL cards, reasoning via `qt-thinking-block`, a copy-as-Markdown
+affordance, and the live streaming block (reasoning + live run_sql cards +
+prose + the "Consulting the stacks…"/"Thinking…" indicators). Live tool cards
+consume the shared reducer's flattened batch list. The console dialog
+(`qt-brahma-console-dialog`) in both modes — floating (a `qt-dialog-overlay`
+modal, gated on the service's `isOpen`; v4's draggable FloatingDialog has no
+v5 primitive, a documented divergence) and `asTab` (bare body + inline header,
+live regardless of `isOpen`; past-chats fetch gated
+`(isOpen || asTab) && !currentChatId`) — with the launcher (eligibility notice
+/ past-chats rows / opening composer), the conversation view, and the
+streaming consumer: subscribe the global event stream scope-tagged by
+`chatId`, fold the seven frames through the shared reducer, reconcile against
+the reloaded transcript on completion. Plus `qt-brahma-console-view` (the
+`asTab` wrapper the tab registry mounts at unification). Specs: 7 cases incl.
+the live-fold-then-reconcile beat. The rail entry (`qt-brahma-entry`) — the
+eligibility-gated sidebar-footer button that hosts the floating dialog and
+branches `inWorkspace ? openTab('brahma') : openConsole()` (v4
+`sidebar-footer.tsx`); the unifier mounts this one component in `shell.ts`
+(§W.2). Inert-in-lane: the `brahmaConsole*` verbs and the shell/registry
+mounts land at the p4.9i1 unification, so the whole lane ships behind guarded
+ACTIVATE-AT-UNIFY e2e beats. Lane gate: full `ng test` 198 files / 2397 tests
+green, `ng build` clean, full Playwright 96 passed / 5 skipped (this lane's
+guarded beats) / 0 failed, zero Rust/Cargo diff vs main.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn

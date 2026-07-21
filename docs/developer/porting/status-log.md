@@ -25219,3 +25219,117 @@ dup branch) joins `loop_bound_forces_a_final_answer_at_the_cap`. The
 (`build_conversation_messages` is separately differential-proven and the
 orchestrator threads it identically). Versions: core 0.0.291, harness
 0.0.253.
+## Lane landed — P4.9I1B the Brahma SPA lane (inert, 2026-07-20)
+
+**Branch `claude/brahma-spa-porting-docs-70f049`.** The Brahma Console UI
+half, all under `apps/web/src/app/brahma/**` (+ one e2e spec). SPA-only:
+`git diff main -- crates/ Cargo.toml Cargo.lock` empty. Every unit ships a
+component/service spec (green); the whole lane is inert-in-lane and rides
+guarded ACTIVATE-AT-UNIFY e2e beats (the `brahmaConsole*` verbs are lane
+P4.9I1A's, the shell/registry mounts are unifier-only). Drift check at lane
+start: v4 HEAD == the `7e6d13e5` baseline, tree clean.
+
+Commits (small units, one per):
+
+1. **The wire + the run_sql parser** (`b3ba6020`) — `brahma/brahma-wire.ts`:
+   the eight §B `brahmaConsole*` request/response DTOs (derived from v4's
+   route handlers name-for-name) + the `BrahmaConsoleApi` dispatch client
+   (one method per verb). Inert-in-lane — each request casts to `CoreRequest`
+   at the one `dispatchBrahma` seam (the unifier folds the types into
+   `core-contract.ts` and drops the cast). `brahma-sql-tool-call.ts` +
+   `.spec.ts`: a case-for-case port of v4
+   `components/brahma-console/brahma-sql-tool-call.ts` +
+   `__tests__/brahma-sql-tool-call.test.ts` (10 cases — the lane's
+   component-tier differential).
+2. **The state service** (`04475b26`) — `BrahmaConsoleService`, a port of v4
+   `brahma-console-provider.tsx` as a `providedIn:root` singleton: `isOpen`/
+   open/close, `currentChatId` on v4's exact key
+   `quilltap:brahma-console-last-id` (hydrated on construction, launcher-reset
+   on open), `activeConnectionProfileId` + optimistic-then-PATCH `setModel`
+   (no-ops without a current chat), `profiles` off the shared
+   `['connectionProfiles']` query, `isEligible = profiles.length > 0`. 8-case
+   spec.
+3. **The leaf components** (`9aa2c6d2`) — `qt-help-composer` (HelpChatComposer
+   analogue: Enter sends, Shift+Enter newline, 120px auto-grow, exposed
+   `focus()`), `qt-brahma-model-picker` (the inline profile dropdown,
+   outside-click/Escape close, active-check), `qt-brahma-tool-call` (the
+   run_sql card: Query pane through `qt-message-content`, Result pane a table
+   with dimmed NULLs or the error text). 17 cases across three specs.
+4. **The transcript renderer** (`ee680830`) —
+   `qt-brahma-console-message-list`: user/assistant bubbles on the (already
+   present) `qt-help-*` styles (assistant hidden when its prose is empty),
+   run_sql TOOL cards, reasoning via `qt-thinking-block`, a self-contained
+   copy-as-Markdown button, and the live streaming block. Live run_sql cards
+   consume the shared `chat-stream.reducer` `PendingToolCall`s — the dialog
+   flattens the batch list run-wide so cards persist across turns; a failed
+   live call falls back to "The query failed." (the reloaded transcript
+   carries the full error). 8-case spec.
+5. **The dialog + view** (`2c6f6aa3`) — `qt-brahma-console-dialog` in both
+   modes: floating (a `qt-dialog-overlay` modal gated on the service `isOpen`)
+   and `asTab` (bare body + inline header, live regardless of `isOpen`;
+   past-chats fetch gated `(isOpen || asTab) && !currentChatId`). The launcher,
+   the conversation view, create/send/new/delete/set-model, and the streaming
+   consumer (subscribe the global event stream scope-tagged by `chatId`, fold
+   the seven frames through the shared reducer, reconcile against the reloaded
+   transcript on completion — the salon `runTurn` pattern). Plus
+   `qt-brahma-console-view` (the `asTab` wrapper). 7-case spec incl. a live
+   fold-then-reconcile beat.
+6. **The rail entry** (`0ae6e7ad`) — `qt-brahma-entry`: the eligibility-gated
+   footer button that HOSTS the floating dialog (so the unifier mounts one
+   component) and branches `inWorkspace ? openTab('brahma') : openConsole()`.
+   5-case spec.
+7. **The e2e beats + AT-UNIFY table** (this commit) —
+   `e2e/workspace-brahma-console-flow.spec.ts`: 5 guarded ACTIVATE-AT-UNIFY beats (rail
+   → tab → console launcher; send → assistant bubble; new-conversation →
+   past-chats; set-model round-trip; delete). Each skips loudly unless the
+   server verb answers AND the rail entry is mounted.
+
+**Documented v5 divergences** (faithful, noted in the files): (a) v4's
+draggable `FloatingDialog` has no v5 primitive → the floating mode is a
+centered `qt-dialog-overlay` modal. (b) v4's live-streaming hook clears the
+prose buffer on each `status`/tool batch (its flat `batchBaseRef` arithmetic);
+v5 consumes the shared `chat-stream.reducer` as-is (batch-aware, multi-turn
+correct) per the order's explicit instruction — the live display can
+accumulate prose across agent turns where v4 resets, but the persisted result
+(reloaded on completion) is identical on both sides. (c) `qt-thinking-block`
+has no `streaming` input (only `collapsed`); live reasoning renders with
+`[collapsed]="false"`.
+
+**Not touched** (per the order): any Rust, `core-contract.ts`, the frozen §W
+files (workspace contract / tab registry / not-wired-pane / shell), the
+`chat-stream.reducer` semantics, and the sibling lanes' `screens/**` files.
+The `qt-help-*` + console style blocks were already present in v5's
+`_surfaces.css` (unused until now) and the `brahma-console.svg` asset already
+ships — so this lane ported NO CSS and copied NO asset (both survey-verified).
+
+**Deferred loud (tier 3, named):** HelpChat itself stays **p4.9i2** (the
+9-component family + eligibility/context-resolver/categories libs + the
+help-doc read surface) — this lane carried only the composer + reused the
+styles the console needs. Console-composer **file attachments** (`fileIds` in
+send): v4's console composer exposes NO attachment UI (verified against
+`BrahmaConsoleDialog.tsx` — the composer is `HelpChatComposer`, textarea +
+send only), so v5 omits them too; the `fileIds?` wire field exists but no UI
+sends it. Both deferrals are in the order's status header.
+
+**AT-UNIFY** — see the table in the order header (`p4.9i1b-brahma-spa.md`):
+registry swap `brahma → BrahmaConsoleView`; drop the dead `brahma` case from
+`not-wired-pane.ts`; mount `<qt-brahma-entry />` in `shell.ts`; fold the §B
+DTOs into `core-contract.ts` + wire diff + drop the one cast; confirm/seed a
+default connection profile for the send beat.
+
+Gate (this worktree, its own node_modules symlinked from main — deps
+byte-identical; its own debug Rust binaries built once): full `ng test`
+**198 files / 2397 tests, 0 failed**; `ng build` clean;
+`git diff main -- crates/ Cargo.toml Cargo.lock harness/` **empty**; full
+Playwright ALONE **96 passed / 5 skipped / 0 failed** — the 5 skips are
+exactly this lane's guarded ACTIVATE-AT-UNIFY beats (they report their
+guarded state; they self-activate at unification). ⚠ Gotcha hit: the e2e
+`PORT` (4319) is HARD-CODED in `e2e/support/env.ts` and SHARED across
+worktrees, and a sibling worktree's Playwright setup force-kills whatever
+listens on :4319 — a concurrent sibling run silently kills THIS worktree's
+shared server mid-suite (every shared-server spec then fails
+`ERR_CONNECTION_REFUSED`; own-server specs like characters/groups still
+pass). The clean run above was taken with `env.ts` PORT/MOCK_LLM_PORT
+temporarily moved to 4419/45401 (reverted, never committed) to dodge the
+collision. Run Playwright when no sibling worktree is mid-suite, or isolate
+the ports.
