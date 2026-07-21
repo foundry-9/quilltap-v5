@@ -334,10 +334,8 @@ struct ReadyEngine {
     /// the `BrahmaConsoleSend` arm answers a plain internal error).
     brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
     /// The dispatch-layer blob-WebP transcoder (P4.6bf S1). Threaded from the
-    /// assembly so the AT-UNIFY wire can pass it into lane BG's re-signatured
-    /// `store_mount_file` handlers; NOT read until that call-site edit lands,
-    /// so it is deliberately dead until unification.
-    #[allow(dead_code)]
+    /// assembly and passed into lane BG's re-signatured `store_mount_file`
+    /// handlers via [`Self::ready_db_and_blob_webp`] (P4.6bg unit 6 wire).
     blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
@@ -2235,8 +2233,8 @@ impl CoreEngine {
                 force,
                 original_mime_type,
                 original_file_name,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, webp)) => {
                     super::mount_files::mount_file_write(
                         &db,
                         &mount_point_id,
@@ -2247,6 +2245,7 @@ impl CoreEngine {
                         force,
                         original_mime_type,
                         original_file_name,
+                        webp,
                     )
                     .await
                 }
@@ -2277,8 +2276,8 @@ impl CoreEngine {
                 data,
                 original_mime_type,
                 original_file_name,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, webp)) => {
                     super::mount_files::mount_blob_upload(
                         &db,
                         &mount_point_id,
@@ -2287,6 +2286,7 @@ impl CoreEngine {
                         &data,
                         original_mime_type,
                         original_file_name,
+                        webp,
                     )
                     .await
                 }
@@ -3289,6 +3289,25 @@ impl CoreEngine {
     ) -> Result<(Db, Option<Arc<dyn crate::documents::MountRefreshScheduler>>), Response> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok((r.db.clone(), r.mount_refresh.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The `Db` + the (optional) blob-WebP transcoder under the readiness gate
+    /// (P4.6bf S1). `None` when unwired — the two `store_mount_file` handlers fall
+    /// back to the store-original refusal. `Err` is the locked refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_blob_webp(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.blob_webp.clone())),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }

@@ -573,6 +573,7 @@ pub async fn mount_file_write(
     force: Option<bool>,
     original_mime_type: Option<String>,
     original_file_name: Option<String>,
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     let data = match decode_write_content(content, encoding) {
         Ok(d) => d,
@@ -592,13 +593,20 @@ pub async fn mount_file_write(
             let mount = mount_conn(ws)?;
             let main = ws.main().connection();
             let extractor = default_text_extractor();
-            let webp = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            // P4.6bf S1 wire: the host's live WebP transcoder when present, else the
+            // store-original refusal fallback (behavior unchanged on `None`).
+            let refusing = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            let webp_ref: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder =
+                match &webp {
+                    Some(w) => w.as_ref(),
+                    None => &refusing,
+                };
             Ok(crate::services::mount_index::store_file::store_mount_file(
                 main,
                 mount,
                 &input,
                 extractor.as_ref(),
-                &webp,
+                webp_ref,
             ))
         })
         .await;
@@ -667,6 +675,7 @@ pub async fn mount_file_write_raw(
 /// pipeline (`assetStorage: 'database'`, `collisionStrategy: 'overwrite'`).
 /// Body: `{document}` for a native-text upload, `{blob}` (the full joined
 /// view) otherwise; the web edge returns 201.
+#[allow(clippy::too_many_arguments)]
 pub async fn mount_blob_upload(
     db: &Db,
     mount_point_id: &str,
@@ -675,6 +684,7 @@ pub async fn mount_blob_upload(
     data_base64: &str,
     original_mime_type: Option<String>,
     original_file_name: Option<String>,
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     let data = node_base64_decode(data_base64);
     if data.is_empty() {
@@ -722,13 +732,20 @@ pub async fn mount_blob_upload(
             let mount = mount_conn(ws)?;
             let main = ws.main().connection();
             let extractor = default_text_extractor();
-            let webp = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            // P4.6bf S1 wire: the host's live WebP transcoder when present, else the
+            // store-original refusal fallback (behavior unchanged on `None`).
+            let refusing = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            let webp_ref: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder =
+                match &webp {
+                    Some(w) => w.as_ref(),
+                    None => &refusing,
+                };
             let stored = crate::services::mount_index::store_file::store_mount_file(
                 main,
                 mount,
                 &input,
                 extractor.as_ref(),
-                &webp,
+                webp_ref,
             );
             match stored {
                 Ok(r) if r.kind == "document" => Ok(Ok(serde_json::json!({

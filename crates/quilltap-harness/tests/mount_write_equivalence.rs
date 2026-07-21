@@ -91,6 +91,7 @@ fn mount_write_matches_oracle() {
                     None,
                     None,
                     None,
+                    None,
                 ))
             }),
         ),
@@ -103,6 +104,7 @@ fn mount_write_matches_oracle() {
                     MP_DB,
                     "notes/intro.md",
                     "# Intro v2\n\nRewritten body.\n",
+                    None,
                     None,
                     None,
                     None,
@@ -125,6 +127,7 @@ fn mount_write_matches_oracle() {
                     None,
                     None,
                     None,
+                    None,
                 ))
             }),
         ),
@@ -143,6 +146,7 @@ fn mount_write_matches_oracle() {
                     None,
                     None,
                     None,
+                    None,
                 ))
             }),
         ),
@@ -155,6 +159,7 @@ fn mount_write_matches_oracle() {
                     MP_FS,
                     "notes/created.txt",
                     "created on disk\nsecond line\n",
+                    None,
                     None,
                     None,
                     None,
@@ -177,6 +182,7 @@ fn mount_write_matches_oracle() {
                     None,
                     None,
                     None,
+                    None,
                 ))
             }),
         ),
@@ -194,6 +200,7 @@ fn mount_write_matches_oracle() {
                     None,
                     None,
                     None,
+                    None,
                 ))
             }),
         ),
@@ -207,6 +214,7 @@ fn mount_write_matches_oracle() {
                     "docs/up.pdf",
                     &b64(GARBAGE_PDF),
                     Some("base64"),
+                    None,
                     None,
                     None,
                     None,
@@ -252,6 +260,7 @@ fn mount_write_matches_oracle() {
                     &b64(GARBAGE_PNG),
                     Some("image/png".to_string()),
                     Some("upload.png".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -267,6 +276,7 @@ fn mount_write_matches_oracle() {
                     &b64(FAKE_WEBP),
                     Some("image/webp".to_string()),
                     Some("asis.webp".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -282,6 +292,7 @@ fn mount_write_matches_oracle() {
                     &b64(b"# Uploaded\n\nvia blobs route\n"),
                     Some("text/markdown".to_string()),
                     Some("uploaded.md".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -297,6 +308,7 @@ fn mount_write_matches_oracle() {
                     &b64(GARBAGE_PDF),
                     Some("application/pdf".to_string()),
                     Some("uploaded.pdf".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -312,6 +324,7 @@ fn mount_write_matches_oracle() {
                     "",
                     Some("image/png".to_string()),
                     Some("empty.png".to_string()),
+                    None,
                 ))
             }),
         ),

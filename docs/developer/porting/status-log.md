@@ -149,10 +149,31 @@ before running the e2e. Also: the standalone Document-Mode tab does NOT restore
 its pane across a full `page.reload()` (the "reload round-trip" was replaced with
 close → reopen-from-recents).
 
-**Still OPEN under the order:** tier-2 unit 6 (`services/mount_index/conversion.rs`
-+ un-refusing `api/mount_files.rs` convert/deconvert behind the live guards + the
-S1 `store_mount_file` webp re-signature + the inherited `EngineAssembly.blob_webp`
-engine wire that self-activates the probe-gated scriptorium WebP beat).
+**Unit 6 part 1 — the inherited blob-WebP wire (LANDED).** The P4.6bf S1
+AT-UNIFY item: `mount_file_write` + `mount_blob_upload` take a trailing
+`webp: Option<Arc<dyn WebpTranscoder>>` (host codec when `Some`, else the
+`RefusingWebpTranscoder`); the engine passes `ReadyEngine.blob_webp` via the new
+`ready_db_and_blob_webp` gate helper; the `#[allow(dead_code)]` is dropped. The
+prod host's `blob_webp: Some(HostImageCodec)` self-activates the probe-gated
+`scriptorium-flow` WebP beat (portrait.png → portrait.webp). `mount_write_equivalence`
+threads the new `None` arg (unchanged behavior — re-run green over a fresh
+`7e6d13e5` oracle). The mount differentials + all harness call sites (8
+`mount_file_write` + 5 `mount_blob_upload`; the 2 `mount_file_write_raw` are
+untouched) pass `None`.
+
+**⚠ Still OPEN under the order — unit 6 part 2 (the conversion port), DEFERRED
+loudly (tier 2 "should land").** `services/mount_index/conversion.rs` (new — v4
+`lib/mount-index/conversion.ts`: filesystem↔database store convert/deconvert,
+preserving every `doc_mount_files` row + `doc_mount_chunks` child, only `source`
+flipping + bytes moving verbatim, sha256 preserved, no re-embed) + un-refusing
+`api/mount_files.rs:mount_convert`/`mount_deconvert` (the capability guards +
+mid-conversion write-lock are already LIVE; only the conversion body refuses) +
+its tier-2 differential (drive v4's REAL conversion on a fixture copy + temp tree;
+diff the DB structurally AND the resulting tree — paths + byte-identical contents,
+no codec runs; pin ≥1 `converting`/`deconverting` write-lock guard case). No codec
+is involved (bytes move verbatim), so the tier-2 DB diff can be exact. This is a
+sizeable independent piece; the remainder of the round (tier 1 units 3-5 + the
+blob-WebP wire) is complete and landed. Resume with a fresh v4 drift-check.
 
 ## Round record — the `7e6d13e5` state-cascade drift catch-up: P4.d10 ∥ P4.6be ∥ P4.d11 (UNIFIED 2026-07-20)
 

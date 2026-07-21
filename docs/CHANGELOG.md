@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Wired the dispatch-layer blob-WebP transcoder (P4.6bg unit 6, part 1 — the
+P4.6bf S1 inherited AT-UNIFY item). The two `store_mount_file` handlers
+(`mount_file_write` / `mount_blob_upload`) now take a trailing
+`webp: Option<Arc<dyn WebpTranscoder>>` — the host's live codec when present,
+else the store-original `RefusingWebpTranscoder` fallback (behavior unchanged on
+`None`). The engine passes `EngineAssembly.blob_webp` via a new
+`ready_db_and_blob_webp` gate helper, and the `#[allow(dead_code)]` on the
+`ReadyEngine.blob_webp` field is dropped (it is now read). The production host's
+`blob_webp: Some(HostImageCodec)` makes the Scriptorium blob upload transcode to
+WebP live, self-activating the probe-gated `scriptorium-flow` WebP beat. The
+`mount_write_equivalence` differential threads the new `None` arg (unchanged
+behavior — green). Versions: core 0.0.297, harness 0.0.257.
+
 Made the Document Mode host-filesystem scopes live end-to-end (P4.6bg unit 5).
 The operator Document-Mode surface (`documents/mod.rs`) now performs real
 host-disk I/O on filesystem-backed resolved paths — `resolved_path_exists`,
