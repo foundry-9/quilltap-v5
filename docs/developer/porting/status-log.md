@@ -26308,3 +26308,59 @@ deferral, enumerated in the order header; the New-Chat picker SPA drift
 re-port is OWED (above); the P4.d7 dup-name follow-up stands; tier-3
 deferrals unchanged (watcher, filesSync, cleanup-stale, docs CLI,
 DocumentTextExtractor).
+
+## Lane P4.d12 — the episodic-spine foundation (round 1 / lane 1 of the episodic-recall drift catch-up) — IN PROGRESS
+
+Branch `claude/episodic-spine-foundation-port-bb4157`. v4 baseline
+`8bf3cb5f` — drift-checked at lane start: v4 HEAD == `8bf3cb5f`, tree
+clean, so oracles regenerate directly from `~/source/quilltap-server`
+(no pin needed). This lane MOVES the memory-row/pure oracle families to
+`8bf3cb5f`; the deferred families (extraction-prompt, fold, retrieval,
+deep-dive tools) stay at `7e6d13e5` for rounds 2/3.
+
+### P4.d12 unit 1: the D23 schema re-dump (2026-07-21)
+
+Core `0.0.297 → 0.0.298`.
+
+**Landed:** `fresh_schema.json` regenerated from v4 `8bf3cb5f`'s live
+`generateDDL` (the dump-fresh-schema.ts dumper; main=79 mount-index=29
+llm-logs=3 statements — counts unchanged). `chat_settings_seed.json`
+regenerated identical (no diff). The line-level DDL diff carries
+SEVEN additions, classified:
+- `chats.timelineMode TEXT` (expected),
+- `memories.occurredAt TEXT`, `memories.narrativeTime TEXT`,
+  `memories.entities TEXT DEFAULT '[]'`,
+  `memories.kind TEXT DEFAULT 'semantic'` (expected),
+- `characters.canChooseOutfit INTEGER DEFAULT 0` — **NOT in the order's
+  prediction**: the order's Shared contract claimed canChooseOutfit is
+  vault-properties-only with no DB column, but v4 `8bf3cb5f`'s
+  generateDDL emits the column (the vault manages the FIELD; the column
+  exists underneath, like canDressThemselves/canCreateOutfits). Adopted
+  faithfully via the re-dump per D23 — inert in v5 (no v5 reader/writer
+  until the outfit slice); same precedent as the earlier
+  `characters.metadata` adoption.
+
+**Deliberate non-addition:** `idx_memories_occurredAt` does NOT appear —
+v4's generateDDL never emits it; only the `add-episodic-memory-fields`
+migration creates it (v4 DDL.md documents it as migration-added). The
+provisioning oracle builder runs generateDDL + the three
+mount-provisioning migrations only, so a fresh v4 instance in the
+differential is index-free too, and the byte-exact sqlite_master diff is
+green WITHOUT the index. Real (migrated) v4 instances carry the index;
+v5's migration runner stays deferred — flagged as a standing gap of that
+deferral, not of this lane.
+
+**Verified:** `provisioning_equivalence` (2 passed — the byte-exact
+per-partition diff at a fresh `8bf3cb5f` oracle), reverse
+`verify-v5-provisioned.ts` OK under real v4, and the three
+`fresh_schema.json` direct-reader suites (`builtin_templates`,
+`builtin_mounts`, `pascal_workbench_route`) green (statement counts
+unchanged, no assertion edits needed).
+
+**Regen recipe (this unit):** per the order header —
+`QT_SCHEMA_OUT/QT_SEED_OUT` dump-fresh-schema.ts from
+`~/source/quilltap-server`; build-provision-oracle.ts →
+`/tmp/oracle-provision.json` + `/tmp/qt-v4-fresh`; cargo test
+`provisioning_equivalence` with `QT_ORACLE_PROVISION` /
+`QT_FIXTURE_V4_FRESH` / `QT_V5_PROVISION_OUT`; then
+verify-v5-provisioned.ts with `QT_FIXTURE_V5_PROVISIONED`.

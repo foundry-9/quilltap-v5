@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Adopted v4 8bf3cb5f's schema via the D23 re-dump (P4.d12 unit 1, the
+episodic-spine foundation lane): chats.timelineMode, the four memories
+episodic columns (occurredAt, narrativeTime, entities default '[]', kind
+default 'semantic'), and characters.canChooseOutfit (an outfit-feature
+column the re-dump carried; inert in v5 until the outfit slice lands).
+fresh_schema.json regenerated from v4's live generateDDL — never
+hand-edited; chat_settings_seed.json unchanged. Note: v4's
+idx_memories_occurredAt index is created by its migration, not by
+generateDDL, so fresh instances on both sides are index-free and the
+byte-exact provisioning diff stays green; v5's migration runner remains
+deferred. Verified by provisioning_equivalence (byte-exact per-partition
+sqlite_master diff against a fresh v4 instance), the reverse
+verify-v5-provisioned walk under real v4, and the three fresh_schema
+direct-reader suites.
+
 Planned the episodic-recall drift catch-up — a 3-round campaign against
 v4's largest single drift (8bf3cb5f, a squash-merge of three feature
 branches: an episodic-recall memory overhaul plus character-outfit
