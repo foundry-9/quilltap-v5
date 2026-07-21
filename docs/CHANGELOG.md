@@ -98,6 +98,14 @@ flag is a vault file, not a column) and no create-side change (v4's
 character create is unchanged). Verified against v4 8bf3cb5f with tier-1
 parse, character route (create/update/read), and the properties.json
 byte-level write differentials.
+P4.6bi (round 1 / lane 3), unit 2 — the New-Chat picker re-port (v4
+e2eb3d21). The Select Characters list now shows the full roster, including
+default-user personas that were previously filtered out. The Play As
+dropdown offers only characters already in the cast (no longer pulling in
+non-cast personas). Reverting a persona to "Chat as yourself" now keeps
+that character in the cast under LLM control (profile cleared) instead of
+removing it.
+
 P4.6bi (round 1 / lane 3), unit 1 — the character `canChooseOutfit`
 Wardrobe-tab checkbox (v4 8bf3cb5f). A shared "Let this character choose
 their opening outfit" card now rides both the character edit and detail

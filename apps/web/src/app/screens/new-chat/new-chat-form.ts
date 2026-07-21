@@ -461,20 +461,20 @@ export class NewChatForm {
     () => this.availableProjects().find((p) => p.id === this.selectedProjectId())?.color,
   );
 
-  /** Play-As options: every cast member + default-user characters not yet in the cast (v4). */
+  /**
+   * Play-As options: only characters already in the cast (v4 `e2eb3d21`). Any
+   * added character can take the user's chair, and default-user personas now
+   * appear in the picker on the left, so they enter the cast the same way as
+   * everyone else rather than being pulled in from a separate roster here.
+   */
   protected readonly playAsOptions = computed<PlayAsOption[]>(() => {
-    const cast = this.core().selectedCharacters();
-    const castIds = new Set(cast.map((sc) => sc.character.id));
     const dupNames = this.duplicateUserNames();
-    const fromCast = cast.map((sc) => ({
-      id: sc.character.id,
-      label: this.formatName(sc.character.name, sc.character.title, dupNames),
-    }));
-    const fromDefaults = this.core()
-      .userControlledCharacters()
-      .filter((c) => !castIds.has(c.id))
-      .map((c) => ({ id: c.id, label: this.formatName(c.name, c.title, dupNames) }));
-    return [...fromCast, ...fromDefaults];
+    return this.core()
+      .selectedCharacters()
+      .map((sc) => ({
+        id: sc.character.id,
+        label: this.formatName(sc.character.name, sc.character.title, dupNames),
+      }));
   });
 
   private duplicateUserNames(): Set<string> {
@@ -494,9 +494,7 @@ export class NewChatForm {
   // --- Handlers --------------------------------------------------------------
 
   protected onPlayAs(nextId: string): void {
-    this.core().setSelectedCharacters((prev) =>
-      applyPlayAs(prev, nextId, this.core().userControlledCharacters()),
-    );
+    this.core().setSelectedCharacters((prev) => applyPlayAs(prev, nextId));
   }
 
   protected onScenarioSelect(value: string): void {

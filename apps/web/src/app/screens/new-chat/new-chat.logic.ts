@@ -81,53 +81,29 @@ export function sortRoster(characters: CharacterListItem[]): CharacterListItem[]
 }
 
 /**
- * The in-place Play-As transition (v4 `NewChatForm.handlePlayAsChange`). Marks
- * one cast member as the user's persona; reverts the prior one — a default-user
- * persona pulled in by the dropdown is REMOVED, a default-LLM character that was
- * flipped is handed back to the LLM with its profile CLEARED (so the submit
- * guard asks again). `nextId === ''` = "Chat as yourself".
+ * The in-place Play-As transition (v4 `e2eb3d21` `NewChatForm.handlePlayAsChange`).
+ * Marks one cast member as the user's persona. Every option now comes from the
+ * cast (default-user personas enter the cast via the picker on the left), so
+ * there is nothing to pull in or remove: any prior user entry is handed back to
+ * the LLM in place with its profile CLEARED (matching the per-character profile
+ * select, so the submit guard asks again), and the chosen id — if any — is
+ * flipped to `user`. `nextId === ''` = "Chat as yourself".
  */
 export function applyPlayAs(
   prev: NewChatSelectedCharacter[],
   nextId: string,
-  userControlledCharacters: { id: string }[],
 ): NewChatSelectedCharacter[] {
-  const defaultUserIds = new Set(userControlledCharacters.map((c) => c.id));
-  let next = prev;
-  const current = prev.find((sc) => sc.controlledBy === 'user');
-  if (current) {
-    if (defaultUserIds.has(current.character.id)) {
-      next = prev.filter((sc) => sc.character.id !== current.character.id);
-    } else {
-      next = prev.map((sc) =>
-        sc.character.id === current.character.id
-          ? { ...sc, controlledBy: 'llm' as const, connectionProfileId: '' }
-          : sc,
-      );
-    }
-  }
-  if (nextId === '') return next; // "Chat as yourself"
-  if (next.some((sc) => sc.character.id === nextId)) {
-    return next.map((sc) =>
-      sc.character.id === nextId
-        ? { ...sc, controlledBy: 'user' as const, connectionProfileId: '' }
-        : sc,
-    );
-  }
-  const fromDefault = userControlledCharacters.find((c) => c.id === nextId) as
-    CharacterListItem | undefined;
-  if (fromDefault) {
-    return [
-      ...next,
-      {
-        character: fromDefault,
-        connectionProfileId: '',
-        selectedSystemPromptId: null,
-        controlledBy: 'user',
-      },
-    ];
-  }
-  return next;
+  const reverted = prev.map((sc) =>
+    sc.controlledBy === 'user'
+      ? { ...sc, controlledBy: 'llm' as const, connectionProfileId: '' }
+      : sc,
+  );
+  if (nextId === '') return reverted; // "Chat as yourself"
+  return reverted.map((sc) =>
+    sc.character.id === nextId
+      ? { ...sc, controlledBy: 'user' as const, connectionProfileId: '' }
+      : sc,
+  );
 }
 
 /**

@@ -26750,3 +26750,21 @@ sends null — default `false` — but optional in TS so pre-server-lane respons
 read defensively). Verify: `choose-outfit-card.spec.ts` (5 cases: reflects the
 input, disabled while loading, PUTs on toggle, inline error) + `wardrobe-tab.spec.ts`
 (checkbox reflects input) green; detail + edit screen specs green (20).
+
+**Unit 2 — the New-Chat picker re-port (v4 `e2eb3d21`).** Three predicates:
+(1) the Select Characters list now shows the FULL roster — `new-chat.state.ts`
+`load()` sets `loadedCharacters = all` (was `all.filter(c => c.controlledBy !== 'user')`),
+so default-user personas appear in the picker and sort to the top via the
+existing `sortRoster`; (2) the Play-As dropdown is CAST-ONLY —
+`new-chat-form.ts` `playAsOptions` drops the `fromDefaults` union and maps the
+cast (the shared `duplicateUserNames`/`formatName` still disambiguate over the
+user roster, matching v4's `formatCharacterName`); (3) the Play-As transition is
+a BLANKET revert — `new-chat.logic.ts` `applyPlayAs` reverts every
+`controlledBy==='user'` entry to `llm` (profile cleared, kept in the cast) then
+flips the chosen id to `user`; the `userControlledCharacters` param is gone
+(nothing to pull in or remove). Specs match v4's post-drift `NewChatForm.test.tsx`:
+`new-chat.logic.spec.ts` drops the deleted "adds a default-user character" case,
+changes "removes a default-user persona" → "reverts a default-user cast member
+to llm, keeping it" (`toHaveLength(2)`), and drops the 3rd arg from every call;
+`new-chat-form.spec.ts` asserts the dropdown is `['Chat as yourself', 'Alice']`
+(Bob absent). `ng test` targeted green (31); `ng build` clean.

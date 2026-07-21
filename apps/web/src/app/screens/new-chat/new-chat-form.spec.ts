@@ -135,7 +135,7 @@ describe('NewChatForm scenario layering', () => {
 });
 
 describe('NewChatForm Play As dropdown', () => {
-  it('lists cast characters and default-user characters', () => {
+  it('lists only cast characters (v4 e2eb3d21)', () => {
     const state = makeState();
     const alice = char('a', 'Alice');
     const bob = char('b', 'Bob', { controlledBy: 'user' });
@@ -145,12 +145,14 @@ describe('NewChatForm Play As dropdown', () => {
       controlledBy: 'llm',
     };
     state.selectedCharacters.set([cast]);
+    // Bob is a default-user character but NOT in the cast, so he is absent from
+    // the dropdown — he would be added via the picker on the left instead.
     state.userControlledCharacters.set([bob]);
     const fixture = render(state);
     const select = (fixture.nativeElement as HTMLElement).querySelector('#new-chat-partner');
     const options = Array.from(select?.querySelectorAll('option') ?? []).map((o) =>
       o.textContent?.trim(),
     );
-    expect(options).toEqual(['Chat as yourself', 'Alice', 'Bob']);
+    expect(options).toEqual(['Chat as yourself', 'Alice']);
   });
 });

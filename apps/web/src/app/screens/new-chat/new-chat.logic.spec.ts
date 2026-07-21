@@ -75,10 +75,10 @@ describe('generateTitle', () => {
   });
 });
 
-describe('applyPlayAs (in-place, v4 NewChatForm.test.tsx:230-326)', () => {
+describe('applyPlayAs (in-place, v4 e2eb3d21 NewChatForm.test.tsx)', () => {
   it('flips exactly the chosen cast character to user, leaving the rest LLM', () => {
     const cast = [llm(char('a', 'Alice')), llm(char('c', 'Carol'))];
-    const next = applyPlayAs(cast, 'a', []);
+    const next = applyPlayAs(cast, 'a');
     const a = next.find((sc) => sc.character.id === 'a')!;
     const c = next.find((sc) => sc.character.id === 'c')!;
     expect(a.controlledBy).toBe('user');
@@ -88,38 +88,38 @@ describe('applyPlayAs (in-place, v4 NewChatForm.test.tsx:230-326)', () => {
   });
 
   it('"Chat as yourself" reverts a flipped default-LLM character to llm with no profile', () => {
-    const cast = [user(char('a', 'Alice'))]; // default-LLM, currently user, NOT in the user roster
-    const next = applyPlayAs(cast, '', []);
+    const cast = [user(char('a', 'Alice'))]; // default-LLM, currently the user persona
+    const next = applyPlayAs(cast, '');
     expect(next).toHaveLength(1);
     expect(next[0].controlledBy).toBe('llm');
     expect(next[0].connectionProfileId).toBe('');
   });
 
-  it('"Chat as yourself" removes a default-user persona pulled in by the dropdown', () => {
+  it('"Chat as yourself" reverts a default-user cast member to llm, keeping it in the cast', () => {
+    // Bob is a default-user character added to the cast and currently the persona.
+    // Reverting hands him back to the LLM IN PLACE (he stays in the cast) rather
+    // than being removed (v4 e2eb3d21 changed this behavior).
     const alice = char('a', 'Alice');
     const bob = char('b', 'Bob', { controlledBy: 'user' });
-    const next = applyPlayAs([llm(alice), user(bob)], '', [bob]);
-    expect(next).toEqual([llm(alice)]);
-  });
-
-  it('adds a default-user character not yet in the cast as a user entry', () => {
-    const alice = char('a', 'Alice');
-    const bob = char('b', 'Bob', { controlledBy: 'user' });
-    const next = applyPlayAs([llm(alice)], 'b', [bob]);
+    const next = applyPlayAs([llm(alice), user(bob)], '');
     expect(next).toHaveLength(2);
-    const added = next.find((sc) => sc.character.id === 'b')!;
-    expect(added.controlledBy).toBe('user');
-    expect(added.connectionProfileId).toBe('');
+    const b = next.find((sc) => sc.character.id === 'b')!;
+    expect(b.controlledBy).toBe('llm');
+    expect(b.connectionProfileId).toBe('');
   });
 
-  it('reverting a default-user then choosing another swaps in place', () => {
+  it('swapping the persona to another cast member removes no one (blanket revert)', () => {
     const alice = char('a', 'Alice');
     const bob = char('b', 'Bob', { controlledBy: 'user' });
-    // bob is the current user (a default-user), pick alice → bob removed, alice becomes user
-    const next = applyPlayAs([llm(alice), user(bob)], 'a', [bob]);
-    expect(next).toHaveLength(1);
-    expect(next[0].character.id).toBe('a');
-    expect(next[0].controlledBy).toBe('user');
+    // Bob is the current user; picking Alice reverts Bob to llm (kept) and flips Alice to user.
+    const next = applyPlayAs([llm(alice), user(bob)], 'a');
+    expect(next).toHaveLength(2);
+    const a = next.find((sc) => sc.character.id === 'a')!;
+    const b = next.find((sc) => sc.character.id === 'b')!;
+    expect(a.controlledBy).toBe('user');
+    expect(a.connectionProfileId).toBe('');
+    expect(b.controlledBy).toBe('llm');
+    expect(b.connectionProfileId).toBe('');
   });
 });
 

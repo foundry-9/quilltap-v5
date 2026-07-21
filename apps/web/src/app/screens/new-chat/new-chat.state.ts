@@ -147,7 +147,11 @@ export class NewChatState {
       ]);
 
       const all = (charsData['characters'] as CharacterListItem[]) ?? [];
-      const loadedCharacters = all.filter((c) => c.controlledBy !== 'user');
+      // v4 `e2eb3d21`: the picker on the left lists EVERY character — including
+      // default-user personas (previously filtered out) — so they enter the cast
+      // the same way as anyone else and can then be chosen in the Play-As dropdown.
+      const loadedCharacters = all;
+      // Still tracked separately for partner/persona seeding paths (no longer feeds Play As).
       const loadedUserChars = all.filter((c) => c.controlledBy === 'user');
       const loadedProfiles = profilesList.data.profiles.map((p) => ({
         id: p.id,
