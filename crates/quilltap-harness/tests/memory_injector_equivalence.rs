@@ -48,6 +48,11 @@ struct WireMem {
     reinforcement_count: Option<u64>,
     #[serde(rename = "graphDegree")]
     graph_degree: usize,
+    // Episodic spine (v4 8bf3cb5f) — absent in older specs → defaults.
+    #[serde(rename = "kindEpisodic", default)]
+    kind_episodic: bool,
+    #[serde(rename = "occurredAtMs", default)]
+    occurred_at_ms: Option<f64>,
 }
 
 impl WireMem {
@@ -65,6 +70,8 @@ impl WireMem {
             last_accessed_at_ms: self.last_accessed_at_ms,
             reinforcement_count: self.reinforcement_count,
             graph_degree: self.graph_degree,
+            kind_episodic: self.kind_episodic,
+            occurred_at_ms: self.occurred_at_ms,
         }
     }
 }

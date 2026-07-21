@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use quilltap_core::memory_weighting::{
-    calculate_effective_weight, calculate_protection_score, DEFAULT_PROTECTION_CONFIG,
-    DEFAULT_WEIGHTING_CONFIG,
+    calculate_effective_weight, calculate_protection_score, format_relative_age,
+    DEFAULT_PROTECTION_CONFIG, DEFAULT_WEIGHTING_CONFIG,
 };
 use quilltap_harness::{corpus, NOW_MS};
 use serde::Deserialize;
@@ -30,6 +30,8 @@ struct OracleRow {
     id: String,
     weight: OracleWeight,
     protection: OracleProtection,
+    /// Episodic spine: the event-clock age label.
+    age: String,
 }
 #[derive(Deserialize)]
 struct OracleWeight {
@@ -57,6 +59,8 @@ struct OracleProtection {
     graph_degree_bonus: f64,
     #[serde(rename = "recentAccessBonus")]
     recent_access_bonus: f64,
+    #[serde(rename = "episodicBonus")]
+    episodic_bonus: f64,
     #[serde(rename = "daysSinceRefTime")]
     days_since_ref_time: f64,
 }
@@ -161,6 +165,20 @@ fn rust_matches_oracle_field_for_field() {
             o.protection.recent_access_bonus,
             id,
             "protection.recentAccessBonus",
+        );
+        close(
+            p.episodic_bonus,
+            o.protection.episodic_bonus,
+            id,
+            "protection.episodicBonus",
+        );
+
+        // Episodic spine: the event-clock age label, exact-string.
+        let age = format_relative_age(&m, NOW_MS);
+        assert_eq!(
+            age, o.age,
+            "DIVERGENCE in case '{id}', field 'age': rust={age:?} oracle={:?}",
+            o.age
         );
         close(
             p.days_since_ref_time,

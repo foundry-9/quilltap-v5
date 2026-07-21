@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Ported the memory-weighting episodic deltas (P4.d12 unit 5): the
+episodicBonus protection term (0.10 for kind:'episodic' rows, folded
+into the clamped protection score) and the event-clock age label
+(formatRelativeAge prefers occurredAt over the write/reinforce clock;
+decay deliberately stays on the write clock). MemoryInputs carries the
+two new fields through all seven construction sites. The weighting
+differential grew 10 -> 17 cases (regenerated at v4 8bf3cb5f) and
+ranking-blend was re-proven inert over a fresh oracle.
+
 Ported the episodic pure module (P4.d12 unit 4): buildMemoryAnchorLine,
 buildMemoryEmbeddingText, resolveWhenPhrase (ported but unwired — round
 3's extraction is its only caller), and eventReferenceTimeMs, with a

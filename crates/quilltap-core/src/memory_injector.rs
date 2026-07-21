@@ -158,6 +158,11 @@ pub struct InjectorMemory {
     pub last_accessed_at_ms: Option<f64>,
     pub reinforcement_count: Option<u64>,
     pub graph_degree: usize,
+    /// Episodic spine (v4 8bf3cb5f): `memory.kind === 'episodic'`.
+    pub kind_episodic: bool,
+    /// Pre-parsed event time (build via [`crate::episodic::event_time_ms`]) —
+    /// the age labels read this clock when present.
+    pub occurred_at_ms: Option<f64>,
 }
 
 impl InjectorMemory {
@@ -170,6 +175,8 @@ impl InjectorMemory {
             last_accessed_at_ms: self.last_accessed_at_ms,
             reinforcement_count: self.reinforcement_count,
             graph_degree: self.graph_degree,
+            kind_episodic: self.kind_episodic,
+            occurred_at_ms: self.occurred_at_ms,
         }
     }
 

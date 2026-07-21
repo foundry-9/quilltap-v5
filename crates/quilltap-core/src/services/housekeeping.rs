@@ -166,6 +166,11 @@ fn parse_mem(v: &Value) -> Mem {
             last_accessed_at_ms,
             reinforcement_count: num_of("reinforcementCount").map(|c| c as u64),
             graph_degree,
+            // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
+            kind_episodic: v.get("kind").and_then(Value::as_str) == Some("episodic"),
+            occurred_at_ms: crate::episodic::event_time_ms(
+                v.get("occurredAt").and_then(Value::as_str),
+            ),
         },
         last_accessed_at_ms,
     }

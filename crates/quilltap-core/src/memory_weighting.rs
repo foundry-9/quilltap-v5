@@ -38,6 +38,14 @@ pub struct ProtectionConfig {
     pub recent_access_bonus: f64,
     pub recent_access_window_days: f64,
     pub max_content_contribution: f64,
+    /// Additive bonus for `kind: 'episodic'` rows. Default: 0.10. Episodic
+    /// memories carry the exact statistical profile housekeeping deletes first
+    /// (low importance, low reinforcement, low graph degree) yet are the
+    /// hardest to regenerate — a one-off visit never recurs to be
+    /// re-extracted. The vault Timeline is the durable backstop, but the
+    /// memory ROW is what per-turn retrieval actually hits, so it should be
+    /// the last to go. (v4 8bf3cb5f.)
+    pub episodic_bonus: f64,
 }
 
 pub const DEFAULT_PROTECTION_CONFIG: ProtectionConfig = ProtectionConfig {
@@ -50,6 +58,7 @@ pub const DEFAULT_PROTECTION_CONFIG: ProtectionConfig = ProtectionConfig {
     recent_access_bonus: 0.10,
     recent_access_window_days: 90.0,
     max_content_contribution: 0.40,
+    episodic_bonus: 0.10,
 };
 
 /// The subset of a Memory the scoring functions read. Times are epoch millis
@@ -63,6 +72,12 @@ pub struct MemoryInputs {
     pub last_accessed_at_ms: Option<f64>,
     pub reinforcement_count: Option<u64>,
     pub graph_degree: usize, // relatedMemoryIds.length
+    /// Episodic spine (v4 8bf3cb5f): `memory.kind === 'episodic'`.
+    pub kind_episodic: bool,
+    /// Pre-parsed event time — `Some` only when `occurredAt` is present,
+    /// non-empty, and parsable (build via [`crate::episodic::event_time_ms`]);
+    /// mirrors v4's `eventReferenceTimeMs(occurredAt, …)` fallback contract.
+    pub occurred_at_ms: Option<f64>,
 }
 
 pub struct EffectiveWeight {
@@ -103,6 +118,7 @@ pub struct ProtectionScore {
     pub reinforcement_bonus: f64,
     pub graph_degree_bonus: f64,
     pub recent_access_bonus: f64,
+    pub episodic_bonus: f64,
     pub days_since_ref_time: f64,
 }
 
@@ -138,8 +154,21 @@ pub fn calculate_protection_score(
         }
     }
 
-    let score = 1.0_f64
-        .min(content_component + reinforcement_bonus + graph_degree_bonus + recent_access_bonus);
+    // Episodic protection bump: one-off dated occurrences are the first thing
+    // the retention rules would otherwise delete and the hardest to regenerate.
+    let episodic_bonus = if m.kind_episodic {
+        cfg.episodic_bonus
+    } else {
+        0.0
+    };
+
+    let score = 1.0_f64.min(
+        content_component
+            + reinforcement_bonus
+            + graph_degree_bonus
+            + recent_access_bonus
+            + episodic_bonus,
+    );
 
     ProtectionScore {
         score,
@@ -147,6 +176,7 @@ pub fn calculate_protection_score(
         reinforcement_bonus,
         graph_degree_bonus,
         recent_access_bonus,
+        episodic_bonus,
         days_since_ref_time,
     }
 }
@@ -183,9 +213,16 @@ pub fn default_min_cosine_for_provider(provider: Option<&str>) -> f64 {
 /// boundaries and `Math.floor` semantics match the TS exactly (note JS
 /// `Math.floor` on a non-negative f64 == Rust `.floor()`; the year branch
 /// pluralizes only when floor(years) > 1).
+///
+/// Episodic spine (v4 8bf3cb5f): the label reads off the EVENT clock —
+/// `occurredAt` when present, else the write/reinforce clock — so "last week"
+/// means when it happened, not when it was written down. Decay (above)
+/// deliberately stays on the write clock; only the human-facing age label
+/// follows the event.
 pub fn format_relative_age(m: &MemoryInputs, now_ms: f64) -> String {
     let reinforced = m.last_reinforced_at_ms.unwrap_or(0.0);
-    let reference = m.created_at_ms.max(reinforced);
+    let write_reference = m.created_at_ms.max(reinforced);
+    let reference = m.occurred_at_ms.unwrap_or(write_reference);
     let days_old = ((now_ms - reference) / MS_PER_DAY).max(0.0);
 
     if days_old < 1.0 {

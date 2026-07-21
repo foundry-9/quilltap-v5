@@ -64,6 +64,8 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
         last_accessed_at_ms: last_accessed.map(iso_to_ms),
         reinforcement_count,
         graph_degree,
+        kind_episodic: false,
+        occurred_at_ms: None,
     };
 
     vec![
@@ -146,6 +148,67 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
         (
             "content-cap",
             m(1.0, None, "2026-06-27T06:00:00.000Z", None, None, None, 0),
+        ),
+        // ── Episodic spine (v4 8bf3cb5f) — mirrors the TS corpus additions ──
+        (
+            "episodic-old-low",
+            MemoryInputs {
+                kind_episodic: true,
+                ..m(0.2, None, "2025-09-01T00:00:00.000Z", None, None, None, 0)
+            },
+        ),
+        (
+            "episodic-clamp",
+            MemoryInputs {
+                kind_episodic: true,
+                ..m(
+                    1.0,
+                    None,
+                    "2026-06-27T00:00:00.000Z",
+                    None,
+                    Some("2026-06-26T00:00:00.000Z"),
+                    Some(64),
+                    4,
+                )
+            },
+        ),
+        (
+            "semantic-explicit",
+            m(0.5, None, "2026-06-01T00:00:00.000Z", None, None, None, 0),
+        ),
+        (
+            "event-clock-age",
+            MemoryInputs {
+                kind_episodic: true,
+                occurred_at_ms: Some(iso_to_ms("2026-05-20T00:00:00.000Z")),
+                ..m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0)
+            },
+        ),
+        (
+            "event-clock-age-reinforced",
+            MemoryInputs {
+                kind_episodic: true,
+                occurred_at_ms: Some(iso_to_ms("2025-11-02T00:00:00.000Z")),
+                ..m(
+                    0.5,
+                    None,
+                    "2026-01-10T00:00:00.000Z",
+                    Some("2026-06-25T00:00:00.000Z"),
+                    None,
+                    None,
+                    0,
+                )
+            },
+        ),
+        // occurredAt 'not-a-date' / '' → unparsable/falsy → the write clock
+        // (`event_time_ms` yields None on both, matching v4's NaN fallback).
+        (
+            "event-clock-unparsable",
+            m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0),
+        ),
+        (
+            "event-clock-empty",
+            m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0),
         ),
     ]
 }

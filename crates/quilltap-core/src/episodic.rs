@@ -367,14 +367,19 @@ pub fn resolve_when_phrase(phrase: Option<&str>, anchor_iso: &str) -> Option<Str
 /// EMPTY string skips the parse (whitespace-only is truthy, parses to NaN, and
 /// falls back through the finiteness check).
 pub fn event_reference_time_ms(occurred_at: Option<&str>, write_clock_ms: f64) -> f64 {
-    if let Some(s) = occurred_at {
-        if !s.is_empty() {
-            if let Some(parsed) = js_date_parse_ms(s) {
-                return parsed as f64;
-            }
-        }
+    event_time_ms(occurred_at).unwrap_or(write_clock_ms)
+}
+
+/// The Option form of [`event_reference_time_ms`] for constructors that carry
+/// the event time as a pre-parsed field (`MemoryInputs::occurred_at_ms`):
+/// `Some(ms)` only when `occurredAt` is present, non-empty (JS truthiness),
+/// and parsable — exactly the cases where v4's event clock takes over.
+pub fn event_time_ms(occurred_at: Option<&str>) -> Option<f64> {
+    let s = occurred_at?;
+    if s.is_empty() {
+        return None;
     }
-    write_clock_ms
+    js_date_parse_ms(s).map(|ms| ms as f64)
 }
 
 /// JS `new Date(ms).getUTCDay()` — 0 = Sunday.

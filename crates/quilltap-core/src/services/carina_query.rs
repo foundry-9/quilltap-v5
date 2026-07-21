@@ -1168,6 +1168,9 @@ fn injector_memory_from_json(v: &Value) -> crate::memory_injector::InjectorMemor
         last_accessed_at_ms: ms("lastAccessedAt"),
         reinforcement_count: f(v, "reinforcementCount").map(|n| n as u64),
         graph_degree: str_array(v, "relatedMemoryIds").len(),
+        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
+        kind_episodic: s(v, "kind").as_deref() == Some("episodic"),
+        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
     }
 }
 

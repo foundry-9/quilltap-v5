@@ -26489,3 +26489,36 @@ event-reference), ALL byte-equal on the first run against the oracle
 regenerated from v4 `8bf3cb5f` (`TZ=UTC npx tsx
 harness/oracle/cases/episodic.ts`, env `QT_ORACLE_EPISODIC`). Full
 workspace gate 361 binaries / 0 failed.
+
+### P4.d12 unit 5: memory-weighting `episodicBonus` + the event-clock age (2026-07-21)
+
+Core `0.0.301 → 0.0.302`, harness `0.0.259 → 0.0.260`.
+
+(Correction to the unit-4 record: `episodic::event_time_ms` — the
+Option form for pre-parsed constructors — lands HERE, not in unit 4;
+`event_reference_time_ms` now delegates to it.)
+
+**Landed:** `ProtectionConfig.episodic_bonus` (default 0.10, v4's
+why-comment carried), `ProtectionScore.episodic_bonus`,
+`calculate_protection_score` folds the bonus into the `min(1,·)` clamp;
+`format_relative_age` reads the EVENT clock
+(`occurred_at_ms.unwrap_or(write_reference)` — decay stays on the write
+clock, only the label follows the event, v4's comment carried).
+`MemoryInputs` gains `kind_episodic: bool` + `occurred_at_ms:
+Option<f64>`; ALL seven construction sites wired (housekeeping
+`parse_mem`, memory_service / memory_recap / frozen_archive
+`memory_inputs`, build_context + carina_query
+`injector_memory_from_json`, injector `InjectorMemory::weighting` —
+`InjectorMemory` carries the two fields, and the injector wire spec
+gained `kindEpisodic`/`occurredAtMs` with serde defaults).
+
+**Verified:** `memory_weighting_equivalence` 10 → 17 cases (episodic
+bonus fires + clamps, explicit-semantic zero, event-clock age incl. the
+reinforced-row case where the label follows occurredAt while decay
+follows the reinforce clock, unparsable/empty occurredAt fallbacks) —
+green over the oracle regenerated from v4 `8bf3cb5f` with the per-row
+`age` + `protection.episodicBonus` fields added to the case's emit.
+`ranking_blend_equivalence` re-run green over a FRESH `8bf3cb5f` oracle
+as an inertness proof (the order's leave-list entry, confirmed
+empirically — its corpus has no occurredAt rows). Full workspace gate
+361 binaries / 0 failed.

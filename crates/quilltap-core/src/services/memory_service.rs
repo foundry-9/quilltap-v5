@@ -693,6 +693,9 @@ fn memory_inputs(v: &Value) -> MemoryInputs {
             .and_then(Value::as_array)
             .map(|a| a.len())
             .unwrap_or(0),
+        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
+        kind_episodic: v.get("kind").and_then(Value::as_str) == Some("episodic"),
+        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
     }
 }
 

@@ -29,6 +29,7 @@
 import {
   calculateEffectiveWeight,
   calculateProtectionScore,
+  formatRelativeAge,
   DEFAULT_WEIGHTING_CONFIG,
   DEFAULT_PROTECTION_CONFIG,
 } from '@/lib/memory/memory-weighting';
@@ -74,6 +75,33 @@ const CORPUS = [
       importance: 0.0, createdAt: '2026-06-01T00:00:00.000Z' }) },
   { id: 'content-cap', m: mem({
       importance: 1.0, createdAt: '2026-06-27T06:00:00.000Z' }) }, // content cap 0.40
+  // ── Episodic spine (v4 8bf3cb5f): the kind bonus + the event-clock age ──
+  { id: 'episodic-old-low', m: mem({
+      importance: 0.2, createdAt: '2025-09-01T00:00:00.000Z',
+      kind: 'episodic' }) }, // the exact delete-first profile the bonus protects
+  { id: 'episodic-clamp', m: mem({
+      importance: 1.0, createdAt: '2026-06-27T00:00:00.000Z',
+      reinforcementCount: 64, relatedMemoryIds: ['a','b','c','d'],
+      lastAccessedAt: '2026-06-26T00:00:00.000Z',
+      kind: 'episodic' }) }, // bonus present but min(1,·) clamps
+  { id: 'semantic-explicit', m: mem({
+      importance: 0.5, createdAt: '2026-06-01T00:00:00.000Z',
+      kind: 'semantic' }) }, // explicit semantic → bonus 0
+  { id: 'event-clock-age', m: mem({
+      importance: 0.5, createdAt: '2026-06-25T00:00:00.000Z',
+      occurredAt: '2026-05-20T00:00:00.000Z', kind: 'episodic' }) },
+      // age reads the EVENT clock; decay stays on the write clock
+  { id: 'event-clock-age-reinforced', m: mem({
+      importance: 0.5, createdAt: '2026-01-10T00:00:00.000Z',
+      lastReinforcedAt: '2026-06-25T00:00:00.000Z',
+      occurredAt: '2025-11-02T00:00:00.000Z', kind: 'episodic' }) },
+      // reinforce bumps decay reference; the LABEL still follows occurredAt
+  { id: 'event-clock-unparsable', m: mem({
+      importance: 0.5, createdAt: '2026-06-25T00:00:00.000Z',
+      occurredAt: 'not-a-date' }) }, // NaN → falls back to the write clock
+  { id: 'event-clock-empty', m: mem({
+      importance: 0.5, createdAt: '2026-06-25T00:00:00.000Z',
+      occurredAt: '' }) }, // falsy → write clock
 ];
 
 for (const { id, m } of CORPUS) {
@@ -95,8 +123,12 @@ for (const { id, m } of CORPUS) {
       reinforcementBonus: p.reinforcementBonus,
       graphDegreeBonus: p.graphDegreeBonus,
       recentAccessBonus: p.recentAccessBonus,
+      episodicBonus: p.episodicBonus,
       daysSinceRefTime: p.daysSinceRefTime,
     },
+    // Episodic spine: the human-facing age label (event clock — occurredAt
+    // when present/parsable, else the write/reinforce clock).
+    age: formatRelativeAge(m, NOW),
   };
   process.stdout.write(JSON.stringify(row) + '\n');
 }
