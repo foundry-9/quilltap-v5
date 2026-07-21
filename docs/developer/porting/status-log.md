@@ -25789,3 +25789,34 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
   `WireTransport` (the W4.7f stub-provider flavor — full build→parse→extract→
   transcode path, only the socket canned). engine.rs unchanged this unit (the
   fmt fix to unit 2's field wrap was folded back into unit 2).
+
+- **Tier 2 item 6 — the canned-renderer wardrobe differential (re-verified, no
+  code change).** The `wardrobe_routes_equivalence` canned-renderer arm
+  (`CannedRenderer` replaying the oracle's `pv_ok_bytes` post-transcode buffer)
+  already landed at P4.9f1 — this lane's `HostAvatarPreviewRenderer` is NOT the
+  one the differential drives (the model boundary stays canned; S5). Since the
+  renderer contract is frozen and this lane changed nothing in that family, tier
+  2's obligation was to prove it still passes at the moved baseline: regenerated
+  the oracle at v4 `7e6d13e5` (73 rows / 66 cases, directly from the clean v4
+  HEAD) and re-ran BY NAME — **74 checks green, zero SKIP** (`QT_ORACLE_WARDROBE_
+  ROUTES=/tmp/oracle-wardrobe-routes.ndjson cargo test -p quilltap-web --test
+  wardrobe_routes_equivalence`). That confirms the wardrobe route family is
+  behavior-neutral across the 616930db→7e6d13e5 gap. Updated the oracle's stale
+  regen-recipe comment (pin `616930db` → baseline `7e6d13e5`, regen from a clean
+  `~/source/quilltap-server`). No crate version bump (only an oracle `.test.ts`
+  comment changed).
+
+  Regen recipe (Node 24; jest ignores `.claude/` paths → /tmp mirror):
+  ```
+  N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+  TMPO=/tmp/qt-wroutes-oracle
+  rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp "$V5W/harness/oracle/cases/wardrobe-routes.test.ts" "$TMPO/cases/"
+  cp "$V5W/harness/oracle/fixtures/wardrobe-routes.json" "$TMPO/fixtures/"
+  cd ~/source/quilltap-server
+  QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db \
+  QT_FIXTURE_WROUTES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-wardrobe-routes.ndjson \
+    $N/npx jest --silent --watchman=false --testTimeout=240000 \
+      --roots "$PWD" --roots "$TMPO/cases" -- wardrobe-routes
+  ```

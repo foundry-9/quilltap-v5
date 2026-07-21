@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Codec round lane BF tier 2: re-verified the canned-renderer wardrobe-routes
+differential (`wardrobe_routes_equivalence`) — the arm already landed at
+P4.9f1. Regenerated its oracle at the current baseline 7e6d13e5 (73 rows / 66
+cases); the Rust diff is 74 checks green, zero SKIP — proving the wardrobe
+route family is behavior-neutral across the 616930db→7e6d13e5 gap. Updated the
+oracle's stale regen-recipe comment (pin 616930db → baseline 7e6d13e5,
+regenerated directly from a clean v4 HEAD).
+
 Codec round lane BF unit 3: the avatar-preview render seam is now LIVE. Added
 `HostAvatarPreviewRenderer` (quilltap-host) implementing the core's
 `AvatarPreviewRenderer` — one raw portrait provider call ({prompt, model, n:1,
