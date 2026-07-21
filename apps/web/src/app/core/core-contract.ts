@@ -3749,7 +3749,27 @@ export type MemoryRequest =
   | WardrobeItemGetRequest
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
-  | WardrobePreviewAvatarRequest;
+  | WardrobePreviewAvatarRequest
+  // P4.9J4 (folded at the workspace-tabs remainder round's unification): the
+  // standalone (chat-less) Document Mode surface — names pinned against
+  // `api/types.rs` (the §W.3 wire diff).
+  | DocumentStoresRequest
+  | DocumentsRecentRequest
+  | DocumentOpenRequest
+  | DocumentReadRequest
+  | DocumentWriteRequest
+  | DocumentRenameRequest
+  | DocumentDeleteRequest
+  // P4.9I1B (folded at the same unification; §B of that round pins every name
+  // and payload): the Brahma Console dispatch family.
+  | BrahmaConsoleListRequest
+  | BrahmaConsoleCreateRequest
+  | BrahmaConsoleGetRequest
+  | BrahmaConsoleRenameRequest
+  | BrahmaConsoleSetModelRequest
+  | BrahmaConsoleDeleteRequest
+  | BrahmaConsoleMessagesRequest
+  | BrahmaConsoleSendRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3789,8 +3809,9 @@ export interface ChatDetail extends ChatTerminalPaneState {}
 //
 // The standalone/workspace-tab document surface (`documentStores`,
 // `documentsRecent`, `documentOpen`, and the standalone read/write/rename/
-// delete variants) is a LOUD tier-3 deferral this round (it awaits a v5
-// workspace decision), so those variants are intentionally NOT declared here.
+// delete variants) was a LOUD tier-3 deferral of that round; it landed with
+// P4.9J4 (the workspace-tabs remainder round) — its request types are folded
+// in below, after the chat-scoped family.
 // ===========================================================================
 
 /** A document's scope triple selector (v4 `DocEditScope`). */
@@ -3894,6 +3915,146 @@ export interface ChatDocumentDeleteRequest {
 export interface MountFilesListRequest {
   type: 'mountFilesList';
   mountPointId: string;
+}
+
+// ===========================================================================
+// P4.9J4 (folded at the workspace-tabs remainder round's unification) — the
+// standalone (chat-less) Document Mode request family. Names pinned against
+// `api/types.rs` (`DocumentStores`…`DocumentDelete`); the field shapes mirror
+// v4's standalone `app/api/v1/documents/route.ts` handlers, which the P4.6w
+// differentials pin server-side.
+// ===========================================================================
+
+/** The standalone scope enum (v4 `openDocumentSchema` — NO `project`). */
+export type StandaloneScope = 'document_store' | 'general';
+
+/** v4 standalone `accessible-stores` — `{ stores, projectLibrary: null }`. */
+export interface DocumentStoresRequest {
+  type: 'documentStores';
+}
+
+/** v4 standalone `recent-documents` — `{ documents }` (project-scope filtered). */
+export interface DocumentsRecentRequest {
+  type: 'documentsRecent';
+}
+
+/** v4 standalone `open-document` — `{ document, content, mtime, isNew }`. */
+export interface DocumentOpenRequest {
+  type: 'documentOpen';
+  /** Omit for a new blank document (the server mints an "Untitled Document.md"). */
+  filePath?: string;
+  title?: string;
+  /** Default 'general' (server-side). */
+  scope: StandaloneScope;
+  mountPoint?: string;
+  /** For new blank docs, the folder (relative to scope root) to create inside. */
+  targetFolder?: string;
+}
+
+/** v4 standalone `read-document` — `{ content, mtime }`. */
+export interface DocumentReadRequest {
+  type: 'documentRead';
+  filePath: string;
+  scope: StandaloneScope;
+  mountPoint?: string;
+}
+
+/** v4 standalone `write-document` — `{ success, mtime }` (mtime-checked → 409). */
+export interface DocumentWriteRequest {
+  type: 'documentWrite';
+  filePath: string;
+  scope: StandaloneScope;
+  mountPoint?: string;
+  content: string;
+  mtime?: number;
+}
+
+/** v4 standalone `rename-document` — `{ document }`. */
+export interface DocumentRenameRequest {
+  type: 'documentRename';
+  filePath: string;
+  scope: StandaloneScope;
+  mountPoint?: string;
+  newTitle: string;
+}
+
+/** v4 standalone `delete-document` — `{ success }`. */
+export interface DocumentDeleteRequest {
+  type: 'documentDelete';
+  filePath: string;
+  scope: StandaloneScope;
+  mountPoint?: string;
+}
+
+// ===========================================================================
+// P4.9I1B (folded at the same unification) — the Brahma Console request
+// family (§B of the workspace-tabs remainder round pins every name and
+// payload; the P4.9I1A tier-2 differential is the arbiter of the response
+// bodies, which the console reads defensively via its own DTOs in
+// `brahma/brahma-wire.ts`).
+// ===========================================================================
+
+/** `GET /api/v1/brahma-console` — list the operator's Console chats. */
+export interface BrahmaConsoleListRequest {
+  type: 'brahmaConsoleList';
+}
+
+/**
+ * `POST /api/v1/brahma-console` — create a Console chat. The dispatch field is
+ * `consoleConnectionProfileId` (the DB column); omit it to start on the user's
+ * default profile (v4 `route.ts:73-85`).
+ */
+export interface BrahmaConsoleCreateRequest {
+  type: 'brahmaConsoleCreate';
+  consoleConnectionProfileId?: string;
+}
+
+/** `GET /api/v1/brahma-console/{id}` — the chat detail record. */
+export interface BrahmaConsoleGetRequest {
+  type: 'brahmaConsoleGet';
+  chatId: string;
+}
+
+/** `PATCH /api/v1/brahma-console/{id}` — rename (sets `isManuallyRenamed`). */
+export interface BrahmaConsoleRenameRequest {
+  type: 'brahmaConsoleRename';
+  chatId: string;
+  title: string;
+}
+
+/**
+ * `PATCH /api/v1/brahma-console/{id}?action=set-model` — switch the model; the
+ * same chat continues. The body field v4 reads is `connectionProfileId`
+ * (`[id]/route.ts:100`, `setModelSchema`).
+ */
+export interface BrahmaConsoleSetModelRequest {
+  type: 'brahmaConsoleSetModel';
+  chatId: string;
+  connectionProfileId: string;
+}
+
+/** `DELETE /api/v1/brahma-console/{id}`. */
+export interface BrahmaConsoleDeleteRequest {
+  type: 'brahmaConsoleDelete';
+  chatId: string;
+}
+
+/** `GET /api/v1/brahma-console/{id}/messages` — the persisted transcript. */
+export interface BrahmaConsoleMessagesRequest {
+  type: 'brahmaConsoleMessages';
+  chatId: string;
+}
+
+/**
+ * `POST /api/v1/brahma-console/{id}/messages` — send one message. The dispatch
+ * reply is the typed result of the run; the stream frames ride the global
+ * Event channel scope-tagged by `chatId` (v4 `BrahmaConsoleSendOptions`).
+ */
+export interface BrahmaConsoleSendRequest {
+  type: 'brahmaConsoleSend';
+  chatId: string;
+  content: string;
+  fileIds?: string[];
 }
 
 // --- Response DTOs (read defensively; only the consumed fields are typed) ---

@@ -8,13 +8,12 @@
  * engine already serves all seven (`api/types.rs:1565-1595`,
  * `api/documents.rs:1309-1721`, all `DocumentAccessContext::standalone()`).
  *
- * The seven `document*` request interfaces below are pinned NAME-FOR-NAME
- * against `crates/quilltap-core/src/api/types.rs:1565-1595` (the `Request` enum
+ * The seven `document*` request interfaces are pinned NAME-FOR-NAME against
+ * `crates/quilltap-core/src/api/types.rs:1565-1595` (the `Request` enum
  * `#[serde(tag = "type", rename_all = "camelCase")]`, each standalone variant a
- * `#[serde(flatten)] body: Value`). They are declared LANE-LOCALLY and dispatched
- * behind an `as unknown as CoreRequest` cast (the `file-manager-transport.ts` /
- * `home.api.ts` precedent) because `core-contract.ts` is frozen this round (§W.3);
- * the unifier folds them into the union and runs the name-for-name wire diff.
+ * `#[serde(flatten)] body: Value`). They were FOLDED into `core-contract.ts`
+ * at the workspace-tabs remainder round's unification (§W.3) and are
+ * re-exported below; the lane-era `as unknown as CoreRequest` casts are gone.
  *
  * @module documents/standalone-wire
  */
@@ -22,71 +21,33 @@
 import { inject, Injectable } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { AccessibleStoreDto, CoreRequest, RecentDocumentDto } from '../core/core-contract';
+import type {
+  AccessibleStoreDto,
+  DocumentDeleteRequest,
+  DocumentOpenRequest,
+  DocumentReadRequest,
+  DocumentRenameRequest,
+  DocumentStoresRequest,
+  DocumentWriteRequest,
+  DocumentsRecentRequest,
+  RecentDocumentDto,
+  StandaloneScope,
+} from '../core/core-contract';
 import type { MountFilesResult } from './document-api';
 
-/** The standalone scope enum (v4 `openDocumentSchema` — NO `project`). */
-export type StandaloneScope = 'document_store' | 'general';
-
-// --- Request types (name-for-name against api/types.rs:1565-1595) -----------
-
-/** v4 standalone `accessible-stores` — `{ stores, projectLibrary: null }`. */
-export interface DocumentStoresRequest {
-  type: 'documentStores';
-}
-
-/** v4 standalone `recent-documents` — `{ documents }` (project-scope filtered). */
-export interface DocumentsRecentRequest {
-  type: 'documentsRecent';
-}
-
-/** v4 standalone `open-document` — `{ document, content, mtime, isNew }`. */
-export interface DocumentOpenRequest {
-  type: 'documentOpen';
-  /** Omit for a new blank document (the server mints an "Untitled Document.md"). */
-  filePath?: string;
-  title?: string;
-  /** Default 'general' (server-side). */
-  scope: StandaloneScope;
-  mountPoint?: string;
-  /** For new blank docs, the folder (relative to scope root) to create inside. */
-  targetFolder?: string;
-}
-
-/** v4 standalone `read-document` — `{ content, mtime }`. */
-export interface DocumentReadRequest {
-  type: 'documentRead';
-  filePath: string;
-  scope: StandaloneScope;
-  mountPoint?: string;
-}
-
-/** v4 standalone `write-document` — `{ success, mtime }` (mtime-checked → 409). */
-export interface DocumentWriteRequest {
-  type: 'documentWrite';
-  filePath: string;
-  scope: StandaloneScope;
-  mountPoint?: string;
-  content: string;
-  mtime?: number;
-}
-
-/** v4 standalone `rename-document` — `{ document }`. */
-export interface DocumentRenameRequest {
-  type: 'documentRename';
-  filePath: string;
-  scope: StandaloneScope;
-  mountPoint?: string;
-  newTitle: string;
-}
-
-/** v4 standalone `delete-document` — `{ success }`. */
-export interface DocumentDeleteRequest {
-  type: 'documentDelete';
-  filePath: string;
-  scope: StandaloneScope;
-  mountPoint?: string;
-}
+// Request DTOs — FOLDED into `core-contract.ts` at the workspace-tabs
+// remainder round's unification (§W.3, name-for-name vs `api/types.rs`);
+// re-exported here so consumers and specs keep their import site.
+export type {
+  StandaloneScope,
+  DocumentStoresRequest,
+  DocumentsRecentRequest,
+  DocumentOpenRequest,
+  DocumentReadRequest,
+  DocumentWriteRequest,
+  DocumentRenameRequest,
+  DocumentDeleteRequest,
+} from '../core/core-contract';
 
 export type StandaloneDocumentRequest =
   | DocumentStoresRequest
@@ -152,9 +113,9 @@ export type StandaloneWriteOutcome =
 export class StandaloneDocumentApi {
   private readonly core = inject(CoreClient);
 
-  /** Dispatch a lane-local standalone request (cast at the one seam, §W.3). */
+  /** The seven verbs are `CoreRequest` variants (folded at unification). */
   private async data(request: StandaloneDocumentRequest): Promise<Record<string, unknown>> {
-    return this.core.dispatchData(request as unknown as CoreRequest);
+    return this.core.dispatchData(request);
   }
 
   /** v4 standalone `accessible-stores` — always look-everywhere, no projectLibrary. */
@@ -227,7 +188,7 @@ export class StandaloneDocumentApi {
       mountPoint: params.mountPoint ?? undefined,
       content: params.content,
       mtime: params.mtime,
-    } as unknown as CoreRequest);
+    });
 
     if (resp.type === 'error') {
       return isConflictError(resp.data.kind, resp.data.message)

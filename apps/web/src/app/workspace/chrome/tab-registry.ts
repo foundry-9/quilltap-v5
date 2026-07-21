@@ -12,16 +12,13 @@
  *    portal SOURCE.
  *  - **input-driven screen** — salon/settings/character-edit/character-view/
  *    custom-tools bind lane J2's §2 signal inputs from the tab payload
- *    (ACTIVATED at the p4.9j unification).
- *  - **loud not-yet-wired pane** — `wardrobe` (the `asTab` WardrobeView
- *    variant was ported by NEITHER p4.9j lane — the P4.9f2 "not ported"
- *    marker stands; a named p4.9j follow-up) and `document-standalone`
- *    (lane J2's tier-2 item 7, deferred whole — needs the file-scoped
- *    document surface) render `NotWiredPane`; `brahma` renders a permanent
- *    refusal pane naming `p4.9i1`.
+ *    (ACTIVATED at the p4.9j unification); wardrobe / document-standalone /
+ *    brahma joined at the workspace-tabs remainder round's unification
+ *    (P4.9J3 / P4.9J4 / P4.9I1B — all 22 kinds are now hosted; the loud
+ *    `NotWiredPane` refusal scaffold retired with its last consumer).
  *
  * The map is behind an injection token so the keep-alive spec can substitute a
- * counting stub, and so lane J2's screens can be swapped in at unification by
+ * counting stub, and so lane screens can be swapped in at unification by
  * editing one table.
  *
  * @module workspace/chrome/tab-registry
@@ -30,7 +27,6 @@
 import { InjectionToken, type Type } from '@angular/core';
 
 import type { TabKind, WorkspaceTab } from '../workspace-contract';
-import { NotWiredPane } from './not-wired-pane';
 import { TabPortalHost } from './tab-portal-host';
 
 // In-lane no-input screens.
@@ -57,9 +53,16 @@ import type {
   CharacterEditTabPayload,
   CharacterViewTabPayload,
   CustomToolsTabPayload,
+  DocumentStandaloneTabPayload,
   SalonTabPayload,
   SettingsTabPayload,
+  WardrobeTabPayload,
 } from '../workspace-contract';
+
+// The workspace-tabs remainder round's screens (bound at its unification).
+import { WardrobeTabView } from '../../wardrobe/wardrobe-control-dialog';
+import { StandaloneDocumentView } from '../../documents/standalone-document-view';
+import { BrahmaConsoleView } from '../../brahma/brahma-console-view';
 
 export interface TabViewEntry {
   component: Type<unknown>;
@@ -70,11 +73,6 @@ export interface TabViewEntry {
 export type TabRegistry = Record<TabKind, TabViewEntry>;
 
 export const TAB_VIEW_REGISTRY = new InjectionToken<TabRegistry>('quilltap.workspace.tabRegistry');
-
-/** ACTIVATE-AT-UNIFY / permanent-refusal entry: render the loud pane. */
-function refusal(kind: TabKind): TabViewEntry {
-  return { component: NotWiredPane, inputs: () => ({ kind }) };
-}
 
 export const DEFAULT_TAB_REGISTRY: TabRegistry = {
   // --- in-lane real screens (no inputs) ---
@@ -141,8 +139,16 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
     },
   },
 
-  // --- loud not-yet-wired panes (named deferrals) + permanent brahma refusal ---
-  wardrobe: refusal('wardrobe'),
-  'document-standalone': refusal('document-standalone'),
-  brahma: refusal('brahma'),
+  // --- the workspace-tabs remainder round (bound at its unification) ---
+  wardrobe: {
+    component: WardrobeTabView,
+    inputs: (tab) => ({
+      characterId: (tab.payload as WardrobeTabPayload | undefined)?.characterId,
+    }),
+  },
+  'document-standalone': {
+    component: StandaloneDocumentView,
+    inputs: (tab) => ({ payload: tab.payload as DocumentStandaloneTabPayload }),
+  },
+  brahma: { component: BrahmaConsoleView },
 };

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The workspace-tabs remainder round's unification wires (SPA 0.5.239):
+the tab registry swaps all three remaining kinds to their real screens
+(wardrobe → WardrobeTabView, document-standalone → StandaloneDocumentView,
+brahma → BrahmaConsoleView) and the NotWiredPane refusal scaffold is
+retired with its last consumer; the shell mounts the Brahma and Document
+Mode rail entries (v4 sidebar-footer order); the fifteen lane-local wire
+request types (eight brahmaConsole* + seven document* + StandaloneScope)
+fold into core-contract.ts — verified name-for-name against api/types.rs —
+and both lane casts are dropped; global-setup marks the mock connection
+profile isDefault (findDefault has no fallback; the brahma create beat
+needs it).
+
 P4.9I1A (the Brahma server lane) — extended the orchestrator's test
 coverage (Tier-2 item 5): the tier-3 `plain` arm now carries reasoning
 ("thinking") chunks, proving the live cumulative-reasoning frames + the

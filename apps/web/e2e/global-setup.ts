@@ -417,6 +417,16 @@ export default async function globalSetup(): Promise<void> {
     `UPDATE connection_profiles SET baseUrl = 'http://127.0.0.1:${MOCK_LLM_PORT}/v1' WHERE provider = 'OPENAI_COMPATIBLE';`,
   );
 
+  // Mark the mock profile as the user's default (the fixture ships isDefault=0
+  // everywhere): the Brahma Console create-with-no-profile beat resolves via
+  // repos.connections.findDefault, which has NO fallback — without a default it
+  // answers 400 (the P4.9I1B AT-UNIFY wire, workspace-tabs remainder round).
+  runCliWrite(
+    cli,
+    `UPDATE connection_profiles SET isDefault = 1 WHERE provider = 'OPENAI_COMPATIBLE' ` +
+      `AND NOT EXISTS (SELECT 1 FROM connection_profiles WHERE isDefault = 1);`,
+  );
+
   // Launch the real server (no env pepper → locked) serving the built SPA.
   const logFd = openSync(SERVER_LOG, 'w');
   const child = spawn(

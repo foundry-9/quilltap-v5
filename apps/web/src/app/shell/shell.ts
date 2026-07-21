@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/cor
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { AutonomousRoomBadges } from '../autonomous/autonomous-room-badges';
+import { BrahmaEntry } from '../brahma/brahma-entry';
 import { CoreClient } from '../core/core-client';
+import { DocumentsRailEntry } from '../documents/documents-rail-entry';
 import { FirstRunService } from '../startup/first-run.service';
 import { ThemeService } from '../theme/theme.service';
 import { ThemeSwitcher } from '../theme/theme-switcher';
@@ -94,6 +96,8 @@ const NAV_ITEMS: NavItem[] = [
     AutonomousRoomBadges,
     UserMenu,
     WardrobeControlDialog,
+    BrahmaEntry,
+    DocumentsRailEntry,
   ],
   template: `
     <div class="qt-app-layout">
@@ -133,6 +137,9 @@ const NAV_ITEMS: NavItem[] = [
           <div class="qt-left-sidebar-footer-actions">
             <!-- v4 sidebar-footer.tsx:309 — the profile dropdown. -->
             <qt-user-menu />
+            <!-- v4 sidebar-footer.tsx:213-226 — the Brahma Console entry
+                 (eligibility-gated; hosts its own floating dialog). -->
+            <qt-brahma-entry />
             <!-- v4 sidebar-footer.tsx:227-253 — the Wardrobe entry (above
                  Settings/Themes in v4's footer order). A salon chat path
                  passes its chat id + resolved default character along. -->
@@ -145,6 +152,9 @@ const NAV_ITEMS: NavItem[] = [
             >
               <qt-icon name="wardrobe" class="w-7 h-7" />
             </button>
+            <!-- v4 sidebar-footer.tsx:255-262 — the Document Mode entry
+                 (opens the standalone document picker). -->
+            <qt-documents-rail-entry />
             @if (showNavThemeSelector()) {
               <qt-theme-switcher />
             }
