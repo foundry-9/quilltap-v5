@@ -710,10 +710,27 @@ pub fn handle_grep(
                 continue;
             }
         }
-        if mp.mount_type != "database" {
-            continue; // FsSeam
-        }
         let blocked = get_character_blocked_read_paths(mount, &mp.id, ctx);
+        if mp.mount_type != "database" {
+            // Filesystem mount (v4 `text-handlers.ts:749`): recursively walk
+            // `mp.basePath` off disk. `make_uri` mirrors the DB branch's
+            // `uriForMount(mp.name, mp.id, rel)`.
+            let make_uri = |rel: &str| resolver.uri_for_mount(&mp.name, &mp.id, rel);
+            grep_walk(
+                std::path::Path::new(&mp.base_path),
+                "",
+                "",
+                Some(mp.name.as_str()),
+                Some(&make_uri),
+                path_filter.as_deref(),
+                &blocked,
+                &matcher,
+                context_lines,
+                max_results,
+                &mut matches,
+            );
+            continue;
+        }
         let docs = docs_repo
             .find_all_by_mount_point_id(&mp.id)
             .map_err(|e| e.to_string())?;
@@ -733,13 +750,40 @@ pub fn handle_grep(
             grep_search_content(
                 &content,
                 &rel,
-                &mp.name,
-                &uri,
+                Some(&mp.name),
+                Some(&uri),
                 &matcher,
                 context_lines,
                 max_results,
                 &mut matches,
             );
+        }
+    }
+
+    // Legacy project on-disk walk (v4 `text-handlers.ts:761-773`): only when no
+    // `mount_point` filter and the project has NO official mount (an official mount
+    // was already enumerated by the accessible-mounts loop). Requires the host
+    // files dir; skipped with `files_dir: None`.
+    if addressing.mount_point.is_none()
+        && resolve_official_project_mount(main, mount, Some(&project_id)).is_none()
+    {
+        if let Some(files_dir) = ctx.files_dir.as_deref() {
+            let project_dir = files_dir.join(&project_id);
+            if project_dir.exists() {
+                grep_walk(
+                    &project_dir,
+                    "",
+                    "[project]",
+                    None,
+                    None,
+                    path_filter.as_deref(),
+                    &std::collections::HashSet::new(),
+                    &matcher,
+                    context_lines,
+                    max_results,
+                    &mut matches,
+                );
+            }
         }
     }
 
@@ -789,12 +833,15 @@ pub fn handle_grep(
 }
 
 /// Append the grep matches from one document's `content` (v4's `searchContent`).
+/// `mount_point_name`/`uri` are optional: a database or filesystem mount supplies
+/// both; the legacy `[project]` on-disk walk supplies neither (v4 passes no
+/// `mountPointName`/`makeUri`, so `JSON.stringify` drops both keys).
 #[allow(clippy::too_many_arguments)]
 fn grep_search_content(
     content: &str,
     display_path: &str,
-    mount_point_name: &str,
-    uri: &str,
+    mount_point_name: Option<&str>,
+    uri: Option<&str>,
     matcher: &GrepMatcher,
     context_lines: usize,
     max_results: usize,
@@ -834,8 +881,12 @@ fn grep_search_content(
         }
         let mut m = Map::new();
         m.insert("path".into(), json!(display_path));
-        m.insert("mount_point".into(), json!(mount_point_name));
-        m.insert("uri".into(), json!(uri));
+        if let Some(mp) = mount_point_name {
+            m.insert("mount_point".into(), json!(mp));
+        }
+        if let Some(u) = uri {
+            m.insert("uri".into(), json!(u));
+        }
         m.insert("line_number".into(), json!(line_idx + 1));
         m.insert(
             "match".into(),
@@ -853,10 +904,103 @@ fn grep_search_content(
     }
 }
 
+/// v4's `walkAndSearch` (`text-handlers.ts:624`): recursively walk `dir` off disk
+/// and grep each text file. `rel_prefix` is the path of `dir` relative to the walk
+/// root (accumulated so it matches v4's `path.relative(baseDir, fullPath)`).
+/// Filesystem symlinks are dirents that are neither files nor dirs, so — like v4's
+/// `withFileTypes` walk — they're skipped. Order is `read_dir` order (v4's
+/// `readdir` order); the fs differential sorts before diffing.
+#[allow(clippy::too_many_arguments)]
+fn grep_walk(
+    dir: &std::path::Path,
+    rel_prefix: &str,
+    display_prefix: &str,
+    mount_point_name: Option<&str>,
+    make_uri: Option<&dyn Fn(&str) -> String>,
+    path_filter: Option<&str>,
+    blocked: &std::collections::HashSet<String>,
+    matcher: &GrepMatcher,
+    context_lines: usize,
+    max_results: usize,
+    matches: &mut Vec<Value>,
+) {
+    if matches.len() >= max_results {
+        return;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read.filter_map(Result::ok) {
+        if matches.len() >= max_results {
+            return;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let rel = if rel_prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{rel_prefix}/{name}")
+        };
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_dir() {
+            if name.starts_with('.') {
+                continue; // v4 skips hidden dirs
+            }
+            grep_walk(
+                &entry.path(),
+                &rel,
+                display_prefix,
+                mount_point_name,
+                make_uri,
+                path_filter,
+                blocked,
+                matcher,
+                context_lines,
+                max_results,
+                matches,
+            );
+        } else if ft.is_file() {
+            if let Some(pf) = path_filter {
+                if !rel.starts_with(pf) {
+                    continue;
+                }
+            }
+            if !blocked.is_empty() && blocked.contains(&rel.to_lowercase()) {
+                continue;
+            }
+            if !is_text_file(&rel) {
+                continue; // v4 searchFile: skip non-text files
+            }
+            let Ok(content) = std::fs::read_to_string(entry.path()) else {
+                continue; // v4: skip files that can't be read
+            };
+            let display_path = if display_prefix.is_empty() {
+                rel.clone()
+            } else {
+                format!("{display_prefix}/{rel}")
+            };
+            let uri = make_uri.map(|f| f(&display_path));
+            grep_search_content(
+                &content,
+                &display_path,
+                mount_point_name,
+                uri.as_deref(),
+                matcher,
+                context_lines,
+                max_results,
+                matches,
+            );
+        }
+    }
+}
+
 // --- doc_list_files ---
 //
-// Database-backed stores + the official project mount only (the fs `_general` /
-// legacy-project walks are the FsSeam).
+// Database-backed stores + the official project mount, plus the on-disk walks for
+// filesystem mounts, the legacy `[project]` directory, and the `general` scope
+// (P4.6bg — live when the host supplies a `files_dir`).
 
 pub fn handle_list_files(
     main: &Connection,
@@ -892,11 +1036,14 @@ pub fn handle_list_files(
     let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
     let pattern = arg_str(args, "pattern");
     let include_auto = arg_bool(args, "includeAutomaticImages").unwrap_or(false);
+    // v4: `const recursive = input.recursive !== false;` (only the fs walks honour it).
+    let recursive = arg_bool(args, "recursive") != Some(false);
 
     let include_doc_store = scope.is_none()
         || scope.as_deref() == Some("document_store")
         || scope.as_deref() == Some("group");
     let include_project = scope.is_none() || scope.as_deref() == Some("project");
+    let include_general = scope.is_none() || scope.as_deref() == Some("general");
 
     let group_mount_ids: std::collections::HashSet<String> = ctx
         .character_id
@@ -931,10 +1078,24 @@ pub fn handle_list_files(
                 continue;
             }
             let mp_scope = if is_group { "group" } else { "document_store" };
-            if mp.mount_type != "database" {
-                continue; // FsSeam
-            }
             let blocked = get_character_blocked_read_paths(mount, &mp.id, ctx);
+            if mp.mount_type != "database" {
+                // Filesystem mount (v4 `text-handlers.ts:956`): walk `mp.basePath`.
+                let (start, rel_prefix) = fs_walk_start(&mp.base_path, folder.as_deref());
+                let make_uri = |rel: &str| resolver.uri_for_mount(&mp.name, &mp.id, rel);
+                collect_files_walk(
+                    &start,
+                    &rel_prefix,
+                    mp_scope,
+                    Some(mp.name.as_str()),
+                    &make_uri,
+                    pattern.as_deref(),
+                    &blocked,
+                    recursive,
+                    &mut files,
+                );
+                continue;
+            }
             let entries =
                 list_database_files(mount, &mp.id, folder.as_deref()).map_err(|e| e.to_string())?;
             for e in entries {
@@ -994,11 +1155,63 @@ pub fn handle_list_files(
                         &e.kind,
                     ));
                 }
+            } else if scope.as_deref() == Some("project") && !official.base_path.is_empty() {
+                // Filesystem official mount (v4 `text-handlers.ts:998`).
+                let blocked = get_character_blocked_read_paths(mount, &official.id, ctx);
+                let (start, rel_prefix) = fs_walk_start(&official.base_path, folder.as_deref());
+                let make_uri = |rel: &str| resolver.uri_for_scope(ScopedAuthority::Project, rel);
+                collect_files_walk(
+                    &start,
+                    &rel_prefix,
+                    "project",
+                    Some(official.name.as_str()),
+                    &make_uri,
+                    pattern.as_deref(),
+                    &blocked,
+                    recursive,
+                    &mut files,
+                );
             }
+        } else if let Some(files_dir) = ctx.files_dir.as_deref() {
+            // No official mount → the legacy `<filesDir>/<projectId>` on-disk walk
+            // (v4 `text-handlers.ts:1002-1008`). No blocked-path set, no mount name.
+            let base = files_dir.join(&project_id);
+            let (start, rel_prefix) = fs_walk_start(&base.to_string_lossy(), folder.as_deref());
+            let make_uri = |rel: &str| resolver.uri_for_scope(ScopedAuthority::Project, rel);
+            collect_files_walk(
+                &start,
+                &rel_prefix,
+                "project",
+                None,
+                &make_uri,
+                pattern.as_deref(),
+                &std::collections::HashSet::new(),
+                recursive,
+                &mut files,
+            );
         }
-        // No official mount → the legacy fs project walk is the FsSeam (skipped).
     }
-    // General scope → fs `_general` walk is the FsSeam (skipped).
+
+    // General scope → the `<filesDir>/_general` on-disk walk (v4
+    // `text-handlers.ts:1011-1018`). Requires the host files dir.
+    if include_general {
+        if let Some(files_dir) = ctx.files_dir.as_deref() {
+            let base = files_dir.join("_general");
+            let (start, rel_prefix) = fs_walk_start(&base.to_string_lossy(), folder.as_deref());
+            let make_uri = |rel: &str| resolver.uri_for_scope(ScopedAuthority::General, rel);
+            collect_files_walk(
+                &start,
+                &rel_prefix,
+                "general",
+                None,
+                &make_uri,
+                pattern.as_deref(),
+                &std::collections::HashSet::new(),
+                recursive,
+                &mut files,
+            );
+        }
+    }
 
     // Post-filter: strip OS cruft; strip auto-images unless opted in.
     files.retain(|f| {
@@ -1043,6 +1256,98 @@ pub fn handle_list_files(
         .collect();
     let formatted = format!("{total} files:\n\n{}", formatted_lines.join("\n"));
     Ok(DocEditToolResult::ok(result, formatted))
+}
+
+/// v4's `collectFiles` (`text-handlers.ts:849`): recursively walk `dir` off disk,
+/// pushing a folder entry (size/modified 0) before recursing and a `fs.stat`'d file
+/// entry for each match. `rel_prefix` is the path of `dir` relative to the walk root
+/// (starts at the `folder` narrowing, so emitted paths keep that prefix like v4's
+/// `path.relative(baseDir, fullPath)`). Symlinks (neither file nor dir) are skipped.
+#[allow(clippy::too_many_arguments)]
+fn collect_files_walk(
+    dir: &std::path::Path,
+    rel_prefix: &str,
+    scope: &str,
+    mount_point_name: Option<&str>,
+    make_uri: &dyn Fn(&str) -> String,
+    pattern: Option<&str>,
+    blocked: &std::collections::HashSet<String>,
+    recursive: bool,
+    files: &mut Vec<Value>,
+) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return; // v4: directory doesn't exist or can't be read
+    };
+    for entry in read.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let rel = if rel_prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{rel_prefix}/{name}")
+        };
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+        if ft.is_dir() {
+            if name.starts_with('.') {
+                continue; // v4 skips hidden dirs
+            }
+            files.push(file_info(
+                &rel,
+                mount_point_name,
+                &make_uri(&rel),
+                scope,
+                0,
+                0,
+                "folder",
+            ));
+            if recursive {
+                collect_files_walk(
+                    &entry.path(),
+                    &rel,
+                    scope,
+                    mount_point_name,
+                    make_uri,
+                    pattern,
+                    blocked,
+                    recursive,
+                    files,
+                );
+            }
+        } else if ft.is_file() {
+            if let Some(pat) = pattern {
+                if !matches_glob(&name, pat) {
+                    continue;
+                }
+            }
+            if !blocked.is_empty() && blocked.contains(&rel.to_lowercase()) {
+                continue;
+            }
+            let Ok(meta) = std::fs::metadata(entry.path()) else {
+                continue; // v4: skip files we can't stat
+            };
+            files.push(file_info(
+                &rel,
+                mount_point_name,
+                &make_uri(&rel),
+                scope,
+                meta.len() as i64,
+                super::shared::metadata_mtime_ms(&meta),
+                "file",
+            ));
+        }
+    }
+}
+
+/// Compute the `(startDir, rel_prefix)` for an on-disk walk — v4's `folder ?
+/// path.join(baseDir, folder) : baseDir` (an empty/absent folder is falsy, so the
+/// walk starts at `baseDir` with no relative prefix).
+fn fs_walk_start(base_path: &str, folder: Option<&str>) -> (std::path::PathBuf, String) {
+    match folder.filter(|f| !f.is_empty()) {
+        Some(f) => (std::path::Path::new(base_path).join(f), f.to_string()),
+        None => (std::path::PathBuf::from(base_path), String::new()),
+    }
 }
 
 /// v4's `matchesGlob`: `*.ext` suffix match, else exact filename match. An empty

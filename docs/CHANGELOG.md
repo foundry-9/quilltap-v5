@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Wired the doc-edit tools' host-filesystem I/O (P4.6bg units 3-4). The
+read/write dispatch, `doc_open_document` (new-blank + `fs.stat` open),
+`doc_move_file`/`doc_copy_file`/`doc_delete_file`/`doc_create_folder`/
+`doc_delete_folder`/`doc_move_folder`, and the `doc_grep`/`doc_list_files`
+directory walks now perform real host-disk I/O on filesystem-backed resolved
+paths (the `general` scope, filesystem/obsidian mounts, the legacy
+`<files>/<projectId>` project fallback) instead of the FsSeam refusal — live
+whenever the resolver produced a real path (the host supplied a `files_dir`;
+`None` keeps the historic refusal, so the database-only corpora are
+unchanged). Added the `doc_fs` differential: a new fixture + oracle drive
+v4's REAL `executeDocEditTool` over an identical materialized fs tree
+(canonical scratch + sentinel rewrite), diffing 21 fs-scoped ops plus the
+resulting fs tree byte-for-byte and the empty content tables (fs ops never
+write DB rows). Versions: core 0.0.295, harness 0.0.255.
+
 The codec + fs seam round (P4.6bf ∥ P4.6bg) is PARTIALLY UNIFIED on main —
 P4.6bf CLOSED, P4.6bg open at unit 1-of-6 (resume at unit 3). On main: the
 HostAvatarPreviewRenderer over the existing HostImageCodec — avatar_preview

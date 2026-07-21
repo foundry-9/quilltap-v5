@@ -9,6 +9,99 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.6bg resumed (the doc-edit fs seam): units 3-4 (on `claude/p4-6bg-docedit-fs-scope-f019ee`, not yet unified)
+
+Resumed the P4.6bg fs-seam lane FROM MAIN (`5a80a097`) after its unit-1
+(path-resolver fs branches) unified in the codec+fs round. v4 baseline
+`7e6d13e5`, drift-checked clean at lane start.
+
+**Unit 3 — the tool-site fs I/O (LANDED).** The doc-edit tool handlers now
+perform real host-disk I/O on filesystem-backed resolved paths (`mount_type
+!= "database"`: fs/obsidian mounts, the `general` scope, the legacy
+`<files>/<projectId>` project fallback), replacing the blanket FsSeam refusal.
+A filesystem-backed resolved path only occurs when the resolver produced a
+real `absolute_path` (the host supplied a `files_dir`); `files_dir: None`
+keeps the resolver's FsSeam refusal, so the database-only corpora are
+byte-unchanged. Ported byte-exact:
+- `shared.rs`: `read_file_with_mtime` (fs `read_to_string` + `fs.stat`, byte
+  `size`) / `write_file_with_mtime_check` (`mkdir -p` + write + stat) branch on
+  `mount_type`; `metadata_mtime_ms` + `fs_io_error` (Node-shaped ENOENT).
+- `document_ui.rs`: the new-blank-document path (mint `<uuid>.md`, resolve
+  under `project` if a project context else `general`, `mkdir -p` + write "" +
+  stat), and the existing-file fs `fs.stat` open arm. `doc_open_document` is
+  now two arms via an `OpenResolution` struct (`is_new`/formatted text/
+  announcement all branch-aware).
+- `file_management.rs`: the fs branches of all six verbs — move (stat/access/
+  `mkdir -p`/rename), copy (source stat + dest overwrite detection + the shared
+  read/write), delete file (stat/unlink), create folder (`mkdir -p`), delete
+  folder (stat/readdir-count/`rmdir`, with the fs-specific "not empty (N
+  items)" strings), move folder (stat/access/`mkdir -p`/rename); the
+  `resolve_copy_destination` fs `isDirectory` probe. `fs_stat_is_file`/
+  `fs_stat_is_dir`/`fs_path_exists` helpers; the old `fs_seam()` removed.
+- `text.rs`: the `doc_grep` `walkAndSearch` (recursive readdir, symlinks
+  skipped, `[project]` legacy walk with no mount_point/uri) and the
+  `doc_list_files` `collectFiles` walks (fs mounts, the fs official-project
+  mount, the legacy `[project]` dir, the `general` `_general` dir); `recursive`
+  arg honoured; `grep_search_content` took optional mount_point/uri.
+
+**Unit 4 — the `doc_fs` differential (LANDED, GREEN).** A dedicated new family
+(rather than splintering fs cases across doc_fm/doc_ui/doc_text — the fs concern
+is orthogonal to those db-chained corpora, and one family gives clean sorted
+fs-tree assertions across all the tool families) driving v4's REAL
+`executeDocEditTool`:
+- `harness/oracle/fixtures/doc-fs.json` + `build-doc-fs-fixture.ts` (a superset
+  of the path-resolver fixture: user, character A, General store, project P +
+  a project-linked fs store, a chat with A as participant, a legacy project L
+  with a DISABLED official store; **`ensureCollection('chat_documents', …)`**
+  baked so the Rust Writer opens the table).
+- `harness/oracle/cases/doc-fs.test.ts` (jest-real-DB; materializes an identical
+  fs tree under a CANONICAL scratch, rewrites the fs-mount sentinel basePath,
+  mocks the Librarian/reindex/embedding seams to no-ops, runs 21 fs-scoped ops
+  with per-op ctx, dumps the resulting fs tree + the empty content tables).
+- `crates/quilltap-harness/tests/doc_fs_equivalence.rs` (`QT_ORACLE_DFS`):
+  mirrors the tree with `files_dir = Some(<scratch>/files)`, diffs each op's
+  output + `formatDocEditResults`, then the fs tree byte-for-byte and the empty
+  `doc_mount_documents`/`doc_mount_file_links`. 21 ops cover: general
+  create/read/write/str-replace/subdir-quirk/rename/delete/traversal, general
+  list + grep, fs-mount read/write/list/grep/symlink-escape/delete, legacy
+  project list + grep, new-blank standalone + project, open-existing-fs.
+
+**Recipes / gotchas (why):**
+- **The reversed-tail quirk WRITES faithfully.** `general-write-subdir-quirk`
+  (`sub/deep.md`) resolves to `_general/deep.md/sub` (safeRealpath's mis-order,
+  ported at unit 1); the write creates a DIR `deep.md` holding a file `sub`.
+  The fs-tree dump shows both sides produce this identical (buggy-faithful) tree.
+- **readdir order is a seam.** `doc_list_files`/`doc_grep` walk in OS `readdir`
+  order (differs Node↔Rust even on the same-shaped tree), so the differential
+  sorts the structured `files`/`matches` arrays and DROPS the human `formatted`
+  string (top-level + `result.formattedText`) — the entry SET + contents are
+  asserted, order is not.
+- **New-blank uuid filenames need a uuid-collapsed sort key.** The two new-blank
+  ops mint random `<uuid>.md` names; the fs-tree is sorted by a UUID-collapsed
+  key on BOTH sides so the positional remap aligns.
+- **Old fixtures lack v4-auto-created tables.** v4 `initializeDatabase` creates
+  `chat_documents` lazily; the Rust Writer does not — bake it with
+  `ensureCollection` (the P4.6bd precedent).
+- **Worktree cwd trap.** Oracle files first landed in the MAIN checkout (bare
+  `~/source/quilltap-v5/...` path) and had to be moved into the worktree; cargo
+  must run FROM the worktree (its own target), never `cd ~/source/quilltap-v5`.
+
+**Regen recipe (DFS family):** from `~/source/quilltap-server` (Node 24
+`~/.nvm/versions/node/v24.13.1/bin`; V5 = the worktree):
+`QT_FIXTURE_DFS_MAIN=/tmp/qt-dfs-main.db QT_FIXTURE_DFS_MOUNT=/tmp/qt-dfs-mount.db
+$N/node --import tsx $V5/harness/oracle/fixtures/build-doc-fs-fixture.ts`; then
+(jest ignores `.claude/` → mirror the case+spec to `/tmp/…/cases,fixtures`)
+`QT_FIXTURE_DFS_* QT_ORACLE_OUT=/tmp/oracle-doc-fs.ndjson $N/npx jest
+--watchman=false --roots "$PWD" --roots "$TMPO/cases" -- doc-fs`; run with
+`QT_ORACLE_DFS=/tmp/oracle-doc-fs.ndjson QT_FIXTURE_DFS_*`.
+
+**Still OPEN under the order:** unit 5 (the engine `files_dir` wire flipping
+`None` → `Some(base_dir/files)` at the doc-verb dispatch call sites + the
+`api/documents.rs` general-scope arms + flipping the
+`workspace-document-standalone-flow` beat), tier-2 unit 6 (`conversion.rs` +
+un-refusing convert/deconvert + the S1 `store_mount_file` webp re-signature +
+the inherited `EngineAssembly.blob_webp` engine wire).
+
 ## Round record — the `7e6d13e5` state-cascade drift catch-up: P4.d10 ∥ P4.6be ∥ P4.d11 (UNIFIED 2026-07-20)
 
 The full-drift catch-up round the p4.9j workspace-tabs round left OWED,
