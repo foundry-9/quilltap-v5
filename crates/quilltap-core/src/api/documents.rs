@@ -95,17 +95,24 @@ fn librarian_scope(scope: DocEditScope) -> LibrarianScope {
 
 /// v4 `getChatContext` — the chat's project + the unique participant character
 /// ids. `None` when the chat is missing.
-fn chat_context(db: &Db, chat_id: &str) -> Result<Option<DocumentAccessContext>, DbError> {
+fn chat_context(
+    db: &Db,
+    chat_id: &str,
+    files_dir: Option<std::path::PathBuf>,
+) -> Result<Option<DocumentAccessContext>, DbError> {
     let cid = chat_id.to_string();
     db.read_main(move |main| {
         let Some(chat) = chats_read::find_by_id(main, &cid)? else {
             return Ok(None);
         };
-        Ok(Some(access_context_from_chat(&chat)))
+        Ok(Some(access_context_from_chat(&chat, files_dir)))
     })
 }
 
-fn access_context_from_chat(chat: &Value) -> DocumentAccessContext {
+fn access_context_from_chat(
+    chat: &Value,
+    files_dir: Option<std::path::PathBuf>,
+) -> DocumentAccessContext {
     let project_id = chat
         .get("projectId")
         .and_then(Value::as_str)
@@ -124,9 +131,9 @@ fn access_context_from_chat(chat: &Value) -> DocumentAccessContext {
     DocumentAccessContext {
         project_id,
         character_ids,
-        // P4.6bg S2: set to the host files dir in U5 (the general-scope arms); for
-        // now `None` preserves the FsSeam refusal.
-        files_dir: None,
+        // P4.6bg S2: the host files dir (the engine passes `Some(<base>/files)` at
+        // the dispatch call sites); `None` preserves the FsSeam refusal.
+        files_dir,
     }
 }
 
@@ -317,12 +324,17 @@ struct OpenOk {
 /// v4 `handleOpenDocument`. (Open never schedules a store refresh — v4's
 /// `openDocumentFile` create branch writes a blank without the refresh — so no
 /// `MountRefreshScheduler` is threaded here.)
-pub async fn chat_document_open(db: &Db, chat_id: &str, bag: Value) -> Response {
+pub async fn chat_document_open(
+    db: &Db,
+    chat_id: &str,
+    bag: Value,
+    files_dir: Option<std::path::PathBuf>,
+) -> Response {
     let bag: ChatOpenBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid open-document body: {e}")),
     };
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -504,12 +516,17 @@ struct ReadBag {
 }
 
 /// v4 `handleReadDocument`.
-pub fn chat_document_read(db: &Db, chat_id: &str, bag: Value) -> Response {
+pub fn chat_document_read(
+    db: &Db,
+    chat_id: &str,
+    bag: Value,
+    files_dir: Option<std::path::PathBuf>,
+) -> Response {
     let bag: ReadBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid read-document body: {e}")),
     };
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -591,12 +608,17 @@ fn documents_resolve_message(e: crate::doc_edit::path_resolver::ResolveError) ->
 
 /// v4 `handleResolveDocument` — existence probe (never bytes). Any resolution
 /// failure yields `{ exists:false, kind:'other' }`.
-pub fn chat_document_resolve(db: &Db, chat_id: &str, bag: Value) -> Response {
+pub fn chat_document_resolve(
+    db: &Db,
+    chat_id: &str,
+    bag: Value,
+    files_dir: Option<std::path::PathBuf>,
+) -> Response {
     let bag: ReadBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid resolve-document body: {e}")),
     };
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -664,12 +686,13 @@ pub async fn chat_document_write(
     chat_id: &str,
     bag: Value,
     scheduler: Option<Arc<dyn MountRefreshScheduler>>,
+    files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let bag: ChatWriteBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid write-document body: {e}")),
     };
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -775,6 +798,7 @@ pub async fn chat_document_rename(
     chat_id: &str,
     bag: Value,
     scheduler: Option<Arc<dyn MountRefreshScheduler>>,
+    files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let bag: ChatRenameBag = match serde_json::from_value(bag) {
         Ok(b) => b,
@@ -807,7 +831,7 @@ pub async fn chat_document_rename(
         return ok(json!({ "document": doc_dto(&doc) }));
     }
 
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -953,6 +977,7 @@ pub async fn chat_document_delete(
     db: &Db,
     chat_id: &str,
     chat_document_id: Option<String>,
+    files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let cid = chat_id.to_string();
     let target_id = chat_document_id.clone();
@@ -964,7 +989,7 @@ pub async fn chat_document_delete(
         Err(e) => return internal(e),
     };
 
-    let ctx = match chat_context(db, chat_id) {
+    let ctx = match chat_context(db, chat_id, files_dir) {
         Ok(Some(c)) => c,
         Ok(None) => return bad_request("Chat not found"),
         Err(e) => return internal(e),
@@ -1419,7 +1444,7 @@ struct StandaloneOpenOk {
 
 /// v4 standalone `handleOpenDocument` — records the open under STANDALONE_CHAT_ID
 /// (best-effort), no Librarian.
-pub async fn document_open(db: &Db, bag: Value) -> Response {
+pub async fn document_open(db: &Db, bag: Value, files_dir: Option<std::path::PathBuf>) -> Response {
     let bag: StandaloneOpenBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid open-document body: {e}")),
@@ -1437,7 +1462,7 @@ pub async fn document_open(db: &Db, bag: Value) -> Response {
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let ctx = DocumentAccessContext::standalone();
+            let ctx = DocumentAccessContext::standalone(files_dir);
             let params = OpenDocumentFileParams {
                 file_path: file_path_in.as_deref(),
                 title: title_in.as_deref(),
@@ -1506,7 +1531,7 @@ struct StandaloneReadBag {
 }
 
 /// v4 standalone `handleReadDocument`.
-pub fn document_read(db: &Db, bag: Value) -> Response {
+pub fn document_read(db: &Db, bag: Value, files_dir: Option<std::path::PathBuf>) -> Response {
     let bag: StandaloneReadBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid read-document body: {e}")),
@@ -1516,7 +1541,7 @@ pub fn document_read(db: &Db, bag: Value) -> Response {
     };
     read_document(
         db,
-        &DocumentAccessContext::standalone(),
+        &DocumentAccessContext::standalone(files_dir),
         scope,
         &bag.file_path,
         bag.mount_point.as_deref(),
@@ -1542,6 +1567,7 @@ pub async fn document_write(
     db: &Db,
     bag: Value,
     scheduler: Option<Arc<dyn MountRefreshScheduler>>,
+    files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let bag: StandaloneWriteBag = match serde_json::from_value(bag) {
         Ok(b) => b,
@@ -1552,7 +1578,7 @@ pub async fn document_write(
     };
     let write = write_document(
         db,
-        &DocumentAccessContext::standalone(),
+        &DocumentAccessContext::standalone(files_dir),
         scope,
         &bag.file_path,
         bag.mount_point.as_deref(),
@@ -1587,6 +1613,7 @@ pub async fn document_rename(
     db: &Db,
     bag: Value,
     scheduler: Option<Arc<dyn MountRefreshScheduler>>,
+    files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let bag: StandaloneRenameBag = match serde_json::from_value(bag) {
         Ok(b) => b,
@@ -1628,7 +1655,7 @@ pub async fn document_rename(
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let ctx = DocumentAccessContext::standalone();
+            let ctx = DocumentAccessContext::standalone(files_dir);
             let sched = scheduler
                 .as_ref()
                 .map(|a| &**a as &dyn MountRefreshScheduler);
@@ -1685,7 +1712,11 @@ struct StandaloneDeleteBag {
 }
 
 /// v4 standalone `handleDeleteDocument`.
-pub async fn document_delete(db: &Db, bag: Value) -> Response {
+pub async fn document_delete(
+    db: &Db,
+    bag: Value,
+    files_dir: Option<std::path::PathBuf>,
+) -> Response {
     let bag: StandaloneDeleteBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid delete-document body: {e}")),
@@ -1701,7 +1732,7 @@ pub async fn document_delete(db: &Db, bag: Value) -> Response {
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let ctx = DocumentAccessContext::standalone();
+            let ctx = DocumentAccessContext::standalone(files_dir);
             Ok(documents::delete_document_file(
                 main,
                 mount,

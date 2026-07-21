@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Made the Document Mode host-filesystem scopes live end-to-end (P4.6bg unit 5).
+The operator Document-Mode surface (`documents/mod.rs`) now performs real
+host-disk I/O on filesystem-backed resolved paths — `resolved_path_exists`,
+open/read/write (v4's `readFileWithMtime`/`writeFileWithMtimeCheck`, mtime-guard
+included), rename, and delete — instead of the `DocError::Fs` refusal. The host
+`files_dir` is threaded from the engine config
+(`Some(base_dir/"files")`) through every doc-verb dispatch arm into the
+chat-scoped and standalone `DocumentAccessContext`, so the `general` scope and
+filesystem mounts work through the Document Mode picker. The standalone
+"New blank document" (general scope) round-trips create → edit → autosave →
+reload on `<files>/_general`, flipping the `workspace-document-standalone-flow`
+beat from the FsSeam refusal to the live editor. The shared fs helpers
+(`read_fs_file_with_mtime` / `write_fs_file_with_mtime_check`) are exposed
+crate-wide and reused by both the tool handlers and the operator surface. The
+`documents_routes_equivalence` differential threads the new `files_dir` arg
+(`None` on the all-database corpus — byte-identical). Versions: core 0.0.296,
+harness 0.0.256, SPA 0.5.241.
+
 Wired the doc-edit tools' host-filesystem I/O (P4.6bg units 3-4). The
 read/write dispatch, `doc_open_document` (new-blank + `fs.stat` open),
 `doc_move_file`/`doc_copy_file`/`doc_delete_file`/`doc_create_folder`/

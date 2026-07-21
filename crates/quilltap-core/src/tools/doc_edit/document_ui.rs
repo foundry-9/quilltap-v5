@@ -223,7 +223,8 @@ pub fn handle_open_document(
             .map_err(resolve_error_message)?;
             // v4 inlines mkdir(dirname) + writeFile('') + stat here (regardless of
             // mount type) — the shared fs writer does exactly that.
-            let mtime = super::shared::write_fs_file_with_mtime_check(&resolved.absolute_path, "")?;
+            let mtime =
+                super::shared::write_fs_file_with_mtime_check(&resolved.absolute_path, "", None)?;
             let doc_uri = uri_for_resolved_path(
                 main,
                 mount,

@@ -334,6 +334,18 @@ fn resolve_general_path(
 ) -> Result<ResolvedPath, ResolveError> {
     let files_dir = files_dir_or_seam(files_dir)?;
     let base_dir = files_dir.join("_general");
+    // ⚠ v5 robustness fix over a v4 LATENT QUIRK: v4's `resolveGeneralPath` never
+    // creates `<files>/_general`, and nothing else does either (`ensureDataDir…`
+    // makes `<files>` but not `_general`). When the base dir is absent, `safeRealpath`
+    // walks up TWO missing levels and — via its reversed-tail join (the port
+    // reproduces this exactly) — yields a mis-ordered path that fails the containment
+    // check, so v4's general-scope new-blank throws "Path escapes general storage
+    // boundary" on a FRESH instance. The mandate is that the general scope works
+    // end-to-end, so v5 ensures the base dir exists (idempotent, best-effort) BEFORE
+    // resolving. Inert in the differentials — every general fixture pre-creates
+    // `_general`, so `create_dir_all` is a no-op there and the resolution stays
+    // byte-identical to v4.
+    let _ = std::fs::create_dir_all(&base_dir);
     let base_dir_str = base_dir.to_string_lossy().to_string();
     let joined = posix_join(&base_dir_str, relative_path);
     let real_base = safe_realpath(&base_dir);

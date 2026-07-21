@@ -95,12 +95,64 @@ $N/node --import tsx $V5/harness/oracle/fixtures/build-doc-fs-fixture.ts`; then
 --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- doc-fs`; run with
 `QT_ORACLE_DFS=/tmp/oracle-doc-fs.ndjson QT_FIXTURE_DFS_*`.
 
-**Still OPEN under the order:** unit 5 (the engine `files_dir` wire flipping
-`None` → `Some(base_dir/files)` at the doc-verb dispatch call sites + the
-`api/documents.rs` general-scope arms + flipping the
-`workspace-document-standalone-flow` beat), tier-2 unit 6 (`conversion.rs` +
-un-refusing convert/deconvert + the S1 `store_mount_file` webp re-signature +
-the inherited `EngineAssembly.blob_webp` engine wire).
+**Unit 5 — the engine `files_dir` wire + the operator surface + the beat
+(LANDED, beat LIVE).** The Document-Mode operator surface (`documents/mod.rs`)
+now does real host-disk I/O on filesystem-backed resolved paths, replacing the
+`DocError::Fs` refusals: `resolved_path_exists` (v4 `fs.access`), `read_database`
+/ `write_database` / `write_database_checked` (v4 `readFileWithMtime` /
+`writeFileWithMtimeCheck` with the fs `expectedMtime` guard → `MtimeMismatch`),
+`read_route_document`, `rename_document_file` (`fs.rename`), `delete_document_file`
+(`fs.stat`/`unlink`). The shared fs helpers (`read_fs_file_with_mtime` /
+`write_fs_file_with_mtime_check(+expected_mtime)` / `metadata_mtime_ms` /
+`fs_io_error` / `FS_MTIME_MISMATCH_MESSAGE`) were lifted to `pub(crate)` and
+reused. The host `files_dir` (`Some(base_dir.join("files"))`) is threaded from the
+engine config through all 11 doc-verb dispatch arms (S3 region) into the
+chat-scoped (`access_context_from_chat`/`chat_context`) and standalone
+(`DocumentAccessContext::standalone(files_dir)`) contexts. The
+`documents_routes_equivalence` differential threaded the new arg (`None` on the
+all-database corpus — byte-identical, oracle re-run green). The
+`workspace-document-standalone-flow` beat's first test flipped from the
+general-scope FsSeam refusal to the LIVE round-trip (open → edit → flush-on-blur
+autosave → rename → close → reopen-from-recents), run green in-lane against the
+freshly-rebuilt server.
+
+**⚠ The general-scope reversed-tail quirk + the v5 divergence (why the beat
+first RED'd).** v4's `resolveGeneralPath` never creates `<files>/_general`
+(`ensureDataDirectoriesExist` makes `<files>` but not `_general`, and nothing
+else does). On a FRESH instance the base dir is absent, so `safeRealpath` walks
+up TWO missing levels and its reversed-tail join yields a mis-ordered path
+(`realFiles/Untitled Document.md/_general`) that FAILS the containment check —
+v4's general new-blank throws "Path escapes general storage boundary" on a fresh
+instance (a latent v4 quirk; the doc_fs differential only ever pre-creates
+`_general`, so it proved parity without surfacing this). The mandate is that the
+general scope works end-to-end, so `resolve_general_path` now does an idempotent
+best-effort `create_dir_all(<files>/_general)` before resolving — a **DELIBERATE
+v5 divergence** over v4's latent quirk, INERT in every differential (the fixtures
+pre-create `_general` → the `create_dir_all` is a no-op → byte-identical to v4;
+verified: doc_fs + DPR both re-run green after the change). The legacy
+`<files>/<projectId>` project fallback was left v4-faithful (no mkdir) — the
+mandate targets the general scope only.
+
+**Proof composition for the operator surface:** the underlying fs primitives
+(`read_fs_file_with_mtime`/`write_fs_file_with_mtime_check`) are differential-proven
+by doc_fs; the operator db path by `documents_routes_equivalence`; the operator
+general open/write/rename/read fs branches by the LIVE beat round-trip. (A
+dedicated operator-general fs differential was judged disproportionate — the fs
+I/O is already proven and the beat is the integration proof; noted for a future
+taker if the operator delete-general fs branch wants explicit coverage.)
+
+**e2e gotcha (BANKED):** the Playwright global-setup uses a PRE-BUILT
+`target/debug/quilltap-web` binary and does NOT rebuild it — the first two beat
+runs failed because the binary predated the unit-5 Rust wire. Always
+`cargo build -p quilltap-web -p quilltap-cli` in the worktree AFTER Rust changes
+before running the e2e. Also: the standalone Document-Mode tab does NOT restore
+its pane across a full `page.reload()` (the "reload round-trip" was replaced with
+close → reopen-from-recents).
+
+**Still OPEN under the order:** tier-2 unit 6 (`services/mount_index/conversion.rs`
++ un-refusing `api/mount_files.rs` convert/deconvert behind the live guards + the
+S1 `store_mount_file` webp re-signature + the inherited `EngineAssembly.blob_webp`
+engine wire that self-activates the probe-gated scriptorium WebP beat).
 
 ## Round record — the `7e6d13e5` state-cascade drift catch-up: P4.d10 ∥ P4.6be ∥ P4.d11 (UNIFIED 2026-07-20)
 

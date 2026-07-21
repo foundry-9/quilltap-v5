@@ -2350,7 +2350,15 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ChatDocumentOpen { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_open(&db, &chat_id, body).await,
+                Ok(db) => {
+                    super::documents::chat_document_open(
+                        &db,
+                        &chat_id,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ChatDocumentClose {
@@ -2363,22 +2371,46 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ChatDocumentRead { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_read(&db, &chat_id, body),
+                Ok(db) => super::documents::chat_document_read(
+                    &db,
+                    &chat_id,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::ChatDocumentResolve { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_resolve(&db, &chat_id, body),
+                Ok(db) => super::documents::chat_document_resolve(
+                    &db,
+                    &chat_id,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::ChatDocumentWrite { chat_id, body } => match self.ready_db_and_refresh() {
                 Ok((db, refresh)) => {
-                    super::documents::chat_document_write(&db, &chat_id, body, refresh).await
+                    super::documents::chat_document_write(
+                        &db,
+                        &chat_id,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
             Request::ChatDocumentRename { chat_id, body } => match self.ready_db_and_refresh() {
                 Ok((db, refresh)) => {
-                    super::documents::chat_document_rename(&db, &chat_id, body, refresh).await
+                    super::documents::chat_document_rename(
+                        &db,
+                        &chat_id,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -2387,7 +2419,13 @@ impl CoreEngine {
                 chat_document_id,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::documents::chat_document_delete(&db, &chat_id, chat_document_id).await
+                    super::documents::chat_document_delete(
+                        &db,
+                        &chat_id,
+                        chat_document_id,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -2400,23 +2438,57 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::DocumentOpen { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_open(&db, body).await,
+                Ok(db) => {
+                    super::documents::document_open(
+                        &db,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentRead { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_read(&db, body),
+                Ok(db) => super::documents::document_read(
+                    &db,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::DocumentWrite { body } => match self.ready_db_and_refresh() {
-                Ok((db, refresh)) => super::documents::document_write(&db, body, refresh).await,
+                Ok((db, refresh)) => {
+                    super::documents::document_write(
+                        &db,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentRename { body } => match self.ready_db_and_refresh() {
-                Ok((db, refresh)) => super::documents::document_rename(&db, body, refresh).await,
+                Ok((db, refresh)) => {
+                    super::documents::document_rename(
+                        &db,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentDelete { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_delete(&db, body).await,
+                Ok(db) => {
+                    super::documents::document_delete(
+                        &db,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             // === end P4.6w ===

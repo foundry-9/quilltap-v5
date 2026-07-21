@@ -121,6 +121,7 @@ fn refresh_after_standalone_write_matches_oracle() {
             "content": "# Refresh case\n\nThe chunks must exist after this write.\n",
         }),
         Some(scheduler),
+        None,
     ));
     let (status, body) = response_to_status_body_doc(resp);
 

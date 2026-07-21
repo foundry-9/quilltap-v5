@@ -32,7 +32,10 @@ use crate::db::DbError;
 use crate::doc_edit::path_resolver::ResolveError;
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, PathResolutionContext, ResolvedPath};
 use crate::doc_edit::DocEditScope;
-use crate::tools::doc_edit::shared::is_text_file;
+use crate::tools::doc_edit::shared::{
+    fs_io_error, is_text_file, read_fs_file_with_mtime, write_fs_file_with_mtime_check,
+    FS_MTIME_MISMATCH_MESSAGE,
+};
 
 // ===========================================================================
 // Constants (v4 `lib/chat-documents/constants.ts`)
@@ -67,11 +70,13 @@ pub struct DocumentAccessContext {
 
 impl DocumentAccessContext {
     /// v4 `STANDALONE_ACCESS_CONTEXT` — nothing behind it (the chat-less caller).
-    pub fn standalone() -> Self {
+    /// `files_dir` is the host files dir the operator surface reaches disk through
+    /// (`None` keeps the FsSeam refusal).
+    pub fn standalone(files_dir: Option<std::path::PathBuf>) -> Self {
         DocumentAccessContext {
             project_id: None,
             character_ids: Vec::new(),
-            files_dir: None,
+            files_dir,
         }
     }
 }
@@ -192,7 +197,16 @@ pub fn resolve_operator_doc_path(
 /// the corpus — the resolver errors first).
 pub fn resolved_path_exists(mount: &Connection, resolved: &ResolvedPath) -> Result<bool, DocError> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(DocError::Fs);
+        // Filesystem-backed (v4 `fs.access`): ENOENT → false, any other error
+        // bubbles (never silently treat a permission failure as "absent").
+        return match std::path::Path::new(&resolved.absolute_path).try_exists() {
+            Ok(exists) => Ok(exists),
+            Err(e) => Err(DocError::Store(fs_io_error(
+                &resolved.absolute_path,
+                "access",
+                &e,
+            ))),
+        };
     }
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
@@ -325,8 +339,8 @@ pub struct OpenedDocumentFile {
     pub file_path: String,
     pub display_title: String,
     pub content: String,
-    /// `None` only for a host-fs read (never on the corpus); database reads/writes
-    /// always mint an mtime.
+    /// Present for every read/write (a database mint or the on-disk `fs.stat`
+    /// mtime); `Option` only because v4's type declares it optional.
     pub mtime: Option<i64>,
     /// True when a new blank document was created (no `file_path` was given).
     pub is_new: bool,
@@ -526,8 +540,34 @@ pub fn rename_document_file(
         }
     }
 
-    // Non-database mount → host-fs seam (never on the corpus).
-    Err(DocError::Fs)
+    // Filesystem mount (v4 `operator-doc-actions.ts:393-411`): refuse an existing
+    // dest, `mkdir -p` the parent, `fs.rename`, then schedule the store refresh for
+    // a document_store fs mount.
+    if std::path::Path::new(&resolved_new.absolute_path)
+        .try_exists()
+        .unwrap_or(false)
+    {
+        return Err(DocError::Conflict(
+            "A file already exists at that name.".to_string(),
+        ));
+    }
+    if let Some(parent) = std::path::Path::new(&resolved_new.absolute_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| DocError::Store(fs_io_error(&resolved_new.absolute_path, "mkdir", &e)))?;
+    }
+    std::fs::rename(&resolved_old.absolute_path, &resolved_new.absolute_path)
+        .map_err(|e| DocError::Store(fs_io_error(&resolved_new.absolute_path, "rename", &e)))?;
+    if scope == DocEditScope::DocumentStore {
+        if let Some(mp) = resolved_old.mount_point_id.as_deref() {
+            schedule_refresh(
+                scheduler,
+                mp,
+                Some(&resolved_new.relative_path),
+                new_file_path,
+            );
+        }
+    }
+    Ok(())
 }
 
 /// The outcome of a delete (v4 `'deleted'|'not-found'|'not-a-file'`).
@@ -563,8 +603,16 @@ pub fn delete_document_file(
             });
         }
     }
-    // Non-database mount → host-fs seam.
-    Err(DocError::Fs)
+    // Filesystem mount (v4 `operator-doc-actions.ts:438-447`): stat (miss →
+    // not-found, non-file → not-a-file), then `fs.unlink`.
+    match std::fs::metadata(&resolved.absolute_path) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Ok(DeleteOutcome::NotAFile),
+        Err(_) => return Ok(DeleteOutcome::NotFound),
+    }
+    std::fs::remove_file(&resolved.absolute_path)
+        .map_err(|e| DocError::Store(fs_io_error(&resolved.absolute_path, "unlink", &e)))?;
+    Ok(DeleteOutcome::Deleted)
 }
 
 // ===========================================================================
@@ -686,7 +734,12 @@ pub fn read_route_document(
     resolved: &ResolvedPath,
 ) -> Result<(String, i64), DocError> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(DocError::Fs);
+        // Filesystem-backed (v4 `readFileWithMtime`): ENOENT → 404 (Missing).
+        return match read_fs_file_with_mtime(&resolved.absolute_path) {
+            Ok(doc) => Ok((doc.content, doc.mtime_ms)),
+            Err(e) if e.starts_with("ENOENT") => Err(DocError::Missing(e)),
+            Err(e) => Err(DocError::Store(e)),
+        };
     }
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
@@ -700,11 +753,11 @@ pub fn read_route_document(
     }
 }
 
-/// Read a database-backed resolved path's content + mtime. Non-database is the
-/// host-fs seam.
+/// Read a resolved path's content + mtime (v4 `readFileWithMtime`): a database
+/// store via the store primitive, a filesystem-backed path off the host disk.
 fn read_database(mount: &Connection, resolved: &ResolvedPath) -> Result<ReadDoc, DocError> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(DocError::Fs);
+        return read_fs_file_with_mtime(&resolved.absolute_path).map_err(DocError::Store);
     }
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
@@ -712,14 +765,17 @@ fn read_database(mount: &Connection, resolved: &ResolvedPath) -> Result<ReadDoc,
     database_store::read_database_document(mount, mp, &resolved.relative_path).map_err(store_err)
 }
 
-/// Write a database-backed resolved path's content, returning the fresh mtime.
+/// Write a resolved path's content, returning the fresh mtime (v4
+/// `writeFileWithMtimeCheck` with no `expectedMtime`): a database store via the
+/// store primitive, a filesystem-backed path to host disk.
 fn write_database(
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
 ) -> Result<i64, DocError> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(DocError::Fs);
+        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, None)
+            .map_err(DocError::Store);
     }
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
@@ -740,7 +796,16 @@ fn write_database_checked(
     expected_mtime: Option<i64>,
 ) -> Result<i64, DocError> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(DocError::Fs);
+        // Filesystem-backed: v4's `writeFileWithMtimeCheck` runs the `expectedMtime`
+        // stat-guard on disk; a mismatch carries "mtime mismatch" → the 409 arm.
+        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, expected_mtime)
+            .map_err(|e| {
+                if e == FS_MTIME_MISMATCH_MESSAGE {
+                    DocError::MtimeMismatch(e)
+                } else {
+                    DocError::Store(e)
+                }
+            });
     }
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())

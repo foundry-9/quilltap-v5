@@ -715,7 +715,7 @@ pub fn write_file_with_mtime_check(
     content: &str,
 ) -> Result<i64, String> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return write_fs_file_with_mtime_check(&resolved.absolute_path, content);
+        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, None);
     }
     let mp = resolved
         .mount_point_id
@@ -727,8 +727,9 @@ pub fn write_file_with_mtime_check(
 
 /// The host-disk arm of [`read_file_with_mtime`] — v4's `fs.readFile` +
 /// `fs.stat` (`path-resolver.ts:649`). `size` is the on-disk **byte** length
-/// (`stats.size`), NOT the UTF-16 length a database store reports.
-fn read_fs_file_with_mtime(absolute_path: &str) -> Result<ReadDoc, String> {
+/// (`stats.size`), NOT the UTF-16 length a database store reports. Shared with the
+/// operator Document-Mode surface (`crate::documents`).
+pub(crate) fn read_fs_file_with_mtime(absolute_path: &str) -> Result<ReadDoc, String> {
     let content = std::fs::read_to_string(absolute_path)
         .map_err(|e| fs_io_error(absolute_path, "open", &e))?;
     let meta =
@@ -740,15 +741,38 @@ fn read_fs_file_with_mtime(absolute_path: &str) -> Result<ReadDoc, String> {
     })
 }
 
-/// The host-disk arm of [`write_file_with_mtime_check`] — v4's `fs.mkdir(parent,
-/// { recursive: true })` + `fs.writeFile` + `fs.stat` (`path-resolver.ts:720`).
-/// Also reused by `doc_open_document`'s new-blank path, which v4 inlines with the
-/// same three calls.
-pub(super) fn write_fs_file_with_mtime_check(
+/// The message v4's `writeFileWithMtimeCheck` fs branch throws on an mtime
+/// conflict (`path-resolver.ts:706`) — distinct from the database store's
+/// "Document was modified…" wording. The operator route keys on the
+/// "mtime mismatch" substring to map it to a 409.
+pub(crate) const FS_MTIME_MISMATCH_MESSAGE: &str =
+    "File was modified by another process (mtime mismatch). Please reload and try again.";
+
+/// The host-disk arm of [`write_file_with_mtime_check`] — v4's optional
+/// `expectedMtime` guard, then `fs.mkdir(parent, { recursive: true })`,
+/// `fs.writeFile`, and `fs.stat` (`path-resolver.ts:694-731`). Also reused by
+/// `doc_open_document`'s new-blank path and the operator Document-Mode surface.
+/// When `expected_mtime` is `Some` and an existing file's mtime disagrees, returns
+/// [`FS_MTIME_MISMATCH_MESSAGE`].
+pub(crate) fn write_fs_file_with_mtime_check(
     absolute_path: &str,
     content: &str,
+    expected_mtime: Option<i64>,
 ) -> Result<i64, String> {
     let path = std::path::Path::new(absolute_path);
+    if let Some(expected) = expected_mtime {
+        // v4: stat; a mismatch is a conflict; a missing file (ENOENT) is fine — it's
+        // a create. Any other stat error bubbles.
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                if metadata_mtime_ms(&meta) != expected {
+                    return Err(FS_MTIME_MISMATCH_MESSAGE.to_string());
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(fs_io_error(absolute_path, "stat", &e)),
+        }
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| fs_io_error(absolute_path, "mkdir", &e))?;
     }
@@ -758,7 +782,7 @@ pub(super) fn write_fs_file_with_mtime_check(
 }
 
 /// `stats.mtime.getTime()` — milliseconds since the Unix epoch.
-pub(super) fn metadata_mtime_ms(meta: &std::fs::Metadata) -> i64 {
+pub(crate) fn metadata_mtime_ms(meta: &std::fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -771,7 +795,7 @@ pub(super) fn metadata_mtime_ms(meta: &std::fs::Metadata) -> i64 {
 /// <syscall> '<path>'` (the only shape any tool branch inspects); every other
 /// error falls through to the OS string. These paths are not differential-covered
 /// (the corpus exercises the success arms + the resolver-level escape errors).
-pub(super) fn fs_io_error(path: &str, syscall: &str, e: &std::io::Error) -> String {
+pub(crate) fn fs_io_error(path: &str, syscall: &str, e: &std::io::Error) -> String {
     match e.kind() {
         std::io::ErrorKind::NotFound => {
             format!("ENOENT: no such file or directory, {syscall} '{path}'")

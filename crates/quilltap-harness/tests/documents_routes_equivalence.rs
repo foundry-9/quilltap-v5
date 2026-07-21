@@ -338,25 +338,25 @@ fn documents_routes_match_oracle() {
         |fp: &str| json!({ "filePath": fp, "scope": "document_store", "mountPoint": GEN });
     check(
         "chat_read_document_existing",
-        &documents::chat_document_read(&db, CHAT_A, read_bag("notes/alpha.md")),
+        &documents::chat_document_read(&db, CHAT_A, read_bag("notes/alpha.md"), None),
         None,
         &mut failed,
     );
     check(
         "chat_read_document_missing",
-        &documents::chat_document_read(&db, CHAT_A, read_bag("notes/missing.md")),
+        &documents::chat_document_read(&db, CHAT_A, read_bag("notes/missing.md"), None),
         None,
         &mut failed,
     );
     check(
         "chat_resolve_document_exists",
-        &documents::chat_document_resolve(&db, CHAT_A, read_bag("notes/alpha.md")),
+        &documents::chat_document_resolve(&db, CHAT_A, read_bag("notes/alpha.md"), None),
         None,
         &mut failed,
     );
     check(
         "chat_resolve_document_missing",
-        &documents::chat_document_resolve(&db, CHAT_A, read_bag("notes/missing.md")),
+        &documents::chat_document_resolve(&db, CHAT_A, read_bag("notes/missing.md"), None),
         None,
         &mut failed,
     );
@@ -380,6 +380,7 @@ fn documents_routes_match_oracle() {
             &db,
             CHAT_A,
             json!({ "filePath": "notes/beta.md", "scope": "document_store", "mountPoint": GEN, "mode": "split" }),
+            None,
         ));
         let t = dump_chat_docs(&db, CHAT_A);
         check("chat_open_document_reactivate", &r, Some(t), &mut failed);
@@ -390,6 +391,7 @@ fn documents_routes_match_oracle() {
             &db,
             CHAT_A,
             json!({ "scope": "document_store", "mountPoint": GEN, "targetFolder": "notes", "mode": "split" }),
+            None,
         ));
         let t = dump_chat_docs(&db, CHAT_A);
         check("chat_open_document_new_blank", &r, Some(t), &mut failed);
@@ -411,6 +413,7 @@ fn documents_routes_match_oracle() {
             CHAT_A,
             json!({ "filePath": "notes/alpha.md", "scope": "document_store", "mountPoint": GEN, "content": "# Alpha\n\nEdited body.\n", "diffContent": "I've made changes to \"alpha.md\":\n- edited" }),
             None,
+            None,
         ));
         check("chat_write_document", &r, None, &mut failed);
     }
@@ -421,6 +424,7 @@ fn documents_routes_match_oracle() {
             CHAT_A,
             json!({ "filePath": "notes/alpha.md", "scope": "document_store", "mountPoint": GEN, "content": "x", "mtime": 111 }),
             None,
+            None,
         ));
         check("chat_write_document_conflict", &r, None, &mut failed);
     }
@@ -430,6 +434,7 @@ fn documents_routes_match_oracle() {
             &db,
             CHAT_A,
             json!({ "newTitle": "renamed", "chatDocumentId": R1 }),
+            None,
             None,
         ));
         let t = json!({ "chatA": dump_chat_docs(&db, CHAT_A), "standalone": dump_chat_docs(&db, STANDALONE) });
@@ -442,6 +447,7 @@ fn documents_routes_match_oracle() {
             CHAT_A,
             json!({ "newTitle": "beta", "chatDocumentId": R1 }),
             None,
+            None,
         ));
         check("chat_rename_document_conflict", &r, None, &mut failed);
     }
@@ -451,6 +457,7 @@ fn documents_routes_match_oracle() {
             &db,
             CHAT_A,
             Some(R3.to_string()),
+            None,
         ));
         let t = dump_chat_docs(&db, CHAT_A);
         check("chat_delete_document", &r, Some(t), &mut failed);
@@ -462,6 +469,7 @@ fn documents_routes_match_oracle() {
         let r = rt.block_on(documents::document_open(
             &db,
             json!({ "filePath": "notes/alpha.md", "scope": "document_store", "mountPoint": GEN }),
+            None,
         ));
         check("standalone_open_existing", &r, None, &mut failed);
     }
@@ -470,6 +478,7 @@ fn documents_routes_match_oracle() {
         let r = documents::document_read(
             &db,
             json!({ "filePath": "notes/gamma.md", "scope": "document_store", "mountPoint": GEN }),
+            None,
         );
         check("standalone_read", &r, None, &mut failed);
     }
@@ -478,6 +487,7 @@ fn documents_routes_match_oracle() {
         let r = rt.block_on(documents::document_write(
             &db,
             json!({ "filePath": "notes/gamma.md", "scope": "document_store", "mountPoint": GEN, "content": "# Gamma\n\nEdited.\n" }),
+            None,
             None,
         ));
         check("standalone_write", &r, None, &mut failed);
@@ -488,6 +498,7 @@ fn documents_routes_match_oracle() {
             &db,
             json!({ "filePath": "notes/gamma.md", "scope": "document_store", "mountPoint": GEN, "newTitle": "delta" }),
             None,
+            None,
         ));
         check("standalone_rename", &r, None, &mut failed);
     }
@@ -496,6 +507,7 @@ fn documents_routes_match_oracle() {
         let r = rt.block_on(documents::document_delete(
             &db,
             json!({ "filePath": "notes/gamma.md", "scope": "document_store", "mountPoint": GEN }),
+            None,
         ));
         check("standalone_delete", &r, None, &mut failed);
     }
