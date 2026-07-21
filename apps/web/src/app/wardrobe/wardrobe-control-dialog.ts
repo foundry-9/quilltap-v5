@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -78,14 +79,20 @@ type EditorIntent = 'create-single' | 'create-bundle';
  * native-modal it also collapses v4's `confirming` click-outside suspension
  * (`:213-225`); toasts become inline notices. The "Import from image" button
  * is NOT shipped (tier 3 — its `analyze-image` verb is refusal-armed in lane
- * P4.9f1 per §4; a dead button is worse than an absent one). The `asTab`
- * WardrobeView variant (`:105`) belongs to `p4.9j` workspace tabs — not
- * ported.
+ * P4.9f1 per §4; a dead button is worse than an absent one).
+ *
+ * THE `asTab` CHROME SWITCH (v4 `WardrobeShell`, `:128-164`; p4.9j3): with
+ * `asTab` true the body renders BARE in a `qt-wardrobe-tab` scroll container —
+ * no overlay, no title header/close, no footer, no Escape/backdrop close (v4
+ * omits `BaseModal` entirely). The `WardrobeView` workspace tab passes it with
+ * `chatId=null`, so `isInChat` is false ⇒ no Live-outfit tab and NO equip route
+ * ever fires — Outfit Builder only. `asTab` false is the floating dialog above.
  */
 @Component({
   selector: 'qt-wardrobe-dialog-inner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     AvatarGenerationPane,
     OutfitComposer,
     WardrobeItemEditor,
@@ -97,30 +104,59 @@ type EditorIntent = 'create-single' | 'create-bundle';
     '(document:mousedown)': 'onDocumentMouseDown()',
   },
   template: `
-    <!-- The modal shell (v4 WardrobeShell → BaseModal, title "Wardrobe",
-         maxWidth 4xl, footer Done). Backdrop/Escape close is suspended while
-         a stacked editor/transfer dialog is up (v4 closeOnClickOutside). -->
-    <div class="qt-dialog-overlay" (click)="onBackdrop()">
-      <div
-        class="qt-dialog flex flex-col max-h-[90vh]"
-        style="max-width: 56rem"
-        role="dialog"
-        aria-modal="true"
-        (click)="$event.stopPropagation()"
-      >
-        <div class="qt-dialog-header flex items-center justify-between gap-4">
-          <h2 class="qt-dialog-title">Wardrobe</h2>
-          <button
-            type="button"
-            class="qt-button-ghost qt-button-sm"
-            aria-label="Close"
-            (click)="requestClose()"
-          >
-            ✕
-          </button>
-        </div>
+    <!-- The chrome switch (v4 WardrobeShell, :128-164). asTab renders bare in a
+         scroll container (no overlay/header/footer, no Escape/backdrop close);
+         otherwise the floating BaseModal (title "Wardrobe", maxWidth 4xl, footer
+         Done). Backdrop/Escape close is suspended while a stacked editor/transfer
+         dialog is up (v4 closeOnClickOutside). The shared body lives in the
+         #body ng-template below. -->
+    @if (asTab()) {
+      <div class="qt-wardrobe-tab flex flex-col h-full min-h-0 overflow-y-auto p-4">
+        <ng-container [ngTemplateOutlet]="body" />
+      </div>
+    } @else {
+      <div class="qt-dialog-overlay" (click)="onBackdrop()">
+        <div
+          class="qt-dialog flex flex-col max-h-[90vh]"
+          style="max-width: 56rem"
+          role="dialog"
+          aria-modal="true"
+          (click)="$event.stopPropagation()"
+        >
+          <div class="qt-dialog-header flex items-center justify-between gap-4">
+            <h2 class="qt-dialog-title">Wardrobe</h2>
+            <button
+              type="button"
+              class="qt-button-ghost qt-button-sm"
+              aria-label="Close"
+              (click)="requestClose()"
+            >
+              ✕
+            </button>
+          </div>
 
-        <div class="qt-dialog-body overflow-y-auto">
+          <div class="qt-dialog-body overflow-y-auto">
+            <ng-container [ngTemplateOutlet]="body" />
+          </div>
+
+          <div class="qt-dialog-footer">
+            <div class="flex items-center justify-end gap-2 w-full">
+              <button
+                type="button"
+                (click)="requestClose()"
+                class="qt-button-secondary qt-button-sm"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- The shared dialog body (v4 WardrobeShell children): the flush notice,
+         character selector, and the wardrobe/builder grid. -->
+    <ng-template #body>
           @if (flushError(); as msg) {
             <div class="qt-alert-error text-sm mb-3" role="alert">{{ msg }}</div>
           }
@@ -418,17 +454,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
               </section>
             }
           </div>
-        </div>
-
-        <div class="qt-dialog-footer">
-          <div class="flex items-center justify-end gap-2 w-full">
-            <button type="button" (click)="requestClose()" class="qt-button-secondary qt-button-sm">
-              Done
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </ng-template>
 
     <!-- Inline editor — stacked on top of the dialog (v4 :1213-1246). -->
     @if ((editingItem() || creatingNew()) && selectedCharacterId(); as cid) {
@@ -469,6 +495,11 @@ export class WardrobeControlDialogInner {
 
   readonly initialCharacterId = input.required<string | null>();
   readonly chatId = input.required<string | null>();
+  /**
+   * v4 `WardrobeShell` `asTab` (`:143`): render bare for a workspace tab
+   * instead of inside the floating modal. Fixed per mount.
+   */
+  readonly asTab = input<boolean>(false);
   readonly closed = output<void>();
 
   protected readonly itemKinds: ItemKind[] = ['items', 'outfits'];
@@ -1154,6 +1185,9 @@ export class WardrobeControlDialogInner {
       this.resetMenuOpen.set(false);
       return;
     }
+    // In tab mode v4 renders no BaseModal, so Escape never closes the surface
+    // (only the Reset menu above). The reset-menu arm still fires either way.
+    if (this.asTab()) return;
     if (this.editorOpen()) return;
     this.requestClose();
   }
@@ -1189,4 +1223,35 @@ export class WardrobeControlDialogInner {
 })
 export class WardrobeControlDialog {
   protected readonly dialog = inject(WardrobeDialogService);
+}
+
+/**
+ * The Wardrobe as a left-rail workspace tab (v4 `WardrobeView`,
+ * `wardrobe-control-dialog.tsx:105-114`). A thin re-skin of the inner dialog in
+ * bare tab chrome: browse/edit only — `chatId` is null, so there is no
+ * "wearing now" column and no equip route ever fires (the chat-scoped path
+ * keeps the floating dialog, which can change what a character is actively
+ * wearing). Singleton. The rail opens it with NO payload (the inner then
+ * auto-selects the first character); a `characterId` payload preselects one.
+ */
+@Component({
+  selector: 'qt-wardrobe-tab-view',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [WardrobeControlDialogInner],
+  template: `
+    <qt-wardrobe-dialog-inner
+      [asTab]="true"
+      [initialCharacterId]="characterId() ?? null"
+      [chatId]="null"
+      (closed)="noop()"
+    />
+  `,
+})
+export class WardrobeTabView {
+  /** From `WardrobeTabPayload.characterId` (v4 `WardrobeView` prop). */
+  readonly characterId = input<string | undefined>(undefined);
+
+  protected noop(): void {
+    /* v4 passes `onClose={() => {}}` — a tab has no self-close. */
+  }
 }

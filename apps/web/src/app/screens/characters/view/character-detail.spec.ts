@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -213,6 +213,69 @@ describe('CharacterDetail', () => {
     const update = seen.find((r) => r.type === 'characterUpdate');
     expect(update).toBeTruthy();
     expect(update!['character']).toEqual({ npc: true });
+  });
+});
+
+/**
+ * The start-chat auto-open (p4.9j3 item 2, v4 `CharacterDetailView` `:136-143`).
+ * v5 DIVERGENCE: no in-place NewChatModal — the guard navigates to the
+ * established `/salon/new?characterId=` entry, ONCE, after the character loads,
+ * from either arm (`openChatOnMount` input or routed `?action=chat`).
+ */
+describe('CharacterDetail (start-chat auto-open guard)', () => {
+  async function renderWithNavSpy(opts: {
+    openChatOnMount?: boolean;
+    action?: string;
+    tabMode?: boolean;
+  }): Promise<ReturnType<typeof vi.fn>> {
+    TestBed.configureTestingModule({
+      imports: [CharacterDetail],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(character({})) },
+        ...(opts.tabMode
+          ? []
+          : [
+              {
+                provide: ActivatedRoute,
+                useValue: {
+                  paramMap: of(convertToParamMap({ id: 'c1' })),
+                  queryParamMap: of(
+                    convertToParamMap(opts.action ? { action: opts.action } : {}),
+                  ),
+                },
+              },
+            ]),
+      ],
+    });
+    const navigate = vi.fn(async () => true);
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockImplementation(navigate as never);
+    const fixture = TestBed.createComponent(CharacterDetail);
+    if (opts.tabMode) fixture.componentRef.setInput('characterId', 'c1');
+    if (opts.openChatOnMount) fixture.componentRef.setInput('openChatOnMount', true);
+    fixture.detectChanges();
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return navigate;
+  }
+
+  it('openChatOnMount navigates ONCE to /salon/new?characterId= after load (the in-tab drill arm)', async () => {
+    const navigate = await renderWithNavSpy({ openChatOnMount: true, tabMode: true });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(['/salon/new'], { queryParams: { characterId: 'c1' } });
+  });
+
+  it('the routed ?action=chat arm navigates to /salon/new (v4 page.tsx:21)', async () => {
+    const navigate = await renderWithNavSpy({ action: 'chat' });
+    expect(navigate).toHaveBeenCalledWith(['/salon/new'], { queryParams: { characterId: 'c1' } });
+  });
+
+  it('does NOT auto-open without the flag or the ?action=chat param', async () => {
+    const navigate = await renderWithNavSpy({});
+    expect(navigate).not.toHaveBeenCalled();
   });
 });
 

@@ -8,6 +8,7 @@ import type { EquippedSlots } from './equipped-slots';
 import {
   WardrobeControlDialog,
   WardrobeControlDialogInner,
+  WardrobeTabView,
 } from './wardrobe-control-dialog';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 
@@ -264,6 +265,95 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
   it('in chat the fitting room seeds from the worn snapshot (v4 :316-317)', async () => {
     const { component } = await renderInner('chat-1');
     expect(inner(component).fittingSlots()).toEqual(WORN);
+  });
+});
+
+describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function makeCore(seen: AnyRequest[]): CoreClient {
+    return {
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        const r = req as AnyRequest;
+        seen.push(r);
+        const out = defaultRoute(r);
+        if (out instanceof Error) throw out;
+        return out;
+      }),
+    } as unknown as CoreClient;
+  }
+
+  it('asTab renders BARE (no overlay chrome) while the dialog wraps in the modal', async () => {
+    // asTab false — the floating modal chrome.
+    const modal = await renderInner(null);
+    const modalEl = modal.fixture.nativeElement as HTMLElement;
+    expect(modalEl.querySelector('.qt-dialog-overlay')).not.toBeNull();
+    expect(modalEl.querySelector('.qt-dialog-footer')).not.toBeNull();
+    expect(modalEl.querySelector('.qt-wardrobe-tab')).toBeNull();
+
+    // asTab true (the WardrobeView tab) — bare scroll container, no overlay,
+    // no title header, no footer.
+    const seen: AnyRequest[] = [];
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [WardrobeTabView],
+      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+    });
+    const fixture = TestBed.createComponent(WardrobeTabView);
+    fixture.detectChanges();
+    await settle(fixture);
+    const tabEl = fixture.nativeElement as HTMLElement;
+    expect(tabEl.querySelector('.qt-wardrobe-tab')).not.toBeNull();
+    expect(tabEl.querySelector('.qt-dialog-overlay')).toBeNull();
+    expect(tabEl.querySelector('.qt-dialog-footer')).toBeNull();
+    // The wardrobe body still renders inside the bare container.
+    expect(tabEl.querySelector('#wardrobe-char-select')).not.toBeNull();
+  });
+
+  it('the tab has NO Live-outfit tab and fires NO equip route (chatId null)', async () => {
+    const seen: AnyRequest[] = [];
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [WardrobeTabView],
+      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+    });
+    const fixture = TestBed.createComponent(WardrobeTabView);
+    fixture.componentRef.setInput('characterId', 'c1');
+    fixture.detectChanges();
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+
+    // No "Live outfit" tab button (only Outfit Builder).
+    const tabButtons = [...el.querySelectorAll('.qt-tab')].map((b) => b.textContent ?? '');
+    expect(tabButtons.some((t) => /Live outfit/.test(t))).toBe(false);
+    expect(tabButtons.some((t) => /Outfit Builder/.test(t))).toBe(true);
+
+    // The dispatch log holds ONLY reads — no chatEquip, no chat-scoped verb.
+    expect(equips(seen)).toEqual([]);
+    expect(
+      seen.every((r) =>
+        ['characterList', 'imageProfileList', 'characterWardrobeList', 'wardrobeList'].includes(
+          r.type as string,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('a payload-less tab auto-selects the first character (v4 WardrobeView, no characterId)', async () => {
+    const seen: AnyRequest[] = [];
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [WardrobeTabView],
+      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+    });
+    const fixture = TestBed.createComponent(WardrobeTabView);
+    // NO characterId input — the rail opens the tab without a payload.
+    fixture.detectChanges();
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const select = el.querySelector('#wardrobe-char-select') as HTMLSelectElement;
+    // Characters sort by name (Aria < Zed) → the first is Aria (c1).
+    expect(select.value).toBe('c1');
   });
 });
 

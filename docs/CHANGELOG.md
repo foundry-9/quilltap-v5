@@ -111,6 +111,59 @@ wire module — the seven standalone document request interfaces
 unification) plus a root `StandaloneDocumentApi` dispatch client (one
 method per verb; the write conflict maps to the `conflict` outcome).
 SPA-only; no server verbs added (all seven already exist from P4.6w).
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — item-6 accent
+correction. A fuller survey found the runtime theme packs already declare
+`--qt-workspace-accent` with v4's live `var()` token references, under a
+`[data-theme].dark/.light` selector that outranks the bundled
+`[data-theme]` hex — so v5 is already v4-faithful and the bundled hexes are
+just the pre-pack-load fallback (no change to make). Corrected the
+stylesheet ruling comment, and rewrote the cross-theme accent e2e beat to be
+order-independent: it reads `_workspace.css` (Node fs) to assert the six
+bundled defaults are distinct hexes, plus a browser check that each
+`[data-theme]` root resolves the accent to a real colour. (The prior beat
+read the raw custom property, which a loaded theme pack overrides — flaky in
+full-suite order.)
+
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the workspace-flow
+e2e beats and the cross-theme accent ruling. New Playwright beats: a real
+HTML5 tab drag onto the drop-zone opens the split and a pointer drag of the
+divider re-ratios it within [MIN, MAX] (the p4.9j1 tier-2 divider
+deferral); an ACTIVATE-AT-UNIFY probe for the wardrobe tab (skips while the
+registry still shows the not-wired pane, self-activates at the swap); and a
+cross-theme accent check that drives all six `[data-theme]` roots asserting
+`--qt-workspace-accent` resolves to a distinct colour differing from the
+`--color-primary` fallback. Ruling (item 6): KEEP the static hex — a
+documented divergence from v4's live token references, since the equivalent
+tokens are split across async runtime theme packs and compiled files (a
+FOUC + coupling risk for no gain). Recorded in the stylesheet comment.
+
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the fresh-instance
+wizard handoff `/settings/wizard?mode=setup` now renders standalone under
+the workspace flag instead of redirecting into a tab. The redirect guard
+gains an optional bypass predicate; the settings-wizard binding uses it for
+`mode=setup` only (the frozen workspace contract declares no wizard tab
+payload to carry the param, and v4 has no equivalent workspace arm — a
+documented divergence). Without `mode=setup`, the Providers-tab re-entry
+redirects into the workspace as before.
+
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the roster's in-tab
+Chat and Create-Character arms (v4 `AuroraView` `openChatForSelected` /
+`openTab`). The character card's Chat action, in a workspace tab, drills
+into the detail with a start-chat auto-open flag; CharacterDetail gains an
+`openChatOnMount` input and honors the routed `?action=chat` deep-link,
+navigating ONCE (after the character loads) to `/salon/new?characterId=`
+(the v5 divergence — there is no in-place NewChatModal). Create-Character,
+when hosted, opens a `character-new` tab instead of routing out and
+bouncing through the redirect guard.
+
+P4.9J3 (the wardrobe-tab + workspace-riders lane) — the `asTab`
+WardrobeView surface: an `asTab` input on the wardrobe dialog renders
+its body bare in a `qt-wardrobe-tab` scroll container (no overlay,
+title, footer, or Escape/backdrop close) instead of the floating modal,
+plus a thin `qt-wardrobe-tab-view` component (v4 `WardrobeView`) that
+hosts it with `chatId=null` — browse/edit only, no Live-outfit tab and
+no equip route. AT-UNIFY: the tab-registry `wardrobe` row swaps to
+`WardrobeTabView` and the not-wired-pane wardrobe arm is pruned.
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn

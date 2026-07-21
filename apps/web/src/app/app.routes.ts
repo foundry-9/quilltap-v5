@@ -128,7 +128,17 @@ export const routes: Routes = [
   },
   {
     path: 'settings/wizard',
-    canActivate: [workspaceRedirectGuard('settings-wizard')],
+    // The fresh-instance handoff `?mode=setup` (shell first-run gate) passes
+    // through and renders standalone — the frozen contract has no wizard tab
+    // payload to carry `mode` (p4.9j3 item 4; a documented divergence). Without
+    // `mode=setup`, the Providers-tab re-entry redirects into the workspace tab.
+    canActivate: [
+      workspaceRedirectGuard(
+        'settings-wizard',
+        undefined,
+        (r) => r.queryParamMap.get('mode') === 'setup',
+      ),
+    ],
     loadComponent: () =>
       import('./screens/settings/wizard/wizard-screen').then((m) => m.WizardScreen),
   },

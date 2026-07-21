@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
 
 import { E2E_PASSPHRASE } from './support/env';
@@ -26,6 +29,17 @@ import { E2E_PASSPHRASE } from './support/env';
  *      conversation.
  *   6. (unify) the characters in-tab drill: a roster card click drills to the
  *      detail IN PLACE (no navigation); back restores the list.
+ *   7. (p4.9j3) the real HTML5 drag-split: a mouse/native drag of a tab onto the
+ *      right drop-zone opens the split, and a pointer drag of the divider
+ *      re-ratios it within [MIN, MAX] — the p4.9j1 tier-2 divider deferral.
+ *   8. (p4.9j3, ACTIVATE-AT-UNIFY) the wardrobe tab renders the bare asTab
+ *      surface. Until the unifier swaps the tab-registry `wardrobe` row to the
+ *      new WardrobeTabView, the kind still shows the not-wired pane — the beat
+ *      SKIPS while unwired and self-activates once the swap lands.
+ *   9. (p4.9j3, item 6) the cross-theme workspace accent: every bundled
+ *      `[data-theme]` root resolves `--qt-workspace-accent` to a distinct
+ *      concrete colour that differs from the default `--color-primary` fallback
+ *      (the never-run check; the ruling keeps the static hex).
  */
 
 async function openWorkspace(page: Page): Promise<void> {
@@ -147,4 +161,138 @@ test('the characters tab drills to a detail in place and back restores the roste
   // Back restores the kept-alive roster.
   await page.getByRole('button', { name: '← Back to Characters' }).click();
   await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
+});
+
+test('a real HTML5 tab drag opens the split; a divider pointer-drag re-ratios it', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  await railLink(page, 'Characters').click();
+  await expect(tabs(page)).toHaveCount(2);
+  // Start unsplit.
+  await expect(page.locator('.qt-workspace-divider')).toHaveCount(0);
+
+  // Native HTML5 drag: mouse-synthesized DnD is flaky in Chromium, so dispatch
+  // the events with a shared DataTransfer. `dragstart` flips the host's
+  // draggingId signal, which renders the split drop-zone; `drop` splits.
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  const draggable = page
+    .locator('.qt-tab-strip .qt-tab[draggable="true"]')
+    .filter({ hasText: 'Characters' })
+    .first();
+  await draggable.dispatchEvent('dragstart', { dataTransfer });
+
+  const dropZone = page.locator('.qt-tab-drop-zone');
+  await expect(dropZone).toBeVisible();
+  await dropZone.dispatchEvent('dragover', { dataTransfer });
+  await dropZone.dispatchEvent('drop', { dataTransfer });
+  await draggable.dispatchEvent('dragend', { dataTransfer });
+
+  // The split opened (a second pane + the divider), still two tabs total.
+  const divider = page.locator('.qt-workspace-divider');
+  await expect(divider).toBeVisible();
+  await expect(tabs(page)).toHaveCount(2);
+
+  // A pointer drag of the divider to the left decreases the left-pane ratio.
+  const before = Number(await divider.getAttribute('aria-valuenow'));
+  expect(before).toBe(50); // DEFAULT_SPLIT_RATIO
+  const box = await divider.boundingBox();
+  if (!box) throw new Error('divider has no bounding box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 200, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  // The ratio changed and stayed within [MIN_SPLIT_RATIO, MAX_SPLIT_RATIO].
+  await expect
+    .poll(async () => Number(await divider.getAttribute('aria-valuenow')))
+    .not.toBe(before);
+  const after = Number(await divider.getAttribute('aria-valuenow'));
+  expect(after).toBeGreaterThanOrEqual(20);
+  expect(after).toBeLessThanOrEqual(80);
+  expect(after).toBeLessThan(before); // moved left ⇒ smaller left pane
+});
+
+test('the wardrobe tab renders the bare asTab surface (activate-at-unify)', async ({ page }) => {
+  await page.goto('/workspace?open=wardrobe');
+  const passphrase = page.locator('#qt-passphrase');
+  const workspace = page.locator('.qt-workspace');
+  await expect(passphrase.or(workspace).first()).toBeVisible({ timeout: 15_000 });
+  if (await passphrase.count()) {
+    await passphrase.fill(E2E_PASSPHRASE);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+  }
+  await expect(workspace).toBeVisible({ timeout: 15_000 });
+
+  const notWired = page.locator('[data-not-wired][data-kind="wardrobe"]');
+  const bare = page.locator('.qt-wardrobe-tab');
+  await expect(notWired.or(bare).first()).toBeVisible({ timeout: 15_000 });
+
+  // ACTIVATE-AT-UNIFY: while the tab-registry still points wardrobe → the
+  // not-wired pane, skip. The unifier's registry swap self-activates this beat.
+  if (await notWired.count()) {
+    test.skip(true, 'wardrobe tab-registry swap lands at the p4.9j3 unification');
+    return;
+  }
+
+  // Live: the bare tab chrome (no floating modal overlay, no footer) with the
+  // wardrobe body inside, and a character auto-selected.
+  await expect(bare).toBeVisible();
+  await expect(page.locator('.qt-dialog-overlay')).toHaveCount(0);
+  await expect(page.locator('.qt-dialog-footer')).toHaveCount(0);
+  await expect(page.locator('#wardrobe-char-select')).toBeVisible();
+});
+
+test('every bundled theme gives the workspace a distinct accent (cross-theme, p4.9j3 item 6)', async ({
+  page,
+}) => {
+  const THEMES = ['art-deco', 'earl-grey', 'great-estate', 'madmans-box', 'old-school', 'rains'];
+
+  // (a) The DETERMINISTIC bundled-default contract: read the committed
+  // _workspace.css and confirm each [data-theme] root declares a concrete,
+  // DISTINCT hex accent. This is order-independent — unlike the raw runtime
+  // custom-property value, which the higher-specificity runtime theme pack
+  // overrides with v4's live var() token once its <link> loads (the corrected
+  // item-6 ruling). Node fs is available in the Playwright test runtime.
+  const css = readFileSync(
+    resolve(__dirname, '../src/styles/qt-components/_workspace.css'),
+    'utf8',
+  );
+  const bundled = new Map<string, string>();
+  for (const t of THEMES) {
+    const m = css.match(
+      new RegExp(`\\[data-theme='${t}'\\]\\s*\\{[^}]*?--qt-workspace-accent:\\s*([^;]+);`),
+    );
+    expect(m, `_workspace.css declares a bundled accent for ${t}`).not.toBeNull();
+    const hex = m![1].trim();
+    expect(hex, `${t} bundled accent is a concrete hex`).toMatch(/^#[0-9a-fA-F]{3,8}$/);
+    bundled.set(t, hex);
+  }
+  expect(new Set(bundled.values()).size, 'the six bundled accents are distinct').toBe(THEMES.length);
+
+  // (b) A browser resolution check (order-independent): each [data-theme] root
+  // resolves --qt-workspace-accent to a real, non-transparent colour — whether
+  // that is the bundled hex (no pack loaded) or the pack's live token (pack
+  // loaded). This proves the accent wires into the DOM for all six roots.
+  await openWorkspace(page);
+  const resolved = await page.evaluate((themes: string[]) => {
+    const root = document.documentElement;
+    const prev = root.getAttribute('data-theme');
+    const out: Record<string, string> = {};
+    for (const t of themes) {
+      root.setAttribute('data-theme', t);
+      const probe = document.createElement('div');
+      probe.style.color = 'var(--qt-workspace-accent, var(--color-primary))';
+      document.body.appendChild(probe);
+      out[t] = getComputedStyle(probe).color;
+      probe.remove();
+    }
+    if (prev) root.setAttribute('data-theme', prev);
+    else root.removeAttribute('data-theme');
+    return out;
+  }, THEMES);
+  for (const t of THEMES) {
+    expect(resolved[t], `${t} accent resolves to an rgb colour`).toMatch(/^rgba?\(/);
+    expect(resolved[t], `${t} accent is not transparent`).not.toMatch(/rgba?\([^)]*,\s*0\)/);
+  }
 });

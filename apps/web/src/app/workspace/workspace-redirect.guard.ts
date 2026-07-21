@@ -23,14 +23,30 @@ import { ActivatedRouteSnapshot, type CanActivateFn, Router, type UrlTree } from
 import { isWorkspaceTabsEnabled } from './workspace-flag';
 
 type ParamMapper = (route: ActivatedRouteSnapshot) => Record<string, string | null | undefined>;
+type BypassPredicate = (route: ActivatedRouteSnapshot) => boolean;
 
 /**
  * Redirect to `/workspace?open=<open>` (carrying the mapped params) when the
  * workspace is enabled; otherwise let the legacy route render.
+ *
+ * `bypass` is an escape hatch that lets a route render routed/standalone even
+ * while the workspace is on. It exists for ONE case (p4.9j3 item 4): the
+ * fresh-instance wizard handoff `/settings/wizard?mode=setup` (from the shell's
+ * first-run gate). The workspace contract is FROZEN and declares no
+ * `SettingsWizardTabPayload`, so `mode=setup` cannot ride a tab payload; v4 has
+ * no equivalent workspace arm (its setup pages are a documented divergence,
+ * `m6-screen-parity.md` §1.7), so there is no oracle to violate — the fresh
+ * wizard renders like the other pre-operational gate screens. A DOCUMENTED
+ * DIVERGENCE, not a contract edit.
  */
-export function workspaceRedirectGuard(open: string, params?: ParamMapper): CanActivateFn {
+export function workspaceRedirectGuard(
+  open: string,
+  params?: ParamMapper,
+  bypass?: BypassPredicate,
+): CanActivateFn {
   return (route): boolean | UrlTree => {
     if (!isWorkspaceTabsEnabled()) return true;
+    if (bypass?.(route)) return true;
     const router = inject(Router);
     const queryParams: Record<string, string> = { open };
     if (params) {

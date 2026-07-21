@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterListItem } from '../../../core/core-contract';
-import { WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
+import {
+  WORKSPACE_HANDLE,
+  WORKSPACE_TAB_ID,
+  type WorkspaceHandle,
+} from '../../../workspace/workspace-contract';
 import { CharactersList, sortCharacters } from './characters-list';
 
 function character(over: Partial<CharacterListItem>): CharacterListItem {
@@ -372,5 +376,127 @@ describe('CharactersList (in-tab drill)', () => {
       fixture.detectChanges();
     }
     expect(fixture.nativeElement.querySelector('qt-group-editor')).toBeTruthy();
+  });
+});
+
+/**
+ * In-tab Create-Character + Chat arms (p4.9j3 items 2 & 3): hosted as a
+ * workspace tab, Create-Character opens a `character-new` tab (no route) and the
+ * card's Chat action drills into the detail with its start-chat auto-open
+ * flagged (which lands on `/salon/new?characterId=`).
+ */
+describe('CharactersList (in-tab Create + Chat arms)', () => {
+  function fullClient(): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        switch (req.type) {
+          case 'characterList':
+            return { characters: [character({ id: 'c1', name: 'Bertie' })] };
+          case 'connectionProfileList':
+            return { profiles: [] };
+          case 'groupList':
+            return { groups: [] };
+          case 'characterGet':
+            return {
+              character: {
+                ...character({ id: 'c1', name: 'Bertie' }),
+                identity: 'A gentleman.',
+                manifesto: null,
+                personality: null,
+                firstMessage: null,
+                exampleDialogues: null,
+                physicalDescription: null,
+                defaultAgentModeEnabled: null,
+                defaultHelpToolsEnabled: null,
+                canDressThemselves: null,
+                canCreateOutfits: null,
+                aliases: [],
+                pronouns: null,
+                characterDocumentMountPointId: null,
+              },
+            };
+          case 'characterStats':
+            return {
+              stats: {
+                memories: 0,
+                conversations: 0,
+                wardrobeItems: 0,
+                photos: 0,
+                scenarios: 0,
+                knowledge: 0,
+                core: 0,
+                characterFiles: 0,
+                characterFilesTotal: 0,
+              },
+              groups: [],
+            };
+          case 'characterDefaultPartner':
+            return { partnerId: null };
+          default:
+            return {};
+        }
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  function makeHandle(): { handle: WorkspaceHandle; openTab: ReturnType<typeof vi.fn> } {
+    const openTab = vi.fn(() => 'new-tab');
+    return { openTab, handle: { openTab, closeTab: vi.fn(), refreshTab: vi.fn() } };
+  }
+
+  async function renderTab(h: WorkspaceHandle): Promise<ComponentFixture<CharactersList>> {
+    TestBed.configureTestingModule({
+      imports: [CharactersList],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: fullClient() },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-a' },
+        { provide: WORKSPACE_HANDLE, useValue: h },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharactersList);
+    fixture.detectChanges();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('Create Character opens a character-new tab and does NOT route', async () => {
+    const { handle: h, openTab } = makeHandle();
+    const fixture = await renderTab(h);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
+    const create = [...fixture.nativeElement.querySelectorAll('a')].find(
+      (a: HTMLAnchorElement) => a.textContent?.trim() === 'Create Character',
+    ) as HTMLAnchorElement;
+    expect(create).toBeTruthy();
+    // The routerLink is nulled in tab mode.
+    expect(create.getAttribute('href')).toBeNull();
+    create.click();
+    expect(openTab).toHaveBeenCalledWith('character-new');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('the card Chat action drills and auto-opens the chat (/salon/new?characterId=)', async () => {
+    const { handle: h } = makeHandle();
+    const fixture = await renderTab(h);
+    const navigate = vi.fn(async () => true);
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockImplementation(navigate as never);
+
+    const chat = fixture.nativeElement.querySelector(
+      '.character-card__action--chat',
+    ) as HTMLAnchorElement;
+    expect(chat).toBeTruthy();
+    chat.click();
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // Drilled in place…
+    expect(fixture.nativeElement.querySelector('qt-character-detail')).toBeTruthy();
+    // …and the start-chat auto-open fired to the v5 divergence entry.
+    expect(navigate).toHaveBeenCalledWith(['/salon/new'], { queryParams: { characterId: 'c1' } });
   });
 });

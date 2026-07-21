@@ -112,7 +112,7 @@ import { processTemplate, resolveUserToken } from '../templates';
         <a
           [routerLink]="inTab() ? null : ['/characters', character().id]"
           [queryParams]="inTab() ? null : { action: 'chat' }"
-          (click)="inTab() && onDrillView($event)"
+          (click)="inTab() && onDrillChat($event)"
           class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground qt-shadow-sm transition hover:qt-bg-success/90"
           title="Start a chat with this character"
         >
@@ -164,6 +164,12 @@ export class CharacterCard {
   readonly deleteCharacter = output<void>();
   /** Drill target (v4 `AuroraView` `setSelectedCharacterId`). */
   readonly view = output<void>();
+  /**
+   * In-tab Chat drill (v4 `AuroraView` `:509-521`): drill into the detail AND
+   * flag its start-chat auto-open (`openChatOnMount`). The routed arm keeps the
+   * `?action=chat` link above.
+   */
+  readonly openChat = output<void>();
 
   /**
    * v4 `handleCardClick`: don't navigate if the click landed on a button, link,
@@ -183,13 +189,22 @@ export class CharacterCard {
   }
 
   /**
-   * The avatar/name and Chat affordances in tab mode: suppress navigation (the
-   * routerLink is nulled) and drill in place. The Chat action's auto-start (v4
-   * `openChatOnMount`) is a named deferral — it drills to the detail for now.
+   * The avatar/name affordance in tab mode: suppress navigation (the routerLink
+   * is nulled) and drill into the detail in place.
    */
   protected onDrillView(e: Event): void {
     e.preventDefault();
     this.view.emit();
+  }
+
+  /**
+   * The Chat action in tab mode (v4 `AuroraView` `:509-521`): suppress
+   * navigation and drill into the detail with its start-chat auto-open flagged
+   * (`openChatOnMount`).
+   */
+  protected onDrillChat(e: Event): void {
+    e.preventDefault();
+    this.openChat.emit();
   }
 
   protected readonly avatarSrc = computed(() =>
