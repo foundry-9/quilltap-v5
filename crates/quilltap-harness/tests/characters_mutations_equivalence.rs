@@ -591,6 +591,68 @@ fn characters_mutations_match_oracle() {
         run("update_slim", r);
     }
     {
+        // P4.6bh: canChooseOutfit PUT → vault properties.json round-trip. The
+        // overlay-reload echo proves the allowlist + write-overlay route + read
+        // hydration end-to-end.
+        let db = fresh_db(&spec, "upd_choutfit");
+        let r = rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            json!({ "canChooseOutfit": true }),
+        ));
+        run("update_can_choose_outfit", r);
+    }
+    {
+        // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist
+        // through PUT (previously stripped before update()).
+        let db = fresh_db(&spec, "upd_wperm");
+        let r = rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            json!({ "canDressThemselves": false, "canCreateOutfits": true }),
+        ));
+        run("update_wardrobe_permissions", r);
+    }
+    {
+        // P4.6bh: the explicit-null tri-state clear — set both non-null, then PUT
+        // `{canDressThemselves: null}` (the sequence mirrors the oracle's
+        // `update-seq`). The PUT echo itself is NOT diffed: v4's echo is the
+        // merged+validated object, which carries the just-nulled key as present-
+        // `null`, whereas v5's echo is a pure overlay re-read that omits null
+        // columns (identical persisted state, a documented echo-shape divergence).
+        // Instead diff the GET readback — both sides omit a null column there —
+        // proving canDressThemselves cleared to null while canCreateOutfits (never
+        // touched by the second PUT) stayed true.
+        let db = fresh_db(&spec, "upd_clear");
+        rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            json!({ "canDressThemselves": true, "canCreateOutfits": true }),
+        ));
+        rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            json!({ "canDressThemselves": null }),
+        ));
+        let readback = response_data(&characters::character_get(&db, &uid, ARIA));
+        if norm(&readback) != norm(&oracle["update_clear_wardrobe_permission"]["readback"]) {
+            eprintln!(
+                "[update_clear_wardrobe_permission readback] MISMATCH:\n{}",
+                first_diff(
+                    &norm(&readback),
+                    &norm(&oracle["update_clear_wardrobe_permission"]["readback"])
+                )
+            );
+            extra.push("update_clear_wardrobe_permission".to_string());
+        } else {
+            eprintln!("[update_clear_wardrobe_permission readback] OK.");
+        }
+    }
+    {
         let db = fresh_db(&spec, "wc");
         let r = rt.block_on(characters::character_wardrobe_create(
             &db,

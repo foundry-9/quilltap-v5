@@ -1616,6 +1616,14 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
     "systemTransparency",
     "coreWhisperEnabled",
     "canBeCarina",
+    // Vault-managed (`properties.json`) plain boolean — named here or the Zod strip
+    // would drop it before `update()` could route it to the vault (v4 `put.ts:69`).
+    "canChooseOutfit",
+    // Wardrobe-permission tri-states (null = inherit global, true/false = override).
+    // Real DB columns; omitting them here would strip the key before it reached
+    // `update()`, so the editor toggles would silently never persist (v4 `put.ts:74`).
+    "canDressThemselves",
+    "canCreateOutfits",
     // The freeform fact sheet (vault `metadata.json`). Zod `.parse` strips unknown
     // keys, so it MUST be named here or a PUT carrying it would be silently dropped
     // before the write overlay ever saw it (v4 `put.ts:73`). Sending `metadata`

@@ -91,9 +91,10 @@ const TOP_LEVEL_FOLDERS: &[&str] = &[
 ];
 
 /// `JSON.stringify(PROPERTIES_JSON, null, 2)` — the default `properties.json`
-/// content (pronouns/aliases/title/firstMessage/talkativeness). FIXED bytes (they
-/// feed the dedup sha); verified against the JS output in the unit tests.
-const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5\n}";
+/// content (pronouns/aliases/title/firstMessage/talkativeness/canChooseOutfit).
+/// FIXED bytes (they feed the dedup sha); verified against the JS output in the
+/// unit tests.
+const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}";
 
 /// `JSON.stringify(PHYSICAL_PROMPTS_JSON, null, 2)` — the default
 /// `physical-prompts.json` content. Note this is the **four-key** scaffold default
@@ -452,6 +453,8 @@ mod tests {
         #[serde(rename = "firstMessage")]
         first_message: String,
         talkativeness: f64,
+        #[serde(rename = "canChooseOutfit")]
+        can_choose_outfit: bool,
     }
 
     #[derive(Serialize)]
@@ -470,6 +473,7 @@ mod tests {
             title: String::new(),
             first_message: String::new(),
             talkativeness: 0.5,
+            can_choose_outfit: false,
         })
         .unwrap();
         assert_eq!(pretty, PROPERTIES_JSON_DEFAULT);

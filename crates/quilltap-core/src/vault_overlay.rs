@@ -91,9 +91,11 @@ pub struct Pronouns {
     pub possessive: String,
 }
 
-/// `properties.json`'s validated shape (v4 `CharacterVaultPropertiesSchema`). All
-/// five keys are required; `pronouns`/`title`/`firstMessage` are nullable
+/// `properties.json`'s validated shape (v4 `CharacterVaultPropertiesSchema`). The
+/// first five keys are required; `pronouns`/`title`/`firstMessage` are nullable
 /// (serialized as `null` when unset, matching Zod's required-nullable output).
+/// `canChooseOutfit` is optional-with-default `false` (v4: vaults written before
+/// the field existed still parse — an absent key hydrates as `false`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CharacterVaultProperties {
     pub pronouns: Option<Pronouns>,
@@ -102,6 +104,8 @@ pub struct CharacterVaultProperties {
     #[serde(rename = "firstMessage")]
     pub first_message: Option<String>,
     pub talkativeness: f64,
+    #[serde(rename = "canChooseOutfit")]
+    pub can_choose_outfit: bool,
 }
 
 /// `physical-prompts.json`'s validated shape (v4 `CharacterVaultPhysicalPromptsSchema`).
@@ -176,12 +180,22 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
         return None;
     }
 
+    // canChooseOutfit: `z.boolean().optional().default(false)` — absent → false;
+    // present must be a boolean (a non-boolean is a schema violation, exactly as
+    // Zod's `.default()` only fires for `undefined`, so `null`/other → None).
+    let can_choose_outfit = match obj.get("canChooseOutfit") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return None,
+    };
+
     Some(CharacterVaultProperties {
         pronouns,
         aliases,
         title,
         first_message,
         talkativeness,
+        can_choose_outfit,
     })
 }
 

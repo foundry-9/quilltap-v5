@@ -258,7 +258,7 @@ fn characters_scaffold_tier2_matches_oracle() {
 
     // The three seeded JSON files carry the FIXED default content.
     let docs = rows("documents");
-    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5\n}";
+    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}";
     let physical_default =
         "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}";
     // metadata.json seeds an empty object — v4 JSON.stringify({}, null, 2) == "{}".

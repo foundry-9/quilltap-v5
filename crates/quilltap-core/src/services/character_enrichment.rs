@@ -123,6 +123,12 @@ pub fn build_list_dto(
         "canBeCarina".to_string(),
         js_nullish(character.get("canBeCarina"), json!(false)),
     );
+    // `canChooseOutfit ?? false` — the vault-managed flag surfaced on the list DTO
+    // (v4 `characters/handlers/get.ts:68`).
+    out.insert(
+        "canChooseOutfit".to_string(),
+        js_nullish(character.get("canChooseOutfit"), json!(false)),
+    );
     out.insert(
         "defaultConnectionProfileId".to_string(),
         js_or_null(character.get("defaultConnectionProfileId")),

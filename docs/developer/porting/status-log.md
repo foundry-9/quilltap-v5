@@ -9,6 +9,111 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.6bh (character-outfit + wardrobe-permission SERVER slice) — on `claude/p4-6bh-outfit-server-454679`, not yet unified
+
+Round-1 lane 2 of the episodic-recall drift catch-up campaign. Ports the two
+orthogonal feature slices that rode v4's `8bf3cb5f` squash
+(character-outfit-selection + blissful-einstein) — server half only. v4 baseline
+`8bf3cb5f`, drift-checked clean at lane start (`git log 8bf3cb5f..HEAD` empty).
+**No `fresh_schema.json` touch** (`canChooseOutfit` is a vault properties.json
+field, not a DB column; the two tri-states are pre-existing DB columns) and no
+`apps/web` / memory-subsystem touch — the sibling lanes own those.
+
+**Unit A — `canChooseOutfit` vault field (LANDED).** A new
+optional-with-default-`false` `properties.json` field, end-to-end:
+- `vault_overlay.rs`: `CharacterVaultProperties` gains `can_choose_outfit: bool`
+  (serialized `canChooseOutfit`); `parse_vault_properties` mirrors v4's
+  `z.boolean().optional().default(false)` — absent → `false`, a present boolean
+  passes through, a present non-boolean rejects the WHOLE parse (`.default()`
+  fires only for `undefined`, so `null`/other → `None`).
+- `vault_read_overlay.rs`: the properties.json copy loop hydrates `canChooseOutfit`.
+- `vault_character_write.rs`: `PropertiesJson` + `CharacterVaultWriteInput` +
+  `render_properties_json` gain `canChooseOutfit` (`?? false`), appended last in
+  v4's literal key order (feeds the dedup sha, so byte-exact).
+- `vault_character_update.rs`: `PROPERTY_KEYS` + the RMW block route
+  `canChooseOutfit` (v4's `'canChooseOutfit' in patch ? (patch.canChooseOutfit
+  ?? false) : current.canChooseOutfit`); `empty_properties_default` seeds `false`.
+- `character_vault.rs`: `PROPERTIES_JSON_DEFAULT` scaffold bytes + its
+  `properties_json_default_matches_js_stringify` self-test gain `canChooseOutfit:
+  false`.
+- `db/characters.rs`: `MANAGED_FIELDS` gains `canChooseOutfit` (routes a
+  canChooseOutfit-only PUT to the vault + the provision-on-the-fly guard).
+- `api/characters.rs`: `UPDATE_SCHEMA_KEYS` gains `canChooseOutfit` (vault-routed).
+- `character_enrichment.rs`: `build_list_dto` surfaces `canChooseOutfit ?? false`
+  (v4 `characters/handlers/get.ts:68`); `build_detail` already spreads the full
+  overlay, so the single GET surfaces it for free.
+
+**Unit B — wardrobe-permission PUT allowlist (LANDED, blissful-einstein).**
+`canDressThemselves` / `canCreateOutfits` (pre-existing tri-state nullable-boolean
+DB columns) were silently stripped before `update()`:
+- `api/characters.rs`: both added to `UPDATE_SCHEMA_KEYS`.
+- `vault_character_update.rs`: both added to `NULLABLE_SLIM_COLUMNS`, so an
+  explicit-`null` PUT clears the column (the `slim_update_from_patch` +
+  `CharacterUpdate` plumbing already existed). No create-side change: v4's
+  character CREATE is unchanged at `8bf3cb5f` (`post.ts` untouched), so the create
+  side stays intentionally unwired (Tier 2).
+
+**Differentials (all GREEN over oracles regenerated from `8bf3cb5f`):**
+- **Tier-1 parse** — `vault_json_parsers_equivalence` (QT_ORACLE_VAULT_JSON_PARSERS,
+  37 cases): added `p-can-choose-true/false/nonbool`. v4 confirms `"yes"` →
+  whole-parse `null`; every pre-existing case now hydrates `canChooseOutfit:
+  false`.
+- **Route (mutations)** — `characters_mutations_equivalence`
+  (QT_ORACLE_CHARACTERS_MUTATIONS, 26 cases): three new cases —
+  `update_can_choose_outfit` (PUT `{canChooseOutfit:true}` → overlay echo true),
+  `update_wardrobe_permissions` (`{canDressThemselves:false,canCreateOutfits:true}`
+  persist), `update_clear_wardrobe_permission` (a new `update-seq` kind: PUT true
+  then PUT `{canDressThemselves:null}`; compared via a **GET readback**, not the
+  PUT echo — see the divergence note).
+- **Route (reads)** — `characters_reads_equivalence` (QT_ORACLE_CHARACTERS_READS):
+  list + detail now surface `canChooseOutfit`.
+- **Byte-level writers** (proving the properties.json bytes vs v4):
+  `characters_scaffold_tier2` (QT_ORACLE_SCAFFOLD; the harness's hardcoded
+  props-default string updated), `characters_create_tier2` (QT_ORACLE_CHARCREATE),
+  `characters_update_tier2` (QT_ORACLE_CHARUPD), `characters_provision_tier2`
+  (QT_ORACLE_CHARPROV), `vault_character_write_equivalence`
+  (QT_ORACLE_VAULT_CHARACTER_WRITE).
+
+**Documented v5 divergence (NOT a bug):** the character PUT ECHO for an
+explicitly-nulled slim tri-state. v4's echo is the merged+validated object, which
+carries the just-nulled key as present-`null`; v5's echo is a pure overlay re-read
+(null columns omitted). The PERSISTED state is identical and a subsequent GET
+agrees on both sides — so the `update_clear_wardrobe_permission` case diffs the GET
+readback, sidestepping the echo-shape artifact while still proving the clear fired.
+(This is pre-existing v5 echo behavior, first exercised here; not introduced by
+this lane.)
+
+**Regen recipes (all from `~/source/quilltap-server` at `8bf3cb5f`, Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`, worktree = this lane):**
+- Tier-1 parse (tsx): `npx tsx $V5W/harness/oracle/cases/vault-json-parsers.ts >
+  /tmp/oracle-vault-json-parsers.ndjson`.
+- Route mutations/reads (jest /tmp mirror — jest ignores `.claude/`; cp the
+  `characters-mutations.test.ts`/`characters-reads.test.ts` + `characters.json`
+  into `$TMPO/cases|fixtures`): `QT_FIXTURE_CHARACTERS_MAIN=<w>/crates/quilltap-web/
+  tests/fixtures/characters-main.db QT_FIXTURE_CHARACTERS_MOUNT=…-mount.db
+  QT_ORACLE_OUT=/tmp/oracle-characters-{mutations,reads}.ndjson npx jest --silent
+  --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" --
+  characters-{mutations,reads}`.
+- Byte writers (tsx, each needs its fixture built first via
+  `harness/oracle/fixtures/build-characters-{scaffold,create,update,provision}-fixture.ts`
+  with its `QT_FIXTURE_*_{MAIN,MOUNT}` env; vault-char-write's builder uses
+  `QT_FIXTURE_OUT` while its case uses `QT_FIXTURE_VAULT_CHARACTER_WRITE`).
+
+**Oracles this lane INVALIDATES (regenerate at `8bf3cb5f`):** every character
+family that reads the overlay or writes properties.json now carries
+`canChooseOutfit`. Verified-and-green in-lane: the eight above. Also transitively
+invalidated (regenerate at unification; NOT run in-lane — they SKIP without env
+vars and match once regenerated at the baseline): characters_actions,
+characters_slim/read/arrays/adopt/physical tier-2, characters_subresources,
+chats_outfits, groups/projects tier-2, and any tier-3 embedding a character
+overlay. No committed oracle NDJSON exists for these, so regeneration is the
+normal path.
+
+**No refusal arms / no deferrals** beyond the documented create-side (v4 create
+unchanged). Version bumps: quilltap-core, quilltap-harness (NOT quilltap-web —
+the projection lives in `quilltap-core::services::character_enrichment`; no web
+source touched).
+
 ## Lane record — P4.6bg resumed (the doc-edit fs seam): units 3-4 (on `claude/p4-6bg-docedit-fs-scope-f019ee`, not yet unified)
 
 Resumed the P4.6bg fs-seam lane FROM MAIN (`5a80a097`) after its unit-1

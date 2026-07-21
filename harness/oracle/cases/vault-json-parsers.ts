@@ -146,6 +146,42 @@ propsCase(
   'p-missing-pronouns',
   J({ aliases: [], title: null, firstMessage: null, talkativeness: 0.5 }),
 );
+// P4.6bh canChooseOutfit: optional-with-default `false`. Absent → false (covered
+// by every case above); explicit true/false round-trips; a non-boolean is a schema
+// violation (Zod `.default()` only fires for `undefined`), rejecting the whole parse.
+propsCase(
+  'p-can-choose-true',
+  J({
+    pronouns: null,
+    aliases: [],
+    title: null,
+    firstMessage: null,
+    talkativeness: 0.5,
+    canChooseOutfit: true,
+  }),
+);
+propsCase(
+  'p-can-choose-false',
+  J({
+    pronouns: null,
+    aliases: [],
+    title: null,
+    firstMessage: null,
+    talkativeness: 0.5,
+    canChooseOutfit: false,
+  }),
+);
+propsCase(
+  'p-can-choose-nonbool',
+  J({
+    pronouns: null,
+    aliases: [],
+    title: null,
+    firstMessage: null,
+    talkativeness: 0.5,
+    canChooseOutfit: 'yes',
+  }),
+);
 
 // ── parseVaultPhysicalPrompts ──────────────────────────────────────────────
 physCase(

@@ -15,9 +15,10 @@
 //!
 //! v4's overridden `_create`/`_update` strip the [`MANAGED_FIELDS`] set
 //! (identity, description, manifesto, personality, exampleDialogues, pronouns,
-//! aliases, title, firstMessage, talkativeness, physicalDescription,
-//! systemPrompts, scenarios, metadata) from the validated document before the
-//! INSERT/UPDATE, because the 4.6 vault cutover moved those out of the DB and into
+//! aliases, title, firstMessage, talkativeness, canChooseOutfit,
+//! physicalDescription, systemPrompts, scenarios, metadata) from the validated
+//! document before the INSERT/UPDATE, because the 4.6 vault cutover moved those
+//! out of the DB and into
 //! the character vault (`metadata` has no column at all — the fact sheet is a
 //! vault file, its sole source of truth). So the persisted row carries only the
 //! **non-managed** columns — the
@@ -112,6 +113,7 @@ pub const MANAGED_FIELDS: &[&str] = &[
     "title",
     "firstMessage",
     "talkativeness",
+    "canChooseOutfit",
     "physicalDescription",
     "systemPrompts",
     "scenarios",

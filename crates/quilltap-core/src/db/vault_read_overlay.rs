@@ -240,7 +240,8 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
 
     let mut out = obj.clone();
 
-    // properties.json → pronouns, aliases, title, firstMessage, talkativeness.
+    // properties.json → pronouns, aliases, title, firstMessage, talkativeness,
+    // canChooseOutfit.
     if let Some(parsed) = parse_vault_properties(props_raw) {
         let pv = serde_json::to_value(parsed).expect("serialize vault properties");
         for key in [
@@ -249,6 +250,7 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
             "title",
             "firstMessage",
             "talkativeness",
+            "canChooseOutfit",
         ] {
             if let Some(v) = pv.get(key) {
                 out.insert(key.to_string(), v.clone());

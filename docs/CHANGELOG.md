@@ -84,6 +84,21 @@ sqlite_master diff against a fresh v4 instance), the reverse
 verify-v5-provisioned walk under real v4, and the three fresh_schema
 direct-reader suites.
 
+Ported the character-outfit + wardrobe-permission server slice (P4.6bh,
+round-1 lane 2 of the episodic-recall drift catch-up against v4 8bf3cb5f).
+A new per-character canChooseOutfit flag now round-trips through the
+character vault: it lives in the vault's properties.json (optional, default
+false), hydrates on read, seeds false in freshly scaffolded vaults, and
+persists on a character PUT — surfaced on both the character list and detail
+responses. Separately, the canDressThemselves and canCreateOutfits
+wardrobe-permission toggles (existing tri-state columns that were silently
+dropped before the write) now persist through the character PUT, including
+the explicit-null "inherit the global default" case. No schema change (the
+flag is a vault file, not a column) and no create-side change (v4's
+character create is unchanged). Verified against v4 8bf3cb5f with tier-1
+parse, character route (create/update/read), and the properties.json
+byte-level write differentials.
+
 Planned the episodic-recall drift catch-up — a 3-round campaign against
 v4's largest single drift (8bf3cb5f, a squash-merge of three feature
 branches: an episodic-recall memory overhaul plus character-outfit

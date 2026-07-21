@@ -61,6 +61,7 @@ interface CaseSpec {
     | 'create'
     | 'quick-create'
     | 'update'
+    | 'update-seq'
     | 'wardrobe-create'
     | 'wardrobe-get'
     | 'wardrobe-update'
@@ -82,6 +83,10 @@ interface CaseSpec {
   /** For photo-remove: discover the vault link id by this relativePath. */
   photoRelativePath?: string;
   body?: unknown;
+  /** For `update-seq`: apply each PUT body in order over the same fresh DB; the
+   *  FINAL PUT response (an overlay re-read) is the echo. Used to prove the
+   *  explicit-null tri-state clear (set non-null, then null). */
+  bodies?: unknown[];
 }
 
 /** Dump the mount-index photo GC tables + the character's defaultImageId — the
@@ -479,16 +484,38 @@ async function runCase(
         status = response.status;
         body = await response.json();
       }
-    } else if (c.kind === 'update') {
+    } else if (c.kind === 'update' || c.kind === 'update-seq') {
       const url = `http://localhost/api/v1/characters/${c.id}`;
       const { PUT } = (await import('@/app/api/v1/characters/[id]/route')) as {
         PUT: (...a: unknown[]) => Promise<unknown>;
       };
-      const response = (await PUT(mockRequest(url, c.body), {
-        params: Promise.resolve({ id: c.id }),
-      })) as { status: number; json: () => Promise<unknown> };
+      // `update` = one PUT; `update-seq` = each body in order over the same DB
+      // (the last PUT's overlay-reload response is the echo).
+      const putBodies = c.kind === 'update-seq' ? (c.bodies ?? []) : [c.body];
+      let response: { status: number; json: () => Promise<unknown> } | undefined;
+      for (const b of putBodies) {
+        response = (await PUT(mockRequest(url, b), {
+          params: Promise.resolve({ id: c.id }),
+        })) as { status: number; json: () => Promise<unknown> };
+      }
+      if (!response) throw new Error(`${c.name}: no PUT bodies`);
       status = response.status;
       body = await response.json();
+      if (c.kind === 'update-seq') {
+        // The PUT echo is v4's merged+validated object, which carries an
+        // explicitly-nulled key as present-`null`; v5's echo is a pure overlay
+        // re-read (null columns omitted). To prove the CLEAR persisted without
+        // tripping that echo-shape artifact, read the character back through the
+        // GET path — both sides omit a null column there.
+        const getUrl = `http://localhost/api/v1/characters/${c.id}`;
+        const { GET } = (await import('@/app/api/v1/characters/[id]/route')) as {
+          GET: (...a: unknown[]) => Promise<unknown>;
+        };
+        const rb = (await GET(mockRequest(getUrl, undefined), {
+          params: Promise.resolve({ id: c.id }),
+        })) as { json: () => Promise<unknown> };
+        return { name: c.name, status, body, readback: await rb.json() };
+      }
     } else {
       const action = c.kind === 'quick-create' ? '?action=quick-create' : '';
       const url = `http://localhost/api/v1/characters${action}`;
@@ -617,6 +644,38 @@ async function main(): Promise<void> {
         metadata: { hasAnsibleAccess: true, clearanceLevel: 3, faction: 'Ordo Aurum' },
         notAField: 'stripped by the schema',
       },
+    },
+    // P4.6bh: `canChooseOutfit` PUT → vault properties.json round-trip. The echo is
+    // an overlay re-read, so `character.canChooseOutfit === true` proves the schema
+    // allowlist named it, the write overlay routed it to the vault RMW, and the read
+    // overlay hydrated it back. (Aria's vault seeds `canChooseOutfit: false`.)
+    {
+      name: 'update_can_choose_outfit',
+      kind: 'update',
+      id: ARIA,
+      body: { canChooseOutfit: true },
+    },
+    // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist through
+    // PUT (previously stripped before update()). Echo reflects both DB columns.
+    {
+      name: 'update_wardrobe_permissions',
+      kind: 'update',
+      id: ARIA,
+      body: { canDressThemselves: false, canCreateOutfits: true },
+    },
+    // P4.6bh: the explicit-`null` (inherit-global) tri-state is PRESERVED, not
+    // stripped. First set both non-null, then PUT `{canDressThemselves: null}`:
+    // canDressThemselves clears back to null while canCreateOutfits (untouched by
+    // the second PUT) stays true — mirrors v4's put.route.test.ts null-case intent
+    // at the route level (both columns seed null in the fixture).
+    {
+      name: 'update_clear_wardrobe_permission',
+      kind: 'update-seq',
+      id: ARIA,
+      bodies: [
+        { canDressThemselves: true, canCreateOutfits: true },
+        { canDressThemselves: null },
+      ],
     },
     {
       name: 'wardrobe_create',

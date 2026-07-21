@@ -5,8 +5,8 @@
 //! and the symmetric sibling of [`super::vault_wardrobe_write::project_vault_wardrobe`].
 //!
 //! It writes (in v4's exact order):
-//!   1. `properties.json` — `{ pronouns, aliases, title, firstMessage, talkativeness }`
-//!      as `JSON.stringify(.,null,2)`.
+//!   1. `properties.json` — `{ pronouns, aliases, title, firstMessage, talkativeness,
+//!      canChooseOutfit }` as `JSON.stringify(.,null,2)`.
 //!   2. `metadata.json` — the fact sheet, **only when `metadata != null`** (the
 //!      anti-clobber guard: `metadata` has no DB column, so a raw row's absent
 //!      metadata must not overwrite a real fact sheet with `{}`).
@@ -119,6 +119,10 @@ pub struct CharacterVaultWriteInput {
     /// `z.number().min(0.1).max(1.0).default(0.5)` — `None` coalesces to `0.5`.
     #[serde(default)]
     pub talkativeness: Option<f64>,
+    /// The per-character "let character choose their opening outfit" flag (vault
+    /// `properties.json`, `character.canChooseOutfit ?? false` on write).
+    #[serde(default)]
+    pub can_choose_outfit: Option<bool>,
     /// The freeform fact sheet (`metadata.json`). Has NO DB column — a raw
     /// character row simply cannot carry it, so `None` (absent) means "no
     /// opinion", NOT "empty". The write is guarded on `!= null` (see
@@ -169,7 +173,8 @@ fn serialize_js_number<S: Serializer>(value: &f64, s: S) -> Result<S::Ok, S::Err
 }
 
 /// `properties.json` shape — keys in v4's literal order; every key is always
-/// emitted (`null` when absent), never skipped.
+/// emitted (`null` when absent), never skipped. `canChooseOutfit` is appended last
+/// (v4's write default `?? false`), matching v4's key order.
 #[derive(Serialize)]
 struct PropertiesJson<'a> {
     pronouns: Option<&'a Pronouns>,
@@ -179,6 +184,8 @@ struct PropertiesJson<'a> {
     first_message: Option<&'a str>,
     #[serde(serialize_with = "serialize_js_number")]
     talkativeness: f64,
+    #[serde(rename = "canChooseOutfit")]
+    can_choose_outfit: bool,
 }
 
 /// `physical-prompts.json` shape — v4 `renderPhysicalPromptsJson`. Five keys,
@@ -204,6 +211,7 @@ pub fn render_properties_json(
     title: Option<&str>,
     first_message: Option<&str>,
     talkativeness: f64,
+    can_choose_outfit: bool,
 ) -> String {
     let props = PropertiesJson {
         pronouns,
@@ -211,6 +219,7 @@ pub fn render_properties_json(
         title,
         first_message,
         talkativeness,
+        can_choose_outfit,
     };
     serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible")
 }
@@ -240,13 +249,14 @@ pub fn write_character_vault_managed_fields(
 ) -> Result<WriteResult, DbError> {
     let mut result = WriteResult::default();
 
-    // 1. properties.json (pretty JSON; all five keys always present).
+    // 1. properties.json (pretty JSON; all six keys always present).
     let props = PropertiesJson {
         pronouns: character.pronouns.as_ref(),
         aliases: &character.aliases,
         title: character.title.as_deref(),
         first_message: character.first_message.as_deref(),
         talkativeness: character.talkativeness.unwrap_or(0.5),
+        can_choose_outfit: character.can_choose_outfit.unwrap_or(false),
     };
     let props_json =
         serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible");
@@ -367,11 +377,12 @@ mod tests {
             title: input.title.as_deref(),
             first_message: input.first_message.as_deref(),
             talkativeness: input.talkativeness.unwrap_or(0.5),
+            can_choose_outfit: input.can_choose_outfit.unwrap_or(false),
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
         assert_eq!(
             json,
-            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5\n}"
+            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}"
         );
     }
 
@@ -384,9 +395,11 @@ mod tests {
             title: None,
             first_message: None,
             talkativeness: 1.0,
+            can_choose_outfit: false,
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
-        assert!(json.contains("\"talkativeness\": 1\n"), "{json}");
+        // `canChooseOutfit` follows `talkativeness`, so the line ends with a comma.
+        assert!(json.contains("\"talkativeness\": 1,\n"), "{json}");
         // Empty aliases array renders inline as `[]` (matches JSON.stringify).
         assert!(json.contains("\"aliases\": []"), "{json}");
     }

@@ -81,13 +81,14 @@ const MARKDOWN_FIELDS: &[(&str, &str)] = &[
     ("exampleDialogues", EXAMPLE_DIALOGUES_MD_PATH),
 ];
 
-/// The five `properties.json` keys (in literal order).
+/// The six `properties.json` keys (in literal order).
 const PROPERTY_KEYS: &[&str] = &[
     "pronouns",
     "aliases",
     "title",
     "firstMessage",
     "talkativeness",
+    "canChooseOutfit",
 ];
 
 /// Route the managed fields in `patch` to the character's vault and return the
@@ -171,6 +172,18 @@ pub fn apply_document_store_write_overlay(
         } else {
             current.talkativeness
         };
+        // v4: `'canChooseOutfit' in patch ? (patch.canChooseOutfit ?? false)
+        // : current.canChooseOutfit` — a present-but-null/non-bool patch value
+        // coalesces to `false`, matching `?? false`.
+        let can_choose_outfit = if patch.contains_key("canChooseOutfit") {
+            patch
+                .get("canChooseOutfit")
+                .unwrap()
+                .as_bool()
+                .unwrap_or(false)
+        } else {
+            current.can_choose_outfit
+        };
 
         let json = render_properties_json(
             pronouns.as_ref(),
@@ -178,6 +191,7 @@ pub fn apply_document_store_write_overlay(
             title.as_deref(),
             first_message.as_deref(),
             talkativeness,
+            can_choose_outfit,
         );
         links.write_database_document(&mount_point_id, PROPERTIES_JSON_PATH, &json)?;
         for k in &touched {
@@ -308,6 +322,8 @@ const NULLABLE_SLIM_COLUMNS: &[&str] = &[
     "defaultTimestampConfig",
     "defaultAgentModeEnabled",
     "defaultHelpToolsEnabled",
+    "canDressThemselves",
+    "canCreateOutfits",
     "systemTransparency",
     "coreWhisperEnabled",
     "canBeCarina",
@@ -415,6 +431,7 @@ fn empty_properties_default() -> CharacterVaultProperties {
         title: None,
         first_message: None,
         talkativeness: 0.5,
+        can_choose_outfit: false,
     }
 }
 
