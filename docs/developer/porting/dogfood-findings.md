@@ -30,16 +30,34 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The 2026-07-20 dogfood pass (the workspace-tabs remainder round) —
+  CLEAN, zero findings.** VERIFIED on the Friday copy: the Brahma Console
+  end-to-end in BOTH modes (floating dialog + workspace tab — live
+  multi-turn sends with SQL tool calls over the real Friday schema,
+  transcript persistence + reload, model-picker profile switch, new/delete
+  conversation, salon-list exclusion), the standalone Document Mode surface
+  (rail entry, picker, real store documents, the open→edit→save→edit→save
+  round-trip that the mtime fix guards, the loud general-scope
+  "New blank document" refusal), the Wardrobe tab + roster riders (asTab
+  hosting, card Chat → `/salon/new`, header Start Chat, Create-Character
+  in-tab), workspace chrome stress (multi-kind tabs, HTML5 drag-split,
+  divider resize, reload persistence, cross-theme accent), AND the
+  **Text Replacements** card + a rule firing in the composer (the
+  migration-vintage `text_replacement_rules` table on real data — the
+  2026-07-15 note's highest-value remaining check, now closed). One
+  non-finding during setup: a stale v4 browser tab on port 3000 (v5's
+  deliberate default) surfaced v4-client parse errors against the v5
+  server — recorded here so it isn't re-reported; hard-reload resolves it.
+
 - **The 2026-07-15 dogfood pass (the P4.6ae→am arc) — covered vs deferred.**
   VERIFIED on the Friday copy: composer on-type marks + send fidelity, the
   big-slab paste round-trip, the character-edit field round-trip
   (qt-markdown-field over real prose), chat backgrounds (#9 fix), the
   chained-response render (#7 fix), and the /files general listing (complete
   + correct). Findings #10/#11 recorded NOT-A-BUG (v4-faithful). **NOT yet
-  walked — the next /dogfood pass starts here:** the Text Replacements
-  settings card + a rule firing in the composer (the migration-vintage
-  `text_replacement_rules` table on real data — highest-value remaining
-  check), composition mode (toggle + per-chat persistence + the Settings
+  walked — the next /dogfood pass starts here:** ~~the Text Replacements
+  settings card + a rule firing in the composer~~ (walked CLEAN 2026-07-20,
+  above), composition mode (toggle + per-chat persistence + the Settings
   default card), draft persistence, delete-with-associations on a linked
   file, the composer file-attach + duplicate-conflict flow, and
   imageProfileGenerate (real provider spend — ask first).

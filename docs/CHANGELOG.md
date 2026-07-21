@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+The 2026-07-20 human dogfood pass over the workspace-tabs remainder
+round ran CLEAN on the Friday copy — zero findings. Verified: Brahma
+Console in both modes (live sends with SQL tool calls over the real
+schema, persistence, salon-list exclusion), the standalone Document
+Mode round-trip (the mtime-fix path) plus the loud general-scope
+refusal, the Wardrobe tab + roster riders, workspace drag-split /
+reload / theme-accent stress, and the Text Replacements card + a rule
+firing in the composer (the migration-vintage `text_replacement_rules`
+check carried over from 2026-07-15, now closed). Walk record in
+`docs/developer/porting/dogfood-findings.md` (standing notes).
+
 The workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥
 P4.9J4) is UNIFIED on main — all four orders CLOSED, and the three
 not-wired workspace tab kinds are gone: all 22 kinds host real screens.
