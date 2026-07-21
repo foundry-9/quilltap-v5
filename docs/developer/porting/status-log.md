@@ -25915,3 +25915,70 @@ passed / 1 ACTIVATE-AT-UNIFY skip.
 Note: the S3 engine.rs REGION SPLIT held — BF touched only the `EngineAssembly`
 struct + `shutdown_only` + the `ReadyEngine` struct/mapping; BG owns the
 doc-verb dispatch call-site lines. No overlap with BG's regions.
+
+### P4.6bg lane BG — unit 1: the path-resolver fs branches + the `files_dir` thread + the fs differential (2026-07-21)
+
+Branch `claude/p4-6bg-docedit-fs-scope-f8bb67`, v4 baseline `7e6d13e5`
+(drift-checked clean at lane start). Core `0.0.292 → 0.0.293`, harness
+`0.0.253 → 0.0.254`.
+
+**Landed:**
+- `doc_edit/path_resolver.rs`: the three host-filesystem branches now
+  resolve for real — the `general` scope (`<files_dir>/_general`), the
+  `filesystem`/`obsidian` document-store + project-official mounts (their
+  `basePath`), and the legacy `<files_dir>/<projectId>` project fallback.
+  Ported v4's `safeRealpath` (with the walk-up-to-deepest-existing-ancestor
+  fallback + its iCloud-symlink why-comment; the multi-level join order is
+  reproduced faithfully — v4's reversed-tail quirk and all), plus
+  `verifyPathIsWithinBase` and the POSIX `path.normalize`/`path.join`
+  primitives. Byte-exact error codes/messages (`Path escapes {general
+  storage,mount point,project} boundary`, `TRAVERSAL_ATTEMPT`).
+- The `files_dir: Option<&Path>` thread (S2): `resolve_doc_edit_path` gains
+  a trailing `files_dir` param; `DocEditToolContext` + `DocumentAccessContext`
+  each gain a `files_dir: Option<PathBuf>` field the handlers/`resolve_operator_doc_path`
+  read. `ResolveError::FsSeam` now means ONLY "host disk unavailable"
+  (`files_dir: None`). **All top call sites (executor, api/documents,
+  qtap_target_route, harness tests) pass `None`** — behaviour is byte-identical
+  to pre-lane; the tool-site fs I/O (unit 3) and the engine wire flipping to
+  `Some(base_dir/files)` (unit 5) land later.
+- `doc_edit_path_resolver_equivalence` extended with **10 fs cases**
+  (fs-mount read/new/symlink-escape, general existing/new/subdir-new/
+  traversal/symlink-escape, legacy-project fallback, project-official-fs),
+  25 resolve + 6 uri cases total. Both sides materialize an identical temp
+  tree under a CANONICAL scratch root and rewrite that root to `__ROOT__`
+  (the P4.6v sentinel recipe, adapted); the fixture builder seeds an
+  fs-backed store (`FS Store`, linked to P), a legacy project L (official
+  store disabled → fallback), and a project F (official store flipped to
+  `filesystem`). Green over a fresh `7e6d13e5` oracle.
+
+**Regen recipe (from the v4 checkout, Node 24):**
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5=<worktree>
+cd ~/source/quilltap-server
+export QT_FIXTURE_DPR_MAIN=/tmp/qt-dpr-main.db QT_FIXTURE_DPR_MOUNT=/tmp/qt-dpr-mount.db
+$N/node --import tsx $V5/harness/oracle/fixtures/build-doc-edit-path-resolver-fixture.ts
+$N/node --import tsx $V5/harness/oracle/cases/doc-edit-path-resolver.ts > /tmp/oracle-dpr.ndjson
+# run:
+QT_ORACLE_DPR=/tmp/oracle-dpr.ndjson $QT_FIXTURE_DPR_MAIN… cargo test -p quilltap-harness --test doc_edit_path_resolver_equivalence
+```
+
+**⚠ Discovered, out-of-scope divergence (flagged, not fixed):** the former
+`uri-ambiguous`/`res-ambiguous` differential assertions (two enabled stores
+both named "Shared Name" → UUID-form `qtap://`) were DROPPED. Since the
+`d68638b4` NOCASE mount-namespace drift (P4.d7), v4's `findByName` filters
+`findEnabled()` OVERLAID names — it disambiguates the second store to
+"Shared Name (2)" at read time — so v4's `countByName('Shared Name')` = 1
+(name-form). v5's `find_by_name` (`db/doc_mount_points.rs`) reads the raw
+`name` column and counts 2 (id-form). This is a pre-existing v5 gap in the
+P4.d7 feature (db layer, NOT this fs-seam lane's ownership); a follow-up
+task is spawned. The ambiguity → id-form branch stays covered by the
+empty-name self-vault cases (`uri-self`/`res-self`).
+
+**OPEN under P4.6bg (this lane continues):** unit 3 (the tool-site fs I/O —
+`shared.rs` read/write dispatch, `document_ui` new-blank + `fs.stat`,
+`file_management` fs create/rename/delete/move, `text` fs walks), unit 4
+(the doc_fm/doc_ui/doc_text fs differential extensions), unit 5 (the
+engine `files_dir` wire + `api/documents` general arms + the
+`workspace-document-standalone-flow` beat flip), and tier-2 unit 6
+(`conversion.rs` + un-refusing convert/deconvert + the S1 `store_mount_file`
+signature change).

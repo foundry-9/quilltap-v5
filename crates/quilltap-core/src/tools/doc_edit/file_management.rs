@@ -110,11 +110,24 @@ pub fn handle_move_file(
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
 
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved_source = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
-    let resolved_dest =
-        resolve_doc_edit_path(main, mount, scope, new_path.as_deref(), &write_context)
-            .map_err(resolve_error_message)?;
+    let resolved_source = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
+    let resolved_dest = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        new_path.as_deref(),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
 
     // A move removes the source path — gate it by character_write. The destination
     // is gated too in case it would overwrite a protected file (a no-op when the
@@ -306,6 +319,7 @@ pub fn handle_copy_file(
         DocEditScope::DocumentStore,
         Some(&source_path),
         &read_context,
+        ctx.files_dir.as_deref(),
     )
     .map_err(resolve_error_message)?;
     // You can't copy what you can't read — gate the source by character_read.
@@ -325,6 +339,7 @@ pub fn handle_copy_file(
         DocEditScope::DocumentStore,
         Some(&initial_dest_rel),
         &write_context,
+        ctx.files_dir.as_deref(),
     )
     .map_err(resolve_error_message)?;
 
@@ -361,6 +376,7 @@ pub fn handle_copy_file(
         DocEditScope::DocumentStore,
         Some(&final_dest_rel),
         &write_context,
+        ctx.files_dir.as_deref(),
     )
     .map_err(resolve_error_message)?;
     // Gate the destination by character_write (no-op when it doesn't exist yet).
@@ -479,8 +495,15 @@ pub fn handle_delete_file(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     // Capture the read-policy BEFORE the delete removes the link row, so a
@@ -548,8 +571,15 @@ pub fn handle_create_folder(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
 
     if resolved.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
@@ -602,8 +632,15 @@ pub fn handle_delete_folder(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     // A character may not delete a folder that holds a protected document.
     assert_folder_has_no_write_protected_descendants(mount, &resolved, ctx)?;
 
@@ -677,11 +714,24 @@ pub fn handle_move_folder(
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
 
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved_source = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
-    let resolved_dest =
-        resolve_doc_edit_path(main, mount, scope, new_path.as_deref(), &write_context)
-            .map_err(resolve_error_message)?;
+    let resolved_source = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
+    let resolved_dest = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        new_path.as_deref(),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
 
     // Moving a folder relocates everything under it — a character may not move a
     // folder that holds a protected document.

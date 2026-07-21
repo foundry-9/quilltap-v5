@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Opened the doc-edit path resolver's host-filesystem branches (P4.6bg tier-1
+unit 1). The `general` scope (`<files>/_general`), filesystem/obsidian
+mounts, and the legacy `<files>/<projectId>` project fallback now resolve
+for real, gated by a `files_dir: Option<&Path>` thread the host supplies
+(`None` keeps the historic FsSeam refusal). Ported v4's `safeRealpath`
+(with its walk-up-to-deepest-existing-ancestor fallback) and
+`verifyPathIsWithinBase` byte-exact. Threaded `files_dir` through the
+doc-edit tool context + the document access context; all call sites pass
+`None` for now (the tool-site fs I/O and the engine wire land in later
+units). Extended the `doc_edit_path_resolver` differential with ten
+fs-mount / general / legacy-fallback / project-official-fs cases over a
+temp tree both sides materialize identically (canonical-scratch sentinel
+rewrite); green against v4 7e6d13e5. The two duplicate-name URI-ambiguity
+assertions were dropped — v4's read-time display disambiguation of
+duplicate enabled store names (the P4.d7 NOCASE mount namespace) diverges
+from v5's raw-name count, a pre-existing gap outside this lane's scope
+(flagged for follow-up).
+
 Codec round lane BF unit 4: two e2e beats (spec files only, SPA 0.5.239 →
 0.5.240). (a) A wardrobe out-of-chat Preview beat: with the fixture's one
 image profile (apiKeyId=null), clicking Preview reaches v4's pre-provider

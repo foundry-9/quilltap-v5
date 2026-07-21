@@ -87,8 +87,15 @@ pub fn handle_read_file(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let read_context = build_read_resolution_context(main, &addressing, ctx);
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &read_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &read_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_read(mount, &resolved, ctx)?;
     let uri = uri_for_resolved_path(
         main,
@@ -256,8 +263,15 @@ pub fn handle_write_file(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
@@ -395,8 +409,15 @@ pub fn handle_str_replace(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
@@ -491,8 +512,15 @@ pub fn handle_insert_text(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
