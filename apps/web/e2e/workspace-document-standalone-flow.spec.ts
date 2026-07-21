@@ -21,7 +21,10 @@ import { E2E_PASSPHRASE } from './support/env';
  *
  *   1. (always) the tab kind round-trips through the layout: a
  *      `?open=document-standalone` intent mints a tab — the not-wired pane
- *      pre-unify, the live editor after.
+ *      pre-unify, the live editor after. Post-P4.6bg the GENERAL scope is live
+ *      (the `files_dir` engine wire + the operator fs branches), so a general
+ *      open creates a blank on `<files>/_general` and round-trips
+ *      create → edit → flush-on-blur autosave → reload.
  *   2. (unify) rail → picker → New blank → edit → flush-on-blur autosave →
  *      rename (title + tab label) → delete closes the tab.
  *   3. (unify) reopen-focuses-same-tab: a renamed file reopened from the picker
@@ -62,12 +65,10 @@ async function openStandalonePicker(page: Page) {
 
 /**
  * Create a blank document inside a DATABASE-BACKED store ("New document here"
- * in the store's browse view). The picker's top-level "New blank document"
- * targets the `general` scope, which the server REFUSES loudly — the entire
- * general scope is the standing FsSeam deferral to the Phase-4 host
- * (`doc_edit/path_resolver.rs` `DocEditScope::General => Err(FsSeam)`), so the
- * working standalone beats drive the database-backed scope instead; the
- * round-trip beat below pins the general-scope refusal.
+ * in the store's browse view). (The general-scope "New blank document" is now
+ * live too — P4.6bg wired `files_dir` + ported the operator fs branches — and is
+ * exercised by the first test's general round-trip; these store beats keep
+ * driving the database-backed scope so they don't depend on the host disk.)
  */
 async function createBlankInStore(page: Page, storeName: string) {
   const picker = await openStandalonePicker(page);
@@ -86,11 +87,7 @@ test('the document-standalone tab kind round-trips (not-wired → live editor at
 
   const nw = notWired(page);
   const pane = page.locator('qt-document-pane');
-  // Post-swap the general-scope open renders the view's ERROR state (no pane):
-  // the whole `general` scope is the standing FsSeam deferral
-  // (path_resolver.rs `DocEditScope::General => Err(FsSeam)`).
-  const refusal = page.getByText('This document could not be opened.');
-  await expect(nw.or(refusal).first()).toBeVisible({ timeout: 15_000 });
+  await expect(nw.or(pane).first()).toBeVisible({ timeout: 15_000 });
 
   if (await nw.count()) {
     // PRE-UNIFY: the loud not-wired pane. Prove the tab kind round-trips through
@@ -99,20 +96,39 @@ test('the document-standalone tab kind round-trips (not-wired → live editor at
     return;
   }
 
-  // POST-UNIFY, general scope: pin the loud refusal so the deferral stays
-  // visible.
-  await expect(refusal).toBeVisible();
-  await expect(page.getByText(/served from the host filesystem/)).toBeVisible();
-  await page.getByRole('button', { name: 'Close tab' }).click();
-
-  // POST-UNIFY, database-backed scope: the live standalone editor mounts and
-  // creates the blank doc in the store root.
-  await page.goto(
-    '/workspace?open=document-standalone&scope=document_store&mountPoint=' +
-      encodeURIComponent('Project Files: Skyhaven'),
-  );
+  // POST-UNIFY, general scope (P4.6bg): the wire makes the general scope LIVE —
+  // the standalone editor mounts and creates a blank on <files>/_general (the
+  // operator open + `pick_untitled_document_path` + the empty-file write).
   await expect(pane).toBeVisible({ timeout: 15_000 });
   await expect(pane).toContainText('Untitled');
+
+  // Edit → flush-on-blur autosave writes the general file to host disk (the
+  // operator write fs branch).
+  const editor = pane.locator('.qt-rich-editor-content');
+  await editor.click();
+  await page.keyboard.type('General desk notes.');
+  await expect(pane).toContainText('Unsaved');
+  await pane.locator('.qt-doc-uri-copy-button').click();
+  await expect(pane).toContainText('Saved', { timeout: 15_000 });
+
+  // Rename to a unique title (the operator rename fs branch: `fs.rename` on
+  // <files>/_general) so the recents reopen below is unambiguous.
+  await pane.locator('.qt-doc-title').click();
+  const titleInput = pane.locator('.qt-doc-title-input');
+  await titleInput.fill('General Roundtrip');
+  await titleInput.press('Enter');
+  await expect(tabLabel(page, 'General Roundtrip')).toBeVisible({ timeout: 15_000 });
+
+  // Close, then reopen from the picker recents → the pane re-reads the general
+  // file off disk (the operator read fs branch), proving the full
+  // create → edit → autosave → read round-trip on <files>/_general.
+  await pane.getByRole('button', { name: 'Exit document mode' }).click();
+  await expect(page.locator('qt-document-pane')).toHaveCount(0, { timeout: 15_000 });
+  const picker = await openStandalonePicker(page);
+  await picker.getByRole('button', { name: /General Roundtrip/ }).click();
+  await expect(page.locator('qt-document-pane')).toContainText('General desk notes.', {
+    timeout: 15_000,
+  });
 });
 
 test('rail → picker → open → edit → autosave → rename → delete (activates at unify)', async ({

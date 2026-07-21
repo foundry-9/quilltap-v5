@@ -3,11 +3,12 @@
 //! `doc_copy_file`, `doc_delete_file`, `doc_create_folder`, `doc_delete_folder`,
 //! `doc_move_folder`.
 //!
-//! Only the **database-backed** mount branch is ported (`mount_type == "database"`);
-//! every corpus store is database-backed. The filesystem (`fs.*`) branches are the
-//! [`crate::doc_edit::path_resolver::ResolveError::FsSeam`] — a `mount_type !=
-//! "database"` resolved path surfaces the FsSeam message (as
-//! [`super::shared::read_file_with_mtime`] does), never real disk I/O.
+//! Both the **database-backed** mount branch (`mount_type == "database"`) and the
+//! **filesystem** (`fs.*`) branches are ported. A filesystem-backed resolved path
+//! only occurs when the resolver produced a real `absolute_path` — i.e. the host
+//! supplied a `files_dir` (P4.6bg); with `files_dir: None` the resolver's
+//! [`crate::doc_edit::path_resolver::ResolveError::FsSeam`] surfaces before any
+//! handler runs, so the historic refusal is preserved for the database-only corpus.
 //!
 //! Each handler does its OWN existence checks with v4's byte-exact error strings
 //! BEFORE the store mutation. The composed store primitives
@@ -209,8 +210,62 @@ pub fn handle_move_file(
         }
     }
 
-    // Non-database mount → the host-filesystem seam.
-    Err(fs_seam())
+    // Filesystem mount (v4 `file-management-handlers.ts:218-293`): stat the source,
+    // refuse to overwrite an existing dest, `mkdir -p` the parent, then `fs.rename`.
+    match fs_stat_is_file(&resolved_source.absolute_path) {
+        Some(true) => {}
+        Some(false) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Source path is not a file: {path}"
+            )))
+        }
+        None => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Source file not found: {path}"
+            )))
+        }
+    }
+    let np = new_path.clone().unwrap_or_default();
+    // Case-only rename: on a case-insensitive filesystem the dest probe would find
+    // the source itself, so skip it (v4 compares the two absolute paths directly).
+    let fs_case_only_rename = resolved_source.absolute_path != resolved_dest.absolute_path
+        && resolved_source.absolute_path.to_lowercase()
+            == resolved_dest.absolute_path.to_lowercase();
+    if !fs_case_only_rename && fs_path_exists(&resolved_dest.absolute_path) {
+        return Ok(DocEditToolResult::fail(format!(
+            "Destination already exists: {np}. Move will not overwrite existing files."
+        )));
+    }
+    if let Some(parent) = std::path::Path::new(&resolved_dest.absolute_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "mkdir", &e))?;
+    }
+    std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
+    // syncChatDocumentsAfterFileMove + the document_store reindex: no-op seams.
+    let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+    let announcement = LibrarianMoveAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        old_display_title: basename(&path).to_string(),
+        new_display_title: basename(&np).to_string(),
+        old_uri: uri_for(main, mount, &resolved_source, ctx),
+        new_uri: moved_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        is_folder: false,
+        hidden_from_characters,
+    };
+    Ok(DocEditToolResult::ok(
+        json!({
+            "success": true,
+            "old_path": path,
+            "new_path": np,
+            "uri": moved_uri,
+        }),
+        format!("Moved: {path} → {np}"),
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
@@ -237,8 +292,10 @@ fn resolve_copy_destination(
             dest_is_directory = database_folder_exists(mount, mp, &resolved_dest.relative_path)
                 .map_err(|e| e.to_string())?;
         }
+    } else if !resolved_dest.absolute_path.is_empty() {
+        // Filesystem dest: v4 `fs.stat(...).isDirectory()`, false on a stat error.
+        dest_is_directory = fs_stat_is_dir(&resolved_dest.absolute_path) == Some(true);
     }
-    // FS-backed dest detection is the FsSeam (never on the corpus); leave false.
     if dest_is_directory {
         Ok(posix_join(&resolved_dest.relative_path, source_basename))
     } else {
@@ -401,7 +458,20 @@ pub fn handle_copy_file(
             }
         }
     } else {
-        return Err(fs_seam());
+        // Filesystem source (v4 `file-management-handlers.ts:434-443`).
+        match fs_stat_is_file(&resolved_source.absolute_path) {
+            Some(true) => {}
+            Some(false) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Source path is not a file: {source_path}"
+                )))
+            }
+            None => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Source file not found: {source_path}"
+                )))
+            }
+        }
     }
 
     // Refuse to overwrite — match doc_move_file semantics.
@@ -422,8 +492,23 @@ pub fn handle_copy_file(
                 )));
             }
         }
-    } else {
-        return Err(fs_seam());
+    } else if !resolved_dest.absolute_path.is_empty() {
+        // Filesystem dest (v4 `file-management-handlers.ts:459-475`): a directory
+        // resolves to the folder error; any other existing entry is the overwrite
+        // refusal; a stat miss means the destination is free.
+        match fs_stat_is_dir(&resolved_dest.absolute_path) {
+            Some(true) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Destination path {final_dest_rel} resolves to a folder, not a file location."
+                )))
+            }
+            Some(false) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Destination already exists: {final_dest_rel}. Copy will not overwrite existing files; delete it first if you want to replace it."
+                )))
+            }
+            None => {}
+        }
     }
 
     // Read the source content, write the destination.
@@ -547,7 +632,33 @@ pub fn handle_delete_file(
         }
     }
 
-    Err(fs_seam())
+    // Filesystem mount (v4 `file-management-handlers.ts:577-615`): stat, unlink.
+    match fs_stat_is_file(&resolved.absolute_path) {
+        Some(true) => {}
+        Some(false) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Path is not a file: {path}"
+            )))
+        }
+        None => return Ok(DocEditToolResult::fail(format!("File not found: {path}"))),
+    }
+    std::fs::remove_file(&resolved.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "unlink", &e))?;
+    let deleted_uri = uri_for(main, mount, &resolved, ctx);
+    let announcement = LibrarianDeleteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        display_title: basename(&path).to_string(),
+        file_path: path.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        hidden_from_characters,
+    };
+    Ok(DocEditToolResult::ok(
+        json!({ "success": true, "path": path, "uri": deleted_uri }),
+        format!("Deleted file: {path}"),
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
@@ -608,7 +719,23 @@ pub fn handle_create_folder(
         }
     }
 
-    Err(fs_seam())
+    // Filesystem mount (v4 `file-management-handlers.ts:654-680`): `mkdir -p` (v4
+    // creates the directory itself, recursive + idempotent — no existence check).
+    std::fs::create_dir_all(&resolved.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "mkdir", &e))?;
+    let uri = uri_for(main, mount, &resolved, ctx);
+    let announcement = LibrarianFolderCreatedAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        folder_path: path.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+    };
+    Ok(DocEditToolResult::ok(
+        json!({ "success": true, "path": path, "uri": uri }),
+        format!("Created folder: {path}"),
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
@@ -686,7 +813,43 @@ pub fn handle_delete_folder(
         }
     }
 
-    Err(fs_seam())
+    // Filesystem mount (v4 `file-management-handlers.ts:733-779`): verify it's an
+    // empty directory, then `rmdir`. The "not empty" strings differ from the
+    // database branch (they carry the entry count).
+    match fs_stat_is_dir(&resolved.absolute_path) {
+        Some(true) => {}
+        Some(false) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Path is not a folder: {path}"
+            )))
+        }
+        None => return Ok(DocEditToolResult::fail(format!("Folder not found: {path}"))),
+    }
+    let entry_count = std::fs::read_dir(&resolved.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "scandir", &e))?
+        .count();
+    if entry_count > 0 {
+        let plural = if entry_count == 1 { "" } else { "s" };
+        return Ok(DocEditToolResult::fail_with_formatted(
+            format!("Folder is not empty: {path} (contains {entry_count} item{plural}). Only empty folders can be deleted. Use doc_list_files to see the contents."),
+            format!("Error: Folder \"{path}\" is not empty ({entry_count} item{plural}). Only empty folders can be deleted."),
+        ));
+    }
+    std::fs::remove_dir(&resolved.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "rmdir", &e))?;
+    let uri = uri_for(main, mount, &resolved, ctx);
+    let announcement = LibrarianFolderDeletedAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        folder_path: path.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+    };
+    Ok(DocEditToolResult::ok(
+        json!({ "success": true, "path": path, "uri": uri }),
+        format!("Deleted folder: {path}"),
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
@@ -790,15 +953,79 @@ pub fn handle_move_folder(
         }
     }
 
-    Err(fs_seam())
+    // Filesystem mount (v4 `file-management-handlers.ts:845-908`): stat the source
+    // directory, refuse an existing dest, `mkdir -p` the parent, then `fs.rename`.
+    match fs_stat_is_dir(&resolved_source.absolute_path) {
+        Some(true) => {}
+        Some(false) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Source path is not a folder: {path}"
+            )))
+        }
+        None => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Source folder not found: {path}"
+            )))
+        }
+    }
+    let np = new_path.clone().unwrap_or_default();
+    let folder_case_only_rename = resolved_source.absolute_path != resolved_dest.absolute_path
+        && resolved_source.absolute_path.to_lowercase()
+            == resolved_dest.absolute_path.to_lowercase();
+    if !folder_case_only_rename && fs_path_exists(&resolved_dest.absolute_path) {
+        return Ok(DocEditToolResult::fail(format!(
+            "Destination already exists: {np}. Move will not overwrite existing folders."
+        )));
+    }
+    if let Some(parent) = std::path::Path::new(&resolved_dest.absolute_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "mkdir", &e))?;
+    }
+    std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
+        .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
+    // syncChatDocumentsAfterFolderMove: no-op seam (see the module header).
+    let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+    // v4's folder-move site passes NO `hiddenFromCharacters` (→ falsy).
+    let announcement = LibrarianMoveAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        old_display_title: basename(&path).to_string(),
+        new_display_title: basename(&np).to_string(),
+        old_uri: uri_for(main, mount, &resolved_source, ctx),
+        new_uri: moved_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        is_folder: true,
+        hidden_from_characters: false,
+    };
+    Ok(DocEditToolResult::ok(
+        json!({
+            "success": true,
+            "old_path": path,
+            "new_path": np,
+            "uri": moved_uri,
+        }),
+        format!("Moved folder: {path} → {np}"),
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
-// Helpers
+// Filesystem helpers (v4 `fs.stat` / `fs.access` probes)
 // ============================================================================
 
-/// The FsSeam message a non-database mount surfaces (mirrors
-/// [`super::shared::read_file_with_mtime`]).
-fn fs_seam() -> String {
-    "This location is served from the host filesystem, which is unavailable here.".to_string()
+/// v4 `fs.stat(p).isFile()` — `Some(bool)` when the path exists (following
+/// symlinks), `None` when the stat fails (missing path).
+fn fs_stat_is_file(absolute_path: &str) -> Option<bool> {
+    std::fs::metadata(absolute_path).ok().map(|m| m.is_file())
+}
+
+/// v4 `fs.stat(p).isDirectory()` — `Some(bool)` on a hit, `None` on a stat miss.
+fn fs_stat_is_dir(absolute_path: &str) -> Option<bool> {
+    std::fs::metadata(absolute_path).ok().map(|m| m.is_dir())
+}
+
+/// v4 `fs.access(p)` (F_OK) — true when the path resolves to an existing entry.
+fn fs_path_exists(absolute_path: &str) -> bool {
+    std::path::Path::new(absolute_path).exists()
 }

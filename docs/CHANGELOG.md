@@ -2,6 +2,52 @@
 
 ## Recent Changes
 
+Wired the dispatch-layer blob-WebP transcoder (P4.6bg unit 6, part 1 — the
+P4.6bf S1 inherited AT-UNIFY item). The two `store_mount_file` handlers
+(`mount_file_write` / `mount_blob_upload`) now take a trailing
+`webp: Option<Arc<dyn WebpTranscoder>>` — the host's live codec when present,
+else the store-original `RefusingWebpTranscoder` fallback (behavior unchanged on
+`None`). The engine passes `EngineAssembly.blob_webp` via a new
+`ready_db_and_blob_webp` gate helper, and the `#[allow(dead_code)]` on the
+`ReadyEngine.blob_webp` field is dropped (it is now read). The production host's
+`blob_webp: Some(HostImageCodec)` makes the Scriptorium blob upload transcode to
+WebP live, self-activating the probe-gated `scriptorium-flow` WebP beat. The
+`mount_write_equivalence` differential threads the new `None` arg (unchanged
+behavior — green). Versions: core 0.0.297, harness 0.0.257.
+
+Made the Document Mode host-filesystem scopes live end-to-end (P4.6bg unit 5).
+The operator Document-Mode surface (`documents/mod.rs`) now performs real
+host-disk I/O on filesystem-backed resolved paths — `resolved_path_exists`,
+open/read/write (v4's `readFileWithMtime`/`writeFileWithMtimeCheck`, mtime-guard
+included), rename, and delete — instead of the `DocError::Fs` refusal. The host
+`files_dir` is threaded from the engine config
+(`Some(base_dir/"files")`) through every doc-verb dispatch arm into the
+chat-scoped and standalone `DocumentAccessContext`, so the `general` scope and
+filesystem mounts work through the Document Mode picker. The standalone
+"New blank document" (general scope) round-trips create → edit → autosave →
+reload on `<files>/_general`, flipping the `workspace-document-standalone-flow`
+beat from the FsSeam refusal to the live editor. The shared fs helpers
+(`read_fs_file_with_mtime` / `write_fs_file_with_mtime_check`) are exposed
+crate-wide and reused by both the tool handlers and the operator surface. The
+`documents_routes_equivalence` differential threads the new `files_dir` arg
+(`None` on the all-database corpus — byte-identical). Versions: core 0.0.296,
+harness 0.0.256, SPA 0.5.241.
+
+Wired the doc-edit tools' host-filesystem I/O (P4.6bg units 3-4). The
+read/write dispatch, `doc_open_document` (new-blank + `fs.stat` open),
+`doc_move_file`/`doc_copy_file`/`doc_delete_file`/`doc_create_folder`/
+`doc_delete_folder`/`doc_move_folder`, and the `doc_grep`/`doc_list_files`
+directory walks now perform real host-disk I/O on filesystem-backed resolved
+paths (the `general` scope, filesystem/obsidian mounts, the legacy
+`<files>/<projectId>` project fallback) instead of the FsSeam refusal — live
+whenever the resolver produced a real path (the host supplied a `files_dir`;
+`None` keeps the historic refusal, so the database-only corpora are
+unchanged). Added the `doc_fs` differential: a new fixture + oracle drive
+v4's REAL `executeDocEditTool` over an identical materialized fs tree
+(canonical scratch + sentinel rewrite), diffing 21 fs-scoped ops plus the
+resulting fs tree byte-for-byte and the empty content tables (fs ops never
+write DB rows). Versions: core 0.0.295, harness 0.0.255.
+
 The codec + fs seam round (P4.6bf ∥ P4.6bg) is PARTIALLY UNIFIED on main —
 P4.6bf CLOSED, P4.6bg open at unit 1-of-6 (resume at unit 3). On main: the
 HostAvatarPreviewRenderer over the existing HostImageCodec — avatar_preview

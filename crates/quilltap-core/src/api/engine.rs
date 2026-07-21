@@ -334,10 +334,8 @@ struct ReadyEngine {
     /// the `BrahmaConsoleSend` arm answers a plain internal error).
     brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
     /// The dispatch-layer blob-WebP transcoder (P4.6bf S1). Threaded from the
-    /// assembly so the AT-UNIFY wire can pass it into lane BG's re-signatured
-    /// `store_mount_file` handlers; NOT read until that call-site edit lands,
-    /// so it is deliberately dead until unification.
-    #[allow(dead_code)]
+    /// assembly and passed into lane BG's re-signatured `store_mount_file`
+    /// handlers via [`Self::ready_db_and_blob_webp`] (P4.6bg unit 6 wire).
     blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
@@ -2235,8 +2233,8 @@ impl CoreEngine {
                 force,
                 original_mime_type,
                 original_file_name,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, webp)) => {
                     super::mount_files::mount_file_write(
                         &db,
                         &mount_point_id,
@@ -2247,6 +2245,7 @@ impl CoreEngine {
                         force,
                         original_mime_type,
                         original_file_name,
+                        webp,
                     )
                     .await
                 }
@@ -2277,8 +2276,8 @@ impl CoreEngine {
                 data,
                 original_mime_type,
                 original_file_name,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, webp)) => {
                     super::mount_files::mount_blob_upload(
                         &db,
                         &mount_point_id,
@@ -2287,6 +2286,7 @@ impl CoreEngine {
                         &data,
                         original_mime_type,
                         original_file_name,
+                        webp,
                     )
                     .await
                 }
@@ -2350,7 +2350,15 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ChatDocumentOpen { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_open(&db, &chat_id, body).await,
+                Ok(db) => {
+                    super::documents::chat_document_open(
+                        &db,
+                        &chat_id,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ChatDocumentClose {
@@ -2363,22 +2371,46 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ChatDocumentRead { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_read(&db, &chat_id, body),
+                Ok(db) => super::documents::chat_document_read(
+                    &db,
+                    &chat_id,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::ChatDocumentResolve { chat_id, body } => match self.ready_db() {
-                Ok(db) => super::documents::chat_document_resolve(&db, &chat_id, body),
+                Ok(db) => super::documents::chat_document_resolve(
+                    &db,
+                    &chat_id,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::ChatDocumentWrite { chat_id, body } => match self.ready_db_and_refresh() {
                 Ok((db, refresh)) => {
-                    super::documents::chat_document_write(&db, &chat_id, body, refresh).await
+                    super::documents::chat_document_write(
+                        &db,
+                        &chat_id,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
             Request::ChatDocumentRename { chat_id, body } => match self.ready_db_and_refresh() {
                 Ok((db, refresh)) => {
-                    super::documents::chat_document_rename(&db, &chat_id, body, refresh).await
+                    super::documents::chat_document_rename(
+                        &db,
+                        &chat_id,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -2387,7 +2419,13 @@ impl CoreEngine {
                 chat_document_id,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::documents::chat_document_delete(&db, &chat_id, chat_document_id).await
+                    super::documents::chat_document_delete(
+                        &db,
+                        &chat_id,
+                        chat_document_id,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -2400,23 +2438,57 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::DocumentOpen { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_open(&db, body).await,
+                Ok(db) => {
+                    super::documents::document_open(
+                        &db,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentRead { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_read(&db, body),
+                Ok(db) => super::documents::document_read(
+                    &db,
+                    body,
+                    Some(self.inner.config.base_dir.join("files")),
+                ),
                 Err(r) => r,
             },
             Request::DocumentWrite { body } => match self.ready_db_and_refresh() {
-                Ok((db, refresh)) => super::documents::document_write(&db, body, refresh).await,
+                Ok((db, refresh)) => {
+                    super::documents::document_write(
+                        &db,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentRename { body } => match self.ready_db_and_refresh() {
-                Ok((db, refresh)) => super::documents::document_rename(&db, body, refresh).await,
+                Ok((db, refresh)) => {
+                    super::documents::document_rename(
+                        &db,
+                        body,
+                        refresh,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::DocumentDelete { body } => match self.ready_db() {
-                Ok(db) => super::documents::document_delete(&db, body).await,
+                Ok(db) => {
+                    super::documents::document_delete(
+                        &db,
+                        body,
+                        Some(self.inner.config.base_dir.join("files")),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             // === end P4.6w ===
@@ -3217,6 +3289,25 @@ impl CoreEngine {
     ) -> Result<(Db, Option<Arc<dyn crate::documents::MountRefreshScheduler>>), Response> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok((r.db.clone(), r.mount_refresh.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The `Db` + the (optional) blob-WebP transcoder under the readiness gate
+    /// (P4.6bf S1). `None` when unwired — the two `store_mount_file` handlers fall
+    /// back to the store-original refusal. `Err` is the locked refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_blob_webp(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.blob_webp.clone())),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }

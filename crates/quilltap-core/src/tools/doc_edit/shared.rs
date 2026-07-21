@@ -18,12 +18,17 @@
 //! mocks the writer/reindex modules to no-ops. The `chunkCount` a reindex would
 //! bump is pinned/excluded in every store differential.
 //!
-//! ## The host-filesystem seam
+//! ## The host-filesystem branches (P4.6bg)
 //!
-//! The legacy filesystem/obsidian mount branches (`mountType != 'database'`) and
-//! the `general` scope are the d3a [`crate::doc_edit::path_resolver::ResolveError::FsSeam`]
-//! — the Phase-4 host owns real-disk I/O. Every corpus store is database-backed, so
-//! those branches never run.
+//! The legacy filesystem/obsidian mount branches (`mountType != 'database'`), the
+//! `general` scope, and the legacy project fallback reach the host disk. They run
+//! whenever the resolver produced a real `absolute_path` — i.e. the host supplied a
+//! `files_dir` (v4 `getFilesDir()`), threaded through
+//! [`DocEditToolContext::files_dir`]. With `files_dir: None` the resolver returns
+//! [`crate::doc_edit::path_resolver::ResolveError::FsSeam`] before any tool touches
+//! disk, preserving the historic refusal. The read/write dispatch
+//! ([`read_file_with_mtime`] / [`write_file_with_mtime_check`]) and the
+//! enumeration walks (`text.rs`) branch on `mount_type` accordingly.
 
 use std::collections::HashSet;
 
@@ -658,7 +663,7 @@ pub fn get_accessible_mount_points(
 }
 
 // ============================================================================
-// Read / write dispatch (database-backed; FS mounts are the FsSeam)
+// Read / write dispatch (database-backed via the store; fs-backed via host disk)
 // ============================================================================
 
 /// Flatten a [`StoreError`] to the message v4 surfaces.
@@ -669,19 +674,21 @@ pub fn store_error_message(e: StoreError) -> String {
     }
 }
 
-/// v4 `readFileWithMtime` for a database-backed `ResolvedPath`
-/// (`path-resolver.ts:622`): reads the bytes from `doc_mount_documents`. A
-/// NOT_FOUND is re-shaped to v4's `ENOENT: database document not found at <rel>`
-/// (the analogue of `fs.readFile`'s ENOENT). Non-database mounts are the FsSeam.
+/// v4 `readFileWithMtime` (`path-resolver.ts:622`): a database-backed
+/// `ResolvedPath` reads the bytes from `doc_mount_documents` (a NOT_FOUND is
+/// re-shaped to v4's `ENOENT: database document not found at <rel>`, the analogue
+/// of `fs.readFile`'s ENOENT); a **filesystem-backed** path (`mountType !=
+/// 'database'` — an fs/obsidian mount, the `general` scope, or the legacy project
+/// fallback) reads the bytes off the host disk + `fs.stat`s it. The on-disk branch
+/// only runs when the resolver produced a real `absolute_path` (the host supplied
+/// a `files_dir`); with `files_dir: None` the resolver returned the FsSeam refusal
+/// before reaching here.
 pub fn read_file_with_mtime(
     mount: &Connection,
     resolved: &ResolvedPath,
 ) -> Result<ReadDoc, String> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(
-            "This location is served from the host filesystem, which is unavailable here."
-                .to_string(),
-        );
+        return read_fs_file_with_mtime(&resolved.absolute_path);
     }
     let mp = resolved
         .mount_point_id
@@ -697,20 +704,18 @@ pub fn read_file_with_mtime(
     }
 }
 
-/// v4 `writeFileWithMtimeCheck` for a database-backed `ResolvedPath`
-/// (`path-resolver.ts:677`): lands the bytes via the store primitive, returning
+/// v4 `writeFileWithMtimeCheck` (`path-resolver.ts:677`): a database-backed
+/// `ResolvedPath` lands the bytes via the store primitive; a filesystem-backed
+/// path `mkdir -p`s the parent and writes the bytes to disk. Either way returns
 /// the new mtime (ms). The `expected_mtime` guard is not ported (reindex/mtime
-/// seam — see the module header). Non-database mounts are the FsSeam.
+/// seam — see the module header).
 pub fn write_file_with_mtime_check(
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
 ) -> Result<i64, String> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return Err(
-            "This location is served from the host filesystem, which is unavailable here."
-                .to_string(),
-        );
+        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, None);
     }
     let mp = resolved
         .mount_point_id
@@ -718,6 +723,85 @@ pub fn write_file_with_mtime_check(
         .ok_or("Database-backed ResolvedPath is missing mountPointId")?;
     database_store::write_database_document(mount, mp, &resolved.relative_path, content)
         .map_err(store_error_message)
+}
+
+/// The host-disk arm of [`read_file_with_mtime`] — v4's `fs.readFile` +
+/// `fs.stat` (`path-resolver.ts:649`). `size` is the on-disk **byte** length
+/// (`stats.size`), NOT the UTF-16 length a database store reports. Shared with the
+/// operator Document-Mode surface (`crate::documents`).
+pub(crate) fn read_fs_file_with_mtime(absolute_path: &str) -> Result<ReadDoc, String> {
+    let content = std::fs::read_to_string(absolute_path)
+        .map_err(|e| fs_io_error(absolute_path, "open", &e))?;
+    let meta =
+        std::fs::metadata(absolute_path).map_err(|e| fs_io_error(absolute_path, "stat", &e))?;
+    Ok(ReadDoc {
+        content,
+        mtime_ms: metadata_mtime_ms(&meta),
+        size: meta.len() as i64,
+    })
+}
+
+/// The message v4's `writeFileWithMtimeCheck` fs branch throws on an mtime
+/// conflict (`path-resolver.ts:706`) — distinct from the database store's
+/// "Document was modified…" wording. The operator route keys on the
+/// "mtime mismatch" substring to map it to a 409.
+pub(crate) const FS_MTIME_MISMATCH_MESSAGE: &str =
+    "File was modified by another process (mtime mismatch). Please reload and try again.";
+
+/// The host-disk arm of [`write_file_with_mtime_check`] — v4's optional
+/// `expectedMtime` guard, then `fs.mkdir(parent, { recursive: true })`,
+/// `fs.writeFile`, and `fs.stat` (`path-resolver.ts:694-731`). Also reused by
+/// `doc_open_document`'s new-blank path and the operator Document-Mode surface.
+/// When `expected_mtime` is `Some` and an existing file's mtime disagrees, returns
+/// [`FS_MTIME_MISMATCH_MESSAGE`].
+pub(crate) fn write_fs_file_with_mtime_check(
+    absolute_path: &str,
+    content: &str,
+    expected_mtime: Option<i64>,
+) -> Result<i64, String> {
+    let path = std::path::Path::new(absolute_path);
+    if let Some(expected) = expected_mtime {
+        // v4: stat; a mismatch is a conflict; a missing file (ENOENT) is fine — it's
+        // a create. Any other stat error bubbles.
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                if metadata_mtime_ms(&meta) != expected {
+                    return Err(FS_MTIME_MISMATCH_MESSAGE.to_string());
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(fs_io_error(absolute_path, "stat", &e)),
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| fs_io_error(absolute_path, "mkdir", &e))?;
+    }
+    std::fs::write(path, content).map_err(|e| fs_io_error(absolute_path, "open", &e))?;
+    let meta = std::fs::metadata(path).map_err(|e| fs_io_error(absolute_path, "stat", &e))?;
+    Ok(metadata_mtime_ms(&meta))
+}
+
+/// `stats.mtime.getTime()` — milliseconds since the Unix epoch.
+pub(crate) fn metadata_mtime_ms(meta: &std::fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Shape a host-disk I/O failure like the Node error the caller would otherwise
+/// surface. A missing path mirrors Node's `ENOENT: no such file or directory,
+/// <syscall> '<path>'` (the only shape any tool branch inspects); every other
+/// error falls through to the OS string. These paths are not differential-covered
+/// (the corpus exercises the success arms + the resolver-level escape errors).
+pub(crate) fn fs_io_error(path: &str, syscall: &str, e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => {
+            format!("ENOENT: no such file or directory, {syscall} '{path}'")
+        }
+        _ => e.to_string(),
+    }
 }
 
 // ============================================================================

@@ -18,14 +18,16 @@
 //! ([`super::PendingLibrarianAnnouncement::Open`]); the executor posts it after the
 //! write closure returns (the G6 write-announcement precedent).
 //!
-//! ## The new-blank-document path (a tracked FsSeam deferral)
+//! ## The new-blank-document path (P4.6bg — now host-filesystem live)
 //!
 //! v4's `doc_open_document` supports opening WITHOUT a `filePath`: it mints a
 //! `crypto.randomUUID()` name and `fs.writeFile`s an empty file to the resolved
-//! **on-disk** path. That branch is real host-filesystem I/O (the d3a
-//! [`crate::doc_edit::path_resolver::ResolveError::FsSeam`]) — deferred to the
-//! Phase-4 host. Every corpus open passes `filePath`, so this port returns a clear
-//! deferral error when it is absent.
+//! **on-disk** path (under the `project` scope when there is a project context,
+//! else `general`). That branch reaches the host disk via the resolver's
+//! `files_dir` thread ([`DocEditToolContext::files_dir`]); with `files_dir: None`
+//! the resolver's [`crate::doc_edit::path_resolver::ResolveError::FsSeam`] surfaces
+//! as v4's caught `Failed to create blank document: <message>`. Likewise a
+//! filesystem-mount open `fs.stat`s the resolved path.
 
 use rusqlite::Connection;
 use serde_json::{Map, Value};
@@ -40,7 +42,7 @@ use crate::db::characters_read;
 use crate::db::chat_documents::{ChatDocumentsRepository, OpenChatDocument, OpenDocumentInput};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::database_store::database_document_exists;
-use crate::doc_edit::path_resolver::resolve_doc_edit_path;
+use crate::doc_edit::path_resolver::{resolve_doc_edit_path, PathResolutionContext};
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
 use crate::services::librarian_notifications::{LibrarianOpenAnnouncement, LibrarianOpenKind};
@@ -104,87 +106,163 @@ pub fn handle_open_document(
     // v4: mode = input.mode || 'split'.
     let mode = arg_str(args, "mode").unwrap_or_else(|| "split".to_string());
 
-    let Some(file_path) = addressing.path.clone() else {
-        // The new-blank-document path is the FsSeam (see the module header).
-        return Err(
-            "Creating a blank document (no `path`) is not available here (host-filesystem seam)."
-                .to_string(),
-        );
-    };
-
-    // v4: displayTitle = input.title || (fallback below). `input.title` is the
-    // ORIGINAL title arg, unaffected by the URI (v4 reads `input.title` on the
+    // v4: displayTitle = input.title || (per-arm fallback below). `input.title` is
+    // the ORIGINAL title arg, unaffected by the URI (v4 reads `input.title` on the
     // post-URI input, but the URI codec never sets `title`).
     let title_arg = arg_str(args, "title");
 
-    // Opening an existing file — resolve as a READ (peer vaults reachable when the
-    // chat's cross-character read flag is enabled), matching v4. A thrown
-    // PathResolutionError surfaces `{ success:false, error }` (no formattedText),
-    // via the outer dispatcher on `Err`; but v4 catches HERE and returns the bare
-    // failure for BOTH the resolution error and the not-found — so we do too.
-    let read_context = build_read_resolution_context(main, &addressing, ctx);
-    let resolved = match resolve_doc_edit_path(
-        main,
-        mount,
-        scope,
-        Some(&file_path),
-        &read_context,
-        ctx.files_dir.as_deref(),
-    ) {
-        Ok(r) => r,
-        // v4: `if (error instanceof PathResolutionError) return { success:false,
-        // error: error.message }` — a bare failure (no formattedText).
-        Err(e) => return Ok(DocEditToolResult::fail(resolve_error_message(e))),
-    };
-    // character_read:false → not-found for characters (operator unaffected). v4's
-    // catch turns any thrown error into `File not found: <filePath>`.
-    if let Err(_msg) = assert_character_may_read(mount, &resolved, ctx) {
-        return Ok(DocEditToolResult::fail(format!(
-            "File not found: {file_path}"
-        )));
+    // The two arms (v4 `document-ui-handlers.ts:88-136`): open an existing file, or
+    // mint a new blank document when no `path` was given.
+    struct OpenResolution {
+        file_path: String,
+        doc_uri: String,
+        mtime: i64,
+        is_new: bool,
+        hidden_from_characters: bool,
+        display_title: String,
     }
-    // A character_read:false document must not be announced to characters (the read
-    // gate already blocks characters; this covers the operator-override path).
-    let hidden_from_characters = document_hidden_from_characters(
-        mount,
-        resolved.mount_point_id.as_deref(),
-        &resolved.relative_path,
-    );
-    let doc_uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
 
-    // Existence check + mtime. Only the database-mount branch is live; a
-    // non-database mount is the FsSeam (`fs.stat`) — never on the corpus.
-    let mtime: i64 = if resolved.mount_type.as_deref() == Some("database") {
-        // v4's catch turns a missing document / store error into `File not found`.
-        let exists = resolved
-            .mount_point_id
-            .as_deref()
-            .and_then(|mp_id| database_document_exists(mount, mp_id, &resolved.relative_path).ok());
-        if exists != Some(true) {
+    let resolution: OpenResolution = if let Some(file_path) = addressing.path.clone() {
+        // Opening an existing file — resolve as a READ (peer vaults reachable when
+        // the chat's cross-character read flag is enabled), matching v4. v4 catches
+        // HERE and returns the bare failure for BOTH the resolution error and the
+        // not-found — so we do too.
+        let read_context = build_read_resolution_context(main, &addressing, ctx);
+        let resolved = match resolve_doc_edit_path(
+            main,
+            mount,
+            scope,
+            Some(&file_path),
+            &read_context,
+            ctx.files_dir.as_deref(),
+        ) {
+            Ok(r) => r,
+            Err(e) => return Ok(DocEditToolResult::fail(resolve_error_message(e))),
+        };
+        // character_read:false → not-found for characters (operator unaffected).
+        if let Err(_msg) = assert_character_may_read(mount, &resolved, ctx) {
             return Ok(DocEditToolResult::fail(format!(
                 "File not found: {file_path}"
             )));
         }
-        // v4: mtime = Date.now(). Minted → placeholdered in the differential.
-        crate::clock::now_unix_ms()
-    } else {
-        // Non-database mount = FsSeam; v4 would `fs.stat`.
-        return Err(
-            "This location is served from the host filesystem, which is unavailable here."
-                .to_string(),
+        // A character_read:false document must not be announced to characters (the
+        // read gate already blocks characters; this covers the operator path).
+        let hidden_from_characters = document_hidden_from_characters(
+            mount,
+            resolved.mount_point_id.as_deref(),
+            &resolved.relative_path,
         );
+        let doc_uri = uri_for_resolved_path(
+            main,
+            mount,
+            &resolved,
+            ctx.character_id.as_deref(),
+            None,
+            None,
+        );
+
+        // Existence check + mtime. Database mount: existence via the store + a
+        // minted `Date.now()`. Filesystem mount: `fs.stat(...).mtimeMs` (a stat
+        // failure — missing file — becomes v4's caught `File not found`).
+        let mtime: i64 = if resolved.mount_type.as_deref() == Some("database") {
+            let exists = resolved.mount_point_id.as_deref().and_then(|mp_id| {
+                database_document_exists(mount, mp_id, &resolved.relative_path).ok()
+            });
+            if exists != Some(true) {
+                return Ok(DocEditToolResult::fail(format!(
+                    "File not found: {file_path}"
+                )));
+            }
+            crate::clock::now_unix_ms()
+        } else {
+            match std::fs::metadata(&resolved.absolute_path) {
+                Ok(meta) => super::shared::metadata_mtime_ms(&meta),
+                Err(_) => {
+                    return Ok(DocEditToolResult::fail(format!(
+                        "File not found: {file_path}"
+                    )))
+                }
+            }
+        };
+
+        // v4: displayTitle = input.title || path.basename(filePath).
+        let display_title = title_arg.unwrap_or_else(|| basename(&file_path).to_string());
+        OpenResolution {
+            file_path,
+            doc_uri,
+            mtime,
+            is_new: false,
+            hidden_from_characters,
+            display_title,
+        }
+    } else {
+        // Creating a new blank document (v4 `document-ui-handlers.ts:116-135`): mint
+        // a `<uuid>.md` name, resolve under `project` (when there is a project
+        // context) else `general`, `mkdir -p` + write an empty file, `fs.stat` for
+        // the mtime. Any failure (incl. the resolver's FsSeam refusal on a host with
+        // no files dir) becomes `Failed to create blank document: <message>`.
+        let file_path = format!("{}.md", uuid::Uuid::new_v4());
+        let target_scope = if ctx.project_id.is_some() {
+            DocEditScope::Project
+        } else {
+            DocEditScope::General
+        };
+        let blank_ctx = PathResolutionContext {
+            project_id: ctx.project_id.clone(),
+            ..Default::default()
+        };
+        let created = (|| -> Result<(String, i64), String> {
+            let resolved = resolve_doc_edit_path(
+                main,
+                mount,
+                target_scope,
+                Some(&file_path),
+                &blank_ctx,
+                ctx.files_dir.as_deref(),
+            )
+            .map_err(resolve_error_message)?;
+            // v4 inlines mkdir(dirname) + writeFile('') + stat here (regardless of
+            // mount type) — the shared fs writer does exactly that.
+            let mtime =
+                super::shared::write_fs_file_with_mtime_check(&resolved.absolute_path, "", None)?;
+            let doc_uri = uri_for_resolved_path(
+                main,
+                mount,
+                &resolved,
+                ctx.character_id.as_deref(),
+                None,
+                None,
+            );
+            Ok((doc_uri, mtime))
+        })();
+        let (doc_uri, mtime) = match created {
+            Ok(v) => v,
+            Err(msg) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Failed to create blank document: {msg}"
+                )))
+            }
+        };
+        // v4: displayTitle = input.title || 'Untitled document'.
+        let display_title = title_arg.unwrap_or_else(|| "Untitled document".to_string());
+        OpenResolution {
+            file_path,
+            doc_uri,
+            mtime,
+            is_new: true,
+            hidden_from_characters: false,
+            display_title,
+        }
     };
 
-    // v4: displayTitle = input.title || path.basename(filePath). (The literal
-    // 'Untitled document' only survives the new-blank path, which we never reach.)
-    let display_title = title_arg.unwrap_or_else(|| basename(&file_path).to_string());
+    let OpenResolution {
+        file_path,
+        doc_uri,
+        mtime,
+        is_new,
+        hidden_from_characters,
+        display_title,
+    } = resolution;
 
     // Persist: chat_documents.openDocument + chats.update({ documentMode: mode }).
     // A DB error becomes v4's `{ success:false, error: "Failed to open document:
@@ -234,7 +312,7 @@ pub fn handle_open_document(
     }
     result.insert("displayTitle".into(), Value::String(display_title.clone()));
     result.insert("mode".into(), Value::String(mode.clone()));
-    result.insert("isNew".into(), Value::Bool(false));
+    result.insert("isNew".into(), Value::Bool(is_new));
     result.insert("mtime".into(), Value::Number(mtime.into()));
 
     // v4's bespoke open-origin resolution (NOT the shared `resolveActorOrigin`):
@@ -263,12 +341,16 @@ pub fn handle_open_document(
         file_path: file_path.clone(),
         scope: librarian_scope_from(scope),
         mount_point: addressing.mount_point.clone(),
-        is_new: false,
+        is_new,
         origin,
         hidden_from_characters,
     };
 
-    let formatted = format!("Opened document \"{display_title}\" ({file_path}) in {mode} mode.");
+    let formatted = if is_new {
+        format!("Created and opened new document \"{display_title}\" in {mode} mode.")
+    } else {
+        format!("Opened document \"{display_title}\" ({file_path}) in {mode} mode.")
+    };
     Ok(DocEditToolResult::ok(Value::Object(result), formatted)
         .with_librarian_announcement(announcement))
 }
