@@ -25878,3 +25878,40 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
   left the shared mount-index clean, and the other three beats still pass).** The
   full serialized suite is the unifier's gate (port-4319 contention with the
   sibling BG lane); the two changed specs are proven here.
+
+**Lane BF close (P4.6bf) — the codec wire.** Branch
+`claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
+(drift-clean throughout). Commits: unit 1 (blob-transcode impl) → unit 2 (S1
+`blob_webp` seam) → unit 3 (`HostAvatarPreviewRenderer` LIVE) → tier-2 item 6
+(wardrobe-routes re-verify) → tier-2 item 7 (ST DEFLATE deferral) → unit 4 (two
+e2e beats). Versions: quilltap-core 0.0.292 → **0.0.293**, quilltap-host 0.0.24
+→ **0.0.27**, SPA 0.5.239 → **0.5.240** (e2e-spec bump only, per S4). Gate:
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets`
+clean on both the default AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` exit 0 (with `QT_ORACLE_WARDROBE_ROUTES` set —
+`wardrobe_routes_equivalence` ran, 74 checks / 0 SKIP, confirmed BY NAME with
+`--nocapture`); `ng build` clean; `wardrobe-flow` 3/3 + `scriptorium-flow` 3
+passed / 1 ACTIVATE-AT-UNIFY skip.
+
+**What landed vs what remains OPEN under P4.6bf:**
+- Tier 1: ALL landed (blob-transcode impl + tests; the S1 `blob_webp` field +
+  plumbing; the live `HostAvatarPreviewRenderer` + 6 host tests; both e2e beats).
+- Tier 2: item 6 (canned-renderer diff) re-verified green — it already existed
+  from P4.9f1, unchanged; item 7 (ST DEFLATE) DEFERRED with the empirical
+  finding (parity holds only via flate2's zlib C backend, which would tax the
+  pure core for a never-asserted placeholder — recipe banked).
+- Tier 3 deferrals stand (unchanged): AVIF/HEIC decode, animated WebP,
+  `DocumentTextExtractor`, auto-describe, `imageProfileValidateKey`/`ListModels`.
+- **`avatar_preview` is now LIVE** — the wardrobe out-of-chat Preview button
+  costs real money (one image-provider call per click). Flagged loudly.
+
+**AT-UNIFY items (the unifier's checklist):**
+
+| # | What | Where | Why it's AT-UNIFY |
+|---|------|-------|-------------------|
+| 1 | Pass `blob_webp.clone()` into BG's two re-signatured `store_mount_file` handlers | `crates/quilltap-core/src/api/engine.rs` — the two dispatch call sites of the `mount_files.rs` handlers containing the `:595`/`:725` sites | S1: BF added the field + `ReadyEngine` plumbing (`#[allow(dead_code)]` until read); BG re-signatures the handlers to take `webp: Option<Arc<dyn WebpTranscoder>>`. The unifier connects the two — after which `EngineAssembly.blob_webp`'s live `HostImageCodec` reaches the dispatch layer and the `#[allow(dead_code)]` on `ReadyEngine.blob_webp` should be removed. |
+| 2 | The scriptorium WebP e2e beat SELF-ACTIVATES | `apps/web/e2e/scriptorium-flow.spec.ts:127` | It probes the stored path: `portrait.png` (refusing) → skip; `portrait.webp` (wired) → assert. Once item 1 lands, the upload transcodes and the beat runs green. No edit needed — it flips itself. |
+
+Note: the S3 engine.rs REGION SPLIT held — BF touched only the `EngineAssembly`
+struct + `shutdown_only` + the `ReadyEngine` struct/mapping; BG owns the
+doc-verb dispatch call-site lines. No overlap with BG's regions.
