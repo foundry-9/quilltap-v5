@@ -25846,3 +25846,35 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
   recipe for a future taker: `flate2 = { features = ["zlib"] }` as a HOST seam
   (never the core default backend, which diverges), threaded like the image
   codec.
+
+- **Unit 4 — two e2e beats (spec files only; SPA 0.5.239 → 0.5.240).**
+  - **(a) wardrobe out-of-chat Preview** (`wardrobe-flow.spec.ts`, its own port
+    4329): open Aria's wardrobe dialog → the Outfit Builder tab (default out of
+    chat) hosts the avatar-generation pane → the fixture's ONE image profile has
+    `apiKeyId=null` (verified via the CLI over the committed `characters-main.db`),
+    so the enabled Preview button reaches v4's PRE-provider
+    `badRequest('Selected image profile has no API key configured')`, surfaced in
+    the dialog's `.qt-alert-error` banner — **ZERO image-provider spend**. This is
+    the order's sanctioned fallback (deliverable 5a): a canned localhost provider
+    endpoint for one beat is disproportionate and the shared e2e instance has no
+    live image provider, so **the LIVE render walk is a DOGFOOD item, not an e2e
+    beat** — now that P4.6bf wired the renderer, a keyed profile makes Preview cost
+    real money (one generation per click); dogfood it against a real key.
+  - **(b) scriptorium blob → WebP** (`scriptorium-flow.spec.ts`, the shared
+    server): create a DB store → upload a real 1×1 PNG → the beat looks for the
+    stored row under `portrait.webp` (wired) vs `portrait.png` (refusing). It
+    ALWAYS cleans up (delete file + store) so a skip leaves the shared
+    mount-index clean, then **ACTIVATE-AT-UNIFY**: `test.skip` while the row is
+    still `portrait.png` (this lane — `blob_webp` is `None` AND BG's
+    `store_mount_file` still uses `RefusingWebpTranscoder`), self-activating once
+    the unifier wires `EngineAssembly.blob_webp` into BG's re-signatured handler
+    (then the row is `portrait.webp` and `webpCount === 1`, `pngCount === 0`).
+  Both specs typecheck (`playwright --list`) and `ng build` is clean (only the
+  pre-existing CommonJS bailout warnings). SPA `node_modules` was symlinked from
+  the main checkout to run the tooling (transient; never committed). **Ran in
+  isolation from the worktree's own binaries + fresh dist: `wardrobe-flow` 3/3
+  PASSED (the new Preview beat green in 448ms); `scriptorium-flow` 3 passed + the
+  new WebP beat correctly SKIPPED (ACTIVATE-AT-UNIFY — its cleanup-before-skip
+  left the shared mount-index clean, and the other three beats still pass).** The
+  full serialized suite is the unifier's gate (port-4319 contention with the
+  sibling BG lane); the two changed specs are proven here.

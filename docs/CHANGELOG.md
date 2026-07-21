@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Codec round lane BF unit 4: two e2e beats (spec files only, SPA 0.5.239 →
+0.5.240). (a) A wardrobe out-of-chat Preview beat: with the fixture's one
+image profile (apiKeyId=null), clicking Preview reaches v4's pre-provider
+badRequest "Selected image profile has no API key configured" — proving the
+render seam is reached at ZERO image-provider spend. The LIVE render walk
+(now that P4.6bf wired the renderer, a keyed profile costs real money) is
+recorded as a DOGFOOD item, not an e2e beat (the shared instance has no live
+image provider; a canned localhost endpoint for one beat is disproportionate).
+(b) A scriptorium blob-upload beat: upload a PNG image, assert the stored path
+was rewritten to .webp — ACTIVATE-AT-UNIFY, probe-gated on the refusal arm
+(skips until BG's store_mount_file webp param + the engine.rs blob_webp wire
+land; the PNG stays .png until then).
+
 Codec round lane BF tier 2: re-verified the canned-renderer wardrobe-routes
 differential (`wardrobe_routes_equivalence`) — the arm already landed at
 P4.9f1. Regenerated its oracle at the current baseline 7e6d13e5 (73 rows / 66

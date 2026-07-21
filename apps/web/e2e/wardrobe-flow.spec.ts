@@ -211,6 +211,44 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.getByRole('button', { name: 'Done' }).click();
   });
 
+  test('out of chat: Preview reaches the no-API-key badRequest (P4.6bf; live render is a dogfood item)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    // Out of chat the dialog opens on the Outfit Builder tab, which hosts the
+    // avatar-generation pane + its Preview button (v4 :568 — rightTab defaults
+    // to 'builder' out of chat). The one committed image profile has
+    // apiKeyId=null, so the (enabled) Preview button reaches v4's PRE-provider
+    // badRequest — this asserts the render seam is reached with ZERO
+    // image-provider spend.
+    //
+    // The LIVE render walk (P4.6bf wired the HostAvatarPreviewRenderer, so a
+    // keyed profile makes Preview cost real money) is deliberately NOT an e2e
+    // beat: the shared e2e instance has no live image provider, and standing up
+    // a canned localhost provider endpoint for one beat is disproportionate.
+    // It is recorded as a DOGFOOD item (the P4.6bf lane record) instead.
+    const dialog = page.getByRole('dialog');
+    const preview = dialog.getByRole('button', { name: 'Preview', exact: true });
+    await expect(preview).toBeEnabled();
+    await preview.click();
+
+    // v4 `preview-avatar/route.ts`: `!imageProfile.apiKeyId` →
+    // badRequest('Selected image profile has no API key configured'). The
+    // dialog surfaces the dispatch error in its `.qt-alert-error` banner.
+    await expect(dialog.locator('.qt-alert-error')).toHaveText(
+      'Selected image profile has no API key configured',
+      { timeout: 15_000 },
+    );
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('in chat: staging + the one-shot set_all flush persists the outfit (ACTIVATE-AT-UNIFY, lane P4.9f1)', async ({
     page,
   }) => {
