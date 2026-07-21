@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Codec round lane BF unit 1: HostImageCodec now implements the Scriptorium
+blob-upload pixel seam (`mount_index::blob_transcode::WebpTranscoder`) —
+decode + lossy WebP encode at the given quality, with v4's `effort:4` knob
+dropped (no policy surface, like the existing `_effort` arg). Undecodable
+input errors, which the caller turns into v4's store-original fallback arm.
+Unit-tested for dimension/format parity (D19). Not yet wired into an
+assembly (that is unit 2's `blob_webp` field).
+
 Planned the codec + fs seam round (docs only): two work orders committed —
 p4.6bf (the avatar-preview host renderer over the existing HostImageCodec,
 plus the dispatch-layer blob-WebP assembly seam) and p4.6bg (the doc-edit

@@ -47,6 +47,7 @@ use quilltap_core::model::image::{
     ImageTranscoder as WebpTranscoder, TranscodeInput, TranscodeOutput,
 };
 use quilltap_core::services::file_storage::{convert_to_webp, PixelCodec, THUMBNAIL_QUALITY};
+use quilltap_core::services::mount_index::blob_transcode::WebpTranscoder as BlobWebpTranscoder;
 
 /// The production image codec. Stateless; share via `Arc`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -189,6 +190,22 @@ impl WebpTranscoder for HostImageCodec {
             width: r.width.map(|w| w as f64),
             height: r.height.map(|h| h as f64),
         }
+    }
+}
+
+impl BlobWebpTranscoder for HostImageCodec {
+    /// The Scriptorium blob-upload pixel seam (v4 `transcodeToWebP`'s
+    /// `sharp(input).webp({quality, effort:4})`, `blob-transcode.ts:62`). Decode
+    /// then lossy-encode at `quality`; an undecodable input is an `Err` the
+    /// caller turns into v4's store-original fallback arm.
+    ///
+    /// v4's `effort: 4` is a libwebp encoder-cost knob with no policy surface
+    /// (the `webp` crate's simple encoder does not expose it) — dropped, exactly
+    /// as the [`PixelCodec::encode_webp`] `_effort` argument is (D19: policy
+    /// parity, never byte parity).
+    fn encode_webp(&self, bytes: &[u8], quality: u8) -> Result<Vec<u8>, String> {
+        let img = decode(bytes)?;
+        encode_webp_image(&img, quality as i64)
     }
 }
 
@@ -383,6 +400,38 @@ mod tests {
             cap
         );
         assert!(r.width.unwrap() < 2000);
+    }
+
+    #[test]
+    fn blob_webp_transcoder_seam() {
+        use quilltap_core::services::mount_index::blob_transcode::{
+            transcode_to_webp as blob_transcode_to_webp, WebpTranscoder as BlobWebpTranscoder,
+        };
+        let codec = HostImageCodec;
+        // A decodable PNG → WebP bytes that decode back with IDENTICAL dims
+        // (D19: policy parity — dims, not bytes).
+        let png = png_bytes(24, 18, true);
+        let webp = BlobWebpTranscoder::encode_webp(&codec, &png, 85).unwrap();
+        assert_eq!(format_of(&webp), ImageFormat::WebP);
+        assert_eq!(dims_of(&webp), (24, 18));
+        // JPEG too, at a different quality.
+        let jpeg = jpeg_bytes(30, 20);
+        let webp2 = BlobWebpTranscoder::encode_webp(&codec, &jpeg, 90).unwrap();
+        assert_eq!(format_of(&webp2), ImageFormat::WebP);
+        assert_eq!(dims_of(&webp2), (30, 20));
+        // Undecodable input errors — the caller's store-original fallback arm.
+        assert!(BlobWebpTranscoder::encode_webp(&codec, b"not an image", 85).is_err());
+
+        // Through the ported blob POLICY: a GIF becomes image/webp; a non-image
+        // mime passes through untouched (the transcodable-set gate).
+        let gif = gif_bytes(9, 7);
+        let r = blob_transcode_to_webp(&gif, "image/gif", &codec);
+        assert_eq!(r.stored_mime_type, "image/webp");
+        assert_eq!(format_of(&r.data), ImageFormat::WebP);
+        assert_eq!(dims_of(&r.data), (9, 7));
+        let r2 = blob_transcode_to_webp(b"%PDF", "application/pdf", &codec);
+        assert_eq!(r2.stored_mime_type, "application/pdf");
+        assert_eq!(r2.data, b"%PDF");
     }
 
     #[test]

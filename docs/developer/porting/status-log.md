@@ -25721,3 +25721,27 @@ text lands in tier-2-diffed DB rows and pdf-parse/mammoth output is not
 reproducible in Rust; needs its own divergence-management design), the
 chokidar-equivalent watcher (host cadence), `filesSync`/cleanup-stale,
 the `quilltap docs` CLI, AVIF/HEIC decode.
+
+### Lane BF (P4.6bf) — the codec wire — IN PROGRESS
+
+Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
+(drift-clean at lane start: `git log 7e6d13e5..HEAD` empty, tree clean).
+
+- **Unit 1 — `impl blob_transcode::WebpTranscoder for HostImageCodec`
+  (quilltap-host 0.0.24 → 0.0.25).** The Scriptorium blob-upload pixel seam
+  (`services::mount_index::blob_transcode::WebpTranscoder`, trait FROZEN — its
+  method is `encode_webp(&self, bytes, quality: u8) -> Result<Vec<u8>, String>`)
+  now has a live production impl on `HostImageCodec`: decode via `image`, lossy
+  encode via `webp` (libwebp) at the given quality, reusing the module's
+  existing `decode` + `encode_webp_image` helpers. v4's `blob-transcode.ts:62`
+  `effort: 4` is a libwebp encoder-cost knob with no policy surface (the `webp`
+  crate's simple encoder does not expose it) — dropped with a comment, exactly
+  as the sibling `PixelCodec::encode_webp` `_effort` arg is. Undecodable input
+  is an `Err`, which the caller (`transcode_to_webp`) turns into v4's
+  store-original fallback arm. Unit test `blob_webp_transcoder_seam`: PNG/JPEG →
+  WebP with identical dims (D19: policy parity, never byte parity), undecodable
+  input errors, and the ported blob policy end-to-end (GIF → image/webp;
+  non-image mime passthrough). NOT yet wired into any assembly — that is unit 2
+  (the S1 `blob_webp` field). Naming: the impl imports the trait as
+  `BlobWebpTranscoder` because `image_codec.rs` already aliases
+  `model::image::ImageTranscoder` to `WebpTranscoder`.
