@@ -142,7 +142,7 @@ use crate::memory_injector::{
     format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
     format_inter_character_memories_for_context, DebugInterCharacterMemoryInfo, DebugMemoryInfo,
     InjectorMemory, InjectorResult, RecallAdjustment, SceneState, SceneStateEmissionEntry,
-    DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_TOKEN_BUDGET,
+    DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
 };
 use crate::message_attribution::{
     attribute_messages_for_character, filter_messages_by_history_access, filter_whisper_messages,
@@ -435,6 +435,9 @@ pub struct ContextChat {
     /// The precompiled identity stack for the responding participant (v4
     /// `getCompiledIdentityStack`; resolved by the caller).
     pub precompiled_identity_stack: Option<String>,
+    /// Which clock the chat's story runs on (`"realtime" | "narrative"`, v4
+    /// `chat.timelineMode`, episodic spine). `None` → realtime.
+    pub timeline_mode: Option<String>,
 }
 
 /// The full input bag (v4 `BuildContextOptions`, the subset in scope).
@@ -976,9 +979,12 @@ fn injector_result_from_search(
         score: r.score,
         effective_weight: Some(r.effective_weight),
         raw_weight: Some(r.raw_weight),
-        // The recallContext re-rank/adjustment is a tracked search-side deferral;
-        // no adjustment surfaces here.
-        recall_adjustment: None::<RecallAdjustment>,
+        recall_adjustment: r.recall_adjustment.as_ref().map(|a| RecallAdjustment {
+            multiplier: Some(a.multiplier),
+            fired: a.fired.clone(),
+            blended_before: Some(a.blended_before),
+            blended_after: Some(a.blended_after),
+        }),
     }
 }
 
@@ -1022,9 +1028,8 @@ fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
 
 /// v4 `getMemoryRecallSettings` (`lib/instance-settings`) — reads the per-instance
 /// Commonplace-Book recall settings, defaulting to `down-weight` / no-expand when
-/// the setting is unwritten. Read on the per-turn recall path; the search-leg
-/// re-rank that consumes these is a tracked memory-service deferral, so the value
-/// is not yet folded into the search — but the read is ported faithfully.
+/// the setting is unwritten. Consumed by the per-turn recall context (P4.d13
+/// closed the search-leg re-rank deferral).
 fn read_memory_recall_settings(db: &Db) -> MemoryRecallSettings {
     match db.read_main(crate::db::instance_settings::get_memory_recall_settings) {
         Ok((scope_policy, expand_related)) => MemoryRecallSettings {
@@ -1816,13 +1821,12 @@ where
 
     if !input.skip_memories && !input.character.id.is_empty() {
         let compaction_gen = input.chat.compaction_generation;
-        let dynamic_head_budget = DYNAMIC_HEAD_TOKEN_BUDGET.min(budget.memory_budget);
-        let archive_budget = (budget.memory_budget - dynamic_head_budget).max(0);
 
         // v4 `getOrComputeFrozenArchive` (W4.6a) — the effective-weight-ranked
         // top-25, byte-stable within a compactionGeneration (process-cached).
-        // v4 `getOrComputeFrozenArchive` (W4.6a) — the effective-weight-ranked
-        // top-25, byte-stable within a compactionGeneration (process-cached).
+        // Budgets are decided AFTER the search below (recall-on-reference: the
+        // retrospective head sizing needs the turn signals), so only the fetch
+        // happens here; the archive formats once the budgets are known.
         let frozen_archive: Vec<InjectorMemory> =
             crate::services::frozen_archive::get_or_compute_frozen_archive(
                 db,
@@ -1835,15 +1839,22 @@ where
             .iter()
             .map(injector_memory_from_json)
             .collect();
-        let archive_formatted = format_frozen_memory_archive(&frozen_archive, archive_budget);
         let archive_ids: HashSet<String> = frozen_archive.iter().map(|m| m.id.clone()).collect();
 
         let mut dynamic_head_results: Vec<InjectorResult> = Vec::new();
+        // Turn-level recall signals (retrospective / timeRange / entities) — set
+        // by the fallback distillation; consumed by the retrospective head
+        // sizing below (part 2 — the mini-recap — is a round-3 port).
+        let mut turn_recall_signals: Option<
+            crate::services::memory_recap::distill::DistilledSearch,
+        > = None;
 
         if !memory_search_query.is_empty() {
             // Query distillation (v4 `extractMemorySearchKeywords`, W4.6a). Falls
             // back to the raw recent-window query.
             let mut distilled_query = memory_search_query.clone();
+            let mut turn_context: Option<crate::recall_tags::ContextTag> = None;
+            let mut turn_temporal: Option<crate::recall_tags::TemporalTag> = None;
             if let Some(selection) = &input.cheap_llm_selection {
                 // v4 `recentForDistill`: existingMessages.slice(-12), role
                 // lowercased, assistant slice tool-stripped, non-empty; then push
@@ -1871,6 +1882,17 @@ where
                         content: num.clone(),
                     });
                 }
+                // v4 passes `{ nowIso: new Date().toISOString(), timelineMode:
+                // chat.timelineMode ?? 'realtime' }` — the injected now_ms seam
+                // stands in for the wall clock.
+                let clock = crate::services::memory_recap::distill::ExtractionClock {
+                    now_iso: crate::clock::iso_from_unix_ms(now_ms_f as i64),
+                    timeline_mode: input
+                        .chat
+                        .timeline_mode
+                        .clone()
+                        .unwrap_or_else(|| "realtime".to_string()),
+                };
                 if let Some(d) = crate::services::memory_recap::distill::distill_memory_search(
                     executor,
                     completion,
@@ -1878,24 +1900,81 @@ where
                     &input.character.name,
                     selection,
                     &input.character.id,
-                    // The clock thread (v4 `{ nowIso, timelineMode }`) lands with
-                    // the part-1 buildContext unit of this lane.
-                    None,
+                    Some(&clock),
                 )
                 .await
                 {
-                    if let Some(p) = d.paraphrase.filter(|p| !p.is_empty()) {
+                    if let Some(p) = d.paraphrase.clone().filter(|p| !p.is_empty()) {
                         distilled_query = p;
                     } else if !d.keywords.is_empty() {
                         distilled_query = d.keywords.join(" ");
                     }
+                    turn_context = d.context;
+                    turn_temporal = d.temporal;
+                    turn_recall_signals = Some(d);
                 }
             }
 
-            // v4 `getMemoryRecallSettings` (W4.6a, closed with existing code). The
-            // search-leg re-rank that consumes these is a tracked memory-service
-            // deferral, so the value is read faithfully but not yet folded in.
-            let _recall_settings = read_memory_recall_settings(db);
+            // Characters present in the room this turn (responding character +
+            // every other character participant) for the participant-aware boost
+            // (item 4).
+            let mut present_about_character_ids: Vec<String> = Vec::new();
+            {
+                let mut seen: HashSet<String> = HashSet::new();
+                if !input.character.id.is_empty() && seen.insert(input.character.id.clone()) {
+                    present_about_character_ids.push(input.character.id.clone());
+                }
+                if let Some(pc) = &input.participant_characters {
+                    for id in pc.keys() {
+                        if !id.is_empty() && seen.insert(id.clone()) {
+                            present_about_character_ids.push(id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Read the instance-wide recall settings and assemble the full
+            // per-turn recall context so the dynamic head reads the targeting
+            // tags back (see recall_tags). chat.projectId is the rename-proof
+            // comparand for scope: narrow gating.
+            let recall_settings = read_memory_recall_settings(db);
+            let fallback_retro = turn_recall_signals
+                .as_ref()
+                .is_some_and(|s| s.retrospective);
+            let recall_context = crate::services::memory_service::RecallContextInput {
+                current_project_id: input.chat.project_id.clone(),
+                scope_policy: if recall_settings.scope_policy == "exclude" {
+                    crate::recall_tags::ScopePolicy::Exclude
+                } else {
+                    crate::recall_tags::ScopePolicy::DownWeight
+                },
+                present_about_character_ids,
+                turn_context,
+                turn_temporal,
+                turn_retrospective: fallback_retro,
+                expand_related: recall_settings.expand_related,
+                recently_whispered_ids: Some(crate::recall_history::recently_whispered_id_set(
+                    &input.chat.commonplace_recall_history,
+                )),
+            };
+            // Retrospective multi-probe (mirrors the proactive path).
+            let mut extra_probes: Vec<String> = Vec::new();
+            if fallback_retro {
+                if let Some(signals) = &turn_recall_signals {
+                    let entity_probe =
+                        crate::jsstr::js_trim(&signals.entities.join(" ")).to_string();
+                    if !entity_probe.is_empty() {
+                        extra_probes.push(entity_probe);
+                    }
+                    if let (Some(p), Some(tr)) = (&signals.paraphrase, &signals.time_range) {
+                        extra_probes.push(format!(
+                            "{p} (around {} to {})",
+                            crate::jsstr::utf16_truncate(&tr.from, 10),
+                            crate::jsstr::utf16_truncate(&tr.to, 10)
+                        ));
+                    }
+                }
+            }
             let results = search_memories_semantic(
                 db,
                 embedding,
@@ -1904,8 +1983,32 @@ where
                 &SemanticSearchOptions {
                     user_id: input.user_id.clone(),
                     embedding_profile_id: input.embedding_profile_id.clone(),
-                    limit: Some(DYNAMIC_HEAD_DEFAULT_SIZE * 3),
+                    // Pull a few more than the head size so the archive-overlap
+                    // filter still leaves enough candidates to fill the head.
+                    // Retrospective turns run the enlarged head, so pull
+                    // proportionally more.
+                    limit: Some(
+                        (if fallback_retro {
+                            RETRO_HEAD_SIZE
+                        } else {
+                            DYNAMIC_HEAD_DEFAULT_SIZE
+                        }) * 3,
+                    ),
                     min_importance: Some(input.min_memory_importance),
+                    recall_context: Some(recall_context),
+                    // v4 passes `turnRecallSignals?.entities` on EVERY turn.
+                    entity_anchors: turn_recall_signals
+                        .as_ref()
+                        .map(|s| s.entities.clone())
+                        .unwrap_or_default(),
+                    occurred_within: if fallback_retro {
+                        turn_recall_signals
+                            .as_ref()
+                            .and_then(|s| s.time_range.clone())
+                    } else {
+                        None
+                    },
+                    extra_probes,
                     now_ms: now_ms_f,
                     ..Default::default()
                 },
@@ -1918,10 +2021,30 @@ where
                 .collect();
         }
 
+        // Recall-on-reference (fourth cadence, part 1): a retrospective turn
+        // gets an enlarged head — the turn that needs rich recall is exactly
+        // the turn that otherwise gets the smallest window. Budgets decided
+        // here, AFTER the signals are known, so the archive takes what's left.
+        let is_retrospective_turn = turn_recall_signals
+            .as_ref()
+            .is_some_and(|s| s.retrospective);
+        let dynamic_head_budget = (if is_retrospective_turn {
+            RETRO_HEAD_TOKEN_BUDGET
+        } else {
+            DYNAMIC_HEAD_TOKEN_BUDGET
+        })
+        .min(budget.memory_budget);
+        let archive_budget = (budget.memory_budget - dynamic_head_budget).max(0);
+        let archive_formatted = format_frozen_memory_archive(&frozen_archive, archive_budget);
+
         let head_formatted = format_dynamic_memory_head(
             &dynamic_head_results,
             Some(dynamic_head_budget),
-            Some(DYNAMIC_HEAD_DEFAULT_SIZE),
+            Some(if is_retrospective_turn {
+                RETRO_HEAD_SIZE
+            } else {
+                DYNAMIC_HEAD_DEFAULT_SIZE
+            }),
             now_ms_f,
         );
 
@@ -2464,8 +2587,9 @@ where
                     &input.chat.commonplace_recall_history,
                     &whispered_memory_ids,
                 );
-                let next_json = serde_json::to_value(next.turns).unwrap_or(Value::Null);
-                persist_recall_history(db, &input.chat.id, next_json).await;
+                // v4 persists the RecallHistory OBJECT (`{ turns, retroSignatures? }`),
+                // never the bare turns array — the parse side requires the wrapper.
+                persist_recall_history(db, &input.chat.id, next.to_value()).await;
             }
         }
     }

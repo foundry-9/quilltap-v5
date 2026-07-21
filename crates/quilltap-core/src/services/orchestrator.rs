@@ -3036,6 +3036,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         commonplace_scene_cache: args.chat.get("commonplaceSceneCache").cloned(),
         scene_state: args.chat.get("sceneState").cloned(),
         precompiled_identity_stack: None,
+        timeline_mode: json_str(args.chat, "timelineMode"),
     };
 
     // v4 `buildMessageContext` passes `respondingParticipant` in BOTH single- and

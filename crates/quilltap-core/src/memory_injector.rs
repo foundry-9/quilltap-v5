@@ -65,6 +65,14 @@ pub const DYNAMIC_HEAD_TOKEN_BUDGET: i64 = 200;
 /// Phase 3b: how many rank-instruction entries to attempt.
 pub const DYNAMIC_HEAD_DEFAULT_SIZE: usize = 5;
 
+/// Recall-on-reference (episodic overhaul): a retrospective turn — the user is
+/// invoking past shared events — gets an enlarged head, because that is
+/// exactly the turn that needs rich recall. Tuning knobs; validate against
+/// real chats via the recall-replay harness before tightening.
+pub const RETRO_HEAD_TOKEN_BUDGET: i64 = 600;
+/// Enlarged entry count for retrospective turns.
+pub const RETRO_HEAD_SIZE: usize = 10;
+
 // ---------------------------------------------------------------------------
 // formatMemoryMetadataTag
 // ---------------------------------------------------------------------------

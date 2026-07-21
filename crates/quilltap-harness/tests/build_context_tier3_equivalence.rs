@@ -31,8 +31,8 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::chat_timestamp::{TimestampConfig, TimestampFormat, TimestampMode};
-use quilltap_core::db::characters_read;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::{characters_read, chats_read};
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
@@ -75,6 +75,9 @@ struct SpecOp {
     messages_with_participants: Vec<SpecMwp>,
     skip_memories: bool,
     compression_enabled: bool,
+    /// P4.d13 retro arm: cheap-LLM selection WITHOUT compression (distill only).
+    #[serde(default)]
+    distill_enabled: bool,
     #[serde(default)]
     timestamp_mode: Option<String>,
     /// W4.4a4: the async pre-compression cache the spine would pass into buildContext.
@@ -108,6 +111,8 @@ struct SpecChatOverrides {
     summary_anchor_message_ids: Vec<String>,
     #[serde(default)]
     context_summary: Option<String>,
+    #[serde(default)]
+    commonplace_recall_history: Option<Value>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -511,6 +516,8 @@ async fn build_context_tier3_matches_oracle() {
                 ),
                 Some(selection.clone()),
             )
+        } else if op.distill_enabled {
+            (None, None, Some(selection.clone()))
         } else {
             (None, None, None)
         };
@@ -546,7 +553,25 @@ async fn build_context_tier3_matches_oracle() {
             chat: ContextChat {
                 id: spec.chat.id.clone(),
                 compaction_generation: spec.chat.compaction_generation,
-                commonplace_recall_history: Value::Null,
+                // v4's oracle re-reads the chat each op, so the recall-history
+                // ring buffer ACCUMULATES across ops (buildContext persists the
+                // whispered ids). Mirror that: read the row's current value from
+                // the working DB, unless the op pins an override (the spread
+                // `{...chat, ...op.chatOverrides}` on the oracle side).
+                commonplace_recall_history: match op
+                    .chat_overrides
+                    .as_ref()
+                    .and_then(|o| o.commonplace_recall_history.clone())
+                {
+                    Some(v) => v,
+                    None => {
+                        let chat_id = spec.chat.id.clone();
+                        db.read_main(|c| chats_read::find_by_id(c, &chat_id))
+                            .expect("read chat")
+                            .and_then(|c| c.get("commonplaceRecallHistory").cloned())
+                            .unwrap_or(Value::Null)
+                    }
+                },
                 summary_anchor_message_ids: op
                     .chat_overrides
                     .as_ref()
@@ -600,8 +625,7 @@ async fn build_context_tier3_matches_oracle() {
         // still the exact shortest repr of the computed f64, so a real numeric
         // divergence (> 1 decimal-parse ULP) still fails.
         let got_text = serde_json::to_string(&built).expect("serialize built context");
-        let mut got: Value = serde_json::from_str(&got_text).expect("reparse built context");
-        strip_recall_debug(&mut got);
+        let got: Value = serde_json::from_str(&got_text).expect("reparse built context");
         let want = normalize_oracle(oracle_result);
         assert_eq!(
             got,
@@ -627,37 +651,10 @@ fn model_limit() -> i64 {
 }
 
 /// The oracle emits v4's `BuiltContext` with `undefined` optionals dropped by
-/// `JSON.stringify`. The one place the ported code legitimately diverges is the
-/// dynamic-head `debugMemories` **recall-adjustment** diagnostics
-/// (`recallMultiplier`/`recallFired`/`blendedBefore`/`blendedAfter`): v4's
-/// `searchMemoriesSemantic` attaches a `recallAdjustment` record (a no-op with
-/// multiplier 1 / nothing fired for this corpus), while the ported
-/// `search_memories_semantic` defers the recallContext re-rank (a documented
-/// deferral in that unit), so it carries no adjustment. These four fields are
-/// purely diagnostic (they never reach the rendered memory block) — strip them
-/// from BOTH the oracle rows and the Rust output so the comparison is on the
-/// load-bearing shape. Everything else compares byte-for-byte.
-const RECALL_DEBUG_KEYS: &[&str] = &[
-    "recallMultiplier",
-    "recallFired",
-    "blendedBefore",
-    "blendedAfter",
-];
-
-fn strip_recall_debug(v: &mut Value) {
-    if let Some(dm) = v.get_mut("debugMemories").and_then(Value::as_array_mut) {
-        for entry in dm.iter_mut() {
-            if let Some(obj) = entry.as_object_mut() {
-                for k in RECALL_DEBUG_KEYS {
-                    obj.remove(*k);
-                }
-            }
-        }
-    }
-}
-
+/// `JSON.stringify`. P4.d13: the dynamic-head `debugMemories` recall-adjustment
+/// diagnostics (`recallMultiplier`/`recallFired`/`blendedBefore`/`blendedAfter`)
+/// are no longer stripped — v5 runs the recallContext multiplier loop for real,
+/// so they compare byte-for-byte like everything else.
 fn normalize_oracle(v: &Value) -> Value {
-    let mut obj = Value::Object(v.as_object().cloned().unwrap_or_else(Map::new));
-    strip_recall_debug(&mut obj);
-    obj
+    Value::Object(v.as_object().cloned().unwrap_or_else(Map::new))
 }

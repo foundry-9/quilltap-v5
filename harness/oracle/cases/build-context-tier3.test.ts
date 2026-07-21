@@ -18,7 +18,9 @@
  *   - `resolveTieredMountPool` → the responding character's own vault only (no
  *     group / project / global tier) = the Rust `resolve_mount_pool` default.
  *   - `generateMemoryRecap` → `{ content: '' }` (no recap).
- *   - `extractMemorySearchKeywords` → `{ success: false }` (no distillation).
+ *   - `extractMemorySearchKeywords` runs REAL (W4.6a); its cheap-LLM call rides
+ *     the mocked `createLLMProvider` (an op without a matching completion rule
+ *     fails the task → the raw-query fallback, identically on both sides).
  *   - `getOrComputeFrozenArchive` → `[]` (no archive).
  *   - `getMemoryRecallSettings` → BALANCED / no expand.
  *   - `getCompiledIdentityStack` → null (fresh build).
@@ -63,7 +65,11 @@ interface Op {
   newUserMessage?: string;
   existingMessages?: Array<{ id?: string; role: string; content: string }>;
   existingMessagesRepeat?: { count: number; userContent: string; assistantContent: string };
-  chatOverrides?: { summaryAnchorMessageIds?: string[]; contextSummary?: string };
+  chatOverrides?: {
+    summaryAnchorMessageIds?: string[];
+    contextSummary?: string;
+    commonplaceRecallHistory?: unknown;
+  };
   respondingParticipantId?: string;
   activeUserParticipantId?: string;
   participants?: Array<{
@@ -85,6 +91,9 @@ interface Op {
   }>;
   skipMemories: boolean;
   compressionEnabled: boolean;
+  /** P4.d13 retro arm: set cheapLLMSelection WITHOUT compression so the only
+   * canned completion the op consumes is the distillation's. */
+  distillEnabled?: boolean;
   timestampMode: string | null;
   cachedCompression?: {
     compressedHistory: string;
@@ -336,6 +345,9 @@ async function main(): Promise<void> {
       options.participantCharacters = participantCharacters;
       options.messagesWithParticipants = op.messagesWithParticipants;
       options.activeUserParticipantId = op.activeUserParticipantId ?? null;
+    }
+    if (op.distillEnabled) {
+      options.cheapLLMSelection = cheapLLMSelection;
     }
     if (op.compressionEnabled) {
       options.connectionProfile = connectionProfile;

@@ -31,6 +31,62 @@ pub const RECALL_HISTORY_TURNS: usize = 3;
 pub struct RecallHistory {
     /// One inner array of whispered memory IDs per recent turn, most recent last.
     pub turns: Vec<Vec<String>>,
+    /// Retro mini-recap signatures (episodic overhaul). Round 2 (P4.d13) only
+    /// PRESERVES an existing list through [`append_recall_turn`] exactly as
+    /// v4's `appendRecallTurn` does — the spam-guard machinery that writes and
+    /// consumes them (`appendRetroSignature` / `RETRO_SIGNATURE_TURNS`) is the
+    /// round-3 port.
+    pub retro_signatures: Vec<String>,
+}
+
+impl RecallHistory {
+    /// The persisted JSON shape (v4 `RecallHistory`): always `{ "turns": … }`,
+    /// with `retroSignatures` present only when non-empty — key order matches
+    /// v4's object literals.
+    pub fn to_value(&self) -> Value {
+        let mut obj = serde_json::Map::new();
+        obj.insert(
+            "turns".to_string(),
+            Value::Array(
+                self.turns
+                    .iter()
+                    .map(|t| Value::Array(t.iter().cloned().map(Value::String).collect()))
+                    .collect(),
+            ),
+        );
+        if !self.retro_signatures.is_empty() {
+            obj.insert(
+                "retroSignatures".to_string(),
+                Value::Array(
+                    self.retro_signatures
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+        }
+        Value::Object(obj)
+    }
+}
+
+/// Coerce the persisted retro-signature list, dropping anything malformed (v4
+/// `parseRetroSignatures`: only a plain object carrying `retroSignatures`
+/// qualifies; only non-empty strings survive).
+pub fn parse_retro_signatures(raw: &Value) -> Vec<String> {
+    let sigs = match raw.as_object().and_then(|o| o.get("retroSignatures")) {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    let sigs = match sigs.as_array() {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+    sigs.iter()
+        .filter_map(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Coerce the raw JSON column into a clean `Vec<Vec<String>>`, dropping anything
@@ -94,8 +150,14 @@ pub fn recently_whispered_id_set(raw: &Value) -> HashSet<String> {
 ///     to pass real IDs, so an empty string in `new_ids` is pushed as-is.
 pub fn append_recall_turn(raw: &Value, new_ids: &[String]) -> RecallHistory {
     let mut turns = parse_recall_history(raw);
+    // v4 (8bf3cb5f): an existing retroSignatures list rides through the append
+    // untouched (the write must not destroy a v4-written spam-guard list).
+    let retro_signatures = parse_retro_signatures(raw);
     if new_ids.is_empty() {
-        return RecallHistory { turns };
+        return RecallHistory {
+            turns,
+            retro_signatures,
+        };
     }
     // Dedup new_ids preserving first-occurrence order (mirrors `new Set(newIds)`);
     // deliberately no empty-string filter here.
@@ -111,5 +173,8 @@ pub fn append_recall_turn(raw: &Value, new_ids: &[String]) -> RecallHistory {
     if turns.len() > RECALL_HISTORY_TURNS {
         turns.drain(0..turns.len() - RECALL_HISTORY_TURNS);
     }
-    RecallHistory { turns }
+    RecallHistory {
+        turns,
+        retro_signatures,
+    }
 }

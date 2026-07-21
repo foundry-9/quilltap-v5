@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+P4.d13 unit 5: buildContext part-1 threading + the RETRO head constants
+(v4 8bf3cb5f). RETRO_HEAD_TOKEN_BUDGET=600 / RETRO_HEAD_SIZE=10 beside
+the DYNAMIC constants; the distill call carries the ExtractionClock
+(injected now_ms + chat.timelineMode); the parsed signals thread into
+the fallback search as a full recall context (project scope, turn
+context/temporal, retrospective flip, present-participant ids, the
+recently-whispered set, expandRelated from instance settings), with
+entity anchors on every turn, the occurredWithin window gated on the
+retrospective flag, the retro multi-probe pair, and the retro-sized
+limit and head budget/entry ternaries (budgets now decided AFTER the
+signals are known, as v4 does). Part 2 (the mini-recap/whisper/spam
+guard) stays round 3 and is provably inert in the diff. TWO port fixes
+surfaced by the strengthened differential: chat_messages now
+materializes in the build-context fixture (the v5 writer does not
+create tables lazily, so whisper posts silently failed and the recall
+ring buffer never accumulated), and the recall-history persist now
+writes v4's RecallHistory OBJECT ({turns, retroSignatures?}) instead of
+the bare turns array the parser rejects — appendRecallTurn also now
+preserves an existing retroSignatures list exactly as v4 does. The
+build-context differential regenerated at 8bf3cb5f with a NEW
+retrospective op (canned distill via the recorded completion key — the
+TODAY-line prompt bytes now pinned end-to-end, flip/window/entity-
+rescue/suspension all visible), 25 archive-filler memories so the
+dynamic head is populated (the recall-adjustment debug fields are no
+longer stripped — they compare byte-for-byte), and per-op recall-history
+accumulation mirrored in the driver. quilltap-core 0.0.310,
+quilltap-harness 0.0.267.
+
 P4.d13 unit 4: vault conversation-summary dates (v4 8bf3cb5f) — the
 searchVaultConversationSummaries timeRange option (readCap
 max(limit*3, 15), the firstMessageAt/lastMessageAt frontmatter reads

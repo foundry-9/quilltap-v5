@@ -58,7 +58,20 @@ interface SeedMemory {
   content: string;
   summary: string;
   importance: number;
+  /** Targeting-tag keywords (episodic arm: `past` / `scope: wide` / context words). */
+  keywords?: string[];
+  /** Episodic spine fields (P4.d13 retro arm). */
+  occurredAt?: string | null;
+  narrativeTime?: string | null;
+  kind?: string;
+  entities?: string[];
+  /** Per-character vector-index entry (null → not indexed). */
   vector: number[] | null;
+  /**
+   * The memory row's own `embedding` column (the entity-anchor rescue path
+   * reads it when the memory is NOT in the vector index).
+   */
+  embeddingColumn?: number[] | null;
 }
 interface ChatSpec {
   id: string;
@@ -213,10 +226,10 @@ async function main(): Promise<void> {
         projectId: null,
         content: m.content,
         summary: m.summary,
-        keywords: [],
+        keywords: m.keywords ?? [],
         tags: [],
         importance: m.importance,
-        embedding: null,
+        embedding: m.embeddingColumn ?? null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -225,6 +238,11 @@ async function main(): Promise<void> {
         lastReinforcedAt: null,
         relatedMemoryIds: [],
         reinforcedImportance: m.importance,
+        // Episodic spine (P4.d13 retro arm).
+        occurredAt: m.occurredAt ?? null,
+        narrativeTime: m.narrativeTime ?? null,
+        kind: m.kind ?? 'semantic',
+        entities: m.entities ?? [],
       } as never,
       { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
@@ -251,6 +269,11 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
   );
+
+  // Materialize the (empty) chat_messages table: the live whisper posts write
+  // through it on BOTH sides, and the Rust writer does not create tables lazily
+  // the way v4's collection layer does.
+  await repos.chats.getMessages(spec.chat.id);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

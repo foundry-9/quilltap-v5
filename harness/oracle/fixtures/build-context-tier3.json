@@ -1,6 +1,6 @@
 {
   "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads.",
-  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures \u2014 never a real pepper.",
+  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures — never a real pepper.",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "b0000000-0000-4000-8000-0000000000e1",
   "seedTimestamp": "2024-01-01T00:00:00.000Z",
@@ -74,6 +74,266 @@
       "summary": "Bea wintered a hive in her chassis.",
       "importance": 0.7,
       "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-0000000000e3",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "At Lighthouse Point Ada sketched the tide-driven analytical engine loops.",
+      "summary": "Sketched engine loops at Lighthouse Point.",
+      "importance": 0.8,
+      "keywords": [
+        "lighthouse",
+        "past",
+        "scope: wide",
+        "history"
+      ],
+      "occurredAt": "2024-06-05T12:00:00.000Z",
+      "kind": "episodic",
+      "entities": [
+        "Lighthouse Point"
+      ],
+      "vector": [
+        0.9,
+        0.2,
+        0.0
+      ]
+    },
+    {
+      "id": "ce000000-0000-4000-8000-0000000000e4",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "In January Ada archived the winter gear ledger.",
+      "summary": "Archived the winter gear ledger.",
+      "importance": 0.7,
+      "keywords": [
+        "ledger",
+        "past"
+      ],
+      "occurredAt": "2024-01-10T00:00:00.000Z",
+      "kind": "episodic",
+      "vector": [
+        0.8,
+        0.3,
+        0.0
+      ]
+    },
+    {
+      "id": "ce000000-0000-4000-8000-0000000000e5",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "The brass sextant was bought from the keeper at Lighthouse Point.",
+      "summary": "Bought the brass sextant at Lighthouse Point.",
+      "importance": 0.9,
+      "keywords": [],
+      "occurredAt": "2024-06-04T09:00:00.000Z",
+      "kind": "episodic",
+      "entities": [
+        "Lighthouse Point"
+      ],
+      "vector": null,
+      "embeddingColumn": [
+        0.5,
+        0.5,
+        0.2
+      ]
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f000",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 0 in the cellar ledgerbook.",
+      "summary": "Pantry crate 0.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f001",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 1 in the cellar ledgerbook.",
+      "summary": "Pantry crate 1.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f002",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 2 in the cellar ledgerbook.",
+      "summary": "Pantry crate 2.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f003",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 3 in the cellar ledgerbook.",
+      "summary": "Pantry crate 3.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f004",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 4 in the cellar ledgerbook.",
+      "summary": "Pantry crate 4.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f005",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 5 in the cellar ledgerbook.",
+      "summary": "Pantry crate 5.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f006",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 6 in the cellar ledgerbook.",
+      "summary": "Pantry crate 6.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f007",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 7 in the cellar ledgerbook.",
+      "summary": "Pantry crate 7.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f008",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 8 in the cellar ledgerbook.",
+      "summary": "Pantry crate 8.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f009",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 9 in the cellar ledgerbook.",
+      "summary": "Pantry crate 9.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f010",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 10 in the cellar ledgerbook.",
+      "summary": "Pantry crate 10.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f011",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 11 in the cellar ledgerbook.",
+      "summary": "Pantry crate 11.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f012",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 12 in the cellar ledgerbook.",
+      "summary": "Pantry crate 12.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f013",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 13 in the cellar ledgerbook.",
+      "summary": "Pantry crate 13.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f014",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 14 in the cellar ledgerbook.",
+      "summary": "Pantry crate 14.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f015",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 15 in the cellar ledgerbook.",
+      "summary": "Pantry crate 15.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f016",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 16 in the cellar ledgerbook.",
+      "summary": "Pantry crate 16.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f017",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 17 in the cellar ledgerbook.",
+      "summary": "Pantry crate 17.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f018",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 18 in the cellar ledgerbook.",
+      "summary": "Pantry crate 18.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f019",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 19 in the cellar ledgerbook.",
+      "summary": "Pantry crate 19.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f020",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 20 in the cellar ledgerbook.",
+      "summary": "Pantry crate 20.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f021",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 21 in the cellar ledgerbook.",
+      "summary": "Pantry crate 21.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f022",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 22 in the cellar ledgerbook.",
+      "summary": "Pantry crate 22.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f023",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 23 in the cellar ledgerbook.",
+      "summary": "Pantry crate 23.",
+      "importance": 0.95,
+      "vector": null
+    },
+    {
+      "id": "ce000000-0000-4000-8000-00000000f024",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Cataloged pantry crate number 24 in the cellar ledgerbook.",
+      "summary": "Pantry crate 24.",
+      "importance": 0.95,
+      "vector": null
     }
   ],
   "cannedEmbeddings": {
@@ -91,6 +351,36 @@
       1.0,
       0.0,
       0.0
+    ],
+    "I'm curious about your engines.\nRemember when we sketched the analytical engine at Lighthouse Point last week?": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "Remember when we sketched the analytical engine at Lighthouse Point last week?": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "They recall sketching the analytical engine loops at Lighthouse Point.": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "Lighthouse Point": [
+      0.6,
+      0.7,
+      0.1
+    ],
+    "They recall sketching the analytical engine loops at Lighthouse Point. (around 2024-06-03 to 2024-06-09)": [
+      0.95,
+      0.05,
+      0.0
+    ],
+    "They recall sketching the analytical engine loops at Lighthouse Point. — Lighthouse Point": [
+      1.0,
+      0.0,
+      0.0
     ]
   },
   "completionRules": [
@@ -103,6 +393,11 @@
         "completionTokens": 60,
         "totalTokens": 260
       }
+    },
+    {
+      "op": "retrospective_recall_turn",
+      "kind": "distill",
+      "response": "{\"keywords\": [\"analytical engine\", \"Lighthouse Point\", \"sketching\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\"]}"
     }
   ],
   "chat": {
@@ -215,7 +510,7 @@
         {
           "id": "d0000000-0000-4000-8000-0000000000d2",
           "role": "user",
-          "content": "The Librarian deposits a pr\u00e9cis of the conversation to date upon the table \u2014 file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
+          "content": "The Librarian deposits a précis of the conversation to date upon the table — file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
         },
         {
           "id": "d0000000-0000-4000-8000-0000000000d3",
@@ -327,6 +622,30 @@
       ],
       "skipMemories": false,
       "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "retrospective_recall_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Remember when we sketched the analytical engine at Lighthouse Point last week?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "chatOverrides": {
+        "commonplaceRecallHistory": {
+          "turns": [
+            [
+              "ce000000-0000-4000-8000-0000000000e3"
+            ]
+          ]
+        }
+      },
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
       "timestampMode": null
     }
   ]

@@ -27126,3 +27126,57 @@ extending). **The timeRange-staging differential (v4's real
 episodic-recall fixture family landing with unit 7** — recorded here so
 the unit is not silently accepted without it; unit 7's record must show
 it green.
+
+## P4.d13 unit 5 — buildContext part-1 threading + the RETRO constants
+
+**What landed:** `memory_injector.rs` gains `RETRO_HEAD_TOKEN_BUDGET = 600`
+/ `RETRO_HEAD_SIZE = 10` (with v4's tuning why-comment).
+`build_context.rs`: `ContextChat.timeline_mode`; the distill call passes
+the `ExtractionClock` (`iso_from_unix_ms(now_ms)` + `timelineMode ??
+realtime` — the injected seam stands in for v4's wall clock); the full
+`DistilledSearch` is captured as `turn_recall_signals`; the fallback
+search gains the complete `RecallContextInput` (project id, scope
+policy + expandRelated from `read_memory_recall_settings` — now actually
+consumed, its stale seam-note swept), `entity_anchors` on EVERY turn,
+`occurred_within` gated on `fallbackRetro`, the retro multi-probe pair
+(entity probe + paraphrase-with-window probe), the retro-sized `limit`,
+and the `isRetrospectiveTurn` budget/entries ternaries — the budgets are
+now decided AFTER the search (v4's order; the archive formats late).
+`injector_result_from_search` maps the real `recall_adjustment` into the
+injector's debug shape. **STOP at part 1 confirmed** — no mini-recap, no
+whisper, no recall-history retro signatures consumed.
+
+**Two port bugs surfaced and fixed (fix the port, not the diff):**
+(1) the recall-history persist wrote the BARE turns array while the
+parser (correctly) requires v4's `{ turns }` object — the ring buffer
+therefore never survived a round-trip; `RecallHistory::to_value()` now
+writes v4's exact shape and `append_recall_turn` PRESERVES an existing
+`retroSignatures` list verbatim (v4 8bf3cb5f behavior; the spam-guard
+write/consume machinery stays round 3 — `parse_retro_signatures` is
+ported as its carrier). (2) the build-context fixture never materialized
+`chat_messages`, so v5's whisper post (which does not create tables
+lazily, unlike v4's collection layer) returned `posted=false` and the
+`if (posted)` persist gates never ran — invisible until the dynamic head
+had content.
+
+**Differential:** `build_context_tier3` regenerated at `8bf3cb5f` (fresh
+fixture + oracle): the corpus gains the `retrospective_recall_turn` op
+(distillEnabled — cheap-LLM selection WITHOUT compression; the canned
+distill response rides the RECORDED completion key, so v5 must reproduce
+the distill request BYTE-EXACT incl. the TODAY line — unit 1's prompt
+work is now pinned end-to-end inside buildContext), three episodic seed
+memories (in-window/out-window/entity-anchor rescue with an embedding
+COLUMN but no vector-index entry), 25 archive-filler memories
+(importance 0.95) so the top-25 frozen archive no longer swallows the
+whole corpus and the dynamic head is POPULATED for every memory op, and
+a per-op recallHistory override for the retro op ({"turns":[[E3]]} —
+the suspension arm). The oracle's fired labels for the retro head:
+E3 `past↑retro · ctx✓ · window↑` (multiplier 1.6445), E4 `past↑retro`,
+E5 `window↑` (the rescue row — found only via searchByContent). The
+harness driver now mirrors v4's cross-op recall-history ACCUMULATION
+(reads the chat row per op) and **no longer strips the four
+recall-adjustment debug fields** — recallMultiplier/recallFired/
+blendedBefore/blendedAfter compare byte-for-byte. CONFIRMED (the round-1
+open question): the canned completion routing records the distill call's
+key from v4's REAL request — the prompt-byte change is pinned by key
+identity, not tolerated by fallback.
