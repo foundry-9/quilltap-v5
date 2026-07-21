@@ -515,10 +515,14 @@ async fn write_candidate<E: EmbeddingProvider>(
                 .to_string(),
             ),
             // Episodic spine: v4 8bf3cb5f stamps occurredAt from the slice's
-            // lastMessageCreatedAt (resolveCandidateAnchors). That stamp rides
-            // the processor-family rebase (P4.d12 unit 7) together with the
-            // transcript's lastMessageCreatedAt/turnTimestamp carriers — until
-            // then the write takes the pre-drift inert path (NULL/defaults).
+            // lastMessageCreatedAt (resolveCandidateAnchors). That stamp is
+            // DEFERRED TO ROUND 3 with the whole processor family: the
+            // processor tier-3 differential pins completions by exact prompt
+            // bytes, and v4's extraction prompt drifted (CLOCK header + EVENT
+            // category — round 3), so the family cannot rebase before the
+            // prompt port lands. Until then the write takes the pre-drift
+            // inert path (NULL/defaults), alongside the transcript's
+            // lastMessageCreatedAt/turnTimestamp carriers.
             occurred_at: None,
             narrative_time: None,
             entities: Vec::new(),

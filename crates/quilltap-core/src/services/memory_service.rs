@@ -34,7 +34,8 @@
 //!
 //! This module also carries [`search_memories_semantic`] — v4's semantic memory
 //! recall (embed the query, search the character's [`CharacterVectorStore`], hydrate
-//! the matches, blend cosine (40%) with the decaying effective weight (60%), sort,
+//! the matches, blend cosine with the decaying effective weight (the ranking
+//! blend — see `compute_ranking_blend`), sort,
 //! and slice). It is the read half the first-message-context builder composes. The
 //! full v4 surface's two opt-in extensions — the `recallContext` targeting-tag
 //! re-ranking + one-hop related-memory expansion — are a **tracked deferral**: no
@@ -508,7 +509,7 @@ async fn try_semantic<P: EmbeddingProvider>(
         });
     }
 
-    // Sort by the blended ranking key (cosine 40% + effective weight 60%). Stable —
+    // Sort by the blended ranking key (see compute_ranking_blend). Stable —
     // preserves the pool order among ties (JS Array.sort is stable).
     results.sort_by(|a, b| {
         let sa = compute_ranking_blend(a.score, a.raw_weight);

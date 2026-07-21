@@ -26545,3 +26545,75 @@ in the same head), green over the oracle regenerated from v4
 build-context's rendered output, so the build-context family MOVES from
 the leave-list to the REBASE set (regen at `8bf3cb5f`, expect green —
 both sides date identically on null-occurredAt fixtures).
+
+### P4.d12 unit 7: the memory-family oracle rebase close-out + the tier-2 items (2026-07-21)
+
+Core `0.0.303 → 0.0.304`, harness `0.0.261 → 0.0.262`.
+
+**REBASED to `8bf3cb5f` and green (regen + run by name, --nocapture, zero
+SKIP):** memory-delete, memory-cascade, memory-housekeeping (the
+protection breakdown's new `episodicBonus` is 0 on the semantic
+fixtures — inert as planned; v4's new merge-pass `occasionsAreDistinct`
+date guard never fires on null occurredAt and is DEFERRED with the
+round-3 gate date-guard family), and **build-context — MOVED from the
+order's leave-list to the REBASE set**: unit 6's dated dynamic head
+bleeds into its rendered output exactly as the order's contingency
+predicted; both sides date identically on the null-occurredAt fixtures
+and the tier is green over a fresh oracle.
+
+**ESCALATION — the gate family is NOT inert and moves to the DEFER set
+(round 3):** regenerating `memory-gate-tier3` at `8bf3cb5f` fails in the
+ORACLE itself — scenario `reinforce_reembed` (candidate source `AUTO`,
+content "The captain also guarded Rotterdam.") now takes v4's
+`applyEpisodicFallbackAnchors` first-write capture (extractNovelDetails
+→ entities ['Rotterdam'] → the embedding text gains the anchor line →
+the canned-embedding key misses → SKIP_EMBEDDING_FAILED). That fallback
+is EXPLICITLY round-3 behavior in the order ("first-write
+extractNovelDetails capture"), so per the order's own rule it is not
+pulled forward: `QT_ORACLE_GATE` stays un-regenerated (the test SKIPs)
+until round 3 ports the fallback + date guard. NOTE the inert-path
+guarantee's boundary found here: it holds for MANUAL-source writes
+(proven by the routes create arms) but NOT for AUTO/undefined-source
+candidates whose content carries proper nouns.
+
+**Processor family: DEFERRED to round 3 as anticipated** — its tier-3
+differential pins completions by exact `provider|model|temperature|
+messages`, and v4's extraction prompt drifted (CLOCK header + EVENT
+category = round 3). The write-path `occurredAt` stamp
+(`resolveCandidateAnchors` off `slice.lastMessageCreatedAt`) and the
+transcript's `lastMessageCreatedAt`/`turnTimestamp` carriers defer with
+it (the write_candidate comment names this loudly).
+
+**Tier-2 items landed:**
+- `build_memory_embedding_text` wired as the single source of truth at
+  the gate embed + the reinforce re-embed (the candidate's
+  CreateMemoryOptions anchors at the gate; the ROW's anchors at
+  re-embed — the candidate-anchor UPGRADE half is round 3). Provably
+  inert: every round-1 v5 caller passes empty anchors → byte-identical
+  text; re-proven by re-running memread + mem tier-2 + routes(+config)
+  green after the wiring.
+- Stale-comment sweep: memory_service.rs's two "cosine 40% / weight
+  60%" comments → "the ranking blend (see compute_ranking_blend)"
+  (matching v4's own drift cleanup — the real blend has been 0.75/0.25
+  since spec §1.7); memory_gate.rs's "v4's header comment is stale"
+  warning re-worded historical (v4 8bf3cb5f fixed its header).
+
+**Round-1 REBASE-vs-DEFER, as it ACTUALLY landed:**
+- Rebased green @8bf3cb5f: provisioning, memories read / tier-2 /
+  routes+config, chats read / tier-2, episodic (new), weighting,
+  injector, memory-delete, memory-cascade, housekeeping, build-context,
+  ranking-blend (inertness-proof rerun; committed disposition unmoved).
+- Deferred (@7e6d13e5 semantics, SKIP until their rounds): gate tier-3
+  (round 3 — fallback anchors; see the escalation), processor tier-3
+  (round 3 — prompt bytes + the stamp), memory-tasks tier-1 (round 3),
+  recall-tags (round 2), context-summary (round 3), carina-memory-
+  extraction (round 3), watermark / memory-name-helpers /
+  extract-novel-details / memories-config-standalone (unaffected —
+  memories-config's ROUTES half was regenerated with the routes family).
+
+**Flags for the unifier/human (the order's verification-gate list):**
+this lane carries NO real-instance / episodic-behavior proof (rounds
+2/3 own the behavior); the crypto/cipher paths are untouched; v5 fresh
+instances remain index-free (`idx_memories_occurredAt` is
+migration-created in v4 and v5's migration runner stays deferred —
+migrated fixtures DO carry it).

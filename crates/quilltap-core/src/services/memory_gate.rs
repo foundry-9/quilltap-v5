@@ -16,10 +16,11 @@
 //! | `Insert`              | below `RELATED_THRESHOLD`     | fresh memory |
 //! | `SkipEmbeddingFailed` | — (embedding unavailable)     | skip, no row |
 //!
-//! ⚠️ The v4 file's header comment ("REINFORCE >= 0.80 / INSERT_RELATED 0.70–0.80")
-//! is **stale** — the authoritative exported constants are the ones below
-//! (`0.90` / `0.85` / `0.70`). Same trap as the SQLCipher-vs-ChaCha20 comment:
-//! comments lie, the constants are truth. The differential proves the bands.
+//! (Historical note: v4's header comment once claimed "REINFORCE >= 0.80 /
+//! INSERT_RELATED 0.70–0.80" — stale against its own exported constants
+//! (`0.90` / `0.85` / `0.70`), the same comments-lie trap as
+//! SQLCipher-vs-ChaCha20. v4 `8bf3cb5f` fixed its header to cite the
+//! constants; the differential proves the bands either way.)
 //!
 //! ## Shape under the Phase-3 runtime
 //!
@@ -49,6 +50,7 @@ use crate::db::characters_read;
 use crate::db::memories::{CreateOptions, MemCreate, MemUpdate};
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
+use crate::episodic::{build_memory_embedding_text, EpisodicAnchorView};
 use crate::memory_gate::{calculate_reinforced_importance, extract_novel_details};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 
@@ -172,6 +174,16 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
 ) -> Result<MemoryGateOutcome, DbError> {
     let data = apply_name_presence_check(db, data).await;
 
+    // Episodic spine (v4 8bf3cb5f): the candidate's anchors ride along so the
+    // gate embedding carries the anchor line (the >7-day date guard is the
+    // deferred round-3 half). On round-1 callers (no anchors) the built text
+    // is byte-identical to `summary\n\ncontent` — the inert path.
+    let anchors = EpisodicAnchorView {
+        occurred_at: data.occurred_at.clone(),
+        narrative_time: data.narrative_time.clone(),
+        entities: data.entities.clone(),
+    };
+
     let gate = run_memory_gate(
         db,
         provider,
@@ -180,6 +192,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
         &data.summary,
         &opts.user_id,
         opts.embedding_profile_id.as_deref(),
+        &anchors,
     )
     .await?;
 
@@ -266,6 +279,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
 
 /// Run the gate (v4 `runMemoryGate`): embed the candidate (one retry), search the
 /// vector store, and decide the band.
+#[allow(clippy::too_many_arguments)] // mirrors v4 runMemoryGate's 8-arg shape
 async fn run_memory_gate<P: EmbeddingProvider>(
     db: &Db,
     provider: &P,
@@ -274,8 +288,12 @@ async fn run_memory_gate<P: EmbeddingProvider>(
     summary: &str,
     user_id: &str,
     embedding_profile_id: Option<&str>,
+    anchors: &EpisodicAnchorView,
 ) -> Result<GateResult, DbError> {
-    let embedding_text = format!("{summary}\n\n{content}");
+    // v4 8bf3cb5f: the canonical builder — the anchor line is part of the
+    // embedded text, so the gate compares against the same-shaped vectors the
+    // create path stores (see build_memory_embedding_text).
+    let embedding_text = build_memory_embedding_text(summary, content, Some(anchors));
 
     let embedding =
         match generate_with_retry(provider, &embedding_text, user_id, embedding_profile_id).await {
@@ -547,8 +565,26 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     }
 
     // Re-embed if content changed (v4 wraps this in a non-fatal try/catch).
+    // v4 8bf3cb5f re-embeds through the canonical builder with the row's own
+    // anchors (the candidate-anchor UPGRADE half is round 3 — round-1 rows
+    // carry null anchors, so the text stays `summary\n\ncontent`).
     if content_changed {
-        let reembed_text = format!("{existing_summary}\n\n{new_content}");
+        let row_anchors = EpisodicAnchorView {
+            occurred_at: str_opt_field(existing, "occurredAt"),
+            narrative_time: str_opt_field(existing, "narrativeTime"),
+            entities: existing
+                .get("entities")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        let reembed_text =
+            build_memory_embedding_text(&existing_summary, &new_content, Some(&row_anchors));
         if let Ok(emb) =
             generate_with_retry(provider, &reembed_text, user_id, embedding_profile_id).await
         {
@@ -836,6 +872,11 @@ fn str_field(memory: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+/// Nullable string field (`None` when absent or JSON null).
+fn str_opt_field(memory: &Value, key: &str) -> Option<String> {
+    memory.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
 fn num_field(memory: &Value, key: &str) -> Option<f64> {

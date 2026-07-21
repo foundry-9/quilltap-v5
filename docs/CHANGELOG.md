@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Closed out the round-1 memory-family oracle rebase (P4.d12 unit 7):
+memory-delete, memory-cascade, housekeeping, and build-context all green
+over oracles freshly regenerated at v4 8bf3cb5f (build-context moved
+into the rebase set — the dated head bleeds into its rendered output,
+identically on both sides). buildMemoryEmbeddingText is now the single
+source of truth at the gate embed and the reinforce re-embed (provably
+inert for every round-1 caller), and the stale 40/60-blend and
+gate-threshold comments were swept. Two families defer to round 3 with
+loud notes: the gate tier-3 (v4's first-write fallback-anchors capture
+makes its oracle non-inert on AUTO candidates — the inert-path
+guarantee's boundary) and the processor tier-3 (prompt-byte pinning +
+the occurredAt stamp + the transcript timestamp carriers).
+
 Ported the injector's dated dynamic head (P4.d12 unit 6): every head
 entry now carries the event-clock age label ([m_xxxx] [3 days ago] ...)
 with narrativeTime riding verbatim when present, and the Relevant
