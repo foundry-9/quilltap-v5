@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added a disk-discipline ground rule to the carryout skill
+(.claude/commands/carryout.md): lanes check free space before each full
+workspace gate, run gates with CARGO_INCREMENTAL=0, reclaim only their
+own worktree's incremental cache mid-lane, and delete their own target/
+plus out-of-worktree scratch builds after the final commit (the unifier
+never reuses lane binaries). The final report now confirms the cleanup.
+Tooling only — no crate or SPA source touched.
+
 Unified round 1 of the episodic-recall drift catch-up (P4.d12 ∥ P4.6bh ∥
 P4.6bi) — v5's response to v4's largest single drift (8bf3cb5f). The
 episodic spine now exists as data: chats.timelineMode and the four

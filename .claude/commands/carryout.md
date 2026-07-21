@@ -44,6 +44,23 @@ what's marked landed.
 7. **Safety:** never point a writable open at live Friday data; the pepper
    never gets committed, logged, or written where it syncs; test-pepper
    synthetic fixtures only.
+8. **Disk discipline.** A lane's per-worktree `target/` has grown to ~70 GB
+   (each full `cargo test --workspace` gate adds ~10 GB of
+   `target/debug/incremental`), and full disks have blocked the harness
+   mid-gate as mysterious slowness or `os error 28`. So:
+   - **Check `df -h ~` before starting** and before each full workspace
+     gate. If free space is under ~20 GB, reclaim before building.
+   - **Run the workspace gates with `CARGO_INCREMENTAL=0`** — the
+     incremental cache is the multiplier and buys little in a
+     compile-once-per-commit lane.
+   - **Mid-lane reclaim, safe anytime:** delete YOUR OWN worktree's
+     `target/debug/incremental` (pure regenerable cache; only costs
+     recompile). **Never** touch a sibling lane's `target/` — it may be
+     actively building.
+   - Keep only what the lane needs: don't accumulate extra
+     `--release` builds, scratch clones, or copied fixtures beyond what the
+     order's gate requires (e2e can reuse main's release bins when the
+     order allows it).
 
 ## Before declaring done
 
@@ -53,10 +70,26 @@ Run the order's verification gate yourself: `cargo fmt --all --check`,
 your differential env vars set (confirm your tests RAN, not skipped), plus
 the SPA gate (`ng test`, `ng build`) if the order touches `apps/web`.
 
+## After the last commit: clean up your binaries
+
+Once the gate is green and every commit is on the lane branch, the
+worktree's build artifacts are pure regenerable weight — the unifier
+rebuilds on its own branch and never reuses them. Before (or alongside)
+your final report:
+
+- `rm -rf <your-worktree>/target` (or `cargo clean --manifest-path
+  <your-worktree>/Cargo.toml`). Yours only — never a sibling lane's.
+- Delete any scratch build output you created outside the worktree
+  (oracle regen scratch dirs, copied instance fixtures, `/tmp` release
+  builds). Committed fixtures and NDJSON oracles stay, obviously.
+- Leave the worktree and branch themselves intact — `/unify` consumes
+  and removes them.
+
 ## Final report
 
 Report back: the branch name; the commit list; what landed vs what remains
 OPEN under the order (be exact — the unifier and the human rely on this);
 every fixture you changed and which other oracles that invalidates; the
 exact regen recipe for each oracle you authored (env vars, invocation,
-working directory); and any gotchas worth a memory note.
+working directory); any gotchas worth a memory note; and confirmation that
+the lane's `target/` was cleaned.
