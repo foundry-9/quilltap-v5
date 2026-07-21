@@ -11,12 +11,12 @@
 //! against the oracle. Every constant, branch order, and float multiplication
 //! order mirrors the source so results are byte-equal.
 //!
-//! NOTE on scope vs the Phase-2/3 expansion path: the TS module also declares
-//! `RELATED_EXPANSION`, `expandRelated`, and `turnTemporal`, but NO function in
-//! it consumes them — one-hop related expansion runs inside
-//! `searchMemoriesSemantic`, not here. They are deliberately omitted from this
-//! port and will land with item-5 expansion (and its own oracle test) in a
-//! later phase, rather than as untested dead constants here.
+//! The episodic recall overhaul (v4 `8bf3cb5f`, P4.d13) made the loop
+//! turn-aware: `turn_retrospective` flips the temporal multipliers and suspends
+//! anti-repetition, and `occurred_within` adds the soft time-window boost. The
+//! formerly-deferred `RELATED_EXPANSION` caps and `expand_related` /
+//! `turn_temporal` context fields land here too — `search_memories_semantic`'s
+//! recallContext path (their consumer) is ported in the same round.
 
 use std::collections::HashSet;
 
@@ -153,15 +153,38 @@ pub const CONTEXT_MATCH: f64 = 1.1;
 /// Item 4 — the memory is *about* a character present in the room this turn.
 pub const PARTICIPANT_PRESENT: f64 = 1.2;
 /// Anti-repetition — the memory was whispered in one of the last few turns.
+/// SUSPENDED on retrospective turns — a fumbled recall the user re-asks about
+/// must not bury the very memory they are trying to pin down.
 pub const RECENTLY_WHISPERED: f64 = 0.6;
+/// Retrospective turn — `temporal: past` flips from a penalty to a boost:
+/// the exact class of memory a "remember last week?" turn needs.
+pub const TEMPORAL_PAST_RETROSPECTIVE: f64 = 1.15;
+/// Retrospective turn — `moment` memories stop being penalized.
+pub const TEMPORAL_MOMENT_RETROSPECTIVE: f64 = 1.0;
+/// Event time falls inside the turn's resolved time window (soft fallback
+/// when the window-filtered pool was too small — see `searchMemoriesSemantic`).
+pub const OCCURRED_WITHIN_WINDOW: f64 = 1.3;
 
 /// Clamp on the *combined* multiplier so no single memory can explode the
-/// ranking. (With the current constants the product never actually reaches the
-/// ceiling — max stacked boosts = 1.15*1.1*1.2 = 1.518 — so `max` is a forward
-/// safety net, not a live branch; `min` only ever binds via the exclude path,
-/// which short-circuits before the clamp. Ported faithfully regardless.)
+/// ranking.
 pub const MULTIPLIER_CLAMP_MIN: f64 = 0.0;
 pub const MULTIPLIER_CLAMP_MAX: f64 = 4.0;
+
+/// Item 5 — caps on one-hop related-memory expansion so a corpus-heavy
+/// character can't balloon the candidate set. `MAX_PER_HIT` bounds neighbors
+/// pulled from any single top hit; `MAX_TOTAL` bounds the whole expansion
+/// across all hits. (v4 `RELATED_EXPANSION`.)
+pub const RELATED_EXPANSION_MAX_PER_HIT: usize = 3;
+pub const RELATED_EXPANSION_MAX_TOTAL: usize = 10;
+
+/// An absolute `{from, to}` ISO time window (v4's structural
+/// `{ from: string; to: string }` — the distill's `timeRange` and the recall
+/// context's `occurredWithin` share this shape).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimeWindow {
+    pub from: String,
+    pub to: String,
+}
 
 /// Result of a single adjustment: its multiplier plus short debug labels.
 #[derive(Clone, Debug, PartialEq)]
@@ -199,6 +222,11 @@ pub struct MemoryTagView<'a> {
     pub project_id: Option<&'a str>,
     pub keywords: &'a [String],
     pub about_character_id: Option<&'a str>,
+    /// ISO event time (episodic spine); write clock stands in when absent.
+    /// `Some("")` is NOT nullish in v4 (`??`), so it does NOT fall through to
+    /// `created_at` — it just parses NaN and passes through.
+    pub occurred_at: Option<&'a str>,
+    pub created_at: Option<&'a str>,
 }
 
 /// Per-turn recall context (the subset `combineRecallMultipliers` reads).
@@ -212,6 +240,24 @@ pub struct RecallContext<'a> {
     pub present_about_character_ids: &'a [String],
     /// The turn's dominant `context` axis, or None.
     pub turn_context: Option<ContextTag>,
+    /// The turn's dominant `temporal` axis (same cheap-LLM guess). Carried for
+    /// debug parity with v4; the retrospective flag below (not this guess) is
+    /// what flips the temporal multipliers.
+    pub turn_temporal: Option<TemporalTag>,
+    /// True when the per-turn extraction judged this turn RETROSPECTIVE — the
+    /// user (or a character) is referencing past shared events. Flips the
+    /// temporal multipliers (past 0.85 → 1.15, moment 0.70 → 1.0) and suspends
+    /// the anti-repetition penalty (the user is deliberately re-asking).
+    pub turn_retrospective: bool,
+    /// Resolved absolute time window the turn references. Memories whose event
+    /// time (occurredAt ?? createdAt) falls inside get the bounded
+    /// [`OCCURRED_WITHIN_WINDOW`] boost. The hard-filter stage lives in
+    /// `searchMemoriesSemantic`; this multiplier is the soft fallback when the
+    /// filtered pool was too small.
+    pub occurred_within: Option<&'a TimeWindow>,
+    /// When true, one-hop related-memory expansion runs inside
+    /// `searchMemoriesSemantic` after the top hits are ranked (item 5).
+    pub expand_related: bool,
     /// Memory IDs whispered in the last few turns of this chat.
     pub recently_whispered_ids: Option<&'a HashSet<String>>,
 }
@@ -295,28 +341,86 @@ pub fn scope_project_multiplier(
     }
 }
 
-/// Item 2 — temporal down-weighting.
+/// Item 2 — temporal weighting, now turn-aware (`turnTemporal` made real).
 ///
-/// `past` facts rarely should outrank live ones; `moment` facts are true only
-/// at a single instant. Recall always runs BEFORE the current turn's
-/// extraction, so any recalled `moment` memory was produced on a prior turn —
-/// the "only when not the producing turn" condition is therefore always
-/// satisfied on this path, and the penalty applies unconditionally.
-/// `present`/`future` pass through.
-pub fn temporal_multiplier(tags: TargetingTags) -> RecallMultiplier {
+/// Default turns: `past` facts rarely should outrank live ones; `moment` facts
+/// are true only at a single instant. Recall always runs BEFORE the current
+/// turn's extraction, so any recalled `moment` memory was produced on a prior
+/// turn — the penalty applies unconditionally. `present`/`future` pass through.
+///
+/// Retrospective turns invert the frame: the user is deliberately invoking the
+/// past, so `past` becomes a boost and `moment` stops being penalized —
+/// without this, the exact class of memory a "remember last week?" turn needs
+/// is systematically demoted at the moment it is asked for.
+pub fn temporal_multiplier(tags: TargetingTags, retrospective: bool) -> RecallMultiplier {
     match tags.temporal {
-        TemporalTag::Past => RecallMultiplier {
-            multiplier: TEMPORAL_PAST,
-            fired: vec!["past↓"],
-            exclude: false,
-        },
-        TemporalTag::Moment => RecallMultiplier {
-            multiplier: TEMPORAL_MOMENT,
-            fired: vec!["moment↓"],
-            exclude: false,
-        },
+        TemporalTag::Past => {
+            if retrospective {
+                RecallMultiplier {
+                    multiplier: TEMPORAL_PAST_RETROSPECTIVE,
+                    fired: vec!["past↑retro"],
+                    exclude: false,
+                }
+            } else {
+                RecallMultiplier {
+                    multiplier: TEMPORAL_PAST,
+                    fired: vec!["past↓"],
+                    exclude: false,
+                }
+            }
+        }
+        TemporalTag::Moment => {
+            if retrospective {
+                RecallMultiplier {
+                    multiplier: TEMPORAL_MOMENT_RETROSPECTIVE,
+                    fired: vec!["moment·retro"],
+                    exclude: false,
+                }
+            } else {
+                RecallMultiplier {
+                    multiplier: TEMPORAL_MOMENT,
+                    fired: vec!["moment↓"],
+                    exclude: false,
+                }
+            }
+        }
         _ => RecallMultiplier::pass(),
     }
+}
+
+/// Time-window boost — the memory's event time (occurredAt ?? createdAt) falls
+/// inside the turn's resolved retrospective window. Soft fallback companion to
+/// the hard filter in `searchMemoriesSemantic`. No window, or no parsable
+/// event time → pass through.
+pub fn occurred_within_multiplier(
+    memory: &MemoryTagView,
+    window: Option<&TimeWindow>,
+) -> RecallMultiplier {
+    let Some(window) = window else {
+        return RecallMultiplier::pass();
+    };
+    // v4 `memory.occurredAt ?? memory.createdAt` — nullish coalescing, so a
+    // present-but-empty occurredAt is used (and parses NaN → pass through).
+    let Some(event_iso) = memory.occurred_at.or(memory.created_at) else {
+        return RecallMultiplier::pass();
+    };
+    // v4 gates `if (!eventIso)` — an empty string is falsy → pass through
+    // (event_time_ms also returns None for empty, same outcome).
+    let (Some(t), Some(from), Some(to)) = (
+        crate::episodic::event_time_ms(Some(event_iso)),
+        crate::episodic::event_time_ms(Some(&window.from)),
+        crate::episodic::event_time_ms(Some(&window.to)),
+    ) else {
+        return RecallMultiplier::pass();
+    };
+    if t >= from && t <= to {
+        return RecallMultiplier {
+            multiplier: OCCURRED_WITHIN_WINDOW,
+            fired: vec!["window↑"],
+            exclude: false,
+        };
+    }
+    RecallMultiplier::pass()
 }
 
 /// Item 3 — context-axis steering. Boost a memory whose own `context` tag
@@ -359,10 +463,17 @@ pub fn participant_multiplier(
 /// Anti-repetition — penalize a memory whispered in the last few turns of this
 /// chat. A bounded multiplier, never a hard exclude: a still-best match keeps
 /// winning, just not trivially. No set, or memory not in it → pass through.
+/// `suspended` (retrospective turn): the user is deliberately re-asking —
+/// penalizing the just-whispered memory here would bury the very entry they
+/// want.
 pub fn recently_whispered_multiplier(
     memory: &MemoryTagView,
     recently_whispered_ids: Option<&HashSet<String>>,
+    suspended: bool,
 ) -> RecallMultiplier {
+    if suspended {
+        return RecallMultiplier::pass();
+    }
     if let (Some(id), Some(set)) = (memory.id, recently_whispered_ids) {
         if set.contains(id) {
             return RecallMultiplier {
@@ -405,16 +516,19 @@ pub fn combine_recall_multipliers(
         };
     }
 
-    let temporal = temporal_multiplier(tags);
+    let retrospective = ctx.turn_retrospective;
+    let temporal = temporal_multiplier(tags, retrospective);
     let context = context_multiplier(tags, ctx.turn_context);
     let participant = participant_multiplier(memory, ctx.present_about_character_ids);
-    let recent = recently_whispered_multiplier(memory, ctx.recently_whispered_ids);
+    let recent = recently_whispered_multiplier(memory, ctx.recently_whispered_ids, retrospective);
+    let window = occurred_within_multiplier(memory, ctx.occurred_within);
 
     let product = scope.multiplier
         * temporal.multiplier
         * context.multiplier
         * participant.multiplier
-        * recent.multiplier;
+        * recent.multiplier
+        * window.multiplier;
     // Mirrors TS `Math.max(MIN, Math.min(MAX, product))`; `.clamp` is identical
     // for all finite inputs (the only inputs a product of finite multipliers can
     // produce — no NaN path here).
@@ -426,10 +540,177 @@ pub fn combine_recall_multipliers(
     fired.extend(context.fired);
     fired.extend(participant.fired);
     fired.extend(recent.fired);
+    fired.extend(window.fired);
 
     CombinedRecallAdjustment {
         multiplier: clamped,
         fired,
         exclude: false,
+    }
+}
+
+#[cfg(test)]
+mod retrospective_tests {
+    //! Case-for-case port of v4 `lib/memory/__tests__/recall-tags-retrospective.test.ts`
+    //! — retrospective turn handling in the multiplier loop, plus the §3
+    //! inert-path regression guard.
+
+    use super::*;
+
+    fn past_memory_keywords() -> Vec<String> {
+        ["harbor", "past", "scope: wide", "history"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    fn past_memory<'a>(keywords: &'a [String]) -> MemoryTagView<'a> {
+        MemoryTagView {
+            id: Some("mem-1"),
+            project_id: None,
+            keywords,
+            about_character_id: None,
+            occurred_at: Some("2026-07-14T00:00:00.000Z"),
+            created_at: Some("2026-07-14T01:00:00.000Z"),
+        }
+    }
+
+    #[test]
+    fn penalizes_past_memories_on_ordinary_turns() {
+        let kw = past_memory_keywords();
+        let tags = parse_targeting_tags(&kw);
+        let result = temporal_multiplier(tags, false);
+        assert_eq!(result.multiplier, TEMPORAL_PAST);
+        assert_eq!(result.fired, vec!["past↓"]);
+    }
+
+    #[test]
+    fn boosts_past_memories_on_retrospective_turns() {
+        let kw = past_memory_keywords();
+        let tags = parse_targeting_tags(&kw);
+        let result = temporal_multiplier(tags, true);
+        assert_eq!(result.multiplier, TEMPORAL_PAST_RETROSPECTIVE);
+        assert_eq!(result.fired, vec!["past↑retro"]);
+    }
+
+    #[test]
+    fn stops_penalizing_moment_memories_on_retrospective_turns() {
+        let kw: Vec<String> = ["moment", "scope: wide", "information"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let moment_tags = parse_targeting_tags(&kw);
+        assert_eq!(
+            temporal_multiplier(moment_tags, false).multiplier,
+            TEMPORAL_MOMENT
+        );
+        assert_eq!(
+            temporal_multiplier(moment_tags, true).multiplier,
+            TEMPORAL_MOMENT_RETROSPECTIVE
+        );
+    }
+
+    #[test]
+    fn penalizes_recently_whispered_on_ordinary_turns() {
+        let kw = past_memory_keywords();
+        let mem = past_memory(&kw);
+        let whispered: HashSet<String> = ["mem-1".to_string()].into_iter().collect();
+        let result = recently_whispered_multiplier(&mem, Some(&whispered), false);
+        assert_eq!(result.multiplier, RECENTLY_WHISPERED);
+    }
+
+    #[test]
+    fn suspends_the_penalty_on_retrospective_turns() {
+        let kw = past_memory_keywords();
+        let mem = past_memory(&kw);
+        let whispered: HashSet<String> = ["mem-1".to_string()].into_iter().collect();
+        let result = recently_whispered_multiplier(&mem, Some(&whispered), true);
+        assert_eq!(result.multiplier, 1.0);
+        assert!(result.fired.is_empty());
+    }
+
+    fn window() -> TimeWindow {
+        TimeWindow {
+            from: "2026-07-13T00:00:00.000Z".to_string(),
+            to: "2026-07-19T23:59:59.999Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn boosts_a_memory_inside_the_window() {
+        let kw = past_memory_keywords();
+        let mem = past_memory(&kw);
+        let w = window();
+        let result = occurred_within_multiplier(&mem, Some(&w));
+        assert_eq!(result.multiplier, OCCURRED_WITHIN_WINDOW);
+        assert_eq!(result.fired, vec!["window↑"]);
+    }
+
+    #[test]
+    fn falls_back_to_created_at_when_occurred_at_absent() {
+        let kw = past_memory_keywords();
+        let mut mem = past_memory(&kw);
+        mem.occurred_at = None;
+        let w = window();
+        assert_eq!(
+            occurred_within_multiplier(&mem, Some(&w)).multiplier,
+            OCCURRED_WITHIN_WINDOW
+        );
+    }
+
+    #[test]
+    fn passes_through_outside_the_window_or_with_no_window() {
+        let kw = past_memory_keywords();
+        let mut outside = past_memory(&kw);
+        outside.occurred_at = Some("2026-01-01T00:00:00.000Z");
+        outside.created_at = Some("2026-01-01T00:00:00.000Z");
+        let w = window();
+        assert_eq!(
+            occurred_within_multiplier(&outside, Some(&w)).multiplier,
+            1.0
+        );
+        let mem = past_memory(&kw);
+        assert_eq!(occurred_within_multiplier(&mem, None).multiplier, 1.0);
+    }
+
+    #[test]
+    fn combine_applies_flip_suspension_and_window_in_one_clamped_loop() {
+        let kw = past_memory_keywords();
+        let mem = past_memory(&kw);
+        let whispered: HashSet<String> = ["mem-1".to_string()].into_iter().collect();
+        let w = window();
+        let ctx = RecallContext {
+            current_project_id: None,
+            scope_policy: ScopePolicy::DownWeight,
+            turn_retrospective: true,
+            recently_whispered_ids: Some(&whispered),
+            occurred_within: Some(&w),
+            ..Default::default()
+        };
+        let result = combine_recall_multipliers(&mem, &ctx);
+        // past↑retro (1.15) × window↑ (1.3); repeat↓ suspended.
+        let expected = TEMPORAL_PAST_RETROSPECTIVE * OCCURRED_WITHIN_WINDOW;
+        assert!((result.multiplier - expected).abs() < 1e-10);
+        assert!(result.fired.contains(&"past↑retro"));
+        assert!(result.fired.contains(&"window↑"));
+        assert!(!result.fired.contains(&"repeat↓"));
+    }
+
+    #[test]
+    fn inert_path_regression_guard() {
+        let kw = past_memory_keywords();
+        let mem = past_memory(&kw);
+        let whispered: HashSet<String> = ["mem-1".to_string()].into_iter().collect();
+        let ctx = RecallContext {
+            current_project_id: None,
+            scope_policy: ScopePolicy::DownWeight,
+            recently_whispered_ids: Some(&whispered),
+            ..Default::default()
+        };
+        let result = combine_recall_multipliers(&mem, &ctx);
+        // Historical: past↓ (0.85) × repeat↓ (0.6); no window term.
+        let expected = TEMPORAL_PAST * RECENTLY_WHISPERED;
+        assert!((result.multiplier - expected).abs() < 1e-10);
+        assert_eq!(result.fired, vec!["past↓", "repeat↓"]);
     }
 }

@@ -32,6 +32,7 @@ import {
   contextMultiplier,
   participantMultiplier,
   recentlyWhisperedMultiplier,
+  occurredWithinMultiplier,
   combineRecallMultipliers,
   type TargetingTags,
   type TemporalTag,
@@ -102,11 +103,54 @@ for (const [id, t, memProj, curProj, policy] of scopeCases) {
 }
 
 // ---------------------------------------------------------------------------
-// temporalMultiplier(tags).
+// temporalMultiplier(tags[, retrospective]) — episodic overhaul: the
+// retrospective flip. The bare-call rows keep their original ids (the default
+// arg is itself a behavior to pin); the explicit-arg rows are new.
 // ---------------------------------------------------------------------------
 for (const temporal of ['past', 'moment', 'present', 'future'] as TemporalTag[]) {
   const r = temporalMultiplier(tags(temporal, 'wide', 'information'));
   rows.push({ kind: 'mult', fn: 'temporal', id: temporal, multiplier: r.multiplier, fired: r.fired });
+}
+for (const temporal of ['past', 'moment', 'present', 'future'] as TemporalTag[]) {
+  for (const retro of [false, true]) {
+    const r = temporalMultiplier(tags(temporal, 'wide', 'information'), retro);
+    rows.push({
+      kind: 'mult',
+      fn: 'temporal-retro',
+      id: `${temporal}-${retro}`,
+      multiplier: r.multiplier,
+      fired: r.fired,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// occurredWithinMultiplier(memory, window) — the soft time-window boost.
+// occurredAt ?? createdAt (nullish — an EMPTY occurredAt is used and parses
+// NaN), Date.parse finiteness on all three, inclusive bounds.
+// ---------------------------------------------------------------------------
+const WINDOW = { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' };
+const windowCases: Array<[
+  string,
+  { occurredAt?: string | null; createdAt?: string },
+  { from: string; to: string } | null | undefined,
+]> = [
+  ['inside', { occurredAt: '2026-07-14T00:00:00.000Z', createdAt: '2026-07-01T00:00:00.000Z' }, WINDOW],
+  ['outside', { occurredAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z' }, WINDOW],
+  ['edge-from', { occurredAt: '2026-07-13T00:00:00.000Z' }, WINDOW],
+  ['edge-to', { occurredAt: '2026-07-19T23:59:59.999Z' }, WINDOW],
+  ['created-fallback', { occurredAt: null, createdAt: '2026-07-14T12:00:00.000Z' }, WINDOW],
+  ['empty-occurred-not-nullish', { occurredAt: '', createdAt: '2026-07-14T12:00:00.000Z' }, WINDOW],
+  ['unparsable-event', { occurredAt: 'the third night at sea', createdAt: '2026-07-14T12:00:00.000Z' }, WINDOW],
+  ['no-event-time', {}, WINDOW],
+  ['unparsable-window-from', { occurredAt: '2026-07-14T00:00:00.000Z' }, { from: 'whenever', to: WINDOW.to }],
+  ['unparsable-window-to', { occurredAt: '2026-07-14T00:00:00.000Z' }, { from: WINDOW.from, to: 'whenever' }],
+  ['null-window', { occurredAt: '2026-07-14T00:00:00.000Z' }, null],
+  ['undefined-window', { occurredAt: '2026-07-14T00:00:00.000Z' }, undefined],
+];
+for (const [id, mem, window] of windowCases) {
+  const r = occurredWithinMultiplier(mem, window);
+  rows.push({ kind: 'mult', fn: 'window', id, multiplier: r.multiplier, fired: r.fired });
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +193,15 @@ for (const [id, memId, recent] of recentCases) {
   const r = recentlyWhisperedMultiplier({ id: memId ?? undefined }, new Set(recent));
   rows.push({ kind: 'mult', fn: 'recent', id, multiplier: r.multiplier, fired: r.fired });
 }
+// Episodic overhaul: the suspended (retrospective re-ask) arm.
+for (const [id, memId, recent] of [
+  ['whispered-suspended', 'M1', ['M1']],
+  ['whispered-not-suspended', 'M1', ['M1']],
+] as Array<[string, string, string[]]>) {
+  const suspended = id === 'whispered-suspended';
+  const r = recentlyWhisperedMultiplier({ id: memId }, new Set(recent), suspended);
+  rows.push({ kind: 'mult', fn: 'recent', id, multiplier: r.multiplier, fired: r.fired });
+}
 
 // ---------------------------------------------------------------------------
 // combineRecallMultipliers(memory, ctx) — the integrator: product → clamp,
@@ -159,6 +212,8 @@ interface MemoryTagView {
   projectId?: string | null;
   keywords?: readonly string[] | null;
   aboutCharacterId?: string | null;
+  occurredAt?: string | null;
+  createdAt?: string;
 }
 const combineCases: Array<[string, MemoryTagView, RecallContext]> = [
   [
@@ -199,6 +254,127 @@ const combineCases: Array<[string, MemoryTagView, RecallContext]> = [
       turnContext: 'banter',
       presentAboutCharacterIds: ['C1'],
       recentlyWhisperedIds: new Set<string>(),
+    },
+  ],
+  // ---- episodic overhaul arms (P4.d13) ----
+  [
+    'retro-flip-past',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: ['past', 'scope: wide', 'history'],
+      aboutCharacterId: null,
+      occurredAt: '2026-07-14T00:00:00.000Z',
+      createdAt: '2026-07-14T01:00:00.000Z',
+    },
+    { currentProjectId: null, scopePolicy: 'down-weight', turnRetrospective: true },
+  ],
+  [
+    'retro-flip-moment',
+    { id: 'M1', projectId: null, keywords: ['moment'], aboutCharacterId: null },
+    { currentProjectId: null, scopePolicy: 'down-weight', turnRetrospective: true },
+  ],
+  [
+    'retro-suspends-whisper',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: ['past'],
+      aboutCharacterId: null,
+      occurredAt: '2026-07-14T00:00:00.000Z',
+      createdAt: '2026-07-14T01:00:00.000Z',
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      turnRetrospective: true,
+      recentlyWhisperedIds: new Set(['M1']),
+      occurredWithin: { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' },
+    },
+  ],
+  [
+    'window-in',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: [],
+      aboutCharacterId: null,
+      occurredAt: '2026-07-14T00:00:00.000Z',
+      createdAt: '2026-07-01T00:00:00.000Z',
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      occurredWithin: { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' },
+    },
+  ],
+  [
+    'window-out',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: [],
+      aboutCharacterId: null,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      occurredWithin: { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' },
+    },
+  ],
+  [
+    'window-created-fallback-unparsable-occurred',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: [],
+      aboutCharacterId: null,
+      occurredAt: 'the third night at sea',
+      createdAt: '2026-07-14T12:00:00.000Z',
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      occurredWithin: { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' },
+    },
+  ],
+  [
+    'retro-window-whisper-stack',
+    {
+      id: 'M1',
+      projectId: 'P1',
+      keywords: ['scope: narrow', 'past', 'history'],
+      aboutCharacterId: 'C1',
+      occurredAt: '2026-07-15T09:00:00.000Z',
+      createdAt: '2026-07-15T10:00:00.000Z',
+    },
+    {
+      currentProjectId: 'P1',
+      scopePolicy: 'down-weight',
+      turnContext: 'history',
+      turnTemporal: 'past',
+      turnRetrospective: true,
+      presentAboutCharacterIds: ['C1'],
+      recentlyWhisperedIds: new Set(['M1']),
+      occurredWithin: { from: '2026-07-13T00:00:00.000Z', to: '2026-07-19T23:59:59.999Z' },
+    },
+  ],
+  [
+    'inert-context-unchanged',
+    {
+      id: 'M1',
+      projectId: null,
+      keywords: ['past'],
+      aboutCharacterId: null,
+      occurredAt: '2026-07-14T00:00:00.000Z',
+      createdAt: '2026-07-14T01:00:00.000Z',
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      recentlyWhisperedIds: new Set(['M1']),
     },
   ],
 ];

@@ -27024,3 +27024,34 @@ Rust side `distill_search_extraction_equivalence.rs`
 vintage stays `7e6d13e5` until round 3 ports the clocked creation
 prompts.** Jest gotcha reconfirmed: jest ignores `.claude/` roots — the
 case + fixture mirror to `/tmp/qt-d13-oracle/{cases,fixtures}` for regen.
+
+## P4.d13 unit 2 — recall-tags made turn-aware
+
+**What landed:** `recall_tags.rs` gains the episodic-overhaul shape at
+`8bf3cb5f`: `temporal_multiplier(tags, retrospective)` (the flip — past
+0.85 → 1.15 `past↑retro`, moment 0.7 → 1.0 `moment·retro`),
+`occurred_within_multiplier` (occurredAt ?? createdAt via the episodic.rs
+V8-faithful `Date.parse`, inclusive bounds, `window↑`),
+`recently_whispered_multiplier(…, suspended)` (retrospective re-ask
+suspension), and the window term folded into the ONE clamped combine
+loop (fired order: scope, temporal, context, participant, recent,
+window; clamp [0,4] unchanged). `RecallContext` gains `turn_temporal`
+(debug carry), `turn_retrospective`, `occurred_within`, `expand_related`;
+`MemoryTagView` gains `occurred_at`/`created_at` (the `Some("")`
+not-nullish subtlety documented); the `RELATED_EXPANSION` caps (3/10)
+land (their `search_memories_semantic` consumer is unit 3); the shared
+`TimeWindow` struct is the one `{from,to}` shape (distill's
+`DistillTimeRange` is now a re-export). v4's
+`recall-tags-retrospective.test.ts` ported case-for-case (10 unit
+tests in `retrospective_tests`).
+
+**Differential:** `harness/oracle/cases/recall-tags.ts` EXTENDED (the
+bare-call temporal rows keep pinning the default arg; new
+`temporal-retro` matrix, 12 `window` arms incl. empty-string-occurredAt
+/ unparsable event / unparsable window bounds / edges, the suspended
+recent arms, 8 new combine cases incl. the retro+window+whisper stack
+and the inert-path guard) → 73 NDJSON rows (16 parse / 44 mult / 13
+combine), regenerated at `8bf3cb5f` (`TZ=UTC npx tsx … > 
+/tmp/oracle-recall-tags.ndjson` from the v4 checkout);
+`recall_tags_equivalence` extended to drive every new row — green, zero
+SKIP.

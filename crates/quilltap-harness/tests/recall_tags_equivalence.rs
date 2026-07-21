@@ -19,10 +19,10 @@
 use std::collections::{HashMap, HashSet};
 
 use quilltap_core::recall_tags::{
-    combine_recall_multipliers, context_multiplier, parse_targeting_tags, participant_multiplier,
-    recently_whispered_multiplier, scope_project_multiplier, temporal_multiplier, ContextTag,
-    MemoryTagView, RecallContext, RecallMultiplier, ScopePolicy, ScopeTag, TargetingTags,
-    TemporalTag,
+    combine_recall_multipliers, context_multiplier, occurred_within_multiplier,
+    parse_targeting_tags, participant_multiplier, recently_whispered_multiplier,
+    scope_project_multiplier, temporal_multiplier, ContextTag, MemoryTagView, RecallContext,
+    RecallMultiplier, ScopePolicy, ScopeTag, TargetingTags, TemporalTag, TimeWindow,
 };
 use serde::Deserialize;
 
@@ -252,14 +252,116 @@ fn recall_tags_matches_oracle() {
     }
 
     // ---- temporalMultiplier ----
+    // The oracle's bare-call rows pin the default arg (retrospective = false).
     for t in [
         TemporalTag::Past,
         TemporalTag::Moment,
         TemporalTag::Present,
         TemporalTag::Future,
     ] {
-        let got = temporal_multiplier(tags(t, ScopeTag::Wide, ContextTag::Information));
+        let got = temporal_multiplier(tags(t, ScopeTag::Wide, ContextTag::Information), false);
         assert_mult(&idx, &format!("temporal/{}", t.as_str()), &got);
+    }
+    // Episodic overhaul: the explicit retrospective arms.
+    for t in [
+        TemporalTag::Past,
+        TemporalTag::Moment,
+        TemporalTag::Present,
+        TemporalTag::Future,
+    ] {
+        for retro in [false, true] {
+            let got = temporal_multiplier(tags(t, ScopeTag::Wide, ContextTag::Information), retro);
+            assert_mult(
+                &idx,
+                &format!("temporal-retro/{}-{retro}", t.as_str()),
+                &got,
+            );
+        }
+    }
+
+    // ---- occurredWithinMultiplier ----
+    let window = TimeWindow {
+        from: "2026-07-13T00:00:00.000Z".to_string(),
+        to: "2026-07-19T23:59:59.999Z".to_string(),
+    };
+    let window_cases: Vec<(&str, Option<&str>, Option<&str>, Option<TimeWindow>)> = vec![
+        (
+            "inside",
+            Some("2026-07-14T00:00:00.000Z"),
+            Some("2026-07-01T00:00:00.000Z"),
+            Some(window.clone()),
+        ),
+        (
+            "outside",
+            Some("2026-01-01T00:00:00.000Z"),
+            Some("2026-01-01T00:00:00.000Z"),
+            Some(window.clone()),
+        ),
+        (
+            "edge-from",
+            Some("2026-07-13T00:00:00.000Z"),
+            None,
+            Some(window.clone()),
+        ),
+        (
+            "edge-to",
+            Some("2026-07-19T23:59:59.999Z"),
+            None,
+            Some(window.clone()),
+        ),
+        (
+            "created-fallback",
+            None,
+            Some("2026-07-14T12:00:00.000Z"),
+            Some(window.clone()),
+        ),
+        (
+            "empty-occurred-not-nullish",
+            Some(""),
+            Some("2026-07-14T12:00:00.000Z"),
+            Some(window.clone()),
+        ),
+        (
+            "unparsable-event",
+            Some("the third night at sea"),
+            Some("2026-07-14T12:00:00.000Z"),
+            Some(window.clone()),
+        ),
+        ("no-event-time", None, None, Some(window.clone())),
+        (
+            "unparsable-window-from",
+            Some("2026-07-14T00:00:00.000Z"),
+            None,
+            Some(TimeWindow {
+                from: "whenever".to_string(),
+                to: window.to.clone(),
+            }),
+        ),
+        (
+            "unparsable-window-to",
+            Some("2026-07-14T00:00:00.000Z"),
+            None,
+            Some(TimeWindow {
+                from: window.from.clone(),
+                to: "whenever".to_string(),
+            }),
+        ),
+        ("null-window", Some("2026-07-14T00:00:00.000Z"), None, None),
+        (
+            "undefined-window",
+            Some("2026-07-14T00:00:00.000Z"),
+            None,
+            None,
+        ),
+    ];
+    for (id, occurred, created, w) in &window_cases {
+        let mem = MemoryTagView {
+            occurred_at: *occurred,
+            created_at: *created,
+            ..Default::default()
+        };
+        let got = occurred_within_multiplier(&mem, w.as_ref());
+        assert_mult(&idx, &format!("window/{id}"), &got);
     }
 
     // ---- contextMultiplier ----
@@ -307,22 +409,41 @@ fn recall_tags_matches_oracle() {
             id: mem_id,
             ..Default::default()
         };
-        let got = recently_whispered_multiplier(&mem, Some(&set));
+        let got = recently_whispered_multiplier(&mem, Some(&set), false);
+        assert_mult(&idx, &format!("recent/{id}"), &got);
+    }
+    // Episodic overhaul: the suspended (retrospective re-ask) arm.
+    for (id, suspended) in [
+        ("whispered-suspended", true),
+        ("whispered-not-suspended", false),
+    ] {
+        let set: HashSet<String> = ["M1".to_string()].into_iter().collect();
+        let mem = MemoryTagView {
+            id: Some("M1"),
+            ..Default::default()
+        };
+        let got = recently_whispered_multiplier(&mem, Some(&set), suspended);
         assert_mult(&idx, &format!("recent/{id}"), &got);
     }
 
     // ---- combineRecallMultipliers ----
     // Each case: (id, keywords, projectId, aboutCharacterId,
     //             currentProjectId, scopePolicy, turnContext, present[], recent[])
+    #[derive(Default)]
     struct CC {
         id: &'static str,     // oracle row key (case label)
         mem_id: &'static str, // the memory's own id (matters for anti-repetition)
         keywords: Vec<&'static str>,
         project_id: Option<&'static str>,
         about: Option<&'static str>,
+        occurred_at: Option<&'static str>,
+        created_at: Option<&'static str>,
         current_project_id: Option<&'static str>,
         policy: ScopePolicy,
         turn_context: Option<ContextTag>,
+        turn_temporal: Option<TemporalTag>,
+        turn_retrospective: bool,
+        occurred_within: Option<(&'static str, &'static str)>,
         present: Vec<&'static str>,
         recent: Option<Vec<&'static str>>,
     }
@@ -338,6 +459,7 @@ fn recall_tags_matches_oracle() {
             turn_context: None,
             present: vec![],
             recent: None,
+            ..Default::default()
         },
         CC {
             id: "exclude-shortcircuit",
@@ -350,6 +472,7 @@ fn recall_tags_matches_oracle() {
             turn_context: None,
             present: vec![],
             recent: None,
+            ..Default::default()
         },
         CC {
             id: "stacked-boosts",
@@ -362,6 +485,7 @@ fn recall_tags_matches_oracle() {
             turn_context: Some(ContextTag::Philosophy),
             present: vec!["C1"],
             recent: None,
+            ..Default::default()
         },
         CC {
             id: "stacked-penalties",
@@ -374,6 +498,7 @@ fn recall_tags_matches_oracle() {
             turn_context: None,
             present: vec![],
             recent: Some(vec!["M1"]),
+            ..Default::default()
         },
         CC {
             id: "mixed",
@@ -386,6 +511,88 @@ fn recall_tags_matches_oracle() {
             turn_context: Some(ContextTag::Banter),
             present: vec!["C1"],
             recent: Some(vec![]),
+            ..Default::default()
+        },
+        // ---- episodic overhaul arms (P4.d13) ----
+        CC {
+            id: "retro-flip-past",
+            mem_id: "M1",
+            keywords: vec!["past", "scope: wide", "history"],
+            occurred_at: Some("2026-07-14T00:00:00.000Z"),
+            created_at: Some("2026-07-14T01:00:00.000Z"),
+            turn_retrospective: true,
+            ..Default::default()
+        },
+        CC {
+            id: "retro-flip-moment",
+            mem_id: "M1",
+            keywords: vec!["moment"],
+            turn_retrospective: true,
+            ..Default::default()
+        },
+        CC {
+            id: "retro-suspends-whisper",
+            mem_id: "M1",
+            keywords: vec!["past"],
+            occurred_at: Some("2026-07-14T00:00:00.000Z"),
+            created_at: Some("2026-07-14T01:00:00.000Z"),
+            turn_retrospective: true,
+            recent: Some(vec!["M1"]),
+            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            ..Default::default()
+        },
+        CC {
+            id: "window-in",
+            mem_id: "M1",
+            keywords: vec![],
+            occurred_at: Some("2026-07-14T00:00:00.000Z"),
+            created_at: Some("2026-07-01T00:00:00.000Z"),
+            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            ..Default::default()
+        },
+        CC {
+            id: "window-out",
+            mem_id: "M1",
+            keywords: vec![],
+            occurred_at: Some("2026-01-01T00:00:00.000Z"),
+            created_at: Some("2026-01-01T00:00:00.000Z"),
+            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            ..Default::default()
+        },
+        CC {
+            id: "window-created-fallback-unparsable-occurred",
+            mem_id: "M1",
+            keywords: vec![],
+            occurred_at: Some("the third night at sea"),
+            created_at: Some("2026-07-14T12:00:00.000Z"),
+            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            ..Default::default()
+        },
+        CC {
+            id: "retro-window-whisper-stack",
+            mem_id: "M1",
+            keywords: vec!["scope: narrow", "past", "history"],
+            project_id: Some("P1"),
+            about: Some("C1"),
+            occurred_at: Some("2026-07-15T09:00:00.000Z"),
+            created_at: Some("2026-07-15T10:00:00.000Z"),
+            current_project_id: Some("P1"),
+            turn_context: Some(ContextTag::History),
+            turn_temporal: Some(TemporalTag::Past),
+            turn_retrospective: true,
+            present: vec!["C1"],
+            recent: Some(vec!["M1"]),
+            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            ..Default::default()
+        },
+        CC {
+            id: "inert-context-unchanged",
+            mem_id: "M1",
+            keywords: vec!["past"],
+            occurred_at: Some("2026-07-14T00:00:00.000Z"),
+            created_at: Some("2026-07-14T01:00:00.000Z"),
+            recent: Some(vec!["M1"]),
+            ..Default::default()
         },
     ];
     for cc in &combine_cases {
@@ -395,17 +602,27 @@ fn recall_tags_matches_oracle() {
             .recent
             .as_ref()
             .map(|r| r.iter().map(|x| x.to_string()).collect());
+        let window = cc.occurred_within.map(|(from, to)| TimeWindow {
+            from: from.to_string(),
+            to: to.to_string(),
+        });
         let mem = MemoryTagView {
             id: Some(cc.mem_id),
             project_id: cc.project_id,
             keywords: &keywords,
             about_character_id: cc.about,
+            occurred_at: cc.occurred_at,
+            created_at: cc.created_at,
         };
         let ctx = RecallContext {
             current_project_id: cc.current_project_id,
             scope_policy: cc.policy,
             present_about_character_ids: &present,
             turn_context: cc.turn_context,
+            turn_temporal: cc.turn_temporal,
+            turn_retrospective: cc.turn_retrospective,
+            occurred_within: window.as_ref(),
+            expand_related: false,
             recently_whispered_ids: recent_set.as_ref(),
         };
         let got = combine_recall_multipliers(&mem, &ctx);

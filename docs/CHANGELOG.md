@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.d13 unit 2: recall-tags made turn-aware (v4 8bf3cb5f) — the
+retrospective temporal flip (past 0.85 -> 1.15 with the past-retro
+label, moment 0.7 -> 1.0), the occurredWithin soft window boost (x1.3,
+occurredAt ?? createdAt with V8 Date.parse semantics), the suspended
+anti-repetition arm (a retrospective re-ask must not bury the memory
+being asked for), and the window term folded into the one clamped
+multiplier loop. RecallContext gains turnTemporal / turnRetrospective /
+occurredWithin / expandRelated; the RELATED_EXPANSION caps land; the
+shared TimeWindow shape unifies the distill timeRange. v4's
+recall-tags-retrospective test ported case-for-case (10 unit tests);
+the recall-tags oracle extended (73 rows: 16 parse / 44 mult / 13
+combine) and regenerated at 8bf3cb5f — differential green. quilltap-core
+0.0.307, quilltap-harness 0.0.265.
+
 P4.d13 unit 1: ported the search-side memory extraction's episodic
 signals (v4 8bf3cb5f) — the ExtractionClock/TODAY line in the distill
 prompt (weekday + timeline mode, non-finite fallback), the updated

@@ -43,12 +43,10 @@ const WEEKDAYS: [&str; 7] = [
 ];
 
 /// v4 `MemorySearchExtraction.timeRange` — an absolute ISO window the turn
-/// references, resolved by the model against the TODAY line.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DistillTimeRange {
-    pub from: String,
-    pub to: String,
-}
+/// references, resolved by the model against the TODAY line. The same
+/// structural `{from, to}` shape flows into the recall context's
+/// `occurredWithin`, so the type is shared with `recall_tags`.
+pub use crate::recall_tags::TimeWindow as DistillTimeRange;
 
 /// v4 `MemorySearchExtraction` (the subset build_context consumes). `paraphrase`
 /// wins over `keywords` as the embedding query. The episodic signals
