@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-host"
-version = "0.0.26"
+version = "0.0.27"
 edition = "2021"
 publish = false
 
@@ -45,6 +45,10 @@ libc = "0.2"
 # take the ported failure-passthrough policy branch (stored as-is).
 image = "0.25"
 webp = "0.3"
+# The avatar-preview renderer (P4.6bf) decodes the provider's base64 image bytes
+# (v4 `Buffer.from(rawData, 'base64')`) before the WebP transcode. Same pinned
+# line as the core's.
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"

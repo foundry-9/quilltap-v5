@@ -25762,3 +25762,30 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
   the grep surfaced (`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) are
   `SpineBundle`, not `EngineAssembly`, so they needed no change; the only full
   `EngineAssembly` constructions are `host.rs` (production) and `shutdown_only`.
+
+- **Unit 3 — `HostAvatarPreviewRenderer` LIVE (quilltap-host 0.0.26 → 0.0.27).**
+  New `crates/quilltap-host/src/avatar_preview.rs` implements the FROZEN core
+  seam `AvatarPreviewRenderer`. The render step is a line-for-line port of v4
+  `app/api/v1/wardrobe/preview-avatar/route.ts`'s render half: build
+  `ImageGenParams { n:1, size:"1024x1792", quality, style:"natural" }`, call the
+  provider, `rawData = data || b64Json` (empty → `NoImageData`),
+  `providerMime = mime || "image/png"`, `ext = mime.split('/')[1] || "png"`,
+  `safeName = name.replace(/[^a-zA-Z0-9]/g,'_')`,
+  `avatar_preview_<safeName>_<now_ms>.<ext>`, then `convert_to_webp` over
+  `HostImageCodec` (the ported quality-90 policy — extension rewritten to
+  `.webp`). Composition is factored into `pub async fn render_over_provider<P:
+  ImageProvider>(provider, req, now_ms)` so the tests drive it deterministically.
+  Production `render()` rebuilds `RealImageProvider::new(ReqwestWireTransport)`
+  per request (the `HostImageGenerationRunner` idiom). Wired
+  `avatar_preview: Some(ErasedAvatarPreview::new(HostAvatarPreviewRenderer))` in
+  the production host `assemble()` — **the wardrobe out-of-chat Preview button
+  now costs real money (one image-provider call per click).** Added the `base64`
+  host dep (v4 `Buffer.from(rawData,'base64')`). Six tests: a PNG →
+  `image/webp` with the minted `avatar_preview_Aria_O_Malley_7_<ts>.webp`
+  filename (non-alphanumerics → underscores) + dims preserved + revised-prompt
+  passthrough; the `mime || image/png` default; empty-revised-prompt → None; both
+  `NoImageData` sub-arms (empty data, no images); the provider-throw → `Failed`
+  arm; and one test driving the REAL OpenAI dialect over a stubbed
+  `WireTransport` (the W4.7f stub-provider flavor — full build→parse→extract→
+  transcode path, only the socket canned). engine.rs unchanged this unit (the
+  fmt fix to unit 2's field wrap was folded back into unit 2).

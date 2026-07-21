@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Codec round lane BF unit 3: the avatar-preview render seam is now LIVE. Added
+`HostAvatarPreviewRenderer` (quilltap-host) implementing the core's
+`AvatarPreviewRenderer` — one raw portrait provider call ({prompt, model, n:1,
+size:'1024x1792', quality, style:'natural'}) over the W4.7f RealImageProvider,
+base64-decode, then the ported convertToWebP policy over HostImageCodec, with
+the `avatar_preview_<safeName>_<Date.now()>.webp` filename. Wired
+`avatar_preview: Some(...)` in the production host assembly. **The wardrobe
+dialog's out-of-chat Preview button now costs real money** (one image
+generation per click). NoImageData / Failed / empty-revised-prompt arms are
+v4-faithful. Six host tests over a stubbed ImageProvider + the real OpenAI
+dialect over a stubbed wire. Added the `base64` host dep.
+
 Codec round lane BF unit 2 (S1): added the `EngineAssembly.blob_webp` field
 (`Option<Arc<dyn blob_transcode::WebpTranscoder>>`, default None; threaded
 through ReadyEngine). The production host assembly passes the live
