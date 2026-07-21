@@ -2126,3 +2126,38 @@ render has never been walked with a real key); `p4.9i2` (HelpChat); the
 ChatSidebar surface (`p4.9h`); M6 backlog rows 5/6/8–15; the composer
 backslash-escape seam. Watch v4 for the 4.8.0 release tag (v4 is
 mid-release-checklist — drift-check before every round).
+
+---
+
+## The P4.6bg remainder — UNIFIED 2026-07-21 (the codec + fs seam round fully disposed)
+
+**P4.6bg CLOSED (tier 1 complete + P4.6bf's inherited blob-WebP wire
+RESOLVED); ONE loud tier-2 deferral: the conversion port** (`services/
+mount_index/conversion.rs` + un-refusing convert/deconvert + its exact
+tier-2 differential — enumerated in the order header, resume with a fresh
+drift-check). Landed: the tool-site fs I/O (all six file-management verbs,
+new-blank, the grep/list fs walks), the NEW `doc_fs_equivalence` family
+(21 fs ops + byte-exact fs-tree diff), the engine `files_dir` wire + the
+operator fs surface, the standalone general-scope LIVE round-trip beat,
+and the S1 blob-WebP dispatch wire (the scriptorium WebP beat
+self-activated — mount blob uploads transcode at the dispatch layer). One
+DELIBERATE v5 divergence: `_general` is pre-created (v4's latent
+fresh-instance quirk). Round record: `status-log.md` (2026-07-21).
+
+**⚠ v4 DRIFTED to `e2eb3d21` (4.8.0-dev.93) during the lane — zero
+`lib/` code (New-Chat picker components + help/chats.md + versions); the
+oracle baseline STAYS `7e6d13e5`.** Owed: a P4.d-style SPA re-port of the
+New-Chat picker behavior (full roster incl. default-user personas in
+Select Characters; Play As limited to the cast; revert-to-yourself keeps
+LLM control) onto the ported P4.6q `/salon/new` vertical + the
+help/chats.md sync. v4 also carries an untracked in-progress
+`episodic-recall-overhaul.md` feature doc — expect that feature to land.
+
+**Next candidates:** the New-Chat picker drift re-port (small, SPA-only);
+the conversion port (the P4.6bg tier-2 deferral); a
+wardrobe-Preview/workspace/state/brahma/fs-documents dogfood pass (the
+Preview render and the new general-scope documents have never been
+hand-walked on real data); `p4.9i2` (HelpChat); `p4.9h` (ChatSidebar); M6
+rows 5/6/8–15; the composer backslash-escape seam. Watch v4 for the
+4.8.0 tag and the episodic-recall feature (drift-check before every
+round).

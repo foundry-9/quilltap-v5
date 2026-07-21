@@ -898,9 +898,30 @@ records THERE. Update this summary only when a phase or round completes.
   `7e6d13e5` oracles zero SKIP (DPR 25+6 fs-extended; wardrobe 74
   checks); clippy both feature sets; release build; ng 201/2,439; full
   Playwright green (one by-design probe skip). BG's record also flags a
-  pre-existing P4.d7 dup-name divergence (follow-up spawned). Next
-  candidates: resume P4.6bg (units 3–6), a wardrobe-Preview/workspace/
-  state/brahma dogfood pass, p4.9i2, p4.9h, M6 rows 5+ — see phase-4.md.
+  pre-existing P4.d7 dup-name divergence (follow-up spawned).
+- **The P4.6bg remainder: UNIFIED on main (2026-07-21) — P4.6bg CLOSED
+  (tier 1 complete) with ONE loud tier-2 deferral (the conversion port);
+  the codec + fs seam round is fully disposed and P4.6bf's inherited
+  blob-WebP wire is RESOLVED.** The doc-edit tool surface does real
+  host-disk I/O on filesystem-backed paths (fs/obsidian mounts, the
+  `general` scope, the legacy project fallback); the engine threads
+  `files_dir` through all 11 doc-verb arms; the Document-Mode operator
+  surface works on fs paths; the standalone "New blank document"
+  general-scope round-trip is LIVE (the FsSeam refusal GONE — one
+  deliberate v5 divergence: `_general` pre-created over v4's latent
+  fresh-instance quirk); **mount blob uploads now transcode to WebP at
+  the dispatch layer** (the scriptorium beat self-activated). New
+  `doc_fs_equivalence` family (21 fs ops + byte-exact fs-tree diff).
+  Gate: 360 binaries / 1,471 / 0, five differentials by name over fresh
+  oracles zero SKIP, clippy both feature sets, release build, ng
+  201/2,439, full Playwright green zero skips. **⚠ v4 DRIFTED to
+  `e2eb3d21` (4.8.0-dev.93) during the lane — ZERO lib/ code (New-Chat
+  picker components + help doc + versions); the oracle baseline STAYS
+  `7e6d13e5`; a SPA re-port of the picker behavior is OWED** (+ watch
+  the untracked episodic-recall-overhaul feature doc). Next candidates:
+  the New-Chat picker drift re-port, the conversion port, a
+  wardrobe-Preview/workspace/state/brahma/fs-documents dogfood pass,
+  p4.9i2, p4.9h, M6 rows 5+ — see phase-4.md.
 - **Oracle baseline: v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
   the state-cascade drift-catch-up unification.** v4 HEAD == the baseline
   and the checkout is clean, so **oracles regenerate directly from
@@ -915,10 +936,12 @@ records THERE. Update this summary only when a phase or round completes.
   seven renderer-transitive families for the single-dollar promotion);
   untouched families' committed oracles keep their earlier regen
   vintages. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version commit
-  may land any day; drift-check before every round. Versions (after the
-  2026-07-21 codec + fs seam partial unification): core 0.0.294
-  (recounted from the identical-bump collision), harness 0.0.254,
-  host 0.0.27, web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.240.
+  may land any day; drift-check before every round — ⚠ v4 HEAD is now
+  `e2eb3d21` (4.8.0-dev.93), ONE lib-free commit past the baseline (the
+  New-Chat picker SPA re-port is owed; oracles still regenerate validly
+  for lib-backed families). Versions (after the 2026-07-21 P4.6bg
+  remainder unification): core 0.0.297, harness 0.0.257, host 0.0.27,
+  web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.241.
   The previous baseline paragraph follows for history:
   v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
   at the P4.d9 KaTeX drift-catch-up unification; oracles regenerated

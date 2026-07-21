@@ -26234,3 +26234,77 @@ the blob_webp dispatch wire + scriptorium beat ride P4.6bg unit 6; the
 ST DEFLATE recipe banked; `DocumentTextExtractor` stays the named
 exclusion; the P4.6bg resume list is in its order header; the P4.d7
 dup-name follow-up is spawned.
+
+---
+
+## Round record — the P4.6bg remainder unification: UNIFIED on main (2026-07-21)
+
+**P4.6bg CLOSED (tier 1 complete + the inherited wire; ONE loud tier-2
+deferral — the conversion port), and with it the codec + fs seam round is
+fully disposed: P4.6bf's inherited AT-UNIFY item is RESOLVED.** Single lane
+(`claude/p4-6bg-docedit-fs-scope-f019ee`, 3 commits — units 3-4, unit 5,
+unit 6 part 1), merged conflict-free onto `unify/p4.6bg-remainder` from
+main `5a80a097`; no version recount needed (single lane): core **0.0.297**,
+harness **0.0.257**, SPA **0.5.241**; host/web/tauri unchanged (0.0.27 /
+0.0.36 / 0.0.4).
+
+**⚠ v4 DRIFTED during the lane — dispositioned, catch-up owed on ONE SPA
+item.** `e2eb3d21` ("New Chat: show full roster in picker; limit Play As
+to the cast", 4.8.0-dev.93): touches `components/new-chat/*`,
+`hooks/useNewChat.ts`, `help/chats.md`, and version files — **ZERO `lib/`
+code** (verified: `git diff 7e6d13e5..HEAD --stat -- lib/ app/ packages/`
+shows only the package.json version). No oracle family is affected, so
+this unification's oracle regens from the drifted HEAD are valid at the
+`7e6d13e5` baseline (the baseline does NOT move). **Owed: a P4.d-style
+SPA re-port of the New-Chat picker behavior** (default-user personas in
+the Select-Characters list; Play-As limited to the cast;
+revert-to-yourself keeps the character under LLM control) onto the ported
+P4.6q `/salon/new` vertical + the help/chats.md sync. The v4 tree also
+carries one untracked in-progress doc (`episodic-recall-overhaul.md`) —
+watch for that feature landing.
+
+**What landed** (the full lane record is above): the tool-site fs I/O
+across all four doc-edit tool modules; the NEW `doc_fs_equivalence`
+family (21 fs-scoped ops driving v4's REAL `executeDocEditTool` over an
+identically-materialized tree, byte-exact fs-tree diff, `QT_ORACLE_DFS`);
+the engine `files_dir` wire through all 11 doc-verb dispatch arms + the
+Document-Mode operator fs surface; the standalone general-scope beat
+flipped to the LIVE round-trip; the inherited S1 blob-WebP dispatch wire
+(handlers re-signatured, `ready_db_and_blob_webp`, the
+`#[allow(dead_code)]` dropped). One DELIBERATE v5 divergence documented:
+`resolve_general_path` pre-creates `<files>/_general` (v4's latent
+fresh-instance quirk would throw); inert in every differential.
+
+**The gate (this Mac, authoritative):**
+
+- `cargo fmt --all --check` clean; clippy BOTH feature sets `-D warnings`
+  clean; release build clean.
+- Five oracle families regenerated FRESH from the v4 checkout (lib/ at
+  the `7e6d13e5` baseline): doc-fs (21 ops + dumps), DPR (31 rows),
+  documents-routes (24), mount-refresh (1), mount-write (22).
+- `cargo test --workspace` with all five env-var families: **360 test
+  binaries / 1,471 tests / 0 failed** (the +1 binary is
+  `doc_fs_equivalence`). All five differentials re-run BY NAME with
+  `--nocapture`, zero SKIP: doc_fs (21 ops + fs-tree + 2 table dumps),
+  DPR (25 resolve + 6 uri), documents_routes, mount_refresh (the live
+  seam), mount_write (22 cases).
+- `ng test` **201 files / 2,439 / 0**; `ng build` clean.
+- Full Playwright (fresh dist + freshly rebuilt debug binaries, alone on
+  the port): **108 passed / 1 failed / 0 skipped** — ZERO skips means
+  **the scriptorium WebP beat SELF-ACTIVATED**, confirmed green BY NAME
+  in isolation ("an image blob is transcoded to WebP on upload
+  (ACTIVATE-AT-UNIFY, P4.6bf S1)", 529ms; scriptorium-flow 4/4). The one
+  failure is `wardrobe-flow.spec.ts:252` (the in-chat set_all-flush
+  round-trip) — the DOCUMENTED pre-existing full-suite order/timing flake
+  (the P4.9J3 record, then at :214), re-proven NOT a regression by an
+  isolation re-run: wardrobe-flow **3/3 green** with :252 passing in
+  500ms vs the full-suite timeout. No assertion touched.
+
+**Standing after this round:** `avatar_preview` LIVE and now the
+dispatch-layer blob-WebP transcode LIVE too (both real production
+behavior — the wardrobe Preview walk with a real key remains a dogfood
+item); the conversion port (P4.6bg unit 6 part 2) is the one loud tier-2
+deferral, enumerated in the order header; the New-Chat picker SPA drift
+re-port is OWED (above); the P4.d7 dup-name follow-up stands; tier-3
+deferrals unchanged (watcher, filesSync, cleanup-stale, docs CLI,
+DocumentTextExtractor).

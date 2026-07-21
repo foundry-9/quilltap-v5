@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+The P4.6bg remainder is UNIFIED on main — P4.6bg CLOSED (tier 1 complete)
+with one loud tier-2 deferral (the filesystem↔database store conversion
+port), and the codec + fs seam round is fully disposed: the doc-edit tool
+surface now performs real host-disk I/O on filesystem-backed paths (fs and
+obsidian mounts, the general scope at <files>/_general, the legacy project
+fallback), the engine threads files_dir through all eleven doc-verb
+dispatch arms, the Document-Mode operator surface works on fs paths, the
+standalone "New blank document" general-scope round-trip is LIVE (the
+FsSeam refusal is gone), and P4.6bf's inherited blob-WebP dispatch wire
+landed — mount blob uploads now transcode to WebP at the dispatch layer
+(the scriptorium e2e beat self-activated). One deliberate v5 divergence:
+_general is pre-created (v4's fresh-instance general new-blank throws on a
+latent safeRealpath quirk). New dedicated doc_fs differential family (21
+fs ops + byte-exact fs-tree diff). ⚠ v4 drifted to e2eb3d21 (New-Chat
+picker; zero lib/ code) — a SPA re-port of the picker behavior is owed;
+the oracle baseline stays 7e6d13e5. Gate: 360 Rust test binaries / 1,471 /
+0 with five differentials by name over fresh oracles (zero SKIP); clippy
+both feature sets; release build; ng test 201 files / 2,439; full
+Playwright green. Versions: core 0.0.297, harness 0.0.257, SPA 0.5.241.
+
 Wired the dispatch-layer blob-WebP transcoder (P4.6bg unit 6, part 1 — the
 P4.6bf S1 inherited AT-UNIFY item). The two `store_mount_file` handlers
 (`mount_file_write` / `mount_blob_upload`) now take a trailing
