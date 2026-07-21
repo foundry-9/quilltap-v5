@@ -25663,8 +25663,10 @@ Playwright runs here by design; shared-port contention):**
   SKIP (grepped).
 - `ng test` **201 files / 2,439 specs / 0 failed** (baseline 190/2,342);
   `ng build` clean.
-- Full Playwright: see the round-closing entry below (run after the gate
-  fixes; every beat live, zero guarded skips expected).
+- Full Playwright (fresh dist, alone on the port): **107 passed / 0
+  failed / 0 skipped** — the entire pre-existing suite plus all EIGHT
+  ACTIVATE-AT-UNIFY beats LIVE (5 brahma, 3 standalone-document) plus
+  J3's wardrobe-tab probe, drag-split, and cross-theme accent beats.
 
 **Standing after this round (the loud list):** the Brahma send is LIVE
 and costs real money (the `BrahmaConsoleSendDriver` host seam,

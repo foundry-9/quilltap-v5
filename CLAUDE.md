@@ -843,6 +843,40 @@ records THERE. Update this summary only when a phase or round completes.
   help/`math-notation.md` (p4.9i2). Next candidates: the
   `avatar_preview` wire + WebP codec, the two not-wired workspace kinds,
   a workspace/state dogfood pass, or M6 rows 5+ — see phase-4.md.
+- **The workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥
+  P4.9J4): UNIFIED on main (2026-07-20) — ALL FOUR CLOSED; the three
+  not-wired workspace tab kinds are GONE (all 22 kinds host real
+  screens; the NotWiredPane scaffold retired).** The Brahma Console
+  end-to-end (`p4.9i1` CLOSED): the 619-line multi-turn orchestrator
+  (independent of the ported one-shot engine; 25-turn loop, both stuck
+  guards, text-block downgrade, frames on the Event channel per the
+  `ChatSend` split), the eight-verb `brahma-console` dispatch family +
+  REST edges, the committed `brahma-{main,mount}.db` family, two
+  differentials (tier-2 routes 14/14; tier-3 mocked-LLM orchestrator
+  5 arms, frames + rows) ∥ the whole console SPA (dialog both modes,
+  shared-reducer streaming, rail entry) — **the send rides the new
+  `BrahmaConsoleSendDriver` host seam and is LIVE (real spend)** ∥ the
+  `asTab` WardrobeView + the p4.9j riders (openChatOnMount via
+  `/salon/new` — documented divergence; Create-Character in-tab;
+  `mode=setup` guard bypass; the HTML5 drag-split beat; the accent
+  ruling CORRECTED to no-change — theme packs already carry v4's live
+  tokens) ∥ the standalone Document Mode surface over the existing
+  P4.6w verbs (P4.9J2 tier-2 item 7 CLOSED with it). The first live
+  run of the 8 ACTIVATE-AT-UNIFY beats caught a REAL port bug —
+  `write_database_document` returned a second clock reading ≠ the
+  stored `lastModified` (spurious 409 on open→edit→write; fixed, core
+  0.0.292, regression-tested). Gate: 359 suites / 1,459 / 0 with the
+  two new differentials by name over fresh `7e6d13e5` oracles zero
+  SKIP; clippy both feature sets; release build; ng 201 files / 2,439;
+  full Playwright 107/107 zero skips (every ACTIVATE-AT-UNIFY beat LIVE). Deferred loud: the
+  **general-scope document fs wire** (the picker's top "New blank
+  document" refuses on every host — the standing FsSeam deferral now
+  has a user-visible affordance, pinned by a beat), the brahma async
+  context-summary/auto-title drive, HelpChat (p4.9i2),
+  `wardrobePreviewAvatar` (WebP codec), per-instance storage keys.
+  Next candidates: the `avatar_preview` wire + WebP codec, the
+  general-scope fs wire, a workspace/state/brahma dogfood pass, p4.9h
+  (ChatSidebar), M6 rows 5+ — see phase-4.md.
 - **Oracle baseline: v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
   the state-cascade drift-catch-up unification.** v4 HEAD == the baseline
   and the checkout is clean, so **oracles regenerate directly from
@@ -858,8 +892,9 @@ records THERE. Update this summary only when a phase or round completes.
   untouched families' committed oracles keep their earlier regen
   vintages. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version commit
   may land any day; drift-check before every round. Versions (after the
-  2026-07-20 state-cascade unification): core 0.0.288, harness 0.0.250,
-  host 0.0.23, web 0.0.35, quilltap-tauri 0.0.4, SPA 0.5.221.
+  2026-07-20 workspace-tabs-remainder unification): core 0.0.292,
+  harness 0.0.253, host 0.0.24, web 0.0.36, quilltap-tauri 0.0.4,
+  SPA 0.5.239.
   The previous baseline paragraph follows for history:
   v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
   at the P4.d9 KaTeX drift-catch-up unification; oracles regenerated

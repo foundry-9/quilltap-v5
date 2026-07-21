@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+The workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥
+P4.9J4) is UNIFIED on main — all four orders CLOSED, and the three
+not-wired workspace tab kinds are gone: all 22 kinds host real screens.
+On main: the Brahma Console end-to-end (the multi-turn orchestrator +
+eight-verb dispatch family + REST edges + the committed brahma fixture
+family and two differentials; the console SPA in both modes with the
+rail entry — the send is LIVE via the new BrahmaConsoleSendDriver host
+seam and costs real money) ∥ the asTab WardrobeView + the p4.9j riders
+∥ the standalone (chat-less) Document Mode surface over the existing
+P4.6w verbs (P4.9J2 tier-2 item 7 closed). Gate: 359 Rust suites /
+1,459 / 0 with the two new differentials by name over fresh 7e6d13e5
+oracles (zero SKIP); clippy both feature sets; release build; ng test
+201 files / 2,439; full Playwright 107/107 zero skips, every
+ACTIVATE-AT-UNIFY beat live. Versions: core 0.0.292, harness 0.0.253,
+web 0.0.36, host 0.0.24, SPA 0.5.239. Deferred loud: the general-scope
+document fs wire (the standing FsSeam deferral now has a user-visible
+affordance — the picker's "New blank document" — pinned by a beat), the
+brahma async context-summary/auto-title drive, HelpChat (p4.9i2),
+wardrobePreviewAvatar (WebP codec), per-instance storage keys.
+
 Unification gate fixes (core 0.0.292): `write_database_document` now
 returns the STORED `lastModified` mtime instead of a second clock reading
 — the skew (the repo's SQL work crossing a millisecond boundary) made an
