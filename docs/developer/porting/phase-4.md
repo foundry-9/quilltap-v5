@@ -2190,8 +2190,27 @@ flagged by round 1** (do not lose): the gate tier-3 family
 content (the inert-path boundary); the turn-path write `occurredAt` stamp
 (`resolveCandidateAnchors`) defers with the processor extraction prompt;
 memory-tasks tier-1, context-summary/fold, and carina-extraction defer
-with the prompt changes. The next `/setupphase` plans round 2. (Original
-round-1 planning section follows.)
+with the prompt changes. (Original round-1 planning section follows.)
+
+**ROUND 2 PLANNED (2026-07-21):** the order is
+`work-orders/p4.d13-episodic-retrieval-tools-replay.md` — a deliberate
+SINGLE lane (D's search handler and the §3 replay both consume B's new
+`searchMemoriesSemantic` options, so parallel lanes could not run their
+differentials in-lane). Eight sequenced tier-1 units: the distill
+signals (the memory-tasks family SPLITS: search-extraction cases regen
+at `8bf3cb5f`, creation cases stay `7e6d13e5`), recall-tags turn-aware,
+the search options (occurredWithin two-stage / entity anchors /
+multi-probe), vault-summary dates, buildContext part-1 threading + the
+RETRO_HEAD constants (part 2 — mini-recap/whisper/spam-guard — is
+round 3; the order pins the boundary and the no-matching-vault-summaries
+fixture guard), the deep-dive tools (+ the v5 `memorySearch` catalog
+deletion, 58 → 57), the recall-replay module + verb + NEW
+`QT_ORACLE_RECALL_REPLAY` tier-3 family over a new committed
+episodic-recall fixture, and the `quilltap recall-replay` CLI (Tier R).
+Tier 2 picks up the verified v5 gap: the chat-PUT `timelineMode` accept
+arm. The v4 design doc is now mirrored at
+`docs/v4/developer/features/episodic-recall-overhaul.md` (a round-1
+leftover, fixed at planning).
 
 ### Original round-1 planning record (2026-07-21)
 

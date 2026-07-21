@@ -9,6 +9,48 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round planned — the episodic-recall drift catch-up, ROUND 2 of 3 (P4.d13, single lane), 2026-07-21
+
+Planned via /setupphase (scope argument: v4-drift). Drift-check at
+planning: v4 HEAD == `8bf3cb5f`, tree clean — no new drift; the round
+absorbs the remaining un-ported portion of `8bf3cb5f` itself
+(workstreams B + D + the §3 replay harness).
+
+**One order, ONE lane (deliberate):**
+`work-orders/p4.d13-episodic-retrieval-tools-replay.md`. The scope is a
+single deep vertical — survey-confirmed hard dependencies: the D search
+handler passes the new `occurredWithin` option straight into
+`searchMemoriesSemantic`, and the §3 replay's newPath table exercises
+the live retrieval ranking — so a parallel D or §3 lane could not run
+its own differential in-lane. Eight sequenced tier-1 units (distill
+signals → recall-tags → search options → vault-summary dates →
+buildContext part-1 + RETRO constants → deep-dive tools + the
+`memorySearch` catalog deletion (58 → 57) → the replay module/verb +
+the NEW `QT_ORACLE_RECALL_REPLAY` family over a new committed
+episodic-recall fixture → the CLI), + tier-2 riders (the verified
+chat-PUT `timelineMode` API gap; episodic-visibility test port).
+
+**Planning survey findings recorded in the order:** the round-2/round-3
+boundary pinned file-by-file (memory-tasks splits INSIDE the file —
+search extraction now, creation prompts round 3; buildContext part 1
+now — including the RETRO_HEAD constants, which the replay imports —
+part 2 (mini-recap/whisper/spam-guard/recall-history) round 3, with the
+no-matching-vault-summaries fixture guard making the deferred half
+provably inert); two verified v5 gaps (the `memorySearch` catalog entry
+v4 deleted; the missing `timelineMode` chat-PUT accept arm over the
+round-1 data layer); v5 has no pre-compute service — the distill is
+inline in `build_context.rs:1844`, so v4's pre-compute signals thread
+maps onto that call. The v4 design doc is now mirrored at
+`docs/v4/developer/features/episodic-recall-overhaul.md` (the P4.d12
+"mirror it" instruction had not been carried out — fixed at planning).
+
+Oracle plan: regen set (recall-tags, memory-tasks search subset,
+build-context re-regen + retro arm, search-tools, tool-definitions,
+chats-search/vault-summary as touched, chats-routes extension, the new
+replay family) at `8bf3cb5f`; the round-3 families stay at `7e6d13e5`
+(gate stays SKIP). Round 3 remains: A-creation + C part 2 + E + the
+"Story's Clock" SPA.
+
 ## Round record — the episodic-recall drift catch-up, ROUND 1 of 3 (P4.d12 ∥ P4.6bh ∥ P4.6bi) — UNIFIED on main 2026-07-21
 
 Round 1 of the campaign catching v5 up to v4's largest single drift

@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned round 2 of the episodic-recall drift catch-up: committed the
+single-lane work order p4.d13-episodic-retrieval-tools-replay.md
+(time/entity-aware retrieval + the deep-dive tool filters + the
+recall-replay harness, module through CLI, against v4 8bf3cb5f), with
+the round-2/round-3 boundary pinned file-by-file and the oracle
+regen/leave sets enumerated. Also mirrored v4's episodic-recall-overhaul
+design doc under docs/v4/developer/features/ and recorded two verified
+v5 gaps the order closes (the stale memorySearch tool-catalog entry; the
+missing timelineMode chat-PUT accept arm). Docs only — no crate or SPA
+source touched.
+
 Added a disk-discipline ground rule to the carryout skill
 (.claude/commands/carryout.md): lanes check free space before each full
 workspace gate, run gates with CARGO_INCREMENTAL=0, reclaim only their
