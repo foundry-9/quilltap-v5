@@ -43,8 +43,15 @@ pub fn handle_read_frontmatter(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let read_context = build_read_resolution_context(main, &addressing, ctx);
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &read_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &read_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_read(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
@@ -112,8 +119,15 @@ pub fn handle_update_frontmatter(
     };
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
@@ -187,8 +201,15 @@ pub fn handle_read_heading(
     let level_arg = level_arg(args, &addressing);
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let read_context = build_read_resolution_context(main, &addressing, ctx);
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &read_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &read_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_read(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {
@@ -250,8 +271,15 @@ pub fn handle_update_heading(
     let level_arg = level_arg(args, &addressing);
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
-    let resolved = resolve_doc_edit_path(main, mount, scope, Some(&path), &write_context)
-        .map_err(resolve_error_message)?;
+    let resolved = resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&path),
+        &write_context,
+        ctx.files_dir.as_deref(),
+    )
+    .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
     if !is_text_file(&resolved.relative_path) {

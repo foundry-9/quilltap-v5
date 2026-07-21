@@ -54,6 +54,11 @@ pub struct DocEditToolContext {
     /// surfaces only — never a character tool call). Passed straight to the path
     /// resolver's `operator_override`.
     pub operator_override: bool,
+    /// The host files directory (v4 `getFilesDir()` = `<base>/files`). `Some`
+    /// makes the `general`/legacy-project/fs-mount branches reach the host disk;
+    /// `None` preserves the historic FsSeam refusal (P4.6bg S2). Threaded straight
+    /// into [`crate::doc_edit::path_resolver::resolve_doc_edit_path`].
+    pub files_dir: Option<std::path::PathBuf>,
 }
 
 /// Map a resolved [`DocEditScope`] to the announcement's [`LibrarianScope`]. v4's

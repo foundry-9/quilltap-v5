@@ -58,6 +58,11 @@ pub const STANDALONE_CHAT_ID: &str = "00000000-0000-0000-0000-000000000000";
 pub struct DocumentAccessContext {
     pub project_id: Option<String>,
     pub character_ids: Vec<String>,
+    /// The host files directory (v4 `getFilesDir()` = `<base>/files`). `Some`
+    /// makes the operator doc surfaces reach the `general`/legacy-project/fs-mount
+    /// host-disk branches; `None` preserves the historic FsSeam refusal (P4.6bg
+    /// S2). Threaded straight into [`resolve_operator_doc_path`].
+    pub files_dir: Option<std::path::PathBuf>,
 }
 
 impl DocumentAccessContext {
@@ -66,6 +71,7 @@ impl DocumentAccessContext {
         DocumentAccessContext {
             project_id: None,
             character_ids: Vec::new(),
+            files_dir: None,
         }
     }
 }
@@ -169,7 +175,14 @@ pub fn resolve_operator_doc_path(
         mount_point: mount_point.map(str::to_string),
         operator_override: true,
     };
-    resolve_doc_edit_path(main, mount, scope, Some(file_path), &context)
+    resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(file_path),
+        &context,
+        ctx.files_dir.as_deref(),
+    )
 }
 
 /// v4 `resolvedPathExists` — does a resolved database target currently have a

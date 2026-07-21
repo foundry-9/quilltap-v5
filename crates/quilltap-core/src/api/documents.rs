@@ -124,6 +124,9 @@ fn access_context_from_chat(chat: &Value) -> DocumentAccessContext {
     DocumentAccessContext {
         project_id,
         character_ids,
+        // P4.6bg S2: set to the host files dir in U5 (the general-scope arms); for
+        // now `None` preserves the FsSeam refusal.
+        files_dir: None,
     }
 }
 

@@ -29,8 +29,17 @@ interface Spec {
   sharedStoreA: string;
   sharedStoreB: string;
   disabledStore: string;
+  fsStore: string;
+  fsStoreName: string;
+  legacyProjectId: string;
+  fsProjectId: string;
   characterA: Record<string, unknown>;
 }
+
+/// The sentinel basePath baked for every `mountType: 'filesystem'` store — both
+/// differential sides rewrite it to their own per-side copy of the temp tree
+/// (`<canonical-scratch>/mount`) before resolving (the P4.6v basePath sentinel).
+const FS_SENTINEL = '__DPR_FS_TREE__';
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
 
@@ -106,12 +115,18 @@ async function main(): Promise<void> {
   const charAVault = charA?.characterDocumentMountPointId as string | null;
   if (!charAVault) throw new Error('character vault not minted');
 
-  const provision = async (id: string, name: string, enabled: boolean): Promise<void> => {
+  const provision = async (
+    id: string,
+    name: string,
+    enabled: boolean,
+    mountType: 'database' | 'filesystem' = 'database',
+    basePath = '',
+  ): Promise<void> => {
     await repos.docMountPoints.create(
       {
         name,
-        basePath: '',
-        mountType: 'database',
+        basePath,
+        mountType,
         storeType: 'documents',
         includePatterns: [],
         excludePatterns: [],
@@ -133,6 +148,8 @@ async function main(): Promise<void> {
   await provision(spec.sharedStoreA, 'Shared Name', true);
   await provision(spec.sharedStoreB, 'Shared Name', true);
   await provision(spec.disabledStore, 'Disabled Store', false);
+  // P4.6bg: an fs-backed store (sentinel basePath rewritten per-side), linked to P.
+  await provision(spec.fsStore, spec.fsStoreName, true, 'filesystem', FS_SENTINEL);
 
   await rawQuery(
     'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
@@ -152,15 +169,47 @@ async function main(): Promise<void> {
   const project = await repos.projects.findByIdRaw(spec.projectId);
   const officialStore = project?.officialMountPointId as string | null;
 
-  for (const store of [spec.normalStore, spec.sharedStoreA, spec.sharedStoreB, spec.disabledStore]) {
+  for (const store of [
+    spec.normalStore,
+    spec.sharedStoreA,
+    spec.sharedStoreB,
+    spec.disabledStore,
+    spec.fsStore,
+  ]) {
     await repos.projectDocMountLinks.link(spec.projectId, store);
   }
+
+  // P4.6bg legacy-fallback project L: its minted official store is DISABLED, so
+  // `resolveProjectPath` falls through to the `<filesDir>/<projectId>` legacy path.
+  await repos.projects.create({ userId: spec.userId, name: 'Project L' } as never, {
+    id: spec.legacyProjectId,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+  const legacyProject = await repos.projects.findByIdRaw(spec.legacyProjectId);
+  const legacyOfficial = legacyProject?.officialMountPointId as string | null;
+  if (!legacyOfficial) throw new Error('project L official store not minted');
+  midb.prepare('UPDATE doc_mount_points SET enabled = 0 WHERE id = ?').run(legacyOfficial);
+
+  // P4.6bg project-official-fs project F: its minted official store is flipped to
+  // `mountType: 'filesystem'` with the sentinel basePath (rewritten per-side).
+  await repos.projects.create({ userId: spec.userId, name: 'Project F' } as never, {
+    id: spec.fsProjectId,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+  const fsProject = await repos.projects.findByIdRaw(spec.fsProjectId);
+  const fsOfficial = fsProject?.officialMountPointId as string | null;
+  if (!fsOfficial) throw new Error('project F official store not minted');
+  midb
+    .prepare('UPDATE doc_mount_points SET mountType = ?, basePath = ? WHERE id = ?')
+    .run('filesystem', FS_SENTINEL, fsOfficial);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
   process.stderr.write(
-    `built doc-edit-path-resolver fixtures: main=${mainOut} mount=${mountOut} charAVault=${charAVault} officialStore=${officialStore}\n`,
+    `built doc-edit-path-resolver fixtures: main=${mainOut} mount=${mountOut} charAVault=${charAVault} officialStore=${officialStore} legacyOfficial=${legacyOfficial} fsOfficial=${fsOfficial}\n`,
   );
   process.exit(0);
 }

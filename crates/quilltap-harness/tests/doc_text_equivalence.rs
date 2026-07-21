@@ -327,6 +327,7 @@ fn doc_text_matches_oracle() {
         project_id: Some(spec.project_id.clone()),
         character_id: Some(spec.character_id.clone()),
         operator_override: false,
+        files_dir: None,
     };
 
     for (i, op) in spec.ops.iter().enumerate() {

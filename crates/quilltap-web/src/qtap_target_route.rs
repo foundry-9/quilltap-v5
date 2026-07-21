@@ -171,5 +171,8 @@ fn access_context(chat: &Value) -> DocumentAccessContext {
     DocumentAccessContext {
         project_id,
         character_ids,
+        // P4.6bg S2: the operator qtap-target byte route is database-only today;
+        // `None` preserves the FsSeam refusal (no general-scope byte target).
+        files_dir: None,
     }
 }

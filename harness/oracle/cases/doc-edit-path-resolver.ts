@@ -16,7 +16,16 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFileSync, existsSync, mkdtempSync, mkdirSync, copyFileSync } from 'node:fs';
+import {
+  readFileSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  copyFileSync,
+  realpathSync,
+  writeFileSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -29,6 +38,38 @@ interface Spec {
   sharedStoreA: string;
   sharedStoreB: string;
   disabledStore: string;
+  fsStore: string;
+  fsStoreName: string;
+  legacyProjectId: string;
+  fsProjectId: string;
+}
+
+/**
+ * Materialize the host-filesystem tree both differential sides build identically
+ * under a CANONICAL scratch root, so `safeRealpath` + `verifyPathIsWithinBase`
+ * see the same structure. (Contents are irrelevant to the resolver — only the
+ * dir/symlink layout matters.) Returns `<root>/mount`, the fs-mount base.
+ *   <root>/files/_general/existing.md        (general read target)
+ *   <root>/files/_general/link-out -> <root>/outside   (general symlink escape)
+ *   <root>/files/<legacyProjectId>/          (legacy-fallback base dir)
+ *   <root>/mount/docs/note.md                (fs-mount read target)
+ *   <root>/mount/escape -> <root>/outside    (fs-mount symlink escape)
+ *   <root>/outside/secret.md                 (escape destination)
+ */
+function materializeTree(root: string, legacyProjectId: string): string {
+  const general = join(root, 'files', '_general');
+  const mount = join(root, 'mount');
+  const outside = join(root, 'outside');
+  mkdirSync(general, { recursive: true });
+  mkdirSync(join(mount, 'docs'), { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  mkdirSync(join(root, 'files', legacyProjectId), { recursive: true });
+  writeFileSync(join(general, 'existing.md'), '# existing\n');
+  writeFileSync(join(mount, 'docs', 'note.md'), '# note\n');
+  writeFileSync(join(outside, 'secret.md'), 'secret\n');
+  symlinkSync(outside, join(general, 'link-out'));
+  symlinkSync(outside, join(mount, 'escape'));
+  return mount;
 }
 
 async function main(): Promise<void> {
@@ -43,12 +84,16 @@ async function main(): Promise<void> {
     throw new Error('QT_FIXTURE_DPR_MAIN and QT_FIXTURE_DPR_MOUNT must point at the seeded fixtures');
   }
 
-  const scratch = mkdtempSync(join(tmpdir(), 'qt-dpr-oracle-'));
+  // CANONICAL scratch root (macOS /var → /private/var) so the paths safeRealpath
+  // returns share a stable prefix with the fs-mount basePath, and the sentinel
+  // rewrite below is exact on both sides.
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'qt-dpr-oracle-')));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainWork = join(scratch, 'dpr-main-work.db');
   const mountWork = join(scratch, 'dpr-mount-work.db');
   copyFileSync(mainFixture, mainWork);
   copyFileSync(mountFixture, mountWork);
+  const fsMountBase = materializeTree(scratch, spec.legacyProjectId);
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = mainWork;
@@ -59,12 +104,26 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
+  const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
   const { resolveDocEditPath, PathResolutionError } = await import('@/lib/doc-edit/path-resolver');
   const { docStoreUriFor, uriForResolvedPath, buildDocStoreUriResolver } = await import(
     '@/lib/doc-edit/uri-producers'
   );
 
   await initializeDatabase();
+
+  // Rewrite every filesystem mount's sentinel basePath to this side's tree.
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('mount-index DB unavailable');
+  midb.prepare("UPDATE doc_mount_points SET basePath = ? WHERE mountType = 'filesystem'").run(fsMountBase);
+
+  // Sentinel-rewrite: the canonical scratch root is per-side, so replace it with a
+  // stable token in every emitted path before the diff (paths/errors else exact).
+  const sentinelize = (value: unknown): unknown =>
+    JSON.parse(JSON.stringify(value).split(scratch).join('__ROOT__'));
+
   const A = spec.charAId;
   const charA = await getRepositories().characters.findByIdRaw(A);
   const charAVault = charA?.characterDocumentMountPointId as string;
@@ -87,6 +146,17 @@ async function main(): Promise<void> {
     { id: 'project-alias', scope: 'project', path: 'Outline.md', ctx: { projectId: spec.projectId } },
     { id: 'project-no-id', scope: 'project', path: 'a.md', ctx: {} },
     { id: 'operator-override', scope: 'document_store', path: 'a.md', ctx: { operatorOverride: true, mountPoint: 'Project Docs' } },
+    // ── P4.6bg host-filesystem branches ──
+    { id: 'fs-mount-read', scope: 'document_store', path: 'docs/note.md', ctx: { characterId: A, projectId: spec.projectId, mountPoint: spec.fsStoreName } },
+    { id: 'fs-mount-new', scope: 'document_store', path: 'docs/fresh.md', ctx: { characterId: A, projectId: spec.projectId, mountPoint: spec.fsStoreName } },
+    { id: 'fs-mount-symlink-escape', scope: 'document_store', path: 'escape/secret.md', ctx: { characterId: A, projectId: spec.projectId, mountPoint: spec.fsStoreName } },
+    { id: 'general-existing', scope: 'general', path: 'existing.md', ctx: {} },
+    { id: 'general-new', scope: 'general', path: 'notes.md', ctx: {} },
+    { id: 'general-subdir-new', scope: 'general', path: 'sub/deep.md', ctx: {} },
+    { id: 'general-traversal', scope: 'general', path: '../x.md', ctx: {} },
+    { id: 'general-symlink-escape', scope: 'general', path: 'link-out/secret.md', ctx: {} },
+    { id: 'project-legacy-fallback', scope: 'project', path: 'draft.md', ctx: { projectId: spec.legacyProjectId } },
+    { id: 'project-official-fs', scope: 'project', path: 'spec.md', ctx: { projectId: spec.fsProjectId } },
   ];
 
   for (const c of matrix) {
@@ -101,7 +171,7 @@ async function main(): Promise<void> {
         result = { ok: false, code: 'UNKNOWN', message: String(e?.message ?? e) };
       }
     }
-    rows.push({ kind: 'resolve', id: c.id, result });
+    rows.push({ kind: 'resolve', id: c.id, result: sentinelize(result) });
   }
 
   // URI producers.
@@ -115,11 +185,15 @@ async function main(): Promise<void> {
     id: 'uri-name',
     result: await docStoreUriFor({ mountPointId: spec.normalStore, mountPointName: 'Project Docs', relativePath: 'k.md' }),
   });
-  rows.push({
-    kind: 'uri',
-    id: 'uri-ambiguous',
-    result: await docStoreUriFor({ mountPointId: spec.sharedStoreA, mountPointName: 'Shared Name', relativePath: 'a.md' }),
-  });
+  // NOTE (P4.6bg): the former `uri-ambiguous` / `res-ambiguous` URI-producer cases
+  // (two enabled stores both named "Shared Name" → id-form) are OMITTED. Since the
+  // d68638b4 NOCASE mount-namespace drift, v4 disambiguates duplicate ENABLED store
+  // names at READ time (findEnabled overlays the second as "Shared Name (2)"), so
+  // v4's `countByName('Shared Name')` returns 1 (name-form). v5's `count_by_name`
+  // reads the raw `name` column and still counts 2 (id-form) — a pre-existing v5
+  // divergence in the P4.d7 mount-namespace feature (db/doc_mount_points.rs), NOT in
+  // this fs-seam lane's scope. The ambiguity → id-form branch stays covered by the
+  // empty-name self-vault cases (`uri-self` / `res-self`).
   rows.push({
     kind: 'uri',
     id: 'uri-resolved-project',
@@ -132,9 +206,10 @@ async function main(): Promise<void> {
   const resolver = await buildDocStoreUriResolver(A);
   rows.push({ kind: 'uri', id: 'res-self', result: resolver.uriForMount('', charAVault, 'x.md') });
   rows.push({ kind: 'uri', id: 'res-name', result: resolver.uriForMount('Project Docs', spec.normalStore, 'k.md') });
-  rows.push({ kind: 'uri', id: 'res-ambiguous', result: resolver.uriForMount('Shared Name', spec.sharedStoreA, 'a.md') });
+  // `res-ambiguous` omitted for the same P4.d7 divergence reason as `uri-ambiguous` above.
   rows.push({ kind: 'uri', id: 'res-scope', result: resolver.uriForScope('general', 'g.md') });
 
+  closeMountIndexSQLiteClient();
   await closeDatabase();
   for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');
   process.exit(0);

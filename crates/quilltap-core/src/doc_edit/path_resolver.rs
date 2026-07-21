@@ -6,16 +6,21 @@
 //! official-mount alias — with byte-exact [`PathResolutionError`] codes +
 //! messages (they surface in tool output).
 //!
-//! ## Host-filesystem seam
+//! ## Host-filesystem branches (the `files_dir` thread — P4.6bg)
 //!
 //! The legacy on-disk branches — a `filesystem`/`obsidian` mount's real path
 //! (`fs.realpath` / `safeRealpath` / `verifyPathIsWithinBase`), the `project`
 //! scope's legacy `<filesDir>/<projectId>/` fallback when no official mount is
-//! provisioned, and the entire `general` scope — are host-filesystem and are a
-//! **tracked deferral to the Phase-4 host** ([`FsSeam`]). Every store in the
-//! differential corpus is `mountType: 'database'` (and every project has an
-//! official database mount), so v4 returns early with `absolutePath: ''` and
-//! never touches the disk; the seam is therefore never exercised by the diff.
+//! provisioned, and the entire `general` scope — reach the host filesystem. They
+//! are gated by the `files_dir: Option<&Path>` thread the Phase-4 host supplies:
+//! `Some(<base>/files)` makes the host disk available (v4's `getFilesDir()`), and
+//! the branches run for real (byte-exact codes/messages); `None` preserves the
+//! historic [`FsSeam`] refusal (the pre-P4.6bg behaviour, kept for the differential
+//! corpora whose stores are all `mountType: 'database'`). Every fs branch is now
+//! exercised by fs-backed differential coverage — see
+//! `doc_edit_path_resolver_equivalence`.
+
+use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -89,8 +94,10 @@ pub enum ResolveError {
         message: String,
         code: PathErrorCode,
     },
-    /// A host-filesystem branch (FS-backed mount, `general` scope, or the
-    /// project legacy fallback). Never produced for the differential corpus.
+    /// The host filesystem is unavailable (`files_dir: None`): an FS-backed mount,
+    /// the `general` scope, or the project legacy fallback was addressed on a host
+    /// that supplies no files dir. When a files dir IS supplied these branches run
+    /// for real; this refusal is only the `None` case.
     FsSeam,
 }
 
@@ -155,6 +162,126 @@ fn is_absolute_path(p: &str) -> bool {
     p.starts_with('/')
 }
 
+// ============================================================================
+// Host-filesystem helpers (v4 path-resolver.ts `safeRealpath` /
+// `verifyPathIsWithinBase` + the POSIX `path.*` primitives they lean on).
+// ============================================================================
+
+/// POSIX `path.normalize` (lexical): collapse `//`, drop `.` segments, resolve
+/// `..` against prior segments, preserve a leading `/` and a single trailing `/`.
+/// Our inputs are already-absolute, `..`-free paths (the resolver rejected
+/// traversal), so this is near-identity — but ported faithfully for the
+/// containment string compare.
+fn posix_normalize(p: &str) -> String {
+    let is_absolute = p.starts_with('/');
+    let has_trailing = p.len() > 1 && p.ends_with('/');
+    let mut out: Vec<&str> = Vec::new();
+    for seg in p.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                if let Some(&last) = out.last() {
+                    if last != ".." {
+                        out.pop();
+                        continue;
+                    }
+                }
+                if !is_absolute {
+                    out.push("..");
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    let joined = out.join("/");
+    let mut result = if is_absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".to_string()
+    } else {
+        joined
+    };
+    if has_trailing && !result.ends_with('/') {
+        result.push('/');
+    }
+    result
+}
+
+/// POSIX `path.join(base, rel)` then normalize (v4 `path.join`). `base` is an
+/// absolute dir, `rel` a clean relative path.
+fn posix_join(base: &str, rel: &str) -> String {
+    if rel.is_empty() {
+        return posix_normalize(base);
+    }
+    let combined = if base.ends_with('/') {
+        format!("{base}{rel}")
+    } else {
+        format!("{base}/{rel}")
+    };
+    posix_normalize(&combined)
+}
+
+/// v4 `safeRealpath` (`path-resolver.ts:175`): realpath a path, walking up to the
+/// deepest existing ancestor when the leaf doesn't exist yet (a new file we're
+/// about to write), realpath'ing THAT, then re-attaching the missing tail.
+///
+/// This keeps boundary checks correct on data directories that live behind a
+/// symlink — e.g. `~/iCloud` on macOS, which resolves to
+/// `~/Library/Mobile Documents/com~apple~CloudDocs`. Without the walk-up, the
+/// file's realpath would expand the symlink while a missing sibling's
+/// `path.resolve` would not, and the two sides of a containment check would
+/// disagree even though both refer to the same tree. The multi-level walk-up
+/// re-attaches the tail in v4's exact order (`join(realParent, ...tail.reverse(),
+/// basename(current))`) so the two ports agree byte-for-byte.
+fn safe_realpath(p: &Path) -> PathBuf {
+    if let Ok(real) = std::fs::canonicalize(p) {
+        return real;
+    }
+    // Walk up to the deepest existing ancestor and realpath that, then re-attach
+    // the unresolved tail (v4's `path.dirname`/`path.basename`/`path.join`).
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut current: PathBuf = p.to_path_buf();
+    // v4 loops `while (current !== path.dirname(current))` — i.e. until the root,
+    // whose dirname is itself (Rust: `Path::parent()` is `None`).
+    while let Some(parent) = current.parent().map(Path::to_path_buf) {
+        if let Ok(real_parent) = std::fs::canonicalize(&parent) {
+            let mut out = real_parent;
+            for seg in tail.iter().rev() {
+                out.push(seg);
+            }
+            if let Some(base) = current.file_name() {
+                out.push(base);
+            }
+            return out;
+        }
+        if let Some(base) = current.file_name() {
+            tail.push(base.to_os_string());
+        }
+        current = parent;
+    }
+    p.to_path_buf()
+}
+
+/// v4 `verifyPathIsWithinBase` (`path-resolver.ts:203`): both args already
+/// realpath'd; normalize, suffix the base with a separator, prefix-check.
+fn verify_path_is_within_base(resolved_path: &str, base_dir: &str) -> bool {
+    let normalized_resolved = posix_normalize(resolved_path);
+    let normalized_base = posix_normalize(base_dir);
+    let base_with_sep = if normalized_base.ends_with('/') {
+        normalized_base.clone()
+    } else {
+        format!("{normalized_base}/")
+    };
+    normalized_resolved.starts_with(&base_with_sep) || normalized_resolved == normalized_base
+}
+
+/// The `general`/`project`-legacy base directory under the host files dir
+/// (`files_dir` = v4 `getFilesDir()` = `<base>/files`). `None` when the host
+/// supplies no files dir (the [`ResolveError::FsSeam`] refusal).
+fn files_dir_or_seam(files_dir: Option<&Path>) -> Result<&Path, ResolveError> {
+    files_dir.ok_or(ResolveError::FsSeam)
+}
+
 /// Resolve a doc-edit path (v4 `resolveDocEditPath`). `relative_path` is
 /// `Option` so a truncated tool call (arguments cut off → `path` undefined) hits
 /// the same guard v4 does.
@@ -164,6 +291,7 @@ pub fn resolve_doc_edit_path(
     scope: DocEditScope,
     relative_path: Option<&str>,
     context: &PathResolutionContext,
+    files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(relative_path) = relative_path else {
         return Err(ResolveError::path(
@@ -187,12 +315,48 @@ pub fn resolve_doc_edit_path(
 
     match scope {
         DocEditScope::DocumentStore => {
-            resolve_document_store_path(main, mount, relative_path, context)
+            resolve_document_store_path(main, mount, relative_path, context, files_dir)
         }
-        DocEditScope::Project => resolve_project_path(main, mount, relative_path, context),
+        DocEditScope::Project => {
+            resolve_project_path(main, mount, relative_path, context, files_dir)
+        }
         // The `general` scope is entirely host-filesystem.
-        DocEditScope::General => Err(ResolveError::FsSeam),
+        DocEditScope::General => resolve_general_path(relative_path, files_dir),
     }
+}
+
+/// v4 `resolveGeneralPath` (`path-resolver.ts:571`): base =
+/// `<filesDir>/_general`; realpath the base + the joined path, containment-check,
+/// and return the on-disk `ResolvedPath`. `files_dir: None` → [`ResolveError::FsSeam`].
+fn resolve_general_path(
+    relative_path: &str,
+    files_dir: Option<&Path>,
+) -> Result<ResolvedPath, ResolveError> {
+    let files_dir = files_dir_or_seam(files_dir)?;
+    let base_dir = files_dir.join("_general");
+    let base_dir_str = base_dir.to_string_lossy().to_string();
+    let joined = posix_join(&base_dir_str, relative_path);
+    let real_base = safe_realpath(&base_dir);
+    let real_path = safe_realpath(Path::new(&joined));
+    let real_base_str = real_base.to_string_lossy().to_string();
+    let real_path_str = real_path.to_string_lossy().to_string();
+
+    if !verify_path_is_within_base(&real_path_str, &real_base_str) {
+        return Err(ResolveError::path(
+            PathErrorCode::TraversalAttempt,
+            "Path escapes general storage boundary",
+        ));
+    }
+
+    Ok(ResolvedPath {
+        absolute_path: real_path_str,
+        scope: DocEditScope::General,
+        mount_point_id: None,
+        mount_point_name: None,
+        mount_type: None,
+        base_path: real_base_str,
+        relative_path: relative_path.to_string(),
+    })
 }
 
 /// The accessible mount-point id set for a context (v4
@@ -240,6 +404,7 @@ fn resolve_document_store_path(
     mount: &Connection,
     relative_path: &str,
     context: &PathResolutionContext,
+    files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(mount_point_ref) = &context.mount_point else {
         return Err(ResolveError::path(
@@ -336,8 +501,32 @@ fn resolve_document_store_path(
         });
     }
 
-    // Filesystem-backed store → host FS seam.
-    Err(ResolveError::FsSeam)
+    // Filesystem-backed store: realpath the mount's base + joined path and
+    // containment-check (v4 `path-resolver.ts:440-466`). The host disk must be
+    // available (`files_dir: Some`); otherwise the FsSeam refusal stands.
+    files_dir_or_seam(files_dir)?;
+    let base_dir = mp.base_path.clone();
+    let joined = posix_join(&base_dir, relative_path);
+    let real_base = safe_realpath(Path::new(&base_dir));
+    let real_path = safe_realpath(Path::new(&joined));
+    let real_base_str = real_base.to_string_lossy().to_string();
+    let real_path_str = real_path.to_string_lossy().to_string();
+    if !verify_path_is_within_base(&real_path_str, &real_base_str) {
+        return Err(ResolveError::path(
+            PathErrorCode::TraversalAttempt,
+            "Path escapes mount point boundary",
+        ));
+    }
+    // v4 returns the RAW `baseDir` (mount.basePath) here, NOT `realBase`.
+    Ok(ResolvedPath {
+        absolute_path: real_path_str,
+        scope: DocEditScope::DocumentStore,
+        mount_point_id: Some(mp.id),
+        mount_point_name: Some(mp.name),
+        mount_type: Some(mp.mount_type),
+        base_path: base_dir,
+        relative_path: relative_path.to_string(),
+    })
 }
 
 fn resolve_project_path(
@@ -345,6 +534,7 @@ fn resolve_project_path(
     mount: &Connection,
     relative_path: &str,
     context: &PathResolutionContext,
+    files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(project_id) = &context.project_id else {
         return Err(ResolveError::path(
@@ -378,17 +568,105 @@ fn resolve_project_path(
                         relative_path: relative_path.to_string(),
                     });
                 }
-                // Filesystem official mount → host FS seam.
-                return Err(ResolveError::FsSeam);
+                // Filesystem official mount: realpath its base + joined path
+                // (v4 `path-resolver.ts:511-534`). Requires host disk.
+                files_dir_or_seam(files_dir)?;
+                let base_dir = mp.base_path.clone();
+                let joined = posix_join(&base_dir, relative_path);
+                let real_base = safe_realpath(Path::new(&base_dir));
+                let real_path = safe_realpath(Path::new(&joined));
+                let real_base_str = real_base.to_string_lossy().to_string();
+                let real_path_str = real_path.to_string_lossy().to_string();
+                if !verify_path_is_within_base(&real_path_str, &real_base_str) {
+                    return Err(ResolveError::path(
+                        PathErrorCode::TraversalAttempt,
+                        "Path escapes project boundary",
+                    ));
+                }
+                // v4 returns `realBase` here (unlike the document_store fs branch).
+                return Ok(ResolvedPath {
+                    absolute_path: real_path_str,
+                    scope: DocEditScope::Project,
+                    mount_point_id: Some(mp.id),
+                    mount_point_name: Some(mp.name),
+                    mount_type: Some(mp.mount_type),
+                    base_path: real_base_str,
+                    relative_path: relative_path.to_string(),
+                });
             }
         }
-        // official mount missing / disabled → legacy FS fallback (seam).
+        // official mount missing / disabled → legacy FS fallback below.
     }
 
-    // No official mount → legacy `<filesDir>/<projectId>/` fallback (seam).
-    Err(ResolveError::FsSeam)
+    // No official mount → legacy `<filesDir>/<projectId>/` fallback
+    // (v4 `path-resolver.ts:541-565`). Requires host disk.
+    let files_dir = files_dir_or_seam(files_dir)?;
+    let base_dir = files_dir.join(project_id);
+    let base_dir_str = base_dir.to_string_lossy().to_string();
+    let joined = posix_join(&base_dir_str, relative_path);
+    let real_base = safe_realpath(&base_dir);
+    let real_path = safe_realpath(Path::new(&joined));
+    let real_base_str = real_base.to_string_lossy().to_string();
+    let real_path_str = real_path.to_string_lossy().to_string();
+    if !verify_path_is_within_base(&real_path_str, &real_base_str) {
+        return Err(ResolveError::path(
+            PathErrorCode::TraversalAttempt,
+            "Path escapes project boundary",
+        ));
+    }
+    Ok(ResolvedPath {
+        absolute_path: real_path_str,
+        scope: DocEditScope::Project,
+        mount_point_id: None,
+        mount_point_name: None,
+        mount_type: None,
+        base_path: real_base_str,
+        relative_path: relative_path.to_string(),
+    })
 }
 
 fn read_err(e: DbError) -> ResolveError {
     ResolveError::path(PathErrorCode::AccessDenied, e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn posix_normalize_matches_node() {
+        assert_eq!(posix_normalize("/a/b/c"), "/a/b/c");
+        assert_eq!(posix_normalize("/a//b/./c"), "/a/b/c");
+        assert_eq!(posix_normalize("/a/b/../c"), "/a/c");
+        assert_eq!(posix_normalize("/a/b/"), "/a/b/");
+        assert_eq!(posix_normalize("/"), "/");
+    }
+
+    #[test]
+    fn posix_join_matches_node() {
+        assert_eq!(posix_join("/base", "notes.md"), "/base/notes.md");
+        assert_eq!(posix_join("/base/", "notes.md"), "/base/notes.md");
+        assert_eq!(posix_join("/base", "sub/./x.md"), "/base/sub/x.md");
+        assert_eq!(posix_join("/base", ""), "/base");
+    }
+
+    #[test]
+    fn verify_within_base() {
+        assert!(verify_path_is_within_base("/base/sub/x.md", "/base"));
+        assert!(verify_path_is_within_base("/base", "/base"));
+        assert!(!verify_path_is_within_base("/base-other/x.md", "/base"));
+        assert!(!verify_path_is_within_base("/other/x.md", "/base"));
+    }
+
+    #[test]
+    fn safe_realpath_walks_up_to_existing_ancestor() {
+        // A missing leaf under an existing dir: realpath the parent + re-attach.
+        let dir = std::env::temp_dir().join(format!("qt-dpr-srp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let real_dir = std::fs::canonicalize(&dir).unwrap();
+        let missing = dir.join("nope.md");
+        assert_eq!(safe_realpath(&missing), real_dir.join("nope.md"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

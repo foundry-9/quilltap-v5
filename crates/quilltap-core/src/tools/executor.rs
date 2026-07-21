@@ -1221,6 +1221,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
             operator_override: false,
+            // P4.6bg S2: the doc-edit files-dir thread. Set to the host files dir
+            // in U5 so character tools reach the general/legacy-project/fs-mount
+            // branches; `None` preserves today's FsSeam refusal.
+            files_dir: None,
         }
     }
 
@@ -1606,6 +1610,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
             operator_override: false,
+            files_dir: None,
         };
         let db = self.db.clone();
         let (tool_result, pending) = db

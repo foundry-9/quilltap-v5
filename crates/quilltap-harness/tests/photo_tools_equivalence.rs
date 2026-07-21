@@ -590,6 +590,7 @@ fn photo_tools_matches_oracle() {
             project_id: None,
             character_id: Some(spec.char_a_id.clone()),
             operator_override: false,
+            files_dir: None,
         };
         let args = (op.build_args)(&meta);
 

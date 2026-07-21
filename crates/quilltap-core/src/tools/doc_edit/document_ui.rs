@@ -123,8 +123,14 @@ pub fn handle_open_document(
     // via the outer dispatcher on `Err`; but v4 catches HERE and returns the bare
     // failure for BOTH the resolution error and the not-found — so we do too.
     let read_context = build_read_resolution_context(main, &addressing, ctx);
-    let resolved = match resolve_doc_edit_path(main, mount, scope, Some(&file_path), &read_context)
-    {
+    let resolved = match resolve_doc_edit_path(
+        main,
+        mount,
+        scope,
+        Some(&file_path),
+        &read_context,
+        ctx.files_dir.as_deref(),
+    ) {
         Ok(r) => r,
         // v4: `if (error instanceof PathResolutionError) return { success:false,
         // error: error.message }` — a bare failure (no formattedText).
