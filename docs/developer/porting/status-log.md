@@ -26309,7 +26309,7 @@ re-port is OWED (above); the P4.d7 dup-name follow-up stands; tier-3
 deferrals unchanged (watcher, filesSync, cleanup-stale, docs CLI,
 DocumentTextExtractor).
 
-## Lane P4.d12 — the episodic-spine foundation (round 1 / lane 1 of the episodic-recall drift catch-up) — IN PROGRESS
+## Lane P4.d12 — the episodic-spine foundation (round 1 / lane 1 of the episodic-recall drift catch-up) — LANE COMPLETE (2026-07-21, 7 units, awaiting unification)
 
 Branch `claude/episodic-spine-foundation-port-bb4157`. v4 baseline
 `8bf3cb5f` — drift-checked at lane start: v4 HEAD == `8bf3cb5f`, tree
