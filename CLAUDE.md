@@ -877,6 +877,30 @@ records THERE. Update this summary only when a phase or round completes.
   Next candidates: the `avatar_preview` wire + WebP codec, the
   general-scope fs wire, a workspace/state/brahma dogfood pass, p4.9h
   (ChatSidebar), M6 rows 5+ — see phase-4.md.
+- **The codec + fs seam round (P4.6bf ∥ P4.6bg): PARTIALLY UNIFIED on
+  main (2026-07-21) — P4.6bf CLOSED; P4.6bg OPEN at unit 1-of-6 (resume
+  at unit 3; its order header carries the resume list).** The
+  `HostAvatarPreviewRenderer` over the EXISTING P4.1b `HostImageCodec` —
+  **`avatar_preview` is LIVE; the wardrobe out-of-chat Preview button
+  costs real money** (the e2e beat pins the pre-provider no-API-key arm
+  at zero spend; the live render walk is a dogfood item) — plus the
+  blob-transcode `WebpTranscoder` impl and the `EngineAssembly.blob_webp`
+  seam (deliberately dead: the engine call-site wire is INHERITED by
+  P4.6bg unit 6's handler re-signature; the scriptorium WebP beat stays
+  probe-skipped until then) ∥ the doc-edit path-resolver host-filesystem
+  branches (general / fs mounts / legacy project fallback; `safe_realpath`
+  walk-up + boundary check byte-exact) behind a `files_dir` thread every
+  call site still passes `None` to — production behavior unchanged until
+  BG's units 3–5 open the tool-site fs I/O and flip the engine wire. The
+  ST placeholder-DEFLATE seam DEFERRED with the empirical finding (parity
+  only via flate2's zlib C backend — recipe banked). Gate: 359 test
+  binaries / 1,470 / 0; the two round differentials by name over fresh
+  `7e6d13e5` oracles zero SKIP (DPR 25+6 fs-extended; wardrobe 74
+  checks); clippy both feature sets; release build; ng 201/2,439; full
+  Playwright green (one by-design probe skip). BG's record also flags a
+  pre-existing P4.d7 dup-name divergence (follow-up spawned). Next
+  candidates: resume P4.6bg (units 3–6), a wardrobe-Preview/workspace/
+  state/brahma dogfood pass, p4.9i2, p4.9h, M6 rows 5+ — see phase-4.md.
 - **Oracle baseline: v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
   the state-cascade drift-catch-up unification.** v4 HEAD == the baseline
   and the checkout is clean, so **oracles regenerate directly from
@@ -892,9 +916,9 @@ records THERE. Update this summary only when a phase or round completes.
   untouched families' committed oracles keep their earlier regen
   vintages. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version commit
   may land any day; drift-check before every round. Versions (after the
-  2026-07-20 workspace-tabs-remainder unification): core 0.0.292,
-  harness 0.0.253, host 0.0.24, web 0.0.36, quilltap-tauri 0.0.4,
-  SPA 0.5.239.
+  2026-07-21 codec + fs seam partial unification): core 0.0.294
+  (recounted from the identical-bump collision), harness 0.0.254,
+  host 0.0.27, web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.240.
   The previous baseline paragraph follows for history:
   v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
   at the P4.d9 KaTeX drift-catch-up unification; oracles regenerated

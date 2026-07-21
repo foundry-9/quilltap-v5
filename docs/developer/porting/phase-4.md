@@ -2085,3 +2085,44 @@ overlay); M6 backlog rows 5/6/8–15; the composer backslash-escape seam;
 the brahma async context-summary/auto-title drive (deferred with the
 production finalizer's). Watch v4 for the 4.8.0 release tag (v4 is
 mid-release-checklist — drift-check before every round).
+
+---
+
+## The codec + fs seam round (P4.6bf ∥ P4.6bg) — PARTIALLY UNIFIED 2026-07-21
+
+**P4.6bf CLOSED; P4.6bg OPEN (unit 1 landed — resume at unit 3).** Lane
+BF (`work-orders/p4.6bf-avatar-preview-blob-codec-wire.md`): the
+`HostAvatarPreviewRenderer` over the existing P4.1b `HostImageCodec` —
+**`avatar_preview` is LIVE and the wardrobe out-of-chat Preview button
+now costs real money** (the e2e beat pins the pre-provider no-API-key
+arm at zero spend; the live render walk is a dogfood item); the
+blob-transcode `WebpTranscoder` impl + the S1 `EngineAssembly.blob_webp`
+field (deliberately dead — see below); the wardrobe-routes family
+re-verified at `7e6d13e5` (74 checks / 0 SKIP); the ST
+placeholder-DEFLATE seam DEFERRED with the empirical finding (byte
+parity holds ONLY via flate2's zlib C backend; recipe banked in the lane
+record). Lane BG (`work-orders/p4.6bg-docedit-fs-general-scope.md`),
+unit 1 only: the doc-edit path-resolver host-filesystem branches
+(general scope / fs mounts / legacy project fallback, `safe_realpath` +
+`verify_path_is_within_base` byte-exact) behind the S2 `files_dir`
+thread — **every call site still passes `None`, so production behavior
+is unchanged**; the path-resolver differential extended with 10 fs cases
+over the canonical-scratch `__ROOT__` sentinel recipe.
+
+**The round's one AT-UNIFY item was NOT performable and is INHERITED by
+P4.6bg unit 6:** wiring `EngineAssembly.blob_webp` into the
+`store_mount_file` handlers needs BG's handler re-signature (open).
+Until then the scriptorium WebP e2e beat stays probe-skipped and
+`ReadyEngine.blob_webp` stays `#[allow(dead_code)]`. BG's unit-1 record
+also flagged a pre-existing P4.d7 divergence (dup-named mounts:
+v4 `findByName` counts overlaid names, v5 reads the raw column) —
+spawned as a follow-up, not part of this round.
+
+**Next candidates:** resume P4.6bg (units 3–6 — the tool-site fs I/O,
+the fm/ui/text fs differentials, the engine `files_dir` wire + the
+standalone-beat flip, conversion + the inherited blob_webp wire); a
+wardrobe-Preview / workspace / state / brahma dogfood pass (the Preview
+render has never been walked with a real key); `p4.9i2` (HelpChat); the
+ChatSidebar surface (`p4.9h`); M6 backlog rows 5/6/8–15; the composer
+backslash-escape seam. Watch v4 for the 4.8.0 release tag (v4 is
+mid-release-checklist — drift-check before every round).

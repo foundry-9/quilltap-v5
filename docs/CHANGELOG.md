@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+The codec + fs seam round (P4.6bf ∥ P4.6bg) is PARTIALLY UNIFIED on main —
+P4.6bf CLOSED, P4.6bg open at unit 1-of-6 (resume at unit 3). On main: the
+HostAvatarPreviewRenderer over the existing HostImageCodec — avatar_preview
+is LIVE and the wardrobe out-of-chat Preview button now costs real money
+(the e2e beat pins the pre-provider no-API-key arm at zero spend); the
+blob-transcode WebpTranscoder impl + the EngineAssembly.blob_webp seam
+(deliberately dead until the P4.6bg unit-6 handler re-signature — the
+inherited AT-UNIFY wire); the ST placeholder-DEFLATE seam deferred with the
+empirical parity finding banked; the doc-edit path-resolver host-filesystem
+branches (general scope, fs mounts, legacy project fallback) behind a
+files_dir thread every call site still passes None to (production behavior
+unchanged), with a 10-case fs differential extension. Gate: 359 Rust test
+binaries / 1,470 / 0 failed with the two round differentials by name over
+fresh 7e6d13e5 oracles (zero SKIP); clippy both feature sets; release
+build; ng test 201 files / 2,439; full Playwright green (the scriptorium
+WebP beat probe-skipped by design). Versions: core 0.0.294 (recounted from
+the identical-bump collision), harness 0.0.254, host 0.0.27, SPA 0.5.240.
+
 Opened the doc-edit path resolver's host-filesystem branches (P4.6bg tier-1
 unit 1). The `general` scope (`<files>/_general`), filesystem/obsidian
 mounts, and the legacy `<files>/<projectId>` project fallback now resolve

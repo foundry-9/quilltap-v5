@@ -25982,3 +25982,89 @@ engine `files_dir` wire + `api/documents` general arms + the
 `workspace-document-standalone-flow` beat flip), and tier-2 unit 6
 (`conversion.rs` + un-refusing convert/deconvert + the S1 `store_mount_file`
 signature change).
+
+---
+
+## Round record — the codec + fs seam round (P4.6bf ∥ P4.6bg): PARTIALLY UNIFIED on main (2026-07-21)
+
+**P4.6bf CLOSED; P4.6bg OPEN (unit 1 landed — resume at unit 3).** v4
+baseline `7e6d13e5` held throughout (drift-checked clean at both lane
+starts and at unification; the v4 tree stayed clean, oracles regenerated
+from the checkout directly).
+
+Reconciliation: `unify/codec-fs-seam` from main; lane BF
+(`claude/avatar-preview-blob-codec-wire-81e8cd`, 7 commits) merged first,
+then lane BG (`claude/p4-6bg-docedit-fs-scope-f8bb67`, 1 commit); the only
+conflicts were the two append-only docs (union, nothing dropped). Both
+lanes had bumped quilltap-core 0.0.292 → 0.0.293 IDENTICALLY (the silent
+collision the S4 recount rule exists for) — recounted to **0.0.294** in the
+wires commit + lock sync. Final versions: core **0.0.294**, harness
+**0.0.254**, host **0.0.27**, web 0.0.36 (unchanged), quilltap-tauri 0.0.4
+(unchanged), SPA **0.5.240**.
+
+**What landed** (details in the two lane records above):
+
+- **Lane BF (P4.6bf, CLOSED):** `impl blob_transcode::WebpTranscoder for
+  HostImageCodec`; the S1 `EngineAssembly.blob_webp` field (production
+  host passes the live codec; `ReadyEngine.blob_webp` deliberately
+  `#[allow(dead_code)]` until the call-site wire); the
+  `HostAvatarPreviewRenderer` — **`avatar_preview` is LIVE in the
+  production host and the wardrobe out-of-chat Preview button now costs
+  real money** (one image-provider call per click on a keyed profile);
+  the wardrobe-routes family re-verified over a fresh `7e6d13e5` oracle;
+  the ST placeholder-DEFLATE seam DEFERRED with the empirical
+  parity finding banked (flate2 default = near-miss; flate2/zlib C
+  backend = byte-identical; recipe: a HOST seam, never the core default);
+  two e2e beats (Preview no-API-key arm ACTIVE at zero spend; the
+  scriptorium WebP beat probe-gated).
+- **Lane BG (P4.6bg, unit 1 of 6):** the path-resolver host-filesystem
+  branches (general / fs-mount / legacy-project-fallback; `safe_realpath`
+  walk-up + `verify_path_is_within_base`, byte-exact codes/messages)
+  behind the S2 `files_dir: Option<&Path>` thread — **every call site
+  passes `None`, so production behavior is byte-identical pre/post**; the
+  `doc_edit_path_resolver_equivalence` fs extension (10 new cases over
+  the canonical-scratch `__ROOT__` sentinel recipe). Units 3–6 stay OPEN
+  (tool-site fs I/O; fm/ui/text fs differentials; the engine `files_dir`
+  wire + the `workspace-document-standalone-flow` beat flip; conversion +
+  the S1 handler re-signature). The unit-1 record flags a pre-existing
+  P4.d7 dup-name divergence (v4 `findByName` counts overlaid names, v5
+  reads the raw column) — a follow-up outside this round.
+
+**The unification wires:** the core version recount (the one code
+change). **The round's single code AT-UNIFY item (the engine.rs call-site
+wire passing `blob_webp` into the `store_mount_file` handlers) was NOT
+performable** — it needs BG's unit-6 handler re-signature, still OPEN —
+so it is INHERITED by P4.6bg unit 6 (recorded in both order headers):
+when the handlers take `webp: Option<Arc<dyn WebpTranscoder>>`, wire the
+engine call sites, drop the `#[allow(dead_code)]`, and the probe-gated
+scriptorium WebP beat self-activates. The S3 engine.rs region split held
+perfectly: BF touched only the assembly/ReadyEngine regions; BG touched
+engine.rs not at all.
+
+**The gate (this Mac, authoritative):**
+
+- `cargo fmt --all --check` clean; clippy BOTH feature sets `-D warnings`
+  clean; release build clean.
+- Oracles regenerated FRESH from the clean v4 checkout at `7e6d13e5`:
+  the DPR family (fixture builder + case, 31 rows) and the
+  wardrobe-routes family (jest /tmp mirror, 73 rows).
+- `cargo test --workspace` with both env-var families set: **359 test
+  binaries / 1,470 tests / 0 failed** (baseline 359/1,459; +11 = BF's 7
+  codec/renderer tests + BG's resolver units). The two round
+  differentials re-run BY NAME with `--nocapture`, zero SKIP:
+  `doc_edit_path_resolver_matches_oracle` (25 resolve + 6 uri),
+  `wardrobe_routes_equivalence` (74 checks / 66 cases).
+- `ng test` **201 files / 2,439 specs / 0 failed** (identical to
+  baseline — no SPA component changed); `ng build` clean.
+- Full Playwright (fresh dist, alone on the port): **108 passed / 1
+  skipped / 0 failed** (the suite grew 107 → 109 with BF's two beats) —
+  the wardrobe Preview beat ACTIVE (green in the run); the ONE skip is
+  the scriptorium WebP beat, SKIPPED BY DESIGN (probe-gated on the
+  inherited P4.6bg unit-6 wire).
+
+**Standing after this round (the loud list):** `avatar_preview` LIVE
+(real spend — dogfood the live render with a keyed profile);
+the blob_webp dispatch wire + scriptorium beat ride P4.6bg unit 6; the
+ST DEFLATE recipe banked; `DocumentTextExtractor` stays the named
+exclusion; the P4.6bg resume list is in its order header; the P4.d7
+dup-name follow-up is spawned.
