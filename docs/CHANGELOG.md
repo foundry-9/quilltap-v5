@@ -98,6 +98,12 @@ flag is a vault file, not a column) and no create-side change (v4's
 character create is unchanged). Verified against v4 8bf3cb5f with tier-1
 parse, character route (create/update/read), and the properties.json
 byte-level write differentials.
+P4.6bi (round 1 / lane 3), unit 1 — the character `canChooseOutfit`
+Wardrobe-tab checkbox (v4 8bf3cb5f). A shared "Let this character choose
+their opening outfit" card now rides both the character edit and detail
+Wardrobe tabs; toggling it PUTs `{ canChooseOutfit }` and re-fetches the
+character. The character list/detail contract types gain the optional
+`canChooseOutfit` field.
 
 Planned the episodic-recall drift catch-up — a 3-round campaign against
 v4's largest single drift (8bf3cb5f, a squash-merge of three feature

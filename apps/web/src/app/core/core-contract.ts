@@ -2030,6 +2030,13 @@ export interface CharacterListItem {
   defaultSystemPromptId: string | null;
   defaultImageProfileId: string | null;
   npc: boolean;
+  /**
+   * v4 `8bf3cb5f`: when true, a new chat with this character defaults its
+   * Starting Outfit to "Let character choose". Vault `properties.json`-backed;
+   * the response never sends null (default `false`), but the field stays
+   * optional in TS so pre-server-lane responses read defensively (`?? false`).
+   */
+  canChooseOutfit?: boolean;
   createdAt: string;
   tags: string[];
   updatedAt: string;
@@ -2070,6 +2077,12 @@ export interface CharacterDetail {
   defaultHelpToolsEnabled: boolean | null;
   canDressThemselves: boolean | null;
   canCreateOutfits: boolean | null;
+  /**
+   * v4 `8bf3cb5f`: the vault `properties.json` "let this character choose their
+   * opening outfit" flag. Response never sends null (default `false`); optional
+   * in TS so pre-server-lane responses read defensively (`?? false`).
+   */
+  canChooseOutfit?: boolean;
   defaultTimestampConfig: TimestampConfig | null;
   defaultScenarioId: string | null;
   defaultSystemPromptId: string | null;

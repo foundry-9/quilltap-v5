@@ -26722,3 +26722,31 @@ this lane carries NO real-instance / episodic-behavior proof (rounds
 instances remain index-free (`idx_memories_occurredAt` is
 migration-created in v4 and v5's migration runner stays deferred —
 migrated fixtures DO carry it).
+---
+
+### P4.6bi — the character-outfit SPA + the New-Chat picker re-port (episodic-recall drift round 1 / lane 3) — SPA-only, v4 refs `8bf3cb5f` (outfit) + `e2eb3d21` (picker)
+
+Lane branch `claude/p4-6bi-outfit-newchat-spa-3f37b9`. SPA-only (`apps/web`),
+no Rust, no oracle regen. Consumes P4.6bh's `canChooseOutfit` character
+contract (name-level; binding both ways). Drift-checked at lane start:
+`git log 8bf3cb5f..HEAD` in `~/source/quilltap-server` empty — HEAD == the
+round baseline, clean tree.
+
+**Unit 1 — the `canChooseOutfit` Wardrobe-tab checkbox (edit + detail).**
+v4 `8bf3cb5f` renders an identical "Let this character choose their opening
+outfit" block in both `CharacterEditView.tsx` and `CharacterDetailView.tsx`
+(vault `properties.json` flag; immediate PUT; edit re-fetches on failure,
+detail is optimistic + toast). v5 collapses both into one reusable
+`qt-character-choose-outfit-card` (`screens/characters/choose-outfit-card.ts`)
+following the v5 house save idiom (`defaults-tab.ts` `save()`): dispatch
+`characterUpdate` with `{ canChooseOutfit }`, then invalidate the
+character-detail query so the refetched value drives the checkbox; a failed
+save surfaces inline (no v5 toast analogue here). The card is embedded in the
+detail Wardrobe tab (`view/tabs/wardrobe-tab.ts`, now taking a
+`canChooseOutfit` input wired from `character.canChooseOutfit ?? false`) and
+the edit Wardrobe case (`edit/character-edit.ts`). Contract: `CharacterListItem`
+and `CharacterDetail` gain optional `canChooseOutfit?: boolean` (response never
+sends null — default `false` — but optional in TS so pre-server-lane responses
+read defensively). Verify: `choose-outfit-card.spec.ts` (5 cases: reflects the
+input, disabled while loading, PUTs on toggle, inline error) + `wardrobe-tab.spec.ts`
+(checkbox reflects input) green; detail + edit screen specs green (20).

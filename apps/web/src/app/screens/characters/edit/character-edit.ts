@@ -19,6 +19,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters.api';
+import { CharacterChooseOutfitCard } from '../choose-outfit-card';
 import { WardrobeDialogService } from '../../../wardrobe/wardrobe-dialog.service';
 import { CharacterDeleteDialog, type DeleteChoice } from '../list/character-delete-dialog';
 import { CharacterAppearanceTab } from './appearance-tab';
@@ -68,6 +69,7 @@ const EDIT_TABS: Tab[] = [
     CharacterAppearanceTab,
     AvatarPickerModal,
     CharacterDeleteDialog,
+    CharacterChooseOutfitCard,
   ],
   template: `
     <div class="character-edit qt-page-container text-foreground">
@@ -148,13 +150,18 @@ const EDIT_TABS: Tab[] = [
                   />
                 }
                 @case ('wardrobe') {
-                  <!-- v4 CharacterEditView.tsx:314-331 — prose + the dialog opener. -->
-                  <div class="space-y-2">
+                  <!-- v4 CharacterEditView.tsx (8bf3cb5f) — prose, the canChooseOutfit
+                       checkbox card, and the dialog opener. -->
+                  <div class="space-y-4">
                     <p class="qt-text-small qt-text-secondary">
                       The wardrobe is managed in the global Wardrobe dialog so you can drop in from
                       anywhere — including from inside a chat — and edit, layer, or save outfits
                       without leaving the page you're on.
                     </p>
+                    <qt-character-choose-outfit-card
+                      [characterId]="characterId()"
+                      [canChooseOutfit]="character()?.canChooseOutfit ?? false"
+                    />
                     <button
                       type="button"
                       class="qt-button-primary"

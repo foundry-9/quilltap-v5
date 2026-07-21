@@ -1,14 +1,30 @@
 import { TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
+import { CoreClient } from '../../../../core/core-client';
 import { WardrobeDialogService } from '../../../../wardrobe/wardrobe-dialog.service';
 import { CharacterWardrobeTab } from './wardrobe-tab';
 
-describe('CharacterWardrobeTab (v4 CharacterDetailView.tsx:218-235)', () => {
+// The embedded qt-character-choose-outfit-card injects CoreClient + the query
+// client; provide stubs so the tab renders.
+const stubCore = { dispatchData: async () => ({}) } as unknown as CoreClient;
+
+describe('CharacterWardrobeTab (v4 CharacterDetailView.tsx 8bf3cb5f)', () => {
+  function render() {
+    TestBed.configureTestingModule({
+      imports: [CharacterWardrobeTab],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubCore },
+      ],
+    });
+    return TestBed.createComponent(CharacterWardrobeTab);
+  }
+
   it('the button is ENABLED and opens the global dialog with {characterId} (v4 :229)', () => {
-    TestBed.configureTestingModule({ imports: [CharacterWardrobeTab] });
+    const fixture = render();
     const service = TestBed.inject(WardrobeDialogService);
-    const fixture = TestBed.createComponent(CharacterWardrobeTab);
     fixture.componentRef.setInput('characterId', 'c1');
     fixture.componentRef.setInput('characterName', 'Aria');
     fixture.detectChanges();
@@ -25,5 +41,19 @@ describe('CharacterWardrobeTab (v4 CharacterDetailView.tsx:218-235)', () => {
     button.click();
     expect(service.isOpen()).toBe(true);
     expect(service.context()).toEqual({ characterId: 'c1' });
+  });
+
+  it('renders the canChooseOutfit checkbox reflecting the input (v4 8bf3cb5f)', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('characterId', 'c1');
+    fixture.componentRef.setInput('characterName', 'Aria');
+    fixture.componentRef.setInput('canChooseOutfit', true);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    const cb = el.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(cb).not.toBeNull();
+    expect(cb.checked).toBe(true);
+    expect(el.textContent).toContain('Let this character choose their opening outfit');
   });
 });
