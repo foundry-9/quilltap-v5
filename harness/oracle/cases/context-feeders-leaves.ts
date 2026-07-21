@@ -152,13 +152,35 @@ const corePackets: Array<{ id: string; packet: CorePacket }> = [
 ];
 
 // ---- recap: renderRelevantConversationsBlock ----
-const relevantBlockCases: Array<{ id: string; matches: Array<{ conversationId: string; conversationTitle: string; relativePath: string; score: number }> }> = [
+const relevantBlockCases: Array<{ id: string; matches: Array<{ conversationId: string; conversationTitle: string; relativePath: string; score: number; firstMessageAt?: string | null; lastMessageAt?: string | null }> }> = [
   { id: 'empty', matches: [] },
   {
     id: 'two-entries',
     matches: [
       { conversationId: 'cid-1', conversationTitle: 'A Talk', relativePath: 'x', score: 0.9 },
       { conversationId: 'cid-2', conversationTitle: 'Another', relativePath: 'y', score: 0.8 },
+    ],
+  },
+  // Episodic recall (P4.d13): the date parenthetical from firstMessageAt.
+  {
+    id: 'dated-and-undated',
+    matches: [
+      {
+        conversationId: 'cid-3',
+        conversationTitle: 'The Harbor Visit',
+        relativePath: 'z',
+        score: 0.9,
+        firstMessageAt: '2026-07-14T10:00:00.000Z',
+        lastMessageAt: '2026-07-14T12:00:00.000Z',
+      },
+      {
+        conversationId: 'cid-4',
+        conversationTitle: 'Undated',
+        relativePath: 'w',
+        score: 0.5,
+        firstMessageAt: null,
+        lastMessageAt: null,
+      },
     ],
   },
 ];

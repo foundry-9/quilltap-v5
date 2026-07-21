@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.d13 unit 4: vault conversation-summary dates (v4 8bf3cb5f) — the
+searchVaultConversationSummaries timeRange option (readCap
+max(limit*3, 15), the firstMessageAt/lastMessageAt frontmatter reads
+with finite-Date.parse validation, the overlapsWindow span check with
+span-end falling back to start, the two-stage filter -> x1.3
+CONVERSATION_WINDOW_BOOST fallback), the dated fields + score +
+relativePath on VaultConversationMatch, and the (YYYY-MM-DD) date
+parenthetical in the Relevant Past Conversations renderer. No round-2
+production caller passes a window (the round-3 mini-recap is the
+consumer) - both call sites pass None. The context-feeders-leaves
+differential now drives the REAL renderer (previously mirrored inline)
+and gains the dated/undated arm (32 rows, regenerated at 8bf3cb5f);
+the timeRange staging differential rides the episodic-recall fixture
+landing with unit 7. quilltap-core 0.0.309, quilltap-harness 0.0.266.
+
 P4.d13 unit 3: search_memories_semantic learns time + entities (v4
 8bf3cb5f) and CLOSES the long-tracked recallContext deferral: the
 targeting-tag multiplier loop now runs inside the search (recallAdjustment

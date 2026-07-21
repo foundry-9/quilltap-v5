@@ -27095,3 +27095,34 @@ blendedBefore/multiplier/fired/blendedAfter/selected for every candidate
 on both paths over the episodic fixture — every branch above lands in
 those tables). No standalone family was forced. The recall-tags unit-2
 differential already pins the multiplier math itself.
+
+## P4.d13 unit 4 — vault conversation-summary dates
+
+**What landed:** `services/memory_recap/mod.rs` —
+`search_vault_conversation_summaries` gains `time_range:
+Option<&TimeWindow>` (v4's `options.timeRange`): `readCap =
+max(limit*3, 15)` when windowed (else `limit`), the
+`firstMessageAt`/`lastMessageAt` frontmatter reads (`tsField`: string +
+finite `Date.parse`, else null), `overlapsWindow` (start required
+finite; span-end falls back to start; inclusive overlap), and the
+two-stage staging (window hits ≥ limit → hard slice; else ×1.3
+`CONVERSATION_WINDOW_BOOST` on hits + stable score-desc sort + slice;
+unparsable/inverted window falls through to the plain slice).
+`VaultConversationMatch` now carries v4's full shape
+(relative_path/score/first_message_at/last_message_at, all pub — the
+struct + search fn + renderer are `pub` so the harness can drive them).
+`render_relevant_conversations_block` prints the ` (YYYY-MM-DD)`
+parenthetical from `firstMessageAt` (truthy gate). **LOUD: round 2 has
+no production caller passing `time_range`** — both call sites
+(`build_conversation_recall_lists`, the commonplace fold-refresh) pass
+`None`; the wire arrives with round 3's mini-recap.
+
+**Differential:** `context-feeders-leaves` (QT_ORACLE_CONTEXT_FEEDERS_LEAVES)
+regenerated at `8bf3cb5f` — 32 rows (the new `dated-and-undated` arm),
+and the Rust side now calls the REAL `render_relevant_conversations_block`
+(it previously mirrored the format string inline — strengthened while
+extending). **The timeRange-staging differential (v4's real
+`searchVaultConversationSummaries` over dated vault summaries) rides the
+episodic-recall fixture family landing with unit 7** — recorded here so
+the unit is not silently accepted without it; unit 7's record must show
+it green.

@@ -223,21 +223,42 @@ fn core_packet_case(id: &str) -> CorePacket {
 }
 
 fn relevant_block_case(id: &str) -> String {
-    // renderRelevantConversationsBlock over the oracle's matches.
-    let matches: Vec<(&str, &str)> = match id {
+    // The REAL renderer over the oracle's matches (P4.d13 made it pub —
+    // previously this test mirrored the two-line format string inline).
+    use quilltap_core::services::memory_recap::{
+        render_relevant_conversations_block, VaultConversationMatch,
+    };
+    let mk =
+        |cid: &str, title: &str, rel: &str, score: f64, first: Option<&str>, last: Option<&str>| {
+            VaultConversationMatch {
+                conversation_id: cid.to_string(),
+                conversation_title: title.to_string(),
+                relative_path: rel.to_string(),
+                score,
+                first_message_at: first.map(str::to_string),
+                last_message_at: last.map(str::to_string),
+            }
+        };
+    let matches: Vec<VaultConversationMatch> = match id {
         "empty" => vec![],
-        "two-entries" => vec![("cid-1", "A Talk"), ("cid-2", "Another")],
+        "two-entries" => vec![
+            mk("cid-1", "A Talk", "x", 0.9, None, None),
+            mk("cid-2", "Another", "y", 0.8, None, None),
+        ],
+        "dated-and-undated" => vec![
+            mk(
+                "cid-3",
+                "The Harbor Visit",
+                "z",
+                0.9,
+                Some("2026-07-14T10:00:00.000Z"),
+                Some("2026-07-14T12:00:00.000Z"),
+            ),
+            mk("cid-4", "Undated", "w", 0.5, None, None),
+        ],
         other => panic!("unknown relevant_block case {other}"),
     };
-    if matches.is_empty() {
-        return String::new();
-    }
-    let entries = matches
-        .iter()
-        .map(|(cid, title)| format!("#### {title} (`{cid}`)"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("### Relevant Past Conversations\n\n{entries}")
+    render_relevant_conversations_block(&matches)
 }
 
 fn suparna_case(id: &str) -> String {

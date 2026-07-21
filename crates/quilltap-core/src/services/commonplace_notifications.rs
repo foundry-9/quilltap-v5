@@ -373,6 +373,9 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
             input.embedding_profile_id.as_deref(),
             limit.max(0) as usize,
             Some(&input.chat_id),
+            // Round 2 has no production caller passing a time window (the
+            // round-3 mini-recap is the consumer).
+            None,
         )
         .await;
         if matches.is_empty() {

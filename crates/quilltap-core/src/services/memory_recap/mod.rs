@@ -80,22 +80,47 @@ pub(crate) fn ramp_limit(
 }
 
 /// A past conversation surfaced by the vault-summary search (v4
-/// `VaultConversationMatch`).
-#[derive(Clone, Debug)]
-pub(crate) struct VaultConversationMatch {
-    conversation_id: String,
-    conversation_title: String,
+/// `VaultConversationMatch`). Public since P4.d13 so the harness can drive the
+/// search directly.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VaultConversationMatch {
+    pub conversation_id: String,
+    pub conversation_title: String,
+    /// Vault-relative path of the summary file the match came from.
+    pub relative_path: String,
+    /// Best cosine score among this conversation's chunks (post window boost).
+    pub score: f64,
+    /// ISO timestamp of the conversation's first message (frontmatter), when
+    /// recorded AND finite under `Date.parse`.
+    pub first_message_at: Option<String>,
+    /// ISO timestamp of the conversation's last message (frontmatter).
+    pub last_message_at: Option<String>,
 }
 
 /// v4 `renderRelevantConversationsBlock` — the `### Relevant Past Conversations`
-/// block (entries only, no call note). `''` for an empty list.
-pub(crate) fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -> String {
+/// block (entries only, no call note). `''` for an empty list. Episodic recall:
+/// prints the conversation's date so "last week" becomes confirmable — the
+/// frontmatter finally gets read.
+pub fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -> String {
     if matches.is_empty() {
         return String::new();
     }
     let entries = matches
         .iter()
-        .map(|m| format!("#### {} (`{}`)", m.conversation_title, m.conversation_id))
+        .map(|m| {
+            let date = match &m.first_message_at {
+                // v4 `m.firstMessageAt ? \` (${m.firstMessageAt.slice(0, 10)})\` : ''`
+                // — truthy gate, so an empty string renders no parenthetical.
+                Some(iso) if !iso.is_empty() => {
+                    format!(" ({})", crate::jsstr::utf16_truncate(iso, 10))
+                }
+                _ => String::new(),
+            };
+            format!(
+                "#### {}{} (`{}`)",
+                m.conversation_title, date, m.conversation_id
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     format!("### Relevant Past Conversations\n\n{entries}")
@@ -118,9 +143,14 @@ fn truncate_gist(text: &str, max_chars: usize) -> String {
 
 /// v4 `searchVaultConversationSummaries`: semantically search a character's vault
 /// conversation summaries. Degrades gracefully to `[]` on any failure (no vault,
-/// dead embedding provider, unreadable files).
+/// dead embedding provider, unreadable files). `time_range` (episodic recall):
+/// prefer conversations whose `[firstMessageAt, lastMessageAt]` span overlaps the
+/// window — two-stage with the same fallback the memory path uses (filter first;
+/// when fewer than `limit` overlap, fall back to the full pool with window hits
+/// boosted ×1.3 instead — never fewer results than an unwindowed search).
+/// Public since P4.d13 so the harness can drive it directly.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
+pub async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
     character_id: &str,
@@ -130,6 +160,7 @@ pub(crate) async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
     embedding_profile_id: Option<&str>,
     limit: usize,
     exclude_conversation_id: Option<&str>,
+    time_range: Option<&crate::recall_tags::TimeWindow>,
 ) -> Vec<VaultConversationMatch> {
     if limit == 0 {
         return Vec::new();
@@ -216,10 +247,18 @@ pub(crate) async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
     // V8; `sort_by` is stable in Rust).
     best_by_path.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Read frontmatter per surviving file to recover the conversationId.
+    // Read frontmatter per surviving file to recover the conversationId (the
+    // filename is derived from the title, not the id) and the message-span
+    // timestamps. With a timeRange in play, read past `limit` so the window
+    // staging below has a pool to choose from.
+    let read_cap = if time_range.is_some() {
+        std::cmp::max(limit * 3, 15)
+    } else {
+        limit
+    };
     let mut matches: Vec<VaultConversationMatch> = Vec::new();
-    for (relative_path, _score) in best_by_path {
-        if matches.len() >= limit {
+    for (relative_path, score) in best_by_path {
+        if matches.len() >= read_cap {
             break;
         }
         // Read via a closure that maps the store error into `Option` so the
@@ -263,12 +302,91 @@ pub(crate) async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
         } else {
             "Untitled conversation".to_string()
         };
+        // v4 `tsField(key)`: a string that parses finite under `Date.parse`,
+        // else null.
+        let ts_field = |key: &str| -> Option<String> {
+            data.get(key)
+                .and_then(Value::as_str)
+                .filter(|v| crate::episodic::event_time_ms(Some(v)).is_some())
+                .map(str::to_string)
+        };
         matches.push(VaultConversationMatch {
             conversation_id,
             conversation_title,
+            relative_path: relative_path.clone(),
+            score,
+            first_message_at: ts_field("firstMessageAt"),
+            last_message_at: ts_field("lastMessageAt"),
         });
     }
     let _ = character_id; // (logging-only in v4)
+
+    // Window staging: filter-first with boost fallback (mirrors the memory
+    // path's two-stage rule — never fewer results than an unwindowed search).
+    if let Some(window) = time_range {
+        if let (Some(from), Some(to)) = (
+            crate::episodic::event_time_ms(Some(&window.from)),
+            crate::episodic::event_time_ms(Some(&window.to)),
+        ) {
+            if from <= to {
+                let overlaps_window = |m: &VaultConversationMatch| -> bool {
+                    // v4: `start = m.firstMessageAt ? Date.parse(...) : NaN`
+                    // (truthy gate — tsField already guarantees finite when
+                    // present); `end = m.lastMessageAt ? Date.parse(...) : start`.
+                    let start = match m
+                        .first_message_at
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .and_then(|s| crate::episodic::event_time_ms(Some(s)))
+                    {
+                        Some(t) => t,
+                        None => return false,
+                    };
+                    let span_end = m
+                        .last_message_at
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .and_then(|s| crate::episodic::event_time_ms(Some(s)))
+                        .unwrap_or(start);
+                    start <= to && span_end >= from
+                };
+                let window_hits: Vec<VaultConversationMatch> = matches
+                    .iter()
+                    .filter(|m| overlaps_window(m))
+                    .cloned()
+                    .collect();
+                if window_hits.len() >= limit {
+                    let mut hits = window_hits;
+                    hits.truncate(limit);
+                    return hits;
+                }
+                const CONVERSATION_WINDOW_BOOST: f64 = 1.3;
+                let mut boosted: Vec<VaultConversationMatch> = matches
+                    .into_iter()
+                    .map(|m| {
+                        if overlaps_window(&m) {
+                            VaultConversationMatch {
+                                score: m.score * CONVERSATION_WINDOW_BOOST,
+                                ..m
+                            }
+                        } else {
+                            m
+                        }
+                    })
+                    .collect();
+                // Stable sort by score desc (V8 sort is stable).
+                boosted.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                boosted.truncate(limit);
+                return boosted;
+            }
+        }
+    }
+
+    matches.truncate(limit);
     matches
 }
 
@@ -318,6 +436,9 @@ async fn build_conversation_recall_lists<E: EmbeddingProvider>(
             embedding_profile_id,
             relevant_limit as usize,
             current_chat_id,
+            // Round 2 has no production caller passing a time window (the
+            // round-3 mini-recap is the consumer).
+            None,
         )
         .await;
     }
@@ -621,16 +742,37 @@ mod tests {
         assert_eq!(out, format!("{}…", "a".repeat(279)));
     }
 
+    fn mk_match(cid: &str, title: &str, first: Option<&str>) -> VaultConversationMatch {
+        VaultConversationMatch {
+            conversation_id: cid.to_string(),
+            conversation_title: title.to_string(),
+            relative_path: "Conversation Summaries/x.md".to_string(),
+            score: 0.9,
+            first_message_at: first.map(str::to_string),
+            last_message_at: None,
+        }
+    }
+
     #[test]
     fn render_relevant_block_empty_and_nonempty() {
         assert_eq!(render_relevant_conversations_block(&[]), "");
-        let m = vec![VaultConversationMatch {
-            conversation_id: "cid-1".to_string(),
-            conversation_title: "A Talk".to_string(),
-        }];
+        let m = vec![mk_match("cid-1", "A Talk", None)];
         assert_eq!(
             render_relevant_conversations_block(&m),
             "### Relevant Past Conversations\n\n#### A Talk (`cid-1`)"
+        );
+    }
+
+    #[test]
+    fn render_relevant_block_prints_frontmatter_date() {
+        let m = vec![mk_match(
+            "cid-3",
+            "The Harbor Visit",
+            Some("2026-07-14T10:00:00.000Z"),
+        )];
+        assert_eq!(
+            render_relevant_conversations_block(&m),
+            "### Relevant Past Conversations\n\n#### The Harbor Visit (2026-07-14) (`cid-3`)"
         );
     }
 }
