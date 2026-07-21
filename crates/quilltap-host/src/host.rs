@@ -591,19 +591,28 @@ impl EngineAssembler for HostAssembler {
             // not-assembled error; the in-turn tool path stays fail-soft. ===
             consult,
             // === end P4.6bd ===
-            // === P4.9f1: the avatar-preview render seam — the SINGLE sanctioned
-            // quilltap-host line this lane touches (the order's named exception;
-            // P4.6bd owns this file this round). `None` = the render step
-            // answers the loud not-assembled refusal; the LIVE wire (a raw
-            // portrait render + WebP transcode over the W4.7f Real*Providers)
-            // is DEFERRED TO UNIFICATION — see the P4.9f1 lane record. ===
-            avatar_preview: None,
-            // === end P4.9f1 ===
+            // === P4.9f1 / P4.6bf: the avatar-preview render seam, wired LIVE.
+            // The render step now runs a raw portrait generation + WebP transcode
+            // over the W4.7f RealImageProvider (rebuilt per request) + the
+            // HostImageCodec — so the wardrobe dialog's out-of-chat Preview
+            // button costs real money (one image-provider call per click).
+            // Spine-less assemblies would keep `None`; the production Host always
+            // has the codec, so the renderer is unconditional here. ===
+            avatar_preview: Some(quilltap_core::api::wardrobe::ErasedAvatarPreview::new(
+                crate::avatar_preview::HostAvatarPreviewRenderer,
+            )),
+            // === end P4.9f1 / P4.6bf ===
             // === P4.9I1A: the Brahma Console orchestrator send driver, wired LIVE
             // from the spine (streaming + tool runner + pricing). Spine-less
             // assemblies keep `None` → the arm answers "not assembled". ===
             brahma_console_send,
             // === end P4.9I1A ===
+            // === P4.6bf (S1): the dispatch-layer blob-WebP transcoder — the live
+            // production codec. The AT-UNIFY wire threads this into lane BG's
+            // re-signatured `store_mount_file` handlers; until then it is carried
+            // but unread (behavior unchanged: the handlers still refuse). ===
+            blob_webp: Some(std::sync::Arc::new(crate::image_codec::HostImageCodec)),
+            // === end P4.6bf ===
         })
     }
 }

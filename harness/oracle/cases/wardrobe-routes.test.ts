@@ -28,14 +28,16 @@
  * Chained rows: a case with `thenOutfit` emits a second `${name}__outfit` row
  * (the same DB copy) — that is what pins PERSISTENCE, not just the response.
  *
- * Run (Node 24 — from the PINNED v4 worktree at 616930db; cp to a /tmp mirror
- * because jest ignores .claude/ paths):
+ * Run (Node 24 — baseline v4 `7e6d13e5`; regenerated directly from
+ * ~/source/quilltap-server while it is clean at HEAD, else from a pinned
+ * detached worktree at the baseline; cp to a /tmp mirror because jest ignores
+ * .claude/ paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-wroutes-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/wardrobe-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/wardrobe-routes.json" "$TMPO/fixtures/"
- *   cd /private/tmp/qt-v4-pin-616930db
+ *   cd ~/source/quilltap-server   # (or the pinned worktree if v4 has drifted)
  *   QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db \
  *   QT_FIXTURE_WROUTES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-wardrobe-routes.ndjson \

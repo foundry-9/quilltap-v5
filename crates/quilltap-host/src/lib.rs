@@ -32,6 +32,7 @@
 //! the **production `SelfInventoryEnv`** + runtime-mode probes ([`env`])).
 
 pub mod apply_fs;
+pub mod avatar_preview;
 pub mod env;
 pub mod files_store;
 pub mod host;
@@ -45,6 +46,7 @@ pub mod terminal;
 pub mod wire;
 
 pub use apply_fs::ApplyFsOps;
+pub use avatar_preview::HostAvatarPreviewRenderer;
 pub use files_store::LocalStorageBackend;
 pub use host::{Host, HostConfig};
 pub use image_codec::HostImageCodec;

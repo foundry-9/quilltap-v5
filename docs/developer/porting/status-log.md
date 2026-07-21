@@ -25721,3 +25721,197 @@ text lands in tier-2-diffed DB rows and pdf-parse/mammoth output is not
 reproducible in Rust; needs its own divergence-management design), the
 chokidar-equivalent watcher (host cadence), `filesSync`/cleanup-stale,
 the `quilltap docs` CLI, AVIF/HEIC decode.
+
+### Lane BF (P4.6bf) — the codec wire — IN PROGRESS
+
+Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
+(drift-clean at lane start: `git log 7e6d13e5..HEAD` empty, tree clean).
+
+- **Unit 1 — `impl blob_transcode::WebpTranscoder for HostImageCodec`
+  (quilltap-host 0.0.24 → 0.0.25).** The Scriptorium blob-upload pixel seam
+  (`services::mount_index::blob_transcode::WebpTranscoder`, trait FROZEN — its
+  method is `encode_webp(&self, bytes, quality: u8) -> Result<Vec<u8>, String>`)
+  now has a live production impl on `HostImageCodec`: decode via `image`, lossy
+  encode via `webp` (libwebp) at the given quality, reusing the module's
+  existing `decode` + `encode_webp_image` helpers. v4's `blob-transcode.ts:62`
+  `effort: 4` is a libwebp encoder-cost knob with no policy surface (the `webp`
+  crate's simple encoder does not expose it) — dropped with a comment, exactly
+  as the sibling `PixelCodec::encode_webp` `_effort` arg is. Undecodable input
+  is an `Err`, which the caller (`transcode_to_webp`) turns into v4's
+  store-original fallback arm. Unit test `blob_webp_transcoder_seam`: PNG/JPEG →
+  WebP with identical dims (D19: policy parity, never byte parity), undecodable
+  input errors, and the ported blob policy end-to-end (GIF → image/webp;
+  non-image mime passthrough). NOT yet wired into any assembly — that is unit 2
+  (the S1 `blob_webp` field). Naming: the impl imports the trait as
+  `BlobWebpTranscoder` because `image_codec.rs` already aliases
+  `model::image::ImageTranscoder` to `WebpTranscoder`.
+
+- **Unit 2 — the S1 `blob_webp` assembly seam (quilltap-core 0.0.292 → 0.0.293;
+  quilltap-host 0.0.25 → 0.0.26).** Added
+  `pub blob_webp: Option<Arc<dyn services::mount_index::blob_transcode::WebpTranscoder>>`
+  to `EngineAssembly` (P4.6bf region), defaulting `None` in `shutdown_only`,
+  threaded into `ReadyEngine` (marked `#[allow(dead_code)]` with a comment — it
+  is deliberately dead until the AT-UNIFY call-site wire reads it), and mapped
+  in the assembly→ReadyEngine construction. The production host `assemble()`
+  passes `Some(Arc::new(HostImageCodec))` (unit 1's live impl); every other
+  assembly stays `None`, so the two `store_mount_file` handlers keep their
+  inline `RefusingWebpTranscoder` and behavior is unchanged this lane. Field +
+  plumbing ONLY — the two `mount_files.rs` handlers are lane BG's (S1), and the
+  engine.rs dispatch-arm call sites that pass `blob_webp.clone()` into them are
+  the single AT-UNIFY item. Note: the two `crates/quilltap-web/tests/*` literals
+  the grep surfaced (`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) are
+  `SpineBundle`, not `EngineAssembly`, so they needed no change; the only full
+  `EngineAssembly` constructions are `host.rs` (production) and `shutdown_only`.
+
+- **Unit 3 — `HostAvatarPreviewRenderer` LIVE (quilltap-host 0.0.26 → 0.0.27).**
+  New `crates/quilltap-host/src/avatar_preview.rs` implements the FROZEN core
+  seam `AvatarPreviewRenderer`. The render step is a line-for-line port of v4
+  `app/api/v1/wardrobe/preview-avatar/route.ts`'s render half: build
+  `ImageGenParams { n:1, size:"1024x1792", quality, style:"natural" }`, call the
+  provider, `rawData = data || b64Json` (empty → `NoImageData`),
+  `providerMime = mime || "image/png"`, `ext = mime.split('/')[1] || "png"`,
+  `safeName = name.replace(/[^a-zA-Z0-9]/g,'_')`,
+  `avatar_preview_<safeName>_<now_ms>.<ext>`, then `convert_to_webp` over
+  `HostImageCodec` (the ported quality-90 policy — extension rewritten to
+  `.webp`). Composition is factored into `pub async fn render_over_provider<P:
+  ImageProvider>(provider, req, now_ms)` so the tests drive it deterministically.
+  Production `render()` rebuilds `RealImageProvider::new(ReqwestWireTransport)`
+  per request (the `HostImageGenerationRunner` idiom). Wired
+  `avatar_preview: Some(ErasedAvatarPreview::new(HostAvatarPreviewRenderer))` in
+  the production host `assemble()` — **the wardrobe out-of-chat Preview button
+  now costs real money (one image-provider call per click).** Added the `base64`
+  host dep (v4 `Buffer.from(rawData,'base64')`). Six tests: a PNG →
+  `image/webp` with the minted `avatar_preview_Aria_O_Malley_7_<ts>.webp`
+  filename (non-alphanumerics → underscores) + dims preserved + revised-prompt
+  passthrough; the `mime || image/png` default; empty-revised-prompt → None; both
+  `NoImageData` sub-arms (empty data, no images); the provider-throw → `Failed`
+  arm; and one test driving the REAL OpenAI dialect over a stubbed
+  `WireTransport` (the W4.7f stub-provider flavor — full build→parse→extract→
+  transcode path, only the socket canned). engine.rs unchanged this unit (the
+  fmt fix to unit 2's field wrap was folded back into unit 2).
+
+- **Tier 2 item 6 — the canned-renderer wardrobe differential (re-verified, no
+  code change).** The `wardrobe_routes_equivalence` canned-renderer arm
+  (`CannedRenderer` replaying the oracle's `pv_ok_bytes` post-transcode buffer)
+  already landed at P4.9f1 — this lane's `HostAvatarPreviewRenderer` is NOT the
+  one the differential drives (the model boundary stays canned; S5). Since the
+  renderer contract is frozen and this lane changed nothing in that family, tier
+  2's obligation was to prove it still passes at the moved baseline: regenerated
+  the oracle at v4 `7e6d13e5` (73 rows / 66 cases, directly from the clean v4
+  HEAD) and re-ran BY NAME — **74 checks green, zero SKIP** (`QT_ORACLE_WARDROBE_
+  ROUTES=/tmp/oracle-wardrobe-routes.ndjson cargo test -p quilltap-web --test
+  wardrobe_routes_equivalence`). That confirms the wardrobe route family is
+  behavior-neutral across the 616930db→7e6d13e5 gap. Updated the oracle's stale
+  regen-recipe comment (pin `616930db` → baseline `7e6d13e5`, regen from a clean
+  `~/source/quilltap-server`). No crate version bump (only an oracle `.test.ts`
+  comment changed).
+
+  Regen recipe (Node 24; jest ignores `.claude/` paths → /tmp mirror):
+  ```
+  N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+  TMPO=/tmp/qt-wroutes-oracle
+  rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp "$V5W/harness/oracle/cases/wardrobe-routes.test.ts" "$TMPO/cases/"
+  cp "$V5W/harness/oracle/fixtures/wardrobe-routes.json" "$TMPO/fixtures/"
+  cd ~/source/quilltap-server
+  QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db \
+  QT_FIXTURE_WROUTES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-wardrobe-routes.ndjson \
+    $N/npx jest --silent --watchman=false --testTimeout=240000 \
+      --roots "$PWD" --roots "$TMPO/cases" -- wardrobe-routes
+  ```
+
+- **Tier 2 item 7 — the ST placeholder-DEFLATE seam: DEFERRED, with the
+  empirical finding recorded (no code change to `services/sillytavern.rs`).**
+  The order gated this on `zlib.deflateSync` byte-parity. Empirical result over
+  the actual placeholder `raw` (a 256×256 solid-RGB PNG's filtered scanlines):
+  - Node `zlib.deflateSync` (level 6, memLevel 8, wbits 15) == Python
+    `zlib.compress(level 6)` == **704 bytes** (Node bundles stock madler zlib).
+  - `flate2` DEFAULT (miniz_oxide, pure Rust): 704 bytes but **DIFFERS at byte
+    12** — a NEAR-MISS (the order forbids shipping this).
+  - `flate2` with the `zlib` backend feature (vendored madler zlib C):
+    **byte-IDENTICAL** to Node.
+  So parity DOES hold — but ONLY via `flate2/zlib`, which links a C zlib into
+  whatever crate owns it. `sillytavern.rs` lives in `quilltap-core`, whose
+  default-build purity is a deliberate invariant (the reason the sqlite3mc C
+  compile is isolated in its own sys crate). Forcing a C zlib backend into the
+  pure core — or introducing a new `Deflater` host seam + threading it through
+  the ST PNG export path — is disproportionate for a placeholder whose IDAT is
+  **never asserted byte-exact by any differential** and whose decoded PIXELS are
+  already identical (the current `zlib_stored` emits valid stored-block zlib that
+  inflates to the same bytes). The parity is also a coincidence of the two sides'
+  current zlib versions (Node's bundled vs flate2's vendored), not a durable
+  invariant. Net: the only parity-holding path buys nothing verifiable and taxes
+  the core build; the cheap path (default backend) is a near-miss. DEFERRED. The
+  recipe for a future taker: `flate2 = { features = ["zlib"] }` as a HOST seam
+  (never the core default backend, which diverges), threaded like the image
+  codec.
+
+- **Unit 4 — two e2e beats (spec files only; SPA 0.5.239 → 0.5.240).**
+  - **(a) wardrobe out-of-chat Preview** (`wardrobe-flow.spec.ts`, its own port
+    4329): open Aria's wardrobe dialog → the Outfit Builder tab (default out of
+    chat) hosts the avatar-generation pane → the fixture's ONE image profile has
+    `apiKeyId=null` (verified via the CLI over the committed `characters-main.db`),
+    so the enabled Preview button reaches v4's PRE-provider
+    `badRequest('Selected image profile has no API key configured')`, surfaced in
+    the dialog's `.qt-alert-error` banner — **ZERO image-provider spend**. This is
+    the order's sanctioned fallback (deliverable 5a): a canned localhost provider
+    endpoint for one beat is disproportionate and the shared e2e instance has no
+    live image provider, so **the LIVE render walk is a DOGFOOD item, not an e2e
+    beat** — now that P4.6bf wired the renderer, a keyed profile makes Preview cost
+    real money (one generation per click); dogfood it against a real key.
+  - **(b) scriptorium blob → WebP** (`scriptorium-flow.spec.ts`, the shared
+    server): create a DB store → upload a real 1×1 PNG → the beat looks for the
+    stored row under `portrait.webp` (wired) vs `portrait.png` (refusing). It
+    ALWAYS cleans up (delete file + store) so a skip leaves the shared
+    mount-index clean, then **ACTIVATE-AT-UNIFY**: `test.skip` while the row is
+    still `portrait.png` (this lane — `blob_webp` is `None` AND BG's
+    `store_mount_file` still uses `RefusingWebpTranscoder`), self-activating once
+    the unifier wires `EngineAssembly.blob_webp` into BG's re-signatured handler
+    (then the row is `portrait.webp` and `webpCount === 1`, `pngCount === 0`).
+  Both specs typecheck (`playwright --list`) and `ng build` is clean (only the
+  pre-existing CommonJS bailout warnings). SPA `node_modules` was symlinked from
+  the main checkout to run the tooling (transient; never committed). **Ran in
+  isolation from the worktree's own binaries + fresh dist: `wardrobe-flow` 3/3
+  PASSED (the new Preview beat green in 448ms); `scriptorium-flow` 3 passed + the
+  new WebP beat correctly SKIPPED (ACTIVATE-AT-UNIFY — its cleanup-before-skip
+  left the shared mount-index clean, and the other three beats still pass).** The
+  full serialized suite is the unifier's gate (port-4319 contention with the
+  sibling BG lane); the two changed specs are proven here.
+
+**Lane BF close (P4.6bf) — the codec wire.** Branch
+`claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
+(drift-clean throughout). Commits: unit 1 (blob-transcode impl) → unit 2 (S1
+`blob_webp` seam) → unit 3 (`HostAvatarPreviewRenderer` LIVE) → tier-2 item 6
+(wardrobe-routes re-verify) → tier-2 item 7 (ST DEFLATE deferral) → unit 4 (two
+e2e beats). Versions: quilltap-core 0.0.292 → **0.0.293**, quilltap-host 0.0.24
+→ **0.0.27**, SPA 0.5.239 → **0.5.240** (e2e-spec bump only, per S4). Gate:
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets`
+clean on both the default AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` exit 0 (with `QT_ORACLE_WARDROBE_ROUTES` set —
+`wardrobe_routes_equivalence` ran, 74 checks / 0 SKIP, confirmed BY NAME with
+`--nocapture`); `ng build` clean; `wardrobe-flow` 3/3 + `scriptorium-flow` 3
+passed / 1 ACTIVATE-AT-UNIFY skip.
+
+**What landed vs what remains OPEN under P4.6bf:**
+- Tier 1: ALL landed (blob-transcode impl + tests; the S1 `blob_webp` field +
+  plumbing; the live `HostAvatarPreviewRenderer` + 6 host tests; both e2e beats).
+- Tier 2: item 6 (canned-renderer diff) re-verified green — it already existed
+  from P4.9f1, unchanged; item 7 (ST DEFLATE) DEFERRED with the empirical
+  finding (parity holds only via flate2's zlib C backend, which would tax the
+  pure core for a never-asserted placeholder — recipe banked).
+- Tier 3 deferrals stand (unchanged): AVIF/HEIC decode, animated WebP,
+  `DocumentTextExtractor`, auto-describe, `imageProfileValidateKey`/`ListModels`.
+- **`avatar_preview` is now LIVE** — the wardrobe out-of-chat Preview button
+  costs real money (one image-provider call per click). Flagged loudly.
+
+**AT-UNIFY items (the unifier's checklist):**
+
+| # | What | Where | Why it's AT-UNIFY |
+|---|------|-------|-------------------|
+| 1 | Pass `blob_webp.clone()` into BG's two re-signatured `store_mount_file` handlers | `crates/quilltap-core/src/api/engine.rs` — the two dispatch call sites of the `mount_files.rs` handlers containing the `:595`/`:725` sites | S1: BF added the field + `ReadyEngine` plumbing (`#[allow(dead_code)]` until read); BG re-signatures the handlers to take `webp: Option<Arc<dyn WebpTranscoder>>`. The unifier connects the two — after which `EngineAssembly.blob_webp`'s live `HostImageCodec` reaches the dispatch layer and the `#[allow(dead_code)]` on `ReadyEngine.blob_webp` should be removed. |
+| 2 | The scriptorium WebP e2e beat SELF-ACTIVATES | `apps/web/e2e/scriptorium-flow.spec.ts:127` | It probes the stored path: `portrait.png` (refusing) → skip; `portrait.webp` (wired) → assert. Once item 1 lands, the upload transcodes and the beat runs green. No edit needed — it flips itself. |
+
+Note: the S3 engine.rs REGION SPLIT held — BF touched only the `EngineAssembly`
+struct + `shutdown_only` + the `ReadyEngine` struct/mapping; BG owns the
+doc-verb dispatch call-site lines. No overlap with BG's regions.

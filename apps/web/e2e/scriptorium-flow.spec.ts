@@ -124,6 +124,74 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await deleteStoreFromList(page, storeName);
   });
 
+  test('database store: an image blob is transcoded to WebP on upload (ACTIVATE-AT-UNIFY, P4.6bf S1)', async ({
+    page,
+  }) => {
+    // window.confirm on the blob delete → auto-accept.
+    page.on('dialog', (d) => void d.accept());
+
+    const storeName = `E2E WebP Store ${Date.now()}`;
+    await gotoScriptorium(page);
+
+    await page.getByRole('button', { name: /Add.*Document Store/ }).first().click();
+    const createDialog = page.getByRole('dialog');
+    await expect(createDialog).toBeVisible();
+    await createDialog.getByLabel('Name').fill(storeName);
+    await createDialog.getByText('Database-backed — everything', { exact: false }).click();
+    await createDialog.getByRole('button', { name: 'Add Store' }).click();
+    await expect(createDialog).toBeHidden({ timeout: 15_000 });
+
+    const card = page.locator('qt-store-card', { hasText: storeName });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.getByRole('heading', { name: storeName }).click();
+    await expect(page.getByRole('heading', { name: 'Indexed Files' })).toBeVisible();
+
+    // Upload a real (1×1) PNG image. v4's blob-upload pipeline transcodes bitmap
+    // images to WebP (`transcodeToWebP`) and rewrites the stored relative path's
+    // extension to `.webp`. The DISPATCH layer only does this once BG's
+    // `store_mount_file` gains the `webp` param AND the unifier wires
+    // `EngineAssembly.blob_webp`; until then the inline `RefusingWebpTranscoder`
+    // takes v4's store-original fallback arm (the `.png` stays `.png`).
+    const PNG_1X1 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const fileInput = page.locator('input[type="file"]');
+    await expect(fileInput).toHaveCount(1);
+    await fileInput.setInputFiles({
+      name: 'portrait.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_1X1, 'base64'),
+    });
+
+    // The row lands under EITHER name depending on whether the wire is live.
+    const webpRow = page.locator('table tr', { hasText: 'portrait.webp' });
+    const pngRow = page.locator('table tr', { hasText: 'portrait.png' });
+    await expect(webpRow.or(pngRow).first()).toBeVisible({ timeout: 15_000 });
+    const webpCount = await webpRow.count();
+    const pngCount = await pngRow.count();
+    const transcoded = webpCount > 0;
+
+    // Always clean up (a skipped beat must leave the shared mount-index clean).
+    const rowText = transcoded ? 'portrait.webp' : 'portrait.png';
+    await page.locator('table tr', { hasText: rowText }).first().click();
+    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Delete' }).click();
+    await expect(page.locator('table tr', { hasText: rowText })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: 'Back to The Scriptorium' }).click();
+    await expect(page.getByRole('heading', { name: 'The Scriptorium' })).toBeVisible();
+    await deleteStoreFromList(page, storeName);
+
+    test.skip(
+      !transcoded,
+      "ACTIVATE-AT-UNIFY (P4.6bf S1): the dispatch-layer blob-WebP wire needs BG's store_mount_file webp param + the engine.rs blob_webp wire; until then image blobs store original bytes (portrait.png). Self-activates at unification.",
+    );
+
+    // Wired: the image blob was transcoded and its stored path rewritten to
+    // `.webp` (v4 `normaliseBlobRelativePath`).
+    expect(webpCount).toBe(1);
+    expect(pngCount).toBe(0);
+  });
+
   test('filesystem store: create on a temp dir, scan, and see the file indexed', async ({
     page,
   }) => {

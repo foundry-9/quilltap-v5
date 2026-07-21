@@ -2,6 +2,55 @@
 
 ## Recent Changes
 
+Codec round lane BF unit 4: two e2e beats (spec files only, SPA 0.5.239 →
+0.5.240). (a) A wardrobe out-of-chat Preview beat: with the fixture's one
+image profile (apiKeyId=null), clicking Preview reaches v4's pre-provider
+badRequest "Selected image profile has no API key configured" — proving the
+render seam is reached at ZERO image-provider spend. The LIVE render walk
+(now that P4.6bf wired the renderer, a keyed profile costs real money) is
+recorded as a DOGFOOD item, not an e2e beat (the shared instance has no live
+image provider; a canned localhost endpoint for one beat is disproportionate).
+(b) A scriptorium blob-upload beat: upload a PNG image, assert the stored path
+was rewritten to .webp — ACTIVATE-AT-UNIFY, probe-gated on the refusal arm
+(skips until BG's store_mount_file webp param + the engine.rs blob_webp wire
+land; the PNG stays .png until then).
+
+Codec round lane BF tier 2: re-verified the canned-renderer wardrobe-routes
+differential (`wardrobe_routes_equivalence`) — the arm already landed at
+P4.9f1. Regenerated its oracle at the current baseline 7e6d13e5 (73 rows / 66
+cases); the Rust diff is 74 checks green, zero SKIP — proving the wardrobe
+route family is behavior-neutral across the 616930db→7e6d13e5 gap. Updated the
+oracle's stale regen-recipe comment (pin 616930db → baseline 7e6d13e5,
+regenerated directly from a clean v4 HEAD).
+
+Codec round lane BF unit 3: the avatar-preview render seam is now LIVE. Added
+`HostAvatarPreviewRenderer` (quilltap-host) implementing the core's
+`AvatarPreviewRenderer` — one raw portrait provider call ({prompt, model, n:1,
+size:'1024x1792', quality, style:'natural'}) over the W4.7f RealImageProvider,
+base64-decode, then the ported convertToWebP policy over HostImageCodec, with
+the `avatar_preview_<safeName>_<Date.now()>.webp` filename. Wired
+`avatar_preview: Some(...)` in the production host assembly. **The wardrobe
+dialog's out-of-chat Preview button now costs real money** (one image
+generation per click). NoImageData / Failed / empty-revised-prompt arms are
+v4-faithful. Six host tests over a stubbed ImageProvider + the real OpenAI
+dialect over a stubbed wire. Added the `base64` host dep.
+
+Codec round lane BF unit 2 (S1): added the `EngineAssembly.blob_webp` field
+(`Option<Arc<dyn blob_transcode::WebpTranscoder>>`, default None; threaded
+through ReadyEngine). The production host assembly passes the live
+HostImageCodec; all other assemblies stay None (unchanged behavior — the
+`store_mount_file` handlers keep refusing). Field + plumbing only: the
+engine.rs call-site wire that hands this to lane BG's re-signatured handlers
+is the AT-UNIFY step, so the field is carried-but-unread until then.
+
+Codec round lane BF unit 1: HostImageCodec now implements the Scriptorium
+blob-upload pixel seam (`mount_index::blob_transcode::WebpTranscoder`) —
+decode + lossy WebP encode at the given quality, with v4's `effort:4` knob
+dropped (no policy surface, like the existing `_effort` arg). Undecodable
+input errors, which the caller turns into v4's store-original fallback arm.
+Unit-tested for dimension/format parity (D19). Not yet wired into an
+assembly (that is unit 2's `blob_webp` field).
+
 Planned the codec + fs seam round (docs only): two work orders committed —
 p4.6bf (the avatar-preview host renderer over the existing HostImageCodec,
 plus the dispatch-layer blob-WebP assembly seam) and p4.6bg (the doc-edit
