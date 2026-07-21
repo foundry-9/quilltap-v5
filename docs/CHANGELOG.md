@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Ported the episodic pure module (P4.d12 unit 4): buildMemoryAnchorLine,
+buildMemoryEmbeddingText, resolveWhenPhrase (ported but unwired — round
+3's extraction is its only caller), and eventReferenceTimeMs, with a
+V8-faithful ISO Date.parse subset (day-overflow rolling, fraction
+truncation, lowercase t/z, no-colon offsets; zone-less datetimes are
+UTC here and the oracle pins TZ=UTC). New 94-case tier-1 differential
+(QT_ORACLE_EPISODIC) against v4's real lib/memory/episodic.ts at
+8bf3cb5f — all cases byte-equal.
+
 Threaded chats.timelineMode through the data layer (P4.d12 unit 3): the
 97-column SELECT list + positional marshal in chats_read.rs (NULL reads
 as realtime and is omitted), ChatCreate/ChatUpdate + the INSERT/SET arms

@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// epoch (1970-01-01). Howard Hinnant's `civil_from_days` — the exact inverse
 /// of the `days_from_civil` the harness already uses, valid across the full
 /// proleptic Gregorian range.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
     let doe = z - era * 146_097; // [0, 146096]
@@ -60,13 +60,25 @@ pub fn now_unix_ms() -> i64 {
 
 /// Days since the Unix epoch for a civil (y, m, d) — Howard Hinnant's
 /// `days_from_civil`, the exact inverse of [`civil_from_days`].
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = (if y >= 0 { y } else { y - 399 }) / 400;
     let yoe = y - era * 400; // [0, 399]
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1; // [0, 365]
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
     era * 146_097 + doe - 719_468
+}
+
+/// Floored days-since-epoch for a Unix-milliseconds instant (JS
+/// `Math.floor(ms / 86400000)` — `div_euclid` floors for negatives too).
+pub(crate) fn floor_div_ms_days(ms: i64) -> i64 {
+    ms.div_euclid(86_400_000)
+}
+
+/// UTC civil (year, month 1-12, day 1-31) of a Unix-milliseconds instant —
+/// the `getUTCFullYear`/`getUTCMonth`/`getUTCDate` triple.
+pub(crate) fn utc_parts(ms: i64) -> (i64, u32, u32) {
+    civil_from_days(floor_div_ms_days(ms))
 }
 
 /// Parse a stored ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SS[.mmm]Z` — the only

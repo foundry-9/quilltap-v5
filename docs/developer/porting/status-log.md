@@ -26450,3 +26450,42 @@ DDL also gained `timelineMode` — its absence failed
 `cargo test --workspace` fail-fasts at the first failing TARGET, the
 ~36 quilltap-web binaries silently didn't run on that pass. Recount the
 result lines whenever a gate shows a failure. Host `0.0.27 → 0.0.28`.)
+
+### P4.d12 unit 4: the `episodic` pure module + tier-1 differential (2026-07-21)
+
+Core `0.0.300 → 0.0.301`, harness `0.0.258 → 0.0.259`.
+
+**Landed:** `crates/quilltap-core/src/episodic.rs` — all four exports of
+v4 `lib/memory/episodic.ts` (`build_memory_anchor_line`,
+`build_memory_embedding_text`, `resolve_when_phrase` — ported but
+UNWIRED per the round plan (round 3's extraction is its only caller) —
+and `event_reference_time_ms` + an `event_time_ms` Option form for the
+weighting/injector constructors). `clock.rs` exposes
+`civil_from_days`/`days_from_civil` pub(crate) + `floor_div_ms_days` /
+`utc_parts`.
+
+**JS-fidelity findings (pinned in the module doc + unit tests, confirmed
+against Node 24 before porting):**
+- V8 ISO `Date.parse`: month 01–12 and day 01–31 are hard bounds, but an
+  in-bounds day ROLLS past the month end — so `"2026-02-31"` as a when
+  phrase resolves to the RAW `2026-02-31T00:00:00.000Z` (the date-only
+  branch slices the input, not the parse); `"February 31"` (month-day
+  form) resolves through `Date.UTC` rolling to `2026-03-03`. Both cases
+  are in the corpus and match.
+- Fraction digits truncate to ms; lowercase `t`/`z` accepted; `±HHMM`
+  no-colon offsets accepted.
+- Zone-less datetimes parse LOCAL in JS → the oracle pins `TZ=UTC` and
+  the port implements UTC (production `occurredAt` always carries a
+  zone; corpus-only seam, documented in both files).
+- JS `\s`/`trim` → `jsstr::JS_WS_CLASS`/`js_trim`; v4 mixes `\s+` and
+  literal spaces across the phrase regexes — reproduced form-for-form.
+- The `(anchorDay - target + 7) % 7 || 7` weekday quirk (JS `|| 7` on 0)
+  and the `WORD_NUMBERS` table (incl. `couple`/`few` reachable through
+  the PLAIN ago-regex as well as the `a couple of` form) carried over.
+
+**Verified:** the new `episodic_equivalence` tier-1 differential — 94
+cases (16 anchor-line, 6 embedding-text, 65 when-phrase, 7
+event-reference), ALL byte-equal on the first run against the oracle
+regenerated from v4 `8bf3cb5f` (`TZ=UTC npx tsx
+harness/oracle/cases/episodic.ts`, env `QT_ORACLE_EPISODIC`). Full
+workspace gate 361 binaries / 0 failed.
