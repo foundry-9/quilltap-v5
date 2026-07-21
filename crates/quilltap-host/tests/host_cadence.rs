@@ -121,6 +121,7 @@ fn chats_ddl() -> String {
         "courierCheckpoints TEXT",
         "commonplaceSceneCache TEXT",
         "commonplaceRecallHistory TEXT",
+        "timelineMode TEXT",
         "budgetMaxTurns REAL",
         "budgetMaxTokens REAL",
         "budgetMaxWallClockMs REAL",

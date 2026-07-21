@@ -26419,3 +26419,34 @@ from v4 `8bf3cb5f` (recipes: the test headers; the routes/config pair
 runs from the /tmp jest mirror with `QT_FIXTURE_MEM_MAIN/MOUNT` pointing
 at the MIGRATED committed fixtures). NDJSONs grepped for content
 (routes: 107 `kind:semantic` occurrences; read: 57).
+
+### P4.d12 unit 3: chats.timelineMode through the data layer (2026-07-21)
+
+Core `0.0.299 → 0.0.300`.
+
+**Landed:** `chats_read.rs` `ALL_COLUMNS` 96 → 97 (`timelineMode` at its
+generateDDL/Zod position, between `commonplaceRecallHistory` and
+`budgetMaxTurns`; NULL reads as realtime and is omitted, v4's dropped
+`undefined`); the positional marshal shifted +1 from index 70 (⚠ the
+turbofish `row.get::<_, String>(94/95)` createdAt/updatedAt gets don't
+match a bare `row.get(\d+)` regex — caught by
+`InvalidColumnType(94, "showThinking", Null)` in the enclave tests).
+`chats.rs`: `ChatCreate.timeline_mode` + the INSERT (99 placeholders) +
+`ChatUpdate.timeline_mode` double-Option + its `set_col!` arm (no
+production caller yet — the Story's Clock switch is round 3). The two
+enclave in-crate chats test DDLs (`enclave/lifecycle.rs`,
+`enclave/step.rs`) gained the column.
+
+**Verified:** `chats_read_equivalence` + `chats_tier2_equivalence` green
+over fixtures + oracles freshly regenerated from v4 `8bf3cb5f` (recipes:
+the test headers). Core suite 1000/0. Note for other families: committed
+chat-object-emitting oracles regenerated at ≥8bf3cb5f will now carry
+`timelineMode` when non-null; on the migrated fixtures the column is
+NULL everywhere so their output is byte-unchanged (the inert path).
+
+(Unit-3 addendum: `quilltap-host/tests/host_boot.rs`'s hand-written chats
+DDL also gained `timelineMode` — its absence failed
+`boots_headless_and_pumps_jobs` with `no such column`, and because
+`cargo test --workspace` fail-fasts at the first failing TARGET, the
+~36 quilltap-web binaries silently didn't run on that pass. Recount the
+result lines whenever a gate shows a failure. Host `0.0.27 → 0.0.28`.)

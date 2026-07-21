@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Threaded chats.timelineMode through the data layer (P4.d12 unit 3): the
+97-column SELECT list + positional marshal in chats_read.rs (NULL reads
+as realtime and is omitted), ChatCreate/ChatUpdate + the INSERT/SET arms
+in chats.rs, and the two enclave in-crate test DDLs. No production
+writer sets it yet — the Story's Clock switch is round 3 of the episodic
+campaign. Verified by the chats read + tier-2 differentials regenerated
+at v4 8bf3cb5f.
+
 Threaded the four episodic memories columns through the data layer
 (P4.d12 unit 2): MemCreate/MemUpdate and the INSERT/SET arms in
 db/memories.rs, the SELECT list + positional marshal in memories_read.rs

@@ -332,6 +332,10 @@ pub struct ChatCreate {
     pub commonplace_scene_cache: Option<Value>,
     #[serde(default)]
     pub commonplace_recall_history: Option<Value>,
+    /// Episodic spine (v4 8bf3cb5f): which clock the story runs on —
+    /// `'realtime'` | `'narrative'`; `None` (NULL) reads as realtime.
+    #[serde(default)]
+    pub timeline_mode: Option<String>,
     #[serde(default)]
     pub budget_max_turns: Option<f64>,
     #[serde(default)]
@@ -538,6 +542,11 @@ pub struct ChatUpdate {
     /// `repos.chats.update(chatId, { commonplaceRecallHistory })`). `Some(arr)`
     /// stores; `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump.
     pub commonplace_recall_history: Option<Value>,
+    /// `timelineMode` (nullable enum TEXT — the episodic spine, v4 8bf3cb5f):
+    /// `Some(Some(mode))` stores, `Some(None)` clears to NULL (realtime),
+    /// `None` leaves unset. The Story's Clock SPA switch (round 3) is the
+    /// eventual production writer.
+    pub timeline_mode: Option<Option<String>>,
     /// `courierCheckpoints` (nullable JSON object) — the per-character delta-mode
     /// checkpoints, advanced by the Courier paste resolver
     /// ([`crate::services::courier_transport`] `resolve_external_turn`, W4.4a4; v4
@@ -691,7 +700,8 @@ impl<'c> ChatsRepository<'c> {
                dangerClassifiedAtMessageCount, conciergeOverride, sceneState, renderedMarkdown, \
                equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, helpPageUrl, \
                consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
-               commonplaceSceneCache, commonplaceRecallHistory, budgetMaxTurns, budgetMaxTokens, \
+               commonplaceSceneCache, commonplaceRecallHistory, timelineMode, budgetMaxTurns, \
+               budgetMaxTokens, \
                budgetMaxWallClockMs, budgetEstimatedSpendCapUSD, scheduleCron, \
                scheduleFreshnessWindowMs, scheduleNextRunAt, scheduleLastRunAt, runState, \
                currentRunId, runStateMessage, runStartedAt, runEndedAt, runPausedAt, \
@@ -705,7 +715,8 @@ impl<'c> ChatsRepository<'c> {
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
                ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, \
                ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
-               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, ?98)",
+               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, ?98, \
+               ?99)",
             params![
                 opts.id,
                 data.user_id,
@@ -777,6 +788,7 @@ impl<'c> ChatsRepository<'c> {
                 courier_json,
                 commonplace_scene_json,
                 commonplace_recall_json,
+                data.timeline_mode,
                 data.budget_max_turns,
                 data.budget_max_tokens,
                 data.budget_max_wall_clock_ms,
@@ -984,6 +996,9 @@ impl<'c> ChatsRepository<'c> {
                 Some(json_text(v)?)
             };
             set_col!("commonplaceRecallHistory", Box::new(text));
+        }
+        if let Some(v) = &patch.timeline_mode {
+            set_col!("timelineMode", Box::new(v.clone()));
         }
         if let Some(v) = &patch.courier_checkpoints {
             // v4 `repos.chats.update({ courierCheckpoints })` (W4.4a4 Courier paste

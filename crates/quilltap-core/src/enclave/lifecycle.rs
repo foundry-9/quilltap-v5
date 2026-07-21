@@ -1001,6 +1001,7 @@ mod tests {
             "courierCheckpoints TEXT",
             "commonplaceSceneCache TEXT",
             "commonplaceRecallHistory TEXT",
+            "timelineMode TEXT",
             "budgetMaxTurns REAL",
             "budgetMaxTokens REAL",
             "budgetMaxWallClockMs REAL",

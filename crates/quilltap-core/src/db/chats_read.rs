@@ -48,7 +48,10 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 96 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT order).
+/// All 97 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT order).
+/// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
+/// `commonplaceRecallHistory` and `budgetMaxTurns` — its generateDDL/Zod-shape
+/// position.
 const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sillyTavernMetadata, \
      tags, roleplayTemplateId, timestampConfig, lastTurnParticipantId, messageCount, lastMessageAt, \
      lastRenameCheckInterchange, compactionGeneration, lastSummaryTurn, lastSummaryTokens, \
@@ -64,7 +67,7 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      dangerClassifiedAt, dangerClassifiedAtMessageCount, conciergeOverride, sceneState, \
      renderedMarkdown, equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, \
      helpPageUrl, consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
-     commonplaceSceneCache, commonplaceRecallHistory, budgetMaxTurns, budgetMaxTokens, \
+     commonplaceSceneCache, commonplaceRecallHistory, timelineMode, budgetMaxTurns, budgetMaxTokens, \
      budgetMaxWallClockMs, budgetEstimatedSpendCapUSD, scheduleCron, scheduleFreshnessWindowMs, \
      scheduleNextRunAt, scheduleLastRunAt, runState, currentRunId, runStateMessage, runStartedAt, \
      runEndedAt, runPausedAt, runPausedAccumMs, runTurnsConsumed, runTokensConsumed, \
@@ -270,45 +273,48 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut obj, "courierCheckpoints", row.get(67)?);
     put_opt_json(&mut obj, "commonplaceSceneCache", row.get(68)?);
     put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(69)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(70)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(71)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(72)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(73)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(74)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(75)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(76)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(77)?);
-    put_opt_string(&mut obj, "runState", row.get(78)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(79)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(80)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(81)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(82)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(83)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(84)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(85)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(86)?);
+    // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
+    // realtime and is omitted (v4's undefined dropped by JSON.stringify).
+    put_opt_string(&mut obj, "timelineMode", row.get(70)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(71)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(72)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(73)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(74)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(75)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(76)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(77)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(78)?);
+    put_opt_string(&mut obj, "runState", row.get(79)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(80)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(81)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(82)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(83)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(84)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(85)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(86)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(87)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(87)?, 0.0),
-    );
-    obj.insert(
-        "runDestructiveToolsAllowed".into(),
         number_or(row.get(88)?, 0.0),
     );
     obj.insert(
-        "budgetExcludeCacheHits".into(),
-        number_or(row.get(89)?, 1.0),
+        "runDestructiveToolsAllowed".into(),
+        number_or(row.get(89)?, 0.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(90)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(91)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(92)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(93)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(94)?));
-    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(95)?));
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(96)?);
+    obj.insert(
+        "budgetExcludeCacheHits".into(),
+        number_or(row.get(90)?, 1.0),
+    );
+    put_opt_string(&mut obj, "runVisibility", row.get(91)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(92)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(93)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(94)?);
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(95)?));
+    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(96)?));
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(97)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(97)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(98)?);
 
     Ok(Value::Object(obj))
 }
