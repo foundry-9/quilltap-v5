@@ -25820,3 +25820,29 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
     $N/npx jest --silent --watchman=false --testTimeout=240000 \
       --roots "$PWD" --roots "$TMPO/cases" -- wardrobe-routes
   ```
+
+- **Tier 2 item 7 — the ST placeholder-DEFLATE seam: DEFERRED, with the
+  empirical finding recorded (no code change to `services/sillytavern.rs`).**
+  The order gated this on `zlib.deflateSync` byte-parity. Empirical result over
+  the actual placeholder `raw` (a 256×256 solid-RGB PNG's filtered scanlines):
+  - Node `zlib.deflateSync` (level 6, memLevel 8, wbits 15) == Python
+    `zlib.compress(level 6)` == **704 bytes** (Node bundles stock madler zlib).
+  - `flate2` DEFAULT (miniz_oxide, pure Rust): 704 bytes but **DIFFERS at byte
+    12** — a NEAR-MISS (the order forbids shipping this).
+  - `flate2` with the `zlib` backend feature (vendored madler zlib C):
+    **byte-IDENTICAL** to Node.
+  So parity DOES hold — but ONLY via `flate2/zlib`, which links a C zlib into
+  whatever crate owns it. `sillytavern.rs` lives in `quilltap-core`, whose
+  default-build purity is a deliberate invariant (the reason the sqlite3mc C
+  compile is isolated in its own sys crate). Forcing a C zlib backend into the
+  pure core — or introducing a new `Deflater` host seam + threading it through
+  the ST PNG export path — is disproportionate for a placeholder whose IDAT is
+  **never asserted byte-exact by any differential** and whose decoded PIXELS are
+  already identical (the current `zlib_stored` emits valid stored-block zlib that
+  inflates to the same bytes). The parity is also a coincidence of the two sides'
+  current zlib versions (Node's bundled vs flate2's vendored), not a durable
+  invariant. Net: the only parity-holding path buys nothing verifiable and taxes
+  the core build; the cheap path (default backend) is a near-miss. DEFERRED. The
+  recipe for a future taker: `flate2 = { features = ["zlib"] }` as a HOST seam
+  (never the core default backend, which diverges), threaded like the image
+  codec.
