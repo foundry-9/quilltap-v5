@@ -15,6 +15,33 @@ export interface OutfitSelectorCharacter {
   id: string;
   name: string;
   isUserControlled?: boolean;
+  /**
+   * The character's `canChooseOutfit` vault flag (v4 `8bf3cb5f`). When true —
+   * and the character is LLM-controlled — a fresh chat defaults this character's
+   * Starting Outfit to `Let character choose` rather than `Use defaults`
+   * ({@link computeSyncInitialMode}).
+   */
+  canChooseOutfit?: boolean;
+}
+
+/**
+ * The Starting Outfit mode a character opens with, computed from what we can
+ * know synchronously (v4 `8bf3cb5f` `computeSyncInitialMode`). An LLM-controlled
+ * character flagged `canChooseOutfit` defaults to letting the character choose;
+ * everyone else opens on `default`.
+ *
+ * v4 additionally seeds continuation chats to `previous_chat` and then refines a
+ * provisional `default` to `default`-vs-`manual` once each character's wardrobe
+ * loads (no usable default outfit → `manual`, expanded), with collapsed-header
+ * mode badges. Those pieces ride v5's DEFERRED wardrobe-composer family — this
+ * new-chat selector has no continuation source, does not load wardrobes, and
+ * renders `manual` (Compose) loudly disabled — so they are not ported here; the
+ * disabled Compose radio (with its "not yet available" title) is that
+ * deferral's visible surface. See the work-order status header.
+ */
+export function computeSyncInitialMode(char: OutfitSelectorCharacter): OutfitSelectionMode {
+  if (char.canChooseOutfit && !char.isUserControlled) return 'llm_choose';
+  return 'default';
 }
 
 interface ModeOption {
@@ -28,10 +55,13 @@ interface ModeOption {
 /**
  * The starting-outfit selector (v4 `components/wardrobe/outfit-selector.tsx`,
  * new-chat subset). Per-character mode radios: `default` / `llm_choose` (hidden
- * for the user's persona) / `none`. `manual` (Compose outfit) renders loudly
- * disabled-with-title — the wardrobe-composer family is deferred; `previous_chat`
- * (continuation only) is not rendered this round. Emits `{ characterId, mode }`
- * (no slots for the non-manual modes).
+ * for the user's persona) / `none`. Each character's initial mode is seeded
+ * synchronously by {@link computeSyncInitialMode} — an LLM character flagged
+ * `canChooseOutfit` (v4 `8bf3cb5f`) opens on `llm_choose`, everyone else on
+ * `default`. `manual` (Compose outfit) renders loudly disabled-with-title — the
+ * wardrobe-composer family is deferred; `previous_chat` (continuation only) is
+ * not rendered this round. Emits `{ characterId, mode }` (no slots for the
+ * non-manual modes).
  */
 @Component({
   selector: 'qt-outfit-selector',
@@ -94,7 +124,7 @@ export class OutfitSelector {
   private readonly selections = computed<ChatCreateOutfitSelectionInput[]>(() =>
     this.characters().map((c) => ({
       characterId: c.id,
-      mode: this.overrides()[c.id] ?? 'default',
+      mode: this.overrides()[c.id] ?? computeSyncInitialMode(c),
     })),
   );
 
@@ -104,7 +134,10 @@ export class OutfitSelector {
   }
 
   protected modeFor(id: string): OutfitSelectionMode {
-    return this.overrides()[id] ?? 'default';
+    const override = this.overrides()[id];
+    if (override) return override;
+    const char = this.characters().find((c) => c.id === id);
+    return char ? computeSyncInitialMode(char) : 'default';
   }
 
   protected optionsFor(char: OutfitSelectorCharacter): ModeOption[] {

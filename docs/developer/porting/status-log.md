@@ -26768,3 +26768,28 @@ changes "removes a default-user persona" → "reverts a default-user cast member
 to llm, keeping it" (`toHaveLength(2)`), and drops the 3rd arg from every call;
 `new-chat-form.spec.ts` asserts the dropdown is `['Chat as yourself', 'Alice']`
 (Bob absent). `ng test` targeted green (31); `ng build` clean.
+
+**Unit 3 — the outfit-selector `canChooseOutfit` synchronous seed (v4 `8bf3cb5f`).**
+`outfit-selector.ts` gains `OutfitSelectorCharacter.canChooseOutfit?` and the
+exported pure `computeSyncInitialMode(char)`: an LLM character flagged
+`canChooseOutfit` seeds `llm_choose`, everyone else `default` (the user persona
+always `default` — this dialog IS the choosing). The selector's `modeFor` and
+emitted `selections` use it as the un-overridden fallback. `new-chat-form.ts`
+`outfitCharacters` threads `canChooseOutfit ?? false` from both the LLM-cast and
+the user entry into the `OutfitSelectorCharacter`. Verify: `outfit-selector.spec.ts`
+(6: the pure seed + the emitted seed + the pre-checked radio) + `new-chat-form.spec.ts`
+green; `ng build` clean.
+
+**⚠ Loud deferral (Tier 3 of the order) — the v4 auto-resolve + badges + `fetched`
+distinction.** v4's `8bf3cb5f` outfit-selector additionally (a) seeds continuation
+chats to `previous_chat`, (b) refines a provisional `default` to `default`-vs-`manual`
+once each character's wardrobe loads via a new `fetched` flag on the
+wardrobe-items hook (no usable default → `manual`, expanded), and (c) shows
+collapsed-header mode badges (`MODE_SUMMARY_LABELS`). v5's new-chat outfit-selector
+is a DEFERRED-COMPOSER reduction: it has no continuation source, does not load
+wardrobes, is not collapsible, and renders `manual` (Compose) loudly
+disabled-with-title. Those three pieces all ride the deferred wardrobe-composer
+family and are NOT ported here; the disabled Compose radio (with its "not yet
+available in this build" title) is that deferral's already-visible surface. When
+the new-chat composer family lands, this seed is the hook point for the
+provisional→auto-resolve refinement.

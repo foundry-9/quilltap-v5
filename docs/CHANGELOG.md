@@ -98,6 +98,15 @@ flag is a vault file, not a column) and no create-side change (v4's
 character create is unchanged). Verified against v4 8bf3cb5f with tier-1
 parse, character route (create/update/read), and the properties.json
 byte-level write differentials.
+P4.6bi (round 1 / lane 3), unit 3 — the outfit-selector `canChooseOutfit`
+default (v4 8bf3cb5f). A new chat now seeds each cast member's Starting
+Outfit from the character's `canChooseOutfit` flag: an LLM-controlled
+character marked "let this character choose their opening outfit" defaults
+to "Let character choose"; everyone else to "Use defaults". The v4
+provisional→auto-resolve behavior, collapsed-header mode badges, and the
+wardrobe `fetched` distinction ride v5's deferred wardrobe-composer family
+(Compose is loudly disabled here) and are not ported this round.
+
 P4.6bi (round 1 / lane 3), unit 2 — the New-Chat picker re-port (v4
 e2eb3d21). The Select Characters list now shows the full roster, including
 default-user personas that were previously filtered out. The Play As

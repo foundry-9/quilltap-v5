@@ -444,9 +444,17 @@ export class NewChatForm {
       id: sc.character.id,
       name: sc.character.name,
       isUserControlled: false,
+      canChooseOutfit: sc.character.canChooseOutfit ?? false,
     }));
     const ue = this.userEntry();
-    if (ue) list.push({ id: ue.character.id, name: ue.character.name, isUserControlled: true });
+    if (ue) {
+      list.push({
+        id: ue.character.id,
+        name: ue.character.name,
+        isUserControlled: true,
+        canChooseOutfit: ue.character.canChooseOutfit ?? false,
+      });
+    }
     return list;
   });
 
