@@ -1878,6 +1878,9 @@ where
                     &input.character.name,
                     selection,
                     &input.character.id,
+                    // The clock thread (v4 `{ nowIso, timelineMode }`) lands with
+                    // the part-1 buildContext unit of this lane.
+                    None,
                 )
                 .await
                 {

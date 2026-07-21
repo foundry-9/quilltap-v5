@@ -1,0 +1,322 @@
+{
+  "cases": [
+    {
+      "name": "object-full-retro-dateonly",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Remember when we visited Lighthouse Point last week?"
+        },
+        {
+          "role": "assistant",
+          "content": "I recall the waves crashing."
+        },
+        {
+          "role": "system",
+          "content": "scene note"
+        },
+        {
+          "role": "user",
+          "content": "The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. The lighthouse keeper told us about the storm of 1923. "
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"Lighthouse Point\", \"storm\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They reminisce about visiting Lighthouse Point during a storm.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\", \"Amy\"]}"
+    },
+    {
+      "name": "timerange-full-iso-mixed",
+      "messages": [
+        {
+          "role": "user",
+          "content": "That night at the harbor."
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"harbor\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-01T06:30:00.000Z\", \"to\": \"2024-06-07\"}, \"entities\": []}"
+    },
+    {
+      "name": "timerange-from-after-to",
+      "messages": [
+        {
+          "role": "user",
+          "content": "when was that?"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"when\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-08\", \"to\": \"2024-06-07\"}, \"entities\": []}"
+    },
+    {
+      "name": "timerange-regex-miss",
+      "messages": [
+        {
+          "role": "user",
+          "content": "back in June"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"June\"], \"retrospective\": true, \"timeRange\": {\"from\": \"June 1\", \"to\": \"2024-06-07\"}, \"entities\": []}"
+    },
+    {
+      "name": "timerange-nonfinite-month",
+      "messages": [
+        {
+          "role": "user",
+          "content": "impossible month"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"month\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2024-13-01\", \"to\": \"2024-12-31\"}, \"entities\": []}"
+    },
+    {
+      "name": "timerange-equal-dateonly",
+      "messages": [
+        {
+          "role": "user",
+          "content": "that one day"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"day\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-05\", \"to\": \"2024-06-05\"}, \"entities\": []}"
+    },
+    {
+      "name": "retrospective-string-not-bool",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hello there"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"greeting\"], \"retrospective\": \"true\", \"timeRange\": null, \"entities\": []}"
+    },
+    {
+      "name": "entities-overflow-and-trim",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so many names"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\":[\"names\"],\"entities\":[\" Amy \",\"\",\"Lighthouse Point\",3,\"Bram\",\"Cove\",\"Dune\",\"Eyrie\"]}"
+    },
+    {
+      "name": "bare-array-shape",
+      "messages": [
+        {
+          "role": "user",
+          "content": "quick"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "[\"x\",\"y\"]"
+    },
+    {
+      "name": "garbled-non-json",
+      "messages": [
+        {
+          "role": "user",
+          "content": "static"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "I cannot produce JSON today."
+    },
+    {
+      "name": "fenced-object",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fence"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "```json\n{\"keywords\":[\"z\"],\"retrospective\":true,\"timeRange\":null,\"entities\":[\"Z\"]}\n```"
+    },
+    {
+      "name": "clock-narrative-monday",
+      "messages": [
+        {
+          "role": "user",
+          "content": "in-story time"
+        }
+      ],
+      "characterName": "Prospero",
+      "clock": {
+        "nowIso": "2024-06-17T00:30:00.000Z",
+        "timelineMode": "narrative"
+      },
+      "responseText": "{\"keywords\":[\"story\"]}"
+    },
+    {
+      "name": "clock-nonfinite-now",
+      "messages": [
+        {
+          "role": "user",
+          "content": "when even are we"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "sometime yesterday",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\":[\"time\"]}"
+    },
+    {
+      "name": "window-slices-last-twenty",
+      "messages": [
+        {
+          "role": "user",
+          "content": "message number 0"
+        },
+        {
+          "role": "user",
+          "content": "message number 1"
+        },
+        {
+          "role": "user",
+          "content": "message number 2"
+        },
+        {
+          "role": "user",
+          "content": "message number 3"
+        },
+        {
+          "role": "user",
+          "content": "message number 4"
+        },
+        {
+          "role": "user",
+          "content": "message number 5"
+        },
+        {
+          "role": "user",
+          "content": "message number 6"
+        },
+        {
+          "role": "user",
+          "content": "message number 7"
+        },
+        {
+          "role": "user",
+          "content": "message number 8"
+        },
+        {
+          "role": "user",
+          "content": "message number 9"
+        },
+        {
+          "role": "user",
+          "content": "message number 10"
+        },
+        {
+          "role": "user",
+          "content": "message number 11"
+        },
+        {
+          "role": "user",
+          "content": "message number 12"
+        },
+        {
+          "role": "user",
+          "content": "message number 13"
+        },
+        {
+          "role": "user",
+          "content": "message number 14"
+        },
+        {
+          "role": "user",
+          "content": "message number 15"
+        },
+        {
+          "role": "user",
+          "content": "message number 16"
+        },
+        {
+          "role": "user",
+          "content": "message number 17"
+        },
+        {
+          "role": "user",
+          "content": "message number 18"
+        },
+        {
+          "role": "user",
+          "content": "message number 19"
+        },
+        {
+          "role": "user",
+          "content": "message number 20"
+        },
+        {
+          "role": "user",
+          "content": "message number 21"
+        },
+        {
+          "role": "user",
+          "content": "message number 22"
+        },
+        {
+          "role": "user",
+          "content": "message number 23"
+        },
+        {
+          "role": "user",
+          "content": "message number 24"
+        }
+      ],
+      "characterName": "Aria",
+      "clock": {
+        "nowIso": "2024-06-15T12:00:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\":[\"count\"]}"
+    }
+  ]
+}

@@ -26979,3 +26979,48 @@ re-port is OWED (above); the P4.d7 dup-name follow-up stands; tier-3
 deferrals unchanged (watcher, filesSync, cleanup-stale, docs CLI,
 DocumentTextExtractor).
 
+
+## P4.d13 unit 1 — the distill search-extraction signals (episodic round 2, lane start)
+
+**Lane:** P4.d13 (single lane), branch
+`claude/p4-episodic-retrieval-replay-0182e4`. Drift check at lane start:
+v4 HEAD == `8bf3cb5f`, tree clean — oracles regenerate straight from
+`~/source/quilltap-server`.
+
+**What landed:** `services/memory_recap/distill.rs` gains the
+`ExtractionClock` (now_iso + timeline_mode — `narrative_now` is round-3
+creation-side), the `WEEKDAYS` table, the TODAY line in the user content
+(weekday via `episodic::utc_day_of_week`, `timeline mode:` suffix, the
+non-finite-date raw fallback arm), the mechanically re-extracted
+`MEMORY_KEYWORD_EXTRACTION_PROMPT` bytes (three new field rules + the
+updated one-line JSON example), and the parse additions: `retrospective`
+(strict `=== true`), `timeRange` (`^\d{4}-\d{2}-\d{2}` prefix on both
+bounds, finite `Date.parse` via the episodic.rs V8-faithful parser,
+date-only → `T00:00:00.000Z`/`T23:59:59.999Z` normalization, `from <= to`
+on the normalized forms), `entities` (string filter on non-empty trim →
+map trim → cap 5). v4's catch arm (`{ keywords: [] }` with every other
+field ABSENT) is carried as `DistilledSearch::parse_failed` +
+`signals_json()` so downstream wire shapes (the §3 replay verb) can
+reproduce field presence byte-for-byte. The message build was extracted
+into pure `build_distill_messages` for the differential;
+`distill_memory_search` takes `clock: Option<&ExtractionClock>` (the
+build_context thread lands with this lane's unit 5 — the call site passes
+`None` until then, matching v4's wall-clock fallback).
+
+**Differential (NEW family, the memory-tasks SPLIT):**
+`memory-search-extraction` — jest oracle
+`harness/oracle/cases/memory-search-extraction.test.ts` over
+`harness/oracle/fixtures/memory-search-extraction.json` (14 cases:
+retro+date-only window, full-ISO/mixed bounds, from>to, regex miss,
+non-finite month, equal-day, string-"true" retrospective, entity
+overflow/trim/non-string, bare array, garbled, fenced, narrative clock,
+non-finite clock, 25→20 window slice), driving v4's REAL
+`extractMemorySearchKeywords` with only `executeCheapLLMTask` mocked.
+Rust side `distill_search_extraction_equivalence.rs`
+(`QT_ORACLE_DISTILL`): prompt messages byte-exact + parse via
+`signals_json` — green, zero SKIP, regenerated at `8bf3cb5f` with
+`TZ=UTC`. **The creation-side family (`QT_ORACLE_MEMORY_TASKS`,
+`memory-tasks-tier1`) is deliberately NOT regenerated — its committed
+vintage stays `7e6d13e5` until round 3 ports the clocked creation
+prompts.** Jest gotcha reconfirmed: jest ignores `.claude/` roots — the
+case + fixture mirror to `/tmp/qt-d13-oracle/{cases,fixtures}` for regen.

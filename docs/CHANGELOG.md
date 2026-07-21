@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.d13 unit 1: ported the search-side memory extraction's episodic
+signals (v4 8bf3cb5f) — the ExtractionClock/TODAY line in the distill
+prompt (weekday + timeline mode, non-finite fallback), the updated
+keyword-extraction system prompt (retrospective / timeRange / entities
+field rules, regenerated mechanically), and the parse additions
+(strict-true retrospective; timeRange date-prefix regex + finite
+Date.parse + date-only full-day normalization + from<=to; entities
+trim/cap 5), with v4's catch-arm field-presence semantics preserved via
+DistilledSearch::signals_json. New tier-1 differential family
+memory-search-extraction (QT_ORACLE_DISTILL, 14 cases, byte-exact
+prompt + parse), split from the memory-tasks family so the creation-side
+cases stay at their 7e6d13e5 vintage until round 3. quilltap-core
+0.0.306, quilltap-harness 0.0.264.
+
 Planned round 2 of the episodic-recall drift catch-up: committed the
 single-lane work order p4.d13-episodic-retrieval-tools-replay.md
 (time/entity-aware retrieval + the deep-dive tool filters + the

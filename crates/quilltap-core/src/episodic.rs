@@ -383,7 +383,7 @@ pub fn event_time_ms(occurred_at: Option<&str>) -> Option<f64> {
 }
 
 /// JS `new Date(ms).getUTCDay()` — 0 = Sunday.
-fn utc_day_of_week(ms: i64) -> i64 {
+pub(crate) fn utc_day_of_week(ms: i64) -> i64 {
     let days = floor_div_ms_days(ms);
     (days + 4).rem_euclid(7)
 }
