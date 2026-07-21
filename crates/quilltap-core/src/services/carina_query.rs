@@ -979,6 +979,7 @@ where
             about_character_id: None,
             apply_literal_phrase_boost: false,
             now_ms,
+            ..Default::default()
         },
     )
     .await

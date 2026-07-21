@@ -739,6 +739,7 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         about_character_id: None,
         apply_literal_phrase_boost: false,
         now_ms,
+        ..Default::default()
     };
     let results =
         match search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options).await

@@ -233,6 +233,7 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                     about_character_id: None,
                     apply_literal_phrase_boost: true,
                     now_ms,
+                    ..Default::default()
                 };
                 if let Ok(mems) = search_memories_semantic(db, provider, cid, query, &opts).await {
                     for mr in mems {

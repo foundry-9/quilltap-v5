@@ -27055,3 +27055,43 @@ combine), regenerated at `8bf3cb5f` (`TZ=UTC npx tsx … >
 /tmp/oracle-recall-tags.ndjson` from the v4 checkout);
 `recall_tags_equivalence` extended to drive every new row — green, zero
 SKIP.
+
+## P4.d13 unit 3 — `search_memories_semantic` learns time + entities (the recallContext deferral CLOSES)
+
+**What landed:** the full v4 `searchMemoriesSemantic` surface in
+`services/memory_service.rs`. The formerly-deferred `recallContext` path
+is now real: `SemanticSearchOptions.recall_context`
+(`RecallContextInput`, the owned form), the one multiplier loop
+(`apply_recall_multipliers` borrowing into `recall_tags::RecallContext`
+per row), `SemanticSearchResult.recall_adjustment`
+(multiplier/fired/blendedBefore/blendedAfter), the blendedAfter-desc
+stable sort, and item-5 `expand_related_memories` (top-`limit` seeds,
+caps 3/10, in-pool/dup skip, characterId + minImportance + source +
+dimension guards, cosine vs the SAME query embedding, `related↗`
+appended to fired, union re-sort; minScore deliberately NOT re-applied).
+New episodic options: `occurred_within` (two-stage: hard filter; if
+survivors < limit on the injector path, full pool + the soft
+×OCCURRED_WITHIN_WINDOW in the loop — never fewer results than
+unwindowed; tool path = plain hard filter), `entity_anchors` (slice 3,
+JS-trim, len ≥ 2 code units, `searchByContent` union into the candidate
+pool — anchors only UNION, the cosine literal boost stays gated on the
+tool path's literal phrase), `extra_probes` (trim/filter/cap 2, embed
+each, per-memory max cosine with JS-Map insertion-order preservation,
+failed probe embeds skipped).
+
+**Two v4-fidelity fixes to the pre-existing port (fix the port, not the
+diff):** (1) the dimension-mismatch arm now returns the text results
+DIRECTLY — v4 does `return searchMemoriesText(...)` with NO
+`bumpAccessTimes` there (v5 previously bumped); (2) the semantic arm now
+bumps only the FINAL slice (v4 `results.slice(0, limit)` then bump) —
+v5 previously bumped the whole pre-truncate pool. Both are
+`lastAccessedAt`-visible; the replay differential normalizes the column
+but the tier-2 memory families would have caught this on any dump that
+includes it.
+
+**Differential:** per the order, unit 3 is proven end-to-end by unit 7's
+NEW recall-replay tier-3 family (which tables cosine/rawWeight/
+blendedBefore/multiplier/fired/blendedAfter/selected for every candidate
+on both paths over the episodic fixture — every branch above lands in
+those tables). No standalone family was forced. The recall-tags unit-2
+differential already pins the multiplier math itself.

@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.d13 unit 3: search_memories_semantic learns time + entities (v4
+8bf3cb5f) and CLOSES the long-tracked recallContext deferral: the
+targeting-tag multiplier loop now runs inside the search (recallAdjustment
+records: multiplier / fired / blendedBefore / blendedAfter), one-hop
+related-memory expansion lands (RELATED_EXPANSION caps 3 per hit / 10
+total, related-arrow label, minScore deliberately not re-applied), the
+occurredWithin two-stage event-time window (hard filter, soft x1.3
+fallback when starved, plain hard filter on the tool path), entityAnchors
+(cap 3, searchByContent union without the cosine boost), and the
+retrospective extraProbes multi-probe union (cap 2 extras, per-memory max
+cosine, JS-Map insertion-order semantics). Two v4-fidelity fixes to the
+existing port: the dimension-mismatch text fallback no longer bumps
+access times (v4 returns searchMemoriesText directly there), and the
+semantic path bumps only the final slice. Oracle proof rides the round's
+recall-replay tier-3 family (unit 7), per the order. quilltap-core
+0.0.308.
+
 P4.d13 unit 2: recall-tags made turn-aware (v4 8bf3cb5f) — the
 retrospective temporal flip (past 0.85 -> 1.15 with the past-retro
 label, moment 0.7 -> 1.0), the occurredWithin soft window boost (x1.3,
