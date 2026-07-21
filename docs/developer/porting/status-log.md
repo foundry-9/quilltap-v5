@@ -25745,3 +25745,20 @@ Branch `claude/avatar-preview-blob-codec-wire-81e8cd`; v4 baseline `7e6d13e5`
   (the S1 `blob_webp` field). Naming: the impl imports the trait as
   `BlobWebpTranscoder` because `image_codec.rs` already aliases
   `model::image::ImageTranscoder` to `WebpTranscoder`.
+
+- **Unit 2 — the S1 `blob_webp` assembly seam (quilltap-core 0.0.292 → 0.0.293;
+  quilltap-host 0.0.25 → 0.0.26).** Added
+  `pub blob_webp: Option<Arc<dyn services::mount_index::blob_transcode::WebpTranscoder>>`
+  to `EngineAssembly` (P4.6bf region), defaulting `None` in `shutdown_only`,
+  threaded into `ReadyEngine` (marked `#[allow(dead_code)]` with a comment — it
+  is deliberately dead until the AT-UNIFY call-site wire reads it), and mapped
+  in the assembly→ReadyEngine construction. The production host `assemble()`
+  passes `Some(Arc::new(HostImageCodec))` (unit 1's live impl); every other
+  assembly stays `None`, so the two `store_mount_file` handlers keep their
+  inline `RefusingWebpTranscoder` and behavior is unchanged this lane. Field +
+  plumbing ONLY — the two `mount_files.rs` handlers are lane BG's (S1), and the
+  engine.rs dispatch-arm call sites that pass `blob_webp.clone()` into them are
+  the single AT-UNIFY item. Note: the two `crates/quilltap-web/tests/*` literals
+  the grep surfaced (`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) are
+  `SpineBundle`, not `EngineAssembly`, so they needed no change; the only full
+  `EngineAssembly` constructions are `host.rs` (production) and `shutdown_only`.

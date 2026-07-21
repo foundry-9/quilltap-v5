@@ -151,6 +151,16 @@ pub struct EngineAssembly {
     /// internal error.
     pub brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
     // === end P4.9I1A ===
+    // === P4.6bf (S1): the dispatch-layer blob-WebP transcode seam ===
+    /// The Scriptorium blob-upload WebP transcoder the two `store_mount_file`
+    /// dispatch handlers use (`api/mount_files.rs`). `None` → the handlers keep
+    /// their inline [`RefusingWebpTranscoder`] (v4's store-original fallback
+    /// arm — behavior unchanged); the production host passes the live
+    /// [`HostImageCodec`]. **Lane BF adds the field + plumbing only; the
+    /// engine.rs call sites that thread this into the handlers are the
+    /// AT-UNIFY wire** (lane BG re-signatures the handlers to accept it).
+    pub blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
+    // === end P4.6bf ===
 }
 
 impl EngineAssembly {
@@ -175,6 +185,9 @@ impl EngineAssembly {
             // === P4.9f1 ===
             avatar_preview: None,
             // === end P4.9f1 ===
+            // === P4.6bf (S1) ===
+            blob_webp: None,
+            // === end P4.6bf ===
         }
     }
 }
@@ -320,6 +333,12 @@ struct ReadyEngine {
     /// The Brahma Console send driver (P4.9I1A; `None` for read-only embedders —
     /// the `BrahmaConsoleSend` arm answers a plain internal error).
     brahma_console_send: Option<Arc<dyn super::brahma::BrahmaConsoleSendDriver>>,
+    /// The dispatch-layer blob-WebP transcoder (P4.6bf S1). Threaded from the
+    /// assembly so the AT-UNIFY wire can pass it into lane BG's re-signatured
+    /// `store_mount_file` handlers; NOT read until that call-site edit lands,
+    /// so it is deliberately dead until unification.
+    #[allow(dead_code)]
+    blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -3785,6 +3804,7 @@ fn open_ready(
         consult: assembly.consult,
         avatar_preview: assembly.avatar_preview,
         brahma_console_send: assembly.brahma_console_send,
+        blob_webp: assembly.blob_webp,
     })
 }
 

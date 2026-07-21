@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Codec round lane BF unit 2 (S1): added the `EngineAssembly.blob_webp` field
+(`Option<Arc<dyn blob_transcode::WebpTranscoder>>`, default None; threaded
+through ReadyEngine). The production host assembly passes the live
+HostImageCodec; all other assemblies stay None (unchanged behavior — the
+`store_mount_file` handlers keep refusing). Field + plumbing only: the
+engine.rs call-site wire that hands this to lane BG's re-signatured handlers
+is the AT-UNIFY step, so the field is carried-but-unread until then.
+
 Codec round lane BF unit 1: HostImageCodec now implements the Scriptorium
 blob-upload pixel seam (`mount_index::blob_transcode::WebpTranscoder`) —
 decode + lossy WebP encode at the given quality, with v4's `effort:4` knob

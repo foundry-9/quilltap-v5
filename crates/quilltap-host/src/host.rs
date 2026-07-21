@@ -604,6 +604,12 @@ impl EngineAssembler for HostAssembler {
             // assemblies keep `None` → the arm answers "not assembled". ===
             brahma_console_send,
             // === end P4.9I1A ===
+            // === P4.6bf (S1): the dispatch-layer blob-WebP transcoder — the live
+            // production codec. The AT-UNIFY wire threads this into lane BG's
+            // re-signatured `store_mount_file` handlers; until then it is carried
+            // but unread (behavior unchanged: the handlers still refuse). ===
+            blob_webp: Some(std::sync::Arc::new(crate::image_codec::HostImageCodec)),
+            // === end P4.6bf ===
         })
     }
 }
