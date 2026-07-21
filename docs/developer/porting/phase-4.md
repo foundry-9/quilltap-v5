@@ -2161,3 +2161,92 @@ hand-walked on real data); `p4.9i2` (HelpChat); `p4.9h` (ChatSidebar); M6
 rows 5/6/8–15; the composer backslash-escape seam. Watch v4 for the
 4.8.0 tag and the episodic-recall feature (drift-check before every
 round).
+
+## The episodic-recall drift catch-up — a 3-round campaign, ROUND 1 planned 2026-07-21
+
+**⚠ v4 DRIFTED to `8bf3cb5f` — the largest single drift in the port.**
+`git log 7e6d13e5..HEAD` at planning shows two commits past the baseline:
+`e2eb3d21` (New-Chat picker; the already-owed lib-free SPA re-port) and
+**`8bf3cb5f` — "Unify episodic recall + character outfit work"**, a
+squash-merge of THREE feature branches (~4,400 insertions, ~40 already-
+ported `lib/` files):
+
+- **episodic-recall-overhaul** — event-time on memories
+  (`occurredAt`/`narrativeTime`/`entities`/`kind` + `chats.timelineMode`
+  + `idx_memories_occurredAt`), time/entity-aware retrieval, a fold-time
+  episode pass, a fourth (recall-on-reference) cadence, deep-dive tool
+  time filters, and creation-side changes. Touches the WHOLE memory
+  subsystem (weighting, gate, service, processor, recall-tags,
+  housekeeping, injector, memory-tasks, context/fold), the tools, and a
+  new pure `episodic` module. Design authority:
+  `docs/v4/.../features/episodic-recall-overhaul.md` (five workstreams
+  A–E + a §3 replay harness).
+- **character-outfit-selection** — `canChooseOutfit` (a vault
+  `properties.json` flag, optional-with-default `false`; **no DB
+  column**) + the Aurora Wardrobe-tab editor + the Starting-Outfit
+  default in the new-chat outfit-selector.
+- **blissful-einstein** — persist the `canDressThemselves`/
+  `canCreateOutfits` PUT toggles (**pre-existing DB columns**; just add
+  to the character PUT allowlist).
+
+This is a **3-round campaign** (the memory subsystem is one deep,
+interdependent vertical that resists parallel splitting; the two
+character slices are small and fully independent). The load-bearing
+design fact enabling a clean split: the feature's **inert-path
+guarantee** (spec §4 — "degrade to today, never block"): on the existing
+fixtures (semantic memories, null `occurredAt`, non-retrospective turns)
+v4's new code is byte-identical to old, differing only by the new column
+values in emitted rows. So the foundation lands the columns + baseline
+rebase first; the new *behavior* lands later with new fixtures.
+
+**ROUND 1 — three parallel lanes (orders committed 2026-07-21; human
+scoping ruling: "Foundation + both slices"):**
+
+- **P4.d12** (`work-orders/p4.d12-episodic-spine-foundation.md`) — the
+  KEYSTONE. The D23 schema re-dump (`chats.timelineMode` + the four
+  `memories` columns + the index), the five columns through the memories/
+  chats data layer (marshal, insert/update structs, defaults, the
+  create-path `occurredAt` stamp), the pure `episodic` module (+ tier-1
+  differential), the memory-weighting deltas (`episodicBonus` +
+  event-clock age), the injector's dated dynamic head, and the
+  **memory-family oracle rebase** onto `8bf3cb5f` for the row-emitting +
+  pure families (verified inert). Rust; owns `fresh_schema.json` + the
+  memory subsystem. Explicitly DEFERS all episodic *behavior* to rounds
+  2/3.
+- **P4.6bh** (`work-orders/p4.6bh-character-outfit-server.md`) — the
+  character-outfit + wardrobe-permission SERVER slice: the
+  `canChooseOutfit` vault field + the two tri-state PUT toggles + a
+  characters-route differential. **No schema re-dump** (vault field +
+  pre-existing columns). Rust; owns the character vault-overlay +
+  `api/characters.rs`. Disjoint from P4.d12.
+- **P4.6bi** (`work-orders/p4.6bi-outfit-newchat-spa.md`) — the SPA half:
+  the Wardrobe-tab `canChooseOutfit` checkbox, the outfit-selector
+  Starting-Outfit default, and the owed **New-Chat picker re-port**
+  (`e2eb3d21`: full roster in Select Characters, cast-only Play As,
+  keep-on-revert) + the `8bf3cb5f` outfit plumbing. Angular; owns
+  `apps/web`. Consumes P4.6bh's `canChooseOutfit` contract (binding,
+  reproduced verbatim in both orders).
+
+**Baseline after round 1:** MIXED, by design — the memory-row/pure +
+character + new-chat families rebase to `8bf3cb5f`; the extraction-prompt,
+fold, retrieval, and deep-dive-tool families stay at `7e6d13e5` until
+rounds 2/3 port their behavior (the established "untouched families keep
+their vintages" pattern). CLAUDE.md's baseline paragraph updates at the
+round-1 unification.
+
+**ROUND 2 (future — workstreams B + D + §3):** time/entity-aware
+retrieval (`searchMemoriesSemantic` `occurredWithin` + entity anchoring
++ multi-probe), `turnTemporal` made real, vault-summary date filters,
+the deep-dive tools (`search` `since`/`until`/`aboutCharacter`,
+`read_conversation` range, the orchestration prose), and the
+`recall-replay` CLI + replay harness.
+
+**ROUND 3 (future — workstreams A-creation + C + E):** the clocked
+extraction prompt + EVENT category + `kind`/`when`/`entities` output,
+the fold-time episode pass (new module), recall-on-reference (the fourth
+cadence: enlarged head + scoped mini-recap + the `retrospective-recall`
+whisper), the fold Timeline section, the gate date-guard, the
+compression keep/drop flip, and the Salon "Story's Clock" timeline-mode
+SPA switch.
+
+The next `/setupphase` plans rounds 2/3 once round 1 lands.

@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the episodic-recall drift catch-up — a 3-round campaign against
+v4's largest single drift (8bf3cb5f, a squash-merge of three feature
+branches: an episodic-recall memory overhaul plus character-outfit
+selection and wardrobe-permission toggles). Round 1's three parallel
+work orders are committed: P4.d12 (the memory episodic-spine foundation —
+the schema re-dump for the five new columns, the data layer, the pure
+episodic/weighting/injector ports, and the memory-family oracle rebase),
+P4.6bh (the character-outfit + wardrobe-permission server slice), and
+P4.6bi (the outfit SPA + the owed New-Chat picker re-port). Docs only; no
+code and no version bumps in this change.
+
 The P4.6bg remainder is UNIFIED on main — P4.6bg CLOSED (tier 1 complete)
 with one loud tier-2 deferral (the filesystem↔database store conversion
 port), and the codec + fs seam round is fully disposed: the doc-edit tool
