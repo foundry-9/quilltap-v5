@@ -25678,3 +25678,46 @@ stays refusal-armed on the WebP codec; per-instance workspace
 storage-key scoping stays deferred; J3's accent ruling: NO CHANGE
 (v5 was already v4-faithful — the runtime theme packs carry the live
 token references; the committed hexes are the pre-pack fallback).
+
+---
+
+## Round planned — the codec + fs seam round (P4.6bf ∥ P4.6bg), 2026-07-20
+
+Two lanes, planned against v4 baseline `7e6d13e5` (4.8.0-dev.92; HEAD ==
+baseline, tree clean at planning — oracles regenerate from the checkout
+directly). Orders committed:
+
+- **`work-orders/p4.6bf-avatar-preview-blob-codec-wire.md`** (lane BF,
+  Rust/host + e2e specs): the `avatar_preview` host renderer
+  (`HostAvatarPreviewRenderer` over the EXISTING P4.1b `HostImageCodec` +
+  the ported `convert_to_webp` policy + the image-generation host
+  machinery — after which the wardrobe Preview button costs real money)
+  and the dispatch-layer blob-WebP seam (the S1 `EngineAssembly.blob_webp`
+  field; the planning survey established the P4.6y "production WebP codec"
+  deferral is narrower than the loud list suggests — the codec exists and
+  the chat spine already runs it; only `avatar_preview: None` and the two
+  `api/mount_files.rs` inline `RefusingWebpTranscoder` sites refuse in
+  production). Tier 2: a canned-renderer wardrobe differential arm; the
+  ST placeholder-DEFLATE seam iff byte-parity holds empirically.
+- **`work-orders/p4.6bg-docedit-fs-general-scope.md`** (lane BG, Rust +
+  harness + e2e specs): the FsSeam close — the path-resolver fs branches
+  (safeRealpath walk-up / verifyPathIsWithinBase / the `general` scope at
+  `<files>/_general` / fs mounts / the legacy project fallback), the
+  doc-edit tool fs arms (shared/document_ui/file_management/text), the S2
+  `files_dir` thread, fs-backed extensions to all four doc-edit
+  differential families (temp-tree manifests + the P4.6v sentinel-rewrite
+  recipe), and the `workspace-document-standalone-flow` general-scope beat
+  flipped from pinning the refusal to the live round-trip (in-lane).
+  Tier 2: the `conversion.ts` port un-refusing convert/deconvert behind
+  the live capability guards.
+
+Shared contracts S1–S5 (the blob-WebP seam split, the files-dir thread,
+the engine.rs REGION SPLIT, version-bump ownership, the differential/live
+split) are reproduced verbatim in both orders. One AT-UNIFY item: the
+engine.rs call-site wire passing `blob_webp` into BG's re-signatured
+`store_mount_file` handlers. Deliberately excluded from the round (named
+in both orders' tier 3): `DocumentTextExtractor` (pdf/docx — extracted
+text lands in tier-2-diffed DB rows and pdf-parse/mammoth output is not
+reproducible in Rust; needs its own divergence-management design), the
+chokidar-equivalent watcher (host cadence), `filesSync`/cleanup-stale,
+the `quilltap docs` CLI, AVIF/HEIC decode.

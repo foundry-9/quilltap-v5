@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Planned the codec + fs seam round (docs only): two work orders committed —
+p4.6bf (the avatar-preview host renderer over the existing HostImageCodec,
+plus the dispatch-layer blob-WebP assembly seam) and p4.6bg (the doc-edit
+FsSeam close: path-resolver fs branches, the general scope at
+`<files>/_general`, fs-backed differential corpus extensions, and the
+tier-2 store convert/deconvert port). Round record in the status log;
+v4 baseline 7e6d13e5, drift-clean at planning.
+
 The 2026-07-20 human dogfood pass over the workspace-tabs remainder
 round ran CLEAN on the Friday copy — zero findings. Verified: Brahma
 Console in both modes (live sends with SQL tool calls over the real
