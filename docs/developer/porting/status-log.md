@@ -26826,3 +26826,15 @@ subsystem.
 Tier 2 (help prose) is the out-of-repo deferral above. Tier 3 loud deferral:
 the v4 outfit-selector auto-resolve + collapsed mode badges + wardrobe `fetched`
 distinction ride v5's deferred wardrobe-composer family (unit 3 record).
+
+**Playwright gate — definitive result.** Full RELEASE run (worktree symlinked
+main's `target/release/{quilltap-web,quilltap}` — `crates/` byte-identical to main,
+no Rust changed): **110 passed / 0 failed** (2.7 min), the new picker beat live.
+A first FULL run on DEBUG binaries had 108 passed / 2 failed —
+`foundation.spec.ts:14` (unlock→theme) and `salon-composer-modes.spec.ts:180`
+(the P4.d9 `$$`/`$50` KaTeX beat, a DOCUMENTED full-suite timing/shared-state
+flake) — both PRE-EXISTING flakes outside this lane's surfaces, each proven green
+in RELEASE isolation (foundation 2.2s; the picker beat 462ms) and both green in
+the clean RELEASE full run. The DEBUG failures trace to the documented
+DEBUG-binary PBKDF2 unlock latency under CPU load (a sibling Rust lane churning
+`cargo test` at the time).
