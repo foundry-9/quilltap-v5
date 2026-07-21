@@ -25333,3 +25333,126 @@ pass). The clean run above was taken with `env.ts` PORT/MOCK_LLM_PORT
 temporarily moved to 4419/45401 (reverted, never committed) to dodge the
 collision. Run Playwright when no sibling worktree is mid-suite, or isolate
 the ports.
+## P4.9J4 lane — the standalone (chat-less) Document Mode surface (in progress)
+
+Branch `claude/document-standalone-spa-69384f`. Drift-check at lane start:
+v4 HEAD == `7e6d13e5` (the baseline), tree clean. SPA-ONLY lane —
+`git diff main -- crates/ Cargo.toml Cargo.lock` is empty; all seven
+standalone document verbs already exist and are engine-wired (P4.6w), so
+this lane adds NO Rust and NO oracle. Fidelity is (a) the wire module
+name-for-name against `api/types.rs:1565-1595` (the unifier's wire diff),
+(b) the screen's mechanics specced against the pre-surveyed v4
+`StandaloneDocumentView.tsx`, (c) the editor path reuses the gated
+`qt-rich-editor` bridge untouched.
+
+- **Unit 1 — the wire module** (`documents/standalone-wire.ts` + `.spec.ts`).
+  The seven `document*` request interfaces (`documentStores`,
+  `documentsRecent`, `documentOpen`, `documentRead`, `documentWrite`,
+  `documentRename`, `documentDelete`) name-for-name against
+  `api/types.rs:1565-1595` (the `Request` enum
+  `#[serde(tag="type", rename_all="camelCase")]`, each standalone variant a
+  flattened `body`), declared LANE-LOCALLY behind the
+  `as unknown as CoreRequest` cast (the `file-manager-transport.ts` /
+  `home.api.ts` precedent; the unifier folds them into `core-contract.ts`
+  and runs the diff, §W.3). Plus the root-provided `StandaloneDocumentApi`
+  dispatch client (one method per verb; response DTOs mirror the Rust
+  handlers' JSON; the write conflict → the `conflict` outcome exactly as
+  `document-api.ts`). 11-case spec pins each request `{type,…}` shape +
+  response field extraction (incl. the null-mountPoint→undefined map and
+  the conflict/error write split). apps/web 0.5.222.
+
+- **Unit 2 — the screen** (`documents/standalone-document-view.ts` +
+  `.spec.ts`). `qt-standalone-document-view` — the port of v4
+  `components/workspace/StandaloneDocumentView.tsx` (baseline `7e6d13e5`),
+  which re-implements the per-document mechanics INLINE (v4 does NOT reuse
+  `useDocumentMode` here): mount-once open (an `opened` guard so a payload
+  refresh never re-opens), 30 s autosave debounce, flush-on-blur, the
+  absorb-first-serialization baseline (reuses `computeAbsorbNext` —
+  markdown + non-empty + rich-editor), the 409 → `read` reload (no local
+  edits → adopt disk; else keep the unsaved content and refresh mtime
+  only), rename that updates the payload's `filePath` but keeps the
+  `docKey` stable, delete → self-close, and the blank-document payload
+  refresh (`WORKSPACE_HANDLE.refreshTab`). Hosts the existing
+  `qt-document-pane` (mode `'split'`, toggle-focus a no-op as v4). Self-close
+  via `WORKSPACE_HANDLE` + `WORKSPACE_TAB_ID` (both optional; the tab host
+  always provides them). 12-case spec: mount-open + tab refresh, failed-open
+  load error, absorb baseline, the 30 s debounce under fake clocks + re-arm,
+  flush-on-blur, 409 keep-content + mtime, rename keeps docKey, rename no-op,
+  delete closes / failed-delete keeps open, close flushes then closes.
+  apps/web 0.5.223.
+
+- **Unit 3 — the opener + the picker's standalone variant**
+  (`documents/document-picker.ts` + `.spec.ts`;
+  `documents/documents-rail-entry.ts` + `.spec.ts`). The picker gained v4's
+  `chatId === null` arm (this lane owns the picker file this round): `chatId`
+  is now `string | null`, `DocumentApi` is injected `{ optional: true }` (the
+  chat path) and the root `StandaloneDocumentApi` drives the standalone path
+  (recents from `documentsRecent`, stores from `documentStores`, mount browse
+  from the shared `mountFilesList`); standalone is implicitly "everywhere" so
+  the look-everywhere checkbox is hidden (v4 `chatId !== null &&`). The rail
+  entry `qt-documents-rail-entry` mirrors v4 `sidebar-footer.tsx:255-262` +
+  `handleSelectDocument:163-197`: a "Document Mode" button opens the standalone
+  picker; a selection builds `DocumentStandaloneTabPayload` (docKey via
+  `standaloneDocKey` — identity-keyed so reopening the same file focuses the
+  tab; a fresh uuid per blank) and calls
+  `openTab('document-standalone', payload, { title })`, with the
+  `?open=document-standalone&…` intent as the routed (off-/workspace)
+  fallback. Existing chat-scoped picker specs stay green (the chat-mode
+  render now also stubs `StandaloneDocumentApi` so the root injection never
+  pulls in the real `CoreClient`). 15 specs (9 picker incl. 3 standalone,
+  6 rail: same-docKey reopen, distinct-uuid blanks, project→general map,
+  routed fallback). apps/web 0.5.224.
+
+- **Unit 4 — e2e beats + the AT-UNIFY table**
+  (`e2e/workspace-document-standalone-flow.spec.ts`; the order's status
+  header). Guarded ACTIVATE-AT-UNIFY probes (flag-ON, BASE `@playwright/test`
+  import like `workspace-flow.spec`; a rail-button `isWired` probe is the
+  gate — the standalone verbs already live server-side, so the guard is the
+  SPA wiring the unifier lands). Beat 1 (ALWAYS runs): a
+  `?open=document-standalone&scope=general` intent mints a tab — pre-unify the
+  loud not-wired pane (proving the tab kind round-trips through the layout),
+  post-unify the live editor + blank-doc create. Beat 2 (unify): rail →
+  picker → New blank → edit → flush-on-blur autosave (→ Saved) → rename
+  (title + tab label) → delete closes the tab. Beat 3 (unify):
+  reopen-focuses-same-tab — a renamed file reopened from the picker recents
+  keeps ONE tab (docKey identity). apps/web 0.5.225.
+  ⚠ **The e2e could NOT be run to completion in-lane:** this round ran FOUR
+  worktrees in parallel, all sharing the hardcoded e2e port 4319, and sibling
+  setups actively `lsof -ti :4319 | xargs kill -9` — so a solo server window
+  never held. The beats are guarded and self-activate at unification (when the
+  unifier runs the full suite ALONE post-registry-swap); the lane's logic is
+  fully covered by the 38 new unit specs (`ng test` 193 files / 2374 green).
+  The unifier's live run is the beats' first real execution — by design.
+
+**Tier-3 deferrals (loud, recorded so they are not re-reported as gaps):**
+- `doc_focus` stays chat-scoped (v4-faithful — `StandaloneDocumentView` does
+  not consume the LLM `doc_focus` UI tool; it is a chat-pane concern). The
+  P4.9J2 `doc_focus`-beats deferral folds into this: there is no standalone
+  `doc_focus` surface to build.
+- FilePreviewText math + the rich-stack preview deferrals (P4.6af-era) are
+  untouched by this lane.
+
+**AT-UNIFY table (P4.9J4) — the unifier performs these (mirrored in the order
+header):**
+1. `workspace/chrome/tab-registry.ts`: `document-standalone` →
+   `{ component: StandaloneDocumentView, inputs: (tab) => ({ payload: tab.payload as DocumentStandaloneTabPayload }) }`
+   (replacing `refusal('document-standalone')`; import from
+   `../../documents/standalone-document-view`).
+2. `workspace/chrome/not-wired-pane.ts`: drop the `document-standalone`
+   headline/detail arms (only `wardrobe` + `brahma` remain).
+3. `shell/shell.ts`: import `DocumentsRailEntry` from
+   `../documents/documents-rail-entry`, add to `imports`, mount
+   `<qt-documents-rail-entry />` in the footer actions right after the
+   Wardrobe button (v4 order: Wardrobe → Document Mode → Settings).
+4. `core/core-contract.ts` (§W.3): fold the seven `document*` request
+   interfaces from `documents/standalone-wire.ts`, run the name-for-name wire
+   diff vs `api/types.rs:1565-1595`, retire the two `as unknown as CoreRequest`
+   casts and re-export the interfaces (the P4.9a2/P4.9f1 fold precedent).
+5. e2e: no shared setup change; the beats self-activate at the wire.
+
+**Gate at lane close:** `ng test` 193 files / 2374 green; `ng build` clean;
+`cargo fmt --all --check` OK; `cargo clippy --workspace --all-targets` +
+`--features quilltap-core/native-transport` both `-D warnings` clean;
+`cargo test --workspace` 357 suites / exit 0 (zero Rust changed —
+`git diff main -- crates/ Cargo.toml Cargo.lock` empty). The full Playwright
+run is deferred to the unifier (shared-port contention this round).

@@ -81,6 +81,36 @@ mounts land at the p4.9i1 unification, so the whole lane ships behind guarded
 ACTIVATE-AT-UNIFY e2e beats. Lane gate: full `ng test` 198 files / 2397 tests
 green, `ng build` clean, full Playwright 96 passed / 5 skipped (this lane's
 guarded beats) / 0 failed, zero Rust/Cargo diff vs main.
+P4.9J4 (standalone Document Mode, unit 4): e2e beats for the chat-less
+Document Mode tab — guarded ACTIVATE-AT-UNIFY probes (tab-kind round-trip,
+rail → picker → open → edit → autosave → rename → delete, reopen-focuses),
+plus the AT-UNIFY table in the order header (the registry swap, the shell
+mount of the rail entry, and the core-contract wire fold the unifier lands).
+The interactive beats self-activate at unification; the lane's logic is fully
+covered by 38 unit specs. Closes the P4.9J2 tier-2 item 7 (and its
+doc_focus-beats fold — doc_focus stays chat-scoped, v4-faithful).
+
+P4.9J4 (standalone Document Mode, unit 3): the rail "Document Mode" opener
+and the picker's standalone (chat-less) variant. The Open-Document modal now
+serves both entries v4's one modal serves — a `chatId` scopes the chat-side
+picker, a null `chatId` is the standalone rail surface (recents + every
+enabled store from `/api/v1/documents`, the look-everywhere toggle hidden).
+The rail entry opens the standalone picker and opens the picked file as a
+`document-standalone` workspace tab (reopening the same file focuses its tab).
+
+P4.9J4 (standalone Document Mode, unit 2): the `qt-standalone-document-view`
+screen — the chat-less Document Mode tab. Ports v4's inline per-document
+mechanics: 30 s autosave debounce, flush-on-blur, absorb-first-serialization
+baseline, 409-conflict reload, rename that keeps the docKey stable, and
+delete that closes the tab. Hosts the existing document pane; opens once on
+mount and refreshes a blank document's tab payload with the server filepath.
+
+P4.9J4 (standalone Document Mode, unit 1): the lane-local `document*`
+wire module — the seven standalone document request interfaces
+(name-for-name against `api/types.rs`, folded into `core-contract.ts` at
+unification) plus a root `StandaloneDocumentApi` dispatch client (one
+method per verb; the write conflict maps to the `conflict` outcome).
+SPA-only; no server verbs added (all seven already exist from P4.6w).
 
 Docs only: the workspace-tabs remainder round is PLANNED — four work
 orders committed (P4.9I1A the Brahma server lane: the multi-turn
