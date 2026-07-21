@@ -2162,7 +2162,38 @@ rows 5/6/8–15; the composer backslash-escape seam. Watch v4 for the
 4.8.0 tag and the episodic-recall feature (drift-check before every
 round).
 
-## The episodic-recall drift catch-up — a 3-round campaign, ROUND 1 planned 2026-07-21
+## The episodic-recall drift catch-up — a 3-round campaign, ROUND 1 UNIFIED 2026-07-21
+
+**ROUND 1 (P4.d12 ∥ P4.6bh ∥ P4.6bi) UNIFIED on main 2026-07-21** — the
+episodic SPINE + both orthogonal character slices landed. The five new
+columns exist and marshal (D23 re-dump), the pure `episodic` module +
+memory-weighting/injector date logic are ported, the memory-row/pure +
+character + new-chat oracle families rebased onto `8bf3cb5f`, and the
+`canChooseOutfit` vault flag + wardrobe-permission PUT toggles +
+Wardrobe-tab card + New-Chat picker re-port all landed. Gate: 361 Rust
+binaries / 1,474 / 0 (key differentials fresh from `8bf3cb5f`, by name),
+clippy both, release build, ng 203/2,448, Playwright 109 + 1 documented
+flake. Versions: core 0.0.305, harness 0.0.263, host 0.0.28, SPA 0.5.245.
+Round record + lane records in `status-log.md`. **Baseline is now MIXED**
+(memory-row/pure + character + new-chat families at `8bf3cb5f`; the
+deferred behavior families at `7e6d13e5`).
+
+**NEXT: ROUND 2, then ROUND 3** (the episodic BEHAVIOR — the columns are
+inert until these land). Round 2 = time/entity-aware retrieval
+(workstream B) + deep-dive tools (D) + the §3 replay harness. Round 3 =
+creation-side extraction (A-creation) + the recall-on-reference cadence
+(C) + stop-destroying-episodes (E: fold Timeline, gate date-guard,
+compression flip) + the Salon "Story's Clock" SPA. **Round-3 carry-ins
+flagged by round 1** (do not lose): the gate tier-3 family
+(`QT_ORACLE_GATE`) stays un-regenerated because v4's first-write
+`applyEpisodicFallbackAnchors` is non-inert on AUTO-source proper-noun
+content (the inert-path boundary); the turn-path write `occurredAt` stamp
+(`resolveCandidateAnchors`) defers with the processor extraction prompt;
+memory-tasks tier-1, context-summary/fold, and carina-extraction defer
+with the prompt changes. The next `/setupphase` plans round 2. (Original
+round-1 planning section follows.)
+
+### Original round-1 planning record (2026-07-21)
 
 **⚠ v4 DRIFTED to `8bf3cb5f` — the largest single drift in the port.**
 `git log 7e6d13e5..HEAD` at planning shows two commits past the baseline:

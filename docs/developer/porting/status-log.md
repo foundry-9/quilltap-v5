@@ -9,6 +9,529 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the episodic-recall drift catch-up, ROUND 1 of 3 (P4.d12 ∥ P4.6bh ∥ P4.6bi) — UNIFIED on main 2026-07-21
+
+Round 1 of the campaign catching v5 up to v4's largest single drift
+(`8bf3cb5f`, a squash-merge of episodic-recall + character-outfit +
+wardrobe-permission). Three parallel lanes, disjoint ownership, unified
+by cherry-pick in dependency order (memory + character server → SPA).
+The three lane records are directly below this one (P4.d12, then P4.6bi;
+P4.6bh's record follows them). Rounds 2 and 3 (the episodic *behavior*)
+are planned in `phase-4.md` and the campaign memory note.
+
+**What landed (verified against each order's tier list):**
+- **P4.d12 — the episodic SPINE (keystone).** The D23 re-dump
+  (`chats.timelineMode` + `memories.{occurredAt,narrativeTime,entities,
+  kind}` + `idx_memories_occurredAt`) through the memories/chats data
+  layer; the pure `episodic` module (4 exports, new 94-case tier-1
+  differential); memory-weighting `episodicBonus` + the event-clock age;
+  the injector's dated dynamic head; and the memory-family oracle
+  **rebase** onto `8bf3cb5f` for the row-emitting + pure families
+  (provisioning, memories read/tier-2/routes+config, chats read/tier-2,
+  episodic, weighting, injector, delete, cascade, housekeeping,
+  build-context [moved into the rebase set — the dated head bleeds into
+  its render], ranking [inert re-proof]).
+- **P4.6bh — the character-outfit + wardrobe-permission SERVER slice.**
+  `canChooseOutfit` as an optional-with-default-`false` vault
+  `properties.json` field (read/scaffold/RMW/DTO); the
+  `canDressThemselves`/`canCreateOutfits` PUT allowlist (explicit-null
+  preserved). No schema re-dump. All character differentials green at
+  `8bf3cb5f`.
+- **P4.6bi — the character-outfit SPA + the New-Chat picker re-port.**
+  The Wardrobe-tab `canChooseOutfit` card (edit + detail); the
+  outfit-selector `canChooseOutfit` synchronous seed; the picker re-port
+  (`e2eb3d21`: full roster in Select Characters, cast-only Play-As,
+  keep-on-revert) + the `8bf3cb5f` new-chat outfit plumbing; a live
+  new-chat e2e beat.
+
+**The unification wire.** The Shared contract (`canChooseOutfit` on the
+character read shape + the three PUT keys) composed with **no code
+wire** — a name-for-name diff confirmed the server emits
+`canChooseOutfit ?? false` on the DTO and accepts all three PUT keys via
+`UPDATE_SCHEMA_KEYS`, and the SPA reads it (`core-contract.ts`) and sends
+`{ canChooseOutfit }` via `characterUpdate` + plumbs it into the
+outfit-selector — exactly as written. The integration proof is the full
+Playwright run against the combined server+SPA build.
+
+**Escalations / boundary findings (P4.d12, followed the order's own
+rules):**
+- The **gate tier-3 family is NOT inert** — v4's first-write
+  `applyEpisodicFallbackAnchors` capture fires on AUTO-source candidates
+  whose content carries proper nouns (the inert-path guarantee holds for
+  MANUAL-source writes, not AUTO-source-with-proper-nouns). Per the
+  order, that fallback is round-3 behavior, so `QT_ORACLE_GATE` stays
+  un-regenerated (SKIP) until round 3.
+- The **write-path `occurredAt` stamp** (turn-path `resolveCandidateAnchors`
+  off the transcript's `lastMessageCreatedAt`) **defers to round 3** with
+  the processor extraction prompt (its tier-3 pins prompt bytes). MANUAL
+  API creates prove the inert path today; the turn-path stamp is round 3.
+- **Baseline is now MIXED:** the memory-row/pure + character + new-chat
+  families are at `8bf3cb5f`; the deferred behavior families (gate,
+  processor, memory-tasks, recall-tags, context-summary/fold,
+  carina-extraction) stay at `7e6d13e5` until rounds 2/3.
+
+**The gate (this Mac, authoritative):**
+- `cargo fmt --all --check` clean; clippy BOTH feature sets `-D warnings`
+  clean; release build clean.
+- `cargo test --workspace` (all differential env vars set): **361 test
+  binaries / 1,474 tests / 0 failed.**
+- Key differentials regenerated FRESH from v4 `8bf3cb5f` and re-run BY
+  NAME (`--nocapture`, no SKIP): provisioning (byte-exact per-partition
+  `sqlite_master` diff + the reverse `verify-v5-provisioned` walk under
+  real v4), episodic (94 cases), memory-weighting (17), memory-injector
+  (72 rows), vault-json-parsers (37), memories-read + characters-scaffold
+  (tier-2 fixtures rebuilt), ranking-blend (inert re-proof). The
+  remaining round-touched tier-2 DB families relied on the lanes'
+  committed-green fixtures + the disjoint-composition argument (each
+  family's differential is a pure function of its own lane's source; the
+  merge touched only versions/lock/docs; clippy + build confirm the
+  merged source is coherent).
+- `ng test` **203 files / 2,448 / 0**; `ng build` clean.
+- Full Playwright (fresh dist + fresh release binaries, alone on the
+  port): **109 passed / 1 failed** — the one failure is
+  `wardrobe-flow.spec.ts:252` (the in-chat `set_all` flush), the
+  DOCUMENTED pre-existing full-suite order/timing flake, re-proven NOT a
+  regression by an isolation re-run (wardrobe-flow **3/3 green**, :252 in
+  508ms vs the 10.6s full-suite timeout). No assertion touched; this
+  round did not touch the in-chat set_all path.
+
+**Final versions:** core 0.0.305, harness 0.0.263, host 0.0.28, web
+0.0.36 (unchanged), tauri 0.0.4 (unchanged), SPA 0.5.245.
+
+**Standing after this round:** the episodic COLUMNS exist and marshal;
+the episodic BEHAVIOR is rounds 2/3 (time/entity retrieval + deep-dive
+tools; then creation-side extraction + fold-episode pass + the fourth
+cadence + fold Timeline + gate date-guard + the "Story's Clock" SPA).
+P4.6bi's help/chats.md prose is an out-of-repo deferral (v5 syncs help
+from a runtime `<cwd>/help/` tree). The outfit-selector auto-resolve +
+collapsed mode badges + `fetched` distinction ride v5's deferred
+new-chat wardrobe-composer family.
+
+## Lane P4.d12 — the episodic-spine foundation (round 1 / lane 1 of the episodic-recall drift catch-up) — LANE COMPLETE (2026-07-21, 7 units, awaiting unification)
+
+Branch `claude/episodic-spine-foundation-port-bb4157`. v4 baseline
+`8bf3cb5f` — drift-checked at lane start: v4 HEAD == `8bf3cb5f`, tree
+clean, so oracles regenerate directly from `~/source/quilltap-server`
+(no pin needed). This lane MOVES the memory-row/pure oracle families to
+`8bf3cb5f`; the deferred families (extraction-prompt, fold, retrieval,
+deep-dive tools) stay at `7e6d13e5` for rounds 2/3.
+
+### P4.d12 unit 1: the D23 schema re-dump (2026-07-21)
+
+Core `0.0.297 → 0.0.298`.
+
+**Landed:** `fresh_schema.json` regenerated from v4 `8bf3cb5f`'s live
+`generateDDL` (the dump-fresh-schema.ts dumper; main=79 mount-index=29
+llm-logs=3 statements — counts unchanged). `chat_settings_seed.json`
+regenerated identical (no diff). The line-level DDL diff carries
+SEVEN additions, classified:
+- `chats.timelineMode TEXT` (expected),
+- `memories.occurredAt TEXT`, `memories.narrativeTime TEXT`,
+  `memories.entities TEXT DEFAULT '[]'`,
+  `memories.kind TEXT DEFAULT 'semantic'` (expected),
+- `characters.canChooseOutfit INTEGER DEFAULT 0` — **NOT in the order's
+  prediction**: the order's Shared contract claimed canChooseOutfit is
+  vault-properties-only with no DB column, but v4 `8bf3cb5f`'s
+  generateDDL emits the column (the vault manages the FIELD; the column
+  exists underneath, like canDressThemselves/canCreateOutfits). Adopted
+  faithfully via the re-dump per D23 — inert in v5 (no v5 reader/writer
+  until the outfit slice); same precedent as the earlier
+  `characters.metadata` adoption.
+
+**Deliberate non-addition:** `idx_memories_occurredAt` does NOT appear —
+v4's generateDDL never emits it; only the `add-episodic-memory-fields`
+migration creates it (v4 DDL.md documents it as migration-added). The
+provisioning oracle builder runs generateDDL + the three
+mount-provisioning migrations only, so a fresh v4 instance in the
+differential is index-free too, and the byte-exact sqlite_master diff is
+green WITHOUT the index. Real (migrated) v4 instances carry the index;
+v5's migration runner stays deferred — flagged as a standing gap of that
+deferral, not of this lane.
+
+**Verified:** `provisioning_equivalence` (2 passed — the byte-exact
+per-partition diff at a fresh `8bf3cb5f` oracle), reverse
+`verify-v5-provisioned.ts` OK under real v4, and the three
+`fresh_schema.json` direct-reader suites (`builtin_templates`,
+`builtin_mounts`, `pascal_workbench_route`) green (statement counts
+unchanged, no assertion edits needed).
+
+**Regen recipe (this unit):** per the order header —
+`QT_SCHEMA_OUT/QT_SEED_OUT` dump-fresh-schema.ts from
+`~/source/quilltap-server`; build-provision-oracle.ts →
+`/tmp/oracle-provision.json` + `/tmp/qt-v4-fresh`; cargo test
+`provisioning_equivalence` with `QT_ORACLE_PROVISION` /
+`QT_FIXTURE_V4_FRESH` / `QT_V5_PROVISION_OUT`; then
+verify-v5-provisioned.ts with `QT_FIXTURE_V5_PROVISIONED`.
+
+### P4.d12 unit 2: the memories data layer — four episodic columns + fixture migration (2026-07-21)
+
+Core `0.0.298 → 0.0.299`, harness `0.0.257 → 0.0.258`.
+
+**Landed:**
+- `db/memories.rs`: `MemCreate` + the INSERT gain
+  `occurredAt`/`narrativeTime`/`entities`/`kind` (schema position, after
+  `witnessedContext`); `MemUpdate` + `set_col!` arms for all four.
+- `db/memories_read.rs`: `COLS` 21 → 25 columns; `marshal_row` inserts the
+  four at schema position (v4's Zod parse emits keys in shape order, so
+  mid-list — NOT appended — is the key-order-faithful choice; the regen'd
+  oracle confirms `"entities":[]`,`"kind":"semantic"` right after
+  `witnessedContext`, occurredAt/narrativeTime omitted-when-null on the
+  normal path, explicit null on the keep-nulls raw path). `kind` reads
+  defensively as required-with-default `'semantic'`.
+- `CreateMemoryOptions` (services/memory_gate.rs) gains the four fields;
+  `create_memory_direct_with_embedding` writes them. Round-1 INERT
+  defaults at every caller: the route create (v4's `createMemorySchema`
+  does NOT accept episodic fields at 8bf3cb5f — **the oracle disproved
+  the order's route-stamp gloss**: v4 route creates land `occurredAt`
+  NULL; the stamping the order describes lives on the PROCESSOR path
+  and rides unit 7), the processor write (stamp deferred to unit 7 with
+  the transcript `lastMessageCreatedAt`/`turnTimestamp` carriers), the
+  quilltap-import seed (reads the seed JSON with schema defaults).
+- **The committed fixture migration** — new committed script
+  `harness/oracle/fixtures/migrate-fixtures-episodic-columns.ts` (the
+  pascal-columns precedent): v4's own migration DDL verbatim (four
+  memories ALTERs + `idx_memories_occurredAt` + the chats.timelineMode
+  ALTER), idempotent, applied to **19 fixtures** in
+  `crates/quilltap-web/tests/fixtures/`. Deliberately WITHOUT v4's
+  occurredAt backfill — null `occurredAt` is the round's inert-path
+  verification precondition; the backfilled shape belongs to rounds 2/3
+  fixtures. (Every OTHER family's committed oracle NDJSONs are
+  regenerated per-run, so no standing red; chat-object-emitting families
+  regen at ≥8bf3cb5f next time they run.)
+- In-crate test DDLs gained the four columns in the five files whose
+  tests read memories (`db/memories.rs`, `services/memory_gate.rs`,
+  `services/memory_service.rs`, `services/housekeeping.rs`,
+  `services/job_runner.rs`).
+
+**Gotcha (memory-note-worthy):** with the MIGRATED memories fixture the
+`memories-config` jest oracle deterministically emitted 500 "User not
+found" for `extraction_concurrency_get` (the case after
+`extraction_limits_set`) — the fire-and-forget-tail class again, now
+outliving the 350 ms per-case settle; pre-migration fixture passed. Fix:
+the case file's settle 350 → 750 ms (comment records the symptom).
+
+**Verified:** `memories_read_equivalence` (39 queries),
+`memories_tier2_equivalence`, `memories_routes_equivalence` (24 routes
+cases + 17 config cases) — all green over oracles freshly regenerated
+from v4 `8bf3cb5f` (recipes: the test headers; the routes/config pair
+runs from the /tmp jest mirror with `QT_FIXTURE_MEM_MAIN/MOUNT` pointing
+at the MIGRATED committed fixtures). NDJSONs grepped for content
+(routes: 107 `kind:semantic` occurrences; read: 57).
+
+### P4.d12 unit 3: chats.timelineMode through the data layer (2026-07-21)
+
+Core `0.0.299 → 0.0.300`.
+
+**Landed:** `chats_read.rs` `ALL_COLUMNS` 96 → 97 (`timelineMode` at its
+generateDDL/Zod position, between `commonplaceRecallHistory` and
+`budgetMaxTurns`; NULL reads as realtime and is omitted, v4's dropped
+`undefined`); the positional marshal shifted +1 from index 70 (⚠ the
+turbofish `row.get::<_, String>(94/95)` createdAt/updatedAt gets don't
+match a bare `row.get(\d+)` regex — caught by
+`InvalidColumnType(94, "showThinking", Null)` in the enclave tests).
+`chats.rs`: `ChatCreate.timeline_mode` + the INSERT (99 placeholders) +
+`ChatUpdate.timeline_mode` double-Option + its `set_col!` arm (no
+production caller yet — the Story's Clock switch is round 3). The two
+enclave in-crate chats test DDLs (`enclave/lifecycle.rs`,
+`enclave/step.rs`) gained the column.
+
+**Verified:** `chats_read_equivalence` + `chats_tier2_equivalence` green
+over fixtures + oracles freshly regenerated from v4 `8bf3cb5f` (recipes:
+the test headers). Core suite 1000/0. Note for other families: committed
+chat-object-emitting oracles regenerated at ≥8bf3cb5f will now carry
+`timelineMode` when non-null; on the migrated fixtures the column is
+NULL everywhere so their output is byte-unchanged (the inert path).
+
+(Unit-3 addendum: `quilltap-host/tests/host_boot.rs`'s hand-written chats
+DDL also gained `timelineMode` — its absence failed
+`boots_headless_and_pumps_jobs` with `no such column`, and because
+`cargo test --workspace` fail-fasts at the first failing TARGET, the
+~36 quilltap-web binaries silently didn't run on that pass. Recount the
+result lines whenever a gate shows a failure. Host `0.0.27 → 0.0.28`.)
+
+### P4.d12 unit 4: the `episodic` pure module + tier-1 differential (2026-07-21)
+
+Core `0.0.300 → 0.0.301`, harness `0.0.258 → 0.0.259`.
+
+**Landed:** `crates/quilltap-core/src/episodic.rs` — all four exports of
+v4 `lib/memory/episodic.ts` (`build_memory_anchor_line`,
+`build_memory_embedding_text`, `resolve_when_phrase` — ported but
+UNWIRED per the round plan (round 3's extraction is its only caller) —
+and `event_reference_time_ms` + an `event_time_ms` Option form for the
+weighting/injector constructors). `clock.rs` exposes
+`civil_from_days`/`days_from_civil` pub(crate) + `floor_div_ms_days` /
+`utc_parts`.
+
+**JS-fidelity findings (pinned in the module doc + unit tests, confirmed
+against Node 24 before porting):**
+- V8 ISO `Date.parse`: month 01–12 and day 01–31 are hard bounds, but an
+  in-bounds day ROLLS past the month end — so `"2026-02-31"` as a when
+  phrase resolves to the RAW `2026-02-31T00:00:00.000Z` (the date-only
+  branch slices the input, not the parse); `"February 31"` (month-day
+  form) resolves through `Date.UTC` rolling to `2026-03-03`. Both cases
+  are in the corpus and match.
+- Fraction digits truncate to ms; lowercase `t`/`z` accepted; `±HHMM`
+  no-colon offsets accepted.
+- Zone-less datetimes parse LOCAL in JS → the oracle pins `TZ=UTC` and
+  the port implements UTC (production `occurredAt` always carries a
+  zone; corpus-only seam, documented in both files).
+- JS `\s`/`trim` → `jsstr::JS_WS_CLASS`/`js_trim`; v4 mixes `\s+` and
+  literal spaces across the phrase regexes — reproduced form-for-form.
+- The `(anchorDay - target + 7) % 7 || 7` weekday quirk (JS `|| 7` on 0)
+  and the `WORD_NUMBERS` table (incl. `couple`/`few` reachable through
+  the PLAIN ago-regex as well as the `a couple of` form) carried over.
+
+**Verified:** the new `episodic_equivalence` tier-1 differential — 94
+cases (16 anchor-line, 6 embedding-text, 65 when-phrase, 7
+event-reference), ALL byte-equal on the first run against the oracle
+regenerated from v4 `8bf3cb5f` (`TZ=UTC npx tsx
+harness/oracle/cases/episodic.ts`, env `QT_ORACLE_EPISODIC`). Full
+workspace gate 361 binaries / 0 failed.
+
+### P4.d12 unit 5: memory-weighting `episodicBonus` + the event-clock age (2026-07-21)
+
+Core `0.0.301 → 0.0.302`, harness `0.0.259 → 0.0.260`.
+
+(Correction to the unit-4 record: `episodic::event_time_ms` — the
+Option form for pre-parsed constructors — lands HERE, not in unit 4;
+`event_reference_time_ms` now delegates to it.)
+
+**Landed:** `ProtectionConfig.episodic_bonus` (default 0.10, v4's
+why-comment carried), `ProtectionScore.episodic_bonus`,
+`calculate_protection_score` folds the bonus into the `min(1,·)` clamp;
+`format_relative_age` reads the EVENT clock
+(`occurred_at_ms.unwrap_or(write_reference)` — decay stays on the write
+clock, only the label follows the event, v4's comment carried).
+`MemoryInputs` gains `kind_episodic: bool` + `occurred_at_ms:
+Option<f64>`; ALL seven construction sites wired (housekeeping
+`parse_mem`, memory_service / memory_recap / frozen_archive
+`memory_inputs`, build_context + carina_query
+`injector_memory_from_json`, injector `InjectorMemory::weighting` —
+`InjectorMemory` carries the two fields, and the injector wire spec
+gained `kindEpisodic`/`occurredAtMs` with serde defaults).
+
+**Verified:** `memory_weighting_equivalence` 10 → 17 cases (episodic
+bonus fires + clamps, explicit-semantic zero, event-clock age incl. the
+reinforced-row case where the label follows occurredAt while decay
+follows the reinforce clock, unparsable/empty occurredAt fallbacks) —
+green over the oracle regenerated from v4 `8bf3cb5f` with the per-row
+`age` + `protection.episodicBonus` fields added to the case's emit.
+`ranking_blend_equivalence` re-run green over a FRESH `8bf3cb5f` oracle
+as an inertness proof (the order's leave-list entry, confirmed
+empirically — its corpus has no occurredAt rows). Full workspace gate
+361 binaries / 0 failed.
+
+### P4.d12 unit 6: the injector dated dynamic head + narrativeTime riders (2026-07-21)
+
+Core `0.0.302 → 0.0.303`, harness `0.0.260 → 0.0.261`.
+
+**Landed:** `format_dynamic_memory_head` dates EVERY entry —
+`[m_xxxx] [<age>] summary…` / `[<age> · <narrativeTime>]` (v4's
+why-comment carried: without this, even a retrieval hit couldn't
+confirm "last week"); `format_memories_for_context` gains the same
+narrativeTime rider on its age tag (blank narrative trims away).
+`InjectorMemory.narrative_time` + the build_context / carina_query
+constructors + the injector wire spec. The `RETRO_HEAD_*` constants are
+deliberately NOT added — the enlarged retrospective head is round 3 and
+the budget stays 200/5 (the order's round-1 values).
+
+**Verified:** `memory_injector_equivalence` 69 → 72 rows (new:
+`ctx-episodic-event-clock`, `ctx-narrative-time` incl. the blank-trim
+arm, `head-episodic-dated` — event-clock vs write-clock labels proven
+in the same head), green over the oracle regenerated from v4
+`8bf3cb5f`. Consequence for unit 7: the dated head bleeds into
+build-context's rendered output, so the build-context family MOVES from
+the leave-list to the REBASE set (regen at `8bf3cb5f`, expect green —
+both sides date identically on null-occurredAt fixtures).
+
+### P4.d12 unit 7: the memory-family oracle rebase close-out + the tier-2 items (2026-07-21)
+
+Core `0.0.303 → 0.0.304`, harness `0.0.261 → 0.0.262`.
+
+**REBASED to `8bf3cb5f` and green (regen + run by name, --nocapture, zero
+SKIP):** memory-delete, memory-cascade, memory-housekeeping (the
+protection breakdown's new `episodicBonus` is 0 on the semantic
+fixtures — inert as planned; v4's new merge-pass `occasionsAreDistinct`
+date guard never fires on null occurredAt and is DEFERRED with the
+round-3 gate date-guard family), and **build-context — MOVED from the
+order's leave-list to the REBASE set**: unit 6's dated dynamic head
+bleeds into its rendered output exactly as the order's contingency
+predicted; both sides date identically on the null-occurredAt fixtures
+and the tier is green over a fresh oracle.
+
+**ESCALATION — the gate family is NOT inert and moves to the DEFER set
+(round 3):** regenerating `memory-gate-tier3` at `8bf3cb5f` fails in the
+ORACLE itself — scenario `reinforce_reembed` (candidate source `AUTO`,
+content "The captain also guarded Rotterdam.") now takes v4's
+`applyEpisodicFallbackAnchors` first-write capture (extractNovelDetails
+→ entities ['Rotterdam'] → the embedding text gains the anchor line →
+the canned-embedding key misses → SKIP_EMBEDDING_FAILED). That fallback
+is EXPLICITLY round-3 behavior in the order ("first-write
+extractNovelDetails capture"), so per the order's own rule it is not
+pulled forward: `QT_ORACLE_GATE` stays un-regenerated (the test SKIPs)
+until round 3 ports the fallback + date guard. NOTE the inert-path
+guarantee's boundary found here: it holds for MANUAL-source writes
+(proven by the routes create arms) but NOT for AUTO/undefined-source
+candidates whose content carries proper nouns.
+
+**Processor family: DEFERRED to round 3 as anticipated** — its tier-3
+differential pins completions by exact `provider|model|temperature|
+messages`, and v4's extraction prompt drifted (CLOCK header + EVENT
+category = round 3). The write-path `occurredAt` stamp
+(`resolveCandidateAnchors` off `slice.lastMessageCreatedAt`) and the
+transcript's `lastMessageCreatedAt`/`turnTimestamp` carriers defer with
+it (the write_candidate comment names this loudly).
+
+**Tier-2 items landed:**
+- `build_memory_embedding_text` wired as the single source of truth at
+  the gate embed + the reinforce re-embed (the candidate's
+  CreateMemoryOptions anchors at the gate; the ROW's anchors at
+  re-embed — the candidate-anchor UPGRADE half is round 3). Provably
+  inert: every round-1 v5 caller passes empty anchors → byte-identical
+  text; re-proven by re-running memread + mem tier-2 + routes(+config)
+  green after the wiring.
+- Stale-comment sweep: memory_service.rs's two "cosine 40% / weight
+  60%" comments → "the ranking blend (see compute_ranking_blend)"
+  (matching v4's own drift cleanup — the real blend has been 0.75/0.25
+  since spec §1.7); memory_gate.rs's "v4's header comment is stale"
+  warning re-worded historical (v4 8bf3cb5f fixed its header).
+
+**Round-1 REBASE-vs-DEFER, as it ACTUALLY landed:**
+- Rebased green @8bf3cb5f: provisioning, memories read / tier-2 /
+  routes+config, chats read / tier-2, episodic (new), weighting,
+  injector, memory-delete, memory-cascade, housekeeping, build-context,
+  ranking-blend (inertness-proof rerun; committed disposition unmoved).
+- Deferred (@7e6d13e5 semantics, SKIP until their rounds): gate tier-3
+  (round 3 — fallback anchors; see the escalation), processor tier-3
+  (round 3 — prompt bytes + the stamp), memory-tasks tier-1 (round 3),
+  recall-tags (round 2), context-summary (round 3), carina-memory-
+  extraction (round 3), watermark / memory-name-helpers /
+  extract-novel-details / memories-config-standalone (unaffected —
+  memories-config's ROUTES half was regenerated with the routes family).
+
+**Flags for the unifier/human (the order's verification-gate list):**
+this lane carries NO real-instance / episodic-behavior proof (rounds
+2/3 own the behavior); the crypto/cipher paths are untouched; v5 fresh
+instances remain index-free (`idx_memories_occurredAt` is
+migration-created in v4 and v5's migration runner stays deferred —
+migrated fixtures DO carry it).
+---
+
+### P4.6bi — the character-outfit SPA + the New-Chat picker re-port (episodic-recall drift round 1 / lane 3) — SPA-only, v4 refs `8bf3cb5f` (outfit) + `e2eb3d21` (picker)
+
+Lane branch `claude/p4-6bi-outfit-newchat-spa-3f37b9`. SPA-only (`apps/web`),
+no Rust, no oracle regen. Consumes P4.6bh's `canChooseOutfit` character
+contract (name-level; binding both ways). Drift-checked at lane start:
+`git log 8bf3cb5f..HEAD` in `~/source/quilltap-server` empty — HEAD == the
+round baseline, clean tree.
+
+**Unit 1 — the `canChooseOutfit` Wardrobe-tab checkbox (edit + detail).**
+v4 `8bf3cb5f` renders an identical "Let this character choose their opening
+outfit" block in both `CharacterEditView.tsx` and `CharacterDetailView.tsx`
+(vault `properties.json` flag; immediate PUT; edit re-fetches on failure,
+detail is optimistic + toast). v5 collapses both into one reusable
+`qt-character-choose-outfit-card` (`screens/characters/choose-outfit-card.ts`)
+following the v5 house save idiom (`defaults-tab.ts` `save()`): dispatch
+`characterUpdate` with `{ canChooseOutfit }`, then invalidate the
+character-detail query so the refetched value drives the checkbox; a failed
+save surfaces inline (no v5 toast analogue here). The card is embedded in the
+detail Wardrobe tab (`view/tabs/wardrobe-tab.ts`, now taking a
+`canChooseOutfit` input wired from `character.canChooseOutfit ?? false`) and
+the edit Wardrobe case (`edit/character-edit.ts`). Contract: `CharacterListItem`
+and `CharacterDetail` gain optional `canChooseOutfit?: boolean` (response never
+sends null — default `false` — but optional in TS so pre-server-lane responses
+read defensively). Verify: `choose-outfit-card.spec.ts` (5 cases: reflects the
+input, disabled while loading, PUTs on toggle, inline error) + `wardrobe-tab.spec.ts`
+(checkbox reflects input) green; detail + edit screen specs green (20).
+
+**Unit 2 — the New-Chat picker re-port (v4 `e2eb3d21`).** Three predicates:
+(1) the Select Characters list now shows the FULL roster — `new-chat.state.ts`
+`load()` sets `loadedCharacters = all` (was `all.filter(c => c.controlledBy !== 'user')`),
+so default-user personas appear in the picker and sort to the top via the
+existing `sortRoster`; (2) the Play-As dropdown is CAST-ONLY —
+`new-chat-form.ts` `playAsOptions` drops the `fromDefaults` union and maps the
+cast (the shared `duplicateUserNames`/`formatName` still disambiguate over the
+user roster, matching v4's `formatCharacterName`); (3) the Play-As transition is
+a BLANKET revert — `new-chat.logic.ts` `applyPlayAs` reverts every
+`controlledBy==='user'` entry to `llm` (profile cleared, kept in the cast) then
+flips the chosen id to `user`; the `userControlledCharacters` param is gone
+(nothing to pull in or remove). Specs match v4's post-drift `NewChatForm.test.tsx`:
+`new-chat.logic.spec.ts` drops the deleted "adds a default-user character" case,
+changes "removes a default-user persona" → "reverts a default-user cast member
+to llm, keeping it" (`toHaveLength(2)`), and drops the 3rd arg from every call;
+`new-chat-form.spec.ts` asserts the dropdown is `['Chat as yourself', 'Alice']`
+(Bob absent). `ng test` targeted green (31); `ng build` clean.
+
+**Unit 3 — the outfit-selector `canChooseOutfit` synchronous seed (v4 `8bf3cb5f`).**
+`outfit-selector.ts` gains `OutfitSelectorCharacter.canChooseOutfit?` and the
+exported pure `computeSyncInitialMode(char)`: an LLM character flagged
+`canChooseOutfit` seeds `llm_choose`, everyone else `default` (the user persona
+always `default` — this dialog IS the choosing). The selector's `modeFor` and
+emitted `selections` use it as the un-overridden fallback. `new-chat-form.ts`
+`outfitCharacters` threads `canChooseOutfit ?? false` from both the LLM-cast and
+the user entry into the `OutfitSelectorCharacter`. Verify: `outfit-selector.spec.ts`
+(6: the pure seed + the emitted seed + the pre-checked radio) + `new-chat-form.spec.ts`
+green; `ng build` clean.
+
+**⚠ Loud deferral (Tier 3 of the order) — the v4 auto-resolve + badges + `fetched`
+distinction.** v4's `8bf3cb5f` outfit-selector additionally (a) seeds continuation
+chats to `previous_chat`, (b) refines a provisional `default` to `default`-vs-`manual`
+once each character's wardrobe loads via a new `fetched` flag on the
+wardrobe-items hook (no usable default → `manual`, expanded), and (c) shows
+collapsed-header mode badges (`MODE_SUMMARY_LABELS`). v5's new-chat outfit-selector
+is a DEFERRED-COMPOSER reduction: it has no continuation source, does not load
+wardrobes, is not collapsible, and renders `manual` (Compose) loudly
+disabled-with-title. Those three pieces all ride the deferred wardrobe-composer
+family and are NOT ported here; the disabled Compose radio (with its "not yet
+available in this build" title) is that deferral's already-visible surface. When
+the new-chat composer family lands, this seed is the hook point for the
+provisional→auto-resolve refinement.
+
+**Unit 4 — the e2e beat + the help-doc disposition + the full gate.** Added a
+LIVE Playwright beat to `e2e/new-chat-flow.spec.ts`: it seeds a uniquely-named
+default-user persona through `POST /api/dispatch` (`characterQuickCreate` →
+`characterToggleControlledBy` — quick-create defaults to `llm`, one toggle flips
+it to `user`), navigates `/salon/new`, confirms the persona now appears in the
+Select Characters roster (full-roster re-port), adds it to the cast alongside a
+favorite LLM speaker, drives the form-level Play-As dropdown to the persona and
+then back to "Chat as yourself", and asserts the cast count stays 2 (keep-on-revert
+— the OLD behavior would have removed the default-user persona, dropping to 1).
+The persona is API-deleted in a `finally` so the shared roster is left clean.
+
+**Help doc (Tier 2) — out-of-repo, skipped-not-invented.** v4 `e2eb3d21` edits
+`help/chats.md` ("Taking a Character's Chair — Play As"). v5 has NO `help/chats.md`
+checked in — help syncs from a runtime `<cwd>/help/` tree (`quilltap-host`
+`files_store.rs` reads `cwd.join("help")`); the only in-repo `help/` is the CLI
+usage-text dir (`crates/quilltap-cli/src/help/`, unrelated). Per the order's
+instruction ("otherwise note it as an out-of-repo doc-only edit and skip — do not
+invent a tree"), the prose sync is deferred to whoever owns the production `help/`
+tree. Flagged for the unifier/parent.
+
+**Lane gate (SPA-only, no Rust):** `ng test` **203 files / 2,448 / 0 failed**
+(the lane's new specs — choose-outfit-card 5, wardrobe-tab +1, outfit-selector 6,
+plus the updated new-chat logic/form specs — all green); `ng build` clean (only
+the pre-existing CommonJS-interop warnings). Full Playwright: see the round record.
+**Confirmed: this lane touched only `apps/web` + the two append-only round docs
+(`CHANGELOG.md`, `status-log.md`).** No Rust, no `fresh_schema.json`, no memory
+subsystem.
+
+**Lane status: OPEN items — NONE. Tier 1 complete (slices 1–3 + specs + e2e).**
+Tier 2 (help prose) is the out-of-repo deferral above. Tier 3 loud deferral:
+the v4 outfit-selector auto-resolve + collapsed mode badges + wardrobe `fetched`
+distinction ride v5's deferred wardrobe-composer family (unit 3 record).
+
+**Playwright gate — definitive result.** Full RELEASE run (worktree symlinked
+main's `target/release/{quilltap-web,quilltap}` — `crates/` byte-identical to main,
+no Rust changed): **110 passed / 0 failed** (2.7 min), the new picker beat live.
+A first FULL run on DEBUG binaries had 108 passed / 2 failed —
+`foundation.spec.ts:14` (unlock→theme) and `salon-composer-modes.spec.ts:180`
+(the P4.d9 `$$`/`$50` KaTeX beat, a DOCUMENTED full-suite timing/shared-state
+flake) — both PRE-EXISTING flakes outside this lane's surfaces, each proven green
+in RELEASE isolation (foundation 2.2s; the picker beat 462ms) and both green in
+the clean RELEASE full run. The DEBUG failures trace to the documented
+DEBUG-binary PBKDF2 unlock latency under CPU load (a sibling Rust lane churning
+`cargo test` at the time).
+
 ## Lane record — P4.6bh (character-outfit + wardrobe-permission SERVER slice) — on `claude/p4-6bh-outfit-server-454679`, not yet unified
 
 Round-1 lane 2 of the episodic-recall drift catch-up campaign. Ports the two
@@ -26414,427 +26937,3 @@ re-port is OWED (above); the P4.d7 dup-name follow-up stands; tier-3
 deferrals unchanged (watcher, filesSync, cleanup-stale, docs CLI,
 DocumentTextExtractor).
 
-## Lane P4.d12 — the episodic-spine foundation (round 1 / lane 1 of the episodic-recall drift catch-up) — LANE COMPLETE (2026-07-21, 7 units, awaiting unification)
-
-Branch `claude/episodic-spine-foundation-port-bb4157`. v4 baseline
-`8bf3cb5f` — drift-checked at lane start: v4 HEAD == `8bf3cb5f`, tree
-clean, so oracles regenerate directly from `~/source/quilltap-server`
-(no pin needed). This lane MOVES the memory-row/pure oracle families to
-`8bf3cb5f`; the deferred families (extraction-prompt, fold, retrieval,
-deep-dive tools) stay at `7e6d13e5` for rounds 2/3.
-
-### P4.d12 unit 1: the D23 schema re-dump (2026-07-21)
-
-Core `0.0.297 → 0.0.298`.
-
-**Landed:** `fresh_schema.json` regenerated from v4 `8bf3cb5f`'s live
-`generateDDL` (the dump-fresh-schema.ts dumper; main=79 mount-index=29
-llm-logs=3 statements — counts unchanged). `chat_settings_seed.json`
-regenerated identical (no diff). The line-level DDL diff carries
-SEVEN additions, classified:
-- `chats.timelineMode TEXT` (expected),
-- `memories.occurredAt TEXT`, `memories.narrativeTime TEXT`,
-  `memories.entities TEXT DEFAULT '[]'`,
-  `memories.kind TEXT DEFAULT 'semantic'` (expected),
-- `characters.canChooseOutfit INTEGER DEFAULT 0` — **NOT in the order's
-  prediction**: the order's Shared contract claimed canChooseOutfit is
-  vault-properties-only with no DB column, but v4 `8bf3cb5f`'s
-  generateDDL emits the column (the vault manages the FIELD; the column
-  exists underneath, like canDressThemselves/canCreateOutfits). Adopted
-  faithfully via the re-dump per D23 — inert in v5 (no v5 reader/writer
-  until the outfit slice); same precedent as the earlier
-  `characters.metadata` adoption.
-
-**Deliberate non-addition:** `idx_memories_occurredAt` does NOT appear —
-v4's generateDDL never emits it; only the `add-episodic-memory-fields`
-migration creates it (v4 DDL.md documents it as migration-added). The
-provisioning oracle builder runs generateDDL + the three
-mount-provisioning migrations only, so a fresh v4 instance in the
-differential is index-free too, and the byte-exact sqlite_master diff is
-green WITHOUT the index. Real (migrated) v4 instances carry the index;
-v5's migration runner stays deferred — flagged as a standing gap of that
-deferral, not of this lane.
-
-**Verified:** `provisioning_equivalence` (2 passed — the byte-exact
-per-partition diff at a fresh `8bf3cb5f` oracle), reverse
-`verify-v5-provisioned.ts` OK under real v4, and the three
-`fresh_schema.json` direct-reader suites (`builtin_templates`,
-`builtin_mounts`, `pascal_workbench_route`) green (statement counts
-unchanged, no assertion edits needed).
-
-**Regen recipe (this unit):** per the order header —
-`QT_SCHEMA_OUT/QT_SEED_OUT` dump-fresh-schema.ts from
-`~/source/quilltap-server`; build-provision-oracle.ts →
-`/tmp/oracle-provision.json` + `/tmp/qt-v4-fresh`; cargo test
-`provisioning_equivalence` with `QT_ORACLE_PROVISION` /
-`QT_FIXTURE_V4_FRESH` / `QT_V5_PROVISION_OUT`; then
-verify-v5-provisioned.ts with `QT_FIXTURE_V5_PROVISIONED`.
-
-### P4.d12 unit 2: the memories data layer — four episodic columns + fixture migration (2026-07-21)
-
-Core `0.0.298 → 0.0.299`, harness `0.0.257 → 0.0.258`.
-
-**Landed:**
-- `db/memories.rs`: `MemCreate` + the INSERT gain
-  `occurredAt`/`narrativeTime`/`entities`/`kind` (schema position, after
-  `witnessedContext`); `MemUpdate` + `set_col!` arms for all four.
-- `db/memories_read.rs`: `COLS` 21 → 25 columns; `marshal_row` inserts the
-  four at schema position (v4's Zod parse emits keys in shape order, so
-  mid-list — NOT appended — is the key-order-faithful choice; the regen'd
-  oracle confirms `"entities":[]`,`"kind":"semantic"` right after
-  `witnessedContext`, occurredAt/narrativeTime omitted-when-null on the
-  normal path, explicit null on the keep-nulls raw path). `kind` reads
-  defensively as required-with-default `'semantic'`.
-- `CreateMemoryOptions` (services/memory_gate.rs) gains the four fields;
-  `create_memory_direct_with_embedding` writes them. Round-1 INERT
-  defaults at every caller: the route create (v4's `createMemorySchema`
-  does NOT accept episodic fields at 8bf3cb5f — **the oracle disproved
-  the order's route-stamp gloss**: v4 route creates land `occurredAt`
-  NULL; the stamping the order describes lives on the PROCESSOR path
-  and rides unit 7), the processor write (stamp deferred to unit 7 with
-  the transcript `lastMessageCreatedAt`/`turnTimestamp` carriers), the
-  quilltap-import seed (reads the seed JSON with schema defaults).
-- **The committed fixture migration** — new committed script
-  `harness/oracle/fixtures/migrate-fixtures-episodic-columns.ts` (the
-  pascal-columns precedent): v4's own migration DDL verbatim (four
-  memories ALTERs + `idx_memories_occurredAt` + the chats.timelineMode
-  ALTER), idempotent, applied to **19 fixtures** in
-  `crates/quilltap-web/tests/fixtures/`. Deliberately WITHOUT v4's
-  occurredAt backfill — null `occurredAt` is the round's inert-path
-  verification precondition; the backfilled shape belongs to rounds 2/3
-  fixtures. (Every OTHER family's committed oracle NDJSONs are
-  regenerated per-run, so no standing red; chat-object-emitting families
-  regen at ≥8bf3cb5f next time they run.)
-- In-crate test DDLs gained the four columns in the five files whose
-  tests read memories (`db/memories.rs`, `services/memory_gate.rs`,
-  `services/memory_service.rs`, `services/housekeeping.rs`,
-  `services/job_runner.rs`).
-
-**Gotcha (memory-note-worthy):** with the MIGRATED memories fixture the
-`memories-config` jest oracle deterministically emitted 500 "User not
-found" for `extraction_concurrency_get` (the case after
-`extraction_limits_set`) — the fire-and-forget-tail class again, now
-outliving the 350 ms per-case settle; pre-migration fixture passed. Fix:
-the case file's settle 350 → 750 ms (comment records the symptom).
-
-**Verified:** `memories_read_equivalence` (39 queries),
-`memories_tier2_equivalence`, `memories_routes_equivalence` (24 routes
-cases + 17 config cases) — all green over oracles freshly regenerated
-from v4 `8bf3cb5f` (recipes: the test headers; the routes/config pair
-runs from the /tmp jest mirror with `QT_FIXTURE_MEM_MAIN/MOUNT` pointing
-at the MIGRATED committed fixtures). NDJSONs grepped for content
-(routes: 107 `kind:semantic` occurrences; read: 57).
-
-### P4.d12 unit 3: chats.timelineMode through the data layer (2026-07-21)
-
-Core `0.0.299 → 0.0.300`.
-
-**Landed:** `chats_read.rs` `ALL_COLUMNS` 96 → 97 (`timelineMode` at its
-generateDDL/Zod position, between `commonplaceRecallHistory` and
-`budgetMaxTurns`; NULL reads as realtime and is omitted, v4's dropped
-`undefined`); the positional marshal shifted +1 from index 70 (⚠ the
-turbofish `row.get::<_, String>(94/95)` createdAt/updatedAt gets don't
-match a bare `row.get(\d+)` regex — caught by
-`InvalidColumnType(94, "showThinking", Null)` in the enclave tests).
-`chats.rs`: `ChatCreate.timeline_mode` + the INSERT (99 placeholders) +
-`ChatUpdate.timeline_mode` double-Option + its `set_col!` arm (no
-production caller yet — the Story's Clock switch is round 3). The two
-enclave in-crate chats test DDLs (`enclave/lifecycle.rs`,
-`enclave/step.rs`) gained the column.
-
-**Verified:** `chats_read_equivalence` + `chats_tier2_equivalence` green
-over fixtures + oracles freshly regenerated from v4 `8bf3cb5f` (recipes:
-the test headers). Core suite 1000/0. Note for other families: committed
-chat-object-emitting oracles regenerated at ≥8bf3cb5f will now carry
-`timelineMode` when non-null; on the migrated fixtures the column is
-NULL everywhere so their output is byte-unchanged (the inert path).
-
-(Unit-3 addendum: `quilltap-host/tests/host_boot.rs`'s hand-written chats
-DDL also gained `timelineMode` — its absence failed
-`boots_headless_and_pumps_jobs` with `no such column`, and because
-`cargo test --workspace` fail-fasts at the first failing TARGET, the
-~36 quilltap-web binaries silently didn't run on that pass. Recount the
-result lines whenever a gate shows a failure. Host `0.0.27 → 0.0.28`.)
-
-### P4.d12 unit 4: the `episodic` pure module + tier-1 differential (2026-07-21)
-
-Core `0.0.300 → 0.0.301`, harness `0.0.258 → 0.0.259`.
-
-**Landed:** `crates/quilltap-core/src/episodic.rs` — all four exports of
-v4 `lib/memory/episodic.ts` (`build_memory_anchor_line`,
-`build_memory_embedding_text`, `resolve_when_phrase` — ported but
-UNWIRED per the round plan (round 3's extraction is its only caller) —
-and `event_reference_time_ms` + an `event_time_ms` Option form for the
-weighting/injector constructors). `clock.rs` exposes
-`civil_from_days`/`days_from_civil` pub(crate) + `floor_div_ms_days` /
-`utc_parts`.
-
-**JS-fidelity findings (pinned in the module doc + unit tests, confirmed
-against Node 24 before porting):**
-- V8 ISO `Date.parse`: month 01–12 and day 01–31 are hard bounds, but an
-  in-bounds day ROLLS past the month end — so `"2026-02-31"` as a when
-  phrase resolves to the RAW `2026-02-31T00:00:00.000Z` (the date-only
-  branch slices the input, not the parse); `"February 31"` (month-day
-  form) resolves through `Date.UTC` rolling to `2026-03-03`. Both cases
-  are in the corpus and match.
-- Fraction digits truncate to ms; lowercase `t`/`z` accepted; `±HHMM`
-  no-colon offsets accepted.
-- Zone-less datetimes parse LOCAL in JS → the oracle pins `TZ=UTC` and
-  the port implements UTC (production `occurredAt` always carries a
-  zone; corpus-only seam, documented in both files).
-- JS `\s`/`trim` → `jsstr::JS_WS_CLASS`/`js_trim`; v4 mixes `\s+` and
-  literal spaces across the phrase regexes — reproduced form-for-form.
-- The `(anchorDay - target + 7) % 7 || 7` weekday quirk (JS `|| 7` on 0)
-  and the `WORD_NUMBERS` table (incl. `couple`/`few` reachable through
-  the PLAIN ago-regex as well as the `a couple of` form) carried over.
-
-**Verified:** the new `episodic_equivalence` tier-1 differential — 94
-cases (16 anchor-line, 6 embedding-text, 65 when-phrase, 7
-event-reference), ALL byte-equal on the first run against the oracle
-regenerated from v4 `8bf3cb5f` (`TZ=UTC npx tsx
-harness/oracle/cases/episodic.ts`, env `QT_ORACLE_EPISODIC`). Full
-workspace gate 361 binaries / 0 failed.
-
-### P4.d12 unit 5: memory-weighting `episodicBonus` + the event-clock age (2026-07-21)
-
-Core `0.0.301 → 0.0.302`, harness `0.0.259 → 0.0.260`.
-
-(Correction to the unit-4 record: `episodic::event_time_ms` — the
-Option form for pre-parsed constructors — lands HERE, not in unit 4;
-`event_reference_time_ms` now delegates to it.)
-
-**Landed:** `ProtectionConfig.episodic_bonus` (default 0.10, v4's
-why-comment carried), `ProtectionScore.episodic_bonus`,
-`calculate_protection_score` folds the bonus into the `min(1,·)` clamp;
-`format_relative_age` reads the EVENT clock
-(`occurred_at_ms.unwrap_or(write_reference)` — decay stays on the write
-clock, only the label follows the event, v4's comment carried).
-`MemoryInputs` gains `kind_episodic: bool` + `occurred_at_ms:
-Option<f64>`; ALL seven construction sites wired (housekeeping
-`parse_mem`, memory_service / memory_recap / frozen_archive
-`memory_inputs`, build_context + carina_query
-`injector_memory_from_json`, injector `InjectorMemory::weighting` —
-`InjectorMemory` carries the two fields, and the injector wire spec
-gained `kindEpisodic`/`occurredAtMs` with serde defaults).
-
-**Verified:** `memory_weighting_equivalence` 10 → 17 cases (episodic
-bonus fires + clamps, explicit-semantic zero, event-clock age incl. the
-reinforced-row case where the label follows occurredAt while decay
-follows the reinforce clock, unparsable/empty occurredAt fallbacks) —
-green over the oracle regenerated from v4 `8bf3cb5f` with the per-row
-`age` + `protection.episodicBonus` fields added to the case's emit.
-`ranking_blend_equivalence` re-run green over a FRESH `8bf3cb5f` oracle
-as an inertness proof (the order's leave-list entry, confirmed
-empirically — its corpus has no occurredAt rows). Full workspace gate
-361 binaries / 0 failed.
-
-### P4.d12 unit 6: the injector dated dynamic head + narrativeTime riders (2026-07-21)
-
-Core `0.0.302 → 0.0.303`, harness `0.0.260 → 0.0.261`.
-
-**Landed:** `format_dynamic_memory_head` dates EVERY entry —
-`[m_xxxx] [<age>] summary…` / `[<age> · <narrativeTime>]` (v4's
-why-comment carried: without this, even a retrieval hit couldn't
-confirm "last week"); `format_memories_for_context` gains the same
-narrativeTime rider on its age tag (blank narrative trims away).
-`InjectorMemory.narrative_time` + the build_context / carina_query
-constructors + the injector wire spec. The `RETRO_HEAD_*` constants are
-deliberately NOT added — the enlarged retrospective head is round 3 and
-the budget stays 200/5 (the order's round-1 values).
-
-**Verified:** `memory_injector_equivalence` 69 → 72 rows (new:
-`ctx-episodic-event-clock`, `ctx-narrative-time` incl. the blank-trim
-arm, `head-episodic-dated` — event-clock vs write-clock labels proven
-in the same head), green over the oracle regenerated from v4
-`8bf3cb5f`. Consequence for unit 7: the dated head bleeds into
-build-context's rendered output, so the build-context family MOVES from
-the leave-list to the REBASE set (regen at `8bf3cb5f`, expect green —
-both sides date identically on null-occurredAt fixtures).
-
-### P4.d12 unit 7: the memory-family oracle rebase close-out + the tier-2 items (2026-07-21)
-
-Core `0.0.303 → 0.0.304`, harness `0.0.261 → 0.0.262`.
-
-**REBASED to `8bf3cb5f` and green (regen + run by name, --nocapture, zero
-SKIP):** memory-delete, memory-cascade, memory-housekeeping (the
-protection breakdown's new `episodicBonus` is 0 on the semantic
-fixtures — inert as planned; v4's new merge-pass `occasionsAreDistinct`
-date guard never fires on null occurredAt and is DEFERRED with the
-round-3 gate date-guard family), and **build-context — MOVED from the
-order's leave-list to the REBASE set**: unit 6's dated dynamic head
-bleeds into its rendered output exactly as the order's contingency
-predicted; both sides date identically on the null-occurredAt fixtures
-and the tier is green over a fresh oracle.
-
-**ESCALATION — the gate family is NOT inert and moves to the DEFER set
-(round 3):** regenerating `memory-gate-tier3` at `8bf3cb5f` fails in the
-ORACLE itself — scenario `reinforce_reembed` (candidate source `AUTO`,
-content "The captain also guarded Rotterdam.") now takes v4's
-`applyEpisodicFallbackAnchors` first-write capture (extractNovelDetails
-→ entities ['Rotterdam'] → the embedding text gains the anchor line →
-the canned-embedding key misses → SKIP_EMBEDDING_FAILED). That fallback
-is EXPLICITLY round-3 behavior in the order ("first-write
-extractNovelDetails capture"), so per the order's own rule it is not
-pulled forward: `QT_ORACLE_GATE` stays un-regenerated (the test SKIPs)
-until round 3 ports the fallback + date guard. NOTE the inert-path
-guarantee's boundary found here: it holds for MANUAL-source writes
-(proven by the routes create arms) but NOT for AUTO/undefined-source
-candidates whose content carries proper nouns.
-
-**Processor family: DEFERRED to round 3 as anticipated** — its tier-3
-differential pins completions by exact `provider|model|temperature|
-messages`, and v4's extraction prompt drifted (CLOCK header + EVENT
-category = round 3). The write-path `occurredAt` stamp
-(`resolveCandidateAnchors` off `slice.lastMessageCreatedAt`) and the
-transcript's `lastMessageCreatedAt`/`turnTimestamp` carriers defer with
-it (the write_candidate comment names this loudly).
-
-**Tier-2 items landed:**
-- `build_memory_embedding_text` wired as the single source of truth at
-  the gate embed + the reinforce re-embed (the candidate's
-  CreateMemoryOptions anchors at the gate; the ROW's anchors at
-  re-embed — the candidate-anchor UPGRADE half is round 3). Provably
-  inert: every round-1 v5 caller passes empty anchors → byte-identical
-  text; re-proven by re-running memread + mem tier-2 + routes(+config)
-  green after the wiring.
-- Stale-comment sweep: memory_service.rs's two "cosine 40% / weight
-  60%" comments → "the ranking blend (see compute_ranking_blend)"
-  (matching v4's own drift cleanup — the real blend has been 0.75/0.25
-  since spec §1.7); memory_gate.rs's "v4's header comment is stale"
-  warning re-worded historical (v4 8bf3cb5f fixed its header).
-
-**Round-1 REBASE-vs-DEFER, as it ACTUALLY landed:**
-- Rebased green @8bf3cb5f: provisioning, memories read / tier-2 /
-  routes+config, chats read / tier-2, episodic (new), weighting,
-  injector, memory-delete, memory-cascade, housekeeping, build-context,
-  ranking-blend (inertness-proof rerun; committed disposition unmoved).
-- Deferred (@7e6d13e5 semantics, SKIP until their rounds): gate tier-3
-  (round 3 — fallback anchors; see the escalation), processor tier-3
-  (round 3 — prompt bytes + the stamp), memory-tasks tier-1 (round 3),
-  recall-tags (round 2), context-summary (round 3), carina-memory-
-  extraction (round 3), watermark / memory-name-helpers /
-  extract-novel-details / memories-config-standalone (unaffected —
-  memories-config's ROUTES half was regenerated with the routes family).
-
-**Flags for the unifier/human (the order's verification-gate list):**
-this lane carries NO real-instance / episodic-behavior proof (rounds
-2/3 own the behavior); the crypto/cipher paths are untouched; v5 fresh
-instances remain index-free (`idx_memories_occurredAt` is
-migration-created in v4 and v5's migration runner stays deferred —
-migrated fixtures DO carry it).
----
-
-### P4.6bi — the character-outfit SPA + the New-Chat picker re-port (episodic-recall drift round 1 / lane 3) — SPA-only, v4 refs `8bf3cb5f` (outfit) + `e2eb3d21` (picker)
-
-Lane branch `claude/p4-6bi-outfit-newchat-spa-3f37b9`. SPA-only (`apps/web`),
-no Rust, no oracle regen. Consumes P4.6bh's `canChooseOutfit` character
-contract (name-level; binding both ways). Drift-checked at lane start:
-`git log 8bf3cb5f..HEAD` in `~/source/quilltap-server` empty — HEAD == the
-round baseline, clean tree.
-
-**Unit 1 — the `canChooseOutfit` Wardrobe-tab checkbox (edit + detail).**
-v4 `8bf3cb5f` renders an identical "Let this character choose their opening
-outfit" block in both `CharacterEditView.tsx` and `CharacterDetailView.tsx`
-(vault `properties.json` flag; immediate PUT; edit re-fetches on failure,
-detail is optimistic + toast). v5 collapses both into one reusable
-`qt-character-choose-outfit-card` (`screens/characters/choose-outfit-card.ts`)
-following the v5 house save idiom (`defaults-tab.ts` `save()`): dispatch
-`characterUpdate` with `{ canChooseOutfit }`, then invalidate the
-character-detail query so the refetched value drives the checkbox; a failed
-save surfaces inline (no v5 toast analogue here). The card is embedded in the
-detail Wardrobe tab (`view/tabs/wardrobe-tab.ts`, now taking a
-`canChooseOutfit` input wired from `character.canChooseOutfit ?? false`) and
-the edit Wardrobe case (`edit/character-edit.ts`). Contract: `CharacterListItem`
-and `CharacterDetail` gain optional `canChooseOutfit?: boolean` (response never
-sends null — default `false` — but optional in TS so pre-server-lane responses
-read defensively). Verify: `choose-outfit-card.spec.ts` (5 cases: reflects the
-input, disabled while loading, PUTs on toggle, inline error) + `wardrobe-tab.spec.ts`
-(checkbox reflects input) green; detail + edit screen specs green (20).
-
-**Unit 2 — the New-Chat picker re-port (v4 `e2eb3d21`).** Three predicates:
-(1) the Select Characters list now shows the FULL roster — `new-chat.state.ts`
-`load()` sets `loadedCharacters = all` (was `all.filter(c => c.controlledBy !== 'user')`),
-so default-user personas appear in the picker and sort to the top via the
-existing `sortRoster`; (2) the Play-As dropdown is CAST-ONLY —
-`new-chat-form.ts` `playAsOptions` drops the `fromDefaults` union and maps the
-cast (the shared `duplicateUserNames`/`formatName` still disambiguate over the
-user roster, matching v4's `formatCharacterName`); (3) the Play-As transition is
-a BLANKET revert — `new-chat.logic.ts` `applyPlayAs` reverts every
-`controlledBy==='user'` entry to `llm` (profile cleared, kept in the cast) then
-flips the chosen id to `user`; the `userControlledCharacters` param is gone
-(nothing to pull in or remove). Specs match v4's post-drift `NewChatForm.test.tsx`:
-`new-chat.logic.spec.ts` drops the deleted "adds a default-user character" case,
-changes "removes a default-user persona" → "reverts a default-user cast member
-to llm, keeping it" (`toHaveLength(2)`), and drops the 3rd arg from every call;
-`new-chat-form.spec.ts` asserts the dropdown is `['Chat as yourself', 'Alice']`
-(Bob absent). `ng test` targeted green (31); `ng build` clean.
-
-**Unit 3 — the outfit-selector `canChooseOutfit` synchronous seed (v4 `8bf3cb5f`).**
-`outfit-selector.ts` gains `OutfitSelectorCharacter.canChooseOutfit?` and the
-exported pure `computeSyncInitialMode(char)`: an LLM character flagged
-`canChooseOutfit` seeds `llm_choose`, everyone else `default` (the user persona
-always `default` — this dialog IS the choosing). The selector's `modeFor` and
-emitted `selections` use it as the un-overridden fallback. `new-chat-form.ts`
-`outfitCharacters` threads `canChooseOutfit ?? false` from both the LLM-cast and
-the user entry into the `OutfitSelectorCharacter`. Verify: `outfit-selector.spec.ts`
-(6: the pure seed + the emitted seed + the pre-checked radio) + `new-chat-form.spec.ts`
-green; `ng build` clean.
-
-**⚠ Loud deferral (Tier 3 of the order) — the v4 auto-resolve + badges + `fetched`
-distinction.** v4's `8bf3cb5f` outfit-selector additionally (a) seeds continuation
-chats to `previous_chat`, (b) refines a provisional `default` to `default`-vs-`manual`
-once each character's wardrobe loads via a new `fetched` flag on the
-wardrobe-items hook (no usable default → `manual`, expanded), and (c) shows
-collapsed-header mode badges (`MODE_SUMMARY_LABELS`). v5's new-chat outfit-selector
-is a DEFERRED-COMPOSER reduction: it has no continuation source, does not load
-wardrobes, is not collapsible, and renders `manual` (Compose) loudly
-disabled-with-title. Those three pieces all ride the deferred wardrobe-composer
-family and are NOT ported here; the disabled Compose radio (with its "not yet
-available in this build" title) is that deferral's already-visible surface. When
-the new-chat composer family lands, this seed is the hook point for the
-provisional→auto-resolve refinement.
-
-**Unit 4 — the e2e beat + the help-doc disposition + the full gate.** Added a
-LIVE Playwright beat to `e2e/new-chat-flow.spec.ts`: it seeds a uniquely-named
-default-user persona through `POST /api/dispatch` (`characterQuickCreate` →
-`characterToggleControlledBy` — quick-create defaults to `llm`, one toggle flips
-it to `user`), navigates `/salon/new`, confirms the persona now appears in the
-Select Characters roster (full-roster re-port), adds it to the cast alongside a
-favorite LLM speaker, drives the form-level Play-As dropdown to the persona and
-then back to "Chat as yourself", and asserts the cast count stays 2 (keep-on-revert
-— the OLD behavior would have removed the default-user persona, dropping to 1).
-The persona is API-deleted in a `finally` so the shared roster is left clean.
-
-**Help doc (Tier 2) — out-of-repo, skipped-not-invented.** v4 `e2eb3d21` edits
-`help/chats.md` ("Taking a Character's Chair — Play As"). v5 has NO `help/chats.md`
-checked in — help syncs from a runtime `<cwd>/help/` tree (`quilltap-host`
-`files_store.rs` reads `cwd.join("help")`); the only in-repo `help/` is the CLI
-usage-text dir (`crates/quilltap-cli/src/help/`, unrelated). Per the order's
-instruction ("otherwise note it as an out-of-repo doc-only edit and skip — do not
-invent a tree"), the prose sync is deferred to whoever owns the production `help/`
-tree. Flagged for the unifier/parent.
-
-**Lane gate (SPA-only, no Rust):** `ng test` **203 files / 2,448 / 0 failed**
-(the lane's new specs — choose-outfit-card 5, wardrobe-tab +1, outfit-selector 6,
-plus the updated new-chat logic/form specs — all green); `ng build` clean (only
-the pre-existing CommonJS-interop warnings). Full Playwright: see the round record.
-**Confirmed: this lane touched only `apps/web` + the two append-only round docs
-(`CHANGELOG.md`, `status-log.md`).** No Rust, no `fresh_schema.json`, no memory
-subsystem.
-
-**Lane status: OPEN items — NONE. Tier 1 complete (slices 1–3 + specs + e2e).**
-Tier 2 (help prose) is the out-of-repo deferral above. Tier 3 loud deferral:
-the v4 outfit-selector auto-resolve + collapsed mode badges + wardrobe `fetched`
-distinction ride v5's deferred wardrobe-composer family (unit 3 record).
-
-**Playwright gate — definitive result.** Full RELEASE run (worktree symlinked
-main's `target/release/{quilltap-web,quilltap}` — `crates/` byte-identical to main,
-no Rust changed): **110 passed / 0 failed** (2.7 min), the new picker beat live.
-A first FULL run on DEBUG binaries had 108 passed / 2 failed —
-`foundation.spec.ts:14` (unlock→theme) and `salon-composer-modes.spec.ts:180`
-(the P4.d9 `$$`/`$50` KaTeX beat, a DOCUMENTED full-suite timing/shared-state
-flake) — both PRE-EXISTING flakes outside this lane's surfaces, each proven green
-in RELEASE isolation (foundation 2.2s; the picker beat 462ms) and both green in
-the clean RELEASE full run. The DEBUG failures trace to the documented
-DEBUG-binary PBKDF2 unlock latency under CPU load (a sibling Rust lane churning
-`cargo test` at the time).

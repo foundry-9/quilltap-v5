@@ -922,26 +922,63 @@ records THERE. Update this summary only when a phase or round completes.
   the New-Chat picker drift re-port, the conversion port, a
   wardrobe-Preview/workspace/state/brahma/fs-documents dogfood pass,
   p4.9i2, p4.9h, M6 rows 5+ — see phase-4.md.
-- **Oracle baseline: v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
-  the state-cascade drift-catch-up unification.** v4 HEAD == the baseline
-  and the checkout is clean, so **oracles regenerate directly from
-  `~/source/quilltap-server` again**; pin a detached worktree only when
-  v4 drifts or the tree goes dirty (recipe: the
-  `oracle-regen-pinned-v4-worktree` memory — symlink node_modules at
-  root + `packages/{quilltap,plugin-types,plugin-utils}` +
-  `plugins/dist/*`). Both prior pins (`qt-v4-pin-b8b12695`,
-  `qt-v4-pin-7e6d13e5`) are RETIRED. Every family the state-cascade +
-  release-sweep drift touched regenerated at `7e6d13e5` (incl. the
-  53-family neutrality sweep for v4's dedup/logging refactors and the
-  seven renderer-transitive families for the single-dollar promotion);
-  untouched families' committed oracles keep their earlier regen
-  vintages. ⚠ v4 is mid-release-checklist — a 4.8.0 tag/version commit
-  may land any day; drift-check before every round — ⚠ v4 HEAD is now
-  `e2eb3d21` (4.8.0-dev.93), ONE lib-free commit past the baseline (the
-  New-Chat picker SPA re-port is owed; oracles still regenerate validly
-  for lib-backed families). Versions (after the 2026-07-21 P4.6bg
-  remainder unification): core 0.0.297, harness 0.0.257, host 0.0.27,
-  web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.241.
+- **The episodic-recall drift catch-up, ROUND 1 of 3 (P4.d12 ∥ P4.6bh ∥
+  P4.6bi): UNIFIED on main (2026-07-21).** v4's largest single drift
+  (`8bf3cb5f`, a squash-merge of episodic-recall + character-outfit +
+  wardrobe-permission). Round 1 landed the episodic **spine** (data +
+  pure logic) + both orthogonal character slices: the D23 re-dump
+  (`chats.timelineMode` + `memories.{occurredAt,narrativeTime,entities,
+  kind}` + `idx_memories_occurredAt`) through the data layer; the pure
+  `episodic` module (4 exports, 94-case tier-1); memory-weighting
+  `episodicBonus` + the event-clock age; the injector's dated dynamic
+  head; the memory-row/pure oracle **rebase** onto `8bf3cb5f`; the
+  `canChooseOutfit` vault flag + the `canDressThemselves`/
+  `canCreateOutfits` PUT toggles (server); and the Wardrobe-tab card +
+  outfit-selector seed + the New-Chat picker re-port (`e2eb3d21`: full
+  roster, cast-only Play-As, keep-on-revert) (SPA). **The episodic
+  BEHAVIOR is rounds 2/3 — the columns are inert until then.** Round-3
+  carry-ins flagged by the lane: the gate tier-3 family stays
+  un-regenerated (v4's first-write `applyEpisodicFallbackAnchors` is
+  non-inert on AUTO-source proper-noun content — the inert-path
+  boundary); the turn-path write `occurredAt` stamp defers with the
+  processor extraction prompt. Gate: 361 binaries / 1,474 / 0 (key
+  differentials fresh from `8bf3cb5f`, by name), clippy both, release
+  build, ng 203/2,448, Playwright 109 + 1 documented flake. Round record
+  + lane records in `status-log.md`; the campaign roadmap +
+  round-2/3 scope in `phase-4.md`. **Next: ROUND 2** (time/entity-aware
+  retrieval + deep-dive tools + the replay harness), then ROUND 3
+  (creation-side + cadence + stop-destroying + "Story's Clock").
+- **Oracle baseline: MIXED after the episodic round-1 unification
+  (2026-07-21).** v4 HEAD is `8bf3cb5f` (4.9-dev). The families round 1
+  touched — provisioning, the memory-row/pure families (memories
+  read/tier-2/routes+config, chats read/tier-2, episodic, weighting,
+  injector, delete, cascade, housekeeping, build-context, ranking) and
+  the character families (vault-json-parsers, characters
+  mutations/reads/create/update/provision/scaffold, vault-character-write)
+  — are rebased to **`8bf3cb5f`**. The **deferred behavior families stay
+  at `7e6d13e5`** (rounds 2/3 port them): `QT_ORACLE_GATE` (gate tier-3),
+  the processor tier-3, memory-tasks tier-1, recall-tags, context-summary/
+  fold, carina-extraction. So: regenerate a round-2/3 family's oracle at
+  `8bf3cb5f` only when that round ports it; families untouched since
+  earlier rounds keep their prior vintages. v4's checkout is clean at
+  `8bf3cb5f`, so **oracles regenerate directly from
+  `~/source/quilltap-server`**; pin a detached worktree only on drift/
+  dirty (recipe: `oracle-regen-pinned-v4-worktree` — symlink node_modules
+  at root + `packages/{quilltap,plugin-types,plugin-utils}` +
+  `plugins/dist/*`). ⚠ v4 is mid-4.8/4.9 dev — a version/tag commit may
+  land; drift-check before every round. Versions (after the 2026-07-21
+  episodic round-1 unification): core 0.0.305, harness 0.0.263, host
+  0.0.28, web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.245.
+  The previous baseline paragraph follows for history:
+  v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
+  the state-cascade drift-catch-up unification. Both prior pins
+  (`qt-v4-pin-b8b12695`, `qt-v4-pin-7e6d13e5`) are RETIRED. Every family
+  the state-cascade + release-sweep drift touched regenerated at
+  `7e6d13e5` (incl. the 53-family neutrality sweep and the seven
+  renderer-transitive families); untouched families' committed oracles
+  keep their earlier regen vintages. Versions at that unification: core
+  0.0.297, harness 0.0.257, host 0.0.27, web 0.0.36, quilltap-tauri
+  0.0.4, SPA 0.5.241.
   The previous baseline paragraph follows for history:
   v4 `b8b12695` (4.8.0-dev.76), adopted 2026-07-19
   at the P4.d9 KaTeX drift-catch-up unification; oracles regenerated

@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+Unified round 1 of the episodic-recall drift catch-up (P4.d12 ∥ P4.6bh ∥
+P4.6bi) — v5's response to v4's largest single drift (8bf3cb5f). The
+episodic spine now exists as data: chats.timelineMode and the four
+memories columns (occurredAt/narrativeTime/entities/kind) plus the
+occurredAt index flow through the data layer (D23 re-dump), the pure
+episodic module and the memory-weighting/injector date logic are ported,
+and the memory-family oracles rebased onto 8bf3cb5f via the feature's
+inert-path guarantee. A per-character canChooseOutfit flag (vault
+properties.json) plus the canDressThemselves/canCreateOutfits PUT toggles
+round-trip through the character server and a new Wardrobe-tab checkbox,
+and the New Chat picker was re-ported (full roster, cast-only Play As,
+keep-on-revert). The episodic BEHAVIOR — time/entity-aware retrieval,
+event extraction, the recall-on-reference cadence, the fold Timeline, the
+gate date-guard, and the Story's Clock switch — is rounds 2 and 3 (the
+columns are inert until then; the gate/processor/turn-path-stamp deferrals
+are the inert-path boundary). Gate: 361 Rust test binaries / 1,474 / 0
+with the key differentials regenerated fresh from v4 8bf3cb5f and run by
+name (provisioning byte-exact both directions, episodic 94, weighting 17,
+injector 72, vault-parsers 37, memread + scaffold tier-2, ranking inert);
+clippy both feature sets; release build; ng test 203 files / 2,448; ng
+build clean; full Playwright 109 passed / 1 documented pre-existing flake
+(wardrobe-flow:252, green 3/3 in isolation). Versions: core 0.0.305,
+harness 0.0.263, host 0.0.28, web 0.0.36, SPA 0.5.245.
+
 Closed out the round-1 memory-family oracle rebase (P4.d12 unit 7):
 memory-delete, memory-cascade, housekeeping, and build-context all green
 over oracles freshly regenerated at v4 8bf3cb5f (build-context moved
