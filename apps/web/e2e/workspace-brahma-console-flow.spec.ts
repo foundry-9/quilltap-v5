@@ -1,6 +1,7 @@
 import { expect, request as pwRequest, test, type Page } from '@playwright/test';
 
-import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 
 /**
  * ORDERING: rides the SHARED global-setup server, so the filename must sort
@@ -36,6 +37,19 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  */
 
 let brahmaReady = false;
+
+// The send beats stream through the REAL orchestrator + provider transport, so
+// this spec runs its own canned LLM on the fixture profile's rewritten baseUrl
+// — every sending spec does (the m4-salon precedent). The gate's first live run
+// caught the omission: sends only succeeded when a SIBLING spec's mock happened
+// to linger, and hung (30 s provider retries) when none listened.
+let mock: MockLlm;
+test.beforeAll(async () => {
+  mock = await startMockLlm(MOCK_LLM_REPLY, MOCK_LLM_PORT);
+});
+test.afterAll(async () => {
+  await mock?.close();
+});
 
 test.beforeAll(async () => {
   // Probe: is `brahmaConsoleList` handled? In-lane the Rust core has no such

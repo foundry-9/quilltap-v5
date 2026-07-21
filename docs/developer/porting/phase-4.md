@@ -2041,7 +2041,7 @@ change" commits (`93604767` dedup, `28e89f51` logging prune) were
 VERIFIED, not ported — 53 oracle families regenerated + re-run by name,
 all green. Round record: `status-log.md` (2026-07-20).
 
-**Next candidates:** the `avatar_preview` host wire + the WebP codec
+~~**Next candidates:** the `avatar_preview` host wire + the WebP codec
 (the named next Rust item); the wardrobe `asTab` tab surface + the
 standalone document surface (the two not-wired workspace kinds); a
 workspace dogfood pass (the shell changed by default — high value; a
@@ -2049,4 +2049,39 @@ state-cascade dogfood beat would also exercise the new editor);
 `p4.9i1`/`p4.9i2`; M6 backlog rows 5/6/8–15; the composer
 backslash-escape seam; the chat-tier State-Editor opener rides the
 ChatSidebar follow-up. Watch v4 for the 4.8.0 release tag (v4 is
+mid-release-checklist — drift-check before every round).~~
+*(Superseded by the workspace-tabs remainder round below.)*
+
+---
+
+## The workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥ P4.9J4) — UNIFIED 2026-07-20
+
+**All four orders CLOSED; the three not-wired workspace tab kinds are
+GONE — all 22 tab kinds now host real screens and the `NotWiredPane`
+refusal scaffold is retired.** `p4.9i1` (Brahma) CLOSED: the multi-turn
+orchestrator + the eight-verb `brahma-console` dispatch family + REST
+edges server-side (two new differentials over the committed
+`brahma-{main,mount}.db` family; the send rides the new
+`BrahmaConsoleSendDriver` host seam — **LIVE, real spend**) ∥ the whole
+console SPA (dialog in both modes, streaming over the shared reducer,
+rail entry). `p4.9j3` CLOSED: the `asTab` WardrobeView + the p4.9j
+riders (openChatOnMount via `/salon/new` — documented divergence; the
+Create-Character in-tab arm; the `mode=setup` guard bypass; the HTML5
+drag-split beat; the accent ruling CORRECTED to no-change — theme packs
+already carry v4's live tokens). `p4.9j4` CLOSED — and P4.9J2 tier-2
+item 7 with it: the standalone Document Mode surface over the existing
+P4.6w verbs (wire fold, the autosave/absorb/409 screen, the picker
+standalone variant + rail entry). Round record: `status-log.md`
+(2026-07-20).
+
+**Next candidates:** the `avatar_preview` host wire + the WebP codec
+(the named next Rust item, blocked-on-codec since P4.6y); a
+workspace/state/brahma dogfood pass (`/dogfood` — the shell, the state
+editor, and the new console + standalone documents have never been
+hand-walked on real data); `p4.9i2` (HelpChat — nothing ported above
+`services/help_doc_sync.rs`); the ChatSidebar surface (`p4.9h` — carries
+the chat-tier State-Editor opener and the J2 item-8 narrow-pane
+overlay); M6 backlog rows 5/6/8–15; the composer backslash-escape seam;
+the brahma async context-summary/auto-title drive (deferred with the
+production finalizer's). Watch v4 for the 4.8.0 release tag (v4 is
 mid-release-checklist — drift-check before every round).

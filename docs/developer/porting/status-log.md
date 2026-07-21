@@ -25589,3 +25589,90 @@ Cargo.lock` empty.
 - No `core-contract.ts` / `shell.ts` edits from this lane. SPA bumps:
   0.5.222 / 0.5.223 / 0.5.224 / 0.5.225 / 0.5.226 (recount against sibling
   lanes — identical bumps merge silently).
+
+---
+
+## Round record — the workspace-tabs remainder round (P4.9I1A ∥ P4.9I1B ∥ P4.9J3 ∥ P4.9J4): UNIFIED on main (2026-07-20)
+
+**All four orders CLOSED.** The three not-wired workspace tab kinds are
+gone — **all 22 tab kinds now host real screens**, and the `NotWiredPane`
+refusal scaffold + the registry's `refusal()` helper were retired with
+their last consumer. `p4.9i1` (Brahma) is CLOSED end-to-end; `p4.9j3`
+closed the p4.9j riders; `p4.9j4` closed P4.9J2's tier-2 item 7 (and the
+`doc_focus`-beats fold — `doc_focus` stays chat-scoped, v4-faithful).
+
+Reconciliation: `unify/workspace-remainder` from main, the four lane
+branches MERGED in dependency order (server first), conflicts confined to
+the version files + the two append-only docs (union). SPA accumulation:
+0.5.221 + I1B's 8 + J4's 4 + J3's 5 = 0.5.238 at the merges, 0.5.239 at
+the wires. Rust versions (all from lane I1A + the gate fix): core
+0.0.292, harness 0.0.253, web 0.0.36, host 0.0.24.
+
+**The unification wires** (`docs/CHANGELOG.md` entry "unification wires"):
+the three registry swaps (`wardrobe` → `WardrobeTabView` with the payload
+`characterId` input, `document-standalone` → `StandaloneDocumentView`
+with the whole-payload input, `brahma` → `BrahmaConsoleView`); the two
+shell rail mounts in v4's sidebar-footer order (`qt-brahma-entry` before
+Wardrobe, `qt-documents-rail-entry` after); the §W.3 fold of the fifteen
+wire request types (8 `brahmaConsole*` + 7 `document*` + `StandaloneScope`)
+into `core-contract.ts` with the name-for-name wire diff against
+`api/types.rs` (verified — tags AND field names; the Rust `document*`
+variants flatten a `body: Value`, their field shapes are pinned by the
+P4.6w handler differentials) and both lane casts dropped; the e2e
+default-connection-profile wire (the salon fixture ships `isDefault=0` on
+its one profile — PROBED against a fixture copy via the CLI + a
+Node-minted dbkey; `findDefault` has no fallback, so the brahma
+create-default arm 400s without it; global-setup now marks the mock
+profile default, guarded on no-default-existing).
+
+**The first live run of the 8 ACTIVATE-AT-UNIFY beats caught one REAL
+port bug** (the reason these beats exist): `write_database_document`
+returned a SECOND clock reading while the repo stamped `lastModified`
+~1 ms earlier, so the standalone view's open→edit→write round-trip with
+the returned mtime spuriously hit the CONFLICT arm — v4 mints both
+stamps inside one JS millisecond, so they agree in practice. Fixed
+(core 0.0.292): the write returns the STORED mtime; regression unit
+test `write_returns_the_stored_mtime`. Two spec-gesture fixes (never
+assertions): the brahma spec now starts its own canned LLM (the
+m4-salon precedent — its sends only passed when a sibling spec's mock
+happened to linger; without one the provider path hangs past the beat
+timeout), and the standalone-document beats create through the
+database-backed store (`Project Files: Skyhaven`, exact-name row
+locator — a recents label CONTAINS the store name and breaks a
+substring match) because **the picker's top-level "New blank document"
+targets the `general` scope, which the server refuses EVERYWHERE** —
+`doc_edit/path_resolver.rs` `DocEditScope::General => Err(FsSeam)`, the
+standing fs-seam deferral to the Phase-4 host. The round-trip beat now
+PINS that refusal loudly (error copy + Close tab). ⚠ **This makes the
+general-scope fs wire a named next item**: the standalone surface gave
+the deferral its first user-visible affordance (the picker's top
+button), and it will 409… err, refuse, on every real host until the
+seam is wired.
+
+**The gate (this Mac, authoritative — lanes J3/J4 deferred their full
+Playwright runs here by design; shared-port contention):**
+
+- `cargo fmt --all --check` clean; clippy BOTH feature sets `-D warnings`
+  clean; release build clean.
+- `cargo test --workspace` with both brahma oracle env vars:
+  **359 suites / 1,458 tests / 0 failed** (main baseline 357/1,454). The
+  two new differentials re-run BY NAME over FRESH `7e6d13e5` oracles
+  (regenerated this session from the clean v4 checkout, mtimes checked):
+  `brahma_console_routes_equivalence` (14/14 cases),
+  `brahma_orchestrator_tier3_equivalence` (5 arms, frames + rows) — zero
+  SKIP (grepped).
+- `ng test` **201 files / 2,439 specs / 0 failed** (baseline 190/2,342);
+  `ng build` clean.
+- Full Playwright: see the round-closing entry below (run after the gate
+  fixes; every beat live, zero guarded skips expected).
+
+**Standing after this round (the loud list):** the Brahma send is LIVE
+and costs real money (the `BrahmaConsoleSendDriver` host seam,
+human-approved in-lane); the brahma async context-summary/auto-title
+drive is deferred exactly as the production chat finalizer defers its
+own; HelpChat is `p4.9i2` (nothing ported above `help_doc_sync`); the
+general-scope document fs wire (above); `wardrobePreviewAvatar` render
+stays refusal-armed on the WebP codec; per-instance workspace
+storage-key scoping stays deferred; J3's accent ruling: NO CHANGE
+(v5 was already v4-faithful — the runtime theme packs carry the live
+token references; the committed hexes are the pre-pack fallback).

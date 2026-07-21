@@ -210,8 +210,22 @@ pub fn write_database_document(
         allow_character_write: None,
     })?;
 
-    // v4 returns `new Date(now).getTime()` for a freshly-minted `now`.
-    Ok(now_unix_ms())
+    // v4 returns `new Date(now).getTime()` for a `now` minted in the same JS
+    // millisecond the repo stamps `lastModified` with (single-threaded, both
+    // `new Date()` calls land in one tick), so v4's returned mtime EQUALS the
+    // stored one in practice. A second `now_unix_ms()` here systematically
+    // disagreed with the stored stamp (the repo's SQL work spans a millisecond
+    // boundary), so a caller round-tripping open→write with the returned mtime
+    // hit a spurious CONFLICT (the standalone Document Mode surface was the
+    // first such caller). Return the mtime that was actually stored.
+    let doc = DocMountDocumentsRepository::new(conn)
+        .find_content_and_mtime_by_mount_point_and_path(mount_point_id, &rel)?;
+    match doc {
+        Some((_, last_modified)) => Ok(iso_to_ms(&last_modified).unwrap_or(0)),
+        // Unreachable after a successful link; keep the old behavior as the
+        // defensive fallback rather than inventing an error arm.
+        None => Ok(now_unix_ms()),
+    }
 }
 
 // ============================================================================
@@ -736,6 +750,21 @@ mod tests {
         assert_eq!(doc.content, "hello");
         assert_eq!(doc.size, 5);
         assert!(doc.mtime_ms > 0);
+    }
+
+    /// The write's returned mtime must be the STORED one — a second clock read
+    /// here skewed +1 ms past the repo's `lastModified` stamp whenever the SQL
+    /// work crossed a millisecond boundary, so an open→edit→write round-trip
+    /// using the returned mtime spuriously hit the CONFLICT arm (the standalone
+    /// Document Mode surface caught it live).
+    #[test]
+    fn write_returns_the_stored_mtime() {
+        let conn = open_store_db();
+        let returned = write_database_document(&conn, MP, "ledger.md", "first").unwrap();
+        let stored = read_database_document(&conn, MP, "ledger.md")
+            .unwrap()
+            .mtime_ms;
+        assert_eq!(returned, stored);
     }
 
     #[test]

@@ -60,6 +60,24 @@ async function openStandalonePicker(page: Page) {
   return picker;
 }
 
+/**
+ * Create a blank document inside a DATABASE-BACKED store ("New document here"
+ * in the store's browse view). The picker's top-level "New blank document"
+ * targets the `general` scope, which the server REFUSES loudly — the entire
+ * general scope is the standing FsSeam deferral to the Phase-4 host
+ * (`doc_edit/path_resolver.rs` `DocEditScope::General => Err(FsSeam)`), so the
+ * working standalone beats drive the database-backed scope instead; the
+ * round-trip beat below pins the general-scope refusal.
+ */
+async function createBlankInStore(page: Page, storeName: string) {
+  const picker = await openStandalonePicker(page);
+  // Exact match: a recents row's label CONTAINS the store name
+  // ("Ledger.md Reopen · Project Files: Skyhaven"), so a substring match is
+  // ambiguous once anything has been created.
+  await picker.getByRole('button', { name: storeName, exact: true }).click();
+  await picker.getByRole('button', { name: 'New document here' }).click();
+}
+
 test('the document-standalone tab kind round-trips (not-wired → live editor at unify)', async ({
   page,
 }) => {
@@ -68,7 +86,11 @@ test('the document-standalone tab kind round-trips (not-wired → live editor at
 
   const nw = notWired(page);
   const pane = page.locator('qt-document-pane');
-  await expect(nw.or(pane).first()).toBeVisible({ timeout: 15_000 });
+  // Post-swap the general-scope open renders the view's ERROR state (no pane):
+  // the whole `general` scope is the standing FsSeam deferral
+  // (path_resolver.rs `DocEditScope::General => Err(FsSeam)`).
+  const refusal = page.getByText('This document could not be opened.');
+  await expect(nw.or(refusal).first()).toBeVisible({ timeout: 15_000 });
 
   if (await nw.count()) {
     // PRE-UNIFY: the loud not-wired pane. Prove the tab kind round-trips through
@@ -77,7 +99,18 @@ test('the document-standalone tab kind round-trips (not-wired → live editor at
     return;
   }
 
-  // POST-UNIFY: the live standalone editor mounts and creates the blank doc.
+  // POST-UNIFY, general scope: pin the loud refusal so the deferral stays
+  // visible.
+  await expect(refusal).toBeVisible();
+  await expect(page.getByText(/served from the host filesystem/)).toBeVisible();
+  await page.getByRole('button', { name: 'Close tab' }).click();
+
+  // POST-UNIFY, database-backed scope: the live standalone editor mounts and
+  // creates the blank doc in the store root.
+  await page.goto(
+    '/workspace?open=document-standalone&scope=document_store&mountPoint=' +
+      encodeURIComponent('Project Files: Skyhaven'),
+  );
   await expect(pane).toBeVisible({ timeout: 15_000 });
   await expect(pane).toContainText('Untitled');
 });
@@ -88,8 +121,7 @@ test('rail → picker → open → edit → autosave → rename → delete (acti
   await openWorkspace(page);
   test.skip(!(await isWired(page)), 'the rail Document-Mode entry mounts at the p4.9j unification');
 
-  const picker = await openStandalonePicker(page);
-  await picker.getByRole('button', { name: /New blank document/ }).click();
+  await createBlankInStore(page, 'Project Files: Skyhaven');
 
   const pane = page.locator('qt-document-pane');
   await expect(pane).toBeVisible({ timeout: 15_000 });
@@ -126,8 +158,7 @@ test('reopen-focuses-same-tab: a recents reopen focuses rather than duplicates (
   test.skip(!(await isWired(page)), 'the rail Document-Mode entry mounts at the p4.9j unification');
 
   // Create + name a file so it lands in recents.
-  let picker = await openStandalonePicker(page);
-  await picker.getByRole('button', { name: /New blank document/ }).click();
+  await createBlankInStore(page, 'Project Files: Skyhaven');
   const pane = page.locator('qt-document-pane');
   await expect(pane).toBeVisible({ timeout: 15_000 });
   await pane.locator('.qt-doc-title').click();
@@ -139,8 +170,9 @@ test('reopen-focuses-same-tab: a recents reopen focuses rather than duplicates (
   await pane.getByRole('button', { name: 'Exit document mode' }).click();
   await expect(page.locator('qt-document-pane')).toHaveCount(0, { timeout: 15_000 });
 
-  // First recents reopen → one Ledger tab (keyed by identity: general:Ledger.md).
-  picker = await openStandalonePicker(page);
+  // First recents reopen → one Ledger tab (keyed by identity:
+  // document_store:Project Files: Skyhaven:Ledger.md).
+  let picker = await openStandalonePicker(page);
   await picker.getByRole('button', { name: /Ledger/ }).click();
   await expect(tabLabel(page, 'Ledger')).toHaveCount(1, { timeout: 15_000 });
 

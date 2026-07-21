@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Unification gate fixes (core 0.0.292): `write_database_document` now
+returns the STORED `lastModified` mtime instead of a second clock reading
+— the skew (the repo's SQL work crossing a millisecond boundary) made an
+open→edit→write round-trip using the returned mtime spuriously 409, and
+the standalone Document Mode surface was the first consumer to do exactly
+that (regression unit test added). The two new e2e specs' first live runs
+also got gesture fixes, never assertion changes: the brahma spec now
+starts its own canned LLM (every sending spec does — sends only succeeded
+when a sibling's mock lingered), and the standalone-document beats drive
+the database-backed store scope (the picker's general-scope arm is the
+standing FsSeam refusal, now pinned loudly by the round-trip beat) with an
+exact-name store-row locator (a recents label contains the store name).
+
 The workspace-tabs remainder round's unification wires (SPA 0.5.239):
 the tab registry swaps all three remaining kinds to their real screens
 (wardrobe → WardrobeTabView, document-standalone → StandaloneDocumentView,
