@@ -514,6 +514,15 @@ async fn write_candidate<E: EmbeddingProvider>(
                 }
                 .to_string(),
             ),
+            // Episodic spine: v4 8bf3cb5f stamps occurredAt from the slice's
+            // lastMessageCreatedAt (resolveCandidateAnchors). That stamp rides
+            // the processor-family rebase (P4.d12 unit 7) together with the
+            // transcript's lastMessageCreatedAt/turnTimestamp carriers — until
+            // then the write takes the pre-drift inert path (NULL/defaults).
+            occurred_at: None,
+            narrative_time: None,
+            entities: Vec::new(),
+            kind: None,
         },
         &MemoryServiceOptions {
             user_id: ctx.user_id.clone(),

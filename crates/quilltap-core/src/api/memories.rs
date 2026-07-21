@@ -495,6 +495,14 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
         source_message_id: bag.source_message_id,
         source_message_timestamp: None,
         witnessed_context: None,
+        // Episodic spine: v4's route createMemorySchema does NOT accept the
+        // episodic fields (8bf3cb5f), so a route create lands with the
+        // defaults — occurredAt/narrativeTime NULL, entities [], kind
+        // 'semantic'. Extraction-path stamping is the processor's job.
+        occurred_at: None,
+        narrative_time: None,
+        entities: Vec::new(),
+        kind: None,
     };
     let opts = MemoryServiceOptions {
         user_id: user_id.to_string(),

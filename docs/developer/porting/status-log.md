@@ -26364,3 +26364,58 @@ unchanged, no assertion edits needed).
 `provisioning_equivalence` with `QT_ORACLE_PROVISION` /
 `QT_FIXTURE_V4_FRESH` / `QT_V5_PROVISION_OUT`; then
 verify-v5-provisioned.ts with `QT_FIXTURE_V5_PROVISIONED`.
+
+### P4.d12 unit 2: the memories data layer — four episodic columns + fixture migration (2026-07-21)
+
+Core `0.0.298 → 0.0.299`, harness `0.0.257 → 0.0.258`.
+
+**Landed:**
+- `db/memories.rs`: `MemCreate` + the INSERT gain
+  `occurredAt`/`narrativeTime`/`entities`/`kind` (schema position, after
+  `witnessedContext`); `MemUpdate` + `set_col!` arms for all four.
+- `db/memories_read.rs`: `COLS` 21 → 25 columns; `marshal_row` inserts the
+  four at schema position (v4's Zod parse emits keys in shape order, so
+  mid-list — NOT appended — is the key-order-faithful choice; the regen'd
+  oracle confirms `"entities":[]`,`"kind":"semantic"` right after
+  `witnessedContext`, occurredAt/narrativeTime omitted-when-null on the
+  normal path, explicit null on the keep-nulls raw path). `kind` reads
+  defensively as required-with-default `'semantic'`.
+- `CreateMemoryOptions` (services/memory_gate.rs) gains the four fields;
+  `create_memory_direct_with_embedding` writes them. Round-1 INERT
+  defaults at every caller: the route create (v4's `createMemorySchema`
+  does NOT accept episodic fields at 8bf3cb5f — **the oracle disproved
+  the order's route-stamp gloss**: v4 route creates land `occurredAt`
+  NULL; the stamping the order describes lives on the PROCESSOR path
+  and rides unit 7), the processor write (stamp deferred to unit 7 with
+  the transcript `lastMessageCreatedAt`/`turnTimestamp` carriers), the
+  quilltap-import seed (reads the seed JSON with schema defaults).
+- **The committed fixture migration** — new committed script
+  `harness/oracle/fixtures/migrate-fixtures-episodic-columns.ts` (the
+  pascal-columns precedent): v4's own migration DDL verbatim (four
+  memories ALTERs + `idx_memories_occurredAt` + the chats.timelineMode
+  ALTER), idempotent, applied to **19 fixtures** in
+  `crates/quilltap-web/tests/fixtures/`. Deliberately WITHOUT v4's
+  occurredAt backfill — null `occurredAt` is the round's inert-path
+  verification precondition; the backfilled shape belongs to rounds 2/3
+  fixtures. (Every OTHER family's committed oracle NDJSONs are
+  regenerated per-run, so no standing red; chat-object-emitting families
+  regen at ≥8bf3cb5f next time they run.)
+- In-crate test DDLs gained the four columns in the five files whose
+  tests read memories (`db/memories.rs`, `services/memory_gate.rs`,
+  `services/memory_service.rs`, `services/housekeeping.rs`,
+  `services/job_runner.rs`).
+
+**Gotcha (memory-note-worthy):** with the MIGRATED memories fixture the
+`memories-config` jest oracle deterministically emitted 500 "User not
+found" for `extraction_concurrency_get` (the case after
+`extraction_limits_set`) — the fire-and-forget-tail class again, now
+outliving the 350 ms per-case settle; pre-migration fixture passed. Fix:
+the case file's settle 350 → 750 ms (comment records the symptom).
+
+**Verified:** `memories_read_equivalence` (39 queries),
+`memories_tier2_equivalence`, `memories_routes_equivalence` (24 routes
+cases + 17 config cases) — all green over oracles freshly regenerated
+from v4 `8bf3cb5f` (recipes: the test headers; the routes/config pair
+runs from the /tmp jest mirror with `QT_FIXTURE_MEM_MAIN/MOUNT` pointing
+at the MIGRATED committed fixtures). NDJSONs grepped for content
+(routes: 107 `kind:semantic` occurrences; read: 57).

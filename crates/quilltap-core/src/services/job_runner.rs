@@ -858,7 +858,8 @@ mod tests {
     const MEMORIES_DDL: &str = "CREATE TABLE memories (\
         id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT, \
         projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT, \
-        importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT, \
+        importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic', \
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL, \
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL, \
         createdAt TEXT, updatedAt TEXT);";

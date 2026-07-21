@@ -62,6 +62,16 @@ pub struct MemCreate {
     pub embedding: Option<Vec<f32>>,
     pub source: String,
     pub witnessed_context: Option<String>,
+    /// Episodic spine (v4 8bf3cb5f): ISO wall-clock EVENT time (not the write
+    /// clock — that's `createdAt`).
+    pub occurred_at: Option<String>,
+    /// Free-text in-story time for fictional-timeline chats.
+    pub narrative_time: Option<String>,
+    /// Proper nouns of the episode (places, people, named things). Distinct
+    /// from `keywords`. Default `[]`.
+    pub entities: Vec<String>,
+    /// `'semantic'` | `'episodic'` (v4 default `'semantic'`).
+    pub kind: String,
     pub source_message_id: Option<String>,
     pub last_accessed_at: Option<String>,
     pub reinforcement_count: f64,
@@ -105,6 +115,13 @@ pub struct MemUpdate {
     pub chat_id: Option<Option<String>>,
     pub project_id: Option<Option<String>>,
     pub witnessed_context: Option<Option<String>>,
+    /// Episodic spine (v4 8bf3cb5f) — nullable event-time / in-story-time.
+    pub occurred_at: Option<Option<String>>,
+    pub narrative_time: Option<Option<String>>,
+    /// Episodic entities (JSON string[] column, like `keywords`).
+    pub entities: Option<Vec<String>>,
+    /// `'semantic'` | `'episodic'`.
+    pub kind: Option<String>,
     pub source_message_id: Option<Option<String>>,
     pub last_accessed_at: Option<Option<String>>,
     pub last_reinforced_at: Option<Option<String>>,
@@ -135,15 +152,17 @@ impl<'c> MemoriesRepository<'c> {
         let keywords_json = json_array(&data.keywords)?;
         let tags_json = json_array(&data.tags)?;
         let related_json = json_array(&data.related_memory_ids)?;
+        let entities_json = json_array(&data.entities)?;
 
         self.conn.execute(
             "INSERT INTO memories \
                (id, characterId, aboutCharacterId, chatId, projectId, content, summary, \
                 keywords, tags, importance, embedding, source, witnessedContext, \
+                occurredAt, narrativeTime, entities, kind, \
                 sourceMessageId, lastAccessedAt, reinforcementCount, lastReinforcedAt, \
                 relatedMemoryIds, reinforcedImportance, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21)",
+                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             params![
                 opts.id,
                 data.character_id,
@@ -158,6 +177,10 @@ impl<'c> MemoriesRepository<'c> {
                 embedding_blob,
                 data.source,
                 data.witnessed_context,
+                data.occurred_at,
+                data.narrative_time,
+                entities_json,
+                data.kind,
                 data.source_message_id,
                 data.last_accessed_at,
                 data.reinforcement_count,
@@ -227,6 +250,18 @@ impl<'c> MemoriesRepository<'c> {
         }
         if let Some(v) = &patch.witnessed_context {
             set_col!("witnessedContext", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.occurred_at {
+            set_col!("occurredAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.narrative_time {
+            set_col!("narrativeTime", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.entities {
+            set_col!("entities", Box::new(json_array(v)?));
+        }
+        if let Some(v) = &patch.kind {
+            set_col!("kind", Box::new(v.clone()));
         }
         if let Some(v) = &patch.source_message_id {
             set_col!("sourceMessageId", Box::new(v.clone()));
@@ -667,6 +702,7 @@ mod tests {
         id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
         projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
         importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
         createdAt TEXT, updatedAt TEXT);";
@@ -694,6 +730,10 @@ mod tests {
                     embedding: None,
                     source: "AUTO".to_string(),
                     witnessed_context: None,
+                    occurred_at: None,
+                    narrative_time: None,
+                    entities: Vec::new(),
+                    kind: "semantic".to_string(),
                     source_message_id: None,
                     last_accessed_at: None,
                     reinforcement_count: 1.0,

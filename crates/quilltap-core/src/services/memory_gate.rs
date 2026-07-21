@@ -119,6 +119,17 @@ pub struct CreateMemoryOptions {
     /// extraction). When present, `create` pins both timestamps to it.
     pub source_message_timestamp: Option<String>,
     pub witnessed_context: Option<String>,
+    /// Episodic spine (v4 8bf3cb5f): ISO wall-clock EVENT time. Callers stamp
+    /// it from the source turn's message timestamp; retold events resolve
+    /// their `when` phrase server-side before reaching here (rounds 2/3 —
+    /// round 1 callers pass `None` and the row lands NULL, the inert path).
+    pub occurred_at: Option<String>,
+    /// Free-text in-story time, for chats on a fictional timeline.
+    pub narrative_time: Option<String>,
+    /// Proper nouns of the episode (places, people, named things).
+    pub entities: Vec<String>,
+    /// Declared memory kind (`'semantic'` | `'episodic'`). `None` → `'semantic'`.
+    pub kind: Option<String>,
 }
 
 /// Options for the operation (v4 `MemoryServiceOptions`), minus the deferred skip
@@ -418,6 +429,12 @@ async fn create_memory_direct_with_embedding(
         embedding: None,
         source: data.source.clone().unwrap_or_else(|| "MANUAL".to_string()),
         witnessed_context: data.witnessed_context.clone(),
+        // Episodic spine: v4 `occurredAt: data.occurredAt ?? null` (and
+        // siblings) — the caller's anchors land verbatim, defaults otherwise.
+        occurred_at: data.occurred_at.clone(),
+        narrative_time: data.narrative_time.clone(),
+        entities: data.entities.clone(),
+        kind: data.kind.clone().unwrap_or_else(|| "semantic".to_string()),
         source_message_id: data.source_message_id.clone(),
         last_accessed_at: None,
         reinforcement_count: 1.0,
@@ -858,6 +875,7 @@ mod tests {
             id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
             projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
             importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -892,6 +910,10 @@ mod tests {
                             embedding: None,
                             source: "AUTO".to_string(),
                             witnessed_context: None,
+                            occurred_at: None,
+                            narrative_time: None,
+                            entities: Vec::new(),
+                            kind: "semantic".to_string(),
                             source_message_id: None,
                             last_accessed_at: None,
                             reinforcement_count: 1.0,

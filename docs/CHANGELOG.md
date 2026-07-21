@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Threaded the four episodic memories columns through the data layer
+(P4.d12 unit 2): MemCreate/MemUpdate and the INSERT/SET arms in
+db/memories.rs, the SELECT list + positional marshal in memories_read.rs
+(the columns sit between witnessedContext and sourceMessageId, matching
+v4's Zod-shape key order), CreateMemoryOptions and every create site
+(gate, route, processor, import) with the round-1 inert defaults —
+occurredAt/narrativeTime NULL, entities [], kind 'semantic'. The
+committed web fixtures were migrated in place by a new committed script
+(migrate-fixtures-episodic-columns.ts) running v4's own migration DDL
+verbatim — ALTERs + the occurredAt index, deliberately WITHOUT v4's
+occurredAt backfill (null occurredAt is the precondition of the round's
+inert-path verification; rounds 2/3 add populated fixtures). The
+memories-config oracle's per-case settle went 350 → 750 ms: with the
+migrated fixture, extraction_limits_set's fire-and-forget tail outlived
+350 ms and poisoned the next case's auth read. Verified: the
+memories-read (39 queries), memories tier-2, and memories-routes
+(+config) differentials all green over oracles freshly regenerated from
+v4 8bf3cb5f — the routes oracle also confirms v4's route create leaves
+occurredAt NULL on MANUAL creates (the work order's create-path-stamp
+gloss belongs to the processor path, which rides unit 7).
+
 Adopted v4 8bf3cb5f's schema via the D23 re-dump (P4.d12 unit 1, the
 episodic-spine foundation lane): chats.timelineMode, the four memories
 episodic columns (occurredAt, narrativeTime, entities default '[]', kind

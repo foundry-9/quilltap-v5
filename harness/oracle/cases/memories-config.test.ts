@@ -243,7 +243,10 @@ async function runCase(
     // Let any fire-and-forget write (the item-GET access-time bump; the search
     // access bumps) settle before teardown, so it can't leave the single-writer
     // child / connection in a state that corrupts the NEXT case's user read.
-    await new Promise((r) => setTimeout(r, 350));
+    // 350 → 750 ms at the 8bf3cb5f rebase: with the episodic-migrated fixture,
+    // extraction_limits_set's tail outlived 350 ms and the NEXT case's auth
+    // user read came back "User not found" (deterministically). 750 settles it.
+    await new Promise((r) => setTimeout(r, 750));
     await closeDatabase();
     closeMountIndexSQLiteClient();
     jest.useRealTimers();

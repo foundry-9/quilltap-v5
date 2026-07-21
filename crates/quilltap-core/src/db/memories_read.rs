@@ -51,9 +51,13 @@ use super::js_number_to_json;
 use super::DbError;
 use crate::embedding_blob::blob_to_float32;
 
-/// All `memories` columns in schema order (indices 0..=20 in [`marshal_row`]).
+/// All `memories` columns in schema order (indices 0..=24 in [`marshal_row`]).
+/// The four episodic columns (v4 8bf3cb5f) sit between `witnessedContext` and
+/// `sourceMessageId` — their generateDDL/Zod-shape position — so the marshaled
+/// key order matches v4's parsed Memory object.
 const COLS: &str = "id, characterId, aboutCharacterId, chatId, projectId, content, summary, \
-     keywords, tags, importance, embedding, source, witnessedContext, sourceMessageId, \
+     keywords, tags, importance, embedding, source, witnessedContext, \
+     occurredAt, narrativeTime, entities, kind, sourceMessageId, \
      lastAccessedAt, reinforcementCount, lastReinforcedAt, relatedMemoryIds, reinforcedImportance, \
      createdAt, updatedAt";
 
@@ -159,38 +163,65 @@ fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
         row.get::<_, Option<String>>(12)?,
         keep_nulls,
     );
+    // Episodic spine (v4 8bf3cb5f): occurredAt/narrativeTime nullable-optional;
+    // entities a JSON string[] (default []); kind required-with-default —
+    // the column carries DEFAULT 'semantic' so NULL never occurs on a
+    // v4-migrated or v5-written row, but read defensively (Zod's
+    // `.default('semantic')` would supply it for an absent value).
     put_nullable_str(
         &mut m,
-        "sourceMessageId",
+        "occurredAt",
         row.get::<_, Option<String>>(13)?,
         keep_nulls,
     );
     put_nullable_str(
         &mut m,
-        "lastAccessedAt",
+        "narrativeTime",
         row.get::<_, Option<String>>(14)?,
         keep_nulls,
     );
     m.insert(
+        "entities".to_string(),
+        json_array_or_empty(row.get::<_, Option<String>>(15)?),
+    );
+    put_req_str(
+        &mut m,
+        "kind",
+        row.get::<_, Option<String>>(16)?
+            .unwrap_or_else(|| "semantic".to_string()),
+    );
+    put_nullable_str(
+        &mut m,
+        "sourceMessageId",
+        row.get::<_, Option<String>>(17)?,
+        keep_nulls,
+    );
+    put_nullable_str(
+        &mut m,
+        "lastAccessedAt",
+        row.get::<_, Option<String>>(18)?,
+        keep_nulls,
+    );
+    m.insert(
         "reinforcementCount".to_string(),
-        js_number_to_json(row.get::<_, f64>(15)?),
+        js_number_to_json(row.get::<_, f64>(19)?),
     );
     put_nullable_str(
         &mut m,
         "lastReinforcedAt",
-        row.get::<_, Option<String>>(16)?,
+        row.get::<_, Option<String>>(20)?,
         keep_nulls,
     );
     m.insert(
         "relatedMemoryIds".to_string(),
-        json_array_or_empty(row.get::<_, Option<String>>(17)?),
+        json_array_or_empty(row.get::<_, Option<String>>(21)?),
     );
     m.insert(
         "reinforcedImportance".to_string(),
-        js_number_to_json(row.get::<_, f64>(18)?),
+        js_number_to_json(row.get::<_, f64>(22)?),
     );
-    put_req_str(&mut m, "createdAt", row.get::<_, String>(19)?);
-    put_req_str(&mut m, "updatedAt", row.get::<_, String>(20)?);
+    put_req_str(&mut m, "createdAt", row.get::<_, String>(23)?);
+    put_req_str(&mut m, "updatedAt", row.get::<_, String>(24)?);
     Ok(Value::Object(m))
 }
 

@@ -132,6 +132,16 @@ struct CreateData {
     embedding: Option<Vec<f32>>,
     source: String,
     witnessed_context: Option<String>,
+    // Episodic spine (v4 8bf3cb5f): absent in the op spec → the MemorySchema
+    // defaults v4's `_create` materializes (NULL / NULL / [] / 'semantic').
+    #[serde(default)]
+    occurred_at: Option<String>,
+    #[serde(default)]
+    narrative_time: Option<String>,
+    #[serde(default)]
+    entities: Vec<String>,
+    #[serde(default)]
+    kind: Option<String>,
     source_message_id: Option<String>,
     last_accessed_at: Option<String>,
     reinforcement_count: f64,
@@ -172,6 +182,10 @@ impl CreateData {
             embedding: self.embedding.clone(),
             source: self.source.clone(),
             witnessed_context: self.witnessed_context.clone(),
+            occurred_at: self.occurred_at.clone(),
+            narrative_time: self.narrative_time.clone(),
+            entities: self.entities.clone(),
+            kind: self.kind.clone().unwrap_or_else(|| "semantic".to_string()),
             source_message_id: self.source_message_id.clone(),
             last_accessed_at: self.last_accessed_at.clone(),
             reinforcement_count: self.reinforcement_count,

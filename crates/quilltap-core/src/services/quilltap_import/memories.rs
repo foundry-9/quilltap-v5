@@ -75,6 +75,14 @@ pub(super) fn import_memories(
             embedding: None,
             source: opt_str(memory, "source").unwrap_or_else(|| "MANUAL".to_string()),
             witnessed_context: opt_str(memory, "witnessedContext"),
+            // Episodic spine (v4 8bf3cb5f): the seed rows predate the feature,
+            // so these read straight from the JSON with the MemorySchema
+            // defaults (occurredAt/narrativeTime absent → NULL, entities [],
+            // kind 'semantic').
+            occurred_at: opt_str(memory, "occurredAt"),
+            narrative_time: opt_str(memory, "narrativeTime"),
+            entities: str_array(memory, "entities"),
+            kind: opt_str(memory, "kind").unwrap_or_else(|| "semantic".to_string()),
             source_message_id: opt_str(memory, "sourceMessageId"),
             last_accessed_at: opt_str(memory, "lastAccessedAt"),
             reinforcement_count: memory

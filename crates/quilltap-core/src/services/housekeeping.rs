@@ -537,6 +537,7 @@ mod tests {
             id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
             projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
             importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -578,6 +579,10 @@ mod tests {
                             embedding: None,
                             source: s.source.to_string(),
                             witnessed_context: None,
+                            occurred_at: None,
+                            narrative_time: None,
+                            entities: Vec::new(),
+                            kind: "semantic".to_string(),
                             source_message_id: None,
                             last_accessed_at: s.last_accessed_at.map(str::to_string),
                             reinforcement_count: 1.0,
