@@ -1383,7 +1383,7 @@ pub(crate) async fn trigger_turn_memory_extraction(
     let messages =
         db.read_main(move |conn| chats_messages_read::get_messages(conn, &chat_id_owned))?;
 
-    let turn_opener_message_id = find_turn_opener_message_id(&messages);
+    let turn_opener_message_id = super::turn_transcript::find_turn_opener_message_id(&messages);
     let mut extraction_anchor_message_id: Option<String> = None;
     if turn_opener_message_id.is_none() {
         // v4: walk newest-first for the latest non-system non-silent ASSISTANT
@@ -1395,10 +1395,10 @@ pub(crate) async fn trigger_turn_memory_extraction(
             if m.get("role").and_then(Value::as_str) != Some("ASSISTANT") {
                 continue;
             }
-            if m.get("systemSender").and_then(Value::as_str).is_some() {
+            if super::turn_transcript::is_js_truthy(m.get("systemSender")) {
                 continue;
             }
-            if is_truthy_silent(m.get("isSilentMessage")) {
+            if super::turn_transcript::is_js_truthy(m.get("isSilentMessage")) {
                 continue;
             }
             let Some(id) = m
@@ -1426,36 +1426,8 @@ pub(crate) async fn trigger_turn_memory_extraction(
     Ok(())
 }
 
-/// v4 `findTurnOpenerMessageId` (turn-transcript.ts) — the most recent non-system
-/// USER message id, or `None`.
-fn find_turn_opener_message_id(messages: &[Value]) -> Option<String> {
-    for m in messages.iter().rev() {
-        if m.get("type").and_then(Value::as_str) != Some("message") {
-            continue;
-        }
-        if m.get("role").and_then(Value::as_str) != Some("USER") {
-            continue;
-        }
-        if m.get("systemSender").and_then(Value::as_str).is_some() {
-            continue;
-        }
-        return m.get("id").and_then(Value::as_str).map(String::from);
-    }
-    None
-}
-
-/// JS-truthy read of the TEXT-affinity `isSilentMessage` cell after v4's read-side
-/// coercion: `"1.0"`/`"1"`/`true` → true, `"0.0"`/`false`/NULL → false. v4 reads
-/// `m.isSilentMessage` after the read coerces the stored `"1.0"`/`"0.0"` back to a
-/// bool, so a false silent message does NOT skip.
-fn is_truthy_silent(v: Option<&Value>) -> bool {
-    match v {
-        Some(Value::Bool(b)) => *b,
-        Some(Value::String(s)) => s == "1.0" || s == "1" || s == "true",
-        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
-        _ => false,
-    }
-}
+// `findTurnOpenerMessageId` + the JS-truthy cell reads moved to
+// `services::turn_transcript` (P4.6bj) — the turn machinery has one home.
 
 /// v4 `triggerChatDangerClassification` gate + enqueue: read the fresh chat; bail
 /// on danger-mode-OFF (W4.2u) / sticky-dangerous / already-classified-at-this-count

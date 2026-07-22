@@ -1,0 +1,186 @@
+{
+  "comment": "Shared corpus for the turn-transcript tier-1 differential (P4.6bj unit 1). Consumed by BOTH harness/oracle/cases/turn-transcript.ts (drives v4's real buildTurnTranscript + findTurnOpenerMessageId) and crates/quilltap-harness/tests/turn_transcript_equivalence.rs (drives the Rust port). Every case pins explicit inputs; no randomness, no clocks.",
+  "characters": {
+    "ca000000-0000-4000-8000-00000000000a": {
+      "id": "ca000000-0000-4000-8000-00000000000a",
+      "name": "Ada",
+      "pronouns": { "subject": "she", "object": "her", "possessive": "her" }
+    },
+    "cb000000-0000-4000-8000-00000000000b": {
+      "id": "cb000000-0000-4000-8000-00000000000b",
+      "name": "Bram",
+      "pronouns": { "subject": "he", "object": "him", "possessive": "his" }
+    },
+    "cc000000-0000-4000-8000-00000000000c": {
+      "id": "cc000000-0000-4000-8000-00000000000c",
+      "name": "Quill",
+      "pronouns": null
+    }
+  },
+  "participants": [
+    { "id": "pu000000-0000-4000-8000-000000000001", "type": "USER", "controlledBy": "user" },
+    { "id": "pa000000-0000-4000-8000-00000000000a", "type": "CHARACTER", "controlledBy": "llm", "characterId": "ca000000-0000-4000-8000-00000000000a" },
+    { "id": "pb000000-0000-4000-8000-00000000000b", "type": "CHARACTER", "controlledBy": "llm", "characterId": "cb000000-0000-4000-8000-00000000000b" },
+    { "id": "pc000000-0000-4000-8000-00000000000c", "type": "CHARACTER", "controlledBy": "llm", "characterId": "cc000000-0000-4000-8000-00000000000c" },
+    { "id": "pd000000-0000-4000-8000-00000000000d", "type": "CHARACTER", "controlledBy": "user", "characterId": "cc000000-0000-4000-8000-00000000000c" },
+    { "id": "pe000000-0000-4000-8000-00000000000e", "type": "CHARACTER", "controlledBy": "llm" },
+    { "id": "pf000000-0000-4000-8000-00000000000f", "type": "CHARACTER", "controlledBy": "user", "characterId": "cd000000-0000-4000-8000-00000000000d" }
+  ],
+  "cases": [
+    {
+      "id": "simple",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "hello there", "participantId": "pu000000-0000-4000-8000-000000000001", "createdAt": "2026-07-01T10:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "well met", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T10:00:05.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1", "userCharacterId": "u-1", "userCharacterName": "Charlie" }
+    },
+    {
+      "id": "multi_join",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "everyone speak", "createdAt": "2026-07-01T11:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Ada first", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T11:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "Bram next", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T11:00:02.000Z" },
+        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "Ada again", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T11:00:03.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "user_controlled_opener",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "Quill strides in", "participantId": "pd000000-0000-4000-8000-00000000000d", "createdAt": "2026-07-01T12:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Ada waves", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T12:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1", "userCharacterId": "cc000000-0000-4000-8000-00000000000c", "userCharacterName": "Quill", "userCharacterPronouns": null }
+    },
+    {
+      "id": "null_opener_scan_all",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "a greeting", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T13:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "another", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T13:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": null }
+    },
+    {
+      "id": "null_opener_breaks_on_user",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "collected", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T13:10:00.000Z" },
+        { "type": "message", "id": "m2", "role": "USER", "content": "stop here", "createdAt": "2026-07-01T13:10:01.000Z" },
+        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "not collected", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T13:10:02.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": null }
+    },
+    {
+      "id": "opener_not_found",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "real opener", "createdAt": "2026-07-01T14:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T14:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "missing-id" }
+    },
+    {
+      "id": "opener_id_wrong_role",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T15:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T15:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m2" }
+    },
+    {
+      "id": "skip_classes",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "go", "createdAt": "2026-07-01T16:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a whisper", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemSender": "host", "createdAt": "2026-07-01T16:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "TOOL", "content": "tool output", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T16:00:02.000Z" },
+        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "silent aside", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": true, "createdAt": "2026-07-01T16:00:03.000Z" },
+        { "type": "message", "id": "m5", "role": "ASSISTANT", "content": "no participant", "createdAt": "2026-07-01T16:00:04.000Z" },
+        { "type": "message", "id": "m6", "role": "ASSISTANT", "content": "unknown participant", "participantId": "px000000-0000-4000-8000-0000000000ff", "createdAt": "2026-07-01T16:00:05.000Z" },
+        { "type": "message", "id": "m7", "role": "ASSISTANT", "content": "user-typed participant", "participantId": "pu000000-0000-4000-8000-000000000001", "createdAt": "2026-07-01T16:00:06.000Z" },
+        { "type": "message", "id": "m8", "role": "ASSISTANT", "content": "characterless participant", "participantId": "pe000000-0000-4000-8000-00000000000e", "createdAt": "2026-07-01T16:00:07.000Z" },
+        { "type": "message", "id": "m9", "role": "ASSISTANT", "content": "character not hydrated", "participantId": "pf000000-0000-4000-8000-00000000000f", "createdAt": "2026-07-01T16:00:08.000Z" },
+        { "type": "event", "id": "m10", "role": "ASSISTANT", "content": "not a message row", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T16:00:09.000Z" },
+        { "type": "message", "id": "m11", "role": "ASSISTANT", "content": "collected at last", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": false, "createdAt": "2026-07-01T16:00:10.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "break_on_user",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "turn one", "createdAt": "2026-07-01T17:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "in turn", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T17:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "USER", "content": "turn two", "createdAt": "2026-07-01T17:00:02.000Z" },
+        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "out of turn", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T17:00:03.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "no_break_on_system_user",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T18:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "first", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T18:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "USER", "content": "a librarian whisper", "systemSender": "librarian", "createdAt": "2026-07-01T18:00:02.000Z" },
+        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "second", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T18:00:03.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "anchor_stop",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "speaker turn", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T19:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "later speaker", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T19:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": null, "extractionAnchorMessageId": "m1" }
+    },
+    {
+      "id": "anchor_on_skipped_row",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T20:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a silent anchor", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": true, "createdAt": "2026-07-01T20:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "still collected", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T20:00:02.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1", "extractionAnchorMessageId": "m2" }
+    },
+    {
+      "id": "timestamp_fallbacks",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "clocked opener", "createdAt": "2026-07-01T21:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "no clock", "participantId": "pa000000-0000-4000-8000-00000000000a" },
+        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "clocked", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T21:00:02.000Z" },
+        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "no clock again", "participantId": "pa000000-0000-4000-8000-00000000000a" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "all_unclocked",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "no clocks anywhere", "participantId": "pc000000-0000-4000-8000-00000000000c" }
+      ],
+      "options": { "turnOpenerMessageId": null }
+    },
+    {
+      "id": "empty_content_join",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "go", "createdAt": "2026-07-01T22:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T22:00:01.000Z" },
+        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "found her voice", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T22:00:02.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "user_controlled_opener_missing_char",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "spoken by an unhydrated persona", "participantId": "pf000000-0000-4000-8000-00000000000f", "createdAt": "2026-07-01T23:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T23:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1" }
+    },
+    {
+      "id": "pronouns_null_character",
+      "messages": [
+        { "type": "message", "id": "m1", "role": "USER", "content": "hail Quill", "createdAt": "2026-07-02T00:00:00.000Z" },
+        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Quill nods", "participantId": "pc000000-0000-4000-8000-00000000000c", "createdAt": "2026-07-02T00:00:01.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "m1", "userCharacterName": "Charlie", "userCharacterPronouns": { "subject": "they", "object": "them", "possessive": "their" } }
+    }
+  ]
+}
