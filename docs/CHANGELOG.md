@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Docs: refreshed the v4 reference mirrors of ICON_INVENTORY.md and
+THEME_PLUGIN_DEVELOPMENT.md to v4 HEAD, which now document the two
+thinking-indicator hooks and the origin-belongs-to-the-artwork caveat.
+
 Pinned the waiting quill and the refreshed Madman's Box with live e2e
 beats: a real streamed send now proves the indicator mounts mid-stream
 and clears when the turn settles, and the foundation walk proves the

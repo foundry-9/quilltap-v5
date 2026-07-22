@@ -29376,3 +29376,73 @@ per the `e2e-port-4319-cross-worktree-kill` recipe, run, then
 Result: `foundation.spec.ts` + `salon-thinking-indicator.spec.ts`
 **2 passed (7.6m — cold global setup)**, against freshly built debug
 binaries and a fresh `ng build` dist in this worktree.
+
+## P4.d17 — lane record: the `deab0e5d` + `ab0f175e` drift re-port (2026-07-22) — ORDER CLOSED
+
+Lane B of the `e646f58b` drift catch-up round (sibling: P4.d16, the
+`8d86847a` workspace deep-links re-port). Order:
+`work-orders/p4.d17-thinking-indicator-theme-drift.md`. Branch:
+`claude/thinking-indicator-theme-drift-740c01`.
+
+**Drift check:** `git log e646f58b..HEAD` empty in `~/source/quilltap-server`
+at lane start AND at lane end; the checkout stayed clean at `e646f58b`.
+No oracle family exists for either commit (both lib-free), so nothing
+regenerated and no fixture moved.
+
+**Six units, all tier-1 + tier-2 deliverables landed:**
+
+1. The `thinking` icon (registry name 85) — `thinking.svg` byte-copied,
+   the union entry, the `_icons.css` mask rule, the generator-banner
+   correction.
+2. `.qt-thinking-indicator` — the motion hook + `qt-thinking-rock`
+   keyframes + reduced-motion branch, byte-identical declarations.
+3. `qt-quill-animation` — the `QuillAnimation` equivalent + 4 spec cases.
+4. Adoption at v5's analogs of v4's four call sites, + 9 spec cases.
+5. Madman's Box 1.1.6 + 1.1.7 (`theme.json` byte-identical to v4's).
+6. (tier 2) The live e2e pins: a new streaming-indicator spec + the
+   foundation walk's theme assertions.
+
+**Tier-3 NO-PORTS (named, as the order requires — nothing was silently
+dropped):**
+
+- v4's `ChatComposer.tsx` / `PendingToolCalls.tsx` `label={null}` line
+  edits: no v5 equivalents exist as separate components; both surfaces
+  live inside `streaming-message.ts` and were covered by unit 4.
+- `help/appearance-settings.md` ("The Waiting Quill"): **v5 has no help
+  surface** — banked for `p4.9i2` along with the P4.d9 `math-notation.md`
+  bank.
+- `theme-storybook` (`packages/theme-storybook`, its `Icons.tsx` story and
+  the 1.0.49 bump): no v5 equivalent, and none planned.
+- A v5 `generate:icon-css` generator: out of scope; the hand-edit practice
+  stands and unit 1 corrected the banner that implied otherwise.
+- v4's `README.md` + `package.json` version churn and its
+  `themes/bundled/madmans-box/README.md` prose: v5's pack ships no README
+  (the pack directory is assets only), so there is no file to update.
+
+**The differential of record.** Both commits are lib-free, so the
+discipline was byte-fidelity where bytes are the artifact plus ported
+assertions above them:
+
+- `cmp` CLEAN on both copied SVGs (`public/images/icons/thinking.svg`,
+  `public/themes/madmans-box/icons/brand.svg`).
+- `public/themes/madmans-box/theme.json` diffs to **zero** against
+  `git show deab0e5d:themes/bundled/madmans-box/theme.json`.
+- `_chat.css`'s new block vs v4's added lines: 3 prose diffs, 0
+  declaration diffs (unit 2's record).
+- The pack's `styles.css` vs v4's post-drift file: 4 hunks, all
+  intended, 0 declaration diffs (unit 5's record).
+- 13 new SPA spec cases + 2 live e2e beats above the CSS.
+
+**Gate:** `ng test` **210 files / 2,500 / 0**; `ng build` clean;
+targeted Playwright `foundation` + `salon-thinking-indicator`
+**2 passed** on locally moved ports (reverted, not committed); `cargo fmt
+--all --check` clean; **zero `crates/**` diff and zero P4.d16-owned files
+in `git diff --stat main..`**. `apps/web` 0.5.251 → 0.5.257 (one bump per
+unit; the unifier RECOUNTS).
+
+**For the unifier:** the full Playwright suite is owed (this lane ran
+targeted only, per the round's port arbitration). The two files most
+likely to want a look: `e2e/support/mock-llm.ts` gained an optional
+third arg only (default 0 — every existing beat's stream is unchanged),
+and `e2e/foundation.spec.ts` now leaves the theme on art-deco exactly as
+it did before.
