@@ -10,6 +10,7 @@ import type { ParticipantDetail } from '../../core/core-contract';
 import { createInitialTurnState, type TurnSelectionResult, type TurnState } from '../turn-order';
 import { ChatSidebar } from './chat-sidebar';
 import type { ChatSectionState } from './chat-section';
+import type { VisibilityState } from './visibility-section';
 
 /**
  * The sidebar scaffold (v4 `ChatSidebar.tsx`): the persisted collapse
@@ -53,6 +54,7 @@ function participant(
     <div class="qt-chat-layout">
       <qt-chat-sidebar
         [chatSectionState]="chatSectionState"
+        [visibilityState]="visibilityState"
         [participants]="participants()"
         [turnState]="turnState()"
         [turnSelectionResult]="turnSelectionResult()"
@@ -84,6 +86,12 @@ class Host {
     alertCharactersOfLanternImages: null,
     projectId: null,
     projectName: null,
+  };
+  readonly visibilityState: VisibilityState = {
+    allowCrossCharacterVaultReads: false,
+    coreWhisperEnabled: null,
+    coreWhisperInterval: null,
+    turnSkippingEnabled: null,
   };
   readonly paused: boolean[] = [];
   readonly nudged: string[] = [];

@@ -25,7 +25,9 @@ import {
   type TurnState,
 } from '../turn-order';
 import { ChatSection, type ChatSectionState } from './chat-section';
+import { OrganizeSection } from './organize-section';
 import { ParticipantsSection } from './participants-section';
+import { VisibilitySection, type VisibilityState } from './visibility-section';
 
 const STORAGE_KEY = 'quilltap.chat-sidebar.collapsed';
 const WIDTH_STORAGE_KEY = 'quilltap.chat-sidebar.width';
@@ -114,7 +116,15 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
 @Component({
   selector: 'qt-chat-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, CollapsibleCard, ParticipantsSection, ChatSection],
+  imports: [
+    Avatar,
+    Icon,
+    CollapsibleCard,
+    ParticipantsSection,
+    ChatSection,
+    VisibilitySection,
+    OrganizeSection,
+  ],
   host: {
     '[class.qt-chat-sidebar]': '!effectiveCollapsed()',
     '[class.qt-chat-sidebar-overlay]': 'isOverlay()',
@@ -263,6 +273,35 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (regenerateBackground)="regenerateBackground.emit()"
           />
         </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Visibility"
+          [isOpen]="openSection() === 'visibility'"
+          (openChange)="setSection('visibility', $event)"
+        >
+          <qt-visibility-section
+            [chatId]="chatId() ?? ''"
+            [state]="visibilityState()"
+            [turnSkippingApplies]="turnSkippingApplies()"
+            [showAllWhispers]="showAllWhispers()"
+            (toggleAllWhispers)="toggleAllWhispers.emit()"
+            (chatUpdated)="chatUpdated.emit()"
+          />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Organize"
+          [isOpen]="openSection() === 'organize'"
+          (openChange)="setSection('organize', $event)"
+        >
+          <qt-organize-section
+            [chatId]="chatId() ?? ''"
+            [isAutonomousRoom]="isAutonomousRoom()"
+            (editEnclave)="editEnclave.emit()"
+            (openState)="openState.emit()"
+            (openGallery)="openGallery.emit()"
+          />
+        </qt-collapsible-card>
       </div>
 
       @if (turnSelectionResult()?.debug; as debug) {
@@ -304,6 +343,19 @@ export class ChatSidebar implements OnInit {
   /** v4 `chatControls.storyBackgroundsEnabled` — gates the regenerate entry. */
   readonly storyBackgroundsEnabled = input(false);
   readonly regeneratingBackground = input(false);
+
+  // --- Visibility section ---
+  readonly visibilityState = input.required<VisibilityState>();
+  /** v4 gates the Turn Skipping row on `qualifiesForTurnSkipping` AND `isMultiChar`. */
+  readonly turnSkippingApplies = input(false);
+  readonly showAllWhispers = input(false);
+  readonly toggleAllWhispers = output<void>();
+
+  // --- Organize section ---
+  readonly isAutonomousRoom = input(false);
+  readonly editEnclave = output<void>();
+  readonly openState = output<void>();
+  readonly openGallery = output<void>();
 
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();

@@ -27761,6 +27761,61 @@ kept choice + refetch + success copy in both directions, the failure path
 keeping the previous clock and showing the error, the other three writes' bag
 shapes, and the project entry's gate + href). `ng test` 207 files / 2,484;
 `ng build` clean.
+
+## P4.9H1 unit 5 — the Visibility + Organize sections
+
+**Visibility** (`chat/sidebar/visibility-section.ts`, v4 `:1308-1481` plus the
+`useChatControls.ts:207-345` handlers behind it): All Whispers (display-only,
+still the Salon's state), Shared Vaults, Turn Skipping, **Aurora's Core Whisper
+— offering + cadence**, Thinking, Answer Confirmation. Every write is v4's
+shape: optimistic local set → `{chat: {…}}` PUT → revert (model AND the
+control's own value) with v4's error copy on failure. Only the shared-vault
+toggle has success copy in v4 (`showInfoToast`), and only it has any here. The
+eleven cadence options and every `title` string are v4's verbatim.
+
+This closes the M6 **F3 finding** for the chat tier: the per-chat Core-whisper
+override (`coreWhisperEnabled` / `coreWhisperInterval`) now exists in v5, so the
+three inheritance levels v4 has (chat → character → global) are all reachable.
+Both columns are already in the chat-PUT surface AND in the chat GET projection,
+so this one round-trips properly.
+
+Turn Skipping's row is gated exactly as v4 gates it: the section renders it only
+when the parent says the chat qualifies (v4 passes `undefined` for the setter
+unless `qualifiesForTurnSkipping(participants)`, and the row additionally
+requires `isMultiChar`) — the parent wiring lands in unit 6.
+
+**Organize** (`chat/sidebar/organize-section.ts`, v4 `:1499-1601`): Edit Enclave
+(autonomous rooms only), Copy ID, **State…**, Gallery. `ui/copy-chat-id-button.ts`
+gained v4's `palette` livery (icon + `Copy ID` / `ID Copied` label in a
+`qt-tool-palette-button`) — the inline livery is untouched.
+
+**The State… entry CLOSES a standing deferral:** the state-cascade round
+(P4.d10/P4.6be) shipped the four-tier State Editor modal but recorded "the
+chat-tier State-Editor opener rides the ChatSidebar follow-up". This is that
+follow-up; the modal's chat tier (with its inherited-cascade note) already
+existed and needed only the entry point, wired in unit 6.
+
+**Tier-3 deferrals (LOUD — rendered nowhere, nothing stubbed):** Rename
+(`ChatRenameModal` unported — the chat-PUT `title` key exists, only the dialog is
+missing), Continue Elsewhere (flow unported), Merge In… (`MergeConversationModal`
+unported), Export (`GET /chats/{id}?action=export` has no v5 verb). **The whole
+"Edit Content" section is deferred as a unit** — all four of its entries (Search
+& Replace, Bulk Replace, Re-extract Memories, Delete Chat Memories) ride unported
+modals/verbs, so v5 renders no card at all rather than an empty drawer.
+
+**One reduction (recorded):** v4 gates Gallery on `chatPhotoCount > 0` and prints
+the count (`Gallery (3)`); v5's chat read carries no per-chat photo count, so the
+entry is unconditional and unnumbered — which is what v5's header entry already
+did before this section reclaimed it.
+
+**Verification:** `visibility-section.spec.ts` (8 cases — All Whispers writes
+nothing, the shared-vault write + info copy + checked state, the failure revert
+with v4's error copy, the turn-skipping flip from NULL, the row's gate, the Core
+Whisper pair with the eleven cadence labels asserted, the two write-only
+tri-states keeping their choice, and seeding from the record) and
+`organize-section.spec.ts` (2 cases — the entry list with and without the
+autonomous gate, and each entry's report). `ng test` 209 files / 2,494;
+`ng build` clean.
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch

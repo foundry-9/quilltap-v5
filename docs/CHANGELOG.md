@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.9H1 unit 5: the sidebar's Visibility and Organize sections. Visibility
+lands the whole per-chat override set - All Whispers, Shared Vaults, Turn
+Skipping, Aurora's Core Whisper offering and cadence (the M6 F3 finding's
+third inheritance level, which v5 previously had only per character),
+Thinking, and Answer Confirmation - each writing {chat:{...}} optimistically
+and reverting with v4's error copy on failure. Organize lands Edit
+Enclave, Copy ID (the palette livery CopyChatIdButton gained), State
+(closing the state-cascade round's deferred chat-tier opener), and
+Gallery. Rename, Continue Elsewhere, Merge In and Export stay deferred -
+their dialogs and verbs are unported. SPA 0.5.250.
+
 P4.9H1 unit 4: the sidebar's Chat section, with The Story's Clock - the
 episodic timeline-mode switch this round exists for. v4's copy verbatim
 (both helper paragraphs), writing {chat:{timelineMode}} through the
