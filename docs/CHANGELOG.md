@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.9H1 unit 3: the chat sidebar scaffold and its cast (v4 ChatSidebar's
+shell + CollapsedStrip + ParticipantsSection + ParticipantCard). Collapse
+and width persist under v4's exact localStorage keys, the inner edge
+drags and takes arrow keys, a narrow pane falls back to the mini strip
+and expands as a click-away overlay, and the accordion is single-open
+with Participants default. Cards carry the turn-position badge, the
+provider/model badge, nudge/queue/dequeue, the user seat's Queue+Skip,
+Stop, impersonate, regenerate avatar, and the wardrobe dialog. Controls
+whose participant-mutation verbs are unported (profile select, system
+prompt, talkativeness, status, remove, add character, whisper) are simply
+not fed - which is exactly what v4 renders without those props. Not yet
+mounted in the Salon. SPA 0.5.248.
+
 P4.9H1 unit 2: CollapsibleCard learned v4's controlled mode (bind isOpen,
 hear openChange) so a parent can drive single-open accordion behavior -
 the chat sidebar's section model needs it. Uncontrolled use is unchanged;

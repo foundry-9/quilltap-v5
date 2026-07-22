@@ -27633,6 +27633,60 @@ its open state) — every consumer so far wanted that. v4's ChatSidebar drives a
 Verified: new `ui/collapsible-card.spec.ts` (4 cases — uncontrolled toggle,
 `defaultOpen`, controlled round-trip, and the deaf-parent case proving the card
 stays shut when `openChange` is ignored). `ng test` 205 files / 2,472.
+
+## P4.9H1 unit 3 — the sidebar scaffold + the cast (participants)
+
+**Ported** (`apps/web/src/app/chat/sidebar/`):
+
+- `chat-sidebar.ts` — v4 `ChatSidebar.tsx`'s shell AND its `CollapsedStrip`:
+  the persisted collapse (`quilltap.chat-sidebar.collapsed`, absent ⇒ collapsed)
+  and width (`quilltap.chat-sidebar.width`, clamped 240–560 with the
+  `window.innerWidth - 360` viewport cap) preferences under v4's EXACT keys, the
+  inner-edge resizer (mouse drag against the captured right edge + the
+  ArrowLeft/ArrowRight/Home/End keyboard steps of 16 px), the narrow-pane
+  behaviour (< 640 px container ⇒ strip + click-away/Escape overlay), the
+  single-open accordion (`SectionId`, default `'participants'`), the turn-order
+  projections (`computePredictedTurnOrder` → sortedParticipants /
+  currentSpeakerId / activeCharacterCount), and the turn-debug `<details>`.
+- `participants-section.ts` — v4 `ParticipantsSection`: the turn meta line
+  (four arms), the queue depth, Pause/Resume, the cast.
+- `participant-card.ts` — v4 `ParticipantCard`: position + queue badges, turn
+  dot, avatar with silent/absent overlays, the avatar tool row (regenerate +
+  wardrobe), name/You/AI/Silent/Absent badges, title, and the action row
+  (Stop when generating; Queue+Skip on the user seat; Nudge/Queue/Dequeue
+  otherwise — v4's `handleActionClick` and `getActionButtonLabel` verbatim) plus
+  impersonate/stop-impersonate.
+- `provider-model-badge.ts` — v4 `ProviderModelBadge`, reduced: v5's
+  `qt-provider-icon` ports only the default abbreviation-circle path (the plugin
+  icon registry is an older recorded deferral), so there is never icon data to
+  thread. Size table, opacity, title and truncation widths are v4's.
+
+**Structural divergence (deliberate, one):** an Angular component interposes a
+host element, which would break `.qt-chat-layout`'s flex sizing, so the HOST
+element carries `qt-chat-sidebar` / `qt-chat-sidebar-collapsed` /
+`qt-chat-sidebar-overlay` and the width style. The DOM the ported CSS sees is
+v4's (one element instead of two) and the ResizeObserver still measures
+`.qt-chat-layout` as the parent.
+
+**Tier-3 deferrals (LOUD — no stubs, nothing rendered):** every ParticipantCard
+control that rides a participant-mutation verb v5's dispatch surface lacks —
+connection-profile select, system-prompt select + rebuild, talkativeness slider,
+four-state status select, Remove, Add Character, Whisper. `api/salon.rs:1215`
+names `updateParticipant` / `addParticipant` / `removeParticipantId` as the
+chat-PUT deferrals behind them. v4 renders exactly this shape when the matching
+props are absent, so the card is a faithful subset that regains the controls
+untouched when the verbs land.
+
+**No CSS was written:** every class (`qt-chat-sidebar*`, `qt-participant-*`,
+`qt-chat-pause-button`, `qt-tool-palette-*`) already ships in
+`styles/qt-components/_chat.css` — the theme packs carried v4's whole sheet.
+
+**Verification:** `chat-sidebar.spec.ts` (6 cases — default-collapsed + strip,
+expand/collapse round-trip with the localStorage key asserted, stored
+preference + stored width, the accordion's default-open + close + the
+"2 characters" description, the cast in predicted turn order with 1/2/3 badges
+and a nudge emit, the strip pause). `ng test` 206 files / 2,478; `ng build`
+clean. Not yet mounted in the Salon (unit 6).
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch
