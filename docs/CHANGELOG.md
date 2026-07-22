@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Unified round 2 of the episodic-recall drift catch-up (P4.d13, single
+lane) — the episodic columns now earn their keep. Retrieval is time- and
+entity-aware end-to-end (per-turn episodic signals with a TODAY clock
+line, the retrospective multiplier flip with re-ask suspension, the
+occurred-within two-stage window, entity-anchor search union,
+retrospective multi-probe, dated vault-summary staging, and the enlarged
+retrospective dynamic head), the deep-dive tools learned time and
+subject filters (search since/until/aboutCharacter with episodic result
+metadata, read_conversation interchange slicing, the stale memorySearch
+catalog entry removed, and the never-invent-specifics norm in both tool
+prompts), and the recall-replay tuning harness landed end-to-end: a
+chat-scoped replay verb that tables the old and new ranking side by side
+(live on a new host seam; one real cheap-LLM call per replay) plus the
+quilltap recall-replay CLI. Chat updates now accept timelineMode. Two
+pre-existing port bugs fixed: the search-path lastAccessedAt bump scope
+and the recall-history persist shape (a live write path). Gate: 364
+Rust test binaries / 1,496 / 0 with all 12 oracle families regenerated
+fresh at v4 8bf3cb5f (zero SKIP by name), clippy both feature sets,
+release build, ng 203 files / 2,448 (SPA untouched), full Playwright
+110/110 zero skips. Versions: core 0.0.313, harness 0.0.270, host
+0.0.29, web 0.0.37, cli 0.0.2.
+
 P4.d13 tier 2: the chat-PUT timelineMode accept arm (v4
 z.enum(['realtime','narrative']).nullish() - set / explicit-null clear /
 invalid-enum 400 with v4's "Validation error" copy; the Zod details

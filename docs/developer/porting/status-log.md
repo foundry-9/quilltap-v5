@@ -9,6 +9,76 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the episodic-recall drift catch-up, ROUND 2 of 3 (P4.d13, single lane): UNIFIED on main (2026-07-21)
+
+**P4.d13 CLOSED — tier-1 units 1–8 + tier-2 items 9/10 landed (11 n/a).**
+Single lane `claude/p4-episodic-retrieval-replay-0182e4` (10 commits),
+branched from and fast-forwarded onto main — no cherry-picks, no
+conflicts, no version recount (single lane). v4 held at `8bf3cb5f`
+(drift-checked at lane start, lane end, AND unification; tree clean —
+all oracles regenerated straight from the checkout). The per-unit lane
+records are appended at the end of this file (P4.d13 units 1–8 + tier 2
++ the lane record with the oracle-family table and the round-3
+carry-forwards).
+
+**What this round delivered (the episodic columns start EARNING):**
+time+entity-aware retrieval end-to-end (the distill episodic signals +
+TODAY line; recall-tags turn-aware with the retro flip / window boost /
+re-ask suspension; `search_memories_semantic` occurred-within two-stage
++ entity-anchor union + retro multi-probe — and the long-standing
+recallContext/expansion deferral CLOSED with it; vault-summary date
+staging; buildContext part-1 threading + the RETRO head constants), the
+deep-dive tools (search `since`/`until`/`aboutCharacter` + episodic
+result fields + span filter; `read_conversation` interchange slicing;
+the `memorySearch` catalog entry DELETED — 57 tools; the
+anti-confabulation prose in both prompt builders), and the §3 replay
+harness end-to-end (`services/recall_replay.rs`, the `chatRecallReplay`
+verb LIVE on the new `RecallReplayDriver` host seam — one real
+cheap-LLM call per replay — and the `quilltap recall-replay` CLI with
+its Tier-R differential). Plus the chat-PUT `timelineMode` accept arm
+(the round-1 data layer's missing API arm). Two pre-existing port bugs
+fixed in passing (the search-path `lastAccessedAt` bump scope; the
+recall-history persist shape — a LIVE production write path).
+
+**The unification (no wires needed):** single lane, no Shared contract,
+`apps/web` untouched (0 lines; ng counts identical to the round-1
+baseline). Unifier work = independent re-verification of the whole gate
+on the fast-forwarded tree.
+
+**The gate (this Mac, authoritative, run at unification):**
+- `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+  -D warnings` green BOTH feature sets (default +
+  `--features quilltap-core/native-transport`); release build clean.
+- All 12 oracle families regenerated FRESH from the clean v4 checkout at
+  `8bf3cb5f` (distill 14 rows, recall-tags 73, context-feeders-leaves
+  32, build-context 11, search-tools 26+9, scriptorium 23 ops,
+  tool-definitions 57 + canonical, pseudo-tool-prompts 40, tool-build
+  27, recall-replay 13, vault-conv-search 7, salon-mutations 17), each
+  NDJSON grep-checked for real content.
+- `cargo test --workspace` with the full round env set: **364 test
+  binaries / 1,496 tests / 0 failed** (round-1 baseline 361/1,474; the
+  +3 binaries are the three NEW differential families). The 12
+  differentials re-run BY NAME with `--nocapture`: all green, zero
+  SKIP.
+- `ng test` **203 files / 2,448 / 0** (identical to baseline — SPA
+  untouched); `ng build` clean.
+- Full Playwright from the fresh dist + fresh release binaries, alone
+  on the port: **110 passed / 0 failed / 0 skipped** (the documented
+  wardrobe set_all flake did not appear).
+
+**Versions on main:** core 0.0.313, harness 0.0.270, host 0.0.29, web
+0.0.37, cli 0.0.2; tauri 0.0.4 + SPA 0.5.245 unchanged.
+
+**Standing after this round:** the oracle baseline stays MIXED — the
+retrieval/tools/replay families now at `8bf3cb5f`; the round-3 families
+(gate `QT_ORACLE_GATE` still SKIP by design, processor,
+memory-tasks-creation, context-summary/fold, carina, recall-history)
+stay at `7e6d13e5` until ROUND 3 (workstreams A-creation + C part 2 +
+E + the Story's Clock SPA — the full carry-forward list is in the lane
+record and the campaign memory note). The vault-summary `time_range`
+has NO production caller until round 3's mini-recap. **Next: /setupphase
+for round 3** (the campaign's final round).
+
 ## Round planned — the episodic-recall drift catch-up, ROUND 2 of 3 (P4.d13, single lane), 2026-07-21
 
 Planned via /setupphase (scope argument: v4-drift). Drift-check at

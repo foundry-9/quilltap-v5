@@ -948,27 +948,73 @@ records THERE. Update this summary only when a phase or round completes.
   round-2/3 scope in `phase-4.md`. **Next: ROUND 2** (time/entity-aware
   retrieval + deep-dive tools + the replay harness), then ROUND 3
   (creation-side + cadence + stop-destroying + "Story's Clock").
-- **Oracle baseline: MIXED after the episodic round-1 unification
-  (2026-07-21).** v4 HEAD is `8bf3cb5f` (4.9-dev). The families round 1
-  touched — provisioning, the memory-row/pure families (memories
+- **The episodic-recall drift catch-up, ROUND 2 of 3 (P4.d13, single
+  lane): UNIFIED on main (2026-07-21) — P4.d13 CLOSED; the episodic
+  columns start EARNING.** One deliberate single-lane round (workstreams
+  B + D + the §3 replay harness all consume one search surface).
+  Retrieval is time/entity-aware end-to-end: the distill episodic
+  signals (retrospective/timeRange/entities + the TODAY clock line — the
+  memory-tasks family SPLIT, new `QT_ORACLE_DISTILL`), recall-tags
+  turn-aware (past 1.15 flip / window ×1.3 / re-ask suspension),
+  `search_memories_semantic` occurred-within two-stage + entity-anchor
+  union + retro multi-probe (the long-standing recallContext/expansion
+  deferral CLOSED), vault-summary date staging (new
+  `QT_ORACLE_VAULT_CONV`; no production caller until round 3's
+  mini-recap), buildContext part-1 threading + `RETRO_HEAD_*` (part 2 =
+  round 3). Deep-dive tools: search `since`/`until`/`aboutCharacter` +
+  episodic result fields + span filter, `read_conversation` interchange
+  slicing, the stale `memorySearch` catalog entry DELETED (57 tools),
+  the anti-confabulation prose in both prompt builders. The §3 replay
+  harness is LIVE end-to-end: `services/recall_replay.rs` + the
+  `chatRecallReplay` verb on the new `RecallReplayDriver` host seam
+  (**one real cheap-LLM call per replay**) + the `quilltap
+  recall-replay` CLI (HTTP-only like v4's; Tier-R differential), over
+  the NEW committed `episodic-recall-{main,mount}.db` fixture (new
+  tier-3 `QT_ORACLE_RECALL_REPLAY`, 13 cases tabling both ranking
+  paths). Riders: the chat-PUT `timelineMode` accept arm; two
+  pre-existing port bugs fixed (search-path `lastAccessedAt` bump
+  scope; the recall-history persist shape — a LIVE write path). Gate:
+  364 binaries / 1,496 / 0 with all 12 round families regenerated fresh
+  at `8bf3cb5f` (zero SKIP by name), clippy both feature sets, release
+  build, ng 203/2,448 (SPA untouched), full Playwright 110/110 zero
+  skips. **Next: ROUND 3 — the campaign's final round** (creation-side
+  extraction + cadence part 2 + stop-destroying-episodes + the Story's
+  Clock SPA; the full carry-in list is in phase-4.md and the round
+  record).
+- **Oracle baseline: MIXED after the episodic round-2 unification
+  (2026-07-21).** v4 HEAD is `8bf3cb5f` (4.9-dev). Rounds 1–2 rebased
+  their families to **`8bf3cb5f`**: round 1's memory-row/pure +
+  character + new-chat families (provisioning, memories
   read/tier-2/routes+config, chats read/tier-2, episodic, weighting,
-  injector, delete, cascade, housekeeping, build-context, ranking) and
-  the character families (vault-json-parsers, characters
-  mutations/reads/create/update/provision/scaffold, vault-character-write)
-  — are rebased to **`8bf3cb5f`**. The **deferred behavior families stay
-  at `7e6d13e5`** (rounds 2/3 port them): `QT_ORACLE_GATE` (gate tier-3),
-  the processor tier-3, memory-tasks tier-1, recall-tags, context-summary/
-  fold, carina-extraction. So: regenerate a round-2/3 family's oracle at
-  `8bf3cb5f` only when that round ports it; families untouched since
-  earlier rounds keep their prior vintages. v4's checkout is clean at
-  `8bf3cb5f`, so **oracles regenerate directly from
-  `~/source/quilltap-server`**; pin a detached worktree only on drift/
-  dirty (recipe: `oracle-regen-pinned-v4-worktree` — symlink node_modules
-  at root + `packages/{quilltap,plugin-types,plugin-utils}` +
-  `plugins/dist/*`). ⚠ v4 is mid-4.8/4.9 dev — a version/tag commit may
-  land; drift-check before every round. Versions (after the 2026-07-21
-  episodic round-1 unification): core 0.0.305, harness 0.0.263, host
-  0.0.28, web 0.0.36, quilltap-tauri 0.0.4, SPA 0.5.245.
+  injector, delete, cascade, housekeeping, ranking, vault-json-parsers,
+  characters mutations/reads/create/update/provision/scaffold,
+  vault-character-write) and round 2's retrieval/tools/replay families
+  (distill [NEW — the memory-tasks SPLIT], recall-tags,
+  context-feeders-leaves, build-context, search-tools,
+  scriptorium-tools, tool-definitions + canonical, pseudo-tool-prompts,
+  tool-build, recall-replay [NEW], vault-conv-search [NEW],
+  salon-mutations). The **round-3 families stay at `7e6d13e5`**:
+  `QT_ORACLE_GATE` (gate tier-3, SKIP by design), the processor tier-3,
+  the memory-tasks CREATION cases (`QT_ORACLE_MEMORY_TASKS`),
+  context-summary/fold, carina-extraction, recall-history. Regenerate a
+  round-3 family at `8bf3cb5f` only when round 3 ports it; families
+  untouched since earlier rounds keep their prior vintages. v4's
+  checkout is clean at `8bf3cb5f`, so **oracles regenerate directly
+  from `~/source/quilltap-server`**; pin a detached worktree only on
+  drift/dirty (recipe: `oracle-regen-pinned-v4-worktree` — symlink
+  node_modules at root + `packages/{quilltap,plugin-types,plugin-utils}`
+  + `plugins/dist/*`). ⚠ v4 is mid-4.8/4.9 dev — a version/tag commit
+  may land; drift-check before every round. Versions (after the
+  2026-07-21 episodic round-2 unification): core 0.0.313, harness
+  0.0.270, host 0.0.29, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4,
+  SPA 0.5.245.
+  The previous baseline paragraph follows for history:
+  MIXED after the episodic round-1 unification (2026-07-21): round 1's
+  families at `8bf3cb5f`; the deferred behavior families (gate,
+  processor, memory-tasks tier-1, recall-tags, context-summary/fold,
+  carina-extraction) at `7e6d13e5`. Versions at that unification: core
+  0.0.305, harness 0.0.263, host 0.0.28, web 0.0.36, quilltap-tauri
+  0.0.4, SPA 0.5.245.
   The previous baseline paragraph follows for history:
   v4 `7e6d13e5` (4.8.0-dev.92), adopted 2026-07-20 at
   the state-cascade drift-catch-up unification. Both prior pins

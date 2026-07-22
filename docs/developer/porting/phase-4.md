@@ -2178,19 +2178,44 @@ Round record + lane records in `status-log.md`. **Baseline is now MIXED**
 (memory-row/pure + character + new-chat families at `8bf3cb5f`; the
 deferred behavior families at `7e6d13e5`).
 
-**NEXT: ROUND 2, then ROUND 3** (the episodic BEHAVIOR — the columns are
-inert until these land). Round 2 = time/entity-aware retrieval
-(workstream B) + deep-dive tools (D) + the §3 replay harness. Round 3 =
-creation-side extraction (A-creation) + the recall-on-reference cadence
-(C) + stop-destroying-episodes (E: fold Timeline, gate date-guard,
-compression flip) + the Salon "Story's Clock" SPA. **Round-3 carry-ins
-flagged by round 1** (do not lose): the gate tier-3 family
-(`QT_ORACLE_GATE`) stays un-regenerated because v4's first-write
-`applyEpisodicFallbackAnchors` is non-inert on AUTO-source proper-noun
-content (the inert-path boundary); the turn-path write `occurredAt` stamp
-(`resolveCandidateAnchors`) defers with the processor extraction prompt;
-memory-tasks tier-1, context-summary/fold, and carina-extraction defer
-with the prompt changes. (Original round-1 planning section follows.)
+**ROUND 2 UNIFIED on main (2026-07-21) — P4.d13 CLOSED.** Retrieval is
+time/entity-aware end-to-end (distill signals + TODAY line; recall-tags
+retro flip / window boost / re-ask suspension; `search_memories_semantic`
+occurred-within two-stage + entity-anchor union + retro multi-probe —
+the recallContext/expansion deferral CLOSED; vault-summary date staging;
+buildContext part 1 + the RETRO head constants); the deep-dive tools
+carry `since`/`until`/`aboutCharacter` + episodic result fields +
+`read_conversation` slicing + the anti-confabulation prose, and the
+stale `memorySearch` catalog entry is GONE (57 tools); the §3 replay
+harness is LIVE end-to-end (`chatRecallReplay` on the new
+`RecallReplayDriver` host seam — one real cheap-LLM call per replay —
++ the `quilltap recall-replay` CLI, Tier-R-diffed); chat updates accept
+`timelineMode`. Three NEW oracle families (distill = the memory-tasks
+SPLIT, recall-replay, vault-conv-search); 12 families regenerated at
+`8bf3cb5f`. Gate: 364 binaries / 1,496 / 0, zero SKIP by name, clippy
+both feature sets, release build, ng 203/2,448 (SPA untouched), full
+Playwright 110/110 zero skips. Versions: core 0.0.313, harness 0.0.270,
+host 0.0.29, web 0.0.37, cli 0.0.2. Round record + lane records in
+`status-log.md`.
+
+**NEXT: ROUND 3 — the campaign's final round** (workstreams A-creation +
+C part 2 + E + the Story's Clock SPA): the clocked creation-extraction
+prompt + EVENT category + `kind`/`when`/`entities` coercion +
+`capCandidates`; `resolveWhenPhrase`/`resolveCandidateAnchors` + the
+turn-path `occurredAt` stamp; `applyEpisodicFallbackAnchors` (the gate
+family `QT_ORACLE_GATE` stays SKIP until then); the fold-episode pass +
+context-summary wiring; buildContext PART 2 (mini-recap +
+`retrospective-recall` whisper + spam guard + `appendRetroSignature` —
+round 2 ported `parse_retro_signatures` as a preservation carrier only,
+and the vault-summary `time_range` gains its first production caller
+here); the compression keep/drop flip; the gate date-guard +
+housekeeping merge guard; the Salon "Story's Clock" timeline-mode SPA.
+**Round-3 carry-ins flagged by rounds 1–2** (do not lose): the gate
+tier-3 family stays un-regenerated (v4's first-write fallback is
+non-inert on AUTO-source proper-noun content); the processor tier-3 +
+memory-tasks CREATION cases + context-summary/fold + carina-extraction
+families stay at `7e6d13e5` until round 3 ports them. (Original
+round-1 planning section follows.)
 
 **ROUND 2 PLANNED (2026-07-21):** the order is
 `work-orders/p4.d13-episodic-retrieval-tools-replay.md` — a deliberate
