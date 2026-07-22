@@ -29255,3 +29255,75 @@ everywhere else, and the pending/settled tool-row split.
   `it` per variant instead.
 
 **Gate:** `ng test` **210 files / 2,500 / 0**; `ng build` clean.
+
+## P4.d17 unit 5 — Madman's Box 1.1.6 + 1.1.7 (2026-07-22)
+
+Both theme commits applied to `apps/web/public/themes/madmans-box/`. v5's
+pack was byte-identical to v4's pre-drift pack apart from one asset-URL
+rewrite (`/api/themes/assets/bundle:madmans-box/…` →
+`/themes/madmans-box/…`, v5 serves packs statically), so both hunks
+applied at their v4 line positions.
+
+**`ab0f175e` (1.1.6):** headings `letter-spacing 0.14em → 0.1em`,
+`text-transform: uppercase` → `font-variant-caps: small-caps`,
+`font-weight 300 → 400`, with v4's why-comment (Raleway ships no `smcp`
+table, so browsers synthesize and synthesized small caps read light). The
+button rule re-keys `button` → `.qt-button` and drops `text-transform`
+plus the redundant `font-size`. **The re-key lands meaningfully in v5**:
+`.qt-button` is in wide use (`_buttons.css` + the ui components), and
+v5's "buttons" are largely `routerLink` anchors wearing the class, the
+same mismatch v4 was fixing.
+
+**`deab0e5d` (1.1.7):** the THINKING INDICATOR block —
+`@keyframes madmans-box-thinking-turn` (0 → 360deg) and
+`[data-theme="madmans-box"] .qt-thinking-indicator { --qt-thinking-duration:
+6s; --qt-thinking-origin: center center; animation: … linear infinite; }`
+— with the full "maker's mark, turning" banner (why the origin resets from
+core's nib pivot; why the off-axis ring gap keeps the turn legible).
+`icons/brand.svg` **byte-copied** from v4's pack (`cmp` clean); the pack
+had no `icons/` directory at all before this. `theme.json` bumped
+`1.1.5 → 1.1.7` with the `"thinking": "icons/brand.svg"` map entry — the
+file is now **byte-identical to v4's at `deab0e5d`**.
+
+**The v5 translation of v4's manifest icon map (the established
+divergence).** v5's `ThemeService` swaps the pack's `styles.css` `<link>`
+and injects its `@font-face` rules; it reads no `icons` map, so the
+manifest entry alone would be inert. The glyph swap is therefore
+expressed as CSS in the pack's own stylesheet:
+
+```css
+[data-theme="madmans-box"] [data-icon="thinking"] {
+  --_qt-icon-mask: url("/themes/madmans-box/icons/brand.svg");
+  --_qt-icon-bg: none;
+}
+```
+
+mirroring the exact custom-property shape core's per-icon rules use. The
+pack's stylesheet is injected UNLAYERED, so it beats core's
+`@layer components` default (and this selector is a token more specific
+besides). The manifest entry is kept anyway, for fidelity and for any
+future host that reads it — recorded in the block's banner.
+
+**Byte-fidelity check.** `diff` of the landed `styles.css` against
+`git show deab0e5d:themes/bundled/madmans-box/styles.css` yields exactly
+four hunks, all intended: (1) the pre-existing asset-URL rewrite at :553;
+(2) `<Link>s wearing .qt-button` → `links wearing .qt-button` (v5 has no
+Next `<Link>`); (3) the thinking banner's rewrap plus the added paragraph
+explaining the `[data-icon]` mechanism; (4) the `[data-icon="thinking"]`
+rule itself. **Every declaration in all three blocks is byte-identical to
+v4's.** `theme.json` diffs to zero.
+
+Reduced motion: the pack's existing global rule
+(`[data-theme="madmans-box"] *`, duration 0.001ms / iteration-count 1)
+covers the new spin, exactly as v4 relies on.
+
+One consequential comment fix outside the pack:
+`theme-preview-modal.ts`'s deferral docstring claimed the pack's `icons/`
+directory "was never copied into public/themes/". It now exists with
+exactly one file, so the note was corrected to say so — the icon-sheet
+deferral itself still stands (the other 84 map entries would 404).
+Comment only, no behavior.
+
+**Gate:** `ng build` clean, `brand.svg` present in the built
+`dist/quilltap/browser/themes/madmans-box/icons/`; `ng test` **210 files
+/ 2,500 / 0**.

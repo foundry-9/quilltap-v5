@@ -35,8 +35,9 @@ let previewInstanceCounter = 0;
  *    and the derived-subsystem arm needs a `theme.json` reader this lane does
  *    not add. v4 renders its own empty state in that case anyway.
  *  - The icon sheet ("Overridden Icons"). Only `madmans-box` declares an icon
- *    map, and its `icons/` directory was never copied into `public/themes/`, so
- *    every `<img>` would 404.
+ *    map, and its `icons/` directory was never copied into `public/themes/` —
+ *    P4.d17 added exactly one file to it (`brand.svg`, which backs the pack's
+ *    `thinking` override), so every other `<img>` would still 404.
  *  - `cssOverrides` scoping — see `scoped-theme-css.ts`.
  *  - The DEFAULT theme. v4 previews it from a `DEFAULT_THEME_TOKENS` constant;
  *    v5's default is the base stylesheet, not a token bundle, so there is

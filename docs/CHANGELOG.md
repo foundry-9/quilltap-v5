@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Madman's Box is now 1.1.7. Headings switch from uppercase to small caps
+so a capital still reads as a capital (Raleway has no smcp table, so the
+weight goes 300 to 400 and tracking tightens to offset the synthesized
+caps), and the button tracking rule is keyed to .qt-button instead of the
+button element — most buttons in the app are links wearing that class, so
+the old rule styled only the few real buttons and left their neighbors
+mismatched in the same row. The pack also takes over the thinking
+indicator: it points the glyph at its own brand mark, the quill inside a
+circle that never quite closes, and turns it through a full revolution
+every six seconds instead of rocking on a nib.
+
 The Salon shows the waiting quill again. While a reply is awaited the
 large quill rocks in place of the old "…"; a small one trails the live
 prose as it streams, sits in the status strip while tokens arrive (the
