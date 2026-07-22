@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 /**
  * The theme-replaceable icon set (v4 `components/ui/icons/icon-registry.ts`).
  * Rendered as a CSS `mask-image` of `/images/icons/<name>.svg` tinted by
- * `currentColor` (except `brand`, a full-colour background image). The 84-name
+ * `currentColor` (except `brand`, a full-colour background image). The 85-name
  * registry is a public contract for theme overrides.
  */
 export type IconName =
@@ -18,6 +18,16 @@ export type IconName =
   | 'files' | 'file' | 'file-plus' | 'folder' | 'folder-plus' | 'book'
   | 'characters' | 'scriptorium' | 'photos' | 'scenarios' | 'profile' | 'user'
   | 'user-plus' | 'users' | 'megaphone' | 'mail' | 'dice' | 'sparkles' | 'wand'
+  // The rocking quill shown while a reply is awaited or streaming. The MOTION
+  // is a separate theme hook (`.qt-thinking-indicator` in _chat.css) so a theme
+  // can change the glyph and the animation independently. Deliberately NOT
+  // `brand` — a theme that swaps the brand mark for a wordmark should not find
+  // that wordmark rocking in the Salon. Mask mode means it tints with
+  // currentColor, so the call sites' qt-text-secondary and the status strip's
+  // per-stage colors reach it. (v4 carries an `ariaLabel: 'Writing'` on the
+  // registry entry; v5 has no per-name aria registry — `qt-quill-animation`
+  // supplies the label at the call site.)
+  | 'thinking'
   | 'wrench' | 'code' | 'cpu' | 'database' | 'layers' | 'zap' | 'swap'
   | 'log-out' | 'settings' | 'themes' | 'wardrobe' | 'help' | 'brahma-console'
   | 'sun' | 'moon' | 'monitor' | 'brand';

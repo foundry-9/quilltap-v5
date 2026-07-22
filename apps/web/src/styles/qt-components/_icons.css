@@ -1,11 +1,13 @@
 /**
  * Quilltap Icon System — DEFAULT icon styles.
  *
- * !!! GENERATED FILE — DO NOT EDIT BY HAND !!!
- * Source of truth: components/ui/icons/icon-registry.ts
- * Regenerate with: npm run generate:icon-css
+ * HAND-MAINTAINED, in step with the `IconName` union in `src/app/ui/icon.ts`
+ * (the v5 source of truth — the port never carried v4's `generate:icon-css`
+ * generator, so v4's "GENERATED FILE" banner does not apply here). Adding an
+ * icon means: the SVG under `public/images/icons/`, the name in that union, and
+ * the per-icon rule below.
  *
- * <Icon name="x" /> renders <span class="qt-icon" data-icon="x">. The glyph and
+ * <qt-icon name="x" /> renders <span class="qt-icon" data-icon="x">. The glyph and
  * tint are pure CSS:
  *   - mask  mode: a mask-image of the default SVG, tinted by currentColor.
  *   - image mode: a full-colour background-image (the brand quill), no tint.
@@ -49,7 +51,7 @@
   background-image: var(--_qt-icon-bg, none);
 }
 
-/* ---- per-icon defaults (generated from icon-registry.ts) ---- */
+/* ---- per-icon defaults (kept in step with `IconName` in ui/icon.ts) ---- */
 [data-icon="close"] { --_qt-icon-mask: url("/images/icons/close.svg"); --_qt-icon-bg: none; }
 [data-icon="pencil"] { --_qt-icon-mask: url("/images/icons/pencil.svg"); --_qt-icon-bg: none; }
 [data-icon="refresh"] { --_qt-icon-mask: url("/images/icons/refresh.svg"); --_qt-icon-bg: none; }
@@ -117,6 +119,7 @@
 [data-icon="dice"] { --_qt-icon-mask: url("/images/icons/dice.svg"); --_qt-icon-bg: none; }
 [data-icon="sparkles"] { --_qt-icon-mask: url("/images/icons/sparkles.svg"); --_qt-icon-bg: none; }
 [data-icon="wand"] { --_qt-icon-mask: url("/images/icons/wand.svg"); --_qt-icon-bg: none; }
+[data-icon="thinking"] { --_qt-icon-mask: url("/images/icons/thinking.svg"); --_qt-icon-bg: none; }
 [data-icon="wrench"] { --_qt-icon-mask: url("/images/icons/wrench.svg"); --_qt-icon-bg: none; }
 [data-icon="code"] { --_qt-icon-mask: url("/images/icons/code.svg"); --_qt-icon-bg: none; }
 [data-icon="cpu"] { --_qt-icon-mask: url("/images/icons/cpu.svg"); --_qt-icon-bg: none; }

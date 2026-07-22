@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added the `thinking` icon (registry name 85) — a 24x24 line-art quill,
+mask mode, byte-copied from v4's `public/images/icons/thinking.svg`. It
+backs the waiting/streaming indicator, and being a registry name rather
+than a hard-coded asset it is theme-replaceable like any other icon.
+Corrected the `_icons.css` banner: the file is hand-maintained in step
+with the `IconName` union, not generated (v5 never carried v4's
+`generate:icon-css`).
+
 P4.d16 unit 6 — the browser walk for the workspace deep links. The
 workspace flow spec's salon beat flips (the rail's Chats item opens a
 salon-list tab and the workspace no longer unmounts; a chat card inside

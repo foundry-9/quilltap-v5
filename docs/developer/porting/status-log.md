@@ -29070,3 +29070,46 @@ live proof is the next dogfood pass on the Friday copy (the e2e
 instance has no API keys by design). The workspace deep-links drift
 re-port (`8d86847a`) and the theme/icons SPA re-port (`deab0e5d`) are
 the two banked v4 catch-up items; see phase-4.md's next candidates.
+
+## P4.d17 unit 1 — the `thinking` icon (registry name 85) (2026-07-22)
+
+Lane B of the `e646f58b` drift catch-up round (order:
+`work-orders/p4.d17-thinking-indicator-theme-drift.md`). v4 baseline
+`e646f58b`, re-verified clean and unmoved at lane start
+(`git log e646f58b..HEAD` empty).
+
+**Ported from v4 `deab0e5d`:**
+
+- `public/images/icons/thinking.svg` — **byte-copied** from v4
+  (`cmp` clean). A 24x24 line-art quill, `stroke="currentColor"`,
+  stroke-width 2, three paths; the nib sits at (3,21) — the coordinate
+  the motion hook's default `transform-origin` (12.5% 87.5%) is derived
+  from.
+- `src/app/ui/icon.ts` — `'thinking'` added to the `IconName` union
+  after `'wand'` (v4's registry position), carrying v4's why-comment:
+  the MOTION is a separate theme hook so a theme can retune glyph and
+  animation independently; deliberately NOT `brand` (a wordmark theme
+  must not find its wordmark rocking in the Salon); mask mode so the
+  glyph tints with `currentColor` and the call sites' `qt-text-secondary`
+  / the status strip's per-stage colors reach it. Header count 84 → 85.
+- `src/styles/qt-components/_icons.css` — the
+  `[data-icon="thinking"]` mask rule, inserted at v4's position (after
+  `wand`, before `wrench`).
+
+**Divergences recorded:**
+
+- v4's registry entry carries `ariaLabel: 'Writing'`. v5's `Icon` has no
+  per-name aria registry — the label is supplied at the call site (unit
+  3's `qt-quill-animation` defaults it to `'Writing…'`, v4's
+  `QuillAnimation` default). Noted in the union comment.
+- v5 has 85 registry names but 84 files under `public/images/icons/`:
+  `brand` is image-mode off `/quill.svg`, not an `icons/` asset.
+- The `_icons.css` "GENERATED FILE — DO NOT EDIT BY HAND / regenerate
+  with npm run generate:icon-css" banner was a v4 relic — **no generator
+  exists in v5**. Corrected to name `src/app/ui/icon.ts` as the v5 source
+  of truth and to state the three-step hand-edit (SVG + union + rule).
+  The per-icon section comment lost its "(generated from
+  icon-registry.ts)" gloss for the same reason.
+
+**Gate:** `ng build` clean (pre-existing CommonJS warnings only). No
+Rust, no crates diff.
