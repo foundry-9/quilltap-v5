@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added `qt-quill-animation`, the waiting/streaming quill component (v4's
+`QuillAnimation`): a `size` of `lg` or `sm`, an optional call-site class,
+and a `label` that defaults to "Writing…" and can be set to `null` where
+the indicator sits inside an already-labelled live region and would
+otherwise be announced twice. It renders the `thinking` glyph wearing
+the `.qt-thinking-indicator` motion class; nothing in it drives the
+animation.
+
 Added the `.qt-thinking-indicator` motion hook: the waiting/streaming
 quill's animation now lives in `_chat.css`, parameterized by five theme
 custom properties (`--qt-thinking-duration` / `-easing` / `-origin` /

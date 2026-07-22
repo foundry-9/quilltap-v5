@@ -29159,3 +29159,38 @@ Token defaults stay inline in the `var()` fallbacks, matching v4 — no
 **Gate:** `ng build` clean; the compiled bundle carries
 `@keyframes qt-thinking-rock` and
 `transform-origin:var(--qt-thinking-origin, 12.5% 87.5%)`.
+
+## P4.d17 unit 3 — `qt-quill-animation` (the `QuillAnimation` equivalent) (2026-07-22)
+
+`apps/web/src/app/chat/quill-animation.ts`, a standalone OnPush component
+mirroring v4's post-drift `components/chat/QuillAnimation.tsx` (44 lines)
+prop for prop:
+
+| v4 | v5 |
+| --- | --- |
+| `size?: 'lg' \| 'sm'` (default `lg`) | `size = input<'lg' \| 'sm'>('lg')` |
+| `className?: string` | `klass = input<string>('', { alias: 'class' })` (the house pattern, same as `Icon`) |
+| `label?: string \| null` (default `'Writing…'`) | `label = input<string \| null>('Writing…')` |
+| `<span class="inline-flex items-center justify-center {size} {className}">` | same, via `wrapperClass()` |
+| `<Icon name="thinking" title={label ?? undefined} class="qt-thinking-indicator {size}">` | `<qt-icon name="thinking" [title]="label() ?? undefined" [class]="iconClass()">` |
+
+The size classes ride BOTH the wrapper and the glyph, exactly as v4's
+`sizeClasses` does. The `title`/`aria` semantics fall out of v5's existing
+`Icon`: a title yields `role="img"` + `aria-label`; no title yields
+`aria-hidden="true"` and nothing announced — which is precisely v4's
+`label={null}` intent.
+
+**Coverage of record.** v4 shipped no unit tests with `deab0e5d`, so
+`quill-animation.spec.ts` (4 cases) pins the DOCUMENTED semantics: the
+`lg` default with the `Writing…` label and `role="img"`; the `sm` variant
+at `w-4 h-4` on both elements; `label: null` suppressing `aria-label` and
+`role` while the motion class survives; call-site classes reaching the
+wrapper.
+
+**Gotcha worth keeping:** Angular re-orders the tokens of a bound
+`[class]`, so `expect(el.className).toContain('w-4 h-4')` fails even
+though both tokens are present (the rendered value came out
+`h-4 inline-flex items-center justify-center w-4`). Assert per token via
+`classList.contains`.
+
+**Gate:** `ng test` **210 files / 2,491 / 0** (the new spec by name).
