@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+Docs: recorded the 2026-07-22 dogfood pass coverage (walked vs remaining)
+in the findings log, with the two re-checks owed on the rebuilt binaries.
+
 Fixed wardrobe items (and any other vault file) silently vanishing when
 their frontmatter carries a folded value (dogfood finding #18). v4's
 YAML emitter wraps long plain scalars (imagePrompt, appropriateness) at

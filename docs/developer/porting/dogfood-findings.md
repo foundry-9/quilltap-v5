@@ -38,6 +38,29 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The 2026-07-22 dogfood pass — coverage so far (walk paused here).**
+  WALKED: the New-Chat picker + outfit seed (episodic round 1 — findings
+  #16/#17), the ChatSidebar + Story's Clock (P4.9H1 — finding #19), the
+  wardrobe dialog + tiers (P4.9f1/f2 — finding #18) + the avatar Preview
+  (P4.6bf), the image-detail modal family (P4.9a2), and My Photos (P4.d8).
+  The state-cascade surface was touched enough to yield #20/#21 but not
+  walked to completion. **NOT yet walked — the next pass starts here:**
+  episodic retrieval live behavior (retro questions + the
+  retrospective-recall whisper + spam guard + Commonplace episodic columns
+  + the 💸 `recall-replay` CLI), the rest of the state-cascade walk
+  (Group/General State round-trips, workbench mock-state + $state proving),
+  the 💸 llm-consult entrances (P4.6bd), the fs-documents surface (P4.6bg —
+  general-scope "New blank document" round-trip, fs-mount on-disk edits,
+  scriptorium WebP upload), KaTeX/single-dollar math (P4.d9/d11), the
+  2026-07-15 leftovers (composition mode, drafts, composer attach +
+  conflict, delete-with-associations, 💸 imageProfileGenerate), and the
+  memory pipeline (P4.6bj — **still awaiting /unify onto main**; dormant
+  until then). **Two re-checks owed on the rebuilt binaries** (both fixes
+  landed mid-walk): #16 — regenerate an avatar in a project chat; the
+  announcement should render its thumbnail and participant avatars display;
+  #18 — wear "Paris 1925 Casual" and reopen the outfit editor; Friday
+  lists 72 items and the outfit resolves all four components.
+
 - **v4 drift observed at the 2026-07-22 dogfood pass** (drift-check before
   the finding-#16 oracle regen): v4 HEAD moved `deab0e5d` → `e646f58b`.
   `8d86847a` ("deep links that escaped the tabbed workspace now open as
