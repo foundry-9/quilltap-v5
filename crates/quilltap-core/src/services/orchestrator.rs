@@ -567,7 +567,7 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
     input: &ProcessMessageInput,
 ) -> Result<ProcessMessageResult, DbError>
 where
-    EMB: EmbeddingProvider,
+    EMB: EmbeddingProvider + Sync,
     CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
@@ -2656,7 +2656,7 @@ async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST,
     profile: &EffectiveProfile,
 ) -> Result<(), DbError>
 where
-    EMB: EmbeddingProvider,
+    EMB: EmbeddingProvider + Sync,
     CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
@@ -2689,7 +2689,17 @@ where
         default_cheap_profile_id: None,
         fallback_to_local: false,
     };
-    super::context_summary::check_and_generate_summary_if_needed(
+    // The fold-time episode pass runs LIVE here (v4's in-loop check calls the
+    // real `generateContextSummary`, `runFoldEpisodePass` included — the
+    // orchestrator differential pins its cheap-LLM call). The other seam arms
+    // stay no-ops per the oracle's mock set (see [`FoldEpisodePassSeams`]).
+    let seams = super::context_summary::FoldEpisodePassSeams {
+        db: deps.db,
+        embedding: deps.embedding,
+        completion: deps.completion,
+        executor: deps.executor,
+    };
+    super::context_summary::check_and_generate_summary_if_needed_with_seams(
         deps.db,
         deps.completion,
         deps.executor,
@@ -2701,6 +2711,7 @@ where
         None,
         None,
         true,
+        &seams,
     )
     .await?;
     Ok(())
@@ -2783,7 +2794,7 @@ pub async fn execute_turn_chain<
     mut make_chain_input: F,
 ) -> Result<(), DbError>
 where
-    EMB: EmbeddingProvider,
+    EMB: EmbeddingProvider + Sync,
     CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,

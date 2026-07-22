@@ -171,8 +171,10 @@ async function main(): Promise<void> {
   let currentOp = '';
   // The Librarian re-post + cost events (W4.6b) are driven by the ported
   // `RealContextSummarySeams` ONLY at the `generate_context_summary` entry point.
-  // `check_and_generate_summary_if_needed`'s internal fold uses `NoopSeams` (the
-  // spine caller is unchanged), so the `check`-op folds must NOT post those rows.
+  // This family's `check` ops drive the bare `check_and_generate_summary_if_needed`
+  // (`NoopSeams`), so the `check`-op folds must NOT post those rows. (The
+  // orchestrator's spine check passes `FoldEpisodePassSeams` — episode pass live,
+  // these arms still no-op — and the orchestrator family pins that.)
   // Mirror that here: run the real writers only for `generate` ops.
   let currentOpUsesRealSeams = false;
 
@@ -284,8 +286,8 @@ async function main(): Promise<void> {
   // (`writeConversationSummaryToVaults` + `computeConversationStats`), and the
   // relevant-conversations REFRESH (`refreshRelevantConversationsOnFold`) all run
   // REAL for `generate` ops (matching `RealContextSummarySeams`) and stay no-ops
-  // for the `check`-op internal fold (matching the `NoopSeams` the spine caller
-  // keeps) — gated on `currentOpUsesRealSeams`. The Librarian *sweep* is always
+  // for the `check`-op internal fold (matching the `NoopSeams` this family's bare
+  // check entry keeps) — gated on `currentOpUsesRealSeams`. The Librarian *sweep* is always
   // v4's real code. The mirror + refresh write into the fixture's vault
   // (mount-index); the refresh's semantic search surfaces the pre-seeded prior
   // summary and posts a `relevant-conversations` whisper into `chat_messages`.

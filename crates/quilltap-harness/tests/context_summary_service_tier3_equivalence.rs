@@ -24,8 +24,10 @@
 //! whisper + the CONTEXT_SUMMARY / TITLE_GENERATION cost events into
 //! `chat_messages` (and bumps the chat's token aggregates); the oracle un-mocks
 //! the matching v4 writers for those ops. The `check`-op internal fold keeps the
-//! `NoopSeams` (the spine caller is unchanged), so it posts none of those — the
-//! oracle gates its mocks the same way.
+//! `NoopSeams` (this family drives the bare `check_and_generate_summary_if_needed`;
+//! the orchestrator's spine caller passes `FoldEpisodePassSeams` and its family
+//! pins the episode pass), so it posts none of those — the oracle gates its
+//! mocks the same way.
 //!
 //! W4.6b + Round-3 Group 7: the `generate` ops drive `RealContextSummarySeams`, so
 //! the fold now ALSO writes the Librarian summary whisper + the CONTEXT_SUMMARY /
@@ -489,9 +491,11 @@ async fn context_summary_service_tier3_matches_oracle() {
                 };
                 // W4.6b + Round-3 Group 7: drive the real Librarian re-post,
                 // cost-event, vault MIRROR, and relevant-conversations REFRESH seams
-                // (the `check`-op internal folds still use `NoopSeams` inside
-                // `check_and_generate_summary_if_needed`, matching the oracle: the
-                // real mirror/refresh no-op for its unprovisioned characters).
+                // (the `check`-op arms below drive the bare
+                // `check_and_generate_summary_if_needed` → `NoopSeams`, matching the
+                // oracle: the real mirror/refresh no-op for its unprovisioned
+                // characters. The ORCHESTRATOR spine's check passes
+                // `FoldEpisodePassSeams`; its own family pins that).
                 let seams = RealContextSummarySeams {
                     db: &db,
                     embedding: &embedding,

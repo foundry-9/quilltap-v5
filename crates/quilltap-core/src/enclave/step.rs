@@ -388,7 +388,7 @@ pub async fn step<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PR
     payload: &AutonomousRoomTurnPayload,
 ) -> Result<StepOutcome, DbError>
 where
-    EMB: EmbeddingProvider,
+    EMB: EmbeddingProvider + Sync,
     CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,

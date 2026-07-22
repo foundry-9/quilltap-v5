@@ -28754,3 +28754,53 @@ ran while v4 HEAD was still `8bf3cb5f`, tree clean or dirty only on those two
 theme files) is unaffected. The theme itself is a v5 SPA-side port target if
 those bundled themes are mirrored — flagged for the unifier / the next
 drift-check, NOT absorbed here.
+
+## P4.6bj unit 0 — the orchestrator_tier3 stale-RED closed (the in-loop fold-episode seam) (2026-07-22)
+
+**Lane `claude/great-pascal-e21150`. Drift check: v4 HEAD == `deab0e5d`,
+tree clean — 2 commits past the `8bf3cb5f` baseline, both lib-free
+(dispositioned in the round-3 record), so oracles regenerate straight
+from `~/source/quilltap-server`.**
+
+**The P4.d15 diagnosis is superseded.** The recorded divergence ("v5's
+primary-stream request omits v4's memory-recap block — upstream of
+`build_context`") reproduces no longer: against a FRESH oracle at
+current v4, the event traces, tool slates, and all three diffed tables
+PASS — the round-3 landings healed the recap path. The residual red was
+one `llm_logs` row (52 vs 53): the fold-time **episode pass**'s
+`SUMMARIZATION` call ("You are consolidating…"). Cause: the
+orchestrator's `run_summary_check` folded through
+`check_and_generate_summary_if_needed` → `generate_context_summary` →
+`NoopSeams`, while v4's in-loop check runs the real
+`generateContextSummary` with `runFoldEpisodePass` un-mocked in the
+orchestrator oracle — exactly the "no-ops on that path in v5 while v4
+runs it" shape the P4.d14 record documented.
+
+**What landed:**
+- `context_summary.rs` — `check_and_generate_summary_if_needed_with_seams`
+  (the bare fn now delegates with `NoopSeams`, callers unchanged) + the
+  new `FoldEpisodePassSeams` (episode pass LIVE over db/embedding/
+  completion/executor; the Librarian re-post / vault mirror /
+  relevant-conversations refresh / cost-event arms stay no-ops,
+  matching the orchestrator oracle's exact mock set — wiring THOSE
+  live in-loop means un-mocking four oracle arms and re-baking the
+  corpus, left loud).
+- `orchestrator.rs` — `run_summary_check` folds with
+  `FoldEpisodePassSeams` (production gains the in-loop episode pass);
+  `EMB: Sync` bounds on `process_message` / `execute_turn_chain` /
+  `run_summary_check` (+ the enclave `step` caller) to carry the seam.
+- Comment sweeps in the ctx-summary family (test + oracle case): the
+  "spine caller is unchanged" parentheticals were about to go stale.
+
+**Differentials (fresh oracles at v4 HEAD, `--nocapture`, zero SKIP):**
+`orchestrator_tier3_equivalence` — RED before the fix (52 vs 53
+llm_logs rows), GREEN after; `context_summary_service_tier3_equivalence`
+— GREEN (neutrality: its check ops keep the bare entry / `NoopSeams`,
+matching its oracle's per-op mock gating). Full gate: `cargo fmt
+--all --check` clean; clippy both feature sets `-D warnings` clean;
+`cargo test --workspace` 365 binaries / 0 failed. `apps/web` untouched.
+Versions: core 0.0.322, harness 0.0.278.
+
+**Standing (loud):** the pipeline stays DORMANT in production until the
+CONTEXT_SUMMARY + MEMORY_EXTRACTION handlers land — that is the rest of
+this order (`work-orders/p4.6bj-memory-pipeline-job-handlers.md`).

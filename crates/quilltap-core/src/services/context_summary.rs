@@ -271,6 +271,64 @@ impl ContextSummarySeams for NoopSeams {
     }
 }
 
+/// The in-loop summary-check seams (the orchestrator's `run_summary_check`):
+/// the fold-time EPISODE pass runs LIVE (v4's in-loop
+/// `checkAndGenerateSummaryIfNeeded` → `generateContextSummary` →
+/// `runFoldEpisodePass` is un-mocked in the orchestrator-family oracle, so the
+/// differential pins its cheap-LLM call), while the cross-subsystem arms
+/// (Librarian re-post / vault mirror / relevant-conversations refresh / cost
+/// events) stay no-ops — the orchestrator oracle mocks exactly those four, and
+/// their real impls are separately verified by the context-summary family
+/// through [`RealContextSummarySeams`]. Wiring THOSE live on the in-loop path
+/// is a tracked deferral (it requires un-mocking the oracle arms and re-baking
+/// the orchestrator corpus).
+pub struct FoldEpisodePassSeams<'a, C: CompletionProvider, E: EmbeddingProvider> {
+    pub db: &'a Db,
+    pub embedding: &'a E,
+    pub completion: &'a C,
+    pub executor: &'a CheapLlmTaskExecutor,
+}
+
+impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySeams
+    for FoldEpisodePassSeams<'_, C, E>
+{
+    async fn post_librarian_summary(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {}
+    async fn mirror_summary_to_vaults(&self, _input: WriteConversationSummaryInput) {}
+    async fn refresh_relevant_conversations(&self, _input: RefreshRelevantConversationsInput) {}
+    async fn emit_summary_cost_event(
+        &self,
+        _chat_id: &str,
+        _usage: Usage,
+        _provider: Option<&str>,
+        _model: Option<&str>,
+    ) {
+    }
+    async fn emit_title_cost_event(
+        &self,
+        _chat_id: &str,
+        _usage: Usage,
+        _provider: Option<&str>,
+        _model: Option<&str>,
+    ) {
+    }
+    async fn run_fold_episode_pass(
+        &self,
+        input: RunFoldEpisodePassInput,
+        selection: CheapLlmSelection,
+    ) {
+        // Best-effort, as in v4 — the pass swallows its own failures.
+        let _ = run_fold_episode_pass(
+            self.db,
+            self.completion,
+            self.embedding,
+            self.executor,
+            &selection,
+            &input,
+        )
+        .await;
+    }
+}
+
 /// The real context-summary side effects (v4 `generateContextSummary`'s
 /// post-office + vault + cost blocks; W4.6b + Round-3 Group 7): the Librarian
 /// summary re-post (through the ported [`crate::services::librarian_notifications`]
@@ -1036,7 +1094,48 @@ pub async fn check_and_generate_summary_if_needed<C: CompletionProvider>(
     user_id: &str,
     danger_settings: Option<&DangerousContentSettings>,
     registry_cheapest_for_current: Option<&str>,
+    await_fold: bool,
+) -> Result<Option<CheckOutcome>, DbError> {
+    check_and_generate_summary_if_needed_with_seams(
+        db,
+        completion,
+        executor,
+        chat_id,
+        connection_profile,
+        cheap_llm_settings,
+        available_profiles,
+        user_id,
+        danger_settings,
+        registry_cheapest_for_current,
+        await_fold,
+        &NoopSeams,
+    )
+    .await
+}
+
+/// [`check_and_generate_summary_if_needed`] with the fold's cross-subsystem
+/// side effects supplied by `seams`. The orchestrator's in-loop check passes
+/// [`FoldEpisodePassSeams`] so the fold-time episode pass runs live (v4's
+/// in-loop check calls the real `generateContextSummary`, episode pass
+/// included); the bare variant keeps [`NoopSeams`] for callers whose
+/// differential mocks the whole seam set.
+#[allow(clippy::too_many_arguments)]
+pub async fn check_and_generate_summary_if_needed_with_seams<
+    C: CompletionProvider,
+    S: ContextSummarySeams,
+>(
+    db: &Db,
+    completion: &C,
+    executor: &CheapLlmTaskExecutor,
+    chat_id: &str,
+    connection_profile: &CheapLlmProfile,
+    cheap_llm_settings: &CheapLlmSettings,
+    available_profiles: &[CheapLlmProfile],
+    user_id: &str,
+    danger_settings: Option<&DangerousContentSettings>,
+    registry_cheapest_for_current: Option<&str>,
     _await_fold: bool,
+    seams: &S,
 ) -> Result<Option<CheckOutcome>, DbError> {
     let chat_id_owned = chat_id.to_string();
     let Some(chat) = db.read_main(|conn| chats_read::find_by_id(conn, &chat_id_owned))? else {
@@ -1095,12 +1194,14 @@ pub async fn check_and_generate_summary_if_needed<C: CompletionProvider>(
             force_regenerate: decision == SummarizationGateDecision::Hard,
             danger_settings: danger_settings.cloned(),
             registry_cheapest_for_current: registry_cheapest_for_current.map(str::to_string),
-            // The gate path folds with `NoopSeams` (the mirror/refresh never run
-            // here), so the refresh list size is irrelevant — `None`.
+            // The gate path's mirror/refresh arms are no-ops in every current
+            // seams impl, so the refresh list size is irrelevant — `None`.
             connection_max_context: None,
         };
         // The v5 runtime always awaits the fold (see module docs).
-        summary_result = Some(generate_context_summary(db, completion, executor, &options).await);
+        summary_result = Some(
+            generate_context_summary_with_seams(db, completion, executor, &options, seams).await,
+        );
     }
 
     Ok(Some(CheckOutcome {
