@@ -17,6 +17,8 @@ Memory housekeeping learned the same episodic date guard the write gate
 uses: its similarity-merge pass no longer folds two memories together
 when their event times sit more than a week apart, however alike the
 prose — two visits to the same place months apart stay two memories.
+(Doc comments only: the round-3 seam notes the episodic port left behind
+now name what actually landed.)
 
 Memories are now born with anchors. The per-turn memory extractor gets a
 clock (current date/time, timeline mode, and the in-story time on

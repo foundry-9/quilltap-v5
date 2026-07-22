@@ -27844,3 +27844,29 @@ harness/oracle/fixtures/build-memory-housekeeping-fixture.ts`, then
 `QT_FIXTURE_MEMHOUSEKEEPING=/tmp/qt-memhk-fixture.db npx tsx
 harness/oracle/cases/memory-housekeeping-tier2.ts > /tmp/oracle-memhk.ndjson`
 (both from the v4 checkout, tsx against the WORKTREE paths).
+
+## P4.d14 tier 2 — the seam-note sweep + the v4 test-mirror disposition (2026-07-22)
+
+Comment-only. The three round-1/round-2 seam notes this lane's ports closed:
+`episodic.rs`'s "ported but unwired — round 3's extraction output is its only
+caller" now names its three real callers; `memory_recap/distill.rs`'s
+"`narrative_now` rides the round-3 creation-side port" now points at
+`memory_tasks::ExtractionClock` and records WHY the two clock types stay
+separate (a lane boundary — the subset's struct literals are built in
+P4.d15's `build_context.rs`, so unifying them is a post-round rider);
+`distill_search_extraction_equivalence.rs`'s "the creation-side cases stay at
+their `7e6d13e5` vintage until round 3" now records the rebase. The three
+notes P4.d15 owns (`recall_history.rs`, `build_context.rs`,
+`commonplace_notifications.rs`) and the one P4.9H1 owns (`db/chats.rs`'s
+Story's Clock line) were deliberately NOT touched.
+
+**v4 test-file mirrors — dispositioned, not skipped.** `gate-date-guard.test
+.ts`'s `describe('occasionsAreDistinct')` block IS ported case-for-case (unit
+1) because nothing else covers it. The four `episodic.test.ts` describes
+(`buildMemoryAnchorLine` / `buildMemoryEmbeddingText` / `resolveWhenPhrase` /
+`eventReferenceTimeMs`) are NOT mirrored: `QT_ORACLE_EPISODIC` already drives
+all four exports against v4's real code over 94 cases (65 whenPhrase, 16
+anchorLine, 7 eventReferenceTimeMs, 6 embeddingText), so a hand-mirrored unit
+test would be strictly weaker duplicate coverage. `episodic-visibility.test
+.ts` belongs to the round-1/round-2 surfaces (the `timelineMode` PUT arm,
+landed in P4.d13).

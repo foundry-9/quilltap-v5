@@ -21,8 +21,11 @@ use super::prompt_text::MEMORY_KEYWORD_EXTRACTION_PROMPT;
 
 /// v4 `ExtractionClock` (memory-tasks.ts, episodic spine) — the subset the
 /// SEARCH extraction consumes: the TODAY line resolves relative time phrases
-/// ("last week") into absolute dates. `narrative_now` (the creation prompts'
-/// CLOCK block) rides the round-3 creation-side port, not this struct.
+/// ("last week") into absolute dates. The full three-field type (with
+/// `narrative_now`, for the creation prompts' CLOCK block) lives at its v4
+/// home, [`crate::memory_tasks::ExtractionClock`]; unifying the two is a
+/// post-round rider (this file's struct literals are built across a lane
+/// boundary, so P4.d14 deliberately left them alone).
 #[derive(Clone, Debug)]
 pub struct ExtractionClock {
     /// ISO wall-clock timestamp of the source turn (the turn's message time).

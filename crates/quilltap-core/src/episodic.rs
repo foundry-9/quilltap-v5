@@ -9,8 +9,9 @@
 //!    memory's embedded text so the vector itself carries temporal/place signal.
 //!  - [`resolve_when_phrase`]: deterministic server-side resolution of a
 //!    model-emitted `when` phrase (absolute or relative) into an ISO
-//!    `occurredAt`, anchored to the source turn's timestamp. **Round 1: ported
-//!    but unwired** — round 3's extraction output is its only caller.
+//!    `occurredAt`, anchored to the source turn's timestamp. Its callers (all
+//!    landed in round 3): the memory processor's `resolve_candidate_anchors`,
+//!    the fold-episode pass, and the create-path fallback anchors.
 //!  - [`event_reference_time_ms`]: the event clock (`occurredAt ?? write
 //!    clock`) used for age labels — distinct from the decay reference time in
 //!    memory-weighting, which stays on the write/reinforce clock.

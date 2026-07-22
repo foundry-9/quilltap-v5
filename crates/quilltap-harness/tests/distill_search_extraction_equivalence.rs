@@ -6,9 +6,9 @@
 //! parse including the episodic signals (strict retrospective, the timeRange
 //! validation + full-day normalization, the entities trim/cap).
 //!
-//! SPLIT from the memory-tasks tier-1 family (P4.d13): this family regenerates
-//! at v4 `8bf3cb5f`+; the creation-side cases (`QT_ORACLE_MEMORY_TASKS`) stay
-//! at their `7e6d13e5` vintage until round 3.
+//! SPLIT from the memory-tasks tier-1 family (P4.d13): both families now
+//! regenerate at v4 `8bf3cb5f`+ (the creation-side cases,
+//! `QT_ORACLE_MEMORY_TASKS`, rebased in P4.d14).
 //!
 //! Generate the oracle output (jest — the seam needs `jest.mock`; TZ=UTC):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
