@@ -97,6 +97,26 @@ fm('block-seq-quoted', '---\ntypes:\n  - "top"\n  - bottom\n---\nx');
 fm('block-seq-null-item', '---\ntypes:\n  -\n  - top\n---\nx');
 fm('empty-then-block-comment', '---\ntypes: # c\n  - x\n---\nx');
 
+// ── folded plain scalars (dogfood finding #18) ───────────────────────────────
+// v4's emitter (eemeli/yaml stringify) wraps long plain scalars at ~80 columns
+// onto indented continuation lines; YAML folds them back with single spaces.
+// Real v4-written vaults carry these (imagePrompt/appropriateness), so they are
+// IN-subset for the Rust reader.
+fm('folded-2-lines', '---\nimagePrompt: navy dress, long sleeves,\n  appropriate to the mid 1920s\n---\nx');
+fm('folded-3-lines', '---\nnote: one two\n  three four\n  five six\n---\nx');
+fm('folded-then-key', '---\na: first part\n  second part\nb: after\n---\nx');
+fm('folded-before-seq', '---\na: long value\n  wrapped tail\ntypes:\n  - top\n---\nx');
+// (folds interrupted by comments, tab-indented continuations, and folds inside
+//  block sequences stay out-of-subset — conservative null, not in the corpus.)
+fm(
+  'folded-wardrobe-real',
+  '---\nid: d0eeb775-bba4-4aed-98f4-bafba35d32f0\ntitle: Navy Dress 1925\ntypes:\n  - top\n  - bottom\nappropriateness: casual, 1925, Paris\nimagePrompt: navy crêpe dress, long sleeves, a modest neckline, dropped waist\n  appropriate to the mid 1920s\ncreatedAt: 2026-06-20T18:35:25.430Z\nupdatedAt: 2026-06-20T18:35:25.430Z\n---\n\n_navy crêpe._',
+);
+fm(
+  'folded-appropriateness-real',
+  '---\nid: 08366b4f-629c-4488-ab07-c434125737b8\ntitle: Naked\ntypes:\n  - top\n  - bottom\n  - footwear\n  - accessories\ncomponentItems:\n  - white-gold-wedding-ring\nappropriateness: Intimate, clothing-optional, bed, bedroom, sleep, lodge,\n  sunroom, pool, swimming\nreplace: true\ncreatedAt: 2026-05-06T21:32:12.336Z\nupdatedAt: 2026-05-29T17:50:56.890Z\n---\n',
+);
+
 // ── multi-key + realistic prompt/wardrobe frontmatter ────────────────────────
 fm('multi-key', '---\nname: Hero\nisDefault: true\ntypes: [top]\n---\nThe prompt body');
 fm(

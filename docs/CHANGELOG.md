@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Fixed wardrobe items (and any other vault file) silently vanishing when
+their frontmatter carries a folded value (dogfood finding #18). v4's
+YAML emitter wraps long plain scalars (imagePrompt, appropriateness) at
+~80 columns onto indented continuation lines; v5's hand-rolled subset
+reader treated the continuation as a parse error, dropping the whole
+item — on the real Friday copy, 33 documents (30 wardrobe items across
+all characters, including two composite outfits, plus a scenario and
+two specs) were invisible, which broke outfit component resolution
+("wear" missing its top) and the outfit editor's item list. The reader
+now folds top-level plain scalars with single-space joins, matching
+eemeli/yaml; folds interrupted by comments, tab-indented continuations,
+folded quoted scalars, and folds inside block sequences stay
+conservatively out-of-subset (parse-to-null, never silently wrong — and
+a scan of all 1,764 real frontmatter docs found zero folded quoted
+values). Eight differential families re-ran green over oracles
+regenerated fresh from v4, with the frontmatter corpus extended by
+seven folded cases including two taken verbatim from the real data.
+Versions: core 0.0.323, harness 0.0.279.
+
 Fixed generated character avatars and story backgrounds silently
 breaking in project chats on real instances (dogfood finding #16). The
 project-store lookup read `project_doc_mount_links` on the main

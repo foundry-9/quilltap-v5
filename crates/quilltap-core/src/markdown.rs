@@ -23,13 +23,22 @@
 //!     `JSON.stringify`) or a single-quoted scalar (`''` → `'`);
 //!   - a flow sequence `[a, b, c]` or a block sequence (`- item` lines) of scalars.
 //!
+//! A top-level plain scalar may FOLD across indented continuation lines, joined
+//! by single spaces (YAML line folding). v4's emitter (eemeli/yaml `stringify`)
+//! wraps long values at ~80 columns, so real v4-written vaults carry folded
+//! `imagePrompt:`/`appropriateness:` values — dogfood finding #18 (six of
+//! Friday's wardrobe items silently dropped). A continuation line can never
+//! carry a `key: ` separator (YAML forbids `: ` inside a plain scalar), which is
+//! what distinguishes it from a nested-map line (still out-of-subset → Error).
+//!
 //! Comments follow the YAML rule (`#` begins a comment only at line start or after
 //! whitespace; never inside quotes). Duplicate keys are a parse error → null
 //! (eemeli throws). **Out of the supported subset** (documented seam — kept out of
 //! the corpus; would diverge from `YAML.parse`): nested maps, flow maps,
-//! anchors/aliases/tags, block scalars (`|` / `>`), multi-line plain scalars, and
-//! exotic numbers (hex / octal / exponent / `.inf` / `.nan`). Anything in this set
-//! resolves conservatively (a null/string or a top-level parse error), never to a
+//! anchors/aliases/tags, block scalars (`|` / `>`), folded QUOTED scalars,
+//! multi-line plain scalars inside block sequences, and exotic numbers (hex /
+//! octal / exponent / `.inf` / `.nan`). Anything in this set resolves
+//! conservatively (a null/string or a top-level parse error), never to a
 //! silently-wrong typed value.
 
 use serde_json::{Map, Value};
@@ -233,13 +242,56 @@ fn parse_yaml_subset(yaml: &str) -> YamlDoc {
                 }
                 None => return YamlDoc::Error,
             }
-        } else {
+        } else if matches!(val.chars().next(), Some('"') | Some('\'')) {
             match parse_scalar_value(val) {
                 Some(v) => {
                     map.insert(key, v);
                     i += 1;
                 }
                 None => return YamlDoc::Error,
+            }
+        } else {
+            // Plain scalar — may fold across indented continuation lines
+            // (v4's emitter wraps long values; YAML joins the folded lines
+            // with single spaces). A continuation line is SPACE-indented,
+            // non-empty, not a comment, not a sequence item, carries no
+            // comment marker, and no `key: ` separator (YAML forbids `: `
+            // inside a plain scalar — an indented `key:` line is a nested map
+            // instead, still out-of-subset). A comment on the value line ends
+            // the scalar there, so no folding follows it; the conservative
+            // Error/null paths keep every out-of-subset shape non-silent.
+            let first_cut = strip_plain_comment(val);
+            let had_comment = first_cut.len() != val.len();
+            let mut pieces = vec![trim_yaml(first_cut).to_string()];
+            let mut j = i + 1;
+            if !had_comment {
+                while j < lines.len() {
+                    let craw = lines[j];
+                    if !craw.starts_with(' ') {
+                        break;
+                    }
+                    let ct = trim_yaml(craw);
+                    if ct.is_empty() || ct.starts_with('#') || is_seq_item(ct) {
+                        break;
+                    }
+                    if split_key(ct).is_some() {
+                        break;
+                    }
+                    if strip_plain_comment(ct).len() != ct.len() {
+                        break;
+                    }
+                    pieces.push(ct.to_string());
+                    j += 1;
+                }
+            }
+            if pieces.len() == 1 {
+                map.insert(key, resolve_plain_scalar(&pieces[0]));
+                i += 1;
+            } else {
+                // A folded scalar always resolves as a string (the space
+                // join rules out every non-string core-schema shape).
+                map.insert(key, Value::String(pieces.join(" ")));
+                i = j;
             }
         }
         saw_entry = true;
