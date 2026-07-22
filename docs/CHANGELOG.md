@@ -2,6 +2,35 @@
 
 ## Recent Changes
 
+P4.d13 unit 7: the recall-replay harness (episodic recall section 3,
+the round's centerpiece). The recall_replay service module (v4
+runRecallReplay: chat load, participant resolution, turn partition, the
+replayed turn's OWN clock, the distill, then the search run TWICE - old
+path with episodic signals inert vs new path with the retrospective
+flip, window, entity anchors, and multi-probe - into full candidate
+tables: cosine/rawWeight/blendedBefore/multiplier/fired/blendedAfter/
+selected). The chatRecallReplay dispatch verb with v4's silent-undefined
+body coercion, the chat-settings/anchor-profile resolution, and the
+byte-exact error strings (the third v4 arm, "No cheap LLM provider
+available.", is v4-dead code - its resolver never returns null - and is
+documented as such). The verb runs on a new RecallReplayDriver host seam
+(the courier-resolve pattern) wired LIVE in quilltap-host from the spine
+- a replay costs one real cheap-LLM call. NEW committed fixture family
+episodic-recall-{main,mount}.db (real repos + fitted builtin TF-IDF:
+episodic corpus with in/out-of-window rows, the whispered-suspension
+ring, the de-indexed entity-anchor rescue row, five dated turns, and
+three dated vault summaries with embedded chunks). TWO new
+differentials, both fresh at 8bf3cb5f: recall-replay
+(QT_ORACLE_RECALL_REPLAY, 13 cases driving v4's REAL route handler with
+only the cheap-LLM executor mocked - retro flip + suspension contrast +
+rescue union + hard/soft window arms + turn clamp/coercion/error arms,
+floats at 1e-12; the oracle freezes the WHOLE Date constructor, not just
+Date.now - the decay reads new Date()) and vault-conv-search
+(QT_ORACLE_VAULT_CONV, 7 cases - the unit-4 timeRange staging proof:
+hard slice, the VISIBLE x1.3 starved boost, unparsable/inverted windows,
+exclude, limit 0). quilltap-core 0.0.312, quilltap-harness 0.0.269,
+quilltap-host 0.0.29, quilltap-web 0.0.37.
+
 P4.d13 unit 6: the deep-dive tools (v4 8bf3cb5f). The search tool
 gains since/until (date-prefix validation, date-only -> full-day ISO
 normalization, memories hard event-time window via occurredAt ??

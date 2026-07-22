@@ -2271,6 +2271,24 @@ pub enum Request {
         file_ids: Vec<String>,
     },
     // === end P4.9I1A ===
+    // === P4.d13: the recall-replay verb (episodic recall §3, append-only) ===
+    /// v4 `POST /api/v1/chats/[id]?action=recall-replay` — replay a turn's
+    /// memory recall (old path vs new path candidate tables). The three body
+    /// params ride as RAW JSON values so the handler reproduces v4's
+    /// silent-undefined coercion (`typeof x === 'number' && Number.isInteger`)
+    /// byte-for-byte — a garbage-typed param falls back to its default rather
+    /// than failing the parse.
+    #[serde(rename_all = "camelCase")]
+    ChatRecallReplay {
+        chat_id: String,
+        #[serde(default)]
+        turn_index: Option<serde_json::Value>,
+        #[serde(default)]
+        character_id: Option<serde_json::Value>,
+        #[serde(default)]
+        limit: Option<serde_json::Value>,
+    },
+    // === end P4.d13 ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2412,6 +2430,9 @@ pub enum Response {
     /// `{success, jobId|enqueued|...}`, the per-chat `{success, jobCount, ...}`.
     /// The exact bytes are pinned by `memories_routes_equivalence` (P4.6s).
     Memory(serde_json::Value),
+    /// P4.d13: the recall-replay result (v4 `successResponse(result)` — the
+    /// full old/new candidate-table object, passed through verbatim).
+    RecallReplay(serde_json::Value),
     /// A mount-files-family body (P4.6v): the list `{files, folders}`, the read
     /// envelope (`readMountFile` result), and the file-op mutation results. Pinned
     /// by `mount_read_equivalence` (+ later mount-ops differentials).

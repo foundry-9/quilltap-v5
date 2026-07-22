@@ -1030,7 +1030,7 @@ fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
 /// Commonplace-Book recall settings, defaulting to `down-weight` / no-expand when
 /// the setting is unwritten. Consumed by the per-turn recall context (P4.d13
 /// closed the search-leg re-rank deferral).
-fn read_memory_recall_settings(db: &Db) -> MemoryRecallSettings {
+pub(crate) fn read_memory_recall_settings(db: &Db) -> MemoryRecallSettings {
     match db.read_main(crate::db::instance_settings::get_memory_recall_settings) {
         Ok((scope_policy, expand_related)) => MemoryRecallSettings {
             scope_policy,

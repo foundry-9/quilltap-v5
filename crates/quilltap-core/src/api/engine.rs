@@ -161,6 +161,13 @@ pub struct EngineAssembly {
     /// AT-UNIFY wire** (lane BG re-signatures the handlers to accept it).
     pub blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
     // === end P4.6bf ===
+    // === P4.d13: the recall-replay runner (episodic recall §3) ===
+    /// The `chatRecallReplay` runner — the host holds the completion provider +
+    /// cheap executor + embedding provider the replay's distill/search ride
+    /// (the courier-resolve pattern). `None` (read-only embedders) → the arm
+    /// answers a loud not-assembled error.
+    pub recall_replay: Option<Arc<dyn super::recall_replay::RecallReplayDriver>>,
+    // === end P4.d13 ===
 }
 
 impl EngineAssembly {
@@ -188,6 +195,9 @@ impl EngineAssembly {
             // === P4.6bf (S1) ===
             blob_webp: None,
             // === end P4.6bf ===
+            // === P4.d13 ===
+            recall_replay: None,
+            // === end P4.d13 ===
         }
     }
 }
@@ -337,6 +347,9 @@ struct ReadyEngine {
     /// assembly and passed into lane BG's re-signatured `store_mount_file`
     /// handlers via [`Self::ready_db_and_blob_webp`] (P4.6bg unit 6 wire).
     blob_webp: Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
+    /// The recall-replay runner (P4.d13; `None` for spine-less assemblies —
+    /// the `ChatRecallReplay` arm answers the loud not-assembled error).
+    recall_replay: Option<Arc<dyn super::recall_replay::RecallReplayDriver>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -610,6 +623,27 @@ impl CoreEngine {
                         &action,
                         participant_id.as_deref(),
                         random_f64(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRecallReplay {
+                chat_id,
+                turn_index,
+                character_id,
+                limit,
+            } => match self.ready_db_and_recall_replay() {
+                Ok((db, driver)) => {
+                    super::recall_replay::recall_replay(
+                        &db,
+                        driver.as_ref(),
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        turn_index.as_ref(),
+                        character_id.as_ref(),
+                        limit.as_ref(),
+                        crate::clock::now_unix_ms() as f64,
                     )
                     .await
                 }
@@ -3350,6 +3384,26 @@ impl CoreEngine {
         }
     }
 
+    /// The Db + optional recall-replay driver under the readiness gate (P4.d13).
+    /// A ready engine without the driver still answers — the handler runs the
+    /// body-coercion / settings / anchor arms and only refuses at the run step
+    /// (mirrors v4, where those checks precede the replay).
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_recall_replay(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn super::recall_replay::RecallReplayDriver>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.recall_replay.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     /// The Db + save-image bytes seam under the readiness gate (P4.6ab). An unwired
     /// host falls back to [`NotConfiguredBytes`] (faithful `EMPTY_BYTES`), so a ready
     /// engine always answers.
@@ -3896,6 +3950,7 @@ fn open_ready(
         avatar_preview: assembly.avatar_preview,
         brahma_console_send: assembly.brahma_console_send,
         blob_webp: assembly.blob_webp,
+        recall_replay: assembly.recall_replay,
     })
 }
 

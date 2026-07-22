@@ -1,0 +1,125 @@
+{
+  "$comment": "P4.d13 episodic-recall fixture spec — the recall-replay + vault-conv-search substrate. All ids/timestamps pinned; embeddings are the REAL builtin TF-IDF fitted over this corpus.",
+  "$safety": "Test pepper only — never a real instance key.",
+  "testPepperBase64": "b3JhY2xlLXRlc3QtcGVwcGVyLTMyLWJ5dGVzLWxvbmch",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "elowenId": "c1000000-0000-4000-8000-0000000000e1",
+  "pipCharacterId": "c1000000-0000-4000-8000-0000000000f1",
+  "connId": "c0000001-0000-4000-8000-000000000001",
+  "apiKeyId": "a0000001-0000-4000-8000-000000000001",
+  "embeddingProfileId": "b8000000-0000-4000-8000-000000000001",
+  "chatSettingsId": "c8000000-0000-4000-8000-000000000001",
+  "chatId": "cd000000-0000-4000-8000-000000000001",
+  "partElowen": "e1000000-0000-4000-8000-000000000001",
+  "partPip": "e1000000-0000-4000-8000-000000000002",
+  "memories": [
+    {
+      "id": "e2000000-0000-4000-8000-0000000000a1",
+      "content": "We visited Gullwing Quay at dawn and watched the fishing fleet return.",
+      "summary": "Visited Gullwing Quay at dawn.",
+      "importance": 0.8,
+      "keywords": [
+        "quay",
+        "past",
+        "scope: wide",
+        "history"
+      ],
+      "occurredAt": "2026-06-03T06:00:00.000Z",
+      "narrativeTime": "the second dawn",
+      "kind": "episodic",
+      "entities": [
+        "Gullwing Quay"
+      ],
+      "chatId": "cd000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000b2",
+      "content": "Last winter we visited the quay market to mend the sail lockers.",
+      "summary": "Winter visit to the quay market.",
+      "importance": 0.7,
+      "keywords": [
+        "lockers",
+        "past"
+      ],
+      "occurredAt": "2026-01-15T10:00:00.000Z",
+      "kind": "episodic"
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000a2",
+      "content": "We visited the quay at dawn last week and walked toward the lighthouse.",
+      "summary": "Visited the quay at dawn last week.",
+      "importance": 0.75,
+      "keywords": [
+        "walk",
+        "past"
+      ],
+      "occurredAt": "2026-06-04T07:00:00.000Z",
+      "kind": "episodic"
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000c1",
+      "content": "Pip hums sea shanties when nervous at the dawn market.",
+      "summary": "Pip hums shanties when nervous.",
+      "importance": 0.7,
+      "keywords": [
+        "shanties"
+      ],
+      "aboutCharacterId": "c1000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000d1",
+      "content": "The tide ledger lists every mooring fee at the quay.",
+      "summary": "The tide ledger and mooring fees.",
+      "importance": 0.6,
+      "keywords": [
+        "ledger"
+      ]
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000e1",
+      "content": "The brass sextant was bought from the keeper at Gullwing Quay.",
+      "summary": "Bought the brass sextant at Gullwing Quay.",
+      "importance": 0.9,
+      "keywords": [],
+      "occurredAt": "2026-06-04T09:00:00.000Z",
+      "kind": "episodic",
+      "entities": [
+        "Gullwing Quay"
+      ],
+      "unindexed": true
+    },
+    {
+      "id": "e2000000-0000-4000-8000-0000000000f1",
+      "content": "A pantry crate of hardtack sits in the cellar.",
+      "summary": "Hardtack in the cellar.",
+      "importance": 0.5,
+      "keywords": [
+        "hardtack"
+      ]
+    }
+  ],
+  "summaries": [
+    {
+      "chatId": "cd000000-0000-4000-8000-000000000051",
+      "chatTitle": "The Quay Market Morning",
+      "summary": "Elowen and Pip browsed the quay market at dawn and haggled for a brass sextant.",
+      "firstMessageAt": "2026-06-02T09:00:00.000Z",
+      "lastMessageAt": "2026-06-02T11:00:00.000Z"
+    },
+    {
+      "chatId": "cd000000-0000-4000-8000-000000000052",
+      "chatTitle": "Winter Locker Repairs",
+      "summary": "A long winter afternoon mending the sail lockers by the quay.",
+      "firstMessageAt": "2026-01-14T14:00:00.000Z",
+      "lastMessageAt": "2026-01-15T16:00:00.000Z"
+    },
+    {
+      "chatId": "cd000000-0000-4000-8000-000000000053",
+      "chatTitle": "The Undated Errand",
+      "summary": "An errand to the chandler for quay rope and lantern oil.",
+      "firstMessageAt": null,
+      "lastMessageAt": null
+    }
+  ]
+}

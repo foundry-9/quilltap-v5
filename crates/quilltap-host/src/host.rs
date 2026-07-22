@@ -461,6 +461,7 @@ impl EngineAssembler for HostAssembler {
             image_generation,
             consult,
             brahma_console_send,
+            recall_replay,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -477,9 +478,12 @@ impl EngineAssembler for HostAssembler {
                     bundle.image_generation,
                     bundle.consult,
                     bundle.brahma_console_send,
+                    bundle.recall_replay,
                 )
             }
-            None => (None, None, None, None, None, None, None, None, None, None),
+            None => (
+                None, None, None, None, None, None, None, None, None, None, None,
+            ),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -591,6 +595,11 @@ impl EngineAssembler for HostAssembler {
             // not-assembled error; the in-turn tool path stays fail-soft. ===
             consult,
             // === end P4.6bd ===
+            // === P4.d13: the recall-replay runner, wired LIVE from the spine
+            // (the distill costs one cheap-LLM call per replay; spine-less
+            // assemblies keep None → the loud not-assembled error). ===
+            recall_replay,
+            // === end P4.d13 ===
             // === P4.9f1 / P4.6bf: the avatar-preview render seam, wired LIVE.
             // The render step now runs a raw portrait generation + WebP transcode
             // over the W4.7f RealImageProvider (rebuilt per request) + the

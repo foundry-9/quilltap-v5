@@ -54,6 +54,7 @@ pub mod mount_points;
 pub mod projects;
 pub mod provider_actions;
 pub mod provision;
+pub mod recall_replay;
 pub mod roleplay_templates;
 pub mod salon;
 pub mod scenarios;

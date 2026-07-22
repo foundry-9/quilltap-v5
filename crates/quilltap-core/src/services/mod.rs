@@ -117,6 +117,7 @@ pub mod provisioning;
 pub mod pseudo_tool;
 pub mod queue_service;
 pub mod quilltap_import;
+pub mod recall_replay;
 pub mod recovery;
 pub mod regenerate_swipe;
 pub mod scene_state_tracking;

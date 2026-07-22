@@ -27235,3 +27235,75 @@ rule-6/bullet bytes). All green, zero SKIP. **Committed corpora audit:
 no committed fixture embeds the tool-prompt bytes** (request-envelopes
 clean); the env-gated tool-wire/tool-build families regenerate at the
 final gate and are listed there.
+
+## P4.d13 unit 7 — the recall-replay module + verb + the episodic-recall fixture family
+
+**What landed:** `services/recall_replay.rs` (v4 `runRecallReplay`
+name-for-name: participant resolution — explicit characterId must match
+a participant, else first LLM-controlled non-removed with a characterId;
+`partition_messages_into_turns` over the chat's own type; the clamp
+`min(max(turnIndex ?? turns.len, 1), turns.len)`; the replayed turn's
+OWN clock (`clockIso` = the window's last dated message — "last week"
+resolves against the turn's date, not today's); the distill with that
+clock; the `paraphrase || keywords || lastContent || ''` query chain;
+the search TWICE — base ctx inert vs `turnRetrospective` +
+`occurredWithin` + `entityAnchors` + the multi-probe pair — into
+`toRows` tables with v4's exact `?? null` field-presence and the
+head-size `selected` flag: old `DYNAMIC_HEAD_DEFAULT_SIZE`, new
+`retro ? RETRO_HEAD_SIZE : DYNAMIC_HEAD_DEFAULT_SIZE`). NOTE the replay's
+present-set is EVERY non-removed participant with a characterId
+(user-controlled included) — deliberately different from buildContext's
+responder+others set, as in v4. `api/recall_replay.rs` — the
+`chatRecallReplay` verb: v4's silent-undefined coercion (raw-Value
+params so a garbage-typed field falls back rather than failing the
+parse), `Chat settings not found.` / `No connection profiles
+configured.` byte-exact, the cheap-LLM ladder over the participant
+anchor (v4's third arm "No cheap LLM provider available." is DEAD in
+v4 — `getCheapLLMProvider` never returns null — recorded, not stubbed).
+The `RecallReplayDriver` host seam (the courier-resolve pattern:
+`EngineAssembly.recall_replay`, the `ready_db_and_recall_replay` gate)
+is wired LIVE in `quilltap-host` (the spine impl on the dedicated-thread
+bridge — **a replay costs one real cheap-LLM call in production**).
+Request/Response variants `ChatRecallReplay`/`RecallReplay` appended;
+the web edge rides `POST /api/dispatch` (the chats-routes family models
+no REST action leg — none added).
+
+**The NEW fixture family (committed):**
+`crates/quilltap-web/tests/fixtures/episodic-recall-{main,mount}.db`,
+builder `harness/oracle/fixtures/build-episodic-recall-fixture.ts` over
+spec `episodic-recall.json` — real repos + the REAL fitted builtin
+TF-IDF (vocab 89): Elowen's 7-memory corpus (in/out-of-window episodic
+rows with targeting tags + narrativeTime + entities; the WHISPERED row
+in the chat's `{turns:[[…]]}` ring; the RESCUE row with its
+`vector_entries` row DELETED post-embed but the embedding COLUMN kept —
+enters the pool ONLY via the entity-anchor `searchByContent` union), the
+5-turn dated chat (Pip `controlledBy:'user'` + Elowen llm w/
+connectionProfileId), cheap profile + chat_settings for the route
+resolution, and three DATED vault conversation summaries (via v4's REAL
+`writeConversationSummaryToVaults`) with one TF-IDF-embedded chunk each.
+
+**Differentials (fresh at `8bf3cb5f`):**
+1. `recall_replay_equivalence` (`QT_ORACLE_RECALL_REPLAY`) — 13 cases,
+   the oracle driving v4's REAL `handleRecallReplay` (jest real-DB, ONLY
+   `executeCheapLLMTask` mocked; embeddings REAL): retro_full (OLD shows
+   `past↓`+`repeat↓`, NEW shows the suspension + `past↑retro`/`ctx✓`/
+   `window↑` + the RESCUE row unioned), non_retro (old == new on a real
+   row — the §3 acceptance regression), entity rescue sans window,
+   window_hard_limit1 (the HARD filter arm — no `window↑` label, exactly
+   v4's ctx-without-window branch), turn 1 / clamp-999 / explicit
+   characterId, non-participant error, garbled + failed distill,
+   the coercion bag (string turnIndex → default; numeric characterId →
+   default; limit 250 → 100), settings-missing + no-profiles error arms.
+   Floats at 1e-12 — NO tolerance relaxation needed (the TF-IDF vocab
+   doubles parse from the same JSON both sides; cosines accumulate in
+   f64 over identical stored f32 bits). **Gotcha for the memory notes:**
+   the oracle must freeze the WHOLE `Date` constructor (the build-context
+   FakeDate idiom) — `calculateEffectiveWeight`'s decay reads
+   `new Date()`, not `Date.now()`; freezing only `Date.now` leaves the
+   decay on the wall clock (rawWeight diverges ~2× at 45-day offsets).
+2. `vault_conv_search_equivalence` (`QT_ORACLE_VAULT_CONV`) — 7 cases
+   (the unit-4 staging proof, previously recorded as riding this
+   fixture): no-window baseline, the HARD slice (hits ≥ limit), the
+   STARVED ×1.3 boost with the boost VISIBLE in the emitted score
+   (0.4884 = 0.3757 × 1.3 on the in-window doc), unparsable + inverted
+   windows (plain slice), limit 0, exclude-top. Floats at 1e-12.

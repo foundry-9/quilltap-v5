@@ -1,0 +1,128 @@
+{
+  "$comment": "P4.d13 recall-replay case corpus (QT_ORACLE_RECALL_REPLAY). distill: {kind:'json',text} feeds v4's REAL parse via the mocked executor; {kind:'fail'} = task failure. deleteChatSettings/deleteConnections mutate the per-case COPY before the call.",
+  "$nowMs": 1781524800000,
+  "$nowMsComment": "2026-06-15T12:00:00.000Z — the search-decay Date.now seam, frozen identically on both sides.",
+  "chatId": "cd000000-0000-4000-8000-000000000001",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "cases": [
+    {
+      "name": "retro_full",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "non_retro",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"tide ledger\", \"mooring fees\"], \"temporal\": \"future\", \"context\": \"information\", \"paraphrase\": \"They discuss the tide ledger and the mooring fees at the quay.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}"
+      }
+    },
+    {
+      "name": "entity_rescue_no_window",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"sextant\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They recall buying the brass sextant at Gullwing Quay.\", \"retrospective\": true, \"timeRange\": null, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "window_hard_limit1",
+      "body": {
+        "limit": 1
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "turn_one",
+      "body": {
+        "turnIndex": 1
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "turn_clamp",
+      "body": {
+        "turnIndex": 999
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "char_explicit",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1"
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "char_not_participant",
+      "body": {
+        "characterId": "99999999-9999-4999-8999-999999999999"
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "garbled_distill",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "not json at all"
+      }
+    },
+    {
+      "name": "distill_fail",
+      "body": {},
+      "distill": {
+        "kind": "fail"
+      }
+    },
+    {
+      "name": "coercion_bag",
+      "body": {
+        "turnIndex": "3",
+        "limit": 250,
+        "characterId": 42
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "settings_missing",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      },
+      "deleteChatSettings": true
+    },
+    {
+      "name": "no_profiles",
+      "body": {},
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      },
+      "deleteConnections": true
+    }
+  ]
+}

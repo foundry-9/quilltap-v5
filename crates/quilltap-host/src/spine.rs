@@ -1772,6 +1772,58 @@ where
     }
 }
 
+impl<EMB, CMP, STR, PF> quilltap_core::api::recall_replay::RecallReplayDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn run(
+        &self,
+        input: quilltap_core::services::recall_replay::RunRecallReplayInput,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send + '_>,
+    > {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The dedicated-thread bridge (the courier-resolve idiom): the
+            // replay's distill re-enters the cheap-LLM executor, whose futures
+            // are non-`Send`.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(async {
+                        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                            db: state.db.clone(),
+                            user_id: SINGLE_USER_ID.to_string(),
+                            chat_id: Some(input.chat_id.clone()),
+                            message_id: None,
+                            ctx: LogContext::none(),
+                        });
+                        quilltap_core::services::recall_replay::run_recall_replay(
+                            &state.db,
+                            &*state.completion,
+                            &executor,
+                            &*state.embedding,
+                            &input,
+                        )
+                        .await
+                    }),
+                    Err(e) => Err(format!("spine runtime: {e}")),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await
+                .unwrap_or_else(|_| Err("recall replay thread panicked".to_string()))
+        })
+    }
+}
+
 /// The `AUTONOMOUS_ROOM_TURN` step-runner closure over a shared spine — the
 /// dedicated-thread bridge the enclave E2E pinned (the step future is
 /// non-`Send`; `StepFuture` must be).
@@ -2286,6 +2338,9 @@ pub struct SpineBundle {
     /// The Brahma Console send driver (P4.9I1A — the orchestrator; `None` for
     /// canned test factories — the arm answers "not assembled").
     pub brahma_console_send: Option<Arc<dyn quilltap_core::api::brahma::BrahmaConsoleSendDriver>>,
+    /// The recall-replay runner (P4.d13 — episodic recall §3; `None` for canned
+    /// test factories — the arm answers the loud not-assembled error).
+    pub recall_replay: Option<Arc<dyn quilltap_core::api::recall_replay::RecallReplayDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2453,6 +2508,9 @@ impl SpineFactory for ProductionSpineFactory {
             // resolve (completion + cheap executor for the settle's triggers);
             // the production byte store backs save-image.
             courier_resolve: Some(Arc::clone(&spine) as _),
+            // P4.d13: the recall-replay runner — LIVE on the same spine (the
+            // distill costs one cheap-LLM call per replay).
+            recall_replay: Some(Arc::clone(&spine) as _),
             save_image_bytes: Some(Arc::clone(&spine.file_bytes) as _),
             // P4.6ai: the imageProfileGenerate un-refusal seam, wired LIVE over the
             // W4.7f Real*Providers (the runner rebuilds ImageGenDeps per request).
