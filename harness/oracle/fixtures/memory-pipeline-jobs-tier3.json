@@ -1,0 +1,211 @@
+{
+  "comment": "Shared spec for the memory-pipeline job-handlers tier-3 differential (P4.6bj units 2-3): the MEMORY_EXTRACTION + CONTEXT_SUMMARY handlers. Consumed by build-memory-pipeline-jobs-fixture.ts (seeds the two-DB fixture via v4's real repos), memory-pipeline-jobs-tier3.test.ts (drives v4's real handlers), and memory_pipeline_jobs_tier3_equivalence.rs (drives the Rust port).",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "connectionProfileId": "e0000000-0000-4000-8000-0000000000c0",
+  "memoryExtractionLimits": {
+    "enabled": true,
+    "maxPerHour": 1000,
+    "softStartFraction": 0.5,
+    "softFloor": 0.55
+  },
+  "chatSettings": {
+    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+    "dangerMode": "AUTO_ROUTE"
+  },
+  "connectionProfiles": [
+    {
+      "id": "e0000000-0000-4000-8000-0000000000c0",
+      "name": "Current Anthropic",
+      "provider": "ANTHROPIC",
+      "modelName": "claude-benchmark-large",
+      "isCheap": false,
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "e0000000-0000-4000-8000-0000000000c1",
+      "name": "Cheap OpenAI",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "isCheap": true,
+      "isDangerousCompatible": false
+    }
+  ],
+  "characters": [
+    {
+      "id": "ca000000-0000-4000-8000-00000000000a",
+      "name": "Ada",
+      "controlledBy": "llm",
+      "identity": "A watchmaker with a fondness for tea.",
+      "pronouns": { "subject": "she", "object": "her", "possessive": "her" }
+    },
+    {
+      "id": "cb000000-0000-4000-8000-00000000000b",
+      "name": "Bram",
+      "controlledBy": "llm",
+      "identity": "A cartographer who mislays his own maps.",
+      "pronouns": { "subject": "he", "object": "him", "possessive": "his" }
+    },
+    {
+      "id": "cc000000-0000-4000-8000-00000000000c",
+      "name": "Quill",
+      "controlledBy": "user",
+      "identity": "The proprietor's own persona.",
+      "pronouns": { "subject": "they", "object": "them", "possessive": "their" }
+    }
+  ],
+  "chats": [
+    {
+      "id": "d1000001-0000-4000-8000-000000000001",
+      "participants": [
+        { "id": "a1000001-0000-4000-8000-000000000001", "characterId": "ca000000-0000-4000-8000-00000000000a", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e1000001-0000-4000-8000-000000000001", "role": "USER", "content": "Ada, how went the morning at the gate?", "participantId": null, "createdAt": "2023-06-01T10:00:00.000Z" },
+        { "id": "e1000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "I greeted a traveler warmly and fixed his pocket watch.", "participantId": "a1000001-0000-4000-8000-000000000001", "createdAt": "2023-06-01T10:00:05.000Z" }
+      ]
+    },
+    {
+      "id": "d1000002-0000-4000-8000-000000000002",
+      "participants": [
+        { "id": "a2000001-0000-4000-8000-000000000001", "characterId": "ca000000-0000-4000-8000-00000000000a", "controlledBy": "llm" },
+        { "id": "a2000002-0000-4000-8000-000000000002", "characterId": "cb000000-0000-4000-8000-00000000000b", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e2000001-0000-4000-8000-000000000001", "role": "USER", "content": "Both of you, report.", "participantId": null, "createdAt": "2023-06-02T09:00:00.000Z" },
+        { "id": "e2000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "The workshop is tidy.", "participantId": "a2000001-0000-4000-8000-000000000001", "createdAt": "2023-06-02T09:00:05.000Z" },
+        { "id": "e2000003-0000-4000-8000-000000000003", "role": "ASSISTANT", "content": "The maps are misplaced again.", "participantId": "a2000002-0000-4000-8000-000000000002", "createdAt": "2023-06-02T09:00:10.000Z" },
+        { "id": "e2000004-0000-4000-8000-000000000004", "role": "ASSISTANT", "content": "I found them under the bench.", "participantId": "a2000001-0000-4000-8000-000000000001", "createdAt": "2023-06-02T09:00:15.000Z" }
+      ]
+    },
+    {
+      "id": "d1000003-0000-4000-8000-000000000003",
+      "participants": [
+        { "id": "a3000001-0000-4000-8000-000000000001", "characterId": "cc000000-0000-4000-8000-00000000000c", "controlledBy": "user" },
+        { "id": "a3000002-0000-4000-8000-000000000002", "characterId": "ca000000-0000-4000-8000-00000000000a", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e3000001-0000-4000-8000-000000000001", "role": "USER", "content": "Quill strides into the workshop, coat dripping.", "participantId": "a3000001-0000-4000-8000-000000000001", "createdAt": "2023-06-03T18:00:00.000Z" },
+        { "id": "e3000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "Ada looks up from the bench and offers a towel.", "participantId": "a3000002-0000-4000-8000-000000000002", "createdAt": "2023-06-03T18:00:05.000Z" }
+      ]
+    },
+    {
+      "id": "d1000004-0000-4000-8000-000000000004",
+      "chatType": "autonomous",
+      "participants": [
+        { "id": "a4000001-0000-4000-8000-000000000001", "characterId": "ca000000-0000-4000-8000-00000000000a", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e4000001-0000-4000-8000-000000000001", "role": "ASSISTANT", "content": "Ada winds the shop clocks alone after hours.", "participantId": "a4000001-0000-4000-8000-000000000001", "createdAt": "2023-06-04T22:00:00.000Z" },
+        { "id": "e4000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "She locks the till and dims the lamps.", "participantId": "a4000001-0000-4000-8000-000000000001", "createdAt": "2023-06-04T22:05:00.000Z" }
+      ]
+    },
+    {
+      "id": "d1000005-0000-4000-8000-000000000005",
+      "participants": [
+        { "id": "a5000001-0000-4000-8000-000000000001", "characterId": "ca000000-0000-4000-8000-00000000000a", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e5000001-0000-4000-8000-000000000001", "role": "USER", "content": "An opener with no reply yet.", "participantId": null, "createdAt": "2023-06-05T08:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "d1000006-0000-4000-8000-000000000006",
+      "participants": [
+        { "id": "a6000001-0000-4000-8000-000000000001", "characterId": "cd000000-0000-4000-8000-0000000000dd", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e6000001-0000-4000-8000-000000000001", "role": "USER", "content": "u01", "participantId": null, "createdAt": "2023-06-06T10:00:00.000Z" },
+        { "id": "e6000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "a01", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:01:00.000Z" },
+        { "id": "e6000003-0000-4000-8000-000000000003", "role": "USER", "content": "u02", "participantId": null, "createdAt": "2023-06-06T10:02:00.000Z" },
+        { "id": "e6000004-0000-4000-8000-000000000004", "role": "ASSISTANT", "content": "a02", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:03:00.000Z" },
+        { "id": "e6000005-0000-4000-8000-000000000005", "role": "USER", "content": "u03", "participantId": null, "createdAt": "2023-06-06T10:04:00.000Z" },
+        { "id": "e6000006-0000-4000-8000-000000000006", "role": "ASSISTANT", "content": "a03", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:05:00.000Z" },
+        { "id": "e6000007-0000-4000-8000-000000000007", "role": "USER", "content": "u04", "participantId": null, "createdAt": "2023-06-06T10:06:00.000Z" },
+        { "id": "e6000008-0000-4000-8000-000000000008", "role": "ASSISTANT", "content": "a04", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:07:00.000Z" },
+        { "id": "e6000009-0000-4000-8000-000000000009", "role": "USER", "content": "u05", "participantId": null, "createdAt": "2023-06-06T10:08:00.000Z" },
+        { "id": "e600000a-0000-4000-8000-00000000000a", "role": "ASSISTANT", "content": "a05", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:09:00.000Z" },
+        { "id": "e600000b-0000-4000-8000-00000000000b", "role": "USER", "content": "u06", "participantId": null, "createdAt": "2023-06-06T10:10:00.000Z" },
+        { "id": "e600000c-0000-4000-8000-00000000000c", "role": "ASSISTANT", "content": "a06", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:11:00.000Z" },
+        { "id": "e600000d-0000-4000-8000-00000000000d", "role": "USER", "content": "u07", "participantId": null, "createdAt": "2023-06-06T10:12:00.000Z" },
+        { "id": "e600000e-0000-4000-8000-00000000000e", "role": "ASSISTANT", "content": "a07", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:13:00.000Z" },
+        { "id": "e600000f-0000-4000-8000-00000000000f", "role": "USER", "content": "u08", "participantId": null, "createdAt": "2023-06-06T10:14:00.000Z" },
+        { "id": "e6000010-0000-4000-8000-000000000010", "role": "ASSISTANT", "content": "a08", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:15:00.000Z" },
+        { "id": "e6000011-0000-4000-8000-000000000011", "role": "USER", "content": "u09", "participantId": null, "createdAt": "2023-06-06T10:16:00.000Z" },
+        { "id": "e6000012-0000-4000-8000-000000000012", "role": "ASSISTANT", "content": "a09", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:17:00.000Z" },
+        { "id": "e6000013-0000-4000-8000-000000000013", "role": "USER", "content": "u10", "participantId": null, "createdAt": "2023-06-06T10:18:00.000Z" },
+        { "id": "e6000014-0000-4000-8000-000000000014", "role": "ASSISTANT", "content": "a10", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:19:00.000Z" },
+        { "id": "e6000015-0000-4000-8000-000000000015", "role": "USER", "content": "u11", "participantId": null, "createdAt": "2023-06-06T10:20:00.000Z" },
+        { "id": "e6000016-0000-4000-8000-000000000016", "role": "ASSISTANT", "content": "a11", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:21:00.000Z" },
+        { "id": "e6000017-0000-4000-8000-000000000017", "role": "USER", "content": "u12", "participantId": null, "createdAt": "2023-06-06T10:22:00.000Z" },
+        { "id": "e6000018-0000-4000-8000-000000000018", "role": "ASSISTANT", "content": "a12", "participantId": "a6000001-0000-4000-8000-000000000001", "createdAt": "2023-06-06T10:23:00.000Z" }
+      ]
+    },
+    {
+      "id": "d1000007-0000-4000-8000-000000000007",
+      "participants": [
+        { "id": "a7000001-0000-4000-8000-000000000001", "characterId": "ce000000-0000-4000-8000-0000000000ee", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e7000001-0000-4000-8000-000000000001", "role": "USER", "content": "A very short chat.", "participantId": null, "createdAt": "2023-06-07T10:00:00.000Z" },
+        { "id": "e7000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "Indeed it is.", "participantId": "a7000001-0000-4000-8000-000000000001", "createdAt": "2023-06-07T10:00:05.000Z" }
+      ]
+    }
+  ],
+  "completionRules": [
+    {
+      "kind": "self",
+      "namePrefix": "Ada",
+      "response": "[{\"content\": \"Ada greeted a traveler warmly and repaired his pocket watch.\", \"summary\": \"warm greeting and a watch repair\", \"keywords\": [\"traveler\", \"watch\"], \"importance\": 0.6, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+      "usage": { "promptTokens": 140, "completionTokens": 26, "totalTokens": 166 }
+    },
+    {
+      "kind": "self",
+      "namePrefix": "Bram",
+      "response": "[]",
+      "usage": { "promptTokens": 120, "completionTokens": 2, "totalTokens": 122 }
+    },
+    {
+      "kind": "self",
+      "namePrefix": "Quill",
+      "response": "[]",
+      "usage": { "promptTokens": 118, "completionTokens": 2, "totalTokens": 120 }
+    },
+    {
+      "kind": "other",
+      "namePrefix": "",
+      "response": "[]",
+      "usage": { "promptTokens": 150, "completionTokens": 2, "totalTokens": 152 }
+    },
+    {
+      "kind": "fold",
+      "response": "Active threads: the correspondents keep exchanging terse notes.\n\nResolved decisions: none.\n\nEmotional state: businesslike calm.\n\nOpen questions: none.\n\nTimeline:\n- 2023-06-06: a long exchange of short notes.",
+      "usage": { "promptTokens": 400, "completionTokens": 48, "totalTokens": 448 }
+    },
+    {
+      "kind": "episode",
+      "response": "[]",
+      "usage": { "promptTokens": 300, "completionTokens": 2, "totalTokens": 302 }
+    },
+    {
+      "kind": "title",
+      "response": "A Ledger of Short Notes",
+      "usage": { "promptTokens": 90, "completionTokens": 8, "totalTokens": 98 }
+    }
+  ],
+  "meCases": [
+    { "name": "me_single", "chatId": "d1000001-0000-4000-8000-000000000001", "turnOpenerMessageId": "e1000001-0000-4000-8000-000000000001" },
+    { "name": "me_multi", "chatId": "d1000002-0000-4000-8000-000000000002", "turnOpenerMessageId": "e2000001-0000-4000-8000-000000000001" },
+    { "name": "me_user_controlled", "chatId": "d1000003-0000-4000-8000-000000000003", "turnOpenerMessageId": "e3000001-0000-4000-8000-000000000001" },
+    { "name": "me_autonomous", "chatId": "d1000004-0000-4000-8000-000000000004", "turnOpenerMessageId": null, "extractionAnchorMessageId": "e4000001-0000-4000-8000-000000000001" },
+    { "name": "me_missing_chat", "chatId": "d1ffffff-0000-4000-8000-0000000000ff", "turnOpenerMessageId": null },
+    { "name": "me_empty_slices", "chatId": "d1000005-0000-4000-8000-000000000005", "turnOpenerMessageId": "e5000001-0000-4000-8000-000000000001" }
+  ],
+  "csCases": [
+    { "name": "cs_fold", "chatId": "d1000006-0000-4000-8000-000000000006" },
+    { "name": "cs_below_gate", "chatId": "d1000007-0000-4000-8000-000000000007" },
+    { "name": "cs_force", "chatId": "d1000007-0000-4000-8000-000000000007", "forceRegenerate": true },
+    { "name": "cs_missing_chat", "chatId": "d1ffffff-0000-4000-8000-0000000000ff" }
+  ]
+}
