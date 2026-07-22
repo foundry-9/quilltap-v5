@@ -38,6 +38,13 @@ const cases: Array<{ id: string; parts: CommonplaceParts }> = [
     },
   },
   {
+    id: 'only-retrospective-recall',
+    parts: {
+      retrospectiveRecall:
+        '### Relevant Past Conversations\n\n#### The Heist (2024-06-05) (`conv-1`)\n\n_note_',
+    },
+  },
+  {
     id: 'all-six',
     parts: {
       currentState: 'The clock reads noon.',
@@ -47,6 +54,32 @@ const cases: Array<{ id: string; parts: CommonplaceParts }> = [
       knowledge: 'From the shelves.',
       relevantConversations: 'Past dialogues.',
     },
+  },
+  {
+    id: 'all-seven',
+    parts: {
+      currentState: 'The clock reads noon.',
+      recap: 'A long recap.',
+      relevant: 'Relevant entries.',
+      interChar: 'About the others.',
+      knowledge: 'From the shelves.',
+      relevantConversations: 'Past dialogues.',
+      retrospectiveRecall: 'Dated pages.',
+    },
+  },
+  {
+    id: 'whitespace-only-retrospective-recall',
+    parts: { retrospectiveRecall: ' \n\t ' },
+  },
+  {
+    id: 'padded-retrospective-recall-trimmed',
+    parts: { retrospectiveRecall: '   riffled pages   ' },
+  },
+  {
+    // buildContext's ordering rule: the mini-recap rides the LLM recall text
+    // beside the ordinary sections but is posted in its OWN whisper.
+    id: 'relevant-and-retrospective-recall',
+    parts: { relevant: 'The entries.', retrospectiveRecall: 'The dated list.' },
   },
   { id: 'whitespace-only-current-state', parts: { currentState: '   \n\t ' } },
   {

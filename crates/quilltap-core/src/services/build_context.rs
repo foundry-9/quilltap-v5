@@ -2557,6 +2557,10 @@ where
         inter_char: opt(&inter_character_memory_content),
         knowledge: opt(&knowledge_content),
         relevant_conversations: None,
+        // The mini-recap is DELIBERATELY absent from the consolidated persona
+        // whisper (v4 posts it in its own `retrospective-recall` whisper and only
+        // rides it in the LLM recall text) — P4.d15 unit 3 wires that.
+        retrospective_recall: None,
     };
     let persona_whisper =
         crate::services::commonplace_notifications::build_commonplace_persona_whisper(&cmpb_parts);

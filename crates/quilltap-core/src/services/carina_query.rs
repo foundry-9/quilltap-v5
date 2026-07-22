@@ -1006,6 +1006,7 @@ where
                 inter_char: None,
                 knowledge: None,
                 relevant_conversations: None,
+                retrospective_recall: None,
             },
         ),
     )

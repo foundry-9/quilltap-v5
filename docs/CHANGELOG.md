@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.d15 unit 2: the Commonplace Book writer learns the retrospective
+mini-recap — a seventh CommonplaceParts section (retrospectiveRecall)
+with its persona and LLM-context framings, plus the new
+retrospective-recall whisper kind. The section is turn-specific and
+posted in its own whisper, so it is swept by the same sweep as the
+consolidated whisper. The writer differential grew from 26 to 36 rows
+over a fresh v4 8bf3cb5f oracle.
+
 P4.d15 unit 1: the recall-history retro-signature machinery — the
 RETRO_SIGNATURE_TURNS cap (3) and appendRetroSignature, the write half of
 the retrospective mini-recap spam guard. Round 2 had ported

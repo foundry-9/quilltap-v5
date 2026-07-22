@@ -38,6 +38,10 @@ fn parts_case(id: &str) -> CommonplaceParts {
                 "### Relevant Past Conversations\n\n#### The Heist (`conv-1`)\n\n_note_".into(),
             )
         }
+        "only-retrospective-recall" => p.retrospective_recall = Some(
+            "### Relevant Past Conversations\n\n#### The Heist (2024-06-05) (`conv-1`)\n\n_note_"
+                .into(),
+        ),
         "all-six" => {
             p.current_state = Some("The clock reads noon.".into());
             p.recap = Some("A long recap.".into());
@@ -45,6 +49,23 @@ fn parts_case(id: &str) -> CommonplaceParts {
             p.inter_char = Some("About the others.".into());
             p.knowledge = Some("From the shelves.".into());
             p.relevant_conversations = Some("Past dialogues.".into());
+        }
+        "all-seven" => {
+            p.current_state = Some("The clock reads noon.".into());
+            p.recap = Some("A long recap.".into());
+            p.relevant = Some("Relevant entries.".into());
+            p.inter_char = Some("About the others.".into());
+            p.knowledge = Some("From the shelves.".into());
+            p.relevant_conversations = Some("Past dialogues.".into());
+            p.retrospective_recall = Some("Dated pages.".into());
+        }
+        "whitespace-only-retrospective-recall" => p.retrospective_recall = Some(" \n\t ".into()),
+        "padded-retrospective-recall-trimmed" => {
+            p.retrospective_recall = Some("   riffled pages   ".into())
+        }
+        "relevant-and-retrospective-recall" => {
+            p.relevant = Some("The entries.".into());
+            p.retrospective_recall = Some("The dated list.".into());
         }
         "whitespace-only-current-state" => p.current_state = Some("   \n\t ".into()),
         "whitespace-dropped-mixed" => {

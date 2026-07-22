@@ -49,6 +49,13 @@ pub enum CommonplaceWhisperKind {
     InterCharacterMemories,
     Consolidated,
     RelevantConversations,
+    /// Recall-on-reference (fourth cadence): the scoped, dated mini-recap posted
+    /// on a RETROSPECTIVE turn — the user referenced past shared events, so the
+    /// Commonplace Book surfaces the relevant past conversations with dates and
+    /// `read_conversation` UUIDs. Turn-specific: swept by the SAME sweep as the
+    /// consolidated whisper (unlike `relevant-conversations`, which the sweep
+    /// exempts).
+    RetrospectiveRecall,
 }
 
 impl CommonplaceWhisperKind {
@@ -60,6 +67,7 @@ impl CommonplaceWhisperKind {
             CommonplaceWhisperKind::InterCharacterMemories => "inter-character-memories",
             CommonplaceWhisperKind::Consolidated => "consolidated",
             CommonplaceWhisperKind::RelevantConversations => "relevant-conversations",
+            CommonplaceWhisperKind::RetrospectiveRecall => "retrospective-recall",
         }
     }
 }
@@ -83,6 +91,11 @@ pub struct CommonplaceParts {
     /// the fold-triggered refresh whisper; the per-turn consolidated whisper
     /// leaves this empty.
     pub relevant_conversations: Option<String>,
+    /// Retrospective mini-recap (recall-on-reference): the dated, drillable
+    /// conversation list emitted when the turn references past shared events.
+    /// Rides in the LLM recall text and in its own `retrospective-recall`
+    /// whisper — NEVER inside the consolidated whisper body.
+    pub retrospective_recall: Option<String>,
 }
 
 /// Trim + drop-empty view of a part (v4 `parts.x?.trim()` truthiness).
@@ -128,6 +141,11 @@ pub fn build_commonplace_persona_whisper(parts: &CommonplaceParts) -> String {
             "*The conversation has wandered on, and the Commonplace Book re-marks the past dialogues that now bear on the present —*\n\n{s}"
         ));
     }
+    if let Some(s) = trimmed(&parts.retrospective_recall) {
+        sections.push(format!(
+            "*You speak of days gone by, and the Commonplace Book obligingly riffles back through its dated pages —*\n\n{s}"
+        ));
+    }
     crate::jsstr::js_trim(&sections.join("\n\n")).to_string()
 }
 
@@ -159,6 +177,11 @@ pub fn build_commonplace_llm_context(parts: &CommonplaceParts) -> String {
     if let Some(s) = trimmed(&parts.relevant_conversations) {
         sections.push(format!(
             "You also recall these past conversations that bear on the present:\n\n{s}"
+        ));
+    }
+    if let Some(s) = trimmed(&parts.retrospective_recall) {
+        sections.push(format!(
+            "The past is being referenced — these past conversations cover the period in question:\n\n{s}"
         ));
     }
     crate::jsstr::js_trim(&sections.join("\n\n")).to_string()

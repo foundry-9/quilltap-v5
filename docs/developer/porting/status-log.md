@@ -27616,6 +27616,33 @@ v4's omit-when-empty). Green: 14 parse / 5 set / 10 append / 11 parseSig
 **Gate:** `cargo fmt --all --check` clean; clippy `--workspace
 --all-targets -D warnings` clean; `cargo test --workspace` 0 failed.
 Versions: core 0.0.314, harness 0.0.271.
+
+## P4.d15 unit 2 — the Commonplace writer's `retrospectiveRecall` part + the `retrospective-recall` kind
+
+**What landed:** `services/commonplace_notifications.rs` gains
+`CommonplaceWhisperKind::RetrospectiveRecall` (`"retrospective-recall"`,
+carrying v4's doc-comment rule: turn-specific, swept by the SAME sweep as
+the consolidated whisper — unlike `relevant-conversations`, which the
+sweep exempts) and `CommonplaceParts.retrospective_recall`, handled LAST
+in both builders: persona `*You speak of days gone by, and the
+Commonplace Book obligingly riffles back through its dated pages —*`,
+LLM `The past is being referenced — these past conversations cover the
+period in question:`. Both go through the same `trimmed()` truthiness as
+the other six sections. Two struct-literal call sites took the new field:
+`build_context.rs`'s `cmpb_parts` (explicitly `None` — v4 keeps the
+mini-recap OUT of the consolidated persona body; unit 3 wires the LLM
+side) and `carina_query.rs`'s single-part literal.
+
+**Differential:** `QT_ORACLE_PO_COMMONPLACE` regenerated FRESH at
+`8bf3cb5f`, 26 → 36 rows (5 new cases × persona+llm):
+only-retrospective-recall (a real dated block), all-seven,
+whitespace-only (dropped), padded (trimmed), and
+relevant-and-retrospective-recall (section ORDER pinned — the mini-recap
+renders after every other section). Green: 36/36.
+
+**Gate:** fmt clean; clippy `--workspace --all-targets -D warnings`
+clean; `cargo test --workspace` 0 failed with both this lane's oracles
+set. Versions: core 0.0.315, harness 0.0.272.
 ## P4.d14 unit 1 — the clocked creation prompts + EVENT machinery + the creation-side anchors (2026-07-22)
 
 **Lane:** `claude/p4-episodic-creation-fold-4f22bd` (round 3, lane A).
