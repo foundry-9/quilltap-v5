@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9H1 unit 2: CollapsibleCard learned v4's controlled mode (bind isOpen,
+hear openChange) so a parent can drive single-open accordion behavior -
+the chat sidebar's section model needs it. Uncontrolled use is unchanged;
+in controlled mode the card never opens itself, it only reports the next
+desired state (forceOpen notifies instead of opening, matching v4). SPA
+0.5.247.
+
 P4.9H1 unit 1: the client-side turn-order display core (v4
 lib/chat/turn-manager's browser-reachable slice - computePredictedTurnOrder,
 createInitialTurnState, the three queue helpers the sidebar's optimistic

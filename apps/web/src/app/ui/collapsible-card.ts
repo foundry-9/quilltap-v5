@@ -3,9 +3,11 @@ import {
   Component,
   ElementRef,
   OnInit,
+  computed,
   effect,
   inject,
   input,
+  output,
   signal,
 } from '@angular/core';
 
@@ -16,6 +18,11 @@ import { Icon, type IconName } from './icon';
  * `components/ui/CollapsibleCard.tsx`). Supports deep-linking: `sectionId` becomes
  * the element id and `forceOpen` opens the card and scrolls it into view once.
  * The `qt-collapsible-card-*` classes carry over verbatim.
+ *
+ * Two modes, as in v4: UNCONTROLLED (the default — the card owns its open
+ * state) and CONTROLLED (`isOpen` bound; the parent owns it and hears
+ * `openChange`), which is what a single-open accordion needs. The controlled
+ * arm arrived with P4.9H1's chat sidebar; v4 has had it since the sidebar did.
  */
 @Component({
   selector: 'qt-collapsible-card',
@@ -67,8 +74,20 @@ export class CollapsibleCard implements OnInit {
   readonly sectionId = input<string | undefined>(undefined);
   /** When true, forces the card open and scrolls it into view (one-shot). */
   readonly forceOpen = input(false);
+  /**
+   * Controlled-mode open state (v4 `isOpen`). When bound, it is the source of
+   * truth and the internal store is ignored; pair with {@link openChange} so a
+   * parent can drive single-open accordion behaviour (v4's ChatSidebar does).
+   * `undefined` ⇒ uncontrolled, byte-identical to the pre-P4.9H1 behaviour.
+   */
+  readonly open = input<boolean | undefined>(undefined, { alias: 'isOpen' });
+  /** Controlled-mode setter (v4 `onOpenChange`) — the next desired open state. */
+  readonly openChange = output<boolean>();
 
-  protected readonly isOpen = signal(false);
+  private readonly uncontrolledOpen = signal(false);
+  /** v4's `isControlled = controlledIsOpen !== undefined`. */
+  protected readonly isControlled = computed(() => this.open() !== undefined);
+  protected readonly isOpen = computed(() => this.open() ?? this.uncontrolledOpen());
   private scrolled = false;
 
   constructor() {
@@ -78,7 +97,14 @@ export class CollapsibleCard implements OnInit {
     // only their defaults.)
     effect(() => {
       if (this.forceOpen()) {
-        this.isOpen.set(true);
+        // In controlled mode the parent owns open state — only notify (v4).
+        if (this.isControlled()) {
+          if (!this.open()) {
+            this.openChange.emit(true);
+          }
+        } else {
+          this.uncontrolledOpen.set(true);
+        }
         if (!this.scrolled) {
           this.scrolled = true;
           requestAnimationFrame(() =>
@@ -93,10 +119,14 @@ export class CollapsibleCard implements OnInit {
 
   ngOnInit(): void {
     // Bound inputs have resolved by ngOnInit — seed the initial open state now.
-    this.isOpen.set(this.defaultOpen() || this.forceOpen());
+    this.uncontrolledOpen.set(this.defaultOpen() || this.forceOpen());
   }
 
   protected toggle(): void {
-    this.isOpen.update((v) => !v);
+    if (this.isControlled()) {
+      this.openChange.emit(!this.open());
+      return;
+    }
+    this.uncontrolledOpen.update((v) => !v);
   }
 }

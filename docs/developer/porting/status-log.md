@@ -27615,6 +27615,24 @@ than inventing a richer client state.
 cases, both factory helpers) plus a queue-helper block (`addToQueue` returns the
 SAME object on a duplicate — pinned). `ng test`: 204 files / 2,468 (from the
 round-2 baseline 203 / 2,448). No Rust touched.
+
+## P4.9H1 unit 2 — CollapsibleCard's controlled mode
+
+v5's `ui/collapsible-card.ts` ported only v4's UNCONTROLLED arm (the card owns
+its open state) — every consumer so far wanted that. v4's ChatSidebar drives a
+**single-open accordion**, which needs the controlled arm
+(`CollapsibleCard.tsx:28-34`, `isOpen` + `onOpenChange`). Ported:
+
+- `isOpen` input (aliased from `open`) — `undefined` ⇒ uncontrolled (existing
+  consumers byte-identical); bound ⇒ the parent owns the state.
+- `openChange` output — the header click reports the NEXT desired state and the
+  card does NOT move itself (v4's `handleHeaderClick` branch).
+- `forceOpen` in controlled mode NOTIFIES instead of opening (v4's effect
+  branch), and still scrolls into view once.
+
+Verified: new `ui/collapsible-card.spec.ts` (4 cases — uncontrolled toggle,
+`defaultOpen`, controlled round-trip, and the deaf-parent case proving the card
+stays shut when `openChange` is ignored). `ng test` 205 files / 2,472.
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch
