@@ -29194,3 +29194,64 @@ though both tokens are present (the rendered value came out
 `classList.contains`.
 
 **Gate:** `ng test` **210 files / 2,491 / 0** (the new spec by name).
+
+## P4.d17 unit 4 — the indicator adopted in `streaming-message.ts` (2026-07-22)
+
+v4 spreads its four `QuillAnimation` call sites over three components
+(`StreamingMessage`, `ChatComposer`'s status strip, `PendingToolCalls`);
+v5 folds all three surfaces into `chat/streaming-message.ts`, so all four
+land in one file. Each site carries a template comment naming its v4
+origin.
+
+| v4 site | v5 site | props |
+| --- | --- | --- |
+| `StreamingMessage:100` (awaiting) | the `waitingForResponse && !content && !reasoning` branch | `size="lg"`, default label |
+| `StreamingMessage:122` (prose tail) | directly after `qt-message-content` in the live bubble | `size="sm"`, `inline-block ml-2 qt-text-secondary` |
+| `ChatComposer:241` (status strip) | `.qt-chat-response-status-icon`, gated on `stage === 'streaming'` | `size="sm"`, `label=null` |
+| `PendingToolCalls:50` (pending tools) | the per-call row's ✓/✗ slot | `size="sm"`, `label=null`, `qt-text-secondary` |
+
+**Three shape divergences, all forced by v5's existing structure:**
+
+1. **The awaiting state loses its bubble.** v5 rendered
+   `<div class="qt-chat-message qt-chat-message-assistant"><span
+   class="qt-text-muted italic text-sm">…</span></div>`. v4's awaiting
+   branch is a bare `qt-text-secondary` div holding the large quill — no
+   bubble chrome. v5 now matches v4. (This also keeps the indicator clear
+   of the bubble, which matters given the overflow caveat in unit 2's
+   banner.) Nothing asserted the old `…`.
+2. **The prose tail has one home, not N.** v4 walks an interleaved
+   `parts` array and attaches the tail to the LAST text segment; v5
+   renders one prose blob followed by the tool batches, so the tail sits
+   directly after `qt-message-content`. It renders unconditionally inside
+   the live-bubble branch, which is v4's behavior too — verified safe
+   because EVERY terminal reducer path (`turnComplete`, `chainComplete`,
+   `skipped`, `emptyResponse`, `pendingExternalTurn`, normal completion)
+   clears `content`/`reasoning`, so the branch cannot outlive the turn.
+3. **The pending-tool indicator is per row, not per batch.** v4's
+   `PendingToolCalls` renders ONE summary row per batch (names
+   comma-joined) with a single quill when `some(pending)`; v5 renders a
+   row per call with a ✓/✗ status glyph. The quill takes that slot when a
+   call is still pending — so v4's "some pending ⇒ an indicator shows"
+   holds, expressed per row. v5 has no `ml-auto` here (v4's row is a flex
+   container; v5's `qt-chat-tool-embedded` is not, and making it one
+   would restyle the settled-message tool rows too).
+
+**Coverage:** `streaming-message.spec.ts` grew a `the waiting quill`
+block — the large labelled quill on the awaiting state (and the bubble's
+absence), the small tail once content streams, the strip quill unlabelled
+on `streaming`, five per-stage cases proving the pulsing dot survives
+everywhere else, and the pending/settled tool-row split.
+
+**Two gotchas banked:**
+
+- **Template comments cannot hold backticks** — an HTML comment inside an
+  Angular template literal is still inside a JS template literal, so a
+  backticked term terminates the template and the compiler reports a
+  cascade of nonsense TS errors at the `@Component({` line
+  (`This expression is not callable`). Use plain quotes in template
+  comments. (Previously banked in `p4.6bc`; re-confirmed.)
+- **`TestBed` cannot be reconfigured once instantiated**, so a loop over
+  variants INSIDE one `it` fails on its second `render()`. Generate one
+  `it` per variant instead.
+
+**Gate:** `ng test` **210 files / 2,500 / 0**; `ng build` clean.

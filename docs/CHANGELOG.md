@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+The Salon shows the waiting quill again. While a reply is awaited the
+large quill rocks in place of the old "…"; a small one trails the live
+prose as it streams, sits in the status strip while tokens arrive (the
+pulsing dot stays on every other stage), and marks each tool call still
+running. The three indicators inside already-labelled live regions are
+silent to screen readers; only the awaiting one announces "Writing…".
+
 Added `qt-quill-animation`, the waiting/streaming quill component (v4's
 `QuillAnimation`): a `size` of `lg` or `sm`, an optional call-site class,
 and a `label` that defaults to "Writing…" and can be set to `null` where
