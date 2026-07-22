@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.d16 unit 2 — the `?open=` intent layer catches up with v4 `8d86847a`.
+`salon-list` and `character-view` join the openable kinds (the spec that
+ASSERTED character-view's exclusion is flipped — v5 had the tab kind all
+along, only the intent layer excluded it), `character-view` shares the
+character-edit `{ characterId, tab }` payload arm and its missing-id
+skip, and `prospero`/`scriptorium`/`aurora` read their drill ids
+(`projectId`/`storeId`/`groupId`). A terminal intent now resolves to
+v4's two-step: the Salon parent opens FIRST (it is the portal source for
+the live PTY) and the terminal opens as its child tab, so closing the
+conversation still cascades the terminal. The two-step rides a new
+optional `parent` on the parsed intent plus `applyOpenIntent`, which the
+host calls in place of its inline `openTab`. v4's own +73 intent-layer
+test delta is ported case-for-case, its component probe replayed against
+the real WorkspaceService.
+
 P4.d16 unit 1 — the workspace pure core adopts v4 `8d86847a` and the
 captured corpus moves to baseline `e646f58b`. New `salon-list` tab kind
 (the all-chats list hosted as a tab), the three optional drill-in

@@ -1,7 +1,7 @@
 /**
  * WorkspaceHost — the two-pane tab host (port of v4 `WorkspaceHost.tsx` +
  * `WorkspaceProviders.tsx` + the intent/interceptor/shortcuts wiring, baseline
- * `b8b12695`). The routed component at `/workspace`.
+ * `e646f58b`). The routed component at `/workspace`.
  *
  * Renders EVERY open tab's view at once as a flat list of siblings in one CSS
  * grid; each view is positioned into its pane via `grid-column` and hidden (not
@@ -53,7 +53,7 @@ import { WorkspaceDivider } from './workspace-divider';
 import { WorkspaceBackdrop } from './workspace-backdrop';
 import { applyWorkspaceShortcut } from './workspace-shortcuts';
 import { interpretWorkspaceLinkClick } from './link-interceptor';
-import { parseOpenIntent } from './workspace-intent';
+import { applyOpenIntent, parseOpenIntent } from './workspace-intent';
 
 /** Divider column thickness (px). */
 const DIVIDER_PX = 8;
@@ -218,7 +218,7 @@ export class WorkspaceHost implements OnInit {
   private applyIntent(pm: ParamMap): void {
     if (!pm.get('open')) return;
     const intent = parseOpenIntent(pm);
-    if (intent) this.ws.openTab(intent.kind, intent.payload);
+    if (intent) applyOpenIntent(this.ws, intent);
     // Strip the intent params; keep the resting URL a clean /workspace.
     void this.router.navigate(['/workspace'], { replaceUrl: true });
   }
