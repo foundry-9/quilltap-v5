@@ -9,6 +9,55 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round planned — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1), 2026-07-22
+
+Planned via /setupphase ("round 3 — the campaign's final round").
+Drift-check at planning: v4 HEAD == `8bf3cb5f`, tree clean — no new
+drift; the round absorbs the FINAL un-ported portion of `8bf3cb5f`.
+
+**Three parallel lanes, disjoint file ownership:**
+
+- `work-orders/p4.d14-episodic-creation-fold.md` — lane A (Rust):
+  workstream A-creation + E. The clocked creation prompts +
+  EVENT/`kind`/`when`/`entities` + `capCandidates`; the processor
+  anchors + turn-path `occurredAt` stamp; the first-write
+  `applyEpisodicFallbackAnchors` (memory-service.ts:193 — NOT the gate
+  file); the gate date guard + reinforce anchor upgrades + embedding
+  anchor line — **`QT_ORACLE_GATE` un-SKIPs here**; the NEW
+  fold-episode pass (`fold-episode-pass.ts`, 228 lines) +
+  context-summary wiring + fold Timeline; the housekeeping
+  `mergeSimilar` date guard. Owns memory_tasks/processor/gate/service
+  + `services/context_summary/**` + new `services/fold_episode_pass.rs`
+  + `services/housekeeping.rs` + `services/mod.rs`. Families:
+  gate/processor/memory-tasks-creation/carina (zero-diff, transitive)
+  /context-summary/housekeeping + NEW fold-episode, all at `8bf3cb5f`.
+- `work-orders/p4.d15-retro-minirecap-whisper.md` — lane B (Rust):
+  workstream C part 2. The scoped mini-recap (the round-2
+  vault-summary `time_range` gains its first caller), the
+  `retrospective-recall` whisper + consolidated-sweep membership, the
+  spam guard, recall-history `retroSignatures`
+  (`RETRO_SIGNATURE_TURNS = 3`) + writer `retrospectiveRecall` part.
+  The build-context tier-3 fixture EXTENDS with matching vault
+  summaries (round 2's no-match guard inverts; one inert arm kept).
+  Owns `services/build_context.rs`, `recall_history.rs`,
+  `services/commonplace_notifications.rs`. Rider: the compression
+  keep/drop flip is comment-only (v5's `compressMemories` was never
+  ported — tracked deferral at `build_context.rs:2264`).
+- `work-orders/p4.9h1-chat-sidebar-storys-clock.md` — the SPA lane:
+  the ChatSidebar vertical (the M6 `p4.9h` bucket SPLITS; `p4.9h2` =
+  the settings remainder, banked) hosting **the Story's Clock**
+  (`ChatSidebar.tsx:1147–1165`, copy verbatim) over the frozen chat-PUT
+  `timelineMode` arm. Owns `apps/web`; no server edits; owns the
+  in-round Playwright run (server lanes defer full Playwright to the
+  unifier — port-4319 discipline).
+
+Planning survey notables: `carina-memory-extraction.ts` +
+`turn-transcript.ts` have ZERO v4 diff (families regen transitively);
+Pascal `persist` stays deferred (deferred in v4 itself); the batched
+legacy re-embed was never built in v4 (not a gap). After this round
+the campaign CLOSES; the gate/processor/memory-tasks-creation/
+context-summary/carina/recall-history vintages all move to `8bf3cb5f`.
+
 ## Round record — the episodic-recall drift catch-up, ROUND 2 of 3 (P4.d13, single lane): UNIFIED on main (2026-07-21)
 
 **P4.d13 CLOSED — tier-1 units 1–8 + tier-2 items 9/10 landed (11 n/a).**

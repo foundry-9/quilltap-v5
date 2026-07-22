@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned round 3 of the episodic-recall drift catch-up — the campaign's
+final round — as three parallel work orders (docs only, no code):
+P4.d14 (creation-side extraction, the fold-episode pass, the gate date
+guard and housekeeping merge guard), P4.d15 (the retrospective
+mini-recap, the retrospective-recall whisper, the spam guard, and the
+recall-history retro-signature machinery), and P4.9H1 (the ChatSidebar
+SPA vertical hosting the Story's Clock timeline-mode switch; the M6
+p4.9h bucket splits, with the settings remainder banked as p4.9h2).
+Drift-checked at planning: v4 HEAD still 8bf3cb5f, tree clean.
+
 Unified round 2 of the episodic-recall drift catch-up (P4.d13, single
 lane) — the episodic columns now earn their keep. Retrieval is time- and
 entity-aware end-to-end (per-turn episodic signals with a TODAY clock

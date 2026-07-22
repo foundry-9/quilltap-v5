@@ -2217,6 +2217,54 @@ memory-tasks CREATION cases + context-summary/fold + carina-extraction
 families stay at `7e6d13e5` until round 3 ports them. (Original
 round-1 planning section follows.)
 
+**ROUND 3 PLANNED (2026-07-22) — three parallel lanes (orders
+committed):** drift-check at planning: v4 HEAD == `8bf3cb5f`, tree
+clean — no new drift; the round absorbs the FINAL un-ported portion of
+`8bf3cb5f` (workstreams A-creation + C part 2 + E) plus the Story's
+Clock SPA.
+
+- **P4.d14** (`work-orders/p4.d14-episodic-creation-fold.md`) — lane A,
+  Rust: the clocked creation prompts (CLOCK block, EVENT category,
+  `kind`/`when`/`entities` coercion, `capCandidates`), the processor
+  `resolveCandidateAnchors` + turn-path `occurredAt` stamp, the
+  first-write `applyEpisodicFallbackAnchors`, the gate date guard +
+  reinforce anchor upgrades + embedding anchor line (**`QT_ORACLE_GATE`
+  un-SKIPs and goes green here**), the NEW fold-episode pass +
+  context-summary wiring, the fold Timeline, the housekeeping
+  `mergeSimilar` guard. Owns the memory subsystem files +
+  `services/context_summary/**` + `services/mod.rs`.
+- **P4.d15** (`work-orders/p4.d15-retro-minirecap-whisper.md`) — lane
+  B, Rust: buildContext PART 2 — the scoped mini-recap (the
+  vault-summary `time_range` gains its first production caller), the
+  `retrospective-recall` whisper + sweep membership, the spam guard,
+  the recall-history retro-signature machinery; the build-context
+  fixture EXTENDS with matching vault summaries (the round-2 no-match
+  guard inverts, keeping one inert arm). Owns
+  `services/build_context.rs`, `recall_history.rs`,
+  `services/commonplace_notifications.rs`. Rider: the compression
+  keep/drop flip needs NO code (v5's `compressMemories` is an unported
+  tracked deferral — comment update only, `build_context.rs:2264`).
+- **P4.9H1** (`work-orders/p4.9h1-chat-sidebar-storys-clock.md`) — the
+  SPA lane: the ChatSidebar vertical (the M6 `p4.9h` bucket SPLITS —
+  this is the sidebar half; the settings remainder stays banked as
+  `p4.9h2`) with **the Story's Clock** select (v4
+  `ChatSidebar.tsx:1147–1165`, copy verbatim) over the frozen round-2
+  chat-PUT `timelineMode` arm. Owns `apps/web`; NO server changes;
+  owns the in-round Playwright run (the server lanes defer full
+  Playwright to the unifier — port-4319 discipline).
+
+Planning survey findings recorded in the orders: v4's
+`carina-memory-extraction.ts` and `turn-transcript.ts` have ZERO diff
+at `8bf3cb5f` (their families regen transitively);
+`applyEpisodicFallbackAnchors` lives in `memory-service.ts:193` (not
+the gate file); v5's `compressMemories` was never ported (the flip is
+a comment-only disposition); the Story's Clock's v4-faithful home is
+the unported ChatSidebar, hence the p4.9h split. Pascal `persist`
+stays deferred (deferred in v4 itself). After this round the campaign
+CLOSES and the whole oracle baseline should be uniformly `8bf3cb5f`
+except families untouched since earlier vintages (established
+pattern).
+
 **ROUND 2 PLANNED (2026-07-21):** the order is
 `work-orders/p4.d13-episodic-retrieval-tools-replay.md` — a deliberate
 SINGLE lane (D's search handler and the §3 replay both consume B's new
