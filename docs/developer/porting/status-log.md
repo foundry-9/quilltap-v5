@@ -29327,3 +29327,52 @@ Comment only, no behavior.
 **Gate:** `ng build` clean, `brand.svg` present in the built
 `dist/quilltap/browser/themes/madmans-box/icons/`; `ng test` **210 files
 / 2,500 / 0**.
+
+## P4.d17 unit 6 (tier 2) — the live e2e pins (2026-07-22)
+
+**`e2e/salon-thinking-indicator.spec.ts` (new).** A real send through the
+real binary + spine, caught mid-stream: no `.qt-thinking-indicator` on
+the settled conversation → send → the indicator is visible and carries
+`data-icon="thinking"` → the `[data-stage="streaming"]` strip holds the
+quill and NOT `.animate-pulse` → the reply lands and every indicator is
+gone.
+
+Two things the beat had to get right:
+
+- **The mock had to slow down.** `startMockLlm` wrote every content delta
+  in one synchronous burst, so the turn could settle before Playwright's
+  first assertion polled — the beat would have been a coin flip. It gained
+  an optional third arg `delayMs` (default **0**, so every existing beat's
+  stream is byte-for-byte what it was) that spaces the deltas; this beat
+  asks for 350ms. That is a property of the SERVER side, not a sleep on
+  the test side.
+- **The send lands in "Group Expedition", never "Solo Voyage."** The
+  P4.6ap chat-totals beat (`salon-token-cost-flow.spec.ts`) asserts a
+  hardcoded `15.4K tokens` baseline for Solo Voyage, and every message
+  sent there shifts it — the exact landmine the P4.d9 round hit. This
+  file sorts BEFORE `salon-token-cost-flow` alphabetically, so a Solo
+  Voyage send here would have broken it. No spec asserts totals or counts
+  on the group chat (the P4.d9 math beat already sends there).
+
+**`e2e/foundation.spec.ts` (extended).** After the existing art-deco
+apply, the walk applies Madman's Box and proves BOTH theme hunks through
+the SERVED pack rather than by reading the file:
+
+- 1.1.6 — computed `fontVariantCaps` on the Settings heading is
+  `small-caps`.
+- 1.1.7 — a scratch `<span class="qt-icon" data-icon="thinking">` appended
+  to the body computes a `maskImage` containing
+  `/themes/madmans-box/icons/brand.svg`, i.e. the pack's UNLAYERED
+  override actually beats core's `@layer components` default. (Probed on a
+  scratch element because no thinking icon is mounted on that screen.)
+- It then restores art-deco: the theme preference persists server-side
+  (`chat_settings.themePreference`), and the rest of the suite runs
+  against the state this spec leaves behind.
+
+**Run:** targeted only, per the round's Playwright arbitration (P4.d16
+owns port 4319 and the full suite). Ports moved locally to 4419 / 45401
+per the `e2e-port-4319-cross-worktree-kill` recipe, run, then
+`git checkout -- e2e/support/env.ts` — **the move is NOT committed**.
+Result: `foundation.spec.ts` + `salon-thinking-indicator.spec.ts`
+**2 passed (7.6m — cold global setup)**, against freshly built debug
+binaries and a fresh `ng build` dist in this worktree.

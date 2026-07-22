@@ -18,7 +18,17 @@ export const MOCK_LLM_REPLY = 'The kettle is on. Do come in.';
 /** The model ids the mock advertises (the Settings wizard/profile-modal fetch). */
 export const MOCK_LLM_MODELS = ['mock-model', 'mock-model-mini'];
 
-export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Promise<MockLlm> {
+/**
+ * `delayMs` spaces the content deltas apart instead of writing them in one go.
+ * The default 0 keeps every existing beat's instant stream; a beat that needs to
+ * OBSERVE the in-flight UI (the thinking indicator) asks for a slow stream, since
+ * an instant one can settle before the first assertion polls.
+ */
+export async function startMockLlm(
+  reply: string = MOCK_LLM_REPLY,
+  port = 0,
+  delayMs = 0,
+): Promise<MockLlm> {
   const server = createServer((req, res) => {
     // The models-list + validate probe (OPENAI_COMPATIBLE `GET {baseUrl}/models`
     // → `{ data: [{ id }] }`; a successful list is also the connection validate).
@@ -45,7 +55,27 @@ export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Pr
       });
       const words = reply.split(' ');
       const model = 'mock-model';
-      for (let i = 0; i < words.length; i++) {
+      const finish = () => {
+        const finalChunk = {
+          id: 'mock-1',
+          object: 'chat.completion.chunk',
+          model,
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: words.length,
+            total_tokens: 10 + words.length,
+          },
+        };
+        res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+      };
+      const writeWord = (i: number) => {
+        if (i >= words.length) {
+          finish();
+          return;
+        }
         const content = (i === 0 ? '' : ' ') + words[i];
         const chunk = {
           id: 'mock-1',
@@ -54,21 +84,13 @@ export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Pr
           choices: [{ index: 0, delta: { content }, finish_reason: null }],
         };
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-      }
-      const finalChunk = {
-        id: 'mock-1',
-        object: 'chat.completion.chunk',
-        model,
-        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: words.length,
-          total_tokens: 10 + words.length,
-        },
+        if (delayMs > 0) {
+          setTimeout(() => writeWord(i + 1), delayMs);
+        } else {
+          writeWord(i + 1);
+        }
       };
-      res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
+      writeWord(0);
     });
   });
 

@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Pinned the waiting quill and the refreshed Madman's Box with live e2e
+beats: a real streamed send now proves the indicator mounts mid-stream
+and clears when the turn settles, and the foundation walk proves the
+pack's small-caps headings and its own-brand thinking glyph reach the
+page through the served stylesheet.
+
 Madman's Box is now 1.1.7. Headings switch from uppercase to small caps
 so a capital still reads as a capital (Raleway has no smcp table, so the
 weight goes 300 to 400 and tracking tightens to offset the synthesized

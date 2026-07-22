@@ -50,4 +50,35 @@ test('walks locked → unlock → shell, then applies a bundled theme', async ({
   await page.getByRole('button', { name: 'Appearance' }).click();
   await page.getByRole('button', { name: /Art Deco/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'art-deco');
+
+  // P4.d17 — Madman's Box 1.1.6/1.1.7, proven through the SERVED pack rather
+  // than by reading the file: the pack's stylesheet actually reaches the page.
+  await page.getByRole('button', { name: /Madman's Box/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'madmans-box');
+
+  // 1.1.6: headings render as small caps, not uppercase.
+  const heading = page.getByRole('heading', { name: 'Settings', exact: true });
+  await expect(async () => {
+    const caps = await heading.evaluate((el) => getComputedStyle(el).fontVariantCaps);
+    expect(caps).toBe('small-caps');
+  }).toPass({ timeout: 15_000 });
+
+  // 1.1.7: the pack's unlayered [data-icon="thinking"] override beats core's
+  // @layer default, so the indicator wears the theme's own brand mark. Probed on
+  // a scratch element — no thinking icon is mounted on this screen.
+  const mask = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.className = 'qt-icon';
+    probe.setAttribute('data-icon', 'thinking');
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).maskImage || getComputedStyle(probe).webkitMaskImage;
+    probe.remove();
+    return value;
+  });
+  expect(mask).toContain('/themes/madmans-box/icons/brand.svg');
+
+  // Restore art-deco: the preference persists server-side (chat_settings), and
+  // the rest of the suite runs against the state this spec leaves behind.
+  await page.getByRole('button', { name: /Art Deco/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'art-deco');
 });
