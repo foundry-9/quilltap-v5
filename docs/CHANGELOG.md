@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.9H1 unit 1: the client-side turn-order display core (v4
+lib/chat/turn-manager's browser-reachable slice - computePredictedTurnOrder,
+createInitialTurnState, the three queue helpers the sidebar's optimistic
+updates call, and getQueuePosition), ported ahead of the Salon chat
+sidebar. Display-only logic: the authoritative selection stays the
+server's. Verified by a spec mirroring v4's turn-order.test.ts
+case-for-case (15 cases) plus a queue-helper block. SPA 0.5.246.
 P4.d15 (episodic round 3, lane B) CLOSED: all three tier-1 units plus
 both tier-2 items landed on branch claude/p4-d15-retro-minirecap-c67001.
 Gate: fmt clean, clippy green in both feature sets, release build clean,

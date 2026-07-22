@@ -27576,6 +27576,45 @@ appear.** Disk discipline held (CARGO_INCREMENTAL=0 on every gate; the
 deleted after the final commit). Versions at lane end: core 0.0.313,
 harness 0.0.270, host 0.0.29, web 0.0.37, cli 0.0.2.
 
+## P4.9H1 unit 1 — the client turn-order display core (ChatSidebar lane start)
+
+**Lane:** `claude/chat-sidebar-stories-clock-6cce6c` (worktree). Baseline
+drift-check at lane start: `git log 8bf3cb5f..HEAD` in
+`~/source/quilltap-server` = EMPTY, tree clean — the round baseline holds.
+
+**Ported:** `apps/web/src/app/chat/turn-order.ts` — v4
+`lib/chat/turn-manager`'s browser-reachable slice, the sidebar's
+prerequisite:
+
+- `turn-order.ts` whole: `computePredictedTurnOrder` + `TurnOrderStatus` /
+  `TurnOrderEntry` (the 7-tier ordering: generating → next → queued →
+  eligible-by-talkativeness-desc → user → spoken → inactive-with-null-position).
+- `state.ts`: `createInitialTurnState` (v4's client `turnState` seed).
+- `queue.ts`: `addToQueue` / `removeFromQueue` / `nudgeParticipant` — the three
+  the sidebar's optimistic queue updates call. `popFromQueue` /
+  `resetCycleForUserSkip` are server-side only and stay unported here.
+- `utils.ts`: `getQueuePosition`.
+- `types.ts`: `TurnState` / `TurnSelectionResult`.
+
+**Why a client copy at all:** display-only. The authoritative selection is
+the server's (`chatTurnAction` → the ported `turn_orchestrator`); v4 keeps this
+copy so the sidebar can number the cast without a round-trip. v4's client
+`turnState` starts EMPTY (`SalonView.tsx:144`) and only ever takes `queue` back
+from the server (`useTurnManagement.applyServerResponse`) — `spokenSinceUserTurn`
+and `lastSpeakerId` never move in the browser. The port keeps that shape rather
+than inventing a richer client state.
+
+**Faithful quirks carried (with comments):**
+- Step 5 computes `isUserTurn` and then passes `'user-turn'` on BOTH branches
+  (v4 `turn-order.ts:148-150`) — kept verbatim.
+- Step 7's `'silent'` branch is unreachable: `isParticipantPresent('silent')` is
+  true, so a silent participant never reaches the inactive list. Kept.
+
+**Verification:** `apps/web/src/app/chat/turn-order.spec.ts` mirrors v4's
+`__tests__/unit/lib/chat/turn-manager/turn-order.test.ts` case-for-case (all 15
+cases, both factory helpers) plus a queue-helper block (`addToQueue` returns the
+SAME object on a duplicate — pinned). `ng test`: 204 files / 2,468 (from the
+round-2 baseline 203 / 2,448). No Rust touched.
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch
