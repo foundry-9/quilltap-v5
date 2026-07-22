@@ -34,6 +34,7 @@ import { TabPortalHost } from './tab-portal-host';
 // In-lane no-input screens.
 import { HomePage } from '../../screens/home/home-page';
 import { SalonList } from '../../screens/salon/salon-list';
+import { NewChatPage } from '../../screens/new-chat/new-chat-page';
 import { CharactersList } from '../../screens/characters/list/characters-list';
 import { ProsperoList } from '../../screens/prospero/prospero-list';
 import { ScriptoriumList } from '../../screens/scriptorium/scriptorium-list';
@@ -59,6 +60,7 @@ import type {
   CustomToolsTabPayload,
   DocumentStandaloneTabPayload,
   ProsperoTabPayload,
+  SalonNewTabPayload,
   SalonTabPayload,
   ScriptoriumTabPayload,
   SettingsTabPayload,
@@ -181,4 +183,17 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
     inputs: (tab) => ({ payload: tab.payload as DocumentStandaloneTabPayload }),
   },
   brahma: { component: BrahmaConsoleView },
+
+  // --- v5-only (P4.d16 tier 2): New Chat as a tab, not v4's modal ----------
+  'salon-new': {
+    component: NewChatPage,
+    inputs: (tab) => {
+      const p = tab.payload as SalonNewTabPayload | undefined;
+      return {
+        characterId: p?.characterId ?? null,
+        projectId: p?.projectId ?? null,
+        autonomous: p?.autonomous ?? false,
+      };
+    },
+  },
 };

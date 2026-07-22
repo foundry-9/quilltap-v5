@@ -68,6 +68,9 @@ const TAB_KINDS = [
   'character-view',
   'settings-wizard',
   'custom-tools',
+  // v5-only (P4.d16 tier 2): the hosted New-Chat screen. Listing it here is what
+  // lets a persisted salon-new tab survive a reload.
+  'salon-new',
 ] as const satisfies readonly TabKind[];
 const TAB_KIND_SET = new Set<string>(TAB_KINDS);
 

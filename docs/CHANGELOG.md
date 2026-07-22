@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.d16 unit 5 (tier 2) — `/salon/new` stops unmounting the workspace.
+v4 `8d86847a` redirects it with an `open=new-chat` intent that pops the
+NewChatModal; v5 never ported that modal, so the translation is a
+v5-only `salon-new` tab kind hosting the existing New-Chat SCREEN with
+the same three seeds (characterId / projectId / autonomous) carried as a
+tab payload. The route guard, the `?open=` parser, and the link
+interceptor's own `/salon/new` special case all target it —
+`parseHrefToIntent` still returns null there, exactly as v4 keeps it out
+of the pure mapper and the corpus pins. Back / Cancel close the tab the
+way the modal dismisses, and a created chat closes it as the destination
+opens. A character detail's `?action=chat` deep link now opens the
+detail tab with the New-Chat tab focused beside it (v4's legacy-page
+parity arm). The tab-meta corpus assertion now compares v4's key set and
+asserts the one v5-only row separately.
+
 P4.d16 unit 3 — the deep links that escaped the tabbed workspace now
 redirect into it (v4 `8d86847a`). Six routes gained a
 `workspaceRedirectGuard`: `/salon` opens the salon-list tab (the rail's

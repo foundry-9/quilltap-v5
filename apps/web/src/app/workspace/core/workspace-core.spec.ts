@@ -155,8 +155,20 @@ describe('workspace core — route-to-intent corpus', () => {
 });
 
 describe('workspace core — tab-meta table', () => {
-  it('matches v4 DEFAULT_TAB_META byte-for-byte', () => {
-    expect(DEFAULT_TAB_META).toEqual(corpus.tabMeta);
+  it('matches v4 DEFAULT_TAB_META byte-for-byte on every kind v4 declares', () => {
+    // v5-only kinds (P4.d16 tier 2's `salon-new`) have no v4 counterpart, so the
+    // comparison is over v4's key set; the v5-only rows are asserted below.
+    const v4Keys = Object.keys(corpus.tabMeta);
+    const mine = Object.fromEntries(
+      Object.entries(DEFAULT_TAB_META).filter(([kind]) => v4Keys.includes(kind)),
+    );
+    expect(mine).toEqual(corpus.tabMeta);
+  });
+
+  it('adds exactly one v5-only row (salon-new), and no others', () => {
+    const extra = Object.keys(DEFAULT_TAB_META).filter((k) => !(k in corpus.tabMeta));
+    expect(extra).toEqual(['salon-new']);
+    expect(DEFAULT_TAB_META['salon-new']).toEqual({ title: 'New Chat', icon: 'chat' });
   });
 });
 

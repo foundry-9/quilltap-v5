@@ -46,11 +46,6 @@ describe('interpretWorkspaceLinkClick', () => {
     expect(interpretWorkspaceLinkClick(click(span))).toEqual({ kind: 'prospero' });
   });
 
-  it('passes through /salon/new (v5 has no NewChatModal — the page navigates)', () => {
-    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new' })))).toBeNull();
-    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?projectId=p' })))).toBeNull();
-  });
-
   it('passes through modifier / middle clicks', () => {
     const a = anchor({ href: '/characters' });
     expect(interpretWorkspaceLinkClick(click(a, { metaKey: true }))).toBeNull();
@@ -73,6 +68,31 @@ describe('interpretWorkspaceLinkClick', () => {
   it('passes through when there is no anchor, and for hrefs with no tab equivalent', () => {
     expect(interpretWorkspaceLinkClick(click(document.createElement('div')))).toBeNull();
     expect(interpretWorkspaceLinkClick(click(anchor({ href: '/unlock' })))).toBeNull();
+  });
+
+  // P4.d16 tier 2: v4 intercepts /salon/new into its modal; v5 opens the tab
+  // that hosts the New-Chat screen, seeds and all.
+  it('opens the salon-new tab for /salon/new, carrying the modal seeds', () => {
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new' })))).toEqual({
+      kind: 'salon-new',
+      payload: undefined,
+    });
+    expect(
+      interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?characterId=abc' }))),
+    ).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: 'abc', projectId: undefined, autonomous: false },
+    });
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?autonomous=1' })))).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: undefined, projectId: undefined, autonomous: true },
+    });
+    expect(
+      interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?projectId=p' }))),
+    ).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: undefined, projectId: 'p', autonomous: false },
+    });
   });
 
   // v4 `8d86847a`: the salon list is a tab now — the rail's Chats item and the

@@ -1,5 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+
+import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 
 import { CoreClient } from '../../core/core-client';
 import { LoadingState } from '../../ui/loading-state';
@@ -14,6 +23,16 @@ import { NewChatState } from './new-chat.state';
  * `?characterId=`, and `?autonomous=1`; composes the character picker, the form,
  * the submit spine, and the Green Room dialog; ends in navigation to the created
  * chat (or, for an autonomous room, to the settings management list).
+ *
+ * **Workspace hosting (P4.d16 tier 2).** v4 opens New Chat as a MODAL; v5 never
+ * ported it (the standing no-modal divergence), so this screen is what the
+ * `salon-new` tab hosts. The three seeds arrive as inputs instead of query
+ * params, and — like v4's modal dismissal — Back / Cancel / a completed create
+ * CLOSE the tab (the `useCloseSelfTab` idiom). Routed mode is unchanged.
+ *
+ * The seeds are read in `ngOnInit`, not at field-init: a hosted component's
+ * inputs are set after construction, so the state must be built once they have
+ * landed (the routed path is identical — the snapshot is available either way).
  */
 @Component({
   selector: 'qt-new-chat-page',
@@ -24,12 +43,22 @@ import { NewChatState } from './new-chat.state';
       @if (state.loading()) {
         <qt-loading-state message="Loading..." />
       } @else {
-        <a
-          [routerLink]="backLink()"
-          class="mb-4 inline-flex items-center qt-label text-primary transition hover:text-primary/80"
-        >
-          ← Back to {{ backLabel() }}
-        </a>
+        @if (canClose()) {
+          <button
+            type="button"
+            class="mb-4 inline-flex items-center qt-label text-primary transition hover:text-primary/80"
+            (click)="closeSelf()"
+          >
+            ← Back to {{ backLabel() }}
+          </button>
+        } @else {
+          <a
+            [routerLink]="backLink()"
+            class="mb-4 inline-flex items-center qt-label text-primary transition hover:text-primary/80"
+          >
+            ← Back to {{ backLabel() }}
+          </a>
+        }
 
         <h1 class="mb-6 qt-heading-1">
           {{ autonomousRequested ? 'New Autonomous Room' : 'New Chat' }}
@@ -76,7 +105,13 @@ import { NewChatState } from './new-chat.state';
         </div>
 
         <div class="mt-6 flex justify-end gap-3">
-          <a [routerLink]="backLink()" class="qt-button qt-button-secondary">Cancel</a>
+          @if (canClose()) {
+            <button type="button" class="qt-button qt-button-secondary" (click)="closeSelf()">
+              Cancel
+            </button>
+          } @else {
+            <a [routerLink]="backLink()" class="qt-button qt-button-secondary">Cancel</a>
+          }
           <button
             type="button"
             (click)="create()"
@@ -92,24 +127,31 @@ import { NewChatState } from './new-chat.state';
     <qt-green-room-dialog />
   `,
 })
-export class NewChatPage {
+export class NewChatPage implements OnInit {
   private readonly core = inject(CoreClient);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly greenRoom = inject(GreenRoomStore);
+  /** Workspace-tab seams (P4.d16 tier 2); null ⇒ routed mode. */
+  private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
+  private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
 
-  private readonly params = this.route.snapshot.queryParamMap;
-  protected readonly autonomousRequested = this.params.get('autonomous') === '1';
+  /** Tab-mode seeds (v4's NewChatModal props); they win over the query params. */
+  readonly characterId = input<string | null>(null);
+  readonly projectId = input<string | null>(null);
+  readonly autonomous = input<boolean>(false);
 
-  protected readonly state = new NewChatState(
-    this.core,
-    {
-      initialCharacterId: this.params.get('characterId') ?? undefined,
-      projectId: this.params.get('projectId') ?? undefined,
-      initialAutonomous: this.params.get('autonomous') === '1',
-    },
-    this.greenRoom,
-  );
+  protected autonomousRequested = false;
+  protected state!: NewChatState;
+
+  /** Both seams present ⇒ hosted; back/cancel/create close the tab. */
+  protected canClose(): boolean {
+    return this.handle != null && this.tabId != null;
+  }
+
+  protected closeSelf(): void {
+    if (this.handle && this.tabId != null) this.handle.closeTab(this.tabId);
+  }
 
   protected readonly backLink = computed<string>(() => {
     const proj = this.state.project();
@@ -117,7 +159,21 @@ export class NewChatPage {
   });
   protected readonly backLabel = computed<string>(() => this.state.project()?.name ?? 'Chats');
 
-  constructor() {
+  ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    const characterId = this.characterId() ?? params.get('characterId') ?? undefined;
+    const projectId = this.projectId() ?? params.get('projectId') ?? undefined;
+    const autonomous = this.autonomous() || params.get('autonomous') === '1';
+    this.autonomousRequested = autonomous;
+    this.state = new NewChatState(
+      this.core,
+      {
+        initialCharacterId: characterId,
+        projectId,
+        initialAutonomous: autonomous,
+      },
+      this.greenRoom,
+    );
     void this.state.load();
   }
 
@@ -133,5 +189,9 @@ export class NewChatPage {
     } else {
       void this.router.navigate(['/salon', outcome.chatId]);
     }
+    // Hosted ⇒ the destination's redirect guard funnels that navigation back
+    // into a tab, so this one has done its job and closes (v4's modal dismisses
+    // on create).
+    if (this.canClose()) this.closeSelf();
   }
 }

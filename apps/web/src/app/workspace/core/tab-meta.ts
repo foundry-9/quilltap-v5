@@ -6,6 +6,9 @@
  * the store's `openTab` convenience when a caller supplies no explicit
  * title/icon. User-facing titles are in the house voice.
  *
+ * v5-only kinds (today: `salon-new`) are marked inline; the corpus assertion
+ * compares only the keys v4 declares.
+ *
  * The icon values are v4's canonical icon names. Every one of them exists
  * verbatim in v5's `ui/icon.ts` registry (all 21 map 1:1), so the table is kept
  * byte-for-byte — the tier-1 corpus diffs this table against v4's. Were a v4
@@ -52,6 +55,9 @@ export const DEFAULT_TAB_META: Record<TabKind, TabMeta> = {
   'character-view': { title: 'Character', icon: 'characters' },
   'settings-wizard': { title: 'Provider Setup', icon: 'wand' },
   'custom-tools': { title: "Pascal's Workbench", icon: 'wrench' },
+  // v5-ONLY (P4.d16 tier 2) — v4 has no such kind (New Chat is its modal), so
+  // this row is excluded from the corpus comparison below.
+  'salon-new': { title: 'New Chat', icon: 'chat' },
 };
 
 export function defaultTabMeta(kind: TabKind): TabMeta {

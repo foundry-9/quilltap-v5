@@ -38,9 +38,11 @@ import { workspaceRedirectGuard } from './workspace/workspace-redirect.guard';
  * carrying the id that drills its list tab into the target. The old docstring
  * called those exclusions "v4-faithful"; v4 moved, and so has v5.
  *
- * Still routed: `/salon/new` (v4 pops a modal there; v5's no-modal translation
- * is P4.d16 tier 2) and `/settings/wizard?mode=setup` (the fresh-instance
- * handoff, a documented divergence — see the guard's docstring).
+ * `/salon/new` redirects too, into a v5-only `salon-new` tab hosting the
+ * New-Chat screen — v4 pops a modal there, and v5 never ported it (the standing
+ * no-modal divergence; P4.d16 tier 2). The only remaining pass-through is
+ * `/settings/wizard?mode=setup` (the fresh-instance handoff, a documented
+ * divergence — see the guard's docstring).
  */
 export const routes: Routes = [
   {
@@ -49,7 +51,17 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/salon/salon-list').then((m) => m.SalonList),
   },
   {
+    // v4 pops its NewChatModal here (`open=new-chat`); v5 has no modal, so the
+    // New-Chat SCREEN is hosted as a v5-only `salon-new` tab carrying the same
+    // three seeds. See the tab kind's contract comment.
     path: 'salon/new',
+    canActivate: [
+      workspaceRedirectGuard('salon-new', (r) => ({
+        characterId: r.queryParamMap.get('characterId'),
+        projectId: r.queryParamMap.get('projectId'),
+        autonomous: r.queryParamMap.get('autonomous'),
+      })),
+    ],
     loadComponent: () => import('./screens/new-chat/new-chat-page').then((m) => m.NewChatPage),
   },
   {

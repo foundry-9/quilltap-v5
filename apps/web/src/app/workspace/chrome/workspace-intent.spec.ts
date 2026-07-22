@@ -132,6 +132,41 @@ describe('parseOpenIntent', () => {
     expect(parseOpenIntent(reader({ open: 'terminal' }))).toBeNull();
   });
 
+  // --- v5-only (P4.d16 tier 2): the salon-new tab, v4's modal translated ---
+  it('opens salon-new with the three modal seeds (or no payload)', () => {
+    expect(parseOpenIntent(reader({ open: 'salon-new' }))).toEqual({
+      kind: 'salon-new',
+      payload: undefined,
+    });
+    expect(
+      parseOpenIntent(reader({ open: 'salon-new', characterId: 'abc', autonomous: '1' })),
+    ).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: 'abc', projectId: undefined, autonomous: true },
+    });
+    expect(parseOpenIntent(reader({ open: 'salon-new', projectId: 'p1' }))).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: undefined, projectId: 'p1', autonomous: false },
+    });
+  });
+
+  it('adds the new-chat companion for character-view + action=chat', () => {
+    expect(
+      parseOpenIntent(reader({ open: 'character-view', characterId: 'abc', action: 'chat' })),
+    ).toEqual({
+      kind: 'character-view',
+      payload: { characterId: 'abc', tab: undefined },
+      also: {
+        kind: 'salon-new',
+        payload: { characterId: 'abc', projectId: undefined, autonomous: false },
+      },
+    });
+    // Any other action leaves the detail alone.
+    expect(
+      parseOpenIntent(reader({ open: 'character-view', characterId: 'abc', action: 'nope' })),
+    ).toEqual({ kind: 'character-view', payload: { characterId: 'abc', tab: undefined } });
+  });
+
   it('builds a document-standalone payload with a docKey derived from identity', () => {
     const out = parseOpenIntent(
       reader({ open: 'document-standalone', scope: 'document_store', mountPoint: 'm', filePath: 'notes.md' }),
@@ -239,6 +274,13 @@ describe('applyOpenIntent — the v4 8d86847a intent-layer delta', () => {
     const salon = tabs.find((t) => t.kind === 'salon')!;
     const terminal = tabs.find((t) => t.kind === 'terminal')!;
     expect(terminal.parentTabId).toBe(salon.id);
+  });
+
+  it('pops the new-chat tab for a character detail ?action=chat deep link', () => {
+    open({ open: 'character-view', characterId: 'abc', action: 'chat' });
+    const text = probe();
+    expect(text).toContain('character-view:abc:');
+    expect(text).toContain('salon-new:abc:');
   });
 
   // A re-drill re-uses the SAME singleton tab and re-targets its payload (the

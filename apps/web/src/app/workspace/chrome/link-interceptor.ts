@@ -14,10 +14,12 @@
  * `stopImmediatePropagation()`) so RouterLink's own bubble listener never fires.
  * Middle/modifier clicks pass through untouched.
  *
- * **v5 divergence:** v4 intercepts `/salon/new` into its NewChatModal; v5 never
- * ported that modal (P4.6q), so `/salon/new` passes through — the New-Chat PAGE
- * navigates and its redirect guard funnels creation (`/salon/:id`) straight back
- * into the workspace.
+ * **`/salon/new` (P4.d16 tier 2):** v4 special-cases it here into its
+ * NewChatModal, deliberately keeping it OUT of `parseHrefToIntent` (the corpus
+ * pins that null). v5 has no modal, so the special case opens the v5-only
+ * `salon-new` tab hosting the New-Chat screen — same shape, same place, one
+ * translated destination. The `?characterId=`/`?projectId=`/`?autonomous=1`
+ * seeds ride along exactly as v4 hands them to the modal.
  *
  * This module is the pure decision function; the host owns the DOM wiring.
  *
@@ -48,10 +50,22 @@ export function interpretWorkspaceLinkClick(e: MouseEvent): OpenIntent | null {
   const href = anchor.getAttribute('href') || '';
   if (!href.startsWith('/')) return null; // external / hash / relative
 
-  // /salon/new passes through (v5 has no NewChatModal — the page navigates and
-  // the redirect guard funnels the created chat back into the workspace).
-  const path = href.split('?')[0];
-  if (path === '/salon/new') return null;
+  // /salon/new is the interceptor's own case — never parseHrefToIntent's (v4
+  // keeps it null there; the corpus pins it).
+  const [path, query = ''] = href.split('?');
+  if (path === '/salon/new') {
+    const sp = new URLSearchParams(query);
+    const characterId = sp.get('characterId') || undefined;
+    const projectId = sp.get('projectId') || undefined;
+    const autonomous = sp.get('autonomous') === '1';
+    return {
+      kind: 'salon-new',
+      payload:
+        characterId || projectId || autonomous
+          ? { characterId, projectId, autonomous }
+          : undefined,
+    };
+  }
 
   return parseHrefToIntent(href);
 }

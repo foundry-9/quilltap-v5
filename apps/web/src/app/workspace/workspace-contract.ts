@@ -48,7 +48,18 @@ export type TabKind =
   | 'character-edit' // payload: CharacterEditTabPayload
   | 'character-view' // payload: CharacterViewTabPayload
   | 'settings-wizard'
-  | 'custom-tools'; // payload: CustomToolsTabPayload (absent = library view)
+  | 'custom-tools' // payload: CustomToolsTabPayload (absent = library view)
+  /**
+   * **v5-ONLY** (P4.d16 tier 2) — payload: {@link SalonNewTabPayload}. v4 opens
+   * New Chat as a MODAL (`open=new-chat` pops `NewChatModal`); v5 never ported
+   * that modal — New Chat is a full screen at `/salon/new` (the standing
+   * no-modal divergence, ruled in `p4.9j3-wardrobe-tab-riders.md`). Hosting
+   * that screen as a tab is the faithful translation: the deep link stops
+   * unmounting the workspace, and creating a chat self-closes the tab the way
+   * the modal dismisses. This kind is NOT in v4's `TabKind` union, so it never
+   * enters the captured corpus — see `core/workspace-core.spec.ts`.
+   */
+  | 'salon-new';
 
 /** Kind-specific tab payloads (v4 `lib/workspace/types.ts`, verbatim shapes). */
 export interface SalonTabPayload {
@@ -133,6 +144,16 @@ export interface CustomToolsTabPayload {
   mountPointId?: string;
   path?: string;
   create?: boolean;
+}
+/**
+ * **v5-only** (P4.d16 tier 2). The three seeds v4 hands its NewChatModal
+ * (`{ projectId?, characterId?, autonomous }`), carried as a tab payload
+ * instead. Absent payload = a blank New Chat.
+ */
+export interface SalonNewTabPayload {
+  characterId?: string;
+  projectId?: string;
+  autonomous?: boolean;
 }
 
 export interface WorkspaceTab {

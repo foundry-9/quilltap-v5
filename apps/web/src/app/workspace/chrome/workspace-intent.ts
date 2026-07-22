@@ -41,6 +41,8 @@ const OPENABLE_KINDS: ReadonlySet<TabKind> = new Set<TabKind>([
   'character-view',
   'settings-wizard',
   'custom-tools',
+  // v5-only (P4.d16 tier 2): v4's `open=new-chat` pops a modal; v5 opens a tab.
+  'salon-new',
 ]);
 
 const CHAT_KINDS: ReadonlySet<TabKind> = new Set<TabKind>(['salon', 'terminal', 'document']);
@@ -54,6 +56,12 @@ export interface OpenIntent {
    * for every other kind.
    */
   parent?: { kind: TabKind; payload?: unknown };
+  /**
+   * Opened AFTER this intent, as an independent tab (no parent link). v4's
+   * `character-view` + `?action=chat` arm, whose modal-pop v5 translates into
+   * the `salon-new` tab.
+   */
+  also?: { kind: TabKind; payload?: unknown };
 }
 
 /** A minimal read-only params view (URLSearchParams or Angular's ParamMap). */
@@ -97,6 +105,14 @@ export function parseOpenIntent(params: ParamReader): OpenIntent | null {
   } else if (kind === 'aurora') {
     const groupId = params.get('groupId') || undefined;
     payload = groupId ? { groupId } : undefined;
+  } else if (kind === 'salon-new') {
+    // v5-only (P4.d16 tier 2): the three seeds v4 hands its NewChatModal.
+    const projectId = params.get('projectId') || undefined;
+    const autonomous = params.get('autonomous') === '1' || undefined;
+    payload =
+      characterId || projectId || autonomous
+        ? { characterId, projectId, autonomous: autonomous ?? false }
+        : undefined;
   } else if (kind === 'document-standalone') {
     const scope: DocumentStandaloneTabPayload['scope'] =
       params.get('scope') === 'document_store' ? 'document_store' : 'general';
@@ -130,17 +146,38 @@ export function parseOpenIntent(params: ParamReader): OpenIntent | null {
     };
   }
 
+  if (kind === 'character-view' && characterId && params.get('action') === 'chat') {
+    // v4 ALSO pops the new-chat modal with the character preselected here
+    // ("legacy-page parity"). v5's translation of that modal is the salon-new
+    // tab, so the detail tab opens with the New-Chat tab beside it. Modelled as
+    // `parent` in reverse — the detail is opened first, then the chat funnel —
+    // via `also`, so the two-step stays declarative.
+    return {
+      kind,
+      payload,
+      also: { kind: 'salon-new', payload: { characterId, projectId: undefined, autonomous: false } },
+    };
+  }
+
   return { kind, payload };
 }
 
 /**
  * Apply a parsed intent to the workspace store, honouring the optional `parent`
  * two-step (v4 `8d86847a`: the terminal deep link opens the Salon parent FIRST
- * — it is the portal source for the live PTY — then the terminal as its child).
- * Returns the id of the tab the intent targeted.
+ * — it is the portal source for the live PTY — then the terminal as its child)
+ * and the optional `also` companion (the `?action=chat` funnel, which opens
+ * second and therefore ends up focused, as v4's modal sits on top of the
+ * detail). Returns the id of the tab the intent targeted.
  */
 export function applyOpenIntent(handle: WorkspaceHandle, intent: OpenIntent): string {
-  if (!intent.parent) return handle.openTab(intent.kind, intent.payload);
-  const parentTabId = handle.openTab(intent.parent.kind, intent.parent.payload);
-  return handle.openTab(intent.kind, intent.payload, { parentTabId });
+  let id: string;
+  if (intent.parent) {
+    const parentTabId = handle.openTab(intent.parent.kind, intent.parent.payload);
+    id = handle.openTab(intent.kind, intent.payload, { parentTabId });
+  } else {
+    id = handle.openTab(intent.kind, intent.payload);
+  }
+  if (intent.also) handle.openTab(intent.also.kind, intent.also.payload);
+  return id;
 }
