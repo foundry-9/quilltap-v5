@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.d15 (episodic round 3, lane B) CLOSED: all three tier-1 units plus
+both tier-2 items landed on branch claude/p4-d15-retro-minirecap-c67001.
+Gate: fmt clean, clippy green in both feature sets, release build clean,
+cargo test --workspace 0 failed with the lane env set, apps/web
+untouched. Ten oracle families regenerated or re-run fresh at v4
+8bf3cb5f, zero SKIP. Two families outside the lane are red and were
+reported rather than fixed: context-summary-service (P4.d14 owns it —
+v4's new five-section fold prompt) and orchestrator-tier3 (neither
+lane's; red with this lane's diff reverted). Versions: core 0.0.316,
+harness 0.0.273.
+
 P4.d15 unit 3: recall-on-reference, part 2 — the fourth cadence
 completes. On a retrospective turn (the user references past shared
 events), the Commonplace Book now builds a scoped mini-recap: a dated,

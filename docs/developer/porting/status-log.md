@@ -27770,6 +27770,82 @@ parallel lanes share e2e port 4319).
 `--features quilltap-core/native-transport`); `cargo test --workspace`
 with the lane's full env set, 0 failed; `git diff <base>..HEAD --
 apps/web` = 0 lines. Versions: core 0.0.316, harness 0.0.273.
+
+## P4.d15 — the round-3 lane-B record (the retrospective mini-recap + whisper + spam guard)
+
+**Branch `claude/p4-d15-retro-minirecap-c67001`; drift check at lane start
+AND at the final gate: v4 HEAD == `8bf3cb5f`, tree clean — every oracle
+this lane regenerated came straight from `~/source/quilltap-server` at
+the round baseline.** All three tier-1 units LANDED; tier-2 items 5 and 6
+landed inside unit 3. Tier 3 (the explicit deferrals) is unchanged and
+recorded below.
+
+**Commits (in order):** `02a1a8f5` u1 recall-history retro machinery ·
+`8ebd18f5` u2 the writer's `retrospectiveRecall` part · `0c493be8` u3 the
+mini-recap + whisper + spam guard (+ the two tier-2 comment items).
+
+**Oracle families this lane regenerated FRESH at `8bf3cb5f` (all green
+by name, `--nocapture`, zero SKIP):** `QT_ORACLE_RECALL_HISTORY`
+(29 → 48 rows), `QT_ORACLE_BUILD_CONTEXT` (fixture EXTENDED; 9 → 11 ops,
+each now diffed on BOTH the built context and the whisper-row/recall-
+history write side), `QT_ORACLE_PO_COMMONPLACE` (26 → 36 rows).
+**Transitive re-runs, all green:** `QT_ORACLE_DISTILL` (14),
+`QT_ORACLE_VAULT_CONV` (7), `QT_ORACLE_RECALL_REPLAY` (13 — the replay
+tables UNAFFECTED, as the order requires), the four salon families
+(reads 6 / mutations 17 / skip 2 / swipe 4), `QT_ORACLE_POW`,
+`QT_ORACLE_CARINA_QUERY` (46).
+
+**Committed fixture changes (regen responsibilities):**
+- `harness/oracle/fixtures/build-context-tier3.json` + its builder —
+  four dated vault conversation summaries in Ada's vault (one being the
+  fixture chat's own → `excludeConversationId`; one out of window → the
+  boost-fallback staging), one baked chunk each, one pre-seeded on-fold
+  `relevant-conversations` whisper (the dedup source), two new retro ops
+  + their distill completion rules, and the participant ids renamed
+  `pa000000-…` → `ba000000-…` so they are valid UUIDs. This fixture feeds
+  ONLY the build-context family (verified in the round-2 record), which
+  this lane regenerated.
+- The committed `episodic-recall-{main,mount}.db` web fixture was NOT
+  touched; its two consumers were re-run unchanged.
+- No P4.d14 fixture was touched.
+
+**Two RED families, both outside this lane — reported, not fixed
+(Shared contract §2):**
+1. `context_summary_service_tier3` — a canned-key mismatch on the fold
+   call, caused by v4's new five-section `FOLD_SUMMARY_PROMPT` +
+   `[YYYY-MM-DD]` turn prefixes (`chat-tasks.ts`). **P4.d14's family.**
+   Keep its vintage at `7e6d13e5` until P4.d14 lands it.
+2. `orchestrator_tier3` — RED, and RED with this lane's unit-3 diff
+   reverted (verified), so not caused here; it belongs to NEITHER lane's
+   set and has not been re-run since the P4.d5 era. Diagnosis in the
+   unit-3 record: v5's primary-stream request omits the memory-recap
+   block (`## What You Remember` / `### Recent Conversations`) that v4
+   emits, with an identical gate on both sides — so the divergence is
+   upstream of `build_context`. **Needs a dedicated follow-up.**
+
+**Live production surface this lane adds:** the `retrospective-recall`
+whisper is a real write on every retrospective turn once wired
+(`RealBuildContextSeams`), and the scoped vault-summary search now runs
+with a time window in production. Full Playwright was DEFERRED TO THE
+UNIFIER per the order (three parallel lanes share e2e port 4319) — the
+unifier's run and the next dogfood pass are the live proofs.
+
+**Explicit deferrals (loud, unchanged):** `compressMemories` itself stays
+the pre-existing tracked no-op deferral (its port target now recorded as
+`8bf3cb5f`, keep/drop date flip included); no SPA change was made or
+needed for the `retrospective-recall` whisper (v4 made none — it renders
+through the existing generic whisper path; `apps/web` is P4.9H1's tree);
+v5's chat-message writer still does not port v4's Zod UUID validation on
+`targetParticipantIds` (inert in production, recorded above).
+
+**Final gate (run in the lane worktree):** `cargo fmt --all --check`
+clean; clippy `--workspace --all-targets -D warnings` green in BOTH
+feature sets; `cargo build --workspace --release` clean; `cargo test
+--workspace` with the lane's full env set, 0 failed; `git diff
+06bd1a4a..HEAD -- apps/web` = 0 lines. Disk discipline held
+(`CARGO_INCREMENTAL=0` on every gate; the worktree `target/` deleted
+after the final commit). Versions at lane end: core 0.0.316, harness
+0.0.273.
 ## P4.d14 unit 1 — the clocked creation prompts + EVENT machinery + the creation-side anchors (2026-07-22)
 
 **Lane:** `claude/p4-episodic-creation-fold-4f22bd` (round 3, lane A).
