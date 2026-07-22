@@ -28903,3 +28903,66 @@ Versions at lane end: core 0.0.324, harness 0.0.280, host 0.0.30.
 - **The live proof is the next dogfood pass on the Friday copy** — the
   e2e instance has no API keys, so the newly-live jobs fail at the
   provider boundary there by design.
+
+## Round record — the P4.6bj unification (2026-07-22) — ORDER CLOSED ON MAIN
+
+**Single-lane unification (`unify/p4.6bj` ← `claude/great-pascal-e21150`,
+five commits cherry-picked in order).** Conflicts were version-only
+(core/harness `Cargo.toml` + `Cargo.lock` against the parallel
+dogfood-finding fixes `0.0.322`/`0.0.323` on main): accumulated to
+**core 0.0.325, harness 0.0.281, host 0.0.30**, lock re-synced. No
+source-level conflicts (the lane's footprint — memory-pipeline
+services + harness + docs — is disjoint from the finding-#16/#18
+fixes). No cross-lane wires owed: single lane, `apps/web` untouched.
+
+**Drift check at unification: v4 HEAD moved to `e646f58b`** (4 commits
+past the `8bf3cb5f` baseline; the lane surveyed at `deab0e5d`):
+- `deab0e5d` (theme/icons) + `e646f58b` (lint chore): lib-free —
+  already dispositioned; the theme/icons SPA re-port stays owed.
+- **`8d86847a` (fix(workspace): deep links open as tabs) TOUCHES
+  PORTED lib/ surface** — `lib/workspace/{tab-meta,types,
+  workspace-persistence}.ts` + `lib/navigation/route-to-intent.ts`,
+  the captured-corpus tier-1 workspace family (P4.9J1) + the SPA
+  intent surface. **A workspace corpus-recapture + SPA re-port is
+  OWED**; the committed corpus keeps its vintage until that round.
+- Verified for THIS round: no v4 `lib/` service/handler/memory code
+  imports the drifted files (grep over `lib/background-jobs`,
+  `lib/services`, `lib/memory`, `lib/chat-orchestration` — word hits
+  are comments only), so the seven regenerated families are
+  lib-identical to `8bf3cb5f` and regen ran straight from the checkout.
+
+**The gate (all on the unify branch tip):**
+- `cargo fmt --all --check` clean; clippy both feature sets
+  `-D warnings` clean; `cargo build --workspace --release` clean.
+- Oracles regenerated FRESH from `~/source/quilltap-server` at
+  `e646f58b`: turn-transcript (17 lines), memory-pipeline-jobs (36),
+  context-summary-service (28), orchestrator (201), memory-processor
+  (23), carina-memory-extraction (12), background-jobs (1). One regen
+  quirk: the bare jest pattern `orchestrator-tier3` also matches
+  `brahma-orchestrator-tier3.test.ts` (which wants its own fixtures) —
+  scope the pattern (`cases/orchestrator-tier3`) or expect a spurious
+  FAIL from the brahma suite while the orchestrator oracle itself
+  writes fine.
+- The SEVEN differentials by name, `--nocapture`, zero SKIP, all
+  green: `turn_transcript_equivalence`,
+  `memory_pipeline_jobs_tier3_equivalence`,
+  `context_summary_service_tier3_equivalence`,
+  `orchestrator_tier3_equivalence`, `memory_processor_tier3_equivalence`,
+  `carina_memory_extraction_tier3_equivalence`,
+  `background_jobs_tier2_equivalence` (TZ=UTC on the run).
+- `cargo test --workspace` (oracle env vars set, TZ=UTC): **367
+  binaries / 1,508 tests / 0 failed**.
+- SPA: `ng test` **209 files / 2,487 / 0**; `ng build` clean; full
+  Playwright from the fresh dist + rebuilt debug binaries: **111
+  passed / 1 failed / 0 skipped**, the one failure being the
+  DOCUMENTED wardrobe `set_all` full-suite order/timing flake
+  (`wardrobe-flow.spec.ts:252`), re-proven NOT a regression by the
+  standard isolation re-run: wardrobe-flow **3/3 green**, :252 in
+  499ms. No assertion touched.
+
+**Standing after this round:** the extraction/fold pipeline is LIVE in
+production (real cheap-LLM spend on every closed turn) — its first
+live proof is the next dogfood pass on the Friday copy (the e2e
+instance has no API keys by design). The workspace deep-links drift
+re-port (`8d86847a`) and the theme/icons SPA re-port (`deab0e5d`) are
+the two banked v4 catch-up items; see phase-4.md's next candidates.

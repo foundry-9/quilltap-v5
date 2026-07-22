@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Unified P4.6bj (the memory-pipeline job handlers, single lane) onto
+main: the CONTEXT_SUMMARY and MEMORY_EXTRACTION background jobs now
+have registered handlers in the host, so the ported extraction/fold
+pipeline runs in production — memories are extracted and summaries
+fold on every closed turn (real cheap-LLM spend). Includes the
+per-turn transcript builder (new tier-1 differential family, 17
+cases), both handler bodies (new tier-3 memory_pipeline_jobs family:
+10 cases over six diffed tables), and the orchestrator_tier3
+stale-RED fix (the in-loop fold-episode seam; the P4.d15 recap
+diagnosis was already healed). Unification gate: 367 test binaries /
+1,508 tests / 0 failed with seven differentials re-run by name over
+oracles regenerated fresh from v4 (zero skips); clippy both feature
+sets; release build; ng test 209 files / 2,487; full Playwright 111
+passed plus the documented wardrobe set_all flake green in isolation,
+zero skips. New v4 drift dispositioned: 8d86847a (tabbed-workspace
+deep-links) touches ported lib/workspace surface — a corpus-recapture
++ SPA re-port is owed; the oracle baseline stays 8bf3cb5f. Versions:
+core 0.0.325, harness 0.0.281, host 0.0.30.
+
 Docs: recorded the 2026-07-22 dogfood pass coverage (walked vs remaining)
 in the findings log, with the two re-checks owed on the rebuilt binaries.
 

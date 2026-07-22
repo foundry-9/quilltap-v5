@@ -1024,18 +1024,34 @@ records THERE. Update this summary only when a phase or round completes.
   + BOTH handlers registered in `ProductionSpineFactory` (the host
   read closing carina's `memory_extraction_limits` deferral too) —
   **three rounds of episodic work now RUN in production and cost real
-  cheap-LLM money on every closed turn.** Gate: 367 binaries / 0
-  failed, the four round families by name over fresh `deab0e5d`≡
-  `8bf3cb5f` oracles zero SKIP, clippy both feature sets, release
-  build, full Playwright green from a fresh dist. Live proof owed: the
-  next dogfood pass (the e2e instance has no API keys by design).
-  Order: `work-orders/p4.6bj-memory-pipeline-job-handlers.md`; records
-  in the status log. Versions: core 0.0.324, harness 0.0.280, host
-  0.0.30.
+  cheap-LLM money on every closed turn.** Unification gate: 367
+  binaries / 1,508 tests / 0 failed; SEVEN differentials by name (the
+  four round families + the processor / carina / background-jobs
+  transitives) over oracles regenerated fresh at v4 HEAD `e646f58b`
+  (lib-identical to `8bf3cb5f` for these families — verified by
+  import), zero SKIP; clippy both feature sets; release build; ng test
+  209 files / 2,487; full Playwright 111 passed + the documented
+  wardrobe `set_all` full-suite flake re-proven green in isolation
+  (3/3, :252 at 499ms), zero skips, fresh dist + rebuilt debug bins.
+  Live proof owed: the next dogfood pass (the e2e instance has no API
+  keys by design). Order:
+  `work-orders/p4.6bj-memory-pipeline-job-handlers.md`; records in the
+  status log. Versions: core 0.0.325, harness 0.0.281, host 0.0.30
+  (core/harness accumulate over the parallel dogfood-finding fixes
+  `0.0.322`/`0.0.323` on main).
 - **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
-  unification (2026-07-22).** v4 HEAD is `deab0e5d` (2 commits past the
-  baseline, BOTH lib-free — theme/icons/docs; dispositioned in the
-  round record; drift-check before every round). All episodic-campaign
+  unification (2026-07-22).** v4 HEAD is `e646f58b` (4 commits past the
+  baseline): `deab0e5d` theme/icons + `e646f58b` lint-chore are
+  lib-free (the theme/icons SPA re-port stays owed); **`8d86847a`
+  (tabbed-workspace deep-links) TOUCHES PORTED lib/ surface**
+  (`lib/workspace/{tab-meta,types,workspace-persistence}` +
+  `lib/navigation/route-to-intent`) — a workspace corpus-recapture +
+  SPA re-port is OWED (dispositioned at the P4.6bj unification; the
+  committed workspace corpus keeps its `b8b12695` vintage until that
+  round runs). The memory-pipeline oracle families import none of the
+  drifted files (verified by name at the P4.6bj unification), so their
+  regen ran straight from `~/source/quilltap-server` at HEAD
+  (lib-identical to `8bf3cb5f` for those families). All episodic-campaign
   families now regenerate at `8bf3cb5f`, including the previously
   deferred gate / processor / memory-tasks-creation / context-summary /
   carina / recall-history set; families untouched since earlier rounds

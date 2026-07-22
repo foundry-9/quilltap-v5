@@ -2237,10 +2237,19 @@ record: `status-log.md`. **Next candidates, in rough value order:**
 2. **An episodic + sidebar dogfood pass** on the Friday copy — the
    retrospective mini-recap/whisper, the Story's Clock, and the sidebar
    are live surfaces nobody has hand-walked on real data.
-3. The v4 `deab0e5d` **theme/icons drift SPA re-port** (lib-free:
+3. The v4 `8d86847a` **tabbed-workspace deep-links drift re-port**
+   (dispositioned at the P4.6bj unification, 2026-07-22): v4 made
+   deep links that escaped the tabbed workspace open as tabs — it
+   TOUCHES the ported `lib/workspace/{tab-meta,types,
+   workspace-persistence}` + `lib/navigation/route-to-intent`
+   surface, so it owes a workspace corpus RECAPTURE (the P4.9J1
+   captured-corpus family keeps its vintage until then) plus the SPA
+   intent re-port (TabView/WorkspaceIntent, the per-screen
+   *PageClient split, the terminal-popout client).
+4. The v4 `deab0e5d` **theme/icons drift SPA re-port** (lib-free:
    QuillAnimation thinking indicator, Madman's Box theme refresh, icon
    registry, two 2-line composer touches) — small, SPA-only.
-4. `p4.9h2` (the settings remainder bucket), the P4.9H1 tier-3 sidebar
+5. `p4.9h2` (the settings remainder bucket), the P4.9H1 tier-3 sidebar
    deferrals, the ExtractionClock consolidation rider, p4.9i2
    (HelpChat), M6 rows 5+, or the conversion port.
 
