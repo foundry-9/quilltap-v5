@@ -27889,6 +27889,104 @@ became optional, matching the server's own Zod port
 112/112, zero skips**, both new beats ACTIVE. `git diff <base>..HEAD -- crates
 harness` = 0 lines (this lane changed no Rust; the e2e ran against main's release
 binaries, as the order directs).
+
+## P4.9H1 — the lane record (the ChatSidebar vertical + the Story's Clock)
+
+**Branch:** `claude/chat-sidebar-stories-clock-6cce6c` (worktree). **Six
+commits**, one per unit. **Zero Rust, zero harness** — proven two ways:
+`git diff 06bd1a4a..HEAD -- crates harness` is 0 lines, and the e2e ran against
+main's release binaries (the order's instruction), so nothing in this lane could
+have moved the server. Baseline drift-check at lane start AND at lane end: v4
+HEAD == `8bf3cb5f`, tree clean.
+
+| Unit | Commit | What |
+|---|---|---|
+| 1 | `97c61e36` | the client turn-order display core + its 20-case spec |
+| 2 | `ab868b07` | CollapsibleCard's controlled mode |
+| 3 | `2989b022` | the sidebar scaffold + strip + participants + cards |
+| 4 | `f01722e3` | the Chat section — **the Story's Clock** |
+| 5 | `4ad54991` | the Visibility + Organize sections |
+| 6 | `0351804a` | live in the Salon + the reconciliation + the e2e beats |
+
+### What landed against the order's tiers
+
+**Tier 1 — all of it.** The scaffold (collapse/width/resize/narrow-overlay under
+v4's exact localStorage keys, the single-open accordion), **the Story's Clock**
+(v4 copy byte-for-byte, `{chat:{timelineMode}}`, saving-disable, the read-shape
+seed such as v4 has one), the participants section at the depth the ported verbs
+support, the roleplay-template select (plus image provider and announce-images),
+component specs via `ng test`, and two live Playwright beats.
+
+**Tier 2 — all of it.** The remaining settings entries whose verbs exist; the
+whisper-visibility reconciliation; **the per-chat Core-whisper override (the M6
+F3 finding) — the chat tier now exists in v5**; the project entry (reduced to
+navigation). The `8e4b00d4` whisper-visibility helper needs no re-port: P4.6ba
+already shipped `chat/whisper-visibility.ts` + its case-for-case spec — **that
+banked drift is CLOSED**, and this lane moved its toggle to v4's Visibility home.
+
+**Also closed:** the state-cascade round's deferred **chat-tier State-Editor
+opener** (the modal shipped with P4.6be; only the entry point was missing).
+
+### Tier-3 deferrals (LOUD, complete list — nothing stubbed, nothing rendered)
+
+Every one is a control whose server verb or dialog v5 has not ported. v4 gates
+each on an optional prop, so omitting them renders exactly what v4 renders
+without those props:
+
+- **Participant mutations** (ParticipantCard): connection-profile select,
+  system-prompt select + rebuild, talkativeness slider, four-state status select,
+  Remove, Add Character, Whisper — all ride `updateParticipant` /
+  `addParticipant` / `removeParticipantId`, named chat-PUT deferrals
+  (`api/salon.rs:1215`).
+- **Chat drawer:** the Concierge tri-state (`conciergeState`, a named PUT
+  deferral), Agent Mode (`?action=toggle-agent-mode`), Auto-generate character
+  avatars (`?action=toggle-avatar-generation`), Tools… (`ChatToolSettingsModal`),
+  Run Tool… (`RunToolModal`).
+- **Organize drawer:** Rename (`ChatRenameModal`), Continue Elsewhere, Merge In…
+  (`MergeConversationModal`), Export (`?action=export` has no v5 verb).
+- **The whole Edit Content section:** Search & Replace, Bulk Replace, Re-extract
+  Memories, Delete Chat Memories — all four unported, so v5 renders NO card
+  rather than an empty drawer.
+- **Reductions (recorded, not omissions):** the project entry navigates instead
+  of opening v4's assign/detach modal; Gallery is unconditional and unnumbered
+  (no per-chat photo count on the chat read); `ProviderModelBadge` has no plugin
+  icon data to thread (the icon-registry deferral predates this lane).
+
+### ⚠ A v4 bug found in survey — ported faithfully, banked for v4
+
+**v4's chat GET does not project `timelineMode`, `alertCharactersOfLanternImages`,
+`showThinking` or `answerConfirmationOverride`** (`handlers/get.ts:528-568`),
+though `app/salon/[id]/types.ts:253-262` declares all four. The Story's Clock
+select therefore reads `undefined` in v4, snaps back to "Real time" after every
+successful save, and can never show the persisted value after a reload — for the
+episodic campaign's headline switch. v5 ports the projection faithfully
+(`api/salon.rs:303-422`) and this lane may not touch the server.
+
+- v5 keeps the operator's in-session choice (v4's own `selectedTemplateId` idiom
+  from the same panel, and precisely what v4's `useChatControls` already does for
+  the two Visibility columns), reverting model AND element if the write fails.
+- After a reload v5 shows the default exactly as v4 does.
+- **The fix belongs in v4's route.** When v4 projects the columns, v5 adopts it
+  by re-porting the projection (the D23 reflex) and the local-selection layer
+  becomes a no-op. v5 does NOT invent the field.
+
+### Gate (run in the lane worktree)
+
+`cargo fmt --all --check` clean; `git diff 06bd1a4a..HEAD -- crates harness` = 0
+lines (no cargo build/test/clippy run: this lane changed no Rust byte, and the
+e2e used main's release binaries — recorded deliberately, not skipped silently);
+`ng test` **209 files / 2,487**; `ng build` clean; **full Playwright 112/112,
+zero skips**, both new beats ACTIVE. Two flakes appeared once each in an earlier
+full run and passed on re-run and in the final full run: the documented wardrobe
+`set_all` one, and a workbench `$state` preview beat.
+
+### For the unifier
+
+- The lane owns `apps/web` exclusively; nothing else was touched.
+- `e2e/support/sidebar.ts` (`openSidebarSection`) is new and shared — six
+  existing beats route through it. Any beat that drives a control now inside the
+  sidebar must use it.
+- No fixtures changed; no oracle is invalidated; no differential is owed.
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch
