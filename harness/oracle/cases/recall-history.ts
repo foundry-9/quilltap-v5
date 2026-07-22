@@ -27,13 +27,31 @@ import {
   parseRecallHistory,
   recentlyWhisperedIdSet,
   appendRecallTurn,
+  parseRetroSignatures,
+  appendRetroSignature,
+  type RecallHistory,
 } from '@/lib/memory/recall-history';
 
 // Row kinds — Rust dispatches on `kind`. Each carries the input `raw` verbatim.
 type Row =
   | { kind: 'parse'; id: string; raw: unknown; out: string[][] }
   | { kind: 'set'; id: string; raw: unknown; out: string[] }
-  | { kind: 'append'; id: string; raw: unknown; newIds: string[]; out: { turns: string[][] } };
+  | {
+      kind: 'append';
+      id: string;
+      raw: unknown;
+      newIds: string[];
+      out: { turns: string[][]; retroSignatures?: string[] };
+    }
+  | { kind: 'parseSig'; id: string; raw: unknown; out: string[] }
+  | {
+      kind: 'appendSig';
+      id: string;
+      raw: unknown;
+      newIds: string[];
+      signature: string;
+      out: { turns: string[][]; retroSignatures?: string[] };
+    };
 
 const rows: Row[] = [];
 
@@ -89,9 +107,54 @@ const appendCases: Array<[string, unknown, string[]]> = [
   ['trim-to-three', { turns: [['a'], ['b'], ['c']] }, ['d']], // oldest drops out
   ['newids-empty-string-kept', { turns: [] }, ['', 'a', 'a']], // append does NOT filter ''
   ['append-parses-malformed-raw', { turns: [['a', 1], 'x', ['b']] }, ['c']],
+  // The retro-signature list rides the append untouched (both branches).
+  ['carries-retro-signatures', { turns: [['a']], retroSignatures: ['s1', 's2'] }, ['b']],
+  ['carries-retro-signatures-empty-newids', { turns: [['a']], retroSignatures: ['s1'] }, []],
+  ['malformed-retro-signatures-dropped', { turns: [['a']], retroSignatures: ['', 3, 's1'] }, ['b']],
 ];
 for (const [id, raw, newIds] of appendCases) {
   rows.push({ kind: 'append', id, raw, newIds, out: appendRecallTurn(raw, newIds) });
+}
+
+// ---------------------------------------------------------------------------
+// parseRetroSignatures — the spam-guard list's coercion (same `unknown` column).
+// ---------------------------------------------------------------------------
+const parseSigCases: Array<[string, unknown]> = [
+  ['null', null],
+  ['number', 42],
+  ['string', 'hi'],
+  ['array-not-object', ['a']], // no 'retroSignatures' key → []
+  ['object-no-key', { turns: [['a']] }],
+  ['sigs-null', { retroSignatures: null }],
+  ['sigs-string', { retroSignatures: 'x' }],
+  ['sigs-empty', { retroSignatures: [] }],
+  ['simple', { retroSignatures: ['s1', 's2'] }],
+  ['drop-nonstring-and-empty', { retroSignatures: ['s1', 1, '', null, true, ['s2'], 's3'] }],
+  ['four-no-trim', { retroSignatures: ['s1', 's2', 's3', 's4'] }], // parse does NOT trim
+];
+for (const [id, raw] of parseSigCases) {
+  rows.push({ kind: 'parseSig', id, raw, out: parseRetroSignatures(raw) });
+}
+
+// ---------------------------------------------------------------------------
+// appendRetroSignature — append (NO dedup) + trim to the last N. Runs on the
+// already-appended history exactly as buildContext's persist does:
+//   appendRetroSignature(appendRecallTurn(raw, newIds), signature)
+// An empty signature is a no-op (the falsy guard) — notably NOT a trim.
+// ---------------------------------------------------------------------------
+const appendSigCases: Array<[string, unknown, string[], string]> = [
+  ['first-signature', null, ['a'], 'w1|alice'],
+  ['second-signature', { turns: [], retroSignatures: ['w1|alice'] }, ['a'], 'w2|bob'],
+  ['duplicate-not-deduped', { retroSignatures: ['w1|alice'] }, [], 'w1|alice'],
+  ['trim-to-three', { retroSignatures: ['s1', 's2', 's3'] }, [], 's4'],
+  ['over-cap-input-trimmed-on-append', { retroSignatures: ['s1', 's2', 's3', 's4'] }, [], 's5'],
+  ['empty-signature-noop', { retroSignatures: ['s1', 's2', 's3', 's4'] }, [], ''],
+  ['empty-signature-noop-no-list', { turns: [['a']] }, ['b'], ''],
+  ['malformed-list-coerced-first', { retroSignatures: [1, 's1', ''] }, ['a'], 's2'],
+];
+for (const [id, raw, newIds, signature] of appendSigCases) {
+  const base: RecallHistory = appendRecallTurn(raw, newIds);
+  rows.push({ kind: 'appendSig', id, raw, newIds, signature, out: appendRetroSignature(base, signature) });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

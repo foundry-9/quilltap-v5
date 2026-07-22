@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.d15 unit 1: the recall-history retro-signature machinery — the
+RETRO_SIGNATURE_TURNS cap (3) and appendRetroSignature, the write half of
+the retrospective mini-recap spam guard. Round 2 had ported
+parseRetroSignatures as a preservation carrier only; the append (no
+dedup, trim to the last three, an empty signature is a no-op) now lands
+too. The recall-history differential grew from 29 to 48 cases over a
+fresh v4 8bf3cb5f oracle, and the append rows now assert the carried
+retro-signature list as well as the turns.
 Conversations now consolidate their episodes. Whenever a chat folds its
 running summary, a new pass reads the just-folded stretch of turns and
 asks for up to two coherent, dated accounts of things that actually

@@ -27576,6 +27576,46 @@ appear.** Disk discipline held (CARGO_INCREMENTAL=0 on every gate; the
 deleted after the final commit). Versions at lane end: core 0.0.313,
 harness 0.0.270, host 0.0.29, web 0.0.37, cli 0.0.2.
 
+## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
+
+**Lane:** P4.d15 (round 3 lane B), branch
+`claude/p4-d15-retro-minirecap-c67001`. Drift check at lane start: v4
+HEAD == `8bf3cb5f`, tree clean — oracles regenerate straight from
+`~/source/quilltap-server`.
+
+**What landed:** `recall_history.rs` gains `RETRO_SIGNATURE_TURNS = 3`
+and `append_retro_signature(&RecallHistory, &str) -> RecallHistory` —
+the WRITE half of the fourth cadence's spam guard. Round 2 had ported
+`parse_retro_signatures` as a preservation carrier only (so a v4-written
+list survived `append_recall_turn`); the append now lands with v4's
+three subtleties intact: (1) the falsy guard — an empty signature
+returns the history byte-identical and notably does NOT trim; (2) NO
+de-duplication (v4 appends unconditionally; the caller's
+`recentSignatures.includes(signature)` check is the only suppression);
+(3) `slice(-RETRO_SIGNATURE_TURNS)` keeps the last three. The
+`RecallHistory` doc comment lost its "round-3 port" seam note (the seam
+closed). `RecallHistory::to_value()` was already v4-shaped — key order
+`turns` then `retroSignatures`, the latter omitted when empty, which
+matches every object v4's two appenders can produce.
+
+**Differential:** `QT_ORACLE_RECALL_HISTORY` regenerated FRESH at
+`8bf3cb5f`, 29 → 48 rows. Two new row kinds drive v4's real exports:
+`parseSig` (11 cases — the same malformed-column coercion sweep the
+`turns` parse gets: null/number/string/bare-array/missing-key/non-array/
+non-string-and-empty-string drops/no-trim) and `appendSig` (8 cases,
+each running the REAL composition buildContext's persist uses —
+`appendRetroSignature(appendRecallTurn(raw, newIds), signature)`):
+first-signature, second-signature, duplicate-not-deduped, trim-to-three,
+over-cap-input-trimmed-on-append, both empty-signature no-ops, and a
+malformed-list-coerced-first case. The existing `append` rows also grew
+three retro-carry cases and now assert `retroSignatures` alongside
+`turns` (the harness's `AppendOut` defaults the key to `[]`, matching
+v4's omit-when-empty). Green: 14 parse / 5 set / 10 append / 11 parseSig
+/ 8 appendSig.
+
+**Gate:** `cargo fmt --all --check` clean; clippy `--workspace
+--all-targets -D warnings` clean; `cargo test --workspace` 0 failed.
+Versions: core 0.0.314, harness 0.0.271.
 ## P4.d14 unit 1 — the clocked creation prompts + EVENT machinery + the creation-side anchors (2026-07-22)
 
 **Lane:** `claude/p4-episodic-creation-fold-4f22bd` (round 3, lane A).

@@ -26,16 +26,21 @@ use serde_json::Value;
 /// How many recent whisper-turns to remember for anti-repetition.
 pub const RECALL_HISTORY_TURNS: usize = 3;
 
+/// How many recent retrospective mini-recap signatures to remember (spam guard):
+/// a mini-recap with the same timeRange/entity signature within this many
+/// emissions is skipped.
+pub const RETRO_SIGNATURE_TURNS: usize = 3;
+
 /// Persisted shape of the recall-history column.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecallHistory {
     /// One inner array of whispered memory IDs per recent turn, most recent last.
     pub turns: Vec<Vec<String>>,
-    /// Retro mini-recap signatures (episodic overhaul). Round 2 (P4.d13) only
-    /// PRESERVES an existing list through [`append_recall_turn`] exactly as
-    /// v4's `appendRecallTurn` does — the spam-guard machinery that writes and
-    /// consumes them (`appendRetroSignature` / `RETRO_SIGNATURE_TURNS`) is the
-    /// round-3 port.
+    /// Signatures (hashes of timeRange+entities) of recently-emitted
+    /// retrospective mini-recaps, most recent last, capped to
+    /// [`RETRO_SIGNATURE_TURNS`]. Spam guard for the fourth cadence
+    /// (recall-on-reference): [`append_recall_turn`] carries an existing list
+    /// through untouched, and [`append_retro_signature`] records a fresh one.
     pub retro_signatures: Vec<String>,
 }
 
@@ -176,5 +181,31 @@ pub fn append_recall_turn(raw: &Value, new_ids: &[String]) -> RecallHistory {
     RecallHistory {
         turns,
         retro_signatures,
+    }
+}
+
+/// Record a just-emitted retrospective mini-recap signature on an already-parsed
+/// history, trimming to the last [`RETRO_SIGNATURE_TURNS`] (v4
+/// `appendRetroSignature`).
+///
+/// Subtleties preserved from v4:
+///   * An empty signature is a no-op — `if (!signature) return history` (the
+///     falsy guard), so the history comes back byte-identical, NOT trimmed.
+///   * There is NO de-duplication: v4 appends unconditionally. The caller's
+///     suppression check (`recentSignatures.includes(signature)`) is what keeps
+///     a repeat out of the ring, and it runs against the list as persisted.
+pub fn append_retro_signature(history: &RecallHistory, signature: &str) -> RecallHistory {
+    if signature.is_empty() {
+        return history.clone();
+    }
+    let mut sigs = history.retro_signatures.clone();
+    sigs.push(signature.to_string());
+    // slice(-RETRO_SIGNATURE_TURNS): keep the last N.
+    if sigs.len() > RETRO_SIGNATURE_TURNS {
+        sigs.drain(0..sigs.len() - RETRO_SIGNATURE_TURNS);
+    }
+    RecallHistory {
+        turns: history.turns.clone(),
+        retro_signatures: sigs,
     }
 }
