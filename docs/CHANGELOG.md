@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.d16 unit 1 — the workspace pure core adopts v4 `8d86847a` and the
+captured corpus moves to baseline `e646f58b`. New `salon-list` tab kind
+(the all-chats list hosted as a tab), the three optional drill-in
+payloads (`projectId`/`storeId`/`groupId`) on the Prospero/Scriptorium/
+Aurora singleton tabs, and `parseHrefToIntent` mapping `/salon` and
+legacy `/chats` to the salon-list tab plus `/prospero/<id>` (and legacy
+`/projects/<id>`), `/scriptorium/<id>`, `/aurora/groups/<id>` to their
+list tab drilled into the target. `/salon/new` still returns null (v4
+handles new-chat in the link interceptor) — the corpus pins it. The
+generator gained four reducer scenarios (drill-into-open-singleton
+payload refresh, the payload-less re-open that keeps the drill,
+salon-list beside salon tabs, the aurora group re-drill), four
+tabIdentity rows, and nine route hrefs; the regenerated corpus runs 48
+reducer scenarios / 21 identity rows / 53 route rows. v4's own +27
+route-to-intent test delta is ported case-for-case, and the v5-only
+`/characters/groups/<id>` alias (v5's route name for the group editor)
+is spec-covered outside the corpus.
+
 Docs: planned the `e646f58b` v4-drift catch-up round — two parallel
 SPA-only work orders committed. P4.d16 (the `8d86847a` workspace
 deep-links re-port: the salon-list tab kind, drill-in payloads,

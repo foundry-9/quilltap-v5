@@ -31,6 +31,7 @@ import { TabPortalHost } from './tab-portal-host';
 
 // In-lane no-input screens.
 import { HomePage } from '../../screens/home/home-page';
+import { SalonList } from '../../screens/salon/salon-list';
 import { CharactersList } from '../../screens/characters/list/characters-list';
 import { ProsperoList } from '../../screens/prospero/prospero-list';
 import { ScriptoriumList } from '../../screens/scriptorium/scriptorium-list';
@@ -77,6 +78,10 @@ export const TAB_VIEW_REGISTRY = new InjectionToken<TabRegistry>('quilltap.works
 export const DEFAULT_TAB_REGISTRY: TabRegistry = {
   // --- in-lane real screens (no inputs) ---
   home: { component: HomePage },
+  // The all-chats list (v4 `8d86847a`: `salon-list` → `<SalonListView />`). Its
+  // chat cards are plain `/salon/:id` links — the host's interceptor turns each
+  // click into a Salon tab, so the list needs no inputs and no tab seams.
+  'salon-list': { component: SalonList },
   aurora: { component: CharactersList },
   prospero: { component: ProsperoList },
   scriptorium: { component: ScriptoriumList },

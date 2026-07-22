@@ -10,7 +10,7 @@
  * persistence validation was rewritten from Zod by hand, so the corpus is the
  * proof it strips/drops identically.
  *
- * Regen (from the v4 checkout at baseline `b8b12695`):
+ * Regen (from the v4 checkout at baseline `e646f58b`):
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/workspace-core.ts \
  *     > <v5>/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json
@@ -160,6 +160,41 @@ describe('workspace core — tab-meta table', () => {
   });
 });
 
+/**
+ * v4's OWN test delta for `8d86847a`, ported case-for-case
+ * (`__tests__/unit/lib/workspace/route-to-intent.test.ts`, +27). Every href here
+ * is also a corpus row; these keep v4's assertions legible as assertions.
+ */
+describe('parseHrefToIntent — v4 8d86847a deep-link deltas', () => {
+  it('maps the salon list (and legacy /chats) to the salon-list tab', () => {
+    expect(parseHrefToIntent('/salon')).toEqual({ kind: 'salon-list' });
+    expect(parseHrefToIntent('/chats')).toEqual({ kind: 'salon-list' });
+  });
+
+  it('does not map new-chat (the interceptor handles it instead)', () => {
+    expect(parseHrefToIntent('/salon/new')).toBeNull();
+  });
+
+  it('maps detail routes to their list tab drilled into the target', () => {
+    expect(parseHrefToIntent('/prospero/p1')).toEqual({
+      kind: 'prospero',
+      payload: { projectId: 'p1' },
+    });
+    expect(parseHrefToIntent('/projects/p1')).toEqual({
+      kind: 'prospero',
+      payload: { projectId: 'p1' },
+    });
+    expect(parseHrefToIntent('/scriptorium/s1')).toEqual({
+      kind: 'scriptorium',
+      payload: { storeId: 's1' },
+    });
+    expect(parseHrefToIntent('/aurora/groups/g1')).toEqual({
+      kind: 'aurora',
+      payload: { groupId: 'g1' },
+    });
+  });
+});
+
 // --- v5-only route additions (diverge from v4 by design; NOT in the corpus) --
 describe('route-to-intent — v5 /characters route adaptations', () => {
   it('maps the bare roster', () => {
@@ -184,10 +219,13 @@ describe('route-to-intent — v5 /characters route adaptations', () => {
       payload: { characterId: 'abc', tab: undefined },
     });
   });
-  it('leaves v5-only bare details (group/project/store/terminal) unmapped', () => {
-    expect(parseHrefToIntent('/characters/groups/g1')).toBeNull();
-    expect(parseHrefToIntent('/prospero/p1')).toBeNull();
-    expect(parseHrefToIntent('/scriptorium/s1')).toBeNull();
+  it('maps /characters/groups/<id> like v4 /aurora/groups/<id> (v5 route name)', () => {
+    expect(parseHrefToIntent('/characters/groups/g1')).toEqual({
+      kind: 'aurora',
+      payload: { groupId: 'g1' },
+    });
+  });
+  it('leaves the terminal popout unmapped (its deep link is a redirect guard)', () => {
     expect(parseHrefToIntent('/salon/c1/terminal/sess1')).toBeNull();
   });
 });

@@ -17,7 +17,7 @@ import { InjectionToken, type Signal } from '@angular/core';
 export type PaneId = 'left' | 'right';
 
 /**
- * The kind of surface a tab renders — v4's list, verbatim (all 22 kinds).
+ * The kind of surface a tab renders — v4's list, verbatim (all 23 kinds).
  * `help` is intentionally absent (Help stays a modal in v4). `terminal` and
  * `document` are child tabs of a Salon tab (linked via `parentTabId`).
  * `wardrobe` is a tab only when opened from the left rail (the chat-scoped
@@ -28,6 +28,7 @@ export type PaneId = 'left' | 'right';
 export type TabKind =
   | 'home'
   | 'salon' // payload: SalonTabPayload
+  | 'salon-list' // the all-chats list (`/salon` without a conversation)
   | 'terminal' // payload: TerminalTabPayload — child of a salon tab (Ariel)
   | 'document' // payload: DocumentTabPayload — child of a salon tab (Librarian)
   | 'aurora'
@@ -90,6 +91,20 @@ export interface DocumentStandaloneTabPayload {
   targetFolder?: string;
   /** Cached title for the tab label. */
   displayTitle?: string;
+}
+/**
+ * Optional drill-in payloads for the list surfaces. A deep link (e.g.
+ * `/prospero/<id>`) opens the singleton tab with the target preselected; the
+ * view renders that detail in place. Absent payload = the plain list.
+ */
+export interface ProsperoTabPayload {
+  projectId?: string;
+}
+export interface ScriptoriumTabPayload {
+  storeId?: string;
+}
+export interface AuroraTabPayload {
+  groupId?: string;
 }
 export interface SettingsTabPayload {
   tab?: string;

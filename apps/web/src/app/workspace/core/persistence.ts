@@ -47,6 +47,7 @@ export function workspaceStorageKey(instanceId?: string | null): string {
 const TAB_KINDS = [
   'home',
   'salon',
+  'salon-list',
   'terminal',
   'document',
   'aurora',

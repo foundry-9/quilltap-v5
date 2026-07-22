@@ -73,6 +73,16 @@ describe('interpretWorkspaceLinkClick', () => {
   it('passes through when there is no anchor, and for hrefs with no tab equivalent', () => {
     expect(interpretWorkspaceLinkClick(click(document.createElement('div')))).toBeNull();
     expect(interpretWorkspaceLinkClick(click(anchor({ href: '/unlock' })))).toBeNull();
-    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon' })))).toBeNull();
+  });
+
+  // v4 `8d86847a`: the salon list is a tab now — the rail's Chats item and the
+  // home links stop unmounting the workspace.
+  it('opens the salon-list tab for /salon (and legacy /chats)', () => {
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon' })))).toEqual({
+      kind: 'salon-list',
+    });
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/chats' })))).toEqual({
+      kind: 'salon-list',
+    });
   });
 });

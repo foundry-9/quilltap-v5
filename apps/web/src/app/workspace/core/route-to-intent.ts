@@ -1,13 +1,14 @@
 /**
  * Map an in-app href to a workspace tab intent (port of v4
- * `lib/navigation/route-to-intent.ts`, baseline `b8b12695`, plus the v5 route
+ * `lib/navigation/route-to-intent.ts`, baseline `e646f58b`, plus the v5 route
  * adaptations noted below).
  *
  * The inverse of the old-route redirects: when a link is clicked *inside* the
  * workspace, we open (or focus) the matching tab client-side instead of doing a
  * route navigation that would unmount and rebuild the whole workspace. Returns
- * `null` for hrefs with no tab equivalent (new-chat, the salon list, external
- * links, bare project/store detail) so those navigate normally.
+ * `null` for hrefs with no tab equivalent (new-chat — a modal in v4, a tab in
+ * v5, handled by the interceptor either way — and external links) so those
+ * navigate normally.
  *
  * **v5 adaptations (v5's route names differ from v4's `/aurora`):**
  *  - `/characters`        → aurora  (v5's roster route; v4 used `/aurora`)
@@ -16,6 +17,8 @@
  *    `/characters/:id` IS the detail route; v4's bare `/aurora/<id>` had no tab
  *    equivalent and stayed `null`, which v5 keeps for the `/aurora/*` family it
  *    no longer routes to).
+ *  - `/characters/groups/<id>` → aurora + `{ groupId }`  (the v5 route name for
+ *    v4's `/aurora/groups/<id>` group-editor drill, ported below).
  * v4's `/aurora*` and legacy `/characters/<id>/{edit,view}` rows all still map
  * byte-identically (proven by the tier-1 corpus); the v5-only rows are covered
  * by v5-side unit tests.
@@ -52,6 +55,29 @@ export function parseHrefToIntent(href: string): TabIntent | null {
     return { kind: 'salon', payload: { chatId: id } };
   }
 
+  // /prospero/<id> (or legacy /projects/<id>) — the Projects tab drilled into
+  // that project.
+  const projectMatch = path.match(/^\/(?:prospero|projects)\/([^/]+)$/);
+  if (projectMatch) {
+    return { kind: 'prospero', payload: { projectId: projectMatch[1] } };
+  }
+
+  // /scriptorium/<id> — the Scriptorium tab drilled into that store.
+  const storeMatch = path.match(/^\/scriptorium\/([^/]+)$/);
+  if (storeMatch) {
+    return { kind: 'scriptorium', payload: { storeId: storeMatch[1] } };
+  }
+
+  // /aurora/groups/<id> — the Characters tab drilled into that group's editor.
+  // (v5 addition: `/characters/groups/<id>`, v5's route name for the same
+  // surface. It must precede the bare-`/characters/<id>` match below, which it
+  // cannot collide with — that one is single-segment — but which is the reason
+  // the group alias is spelled out rather than folded into it.)
+  const groupMatch = path.match(/^\/(?:aurora|characters)\/groups\/([^/]+)$/);
+  if (groupMatch) {
+    return { kind: 'aurora', payload: { groupId: groupMatch[1] } };
+  }
+
   // /aurora/<id>/edit (or legacy /characters/<id>/edit) — the character editor.
   const editMatch = path.match(/^\/(?:aurora|characters)\/([^/]+)\/edit$/);
   if (editMatch) {
@@ -74,9 +100,9 @@ export function parseHrefToIntent(href: string): TabIntent | null {
 
   // v5 addition: a bare /characters/<id> IS the detail route (no `/view`
   // suffix in v5). `/characters/new` is the create form; anything else is a
-  // read-only character-view. `/characters` (bare) and `/characters/groups/…`
-  // are NOT matched here — the former is handled in the switch below, the
-  // latter (a group editor) has no tab equivalent → null.
+  // read-only character-view. `/characters` (bare) is NOT matched here — it is
+  // handled in the switch below; `/characters/groups/<id>` is claimed by the
+  // group-drill match above.
   const charBareMatch = path.match(/^\/characters\/([^/]+)$/);
   if (charBareMatch) {
     const id = charBareMatch[1];
@@ -87,6 +113,9 @@ export function parseHrefToIntent(href: string): TabIntent | null {
   switch (path) {
     case '/':
       return { kind: 'home' };
+    case '/salon':
+    case '/chats':
+      return { kind: 'salon-list' };
     case '/aurora':
     case '/characters': // v5 route name for the roster
       return { kind: 'aurora' };
