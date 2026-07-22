@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.d16 unit 3 — the deep links that escaped the tabbed workspace now
+redirect into it (v4 `8d86847a`). Six routes gained a
+`workspaceRedirectGuard`: `/salon` opens the salon-list tab (the rail's
+Chats item and the home links stop unmounting the workspace),
+`/salon/:id/terminal/:sessionId` carries chatId + sessionId into the
+Salon-plus-child-terminal two-step, and `/prospero/:id`,
+`/scriptorium/:id`, `/characters/groups/:id` and `/characters/:id` carry
+the id that drills their list tab into the target (`?tab=` preserved,
+`?action=` forwarded). The routes docstring calling those exclusions
+"v4-faithful" was stale and is rewritten. With the flag off every guard
+is still a no-op, so the legacy shell renders exactly as before.
+
 P4.d16 unit 4 — drill-in hosting. The Prospero, Scriptorium and Characters
 list screens gain the optional deep-link inputs v4 `8d86847a` added to
 their views (`initialProjectId` / `initialStoreId` / `initialGroupId`),

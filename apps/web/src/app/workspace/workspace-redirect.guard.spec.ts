@@ -78,6 +78,63 @@ describe('workspaceRedirectGuard', () => {
     expect(tree.queryParams).toEqual({ open: 'custom-tools', mount: 'm1', new: '1' });
   });
 
+  // --- P4.d16 (v4 `8d86847a`): the deep links that used to escape ----------
+  it('redirects the salon list to the salon-list tab', () => {
+    const tree = run(workspaceRedirectGuard('salon-list'), snap()) as UrlTree;
+    expect(tree.queryParams).toEqual({ open: 'salon-list' });
+  });
+
+  it('carries both ids for the terminal pop-out', () => {
+    const guard = workspaceRedirectGuard('terminal', (r) => ({
+      chatId: r.paramMap.get('id'),
+      sessionId: r.paramMap.get('sessionId'),
+    }));
+    const tree = run(guard, snap({ id: 'c1', sessionId: 's9' })) as UrlTree;
+    expect(tree.queryParams).toEqual({ open: 'terminal', chatId: 'c1', sessionId: 's9' });
+  });
+
+  it('carries the drill ids for the project / store / group detail routes', () => {
+    const project = workspaceRedirectGuard('prospero', (r) => ({
+      projectId: r.paramMap.get('id'),
+    }));
+    expect((run(project, snap({ id: 'p1' })) as UrlTree).queryParams).toEqual({
+      open: 'prospero',
+      projectId: 'p1',
+    });
+
+    const store = workspaceRedirectGuard('scriptorium', (r) => ({ storeId: r.paramMap.get('id') }));
+    expect((run(store, snap({ id: 's1' })) as UrlTree).queryParams).toEqual({
+      open: 'scriptorium',
+      storeId: 's1',
+    });
+
+    const group = workspaceRedirectGuard('aurora', (r) => ({ groupId: r.paramMap.get('id') }));
+    expect((run(group, snap({ id: 'g1' })) as UrlTree).queryParams).toEqual({
+      open: 'aurora',
+      groupId: 'g1',
+    });
+  });
+
+  it('preserves ?tab= and forwards ?action= on the character detail', () => {
+    const guard = workspaceRedirectGuard('character-view', (r) => ({
+      characterId: r.paramMap.get('id'),
+      tab: r.queryParamMap.get('tab'),
+      action: r.queryParamMap.get('action'),
+    }));
+    const tree = run(guard, snap({ id: 'ch1' }, { tab: 'conversations' })) as UrlTree;
+    expect(tree.queryParams).toEqual({
+      open: 'character-view',
+      characterId: 'ch1',
+      tab: 'conversations',
+    }); // no action key when absent
+    const withAction = run(guard, snap({ id: 'ch1' }, { action: 'chat' })) as UrlTree;
+    expect(withAction.queryParams).toEqual({
+      open: 'character-view',
+      characterId: 'ch1',
+      action: 'chat',
+    });
+  });
+
   // p4.9j3 item 4: the settings-wizard bypass for the fresh-instance handoff.
   const wizardBypass = (r: ActivatedRouteSnapshot) => r.queryParamMap.get('mode') === 'setup';
 

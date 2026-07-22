@@ -25,17 +25,27 @@ import { workspaceRedirectGuard } from './workspace/workspace-redirect.guard';
  * Every other path redirects to the Salon.
  *
  * **P4.9J1 (the tabbed workspace, v4's default shell):** `/workspace` renders
- * the two-pane host. When the workspace-tabs flag is ON (the default), the 16
+ * the two-pane host. When the workspace-tabs flag is ON (the default), the
  * legacy surface routes carry a `workspaceRedirectGuard` that redirects into
- * `/workspace?open=…` with the v4 param names; when the flag is off the guard is
- * a no-op and the old routes render as before. NOT redirected: the salon list,
- * `/salon/new`, the terminal popout, and the bare detail routes
- * (`/characters/:id`, `/characters/groups/:id`, `/prospero/:id`,
- * `/scriptorium/:id`) — v4-faithful, they render standalone / in-place.
+ * `/workspace?open=…` with the v4 param names; when the flag is off every guard
+ * is a no-op and the old routes render as before.
+ *
+ * **P4.d16 (v4 `8d86847a`, "deep links that escaped the tabbed workspace"):**
+ * the routes that used to render the legacy full-page shell now redirect too —
+ * the salon list (`open=salon-list`), the terminal popout (the Salon tab plus a
+ * child terminal tab), and the detail routes `/prospero/:id`,
+ * `/scriptorium/:id`, `/characters/groups/:id` and `/characters/:id`, each
+ * carrying the id that drills its list tab into the target. The old docstring
+ * called those exclusions "v4-faithful"; v4 moved, and so has v5.
+ *
+ * Still routed: `/salon/new` (v4 pops a modal there; v5's no-modal translation
+ * is P4.d16 tier 2) and `/settings/wizard?mode=setup` (the fresh-instance
+ * handoff, a documented divergence — see the guard's docstring).
  */
 export const routes: Routes = [
   {
     path: 'salon',
+    canActivate: [workspaceRedirectGuard('salon-list')],
     loadComponent: () => import('./screens/salon/salon-list').then((m) => m.SalonList),
   },
   {
@@ -43,7 +53,16 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/new-chat/new-chat-page').then((m) => m.NewChatPage),
   },
   {
+    // The pop-out opens the Salon tab PLUS a child terminal tab (the Salon view
+    // is the portal source for the live PTY) — the intent layer owns that
+    // two-step; the guard just carries both ids.
     path: 'salon/:id/terminal/:sessionId',
+    canActivate: [
+      workspaceRedirectGuard('terminal', (r) => ({
+        chatId: r.paramMap.get('id'),
+        sessionId: r.paramMap.get('sessionId'),
+      })),
+    ],
     loadComponent: () => import('./screens/salon/terminal-popout').then((m) => m.TerminalPopout),
   },
   {
@@ -65,7 +84,9 @@ export const routes: Routes = [
       import('./screens/characters/new/new-character').then((m) => m.NewCharacter),
   },
   {
+    // v4 `/aurora/groups/:id` — the Characters tab drilled into that group.
     path: 'characters/groups/:id',
+    canActivate: [workspaceRedirectGuard('aurora', (r) => ({ groupId: r.paramMap.get('id') }))],
     loadComponent: () => import('./screens/groups/group-editor').then((m) => m.GroupEditor),
   },
   {
@@ -80,7 +101,17 @@ export const routes: Routes = [
       import('./screens/characters/edit/character-edit').then((m) => m.CharacterEdit),
   },
   {
+    // v5's `/characters/:id` IS v4's `/aurora/:id/view` (no `/view` suffix).
+    // `?tab=` is preserved and `?action=chat` forwarded — the intent layer turns
+    // the latter into the new-chat funnel, v4's modal-pop arm.
     path: 'characters/:id',
+    canActivate: [
+      workspaceRedirectGuard('character-view', (r) => ({
+        characterId: r.paramMap.get('id'),
+        tab: r.queryParamMap.get('tab'),
+        action: r.queryParamMap.get('action'),
+      })),
+    ],
     loadComponent: () =>
       import('./screens/characters/view/character-detail').then((m) => m.CharacterDetail),
   },
@@ -96,6 +127,9 @@ export const routes: Routes = [
   },
   {
     path: 'prospero/:id',
+    canActivate: [
+      workspaceRedirectGuard('prospero', (r) => ({ projectId: r.paramMap.get('id') })),
+    ],
     loadComponent: () =>
       import('./screens/prospero/project-detail').then((m) => m.ProjectDetailScreen),
   },
@@ -112,6 +146,7 @@ export const routes: Routes = [
   },
   {
     path: 'scriptorium/:id',
+    canActivate: [workspaceRedirectGuard('scriptorium', (r) => ({ storeId: r.paramMap.get('id') }))],
     loadComponent: () => import('./screens/scriptorium/store-detail').then((m) => m.StoreDetail),
   },
   {
