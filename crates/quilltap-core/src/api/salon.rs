@@ -1376,6 +1376,20 @@ fn build_chat_update_columns(
             out.push((col, nullable_text(v, col)?));
         }
     }
+    // timelineMode (P4.d13, episodic spine): v4
+    // `z.enum(['realtime','narrative']).nullish()` — explicit null clears; an
+    // out-of-enum value fails the whole Zod parse, which the route surfaces as
+    // 400 `Validation error` (the copy the differential pins; the Zod `details`
+    // array remains the documented error-envelope deferral).
+    if let Some(v) = obj.get("timelineMode") {
+        match v {
+            Value::Null => out.push(("timelineMode", SqlValue::Null)),
+            Value::String(s) if s == "realtime" || s == "narrative" => {
+                out.push(("timelineMode", SqlValue::Text(s.clone())))
+            }
+            _ => return Err("Validation error".to_string()),
+        }
+    }
     // Boolean columns (non-nullable → INTEGER 0/1).
     for col in [
         "isPaused",

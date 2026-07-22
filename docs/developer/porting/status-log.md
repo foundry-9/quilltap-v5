@@ -27307,3 +27307,63 @@ resolution, and three DATED vault conversation summaries (via v4's REAL
    STARVED ×1.3 boost with the boost VISIBLE in the emitted score
    (0.4884 = 0.3757 × 1.3 on the in-window doc), unparsable + inverted
    windows (plain slice), limit 0, exclude-top. Floats at 1e-12.
+
+## P4.d13 unit 8 — the `quilltap recall-replay` CLI
+
+**What landed:** `crates/quilltap-cli/src/recall_replay_cmd.rs` — v4's
+`recall-replay-command.js` line-for-line: `parseFlags` (value flags
+consume `args[++i]`; the four validation messages byte-exact; unknown
+option; one-chatId rule), the help text (double trailing newline —
+`console.log` over a newline-terminated template), the stderr
+`Replaying recall … via …` progress line, `printPath` (UTF-16
+`padEnd`/`slice` geometry — the dimmed `—` cell's ANSI escapes eat its
+padding exactly as in v4 — `toFixed` via `jsnum`, the `fired.padEnd(24)
+.slice(0,24)` truncation), the signals line, `--json` via
+`nodefmt::json_stringify_pretty` (the CLI's serde_json now carries
+`float_roundtrip` so parse→print is shortest-repr-stable — without it
+`1.6444999999999999` reprinted as `1.6445`). Transport: v4 is HTTP-only
+and so is v5 — a dependency-free `TcpStream` HTTP/1.1 POST of the
+`chatRecallReplay` verb to v5's own `/api/dispatch` (v4's
+`payload.data ?? payload` unwrap handles both envelopes; the error
+extraction adds the dispatch envelope's `data.message` arm —
+documented). **No direct-core mode** (the order suggested dual-mode;
+v4's command has none and the replay needs the live host's cheap-LLM
+providers — inventing a direct mode would exceed the oracle).
+Registered: `SUBCOMMANDS` (v4's exact order — between `memory-diff` and
+`completion`), the main-help line, the dispatch arm, and the three
+shell-completion templates RE-COPIED from v4 at `8bf3cb5f` (they had
+drifted — no `recall-replay` entries).
+
+**Differential (Tier R):** `cli_differential.rs` gains 12 cases — the
+help / no-chat / two-ids / bad-turn ×2 / bad-limit / bad-port /
+unknown-option arms byte-exact on both streams + exit codes, and the
+canned-server arms: a stub `TcpListener` answers EACH CLI in its own
+dialect (raw v4 route body vs the dispatch envelope) with the SAME
+canned payload, so the table mode, `--json` mode, the 400 error arm,
+and the unreachable-server arm all render-diff for real (the two
+documented normalizations: the URL span in the progress line — v4
+posts `/api/v1/chats/…`, v5 posts `/api/dispatch` — and the
+connect-error reason wording). Full run green (all 23 recall greps +
+every pre-existing case) with `QT_V4_CHECKOUT` + Node 24.
+
+## P4.d13 tier 2 — timelineMode PUT + episodic-visibility tests + route listing
+
+**Item 9 (the verified v5 gap):** `api/salon.rs`
+`build_chat_update_columns` gains the `timelineMode` arm — v4
+`z.enum(['realtime','narrative']).nullish()`: set writes the enum
+string, explicit null clears, an out-of-enum value yields v4's actual
+route behavior (400 `Validation error` — captured from the live oracle;
+the Zod `details` array stays the documented error-envelope deferral).
+Three new salon-mutations cases both sides
+(`chat_update_timeline_set`/`_null`/`_invalid`); the family regenerated
+at `8bf3cb5f` (17 rows) — green.
+
+**Item 10:** the dynamic-head arms of v4's
+`episodic-visibility.test.ts` ported as `memory_injector`
+`episodic_visibility_tests` (the `[last week]` event-clock age label;
+`[today · the third night at sea]` verbatim narrativeTime). The
+renderer arms were ported with unit 4
+(`render_relevant_block_prints_frontmatter_date`).
+
+**Item 11:** n/a — v5's web boot banner is a single line and does not
+enumerate routes (v4's `prettify.ts` listing has no v5 counterpart).

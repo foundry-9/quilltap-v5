@@ -292,6 +292,36 @@ fn salon_mutations_match_oracle() {
             }),
         ),
         (
+            "chat_update_timeline_set",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "timelineMode": "narrative" }),
+                ))
+            }),
+        ),
+        (
+            "chat_update_timeline_null",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "timelineMode": null }),
+                ))
+            }),
+        ),
+        (
+            "chat_update_timeline_invalid",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "timelineMode": "dreamtime" }),
+                ))
+            }),
+        ),
+        (
             "message_delete_cascade",
             Box::new(|db: &Db| {
                 rt.block_on(salon::message_delete(

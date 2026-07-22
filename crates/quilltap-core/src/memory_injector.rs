@@ -998,3 +998,75 @@ pub fn format_summary_for_context(summary: &str, max_tokens: i64) -> (String, i6
     let token_count = estimate_tokens(&content);
     (content, token_count)
 }
+
+#[cfg(test)]
+mod episodic_visibility_tests {
+    //! Case-for-case port of the dynamic-head arms of v4
+    //! `lib/memory/__tests__/episodic-visibility.test.ts` (§3 acceptance —
+    //! dates visible wherever the LLM sees a memory). The
+    //! `renderRelevantConversationsBlock` arms live with the renderer
+    //! (`services::memory_recap`).
+
+    use super::*;
+
+    const NOW_MS: f64 = 1_781_524_800_000.0; // 2026-06-15T12:00:00.000Z
+
+    fn result(occurred_offset_ms: f64, narrative_time: Option<&str>) -> InjectorResult {
+        InjectorResult {
+            memory: InjectorMemory {
+                id: "11111111-1111-4111-8111-111111111111".to_string(),
+                content: Some(
+                    "On July 14th we visited Lighthouse Point and bought the brass sextant."
+                        .to_string(),
+                ),
+                summary: "visited lighthouse point bought sextant".to_string(),
+                importance: 0.7,
+                keywords: vec![
+                    "lighthouse".to_string(),
+                    "past".to_string(),
+                    "scope: wide".to_string(),
+                    "history".to_string(),
+                ],
+                about_character_id: None,
+                reinforced_importance: Some(0.7),
+                created_at_ms: NOW_MS,
+                last_reinforced_at_ms: None,
+                last_accessed_at_ms: None,
+                reinforcement_count: Some(1),
+                graph_degree: 0,
+                kind_episodic: true,
+                occurred_at_ms: Some(NOW_MS - occurred_offset_ms),
+                narrative_time: narrative_time.map(str::to_string),
+            },
+            score: 0.8,
+            effective_weight: Some(0.7),
+            raw_weight: Some(0.7),
+            recall_adjustment: None,
+        }
+    }
+
+    #[test]
+    fn head_age_label_reads_the_event_clock() {
+        // ~ last week (8 days before the frozen now).
+        let results = vec![result(8.0 * 86_400_000.0, None)];
+        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        assert!(
+            formatted.content.contains("[last week]"),
+            "content: {}",
+            formatted.content
+        );
+    }
+
+    #[test]
+    fn head_carries_narrative_time_verbatim() {
+        let results = vec![result(0.0, Some("the third night at sea"))];
+        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        assert!(
+            formatted
+                .content
+                .contains("[today · the third night at sea]"),
+            "content: {}",
+            formatted.content
+        );
+    }
+}

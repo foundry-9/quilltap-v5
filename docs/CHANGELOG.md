@@ -2,6 +2,36 @@
 
 ## Recent Changes
 
+P4.d13 tier 2: the chat-PUT timelineMode accept arm (v4
+z.enum(['realtime','narrative']).nullish() - set / explicit-null clear /
+invalid-enum 400 with v4's "Validation error" copy; the Zod details
+array remains the documented error-envelope deferral), pinned by three
+new salon-mutations cases (17-row oracle, regen at 8bf3cb5f). The
+dynamic-head arms of v4's episodic-visibility test ported as
+memory_injector unit tests (the event-clock age label + verbatim
+narrativeTime; the renderer arms landed with unit 4). Startup route
+listing: n/a - the v5 web banner does not enumerate routes.
+quilltap-core 0.0.313, quilltap-harness 0.0.270.
+
+P4.d13 unit 8: the quilltap recall-replay CLI - v4's
+recall-replay-command.js ported line-for-line (flag parsing, the help
+text, the stderr progress line, the ANSI candidate tables with
+UTF-16-faithful padEnd/slice geometry, --json via the node-faithful
+pretty printer). Like v4's it is a thin HTTP wrapper over the running
+server; v5 posts the chatRecallReplay verb to its own /api/dispatch
+(v4's own payload.data ?? payload unwrap handles both envelopes; the
+error-message extraction adds the dispatch envelope's data.message arm
+- documented). No direct-core mode: v4's command has none. Registered
+in SUBCOMMANDS/main help; the three shell-completion templates
+re-copied from v4 at 8bf3cb5f. The CLI differential gains 12
+recall-replay cases: help/validation arms byte-exact, and canned-server
+render arms (a stub answers each CLI in its own dialect with the SAME
+payload) diffing the table geometry, ANSI codes, JS float rendering
+(float_roundtrip now on for the CLI's serde_json), and --json pretty
+print byte-for-byte; the transport-truth spans (URL shape,
+connect-error wording) are the two documented normalizations.
+quilltap-cli 0.0.2.
+
 P4.d13 unit 7: the recall-replay harness (episodic recall section 3,
 the round's centerpiece). The recall_replay service module (v4
 runRecallReplay: chat load, participant resolution, turn partition, the

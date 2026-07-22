@@ -253,6 +253,13 @@ async function main(): Promise<void> {
     // that doesn't resolve.
     { name: 'chat_update_roleplay_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { roleplayTemplateId: '99999999-9999-4999-8999-999999999999' } } },
     { name: 'chat_update_project_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: '99999999-9999-4999-8999-999999999999' } } },
+    // P4.d13 (episodic spine, tier 2): the timelineMode PUT accept arm —
+    // z.enum(['realtime','narrative']).nullish(). Set, explicit-null clear,
+    // and the invalid-enum parse failure (whatever the route yields for a
+    // thrown Zod parse — pinned by capture, mirrored by v5).
+    { name: 'chat_update_timeline_set', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'narrative' } } },
+    { name: 'chat_update_timeline_null', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: null } } },
+    { name: 'chat_update_timeline_invalid', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'dreamtime' } } },
     { name: 'message_delete_cascade', method: 'messageDelete', url: `${mbase(EDIT_MSG)}?memoryAction=DELETE_MEMORIES`, paramId: EDIT_MSG },
   ];
 
