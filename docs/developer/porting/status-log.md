@@ -29113,3 +29113,49 @@ Lane B of the `e646f58b` drift catch-up round (order:
 
 **Gate:** `ng build` clean (pre-existing CommonJS warnings only). No
 Rust, no crates diff.
+
+## P4.d17 unit 2 — the `.qt-thinking-indicator` motion hook (2026-07-22)
+
+The motion half of v4 `deab0e5d`'s glyph/motion split, transcribed into
+`src/styles/qt-components/_chat.css` at v4's exact position: the tail of
+the RESPONSE STATUS INDICATOR section, immediately after its
+`prefers-reduced-motion` block and before the TERMINAL section. v5's
+`_chat.css` matched v4's structure there line-for-line, so the insertion
+point is the same one v4's diff used.
+
+**The byte-fidelity check (the differential of record for a lib-free,
+oracle-less commit).** v4's added lines were extracted with
+`git show deab0e5d -- app/styles/qt-components/_chat.css | grep '^+'`
+and diffed against the landed v5 block. The ONLY differences are three
+deliberate prose lines:
+
+1. `see components/chat/QuillAnimation.tsx` → `see chat/quill-animation.ts`
+   (the v5 component, landing in unit 3).
+2. The glyph-swap bullet: v4's `manifest \`icons: { "thinking": "..." }\``
+   → `re-declare [data-icon="thinking"] in the theme's (unlayered)
+   styles.css — see _icons.css`. **This is the established v5
+   divergence**: v5's `theme.service.ts` swaps the pack's `styles.css`
+   `<link>` and fonts only — it reads no `icons` map — so a theme
+   overrides a glyph by re-declaring the `[data-icon]` rule in its own
+   unlayered stylesheet, which beats the core `@layer components`
+   defaults (documented in `_icons.css`'s header).
+3. One re-wrap of the sentence in (1)'s paragraph.
+
+Every declaration is byte-identical to v4: the `animation` shorthand and
+its two `var()` fallbacks (`1.2s`, `ease-in-out`), the
+`transform-origin: var(--qt-thinking-origin, 12.5% 87.5%)`, the
+`qt-thinking-rock` keyframes (`0%, 100%` rest `-45deg`, `50%` lean
+`0deg`), and the reduced-motion branch. The full banner comment is
+carried: the glyph-vs-motion split, the negative rest angle (the glyph is
+drawn on the diagonal), the nib-origin derivation ((3,21) of the 24x24
+viewBox = 12.5% 87.5%; a theme with its own glyph must move the origin to
+ITS nib or the drawing orbits), and the overflow caveat (the feather tip
+paints above the layout box at the upright extreme — never wrap the
+indicator in `overflow: hidden`).
+
+Token defaults stay inline in the `var()` fallbacks, matching v4 — no
+`_variables.css` declarations were added.
+
+**Gate:** `ng build` clean; the compiled bundle carries
+`@keyframes qt-thinking-rock` and
+`transform-origin:var(--qt-thinking-origin, 12.5% 87.5%)`.

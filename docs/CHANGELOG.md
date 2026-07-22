@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Added the `.qt-thinking-indicator` motion hook: the waiting/streaming
+quill's animation now lives in `_chat.css`, parameterized by five theme
+custom properties (`--qt-thinking-duration` / `-easing` / `-origin` /
+`-angle-rest` / `-angle-lean`), with a `prefers-reduced-motion` branch
+that holds the resting angle. The quill pivots on its nib rather than
+its centre, so the point that would touch the page stays put. Glyph and
+motion are now independent theme hooks.
+
 Added the `thinking` icon (registry name 85) — a 24x24 line-art quill,
 mask mode, byte-copied from v4's `public/images/icons/thinking.svg`. It
 backs the waiting/streaming indicator, and being a registry name rather
