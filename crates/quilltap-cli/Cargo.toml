@@ -9,7 +9,7 @@
 
 [package]
 name = "quilltap-cli"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 publish = false
 
@@ -23,7 +23,7 @@ quilltap-host = { path = "../quilltap-host" }
 # Read-only encrypted opens over the workspace-linked SQLite3MC (the sys crate
 # links `sqlite3` for the whole workspace, so this binds the ChaCha20 cipher).
 rusqlite = { workspace = true }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 # TTY detection + termios raw mode for the hidden passphrase prompt.
 libc = "0.2"
 # Local-time rendering for `docs ls` (v4 formatLsDate uses the process TZ).

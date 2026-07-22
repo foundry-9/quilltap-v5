@@ -21,6 +21,7 @@ mod docs_cmd;
 mod instances_cmd;
 mod nodefmt;
 mod out;
+mod recall_replay_cmd;
 mod resolve;
 mod vtable;
 
@@ -34,6 +35,7 @@ const SUBCOMMANDS: &[&str] = &[
     "memories",
     "instances",
     "memory-diff",
+    "recall-replay",
     "completion",
     "logs",
     "migrations",
@@ -190,6 +192,7 @@ fn main() {
                 "docs" => docs_cmd::run(&sub_args),
                 "instances" => instances_cmd::run(&sub_args),
                 "completion" => completion_cmd::run(&sub_args),
+                "recall-replay" => recall_replay_cmd::run(&sub_args),
                 other => not_yet_available(other),
             }
         }

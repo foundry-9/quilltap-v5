@@ -50,6 +50,11 @@ struct CaseOpts<'a> {
     stdin: Option<Vec<u8>>,
     pre: Option<PreHook<'a>>,
     normalize_heartbeat: bool,
+    /// P4.d13 recall-replay: normalize the transport-truth spans — the target
+    /// URL in the stderr progress line (v4 posts `/api/v1/chats/...`, v5 posts
+    /// `/api/dispatch`) and the connect-error reason (Node's `fetch failed` vs
+    /// the Rust io error text).
+    normalize_recall: bool,
 }
 
 struct RunOut {
@@ -95,6 +100,114 @@ fn normalize_heartbeat(text: &str) -> String {
         }
     }
     out
+}
+
+const RECALL_CANNED_RESULT: &str = r#"{"chatId":"cd000000-0000-4000-8000-000000000001","characterId":"c1000000-0000-4000-8000-0000000000e1","characterName":"Elowen","turnIndex":5,"totalTurns":5,"signals":{"keywords":["Gullwing Quay","dawn","visit"],"temporal":"past","context":"history","paraphrase":"They remember visiting Gullwing Quay at dawn last week.","retrospective":true,"timeRange":{"from":"2026-06-01T00:00:00.000Z","to":"2026-06-07T23:59:59.999Z"},"entities":["Gullwing Quay"]},"query":"They remember visiting Gullwing Quay at dawn last week.","clockIso":"2026-06-11T09:00:00.000Z","oldPath":[{"memoryId":"e2000000-0000-4000-8000-0000000000a1","summary":"Visited Gullwing Quay at dawn.","kind":"episodic","occurredAt":"2026-06-03T06:00:00.000Z","narrativeTime":"the second dawn","createdAt":"2026-05-01T00:00:00.000Z","keywords":["quay","past","scope: wide","history"],"cosine":0.8999999761581421,"rawWeight":0.2795939868358039,"blendedBefore":0.679268857920964,"multiplier":0.935,"fired":["past↓","ctx✓"],"blendedAfter":0.6351163821560014,"selected":true},{"memoryId":"e2000000-0000-4000-8000-0000000000d1","summary":"The tide ledger and mooring fees.","kind":"semantic","occurredAt":null,"narrativeTime":null,"createdAt":"2026-05-01T00:00:00.000Z","keywords":["ledger"],"cosine":0.30000001192092896,"rawWeight":null,"blendedBefore":null,"multiplier":null,"fired":[],"blendedAfter":null,"selected":false}],"newPath":[{"memoryId":"e2000000-0000-4000-8000-0000000000a1","summary":"Visited Gullwing Quay at dawn.","kind":"episodic","occurredAt":"2026-06-03T06:00:00.000Z","narrativeTime":"the second dawn","createdAt":"2026-05-01T00:00:00.000Z","keywords":["quay","past","scope: wide","history"],"cosine":0.8999999761581421,"rawWeight":0.2795939868358039,"blendedBefore":0.679268857920964,"multiplier":1.6444999999999999,"fired":["past↑retro","ctx✓","window↑"],"blendedAfter":1.1170576418410254,"selected":true}]}"#;
+
+/// Replace `http://localhost:...` spans (through the next ESC byte or
+/// whitespace) with a placeholder, and — on connect-error lines — the reason
+/// tail after `at <URL>: ` too. Documented transport truths that legitimately
+/// differ between the two CLIs (URL shape; io-error wording).
+fn normalize_recall(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        if let Some(pos) = line.find("http://localhost:") {
+            let head = &line[..pos];
+            let rest = &line[pos..];
+            // The span ends at the first ESC (ANSI reset) or whitespace.
+            let end = rest
+                .char_indices()
+                .find(|(_, c)| *c == '\u{1b}' || c.is_whitespace())
+                .map(|(i, _)| i)
+                .unwrap_or(rest.len());
+            let tail = &rest[end..];
+            if line.contains("Could not reach Quilltap server at ") {
+                // Swallow the reason too — everything to the ESC/EOL.
+                let reason_end = tail
+                    .char_indices()
+                    .find(|(_, c)| *c == '\u{1b}')
+                    .map(|(i, _)| i)
+                    .unwrap_or(tail.len());
+                out.push_str(head);
+                out.push_str("<TARGET>");
+                out.push_str(&tail[reason_end..]);
+            } else {
+                out.push_str(head);
+                out.push_str("<URL>");
+                out.push_str(tail);
+            }
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
+/// A canned recall-replay stub server: answers every POST with the payload for
+/// the caller's dialect — v4's raw route body on `/api/v1/...`, the dispatch
+/// envelope on `/api/dispatch`. Runs on a detached thread for the test's life.
+fn spawn_recall_stub(result_json: &'static str, error_arm: bool) -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            use std::io::{Read, Write};
+            // Read the head + enough of the body (Connection: close both sides).
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                match stream.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        let text = String::from_utf8_lossy(&buf);
+                        if let Some(hdr_end) = text.find("\r\n\r\n") {
+                            let cl = text
+                                .lines()
+                                .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+                                .and_then(|l| l.split(':').nth(1))
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            if buf.len() >= hdr_end + 4 + cl {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let text = String::from_utf8_lossy(&buf);
+            let dispatch = text.starts_with("POST /api/dispatch");
+            let (status_line, body) = if error_arm {
+                if dispatch {
+                    (
+                        "HTTP/1.1 400 Bad Request",
+                        "{\"type\":\"error\",\"data\":{\"kind\":\"badRequest\",\"message\":\"Chat settings not found.\"}}"
+                            .to_string(),
+                    )
+                } else {
+                    (
+                        "HTTP/1.1 400 Bad Request",
+                        "{\"error\":\"Chat settings not found.\"}".to_string(),
+                    )
+                }
+            } else if dispatch {
+                (
+                    "HTTP/1.1 200 OK",
+                    format!("{{\"type\":\"recallReplay\",\"data\":{result_json}}}"),
+                )
+            } else {
+                ("HTTP/1.1 200 OK", result_json.to_string())
+            };
+            let resp = format!(
+                "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    port
 }
 
 impl Ctx {
@@ -180,11 +293,14 @@ impl Ctx {
 
     fn compare(&mut self, name: &str, a: &RunOut, b: &RunOut, opts: &CaseOpts) {
         let norm = |bytes: &[u8]| -> Vec<u8> {
+            let mut text = String::from_utf8_lossy(bytes).into_owned();
             if opts.normalize_heartbeat {
-                normalize_heartbeat(&String::from_utf8_lossy(bytes)).into_bytes()
-            } else {
-                bytes.to_vec()
+                text = normalize_heartbeat(&text);
             }
+            if opts.normalize_recall {
+                text = normalize_recall(&text);
+            }
+            text.into_bytes()
         };
         let (a_out, b_out) = (norm(&a.stdout), norm(&b.stdout));
         let (a_err, b_err) = (norm(&a.stderr), norm(&b.stderr));
@@ -1585,6 +1701,90 @@ fn cli_differential() {
     ctx.case("completion zsh", &["completion", "zsh"]);
     ctx.case("completion fish", &["completion", "fish"]);
     ctx.case("completion unknown shell", &["completion", "tcsh"]);
+
+    // ---------------- recall-replay (P4.d13) ----------------
+    ctx.case("recall-replay help", &["recall-replay", "--help"]);
+    ctx.case("recall-replay no chat", &["recall-replay"]);
+    ctx.case(
+        "recall-replay two ids",
+        &["recall-replay", "cid-a", "cid-b"],
+    );
+    ctx.case(
+        "recall-replay bad turn",
+        &["recall-replay", "cid", "--turn", "0"],
+    );
+    ctx.case(
+        "recall-replay bad turn nan",
+        &["recall-replay", "cid", "--turn", "xyz"],
+    );
+    ctx.case(
+        "recall-replay bad limit",
+        &["recall-replay", "cid", "--limit", "101"],
+    );
+    ctx.case(
+        "recall-replay bad port",
+        &["recall-replay", "cid", "--port", "0"],
+    );
+    ctx.case(
+        "recall-replay unknown option",
+        &["recall-replay", "cid", "--frob"],
+    );
+    {
+        // The canned render arms: both CLIs hit the stub (each on its own
+        // dialect) and render the SAME payload — the table geometry, ANSI
+        // codes, JS number formatting, and --json pretty print byte-diff.
+        let port = spawn_recall_stub(RECALL_CANNED_RESULT, false);
+        let recall_opts = || CaseOpts {
+            normalize_recall: true,
+            ..Default::default()
+        };
+        ctx.case_with(
+            "recall-replay table",
+            &[
+                "recall-replay".to_string(),
+                "cd000000-0000-4000-8000-000000000001".to_string(),
+                "--port".to_string(),
+                port.to_string(),
+            ],
+            recall_opts(),
+        );
+        ctx.case_with(
+            "recall-replay json",
+            &[
+                "recall-replay".to_string(),
+                "cd000000-0000-4000-8000-000000000001".to_string(),
+                "--port".to_string(),
+                port.to_string(),
+                "--json".to_string(),
+            ],
+            recall_opts(),
+        );
+        let err_port = spawn_recall_stub(RECALL_CANNED_RESULT, true);
+        ctx.case_with(
+            "recall-replay server error",
+            &[
+                "recall-replay".to_string(),
+                "cd000000-0000-4000-8000-000000000001".to_string(),
+                "--port".to_string(),
+                err_port.to_string(),
+            ],
+            recall_opts(),
+        );
+        // A closed port: the connect-error arm (reason text normalized).
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_port = dead.local_addr().unwrap().port();
+        drop(dead);
+        ctx.case_with(
+            "recall-replay unreachable",
+            &[
+                "recall-replay".to_string(),
+                "cid".to_string(),
+                "--port".to_string(),
+                dead_port.to_string(),
+            ],
+            recall_opts(),
+        );
+    }
 
     // Registry round-trip: the same mutation sequence on each side must leave
     // byte-identical registry files.
