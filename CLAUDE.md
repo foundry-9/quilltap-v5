@@ -981,7 +981,47 @@ records THERE. Update this summary only when a phase or round completes.
   extraction + cadence part 2 + stop-destroying-episodes + the Story's
   Clock SPA; the full carry-in list is in phase-4.md and the round
   record).
-- **Oracle baseline: MIXED after the episodic round-2 unification
+- **The episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥
+  P4.9H1): UNIFIED on main (2026-07-22) — ALL THREE CLOSED; THE
+  CAMPAIGN CLOSES.** Creation-side: the clocked extraction prompts +
+  EVENT category + `kind`/`when`/`entities` coercion + `capCandidates`,
+  the processor `resolveCandidateAnchors` + turn-path `occurredAt`
+  stamp, the first-write fallback anchors, the gate date guard +
+  reinforce anchor upgrades (**`QT_ORACLE_GATE` un-SKIPPED and green**),
+  the NEW fold-episode pass + fold Timeline, the housekeeping merge
+  guard ∥ recall-on-reference part 2: the scoped dated mini-recap (the
+  vault `time_range`'s first caller), the `retrospective-recall`
+  whisper + sweep membership, the retro-signature spam guard ∥ the
+  ChatSidebar SPA vertical (participants / Chat / Visibility / Organize
+  sections, the four-affordance reconciliation, **the Story's Clock**
+  switch, the per-chat Core-whisper override + chat-tier State-Editor
+  opener — the state-cascade deferral CLOSED). Gate: 365 binaries /
+  1,505 / 0, all 27 round families fresh at `8bf3cb5f` + by-name zero
+  SKIP, clippy both feature sets, release build, ng 209/2,487, full
+  Playwright green zero skips. **Standing (loud):** the
+  `orchestrator_tier3` family is stale-RED from a PRE-EXISTING gap (v5
+  omits v4's memory-recap block upstream of build_context — dedicated
+  follow-up owed); **the ported memory-extraction pipeline is DORMANT
+  in production** (no `CONTEXT_SUMMARY`/`MEMORY_EXTRACTION` job
+  handlers in `quilltap-host`) — wiring them is the top next candidate;
+  the v4 `deab0e5d` theme/icons drift (lib-free) owes a small SPA
+  re-port; `p4.9h2` + the sidebar tier-3 deferrals stay banked. Next
+  candidates: see phase-4.md's campaign section.
+- **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
+  unification (2026-07-22).** v4 HEAD is `deab0e5d` (2 commits past the
+  baseline, BOTH lib-free — theme/icons/docs; dispositioned in the
+  round record; drift-check before every round). All episodic-campaign
+  families now regenerate at `8bf3cb5f`, including the previously
+  deferred gate / processor / memory-tasks-creation / context-summary /
+  carina / recall-history set; families untouched since earlier rounds
+  keep their prior vintages. Oracles regenerate directly from
+  `~/source/quilltap-server`; pin a detached worktree only on
+  drift/dirty (recipe: `oracle-regen-pinned-v4-worktree`). Versions
+  (after the 2026-07-22 round-3 unification): core 0.0.321, harness
+  0.0.277, host 0.0.29, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4,
+  SPA 0.5.251.
+  The previous baseline paragraph follows for history:
+  **Oracle baseline: MIXED after the episodic round-2 unification
   (2026-07-21).** v4 HEAD is `8bf3cb5f` (4.9-dev). Rounds 1–2 rebased
   their families to **`8bf3cb5f`**: round 1's memory-row/pure +
   character + new-chat families (provisioning, memories

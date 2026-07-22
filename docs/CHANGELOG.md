@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+Unified round 3 of the episodic-recall drift catch-up (P4.d14 + P4.d15 +
+P4.9H1) — the campaign's final round; the largest v4 drift in the port
+is now fully absorbed. Memories are born with anchors (clocked
+extraction prompts with an EVENT category, event-time stamping from the
+transcript, first-write fallback anchors, the gate's episodic date
+guard with reinforce-time anchor upgrades), conversations consolidate
+their episodes at fold time (the fold-episode pass plus the summary's
+append-only dated Timeline, with the housekeeping merge pass honoring
+the same date guard), retrospective turns now get the fourth cadence's
+full payoff (the scoped dated mini-recap riding the recall text and its
+own retrospective-recall whisper, spam-guarded by a retro-signature
+ring), and the Salon gained its chat sidebar with participants,
+visibility and organize sections, and the Story's Clock timeline-mode
+switch. Gate: 365 Rust test binaries / 1,505 tests / 0 failed with all
+27 round oracle families regenerated fresh at v4 8bf3cb5f and re-run by
+name zero SKIP (the memory-gate family runs un-skipped for the first
+time), clippy both feature sets, release build, ng 209 files / 2,487,
+full Playwright 112/112 zero skips from the fresh dist. Versions: core 0.0.321,
+harness 0.0.277, SPA 0.5.251. Known standing items, recorded loudly in
+the status log: the orchestrator tier-3 family is stale-red from a
+pre-existing gap (v5 omits v4's memory-recap block upstream of context
+building) and the ported memory-extraction pipeline stays dormant until
+the host registers its two job handlers.
+
 Unification wire for the episodic round 3: the `timelineMode` column's
 doc note in the chats data layer now names its live production writer
 (the Salon sidebar's Story's Clock switch) instead of calling it a

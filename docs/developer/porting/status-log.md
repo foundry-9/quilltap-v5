@@ -9,6 +9,112 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1): UNIFIED on main (2026-07-22) — THE CAMPAIGN CLOSES
+
+**All three lanes CLOSED and unified; the episodic-recall drift
+(`8bf3cb5f`, the largest single drift in the port) is fully absorbed.**
+Cherry-picked onto `unify/episodic-round-3` in dependency order (d14's
+6 commits → d15's 4 → 9H1's 7), conflicts only in the version files and
+the two append-only docs (union-merged; versions accumulated core
+313→+4+3(+1 wire)=**0.0.321**, harness 270→+4+3=**0.0.277**; SPA
+0.5.245→**0.5.251**). No source-level conflict — the d14/d15 file-
+ownership contract held exactly (the only crate-file overlap between
+the server lanes was the two `Cargo.toml` version lines), and 9H1
+touched zero Rust.
+
+**⚠ v4 drift at unification (dispositioned, not absorbed):** v4 HEAD
+moved to `deab0e5d` (2 commits past `8bf3cb5f`: `ab0f175e` Madman's Box
+theme fix + `deab0e5d` themeable thinking indicator / QuillAnimation
+rework / icon registry). **ZERO `lib/`, `packages/*/lib`, or `app/api`
+code** — verified by diff stat — so the oracle baseline stays
+`8bf3cb5f` and every regenerated family is valid. **Owed from it (SPA
+side, banked):** the themeable thinking-indicator/QuillAnimation
+re-port + the Madman's Box theme-pack refresh + two 2-line composer
+touches + the icon-registry additions, IF/where v5 mirrors those
+surfaces.
+
+**The unification wires:**
+- The d14/d15 boundary verified mechanically (changed-file overlap =
+  version files only); the timelineMode contract verified name-for-name
+  (SPA `core-contract.ts` chat shape + `{ chat: { timelineMode } }` PUT
+  vs `api/salon.rs`'s accept arm).
+- `context_summary_service_tier3` — the family P4.d15 found RED
+  cross-lane (v4's five-section fold prompt, before d14's Timeline port
+  existed in its tree) — **regenerated fresh and GREEN on the merged
+  tree**: the report is RESOLVED, no action was needed beyond the merge.
+- The one stale cross-lane seam note fixed (`db/chats.rs` still called
+  the Story's Clock switch "eventual"; it is now the named production
+  writer) — comment-only, core 0.0.321.
+- d15's other cross-lane duties verified already done in-lane (the
+  `compressMemories` deferral note now records the `8bf3cb5f` port
+  target incl. the keep/drop flip; the vault `time_range` "no caller"
+  note is gone — the mini-recap is the caller).
+
+**The gate (this Mac, authoritative, run at unification):**
+- `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+  -D warnings` green BOTH feature sets (default +
+  `--features quilltap-core/native-transport`); release build clean.
+- All 27 round families regenerated FRESH from the v4 checkout (lib/
+  identical to `8bf3cb5f`; every NDJSON deleted-before-regen and
+  count-verified: memory-tasks 18, gate 12-scenario corpus, processor
+  4 calls, carina-mem 12, fold-episode 2 runs, memhousekeeping 7 ops,
+  ctxsum 28, chat-tasks 25, context-summary 46, mem, memories-routes
+  24, memories-config 17, episodic 94, extract-novel-details 15,
+  weighting 17, injector 72, recall-history 48, build-context 11 ops
+  (context + whisper-row sides), po-commonplace 36, distill 14,
+  vault-conv 7, recall-replay 13, salon 6/17/2/4, pow, carina-query
+  46).
+- `cargo test --workspace` with the full 46-var round env: **365 test
+  binaries / 1,505 tests / 0 failed** (round-2 baseline 364/1,496; the
+  +1 binary is the NEW `fold_episode_tier3_equivalence`). All 27
+  families re-run BY NAME with `--nocapture`: green, zero SKIP —
+  **`memory_gate_tier3_equivalence` runs un-SKIPPED for the first time
+  since round 1 and is green.**
+- `ng test` **209 files / 2,487 / 0**; `ng build` clean; **full
+  Playwright from the fresh dist + this branch's release binaries:
+  112 passed / 0 failed / 0 skipped (2.7m)** — the SPA lane's two new
+  sidebar beats and every re-pointed beat green against the merged
+  server behavior.
+
+**Standing after this round — the campaign ledger:**
+- The episodic-recall overhaul is ported END-TO-END: columns (round 1),
+  retrieval + tools + replay (round 2), creation + fold + the fourth
+  cadence + stop-destroying (round 3). The round-3 family vintages all
+  moved to `8bf3cb5f`; the oracle baseline is now UNIFORM at
+  `8bf3cb5f` (untouched families keep their earlier regen vintages, as
+  established).
+- **⚠ `orchestrator_tier3` (`QT_ORACLE_ORCHESTRATOR`) is stale-RED —
+  pre-existing, NOT this round** (verified red with d15's diff
+  reverted; not re-run since the P4.d5 era). Diagnosis in the P4.d15
+  unit-3 record: v5's primary-stream request omits the memory-recap
+  block (`## What You Remember` / `### Recent Conversations`) that v4
+  emits — the gate is identical both sides, so the divergence is
+  upstream of `build_context` (`services::message_context`
+  `should_generate_recap` / the orchestrator's cheap-LLM threading).
+  **A dedicated follow-up order owns it.**
+- **⚠ The ported memory-extraction pipeline is DORMANT in production**
+  (P4.d14's finding): neither `CONTEXT_SUMMARY` nor `MEMORY_EXTRACTION`
+  is a registered job handler in `quilltap-host`, so nothing in the
+  running server drives `generate_context_summary` or
+  `process_turn_for_memory` — the fold-episode pass, the clocked
+  extraction, and the gate all run verified-but-dark. **Wiring those
+  two job handlers is the highest-value next server item** (and the
+  orchestrator follow-up above likely rides the same investigation).
+- The `retrospective-recall` whisper + the scoped vault-summary time
+  window ARE live on the wired `RealBuildContextSeams` path; the next
+  dogfood pass is their live proof.
+- Post-round riders banked: the two `ExtractionClock` types
+  (memory_tasks full vs distill subset) stay separate — consolidating
+  them is a small rider; v5's chat-message writer does not port v4's
+  Zod UUID validation on `targetParticipantIds` (inert, recorded); the
+  v4 chat-GET `timelineMode` projection bug is ported faithfully and
+  banked for v4 upstream.
+- P4.9H1's tier-3 deferrals (loud, in its lane record): participant
+  mutations, Concierge tri-state, Agent Mode, avatar-gen, Tools / Run
+  Tool, Rename, Continue Elsewhere, Merge In, Export, the Edit Content
+  section. `p4.9h2` (settings remainder) stays banked in
+  `m6-screen-parity.md`.
+
 ## Round planned — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1), 2026-07-22
 
 Planned via /setupphase ("round 3 — the campaign's final round").

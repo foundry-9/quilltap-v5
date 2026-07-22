@@ -2217,6 +2217,33 @@ memory-tasks CREATION cases + context-summary/fold + carina-extraction
 families stay at `7e6d13e5` until round 3 ports them. (Original
 round-1 planning section follows.)
 
+**ROUND 3 UNIFIED ON MAIN (2026-07-22) — P4.d14/P4.d15/P4.9H1 all
+CLOSED; THE CAMPAIGN CLOSES.** The `8bf3cb5f` drift is fully absorbed;
+the round-3 family vintages all moved to `8bf3cb5f` (the gate family
+un-SKIPPED and green). Gate: 365 binaries / 1,505 / 0 with all 27 round
+families fresh + by-name zero SKIP; clippy both feature sets; release
+build; ng 209/2,487; full Playwright green from the fresh dist. Round
+record: `status-log.md`. **Next candidates, in rough value order:**
+1. **Wire the memory pipeline's job handlers** — `CONTEXT_SUMMARY` +
+   `MEMORY_EXTRACTION` are not registered in `quilltap-host`, so the
+   whole ported extraction/fold/gate pipeline (three rounds of work) is
+   verified but DORMANT in the running server. The
+   **`orchestrator_tier3` stale-RED follow-up** (v5's primary-stream
+   request omits v4's memory-recap block — upstream of build_context;
+   diagnosis in the P4.d15 unit-3 record) almost certainly rides the
+   same investigation — one order should own both.
+2. **An episodic + sidebar dogfood pass** on the Friday copy — the
+   retrospective mini-recap/whisper, the Story's Clock, and the sidebar
+   are live surfaces nobody has hand-walked on real data.
+3. The v4 `deab0e5d` **theme/icons drift SPA re-port** (lib-free:
+   QuillAnimation thinking indicator, Madman's Box theme refresh, icon
+   registry, two 2-line composer touches) — small, SPA-only.
+4. `p4.9h2` (the settings remainder bucket), the P4.9H1 tier-3 sidebar
+   deferrals, the ExtractionClock consolidation rider, p4.9i2
+   (HelpChat), M6 rows 5+, or the conversion port.
+
+Original round-3 plan follows.
+
 **ROUND 3 PLANNED (2026-07-22) — three parallel lanes (orders
 committed):** drift-check at planning: v4 HEAD == `8bf3cb5f`, tree
 clean — no new drift; the round absorbs the FINAL un-ported portion of
