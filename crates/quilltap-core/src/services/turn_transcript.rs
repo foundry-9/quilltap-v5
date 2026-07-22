@@ -162,7 +162,7 @@ pub fn build_turn_transcript(
         if m.get("role").and_then(Value::as_str) != Some("ASSISTANT") {
             continue;
         }
-        if is_js_truthy(m.get("isSilentMessage")) {
+        if is_truthy_silent(m.get("isSilentMessage")) {
             continue;
         }
         let Some(participant_id) = m
@@ -262,10 +262,7 @@ pub(crate) fn is_truthy_system_sender(v: Option<&Value>) -> bool {
     is_js_truthy(v)
 }
 
-/// JS truthiness of a read-side message cell. `get_messages` coerces
-/// `isSilentMessage` to a real bool, but a defensive read also covers the
-/// TEXT-affinity `"1.0"`/`"0.0"` forms the finalizer's earlier helper handled
-/// (v4 never sees those post-coercion; neither side should skip on `false`).
+/// JS truthiness of a read-side string-or-bool message cell.
 pub(crate) fn is_js_truthy(v: Option<&Value>) -> bool {
     match v {
         Some(Value::Bool(b)) => *b,
@@ -273,6 +270,21 @@ pub(crate) fn is_js_truthy(v: Option<&Value>) -> bool {
         Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
         Some(Value::Null) | None => false,
         Some(Value::Array(_)) | Some(Value::Object(_)) => true,
+    }
+}
+
+/// JS-truthy read of the TEXT-affinity `isSilentMessage` cell after v4's
+/// read-side coercion: `"1.0"`/`"1"`/`true` → true, `"0.0"`/`false`/NULL →
+/// false. v4 reads `m.isSilentMessage` after the read coerces the stored
+/// `"1.0"`/`"0.0"` back to a bool, so a false silent message does NOT skip
+/// (the string arms are the defensive raw-row read; `get_messages` normally
+/// hands real bools). Moved here from the finalizer (P4.6bj).
+pub(crate) fn is_truthy_silent(v: Option<&Value>) -> bool {
+    match v {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => s == "1.0" || s == "1" || s == "true",
+        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+        _ => false,
     }
 }
 

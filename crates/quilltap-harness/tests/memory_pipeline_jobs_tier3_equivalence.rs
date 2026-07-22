@@ -33,7 +33,6 @@
 //!     cargo test -p quilltap-harness --test memory_pipeline_jobs_tier3_equivalence
 
 use std::collections::HashMap;
-use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::dump_table_json_conn;
@@ -132,15 +131,15 @@ fn spec_path() -> PathBuf {
 struct NullCost;
 
 impl MessageCostEstimator for NullCost {
-    fn estimate(
+    async fn estimate(
         &self,
         _provider: &str,
         _model: &str,
         _prompt_tokens: i64,
         _completion_tokens: i64,
         _user_id: &str,
-    ) -> impl Future<Output = Option<f64>> + Send {
-        async move { None }
+    ) -> Option<f64> {
+        None
     }
 }
 

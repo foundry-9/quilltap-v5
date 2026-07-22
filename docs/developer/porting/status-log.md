@@ -28804,3 +28804,102 @@ Versions: core 0.0.322, harness 0.0.278.
 **Standing (loud):** the pipeline stays DORMANT in production until the
 CONTEXT_SUMMARY + MEMORY_EXTRACTION handlers land — that is the rest of
 this order (`work-orders/p4.6bj-memory-pipeline-job-handlers.md`).
+
+## P4.6bj — the memory-pipeline job-handlers lane record (2026-07-22) — ORDER CLOSED; THE PIPELINE GOES LIVE
+
+**Lane `claude/great-pascal-e21150` (single lane; order
+`work-orders/p4.6bj-memory-pipeline-job-handlers.md`). Drift check at
+lane start and at the gate: v4 HEAD == `deab0e5d`, tree clean — 2
+lib-free commits past the `8bf3cb5f` baseline (dispositioned in the
+round-3 record); every oracle regenerated straight from
+`~/source/quilltap-server`.**
+
+**Commits (in order):** `75c94654` unit 0 (the orchestrator_tier3
+stale-RED fix — its own record above) · `aaea3d35` the work order ·
+`76134783` unit 1 (`build_turn_transcript`) · `0c9f3cd8` units 2–3
+(both handler bodies + the new family) · the closing commit (unit 4,
+the host wire + this record).
+
+**What landed.**
+- **Unit 1** — `services::turn_transcript`: v4's `buildTurnTranscript`
+  (opener promotion, per-character grouping with `\n\n` joins, the four
+  skip classes, the anchor stop on COLLECTED rows only, the timestamp
+  fallback chains). `find_turn_opener_message_id` + the JS-truthy cell
+  reads moved here from the finalizer (the systemSender guard is now
+  JS-truthy like v4's — `""` falsy — instead of `is_some`; the
+  coercion-aware `is_truthy_silent` kept its pinned semantics and its
+  unit test). NEW tier-1 family: `turn_transcript_equivalence`
+  (`QT_ORACLE_TURN_TRANSCRIPT`) over the committed shared corpus
+  `harness/oracle/fixtures/turn-transcript.json` — 17 cases exact
+  against v4's real builder, including the anchor-on-a-skipped-row and
+  opener-id-wrong-role edges.
+- **Units 2–3** — `services::memory_extraction_job` (v4's per-turn
+  handler: profile/settings throws vs chat-missing/empty-slices skips,
+  participant hydration, `resolveUserCharacterParticipant`, the guarded
+  project-description read, the historical `sourceMessageTimestamp`
+  chain, `process_turn_for_memory`, the debug-log persist, the
+  MEMORY_EXTRACTION cost event; plus the shared `limits_from_value`
+  parse for `getMemoryExtractionLimits`) and
+  `services::context_summary_job` (v4's summary handler over
+  `generate_context_summary_with_seams` with **`RealContextSummarySeams`**
+  — the job path runs the Librarian re-post, vault mirror,
+  relevant-conversations refresh, cost events, and fold-episode pass
+  LIVE — plus the priority −2 danger-classification chain, resolved
+  WITHOUT the chat per v4). NEW tier-3 family:
+  `memory_pipeline_jobs_tier3_equivalence` (`QT_ORACLE_MPJ`) over the
+  committed `memory-pipeline-jobs-tier3.json` +
+  `build-memory-pipeline-jobs-fixture.ts` — 10 cases (6 ME + 4 CS)
+  driving v4's REAL handlers, diffing SIX tables (`memories`,
+  `vector_indices`, `vector_entries`, `chat_messages`, `chats`,
+  `background_jobs`) in the shared minted-remap form (embedded
+  debug-log UUIDs remapped through the same id map — the gate's
+  "absorbed into <uuid>" line) and pinning each case's thrown-error
+  string. Embeddings are RECORD-and-replay (`kind:"cannedEmbedding"`
+  oracle rows), so a divergent embedding input surfaces as a
+  canned-miss.
+- **Unit 4** — the host wire: `MemoryExtractionJobHandler` +
+  `ContextSummaryJobHandler` decode wrappers registered in
+  `ProductionSpineFactory::build` (the TitleUpdate/Carina precedents:
+  per-job logging executor, `ApiEmbeddingProvider`,
+  `PricingMessageCost`). The shared `read_memory_extraction_limits`
+  host read ALSO closes the carina handler's long-standing
+  `memory_extraction_limits: None` deferral (v4's handler reads
+  `getMemoryExtractionLimits()` for real).
+
+**Production impact:** the finalizer-enqueued MEMORY_EXTRACTION and
+danger-scan-enqueued CONTEXT_SUMMARY jobs now RUN instead of dying on
+the loud fallback — **three rounds of episodic-campaign work go live,
+and the extraction pipeline costs real cheap-LLM money on every closed
+turn.**
+
+**Fixture-builder gotcha (banked):** v4 creates main tables LAZILY on
+first write — a fixture whose seed never touches `memories` /
+`vector_*` / `background_jobs` ships WITHOUT them and the Rust side
+errors `no such table`. The builder materializes them with a real seed
+memory (an ORTHOGONAL e1 vector so the corpus's e0 candidates never
+land in its reinforce band) and a real enqueue-then-delete for
+`background_jobs` (v4's exact DDL, zero rows).
+
+**Gate:** `cargo fmt --all --check` clean; clippy `--workspace
+--all-targets -D warnings` clean in BOTH feature sets; `cargo test
+--workspace` 367 binaries / 0 failed with the round's four families by
+name over fresh oracles, zero SKIP (`orchestrator_tier3`,
+`context_summary_service_tier3`, `turn_transcript`,
+`memory_pipeline_jobs_tier3`; TZ=UTC on the MPJ family per the
+episodic precedent); `cargo build --workspace --release` clean; full
+Playwright from the fresh dist + release bins — see the closing commit.
+Versions at lane end: core 0.0.324, harness 0.0.280, host 0.0.30.
+
+**Deferred loud:**
+- The chain's danger-OFF arm has no differential case (it would need a
+  second fixture user; the one-line mode gate rides the separately
+  verified resolver).
+- The other unregistered `KNOWN_JOB_TYPES` (INTER_CHARACTER_MEMORY,
+  SCENE_STATE_TRACKING, CONVERSATION_RENDER, EMBEDDING_*, …) stay on
+  the loud fallback.
+- The IN-LOOP summary check keeps `FoldEpisodePassSeams` (episode pass
+  live; Librarian/mirror/refresh still no-op there — un-mocking the
+  orchestrator oracle's four arms is the closing move).
+- **The live proof is the next dogfood pass on the Friday copy** — the
+  e2e instance has no API keys, so the newly-live jobs fail at the
+  provider boundary there by design.

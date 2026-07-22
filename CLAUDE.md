@@ -1006,7 +1006,32 @@ records THERE. Update this summary only when a phase or round completes.
   handlers in `quilltap-host`) — wiring them is the top next candidate;
   the v4 `deab0e5d` theme/icons drift (lib-free) owes a small SPA
   re-port; `p4.9h2` + the sidebar tier-3 deferrals stay banked. Next
-  candidates: see phase-4.md's campaign section.
+  candidates: see phase-4.md's campaign section. **(Both standing
+  items CLOSED by P4.6bj — next bullet.)**
+- **P4.6bj memory-pipeline job handlers: CLOSED on main (2026-07-22,
+  single lane) — THE EXTRACTION/FOLD PIPELINE IS LIVE.** Unit 0 closed
+  the `orchestrator_tier3` stale-RED (the P4.d15 recap diagnosis was
+  already healed by round 3; the residual was the in-loop fold-episode
+  seam — `run_summary_check` now folds with the new
+  `FoldEpisodePassSeams`, episode pass live, the other four arms still
+  the oracle-mocked no-ops). Then `buildTurnTranscript` (new tier-1
+  family, 17 cases) + the `handleMemoryExtraction` /
+  `handleContextSummary` handler bodies (the CS job path runs
+  `RealContextSummarySeams` — Librarian re-post / vault mirror /
+  refresh / cost events / episode pass all live — + the −2 danger
+  chain; new tier-3 `memory_pipeline_jobs` family: 10 cases, SIX
+  diffed tables incl. `background_jobs`, thrown-error strings pinned)
+  + BOTH handlers registered in `ProductionSpineFactory` (the host
+  read closing carina's `memory_extraction_limits` deferral too) —
+  **three rounds of episodic work now RUN in production and cost real
+  cheap-LLM money on every closed turn.** Gate: 367 binaries / 0
+  failed, the four round families by name over fresh `deab0e5d`≡
+  `8bf3cb5f` oracles zero SKIP, clippy both feature sets, release
+  build, full Playwright green from a fresh dist. Live proof owed: the
+  next dogfood pass (the e2e instance has no API keys by design).
+  Order: `work-orders/p4.6bj-memory-pipeline-job-handlers.md`; records
+  in the status log. Versions: core 0.0.324, harness 0.0.280, host
+  0.0.30.
 - **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
   unification (2026-07-22).** v4 HEAD is `deab0e5d` (2 commits past the
   baseline, BOTH lib-free — theme/icons/docs; dispositioned in the

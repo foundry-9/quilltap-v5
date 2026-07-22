@@ -1398,7 +1398,7 @@ pub(crate) async fn trigger_turn_memory_extraction(
             if super::turn_transcript::is_js_truthy(m.get("systemSender")) {
                 continue;
             }
-            if super::turn_transcript::is_js_truthy(m.get("isSilentMessage")) {
+            if super::turn_transcript::is_truthy_silent(m.get("isSilentMessage")) {
                 continue;
             }
             let Some(id) = m
@@ -1703,15 +1703,19 @@ mod tests {
             json!({ "type": "message", "role": "USER", "id": "u2" }),
             json!({ "type": "message", "role": "USER", "id": "sys", "systemSender": "host" }),
         ];
-        assert_eq!(find_turn_opener_message_id(&msgs), Some("u2".into()));
+        assert_eq!(
+            super::super::turn_transcript::find_turn_opener_message_id(&msgs),
+            Some("u2".into())
+        );
     }
 
     #[test]
     fn is_truthy_silent_coerces_text_affinity() {
-        assert!(is_truthy_silent(Some(&json!("1.0"))));
-        assert!(!is_truthy_silent(Some(&json!("0.0"))));
-        assert!(!is_truthy_silent(None));
-        assert!(is_truthy_silent(Some(&json!(true))));
-        assert!(!is_truthy_silent(Some(&json!(false))));
+        use super::super::turn_transcript as ts;
+        assert!(ts::is_truthy_silent(Some(&json!("1.0"))));
+        assert!(!ts::is_truthy_silent(Some(&json!("0.0"))));
+        assert!(!ts::is_truthy_silent(None));
+        assert!(ts::is_truthy_silent(Some(&json!(true))));
+        assert!(!ts::is_truthy_silent(Some(&json!(false))));
     }
 }

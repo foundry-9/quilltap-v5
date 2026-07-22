@@ -111,6 +111,7 @@ use quilltap_core::services::chat_create::{
 };
 use quilltap_core::services::chat_events::{ChatEvent, EventSink};
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::context_summary_job::{handle_context_summary, ContextSummaryPayload};
 use quilltap_core::services::cost_estimation::MessageCostEstimator;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
@@ -128,6 +129,10 @@ use quilltap_core::services::housekeeping::{run_housekeeping, HousekeepingOption
 use quilltap_core::services::housekeeping_outcome_cache::record_housekeeping_outcome;
 use quilltap_core::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 use quilltap_core::services::llm_logging::LogContext;
+use quilltap_core::services::memory_extraction_job::{
+    handle_memory_extraction, limits_from_value, MemoryExtractionPayload,
+};
+use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use quilltap_core::services::message_finalizer::{
     AcOnAffirming, AnswerConfirmationRunner, CostEstimate, CostTrackArgs, CostTracker,
     FinalizerConfirmationRun, RealAnswerConfirmation, RealAsyncCompression,
@@ -2157,12 +2162,114 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtrac
                 &cost,
                 &job.user_id,
                 &cpayload,
-                None,
+                // v4 `getMemoryExtractionLimits()` — the instance-settings read
+                // (P4.6bj closed the reader deferral; a read failure keeps the
+                // service defaults, as before).
+                read_memory_extraction_limits(db),
             )
             .await
             {
                 Ok(()) => JobOutcome::Completed(None),
                 Err(e) => JobOutcome::Failed(e.to_string()),
+            }
+        })
+    }
+}
+
+/// v4 `getMemoryExtractionLimits()` — the instance-settings read + parse the
+/// extraction handlers resolve above the core seam. `None` on a read failure
+/// (the service falls back to its defaults).
+fn read_memory_extraction_limits(db: &Db) -> Option<MemoryExtractionLimits> {
+    db.read_main(quilltap_core::db::instance_settings::get_memory_extraction_limits)
+        .ok()
+        .map(|v| limits_from_value(&v))
+}
+
+/// `MEMORY_EXTRACTION` (P4.6bj) — a payload decode around the
+/// differential-verified
+/// [`handle_memory_extraction`](quilltap_core::services::memory_extraction_job::handle_memory_extraction).
+/// The finalizer enqueues one per closed turn; before this registration the
+/// whole episodic-campaign extraction pipeline was verified but DORMANT (every
+/// job died on the runner's loud fallback).
+pub struct MemoryExtractionJobHandler<PF: PricingFetch + Send + Sync + 'static> {
+    pub wire: WireConfig,
+    pub pricing: Arc<PricingFetcher<PF>>,
+}
+
+impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJobHandler<PF> {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            let decoded = MemoryExtractionPayload::decode(&payload);
+            let completion = self.wire.completion(db);
+            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: job.user_id.clone(),
+                chat_id: Some(decoded.chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            let cost = PricingMessageCost {
+                fetcher: Arc::clone(&self.pricing),
+                db: db.clone(),
+            };
+            match handle_memory_extraction(
+                db,
+                &completion,
+                &embedding,
+                &executor,
+                &cost,
+                &job.user_id,
+                &decoded,
+                read_memory_extraction_limits(db),
+            )
+            .await
+            {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+
+/// `CONTEXT_SUMMARY` (P4.6bj) — a payload decode around the
+/// differential-verified
+/// [`handle_context_summary`](quilltap_core::services::context_summary_job::handle_context_summary).
+/// The scheduled danger scan enqueues these; the handler folds with
+/// `RealContextSummarySeams` (Librarian re-post / vault mirror / refresh /
+/// cost events / episode pass all live) and chains the priority −2 danger
+/// classification.
+pub struct ContextSummaryJobHandler {
+    pub wire: WireConfig,
+}
+
+impl JobHandler for ContextSummaryJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            let decoded = ContextSummaryPayload::decode(&payload);
+            let completion = self.wire.completion(db);
+            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: job.user_id.clone(),
+                chat_id: Some(decoded.chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            match handle_context_summary(
+                db,
+                &completion,
+                &embedding,
+                &executor,
+                &job.user_id,
+                &decoded,
+            )
+            .await
+            {
+                Ok(_) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
             }
         })
     }
@@ -2466,6 +2573,17 @@ impl SpineFactory for ProductionSpineFactory {
                     wire: wire.clone(),
                     pricing: Arc::clone(&self.pricing),
                 }),
+            ),
+            (
+                "MEMORY_EXTRACTION".to_string(),
+                Box::new(MemoryExtractionJobHandler {
+                    wire: wire.clone(),
+                    pricing: Arc::clone(&self.pricing),
+                }),
+            ),
+            (
+                "CONTEXT_SUMMARY".to_string(),
+                Box::new(ContextSummaryJobHandler { wire: wire.clone() }),
             ),
             (
                 "CHARACTER_AVATAR_GENERATION".to_string(),

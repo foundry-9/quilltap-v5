@@ -2224,14 +2224,16 @@ un-SKIPPED and green). Gate: 365 binaries / 1,505 / 0 with all 27 round
 families fresh + by-name zero SKIP; clippy both feature sets; release
 build; ng 209/2,487; full Playwright green from the fresh dist. Round
 record: `status-log.md`. **Next candidates, in rough value order:**
-1. **Wire the memory pipeline's job handlers** — `CONTEXT_SUMMARY` +
-   `MEMORY_EXTRACTION` are not registered in `quilltap-host`, so the
-   whole ported extraction/fold/gate pipeline (three rounds of work) is
-   verified but DORMANT in the running server. The
-   **`orchestrator_tier3` stale-RED follow-up** (v5's primary-stream
-   request omits v4's memory-recap block — upstream of build_context;
-   diagnosis in the P4.d15 unit-3 record) almost certainly rides the
-   same investigation — one order should own both.
+1. ~~**Wire the memory pipeline's job handlers**~~ — **DONE (P4.6bj,
+   2026-07-22; order:
+   `work-orders/p4.6bj-memory-pipeline-job-handlers.md`, record in the
+   status log).** The `orchestrator_tier3` stale-RED closed first (the
+   P4.d15 recap diagnosis was already healed by round 3 — the residual
+   was the in-loop fold-episode seam), then `buildTurnTranscript` +
+   both handler bodies landed with a new tier-3 family and BOTH
+   handlers registered in the host — **the extraction/fold pipeline is
+   LIVE in production and costs real money on every closed turn.** Its
+   first live proof is the next dogfood pass (item 2 below).
 2. **An episodic + sidebar dogfood pass** on the Friday copy — the
    retrospective mini-recap/whisper, the Story's Clock, and the sidebar
    are live surfaces nobody has hand-walked on real data.
