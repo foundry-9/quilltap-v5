@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
@@ -209,6 +218,23 @@ export class CharactersList {
    *  auto-open, set only by the card's in-tab Chat arm. */
   protected readonly openChatForSelected = signal(false);
   protected readonly inTab = computed(() => this.tabId != null);
+
+  /**
+   * Deep-link target (v4 `8d86847a` `AuroraViewProps.initialGroupId`):
+   * `/characters/groups/<id>` (v4 `/aurora/groups/<id>`) redirects into the
+   * Characters tab carrying this id, and a RE-open of the already-open tab
+   * refreshes the payload — so the effect follows every truthy change, not just
+   * the first (v4's derive-from-prop-change guard does the same). A drill-back
+   * leaves the input untouched, so the effect does not re-run.
+   */
+  readonly initialGroupId = input<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      const id = this.initialGroupId();
+      if (id) untracked(() => this.selectedGroupId.set(id));
+    });
+  }
 
   /** Drill into a character's detail (v4 `setSelectedCharacterId`). */
   protected drillView(id: string): void {

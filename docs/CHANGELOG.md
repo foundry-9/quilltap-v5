@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.d16 unit 4 — drill-in hosting. The Prospero, Scriptorium and Characters
+list screens gain the optional deep-link inputs v4 `8d86847a` added to
+their views (`initialProjectId` / `initialStoreId` / `initialGroupId`),
+wired to the drill state each screen already had. The workspace tab
+registry binds them from the tab payload, so `/prospero/<id>` opens the
+one Projects tab already drilled into that project, and re-opening the
+tab with a different id re-targets the drill in place (v4's
+derive-from-prop-change guard, expressed as an effect that follows every
+truthy change). A drill-back leaves the input untouched, so the list
+stays put. The registry also hosts the new salon-list kind.
+
 P4.d16 unit 2 — the `?open=` intent layer catches up with v4 `8d86847a`.
 `salon-list` and `character-view` join the openable kinds (the spec that
 ASSERTED character-view's exclusion is flipped — v5 had the tab kind all

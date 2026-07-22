@@ -226,6 +226,33 @@ describe('ProsperoList (in-tab drill)', () => {
     expect(fixture.nativeElement.querySelector('qt-project-detail')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Create Project');
   });
+
+  // P4.d16 (v4 `8d86847a`): the deep-link drill payload.
+  it('opens already drilled into initialProjectId, and follows a re-target', async () => {
+    TestBed.configureTestingModule({
+      imports: [ProsperoList],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(handler) },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-p' },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProsperoList);
+    fixture.componentRef.setInput('initialProjectId', 'p1');
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-project-detail')).toBeTruthy();
+
+    // A re-open of the open tab refreshes the payload — the drill follows it.
+    fixture.componentRef.setInput('initialProjectId', 'p2');
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(
+      fixture.debugElement.query(By.directive(ProjectDetailScreen)).componentInstance
+        .projectIdInput(),
+    ).toBe('p2');
+  });
 });
 
 describe('ProjectModelBehaviorCard', () => {

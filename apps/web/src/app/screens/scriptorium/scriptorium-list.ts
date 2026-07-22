@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  OnInit,
+  signal,
+  untracked,
+} from '@angular/core';
 import { Router } from '@angular/router';
 
 import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
@@ -149,12 +159,29 @@ export class ScriptoriumList implements OnInit {
   protected readonly selectedStoreId = signal<string | null>(null);
   protected readonly inTab = computed(() => this.tabId != null);
 
+  /**
+   * Deep-link target (v4 `8d86847a` `ScriptoriumViewProps.initialStoreId`):
+   * `/scriptorium/<id>` redirects into the Scriptorium tab carrying this id, and
+   * a RE-open of the already-open tab refreshes the payload — so the effect
+   * follows every truthy change, not just the first (v4 does the same with its
+   * derive-from-prop-change guard). A drill-back leaves the input untouched, so
+   * the effect does not re-run and the list stays put.
+   */
+  readonly initialStoreId = input<string | null>(null);
+
   protected readonly createOpen = signal(false);
   protected readonly editStore = signal<DocumentStore | null>(null);
   protected readonly deleteStoreId = signal<string | null>(null);
   protected readonly convertTarget = signal<DocumentStore | null>(null);
   protected readonly deconvertTarget = signal<DocumentStore | null>(null);
   protected readonly scanningIds = signal<Set<string>>(new Set());
+
+  constructor() {
+    effect(() => {
+      const id = this.initialStoreId();
+      if (id) untracked(() => this.selectedStoreId.set(id));
+    });
+  }
 
   ngOnInit(): void {
     void this.store.fetchStores();

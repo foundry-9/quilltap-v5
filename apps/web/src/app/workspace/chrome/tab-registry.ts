@@ -1,12 +1,14 @@
 /**
  * The kind → hosted-component map (v4 `TabView.tsx` render switch, baseline
- * `b8b12695`) plus the v5 in-lane hosting decisions (P4.9J1 deliverable 5).
+ * `e646f58b`) plus the v5 in-lane hosting decisions (P4.9J1 deliverable 5).
  *
- * A tab kind resolves to a component and an optional inputs factory. Three kinds
+ * A tab kind resolves to a component and an optional inputs factory. Four kinds
  * of entry:
  *  - **in-lane real screen** — the v5 screen that needs no inputs today
- *    (home/aurora/prospero/scriptorium/files/photos/scenarios/generate-image/
- *    about/profile/character-new/settings-wizard).
+ *    (home/salon-list/files/photos/scenarios/generate-image/about/profile/
+ *    character-new/settings-wizard).
+ *  - **drill-in list surface** — aurora/prospero/scriptorium: singletons whose
+ *    OPTIONAL payload (P4.d16, v4 `8d86847a`) preselects one detail.
  *  - **portal host** — terminal/document render the J1 portal-host chrome
  *    (`TabPortalHost`); the Salon (lane J2's `SalonModePanes`) supplies the
  *    portal SOURCE.
@@ -14,8 +16,8 @@
  *    custom-tools bind lane J2's §2 signal inputs from the tab payload
  *    (ACTIVATED at the p4.9j unification); wardrobe / document-standalone /
  *    brahma joined at the workspace-tabs remainder round's unification
- *    (P4.9J3 / P4.9J4 / P4.9I1B — all 22 kinds are now hosted; the loud
- *    `NotWiredPane` refusal scaffold retired with its last consumer).
+ *    (P4.9J3 / P4.9J4 / P4.9I1B — every kind is hosted; the loud `NotWiredPane`
+ *    refusal scaffold retired with its last consumer).
  *
  * The map is behind an injection token so the keep-alive spec can substitute a
  * counting stub, and so lane screens can be swapped in at unification by
@@ -51,11 +53,14 @@ import { CharacterEdit } from '../../screens/characters/edit/character-edit';
 import { CharacterDetail } from '../../screens/characters/view/character-detail';
 import { CustomToolsPage } from '../../screens/custom-tools/custom-tools-page';
 import type {
+  AuroraTabPayload,
   CharacterEditTabPayload,
   CharacterViewTabPayload,
   CustomToolsTabPayload,
   DocumentStandaloneTabPayload,
+  ProsperoTabPayload,
   SalonTabPayload,
+  ScriptoriumTabPayload,
   SettingsTabPayload,
   WardrobeTabPayload,
 } from '../workspace-contract';
@@ -82,9 +87,6 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
   // chat cards are plain `/salon/:id` links — the host's interceptor turns each
   // click into a Salon tab, so the list needs no inputs and no tab seams.
   'salon-list': { component: SalonList },
-  aurora: { component: CharactersList },
-  prospero: { component: ProsperoList },
-  scriptorium: { component: ScriptoriumList },
   files: { component: FilesBrowser },
   photos: { component: PhotosPage },
   scenarios: { component: ScenariosPage },
@@ -108,6 +110,29 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
       const p = tab.payload as { chatId?: string; chatDocumentId?: string } | undefined;
       return { kind: 'document', chatId: p?.chatId ?? '', docId: p?.chatDocumentId };
     },
+  },
+
+  // --- the drill-in list surfaces (v4 `8d86847a` TabView.tsx) --------------
+  // Singletons whose OPTIONAL payload preselects a detail: a `/prospero/<id>`
+  // deep link opens (or re-targets) the one Projects tab drilled into that
+  // project. Absent payload = the plain list. v4's prop names are mirrored.
+  aurora: {
+    component: CharactersList,
+    inputs: (tab) => ({
+      initialGroupId: (tab.payload as AuroraTabPayload | undefined)?.groupId ?? null,
+    }),
+  },
+  prospero: {
+    component: ProsperoList,
+    inputs: (tab) => ({
+      initialProjectId: (tab.payload as ProsperoTabPayload | undefined)?.projectId ?? null,
+    }),
+  },
+  scriptorium: {
+    component: ScriptoriumList,
+    inputs: (tab) => ({
+      initialStoreId: (tab.payload as ScriptoriumTabPayload | undefined)?.storeId ?? null,
+    }),
   },
 
   // --- input-driven screens (lane J2's §2 inputs, activated at unification) ---

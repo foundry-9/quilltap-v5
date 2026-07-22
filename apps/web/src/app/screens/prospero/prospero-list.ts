@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
@@ -114,6 +123,23 @@ export class ProsperoList {
   /** v4 `ProsperoView` `selectedProjectId` — the in-tab drill target. */
   protected readonly selectedProjectId = signal<string | null>(null);
   protected readonly inTab = computed(() => this.tabId != null);
+
+  /**
+   * Deep-link target (v4 `8d86847a` `ProsperoViewProps.initialProjectId`):
+   * `/prospero/<id>` redirects into the Projects tab carrying this id, and a
+   * RE-open of the already-open tab refreshes the payload — so the effect
+   * follows every truthy change, not just the first (v4's derive-from-prop-
+   * change guard does the same). A drill-back leaves the input untouched, so the
+   * effect does not re-run and the list stays put.
+   */
+  readonly initialProjectId = input<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      const id = this.initialProjectId();
+      if (id) untracked(() => this.selectedProjectId.set(id));
+    });
+  }
 
   protected readonly createOpen = signal(false);
   protected readonly deleteTarget = signal<string | null>(null);
