@@ -130,7 +130,41 @@ fn validate_input(args: &Value) -> bool {
             _ => return false,
         }
     }
+    // Episodic recall (P4.d13): `since`/`until` strings matching
+    // `/^\d{4}-\d{2}-\d{2}/`; `aboutCharacter` string 1..=100 (UTF-16).
+    for key in ["since", "until"] {
+        if let Some(v) = args.get(key) {
+            match v.as_str() {
+                Some(s) if starts_with_date_prefix(s) => {}
+                _ => return false,
+            }
+        }
+    }
+    if let Some(about) = args.get("aboutCharacter") {
+        match about.as_str() {
+            Some(s) => {
+                let len = s.encode_utf16().count();
+                if !(1..=100).contains(&len) {
+                    return false;
+                }
+            }
+            None => return false,
+        }
+    }
     true
+}
+
+/// The Zod `.regex(/^\d{4}-\d{2}-\d{2}/)` gate (JS `\d` is ASCII-only).
+fn starts_with_date_prefix(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() >= 10
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5].is_ascii_digit()
+        && b[6].is_ascii_digit()
+        && b[7] == b'-'
+        && b[8].is_ascii_digit()
+        && b[9].is_ascii_digit()
 }
 
 /// One knowledge tier — a label, its mount points, and its literal-phrase boost.
@@ -183,6 +217,36 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         .get("minImportance")
         .and_then(|raw| llm_number(raw).as_f64())
         .unwrap_or(0.0);
+    let since = args.get("since").and_then(Value::as_str);
+    let until = args.get("until").and_then(Value::as_str);
+    let about_character = args.get("aboutCharacter").and_then(Value::as_str);
+
+    // Time filters (episodic recall): normalize date-only bounds to full-day
+    // coverage. Applied to memories via occurredAt ?? createdAt and to
+    // conversation hits via the source chat's timestamps. (Lengths are UTF-16
+    // code units in v4; these prefixes are ASCII so bytes are identical.)
+    let since_iso = since.map(|s| {
+        if crate::jsstr::utf16_len(s) == 10 {
+            format!("{s}T00:00:00.000Z")
+        } else {
+            s.to_string()
+        }
+    });
+    let until_iso = until.map(|s| {
+        if crate::jsstr::utf16_len(s) == 10 {
+            format!("{s}T23:59:59.999Z")
+        } else {
+            s.to_string()
+        }
+    });
+    let time_window = if since_iso.is_some() || until_iso.is_some() {
+        Some(crate::recall_tags::TimeWindow {
+            from: since_iso.unwrap_or_else(|| "0000-01-01T00:00:00.000Z".to_string()),
+            to: until_iso.unwrap_or_else(|| "9999-12-31T23:59:59.999Z".to_string()),
+        })
+    } else {
+        None
+    };
 
     let operator_wide = context.operator_surface;
     let search_memories =
@@ -223,24 +287,69 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                     .unwrap_or(false)
                 });
             if let Ok(true) = owned {
-                let opts = SemanticSearchOptions {
-                    user_id: context.user_id.clone(),
-                    embedding_profile_id: context.embedding_profile_id.clone(),
-                    limit: Some(limit),
-                    min_score: None,
-                    min_importance: Some(min_importance),
-                    source: None,
-                    about_character_id: None,
-                    apply_literal_phrase_boost: true,
-                    now_ms,
-                    ..Default::default()
-                };
-                if let Ok(mems) = search_memories_semantic(db, provider, cid, query, &opts).await {
-                    for mr in mems {
-                        results.push((
-                            mr.score,
-                            memory_result(&mr.memory, mr.score, mr.effective_weight),
-                        ));
+                // Optional about-character filter: resolve the name (or alias)
+                // to a character id among the user's characters. An
+                // unresolvable name returns NO memory hits rather than
+                // silently ignoring the filter.
+                let mut about_character_id: Option<String> = None;
+                let mut about_character_unresolved = false;
+                if let Some(needle_raw) = about_character {
+                    let needle = crate::jsstr::js_trim(needle_raw).to_lowercase();
+                    let all = db
+                        .read_main(|main| {
+                            db.read_mount_index(|mount| characters_read::find_all(main, mount))
+                        })
+                        .unwrap_or_default();
+                    let matched = all.iter().find(|c| {
+                        let name_match = c
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .map(|n| crate::jsstr::js_trim(n).to_lowercase() == needle)
+                            .unwrap_or(false);
+                        if name_match {
+                            return true;
+                        }
+                        c.get("aliases")
+                            .and_then(Value::as_array)
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(Value::as_str)
+                                    .any(|a| crate::jsstr::js_trim(a).to_lowercase() == needle)
+                            })
+                            .unwrap_or(false)
+                    });
+                    match matched.and_then(|c| c.get("id").and_then(Value::as_str)) {
+                        Some(id) => about_character_id = Some(id.to_string()),
+                        None => about_character_unresolved = true,
+                    }
+                }
+
+                if !about_character_unresolved {
+                    let opts = SemanticSearchOptions {
+                        user_id: context.user_id.clone(),
+                        embedding_profile_id: context.embedding_profile_id.clone(),
+                        limit: Some(limit),
+                        min_score: None,
+                        min_importance: Some(min_importance),
+                        source: None,
+                        about_character_id,
+                        apply_literal_phrase_boost: true,
+                        // Tool path: a plain hard filter on event time (no
+                        // recallContext, so no soft fallback — the caller asked
+                        // for a window).
+                        occurred_within: time_window.clone(),
+                        now_ms,
+                        ..Default::default()
+                    };
+                    if let Ok(mems) =
+                        search_memories_semantic(db, provider, cid, query, &opts).await
+                    {
+                        for mr in mems {
+                            results.push((
+                                mr.score,
+                                memory_result(&mr.memory, mr.score, mr.effective_weight),
+                            ));
+                        }
                     }
                 }
             }
@@ -259,7 +368,63 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                 apply_literal_phrase_boost: true,
             };
             if let Ok(convs) = db.read_main(|c| search_conversation_chunks(c, &emb, &opts)) {
-                for cr in convs {
+                // Time filter (episodic recall): keep conversations whose
+                // lifespan overlaps the window (chat createdAt..updatedAt).
+                // Resolved per distinct chat — the hit list is already capped
+                // at `limit` (v4's `spanByChat` cache; an unparsable/missing
+                // chat drops its hits).
+                let filtered: Vec<_> = if let Some(win) = &time_window {
+                    // v4 `Date.parse` — NaN bounds make every overlap
+                    // comparison false (nothing survives), which NaN-propagating
+                    // f64 comparisons reproduce exactly.
+                    let from = crate::episodic::event_time_ms(Some(&win.from)).unwrap_or(f64::NAN);
+                    let to = crate::episodic::event_time_ms(Some(&win.to)).unwrap_or(f64::NAN);
+                    let mut span_by_chat: std::collections::HashMap<String, Option<(f64, f64)>> =
+                        std::collections::HashMap::new();
+                    for cr in &convs {
+                        if span_by_chat.contains_key(&cr.chat_id) {
+                            continue;
+                        }
+                        let chat_id = cr.chat_id.clone();
+                        let span = db
+                            .read_main(|c| crate::db::chats_read::find_by_id(c, &chat_id))
+                            .ok()
+                            .flatten()
+                            .map(|chat| {
+                                let created = chat
+                                    .get("createdAt")
+                                    .and_then(Value::as_str)
+                                    .and_then(|s| crate::episodic::event_time_ms(Some(s)))
+                                    .unwrap_or(f64::NAN);
+                                // `updatedAt ?? createdAt` before the parse.
+                                let end_iso = chat
+                                    .get("updatedAt")
+                                    .and_then(Value::as_str)
+                                    .or_else(|| chat.get("createdAt").and_then(Value::as_str));
+                                let end = end_iso
+                                    .and_then(|s| crate::episodic::event_time_ms(Some(s)))
+                                    .unwrap_or(f64::NAN);
+                                (created, end)
+                            });
+                        span_by_chat.insert(cr.chat_id.clone(), span);
+                    }
+                    convs
+                        .into_iter()
+                        .filter(|cr| {
+                            let Some(Some((start, end))) = span_by_chat.get(&cr.chat_id) else {
+                                return false;
+                            };
+                            if !start.is_finite() {
+                                return false;
+                            }
+                            let end = if end.is_finite() { *end } else { *start };
+                            *start <= to && end >= from
+                        })
+                        .collect()
+                } else {
+                    convs
+                };
+                for cr in filtered {
                     results.push((cr.score, conversation_result(&cr)));
                 }
             }
@@ -529,7 +694,9 @@ fn result_value(
 }
 
 /// memory metadata: `{ memoryId, summary?, importance, effectiveWeight, createdAt,
-/// source }`.
+/// source, occurredAt, narrativeTime, kind, conversationId? }` (episodic spine:
+/// the three dated fields are ALWAYS present — v4 emits `?? null` / `?? 'semantic'`
+/// — while `conversationId` is `chatId ?? undefined`, dropped when nullish).
 fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
     let content = memory.get("content").and_then(Value::as_str).unwrap_or("");
     let mut md = Map::new();
@@ -551,6 +718,37 @@ fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
     }
     if let Some(v) = memory.get("source") {
         md.insert("source".into(), v.clone());
+    }
+    // `occurredAt: mr.memory.occurredAt ?? null` — nullish coalescing, so a
+    // present-null column emits null (never dropped).
+    md.insert(
+        "occurredAt".into(),
+        memory
+            .get("occurredAt")
+            .cloned()
+            .filter(|v| !v.is_null())
+            .unwrap_or(Value::Null),
+    );
+    md.insert(
+        "narrativeTime".into(),
+        memory
+            .get("narrativeTime")
+            .cloned()
+            .filter(|v| !v.is_null())
+            .unwrap_or(Value::Null),
+    );
+    md.insert(
+        "kind".into(),
+        memory
+            .get("kind")
+            .cloned()
+            .filter(|v| !v.is_null())
+            .unwrap_or_else(|| Value::String("semantic".to_string())),
+    );
+    // The memory's source conversation — drillable via read_conversation.
+    // `conversationId: mr.memory.chatId ?? undefined` (dropped when nullish).
+    if let Some(chat_id) = memory.get("chatId").filter(|v| !v.is_null()) {
+        md.insert("conversationId".into(), chat_id.clone());
     }
     result_value(content, "memory", score, md)
 }
@@ -648,8 +846,44 @@ fn format_one(index: usize, result: &Value) -> String {
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
                 .unwrap_or("No summary");
+            // Episodic spine: surface event time + source conversation so the
+            // model can confirm "when" and drill into the transcript. Truthy
+            // gates (v4 `if (metadata.occurredAt)`) — null/empty render nothing.
+            let mut when_parts: Vec<String> = Vec::new();
+            if let Some(occurred) = md
+                .get("occurredAt")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                when_parts.push(format!(
+                    "When: {}",
+                    crate::jsstr::utf16_truncate(occurred, 10)
+                ));
+            }
+            if let Some(nt) = md
+                .get("narrativeTime")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                when_parts.push(format!("Story time: {nt}"));
+            }
+            let when_line = if when_parts.is_empty() {
+                String::new()
+            } else {
+                format!("\n{}", when_parts.join(" · "))
+            };
+            let source_line = match md
+                .get("conversationId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                Some(cid) => {
+                    format!("\nSource conversation: {cid} (readable via read_conversation)")
+                }
+                None => String::new(),
+            };
             format!(
-                "[Result {n} - Memory] (Importance: {importance_label}, Relevance: {pct}%)\nSummary: {summary}\nDetails: {content}"
+                "[Result {n} - Memory] (Importance: {importance_label}, Relevance: {pct}%)\nSummary: {summary}{when_line}{source_line}\nDetails: {content}"
             )
         }
         "conversation" => {

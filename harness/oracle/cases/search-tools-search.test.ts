@@ -95,6 +95,18 @@ async function main(): Promise<void> {
     { label: 'search_truncation', tool: 'search', args: { query: 'a passage with a very long body', sources: ['documents'] } },
     { label: 'search_operator_surface', tool: 'search', args: { query: 'guide to celestial mechanics' }, operatorSurface: true, noCharacter: true },
     { label: 'search_invalid_empty', tool: 'search', args: { query: '' } },
+    // ---- episodic recall (P4.d13 unit 6): since/until + aboutCharacter ----
+    { label: 'search_window_dateonly', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], since: '2025-12-01', until: '2025-12-31' } },
+    { label: 'search_until_createdat_fallback', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], until: '2025-06-01' } },
+    { label: 'search_since_full_iso', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], since: '2025-12-20T00:00:00.000Z' } },
+    { label: 'search_window_empty', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], since: '2020-01-01', until: '2020-12-31' } },
+    { label: 'search_about_resolved', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], aboutCharacter: 'Bram Roster' } },
+    { label: 'search_about_alias', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], aboutCharacter: 'the quartermaster' } },
+    { label: 'search_about_trimmed_case', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], aboutCharacter: '  BRAM roster  ' } },
+    { label: 'search_about_unresolved', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'], aboutCharacter: 'Nobody Atall' } },
+    { label: 'search_conversations_window_in', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2025-05-01', until: '2025-07-01' } },
+    { label: 'search_conversations_window_out', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2020-01-01', until: '2020-12-31' } },
+    { label: 'search_invalid_since', tool: 'search', args: { query: 'recall the star navigation notes', since: 'last week' } },
   ];
 
   for (const c of cases) {
@@ -135,6 +147,17 @@ async function main(): Promise<void> {
           return { embedding: new Float32Array(vec), model: 'canned', dimensions: vec.length, provider: 'canned' };
         },
       };
+    });
+
+    // The help-doc disk sync is PINNED to a no-op (P4.d13): v4's
+    // `ensureHelpDocsSynced` (since 551f090b) prunes any row whose file is
+    // missing from `<cwd>/help/`, which would sweep the SEEDED fixture docs
+    // and sync the real checkout's help tree instead. The family's target is
+    // the help_search TOOL over the seeded rows — the sync subsystem is out of
+    // scope on both sides (the Rust harness runs no disk sync either).
+    jest.doMock('@/lib/help/help-doc-sync', () => {
+      const actual = jest.requireActual('@/lib/help/help-doc-sync');
+      return { __esModule: true, ...actual, ensureHelpDocsSynced: async () => undefined };
     });
 
     const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');

@@ -91,6 +91,25 @@
       ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "$comment": "P4.d13 slicing chat: 6 messages, 4 interchanges (1..4) with a preamble. Alice participates.",
+      "id": "d0000000-0000-4000-8000-00000000d005",
+      "userId": "a0000000-0000-4000-8000-00000000aaaa",
+      "title": "Long Voyage",
+      "participants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000a5",
+          "type": "CHARACTER",
+          "characterId": "c1111111-1111-4111-8111-111111111111",
+          "controlledBy": "user",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "renderedMarkdown": "# Long Voyage\n\nA preamble paragraph before the first interchange.\n\n## Interchange 1\n\n### Message 0\nAlice: Day one at sea.\n\n### Message 1\nBob: Calm waters.\n\n## Interchange 2\n\n### Message 2\nAlice: Day two, gulls overhead.\n\n## Interchange 3\n\n### Message 3\nBob: A storm brews.\n\n### Message 4\nAlice: Batten down.\n\n## Interchange 4\n\n### Message 5\nBob: Clear skies again.\n",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
   "seedAnnotations": [
@@ -130,14 +149,18 @@
       "$comment": "Success, exclude_annotations=true — strips (no annotations present in the source markdown, so identical text, still 3/2).",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
-      "args": { "exclude_annotations": true }
+      "args": {
+        "exclude_annotations": true
+      }
     },
     {
       "tool": "read_conversation",
       "$comment": "Invalid input — exclude_annotations is not a boolean.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
-      "args": { "exclude_annotations": "yes" }
+      "args": {
+        "exclude_annotations": "yes"
+      }
     },
     {
       "tool": "read_conversation",
@@ -151,77 +174,180 @@
       "$comment": "Cross-conversation, not a participant — Alice reads chat d002 (stranger only) → Conversation not found.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
-      "args": { "conversationId": "d0000000-0000-4000-8000-00000000d002" }
+      "args": {
+        "conversationId": "d0000000-0000-4000-8000-00000000d002"
+      }
     },
     {
       "tool": "read_conversation",
       "$comment": "Cross-conversation success — Alice reads chat d003 (she participates). 2 messages, 0 interchanges.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
-      "args": { "conversationId": "d0000000-0000-4000-8000-00000000d003" }
+      "args": {
+        "conversationId": "d0000000-0000-4000-8000-00000000d003"
+      }
     },
     {
       "tool": "read_conversation",
       "$comment": "Chat not found — a conversationId that does not exist.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterId": "c1111111-1111-4111-8111-111111111111",
-      "args": { "conversationId": "d0000000-0000-4000-8000-0000ffffffff" }
+      "args": {
+        "conversationId": "d0000000-0000-4000-8000-0000ffffffff"
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 mid-range slice: interchanges 2-3 (preamble kept, footer, counts from slice).",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 2,
+        "interchange_end": 3
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 open start: end only (start defaults 1).",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_end": 2
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 open end: start only (reads to the end; lastShown = total).",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 3
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 out-of-range: start past the last interchange.",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 9
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 out-of-range with explicit end: the error prints the PROVIDED end.",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 7,
+        "interchange_end": 9
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 end<start error.",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 3,
+        "interchange_end": 2
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 llmNumber: quoted digits convert before validation.",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": "2",
+        "interchange_end": "2"
+      }
+    },
+    {
+      "tool": "read_conversation",
+      "$comment": "P4.d13 invalid: non-integer interchange_start fails validation (the fixed error string).",
+      "chatId": "d0000000-0000-4000-8000-00000000d005",
+      "characterId": "c1111111-1111-4111-8111-111111111111",
+      "args": {
+        "interchange_start": 1.5
+      }
     },
     {
       "tool": "upsert_annotation",
       "$comment": "Created — a NEW annotation by Bob on message 0 (Alice already has one there, Bob does not).",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Bob",
-      "args": { "message_index": 0, "content": "Bob weighs in on the greeting." }
+      "args": {
+        "message_index": 0,
+        "content": "Bob weighs in on the greeting."
+      }
     },
     {
       "tool": "upsert_annotation",
       "$comment": "Updated — Alice already has an annotation on message 0 (seed). Update path re-mints only updatedAt.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Alice",
-      "args": { "message_index": 0, "content": "Alice revises her note." }
+      "args": {
+        "message_index": 0,
+        "content": "Alice revises her note."
+      }
     },
     {
       "tool": "upsert_annotation",
       "$comment": "Invalid input — empty content (below min 1).",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Alice",
-      "args": { "message_index": 1, "content": "" }
+      "args": {
+        "message_index": 1,
+        "content": ""
+      }
     },
     {
       "tool": "upsert_annotation",
       "$comment": "Out of range — message_index 9 in a 3-message conversation.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Alice",
-      "args": { "message_index": 9, "content": "Way out there." }
+      "args": {
+        "message_index": 9,
+        "content": "Way out there."
+      }
     },
     {
       "tool": "upsert_annotation",
       "$comment": "Not rendered — chat d004 has no renderedMarkdown.",
       "chatId": "d0000000-0000-4000-8000-00000000d004",
       "characterName": "Alice",
-      "args": { "message_index": 0, "content": "No canvas here." }
+      "args": {
+        "message_index": 0,
+        "content": "No canvas here."
+      }
     },
     {
       "tool": "delete_annotation",
       "$comment": "Success — delete Bob's seed annotation on message 1.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Bob",
-      "args": { "message_index": 1 }
+      "args": {
+        "message_index": 1
+      }
     },
     {
       "tool": "delete_annotation",
       "$comment": "Not found — Alice has no annotation on message 2.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Alice",
-      "args": { "message_index": 2 }
+      "args": {
+        "message_index": 2
+      }
     },
     {
       "tool": "delete_annotation",
       "$comment": "Invalid input — negative message_index.",
       "chatId": "d0000000-0000-4000-8000-00000000d001",
       "characterName": "Alice",
-      "args": { "message_index": -1 }
+      "args": {
+        "message_index": -1
+      }
     }
   ]
 }

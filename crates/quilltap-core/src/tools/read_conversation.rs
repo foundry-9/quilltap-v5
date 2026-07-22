@@ -60,8 +60,10 @@ impl ReadConversationOutput {
 }
 
 /// v4 `validateReadConversationInput`. `conversationId` string-or-absent;
-/// `exclude_annotations` boolean-or-absent. A non-object, or a wrong-typed field,
-/// fails. (Extra keys are allowed — Zod objects are non-strict by default.)
+/// `exclude_annotations` boolean-or-absent; `interchange_start`/`interchange_end`
+/// llmNumber(int ≥ 1)-or-absent (episodic overhaul: the range slice). A
+/// non-object, or a wrong-typed field, fails. (Extra keys are allowed — Zod
+/// objects are non-strict by default.)
 fn validate_input(args: &Value) -> bool {
     let obj = match args.as_object() {
         Some(o) => o,
@@ -75,6 +77,14 @@ fn validate_input(args: &Value) -> bool {
     if let Some(v) = obj.get("exclude_annotations") {
         if !v.is_boolean() {
             return false;
+        }
+    }
+    for key in ["interchange_start", "interchange_end"] {
+        if let Some(v) = obj.get(key) {
+            match crate::tools::llm_number::llm_number(v).as_f64() {
+                Some(n) if n.fract() == 0.0 && n >= 1.0 => {}
+                _ => return false,
+            }
         }
     }
     true
@@ -103,6 +113,35 @@ fn count_line_headers(markdown: &str, prefix: &str) -> i64 {
         }
     }
     count
+}
+
+/// `/^## Interchange \d+/` at the start of a line/section.
+fn is_interchange_header(s: &str) -> bool {
+    s.strip_prefix("## Interchange ")
+        .and_then(|rest| rest.as_bytes().first().copied())
+        .is_some_and(|b| b.is_ascii_digit())
+}
+
+/// `section.match(/^## Interchange (\d+)/)` → `parseInt(m[1], 10)` as f64
+/// (huge digit runs lose precision exactly as JS parseInt does — both go
+/// through the same double).
+fn interchange_number(section: &str) -> Option<f64> {
+    let rest = section.strip_prefix("## Interchange ")?;
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<f64>().ok()
+}
+
+/// Render an integral JS number the way a template literal does (`5`, not
+/// `5.0`); non-integral values cannot reach here (validation gates ints).
+fn fmt_js_int(n: f64) -> String {
+    if n.is_finite() {
+        format!("{}", n as i64)
+    } else {
+        "Infinity".to_string()
+    }
 }
 
 /// Execute the `read_conversation` tool (v4 `executeReadConversationTool`).
@@ -180,7 +219,7 @@ fn execute_inner(
         }
     };
 
-    let markdown = if exclude_annotations {
+    let mut markdown = if exclude_annotations {
         strip_annotations(rendered)
     } else {
         let annotations = db.read_main(|c| db_find_by_chat_id(c, target_chat_id))?;
@@ -190,6 +229,79 @@ fn execute_inner(
             rendered.to_string()
         }
     };
+
+    // Interchange-range slicing (episodic overhaul): a character drilling into
+    // a very long chat can pull just the relevant slice instead of the whole
+    // transcript.
+    let interchange_start = args
+        .get("interchange_start")
+        .and_then(|v| crate::tools::llm_number::llm_number(v).as_f64());
+    let interchange_end = args
+        .get("interchange_end")
+        .and_then(|v| crate::tools::llm_number::llm_number(v).as_f64());
+    let total_interchanges = count_interchange_headers(&markdown);
+    if interchange_start.is_some() || interchange_end.is_some() {
+        let start = interchange_start.unwrap_or(1.0);
+        let end = interchange_end.unwrap_or(f64::INFINITY);
+        if end < start {
+            return Ok(ReadConversationOutput::error(
+                "interchange_end must be >= interchange_start.",
+            ));
+        }
+        // v4 `markdown.split(/^(?=## Interchange \d+)/m)`: split BEFORE each
+        // line-start header (a zero-width match at index 0 produces no leading
+        // empty section in V8).
+        let mut split_positions: Vec<usize> = Vec::new();
+        let mut offset = 0usize;
+        for line in markdown.split_inclusive('\n') {
+            if offset > 0 && is_interchange_header(line) {
+                split_positions.push(offset);
+            }
+            offset += line.len();
+        }
+        let mut sections: Vec<&str> = Vec::new();
+        {
+            let mut prev = 0usize;
+            for pos in &split_positions {
+                sections.push(&markdown[prev..*pos]);
+                prev = *pos;
+            }
+            sections.push(&markdown[prev..]);
+        }
+        // `preamble = /^## Interchange \d+/.test(sections[0]) ? '' : shift()`.
+        let preamble = if sections.first().is_some_and(|s| is_interchange_header(s)) {
+            ""
+        } else {
+            // An empty markdown still yields one section here (JS split too).
+            sections.remove(0)
+        };
+        let kept: Vec<&str> = sections
+            .iter()
+            .copied()
+            .filter(|section| match interchange_number(section) {
+                Some(n) => n >= start && n <= end,
+                None => false,
+            })
+            .collect();
+        if kept.is_empty() {
+            let end_label = interchange_end.unwrap_or(total_interchanges as f64);
+            return Ok(ReadConversationOutput::error(format!(
+                "No interchanges in range {}\u{2013}{} (conversation has {}).",
+                fmt_js_int(start),
+                fmt_js_int(end_label),
+                total_interchanges
+            )));
+        }
+        let last_shown = end.min(total_interchanges as f64);
+        let body = format!("{preamble}{}", kept.join(""));
+        markdown = format!(
+            "{}\n\n_Showing interchanges {}\u{2013}{} of {}._\n",
+            crate::jsstr::js_trim_end(&body),
+            fmt_js_int(start),
+            fmt_js_int(last_shown),
+            total_interchanges
+        );
+    }
 
     let message_count = count_message_headers(&markdown);
     let interchange_count = count_interchange_headers(&markdown);

@@ -49,7 +49,6 @@ import { imageGenerationToolDefinition } from '@/lib/tools/image-generation-tool
 import { keepImageToolDefinition } from '@/lib/tools/keep-image-tool';
 import { listEmailToolDefinition } from '@/lib/tools/list-email-tool';
 import { listImagesToolDefinition } from '@/lib/tools/list-images-tool';
-import { memorySearchToolDefinition } from '@/lib/tools/memory-search-tool';
 import { sendMailToolDefinition } from '@/lib/tools/send-mail-tool';
 import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
 import { readConversationToolDefinition } from '@/lib/tools/read-conversation-tool';
@@ -111,7 +110,6 @@ const ALL: UniversalTool[] = [
   keepImageToolDefinition,
   listEmailToolDefinition,
   listImagesToolDefinition,
-  memorySearchToolDefinition,
   sendMailToolDefinition,
   projectInfoToolDefinition,
   readConversationToolDefinition,

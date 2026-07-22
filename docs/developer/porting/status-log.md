@@ -27180,3 +27180,58 @@ blendedBefore/blendedAfter compare byte-for-byte. CONFIRMED (the round-1
 open question): the canned completion routing records the distill call's
 key from v4's REAL request — the prompt-byte change is pinned by key
 identity, not tolerated by fallback.
+
+## P4.d13 unit 6 — the deep-dive tools (search + read_conversation + the catalog deletion)
+
+**What landed:** `tools/search.rs` — validation gains `since`/`until`
+(the `/^\d{4}-\d{2}-\d{2}/` prefix) + `aboutCharacter` (string 1..=100);
+the handler normalizes date-only bounds to full-day ISO, builds the
+window with v4's `0000-01-01`/`9999-12-31` sentinels, resolves
+`aboutCharacter` over `characters::find_all` (JS-trim + lowercase on
+names AND aliases; unresolved → memory hits EMPTY, not filter-ignored),
+passes the window as the TOOL-path hard filter (`occurred_within`, no
+recall context → no soft fallback), filters conversation hits by the
+source chat's `createdAt..updatedAt` span (per-chat cache; missing/
+unparsable chat drops its hits; NaN window bounds survive as
+all-comparisons-false), and emits the episodic metadata (`occurredAt`/
+`narrativeTime` always present as `?? null`, `kind ?? 'semantic'`,
+`conversationId` = chatId when non-null). The formatter's memory arm
+gains the `When: YYYY-MM-DD · Story time: …` line and the
+`Source conversation: … (readable via read_conversation)` line.
+`tools/read_conversation.rs` — the two `llmNumber(int ≥ 1)` range
+params; the `^(?=## Interchange \d+)` lookahead split (zero-width match
+at index 0 produces no leading empty — V8-faithful), preamble keep, the
+`interchange_end must be >= interchange_start.` and
+`No interchanges in range X–Y (conversation has Z).` error strings
+byte-exact (en-dash), the `_Showing interchanges X–Y of Z._` footer over
+`trimEnd`, counts from the SLICED markdown. **The catalog:**
+`definitions/data.rs` regenerated mechanically at `8bf3cb5f` (57 tools —
+`memorySearch` GONE; the invariant test moved 58 → 57 with the
+why-comment; the audit confirmed data.rs was the ONLY v5 reference to
+the key — v4 deleted `memory-search-tool.ts` + its test outright, and
+both tool-definitions case files dropped their imports). Prompt bytes:
+`native_tool_prompt.rs` rule 6 + the `simple_json_prompt.rs` recall
+bullet, byte-exact.
+
+**Differentials (all fresh at `8bf3cb5f`):** search-tools —
+`QT_ORACLE_SEARCH` 26 cases (11 new: window date-only / full-ISO /
+empty-window / createdAt-fallback, aboutCharacter resolved / alias /
+trimmed-case / unresolved, conversations window in/out, invalid-since)
++ `QT_ORACLE_SEARCH_RW` 9, over the extended fixture (m1 episodic
+in-window + narrativeTime + chatId, m2 out-window + aboutCharacterId,
+characterB gains the "The Quartermaster" alias). **Gotcha pinned in the
+oracle case:** v4's `ensureHelpDocsSynced` (551f090b, ALREADY in the
+prior baseline) prunes any help_docs row whose file is missing from
+`<cwd>/help/` — it would sweep the seeded fixture docs on every oracle
+run; the case now pins the sync to a no-op on the v4 side (the family
+tests the TOOL; the sync subsystem is out of scope on both sides).
+scriptorium-tools — `QT_ORACLE_SCRIPTORIUM` 23 ops (8 new slicing arms
+over the new `Long Voyage` chat d005: mid-range, open start/end,
+out-of-range with default AND explicit end labels, end<start, quoted
+llmNumber digits, non-integer validation failure). tool-definitions —
+`QT_ORACLE_TOOL_DEFINITIONS` + `_CANONICAL` (57 tools).
+pseudo-tool-prompts — `QT_ORACLE_PSEUDO_TOOL_PROMPTS` (40 rows, the
+rule-6/bullet bytes). All green, zero SKIP. **Committed corpora audit:
+no committed fixture embeds the tool-prompt bytes** (request-envelopes
+clean); the env-gated tool-wire/tool-build families regenerate at the
+final gate and are listed there.

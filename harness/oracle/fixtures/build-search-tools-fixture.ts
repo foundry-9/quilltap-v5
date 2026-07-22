@@ -62,6 +62,12 @@ interface SeedMemory {
   importance: number;
   reinforcedImportance: number;
   source: string;
+  /** Episodic spine fields (P4.d13 unit 6). */
+  occurredAt?: string | null;
+  narrativeTime?: string | null;
+  kind?: string;
+  aboutCharacterId?: string | null;
+  chatId?: string | null;
   vector: number[];
 }
 interface ConvChunk {
@@ -393,8 +399,8 @@ async function main(): Promise<void> {
     await repos.memories.create(
       {
         characterId: spec.charAId,
-        aboutCharacterId: null,
-        chatId: null,
+        aboutCharacterId: m.aboutCharacterId ?? null,
+        chatId: m.chatId ?? null,
         projectId: null,
         content: m.content,
         summary: m.summary,
@@ -410,6 +416,10 @@ async function main(): Promise<void> {
         lastReinforcedAt: null,
         relatedMemoryIds: [],
         reinforcedImportance: m.reinforcedImportance,
+        occurredAt: m.occurredAt ?? null,
+        narrativeTime: m.narrativeTime ?? null,
+        kind: m.kind ?? 'semantic',
+        entities: [],
       } as never,
       { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
     );

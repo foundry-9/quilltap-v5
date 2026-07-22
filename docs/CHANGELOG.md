@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.d13 unit 6: the deep-dive tools (v4 8bf3cb5f). The search tool
+gains since/until (date-prefix validation, date-only -> full-day ISO
+normalization, memories hard event-time window via occurredAt ??
+createdAt, conversations filtered by chat createdAt..updatedAt span
+overlap with the per-chat cache), aboutCharacter (name/alias resolve
+over the full roster, case-insensitive trim; unresolved -> zero memory
+hits), the episodic result metadata (occurredAt/narrativeTime/kind
+always present, conversationId = the memory's chatId when set), and the
+formatter's When/Story time/Source conversation lines. read_conversation
+gains interchange_start/interchange_end (llmNumber ints >= 1): the
+lookahead split on Interchange headers, preamble keep, the two error
+strings byte-exact, the Showing-interchanges footer, and counts from the
+SLICED markdown. The memorySearch catalog entry is DELETED (v4 removed
+memory-search-tool.ts; the 58-tool invariant is now 57; nothing else in
+v5 routed the key) and the catalog data module regenerated mechanically
+at 8bf3cb5f. Native tool prompt rule 6 + the simple-json recall bullet
+land byte-exact. Differentials regenerated at 8bf3cb5f: search-tools
+(+11 episodic arms; the oracle now pins v4's help-doc disk sync to a
+no-op so the seeded help rows survive the 551f090b prune),
+scriptorium-tools (+8 slicing arms over the new Long Voyage chat),
+tool-definitions + canonical (57 tools), pseudo-tool-prompts (40 rows).
+quilltap-core 0.0.311, quilltap-harness 0.0.268.
+
 P4.d13 unit 5: buildContext part-1 threading + the RETRO head constants
 (v4 8bf3cb5f). RETRO_HEAD_TOKEN_BUDGET=600 / RETRO_HEAD_SIZE=10 beside
 the DYNAMIC constants; the distill call carries the ExtractionClock
