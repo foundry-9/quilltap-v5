@@ -1,6 +1,7 @@
 import { expect, request as pwRequest, test, type Page } from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 
 /**
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so
@@ -82,7 +83,9 @@ test.describe('P4.9a2 — the deep image-detail modal family', () => {
     await page.goto(`/salon/${chatId}`);
     await maybeUnlock(page);
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
-    await page.getByRole('button', { name: 'View chat photos' }).click();
+    // The gallery entry moved to the sidebar's Organize drawer with P4.9H1.
+    await openSidebarSection(page, 'Organize');
+    await page.getByRole('button', { name: 'Gallery' }).click();
 
     const gallery = page.locator('qt-photo-gallery-modal');
     await expect(gallery.getByRole('heading', { name: 'Chat Photos' })).toBeVisible();

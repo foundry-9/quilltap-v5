@@ -25,6 +25,9 @@ import {
   type LlmLogDto,
 } from '../../chat/llm-logs.api';
 import { MessageList } from '../../chat/message-list';
+import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
+import type { ChatSectionState } from '../../chat/sidebar/chat-section';
+import type { VisibilityState } from '../../chat/sidebar/visibility-section';
 import type { ImageClickEvent } from '../../chat/message-row';
 import { ImageModal } from '../../images/image-modal';
 import { SaveImageDialog } from '../../images/save-image-dialog';
@@ -39,9 +42,18 @@ import { type ControlledCharacter } from '../../chat/speaker-selector';
 import { isParticipantPresent } from '../../chat/skip-signal-helpers';
 import {
   computeSkipEligibility,
+  qualifiesForTurnSkipping,
   type SkipEvent,
   type SkipParticipant,
 } from '../../chat/skip-signal';
+import {
+  addToQueue,
+  createInitialTurnState,
+  nudgeParticipant,
+  removeFromQueue,
+  type TurnSelectionResult,
+  type TurnState,
+} from '../../chat/turn-order';
 import {
   initialChatStreamState,
   reduceChatFrame,
@@ -65,6 +77,7 @@ import { DocumentModeController, type DocFocusTarget } from '../../documents/doc
 import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
 import { EditEnclaveModal } from '../../autonomous/edit-enclave-modal';
+import { StateEditorModal } from '../../shared/state/state-editor-modal';
 import {
   PASSIVE_POLL_INTERVAL_MS,
   StoryBackgroundPoller,
@@ -143,7 +156,9 @@ interface CascadePrompt {
     GenerateImageDialog,
     StandaloneGenerateImageDialog,
     EditEnclaveModal,
+    StateEditorModal,
     LLMInspectorPanel,
+    ChatSidebar,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
@@ -179,6 +194,47 @@ interface CascadePrompt {
           />
         }
       </div>
+
+      <!-- The chat sidebar is a sibling of .qt-chat-main inside the flex layout
+           (v4 SalonView.tsx:1695). It carries its own classes on the host, so
+           the DOM the ported CSS sees matches v4's. -->
+      @if (chat(); as c) {
+        <qt-chat-sidebar
+          [participants]="c.participants"
+          [turnState]="turnState()"
+          [turnSelectionResult]="turnSelection()"
+          [isGenerating]="busy()"
+          [isPaused]="c.isPaused"
+          [userParticipantId]="userParticipantId()"
+          [respondingParticipantId]="stream()?.respondingParticipantId ?? null"
+          [impersonatingParticipantIds]="c.impersonatingParticipantIds ?? []"
+          [activeTypingParticipantId]="c.activeTypingParticipantId ?? null"
+          [isDangerousChat]="c.isDangerousChat === true"
+          [chatId]="c.id"
+          [chatSectionState]="chatSectionState()"
+          [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
+          [regeneratingBackground]="regeneratingBackground()"
+          [visibilityState]="visibilityState()"
+          [turnSkippingApplies]="turnSkippingApplies()"
+          [showAllWhispers]="showAllWhispers()"
+          [isAutonomousRoom]="c.chatType === 'autonomous'"
+          (togglePause)="onTogglePause()"
+          (nudge)="onSidebarNudge($event)"
+          (queue)="onSidebarQueue($event)"
+          (dequeue)="onSidebarDequeue($event)"
+          (skip)="onSidebarSkip()"
+          (stopStreaming)="stop()"
+          (impersonate)="onImpersonate($event)"
+          (stopImpersonate)="onStopImpersonate($event)"
+          (regenerateAvatar)="onRegenerateAvatar($event)"
+          (chatUpdated)="onChatUpdated()"
+          (regenerateBackground)="onRegenerateBackground()"
+          (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
+          (editEnclave)="showEditEnclave.set(true)"
+          (openState)="showStateEditor.set(true)"
+          (openGallery)="showGallery.set(true)"
+        />
+      }
     </div>
 
     <ng-template #chatContentTpl>
@@ -190,15 +246,8 @@ interface CascadePrompt {
         [chat]="chat()!"
         [settings]="settings()"
         [messageCount]="chat()!.messages.length"
-        [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
-        [regeneratingBackground]="regeneratingBackground()"
         [inspectorOpen]="inspectorOpen()"
-        [showAllWhispers]="showAllWhispers()"
-        (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
         (toggleInspector)="toggleInspector()"
-        (openGallery)="showGallery.set(true)"
-        (editEnclave)="showEditEnclave.set(true)"
-        (regenerateBackground)="onRegenerateBackground()"
       />
 
       @if (backgroundFlash(); as flash) {
@@ -256,7 +305,6 @@ interface CascadePrompt {
         [nudgeTargetName]="nudgeTargetName()"
         (selectSpeaker)="onSelectSpeaker($event)"
         (skipUserTurn)="onSkipUserTurn()"
-        (togglePause)="onTogglePause()"
         (nudge)="onNudge()"
       />
 
@@ -369,6 +417,14 @@ interface CascadePrompt {
         [userCharacterName]="firstUserCharacter()?.name"
         (imageDeleted)="onCourierSettled()"
         (close)="showGallery.set(false)"
+      />
+    }
+
+    @if (showStateEditor() && chatId(); as id) {
+      <qt-state-editor-modal
+        entityType="chat"
+        [entityId]="id"
+        (close)="showStateEditor.set(false)"
       />
     }
 
@@ -981,6 +1037,14 @@ export class SalonConversation {
 
   /** The authoritative next speaker from `chatTurnAction { action: 'query' }`. */
   private readonly turnInfo = signal<TurnInfo | null>(null);
+  /**
+   * The sidebar's display-only turn state (v4 `SalonView.tsx:144` — the client
+   * copy starts empty and only ever takes `queue` back from the server, plus the
+   * optimistic queue edits the sidebar's own buttons make).
+   */
+  protected readonly turnState = signal<TurnState>(createInitialTurnState());
+  /** The selection envelope the sidebar numbers its badges from (v4 same name). */
+  protected readonly turnSelection = signal<TurnSelectionResult | null>(null);
   /** The user's Speaking-As choice (immediate feedback ahead of the refetch). */
   private readonly activeSpeakerOverride = signal<string | null>(null);
   /** A rejected-skip message (v4's all-others-skipped copy). */
@@ -1005,8 +1069,30 @@ export class SalonConversation {
         nextSpeakerId: turn?.nextSpeakerId ?? null,
         nextSpeakerControlledBy: turn?.nextSpeakerControlledBy ?? null,
       });
+      this.applyTurnResponse(resp.data);
     } else {
       this.turnInfo.set(null);
+    }
+  }
+
+  /**
+   * v4 `useTurnManagement.applyServerResponse`: take the authoritative queue back
+   * from `state.queue` and rebuild the selection result from the `turn` envelope.
+   * `spokenSinceUserTurn` / `lastSpeakerId` are never refreshed client-side — v4
+   * leaves them at their initial values too.
+   */
+  private applyTurnResponse(data: unknown): void {
+    const body = data as {
+      turn?: { nextSpeakerId?: string | null; reason?: string; cycleComplete?: boolean };
+      state?: { queue?: string[] };
+    };
+    this.turnState.update((prev) => ({ ...prev, queue: body.state?.queue ?? prev.queue }));
+    if (body.turn) {
+      this.turnSelection.set({
+        nextSpeakerId: body.turn.nextSpeakerId ?? null,
+        reason: (body.turn.reason ?? 'weighted_selection') as TurnSelectionResult['reason'],
+        cycleComplete: body.turn.cycleComplete ?? false,
+      });
     }
   }
 
@@ -1125,6 +1211,158 @@ export class SalonConversation {
     } else {
       await this.refreshTurn();
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // The chat sidebar (P4.9H1) — v4's `useTurnManagement` / `useImpersonation`
+  // handlers, plus the derived bags the sidebar's sections read.
+  // -------------------------------------------------------------------------
+
+  /** The state editor's visibility (v4 `modals.openStateEditor`, chat tier). */
+  protected readonly showStateEditor = signal(false);
+
+  /** v4 `participantsWithImpersonation.userParticipantId` — the user's seat. */
+  protected readonly userParticipantId = computed(
+    () =>
+      (this.chat()?.participants ?? []).find(
+        (p) => p.type === 'CHARACTER' && p.controlledBy === 'user' && isParticipantPresent(p.status),
+      )?.id ?? null,
+  );
+
+  /** The Chat section's slice of the chat record. */
+  protected readonly chatSectionState = computed<ChatSectionState>(() => {
+    const c = this.chat();
+    return {
+      roleplayTemplateId: c?.roleplayTemplateId ?? null,
+      // v4's chat GET never returns `timelineMode` (see `chat-section.ts`), so
+      // this seeds the control once and the section keeps the operator's choice.
+      timelineMode: c?.timelineMode ?? null,
+      imageProfileId: c?.imageProfileId ?? null,
+      alertCharactersOfLanternImages: c?.alertCharactersOfLanternImages ?? null,
+      projectId: c?.projectId ?? null,
+      projectName: c?.projectName ?? null,
+    };
+  });
+
+  /** The Visibility section's slice. The two write-only columns stay absent. */
+  protected readonly visibilityState = computed<VisibilityState>(() => {
+    const c = this.chat();
+    return {
+      allowCrossCharacterVaultReads: c?.allowCrossCharacterVaultReads ?? false,
+      coreWhisperEnabled: c?.coreWhisperEnabled ?? null,
+      coreWhisperInterval: c?.coreWhisperInterval ?? null,
+      turnSkippingEnabled: c?.turnSkippingEnabled ?? null,
+    };
+  });
+
+  /** v4 gates the Turn Skipping row on `qualifiesForTurnSkipping(participants)`. */
+  protected readonly turnSkippingApplies = computed(() =>
+    qualifiesForTurnSkipping(
+      (this.chat()?.participants ?? []).map((p) => ({
+        id: p.id,
+        type: p.type,
+        characterId: p.character?.id ?? null,
+        controlledBy: p.controlledBy,
+        status: p.status,
+      })),
+    ),
+  );
+
+  /** Any sidebar write landed → refetch the chat record (v4 `onChatUpdated`). */
+  protected async onChatUpdated(): Promise<void> {
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /**
+   * v4 `handleNudge`: unpause if paused, move the participant to the front of
+   * the local queue, then generate directly — deliberately WITHOUT the `nudge`
+   * turn action, which would queue them a second time and make the server chain
+   * produce a duplicate response. The summon withholds the skip option.
+   */
+  protected async onSidebarNudge(participantId: string): Promise<void> {
+    const chat = this.chat();
+    const participant = (chat?.participants ?? []).find((p) => p.id === participantId);
+    if (!participant || participant.controlledBy === 'user') return;
+    if (chat?.isPaused) {
+      await this.onTogglePause();
+    }
+    this.turnState.update((prev) => nudgeParticipant(prev, participantId));
+    await this.runTurn({ continueMode: true, respondingParticipantId: participantId, nudge: true });
+  }
+
+  /** v4 `handleQueue`: optimistic add, then the authoritative server state. */
+  protected async onSidebarQueue(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    this.turnState.update((prev) => addToQueue(prev, participantId));
+    const resp = await this.core.dispatch({
+      type: 'chatTurnAction',
+      chatId,
+      action: 'queue',
+      participantId,
+    });
+    if (resp.type === 'turnAction') this.applyTurnResponse(resp.data);
+  }
+
+  /** v4 `handleDequeue`. */
+  protected async onSidebarDequeue(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    this.turnState.update((prev) => removeFromQueue(prev, participantId));
+    const resp = await this.core.dispatch({
+      type: 'chatTurnAction',
+      chatId,
+      action: 'dequeue',
+      participantId,
+    });
+    if (resp.type === 'turnAction') this.applyTurnResponse(resp.data);
+  }
+
+  /**
+   * The user card's Skip (v4 wires it to `handleContinue`, not to
+   * `skipUserTurn`): ask the server who is up, and if it is an LLM, let them
+   * speak.
+   */
+  protected async onSidebarSkip(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId || !this.hasActiveCharacters()) return;
+    const resp = await this.core.dispatch({ type: 'chatTurnAction', chatId, action: 'query' });
+    if (resp.type !== 'turnAction') return;
+    this.applyTurnResponse(resp.data);
+    const turn = (resp.data as { turn?: TurnInfo }).turn;
+    if (
+      turn?.nextSpeakerId &&
+      turn.nextSpeakerId !== this.userParticipantId() &&
+      turn.nextSpeakerControlledBy !== 'user'
+    ) {
+      await this.runTurn({ continueMode: true, respondingParticipantId: turn.nextSpeakerId });
+    }
+  }
+
+  /** v4 `useImpersonation.handleStartImpersonation`. */
+  protected async onImpersonate(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    await this.core.dispatch({ type: 'chatImpersonate', chatId, participantId });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /** v4 `useImpersonation.handleStopImpersonation`. */
+  protected async onStopImpersonate(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    await this.core.dispatch({ type: 'chatStopImpersonate', chatId, participantId });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /** v4 `handleRegenerateAvatar` — the card's camera button. */
+  protected async onRegenerateAvatar(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    const characterId = (this.chat()?.participants ?? []).find((p) => p.id === participantId)
+      ?.character?.id;
+    if (!chatId || !characterId) return;
+    await this.core.dispatch({ type: 'chatRegenerateAvatar', chatId, characterId });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
   protected async onTogglePause(): Promise<void> {

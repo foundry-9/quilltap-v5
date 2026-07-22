@@ -5,6 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from './support/fixtures';
+import { openSidebarSection } from './support/sidebar';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
@@ -133,7 +134,7 @@ test.describe('P4.6af — the salon autonomous riders', () => {
     await expect(page).toHaveURL(/\/salon\/new\?.*autonomous=1/);
   });
 
-  test('the Edit-Enclave header button opens the modal and round-trips a title save', async ({
+  test('the Edit-Enclave sidebar entry opens the modal and round-trips a title save', async ({
     page,
   }) => {
     await page.goto('/salon');
@@ -142,7 +143,9 @@ test.describe('P4.6af — the salon autonomous riders', () => {
     test.skip(!chatId, 'fixture had fewer than two LLM characters — nothing to drive');
 
     await page.goto(`/salon/${chatId}`);
-    // The header renders the gated Edit-Enclave button for the autonomous room.
+    // The sidebar's Organize drawer renders the gated Edit-Enclave entry for the
+    // autonomous room (P4.9H1 moved it back from the header — v4's home for it).
+    await openSidebarSection(page, 'Organize');
     const editButton = page.getByRole('button', { name: 'Edit Enclave' });
     await expect(editButton).toBeVisible({ timeout: 15_000 });
 

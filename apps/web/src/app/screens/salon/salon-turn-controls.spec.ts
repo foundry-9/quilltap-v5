@@ -198,6 +198,8 @@ function stubClient(
 }
 
 async function render(client: Partial<CoreClient>): Promise<ComponentFixture<SalonConversation>> {
+  // The sidebar defaults to its mini strip; these cases drive its drawers.
+  localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
   TestBed.configureTestingModule({
     imports: [SalonConversation],
     providers: [
@@ -294,10 +296,17 @@ describe('Salon turn controls', () => {
     const text = fixture.nativeElement.textContent as string;
 
     expect(text).toContain('Everyone else has passed — it falls to Bertie to say something.');
-    const skipBtn = [...fixture.nativeElement.querySelectorAll('button')].find(
-      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Skip',
-    );
+    // The BANNER drops its Skip. (The sidebar card's Skip is a different control:
+    // v4 renders it always for the user seat and merely DISABLES it when it is
+    // not the user's turn — `ParticipantCard.tsx:541-548`.)
+    const skipBtn = [
+      ...fixture.nativeElement.querySelectorAll('qt-turn-controls button'),
+    ].find((b) => (b as HTMLButtonElement).textContent?.trim() === 'Skip');
     expect(skipBtn).toBeFalsy();
+    const cardSkip = [...fixture.nativeElement.querySelectorAll('qt-chat-sidebar button')].find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Skip',
+    ) as HTMLButtonElement;
+    expect(cardSkip.disabled).toBe(true);
   });
 
   it('surfaces the server refusal copy when a skip is rejected', async () => {
@@ -351,20 +360,27 @@ describe('Salon turn controls', () => {
     expect((setSpeaker[0] as { participantId?: string }).participantId).toBe('pU2');
   });
 
-  it('toggles pause via chatUpdate', async () => {
+  it('toggles pause via chatUpdate — from the sidebar, v4\u2019s home for the button', async () => {
     const { client, dispatch } = stubClient(groupChat(), {
       query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
     });
     const fixture = await render(client);
+
+    // P4.9H1 moved the button out of the turn-controls bar into the sidebar.
+    expect(
+      fixture.nativeElement.querySelector('qt-turn-controls .qt-chat-pause-button'),
+    ).toBeNull();
+
     const pauseBtn = fixture.nativeElement.querySelector(
-      '.qt-chat-pause-button',
+      'qt-chat-sidebar .qt-chat-pause-button',
     ) as HTMLButtonElement;
     expect(pauseBtn.textContent).toContain('Pause');
     pauseBtn.click();
-    await new Promise((r) => setTimeout(r, 0));
-
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
     const updates = calls(dispatch, 'chatUpdate');
-    expect(updates).toHaveLength(1);
     expect((updates[0] as { chat?: { isPaused?: boolean } }).chat?.isPaused).toBe(true);
   });
 
@@ -376,7 +392,7 @@ describe('Salon turn controls', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Auto-responses are paused');
     const resumeBtn = fixture.nativeElement.querySelector(
-      '.qt-chat-pause-button',
+      'qt-chat-sidebar .qt-chat-pause-button',
     ) as HTMLButtonElement;
     expect(resumeBtn.textContent).toContain('Resume');
   });

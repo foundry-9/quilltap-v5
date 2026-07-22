@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.9H1 unit 6: the sidebar is live in the Salon, and four affordances went
+home. The Salon mounts the sidebar beside the chat pane, threads the turn
+envelope (queue + selection) through v4's applyServerResponse shape, and
+wires nudge/queue/dequeue, the user seat's Skip, Stop, impersonation,
+regenerate-avatar, the state editor (closing the state-cascade round's
+chat-tier opener) and every sidebar write. Reconciliation, per v4's own
+layout: All Whispers, Edit Enclave, Regenerate Background and the photo
+gallery left the header (where they lived only because v5 had no
+sidebar), and the Pause button left the turn-controls bar for the
+sidebar's strip and Participants drawer - the paused notice stays.
+ChatDetail gained the sidebar's read fields; chatRegenerateAvatar's
+equippedSlots is optional, as the server's Zod port has it. Gate: ng test
+209 files / 2,487, ng build clean, full Playwright 112/112 zero skips
+with both new beats live. SPA 0.5.251.
+
 P4.9H1 unit 5: the sidebar's Visibility and Organize sections. Visibility
 lands the whole per-chat override set - All Whispers, Shared Vaults, Turn
 Skipping, Aurora's Core Whisper offering and cadence (the M6 F3 finding's

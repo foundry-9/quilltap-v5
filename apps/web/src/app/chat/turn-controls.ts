@@ -5,15 +5,22 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
 
 /**
  * The Salon turn-controls bar above the composer (v4 SalonView's speaker
- * selector + user-turn banner + the sidebar's pause toggle, consolidated). It is
- * purely presentational — the parent (`SalonConversation`) owns the dispatches.
+ * selector + user-turn banner). It is purely presentational — the parent
+ * (`SalonConversation`) owns the dispatches.
+ *
+ * The Pause/Resume BUTTON used to live here as a recorded divergence, v5 having
+ * no chat sidebar to host v4's `qt-chat-pause-button`. P4.9H1 ported the
+ * sidebar, so the button went home (its strip and its Participants drawer, v4's
+ * two homes for it) and only the paused NOTICE stays — that notice is v5's own
+ * affordance, not something v4 puts in the sidebar.
  *
  *   - The **Speaking-As** selector (v4 `SpeakerSelector`), shown when the user
  *     controls two or more characters.
  *   - The **user-turn banner** (v4 SalonView ~1394–1455): when it is a
  *     user-controlled participant's turn, prompt to type or Skip; when everyone
  *     else has passed, the must-speak copy with no Skip button.
- *   - **Pause/Resume** (v4 `qt-chat-pause-button`) + a paused-state notice.
+ *   - The **paused-state notice** (the Pause/Resume button itself lives in the
+ *     chat sidebar, v4's home for it).
  *   - **Nudge** (v4 `handleNudge`): summon the next LLM speaker out of turn.
  */
 @Component({
@@ -71,18 +78,6 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
             <span>Nudge {{ target }}</span>
           </button>
         }
-
-        <button
-          type="button"
-          class="qt-chat-pause-button inline-flex items-center gap-1.5 px-3 py-1 rounded text-sm"
-          [class.qt-chat-pause-button-paused]="isPaused()"
-          [title]="isPaused() ? 'Resume auto-responses' : 'Pause auto-responses'"
-          [attr.aria-label]="isPaused() ? 'Resume auto-responses' : 'Pause auto-responses'"
-          (click)="togglePause.emit()"
-        >
-          <qt-icon [name]="isPaused() ? 'play' : 'pause'" class="w-4 h-4" />
-          <span>{{ isPaused() ? 'Resume' : 'Pause' }}</span>
-        </button>
       </div>
     </div>
   `,
@@ -93,6 +88,7 @@ export class TurnControls {
   readonly activeSpeakerId = input<string | null>(null);
   /** Streaming/awaiting in flight — disables the interactive controls. */
   readonly disabled = input(false);
+  /** Drives the paused notice (the button moved to the sidebar with P4.9H1). */
   readonly isPaused = input(false);
   /** The name whose (user-controlled) turn it is, or null to hide the banner. */
   readonly userTurnName = input<string | null>(null);
@@ -105,7 +101,6 @@ export class TurnControls {
 
   readonly selectSpeaker = output<string>();
   readonly skipUserTurn = output<void>();
-  readonly togglePause = output<void>();
   readonly nudge = output<void>();
 
   protected readonly bannerText = computed(() => {

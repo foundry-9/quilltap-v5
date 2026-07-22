@@ -163,6 +163,9 @@ function stubClient(
 }
 
 async function render(client: Partial<CoreClient>): Promise<ComponentFixture<SalonConversation>> {
+  // The chat sidebar (P4.9H1) reads its collapse preference from localStorage and
+  // defaults to the mini strip; cases that reach into its drawers want it open.
+  localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
   TestBed.configureTestingModule({
     imports: [SalonConversation],
     providers: [
@@ -354,9 +357,18 @@ describe('SalonConversation (read path)', () => {
     expect(fixture.nativeElement.textContent).not.toContain('The Commonplace Book');
     expect(fixture.nativeElement.textContent).toContain('pascal secret roll');
 
-    // Flip "All Whispers" on → the hidden recall chip appears.
+    // Flip "All Whispers" on → the hidden recall chip appears. Since P4.9H1 the
+    // toggle lives in the sidebar's Visibility drawer (v4's home for it), so the
+    // card must be opened first.
+    const visibilityCard = (
+      Array.from(
+        fixture.nativeElement.querySelectorAll('.qt-collapsible-card-header'),
+      ) as HTMLButtonElement[]
+    ).find((h) => h.textContent?.trim().startsWith('Visibility'))!;
+    visibilityCard.click();
+    fixture.detectChanges();
     const toggle = fixture.nativeElement.querySelector(
-      'button[aria-label="Toggle all whispers"]',
+      'button[aria-label="All Whispers"]',
     ) as HTMLButtonElement;
     expect(toggle).toBeTruthy();
     toggle.click();
@@ -468,8 +480,27 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
     }
   }
 
+  /**
+   * The entry lives in the sidebar's Chat drawer since P4.9H1 (v4's own home for
+   * it), so a case must expand the sidebar and open that card first. v4's palette
+   * button carries a text label, not an aria-label — hence the text match.
+   */
+  function openChatDrawer(fixture: ComponentFixture<SalonConversation>): void {
+    const headers = Array.from(
+      fixture.nativeElement.querySelectorAll('.qt-collapsible-card-header'),
+    ) as HTMLButtonElement[];
+    const chatCard = headers.find((h) => h.textContent?.trim().startsWith('Chat'));
+    chatCard?.click();
+    fixture.detectChanges();
+  }
+
   function regenEntry(fixture: ComponentFixture<SalonConversation>): HTMLButtonElement | null {
-    return fixture.nativeElement.querySelector('button[aria-label="Regenerate Background"]');
+    openChatDrawer(fixture);
+    return (
+      (Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+        (b) => (b as HTMLButtonElement).textContent?.trim() === 'Regenerate Background',
+      ) as HTMLButtonElement | undefined) ?? null
+    );
   }
 
   it('shows the entry only when storyBackgroundsSettings.enabled is on', async () => {

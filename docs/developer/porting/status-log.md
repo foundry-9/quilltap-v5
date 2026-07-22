@@ -27816,6 +27816,79 @@ tri-states keeping their choice, and seeding from the record) and
 `organize-section.spec.ts` (2 cases — the entry list with and without the
 autonomous gate, and each entry's report). `ng test` 209 files / 2,494;
 `ng build` clean.
+
+## P4.9H1 unit 6 — the sidebar goes live in the Salon (+ the reconciliation)
+
+**Mounted:** `<qt-chat-sidebar>` is a sibling of `.qt-chat-main` inside
+`.qt-chat-layout` (v4 `SalonView.tsx:1695`), rendered once the chat record
+loads.
+
+**Turn plumbing:** `refreshTurn` now also runs v4's `applyServerResponse`
+(`useTurnManagement.ts:85-102`) — the authoritative `state.queue` back into the
+client `turnState`, the `turn` envelope into `turnSelectionResult`
+(`nextSpeakerId` / `reason` / `cycleComplete`). `spokenSinceUserTurn` and
+`lastSpeakerId` are never refreshed client-side, exactly as v4 leaves them.
+
+**Handlers wired** (all v4's, by name): `handleNudge` (unpause → local
+front-of-queue → generate directly, deliberately WITHOUT the `nudge` turn action,
+which would double-queue and make the chain answer twice), `handleQueue` /
+`handleDequeue` (optimistic then authoritative), the user card's Skip (v4 wires
+it to `handleContinue`, not `skipUserTurn` — query, then let an LLM speak),
+Stop, `chatImpersonate` / `chatStopImpersonate`, `chatRegenerateAvatar`, the
+chat-tier State Editor, and the Chat/Visibility sections' own writes with a
+refetch on each.
+
+### The reconciliation — four affordances went home
+
+Each of these lived outside v4's sidebar in v5 only because v5 had no sidebar,
+and each divergence was recorded at the time. The port makes them moot:
+
+| Affordance | Was | Now (v4's home) |
+|---|---|---|
+| All Whispers | conversation header (P4.6ba) | Visibility drawer |
+| Edit Enclave | conversation header (P4.6af) | Organize drawer |
+| Regenerate Background | conversation header (P4.6ap) | Chat drawer |
+| Photo gallery | conversation header | Organize drawer |
+| Pause / Resume | turn-controls bar | the strip + Participants drawer |
+
+The conversation header is now v4's toolbar exactly (`SalonView.tsx:960-1040`):
+breadcrumb → title → danger badges → Inspector → cost summary → copy-id. The
+turn-controls bar keeps the paused NOTICE (v5's own affordance) but not the
+button. Six e2e beats were re-pointed through the new
+`e2e/support/sidebar.ts` helper (`openSidebarSection`), and the header spec
+gained a case asserting the four are gone.
+
+**Deliberate NON-port (named):** v4 passes `hideStopButton={showParticipantSidebar}`
+to the composer (`SalonView.tsx:1497`), so v4's composer Stop disappears whenever
+the sidebar is shown — which is always. v5 KEEPS its composer Stop: it is the
+control v5's walks have used since M4, and the sidebar's per-card Stop is
+additive rather than a replacement. Recorded here rather than silently dropped.
+
+**Contract touches (SPA only):** `ChatDetail` gained the sidebar's read fields —
+`imageProfileId` / `allowCrossCharacterVaultReads` / `coreWhisperEnabled` /
+`coreWhisperInterval` (all three IN the server projection) plus `timelineMode` /
+`alertCharactersOfLanternImages` (declared for the same reason v4 declares them
+and NOT projected — see unit 4). `ChatRegenerateAvatarRequest.equippedSlots`
+became optional, matching the server's own Zod port
+(`chat_outfits.rs:610`) — v4's sidebar camera button posts `{characterId}` alone.
+
+### The e2e beats (new file `e2e/salon-sidebar-flow.spec.ts`)
+
+1. **The sidebar walk:** the mini strip is what a fresh profile sees (avatars +
+   pause), expanding writes `quilltap.chat-sidebar.collapsed=false`, Participants
+   is open by default with cast + position badges, opening Organize closes it
+   (single-open) and shows Copy ID + State…, the preference survives a reload,
+   and collapsing returns the strip.
+2. **The Story's Clock round-trip:** the column starts NULL and reads Real time,
+   flipping to Story time shows "The story now keeps its own hours" and swaps the
+   helper paragraph, **and the column really moved** — proven by a `chatUpdate`
+   with an EMPTY bag, whose echo carries the merged row (v4's GET never projects
+   the column; an empty bag writes nothing). Then flipped back and re-probed.
+
+**Gate:** `ng test` 209 files / 2,487; `ng build` clean; **full Playwright
+112/112, zero skips**, both new beats ACTIVE. `git diff <base>..HEAD -- crates
+harness` = 0 lines (this lane changed no Rust; the e2e ran against main's release
+binaries, as the order directs).
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch

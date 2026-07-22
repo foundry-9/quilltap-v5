@@ -2,6 +2,7 @@ import { expect, test, type Page } from './support/fixtures';
 
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 
 /**
  * M4b: the tier-2 Salon controls (P4.6c) in a real browser against the baked
@@ -51,7 +52,10 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
 
     // --- Pause round-trip: a new control exercised end-to-end (chatUpdate). ---
-    const pauseButton = page.locator('.qt-chat-pause-button');
+    // The pause control lives in the sidebar's Participants drawer since P4.9H1
+    // (v4's home for it — the turn-controls bar keeps only the paused notice).
+    await openSidebarSection(page, 'Participants');
+    const pauseButton = page.locator('qt-chat-sidebar .qt-chat-pause-button');
     const pausedBanner = page.locator('.qt-chat-paused-banner');
     await expect(pauseButton).toBeVisible();
     const startedPaused = ((await pauseButton.textContent()) ?? '').includes('Resume');

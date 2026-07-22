@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 
 /**
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so its
@@ -235,6 +236,9 @@ test.describe('P4.6ap — the Regenerate Background entry (LIVE at unification)'
 
     await openSoloVoyage(page);
 
+    // The entry lives in the sidebar's Chat drawer (P4.9H1 moved it back from the
+    // header — v4 keeps it only there).
+    await openSidebarSection(page, 'Chat');
     const entry = page.getByRole('button', { name: 'Regenerate Background' });
     await expect(entry).toBeVisible({ timeout: 15_000 });
     await expect(entry).toHaveAttribute('title', 'Regenerate story background image');

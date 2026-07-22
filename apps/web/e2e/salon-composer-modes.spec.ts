@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 
 /**
@@ -189,7 +190,10 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // this beat's second send. The beat is about RENDERING, not turns; with
     // the chat paused, both sends post as plain user messages and no chain
     // ever runs. (The m4b pause round-trip proves the toggle end-to-end.)
-    const pauseButton = page.locator('.qt-chat-pause-button');
+    // The pause control lives in the sidebar's Participants drawer since P4.9H1
+    // (v4's home for it — the turn-controls bar keeps only the paused notice).
+    await openSidebarSection(page, 'Participants');
+    const pauseButton = page.locator('qt-chat-sidebar .qt-chat-pause-button');
     await expect(pauseButton).toBeVisible();
     if (!(((await pauseButton.textContent()) ?? '').includes('Resume'))) {
       await pauseButton.click();

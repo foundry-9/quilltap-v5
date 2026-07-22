@@ -1944,6 +1944,21 @@ export interface ChatDetail {
   isDangerousChat: boolean | null;
   dangerCategories: string[];
   conciergeOverride: 'OFF' | null;
+  /**
+   * The chat sidebar's slice of the record (P4.9H1). The first three ARE in the
+   * server's projection (`api/salon.rs:303-422`, v4 `handlers/get.ts:528-568`);
+   * `timelineMode` and `alertCharactersOfLanternImages` are declared here for the
+   * same reason v4 declares them on its `Chat` type (`app/salon/[id]/types.ts`) —
+   * the client passes them to the controls — but **v4's route does not project
+   * them**, so they arrive `undefined` and the sidebar keeps the operator's
+   * in-session choice instead. See `chat/sidebar/chat-section.ts`.
+   */
+  imageProfileId?: string | null;
+  allowCrossCharacterVaultReads?: boolean;
+  coreWhisperEnabled?: boolean | null;
+  coreWhisperInterval?: number | null;
+  timelineMode?: 'realtime' | 'narrative' | null;
+  alertCharactersOfLanternImages?: boolean | null;
   offSceneCharacters: OffSceneCharacter[];
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;
@@ -5006,6 +5021,12 @@ export interface ChatRegenerateAvatarRequest {
   type: 'chatRegenerateAvatar';
   chatId: string;
   characterId: string;
-  equippedSlots: EquippedSlots;
+  /**
+   * A one-shot fitting-room override. OPTIONAL, as the server's Zod port has it
+   * (`chat_outfits.rs:610` — `EquippedSlotsSchema.optional()`); the wardrobe
+   * dialog always sends it, but v4's sidebar camera button posts `{characterId}`
+   * alone (`SalonView.tsx:262-266`) and lets the server resolve what is worn.
+   */
+  equippedSlots?: EquippedSlots;
   imageProfileId?: string;
 }

@@ -9,8 +9,14 @@ import { ChatCostSummary } from './chat-cost-summary';
 /**
  * The conversation header (v4 injects this via `usePageToolbar`; v5 renders it
  * inline). Project breadcrumb → title → danger badges → the LLM-Inspector button
- * → the chat-totals summary → the entry cluster (edit-enclave / gallery /
- * copy-conversation-ID).
+ * → the chat-totals summary → the copy-conversation-ID button — v4's toolbar
+ * exactly (`SalonView.tsx:960-1040`).
+ *
+ * Four entries used to live here as recorded PLACEMENT DIVERGENCES, each because
+ * "v5 has no chat sidebar": the All-Whispers toggle (P4.6ba), Edit Enclave
+ * (P4.6af), Regenerate Background (P4.6ap) and the photo gallery. P4.9H1 ported
+ * the sidebar, so all four went home — Visibility, Organize, Chat and Organize
+ * respectively — and the header is v4's again.
  *
  * The Inspector button and the cost summary come out of the SAME v4 toolbar
  * effect (`SalonView.tsx:990-1027`), and their ORDER there is load-bearing:
@@ -58,26 +64,6 @@ import { ChatCostSummary } from './chat-cost-summary';
       }
 
       <span class="flex-1"></span>
-      <!-- All Whispers toggle (v4 ChatSidebar visibility section — relocated to
-           the header cluster, as v5 has no chat sidebar). Reveals the private
-           whispers the operator isn't a party to; Pascal/Prospero runs show
-           either way (operator machinery). -->
-      <button
-        type="button"
-        role="switch"
-        class="p-1.5 rounded transition-colors flex-shrink-0"
-        [class]="
-          showAllWhispers()
-            ? 'qt-bg-primary/15 text-primary'
-            : 'qt-text-secondary hover:text-foreground'
-        "
-        [attr.aria-checked]="showAllWhispers()"
-        aria-label="Toggle all whispers"
-        [title]="showAllWhispers() ? 'Hide private whispers' : 'Show all whispers'"
-        (click)="toggleAllWhispers.emit()"
-      >
-        <qt-icon [name]="showAllWhispers() ? 'eye' : 'eye-off'" class="w-4 h-4" />
-      </button>
       <!-- The Inspector button precedes the cost summary (v4 :995-1024). -->
       @if (showInspectorButton()) {
         <button
@@ -103,38 +89,6 @@ import { ChatCostSummary } from './chat-cost-summary';
           class="flex-shrink-0"
         />
       }
-      @if (isAutonomous()) {
-        <button
-          type="button"
-          class="qt-button-ghost qt-button-sm flex-shrink-0"
-          title="Edit this enclave’s schedule, budget, and visibility"
-          aria-label="Edit Enclave"
-          (click)="editEnclave.emit()"
-        >
-          <qt-icon name="settings" class="w-4 h-4" />
-        </button>
-      }
-      @if (storyBackgroundsEnabled()) {
-        <button
-          type="button"
-          class="qt-button-ghost qt-button-sm flex-shrink-0"
-          title="Regenerate story background image"
-          aria-label="Regenerate Background"
-          [disabled]="regeneratingBackground()"
-          (click)="regenerateBackground.emit()"
-        >
-          <qt-icon name="sparkles" class="w-4 h-4" />
-        </button>
-      }
-      <button
-        type="button"
-        class="qt-button-ghost qt-button-sm flex-shrink-0"
-        title="View chat photos"
-        aria-label="View chat photos"
-        (click)="openGallery.emit()"
-      >
-        <qt-icon name="image" class="w-4 h-4" />
-      </button>
       <qt-copy-chat-id-button [chatId]="chat().id" />
     </header>
   `,
@@ -151,43 +105,8 @@ export class ConversationHeader {
   readonly messageCount = input(0);
   /** Whether the Inspector panel is open — drives the button's active state (v4 :1002-1006). */
   readonly inspectorOpen = input(false);
-  /** The "All Whispers" toggle state (v4 SalonView `showAllWhispers`). */
-  readonly showAllWhispers = input(false);
-  /** Flip the whisper toggle (v4 `onToggleAllWhispers`). */
-  readonly toggleAllWhispers = output<void>();
   /** Toggle the LLM Inspector panel (v4 `toggleInspector`). */
   readonly toggleInspector = output<void>();
-  /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
-  readonly openGallery = output<void>();
-  /**
-   * Open the Edit-Enclave modal (v4 ChatSidebar's "Organize" palette entry,
-   * shown only for autonomous rooms). PLACEMENT DIVERGENCE: v5 has no chat
-   * sidebar/Organize palette, so this rides the conversation header's right
-   * cluster next to the gallery/copy-id buttons. Visibility is the only guard —
-   * no confirmation dialog; the button opens the modal directly.
-   */
-  readonly editEnclave = output<void>();
-  /**
-   * Queue a story-background regeneration (v4's ChatSidebar tool-palette entry,
-   * `ChatSidebar.tsx:1204-1214`).
-   *
-   * PLACEMENT DIVERGENCE: v5 has no chat sidebar / tool palette
-   * (`salon-conversation.ts:95`), so this relocates to the header entry cluster —
-   * the same idiom the Edit-Enclave entry already established (P4.6af). ONE
-   * button moves; the palette stays deferred.
-   *
-   * GLYPH DIVERGENCE: v4 uses the `image` icon, which works beside a text label
-   * in the palette. The header cluster is icon-only and `image` ALREADY means
-   * "View chat photos" there, so this uses `sparkles` — v5's established
-   * "generate an image" glyph (the composer's generate button). v4's title copy
-   * is unchanged and carries the meaning.
-   */
-  readonly regenerateBackground = output<void>();
-
-  /** v4 `chatControls.storyBackgroundsEnabled` — the tool-palette gate. */
-  readonly storyBackgroundsEnabled = input(false);
-  /** Disables the entry while a regeneration poll is in flight (v4 has no such guard). */
-  readonly regeneratingBackground = input(false);
 
   /** v4 `chatSettings?.tokenDisplaySettings?.showChatTotals` — default false. */
   protected readonly showChatTotals = computed(

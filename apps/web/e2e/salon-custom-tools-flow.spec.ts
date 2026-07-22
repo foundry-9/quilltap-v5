@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
+import { openSidebarSection } from './support/sidebar';
 
 /**
  * P4.6ba — the Pascal in-chat surface (the composer custom-tools popup + run
@@ -44,7 +45,10 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
-    const toggle = page.getByRole('switch', { name: 'Toggle all whispers' });
+    // The toggle lives in the sidebar's Visibility drawer since P4.9H1 (v4's
+    // home for it), under v4's own "All Whispers" label.
+    await openSidebarSection(page, 'Visibility');
+    const toggle = page.getByRole('switch', { name: 'All Whispers' });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
     await toggle.click();
@@ -98,7 +102,8 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     // names the tool that ran", not its letter case.
     await expect(bar.first()).toContainText(toolTitle, { ignoreCase: true });
 
-    const whispers = page.getByRole('switch', { name: 'Toggle all whispers' });
+    await openSidebarSection(page, 'Visibility');
+    const whispers = page.getByRole('switch', { name: 'All Whispers' });
     await expect(whispers).toHaveAttribute('aria-checked', 'false');
     await expect(bar.first()).toBeVisible(); // still shown with the toggle off
   });
