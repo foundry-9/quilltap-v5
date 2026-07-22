@@ -43,6 +43,9 @@ interface SeedMemory {
   reinforcementCount: number;
   relatedMemoryIds: string[];
   vector: number[] | null;
+  /** Episodic spine — the merge pass's date guard. */
+  occurredAt?: string | null;
+  kind?: 'semantic' | 'episodic';
 }
 interface Spec {
   testPepperBase64: string;
@@ -110,6 +113,11 @@ async function main(): Promise<void> {
         embedding: null,
         source: seed.source,
         witnessedContext: null,
+        // Episodic spine: the merge pass's date guard reads `occurredAt`.
+        occurredAt: seed.occurredAt ?? null,
+        narrativeTime: null,
+        entities: [],
+        kind: seed.kind ?? 'semantic',
         sourceMessageId: null,
         lastAccessedAt: seed.lastAccessedAt,
         reinforcementCount: seed.reinforcementCount,

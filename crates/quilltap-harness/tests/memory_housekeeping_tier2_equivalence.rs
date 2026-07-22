@@ -279,14 +279,16 @@ async fn memory_housekeeping_tier2_matches_oracle() {
 
     // Sanity (fresh-date corpus): H1 keeps 5 of 7, H2 keeps 2 of 3, H3 keeps 3
     // of 5 → 10 memories; entries: h1-old-high + h2-keep + h2-other + a3000001.
+    // H4 (the episodic date-guard character) keeps 3 of 4: its same-occasion
+    // near-duplicate pair merges, its >7-days-apart pair does NOT — the guard.
     assert_eq!(
         got_dumps[0]["rows"].as_array().unwrap().len(),
-        10,
+        13,
         "memories survivors"
     );
     assert_eq!(
         got_dumps[2]["rows"].as_array().unwrap().len(),
-        4,
+        7,
         "vector_entries survivors"
     );
 

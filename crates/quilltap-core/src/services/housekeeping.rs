@@ -133,6 +133,9 @@ struct Mem {
     created_at_ms: f64,
     inputs: MemoryInputs,
     last_accessed_at_ms: Option<f64>,
+    /// The raw `occurredAt` string, for the merge pass's episodic date guard
+    /// (`occasionsAreDistinct` parses the ISO text itself).
+    occurred_at: Option<String>,
 }
 
 fn parse_mem(v: &Value) -> Mem {
@@ -173,6 +176,7 @@ fn parse_mem(v: &Value) -> Mem {
             ),
         },
         last_accessed_at_ms,
+        occurred_at: str_of("occurredAt"),
     }
 }
 
@@ -358,6 +362,17 @@ pub async fn run_housekeeping(
                     let Some(match_mem) = mem_by_id.get(m.id.as_str()) else {
                         continue;
                     };
+
+                    // Episodic date guard (mirrors the write-side memory gate):
+                    // two memories of the same activity on occasions > 7 days
+                    // apart are distinct events — never merge them, however
+                    // similar the prose.
+                    if crate::memory_gate::occasions_are_distinct(
+                        mem.occurred_at.as_deref(),
+                        match_mem.occurred_at.as_deref(),
+                    ) {
+                        continue;
+                    }
 
                     let keep_current = mem.importance > match_mem.importance
                         || (mem.importance == match_mem.importance

@@ -11,9 +11,12 @@ memory fragments from the same stretch so recalling the episode can pull
 the details back with it. The running summary itself gained a fifth
 section, an append-only Timeline of dated one-liners, and the turns fed
 into the fold now carry their dates so the model can date events from
-the transcript instead of guessing. Memory housekeeping learned the same
-episodic date guard the write gate uses: two similar memories from
-occasions more than a week apart are no longer merged together.
+the transcript instead of guessing.
+
+Memory housekeeping learned the same episodic date guard the write gate
+uses: its similarity-merge pass no longer folds two memories together
+when their event times sit more than a week apart, however alike the
+prose — two visits to the same place months apart stay two memories.
 
 Memories are now born with anchors. The per-turn memory extractor gets a
 clock (current date/time, timeline mode, and the in-story time on

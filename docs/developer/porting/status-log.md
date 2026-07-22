@@ -27821,3 +27821,26 @@ TZ=UTC QT_FIXTURE_FOLD_EPISODE_MAIN=/tmp/qt-fold-episode-main.db \
   QT_ORACLE_OUT=/tmp/oracle-fold-episode.ndjson \
   $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- fold-episode-tier3
 ```
+
+## P4.d14 unit 3 — the housekeeping merge date guard (2026-07-22)
+
+`services/housekeeping.rs`: the similarity-merge pass now consults
+`memory_gate::occasions_are_distinct` before folding a match into a survivor
+(v4 `housekeeping.ts:303` — a bare `continue` right after the `matchMemory`
+lookup and before the keep-current decision, so a guarded pair leaves BOTH
+rows and neither is marked merged). The pre-parsed `Mem` view gained the raw
+`occurredAt` string (the guard parses the ISO text itself; the existing
+`inputs.occurred_at_ms` is the weighting path's pre-parsed form and is not
+reused here, matching v4's own use of the raw column).
+
+`QT_ORACLE_MEMHOUSEKEEPING` regenerated at `8bf3cb5f` and green over the
+corpus extended in unit 2: the fourth character's 126-days-apart 0.95 pair
+survives intact while its 2-days-apart 0.95 pair merges — the guard proven
+firing and not firing on identical similarity. Survivor sanity counts moved
+10 → 13 memories, 4 → 7 vector entries.
+
+Regen: `QT_FIXTURE_OUT=/tmp/qt-memhk-fixture.db npx tsx
+harness/oracle/fixtures/build-memory-housekeeping-fixture.ts`, then
+`QT_FIXTURE_MEMHOUSEKEEPING=/tmp/qt-memhk-fixture.db npx tsx
+harness/oracle/cases/memory-housekeeping-tier2.ts > /tmp/oracle-memhk.ndjson`
+(both from the v4 checkout, tsx against the WORKTREE paths).

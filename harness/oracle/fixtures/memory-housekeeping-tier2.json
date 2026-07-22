@@ -5,7 +5,8 @@
   "characters": {
     "charH1": "77777777-7777-4777-8777-777777777777",
     "charH2": "88888888-8888-4888-8888-888888888888",
-    "charH3": "99999999-9999-4999-8999-999999999999"
+    "charH3": "99999999-9999-4999-8999-999999999999",
+    "charH4": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
   },
   "seedMemories": [
     { "id": "a1000001-0000-4000-8000-000000000001", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": ["a1000006-0000-4000-8000-000000000006"], "vector": [1, 0, 0] },
@@ -22,12 +23,17 @@
     { "id": "a3000002-0000-4000-8000-000000000002", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
     { "id": "a3000003-0000-4000-8000-000000000003", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
     { "id": "a3000004-0000-4000-8000-000000000004", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.6, "reinforcedImportance": 0.6, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
-    { "id": "a3000005-0000-4000-8000-000000000005", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.6, 0.8, 0] }
+    { "id": "a3000005-0000-4000-8000-000000000005", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.6, 0.8, 0] },
+    {"id": "a4000001-0000-4000-8000-000000000001", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [1, 0, 0], "occurredAt": "2026-03-10T00:00:00.000Z", "kind": "episodic"},
+    {"id": "a4000002-0000-4000-8000-000000000002", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.6, "reinforcedImportance": 0.6, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.95, 0.31225, 0], "occurredAt": "2026-07-14T00:00:00.000Z", "kind": "episodic"},
+    {"id": "a4000003-0000-4000-8000-000000000003", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 0, 1], "occurredAt": "2026-07-14T00:00:00.000Z", "kind": "episodic"},
+    {"id": "a4000004-0000-4000-8000-000000000004", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 0.31225, 0.95], "occurredAt": "2026-07-16T00:00:00.000Z", "kind": "episodic"}
   ],
   "seedMetaCharacterIds": [
     "77777777-7777-4777-8777-777777777777",
     "88888888-8888-4888-8888-888888888888",
-    "99999999-9999-4999-8999-999999999999"
+    "99999999-9999-4999-8999-999999999999",
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
   ],
   "ops": [
     { "kind": "runHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3, "dryRun": true } },
@@ -35,6 +41,13 @@
     { "kind": "runHousekeeping", "characterId": "88888888-8888-4888-8888-888888888888", "options": { "mergeSimilar": true } },
     { "kind": "runHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3 } },
     { "kind": "needsHousekeeping", "characterId": "77777777-7777-4777-8777-777777777777", "options": {} },
-    { "kind": "needsHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3 } }
+    { "kind": "needsHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3 } },
+    {
+      "kind": "runHousekeeping",
+      "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "options": {
+        "mergeSimilar": true
+      }
+    }
   ]
 }
