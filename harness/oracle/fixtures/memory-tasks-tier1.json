@@ -617,6 +617,185 @@
       "resolvedMaxTokens": null,
       "inAutonomousRoom": false,
       "responseText": "{\"subjectIndex\": 1, \"content\": \"Amy kept the last biscuit.\", \"summary\": \"kept last biscuit\", \"importance\": 0.3}"
+    },
+    {
+      "kind": "self",
+      "name": "self-clock-realtime-event-soft-raise",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-20",
+        "userMessage": "Remember the lighthouse trip?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "We bought the brass sextant at Lighthouse Point on the fourteenth.",
+            "contributingMessageIds": [
+              "m-a-20"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-20"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "2026-07-20T14:05:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "[{\"content\": \"I resolved to keep the sextant on the chart table.\", \"summary\": \"kept sextant on table\", \"keywords\": [\"sextant\"], \"importance\": 0.6, \"temporal\": \"present\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"content\": \"I admitted the harbour frightens me.\", \"summary\": \"admitted harbour fear\", \"keywords\": [\"harbour\"], \"importance\": 0.7}, {\"content\": \"On July 14th we visited Lighthouse Point and bought the brass sextant.\", \"summary\": \"visited lighthouse point\", \"keywords\": [\"lighthouse\"], \"importance\": 0.8, \"kind\": \"episodic\", \"when\": \"2026-07-14\", \"entities\": [\"Lighthouse Point\", \"Charlie\"]}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-clock-narrative-in-story",
+      "transcript": {
+        "turnOpenerMessageId": null,
+        "userMessage": null,
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "The third night at sea, the lamp guttered.",
+            "contributingMessageIds": [
+              "m-a-21"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-21"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "2026-07-20T14:05:00.000Z",
+        "timelineMode": "narrative",
+        "narrativeNow": "  the third night at sea  "
+      },
+      "responseText": "[{\"content\": \"On the third night at sea the lamp guttered and I relit it alone.\", \"summary\": \"relit the lamp alone\", \"keywords\": [\"lamp\"], \"importance\": 0.55, \"kind\": \"EPISODIC \", \"when\": \"  the third night at sea  \", \"entities\": [\"  the Kestrel  \", \"\", 7, \"Amy\"]}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-clock-unparseable-and-coercion-edges",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-22",
+        "userMessage": "Anything to record?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Only fragments.",
+            "contributingMessageIds": [
+              "m-a-22"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-22"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "sometime last spring",
+        "timelineMode": "realtime",
+        "narrativeNow": "   "
+      },
+      "responseText": "[{\"content\": \"A fragment with a bad kind.\", \"summary\": \"bad kind\", \"importance\": 0.5, \"kind\": \"event\", \"when\": \"   \", \"entities\": \"Rotterdam\"}, {\"content\": \"A fragment with nine entities.\", \"summary\": \"nine entities\", \"importance\": 0.5, \"kind\": \"episodic\", \"entities\": [\"a1\", \"a2\", \"a3\", \"a4\", \"a5\", \"a6\", \"a7\", \"a8\", \"a9\"]}]"
+    },
+    {
+      "kind": "other",
+      "name": "other-clock-per-subject-soft-raise",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-23",
+        "userMessage": "Tell me about the trip.",
+        "userCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "I watched them both.",
+            "contributingMessageIds": [
+              "m-a-23"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "I counted the gulls.",
+            "contributingMessageIds": [
+              "m-a-24"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-24"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)"
+        }
+      ],
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "2026-07-20T14:05:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy counted the gulls.\", \"summary\": \"counted gulls\", \"keywords\": [\"gulls\"], \"importance\": 0.5}, {\"subjectIndex\": 1, \"content\": \"Amy refused the ferry.\", \"summary\": \"refused ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 14th Amy walked the Lighthouse Point jetty.\", \"summary\": \"walked the jetty\", \"importance\": 0.75, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy dropped a glove.\", \"summary\": \"dropped a glove\", \"importance\": 0.3}, {\"subjectIndex\": 2, \"content\": \"Charlie bought the tickets.\", \"summary\": \"bought tickets\", \"importance\": 0.5}, {\"subjectIndex\": 2, \"content\": \"Charlie decided to stay ashore.\", \"summary\": \"stayed ashore\", \"importance\": 0.6}, {\"subjectIndex\": 2, \"content\": \"Charlie hummed a waltz.\", \"summary\": \"hummed a waltz\", \"importance\": 0.4, \"kind\": \"episodic\"}]"
     }
   ]
 }

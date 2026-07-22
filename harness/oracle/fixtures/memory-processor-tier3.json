@@ -193,11 +193,22 @@
    "parameters": null,
    "maxTokens": null,
    "modelClass": null
+  },
+  {
+   "id": "p-epi",
+   "provider": "OPENAI",
+   "modelName": "gpt-epi-mini",
+   "baseUrl": null,
+   "isCheap": true,
+   "isDangerousCompatible": false,
+   "parameters": null,
+   "maxTokens": null,
+   "modelClass": null
   }
  ],
  "currentProfileId": "p-cur",
  "cannedEmbeddings": {
-  "reorganize ledger by wing\n\nI decided to reorganize the workshop ledger by wing.": [
+  "reorganize ledger by wing\n\nI decided to reorganize the workshop ledger by wing.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    0.0,
@@ -212,7 +223,7 @@
    0.0,
    0.0
   ],
-  "fears third balcony draft\n\nI fear the draft on the third balcony.": [
+  "fears third balcony draft\n\nI fear the draft on the third balcony.\n(when: 2023-05-05)": [
    1.0,
    0.0,
    0.0,
@@ -227,7 +238,7 @@
    0.0,
    0.0
   ],
-  "tuned hinge ritual\n\nI tuned my hinge oiling ritual to the evening bell.": [
+  "tuned hinge ritual\n\nI tuned my hinge oiling ritual to the evening bell.\n(when: 2023-05-05)": [
    0.0,
    1.0,
    0.0,
@@ -242,7 +253,7 @@
    0.0,
    0.0
   ],
-  "trusts the hives\n\nBram trusts the rooftop hives at dawn.": [
+  "trusts the hives\n\nBram trusts the rooftop hives at dawn.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    1.0,
@@ -257,7 +268,7 @@
    0.0,
    0.0
   ],
-  "retuned overture\n\nAria retuned the overture to mask the balcony draft.": [
+  "retuned overture\n\nAria retuned the overture to mask the balcony draft.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    0.0,
@@ -272,7 +283,7 @@
    0.0,
    0.0
   ],
-  "wired a new bell\n\nBram wired a new bell to the workshop door.": [
+  "wired a new bell\n\nBram wired a new bell to the workshop door.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    0.0,
@@ -287,7 +298,7 @@
    0.0,
    0.0
   ],
-  "reorganized ledger despite noise\n\nCharlie reorganized the ledger despite the workshop noise.": [
+  "reorganized ledger despite noise\n\nCharlie reorganized the ledger despite the workshop noise.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    0.0,
@@ -302,7 +313,7 @@
    0.0,
    0.0
   ],
-  "hives left unguarded\n\nThe hives were left unguarded at dusk.": [
+  "hives left unguarded\n\nThe hives were left unguarded at dusk.\n(when: 2023-05-05)": [
    0.0,
    0.0,
    0.0,
@@ -444,6 +455,50 @@
     "completionTokens": 2,
     "totalTokens": 112
    }
+  },
+  {
+   "pass": "self",
+   "label": "Aria (she/her/her)",
+   "model": "gpt-epi-mini",
+   "response": "[{\"content\": \"I walked the Lighthouse Point jetty last week.\", \"summary\": \"walked the jetty\", \"keywords\": [\"jetty\"], \"importance\": 0.7, \"temporal\": \"past\", \"scope\": \"narrow\", \"context\": \"information\", \"kind\": \"episodic\", \"when\": \"last week\", \"entities\": [\"Lighthouse Point\"]}, {\"content\": \"I sang at the Long Gallery on 2023-05-01.\", \"summary\": \"sang at the long gallery\", \"keywords\": [\"gallery\"], \"importance\": 0.8, \"kind\": \"episodic\", \"when\": \"2023-05-01\", \"entities\": [\"Long Gallery\"]}, {\"content\": \"I first met the beekeeper some time ago.\", \"summary\": \"met the beekeeper\", \"keywords\": [\"beekeeper\"], \"importance\": 0.6, \"kind\": \"episodic\", \"when\": \"some time ago\", \"entities\": [\"Bram\"]}]",
+   "usage": {
+    "promptTokens": 130,
+    "completionTokens": 60,
+    "totalTokens": 190
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram",
+   "model": "gpt-epi-mini",
+   "response": "[{\"content\": \"I keep the hives shuttered after dusk.\", \"summary\": \"shutters the hives\", \"keywords\": [\"hives\"], \"importance\": 0.5}]",
+   "usage": {
+    "promptTokens": 120,
+    "completionTokens": 20,
+    "totalTokens": 140
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Aria (she/her/her)",
+   "model": "gpt-epi-mini",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Bram carried the smoker up the stair yesterday.\", \"summary\": \"carried the smoker\", \"keywords\": [\"smoker\"], \"importance\": 0.55, \"kind\": \"episodic\", \"when\": \"yesterday\", \"entities\": [\"Bram\"]}]",
+   "usage": {
+    "promptTokens": 140,
+    "completionTokens": 30,
+    "totalTokens": 170
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram",
+   "model": "gpt-epi-mini",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Aria hummed while the boiler cooled.\", \"summary\": \"hummed by the boiler\", \"keywords\": [\"boiler\"], \"importance\": 0.4}]",
+   "usage": {
+    "promptTokens": 135,
+    "completionTokens": 25,
+    "totalTokens": 160
+   }
   }
  ],
  "calls": [
@@ -562,6 +617,7 @@
    "transcript": {
     "turnOpenerMessageId": null,
     "userMessage": null,
+    "turnTimestamp": "2023-05-06T21:15:00.000Z",
     "characterSlices": [
      {
       "characterId": "aa000000-0000-4000-8000-00000000a21a",
@@ -610,6 +666,59 @@
     "userMessage": "hello?",
     "characterSlices": [],
     "latestAssistantMessageId": null
+   }
+  },
+  {
+   "name": "episodic_when_phrases_dry_run",
+   "chatId": "1c000000-0000-4000-8000-00000000c4a7",
+   "projectId": null,
+   "projectDescription": null,
+   "chatContextSummary": null,
+   "cheapLLMSettings": {
+    "strategy": "USER_DEFINED",
+    "userDefinedProfileId": "p-epi",
+    "fallbackToLocal": false
+   },
+   "dangerSettings": null,
+   "isDangerousChat": false,
+   "memoryExtractionLimits": null,
+   "sourceMessageTimestamp": null,
+   "timelineMode": "narrative",
+   "dryRun": true,
+   "inAutonomousRoom": false,
+   "participantIds": [
+    "aa000000-0000-4000-8000-00000000a21a",
+    "bb000000-0000-4000-8000-00000000b4a3"
+   ],
+   "transcript": {
+    "turnOpenerMessageId": null,
+    "userMessage": null,
+    "turnTimestamp": "2023-05-09T08:00:00.000Z",
+    "characterSlices": [
+     {
+      "characterId": "aa000000-0000-4000-8000-00000000a21a",
+      "characterName": "Aria",
+      "characterPronouns": {
+       "subject": "she",
+       "object": "her",
+       "possessive": "her"
+      },
+      "text": "The jetty, the gallery, the beekeeper — they all come back tonight.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aab1"
+      ],
+      "lastMessageCreatedAt": "2023-05-08T10:00:00.000Z"
+     },
+     {
+      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+      "characterName": "Bram",
+      "text": "And the hives stay shuttered regardless.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aab2"
+      ]
+     }
+    ],
+    "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aab2"
    }
   }
  ]

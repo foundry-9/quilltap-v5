@@ -51,7 +51,9 @@ use crate::db::memories::{CreateOptions, MemCreate, MemUpdate};
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
 use crate::episodic::{build_memory_embedding_text, EpisodicAnchorView};
-use crate::memory_gate::{calculate_reinforced_importance, extract_novel_details};
+use crate::memory_gate::{
+    calculate_reinforced_importance, extract_novel_details, occasions_are_distinct,
+};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 
 use crate::db::runtime::Db;
@@ -134,6 +136,68 @@ pub struct CreateMemoryOptions {
     pub kind: Option<String>,
 }
 
+/// Cap on regex-derived fallback entities so noise can't flood the column
+/// (v4 `FALLBACK_ANCHOR_MAX_ENTITIES`).
+const FALLBACK_ANCHOR_MAX_ENTITIES: usize = 6;
+
+/// Episodic safety net for AUTO-extracted memories (v4
+/// `applyEpisodicFallbackAnchors`, `memory-service.ts`): when the extractor
+/// omitted `entities` and/or `occurredAt`, derive them deterministically from
+/// the memory text via the same date/proper-noun regexes reinforcement uses
+/// ([`extract_novel_details`]), resolving any captured date phrase against the
+/// source-message timestamp (or the write clock). Fills gaps only — a
+/// caller-supplied anchor always wins — and MANUAL memories pass through
+/// untouched (they carry the user's deliberate choices).
+fn apply_episodic_fallback_anchors(data: CreateMemoryOptions) -> CreateMemoryOptions {
+    // v4 `data.source && data.source !== 'AUTO'` — JS-truthy, so an absent
+    // (or empty) source falls through to the fallback like AUTO does.
+    if let Some(source) = data.source.as_deref() {
+        if !source.is_empty() && source != "AUTO" {
+            return data;
+        }
+    }
+    let need_entities = data.entities.is_empty();
+    // `!data.occurredAt` — absent OR empty string.
+    let need_occurred_at = data.occurred_at.as_deref().is_none_or(str::is_empty);
+    if !need_entities && !need_occurred_at {
+        return data;
+    }
+
+    let details = extract_novel_details(&data.content, "");
+    let mut next = data;
+
+    if need_occurred_at {
+        let anchor_iso = next
+            .source_message_timestamp
+            .clone()
+            .unwrap_or_else(crate::clock::now_iso);
+        for detail in &details {
+            if let Some(resolved) = crate::episodic::resolve_when_phrase(Some(detail), &anchor_iso)
+            {
+                next.occurred_at = Some(resolved);
+                break;
+            }
+        }
+    }
+
+    if need_entities {
+        // Proper-noun-shaped details only (skip the date/number/measure
+        // captures): `/^[A-Z]/` and no `/\d/` — both ASCII classes in JS.
+        let entities: Vec<String> = details
+            .iter()
+            .filter(|d| d.starts_with(|c: char| c.is_ascii_uppercase()))
+            .filter(|d| !d.contains(|c: char| c.is_ascii_digit()))
+            .take(FALLBACK_ANCHOR_MAX_ENTITIES)
+            .cloned()
+            .collect();
+        if !entities.is_empty() {
+            next.entities = entities;
+        }
+    }
+
+    next
+}
+
 /// Options for the operation (v4 `MemoryServiceOptions`), minus the deferred skip
 /// flags.
 #[derive(Debug, Clone, Default)]
@@ -174,10 +238,15 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
 ) -> Result<MemoryGateOutcome, DbError> {
     let data = apply_name_presence_check(db, data).await;
 
-    // Episodic spine (v4 8bf3cb5f): the candidate's anchors ride along so the
-    // gate embedding carries the anchor line (the >7-day date guard is the
-    // deferred round-3 half). On round-1 callers (no anchors) the built text
-    // is byte-identical to `summary\n\ncontent` — the inert path.
+    // Episodic safety net: run the deterministic date/proper-noun regexes on
+    // FIRST WRITE (not just reinforce) so entities/occurredAt get populated even
+    // when the extractor model omits them. Only fills gaps — never overrides a
+    // caller-supplied anchor.
+    let data = apply_episodic_fallback_anchors(data);
+
+    // Episodic spine: the candidate's anchors ride along so (a) the gate
+    // embedding carries the anchor line and (b) the >7-day date guard can split
+    // distinct occasions.
     let anchors = EpisodicAnchorView {
         occurred_at: data.occurred_at.clone(),
         narrative_time: data.narrative_time.clone(),
@@ -226,6 +295,9 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
         }),
 
         GateDecision::Reinforce { existing } => {
+            // The candidate's anchors ride along so a retelling that supplies
+            // better when/where anchors than the original capture can upgrade
+            // the row.
             let (memory_id, novel_details, reinforcement_count) = reinforce_memory(
                 db,
                 provider,
@@ -233,6 +305,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
                 &data.content,
                 &opts.user_id,
                 opts.embedding_profile_id.as_deref(),
+                &anchors,
             )
             .await?;
             Ok(MemoryGateOutcome {
@@ -332,6 +405,30 @@ async fn run_memory_gate<P: EmbeddingProvider>(
 
     let best = &results[0];
     let best_mem = memory_map.get(&best.id).cloned();
+
+    // Episodic date guard: a near-identical embedding with an occurredAt more
+    // than DATE_GUARD_DAYS from the best match is a DIFFERENT OCCASION of the
+    // same activity — link, never absorb. v4 checks `bestResult.score >=
+    // MERGE_THRESHOLD` so the downgrade covers both the SKIP and the REINFORCE
+    // band, and it returns INSERT_RELATED carrying ONLY the best match.
+    if let Some(best_memory) = best_mem.as_ref() {
+        let distinct_occasion = best.score >= MERGE_THRESHOLD
+            && occasions_are_distinct(
+                anchors.occurred_at.as_deref(),
+                best_memory.get("occurredAt").and_then(Value::as_str),
+            );
+        if distinct_occasion {
+            return Ok(GateResult {
+                decision: GateDecision::InsertRelated {
+                    related: vec![RelatedMatch {
+                        memory: best_memory.clone(),
+                        similarity: best.score,
+                    }],
+                },
+                embedding: Some(embedding),
+            });
+        }
+    }
 
     if best.score >= NEAR_DUPLICATE_THRESHOLD {
         if let Some(existing) = best_mem {
@@ -496,11 +593,13 @@ async fn create_memory_direct_with_embedding(
 
 /// Reinforce an existing memory (v4 `reinforceMemory`): extract novel details,
 /// append them as footnotes when any, bump `reinforcementCount` /
-/// `lastReinforcedAt` / `reinforcedImportance`, and re-embed if the content
-/// changed. Returns `(memory_id, novel_details, count_for_log)` — the count the
-/// extraction driver's debug line reports (the new count, or the existing
-/// `reinforcementCount ?? 1` when the update failed and v4 returns the
+/// `lastReinforcedAt` / `reinforcedImportance`, upgrade the episodic anchors
+/// when the retelling supplies better ones, and re-embed if the content OR the
+/// anchors changed. Returns `(memory_id, novel_details, count_for_log)` — the
+/// count the extraction driver's debug line reports (the new count, or the
+/// existing `reinforcementCount ?? 1` when the update failed and v4 returns the
 /// unchanged memory).
+#[allow(clippy::too_many_arguments)] // mirrors v4 reinforceMemory's shape
 async fn reinforce_memory<P: EmbeddingProvider>(
     db: &Db,
     provider: &P,
@@ -508,6 +607,7 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     candidate_content: &str,
     user_id: &str,
     embedding_profile_id: Option<&str>,
+    candidate_anchors: &EpisodicAnchorView,
 ) -> Result<(String, Vec<String>, f64), DbError> {
     let existing_id = id_of(existing).unwrap_or_default();
     let existing_char = str_field(existing, "characterId");
@@ -534,6 +634,75 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     };
     let content_changed = new_content != existing_content;
 
+    // Anchor upgrades: a retelling that supplies when/where the original capture
+    // lacked should improve the row — today only footnote prose accumulates.
+    // The date guard upstream already diverted candidates whose occurredAt
+    // CONFLICTS with the existing one by > DATE_GUARD_DAYS, so filling a null is
+    // safe here. Entities union (bounded) so repeated retellings converge.
+    let mut row_anchors = EpisodicAnchorView {
+        occurred_at: str_opt_field(existing, "occurredAt"),
+        narrative_time: str_opt_field(existing, "narrativeTime"),
+        entities: str_array_field(existing, "entities"),
+    };
+    let mut anchors_changed = false;
+    let mut occurred_at_patch: Option<Option<String>> = None;
+    let mut narrative_time_patch: Option<Option<String>> = None;
+    let mut entities_patch: Option<Vec<String>> = None;
+    {
+        // Both sides JS-truthy: a present-but-empty existing anchor is "missing".
+        let candidate_occurred = candidate_anchors
+            .occurred_at
+            .as_deref()
+            .filter(|s| !s.is_empty());
+        if let Some(occurred) = candidate_occurred {
+            if row_anchors.occurred_at.as_deref().is_none_or(str::is_empty) {
+                occurred_at_patch = Some(Some(occurred.to_string()));
+                row_anchors.occurred_at = Some(occurred.to_string());
+                anchors_changed = true;
+            }
+        }
+        let candidate_narrative = candidate_anchors
+            .narrative_time
+            .as_deref()
+            .filter(|s| !s.is_empty());
+        if let Some(narrative) = candidate_narrative {
+            if row_anchors
+                .narrative_time
+                .as_deref()
+                .is_none_or(str::is_empty)
+            {
+                narrative_time_patch = Some(Some(narrative.to_string()));
+                row_anchors.narrative_time = Some(narrative.to_string());
+                anchors_changed = true;
+            }
+        }
+        let candidate_entities: Vec<&str> = candidate_anchors
+            .entities
+            .iter()
+            .map(String::as_str)
+            .filter(|e| !crate::jsstr::js_trim(e).is_empty())
+            .collect();
+        if !candidate_entities.is_empty() {
+            let existing_lower: Vec<String> = row_anchors
+                .entities
+                .iter()
+                .map(|e| e.to_lowercase())
+                .collect();
+            let fresh: Vec<&str> = candidate_entities
+                .into_iter()
+                .filter(|e| !existing_lower.contains(&e.to_lowercase()))
+                .collect();
+            if !fresh.is_empty() {
+                let mut unioned = row_anchors.entities.clone();
+                unioned.extend(fresh.into_iter().map(str::to_string));
+                unioned.truncate(12);
+                entities_patch = Some(unioned.clone());
+                row_anchors.entities = unioned;
+                anchors_changed = true;
+            }
+        }
+    }
+
     // The reinforcement update (bumps updatedAt).
     {
         let patch = MemUpdate {
@@ -545,6 +714,9 @@ async fn reinforce_memory<P: EmbeddingProvider>(
             } else {
                 None
             },
+            occurred_at: occurred_at_patch,
+            narrative_time: narrative_time_patch,
+            entities: entities_patch,
             ..Default::default()
         };
         let existing_char_w = existing_char.clone();
@@ -564,25 +736,11 @@ async fn reinforce_memory<P: EmbeddingProvider>(
         }
     }
 
-    // Re-embed if content changed (v4 wraps this in a non-fatal try/catch).
-    // v4 8bf3cb5f re-embeds through the canonical builder with the row's own
-    // anchors (the candidate-anchor UPGRADE half is round 3 — round-1 rows
-    // carry null anchors, so the text stays `summary\n\ncontent`).
-    if content_changed {
-        let row_anchors = EpisodicAnchorView {
-            occurred_at: str_opt_field(existing, "occurredAt"),
-            narrative_time: str_opt_field(existing, "narrativeTime"),
-            entities: existing
-                .get("entities")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default(),
-        };
+    // Re-embed if content OR anchors changed — the anchor line is part of the
+    // embedded text (v4 wraps this in a non-fatal try/catch). The builder sees
+    // the UPDATED row's anchors (v4 passes `updatedMemory`), which is exactly
+    // `row_anchors` after the upgrades applied above.
+    if content_changed || anchors_changed {
         let reembed_text =
             build_memory_embedding_text(&existing_summary, &new_content, Some(&row_anchors));
         if let Ok(emb) =

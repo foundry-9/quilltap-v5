@@ -94,6 +94,111 @@
       "expectedAction": "SKIP_EMBEDDING_FAILED",
       "seedMemories": [],
       "candidate": { "content": "g content", "summary": "sumG", "source": "AUTO" }
+    },
+    {
+      "name": "date_guard_distinct_occasion",
+      "characterId": "20000000-0000-4000-8000-000000000020",
+      "expectedAction": "INSERT_RELATED",
+      "seedMemories": [
+        {
+          "id": "21000000-0000-4000-8000-000000000021",
+          "content": "We walked the Lighthouse Point jetty in the spring rain.",
+          "summary": "walked the jetty",
+          "occurredAt": "2026-03-10T00:00:00.000Z",
+          "entities": ["Lighthouse Point"],
+          "kind": "episodic",
+          "vector": [0.95, 0.0, 0.0, 0.0, 0.0, 0.3122499, 0.0, 0.0, 0.0, 0.0]
+        }
+      ],
+      "candidate": {
+        "content": "We walked the Lighthouse Point jetty in the summer haze.",
+        "summary": "walked the jetty",
+        "source": "AUTO",
+        "occurredAt": "2026-07-14T00:00:00.000Z",
+        "entities": ["Lighthouse Point"],
+        "kind": "episodic"
+      }
+    },
+    {
+      "name": "date_guard_same_occasion",
+      "characterId": "30000000-0000-4000-8000-000000000030",
+      "expectedAction": "SKIP_NEAR_DUPLICATE",
+      "seedMemories": [
+        {
+          "id": "31000000-0000-4000-8000-000000000031",
+          "content": "We inspected the orrery in the Long Gallery.",
+          "summary": "inspected the orrery",
+          "occurredAt": "2026-07-14T00:00:00.000Z",
+          "entities": ["Long Gallery"],
+          "kind": "episodic",
+          "vector": [0.0, 0.95, 0.0, 0.0, 0.0, 0.0, 0.3122499, 0.0, 0.0, 0.0]
+        }
+      ],
+      "candidate": {
+        "content": "We inspected the orrery in the Long Gallery again.",
+        "summary": "inspected the orrery",
+        "source": "AUTO",
+        "occurredAt": "2026-07-16T00:00:00.000Z",
+        "entities": ["Long Gallery"],
+        "kind": "episodic"
+      }
+    },
+    {
+      "name": "reinforce_anchor_upgrade",
+      "characterId": "40000000-0000-4000-8000-000000000040",
+      "expectedAction": "REINFORCE",
+      "seedMemories": [
+        {
+          "id": "41000000-0000-4000-8000-000000000041",
+          "content": "Aria tuned the orrery.",
+          "summary": "tuned the orrery",
+          "vector": [0.0, 0.0, 0.87, 0.0, 0.0, 0.0, 0.0, 0.4930517, 0.0, 0.0]
+        }
+      ],
+      "candidate": {
+        "content": "Aria tuned the orrery in the Long Gallery.",
+        "summary": "tuned the orrery",
+        "source": "AUTO",
+        "occurredAt": "2026-07-14T09:00:00.000Z",
+        "narrativeTime": "the third night at sea",
+        "entities": ["Long Gallery", "Aria"],
+        "kind": "episodic"
+      }
+    },
+    {
+      "name": "date_guard_merge_band_distinct",
+      "characterId": "50000000-0000-4000-8000-000000000050",
+      "expectedAction": "INSERT_RELATED",
+      "seedMemories": [
+        {
+          "id": "51000000-0000-4000-8000-000000000051",
+          "content": "Bram wired the workshop bell.",
+          "summary": "wired the bell",
+          "occurredAt": "2026-03-14T00:00:00.000Z",
+          "entities": ["Bram"],
+          "kind": "episodic",
+          "vector": [0.0, 0.0, 0.0, 0.87, 0.0, 0.0, 0.0, 0.0, 0.4930517, 0.0]
+        }
+      ],
+      "candidate": {
+        "content": "Bram wired the workshop bell once more.",
+        "summary": "wired the bell",
+        "source": "AUTO",
+        "occurredAt": "2026-07-14T00:00:00.000Z",
+        "entities": ["Bram"],
+        "kind": "episodic"
+      }
+    },
+    {
+      "name": "fallback_anchors_from_content",
+      "characterId": "60000000-0000-4000-8000-000000000060",
+      "expectedAction": "INSERT",
+      "seedMemories": [],
+      "candidate": {
+        "content": "We met Amy on 2026-07-14 beside the Kestrel.",
+        "summary": "met amy beside the kestrel",
+        "source": "AUTO"
+      }
     }
   ],
   "cannedEmbeddings": {
@@ -101,9 +206,15 @@
     "sumB\n\ninsert low fact beta": [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     "sumC\n\ninsert related fact gamma": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     "sumD\n\nMara wholly trusts the crew.": [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    "Captain ledger note.\n\nThe captain also guarded Rotterdam.": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-    "Captain ledger note.\n\nThe captain guarded the ledger.\n[+] Rotterdam": [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-    "sumF\n\nskip dup fact zeta": [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    "Captain ledger note.\n\nThe captain also guarded Rotterdam.\n(place: Rotterdam)": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    "Captain ledger note.\n\nThe captain guarded the ledger.\n[+] Rotterdam\n(place: Rotterdam)": [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    "sumF\n\nskip dup fact zeta": [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    "walked the jetty\n\nWe walked the Lighthouse Point jetty in the summer haze.\n(when: 2026-07-14 · place: Lighthouse Point)": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "inspected the orrery\n\nWe inspected the orrery in the Long Gallery again.\n(when: 2026-07-16 · place: Long Gallery)": [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    "tuned the orrery\n\nAria tuned the orrery in the Long Gallery.\n(when: 2026-07-14 · story time: the third night at sea · place: Long Gallery, Aria)": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    "tuned the orrery\n\nAria tuned the orrery.\n[+] Gallery\n(when: 2026-07-14 · story time: the third night at sea · place: Long Gallery, Aria)": [0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0.8660254],
+    "wired the bell\n\nBram wired the workshop bell once more.\n(when: 2026-07-14 · place: Bram)": [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    "met amy beside the kestrel\n\nWe met Amy on 2026-07-14 beside the Kestrel.\n(when: 2026-07-14 · place: Amy, Kestrel)": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
   },
   "cannedFailures": ["sumG\n\ng content"]
 }

@@ -84,6 +84,11 @@ interface Candidate {
   content: string;
   summary: string;
   source?: string;
+  /** Episodic spine — caller-supplied anchors (the fallback fills the rest). */
+  occurredAt?: string;
+  narrativeTime?: string;
+  entities?: string[];
+  kind?: 'semantic' | 'episodic';
 }
 interface Scenario {
   name: string;
@@ -190,6 +195,10 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         source: (scenario.candidate.source as 'AUTO' | 'MANUAL') ?? 'MANUAL',
+        occurredAt: scenario.candidate.occurredAt ?? null,
+        narrativeTime: scenario.candidate.narrativeTime ?? null,
+        entities: scenario.candidate.entities ?? [],
+        kind: scenario.candidate.kind ?? 'semantic',
       },
       { userId: spec.userId }
     );

@@ -181,8 +181,13 @@ where
             text: answer,
             contributing_message_ids: vec![carina_message_id.clone()],
             is_user_controlled: false,
+            // v4's Carina transcript sets no per-slice timestamp (the whole
+            // file is zero-diff at 8bf3cb5f) — the anchor comes from
+            // `source_message_timestamp` below.
+            last_message_created_at: None,
         }],
         latest_assistant_message_id: Some(carina_message_id.clone()),
+        turn_timestamp: None,
     };
 
     let mut participant_characters: HashMap<String, Value> = HashMap::new();
@@ -232,6 +237,9 @@ where
         is_dangerous_chat: is_chat_active_dangerous(Some(&chat)),
         memory_extraction_limits,
         source_message_timestamp,
+        // v4's Carina path passes no `timelineMode` — the processor defaults
+        // to 'realtime'.
+        timeline_mode: None,
         dry_run: false,
         // A Carina answerer in an autonomous room earns the same user-absence
         // provenance as any other extraction there.

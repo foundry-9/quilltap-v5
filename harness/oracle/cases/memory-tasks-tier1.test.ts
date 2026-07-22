@@ -53,6 +53,7 @@ interface CaseSpec {
   resolvedMaxTokens: number | null;
   inAutonomousRoom: boolean;
   orienting?: { projectDescription?: string | null; chatContextSummary?: string | null };
+  clock?: { nowIso: string; timelineMode: string; narrativeNow?: string | null };
   responseText: string;
 }
 
@@ -107,7 +108,8 @@ test('memory-tasks tier-1 oracle', async () => {
         'chat-1',
         c.resolvedMaxTokens ?? undefined,
         c.inAutonomousRoom,
-        c.orienting ?? undefined
+        c.orienting ?? undefined,
+        (c.clock ?? undefined) as never
       );
       success = r.success;
       hasUsage = r.usage !== undefined;
@@ -123,7 +125,8 @@ test('memory-tasks tier-1 oracle', async () => {
         'chat-1',
         c.resolvedMaxTokens ?? undefined,
         c.inAutonomousRoom,
-        c.orienting ?? undefined
+        c.orienting ?? undefined,
+        (c.clock ?? undefined) as never
       );
       success = r.success;
       hasUsage = r.usage !== undefined;

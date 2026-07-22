@@ -112,6 +112,7 @@ interface CallSpec {
     softFloor: number;
   } | null;
   sourceMessageTimestamp: string | null;
+  timelineMode?: 'realtime' | 'narrative' | null;
   dryRun: boolean;
   inAutonomousRoom: boolean;
   participantIds: string[];
@@ -328,6 +329,7 @@ async function main(): Promise<void> {
       isDangerousChat: call.isDangerousChat,
       memoryExtractionLimits: (call.memoryExtractionLimits ?? undefined) as never,
       sourceMessageTimestamp: call.sourceMessageTimestamp ?? undefined,
+      timelineMode: call.timelineMode ?? undefined,
       dryRun: call.dryRun,
       inAutonomousRoom: call.inAutonomousRoom,
     });

@@ -78,6 +78,14 @@ struct Candidate {
     summary: String,
     #[serde(default)]
     source: Option<String>,
+    #[serde(rename = "occurredAt", default)]
+    occurred_at: Option<String>,
+    #[serde(rename = "narrativeTime", default)]
+    narrative_time: Option<String>,
+    #[serde(default)]
+    entities: Vec<String>,
+    #[serde(default)]
+    kind: Option<String>,
 }
 
 /// Per-table dump/normalization spec. `order_by` must be a column that is
@@ -249,6 +257,10 @@ async fn memory_gate_tier3_matches_oracle() {
             content: scenario.candidate.content.clone(),
             summary: scenario.candidate.summary.clone(),
             source: scenario.candidate.source.clone(),
+            occurred_at: scenario.candidate.occurred_at.clone(),
+            narrative_time: scenario.candidate.narrative_time.clone(),
+            entities: scenario.candidate.entities.clone(),
+            kind: scenario.candidate.kind.clone(),
             ..Default::default()
         };
         let opts = MemoryServiceOptions {
@@ -306,18 +318,17 @@ async fn memory_gate_tier3_matches_oracle() {
         );
     }
 
-    // Sanity: seven memories survive (3 inserted + 4 seeds that were reinforced /
-    // skipped, minus the two SKIP scenarios that wrote nothing new). Concretely:
-    // insert_empty(+1), insert_low(seed+insert=2), insert_related(2 seeds+1=3),
-    // reinforce(seed=1), reinforce_reembed(seed=1), skip_near_dup(seed=1) → the
-    // skip_embedding_failed character has none.
-    // 6 seeds (B,C×2,D,E,F) + 3 inserts (A,B,C) = 9 memory rows and 9 vector
-    // entries (every insert adds one; the two SKIP scenarios and the reinforce
-    // scenarios add none, and reinforce_reembed rewrites its seed in place).
+    // Sanity: the pre-episodic seven scenarios leave 6 seeds (B,C×2,D,E,F) +
+    // 3 inserts (A,B,C) = 9 rows / 9 vector entries (every insert adds one; the
+    // two SKIP scenarios and the reinforce scenarios add none, and
+    // reinforce_reembed rewrites its seed in place). The five episodic
+    // scenarios add 4 seeds + 2 date-guard INSERT_RELATED inserts + 1 fallback
+    // insert = 7 rows and 7 entries (reinforce_anchor_upgrade re-embeds in
+    // place; date_guard_same_occasion skips; fallback_anchors has no seed).
     let mem_rows = got[0]["rows"].as_array().expect("memory rows");
-    assert_eq!(mem_rows.len(), 9, "expected 9 memory rows");
+    assert_eq!(mem_rows.len(), 16, "expected 16 memory rows");
     let entry_rows = got[1]["rows"].as_array().expect("entry rows");
-    assert_eq!(entry_rows.len(), 9, "expected 9 vector entries");
+    assert_eq!(entry_rows.len(), 16, "expected 16 vector entries");
 
     eprintln!(
         "OK: memory-gate tier-3 matched oracle (memories + vector_indices + vector_entries)."

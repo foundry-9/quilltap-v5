@@ -1,12 +1,12 @@
 //! GENERATED — the verbatim prompt-body text of v4
 //! `lib/memory/cheap-llm-tasks/memory-tasks.ts` (`selfBodyForCap` /
 //! `otherBodyForCap`, with the constant `ORIENTING_CONTEXT_SKIP_BULLET` /
-//! `TAGS_INSTRUCTION_BLOCK` interpolations already substituted, split at the
-//! one live interpolation — the candidate cap). Extracted mechanically by the
-//! session script `extract_prompts.py` so no byte was transcribed by hand;
-//! the tier-1 differential (`memory_tasks_equivalence`) proves the bytes.
-//! Regenerate by re-running the extraction against the v4 checkout if the
-//! upstream prompts change.
+//! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
+//! substituted, split at the one live interpolation — the candidate cap).
+//! Extracted mechanically by the session script `extract_prompts.py` so no byte
+//! was transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
+//! proves the bytes. Regenerate by re-running the extraction against the v4
+//! checkout if the upstream prompts change.
 
 pub(crate) const SELF_BODY_BEFORE_CAP: &str = r####"You produce memory entries that the subject would retain about themselves
 after this exchange.
@@ -33,6 +33,10 @@ WHAT TO PICK (priority order)
    exchange. These may feed back into identity over time. Capture only
    when genuinely new — not when the subject performs a gesture already
    in the ALREADY ESTABLISHED block.
+6. EVENTS — a specific thing that happened to the subject at a specific
+   time and/or place: an outing, a visit, an arrival, a discovery, an
+   incident. Mark these "kind": "episodic" and follow the EVENTS block
+   below.
 
 WHAT TO SKIP
 - Anything in the ALREADY ESTABLISHED block, restated or slightly
@@ -75,6 +79,9 @@ OUTPUT — first person, past tense, one fact per object.
   summary      3–8 words, lowercase, no punctuation
   keywords     2–4 lowercase words
   importance   0.20–1.00, calibrated to anchors above
+  kind         "episodic" for an EVENT, otherwise omit (or "semantic")
+  when         EVENTs only: when it happened (see EVENTS block)
+  entities     EVENTs only: proper nouns of the episode
 
 EXAMPLE — good extraction:
 [
@@ -99,6 +106,23 @@ all should be skipped):
 ]
 All four are established identity, ritual, or non-actionable
 reflection. Correct output: [].
+
+EVENTS — episodic memories.
+An EVENT records a specific occurrence at a specific time and/or place
+("On July 14th we visited Lighthouse Point and bought the brass
+sextant"), as opposed to a standing fact. For an EVENT:
+  - set "kind" to "episodic" (everything else defaults to "semantic")
+  - fill "when" with the time it happened — an absolute date (YYYY-MM-DD,
+    resolved against the CLOCK below) whenever possible, otherwise the
+    relative or in-story phrase as stated ("last week", "the third night
+    at sea")
+  - fill "entities" with the proper nouns of the episode: places, people,
+    named things (2–5 entries)
+  - write the content sentence so it ITSELF names the place and time —
+    the prose must carry the anchors even on its own
+You may return ONE memory beyond the stated cap only when that extra
+memory is a dated or placed EVENT — events must not crowd out hinge or
+state candidates.
 
 TAGS — every memory object MUST carry exactly one value from each axis.
 These describe the memory's frame; they do not change its content.
@@ -152,6 +176,10 @@ WHAT TO PICK (priority order, applied per subject)
    time, so capture them when they appear genuinely new — not when the
    subject simply exhibits a gesture already in their ALREADY
    ESTABLISHED block.
+6. EVENTS — a specific thing that happened involving the subject at a
+   specific time and/or place: an outing, a visit, an arrival, a
+   discovery, an incident. Mark these "kind": "episodic" and follow the
+   EVENTS block below.
 
 WHAT TO SKIP (do not produce a memory for any of these)
 - Anything in a subject's ALREADY ESTABLISHED block, restated or
@@ -200,6 +228,9 @@ discarded.
   summary      3–8 words, lowercase, no punctuation, useful for dedup
   keywords     2–4 lowercase words, no phrases
   importance   0.20–1.00, calibrated to anchors above
+  kind         "episodic" for an EVENT, otherwise omit (or "semantic")
+  when         EVENTs only: when it happened (see EVENTS block)
+  entities     EVENTs only: proper nouns of the episode
 
 EXAMPLE — good extraction (observer is Friday, subjects 1=Amy 2=Charlie):
 [
@@ -237,6 +268,23 @@ identity fact about subject 1, all should be skipped):
 ]
 All six restate facts in subject 1's ALREADY ESTABLISHED block.
 Correct output: [].
+
+EVENTS — episodic memories.
+An EVENT records a specific occurrence at a specific time and/or place
+("On July 14th we visited Lighthouse Point and bought the brass
+sextant"), as opposed to a standing fact. For an EVENT:
+  - set "kind" to "episodic" (everything else defaults to "semantic")
+  - fill "when" with the time it happened — an absolute date (YYYY-MM-DD,
+    resolved against the CLOCK below) whenever possible, otherwise the
+    relative or in-story phrase as stated ("last week", "the third night
+    at sea")
+  - fill "entities" with the proper nouns of the episode: places, people,
+    named things (2–5 entries)
+  - write the content sentence so it ITSELF names the place and time —
+    the prose must carry the anchors even on its own
+You may return ONE memory beyond the stated cap only when that extra
+memory is a dated or placed EVENT — events must not crowd out hinge or
+state candidates.
 
 TAGS — every memory object MUST carry exactly one value from each axis.
 These describe the memory's frame; they do not change its content.

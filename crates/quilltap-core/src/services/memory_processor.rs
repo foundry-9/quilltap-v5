@@ -54,8 +54,8 @@ use crate::jsnum::to_fixed;
 use crate::memory_format::Pronouns;
 use crate::memory_tasks::{
     build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, MemoryCandidate, OrientingContext,
-    OtherSubjectInput, TurnTranscript,
+    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, MemoryCandidate,
+    OrientingContext, OtherSubjectInput, TurnTranscript,
 };
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
@@ -163,6 +163,7 @@ pub async fn extract_self_memories_from_turn<C: CompletionProvider>(
     resolved_max_tokens: Option<f64>,
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
 ) -> CheapLlmTaskResult<Vec<MemoryCandidate>> {
     let Some(messages) = build_self_extraction_messages(
         transcript,
@@ -171,6 +172,7 @@ pub async fn extract_self_memories_from_turn<C: CompletionProvider>(
         resolved_max_tokens,
         in_autonomous_room,
         orienting,
+        clock,
     ) else {
         return CheapLlmTaskResult::early(Vec::new());
     };
@@ -204,6 +206,7 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
     resolved_max_tokens: Option<f64>,
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
 ) -> CheapLlmTaskResult<Vec<(String, Vec<MemoryCandidate>)>> {
     let Some(messages) = build_other_extraction_messages(
         transcript,
@@ -212,6 +215,7 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
         resolved_max_tokens,
         in_autonomous_room,
         orienting,
+        clock,
     ) else {
         return CheapLlmTaskResult::early(
             subjects
@@ -292,6 +296,10 @@ pub struct TurnMemoryExtractionContext {
     /// Override the source-message timestamp on derived memories (batch
     /// re-extraction backfill).
     pub source_message_timestamp: Option<String>,
+    /// Which clock the chat's story runs on (`chat.timelineMode`; `None` →
+    /// `"realtime"`). Feeds the extraction CLOCK block and decides whether an
+    /// unresolved / in-story `when` phrase is preserved as `narrativeTime`.
+    pub timeline_mode: Option<String>,
     /// When true, run all passes but skip persistence — candidates are
     /// returned on the result instead.
     pub dry_run: bool,
@@ -318,6 +326,12 @@ pub struct ExtractedCandidate {
     pub summary: String,
     pub keywords: Vec<String>,
     pub importance: serde_json::Number,
+    /// Episodic spine (dry-run visibility): declared kind + raw/resolved anchors.
+    pub kind: String,
+    pub when: Option<String>,
+    pub occurred_at: Option<String>,
+    pub narrative_time: Option<String>,
+    pub entities: Vec<String>,
 }
 
 /// Aggregate token usage (v4's `usage` totals — plain sums of the per-call
@@ -443,6 +457,42 @@ struct WriteArgs<'a> {
     candidate: &'a MemoryCandidate,
     pass_label: String,
     source_message_id: Option<String>,
+    /// `createdAt` of the source message — the wall-clock anchor for `occurredAt`.
+    source_message_created_at: Option<String>,
+}
+
+/// Resolve a candidate's episodic anchors against the source turn's clock (v4
+/// `resolveCandidateAnchors`).
+///
+/// Stamping rules (episodic spine):
+///  - Every memory gets `occurredAt` = the source message timestamp by default
+///    (authoritative from the transcript — never asked of the model).
+///  - A retold EVENT with a `when` phrase resolves that phrase server-side
+///    against the same anchor; a successful resolution overrides the default.
+///  - On fictional timelines the raw phrase is preserved as `narrativeTime`
+///    (whether or not it also resolved to a wall-clock date).
+fn resolve_candidate_anchors(
+    candidate: &MemoryCandidate,
+    anchor_iso: Option<&str>,
+    timeline_mode: &str,
+) -> (Option<String>, Option<String>) {
+    let fallback = anchor_iso.map(str::to_string);
+    let mut occurred_at = fallback.clone();
+    // v4 `candidate.when && fallback` — both JS-truthy (an empty `when` never
+    // survives the parser's coercion, and an empty anchor is falsy).
+    if let (Some(when), Some(anchor)) = (
+        candidate.when.as_deref().filter(|w| !w.is_empty()),
+        fallback.as_deref().filter(|f| !f.is_empty()),
+    ) {
+        if let Some(resolved) = crate::episodic::resolve_when_phrase(Some(when), anchor) {
+            occurred_at = Some(resolved);
+        }
+    }
+    let narrative_time = match (timeline_mode, candidate.when.as_deref()) {
+        ("narrative", Some(when)) if !when.is_empty() => Some(when.to_string()),
+        _ => None,
+    };
+    (occurred_at, narrative_time)
 }
 
 /// v4 `writeCandidate`: dry-run collection, or a write through the memory gate
@@ -457,6 +507,19 @@ async fn write_candidate<E: EmbeddingProvider>(
     let candidate = args.candidate;
     let summary_interp = js_interp(candidate.summary.as_deref()).to_string();
 
+    // Episodic spine: resolve the candidate's anchors against the source turn's
+    // clock. v4's `??` chain — the slice's own message timestamp first, then the
+    // batch-backfill override, then the turn timestamp, then the write clock.
+    let timeline_mode = ctx.timeline_mode.as_deref().unwrap_or("realtime");
+    let anchor_iso = args
+        .source_message_created_at
+        .clone()
+        .or_else(|| ctx.source_message_timestamp.clone())
+        .or_else(|| ctx.transcript.turn_timestamp.clone())
+        .unwrap_or_else(clock::now_iso);
+    let (occurred_at, narrative_time) =
+        resolve_candidate_anchors(candidate, Some(&anchor_iso), timeline_mode);
+
     if ctx.dry_run {
         state.collected_candidates.push(ExtractedCandidate {
             pass: args.pass.to_string(),
@@ -469,6 +532,11 @@ async fn write_candidate<E: EmbeddingProvider>(
             summary: candidate.summary.clone().unwrap_or_default(),
             keywords: candidate.keywords.clone(),
             importance: candidate.importance.clone(),
+            kind: candidate.kind.clone(),
+            when: candidate.when.clone(),
+            occurred_at: occurred_at.clone(),
+            narrative_time: narrative_time.clone(),
+            entities: candidate.entities.clone().unwrap_or_default(),
         });
         state.debug_logs.push(format!(
             "[Memory] DRY-RUN {} — would write: {summary_interp}",
@@ -514,19 +582,11 @@ async fn write_candidate<E: EmbeddingProvider>(
                 }
                 .to_string(),
             ),
-            // Episodic spine: v4 8bf3cb5f stamps occurredAt from the slice's
-            // lastMessageCreatedAt (resolveCandidateAnchors). That stamp is
-            // DEFERRED TO ROUND 3 with the whole processor family: the
-            // processor tier-3 differential pins completions by exact prompt
-            // bytes, and v4's extraction prompt drifted (CLOCK header + EVENT
-            // category — round 3), so the family cannot rebase before the
-            // prompt port lands. Until then the write takes the pre-drift
-            // inert path (NULL/defaults), alongside the transcript's
-            // lastMessageCreatedAt/turnTimestamp carriers.
-            occurred_at: None,
-            narrative_time: None,
-            entities: Vec::new(),
-            kind: None,
+            // Episodic spine: event time + anchors, resolved above.
+            occurred_at: occurred_at.clone(),
+            narrative_time: narrative_time.clone(),
+            entities: candidate.entities.clone().unwrap_or_default(),
+            kind: Some(candidate.kind.clone()),
         },
         &MemoryServiceOptions {
             user_id: ctx.user_id.clone(),
@@ -702,6 +762,23 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         chat_context_summary: ctx.chat_context_summary.clone(),
     };
 
+    // Episodic spine: give the extractor a clock, anchored to the turn's own
+    // message timestamps (batch re-extraction passes its historical override).
+    let clock = ExtractionClock {
+        now_iso: ctx
+            .source_message_timestamp
+            .clone()
+            .or_else(|| ctx.transcript.turn_timestamp.clone())
+            .unwrap_or_else(clock::now_iso),
+        timeline_mode: ctx
+            .timeline_mode
+            .clone()
+            .unwrap_or_else(|| "realtime".to_string()),
+        // v4 builds the clock with only `nowIso` + `timelineMode`; the
+        // in-story line rides the fold pass's own clock.
+        narrative_now: None,
+    };
+
     // Pre-resolve per-character rate limits.
     let mut rate_limits: HashMap<String, RateLimitDecision> = HashMap::new();
     for slice in &ctx.transcript.character_slices {
@@ -845,6 +922,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
             Some(cheap_max_tokens),
             ctx.in_autonomous_room,
             Some(&orienting),
+            Some(&clock),
         )
         .await;
 
@@ -897,6 +975,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                             .last()
                             .cloned()
                             .or_else(|| source_message_id.clone()),
+                        source_message_created_at: slice.last_message_created_at.clone(),
                     },
                 )
                 .await?;
@@ -978,6 +1057,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
             Some(cheap_max_tokens),
             ctx.in_autonomous_room,
             Some(&orienting),
+            Some(&clock),
         )
         .await;
 
@@ -1051,6 +1131,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                             .last()
                             .cloned()
                             .or_else(|| source_message_id.clone()),
+                        source_message_created_at: observer.last_message_created_at.clone(),
                     },
                 )
                 .await?;

@@ -27575,3 +27575,156 @@ appear.** Disk discipline held (CARGO_INCREMENTAL=0 on every gate; the
 42 GB incremental cache deleted mid-lane; the worktree `target/`
 deleted after the final commit). Versions at lane end: core 0.0.313,
 harness 0.0.270, host 0.0.29, web 0.0.37, cli 0.0.2.
+
+## P4.d14 unit 1 — the clocked creation prompts + EVENT machinery + the creation-side anchors (2026-07-22)
+
+**Lane:** `claude/p4-episodic-creation-fold-4f22bd` (round 3, lane A).
+Drift-check at lane start: v4 HEAD == `8bf3cb5f`, tree clean.
+
+**Why one commit and not three.** The order's tier-1 items 1–4 are
+separable in v4 but NOT in the oracle: every family here is regenerated
+against v4 at `8bf3cb5f`, which already carries the WHOLE creation
+stack. Landing the prompts alone leaves `QT_ORACLE_PROCESSOR` red (v4's
+extraction body gained the EVENT block, so the pinned prompt bytes
+move); landing the processor anchors alone leaves it red too (v4's
+`applyEpisodicFallbackAnchors` fires on the same rows). So the prompts,
+the processor anchors, the first-write fallback, the date guard and the
+reinforce-time anchor upgrades land together — the smallest unit whose
+gate can be green. (Item 5's fold pass, item 6's Timeline, and item 7's
+housekeeping guard ARE separable and follow as their own commits.)
+
+**What landed.**
+- `memory_tasks.rs` — `EVENT_EXTRA_SLOT` + `is_anchored_event` +
+  `cap_candidates` (the episodic soft-raise, both cap sites: the SELF
+  array parser and the OTHER per-subject buckets, whose collect cap
+  rises to `perSubjectCap + 1` and whose old *call-total* cap is gone);
+  `ExtractionClock` + `WEEKDAYS` + `render_clock_block` (the CLOCK
+  footer, non-finite `nowIso` keeping the raw stamp);
+  `MemoryCandidate.{kind,when,entities}` with v4's exact coercion
+  (`kind` lower-trimmed → `'episodic'` else `'semantic'`; blank `when`
+  → absent; non-array `entities` → absent, NOT an empty array; entity
+  list trimmed, blanks dropped, capped at 8); both prompt builders take
+  the clock.
+- `memory_tasks/prompt_text.rs` — REGENERATED mechanically from v4 by
+  the new committed `harness/oracle/scripts/extract-memory-task-prompts.py`
+  (extracts the `selfBodyForCap`/`otherBodyForCap` template literals and
+  substitutes the `ORIENTING_CONTEXT_SKIP_BULLET` /
+  `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` constants). The
+  script was proven byte-exact by regenerating against v4 `7e6d13e5`
+  first and diffing to the committed file: identical except the header.
+- `services/memory_processor.rs` — `TurnMemoryExtractionContext
+  .timeline_mode`; the extraction `clock`; `resolve_candidate_anchors`
+  (v4's `??` chain: slice `lastMessageCreatedAt` → ctx
+  `sourceMessageTimestamp` → transcript `turnTimestamp` → the write
+  clock); the `occurredAt`/`narrativeTime` stamp on both the dry-run
+  `ExtractedCandidate` (which gained `kind`/`when`/`occurredAt`/
+  `narrativeTime`/`entities`) and the real `CreateMemoryOptions` write.
+  `TurnTranscript.turn_timestamp` + `TurnCharacterSlice
+  .last_message_created_at` are the carriers round 1 deferred.
+- `memory_gate.rs` (pure) — `DATE_GUARD_DAYS` + `occasions_are_distinct`,
+  with v4's `gate-date-guard.test.ts` `describe('occasionsAreDistinct')`
+  block ported case-for-case (the retro-signature half of that file is
+  P4.d15's).
+- `services/memory_gate.rs` — `apply_episodic_fallback_anchors` (v4's
+  `applyEpisodicFallbackAnchors`, which lives in `memory-service.ts` but
+  whose only call site is `createMemoryWithGate`, ported here with its
+  v4 file named in the doc comment); the date-guard downgrade inside
+  `run_memory_gate` (checked BEFORE the SKIP/REINFORCE bands, returning
+  INSERT_RELATED carrying only the best match); reinforce-time anchor
+  upgrades (fill a null `occurredAt`/`narrativeTime`, union `entities`
+  bounded at 12) and the re-embed condition widened to
+  `contentChanged || anchorsChanged`, re-embedding through the
+  POST-update anchors (v4 passes `updatedMemory`).
+
+**Differentials (all fresh from v4 `8bf3cb5f`, all green, zero SKIP):**
+- `QT_ORACLE_MEMORY_TASKS` — corpus 14 → **18 cases**, the four new ones
+  exercising: a realtime CLOCK + a third-slot dated EVENT (soft-raise to
+  3), a narrative CLOCK with the in-story line + entity trimming, an
+  unparseable `nowIso` + coercion edges (bad `kind`, blank `when`,
+  non-array `entities`, a 9-entity list truncated to 8), and per-subject
+  soft-raise in the OTHER parser (subject 1 keeps 3 with an anchored
+  EVENT; subject 2's unanchored episodic falls back to 2).
+- **`QT_ORACLE_GATE` — UN-SKIPPED and GREEN.** The round-1 escalation
+  (`reinforce_reembed` tripping v4's first-write fallback) is resolved
+  by porting the fallback; the corpus grew 7 → **12 scenarios** with the
+  date-guard arms the order asked for: `date_guard_distinct_occasion`
+  (0.95 similarity, 126 days apart → INSERT_RELATED),
+  `date_guard_same_occasion` (0.95, 2 days apart → SKIP_NEAR_DUPLICATE),
+  `date_guard_merge_band_distinct` (0.87, 122 days apart → the downgrade
+  covers the REINFORCE band too), `reinforce_anchor_upgrade` (null-anchor
+  seed + a fully-anchored candidate → REINFORCE with anchors filled,
+  entities unioned, and a re-embed through the updated anchor line), and
+  `fallback_anchors_from_content` (AUTO content "We met Amy on 2026-07-14
+  beside the Kestrel." → `occurredAt` resolved from the captured date and
+  `entities: [Amy, Kestrel]`). The two pre-existing `reinforce_reembed`
+  canned-embedding keys gained their `(place: Rotterdam)` anchor line.
+  Seed rows can now carry anchors (the fixture builder + spec grew
+  `occurredAt`/`narrativeTime`/`entities`/`kind`).
+- `QT_ORACLE_PROCESSOR` — every canned-embedding key gained the write
+  path's `\n(when: 2023-05-05)` anchor line; a fourth call
+  `episodic_when_phrases_dry_run` (new `p-epi` profile + 4 rules so
+  nothing collides) tables all three `when` arms — relative ("last week"
+  → 2023-05-01), absolute ("2023-05-01"), unresolvable ("some time ago"
+  → the slice stamp) — plus the turn-timestamp fallback for a slice with
+  no stamp, an OTHER-pass "yesterday", and narrative-mode preservation of
+  the raw phrase. **Fixture-determinism fix:** `autonomous_dry_run` gained
+  a `turnTimestamp`, because the clock's `?? new Date()` fallback would
+  otherwise put a live timestamp into the CLOCK block (a canned-key miss
+  on replay) and a live `occurredAt` into the dry-run result.
+- `QT_ORACLE_CARINA_MEM` — regenerated and green with NO v5 code change
+  in `carina_memory_extraction.rs` beyond the two literal `None`s v4's
+  own zero-diff file implies; this is the order's "regen + green proves
+  the threading" check.
+- Re-run green: `QT_ORACLE_MEM`, `QT_ORACLE_MEMORIES_ROUTES` +
+  `QT_ORACLE_MEMORIES_CONFIG`, `QT_ORACLE_EPISODIC`,
+  `QT_ORACLE_EXTRACT_NOVEL_DETAILS`, `QT_ORACLE_WEIGHTING`,
+  `QT_ORACLE_MEMORY_INJECTOR`.
+
+**Findings worth carrying.**
+- The `ExtractionClock` type is now DUPLICATED: the full three-field one
+  in `memory_tasks.rs` (v4's home) and round 2's two-field subset in
+  `services/memory_recap/distill.rs`. Deliberate — `build_context.rs`
+  (P4.d15's file) builds the subset by struct literal, so unifying them
+  mid-round would break a sibling lane. **Consolidating them is a
+  post-round rider.**
+- v4's `applyEpisodicFallbackAnchors` early-returns on
+  `data.source && data.source !== 'AUTO'` — JS-truthy, so an ABSENT
+  source falls through to the fallback exactly like AUTO. v5 mirrors it.
+- v4's `memories.repository.ts` hydration fix (adding `entities` to the
+  raw-query JSON-array list) needs no v5 counterpart: v5 has one row
+  marshaller and it already hydrated the column.
+- `updateMemoryWithEmbedding` / `generateMissingEmbeddings` /
+  `createMemoryDirect` (the skip-gate path) are all UNPORTED in v5, so
+  their `buildMemoryEmbeddingText` hunks have no landing site (the
+  memory PUT route does not re-embed — v4's `scheduleRefit` is a
+  host-timing seam). Noted, not stubbed.
+
+**Regen recipe (all four families; jest ignores `.claude/` paths, so the
+oracle CASES run from a `/tmp` mirror while tsx builders run from the
+worktree):**
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree> ; M=/tmp/qt-d14-oracle
+rm -rf $M && mkdir -p $M && cp -R $W/harness/oracle/* $M/ && cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-memory-tasks.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- memory-tasks-tier1
+QT_FIXTURE_OUT=/tmp/qt-memory-gate-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-memory-gate-fixture.ts
+QT_FIXTURE_GATE=/tmp/qt-memory-gate-fixture.db QT_ORACLE_OUT=/tmp/oracle-memory-gate.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- memory-gate-tier3
+QT_FIXTURE_OUT=/tmp/qt-memory-processor-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-memory-processor-mount.db \
+  $N/npx tsx $W/harness/oracle/fixtures/build-memory-processor-fixture.ts
+TZ=UTC QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
+  QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- memory-processor-tier3
+QT_FIXTURE_OUT=/tmp/qt-carina-mem-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-mem-mount.db \
+  $N/npx tsx $W/harness/oracle/fixtures/build-carina-memory-extraction-fixture.ts
+TZ=UTC QT_FIXTURE_CARINA_MEM_MAIN=/tmp/qt-carina-mem-main.db \
+  QT_FIXTURE_CARINA_MEM_MOUNT=/tmp/qt-carina-mem-mount.db QT_ORACLE_OUT=/tmp/oracle-carina-mem.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- carina-memory-extraction-tier3
+```
+
+Prompt-text regeneration:
+`python3 harness/oracle/scripts/extract-memory-task-prompts.py \
+  ~/source/quilltap-server/lib/memory/cheap-llm-tasks/memory-tasks.ts \
+  crates/quilltap-core/src/memory_tasks/prompt_text.rs`

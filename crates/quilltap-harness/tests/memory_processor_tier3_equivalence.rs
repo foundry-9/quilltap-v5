@@ -95,6 +95,8 @@ struct SliceW {
     contributing_message_ids: Vec<String>,
     #[serde(default)]
     is_user_controlled: bool,
+    #[serde(default)]
+    last_message_created_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +115,8 @@ struct TranscriptW {
     character_slices: Vec<SliceW>,
     #[serde(default)]
     latest_assistant_message_id: Option<String>,
+    #[serde(default)]
+    turn_timestamp: Option<String>,
 }
 
 impl TranscriptW {
@@ -133,9 +137,11 @@ impl TranscriptW {
                     text: s.text,
                     contributing_message_ids: s.contributing_message_ids,
                     is_user_controlled: s.is_user_controlled,
+                    last_message_created_at: s.last_message_created_at,
                 })
                 .collect(),
             latest_assistant_message_id: self.latest_assistant_message_id,
+            turn_timestamp: self.turn_timestamp,
         }
     }
 }
@@ -220,6 +226,8 @@ struct CallW {
     memory_extraction_limits: Option<LimitsW>,
     #[serde(default)]
     source_message_timestamp: Option<String>,
+    #[serde(default)]
+    timeline_mode: Option<String>,
     dry_run: bool,
     in_autonomous_room: bool,
     participant_ids: Vec<String>,
@@ -583,6 +591,7 @@ async fn memory_processor_tier3_matches_oracle() {
                 }
             }),
             source_message_timestamp: call.source_message_timestamp,
+            timeline_mode: call.timeline_mode,
             dry_run: call.dry_run,
             in_autonomous_room: call.in_autonomous_room,
             registry_cheapest_for_current: None,

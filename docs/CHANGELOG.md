@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Memories are now born with anchors. The per-turn memory extractor gets a
+clock (current date/time, timeline mode, and the in-story time on
+fictional timelines) and a new EVENT category, so it can return a
+memory's `kind`, when it happened, and the proper nouns of the episode —
+with one extra candidate slot reserved for a dated or placed event so
+events cannot crowd out the usual picks. The processor resolves each
+returned time phrase against the source turn's own message timestamp and
+stamps every memory with the resulting event time (preserving the raw
+phrase as the in-story time on narrative timelines). Memories written
+without anchors get a deterministic safety net: dates and proper nouns
+are derived from the memory text itself. The write gate gained an
+episodic date guard — two near-identical memories whose event times sit
+more than a week apart are now linked as distinct occasions rather than
+absorbed into one — and reinforcement now upgrades a memory's anchors
+when a retelling supplies better ones, re-embedding when it does.
+
 Planned round 3 of the episodic-recall drift catch-up — the campaign's
 final round — as three parallel work orders (docs only, no code):
 P4.d14 (creation-side extraction, the fold-episode pass, the gate date

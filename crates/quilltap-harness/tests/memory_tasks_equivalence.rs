@@ -20,8 +20,8 @@
 use quilltap_core::memory_format::Pronouns;
 use quilltap_core::memory_tasks::{
     build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, OrientingContext, OtherSubjectInput,
-    TurnCharacterSlice, TurnTranscript,
+    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, OrientingContext,
+    OtherSubjectInput, TurnCharacterSlice, TurnTranscript,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -54,6 +54,8 @@ struct SliceW {
     contributing_message_ids: Vec<String>,
     #[serde(default)]
     is_user_controlled: bool,
+    #[serde(default)]
+    last_message_created_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +74,8 @@ struct TranscriptW {
     character_slices: Vec<SliceW>,
     #[serde(default)]
     latest_assistant_message_id: Option<String>,
+    #[serde(default)]
+    turn_timestamp: Option<String>,
 }
 
 impl TranscriptW {
@@ -92,9 +96,11 @@ impl TranscriptW {
                     text: s.text,
                     contributing_message_ids: s.contributing_message_ids,
                     is_user_controlled: s.is_user_controlled,
+                    last_message_created_at: s.last_message_created_at,
                 })
                 .collect(),
             latest_assistant_message_id: self.latest_assistant_message_id,
+            turn_timestamp: self.turn_timestamp,
         }
     }
 }
@@ -121,6 +127,25 @@ struct OrientingW {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ClockW {
+    now_iso: String,
+    timeline_mode: String,
+    #[serde(default)]
+    narrative_now: Option<String>,
+}
+
+impl ClockW {
+    fn into_core(self) -> ExtractionClock {
+        ExtractionClock {
+            now_iso: self.now_iso,
+            timeline_mode: self.timeline_mode,
+            narrative_now: self.narrative_now,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CaseW {
     kind: String,
     name: String,
@@ -138,6 +163,8 @@ struct CaseW {
     in_autonomous_room: bool,
     #[serde(default)]
     orienting: Option<OrientingW>,
+    #[serde(default)]
+    clock: Option<ClockW>,
     response_text: String,
 }
 
@@ -204,6 +231,7 @@ fn memory_tasks_equivalence() {
             project_description: o.project_description,
             chat_context_summary: o.chat_context_summary,
         });
+        let clock = case.clock.map(ClockW::into_core);
 
         let (messages, result): (Option<Vec<_>>, Value) = match case.kind.as_str() {
             "self" => {
@@ -216,6 +244,7 @@ fn memory_tasks_equivalence() {
                     case.resolved_max_tokens,
                     case.in_autonomous_room,
                     orienting.as_ref(),
+                    clock.as_ref(),
                 );
                 let result = match &messages {
                     // The call was made — the real parser consumes the canned
@@ -250,6 +279,7 @@ fn memory_tasks_equivalence() {
                     case.resolved_max_tokens,
                     case.in_autonomous_room,
                     orienting.as_ref(),
+                    clock.as_ref(),
                 );
                 let buckets = match &messages {
                     Some(_) => {

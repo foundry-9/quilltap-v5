@@ -33,6 +33,11 @@ interface SeedMemory {
   content: string;
   summary: string;
   vector: number[];
+  /** Episodic spine — seeded so the gate's date guard has an existing occasion. */
+  occurredAt?: string;
+  narrativeTime?: string;
+  entities?: string[];
+  kind?: 'semantic' | 'episodic';
 }
 interface Scenario {
   name: string;
@@ -97,6 +102,10 @@ async function main(): Promise<void> {
           embedding: null,
           source: 'AUTO',
           witnessedContext: null,
+          occurredAt: seed.occurredAt ?? null,
+          narrativeTime: seed.narrativeTime ?? null,
+          entities: seed.entities ?? [],
+          kind: seed.kind ?? 'semantic',
           sourceMessageId: null,
           lastAccessedAt: null,
           reinforcementCount: 1,

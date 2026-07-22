@@ -1,11 +1,43 @@
 //! Port of the pure pieces of v4's lib/memory/memory-gate.ts: the
-//! reinforced-importance formula and the deterministic, regex-based
-//! `extractNovelDetails`. The stateful gate itself (embedding search + the
-//! INSERT/REINFORCE/SKIP decision) lands in a later phase.
+//! reinforced-importance formula, the deterministic regex-based
+//! `extractNovelDetails`, and the episodic date guard
+//! (`DATE_GUARD_DAYS` / `occasionsAreDistinct`). The stateful gate itself
+//! (embedding search + the INSERT/REINFORCE/SKIP decision) lives in
+//! [`crate::services::memory_gate`].
 
 use crate::jsstr::{js_trim, utf16_len, JS_WS_CLASS};
 use regex::Regex;
 use std::collections::HashSet;
+
+/// When candidate and best-match `occurredAt` differ by more than this many
+/// days, SKIP_NEAR_DUPLICATE / REINFORCE downgrade to INSERT_RELATED so
+/// distinct occasions of the same activity both persist as rows (v4
+/// `DATE_GUARD_DAYS`).
+pub const DATE_GUARD_DAYS: i64 = 7;
+
+/// True when both timestamps parse and sit more than [`DATE_GUARD_DAYS`] apart
+/// (v4 `occasionsAreDistinct`). A missing / unparseable stamp on either side is
+/// never "distinct" — the guard only fires on evidence.
+pub fn occasions_are_distinct(
+    candidate_occurred_at: Option<&str>,
+    existing_occurred_at: Option<&str>,
+) -> bool {
+    // v4's `!candidateOccurredAt || !existingOccurredAt` — JS-falsy, so an
+    // empty string bails out too.
+    let (Some(a), Some(b)) = (
+        candidate_occurred_at.filter(|s| !s.is_empty()),
+        existing_occurred_at.filter(|s| !s.is_empty()),
+    ) else {
+        return false;
+    };
+    let (Some(a), Some(b)) = (
+        crate::episodic::event_time_ms(Some(a)),
+        crate::episodic::event_time_ms(Some(b)),
+    ) else {
+        return false;
+    };
+    (a - b).abs() > (DATE_GUARD_DAYS * 86_400_000) as f64
+}
 
 /// Reinforced importance: `importance + log2(count + 1) * 0.05`, capped at 1.0.
 /// `reinforcement_count` is an integer count; `log2(count + 1)` grows the floor
@@ -246,4 +278,57 @@ pub fn extract_novel_details(candidate_content: &str, existing_content: &str) ->
     }
 
     novel
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ported case-for-case from v4's `__tests__/gate-date-guard.test.ts`
+    /// (`describe('occasionsAreDistinct')`). The retro-signature half of that
+    /// file belongs to `recall_history` (the sibling lane's file).
+    #[test]
+    fn occasions_are_distinct_beyond_the_guard_window() {
+        assert!(occasions_are_distinct(
+            Some("2026-03-10T00:00:00.000Z"),
+            Some("2026-07-14T00:00:00.000Z")
+        ));
+    }
+
+    #[test]
+    fn occasions_within_the_guard_window_are_the_same_occasion() {
+        assert!(!occasions_are_distinct(
+            Some("2026-07-14T00:00:00.000Z"),
+            Some("2026-07-16T00:00:00.000Z")
+        ));
+    }
+
+    #[test]
+    fn exactly_the_guard_window_is_the_same_occasion() {
+        // Strictly-greater guard: exactly DATE_GUARD_DAYS apart does NOT fire.
+        let a = "2026-07-07T00:00:00.000Z".to_string();
+        let b = format!("2026-07-{}T00:00:00.000Z", 7 + DATE_GUARD_DAYS);
+        assert!(!occasions_are_distinct(Some(&a), Some(&b)));
+    }
+
+    #[test]
+    fn the_guard_never_fires_without_two_event_times() {
+        assert!(!occasions_are_distinct(
+            None,
+            Some("2026-07-14T00:00:00.000Z")
+        ));
+        assert!(!occasions_are_distinct(
+            Some("2026-07-14T00:00:00.000Z"),
+            None
+        ));
+        assert!(!occasions_are_distinct(
+            Some("garbage"),
+            Some("2026-07-14T00:00:00.000Z")
+        ));
+        // JS-falsy: an empty string is "no event time" too.
+        assert!(!occasions_are_distinct(
+            Some(""),
+            Some("2026-07-14T00:00:00.000Z")
+        ));
+    }
 }

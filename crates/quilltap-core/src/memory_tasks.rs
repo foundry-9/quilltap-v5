@@ -33,7 +33,104 @@ use crate::recall_tags::{ContextTag, ScopeTag, TemporalTag};
 /// SELF: per-call cap (one observer, one subject — themselves).
 /// OTHER: per-subject cap inside a single multi-subject call; the call's
 ///        total cap is `HARD_CANDIDATE_CAP × number-of-subjects`.
+///
+/// Episodic soft-raise: when the returned set includes a dated/placed EVENT
+/// (kind 'episodic' with a `when` or `entities`), one extra slot is allowed
+/// ([`EVENT_EXTRA_SLOT`]) so events don't crowd out hinge/state candidates.
 pub const HARD_CANDIDATE_CAP: usize = 2;
+
+/// Extra candidate slot granted only when a dated/placed EVENT is present.
+pub const EVENT_EXTRA_SLOT: usize = 1;
+
+/// True when a candidate is a dated/placed EVENT that earns the extra slot
+/// (v4 `isAnchoredEvent`: `kind === 'episodic' && (!!when || entities.length)`).
+fn is_anchored_event(c: &MemoryCandidate) -> bool {
+    c.kind == "episodic"
+        && (c.when.as_ref().is_some_and(|w| !w.is_empty())
+            || c.entities.as_ref().is_some_and(|e| !e.is_empty()))
+}
+
+/// Apply the candidate cap with the episodic soft-raise (v4 `capCandidates`):
+/// base cap always, plus one extra slot when a dated/placed EVENT survives
+/// inside the raised window.
+fn cap_candidates(candidates: Vec<MemoryCandidate>, base_cap: usize) -> Vec<MemoryCandidate> {
+    let raised_len = (base_cap + EVENT_EXTRA_SLOT).min(candidates.len());
+    let raised = &candidates[..raised_len];
+    if raised.len() > base_cap && raised.iter().any(is_anchored_event) {
+        raised.to_vec()
+    } else {
+        let mut out = candidates;
+        out.truncate(base_cap);
+        out
+    }
+}
+
+/// The extractor's clock (episodic spine, v4 `ExtractionClock`). Rendered into
+/// the variable CONTEXT footer — never the cached body prefix — so the model
+/// can resolve "yesterday" / "last spring" while extracting, and so `when`
+/// phrases come back already anchorable. Without a clock the prompt sees only
+/// the turn transcript and cannot date anything.
+///
+/// NOTE: the SEARCH-side distillation carries its own two-field subset of this
+/// type ([`crate::services::memory_recap::distill::ExtractionClock`], landed by
+/// round 2 with `narrative_now` explicitly deferred to this lane). The two are
+/// deliberately NOT unified here — that file sits outside this lane's ownership
+/// and its struct literals are built in a sibling lane's file. Consolidating
+/// them is a post-round rider.
+#[derive(Clone, Debug)]
+pub struct ExtractionClock {
+    /// ISO wall-clock timestamp of the source turn (the turn's message time).
+    pub now_iso: String,
+    /// Which clock the chat's story runs on: `"realtime" | "narrative"`.
+    pub timeline_mode: String,
+    /// Current in-story time, when known (narrative chats only).
+    pub narrative_now: Option<String>,
+}
+
+/// v4 `WEEKDAYS` (memory-tasks.ts) — indexed by `getUTCDay()` (0 = Sunday).
+const WEEKDAYS: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+
+/// Render the CLOCK footer block (v4 `renderClockBlock`). Returns `""` when no
+/// clock was supplied. A non-finite `nowIso` keeps the raw string (no date /
+/// weekday prefix).
+pub fn render_clock_block(clock: Option<&ExtractionClock>) -> String {
+    let Some(clock) = clock else {
+        return String::new();
+    };
+    let stamp = match crate::episodic::event_time_ms(Some(&clock.now_iso)) {
+        Some(ms) => {
+            let weekday = WEEKDAYS[crate::episodic::utc_day_of_week(ms as i64) as usize];
+            // v4 slices the date prefix off the ISO string itself (code units).
+            let date = utf16_truncate(&clock.now_iso, 10);
+            format!("{date} ({weekday}), {}", clock.now_iso)
+        }
+        None => clock.now_iso.clone(),
+    };
+    let mut lines = vec![
+        "CLOCK".to_string(),
+        format!("Current date/time: {stamp}"),
+        format!("Timeline mode: {}", clock.timeline_mode),
+    ];
+    // v4 `clock.narrativeNow?.trim()` — truthy only when non-empty.
+    if let Some(narrative_now) = clock.narrative_now.as_deref().map(js_trim) {
+        if !narrative_now.is_empty() {
+            lines.push(format!("Current in-story time: {narrative_now}"));
+        }
+    }
+    lines.push(
+        "Resolve relative time phrases against this clock; emit \"when\" as an absolute date (YYYY-MM-DD) whenever you can."
+            .to_string(),
+    );
+    format!("{}\n\n", lines.join("\n"))
+}
 
 /// Resolves the per-call maxMemories from the token budget, clamped to the hard
 /// cap (v4 `resolveMaxMemories`: `ceil((resolvedMaxTokens ?? 8000) / 8000)`
@@ -56,6 +153,17 @@ pub struct MemoryCandidate {
     pub summary: Option<String>,
     pub keywords: Vec<String>,
     pub importance: serde_json::Number,
+    /// Episodic spine: `"semantic"` (default) or `"episodic"` — the parser
+    /// always materializes one of the two, so this is never absent.
+    pub kind: String,
+    /// When the event happened, as the model phrased it (absolute or relative).
+    /// `None` is v4's `undefined` — dropped by `JSON.stringify`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    /// Proper nouns of the episode. `None` is v4's `undefined` (the key was
+    /// absent or not an array); `Some(vec![])` is a present-but-empty array.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entities: Option<Vec<String>>,
 }
 
 impl MemoryCandidate {
@@ -154,6 +262,7 @@ fn other_body_for_cap(per_subject_cap: i64) -> String {
 /// v4 `getSelfMemoryExtractionPrompt`: the SELF extraction system prompt — the
 /// byte-stable body plus the CONTEXT footer naming the subject and carrying the
 /// canon block.
+#[allow(clippy::too_many_arguments)] // mirrors v4 getSelfMemoryExtractionPrompt
 pub fn get_self_memory_extraction_prompt(
     max_memories: i64,
     observer_name: &str,
@@ -161,6 +270,7 @@ pub fn get_self_memory_extraction_prompt(
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
     is_user_controlled: bool,
+    clock: Option<&ExtractionClock>,
 ) -> String {
     let mut preamble = String::new();
     if is_user_controlled {
@@ -170,8 +280,9 @@ pub fn get_self_memory_extraction_prompt(
         preamble.push_str(AUTONOMOUS_ROOM_USER_ABSENCE_CLAUSE);
     }
     let orienting_block = render_orienting_context(orienting);
+    let clock_block = render_clock_block(clock);
     format!(
-        "{preamble}{}\n\n{orienting_block}CONTEXT\nSUBJECT: {observer_name}\n\n{canon_block}",
+        "{preamble}{}\n\n{clock_block}{orienting_block}CONTEXT\nSUBJECT: {observer_name}\n\n{canon_block}",
         self_body_for_cap(max_memories)
     )
 }
@@ -198,6 +309,7 @@ pub fn get_other_memory_extraction_prompt(
     subjects: &[OtherSubjectInput],
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
 ) -> String {
     let subjects_block = subjects
         .iter()
@@ -220,8 +332,9 @@ pub fn get_other_memory_extraction_prompt(
         ""
     };
     let orienting_block = render_orienting_context(orienting);
+    let clock_block = render_clock_block(clock);
     format!(
-        "{preamble}{}\n\n{orienting_block}CONTEXT\nOBSERVER: {observer_name}\n\n{subjects_block}",
+        "{preamble}{}\n\n{clock_block}{orienting_block}CONTEXT\nOBSERVER: {observer_name}\n\n{subjects_block}",
         other_body_for_cap(per_subject_cap)
     )
 }
@@ -242,6 +355,9 @@ pub struct TurnCharacterSlice {
     /// True when this slice's text was authored by the human driving a
     /// user-controlled character.
     pub is_user_controlled: bool,
+    /// `createdAt` of the slice's LAST contributing message — the wall-clock
+    /// anchor the processor stamps `occurredAt` from (episodic spine).
+    pub last_message_created_at: Option<String>,
 }
 
 /// The joined per-turn transcript (v4 `TurnTranscript`). `user_message` is
@@ -263,6 +379,9 @@ pub struct TurnTranscript {
     /// The most recent ASSISTANT message ID in the turn — used as
     /// sourceMessageId on derived memories.
     pub latest_assistant_message_id: Option<String>,
+    /// `createdAt` of the turn's newest message (v4 `turnTimestamp`) — the
+    /// extraction clock's fallback anchor when no slice timestamp is available.
+    pub turn_timestamp: Option<String>,
 }
 
 /// Render the participant roster + joined transcript for inclusion in
@@ -350,6 +469,7 @@ pub fn render_turn_context(transcript: &TurnTranscript) -> String {
 /// `extractSelfMemoriesFromTurn`, up to the `executeCheapLLMTask` call).
 /// Returns `None` when the target character contributed no slice this turn —
 /// v4's early `{ success: true, result: [] }` return, no call made.
+#[allow(clippy::too_many_arguments)] // mirrors v4 extractSelfMemoriesFromTurn
 pub fn build_self_extraction_messages(
     transcript: &TurnTranscript,
     target_character_id: &str,
@@ -357,6 +477,7 @@ pub fn build_self_extraction_messages(
     resolved_max_tokens: Option<f64>,
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
 ) -> Option<Vec<CompletionMessage>> {
     let target = transcript
         .character_slices
@@ -375,6 +496,7 @@ pub fn build_self_extraction_messages(
             in_autonomous_room,
             orienting,
             target.is_user_controlled,
+            clock,
         )),
         CompletionMessage::user(render_turn_context(transcript)),
     ])
@@ -384,6 +506,7 @@ pub fn build_self_extraction_messages(
 /// `extractOtherMemoriesFromTurn`). Returns `None` when the observer
 /// contributed no slice this turn or there are no subjects — v4's early
 /// success-with-empty-map return, no call made.
+#[allow(clippy::too_many_arguments)] // mirrors v4 extractOtherMemoriesFromTurn
 pub fn build_other_extraction_messages(
     transcript: &TurnTranscript,
     observer_character_id: &str,
@@ -391,6 +514,7 @@ pub fn build_other_extraction_messages(
     resolved_max_tokens: Option<f64>,
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
 ) -> Option<Vec<CompletionMessage>> {
     let observer = transcript
         .character_slices
@@ -413,6 +537,7 @@ pub fn build_other_extraction_messages(
             subjects,
             in_autonomous_room,
             orienting,
+            clock,
         )),
         CompletionMessage::user(render_turn_context(transcript)),
     ])
@@ -524,6 +649,35 @@ fn coerce_memory_candidate(item: &Value, apply_tags: bool) -> Result<Option<Memo
         }
     }
 
+    // Episodic fields (validated; anything malformed degrades to
+    // semantic/absent).
+    let raw_kind = match item.get("kind") {
+        Some(Value::String(s)) => js_trim(s).to_lowercase(),
+        _ => String::new(),
+    };
+    let kind = if raw_kind == "episodic" {
+        "episodic"
+    } else {
+        "semantic"
+    }
+    .to_string();
+    let when = match item.get("when") {
+        Some(Value::String(s)) if !js_trim(s).is_empty() => Some(js_trim(s).to_string()),
+        _ => None,
+    };
+    let entities = match item.get("entities") {
+        Some(Value::Array(items)) => Some(
+            items
+                .iter()
+                .filter_map(|e| e.as_str())
+                .filter(|e| !js_trim(e).is_empty())
+                .map(|e| js_trim(e).to_string())
+                .take(8)
+                .collect(),
+        ),
+        _ => None,
+    };
+
     let content = coerce_text(item.get("content"));
     let summary = coerce_text(item.get("summary"));
     let keywords = if apply_tags {
@@ -547,14 +701,17 @@ fn coerce_memory_candidate(item: &Value, apply_tags: bool) -> Result<Option<Memo
         summary,
         keywords,
         importance,
+        kind,
+        when,
+        entities,
     }))
 }
 
 /// Shared parser for SELF memory extraction responses (v4
 /// `parseMemoryCandidateArray`): strip fences, parse, coerce each item, drop
-/// empties, cap at [`HARD_CANDIDATE_CAP`]. Any parse error — including the
-/// TypeError a `null` item raises inside the map — yields `[]` (v4's
-/// whole-function try/catch).
+/// empties, then apply [`cap_candidates`] (the [`HARD_CANDIDATE_CAP`] base plus
+/// the episodic soft-raise). Any parse error — including the TypeError a `null`
+/// item raises inside the map — yields `[]` (v4's whole-function try/catch).
 pub fn parse_memory_candidate_array(content: &str) -> Vec<MemoryCandidate> {
     let clean_content = strip_code_fences(content);
     let Ok(parsed) = serde_json::from_str::<Value>(&clean_content) else {
@@ -573,17 +730,18 @@ pub fn parse_memory_candidate_array(content: &str) -> Vec<MemoryCandidate> {
             Ok(None) => {}
         }
     }
-    out.truncate(HARD_CANDIDATE_CAP);
-    out
+    // Episodic soft-raise: one slot beyond the cap, only for a dated/placed EVENT.
+    cap_candidates(out, HARD_CANDIDATE_CAP)
 }
 
 /// Multi-subject parser (v4 `parseOtherCandidatesBySubject`): routes each item
 /// back to its subject by 1-based `subjectIndex`. Items with a
-/// missing/invalid/out-of-range subjectIndex are dropped, items beyond the
-/// per-subject cap are dropped, items beyond the total cap
-/// (`per_subject_cap × subjects.len()`) are dropped. Returns the buckets in
-/// subject order (v4's `Map` insertion order); every subject appears, empty or
-/// not.
+/// missing/invalid/out-of-range subjectIndex are dropped; each subject's bucket
+/// collects up to `per_subject_cap + EVENT_EXTRA_SLOT` and is then closed by
+/// [`cap_candidates`] (the episodic soft-raise), which also bounds the call
+/// total at `(per_subject_cap + EVENT_EXTRA_SLOT) × subjects.len()`. Returns the
+/// buckets in subject order (v4's `Map` insertion order); every subject appears,
+/// empty or not.
 pub fn parse_other_candidates_by_subject(
     content: &str,
     subjects: &[OtherSubjectInput],
@@ -597,7 +755,7 @@ pub fn parse_other_candidates_by_subject(
     if subjects.is_empty() {
         return result;
     }
-    let total_cap = per_subject_cap * subjects.len() as i64;
+    let collect_cap = per_subject_cap + EVENT_EXTRA_SLOT as i64;
 
     let clean_content = strip_code_fences(content);
     let Ok(parsed) = serde_json::from_str::<Value>(&clean_content) else {
@@ -608,11 +766,7 @@ pub fn parse_other_candidates_by_subject(
         other => vec![other],
     };
 
-    let mut total: i64 = 0;
     for raw in &items {
-        if total >= total_cap {
-            break;
-        }
         // `!raw || typeof raw !== 'object'` — null and primitives skip; JS
         // arrays are typeof 'object' so they pass (and then drop at the index
         // check, their `subjectIndex` being undefined).
@@ -633,7 +787,7 @@ pub fn parse_other_candidates_by_subject(
             continue;
         }
         let bucket = &mut result[(idx - 1) as usize].1;
-        if bucket.len() as i64 >= per_subject_cap {
+        if bucket.len() as i64 >= collect_cap {
             continue;
         }
 
@@ -643,7 +797,13 @@ pub fn parse_other_candidates_by_subject(
         };
 
         bucket.push(candidate);
-        total += 1;
+    }
+
+    // Apply the per-subject cap with the episodic soft-raise.
+    for entry in result.iter_mut() {
+        if entry.1.len() as i64 > per_subject_cap {
+            entry.1 = cap_candidates(std::mem::take(&mut entry.1), per_subject_cap as usize);
+        }
     }
 
     result
@@ -714,5 +874,95 @@ mod tests {
         assert_eq!(out[1].1.len(), 1);
         // Integer-valued importance survives as the bare JSON number.
         assert_eq!(serde_json::to_value(&out[1].1[0]).unwrap()["importance"], 1);
+    }
+
+    #[test]
+    fn episodic_fields_coerce_and_degrade() {
+        // A well-formed EVENT keeps kind/when/entities (entities trimmed,
+        // blanks dropped, capped at 8).
+        let out = parse_memory_candidate_array(
+            r#"[{"content":"c","kind":"  EPISODIC ","when":"  2026-07-14 ",
+                 "entities":["  Lighthouse Point ","", "Amy"]}]"#,
+        );
+        assert_eq!(out[0].kind, "episodic");
+        assert_eq!(out[0].when.as_deref(), Some("2026-07-14"));
+        assert_eq!(
+            out[0].entities.as_deref(),
+            Some(&["Lighthouse Point".to_string(), "Amy".to_string()][..])
+        );
+        // Malformed → semantic / absent. A non-array `entities` is `undefined`
+        // (serializes away), not an empty array.
+        let out = parse_memory_candidate_array(
+            r#"[{"content":"c","kind":"event","when":"   ","entities":"Amy"}]"#,
+        );
+        assert_eq!(out[0].kind, "semantic");
+        assert_eq!(out[0].when, None);
+        assert_eq!(out[0].entities, None);
+        let wire = serde_json::to_value(&out[0]).unwrap();
+        assert!(wire.get("when").is_none() && wire.get("entities").is_none());
+        assert_eq!(wire["kind"], "semantic");
+    }
+
+    #[test]
+    fn episodic_soft_raise_grants_exactly_one_extra_slot() {
+        // Three plain candidates → the base cap of 2.
+        let plain = r#"[{"content":"a"},{"content":"b"},{"content":"c"}]"#;
+        assert_eq!(parse_memory_candidate_array(plain).len(), 2);
+        // A dated EVENT in the third slot raises the cap to 3.
+        let evented = r#"[{"content":"a"},{"content":"b"},
+             {"content":"c","kind":"episodic","when":"last week"}]"#;
+        assert_eq!(parse_memory_candidate_array(evented).len(), 3);
+        // An EVENT with neither `when` nor entities is NOT anchored — no raise.
+        let bare = r#"[{"content":"a"},{"content":"b"},
+             {"content":"c","kind":"episodic"}]"#;
+        assert_eq!(parse_memory_candidate_array(bare).len(), 2);
+        // The raise is one slot only, never two.
+        let four = r#"[{"content":"a"},{"content":"b"},
+             {"content":"c","kind":"episodic","entities":["Amy"]},
+             {"content":"d","kind":"episodic","entities":["Amy"]}]"#;
+        assert_eq!(parse_memory_candidate_array(four).len(), 3);
+    }
+
+    #[test]
+    fn other_parser_soft_raise_is_per_subject() {
+        let subjects = vec![OtherSubjectInput {
+            id: "s1".into(),
+            name: "Amy".into(),
+            pronouns: None,
+            is_user: false,
+            canon_block: String::new(),
+        }];
+        let out = parse_other_candidates_by_subject(
+            r#"[{"subjectIndex":1,"content":"a"},
+                {"subjectIndex":1,"content":"b"},
+                {"subjectIndex":1,"content":"c","kind":"episodic","when":"yesterday"},
+                {"subjectIndex":1,"content":"d"}]"#,
+            &subjects,
+            2,
+        );
+        // Collect cap 3 (2 + the extra slot); the anchored EVENT survives it.
+        assert_eq!(out[0].1.len(), 3);
+    }
+
+    #[test]
+    fn clock_block_renders_and_omits() {
+        assert_eq!(render_clock_block(None), "");
+        let block = render_clock_block(Some(&ExtractionClock {
+            now_iso: "2026-07-14T09:30:00.000Z".to_string(),
+            timeline_mode: "narrative".to_string(),
+            narrative_now: Some("  the third night at sea  ".to_string()),
+        }));
+        assert!(block.starts_with(
+            "CLOCK\nCurrent date/time: 2026-07-14 (Tuesday), 2026-07-14T09:30:00.000Z\n\
+             Timeline mode: narrative\nCurrent in-story time: the third night at sea\n"
+        ));
+        assert!(block.ends_with("whenever you can.\n\n"));
+        // A blank narrativeNow drops its line; an unparseable stamp stays raw.
+        let block = render_clock_block(Some(&ExtractionClock {
+            now_iso: "sometime".to_string(),
+            timeline_mode: "realtime".to_string(),
+            narrative_now: Some("   ".to_string()),
+        }));
+        assert!(block.contains("Current date/time: sometime\nTimeline mode: realtime\nResolve"));
     }
 }
