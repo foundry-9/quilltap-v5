@@ -17,7 +17,8 @@ store-less error message. Regression test provisions the full fresh
 schema (real-instance table placement) and pins both arms; the four
 affected differential families (avatar job, story background job, files
 routes, courier images) re-ran green over oracles regenerated fresh
-from v4. Versions: core 0.0.322, harness 0.0.278.
+from v4. Versions: core 0.0.322, harness 0.0.278. (Follow-up docs
+commit: corrected the finding-#16 commit reference.)
 
 Unified round 3 of the episodic-recall drift catch-up (P4.d14 + P4.d15 +
 P4.9H1) — the campaign's final round; the largest v4 drift in the port
