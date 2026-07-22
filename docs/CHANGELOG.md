@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Unification wire for the episodic round 3: the `timelineMode` column's
+doc note in the chats data layer now names its live production writer
+(the Salon sidebar's Story's Clock switch) instead of calling it a
+future round-3 surface. Comment-only; core 0.0.321.
+
 P4.9H1 unit 6: the sidebar is live in the Salon, and four affordances went
 home. The Salon mounts the sidebar beside the chat pane, threads the turn
 envelope (queue + selection) through v4's applyServerResponse shape, and

@@ -544,8 +544,8 @@ pub struct ChatUpdate {
     pub commonplace_recall_history: Option<Value>,
     /// `timelineMode` (nullable enum TEXT — the episodic spine, v4 8bf3cb5f):
     /// `Some(Some(mode))` stores, `Some(None)` clears to NULL (realtime),
-    /// `None` leaves unset. The Story's Clock SPA switch (round 3) is the
-    /// eventual production writer.
+    /// `None` leaves unset. Written in production by the Salon sidebar's
+    /// Story's Clock switch (P4.9H1) through the chat-PUT `timelineMode` arm.
     pub timeline_mode: Option<Option<String>>,
     /// `courierCheckpoints` (nullable JSON object) — the per-character delta-mode
     /// checkpoints, advanced by the Courier paste resolver
