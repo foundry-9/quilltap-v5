@@ -27367,3 +27367,92 @@ renderer arms were ported with unit 4
 
 **Item 11:** n/a — v5's web boot banner is a single line and does not
 enumerate routes (v4's `prettify.ts` listing has no v5 counterpart).
+
+## P4.d13 — the round-2 lane record (episodic retrieval + tools + replay)
+
+**Branch `claude/p4-episodic-retrieval-replay-0182e4`; drift check at lane
+start AND at the final gate: v4 HEAD == `8bf3cb5f`, tree clean — every
+oracle this lane regenerated came straight from `~/source/quilltap-server`
+at the round baseline.** The order's tier-1 units 1–8 all LANDED, plus
+tier-2 items 9/10/11 (11 = n/a, recorded). One scope note: the long-
+tracked `search_memories_semantic` recallContext/expansion deferral had
+to CLOSE in unit 3 (units 2/5/7 all consume the multiplier loop) — the
+order's unit-3 language anticipated this ("hand occurredWithin to the
+multiplier loop").
+
+**Commits (in order):** `eb9d904c` u1 distill signals · `dad7926e` u2
+recall-tags · `8271cec1` u3 search options + recallContext close ·
+`686a11ec` u4 vault dates · `3388a9de` u5 buildContext part 1 ·
+`b27cb755` u6 deep-dive tools · `5c52e058` u7 replay module/verb/fixture
+· `582d88e1` u8 CLI · `4b23dfad` tier 2.
+
+**Oracle families this round (all regenerated FRESH at `8bf3cb5f`,
+zero SKIP, grep-checked NDJSONs):** memory-search-extraction
+(`QT_ORACLE_DISTILL`, NEW — the memory-tasks SPLIT; the creation-side
+`QT_ORACLE_MEMORY_TASKS` deliberately NOT regenerated, vintage
+`7e6d13e5` until round 3), recall-tags (73 rows), context-feeders-leaves
+(32), build-context (9 ops + 2 canned — fixture EXTENDED: retro op, 3
+episodic rows, 25 archive fillers, per-op recall-history accumulation;
+recall-adjustment debug fields NO LONGER stripped), search-tools
+(26+9 — oracle now pins v4's help-doc disk sync to a no-op),
+scriptorium-tools (23 ops), tool-definitions + canonical (57 tools),
+pseudo-tool-prompts (40), tool-build (27 — regen: its roster embeds the
+catalog), recall-replay (`QT_ORACLE_RECALL_REPLAY`, NEW, 13 cases),
+vault-conv-search (`QT_ORACLE_VAULT_CONV`, NEW, 7 cases),
+salon-mutations (17). tool-wire: committed corpus verified UNAFFECTED
+(no changed byte reaches it — green in every workspace gate). The
+round-3 families stay at `7e6d13e5` per the boundary (gate/processor/
+memory-tasks-creation/context-summary/carina/recall-history).
+
+**Committed fixture changes (regen responsibilities):**
+- NEW `crates/quilltap-web/tests/fixtures/episodic-recall-{main,mount}.db`
+  (builder `build-episodic-recall-fixture.ts`, spec
+  `episodic-recall.json`; consumed by recall-replay + vault-conv-search).
+- `harness/oracle/fixtures/build-context-tier3.json` + builder (retro op
+  et al.) → invalidates ONLY the build-context family (regenerated).
+- `harness/oracle/fixtures/search-tools.json` + builder (episodic memory
+  fields, charB alias) → invalidates the search-tools family
+  (regenerated; the RW oracle regenerated from the same fixture build).
+- `harness/oracle/fixtures/scriptorium-tools.json` (chat d005 + 8 ops) →
+  invalidates the scriptorium family (regenerated).
+- `harness/oracle/cases/{tool-definitions,tool-definitions-canonical}.ts`
+  dropped the deleted memorySearch import; `definitions/data.rs`
+  regenerated mechanically (57).
+- NEW case/spec files: memory-search-extraction.{test.ts,json},
+  recall-replay.test.ts + recall-replay-cases.json, vault-conv-search.ts.
+
+**Live production surfaces this round:** the `chatRecallReplay` dispatch
+verb runs LIVE on the new `RecallReplayDriver` spine seam — **a replay
+costs one real cheap-LLM call**; the `quilltap recall-replay` CLI ships
+(HTTP-only, like v4's). The recall-history persist bug fix (bare array →
+`{turns}` object) corrects a LIVE production write path.
+
+**Round-3 carry-forwards (unchanged from the campaign plan, restated):**
+creation-side extraction (CLOCK block, EVENT category, kind/when/entities
+coercion, capCandidates), `resolveWhenPhrase` turn-path `occurredAt`
+stamp, `applyEpisodicFallbackAnchors` (QT_ORACLE_GATE stays SKIP),
+fold-episode pass + context-summary wiring, buildContext PART 2
+(mini-recap + `retrospective-recall` whisper + spam guard +
+`appendRetroSignature`/`RETRO_SIGNATURE_TURNS` — note round 2 ported
+`parse_retro_signatures` as the append-preservation carrier ONLY),
+compression keep/drop flip, gate date-guard, housekeeping merge guard,
+the Story's Clock SPA + any timelineMode SPA surface, Pascal `persist`.
+Also carried: the round-2 vault-summary `timeRange` has NO production
+caller yet (round 3's mini-recap is the consumer — both call sites pass
+`None`); v4's third recall-replay route error arm is DEAD CODE
+(documented, not stubbed).
+
+**Final gate (run in the lane worktree):** `cargo fmt --all --check`
+clean; clippy `--workspace --all-targets -D warnings` green in BOTH
+feature sets (default + `--features quilltap-core/native-transport`);
+`cargo build --workspace --release` clean; the round's 12 differential
+families re-run BY NAME with their env vars, all green, zero SKIP
+(grep-checked `--nocapture` output); `apps/web` UNTOUCHED proven two
+ways (`git diff 52d77e6b..HEAD -- apps/web` = 0 lines; ng test 203
+files / 2,448 = the round-1 baseline exactly) + ng build clean; **full
+Playwright from the fresh dist + this lane's release binaries: 110/110
+passed, zero skips — the documented wardrobe set_all flake did not
+appear.** Disk discipline held (CARGO_INCREMENTAL=0 on every gate; the
+42 GB incremental cache deleted mid-lane; the worktree `target/`
+deleted after the final commit). Versions at lane end: core 0.0.313,
+harness 0.0.270, host 0.0.29, web 0.0.37, cli 0.0.2.
