@@ -23,10 +23,9 @@ import { E2E_PASSPHRASE } from './support/env';
  *   4. a deep-link `/settings?tab=…&section=…` redirect carries its intent and
  *      strips the URL — landing on the REAL Settings screen with the payload
  *      tab active (activated at the p4.9j unification).
- *   5. (unify) the salon funnel: the rail's Chats leaves the workspace for the
- *      standalone `/salon` list (v4-faithful); a chat click funnels back in
- *      through the redirect guard and the salon tab renders the live
- *      conversation.
+ *   5. (P4.d16) the salon funnel: the rail's Chats now opens a salon-list TAB —
+ *      the workspace does NOT unmount (v4 `8d86847a`) — and a chat card click
+ *      inside it opens the conversation as a second tab, live.
  *   6. (unify) the characters in-tab drill: a roster card click drills to the
  *      detail IN PLACE (no navigation); back restores the list.
  *   7. (p4.9j3) the real HTML5 drag-split: a mouse/native drag of a tab onto the
@@ -40,6 +39,13 @@ import { E2E_PASSPHRASE } from './support/env';
  *      `[data-theme]` root resolves `--qt-workspace-accent` to a distinct
  *      concrete colour that differs from the default `--color-primary` fallback
  *      (the never-run check; the ruling keeps the static hex).
+ *  10. (P4.d16) a `/prospero/<id>` deep link lands DRILLED into that project
+ *      inside one Projects tab, and a second deep link re-targets the same tab.
+ *  11. (P4.d16) a `/characters/<id>` deep link opens the character-view tab
+ *      (the detail redirect that used to render the legacy full page).
+ *  12. (P4.d16 tier 2) a `/salon/new` deep link opens the v5-only salon-new tab
+ *      hosting the New-Chat screen, seeded with `?characterId=`; Cancel closes
+ *      the tab the way v4's modal dismisses.
  */
 
 async function openWorkspace(page: Page): Promise<void> {
@@ -123,21 +129,25 @@ test('a deep-link /settings redirect carries its intent onto the real Settings s
   ).toBeVisible();
 });
 
-test('a chat opened from the salon list funnels into a live workspace salon tab', async ({
+test('the rail Chats item opens a salon-list tab, and a chat card opens the conversation', async ({
   page,
 }) => {
   await openWorkspace(page);
-  // The rail's Chats leaves the workspace for the standalone /salon list
-  // (v4-faithful: the salon LIST is not a tab kind).
+  // P4.d16 (v4 `8d86847a`): the Chats item used to leave the workspace for the
+  // standalone /salon list. It now opens the salon-list TAB — the interceptor
+  // catches the rail anchor, so the workspace never unmounts.
   await railLink(page, 'Chats').click();
+  await expect(tabLabel(page, 'Chats')).toBeVisible();
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(tabs(page)).toHaveCount(2);
+
   const soloCard = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
   await expect(soloCard).toBeVisible({ timeout: 15_000 });
-  // The chat click hits /salon/:id, whose redirect guard funnels straight back
-  // into the workspace as a salon tab carrying the chatId.
+  // The card is a plain /salon/:id anchor — the interceptor turns it into a
+  // third tab, and the REAL conversation renders inside it.
   await soloCard.click();
-  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/workspace$/);
-  // The REAL conversation renders inside the tab (activated at unification).
+  await expect(tabs(page)).toHaveCount(3);
   await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.qt-chat-composer-input .qt-rich-editor-content')).toBeVisible();
 });
@@ -295,4 +305,137 @@ test('every bundled theme gives the workspace a distinct accent (cross-theme, p4
     expect(resolved[t], `${t} accent resolves to an rgb colour`).toMatch(/^rgba?\(/);
     expect(resolved[t], `${t} accent is not transparent`).not.toMatch(/rgba?\([^)]*,\s*0\)/);
   }
+});
+
+/**
+ * P4.d16 (v4 `8d86847a`) — the deep links that used to escape the workspace.
+ *
+ * Beat 10 needs a project id, so it mints one over the live dispatch route (the
+ * spec sorts last, so the extra row disturbs nothing) and then deep-links to it.
+ */
+test('a /prospero/<id> deep link opens the Projects tab drilled into that project', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+
+  async function makeProject(name: string): Promise<string> {
+    const res = await page.request.post('/api/dispatch', {
+      data: { type: 'projectCreate', project: { name } },
+    });
+    expect(res.ok(), `projectCreate ${name}`).toBe(true);
+    const body = (await res.json()) as {
+      data?: { project?: { id: string } };
+      project?: { id: string };
+    };
+    const id = body.data?.project?.id ?? body.project?.id;
+    expect(id, 'the created project id').toBeTruthy();
+    return id as string;
+  }
+
+  const first = await makeProject('Drift Drill One');
+  const second = await makeProject('Drift Drill Two');
+
+  // The deep link redirects into /workspace?open=prospero&projectId=… — the
+  // Projects tab opens ALREADY drilled into the project's detail.
+  await page.goto(`/prospero/${first}`);
+  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(tabLabel(page, 'Projects')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Drift Drill One' })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // A second deep link RE-TARGETS the one Projects tab (prospero stays a
+  // singleton keyed by kind — the corpus pins that).
+  const beforeCount = await tabs(page).count();
+  await page.goto(`/prospero/${second}`);
+  await expect(page.getByRole('heading', { name: 'Drift Drill Two' })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(tabs(page)).toHaveCount(beforeCount);
+});
+
+test('a /characters/<id> deep link opens the character detail as a tab', async ({ page }) => {
+  await openWorkspace(page);
+  // A real character id, over the live dispatch route (the roster's in-tab
+  // cards drill through buttons, so there is no href to read).
+  const res = await page.request.post('/api/dispatch', { data: { type: 'characterList' } });
+  expect(res.ok(), 'characterList').toBe(true);
+  const body = (await res.json()) as {
+    data?: { characters?: { id: string; name: string }[] };
+    characters?: { id: string; name: string }[];
+  };
+  const characters = body.data?.characters ?? body.characters ?? [];
+  const aria = characters.find((c) => c.name === 'Aria');
+  expect(aria, 'the Aria fixture character').toBeTruthy();
+
+  await page.goto(`/characters/${aria!.id}`);
+  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible({ timeout: 15_000 });
+});
+
+test('a /salon/new deep link opens the New Chat tab seeded with its character', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  await page.goto('/salon/new?autonomous=1');
+  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(tabLabel(page, 'New Chat')).toBeVisible();
+  // The autonomous seed rode the payload, not a query param (which is stripped).
+  await expect(page.getByRole('heading', { name: 'New Autonomous Room' })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Cancel closes the tab (v4's modal dismissal), leaving the workspace intact.
+  const before = await tabs(page).count();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(tabs(page)).toHaveCount(before - 1);
+  await expect(page.locator('.qt-workspace')).toBeVisible();
+});
+
+/**
+ * Beat 13 (P4.d16): the terminal pop-out funnel. v4's two-step opens the Salon
+ * tab FIRST — it is the portal source for the live PTY — then the terminal as
+ * its CHILD tab, so the pane it portals is a real, mounted conversation view.
+ * The session is spawned over the live REST leg so the deep link addresses a
+ * genuine PTY.
+ */
+test('a terminal pop-out deep link opens the Salon tab plus a child terminal tab', async ({
+  page,
+}) => {
+  await openWorkspace(page);
+
+  // A real chat id, off the salon list's own card link.
+  await railLink(page, 'Chats').click();
+  const soloCard = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
+  await expect(soloCard).toBeVisible({ timeout: 15_000 });
+  const chatHref = await soloCard.getAttribute('href');
+  const chatId = (chatHref ?? '').split('/').pop() as string;
+  expect(chatId, 'a chat id from the salon list').toBeTruthy();
+
+  const spawned = await page.request.post('/api/v1/terminals', {
+    data: { chatId, label: 'Drift Popout', cols: 80, rows: 24 },
+  });
+  expect(spawned.ok(), 'spawn a real PTY').toBe(true);
+  const session = (await spawned.json()) as { session?: { id: string }; id?: string };
+  const sessionId = session.session?.id ?? session.id;
+  expect(sessionId, 'the spawned session id').toBeTruthy();
+
+  await page.goto(`/salon/${chatId}/terminal/${sessionId}`);
+  await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/workspace$/);
+  // BOTH tabs — the conversation (the intent opens it with the kind's default
+  // title) and its terminal child.
+  await expect(tabLabel(page, 'Conversation')).toBeVisible({ timeout: 15_000 });
+  await expect(tabLabel(page, 'Terminal')).toBeVisible();
+  // Closing the Salon parent cascades the terminal child (the reducer rule the
+  // two-step exists to preserve).
+  const before = await tabs(page).count();
+  await page
+    .locator('.qt-tab-strip .qt-tab', { hasText: 'Conversation' })
+    .locator('.qt-tab-close')
+    .click();
+  await expect(tabs(page)).toHaveCount(before - 2);
 });

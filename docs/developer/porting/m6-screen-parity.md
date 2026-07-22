@@ -382,6 +382,22 @@ the workspace (`app/salon/page.tsx` has no `redirectToWorkspaceTab` call,
 and `TabView.tsx:71-119` has no `salon-list` tab kind). Neither affects a
 v5 verdict.
 
+> **The second curiosity was a v4 BUG, and v4 fixed it (`8d86847a`,
+> 2026-07-22).** `/salon` now redirects like every other list route, into a
+> new `salon-list` tab kind, and so do `/salon/new`, the terminal pop-out,
+> and the four detail routes (`/prospero/[id]`, `/scriptorium/[id]`,
+> `/aurora/groups/[id]`, `/aurora/[id]/view`) — the last three drilling
+> their list tab into the target through new optional payloads. v5 absorbed
+> the whole commit as **P4.d16** (2026-07-22). **One documented
+> divergence:** v4 redirects `/salon/new` with an `open=new-chat` intent
+> that pops its NewChatModal; v5 never ported that modal (the standing
+> no-modal divergence — see §1.7 and `p4.9j3-wardrobe-tab-riders.md`), so
+> the New-Chat SCREEN is hosted by a **v5-only `salon-new` tab kind** with
+> the same three seeds, closing itself on Cancel or on a completed create.
+> The `?action=chat` arm of the character detail follows the same
+> translation: it opens the detail tab with the New-Chat tab focused
+> beside it, where v4 pops the modal over the detail.
+
 ---
 
 ## 2. The screen-grade dialog inventory

@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.d16 unit 6 — the browser walk for the workspace deep links. The
+workspace flow spec's salon beat flips (the rail's Chats item opens a
+salon-list tab and the workspace no longer unmounts; a chat card inside
+it opens the conversation as a third tab) and four beats join it: a
+`/prospero/<id>` deep link lands drilled into that project and a second
+one re-targets the same tab, a `/characters/<id>` deep link opens the
+character detail tab, a `/salon/new` deep link opens the New-Chat tab
+with its autonomous seed (Cancel closes it), and a terminal pop-out deep
+link opens the Salon tab plus its child terminal tab over a real PTY —
+closing the Salon cascades the child. The m6 screen-parity file records
+that v4's own "the salon list never redirects" curiosity was a v4 bug
+v4 has now fixed, and names the two v5 divergences the no-modal
+translation carries.
+
 P4.d16 unit 5 (tier 2) — `/salon/new` stops unmounting the workspace.
 v4 `8d86847a` redirects it with an `open=new-chat` intent that pops the
 NewChatModal; v5 never ported that modal, so the translation is a
