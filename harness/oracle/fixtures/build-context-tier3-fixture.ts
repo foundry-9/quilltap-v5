@@ -78,6 +78,34 @@ interface ChatSpec {
   type: string;
   compactionGeneration: number;
 }
+/**
+ * A dated vault conversation summary (P4.d15) — the retrospective mini-recap's
+ * substrate. Written through v4's REAL `writeConversationSummaryToVaults` so the
+ * frontmatter (`conversationId` / `conversationTitle` / `firstMessageAt` /
+ * `lastMessageAt`) is authored exactly as production does; the chunk is baked
+ * directly because chunk EMBEDDING is a background job in v4.
+ */
+interface VaultConversationSummary {
+  chatId: string;
+  chatTitle: string;
+  summary: string;
+  participantCharacterIds: string[];
+  messageCount: number;
+  firstMessageAt: string;
+  lastMessageAt: string;
+  chunkId: string;
+  chunkVector: number[];
+}
+/** A pre-seeded chat message row (P4.d15: the on-fold relevant-conversations
+ * whisper the mini-recap dedups its conversation ids against). */
+interface SeedMessage {
+  id: string;
+  role: string;
+  content: string;
+  systemSender: string;
+  systemKind: string;
+  createdAt: string;
+}
 interface Spec {
   testPepperBase64: string;
   userId: string;
@@ -85,6 +113,8 @@ interface Spec {
   characters: CharacterSpec[];
   seedMemories: SeedMemory[];
   chat: ChatSpec;
+  vaultConversationSummaries?: VaultConversationSummary[];
+  seedMessages?: SeedMessage[];
 }
 
 async function main(): Promise<void> {
@@ -275,11 +305,100 @@ async function main(): Promise<void> {
   // the way v4's collection layer does.
   await repos.chats.getMessages(spec.chat.id);
 
+  // P4.d15: pre-seeded chat messages — the standing on-fold
+  // `relevant-conversations` whisper. The consolidated sweep EXEMPTS this kind,
+  // so it survives every op and its conversation ids are deduped out of the
+  // retrospective mini-recap on both sides.
+  let seededMessages = 0;
+  for (const m of spec.seedMessages ?? []) {
+    await repos.chats.addMessage(spec.chat.id, {
+      type: 'message',
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      opaqueContent: null,
+      attachments: [],
+      createdAt: m.createdAt,
+      participantId: null,
+      systemSender: m.systemSender,
+      systemKind: m.systemKind,
+      targetParticipantIds: null,
+    } as never);
+    seededMessages++;
+  }
+
+  // P4.d15: dated vault conversation summaries in the participants' vaults, via
+  // v4's REAL writer, then one baked chunk per summary file (embedding is a
+  // background job in v4, so the vectors are pinned here).
+  const { writeConversationSummaryToVaults } = await import(
+    '@/lib/file-storage/conversation-summary-vault-bridge'
+  );
+  let summaryCount = 0;
+  for (const s of spec.vaultConversationSummaries ?? []) {
+    await writeConversationSummaryToVaults({
+      chatId: s.chatId,
+      chatTitle: s.chatTitle,
+      summary: s.summary,
+      summaryGeneration: 1,
+      participantCharacterIds: s.participantCharacterIds,
+      messageCount: s.messageCount,
+      firstMessageAt: s.firstMessageAt,
+      lastMessageAt: s.lastMessageAt,
+      updatedAt: spec.seedTimestamp,
+    } as never);
+    summaryCount++;
+  }
+  for (const s of spec.vaultConversationSummaries ?? []) {
+    for (const characterId of s.participantCharacterIds) {
+      const raw = await repos.characters.findByIdRaw(characterId);
+      const vaultId = raw?.characterDocumentMountPointId as string | null | undefined;
+      if (!vaultId) throw new Error(`character ${characterId} has no vault mount point`);
+      const rows = midb
+        .prepare(
+          'SELECT "id", "fileId", "relativePath" FROM "doc_mount_file_links" WHERE "mountPointId" = ? AND "relativePath" LIKE ?'
+        )
+        .all(vaultId, 'Conversation Summaries/%') as Array<{
+        id: string;
+        fileId: string;
+        relativePath: string;
+      }>;
+      // Match by frontmatter conversationId (the filename comes from the title).
+      let linked: { id: string; fileId: string } | null = null;
+      for (const row of rows) {
+        const doc = midb
+          .prepare('SELECT "content" FROM "doc_mount_documents" WHERE "fileId" = ?')
+          .get(row.fileId) as { content: string } | undefined;
+        if (doc && doc.content.includes(`conversationId: ${s.chatId}`)) {
+          linked = { id: row.id, fileId: row.fileId };
+          break;
+        }
+      }
+      if (!linked) throw new Error(`no summary file for conversation ${s.chatId}`);
+      const doc = midb
+        .prepare('SELECT "content" FROM "doc_mount_documents" WHERE "fileId" = ?')
+        .get(linked.fileId) as { content: string };
+      await chunks.create(
+        {
+          linkId: linked.id,
+          mountPointId: vaultId,
+          chunkIndex: 0,
+          content: doc.content,
+          tokenCount: doc.content.length,
+          headingContext: null,
+          embedding: new Float32Array(s.chunkVector),
+        } as never,
+        { id: s.chunkId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
+      );
+      chunkCount++;
+    }
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
     `built build-context fixture: ${outMain} + ${outMount} ` +
-      `(${spec.characters.length} chars, ${fileCount} knowledge files, ${chunkCount} chunks, ${memoryCount} memories)\n`
+      `(${spec.characters.length} chars, ${fileCount} knowledge files, ${chunkCount} chunks, ` +
+      `${memoryCount} memories, ${summaryCount} vault summaries, ${seededMessages} seeded messages)\n`
   );
   process.exit(0);
 }

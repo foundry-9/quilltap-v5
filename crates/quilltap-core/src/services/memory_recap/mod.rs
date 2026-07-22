@@ -436,8 +436,9 @@ async fn build_conversation_recall_lists<E: EmbeddingProvider>(
             embedding_profile_id,
             relevant_limit as usize,
             current_chat_id,
-            // Round 2 has no production caller passing a time window (the
-            // round-3 mini-recap is the consumer).
+            // v4's recap path passes no window — the recap is scoped by the chat,
+            // not by a period. (The windowed caller is buildContext's
+            // retrospective mini-recap.)
             None,
         )
         .await;

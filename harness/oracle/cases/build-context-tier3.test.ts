@@ -37,6 +37,14 @@
  * compares byte-for-byte (only genuinely minted values normalized — none here,
  * the read path mints nothing persistent).
  *
+ * P4.d15 adds a SECOND row per op (`kind: 'whispers'`): the Commonplace-Book
+ * whisper rows left in `chat_messages` after the op plus the persisted
+ * `commonplaceRecallHistory`. That is what pins the recall-on-reference write
+ * side — the `retrospective-recall` whisper's kind and body, its exemption from
+ * (and later membership in) the consolidated sweep, and the retro-signature spam
+ * guard's ring. Minted ids and `createdAt` are dropped; the rows are sorted by
+ * `(systemKind, content)`.
+ *
  * Runs under v4's JEST (real-DB-under-jest: resetModules + doMock past
  * jest.setup's global mocks; cipher driver by absolute path). Needs
  * `--watchman=false` with the v5 --roots. Node 24.
@@ -185,6 +193,13 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // P4.d15: jest.setup stubs `getCharacterVaultStore` to a phantom
+  // `mock-vault-mount`, which would silently starve the retrospective
+  // mini-recap's vault-summary search (it resolves the character's vault through
+  // that helper). The Rust side always resolves the REAL vault, so un-mock it.
+  jest.doMock('@/lib/file-storage/character-vault-bridge', () =>
+    jest.requireActual('@/lib/file-storage/character-vault-bridge')
+  );
 
   // ---- Model seams ----
   jest.doMock('@/lib/embedding/vector-store', () => jest.requireActual('@/lib/embedding/vector-store'));
@@ -372,6 +387,48 @@ async function main(): Promise<void> {
 
     const result = await buildContext(options as never);
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));
+
+    // P4.d15: the Commonplace-Book whisper ROWS this op left behind + the
+    // recall-history column it persisted. Minted ids and `createdAt` are dropped
+    // (the Rust side mints its own and runs a real clock in the writer); the rows
+    // are sorted by systemKind so the comparison never depends on the storage
+    // order of two rows written in the same frozen millisecond.
+    const after = await repos.chats.getMessages(spec.chat.id);
+    const whispers = after
+      .filter((m) => m.type === 'message')
+      .filter((m) => (m as { systemSender?: string }).systemSender === 'commonplaceBook')
+      .map((m) => {
+        const msg = m as {
+          role: string;
+          content: string;
+          opaqueContent?: string | null;
+          systemKind?: string;
+          targetParticipantIds?: string[] | null;
+        };
+        return {
+          systemKind: msg.systemKind ?? null,
+          role: msg.role,
+          content: msg.content,
+          opaqueContent: msg.opaqueContent ?? null,
+          targetParticipantIds: msg.targetParticipantIds ?? null,
+        };
+      })
+      .sort((a, b) => {
+        const ka = `${a.systemKind ?? ''} ${a.content}`;
+        const kb = `${b.systemKind ?? ''} ${b.content}`;
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+    const afterChat = await repos.chats.findById(spec.chat.id);
+    lines.push(
+      JSON.stringify({
+        kind: 'whispers',
+        op: op.name,
+        whispers,
+        recallHistory:
+          (afterChat as { commonplaceRecallHistory?: unknown } | null)?.commonplaceRecallHistory ??
+          null,
+      })
+    );
   }
 
   for (const entry of cannedRecorded.values()) {

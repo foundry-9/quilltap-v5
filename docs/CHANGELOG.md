@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.d15 unit 3: recall-on-reference, part 2 — the fourth cadence
+completes. On a retrospective turn (the user references past shared
+events), the Commonplace Book now builds a scoped mini-recap: a dated,
+drillable Relevant Past Conversations list drawn from the character's
+vault summaries, scoped by the turn's distilled time window and
+entities, capped at five entries and closed by the read_conversation
+call note. It rides the LLM recall text and is posted as its own
+retrospective-recall whisper, never inside the consolidated whisper
+body; the next turn's sweep clears it. A spam guard skips a block whose
+window/entity signature was emitted within the last three emissions, and
+conversation ids already listed by the standing on-fold
+relevant-conversations whisper are deduped out. The vault-summary
+search's time window, ported in round 2 with no caller, now has its
+production caller. The compressMemories deferral note records that its
+port target moved to v4 8bf3cb5f (the keep/drop date flip). The
+build-context differential grew a matching-summaries arm, a suppressed
+re-emit arm, and a no-match inert arm, and now diffs the Commonplace
+whisper rows and the persisted recall history as well as the built
+context.
+
 P4.d15 unit 2: the Commonplace Book writer learns the retrospective
 mini-recap — a seventh CommonplaceParts section (retrospectiveRecall)
 with its persona and LLM-context framings, plus the new

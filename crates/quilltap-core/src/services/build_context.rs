@@ -649,6 +649,22 @@ pub trait BuildContextSeams {
         async { false }
     }
 
+    /// v4's SECOND `postCommonplaceWhisper` call — the recall-on-reference
+    /// mini-recap, posted as its own `retrospective-recall` whisper AFTER the
+    /// consolidated sweep so it survives this turn (the next turn's consolidated
+    /// sweep removes it — the kind is deliberately NOT sweep-exempt). No
+    /// `opaqueContent`, no sweep of its own, and its return value is unused.
+    /// Default: no-op.
+    fn post_commonplace_retrospective_recall(
+        &self,
+        chat_id: &str,
+        target_participant_id: Option<&str>,
+        content: &str,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        let _ = (chat_id, target_participant_id, content);
+        async {}
+    }
+
     /// v4 `postSuparnaMailWhisper` — Suparṇā's new-mail whisper. Given the unalerted
     /// letters, build the persona whisper ([`crate::services::suparna_notifications::
     /// build_suparna_mail_whisper`]) and post it targeted at the responding
@@ -773,6 +789,28 @@ impl BuildContextSeams for RealBuildContextSeams<'_> {
             }
             None => false,
         }
+    }
+
+    async fn post_commonplace_retrospective_recall(
+        &self,
+        chat_id: &str,
+        target_participant_id: Option<&str>,
+        content: &str,
+    ) {
+        // v4 passes no `opaqueContent` (→ null) and kind `retrospective-recall`,
+        // and runs NO sweep here — the next consolidated post sweeps it.
+        let _ = crate::services::commonplace_notifications::post_commonplace_whisper(
+            self.db,
+            crate::services::commonplace_notifications::PostCommonplaceParams {
+                chat_id: chat_id.to_string(),
+                target_participant_id: target_participant_id.map(str::to_string),
+                content: content.to_string(),
+                opaque_content: None,
+                kind:
+                    crate::services::commonplace_notifications::CommonplaceWhisperKind::RetrospectiveRecall,
+            },
+        )
+        .await;
     }
 
     async fn post_suparna_mail(
@@ -1403,6 +1441,149 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     llm_context
 }
 
+/// Cap on entries in the retrospective mini-recap conversation list (v4
+/// `RETRO_MINI_RECAP_MAX_ENTRIES`, context-manager.ts:33).
+const RETRO_MINI_RECAP_MAX_ENTRIES: usize = 5;
+
+/// v4's UUID-in-backticks scanner for the fold whisper's conversation list
+/// (`/\`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\`/gi`).
+static FOLD_WHISPER_UUID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`")
+        .expect("fold-whisper uuid regex")
+});
+
+/// Recall-on-reference (fourth cadence, **part 2**) — v4 `buildContext`
+/// context-manager.ts:1944–2030.
+///
+/// On a retrospective turn, build the scoped mini-recap: a dated, drillable
+/// Relevant Past Conversations list from the character's vault summaries, scoped
+/// by the turn's `timeRange`/`entities` and closed by the `read_conversation`
+/// call note. Returns `Some((content, signature))` only when at least one
+/// conversation survives the fold-whisper dedup — the signature is what the
+/// caller persists into the recall-history spam-guard ring.
+///
+/// Spam guard: a block with the same `timeRange`/entity signature emitted within
+/// the last [`crate::recall_history::RETRO_SIGNATURE_TURNS`] emissions is skipped
+/// outright (v4 logs at debug and returns nothing).
+///
+/// Best-effort throughout — v4 wraps the whole block in a warn-only try/catch, so
+/// every fallible step here degrades in place (`search_vault_conversation_-
+/// summaries` already returns `[]` on any failure; the dedup read has its own
+/// swallowing catch, since "a duplicate UUID listing is harmless").
+async fn resolve_retrospective_mini_recap<E: EmbeddingProvider>(
+    db: &Db,
+    embedding: &E,
+    input: &BuildContextInput,
+    signals: &crate::services::memory_recap::distill::DistilledSearch,
+    memory_search_query: &str,
+    is_multi_character: bool,
+) -> Option<(String, String)> {
+    // The signature: the window (or `∅`) plus the lowercased entities in JS
+    // default-`sort()` order (code-unit lexicographic, which Rust's `str: Ord`
+    // reproduces across the BMP), joined by `|`.
+    let mut entity_keys: Vec<String> = signals.entities.iter().map(|e| e.to_lowercase()).collect();
+    entity_keys.sort();
+    let mut signature_parts: Vec<String> = Vec::with_capacity(entity_keys.len() + 1);
+    signature_parts.push(match &signals.time_range {
+        Some(tr) => format!("{}→{}", tr.from, tr.to),
+        None => "∅".to_string(),
+    });
+    signature_parts.extend(entity_keys);
+    let signature = signature_parts.join("|");
+
+    let recent_signatures =
+        crate::recall_history::parse_retro_signatures(&input.chat.commonplace_recall_history);
+    if recent_signatures.iter().any(|s| s == &signature) {
+        // v4 logs `[CommonplaceWhisper] Retrospective mini-recap suppressed
+        // (recent same-signature block)` and emits nothing.
+        return None;
+    }
+
+    // v4 `signals.paraphrase ?? memorySearchQuery ?? ''` — a NULLISH fallback, so
+    // an empty-string paraphrase (were one to arrive) is kept as-is and only the
+    // absent case falls back to the recent-window query. The entity join is a
+    // second part; both are dropped when whitespace-only, and the survivors join
+    // with an em dash.
+    let query_parts: Vec<String> = [
+        signals
+            .paraphrase
+            .clone()
+            .unwrap_or_else(|| memory_search_query.to_string()),
+        signals.entities.join(", "),
+    ]
+    .into_iter()
+    .filter(|part| !crate::jsstr::js_trim(part).is_empty())
+    .collect();
+    let query = query_parts.join(" — ");
+    if crate::jsstr::js_trim(&query).is_empty() {
+        return None;
+    }
+
+    let matches = crate::services::memory_recap::search_vault_conversation_summaries(
+        db,
+        embedding,
+        &input.character.id,
+        input.character.character_document_mount_point_id.as_deref(),
+        &query,
+        &input.user_id,
+        input.embedding_profile_id.as_deref(),
+        RETRO_MINI_RECAP_MAX_ENTRIES,
+        Some(&input.chat.id),
+        // The round-2 `time_range` gets its first production caller here.
+        signals.time_range.as_ref(),
+    )
+    .await;
+
+    // Dedup against the standing on-fold `relevant-conversations` whisper for the
+    // same target — no point listing the same UUID twice. Best-effort: a read
+    // failure just means a possible duplicate.
+    let fold_whisper_ids: HashSet<String> = {
+        let chat_id = input.chat.id.clone();
+        let target_id: Option<&str> = if is_multi_character {
+            input.responding_participant.as_ref().map(|p| p.id.as_str())
+        } else {
+            None
+        };
+        let messages = db
+            .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &chat_id))
+            .unwrap_or_default();
+        let mut ids = HashSet::new();
+        for m in &messages {
+            if m.get("type").and_then(Value::as_str) != Some("message") {
+                continue;
+            }
+            if m.get("systemSender").and_then(Value::as_str) != Some("commonplaceBook")
+                || m.get("systemKind").and_then(Value::as_str) != Some("relevant-conversations")
+            {
+                continue;
+            }
+            if !target_ids_include(m, target_id) {
+                continue;
+            }
+            let content = m.get("content").and_then(Value::as_str).unwrap_or("");
+            for cap in FOLD_WHISPER_UUID_RE.captures_iter(content) {
+                ids.insert(cap[1].to_string());
+            }
+        }
+        ids
+    };
+
+    let mut filtered: Vec<_> = matches
+        .into_iter()
+        .filter(|m| !fold_whisper_ids.contains(&m.conversation_id))
+        .collect();
+    filtered.truncate(RETRO_MINI_RECAP_MAX_ENTRIES);
+    if filtered.is_empty() {
+        return None;
+    }
+    let content = format!(
+        "{}\n\n{}",
+        crate::services::memory_recap::render_relevant_conversations_block(&filtered),
+        crate::services::memory_recap::READ_CONVERSATION_CALL_NOTE
+    );
+    Some((content, signature))
+}
+
 // ---------------------------------------------------------------------------
 // The capstone.
 // ---------------------------------------------------------------------------
@@ -1818,6 +1999,12 @@ where
     let memory_search_query =
         build_recent_window_query(&input.existing_messages, input.new_user_message.as_deref());
     let mut whispered_memory_ids: Vec<String> = Vec::new();
+    // Turn-level recall signals (retrospective / timeRange / entities) — set by
+    // the fallback distillation below; consumed by the retrospective head sizing
+    // there AND by the mini-recap after the whisper assembles (v4 declares it at
+    // function scope for exactly that reason, context-manager.ts:1118).
+    let mut turn_recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch> =
+        None;
 
     if !input.skip_memories && !input.character.id.is_empty() {
         let compaction_gen = input.chat.compaction_generation;
@@ -1842,12 +2029,6 @@ where
         let archive_ids: HashSet<String> = frozen_archive.iter().map(|m| m.id.clone()).collect();
 
         let mut dynamic_head_results: Vec<InjectorResult> = Vec::new();
-        // Turn-level recall signals (retrospective / timeRange / entities) — set
-        // by the fallback distillation; consumed by the retrospective head
-        // sizing below (part 2 — the mini-recap — is a round-3 port).
-        let mut turn_recall_signals: Option<
-            crate::services::memory_recap::distill::DistilledSearch,
-        > = None;
 
         if !memory_search_query.is_empty() {
             // Query distillation (v4 `extractMemorySearchKeywords`, W4.6a). Falls
@@ -2271,6 +2452,17 @@ where
     // conversation-history compressor). The corpus keeps memory tokens under
     // the ratio, so this branch is a verified no-op both sides (the `else`
     // "within budget" log arm). Close with the `compressMemories` task port.
+    //
+    // P4.d15 (2026-07-22): the PORT TARGET has moved to v4 `8bf3cb5f`. The
+    // episodic overhaul edited `MEMORY_COMPRESSION_PROMPT` in place — KEEP gains
+    // "Dates attached to events — keep the date with the event it dates", and the
+    // two DROP lines ("Exact dates/times when relative timing is sufficient" /
+    // "Details about concluded events with no ongoing impact") are deleted, so the
+    // compressor must now PRESERVE dates rather than shed them. That flip is
+    // prompt text inside the unported task; there is nothing to change here until
+    // the task itself lands, at which point the prompt must be transcribed from
+    // `8bf3cb5f`, not from the older text.
+    //
     // MEMORY_BUDGET_RATIO is referenced here to keep the constant live.
     let _memory_budget_ratio = MEMORY_BUDGET_RATIO;
 
@@ -2545,11 +2737,39 @@ where
         _ => String::new(),
     };
 
+    // Recall-on-reference (fourth cadence, part 2): on a retrospective turn, build
+    // the scoped mini-recap — a dated, drillable Relevant Past Conversations list
+    // from the vault summaries, scoped by the turn's timeRange/entities and closed
+    // by the read_conversation call note. Spam guard: skip when a block with the
+    // same signature was emitted within the last few turns (piggybacking the
+    // recall-history ring buffer), and dedup conversation IDs against the current
+    // on-fold relevant-conversations whisper. Best-effort — never blocks the turn.
+    let (retrospective_recall_content, emitted_retro_signature) = match &turn_recall_signals {
+        Some(signals) if signals.retrospective && !input.character.id.is_empty() => {
+            match resolve_retrospective_mini_recap(
+                db,
+                embedding,
+                input,
+                signals,
+                &memory_search_query,
+                is_multi_character,
+            )
+            .await
+            {
+                Some((content, signature)) => (content, Some(signature)),
+                None => (String::new(), None),
+            }
+        }
+        _ => (String::new(), None),
+    };
+
     // Commonplace whisper post + scene-cache + recall-history persistence (seams).
     // Reuse the canonical builders from `commonplace_notifications` (Group 5 dedup);
     // the per-turn consolidated whisper leaves `relevant_conversations` empty (only
     // the fold-refresh whisper sets it), so the output is identical to the removed
-    // private copies.
+    // private copies. The retrospective mini-recap rides the LLM recall text here
+    // but is posted as its OWN `retrospective-recall` whisper below — NEVER inside
+    // the consolidated body.
     let cmpb_parts = crate::services::commonplace_notifications::CommonplaceParts {
         current_state: opt(&current_state_content),
         recap: opt(&memory_recap_content),
@@ -2557,15 +2777,16 @@ where
         inter_char: opt(&inter_character_memory_content),
         knowledge: opt(&knowledge_content),
         relevant_conversations: None,
-        // The mini-recap is DELIBERATELY absent from the consolidated persona
-        // whisper (v4 posts it in its own `retrospective-recall` whisper and only
-        // rides it in the LLM recall text) — P4.d15 unit 3 wires that.
         retrospective_recall: None,
     };
     let persona_whisper =
         crate::services::commonplace_notifications::build_commonplace_persona_whisper(&cmpb_parts);
-    let llm_recall_text =
-        crate::services::commonplace_notifications::build_commonplace_llm_context(&cmpb_parts);
+    let llm_recall_text = crate::services::commonplace_notifications::build_commonplace_llm_context(
+        &crate::services::commonplace_notifications::CommonplaceParts {
+            retrospective_recall: opt(&retrospective_recall_content),
+            ..cmpb_parts.clone()
+        },
+    );
 
     if !persona_whisper.is_empty() {
         let persona = &persona_whisper;
@@ -2585,17 +2806,46 @@ where
             if !emitted_scene_state.is_empty() {
                 persist_scene_cache(db, input, &cache_target_key, &emitted_scene_state).await;
             }
-            // v4 `chats.update({ commonplaceRecallHistory: appendRecallTurn(...) })`.
-            if !whispered_memory_ids.is_empty() {
-                let next = crate::recall_history::append_recall_turn(
+            // v4 `chats.update({ commonplaceRecallHistory: appendRecallTurn(...) })`,
+            // plus the retrospective mini-recap signature (the fourth cadence's spam
+            // guard) — ONE write, gated on either half having something to record.
+            if !whispered_memory_ids.is_empty() || emitted_retro_signature.is_some() {
+                let mut next = crate::recall_history::append_recall_turn(
                     &input.chat.commonplace_recall_history,
                     &whispered_memory_ids,
                 );
+                if let Some(sig) = &emitted_retro_signature {
+                    next = crate::recall_history::append_retro_signature(&next, sig);
+                }
                 // v4 persists the RecallHistory OBJECT (`{ turns, retroSignatures? }`),
                 // never the bare turns array — the parse side requires the wrapper.
                 persist_recall_history(db, &input.chat.id, next.to_value()).await;
             }
         }
+    }
+
+    // Recall-on-reference: post the mini-recap as its OWN whisper (kind
+    // `retrospective-recall`) so the salon shows the dated conversation list
+    // distinctly. Posted AFTER the consolidated sweep snapshot so it survives this
+    // turn; the next turn's sweep removes it (turn-specific by design — unlike
+    // `relevant-conversations`, which the sweep exempts). Note this sits OUTSIDE
+    // the `if (personaWhisper)` block: a turn with no ordinary recall still gets
+    // its mini-recap.
+    if !retrospective_recall_content.is_empty() {
+        let target = if is_multi_character {
+            input.responding_participant.as_ref().map(|p| p.id.as_str())
+        } else {
+            None
+        };
+        let content = crate::services::commonplace_notifications::build_commonplace_persona_whisper(
+            &crate::services::commonplace_notifications::CommonplaceParts {
+                retrospective_recall: Some(retrospective_recall_content.clone()),
+                ..Default::default()
+            },
+        );
+        seams
+            .post_commonplace_retrospective_recall(&input.chat.id, target, &content)
+            .await;
     }
 
     // Suparṇā mail — v4's READ half (W4.6a): collect unalerted mail, build the

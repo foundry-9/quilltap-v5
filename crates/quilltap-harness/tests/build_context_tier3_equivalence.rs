@@ -12,6 +12,15 @@
 //! zero normalization (the timestamp whisper's wall clock is frozen on both
 //! sides via the injected `now_ms` / the oracle's `FIXED_NOW_MS`).
 //!
+//! P4.d15 adds the WRITE side per op: the Commonplace-Book whisper rows left in
+//! `chat_messages` (systemKind / role / body / opaqueContent / target scope) and
+//! the persisted `commonplaceRecallHistory`. That is what pins the
+//! recall-on-reference cadence — the `retrospective-recall` whisper's kind and
+//! body, its survival past the consolidated sweep on its own turn (and removal on
+//! the next), and the retro-signature spam-guard ring. Structural normalization:
+//! minted ids and `createdAt` are dropped and the rows sort by
+//! `(systemKind, content)`.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
@@ -283,6 +292,8 @@ async fn build_context_tier3_matches_oracle() {
 
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
+    let mut oracle_whispers: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -292,6 +303,16 @@ async fn build_context_tier3_matches_oracle() {
         match v.get("kind").and_then(Value::as_str) {
             Some("result") => {
                 oracle_results.push((v["op"].as_str().unwrap().to_string(), v["result"].clone()))
+            }
+            Some("whispers") => {
+                let op = v["op"].as_str().unwrap().to_string();
+                oracle_whispers.insert(
+                    op,
+                    serde_json::json!({
+                        "whispers": v["whispers"].clone(),
+                        "recallHistory": v["recallHistory"].clone(),
+                    }),
+                );
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
             other => panic!("unknown oracle row kind {other:?}"),
@@ -635,7 +656,69 @@ async fn build_context_tier3_matches_oracle() {
             serde_json::to_string_pretty(&got).unwrap(),
             serde_json::to_string_pretty(&want).unwrap(),
         );
+
+        // P4.d15: the WRITE side — the Commonplace-Book whisper rows this op left
+        // behind (kind / body / target scope, so the `retrospective-recall` whisper
+        // and the consolidated sweep's membership rules are both pinned) plus the
+        // persisted recall-history column (turns + the retro-signature spam ring).
+        let want_side = oracle_whispers
+            .get(&op.name)
+            .unwrap_or_else(|| panic!("{}: no 'whispers' oracle row", op.name));
+        let chat_id = spec.chat.id.clone();
+        let messages = db
+            .read_main(move |c| quilltap_core::db::chats_messages_read::get_messages(c, &chat_id))
+            .expect("read chat messages");
+        let mut got_whispers: Vec<Value> = messages
+            .iter()
+            .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+            .filter(|m| m.get("systemSender").and_then(Value::as_str) == Some("commonplaceBook"))
+            .map(|m| {
+                serde_json::json!({
+                    "systemKind": m.get("systemKind").cloned().unwrap_or(Value::Null),
+                    "role": m.get("role").cloned().unwrap_or(Value::Null),
+                    "content": m.get("content").cloned().unwrap_or(Value::Null),
+                    "opaqueContent": m.get("opaqueContent").cloned().unwrap_or(Value::Null),
+                    "targetParticipantIds": m
+                        .get("targetParticipantIds")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                })
+            })
+            .collect();
+        // Same sort key the oracle uses: `${systemKind} ${content}` (code-unit
+        // order), so neither side depends on storage order.
+        got_whispers.sort_by_key(|w| {
+            format!(
+                "{} {}",
+                w["systemKind"].as_str().unwrap_or(""),
+                w["content"].as_str().unwrap_or("")
+            )
+        });
+        let chat_id = spec.chat.id.clone();
+        let got_history = db
+            .read_main(move |c| chats_read::find_by_id(c, &chat_id))
+            .expect("read chat")
+            .and_then(|c| c.get("commonplaceRecallHistory").cloned())
+            .unwrap_or(Value::Null);
+        let got_side = serde_json::json!({
+            "whispers": Value::Array(got_whispers),
+            "recallHistory": got_history,
+        });
+        assert_eq!(
+            &got_side,
+            want_side,
+            "{}: whisper rows / recall history diverge\n got={}\nwant={}",
+            op.name,
+            serde_json::to_string_pretty(&got_side).unwrap(),
+            serde_json::to_string_pretty(want_side).unwrap(),
+        );
     }
+
+    assert_eq!(
+        oracle_whispers.len(),
+        spec.ops.len(),
+        "whisper-row count mismatch — regenerate the oracle NDJSON"
+    );
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);

@@ -396,8 +396,9 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
             input.embedding_profile_id.as_deref(),
             limit.max(0) as usize,
             Some(&input.chat_id),
-            // Round 2 has no production caller passing a time window (the
-            // round-3 mini-recap is the consumer).
+            // v4's fold refresh passes no window — relevance here is "what bears
+            // on the fresh summary", not "what happened in a period". (The
+            // windowed caller is buildContext's retrospective mini-recap.)
             None,
         )
         .await;

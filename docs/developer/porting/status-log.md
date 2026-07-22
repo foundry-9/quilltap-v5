@@ -27643,6 +27643,133 @@ renders after every other section). Green: 36/36.
 **Gate:** fmt clean; clippy `--workspace --all-targets -D warnings`
 clean; `cargo test --workspace` 0 failed with both this lane's oracles
 set. Versions: core 0.0.315, harness 0.0.272.
+
+## P4.d15 unit 3 — the scoped mini-recap + the `retrospective-recall` whisper + the spam guard (the fourth cadence completes)
+
+**What landed (v4 `context-manager.ts:1944–2030`, `:2087–2094`,
+`:2147–2165`):**
+
+- `build_context.rs`: `turn_recall_signals` HOISTED to function scope
+  (v4 declares it at `:1118` precisely so the mini-recap can read it).
+- `RETRO_MINI_RECAP_MAX_ENTRIES = 5` + `FOLD_WHISPER_UUID_RE` (v4's
+  case-insensitive UUID-in-backticks scanner) + the new
+  `resolve_retrospective_mini_recap` helper, which reproduces v4's block
+  step for step: the signature (`{from}→{to}` or `∅`, then the
+  lowercased entities in JS default-`sort()` order, joined by `|`); the
+  suppression check against `parse_retro_signatures(chat.commonplace-
+  RecallHistory)` — now a LIVE reader, graduating from round 2's
+  preservation carrier; the query (`paraphrase ?? memorySearchQuery`
+  NULLISH — an empty-string paraphrase would be kept — plus the entity
+  join, whitespace-only parts dropped, survivors joined with ` — `); the
+  scoped `search_vault_conversation_summaries` call **passing
+  `signals.time_range` — the round-2 `time_range` parameter's FIRST
+  production caller**; the fold-whisper conversation-id dedup (read the
+  chat's messages, keep `commonplaceBook`/`relevant-conversations` rows
+  in the same target scope, scrape their backticked UUIDs); the
+  `slice(0, 5)`; and the rendered block + `READ_CONVERSATION_CALL_NOTE`.
+- The whisper assembly: the consolidated persona whisper still leaves
+  `retrospective_recall` empty (v4 keeps the mini-recap OUT of the
+  consolidated body), while `llm_recall_text` is built from a clone that
+  carries it — v4's `{...cmpbParts, retrospectiveRecall}`.
+- The persist: ONE `commonplaceRecallHistory` write, now gated on
+  `!whispered_memory_ids.is_empty() || emitted_retro_signature.is_some()`
+  and running `append_retro_signature` on top of `append_recall_turn`.
+- The post: a NEW `BuildContextSeams::post_commonplace_retrospective_-
+  recall` (default no-op; `RealBuildContextSeams` posts kind
+  `retrospective-recall` with NO `opaqueContent` and NO sweep of its
+  own). It sits OUTSIDE the `if (personaWhisper)` block and AFTER the
+  consolidated sweep, exactly as v4 does — so the mini-recap survives its
+  own turn and the NEXT turn's consolidated sweep removes it.
+
+**Tier 2 also landed here:** the `compressMemories` deferral note records
+that the port target moved to `8bf3cb5f` (KEEP gains "Dates attached to
+events — keep the date with the event it dates"; the two DROP lines are
+deleted — the compressor must now PRESERVE dates), and the two stale
+"the round-3 mini-recap is the consumer" seam notes in
+`commonplace_notifications.rs` / `memory_recap/mod.rs` were rewritten to
+say why those two call sites pass no window.
+
+**Differential — `QT_ORACLE_BUILD_CONTEXT`, fixture EXTENDED, oracle
+regenerated FRESH at `8bf3cb5f`.** The corpus went 9 → 11 ops with the
+three arms the design doc asks for: (a) `retrospective_recall_turn` —
+matching vault summaries, the mini-recap emits, the
+`retrospective-recall` whisper row lands, the signature persists;
+(b) `retrospective_recall_repeat_turn` — identical signals, no
+`chatOverrides` so it reads the persisted ring → SUPPRESSED (no whisper,
+no second signature); (c) `retrospective_recall_no_match_turn` — Bea,
+whose vault has no `Conversation Summaries/` → byte-inert (round 2's
+guard, kept). Fixture additions: four dated vault conversation summaries
+in Ada's vault written through v4's REAL
+`writeConversationSummaryToVaults` (one of them the fixture chat's own,
+proving `excludeConversationId`; one out-of-window, proving the
+boost-fallback staging) with one baked chunk each, and one pre-seeded
+on-fold `relevant-conversations` whisper whose listed UUID is deduped out
+of the emitted list. **The oracle now emits a SECOND row per op**
+(`kind: 'whispers'`): the Commonplace-Book whisper rows (systemKind /
+role / content / opaqueContent / target scope, ids + `createdAt`
+dropped, sorted by `(systemKind, content)`) plus the persisted
+`commonplaceRecallHistory` — so the write side is diffed, not just the
+context bytes. 11/11 ops green on both halves.
+
+**Two fixture findings (fix the fixture, not the port):**
+1. `jest.setup.ts` stubs `getCharacterVaultStore` to a phantom
+   `mock-vault-mount`, which silently starved the vault-summary search on
+   the ORACLE side (v5 always resolves the real vault). The
+   build-context oracle now `doMock`s it to `requireActual` — the same
+   un-mock the characters lanes needed.
+2. The corpus's participant ids were `pa000000-…` — **not valid UUIDs**
+   (`p` is not hex), so v4's Zod on `chat_messages.targetParticipantIds`
+   rejected every TARGETED whisper write while v5 (which does not
+   validate) wrote it. That divergence was invisible until this unit
+   started diffing whisper rows. Ids renamed to `ba000000-…`; the
+   multi-character targeted consolidated whisper now writes and matches
+   on both sides. **Standing note:** v5's chat-message writer does not
+   port v4's Zod UUID validation on `targetParticipantIds`. Inert in
+   production (every participant id is a real UUID) — recorded, not
+   stubbed.
+
+**Transitive families re-run at `8bf3cb5f`, all green by name, zero
+SKIP:** `QT_ORACLE_DISTILL` (14), `QT_ORACLE_VAULT_CONV` (7),
+`QT_ORACLE_RECALL_REPLAY` (13 — **the replay tables are UNAFFECTED, as
+the order requires**), the four salon families (reads 6 / mutations 17 /
+skip 2 / swipe 4), `QT_ORACLE_PO_COMMONPLACE` (36),
+`QT_ORACLE_POW`, `QT_ORACLE_CARINA_QUERY` (46).
+
+**Two families found RED — both OUTSIDE this lane, neither "fixed"
+across the boundary:**
+- `context_summary_service_tier3` (`QT_ORACLE_CTXSUM`): regenerating it
+  at `8bf3cb5f` trips a canned-completion key mismatch on the fold call.
+  Cause identified: v4's `FOLD_SUMMARY_PROMPT` gained a fifth **Timeline**
+  section and `foldChatSummary` now prefixes each turn with
+  `[YYYY-MM-DD]` (`chat-tasks.ts`). That is P4.d14's family per the
+  Shared contract §2 — reported, not touched. Its committed vintage stays
+  `7e6d13e5`; do NOT set `QT_ORACLE_CTXSUM` in this lane's gate.
+- `orchestrator_tier3` (`QT_ORACLE_ORCHESTRATOR`): red, and **red with
+  this lane's unit-3 diff reverted** (verified directly), so NOT caused
+  here; it is in NEITHER lane's regeneration set and, per the status log,
+  has not been re-run since the P4.d5 era (v4 `e3593f75`) — rounds P4.d7 /
+  P4.d12 / P4.d13 all skipped it. Diagnosis for whoever picks it up: on
+  `noncontinue_single_user_chain` (and most other cases) v5's primary
+  stream request omits a memory-recap block that v4 emits — the new user
+  message's `You remember the gist…` / `## What You Remember` /
+  `### Recent Conversations` section. The gate is identical on both sides
+  (`generateMemoryRecap && character.id && cheapLLMSelection`), so the
+  divergence is UPSTREAM of `build_context` — most likely
+  `services::message_context`'s `should_generate_recap` or the
+  orchestrator's cheap-LLM threading. **Flagged loudly; a dedicated
+  follow-up owns it.**
+
+**Live-path note for the unifier:** the `retrospective-recall` whisper is
+a LIVE production write once this lands (`RealBuildContextSeams` is what
+the host wires). The unifier's Playwright run and the next dogfood pass
+are its live proofs — this lane does not run full Playwright (three
+parallel lanes share e2e port 4319).
+
+**Gate:** `cargo fmt --all --check` clean; clippy `--workspace
+--all-targets -D warnings` clean in BOTH feature sets (default +
+`--features quilltap-core/native-transport`); `cargo test --workspace`
+with the lane's full env set, 0 failed; `git diff <base>..HEAD --
+apps/web` = 0 lines. Versions: core 0.0.316, harness 0.0.273.
 ## P4.d14 unit 1 — the clocked creation prompts + EVENT machinery + the creation-side anchors (2026-07-22)
 
 **Lane:** `claude/p4-episodic-creation-fold-4f22bd` (round 3, lane A).
