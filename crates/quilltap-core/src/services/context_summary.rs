@@ -91,6 +91,9 @@ use crate::services::commonplace_notifications::{
 use crate::services::conversation_summary_vault_bridge::{
     compute_conversation_stats, write_conversation_summary_to_vaults, WriteConversationSummaryInput,
 };
+use crate::services::fold_episode_pass::{
+    run_fold_episode_pass, FoldWindowMessage, RunFoldEpisodePassInput,
+};
 use crate::services::queue_service;
 
 use std::collections::HashMap;
@@ -226,6 +229,15 @@ pub trait ContextSummarySeams {
         provider: Option<&str>,
         model: Option<&str>,
     ) -> impl std::future::Future<Output = ()> + Send;
+    /// `runFoldEpisodePass` — the fold-time episode consolidation (episodic
+    /// spine). A seam rather than an inline call because the pass writes through
+    /// the memory gate and therefore needs an [`EmbeddingProvider`], which the
+    /// fold itself does not carry.
+    fn run_fold_episode_pass(
+        &self,
+        input: RunFoldEpisodePassInput,
+        selection: CheapLlmSelection,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
 /// The default no-op seams (matches the oracle's mocks).
@@ -251,6 +263,12 @@ impl ContextSummarySeams for NoopSeams {
         _model: Option<&str>,
     ) {
     }
+    async fn run_fold_episode_pass(
+        &self,
+        _input: RunFoldEpisodePassInput,
+        _selection: CheapLlmSelection,
+    ) {
+    }
 }
 
 /// The real context-summary side effects (v4 `generateContextSummary`'s
@@ -264,12 +282,18 @@ impl ContextSummarySeams for NoopSeams {
 /// must read the fresh corpus, not race it. The refresh needs an embedding
 /// provider, so the struct is generic over `E`. Each write is best-effort (the
 /// writers swallow their own failure).
-pub struct RealContextSummarySeams<'a, E: EmbeddingProvider> {
+pub struct RealContextSummarySeams<'a, C: CompletionProvider, E: EmbeddingProvider> {
     pub db: &'a Db,
     pub embedding: &'a E,
+    /// The completion provider + executor the fold-episode pass drives (the
+    /// same cheap-LLM path the fold itself used).
+    pub completion: &'a C,
+    pub executor: &'a CheapLlmTaskExecutor,
 }
 
-impl<E: EmbeddingProvider + Sync> ContextSummarySeams for RealContextSummarySeams<'_, E> {
+impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySeams
+    for RealContextSummarySeams<'_, C, E>
+{
     async fn post_librarian_summary(&self, chat_id: &str, summary: &str, new_generation: f64) {
         use crate::services::librarian_notifications as ln;
         // v4 posts with `targetParticipantIds: null` and
@@ -345,6 +369,26 @@ impl<E: EmbeddingProvider + Sync> ContextSummarySeams for RealContextSummarySeam
         )
         .await;
     }
+
+    async fn run_fold_episode_pass(
+        &self,
+        input: RunFoldEpisodePassInput,
+        selection: CheapLlmSelection,
+    ) {
+        // v4 `runFoldEpisodePass`: over the just-folded window, ask the cheap
+        // LLM for 0–2 consolidated episode records and write them as dated
+        // `kind: 'episodic'` memories linked to the window's per-turn
+        // fragments. Best-effort — the pass swallows its own failures.
+        let _ = run_fold_episode_pass(
+            self.db,
+            self.completion,
+            self.embedding,
+            self.executor,
+            &selection,
+            &input,
+        )
+        .await;
+    }
 }
 
 fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
@@ -370,21 +414,34 @@ fn is_chat_active_dangerous(chat: &Value) -> bool {
 }
 
 /// v4 `turnsToChatMessages` over the fold range: flatten each turn's messages to
-/// `{ role: role.toLowerCase(), content }`. The ported [`FoldedTurn`] carries
-/// only message ids, so the `{role, content}` is reconstructed from the full
-/// message list via `by_id` (keyed by message id) — the same rows the turn was
-/// partitioned from.
+/// `{ role: role.toLowerCase(), content, createdAt }` — the message dates feed
+/// the fold summary's Timeline section. The ported [`FoldedTurn`] carries only
+/// message ids, so the row is reconstructed from the full message list via
+/// `rows_by_id` — the same rows the turn was partitioned from.
 fn turns_to_chat_messages(
     turns: &[FoldedTurn],
-    by_id: &HashMap<String, (String, String)>,
+    rows_by_id: &HashMap<&str, &Value>,
 ) -> Vec<ChatMessage> {
     let mut result = Vec::new();
     for t in turns {
         for id in &t.ids {
-            if let Some((role, content)) = by_id.get(id) {
+            if let Some(m) = rows_by_id.get(id.as_str()) {
                 result.push(ChatMessage {
-                    role: role.to_lowercase(),
-                    content: content.clone(),
+                    role: m
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_lowercase(),
+                    content: m
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    // v4 `m.createdAt ?? null`.
+                    created_at: m
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                 });
             }
         }
@@ -493,22 +550,13 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     // so the fold range can be reconstructed into `{role, content}` (the ported
     // `FoldedTurn` carries only ids).
     let all_messages = db.read_main(|conn| chats_messages_read::get_messages(conn, &chat_id))?;
-    let by_id: HashMap<String, (String, String)> = all_messages
+    // The fold render + the fold-episode pass both need the whole message row
+    // (v4 hands the pass `turnsToFold.flatMap(t => t.messages)`, and the fold
+    // render now carries each turn's `createdAt`). The ported `FoldedTurn`
+    // carries only ids, so keep a by-id view of the rows themselves.
+    let rows_by_id: HashMap<&str, &Value> = all_messages
         .iter()
-        .filter_map(|m| {
-            let id = m.get("id").and_then(Value::as_str)?.to_string();
-            let role = m
-                .get("role")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let content = m
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            Some((id, (role, content)))
-        })
+        .filter_map(|m| m.get("id").and_then(Value::as_str).map(|id| (id, m)))
         .collect();
     let partition_inputs: Vec<PartitionInputMessage> =
         all_messages.iter().map(to_partition_input).collect();
@@ -543,7 +591,7 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     let lo = (fold_from_turn - 1).max(0) as usize;
     let hi = fold_through_turn.max(0) as usize;
     let turns_to_fold = &all_turns[lo.min(all_turns.len())..hi.min(all_turns.len())];
-    let new_turns_content = turns_to_chat_messages(turns_to_fold, &by_id);
+    let new_turns_content = turns_to_chat_messages(turns_to_fold, &rows_by_id);
 
     if new_turns_content.is_empty() {
         return Ok(SummaryGenerationResult::fail("No content in turns to fold"));
@@ -697,6 +745,62 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
             max_context: options.connection_max_context,
         })
         .await;
+
+    // Episodic spine: fold-time episode pass. Over the just-folded window, ask
+    // the cheap LLM for 0–2 consolidated episode records and write them as
+    // dated `kind: 'episodic'` memories linked to the window's per-turn
+    // fragments. Piggybacks the fold cadence — no new trigger. Best-effort:
+    // a failed episode pass never fails the fold.
+    {
+        let window_messages: Vec<FoldWindowMessage> = turns_to_fold
+            .iter()
+            .flat_map(|t| t.ids.iter())
+            .filter_map(|id| rows_by_id.get(id.as_str()).copied())
+            .map(|m| FoldWindowMessage {
+                id: m
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                role: m
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                content: m.get("content").and_then(Value::as_str).map(str::to_string),
+                participant_id: m
+                    .get("participantId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                created_at: m
+                    .get("createdAt")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+            .collect();
+        seams
+            .run_fold_episode_pass(
+                RunFoldEpisodePassInput {
+                    chat_id: chat_id.clone(),
+                    user_id: options.user_id.clone(),
+                    window_messages,
+                    // v4 `chat.timelineMode ?? 'realtime'`.
+                    timeline_mode: chat
+                        .get("timelineMode")
+                        .and_then(Value::as_str)
+                        .unwrap_or("realtime")
+                        .to_string(),
+                    project_id: chat
+                        .get("projectId")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    in_autonomous_room: chat_type.as_deref() == Some("autonomous"),
+                },
+                selection.clone(),
+            )
+            .await;
+    }
+
     if let Some(u) = usage {
         if u.prompt_tokens > 0 || u.completion_tokens > 0 {
             // v4 `createContextSummaryEvent(chatId, usage, cheapLLM.provider,

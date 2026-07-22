@@ -661,6 +661,31 @@ pub fn find_by_source_message_id(
     query_memories(conn, "WHERE sourceMessageId = ?1", &[&source_message_id])
 }
 
+/// v4 `findByCharacterAndSourceMessageIds` — a character's memories whose
+/// `sourceMessageId` is any of the given ids. The fold-time episode pass links
+/// a consolidated episode to the per-turn fragment memories from the same
+/// window. Empty id list → `[]` (v4's early return, no query).
+pub fn find_by_character_and_source_message_ids(
+    conn: &Connection,
+    character_id: &str,
+    source_message_ids: &[String],
+) -> Result<Vec<Value>, DbError> {
+    if source_message_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = (0..source_message_ids.len())
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut params: Vec<&dyn ToSql> = vec![&character_id];
+    params.extend(source_message_ids.iter().map(|s| s as &dyn ToSql));
+    query_memories(
+        conn,
+        &format!("WHERE characterId = ?1 AND sourceMessageId IN ({placeholders})"),
+        &params,
+    )
+}
+
 pub fn find_by_about_character_id(
     conn: &Connection,
     about_character_id: &str,

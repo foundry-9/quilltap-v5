@@ -275,6 +275,9 @@ where
         .map(|m| ChatMessage {
             role: m.role.clone(),
             content: m.content.clone(),
+            // The title tasks never render a date (v4's ChatMessage has no
+            // createdAt on this path).
+            created_at: None,
         })
         .collect();
     if recent.is_empty() {

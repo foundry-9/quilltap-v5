@@ -27728,3 +27728,96 @@ Prompt-text regeneration:
 `python3 harness/oracle/scripts/extract-memory-task-prompts.py \
   ~/source/quilltap-server/lib/memory/cheap-llm-tasks/memory-tasks.ts \
   crates/quilltap-core/src/memory_tasks/prompt_text.rs`
+
+## P4.d14 unit 2 — the fold-episode pass + the fold Timeline (2026-07-22)
+
+**What landed.**
+- `memory_tasks.rs` — the fold-episode leaves: `FoldEpisodeMessage` /
+  `FoldEpisode` / `FOLD_EPISODE_CAP`, the `FOLD_EPISODE_PROMPT` (extracted
+  mechanically, split at its one interpolation), `parse_fold_episodes` (the
+  0–2 cap, the `narrative.slice(0, 60)` summary fallback, the
+  string-array/trim/8 coercion, the `min(1, max(0.2, x))` importance clamp,
+  `?? 0.6`), and `build_fold_episode_messages` (the `[YYYY-MM-DD HH:MM] ` per
+  message — note v4's `.replace('T', ' ')` replaces the FIRST 'T' only — the
+  1500-unit content truncation, and the one-line CLOCK header).
+- NEW `services/fold_episode_pass.rs` — v4 `runFoldEpisodePass` whole:
+  present-CHARACTER participants only, the clock anchored to the window's
+  newest stamped message, per-participant speaker names via the raw character
+  read (role-labelled `User`/`Character` fallback), the per-episode
+  `resolveWhenPhrase`-or-window-start `occurredAt`, narrative-mode
+  `narrativeTime`, a gated write per present character, and the bidirectional
+  fragment linking capped at 8.
+- `db/memories_read.rs` — `find_by_character_and_source_message_ids` (v4's new
+  repo method; empty id list → `[]` with no query).
+- `services/context_summary.rs` — the pass wired in at v4's exact position
+  (after the relevant-conversations refresh, before the cost event) through a
+  new `ContextSummarySeams::run_fold_episode_pass` method;
+  `RealContextSummarySeams` grew `completion` + `executor` (it already carried
+  `db` + `embedding`, and the pass writes through the gate, so it needs all
+  four).
+- `services/context_summary/{prompt_text,tasks}.rs` — the FIVE-section
+  `FOLD_SUMMARY_PROMPT` (regenerated from v4, not hand-edited) and the dated
+  turn render; `ChatMessage` gained `created_at`, and `turns_to_chat_messages`
+  now reconstructs from the message ROWS (the same by-id view the fold pass
+  uses) rather than a role+content pair map.
+
+**Differentials.**
+- NEW family `QT_ORACLE_FOLD_EPISODE` (tier-3 → tier-2), with a new committed
+  corpus + fixture builder + oracle case. Two runs: `episode_pass` (narrative
+  timeline, two present characters + one absent, four window messages incl. an
+  unstamped one and an unknown participantId) and `no_episodes` (the model
+  returns `[]` — nothing may be written). The corpus deliberately exercises the
+  cap (a third episode dropped), the blank-summary fallback, a non-string /
+  blank entity, an over-range importance, and cross-episode linking (the second
+  episode's own memory is a same-window fragment of the first).
+- `QT_ORACLE_CTXSUM` regenerated at `8bf3cb5f` and green — it now covers the
+  five-section prompt, the dated turn render, AND the pass firing from inside
+  the fold.
+- `QT_ORACLE_CHAT_TASKS` + `QT_ORACLE_CONTEXT_SUMMARY` regenerated, green.
+- `QT_ORACLE_MEMHOUSEKEEPING`: corpus + builder extended with a fourth
+  character carrying two near-duplicate (0.95) pairs — one 126 days apart, one
+  2 days apart. The distinct-occasion pair survives BOTH rows; the
+  same-occasion pair merges. (The guard itself lands in unit 3.)
+
+**Findings worth carrying.**
+- **A harness trap, fixed here:** `CannedCompletionProvider`'s canned-MISS
+  error message said "temperature …". The cheap-LLM executor treats a provider
+  error containing "temperature" (or "does not support") as a temperature
+  REJECTION, caches the profile as no-custom-temperature, and silently re-keys
+  every LATER canned call in the same run. The fold-episode pass makes a call
+  v4's ctxsum oracle answers with "unrecognized system prompt" (so v4 never
+  poisons its cache) — v5's miss poisoned its own, and four TITLE calls
+  vanished. The miss message now says "temp", and the reason is commented at
+  the site. Any future test double must keep its miss messages clear of the
+  rejection vocabulary.
+- **The fold-episode fixture must ship the vector tables.** v4's repos create
+  `vector_indices` / `vector_entries` lazily on first use, so a fixture that
+  seeds no vectors leaves them absent — the oracle then creates them mid-run
+  while the Rust side (which never emits DDL) fails the open. The builder emits
+  the DDL, and it must use the **v2** schemas (`VectorIndexMetaSchema` /
+  `VectorEntryRowSchema`); the legacy `VectorEntrySchema` has no `characterId`
+  and v4's own `addEntry` then throws mid-pass (which surfaces as memories
+  written but zero links — a silent half-failure).
+- **v4 bug carried faithfully:** on INSERT_RELATED the gate returns the memory
+  object as it was BEFORE `linkRelatedMemories` ran, so the fold pass's
+  `relatedMemoryIds` union starts from `[]` and CLOBBERS the gate's links —
+  despite v4's own comment claiming the opposite. v5 reproduces it (Insert /
+  InsertRelated start from `[]`; every other action reads the row).
+- **Inherited divergence, unchanged:** `check_and_generate_summary_if_needed`'s
+  internal fold uses `NoopSeams`, so on that path the fold-episode pass no-ops
+  in v5 while v4 runs it. This is the same documented shape the vault mirror
+  and the relevant-conversations refresh already have on that path; the
+  differential's check-op sees no episode call on either side.
+
+**Regen recipe (new family):**
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree> ; M=/tmp/qt-d14-oracle
+rm -rf $M && mkdir -p $M && cp -R $W/harness/oracle/* $M/ && cd ~/source/quilltap-server
+QT_FIXTURE_OUT=/tmp/qt-fold-episode-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-fold-episode-mount.db \
+  $N/npx tsx $W/harness/oracle/fixtures/build-fold-episode-fixture.ts
+TZ=UTC QT_FIXTURE_FOLD_EPISODE_MAIN=/tmp/qt-fold-episode-main.db \
+  QT_FIXTURE_FOLD_EPISODE_MOUNT=/tmp/qt-fold-episode-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-fold-episode.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- fold-episode-tier3
+```

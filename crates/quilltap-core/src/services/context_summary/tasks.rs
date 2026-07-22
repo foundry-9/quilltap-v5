@@ -27,6 +27,12 @@ use crate::memory_tasks::strip_code_fences;
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    /// The message's wall-clock stamp (v4's `ChatMessage & { createdAt? }`).
+    /// When present, its DATE is rendered inline so the fold summary's
+    /// Timeline section can date events from the transcript instead of
+    /// guessing. Only [`fold_chat_summary`] reads it — the title tasks build
+    /// their own rendering.
+    pub created_at: Option<String>,
 }
 
 /// v4's `parseResponse` for the title tasks: `content.trim()`, strip at most one
@@ -57,9 +63,11 @@ fn strip_edge_quotes(s: &str) -> String {
 }
 
 /// v4 `foldChatSummary`: fold a batch of new turns into the running summary.
-/// Frames the call as an update task over the four-section structure; the user
-/// content pairs the prior summary (or the first-fold placeholder) with the
-/// rendered new turns. `parseResponse` is `content.trim()`.
+/// Frames the call as an update task over the five-section structure (the fifth
+/// being the append-only dated Timeline — the episodic spine's fold-side half);
+/// the user content pairs the prior summary (or the first-fold placeholder)
+/// with the rendered new turns, each prefixed by its date when stamped.
+/// `parseResponse` is `content.trim()`.
 pub async fn fold_chat_summary<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
@@ -69,7 +77,14 @@ pub async fn fold_chat_summary<C: CompletionProvider>(
 ) -> CheapLlmTaskResult<String> {
     let new_turns_text = new_turns
         .iter()
-        .map(|m| format!("{}: {}", m.role.to_uppercase(), m.content))
+        .map(|m| {
+            // v4: `[${m.createdAt.slice(0, 10)}] ` when the turn is stamped.
+            let stamp = match m.created_at.as_deref().filter(|s| !s.is_empty()) {
+                Some(created_at) => format!("[{}] ", utf16_truncate(created_at, 10)),
+                None => String::new(),
+            };
+            format!("{stamp}{}: {}", m.role.to_uppercase(), m.content)
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
 

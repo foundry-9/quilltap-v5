@@ -1,0 +1,185 @@
+{
+  "_comment": "Tier-3 (mocked cheap-LLM + mocked-embedding) corpus for the fold-time episode pass (v4 runFoldEpisodePass, lib/memory/fold-episode-pass.ts). The COMPLETION call is pinned by recording the exact (provider|model|temperature|messages) key the oracle answered and replaying it through CannedCompletionProvider on the Rust side — so a prompt-byte divergence surfaces as a canned-miss. The EMBEDDING call is pinned by exact buildMemoryEmbeddingText text, as in the memory-gate corpus. Two runs: `episode_pass` (a narrative-timeline window with two present characters, one absent participant, and per-character fragment memories to link) and `no_episodes` (the model returns [] — the pass must write nothing).",
+  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2026-07-01T00:00:00.000Z",
+  "characters": [
+    {
+      "id": "aa000000-0000-4000-8000-0000000000a1",
+      "name": "Aria",
+      "identity": "Aria is a clockwork soprano with a copper larynx.",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "bb000000-0000-4000-8000-0000000000b1",
+      "name": "Bram",
+      "identity": "Bram keeps the rooftop hives.",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "cc000000-0000-4000-8000-0000000000c1",
+      "name": "Cass",
+      "identity": "Cass is elsewhere.",
+      "controlledBy": "llm"
+    }
+  ],
+  "chats": [
+    {
+      "id": "1c000000-0000-4000-8000-00000000c0e1",
+      "title": "The Lighthouse Point outing",
+      "participants": [
+        {
+          "id": "9a000000-0000-4000-8000-0000000000a1",
+          "characterId": "aa000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "9b000000-0000-4000-8000-0000000000b1",
+          "characterId": "bb000000-0000-4000-8000-0000000000b1",
+          "controlledBy": "llm",
+          "status": "silent"
+        },
+        {
+          "id": "9c000000-0000-4000-8000-0000000000c1",
+          "characterId": "cc000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "absent"
+        }
+      ]
+    },
+    {
+      "id": "1c000000-0000-4000-8000-00000000c0e2",
+      "title": "The quiet evening",
+      "participants": [
+        {
+          "id": "9a000000-0000-4000-8000-0000000000a2",
+          "characterId": "aa000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "seedMemories": [
+    {
+      "id": "f1000000-0000-4000-8000-0000000000f1",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "I noticed the brass sextant in the shop window.",
+      "summary": "noticed the sextant",
+      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e2"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-0000000000f2",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "I resolved to buy the sextant before the tide turned.",
+      "summary": "resolved to buy the sextant",
+      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e3"
+    },
+    {
+      "id": "f3000000-0000-4000-8000-0000000000f3",
+      "characterId": "bb000000-0000-4000-8000-0000000000b1",
+      "content": "Bram counted seventeen gulls on the jetty rail.",
+      "summary": "counted the gulls",
+      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e3"
+    },
+    {
+      "id": "f4000000-0000-4000-8000-0000000000f4",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "I dislike the smell of low tide.",
+      "summary": "dislikes low tide",
+      "sourceMessageId": "e9000000-0000-4000-8000-0000000000e9"
+    }
+  ],
+  "runs": [
+    {
+      "name": "episode_pass",
+      "chatId": "1c000000-0000-4000-8000-00000000c0e1",
+      "timelineMode": "narrative",
+      "projectId": null,
+      "inAutonomousRoom": false,
+      "episodeResponse": "```json\n[{\"narrative\": \"On July 14th, Aria and Bram visited Lighthouse Point and bought the brass sextant from the chandler by the jetty. They stayed until the tide turned.\", \"summary\": \"visited lighthouse point\", \"when\": \"2026-07-14\", \"narrativeTime\": \"the third day ashore\", \"entities\": [\"Lighthouse Point\", \"  \", \"the chandler\", 7], \"participants\": [\"Aria\", \"Bram\"], \"importance\": 0.85}, {\"narrative\": \"Later the same afternoon they watched the gulls quarrel over the jetty rail.\", \"summary\": \"   \", \"importance\": 4}, {\"narrative\": \"A third episode beyond the cap.\", \"summary\": \"dropped by the cap\"}]\n```",
+      "usage": {
+        "promptTokens": 420,
+        "completionTokens": 90,
+        "totalTokens": 510
+      },
+      "windowMessages": [
+        {
+          "id": "e1000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Shall we walk out to the point?",
+          "participantId": null,
+          "createdAt": "2026-07-14T09:00:00.000Z"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "There is a brass sextant in the chandler's window.",
+          "participantId": "9a000000-0000-4000-8000-0000000000a1",
+          "createdAt": "2026-07-14T09:05:00.000Z"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "Seventeen gulls, and every one of them a critic.",
+          "participantId": "9b000000-0000-4000-8000-0000000000b1",
+          "createdAt": "2026-07-14T09:20:00.000Z"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-0000000000e4",
+          "role": "ASSISTANT",
+          "content": "An unstamped aside from an unknown participant.",
+          "participantId": "9z000000-0000-4000-8000-0000000000z9",
+          "createdAt": null
+        }
+      ]
+    },
+    {
+      "name": "no_episodes",
+      "chatId": "1c000000-0000-4000-8000-00000000c0e2",
+      "timelineMode": "realtime",
+      "projectId": null,
+      "inAutonomousRoom": true,
+      "episodeResponse": "[]",
+      "usage": {
+        "promptTokens": 120,
+        "completionTokens": 2,
+        "totalTokens": 122
+      },
+      "windowMessages": [
+        {
+          "id": "e2000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Nothing happened today.",
+          "participantId": null,
+          "createdAt": "2026-07-15T20:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "id": "p-cheap",
+    "provider": "OPENAI",
+    "modelName": "gpt-4o-mini",
+    "baseUrl": null,
+    "isLocal": false,
+    "parameters": null
+  },
+  "cannedEmbeddings": {
+    "visited lighthouse point\n\nOn July 14th, Aria and Bram visited Lighthouse Point and bought the brass sextant from the chandler by the jetty. They stayed until the tide turned.\n(when: 2026-07-14 · story time: the third day ashore · place: Lighthouse Point, the chandler)": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "Later the same afternoon they watched the gulls quarrel over\n\nLater the same afternoon they watched the gulls quarrel over the jetty rail.\n(when: 2026-07-14)": [
+      0,
+      1,
+      0,
+      0
+    ]
+  },
+  "cannedFailures": []
+}

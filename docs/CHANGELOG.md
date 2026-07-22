@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Conversations now consolidate their episodes. Whenever a chat folds its
+running summary, a new pass reads the just-folded stretch of turns and
+asks for up to two coherent, dated accounts of things that actually
+happened — an outing, a visit, an arrival — and writes each as an
+episodic memory for every character present, linked to the per-turn
+memory fragments from the same stretch so recalling the episode can pull
+the details back with it. The running summary itself gained a fifth
+section, an append-only Timeline of dated one-liners, and the turns fed
+into the fold now carry their dates so the model can date events from
+the transcript instead of guessing. Memory housekeeping learned the same
+episodic date guard the write gate uses: two similar memories from
+occasions more than a week apart are no longer merged together.
+
 Memories are now born with anchors. The per-turn memory extractor gets a
 clock (current date/time, timeline mode, and the in-story time on
 fictional timelines) and a new EVENT category, so it can return a

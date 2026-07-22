@@ -495,6 +495,10 @@ async fn context_summary_service_tier3_matches_oracle() {
                 let seams = RealContextSummarySeams {
                     db: &db,
                     embedding: &embedding,
+                    // P4.d14: the fold-episode pass drives the same cheap-LLM
+                    // path the fold itself used.
+                    completion: &completion,
+                    executor: &executor,
                 };
                 let r = generate_context_summary_with_seams(
                     &db,

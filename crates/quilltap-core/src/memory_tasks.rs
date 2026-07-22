@@ -809,6 +809,207 @@ pub fn parse_other_candidates_by_subject(
     result
 }
 
+// ===========================================================================
+// Fold-time episode consolidation (episodic spine — creation-side keystone)
+// ===========================================================================
+
+/// One message of the just-folded window, with its wall-clock timestamp so the
+/// model can date the episode from the transcript rather than guessing (v4
+/// `FoldEpisodeMessage`).
+#[derive(Clone, Debug)]
+pub struct FoldEpisodeMessage {
+    pub speaker: String,
+    pub content: String,
+    pub created_at: Option<String>,
+}
+
+/// A consolidated episode record extracted from a folded window (v4
+/// `FoldEpisode`): one coherent dated narrative of something that happened,
+/// spanning however many turns it took. Written as a `kind: 'episodic'` memory
+/// for each present character.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FoldEpisode {
+    /// 2–3 sentence narrative of what happened, naming place and time.
+    pub narrative: String,
+    /// 3–8 word summary, lowercase.
+    pub summary: String,
+    /// When it happened — absolute date preferred, else a relative/in-story phrase.
+    pub when: Option<String>,
+    /// In-story time phrase (narrative-timeline chats).
+    pub narrative_time: Option<String>,
+    /// Proper nouns of the episode: places, people, named things.
+    pub entities: Vec<String>,
+    /// Participant names involved in the episode.
+    pub participants: Vec<String>,
+    /// Importance 0.2–1.0.
+    pub importance: f64,
+}
+
+/// Hard cap on consolidated episodes per fold (v4 `FOLD_EPISODE_CAP`).
+pub const FOLD_EPISODE_CAP: usize = 2;
+
+/// v4 `FOLD_EPISODE_PROMPT` (memory-tasks.ts) — split at its one
+/// interpolation, [`FOLD_EPISODE_CAP`]. Extracted mechanically (see
+/// `harness/oracle/scripts/extract-memory-task-prompts.py` for the sibling
+/// extraction of the SELF/OTHER bodies); the fold-episode differential proves
+/// the bytes.
+const FOLD_EPISODE_PROMPT_BEFORE_CAP: &str = r####"You are consolidating a batch of roleplay conversation turns into EPISODE records — coherent, dated accounts of specific things that happened.
+
+An episode is a real occurrence at a specific time and/or place: an outing, a visit, an arrival, a completed undertaking, a notable incident. It is NOT a standing fact, an opinion, a mood, or an ongoing thread — only something that happened.
+
+Read the dated turns below. Return 0–"####;
+const FOLD_EPISODE_PROMPT_AFTER_CAP: &str = r####" episodes. Most windows contain none — return [] freely. Only emit an episode when the turns actually depict or recount a specific occurrence worth remembering as an event.
+
+For each episode:
+  narrative     2–3 sentences, past tense, third person, using participant
+                names. The prose must ITSELF name the place and the time
+                ("On July 14th, Amy and Charlie visited Lighthouse Point
+                and bought the brass sextant…").
+  summary       3–8 words, lowercase, no punctuation
+  when          when it happened: an absolute date (YYYY-MM-DD, resolved
+                against the message timestamps and the CLOCK line) whenever
+                possible, otherwise the phrase as stated
+  narrativeTime the in-story time phrase, only when the story runs on a
+                fictional timeline ("the third night at sea")
+  entities      2–6 proper nouns: places, people, named things
+  participants  names of those involved
+  importance    0.20–1.00 (0.9 = a day the participants will retell for
+                years; 0.5 = a pleasant but ordinary outing)
+
+Return a JSON array only. No prose, no code fences. If nothing qualifies, return []."####;
+
+/// The assembled fold-episode system prompt.
+pub fn fold_episode_prompt() -> String {
+    format!("{FOLD_EPISODE_PROMPT_BEFORE_CAP}{FOLD_EPISODE_CAP}{FOLD_EPISODE_PROMPT_AFTER_CAP}")
+}
+
+/// v4 `parseFoldEpisodes`: strip fences, parse, coerce each item, cap at
+/// [`FOLD_EPISODE_CAP`]. Any parse error yields `[]` (v4's whole-function
+/// try/catch). A `null` item is skipped (v4 guards `!raw || typeof raw !==
+/// 'object'` BEFORE dereferencing), unlike the candidate parser.
+pub fn parse_fold_episodes(content: &str) -> Vec<FoldEpisode> {
+    let clean = strip_code_fences(content);
+    let Ok(parsed) = serde_json::from_str::<Value>(&clean) else {
+        return Vec::new();
+    };
+    let items: Vec<Value> = match parsed {
+        Value::Array(items) => items,
+        other => vec![other],
+    };
+
+    /// `strArray`: strings only, blank-trimmed out, trimmed, capped at 8.
+    fn str_array(v: Option<&Value>) -> Vec<String> {
+        match v {
+            Some(Value::Array(items)) => items
+                .iter()
+                .filter_map(|e| e.as_str())
+                .filter(|e| !js_trim(e).is_empty())
+                .map(|e| js_trim(e).to_string())
+                .take(8)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    let mut episodes: Vec<FoldEpisode> = Vec::new();
+    for raw in &items {
+        if episodes.len() >= FOLD_EPISODE_CAP {
+            break;
+        }
+        // `!raw || typeof raw !== 'object'` — null and primitives skip; JS
+        // arrays are typeof 'object' so they pass (and then drop on the
+        // empty-narrative check).
+        if !matches!(raw, Value::Object(_) | Value::Array(_)) {
+            continue;
+        }
+        let narrative = match raw.get("narrative") {
+            Some(Value::String(s)) => js_trim(s).to_string(),
+            _ => String::new(),
+        };
+        if narrative.is_empty() {
+            continue;
+        }
+        let summary = match raw.get("summary") {
+            Some(Value::String(s)) if !js_trim(s).is_empty() => js_trim(s).to_string(),
+            // v4 `narrative.slice(0, 60)` — UTF-16 code units.
+            _ => utf16_truncate(&narrative, 60).to_string(),
+        };
+        episodes.push(FoldEpisode {
+            narrative,
+            summary,
+            when: match raw.get("when") {
+                Some(Value::String(s)) if !js_trim(s).is_empty() => Some(js_trim(s).to_string()),
+                _ => None,
+            },
+            narrative_time: match raw.get("narrativeTime") {
+                Some(Value::String(s)) if !js_trim(s).is_empty() => Some(js_trim(s).to_string()),
+                _ => None,
+            },
+            entities: str_array(raw.get("entities")),
+            participants: str_array(raw.get("participants")),
+            // `Math.min(1, Math.max(0.2, importance))`, else 0.6.
+            importance: match raw.get("importance") {
+                Some(Value::Number(n)) => n
+                    .as_f64()
+                    .map(|v| 1.0_f64.min(0.2_f64.max(v)))
+                    .unwrap_or(0.6),
+                _ => 0.6,
+            },
+        });
+    }
+    episodes
+}
+
+/// Build the fold-episode call's messages (the pure half of v4
+/// `extractEpisodesFromFold`, up to the `executeCheapLLMTask` call). Returns
+/// `None` for an empty window — v4's early `{ success: true, result: [] }`
+/// return, no call made.
+pub fn build_fold_episode_messages(
+    window_messages: &[FoldEpisodeMessage],
+    clock: &ExtractionClock,
+) -> Option<Vec<CompletionMessage>> {
+    if window_messages.is_empty() {
+        return None;
+    }
+
+    let rendered = window_messages
+        .iter()
+        .map(|m| {
+            // v4: `[${createdAt.slice(0, 16).replace('T', ' ')}] ` — the FIRST
+            // 'T' only (String.prototype.replace with a string pattern).
+            let stamp = match m.created_at.as_deref().filter(|s| !s.is_empty()) {
+                Some(created_at) => {
+                    let head = utf16_truncate(created_at, 16);
+                    format!("[{}] ", head.replacen('T', " ", 1))
+                }
+                None => String::new(),
+            };
+            let content = if utf16_len(&m.content) > 1500 {
+                format!("{}…", utf16_truncate(&m.content, 1500))
+            } else {
+                m.content.clone()
+            };
+            format!("{stamp}{}: {content}", m.speaker)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let mut clock_line = format!(
+        "CLOCK: current date/time {}; timeline mode {}",
+        clock.now_iso, clock.timeline_mode
+    );
+    if let Some(narrative_now) = clock.narrative_now.as_deref().map(js_trim) {
+        if !narrative_now.is_empty() {
+            clock_line.push_str(&format!("; current in-story time {narrative_now}"));
+        }
+    }
+
+    Some(vec![
+        CompletionMessage::system(fold_episode_prompt()),
+        CompletionMessage::user(format!("{clock_line}\n\nDATED TURNS:\n\n{rendered}")),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

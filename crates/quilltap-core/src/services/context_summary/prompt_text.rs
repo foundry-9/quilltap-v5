@@ -9,14 +9,15 @@
 
 pub(crate) const FOLD_SUMMARY_PROMPT: &str = r#"You are updating an existing summary of an ongoing roleplay conversation.
 
-The summary tracks four sections:
+The summary tracks five sections:
 
 - Active threads: what is currently in motion. Carry forward anything still unresolved. Drop threads that have closed. Add new ones from the new turns.
 - Resolved decisions: things now locked. Carry forward all prior entries — these don't unresolve. Add anything new the characters have committed to.
 - Emotional state: where the room is right now, not the journey. Replace the prior Emotional state entirely with the current state.
 - Open questions: unanswered things in the air. Drop any the new turns answered. Carry forward the rest. Add new ones.
+- Timeline: dated one-liners of specific things that HAPPENED — visits, outings, arrivals, purchases, incidents. Format each line as "- YYYY-MM-DD (narrative: 'in-story time', only if the story runs on its own timeline): what happened, naming place and participants". Dates come from the timestamps on the new turns. APPEND-ONLY: carry forward every prior Timeline line unchanged and add new lines at the bottom. Cap at ~30 lines — when over, merge the OLDEST lines into coarser one-liners (never drop the dates). Standing facts, moods, and decisions do not belong here — only events.
 
-Rewrite the four sections in plain prose. Be concise. Don't transcribe — synthesize. Use character names, not roles. Output only the four sections under their labels; no preamble, no closing remarks."#;
+Rewrite the five sections in plain prose (the Timeline as its dated list). Be concise. Don't transcribe — synthesize. Use character names, not roles. Output only the five sections under their labels; no preamble, no closing remarks."#;
 
 pub(crate) const CHAT_TITLE_FROM_SUMMARY_PROMPT: &str = r#"Generate a literary title for this conversation based on the summary provided, like titling a short story.
 The title should:

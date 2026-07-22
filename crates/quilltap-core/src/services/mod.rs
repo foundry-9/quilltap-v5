@@ -77,6 +77,7 @@ pub mod embedding_refit_job;
 pub mod file_fallback;
 pub mod file_storage;
 pub mod first_message_context;
+pub mod fold_episode_pass;
 pub mod frozen_archive;
 pub mod help_doc_sync;
 pub mod home;

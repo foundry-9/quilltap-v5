@@ -362,9 +362,15 @@ impl CompletionProvider for CannedCompletionProvider {
                 match self.responses.get(&key) {
                     Some(r) => Ok(r.clone()),
                     None => {
+                        // NB "temp", not "temperature": the cheap-LLM executor
+                        // treats a provider error mentioning "temperature" (or
+                        // "does not support") as a temperature REJECTION and
+                        // caches the profile as no-custom-temperature, which
+                        // would silently re-key every later canned call in the
+                        // same run. A canned MISS must not look like one.
                         Err(CompletionError::new(format!(
                     "no canned completion registered for call (provider {provider}, model {}, \
-                     temperature {:?}, {} message(s), first {} chars)",
+                     temp {:?}, {} message(s), first {} chars)",
                     params.model,
                     params.temperature,
                     params.messages.len(),
