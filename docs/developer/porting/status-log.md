@@ -27687,6 +27687,80 @@ preference + stored width, the accordion's default-open + close + the
 "2 characters" description, the cast in predicted turn order with 1/2/3 badges
 and a nudge emit, the strip pause). `ng test` 206 files / 2,478; `ng build`
 clean. Not yet mounted in the Salon (unit 6).
+
+## P4.9H1 unit 4 — the Chat section + **the Story's Clock**
+
+**Ported** (`chat/sidebar/chat-section.ts`, v4 `ChatSidebar.tsx:872-1270`):
+the roleplay-template select, **the Story's Clock**, the project entry, the
+image-provider select (with v4's ` ⚠️ No API Key` suffix), the announce-images
+tri-state, and the Regenerate Background entry (moved back from v5's header
+cluster — v4 keeps it only here; the header reconciliation lands in unit 6).
+Reference data (templates / image profiles / api keys) is fetched only after the
+section is first opened — v4's `hasEverOpened` latch, which matters more in
+Angular than in React because a projected child is instantiated even while its
+card is closed.
+
+**The Story's Clock** is v4 `:1147-1165` byte for byte: the `The Story’s Clock`
+label, the `Real time` / `Story time` options, both helper paragraphs (the
+curly apostrophes and em-dashes included — pinned by a spec that compares the
+whole string), `timelineMode === 'narrative' ? 'narrative' : 'realtime'` (so a
+NULL column reads Real time), the saving-state disable, and
+`{ chat: { timelineMode: value } }` to `PUT /api/v1/chats/{id}` — the arm the
+round-2 differential pins. Both toast strings carry over ("The story now keeps
+its own hours" / "The story is back on the clock on the wall").
+
+### ⚠ A v4 bug found in survey — ported faithfully, banked for v4
+
+v4's chat GET (`handlers/get.ts:528-568`) projects an explicit object that
+**omits `timelineMode`, `alertCharactersOfLanternImages`, `showThinking` and
+`answerConfirmationOverride`**, though `app/salon/[id]/types.ts:253-262` declares
+all four on the `Chat` type. `SalonView` therefore passes `undefined` to each of
+those controlled selects, and after a successful save the re-render snaps the
+select back to its default: **the write lands, the display never reflects it,
+and a reload can never show the true value.** For the Story's Clock — the
+episodic campaign's headline switch — that means v4 cannot tell you which clock
+a chat is on.
+
+v5's `api/salon.rs:303-422` ports that projection faithfully, and this lane may
+not touch the server (Shared contract), so:
+
+- **Divergence (one, deliberate, applied uniformly):** each write-only select
+  keeps the value just chosen — a local signal seeded from the prop and re-synced
+  when the prop moves, then adopted optimistically on change and REVERTED (model
+  + the `<select>`'s own value) if the write fails. This is v4's own idiom for
+  `selectedTemplateId` on the same panel (`:892`, `:901-904`), applied to the
+  controls whose prop the route forgets to send.
+- **Still faithful where it counts:** after a reload v5 shows the default option
+  exactly as v4 does, because neither client can read the column back.
+- **Banked for v4:** adding the four columns to v4's GET projection is a v4-side
+  fix; when it lands, v5 adopts it by re-porting the projection (D23-style) and
+  the local-selection layer becomes a no-op. v5 does NOT invent the field.
+
+### Tier-3 deferrals (LOUD — rendered nowhere, nothing stubbed)
+
+- **The Concierge tri-state** (v4 :1100) — the chat PUT's `conciergeState` key is
+  a named v5 server deferral (`api/salon.rs:1216`).
+- **Agent Mode** (v4 :1116) — `POST ?action=toggle-agent-mode`, unported.
+- **Auto-generate character avatars** (v4 :1218) — `POST
+  ?action=toggle-avatar-generation`, unported.
+- **Tools…** (v4 :1230) — `ChatToolSettingsModal` unported.
+- **Run Tool…** (v4 :1243) — `RunToolModal` unported (v5's composer custom-tools
+  popup is Pascal's surface, a different thing).
+- **Project (REDUCED):** v4 opens `ChatProjectModal` to assign/detach; that modal
+  is unported, so the entry navigates to the ported Prospero screen and shows
+  only when the chat already has a project.
+
+**Client adaptation (recorded):** v4 posts template / image-profile / announce as
+TOP-LEVEL keys and only the clock as `{chat:{…}}`; v5's `chatUpdate` carries only
+the `chat` bag (the top-level shortcuts are a named server deferral,
+`api/salon.rs:1217`), so every write here uses the bag form.
+
+**Verification:** `chat-section.spec.ts` (6 cases — the two options + NULL⇒Real
+time, both helper paragraphs asserted as whole strings, the write shape +
+kept choice + refetch + success copy in both directions, the failure path
+keeping the previous clock and showing the error, the other three writes' bag
+shapes, and the project entry's gate + href). `ng test` 207 files / 2,484;
+`ng build` clean.
 ## P4.d15 unit 1 — the recall-history retro-signature machinery (episodic round 3, lane B start)
 
 **Lane:** P4.d15 (round 3 lane B), branch

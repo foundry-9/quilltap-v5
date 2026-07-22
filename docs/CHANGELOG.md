@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.9H1 unit 4: the sidebar's Chat section, with The Story's Clock - the
+episodic timeline-mode switch this round exists for. v4's copy verbatim
+(both helper paragraphs), writing {chat:{timelineMode}} through the
+ported PUT arm, plus the roleplay-template, image-provider and
+announce-images selects and the project entry. Reference data loads only
+after the section is first opened, as in v4.
+
+Found in v4 and ported faithfully: v4's chat GET never returns
+timelineMode, alertCharactersOfLanternImages, showThinking or
+answerConfirmationOverride, so in v4 those selects snap back to their
+default after a successful save. One deliberate divergence: v5 keeps the
+value the operator just picked (v4's own idiom for the sibling
+roleplay-template control on the same panel) and reverts it only if the
+write fails. A reload still shows the default in both, since neither can
+read the column back.
+
+Loud deferrals, rendered nowhere: the Concierge tri-state, Agent Mode,
+auto-generate avatars, Tools and Run Tool - each rides a verb v5 has not
+ported. SPA 0.5.249.
+
 P4.9H1 unit 3: the chat sidebar scaffold and its cast (v4 ChatSidebar's
 shell + CollapsedStrip + ParticipantsSection + ParticipantCard). Collapse
 and width persist under v4's exact localStorage keys, the inner edge

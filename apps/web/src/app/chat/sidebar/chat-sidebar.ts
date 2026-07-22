@@ -24,6 +24,7 @@ import {
   type TurnSelectionResult,
   type TurnState,
 } from '../turn-order';
+import { ChatSection, type ChatSectionState } from './chat-section';
 import { ParticipantsSection } from './participants-section';
 
 const STORAGE_KEY = 'quilltap.chat-sidebar.collapsed';
@@ -113,7 +114,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
 @Component({
   selector: 'qt-chat-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, CollapsibleCard, ParticipantsSection],
+  imports: [Avatar, Icon, CollapsibleCard, ParticipantsSection, ChatSection],
   host: {
     '[class.qt-chat-sidebar]': '!effectiveCollapsed()',
     '[class.qt-chat-sidebar-overlay]': 'isOverlay()',
@@ -246,6 +247,22 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (regenerateAvatar)="regenerateAvatar.emit($event)"
           />
         </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Chat"
+          [isOpen]="openSection() === 'chat'"
+          (openChange)="setSection('chat', $event)"
+        >
+          <qt-chat-section
+            [chatId]="chatId() ?? ''"
+            [state]="chatSectionState()"
+            [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
+            [regeneratingBackground]="regeneratingBackground()"
+            [sectionOpen]="openSection() === 'chat'"
+            (chatUpdated)="chatUpdated.emit()"
+            (regenerateBackground)="regenerateBackground.emit()"
+          />
+        </qt-collapsible-card>
       </div>
 
       @if (turnSelectionResult()?.debug; as debug) {
@@ -282,6 +299,14 @@ export class ChatSidebar implements OnInit {
   readonly isDangerousChat = input(false);
   readonly chatId = input<string | null>(null);
 
+  // --- Chat section ---
+  readonly chatSectionState = input.required<ChatSectionState>();
+  /** v4 `chatControls.storyBackgroundsEnabled` — gates the regenerate entry. */
+  readonly storyBackgroundsEnabled = input(false);
+  readonly regeneratingBackground = input(false);
+
+  readonly chatUpdated = output<void>();
+  readonly regenerateBackground = output<void>();
   readonly togglePause = output<void>();
   readonly nudge = output<string>();
   readonly queue = output<string>();

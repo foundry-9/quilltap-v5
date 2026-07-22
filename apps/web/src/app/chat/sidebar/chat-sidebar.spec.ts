@@ -1,10 +1,15 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { beforeEach, describe, expect, it } from 'vitest';
+
+import { CoreClient } from '../../core/core-client';
 
 import type { ParticipantDetail } from '../../core/core-contract';
 import { createInitialTurnState, type TurnSelectionResult, type TurnState } from '../turn-order';
 import { ChatSidebar } from './chat-sidebar';
+import type { ChatSectionState } from './chat-section';
 
 /**
  * The sidebar scaffold (v4 `ChatSidebar.tsx`): the persisted collapse
@@ -47,6 +52,7 @@ function participant(
   template: `
     <div class="qt-chat-layout">
       <qt-chat-sidebar
+        [chatSectionState]="chatSectionState"
         [participants]="participants()"
         [turnState]="turnState()"
         [turnSelectionResult]="turnSelectionResult()"
@@ -71,12 +77,30 @@ class Host {
     cycleComplete: false,
   });
   readonly isPaused = signal(false);
+  readonly chatSectionState: ChatSectionState = {
+    roleplayTemplateId: null,
+    timelineMode: null,
+    imageProfileId: null,
+    alertCharactersOfLanternImages: null,
+    projectId: null,
+    projectName: null,
+  };
   readonly paused: boolean[] = [];
   readonly nudged: string[] = [];
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
-  TestBed.configureTestingModule({ imports: [Host] });
+  TestBed.configureTestingModule({
+    imports: [Host],
+    // The Chat section is a projected child, so Angular instantiates it even
+    // while its card is closed — it needs its injectables present. (Its own
+    // `hasEverOpened` latch still keeps the reference fetches from firing.)
+    providers: [
+      { provide: CoreClient, useValue: { dispatch: async () => ({ type: 'chat', data: {} }) } },
+      provideTanStackQuery(new QueryClient()),
+      provideRouter([]),
+    ],
+  });
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
   await fixture.whenStable();
