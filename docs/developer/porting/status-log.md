@@ -27957,3 +27957,13 @@ set, 0 failed; the 15 families above re-run by name, zero SKIP. `apps/web`
 UNTOUCHED (`git diff 06bd1a4a..HEAD -- apps/web` = 0 lines), as are P4.d15's
 three owned files. Full Playwright deferred to the unifier per the order
 (port-4319 discipline). Versions at lane end: core 0.0.317, harness 0.0.274.
+
+**⚠ v4 drift landed AFTER this lane's work, at lane close (2026-07-22):**
+`ab0f175e` "fix(theme): Madman's Box small-caps headings; button rule keyed
+to `.qt-button`" — `themes/bundled/madmans-box/{styles.css,theme.json}` +
+`docs/CHANGELOG.md`. **ZERO `lib/` code**, so the oracle baseline for this
+round stays `8bf3cb5f` and every family this lane regenerated (all of which
+ran while v4 HEAD was still `8bf3cb5f`, tree clean or dirty only on those two
+theme files) is unaffected. The theme itself is a v5 SPA-side port target if
+those bundled themes are mirrored — flagged for the unifier / the next
+drift-check, NOT absorbed here.
