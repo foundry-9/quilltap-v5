@@ -27870,3 +27870,90 @@ anchorLine, 7 eventReferenceTimeMs, 6 embeddingText), so a hand-mirrored unit
 test would be strictly weaker duplicate coverage. `episodic-visibility.test
 .ts` belongs to the round-1/round-2 surfaces (the `timelineMode` PUT arm,
 landed in P4.d13).
+
+## P4.d14 lane record — the episodic-recall drift catch-up, ROUND 3 lane A (2026-07-22)
+
+**Branch `claude/p4-episodic-creation-fold-4f22bd`, 4 commits.** v4 baseline
+`8bf3cb5f`, drift-checked at lane start (HEAD == `8bf3cb5f`, tree clean) and
+at lane end (HEAD still `8bf3cb5f`; ⚠ the tree had since gone DIRTY on two
+`themes/bundled/madmans-box/` files — CSS + theme.json, no `lib/` code, so
+every oracle in this lane regenerated straight from the checkout and is
+unaffected. Flagged for the unifier: re-check before assuming a clean v4).
+
+**Commits.**
+1. `P4.d14 unit 1: the clocked creation prompts + the creation-side anchors`
+2. `P4.d14 unit 2: the fold-episode pass + the fold Timeline`
+3. `P4.d14 unit 3: the housekeeping merge date guard`
+4. `P4.d14 tier 2: the seam-note sweep`
+
+**The order's tier-1 items, all landed** (1–4 in commit 1 — see that record
+for why they cannot be split against an all-or-nothing oracle; 5+6 in commit
+2; 7 in commit 3; 8's transitive regens across all three).
+
+**The 15 differential families this lane owns, all regenerated fresh at
+`8bf3cb5f` and re-run BY NAME with `--nocapture`, all green, zero SKIP:**
+`QT_ORACLE_MEMORY_TASKS` (18 cases), **`QT_ORACLE_GATE` (12 scenarios —
+UN-SKIPPED, the lane's headline)**, `QT_ORACLE_PROCESSOR` (4 calls),
+`QT_ORACLE_CARINA_MEM`, `QT_ORACLE_MEM`, `QT_ORACLE_MEMORIES_ROUTES` +
+`QT_ORACLE_MEMORIES_CONFIG`, `QT_ORACLE_MEMHOUSEKEEPING` (7 ops), **NEW
+`QT_ORACLE_FOLD_EPISODE` (2 runs)**, `QT_ORACLE_CTXSUM`,
+`QT_ORACLE_CHAT_TASKS`, `QT_ORACLE_CONTEXT_SUMMARY`, `QT_ORACLE_EPISODIC`,
+`QT_ORACLE_EXTRACT_NOVEL_DETAILS`, `QT_ORACLE_WEIGHTING`,
+`QT_ORACLE_MEMORY_INJECTOR`.
+
+**Fixtures changed (and what that invalidates).** `memory-tasks-tier1.json`
+(+4 cases), `memory-gate-tier3.json` (+5 scenarios, +6 canned embeddings, 2
+existing keys re-anchored) + `build-memory-gate-fixture.ts` (seed anchors),
+`memory-processor-tier3.json` (all 8 canned-embedding keys re-anchored, +1
+profile, +4 rules, +1 call, +1 `turnTimestamp` for determinism),
+`memory-housekeeping-tier2.json` (+1 character, +4 seeds, +1 op) +
+its builder (seed `occurredAt`/`kind`), and the NEW
+`fold-episode-tier3.json` + `build-fold-episode-fixture.ts` +
+`fold-episode-tier3.test.ts`. **All of these are consumed ONLY by this lane's
+own families** — no `crates/quilltap-web/tests/fixtures/` change was needed
+(the memories web fixture was read read-only by the routes oracle), and the
+committed `episodic-recall-{main,mount}.db` (P4.d15's) was not touched.
+
+**Cross-lane surface P4.d15 should know about:** `MemoryCandidate` gained
+`kind`/`when`/`entities`; `TurnTranscript` gained `turn_timestamp` and
+`TurnCharacterSlice` gained `last_message_created_at`;
+`TurnMemoryExtractionContext` gained `timeline_mode`; `ExtractedCandidate`
+gained five episodic fields; `ContextSummarySeams` gained
+`run_fold_episode_pass` and `RealContextSummarySeams` gained two generic
+params (`completion` + `executor`); `CannedCompletionProvider`'s canned-miss
+message no longer says "temperature". Comment-only edits landed in three
+files this lane does not own but the sibling lanes don't either
+(`episodic.rs`, `memory_recap/distill.rs`,
+`distill_search_extraction_equivalence.rs`).
+
+**Loud deferrals leaving this lane (none of them new gaps):**
+- `compressMemories` stays the pre-existing tracked deferral
+  (`build_context.rs:2264`); its keep/drop prompt flip needs no round-3 code
+  and the comment update is P4.d15's (Shared contract §4).
+- Pascal `persist` — deferred in v4 itself; nothing to port.
+- The batched re-embed of legacy rows — v4 explicitly did not build it; mixed
+  embedded-text vintages are the accepted state, not a v5 gap.
+- `updateMemoryWithEmbedding` / `generateMissingEmbeddings` /
+  `createMemoryDirect` (skip-gate) remain UNPORTED in v5, so v4's
+  `buildMemoryEmbeddingText` hunks in them have no landing site. The memory
+  PUT route does not re-embed (v4's `scheduleRefit` is a host-timing seam).
+- The two `ExtractionClock` types stay separate (a post-round rider).
+- `check_and_generate_summary_if_needed`'s internal fold uses `NoopSeams`, so
+  the fold-episode pass no-ops on that path in v5 while v4 runs it — the same
+  documented shape the vault mirror and relevant-conversations refresh already
+  have there.
+- The fold-episode pass is not LIVE in production: neither `CONTEXT_SUMMARY`
+  nor `MEMORY_EXTRACTION` is a registered job handler in `quilltap-host` yet,
+  so nothing in the running server drives `generate_context_summary` or
+  `process_turn_for_memory`. Everything this lane ported is verified but
+  dormant until those handlers are wired — the same standing state round 1
+  and round 2 left the rest of the memory pipeline in.
+
+**Gate (this Mac, in the lane worktree):** `cargo fmt --all --check` clean;
+clippy `--workspace --all-targets -D warnings` green in BOTH feature sets
+(default + `--features quilltap-core/native-transport`); `cargo build
+--workspace --release` clean; `cargo test --workspace` with the full lane env
+set, 0 failed; the 15 families above re-run by name, zero SKIP. `apps/web`
+UNTOUCHED (`git diff 06bd1a4a..HEAD -- apps/web` = 0 lines), as are P4.d15's
+three owned files. Full Playwright deferred to the unifier per the order
+(port-4319 discipline). Versions at lane end: core 0.0.317, harness 0.0.274.
