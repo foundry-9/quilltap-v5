@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Docs: planned the `e646f58b` v4-drift catch-up round — two parallel
+SPA-only work orders committed. P4.d16 (the `8d86847a` workspace
+deep-links re-port: the salon-list tab kind, drill-in payloads,
+character-view in the intent layer, the terminal-popout funnel, the
+/salon/new no-modal translation, and the workspace corpus recapture)
+and P4.d17 (the `deab0e5d`/`ab0f175e` re-port: the themeable thinking
+indicator — never previously ported; v5 ships a pulsing dot — plus the
+Madman's Box refresh to 1.1.7). The round absorbs all four outstanding
+v4 commits; the oracle baseline moves to `e646f58b` at unification.
+
 Unified P4.6bj (the memory-pipeline job handlers, single lane) onto
 main: the CONTEXT_SUMMARY and MEMORY_EXTRACTION background jobs now
 have registered handlers in the host, so the ported extraction/fold
