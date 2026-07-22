@@ -353,7 +353,9 @@ where
     let file_id = uuid::Uuid::new_v4().to_string();
     let description = format!("{character_name} — wardrobe portrait");
 
-    // Storage branch key: chat.projectId.
+    // Storage branch key: chat.projectId. An upload Err is v4 uploadFile's
+    // throw inside the save try-block — the job fails HERE (v4's catch wrap),
+    // before the files row / avatar update / Aurora announcement.
     let project_upload = if let Some(project_id) = &project_id_opt {
         Some(
             deps.upload
@@ -364,7 +366,8 @@ where
                     project_id,
                     "/character-avatars/",
                 )
-                .await,
+                .await
+                .map_err(|e| format!("Failed to save avatar image: {e}"))?,
         )
     } else {
         None

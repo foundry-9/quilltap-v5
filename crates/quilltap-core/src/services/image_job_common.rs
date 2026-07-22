@@ -501,7 +501,11 @@ pub(crate) fn resolve_danger_settings_for_chat(
 /// handlers land project-scoped images through this; the corpus keeps the
 /// database-backed (vault / Lantern) branches primary with a recorded project
 /// case. Async — the real upload is a host call. `folder_path` is `/character-
-/// avatars/` (avatar) or `/story-backgrounds/` (story).
+/// avatars/` (avatar) or `/story-backgrounds/` (story). `Err` is v4
+/// `uploadFile`'s throw — the handlers propagate it and the job FAILS before
+/// the `files` row / avatar update / Lantern announcement (dogfood finding
+/// #16: the old infallible shape buried the error in a sentinel storageKey
+/// and let the job "succeed" with an unservable file).
 pub trait ProjectImageUpload {
     fn upload(
         &self,
@@ -510,7 +514,7 @@ pub trait ProjectImageUpload {
         content_type: &str,
         project_id: &str,
         folder_path: &str,
-    ) -> impl std::future::Future<Output = ProjectUploadResult> + Send;
+    ) -> impl std::future::Future<Output = Result<ProjectUploadResult, String>> + Send;
 }
 
 /// The upload seam's result (v4 `uploadFile`'s `{ storageKey, storedMimeType,
@@ -535,12 +539,12 @@ impl ProjectImageUpload for NoProjectImageUpload {
         content_type: &str,
         _project_id: &str,
         _folder_path: &str,
-    ) -> ProjectUploadResult {
-        ProjectUploadResult {
+    ) -> Result<ProjectUploadResult, String> {
+        Ok(ProjectUploadResult {
             storage_key: "fs-seam:unwired".to_string(),
             stored_mime_type: content_type.to_string(),
             size_bytes: content.len(),
-        }
+        })
     }
 }
 

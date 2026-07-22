@@ -1131,7 +1131,6 @@ fn save_file_entry(
     let codec = NotConfiguredPixelCodec;
     let stored: StoredBlob = if let Some(pid) = project_id {
         write_project_file_to_mount_store(
-            main,
             mount,
             &codec,
             pid,

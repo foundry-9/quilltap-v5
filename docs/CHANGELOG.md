@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Fixed generated character avatars and story backgrounds silently
+breaking in project chats on real instances (dogfood finding #16). The
+project-store lookup read `project_doc_mount_links` on the main
+database, where the table does not exist on a real instance (it lives
+in the mount index), so every project looked store-less; the infallible
+upload seam then stored the error text as the file's storage key, and
+the job "succeeded" with an unservable file — broken participant
+avatars and an Aurora announcement pointing at a dead uuid. The lookup
+now reads the mount-index partition, and the upload seam returns a
+Result so a failed upload fails the job before the file row, the avatar
+update, and the announcement — matching v4's throw, including its
+store-less error message. Regression test provisions the full fresh
+schema (real-instance table placement) and pins both arms; the four
+affected differential families (avatar job, story background job, files
+routes, courier images) re-ran green over oracles regenerated fresh
+from v4. Versions: core 0.0.322, harness 0.0.278.
+
 Unified round 3 of the episodic-recall drift catch-up (P4.d14 + P4.d15 +
 P4.9H1) — the campaign's final round; the largest v4 drift in the port
 is now fully absorbed. Memories are born with anchors (clocked

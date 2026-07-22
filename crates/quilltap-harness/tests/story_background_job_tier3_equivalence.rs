@@ -163,12 +163,12 @@ impl ProjectImageUpload for RecordingProjectUpload {
         content_type: &str,
         project_id: &str,
         _folder_path: &str,
-    ) -> ProjectUploadResult {
-        ProjectUploadResult {
+    ) -> Result<ProjectUploadResult, String> {
+        Ok(ProjectUploadResult {
             storage_key: format!("project-upload:{project_id}:{filename}"),
             stored_mime_type: content_type.to_string(),
             size_bytes: content.len(),
-        }
+        })
     }
 }
 

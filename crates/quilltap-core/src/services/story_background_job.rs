@@ -667,6 +667,8 @@ where
     );
 
     // Storage branch key: payload.projectId (NOT chat.projectId — v4 wrinkle).
+    // An upload Err is v4 uploadFile's throw inside the save try-block — the
+    // job fails HERE (v4's catch wrap), before the files row / chat update.
     let project_upload = if let Some(project_id) = &payload.project_id {
         Some(
             deps.upload
@@ -677,7 +679,8 @@ where
                     project_id,
                     "/story-backgrounds/",
                 )
-                .await,
+                .await
+                .map_err(|e| format!("Failed to save generated image: {e}"))?,
         )
     } else {
         None

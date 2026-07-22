@@ -948,15 +948,16 @@ fn normalise_folder_dir(folder_path: Option<&str>) -> String {
 
 /// v4 `getProjectDocumentStore` (`project-store-bridge.ts:43`) — the primary
 /// database-backed store linked to a project, or `None`. Fails soft.
-pub fn get_project_document_store(
-    main: &Connection,
-    mount: &Connection,
-    project_id: &str,
-) -> Option<String> {
+///
+/// Both tables this reads (`project_doc_mount_links`, `doc_mount_points`) live
+/// in the MOUNT-INDEX partition — a real instance's main DB does not have them
+/// (dogfood finding #16: a `main` connection here made every real-data project
+/// look store-less).
+pub fn get_project_document_store(mount: &Connection, project_id: &str) -> Option<String> {
     if project_id.is_empty() {
         return None;
     }
-    let link_ids = crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(main)
+    let link_ids = crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(mount)
         .find_by_project_id(project_id)
         .ok()?;
     if link_ids.is_empty() {
@@ -977,7 +978,6 @@ pub fn get_project_document_store(
 /// v4-input-bag argument list, the image_job_storage precedent.)
 #[allow(clippy::too_many_arguments)]
 pub fn write_project_file_to_mount_store(
-    main: &Connection,
     mount: &Connection,
     codec: &dyn PixelCodec,
     project_id: &str,
@@ -987,9 +987,10 @@ pub fn write_project_file_to_mount_store(
     folder_path: Option<&str>,
     description: Option<&str>,
 ) -> Result<StoredBlob, DbError> {
-    let Some(mount_point_id) = get_project_document_store(main, mount, project_id) else {
+    let Some(mount_point_id) = get_project_document_store(mount, project_id) else {
+        // v4 manager.ts uploadFile's store-less throw, byte-for-byte.
         return Err(DbError::Key(format!(
-            "Project {project_id} has no linked database-backed document store"
+            "Project {project_id} has no linked database-backed document store. Run convert-project-files-to-document-stores-v1 to provision one before uploading."
         )));
     };
     let safe_name = sanitize_leaf_name(filename);
@@ -1019,11 +1020,10 @@ pub fn write_project_file_to_mount_store(
 /// `writeProjectFileToMountStore` over the ported mount-store write path,
 /// returning the post-transcode mime/size.
 ///
-/// The frozen seam trait is INFALLIBLE while v4's `uploadFile` throws (failing
-/// the job); on an upload failure this impl returns a
-/// `fs-seam:error:<message>` sentinel storage key — a flagged trait-shape gap
-/// (handoff: widen `ProjectImageUpload` to `Result` at a unification pass; the
-/// job corpora keep the database-backed branches primary).
+/// `Err` is v4 `uploadFile`'s catch-and-rethrow (`Failed to upload file
+/// '<name>': <message>`) — the job handlers propagate it and the job fails,
+/// exactly as v4's does. (Dogfood finding #16 retired the old infallible
+/// shape, which buried the error in a `fs-seam:error:` sentinel storage key.)
 pub struct RealProjectImageUpload {
     pub db: Db,
     pub codec: Arc<dyn PixelCodec>,
@@ -1037,8 +1037,9 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
         content_type: &str,
         project_id: &str,
         folder_path: &str,
-    ) -> crate::services::image_job_common::ProjectUploadResult {
+    ) -> Result<crate::services::image_job_common::ProjectUploadResult, String> {
         let filename = filename.to_string();
+        let filename_for_err = filename.clone();
         let content_vec = content.to_vec();
         let content_type_owned = content_type.to_string();
         let project_id = project_id.to_string();
@@ -1055,9 +1056,7 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
                         )
                     })?
                     .connection();
-                let main = ws.main().connection();
                 write_project_file_to_mount_store(
-                    main,
                     mount,
                     codec.as_ref(),
                     &project_id,
@@ -1070,16 +1069,21 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
             })
             .await;
         match result {
-            Ok(stored) => crate::services::image_job_common::ProjectUploadResult {
+            Ok(stored) => Ok(crate::services::image_job_common::ProjectUploadResult {
                 storage_key: stored.storage_key(),
                 stored_mime_type: stored.stored_mime_type,
                 size_bytes: stored.size_bytes,
-            },
-            Err(e) => crate::services::image_job_common::ProjectUploadResult {
-                storage_key: format!("fs-seam:error:{e}"),
-                stored_mime_type: content_type.to_string(),
-                size_bytes: content.len(),
-            },
+            }),
+            // v4 wraps the inner message without any error-type prefix
+            // (DbError::Key's Display would add a misleading
+            // "key derivation failed:").
+            Err(e) => {
+                let msg = match e {
+                    DbError::Key(msg) => msg,
+                    other => other.to_string(),
+                };
+                Err(format!("Failed to upload file '{filename_for_err}': {msg}"))
+            }
         }
     }
 }
@@ -1792,5 +1796,89 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    /// Dogfood finding #16: on a REAL instance the `project_doc_mount_links`
+    /// table lives ONLY in the mount-index partition — reading it on the main
+    /// connection made every real-data project look store-less, and the old
+    /// infallible seam then buried the error in a `fs-seam:error:` sentinel
+    /// storage key. Provision the FULL fresh schema (real-instance shape) and
+    /// prove (a) the upload resolves the store through the mount partition and
+    /// (b) a genuinely store-less project fails with v4's wrapped throw.
+    #[tokio::test]
+    async fn project_image_upload_reads_links_from_the_mount_partition() {
+        let dir = tempfile::tempdir().unwrap();
+        let pepper = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        let dpath = dir.path().to_path_buf();
+        let db = tokio::task::spawn_blocking({
+            let dpath = dpath.clone();
+            move || {
+                crate::services::provisioning::provision_fresh_instance(&dpath, pepper).unwrap();
+                Db::open(
+                    crate::db::runtime::DbPaths {
+                        main: dpath.join("quilltap.db"),
+                        mount_index: Some(dpath.join("quilltap-mount-index.db")),
+                        llm_logs: None,
+                    },
+                    pepper,
+                )
+                .unwrap()
+            }
+        })
+        .await
+        .unwrap();
+        db.write(|ws| {
+            let mount = ws.mount_index().unwrap().connection();
+            mount.execute_batch(
+                "INSERT INTO doc_mount_points (id, name, mountType, storeType, createdAt, updatedAt) \
+                 VALUES ('mp-1', 'Project Files: Test', 'database', 'documents', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'); \
+                 INSERT INTO project_doc_mount_links (id, projectId, mountPointId, createdAt, updatedAt) \
+                 VALUES ('l-1', 'p-1', 'mp-1', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');",
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        use crate::services::image_job_common::ProjectImageUpload as _;
+        let upload = RealProjectImageUpload {
+            db: db.clone(),
+            codec: Arc::new(NotConfiguredPixelCodec),
+        };
+        let stored = upload
+            .upload(
+                "avatar_Test_1.png",
+                b"png-bytes",
+                "image/png",
+                "p-1",
+                "/character-avatars/",
+            )
+            .await
+            .unwrap();
+        assert!(
+            stored.storage_key.starts_with("mount-blob:mp-1:"),
+            "{}",
+            stored.storage_key
+        );
+
+        // Store-less project → v4's throw, wrapped — never a sentinel key
+        // smuggled into a "successful" result.
+        let err = upload
+            .upload(
+                "avatar_Test_2.png",
+                b"png-bytes",
+                "image/png",
+                "p-unlinked",
+                "/character-avatars/",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.starts_with(
+                "Failed to upload file 'avatar_Test_2.png': Project p-unlinked has no linked database-backed document store."
+            ),
+            "{err}"
+        );
+        assert!(!err.contains("fs-seam"), "{err}");
     }
 }

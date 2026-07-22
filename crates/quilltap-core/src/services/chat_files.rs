@@ -786,7 +786,6 @@ fn upload_file_to_project(
     let (storage_key, stored_mime, stored_size, file_folder_path, file_project_id) =
         if let Some(pid) = project_id {
             let uploaded = write_project_file_to_mount_store(
-                main,
                 mount,
                 &codec,
                 pid,
