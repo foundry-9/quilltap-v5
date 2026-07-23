@@ -50,6 +50,48 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **RULED 2026-07-23 (human) — a failed cheap-LLM call MUST write an
+  `llm_logs` error row. This is an accepted, deliberate divergence from v4**,
+  which logs nothing on failure (`CheapLlmTaskExecutor::log_call` writes only
+  on success; v4's `logLLMCall` is on the success path only). The evidence:
+  finding #23 (a total cheap-LLM outage that presented as "jobs COMPLETED,
+  nothing minted") and finding #26 (a fold that silently never happens) both
+  cost hours precisely because the failure arms leave no trace anywhere — and
+  v5, unlike v4, has no console logging to fall back on. **Needs an order**;
+  the shape is: an error row per failed cheap call carrying the provider,
+  model, task type, and the error text, distinguishable from a success row.
+  Note v4 DOES `logger.error` at several of these call sites
+  (`memory-trigger.service.ts:132`), so the divergence is narrower than it
+  looks — v4 surfaces the failure to its console, v5 has no console to
+  surface it to. **The related open question — whether the server should have
+  a tracing subscriber at all — remains open**, and this ruling does not
+  settle it.
+- **SEQUENCING RULED 2026-07-23 (human): the provider-I/O rewrite lands
+  FIRST, then a dedicated dogfood-fixing run, then a fresh dogfood walk.**
+  The open dogfood findings are deliberately NOT being fixed piecemeal
+  before then — most of them live in or adjacent to the seam the rewrite
+  restructures, so fixing twice is waste. Open at the close of the
+  2026-07-23 walk: **#25** (tool linkage never reaches the wire — order
+  `p4.12` written), **#26** (the fold never fires — unlocalized), **#27**
+  (corpus-shaped cheap-LLM config in `run_summary_check`), **#28** (the
+  retrospective classifier never returns true — needs a v4 bench
+  comparison), the **memory-injector sort panic** (unlocalized; needs a
+  backtrace), and the error-row logging ruled above.
+- **Walk scope at the 2026-07-23 close — what was and was not covered.**
+  WALKED CLEAN: title generation, AUTO memories dated to story dates (the
+  P4.d14 live proof), avatar regeneration, automatic story-background
+  generation (the P4.6ao live proof), the Memories tab at ~26.5k rows
+  (wheel-scroll pagination + filter + sort), ChatSidebar all four sections
+  in group and project chats, sidebar collapse/expand/resize/reload, and
+  finding #24's live confirmation. **NOT WALKED — the next pass starts
+  here:** outfit selection, Story's Clock + a narrated time jump, the
+  recall-replay CLI, date-ranged memory search about another character,
+  the per-chat Core-whisper override + chat-tier State Editor opener, a
+  heavy character's tabs via card bodies + keyboard, and legacy/odd vault
+  rows. BLOCKED until the rewrite: context summary + fold-episode (#26),
+  llm-consult and in-chat Pascal and anything requiring a character to USE
+  a tool result (#25).
+
 - **PROPOSED (2026-07-23, human) — refactor the provider I/O layer as an
   accepted divergence from straight-port fidelity.** Findings #23 (every
   non-streaming request sent `stream:true`), #24 (every non-streaming
