@@ -38,6 +38,8 @@ catch, since every fixture is built fresh.
 
 | 22 | In a PROJECT chat, asking a character to list files in a folder fails every time: `doc_list_files` returns `Error: List files requires a project context`, and the character retries the same call in a loop (both the `uri` form and the `folder`+`mount_point` form) | Port divergence — the **tool context was built with every optional field hard-coded `None`**. v4's `orchestrator.service.ts:1136–1151` passes `imageProfileId`, `chat.projectId`, `browserUserAgent` and the loaded-memories bag into `createToolContext`; v5's `process_message` passed `None` at all five optional positions, at BOTH call sites (the native loop and the text passes). The guard the user hit is faithfully ported and lives in v4 too (`text-handlers.ts:815`) — it was firing because `ctx.project_id` was always absent, never because the URI was wrong. Two more tools were silently dead the same way: `doc_grep` ("Grep requires a project context"), `project_info`, and `generate_image` (`ctx.image_profile_id` absent → "Image generation is not enabled for this chat"). Invisible to the tier-3 orchestrator differential because that harness drives the tool loops with **its own** contexts — the call sites are never executed by the corpus (the same corpus-invisible class as finding #16's `Real*` seams) | **FIXED** — both call sites thread `chat.projectId` + the resolved `image_profile_id` through a new shared `turn_tool_context` helper (extracted so the threading is unit-testable); four regression tests pin the fixed behavior AND the guards (a projectless chat still yields `None` so the refusal keeps firing where v4 fires it; v4's `|| undefined` empty-string collapse; both loops identical). `orchestrator_tier3` re-run green over a fresh oracle |
 
+| 23 | The memory pipeline produces nothing: `MEMORY_EXTRACTION` jobs COMPLETE in seconds with no error, write no memories, and log no LLM call | **Port divergence, systemic — every NON-STREAMING provider request in v5 sends `"stream": true`.** The request builders hard-code `.set("stream", json!(true))` (+ `stream_options` on chat-completions) and IGNORE `RequestInput.stream`, which is consulted only for Google's URL (`request_builder/chat_completions.rs:105-106`, `anthropic.rs:268`, `responses_api.rs:305,309,330`). v4 has two distinct bodies: `streamMessage` sends `stream:true` + `stream_options`, `sendMessage` sends **`stream:false` and NO `stream_options`** (`plugins/dist/qtap-plugin-deepseek/provider.ts:189` vs `:288-289`; otherwise the two bodies are identical, field for field). So the provider answers `200` with an SSE body, `TransportResponse::json()` hits the `d` of `data: ` and fails `expected value at line 1 column 1`, and `execute_completion` returns that as a `CompletionError`. **Empirically confirmed** with two live DeepSeek calls on the real key: `stream:true` → `data: {"object":"chat.completion.chunk"…`; `stream:false` → `{"choices":[{"message":{"content":"pong"…`. **Why no differential caught it:** `request_builder_equivalence` intercepts v4's REAL plugin **`streamMessage`** only (`:7`) and every corpus vector sets `stream: true` (`:126`) — the non-streaming half of the builder has never been oracle-checked. **Blast radius: the entire cheap-LLM family on every chat-completions / Anthropic / Responses provider** — memory extraction, context summary, fold-episode, title generation, scene-state tracking, answer confirmation, image-prompt crafting, outfit selection, Carina, and the llm-consult. (`DANGER_CLASSIFICATION` survives because OpenAI moderation is a different endpoint; embeddings have their own path.) The symptom is invisible because `CheapLlmTaskExecutor::log_call` only writes `llm_logs` on success, so a failed cheap call leaves no Inspector trace | **NOT FIXED — needs a lane** (see the standing note below). Diagnosis complete + proof recorded; the fix shape is known and small per provider, but it spans five builders and owes the differential a non-streaming corpus |
+
 ## Standing notes for the next orders
 
 - **Carried out of finding #22 — two tool-context fields still unthreaded
@@ -66,20 +68,72 @@ catch, since every fixture is built fresh.
   one, and the whisper-gate sets (`ALWAYS_PRIVATE_TOOLS` / `VAULT_READ_TOOLS`
   in `tool_execution.rs`) are already ported faithfully.
 
-- **UNRESOLVED at the 2026-07-22 pass — the memory pipeline produced nothing
-  on two closed turns** (P4.6bj's owed live proof). Static tracing found the
-  wiring intact: both handlers ARE registered in `ProductionSpineFactory`
-  (`spine.rs:2578,2585`), `HostOrchestratorSeams::chat_settings` reads the
-  real row, and the finalizer's `&& settings.cheap_llm_settings_present` gate
-  is v4-faithful (v4 gates one frame deeper, inside
-  `triggerTurnMemoryExtraction` — `memory-trigger.service.ts:65`). Note the
-  gate reads **global** settings, not per-chat: `chat_settings` is keyed by
-  `userId` (v4 `repos.chatSettings.findByUserId`), so `cheapLLMSettings` is
-  the one global cheap-LLM config — the walk script's "a chat with a cheap-LLM
-  profile" phrasing was wrong and is corrected here. **Next diagnostic step:**
-  determine whether the job row is being ENQUEUED (gate passes, runner or
-  handler at fault) or NOT (gate fails, i.e. the settings read returns no
-  `cheapLLMSettings`) before changing any code.
+- **⚠ FINDING #23 NEEDS ITS OWN LANE — the non-streaming request builders.**
+  The single highest-value item in the backlog right now: **no non-streaming
+  LLM call in v5 has ever worked in production.** Diagnosis and proof are in
+  the finding row; what remains is the fix, which is contained but not a
+  dogfood commit:
+  1. **Five builder sites** must honour `RequestInput.stream` instead of
+     hard-coding `true`: `chat_completions.rs:105-106` (`base_body` — also
+     `:311`, `:368`), `anthropic.rs:268`, `responses_api.rs:305,309,330`.
+     Key ORDER must not move: v4's `sendMessage` keeps `stream` in the same
+     slot and simply omits `stream_options`, so the Rust shape is
+     `.set("stream", json!(input.stream))` followed by a conditional
+     `stream_options` — that alone is byte-faithful for DeepSeek (verified by
+     diffing v4's two bodies field for field; the rest — stop, tools,
+     response_format, `user_id` from `cacheKey`, profile params, the
+     thinking-strip — is shared).
+  2. **v4's `sendMessage` must be read for EACH provider**, not assumed to
+     differ only by that flag — DeepSeek was verified, ANTHROPIC / OPENAI
+     (Responses) / GROK / GOOGLE / OPENAI_COMPATIBLE were not.
+  3. **The differential owes a non-streaming corpus.**
+     `request_builder_equivalence` intercepts only `streamMessage` (`:7`) and
+     every vector sets `stream: true` (`:126`). The oracle must grow a
+     `sendMessage`-intercepting leg with matching vectors per provider, or the
+     same class of bug can recur silently. This is the real reason the lane is
+     a lane.
+  4. **Rider worth taking with it:** `CheapLlmTaskExecutor::log_call` writes
+     `llm_logs` only on success, so a failed cheap-LLM call is invisible in the
+     Inspector — which is why this read as "extraction never ran". Check
+     whether v4 logs failures on that path (v4 `sendToProvider`) and match it;
+     a failure row would have made this a five-minute diagnosis.
+  Until it lands, treat every P4.6bj / episodic-campaign "live" claim as
+  **unproven on real data** — the pipeline is wired correctly and dies at the
+  provider call.
+  Reproduction recipe (no server needed): a `quilltap-host` example
+  constructing `WireCompletionProvider::new(DbProviderKeys(db), …)` against the
+  Friday copy and calling `send_message` with the cheap params
+  (`strict_max_tokens: true`, `max_tokens: 2048`, `temperature: 0.3`)
+  reproduces it in one run; `build_request("DEEPSEEK", &input)` prints the
+  offending body without any network call at all.
+
+- **Resolved-by-#23: the 2026-07-22 memory-pipeline silence** (P4.6bj's owed
+  live proof). Everything upstream of the provider call was verified healthy on
+  the Friday copy: the job IS enqueued on turn close, the runner DOES execute
+  it, both handlers ARE registered (`spine.rs:2578,2585`), and the
+  finalizer's `&& settings.cheap_llm_settings_present` gate is v4-faithful (v4
+  gates one frame deeper, `memory-trigger.service.ts:65`). Note the gate reads
+  **global** settings, not per-chat: `chat_settings` is keyed by `userId` (v4
+  `repos.chatSettings.findByUserId`), so `cheapLLMSettings` is the one global
+  cheap-LLM config — the walk script's "a chat with a cheap-LLM profile"
+  phrasing was wrong and is corrected here. **The diagnostic that cracked it:**
+  the handler persists its own reasoning to `chat_messages.debugMemoryLogs` on
+  the turn's last assistant message — read that column before instrumenting
+  anything. It said, verbatim, `[Memory] SELF extraction failed for <name>:
+  response parse: expected value at line 1 column 1` ×4.
+
+- **Reading a running dogfood instance: use `quilltap db`, not the console.**
+  `quilltap-host`/`quilltap-web` emit essentially NOTHING to stdout/stderr after
+  the startup banner — there is no tracing/log subscriber in the workspace, and
+  the job runner logs nothing at all, so "watch the server console" is never a
+  usable instruction. The `logs/` dir in a Friday copy is **v4's** winston
+  output, not v5's. Instead: `./target/release/quilltap db --data-dir <instance>
+  --json "<sql>"` takes arbitrary SQL, opens READ-ONLY, needs no passphrase on
+  this instance, and is safe alongside the running server (`--llm-logs` /
+  `--mount-points` switch partitions). The queue triage query is
+  `SELECT type,status,attempts,lastError,createdAt,completedAt FROM
+  background_jobs WHERE type='…' ORDER BY createdAt DESC`. Whether the silent
+  server should gain a log surface is a product question worth raising.
 
 - **The 2026-07-22 pass, part 2 (P4.6bj ∥ P4.d13/14/15 ∥ P4.d10/be ∥ P4.6bg)
   — what walked CLEAN.** The **state cascade is fully walked and clean**: all
