@@ -30492,3 +30492,105 @@ Verified live for the doc's tables:
 order names it): whether the repo also gets an end-user-facing `README.md`.
 That is adjacent to the v4 retirement / release story
 (`m6-screen-parity.md` §5.3) and is a human call.
+
+### The P4.10 exit gate
+
+**The container walk (the order's human-eyes step), against a fresh named
+volume on the finished image:**
+
+1. `docker build -t quilltap .` from a clean context — succeeds.
+2. `docker run -d -p 127.0.0.1:3013:3000 -v qt-u5-data:/app/quilltap quilltap`.
+   Banner: "The parlour is furnished from /usr/local/share/quilltap/spa."
+3. Browser to `/` → the **real Angular setup screen**, themed and styled
+   ("Welcome to Quilltap", the optional-passphrase card) — not the
+   placeholder.
+4. Typed a passphrase → the **Confirm passphrase** field appeared reactively,
+   which is the proof the SPA is live rather than a static page.
+5. Set up with the passphrase → "Setup Complete", the pepper shown once with
+   its `ENCRYPTION_MASTER_PEPPER` recovery note.
+6. Continue → **the Home dashboard inside the workspace-tab shell**: the
+   welcome row, the five quick actions, Recent Chats / Active Projects /
+   Characters, and **Lorian and Riya with their avatars rendered**. That last
+   detail is the end-to-end proof of unit 1: those avatars are the WebP bytes
+   `include_bytes!`d from `assets/`, the files whose absence made the image
+   uncompilable.
+7. `docker restart` → `/health` **423** `dbKeyState: needs-passphrase`, and the
+   browser lands on the unlock gate ("Quilltap Awaits Your Credentials", in
+   the house voice). Passphrase → **back to the Home dashboard.**
+
+So: fresh volume → setup → restart → unlock → home. The whole first-run
+story works from an image a person can build without knowing anything about
+this repo.
+
+**The CLI in the container**, against that now-provisioned instance:
+
+- `quilltap --version` → `0.0.2`.
+- `quilltap db --tables` → the full table list (26+ tables).
+- `quilltap db "SELECT COUNT(*) FROM memories;"` → **42** — the sample seed,
+  exactly the count P4.4u4 documents.
+- `quilltap db "SELECT name FROM characters;"` → Lorian, Riya.
+- `quilltap db --write "UPDATE characters SET name = name;"` → refused:
+  "Database is currently in use — held by **PID 1** on this host." The
+  single-writer rule doing its job across `docker exec` (PID 1 being the
+  server), which is D12's design and is documented as such in
+  `running.md`.
+
+**The bare binary** (unit 4's record has the detail): binary + `spa/` alone
+in a scratch directory, no flags, `QUILLTAP_SPA_DIR` unset → serves the real
+dist and says so; `spa/` renamed away → the loud unfurnished warning and the
+placeholder.
+
+**The standing automated floor** (all on the lane tip):
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` green, **both**
+  feature sets (default and `--features quilltap-core/native-transport`).
+- `cargo build --release --workspace` clean.
+- `cargo test --workspace` (TZ=UTC): **367 binaries / 1,523 passed / 0
+  failed.**
+- SPA: `ng test` **211 files / 2,547 / 0**; `ng build` clean; full Playwright
+  **117 passed, zero skips** (3.2m).
+
+**On the test count, because the order flagged exactly this** ("if a
+Dockerfile-only unit changes a test count, something is wrong"): 1,523 is
++10 on the 1,513 in the P4.11 round record, and every one is accounted for.
+Main moved after that record: `0d6e2c5a` (the dogfood-#24 non-streaming
+response-parse fix) added **2** tests, making the merge-base baseline 1,515;
+unit 4 added **8**. 1,515 + 8 = 1,523. The four Dockerfile-only units moved
+no number, as required.
+
+Playwright is worth one more note: `global-setup.ts` passes `--spa-dir`
+explicitly, so the whole 117-spec suite exercises **link 1** of the new
+chain — i.e. it is the proof that the HTTP serving path is byte-for-byte
+what it was before this lane touched it.
+
+Lane housekeeping: the e2e ports were moved to 4419/45401 for the Playwright
+run (two sibling lanes are live in adjacent worktrees and a sibling run
+force-kills :4319) and **reverted before the final commit** — the committed
+`e2e/support/env.ts` is unchanged at 4319/45301.
+
+### P4.10 — round summary
+
+**The order is CLOSED. All seven units disposed: 1, 2, 3, 4, 5, 7 landed;
+6 deliberately skipped (its own record above says why).** No deferrals, no
+refusal arms, nothing banked — this lane assembled parts that already
+existed and added one small resolution chain.
+
+Phase-4 deliverable 6 ("Packaging (dev-grade) — a Dockerfile for the web
+deployment and a Tauri bundle") is now genuinely done for the web half, and
+the Tauri half is documented as the build recipe it was always scoped to be.
+**A person who did not build v5 can now run its server mode.**
+
+Explicitly NOT done, unchanged by this lane (D21 + the CLAUDE.md hard stop):
+no registry push, no tag, no signing, no notarization, no updater, no
+release of any kind. Nor any image hardening — non-root user, healthcheck,
+multi-arch and size-golfing are named here as follow-up candidates, not
+deferrals, because dev-grade was the scope.
+
+**Left to the human** (the order's open question, deliberately not decided
+in-lane): whether the repo also gets an end-user-facing `README.md`. That
+belongs to the v4-retirement / release story, `m6-screen-parity.md` §5.3.
+
+Versions after the lane: **quilltap-web 0.0.37 → 0.0.38**; every other crate
+and the SPA untouched (core 0.0.329, harness 0.0.282, host 0.0.30, cli
+0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263).
