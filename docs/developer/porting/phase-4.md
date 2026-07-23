@@ -2489,8 +2489,8 @@ Three parallel lanes, ownership fully disjoint:
 - **P4.14** (`work-orders/p4.14-memory-sort-total-order.md`) — the
   memory-injector sort-comparator panic (kills live turns today; outside
   the rewrite's seam, so ruled fixable now; the leading candidate cause of
-  finding #26's silence). ⚠ Needs the sort ruling before dispatch
-  (recommended: non-validating stable merge sort). Owns
+  finding #26's silence). RULED 2026-07-23: the non-validating stable
+  merge sort — cleared to dispatch. Owns
   `memory_injector.rs` + a new `stable_sort.rs`; bumps core + harness.
 - **P4.10** (`work-orders/p4.10-dockerfile-spa-packaging.md`, written
   2026-07-22) — the dev-grade packaging close-out, unchanged; fully

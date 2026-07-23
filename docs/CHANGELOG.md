@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Recorded the human ruling on the P4.14 sort fix: the non-validating
+stable merge sort (arm a), per the order's recommendation. All three
+lanes of the provider-I/O rewrite round are now cleared to dispatch.
+Docs only, no code change.
+
 Planned the provider-I/O rewrite round (three parallel lanes): wrote work
 order P4.13 (the rewrite itself — absorbs P4.12's tool-linkage units as
 phase A, adds the recorded-body response-parse corpus, the ruled

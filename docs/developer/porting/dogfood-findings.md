@@ -181,8 +181,8 @@ catch, since every fixture is built fresh.
   is self-consistent; may differ from V8 in the contradictory region) versus
   porting V8's TimSort (exactly faithful, several hundred lines).
   **ORDER WRITTEN: `work-orders/p4.14-memory-sort-total-order.md`**
-  (2026-07-23) — the ruling is presented in the order (recommended arm: the
-  merge sort) and MUST be made before the lane dispatches.
+  (2026-07-23) — **RULED same day (human): the non-validating stable merge
+  sort.** The lane is cleared to dispatch.
 
 - **Carried out of finding #24 — the non-streaming response parsers have NO
   oracle differential.** `request_builder_equivalence` covers the request side
