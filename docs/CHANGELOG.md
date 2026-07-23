@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Recorded dogfood findings #26 (the context-summary fold never fires on a
+chat past its threshold — cause not yet localized), #27 (context summaries
+run on the character's own model because run_summary_check hard-codes
+corpus-shaped cheap-LLM config where v4 passes the user's real settings and
+profiles) and #28 (the retrospective-recall classifier never returns true on
+real backward-looking prose). No code change.
+
 Made RUST_BACKTRACE=1 standing policy for dogfood runs (the /dogfood
 recipe). Data-dependent panics like the open memory-injector sort
 comparator often do not reproduce, so there is no second chance to enable
