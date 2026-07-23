@@ -158,6 +158,14 @@ route-to-intent test delta is ported case-for-case, and the v5-only
 `/characters/groups/<id>` alias (v5's route name for the group editor)
 is spec-covered outside the corpus.
 
+Tooling: added the `/portstatus` project skill
+(`.claude/commands/portstatus.md`) — a read-only report of where the
+v4→v5 port stands: phase breakdown, ranked next steps, a
+start-to-finish completion estimate (M6-backlog-weighted, with the
+daily-driver vs v4-retirement distinction), and the dogfood-testing
+lag computed from `dogfood-findings.md`'s standing notes plus the
+rounds unified since the last walk.
+
 Docs: planned the `e646f58b` v4-drift catch-up round — two parallel
 SPA-only work orders committed. P4.d16 (the `8d86847a` workspace
 deep-links re-port: the salon-list tab kind, drill-in payloads,
