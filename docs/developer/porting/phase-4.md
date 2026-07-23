@@ -2458,3 +2458,49 @@ compression keep/drop flip, and the Salon "Story's Clock" timeline-mode
 SPA switch.
 
 The next `/setupphase` plans rounds 2/3 once round 1 lands.
+
+## The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10) — PLANNED 2026-07-23
+
+**The round the 2026-07-23 human rulings dictate** (recorded in
+`dogfood-findings.md`'s standing notes and the memory note
+`provider-io-divergence-and-post-5-0-refactor`): the provider-I/O rewrite
+lands FIRST, then a dedicated dogfood-fixing run (#26/#27/#28 + whatever
+the rewrite's live proof surfaces), then a fresh dogfood walk. Findings
+#23/#24/#25 were three total outages in one seam in two days, all under a
+green differential suite — the rewrite replaces v4's plugin-shaped
+provider layer (a JS dynamic-loading artifact v5 carries without benefit)
+with data + one typed pipeline, under the ruled invariant that **the wire
+bytes stay byte-faithful to v4** and with the verification legs landing
+BEFORE any restructuring. The divergence is a ruled one-off, NOT a
+precedent.
+
+Three parallel lanes, ownership fully disjoint:
+
+- **P4.13** (`work-orders/p4.13-provider-io-rewrite.md`) — the deep lane.
+  Phase A: P4.12's tool-linkage fix + call-site differential (finding #25;
+  P4.12 folds in whole) and the recorded-body response-parse corpus (the
+  #24 carry-out — v4's real plugins run under a network recorder so the
+  SDK unwrap is inside the oracle loop). Phase B: the restructure under
+  the completed corpus net + the RULED failed-cheap-call `llm_logs` error
+  row (deliberate divergence). Phase C: Brahma-workaround re-check, the
+  💸 live tool-use proof on the Friday copy, records. Owns `model/**` +
+  the tool-loop/brahma/cheap-llm services + the provider oracle/fixture
+  tree; bumps core + harness.
+- **P4.14** (`work-orders/p4.14-memory-sort-total-order.md`) — the
+  memory-injector sort-comparator panic (kills live turns today; outside
+  the rewrite's seam, so ruled fixable now; the leading candidate cause of
+  finding #26's silence). ⚠ Needs the sort ruling before dispatch
+  (recommended: non-validating stable merge sort). Owns
+  `memory_injector.rs` + a new `stable_sort.rs`; bumps core + harness.
+- **P4.10** (`work-orders/p4.10-dockerfile-spa-packaging.md`, written
+  2026-07-22) — the dev-grade packaging close-out, unchanged; fully
+  disjoint (Dockerfile/compose/docs + the `quilltap-web` dist-discovery
+  unit); bumps web.
+
+Explicitly left OUT of the round, per the sequencing ruling: fixes for
+#26 (fold never fires), #27 (corpus-shaped cheap-LLM config in
+`run_summary_check`), #28 (the retrospective classifier — needs the v4
+bench comparison first), the tracing-subscriber question, and the
+`chat_messages.debugMemoryLogs` writer — all belong to the post-rewrite
+dogfood-fixing run. The next `/setupphase` plans that run once this round
+unifies.

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Planned the provider-I/O rewrite round (three parallel lanes): wrote work
+order P4.13 (the rewrite itself — absorbs P4.12's tool-linkage units as
+phase A, adds the recorded-body response-parse corpus, the ruled
+failed-cheap-call error row, and the restructure under the byte-faithful
+wire contract) and work order P4.14 (the memory-injector sort comparators
+made panic-free — needs the merge-sort-vs-TimSort ruling before dispatch);
+the pre-existing P4.10 packaging order runs as the third lane. Pointed
+P4.12's header, the dogfood standing notes, and phase-4.md at the round.
+Docs only, no code change.
+
 Recorded dogfood findings #26 (the context-summary fold never fires on a
 chat past its threshold — cause not yet localized), #27 (context summaries
 run on the character's own model because run_summary_check hard-codes
