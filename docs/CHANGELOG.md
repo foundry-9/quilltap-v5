@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Fixed the non-streaming OpenAI and Grok response parse (dogfood finding
+#24). Every non-streaming call to those providers returned empty content:
+the parser read `output_text` as a top-level key on the response body, but
+that property does not exist on the wire — the OpenAI SDK synthesizes it
+by concatenating the text of every `output_text` content part of every
+`message` output item, and v4's plugin reads the SDK's object while v5
+parses the raw HTTP JSON. Confirmed against a live POST /v1/responses:
+no top-level `output_text`, the text at `output[i].content[j].text`, and
+a production log row showing 335 completion tokens with contentLength 0.
+`responses_output_text` now reproduces the SDK's `addOutputText`
+aggregation for both the parsed content and the chat-completions-shaped
+`raw`. The streaming decoder deliberately keeps reading the phantom key:
+v4 opens that stream with `responses.create({stream: true})`, whose events
+the SDK hands over unparsed, so v4's raw carries no content there either —
+fixing it would diverge from the oracle. Visible streamed text was never
+affected; it rides the `response.output_text.delta` events. Guards: the
+existing unit test no longer asserts a key it invented, plus a regression
+test transcribed from the live wire body and a multi-part concatenation
+case.
+
 Unified the P4.11 non-streaming-request-builders lane onto main
 (2026-07-23) — the order is CLOSED and dogfood finding #23 is FIXED. A
 single lane, based directly on main, so unification was a fast-forward

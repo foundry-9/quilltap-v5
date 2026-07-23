@@ -107,6 +107,15 @@ impl ResponsesApiSseDecoder {
         };
         let mut message = serde_json::Map::new();
         message.insert("role".into(), json!("assistant"));
+        // DELIBERATELY the phantom key — do NOT aggregate from `output[]` here.
+        // v4 opens this stream with `responses.create({stream: true})`, whose
+        // events the SDK hands over RAW (`responses.js:27-32` applies
+        // `addOutputText` only when the unwrapped result is a response object,
+        // i.e. the non-streaming call). So v4's `buildRawResponse` reads
+        // `undefined` here on every real stream and its raw carries no content.
+        // v5 matches. Fixing it would diverge from the oracle — see dogfood
+        // finding #24, whose non-streaming half IS fixed
+        // (`response_parse::responses_output_text`).
         message.insert(
             "content".into(),
             resp.get("output_text").cloned().unwrap_or(Value::Null),

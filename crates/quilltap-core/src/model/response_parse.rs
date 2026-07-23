@@ -263,21 +263,49 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
     }
 }
 
+/// The OpenAI SDK's `response.output_text` convenience getter, reproduced from
+/// the wire arrays: concat the `text` of every `output_text` content part of
+/// every `message` output item, in order.
+///
+/// **This must not read a top-level `output_text` key.** v4's plugin reads
+/// `response.output_text` off the object the OpenAI **Node SDK** returns, where
+/// that property is synthesized by exactly this aggregation. The raw HTTP body
+/// carries no such key (verified against a live `POST /v1/responses` on
+/// 2026-07-23: top-level keys are `id`/`object`/`created_at`/`status`/…/`output`
+/// /`usage`, and the text lives at `output[i].content[j].text`). v5 parses the
+/// wire body, so reading the key directly yielded `""` for **every**
+/// non-streaming OpenAI/Grok call — dogfood finding #24.
+pub(crate) fn responses_output_text(output: &[Value]) -> String {
+    let mut text = String::new();
+    for item in output {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let Some(parts) = item.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for part in parts {
+            if part.get("type").and_then(Value::as_str) == Some("output_text") {
+                if let Some(t) = part.get("text").and_then(Value::as_str) {
+                    text.push_str(t);
+                }
+            }
+        }
+    }
+    text
+}
+
 /// Parse a responses-API (OpenAI / Grok) non-streaming response body. Reproduces
 /// `buildLLMResponse`: `output_text`, the reasoning-summary concat, the cache-read
 /// subtraction, and the `buildRawResponse` chat-completions-shaped `raw`.
 pub fn parse_responses_api(response: &Value) -> NonStreamingResponse {
-    let content = response
-        .get("output_text")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-
     let output = response
         .get("output")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+
+    let content = responses_output_text(&output);
 
     // Reasoning: concat summary_text parts of reasoning items.
     let mut reasoning = String::new();
@@ -363,7 +391,9 @@ fn build_responses_raw(response: &Value, output: &[Value]) -> Value {
             }));
         }
     }
-    let content = response.get("output_text").cloned().unwrap_or(Value::Null);
+    // v4 reads the SDK's `response.output_text`; reproduce it from the wire
+    // arrays (see `responses_output_text` — finding #24).
+    let content = Value::String(responses_output_text(output));
     let usage = response.get("usage").cloned().unwrap_or(Value::Null);
     let mut message = Map::new();
     message.insert("role".into(), json!("assistant"));
@@ -688,9 +718,10 @@ mod tests {
     fn responses_api_output_text_and_toolcall_finish() {
         let r = json!({
             "id": "resp_1", "model": "gpt-x", "created_at": 123, "status": "completed",
-            "output_text": "the answer",
             "output": [
                 { "type": "reasoning", "summary": [{ "type": "summary_text", "text": "why" }] },
+                { "type": "message", "role": "assistant", "status": "completed",
+                  "content": [{ "type": "output_text", "text": "the answer" }] },
                 { "type": "function_call", "call_id": "fc1", "name": "tool", "arguments": "{}" }
             ],
             "usage": { "input_tokens": 20, "output_tokens": 4, "total_tokens": 24, "input_tokens_details": { "cached_tokens": 5 } }
@@ -703,6 +734,66 @@ mod tests {
                                                // raw is the chat-completions reshape.
         assert_eq!(p.raw["object"], json!("chat.completion"));
         assert_eq!(p.raw["choices"][0]["finish_reason"], json!("tool_calls"));
+        // The SDK aggregation also feeds `raw` (v4 `buildRawResponse`).
+        assert_eq!(
+            p.raw["choices"][0]["message"]["content"],
+            json!("the answer")
+        );
+    }
+
+    /// Dogfood finding #24 — the shape transcribed from a live
+    /// `POST https://api.openai.com/v1/responses` (gpt-5-nano, 2026-07-23):
+    /// **no top-level `output_text`**, a leading `reasoning` item with empty
+    /// `content`/`summary`, and the text at `output[i].content[j].text`.
+    /// Reading the phantom key returned `""` for every non-streaming
+    /// OpenAI/Grok call while `usage` parsed correctly — the exact production
+    /// fingerprint (335 completion tokens, `contentLength: 0`).
+    #[test]
+    fn responses_api_real_wire_body_has_no_top_level_output_text() {
+        let r = json!({
+            "id": "resp_08b4", "object": "response", "created_at": 1784821066,
+            "status": "completed", "background": false, "error": null,
+            "incomplete_details": null, "instructions": null,
+            "max_output_tokens": null, "model": "gpt-5-nano-2025-08-07",
+            "output": [
+                { "id": "rs_08b4", "type": "reasoning", "content": [],
+                  "encrypted_content": "gAAAAA…", "summary": [] },
+                { "id": "msg_08b4", "type": "message", "status": "completed",
+                  "role": "assistant",
+                  "content": [{ "type": "output_text", "annotations": [],
+                                "logprobs": [], "text": "pong" }] }
+            ],
+            "usage": { "input_tokens": 508, "output_tokens": 335, "total_tokens": 843 }
+        });
+        assert!(
+            r.get("output_text").is_none(),
+            "the real wire body carries no top-level output_text — if this \
+             fixture grows one, it is no longer the wire shape"
+        );
+        let p = parse_responses_api(&r);
+        assert_eq!(p.content, "pong");
+        assert_eq!(p.usage.completion_tokens, 335);
+        assert_eq!(p.finish_reason.as_deref(), Some("stop"));
+        // An empty `summary` array must not manufacture reasoning content.
+        assert_eq!(p.reasoning_content, None);
+        assert_eq!(p.raw["choices"][0]["message"]["content"], json!("pong"));
+    }
+
+    /// Multiple message items concatenate in order, matching the SDK getter.
+    #[test]
+    fn responses_api_concats_every_output_text_part() {
+        let r = json!({
+            "status": "completed",
+            "output": [
+                { "type": "message", "content": [
+                    { "type": "output_text", "text": "He" },
+                    { "type": "refusal", "text": "IGNORED" },
+                    { "type": "output_text", "text": "llo" }
+                ]},
+                { "type": "message", "content": [{ "type": "output_text", "text": " there" }] }
+            ]
+        });
+        assert_eq!(parse_responses_api(&r).content, "Hello there");
     }
 
     #[test]
