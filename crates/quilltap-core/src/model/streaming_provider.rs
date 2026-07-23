@@ -268,6 +268,12 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
         self
     }
 
+    /// The composed transport (the tool-wire call-site pin reads a recording
+    /// fake back out after the loop has run).
+    pub fn transport_ref(&self) -> &T {
+        &self.transport
+    }
+
     /// Build the finalized [`TransportRequest`] + the decoder for one call.
     /// Split out so the request construction is unit-testable without a
     /// transport round-trip.

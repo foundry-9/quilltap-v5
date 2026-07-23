@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.13 unit 3 (+ unit 8's riders): the tool-linkage CALL-SITE pin. A new
+always-on harness test (`tool_wire_call_site`) drives the real native tool
+loop through the real WireStreamingProvider with only the transport faked,
+and asserts on the bytes the transport receives for the post-tool re-stream,
+per provider family: role:"tool"+tool_call_id and the assistant turn's
+tool_calls (chat-completions ×5 incl. OpenRouter streaming),
+function_call_output with the right call_id (OpenAI/Grok responses API),
+tool_result with a non-empty tool_use_id (Anthropic), and
+functionResponse/functionCall (Google). The unit-8 riders are pinned in the
+same test: the DeepSeek/Z.AI reasoning_content echo on the tool-call turn
+and the Google thoughtSignature riding the model turn's text part. This is
+the leg neither existing differential could cover (the corpus builds its own
+inputs; the tier-3 mocks the provider) — finding #25's loss is now
+impossible to reintroduce silently. WireStreamingProvider gains a
+transport_ref() accessor for the pin.
+
 P4.13 units 1–2 (the provider-I/O rewrite, phase A): the streaming
 boundary now carries the tool-call linkage to the wire. `StreamParams.messages`
 is a new `StreamMessage` enum (system/user/assistant/tool) that can represent

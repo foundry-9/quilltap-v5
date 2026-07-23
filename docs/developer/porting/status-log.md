@@ -58,6 +58,29 @@ primary-stream (38), answer-confirmation (56), memory-pipeline-jobs
 also collects `brahma-orchestrator-tier3` (env-missing FAIL) — use
 `-- cases/orchestrator-tier3`.
 
+### Unit 3 — the call-site pin (+ unit 8's riders)
+
+`crates/quilltap-harness/tests/tool_wire_call_site.rs` — always-on (no
+oracle env): the REAL `run_native_tool_loop` through the REAL
+`WireStreamingProvider` (request builder → transport), transport faked
+with a recorder returning an empty byte stream (every decoder's
+`finish()` is clean on empty input, so the loop ends after the
+re-stream; the capture precedes any decode). Seeds
+`state.raw_response` with a marker the injected detector answers with
+ONE call carrying `call_id`; asserts the re-stream body per family —
+chat-completions ×5 (role tool + `tool_call_id`, assistant
+`tool_calls`), responses API ×2 (`function_call_output` + `call_id`,
+the assistant `function_call` item), Anthropic (`tool_result` +
+NON-EMPTY `tool_use_id`, the `tool_use` block), Google
+(`functionResponse` named for the tool + the model turn's
+`functionCall`). **Unit 8's riders pinned in the same test**: the
+DeepSeek/Z.AI `reasoning_content` echo on the tool-call turn and the
+Google `thoughtSignature` on the model turn's text part (seeded via
+`state.reasoning_content`/`thought_signature`). Modeled on P4.11 unit
+7's byte pin; this is the leg the corpus differential (builds its own
+inputs) and the tier-3 (mocks the provider) both bypass.
+`WireStreamingProvider::transport_ref()` added for the read-back.
+
 **⚠ Pre-existing red found (NOT this lane's):**
 `enclave_step_tier3_equivalence` fails against a FRESH `e646f58b`
 oracle — the oracle now has the fold-episode SUMMARIZATION `llm_logs`
