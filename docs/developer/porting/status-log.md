@@ -29749,3 +29749,44 @@ lane did not close. Non-streaming no-tools (the cheap-LLM shape) IS covered.
 `request_builder_google_wire_equivalence` **10 cases, both modes**, over
 fixtures regenerated fresh at `e646f58b`, zero SKIPs. quilltap-core 0.0.326
 → 0.0.327, quilltap-harness 0.0.281 → 0.0.282.
+
+### Unit 8 (rider) — does a FAILED cheap call write an `llm_logs` row?
+
+**Answer: v4 does NOT log failures, and v5 already matches.** No code
+change; the finding is recorded instead, because the invisibility is what
+turned a one-line bug into a multi-hour dig.
+
+v4's `sendToProvider` (`lib/memory/cheap-llm-tasks/core-execution.ts`)
+defines `logCall` at `:93` and invokes it at exactly three places — `:131`
+(the known-no-custom-temperature arm), `:141` (the temperature-0.3 arm) and
+`:153` (the temperature-rejected retry). All three are **success** arms. A
+throw from `provider.sendMessage` propagates past them to the outer `catch`
+at `:260`, which returns `{success: false, error}` — no `logLLMCall`, no
+row. v5's `CheapLlmTaskExecutor::log_call` sits at the same three arms
+(`cheap_llm_exec.rs:275 / :301 / :332`), so the port is faithful.
+
+**The consequence, stated out loud:** a provider outage leaves the LLM
+Inspector completely empty, which reads as "the task never ran" rather than
+"the task ran and died at the provider". Combined with the two diagnosis
+facts below, that is why finding #23 survived a whole dogfood pass.
+
+**Deliberate-divergence CANDIDATE, deferred for a human ruling:** writing an
+error row on the failure arms. `LogResponse.error` already exists on v5's
+log params and is hard-coded `None`, so the change is small — but it is a
+divergence from v4, not a port, and the lane will not take that decision.
+The reasoning is now carried in a `why`-comment on `log_call`.
+
+**Two diagnosis facts worth keeping** (they cost hours to rediscover, and
+neither is a code defect): `quilltap-web` / `quilltap-host` emit nothing
+after the startup banner — there is no tracing subscriber in the workspace
+and the job runner logs nothing, so the console is never the instrument.
+Use `./target/release/quilltap db --data-dir <instance> --json "<sql>"`
+(read-only, no passphrase on the Friday copy, safe alongside a running
+server). And the memory handler persists its own reasoning to
+`chat_messages.debugMemoryLogs` on the turn's last assistant message — read
+that column first.
+
+**Raised, not answered (the order's explicit non-goal):** whether the
+server should log to the console at all. There is no tracing subscriber
+anywhere in the workspace. That is a real question and it wants its own
+decision.

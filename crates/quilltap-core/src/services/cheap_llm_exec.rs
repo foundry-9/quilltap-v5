@@ -166,6 +166,19 @@ impl CheapLlmTaskExecutor {
 
     /// v4 `logCall` (core-execution.ts:93): summarize the just-completed
     /// provider call and write one `llm_logs` row (no-op when logging is off).
+    ///
+    /// **A FAILED call writes NOTHING — v4-faithful, and it costs hours.**
+    /// v4 calls `logCall` only on `sendToProvider`'s success arms
+    /// (core-execution.ts:131 / :141 / :153); a throw propagates to the outer
+    /// `catch` at :260, which turns it into `{success:false, error}` and logs no
+    /// row. So a provider outage leaves the LLM Inspector completely empty and
+    /// reads as "the task never ran" — that is exactly how dogfood finding #23
+    /// (every non-streaming request asking for SSE) stayed invisible through a
+    /// whole dogfood pass. v5 reproduces the silence deliberately; making the
+    /// error arms write a row (the `LogResponse.error` field already exists and
+    /// is hard-coded `None`) would be a **deliberate divergence from v4** and
+    /// wants a human ruling, not a lane decision. Recorded in the P4.11 lane
+    /// record.
     /// The cheap path sets no `durationMs`/`cacheUsage`/`rawProviderUsage`/
     /// `requestHashes`; the request carries `temperature` only when one was sent
     /// (v4 spreads `...(temperature !== undefined ? { temperature } : {})`, which

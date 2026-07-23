@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Recorded, after checking v4, that a FAILED cheap-LLM call writes no
+llm_logs row: v4 invokes logCall only on sendToProvider's three success
+arms and a throw reaches the outer catch untouched, so v5's matching
+placement is faithful. No code change — but the consequence is now a
+why-comment on log_call, because an empty LLM Inspector reads as "the task
+never ran" rather than "the task ran and died at the provider", which is
+how dogfood finding #23 survived a whole dogfood pass. Writing an error
+row on the failure arms would be a deliberate divergence from v4 and is
+deferred for a human ruling. quilltap-core 0.0.328.
+
 Fixed dogfood finding #23: no non-streaming LLM call in v5 had ever
 worked. Every request builder hard-coded "stream": true and ignored
 RequestInput.stream, so the entire cheap-LLM family (memory extraction,
