@@ -151,7 +151,7 @@ catch, since every fixture is built fresh.
   of wire shape** — all five are synthetic (`"Hello from GPT"`), and
   `openai-basic`/`grok-basic`/`openai-reasoning` carry a top-level `output_text`
   that no real response has.
-- **OPEN, unlocalized (2026-07-23) — a sort comparator panics on real data.**
+- **LOCALIZED (2026-07-23, server stderr backtrace) — the memory-injector sort comparator panics on real data, killing the turn.**
   `thread '<unnamed>' panicked … user-provided comparison function does not
   correctly implement a total order`, during a Salon send on the Friday copy;
   the character could not respond, and it did not reproduce on retry. **Not
@@ -161,9 +161,18 @@ catch, since every fixture is built fresh.
   0.00/0.04/0.08 give a=b, b=c, a<c. A standalone repro panics reliably at
   **n ≥ 50** memories and never at n = 20 — fixture slates are small, real
   recall slates are not. v4 has the identical comparator; V8's TimSort does not
-  validate, Rust's driftsort does. **The site is unconfirmed** — any ordinary
-  `partial_cmp(…).unwrap_or(Equal)` sort reached by a NaN gives the same panic
-  text; get `RUST_BACKTRACE=1` on the next occurrence. The fix needs a ruling:
+  validate, Rust's driftsort does. **The site is now CONFIRMED**: the backtrace names
+  `quilltap_core::memory_injector::format_dynamic_memory_head` (the `:865`
+  comparator) under `build_context` -> `process_message` -> `spine::run_send`.
+  That comparator carries a SECOND intransitivity source beyond the epsilon
+  rule: the `blended_after` branch (`:872-876`) returns early only when BOTH
+  sides carry a value, so different pairs are ordered by different criteria.
+  **This is very likely the cause of finding #26**: `format_dynamic_memory_head`
+  runs inside `build_context`, which runs inside `process_message`, and
+  `run_summary_check` is called at the END of `process_message`
+  (`orchestrator.rs:2372`) -- a panic in build_context kills the turn before the
+  fold gate is ever evaluated. Two panics were observed on the same evening the
+  fold never fired. Check this link FIRST when picking up #26. The fix needs a ruling:
   a non-validating stable merge sort (identical to v4 wherever the comparator
   is self-consistent; may differ from V8 in the contradictory region) versus
   porting V8's TimSort (exactly faithful, several hundred lines).
