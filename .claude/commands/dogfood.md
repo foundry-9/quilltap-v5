@@ -22,7 +22,11 @@ newly LIVE vs still refusal-armed. Then produce a concrete test script:
 - **Setup reminder**: run against a fresh COPY of Friday
   (`~/iCloud/Quilltap/Friday` — never the live directory; `brctl download`
   first if iCloud has evicted contents; never a writable open on the
-  original). Include the launch command for the copy.
+  original). Include the launch command for the copy, and **always launch
+  with `RUST_BACKTRACE=1`** — a panic in a walk is otherwise unlocalizable
+  after the fact, and the panics that matter (finding-#25-era sort
+  comparators) are data-dependent and often don't reproduce on retry. The
+  first `quilltap_core::` frame is the diagnosis.
 - **A numbered walk** of exact clicks/gestures, weighted toward what the
   e2e does NOT cover:
   - the **broadest gesture** for each action (click the card body, not the

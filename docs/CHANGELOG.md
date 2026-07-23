@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Made RUST_BACKTRACE=1 standing policy for dogfood runs (the /dogfood
+recipe). Data-dependent panics like the open memory-injector sort
+comparator often do not reproduce, so there is no second chance to enable
+it. No code change.
+
 Recorded the human ruling on the proposed provider-I/O refactor: the
 divergence is accepted and scoped to provider I/O only, drift risk
 accepted, explicitly not a precedent for the rest of the port, with the
