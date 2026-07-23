@@ -9,110 +9,6 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
-## Lane record — P4.d16 (the `8d86847a` workspace deep-links drift re-port) — on `claude/workspace-deeplinks-drift-b9cc45`, not yet unified
-
-Lane A of the `e646f58b` drift-catch-up round (sibling: P4.d17). **SPA +
-workspace corpus + docs only — zero Rust** (`git diff --stat main.. -- crates/`
-empty). v4 drift-checked at lane start: `git log e646f58b..HEAD` empty, checkout
-clean, so the corpus regenerated straight from `~/source/quilltap-server` (no
-pinned worktree needed).
-
-**Unit 1 — the core adoption + the corpus recapture (`0d1dbd19`).** v4's lib/
-delta is four files and small; every line of it landed:
-- `workspace-contract.ts`: the `salon-list` kind (23 kinds now) + the three
-  optional drill payload interfaces (`ProsperoTabPayload` / `Scriptorium…` /
-  `Aurora…`), v4's why-comment carried verbatim.
-- `core/tab-meta.ts` + `core/persistence.ts` TAB_KINDS: `salon-list` in v4's
-  position.
-- `core/route-to-intent.ts`: the three drill matches placed BEFORE the
-  character-edit match, as v4 places them (`/prospero/<id>`, legacy
-  `/projects/<id>`, `/scriptorium/<id>`, `/aurora/groups/<id>`), plus `/salon`
-  and `/chats` in the switch. **`/salon/new` still returns `null`** — v4 keeps
-  new-chat out of the pure mapper and the corpus pins that.
-- v5-only: the group-drill regex also accepts `/characters/groups/<id>` (v5's
-  route name for the same surface), spec-covered OUTSIDE the corpus.
-- `chrome/tab-registry.ts`: `salon-list` hosts the existing `SalonList` screen
-  (needed for the exhaustive `Record<TabKind, …>` besides).
-
-**The corpus** (`workspace-core-fixtures.json`) regenerated at **`e646f58b`**
-(`_meta.baseline` moved from `b8b12695`): 48 reducer scenarios / 21 tabIdentity
-rows / 53 route rows / 23 tab-meta keys. The generator gained four reducer
-scenarios that pin the drill semantics against v4's REAL reducer (**untouched by
-the drift** — verified by `git diff b8b12695 e646f58b -- lib/workspace/`):
-prospero/scriptorium/aurora stay SINGLETONS keyed by kind, so a deep link
-re-uses the open tab and re-targets its payload, and a payload-LESS re-open does
-NOT clear the drill (the `action.payload !== undefined` guard). v4's own +27
-route-to-intent test delta is ported case-for-case beside the replay.
-
-**Unit 2 — the intent layer (`1460f459`).** `OPENABLE_KINDS` gains `salon-list`
-and `character-view`; the spec that ASSERTED character-view's exclusion is
-flipped (v5 always had the tab kind — only the intent layer excluded it).
-`character-view` shares the character-edit `{ characterId, tab }` arm and its
-missing-id skip; prospero/scriptorium/aurora read their drill ids. The terminal
-two-step rides a new optional `parent` on the parsed intent plus an exported
-`applyOpenIntent` (the host calls it instead of an inline `openTab`), so the
-Salon parent opens first and the terminal is its CHILD — the close cascade the
-two-step exists to preserve is asserted. v4's +73 intent test delta is ported
-case-for-case: its React probe (`kind:id:tab|sessionId`, sorted) is replayed
-against the real `WorkspaceService`.
-
-**Unit 3 — the guards (`bac87757`).** Six routes gained a
-`workspaceRedirectGuard`: `/salon` → `salon-list`; the terminal pop-out →
-`terminal` + both ids; `/prospero/:id`, `/scriptorium/:id`,
-`/characters/groups/:id`, `/characters/:id` → their kind + drill id (`?tab=`
-preserved, `?action=` forwarded). v4's `*PageClient` server-redirect split and
-`NEXT_PUBLIC_WORKSPACE_TABS=0` rendering are the declared NO-PORTS — v5's guard
-factory IS that mechanism, and every new guard inherits the flag no-op (proven
-by the dual-mode Playwright harness). The routes docstring calling those
-exclusions "v4-faithful" was stale the moment v4 moved; rewritten.
-
-**Unit 4 — drill-in hosting (`5e7104eb`).** `ProsperoList` / `ScriptoriumList` /
-`CharactersList` gained `initialProjectId` / `initialStoreId` / `initialGroupId`
-(v4's prop names), wired to the drill state each already owned. v4 derives from
-a prop CHANGE (its prev-value guard); the Angular form is an effect that sets
-the drill signal on every truthy change, so a re-targeted tab payload follows
-and a drill-back (which does not touch the input) does not re-run.
-
-**Unit 5 (TIER 2) — the `/salon/new` funnel (`6bf1712e`).** v4 pops its
-NewChatModal via `open=new-chat`; v5 never ported that modal, so the translation
-is a **v5-only `salon-new` tab kind** hosting the existing New-Chat SCREEN with
-v4's three modal seeds as a payload. Guard + `?open=` parser + the interceptor's
-own `/salon/new` special case all target it, while `parseHrefToIntent` still
-returns null there (v4's shape exactly). `NewChatPage` is now dual-mode: the
-seeds arrive as inputs read in `ngOnInit` (a hosted component's inputs land
-after construction), and Back / Cancel / a completed create close the tab the
-way the modal dismisses. `character-view` + `?action=chat` opens the detail tab
-with the New-Chat tab focused beside it (v4's "legacy-page parity" modal pop),
-via a new `also` companion on the parsed intent — which is what consumes unit
-3's forwarded `?action=`.
-
-**The one v5-only corpus adaptation:** `DEFAULT_TAB_META` now has a key v4 does
-not, so the byte-for-byte assertion compares v4's key SET and a second row
-asserts exactly one v5-only entry (`salon-new` → `{ title: 'New Chat', icon:
-'chat' }`). No v5-only row entered the corpus.
-
-**Documented divergences (both recorded in `m6-screen-parity.md` §1's F1
-curiosity block, which this lane updated — v4's own second curiosity there was
-the bug `8d86847a` fixes):** the `salon-new` tab in place of v4's NewChatModal,
-and `?action=chat` opening that tab beside the detail instead of a modal over
-it.
-
-**Deferrals — NONE.** Tier 1 and tier 2 both landed whole; the tier-3 NO-PORTS
-are v4's Next-isms (the `*PageClient` split, the bare `/aurora/[id]` server
-redirect — v5's `/characters/:id` renders/opens the detail directly), plus
-`help/tabbed-workspace.md` (no v5 help surface; banked for `p4.9i2`) and the
-`docs/v4/` feature-doc mirror refresh.
-
-**Regen recipe (this lane owns the corpus):**
-```
-cd ~/source/quilltap-server           # clean at e646f58b
-npx tsx <v5>/harness/oracle/cases/workspace-core.ts \
-  > <v5>/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json
-```
-(Node 24 at `~/.nvm/versions/node/v24.13.1/bin`.) The corpus is the ONLY fixture
-this lane touched; it invalidates no other oracle (no Rust family imports the
-drifted files — verified at the P4.6bj unification).
-
 ## Round record — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1): UNIFIED on main (2026-07-22) — THE CAMPAIGN CLOSES
 
 **All three lanes CLOSED and unified; the episodic-recall drift
@@ -29377,6 +29273,110 @@ Result: `foundation.spec.ts` + `salon-thinking-indicator.spec.ts`
 **2 passed (7.6m — cold global setup)**, against freshly built debug
 binaries and a fresh `ng build` dist in this worktree.
 
+## Lane record — P4.d16 (the `8d86847a` workspace deep-links drift re-port) (2026-07-22) — ORDER CLOSED, unified on main
+
+Lane A of the `e646f58b` drift-catch-up round (sibling: P4.d17). **SPA +
+workspace corpus + docs only — zero Rust** (`git diff --stat main.. -- crates/`
+empty). v4 drift-checked at lane start: `git log e646f58b..HEAD` empty, checkout
+clean, so the corpus regenerated straight from `~/source/quilltap-server` (no
+pinned worktree needed).
+
+**Unit 1 — the core adoption + the corpus recapture (`0d1dbd19`).** v4's lib/
+delta is four files and small; every line of it landed:
+- `workspace-contract.ts`: the `salon-list` kind (23 kinds now) + the three
+  optional drill payload interfaces (`ProsperoTabPayload` / `Scriptorium…` /
+  `Aurora…`), v4's why-comment carried verbatim.
+- `core/tab-meta.ts` + `core/persistence.ts` TAB_KINDS: `salon-list` in v4's
+  position.
+- `core/route-to-intent.ts`: the three drill matches placed BEFORE the
+  character-edit match, as v4 places them (`/prospero/<id>`, legacy
+  `/projects/<id>`, `/scriptorium/<id>`, `/aurora/groups/<id>`), plus `/salon`
+  and `/chats` in the switch. **`/salon/new` still returns `null`** — v4 keeps
+  new-chat out of the pure mapper and the corpus pins that.
+- v5-only: the group-drill regex also accepts `/characters/groups/<id>` (v5's
+  route name for the same surface), spec-covered OUTSIDE the corpus.
+- `chrome/tab-registry.ts`: `salon-list` hosts the existing `SalonList` screen
+  (needed for the exhaustive `Record<TabKind, …>` besides).
+
+**The corpus** (`workspace-core-fixtures.json`) regenerated at **`e646f58b`**
+(`_meta.baseline` moved from `b8b12695`): 48 reducer scenarios / 21 tabIdentity
+rows / 53 route rows / 23 tab-meta keys. The generator gained four reducer
+scenarios that pin the drill semantics against v4's REAL reducer (**untouched by
+the drift** — verified by `git diff b8b12695 e646f58b -- lib/workspace/`):
+prospero/scriptorium/aurora stay SINGLETONS keyed by kind, so a deep link
+re-uses the open tab and re-targets its payload, and a payload-LESS re-open does
+NOT clear the drill (the `action.payload !== undefined` guard). v4's own +27
+route-to-intent test delta is ported case-for-case beside the replay.
+
+**Unit 2 — the intent layer (`1460f459`).** `OPENABLE_KINDS` gains `salon-list`
+and `character-view`; the spec that ASSERTED character-view's exclusion is
+flipped (v5 always had the tab kind — only the intent layer excluded it).
+`character-view` shares the character-edit `{ characterId, tab }` arm and its
+missing-id skip; prospero/scriptorium/aurora read their drill ids. The terminal
+two-step rides a new optional `parent` on the parsed intent plus an exported
+`applyOpenIntent` (the host calls it instead of an inline `openTab`), so the
+Salon parent opens first and the terminal is its CHILD — the close cascade the
+two-step exists to preserve is asserted. v4's +73 intent test delta is ported
+case-for-case: its React probe (`kind:id:tab|sessionId`, sorted) is replayed
+against the real `WorkspaceService`.
+
+**Unit 3 — the guards (`bac87757`).** Six routes gained a
+`workspaceRedirectGuard`: `/salon` → `salon-list`; the terminal pop-out →
+`terminal` + both ids; `/prospero/:id`, `/scriptorium/:id`,
+`/characters/groups/:id`, `/characters/:id` → their kind + drill id (`?tab=`
+preserved, `?action=` forwarded). v4's `*PageClient` server-redirect split and
+`NEXT_PUBLIC_WORKSPACE_TABS=0` rendering are the declared NO-PORTS — v5's guard
+factory IS that mechanism, and every new guard inherits the flag no-op (proven
+by the dual-mode Playwright harness). The routes docstring calling those
+exclusions "v4-faithful" was stale the moment v4 moved; rewritten.
+
+**Unit 4 — drill-in hosting (`5e7104eb`).** `ProsperoList` / `ScriptoriumList` /
+`CharactersList` gained `initialProjectId` / `initialStoreId` / `initialGroupId`
+(v4's prop names), wired to the drill state each already owned. v4 derives from
+a prop CHANGE (its prev-value guard); the Angular form is an effect that sets
+the drill signal on every truthy change, so a re-targeted tab payload follows
+and a drill-back (which does not touch the input) does not re-run.
+
+**Unit 5 (TIER 2) — the `/salon/new` funnel (`6bf1712e`).** v4 pops its
+NewChatModal via `open=new-chat`; v5 never ported that modal, so the translation
+is a **v5-only `salon-new` tab kind** hosting the existing New-Chat SCREEN with
+v4's three modal seeds as a payload. Guard + `?open=` parser + the interceptor's
+own `/salon/new` special case all target it, while `parseHrefToIntent` still
+returns null there (v4's shape exactly). `NewChatPage` is now dual-mode: the
+seeds arrive as inputs read in `ngOnInit` (a hosted component's inputs land
+after construction), and Back / Cancel / a completed create close the tab the
+way the modal dismisses. `character-view` + `?action=chat` opens the detail tab
+with the New-Chat tab focused beside it (v4's "legacy-page parity" modal pop),
+via a new `also` companion on the parsed intent — which is what consumes unit
+3's forwarded `?action=`.
+
+**The one v5-only corpus adaptation:** `DEFAULT_TAB_META` now has a key v4 does
+not, so the byte-for-byte assertion compares v4's key SET and a second row
+asserts exactly one v5-only entry (`salon-new` → `{ title: 'New Chat', icon:
+'chat' }`). No v5-only row entered the corpus.
+
+**Documented divergences (both recorded in `m6-screen-parity.md` §1's F1
+curiosity block, which this lane updated — v4's own second curiosity there was
+the bug `8d86847a` fixes):** the `salon-new` tab in place of v4's NewChatModal,
+and `?action=chat` opening that tab beside the detail instead of a modal over
+it.
+
+**Deferrals — NONE.** Tier 1 and tier 2 both landed whole; the tier-3 NO-PORTS
+are v4's Next-isms (the `*PageClient` split, the bare `/aurora/[id]` server
+redirect — v5's `/characters/:id` renders/opens the detail directly), plus
+`help/tabbed-workspace.md` (no v5 help surface; banked for `p4.9i2`) and the
+`docs/v4/` feature-doc mirror refresh.
+
+**Regen recipe (this lane owns the corpus):**
+```
+cd ~/source/quilltap-server           # clean at e646f58b
+npx tsx <v5>/harness/oracle/cases/workspace-core.ts \
+  > <v5>/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json
+```
+(Node 24 at `~/.nvm/versions/node/v24.13.1/bin`.) The corpus is the ONLY fixture
+this lane touched; it invalidates no other oracle (no Rust family imports the
+drifted files — verified at the P4.6bj unification).
+
 ## P4.d17 — lane record: the `deab0e5d` + `ab0f175e` drift re-port (2026-07-22) — ORDER CLOSED
 
 Lane B of the `e646f58b` drift catch-up round (sibling: P4.d16, the
@@ -29446,3 +29446,59 @@ likely to want a look: `e2e/support/mock-llm.ts` gained an optional
 third arg only (default 0 — every existing beat's stream is unchanged),
 and `e2e/foundation.spec.ts` now leaves the theme on art-deco exactly as
 it did before.
+
+## Round record — the `e646f58b` v4-drift catch-up (P4.d16 ∥ P4.d17): UNIFIED on main (2026-07-22) — BOTH CLOSED; the oracle baseline MOVES to `e646f58b` and the drift debt is CLEARED
+
+**Both lanes CLOSED and unified; the four-commit drift (`ab0f175e` +
+`deab0e5d` + `8d86847a` + `e646f58b`) is fully absorbed** (`e646f58b`
+itself is a v4-internal lint chore — the named NO-PORT). Cherry-picked
+onto `unify/p4.d16-d17` (D16's 6 commits, then D17's 7). Conflicts were
+exactly the shared-contract three: `apps/web/package.json` (both lanes
+ended at 0.5.257 — the identical-bump silent-merge trap; RECOUNTED to
+**0.5.263** = 0.5.251 + 6 + 6) and the two append-only docs
+(union-merged, no entry dropped). **Zero source-level conflicts** — the
+ownership table held exactly (mechanical proof: the changed-file overlap
+between the lanes is the version file + the two docs, nothing else), and
+zero Rust changed in either lane (`git diff main.. -- crates/` empty).
+
+**The unification wires:**
+- The full Playwright suite (P4.d17 ran targeted-only per the round's
+  port arbitration; this run is its owed proof, and the first time
+  D16's five new deep-link beats and D17's indicator/theme beats ran
+  in one suite): **117 passed / 0 failed / 0 skipped (14.4m)** from the
+  fresh `ng build` dist against freshly built debug binaries — even the
+  documented wardrobe `set_all` flake was green this run. D17's
+  `mock-llm` `delayMs` third arg (default 0) demonstrably left every
+  pre-existing beat's stream unchanged.
+- `apps/web/package-lock.json` synced to 0.5.263 (neither lane synced
+  its lock).
+- Status-log coherence: D16's lane record had been prepended at the top
+  of this file against the append-at-end convention; moved to its
+  chronological position (before D17's lane record).
+
+**The gate (all on the unify branch tip):**
+- `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+  -D warnings` green BOTH feature sets; `cargo test --workspace`
+  (TZ=UTC) **367 binaries / 1,508 / 0** — identical to the P4.6bj gate
+  by construction (zero Rust delta; no Rust oracle family imports the
+  drifted v4 files, verified at the P4.6bj unification and re-relied-on
+  here). The round's only fixture move is the workspace corpus,
+  regenerated at `e646f58b` by the D16 lane and consumed by `ng test`.
+- SPA: `ng test` **211 files / 2,547 / 0**; `ng build` clean; full
+  Playwright **117/117 zero skips** (above).
+- v4 drift-checked at planning, both lane starts, and unification:
+  HEAD `e646f58b`, tree clean, no movement.
+
+**Standing after this round:** NO v4 drift debt remains — the oracle
+baseline is uniformly `e646f58b`. Both orders' tier-3 NO-PORTS are
+banked where they were ordered (`help/tabbed-workspace.md` +
+`help/appearance-settings.md` → `p4.9i2`; the Next-isms and
+theme-storybook have no v5 surfaces). The two documented divergences of
+the round live in `m6-screen-parity.md` F1 (the v5-only `salon-new` tab
+in place of v4's NewChatModal; `?action=chat` opening it beside the
+detail). Top next candidates (phase-4.md): the episodic + sidebar +
+memory-pipeline dogfood pass on the Friday copy, `p4.9h2`, the P4.9H1
+tier-3 sidebar deferrals, `p4.9i2` (HelpChat), M6 rows 5+, the
+conversion port. Versions: SPA **0.5.263**; crates unchanged (core
+0.0.325, harness 0.0.281, host 0.0.30, web 0.0.37, cli 0.0.2,
+quilltap-tauri 0.0.4).

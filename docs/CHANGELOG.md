@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Unified the e646f58b v4-drift catch-up round (P4.d16 the workspace
+deep-links re-port ∥ P4.d17 the thinking-indicator + Madman's Box
+re-port) onto main — the four-commit v4 drift is fully absorbed and the
+oracle baseline moves to e646f58b. Deep links that escaped the tabbed
+workspace now open as tabs (the salon-list tab kind, drill-in payloads
+for the Prospero/Scriptorium/Characters tabs, character-view in the
+intent layer, the terminal pop-out salon-plus-child funnel, and the
+/salon/new funnel as the v5-only salon-new tab — v5's no-modal
+translation), with the workspace corpus regenerated at e646f58b. The
+Salon's waiting indicator is now v4's themeable rocking quill (the
+thinking icon, the .qt-thinking-indicator motion hook, the
+qt-quill-animation component at all four call-site analogs — v5 had
+shipped a pulsing dot), and Madman's Box refreshes to 1.1.7 (small-caps
+headings, the .qt-button re-key, its own brand mark spinning as the
+thinking glyph). Unification gate: cargo fmt/clippy both feature sets
+clean with 367 test binaries / 1,508 / 0 (zero Rust changed); ng test
+211 files / 2,547 / 0; ng build clean; full Playwright 117 passed / 0
+failed / 0 skipped from the fresh dist. SPA 0.5.263; crates unchanged.
+
 Docs: refreshed the v4 reference mirrors of ICON_INVENTORY.md and
 THEME_PLUGIN_DEVELOPMENT.md to v4 HEAD, which now document the two
 thinking-indicator hooks and the origin-belongs-to-the-artwork caveat.

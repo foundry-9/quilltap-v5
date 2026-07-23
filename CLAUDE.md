@@ -1039,7 +1039,43 @@ records THERE. Update this summary only when a phase or round completes.
   status log. Versions: core 0.0.325, harness 0.0.281, host 0.0.30
   (core/harness accumulate over the parallel dogfood-finding fixes
   `0.0.322`/`0.0.323` on main).
-- **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
+- **The `e646f58b` v4-drift catch-up round (P4.d16 ∥ P4.d17): UNIFIED
+  on main (2026-07-22) — BOTH CLOSED; the drift debt is CLEARED.** The
+  workspace deep-links re-port (`8d86847a`: the `salon-list` tab kind,
+  drill-in payloads, `character-view` in the `?open=` layer, the
+  terminal-popout salon+child funnel, six new redirect guards, the
+  `/salon/new` funnel as the v5-only `salon-new` tab — the no-modal
+  divergence, recorded in `m6-screen-parity.md` F1 — and the workspace
+  corpus regenerated at `e646f58b`) ∥ the thinking-indicator + theme
+  re-port (`deab0e5d`/`ab0f175e`: v5 had never ported QuillAnimation —
+  the `thinking` icon, the `.qt-thinking-indicator` motion hook,
+  `qt-quill-animation` at all four call-site analogs in
+  `streaming-message.ts`, Madman's Box 1.1.5 → 1.1.7 with the icons-map
+  entry expressed as the unlayered `[data-icon]` CSS override). Zero
+  Rust changed. Gate: fmt/clippy both feature sets clean, 367 binaries
+  / 1,508 / 0; ng test 211 files / 2,547; ng build clean; full
+  Playwright 117/117 zero skips (D16's five deep-link beats + D17's
+  indicator/theme beats LIVE). Banked loud: the two help docs
+  (`p4.9i2`). Versions: SPA 0.5.263; crates unchanged. Next
+  candidates: the episodic/sidebar/memory-pipeline dogfood pass,
+  `p4.9h2`, the sidebar tier-3 deferrals, `p4.9i2`, M6 rows 5+ — see
+  phase-4.md.
+- **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
+  P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
+  The only fixture the round moved is the workspace corpus
+  (`workspace-core-fixtures.json`, `_meta.baseline: e646f58b`; regen
+  recipe in the P4.d16 lane record). No Rust oracle family imports the
+  four drifted commits' files (verified at the P4.6bj unification), so
+  every committed Rust-side oracle keeps its prior regen vintage —
+  `8bf3cb5f`-or-earlier per the paragraphs below. Oracles regenerate
+  directly from `~/source/quilltap-server`; pin a detached worktree
+  only on drift/dirty (recipe: `oracle-regen-pinned-v4-worktree`).
+  ⚠ v4 is mid-4.8/4.9 dev — drift-check before every round. Versions
+  (after the 2026-07-22 drift-round unification): core 0.0.325, harness
+  0.0.281, host 0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4,
+  SPA 0.5.263.
+  The previous baseline paragraph follows for history:
+  **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
   unification (2026-07-22).** v4 HEAD is `e646f58b` (4 commits past the
   baseline): `deab0e5d` theme/icons + `e646f58b` lint-chore are
   lib-free (the theme/icons SPA re-port stays owed); **`8d86847a`

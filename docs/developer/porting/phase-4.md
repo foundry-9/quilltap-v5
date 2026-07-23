@@ -2237,18 +2237,25 @@ record: `status-log.md`. **Next candidates, in rough value order:**
 2. **An episodic + sidebar dogfood pass** on the Friday copy — the
    retrospective mini-recap/whisper, the Story's Clock, and the sidebar
    are live surfaces nobody has hand-walked on real data.
-3. The v4 `8d86847a` **tabbed-workspace deep-links drift re-port**
-   (dispositioned at the P4.6bj unification, 2026-07-22): v4 made
-   deep links that escaped the tabbed workspace open as tabs — it
-   TOUCHES the ported `lib/workspace/{tab-meta,types,
-   workspace-persistence}` + `lib/navigation/route-to-intent`
-   surface, so it owes a workspace corpus RECAPTURE (the P4.9J1
-   captured-corpus family keeps its vintage until then) plus the SPA
-   intent re-port (TabView/WorkspaceIntent, the per-screen
-   *PageClient split, the terminal-popout client).
-4. The v4 `deab0e5d` **theme/icons drift SPA re-port** (lib-free:
-   QuillAnimation thinking indicator, Madman's Box theme refresh, icon
-   registry, two 2-line composer touches) — small, SPA-only.
+3. ~~The v4 `8d86847a` **tabbed-workspace deep-links drift re-port**~~
+   — **DONE (P4.d16, unified 2026-07-22; order:
+   `work-orders/p4.d16-workspace-deeplinks-drift.md`).** The
+   `salon-list` tab kind, the three drill-in payloads,
+   `character-view` in the `?open=` layer, the terminal-popout
+   salon+child funnel, six new redirect guards, and the `/salon/new`
+   funnel translated to the v5-only `salon-new` tab kind (the
+   no-modal divergence, recorded in `m6-screen-parity.md` F1). The
+   workspace corpus regenerated at `e646f58b`.
+4. ~~The v4 `deab0e5d` **theme/icons drift SPA re-port**~~ — **DONE
+   (P4.d17, unified 2026-07-22; order:
+   `work-orders/p4.d17-thinking-indicator-theme-drift.md`).** v5 had
+   never ported QuillAnimation at all (the status strip showed a
+   pulsing dot); the lane ported the indicator fresh at its
+   post-drift shape (the `thinking` icon, the `.qt-thinking-indicator`
+   hook, `qt-quill-animation` at all four call-site analogs) and
+   refreshed Madman's Box 1.1.5 → 1.1.7. **With both lanes unified
+   the four-commit drift is fully absorbed and the oracle baseline is
+   `e646f58b`.**
 5. `p4.9h2` (the settings remainder bucket), the P4.9H1 tier-3 sidebar
    deferrals, the ExtractionClock consolidation rider, p4.9i2
    (HelpChat), M6 rows 5+, or the conversion port.
