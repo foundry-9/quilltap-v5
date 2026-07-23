@@ -42,7 +42,63 @@ catch, since every fixture is built fresh.
 
 | 24 | Cheap-LLM calls routed to OpenAI come back empty: the LLM Inspector shows gpt-5-nano tried first with a 0-byte response, then the uncensored fallback retrying on DeepSeek. The `llm_logs` row reads `{"content":"","contentLength":0,"error":null}` with `usage` `{"promptTokens":508,"completionTokens":335}` — the model generated 335 tokens and v5 extracted none of them | **Port divergence — the response side's phantom SDK key, the exact sibling of #23 one layer down.** `parse_responses_api` (`model/response_parse.rs:270`) took content from a **top-level `output_text` string** on the response body. v4's plugin does read `response.output_text` (`plugins/dist/qtap-plugin-openai/provider.ts:433`) — but off the object the **OpenAI Node SDK** returns, where that property is synthesized by `addOutputText` (`node_modules/openai/lib/ResponsesParser.js:164`: concat the `text` of every `output_text` content part of every `message` output item, `join('')`), applied only on the non-streaming unwrap (`resources/responses/responses.js:27-32`, gated `object === 'response'`). v5 parses the raw HTTP body, which carries **no such key** — verified against a live `POST /v1/responses` (top-level keys `id`/`object`/`created_at`/`status`/…/`output`/`usage`; the text at `output[i].content[j].text`). So content was `""` for **every non-streaming OpenAI and Grok call** (`:604` routes both), while `usage` parsed correctly off real wire keys — the fingerprint in the log row. `build_responses_raw` minted `raw.choices[0].message.content` from the same key, so tool detection above the seam was blind too. **Why no differential caught it:** `parse_responses_api` has **no oracle differential at all** — only a hand-authored unit test (`:688`) that fed a body containing `"output_text": "the answer"`, asserting the parser reads a key the test itself invented; the committed `.wire` stream fixtures carry the same invented key (they are synthetic, not captured) | **FIXED** `0d6e2c5a` — `responses_output_text` reproduces the SDK's `addOutputText` aggregation from the wire arrays, feeding both the parsed content and `raw`. **The streaming decoder deliberately keeps the phantom key** (`decoders/responses_api_sse.rs:112`): v4 opens that stream with `responses.create({stream:true})`, whose events the SDK hands over unparsed, so v4's raw carries no content there either — aggregating would diverge from the oracle. Visible streamed text was never affected (it rides `response.output_text.delta`). Guards: the invented-key unit test rewritten to the wire shape, a regression test transcribed from the live body (asserts no top-level `output_text` exists, content `"pong"`, usage 335, `raw` content), and a multi-message concatenation case pinning `join('')` with a `refusal` part ignored |
 
+| 25 | A character gets stuck in an agentic loop: it calls a tool, then calls the same tool again, over and over, never using the result. (Brahma Console, walked clean 2026-07-20, does NOT show this) | **Port divergence — the tool-call linkage never reaches the wire, on every provider.** The loop builds the continuation slate correctly (`native_tool_loop.rs:434-437`, results carrying `tool_call_id`, the assistant turn carrying `tool_calls` — `tool_call_threading.rs:174`), then three conversions flatten it to role+content: `native_tool_loop.rs:627`, `brahma_console/mod.rs:256`, and `streaming_provider.rs:163` (`RequestMessage::text(role, content)`). The intermediate type cannot hold it — `CompletionMessage` (`model/completion.rs:45`) is `{role, content}` and `StreamParams.messages` is a `Vec<CompletionMessage>`. The builders are correct and fully wired (`RequestMessage` carries all five fields; every formatter consumes them) — nothing populates them. Result per family: **dropped entirely** on the Responses API (`responses_api.rs:54,79`) and chat-completions (`chat_completions.rs:52`), `tool_use_id: ""` on Anthropic (`anthropic.rs:102`), filtered-then-refused on OpenRouter. `tool_calls` always empty also means the assistant's own call is never echoed. The model asks, sees no answer, asks again. **Why Brahma survives:** `build_tool_result_messages` falls back to a plain `user` message `[Tool Result: …]` when a result has NO call ID (that path works), and the console additionally re-threads prior TOOL rows as user text and re-injects data after `MAX_DUPLICATE_TOOL_CALLS` (`brahma_console/orchestrator.rs:370-373,524-536` — "the console's loop-bug fix"). The Salon has no such net. **Why no differential caught it:** `request_builder_equivalence` feeds the builders a corpus already containing well-formed tool messages; the native-tool-loop tier-3 mocks the provider and asserts the loop's internal slate; neither executes the conversion between them — the same call-site-invisible class as #16 and #22. `brahma_console/mod.rs:253-256` even documents the false belief that "the provider request builder reconstructs" the dropped fields | **NOT FIXED — ORDER WRITTEN: `work-orders/p4.12-tool-threading-to-the-wire.md`** (2026-07-23, HIGH PRIORITY). Diagnosis complete. Almost certainly also the unfixed half of **#22**, whose symptom was the same infinite retry |
+
 ## Standing notes for the next orders
+
+- **PROPOSED (2026-07-23, human) — refactor the provider I/O layer as an
+  accepted divergence from straight-port fidelity.** Findings #23 (every
+  non-streaming request sent `stream:true`), #24 (every non-streaming
+  OpenAI/Grok response parsed empty) and #25 (tool linkage never reaches the
+  wire) are three total outages in one seam within two days, none caught by a
+  green differential suite. The structural cause: v5 reproduced the SHAPE of
+  v4's provider plugins — per-provider build/parse pairs behind a
+  lowest-common-denominator interface — but that shape exists because v4 must
+  load providers dynamically as JS at runtime. **v5 has no plugins**, so it
+  carries the interface's costs (lossy intermediate types, duplicated per-family
+  parse, a boundary no type checks) with none of its benefit. The proposal:
+  restructure so provider differences are data + one typed pipeline, with
+  message/response types that can represent everything the wire needs, and
+  illegal states unrepresentable (a tool result without a call ID should not be
+  constructible). **The invariant that must NOT move: the wire bytes stay
+  byte-faithful to v4** — internal structure is free, the request/response
+  corpus is the contract, and the refactor is only safe because that corpus
+  exists. It needs the two missing legs first (a recorded-body response-parse
+  corpus per #24; call-site pins per #25). Not yet an order — decide scope and
+  sequencing at the next `/setupphase`.
+- **Carried out of finding #24 — the non-streaming response parsers have NO
+  oracle differential.** `request_builder_equivalence` covers the request side
+  (both modes, all eight providers, since P4.11); nothing covers
+  `model/response_parse.rs` at all. Its five families
+  (chat-completions × 4 flavors, responses-API, anthropic, google, ollama) are
+  pinned only by hand-authored unit tests, and #24 is proof that a hand-authored
+  fixture can encode the same wrong assumption the code makes. **Two of the five
+  read SDK-normalized shapes** (responses-API `output_text`, google
+  `response.text`) where the wire carries arrays — google reproduces the
+  aggregation correctly (`:462`, reads `candidates[].content.parts`), the
+  responses family did not. The close-out is a recorded-body corpus: capture one
+  real non-streaming response per provider, commit it, and diff v5's parse
+  against v4's real plugin `buildLLMResponse` fed the same body. Until that
+  lands, **the committed `.wire` stream fixtures must not be trusted as evidence
+  of wire shape** — all five are synthetic (`"Hello from GPT"`), and
+  `openai-basic`/`grok-basic`/`openai-reasoning` carry a top-level `output_text`
+  that no real response has.
+- **OPEN, unlocalized (2026-07-23) — a sort comparator panics on real data.**
+  `thread '<unnamed>' panicked … user-provided comparison function does not
+  correctly implement a total order`, during a Salon send on the Friday copy;
+  the character could not respond, and it did not reproduce on retry. **Not
+  NaN.** The two epsilon-threshold comparators in `memory_injector.rs`
+  (`:508` and `:865` — "if the weight gap exceeds 0.05 compare weights, else
+  compare scores") are non-transitive on ordinary finite values: weights
+  0.00/0.04/0.08 give a=b, b=c, a<c. A standalone repro panics reliably at
+  **n ≥ 50** memories and never at n = 20 — fixture slates are small, real
+  recall slates are not. v4 has the identical comparator; V8's TimSort does not
+  validate, Rust's driftsort does. **The site is unconfirmed** — any ordinary
+  `partial_cmp(…).unwrap_or(Equal)` sort reached by a NaN gives the same panic
+  text; get `RUST_BACKTRACE=1` on the next occurrence. The fix needs a ruling:
+  a non-validating stable merge sort (identical to v4 wherever the comparator
+  is self-consistent; may differ from V8 in the contradictory region) versus
+  porting V8's TimSort (exactly faithful, several hundred lines).
 
 - **Carried out of finding #24 — the non-streaming response parsers have NO
   oracle differential.** `request_builder_equivalence` covers the request side

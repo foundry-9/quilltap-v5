@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Recorded dogfood findings #25 (tool-call linkage never reaches the wire —
+provider-native tool use loops forever on every provider) and the open,
+unlocalized memory-injector sort panic, and wrote work order P4.12 to
+repair #25. No code change.
+
 Fixed the non-streaming OpenAI and Grok response parse (dogfood finding
 #24). Every non-streaming call to those providers returned empty content:
 the parser read `output_text` as a top-level key on the response body, but
