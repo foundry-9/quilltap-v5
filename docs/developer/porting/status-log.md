@@ -30457,3 +30457,38 @@ One line, one port, one volume, no environment. A compose file would add a
 second place where the port binding and volume name are declared — a
 divergence risk for zero ergonomic gain — so none was written. This is a
 closed decision, not a banked deferral: nothing refuses, nothing is missing.
+
+### Unit 7 — `docs/developer/running.md`
+
+New developer-facing doc: the three modes and which one you want, the Docker
+recipe and the image's FHS layout, the bare-binary recipe with the unit-4
+resolution chain spelled out, the bind/no-auth policy (D2) with the point
+made plainly that **the port publish is the real boundary** (`-p 3000:3000`
+puts an unauthenticated Quilltap on the network), the Tauri build recipe as a
+recipe only (D21 — `bundle.targets: ["app"]`, no dmg/msi/deb, no signing, no
+updater), the CLI including the single-writer write refusal *as designed*,
+the data-dir table per platform, first-run setup/unlock with what the pepper
+is and that it is shown once, the default-ON sample seed, and the `/health`
+status table.
+
+Every non-obvious claim was verified against a running container rather than
+from the source, and one was **corrected**: the draft said a blocked CLI
+write could instead go through "the CLI's HTTP-client mode". D12 does
+describe the CLI as dual-mode, but `reqwest`/`http://` appear in exactly one
+CLI file — `recall_replay_cmd.rs`. Every other subcommand opens the data dir
+directly. The doc now says so, and states the D12 intent as intent.
+
+Verified live for the doc's tables:
+
+- `GET /health` unlocked → **200**; fresh instance → **423** `{"status":
+  "locked","dbKeyState":"needs-setup"}`; the boot-failure and lock-conflict
+  arms read from `health.rs` (503 / 409).
+- A gated dispatch on a locked instance → **503** with
+  `{"error":"Setup required","setupUrl":"/setup","pepperState":"needs-setup"}`
+  merged alongside the typed envelope, exactly as `dispatch.rs:81-93`
+  documents.
+
+**Open question left to the human, deliberately not decided in-lane** (the
+order names it): whether the repo also gets an end-user-facing `README.md`.
+That is adjacent to the v4 retirement / release story
+(`m6-screen-parity.md` §5.3) and is a human call.

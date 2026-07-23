@@ -137,6 +137,13 @@ self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
 =======
+Added docs/developer/running.md: how to actually run the three modes
+(desktop, server, CLI), what each is for, where the data directory lands per
+platform, the first-run setup/unlock flow and what the pepper is, the
+no-authentication bind policy and why publishing the container port to
+0.0.0.0 is the real risk, the default sample-content seed, and the health
+status codes. Nothing in the repo said any of this before.
+
 The quilltap CLI now ships in the Docker image, so `docker exec -it <c>
 quilltap db --tables` reaches a running instance (D12).
 
