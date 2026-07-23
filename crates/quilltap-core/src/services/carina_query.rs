@@ -47,8 +47,8 @@ use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::db::{api_keys, chats_read, connection_profiles};
-use crate::model::completion::{CompletionMessage, CompletionRole};
 use crate::model::embedding::EmbeddingProvider;
+use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload};
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
 use crate::provider_manifest::{Capability, Registry};
 use crate::services::carina_runner::writer::{
@@ -428,16 +428,10 @@ where
     }
 
     let prior_exchanges = load_prior_carina_exchanges(db, &chat_id, &answerer_id);
-    let mut current_messages: Vec<CompletionMessage> = Vec::new();
-    current_messages.push(CompletionMessage {
-        role: CompletionRole::System,
-        content: system_prompt,
-    });
+    let mut current_messages: Vec<StreamMessage> = Vec::new();
+    current_messages.push(StreamMessage::system(system_prompt));
     current_messages.extend(prior_exchanges);
-    current_messages.push(CompletionMessage {
-        role: CompletionRole::User,
-        content: opts.question.clone(),
-    });
+    current_messages.push(StreamMessage::user(opts.question.clone()));
 
     // 5. Build the chat's tool slate, minus `ask_carina` (recursion guard).
     let image_profile_id = s(&chat, "imageProfileId");
@@ -570,26 +564,52 @@ where
         )
         .await;
 
-        // Assistant tool-call message (content = the accumulated prose, or empty).
-        current_messages.push(CompletionMessage {
-            role: CompletionRole::Assistant,
+        // Assistant tool-call message (content = the accumulated prose, or
+        // empty), carrying its `toolCalls` when any call has a provider id —
+        // v4 carina.service.ts:663–681; the linkage rides to the wire (P4.13).
+        let has_call_ids = tool_calls
+            .iter()
+            .any(|tc| tc.call_id.as_deref().is_some_and(|id| !id.is_empty()));
+        let assistant_tool_calls: Vec<ToolCallPayload> = if has_call_ids {
+            tool_calls
+                .iter()
+                .filter(|tc| tc.call_id.as_deref().is_some_and(|id| !id.is_empty()))
+                .map(|tc| ToolCallPayload {
+                    id: tc.call_id.clone().unwrap(),
+                    kind: "function",
+                    function: ToolCallFunction {
+                        name: tc.name.clone(),
+                        // v4 `JSON.stringify(tc.arguments)` (the threading
+                        // module's normalizing stringify — integer-valued
+                        // floats render bare, as JS does).
+                        arguments: super::tool_call_threading::stringify_arguments(&tc.arguments),
+                    },
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        current_messages.push(StreamMessage::Assistant {
             content: if answer.trim().is_empty() {
                 String::new()
             } else {
                 answer.clone()
             },
+            tool_calls: assistant_tool_calls,
+            reasoning_content: None,
+            thought_signature: None,
         });
         for tm in &results.tool_messages {
-            if tm.call_id.is_some() {
-                current_messages.push(CompletionMessage {
-                    role: CompletionRole::Tool,
+            match tm.call_id.as_deref().filter(|id| !id.is_empty()) {
+                Some(call_id) => current_messages.push(StreamMessage::Tool {
+                    call_id: call_id.to_string(),
+                    name: Some(tm.tool_name.clone()),
                     content: tm.content.clone(),
-                });
-            } else {
-                current_messages.push(CompletionMessage {
-                    role: CompletionRole::User,
-                    content: format!("[Tool Result: {}]\n{}", tm.tool_name, tm.content),
-                });
+                }),
+                None => current_messages.push(StreamMessage::tool_result_fallback(
+                    &tm.tool_name,
+                    &tm.content,
+                )),
             }
         }
 
@@ -903,11 +923,7 @@ fn load_asker_identity(
 /// v4 `loadPriorCarinaExchanges`: scan `getMessages` for this answerer's prior
 /// `systemSender:'carina'` / `systemKind:'carina-response'` messages and replay
 /// them as alternating user(question)/assistant(answer) pairs. Empty on any error.
-fn load_prior_carina_exchanges(
-    db: &Db,
-    chat_id: &str,
-    answerer_id: &str,
-) -> Vec<CompletionMessage> {
+fn load_prior_carina_exchanges(db: &Db, chat_id: &str, answerer_id: &str) -> Vec<StreamMessage> {
     let cid = chat_id.to_string();
     let all = match db.read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid)) {
         Ok(v) => v,
@@ -930,14 +946,10 @@ fn load_prior_carina_exchanges(
         if s(meta, "answererId").as_deref() != Some(answerer_id) {
             continue;
         }
-        pairs.push(CompletionMessage {
-            role: CompletionRole::User,
-            content: s(meta, "question").unwrap_or_default(),
-        });
-        pairs.push(CompletionMessage {
-            role: CompletionRole::Assistant,
-            content: s(m, "content").unwrap_or_default(),
-        });
+        pairs.push(StreamMessage::user(s(meta, "question").unwrap_or_default()));
+        pairs.push(StreamMessage::assistant(
+            s(m, "content").unwrap_or_default(),
+        ));
     }
     pairs
 }
@@ -1029,7 +1041,7 @@ struct StreamCtx<'a> {
 async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     ctx: &StreamCtx<'_>,
-    messages: &[CompletionMessage],
+    messages: &[StreamMessage],
     tools: &[Value],
     use_native_web_search: bool,
 ) -> (String, Option<Value>) {

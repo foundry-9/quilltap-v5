@@ -22,7 +22,7 @@ use crate::cheap_llm::build_character_cache_key;
 use crate::clock::now_unix_ms;
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
-use crate::model::completion::{CompletionMessage, CompletionRole};
+use crate::model::stream::StreamMessage;
 use crate::model::stream::{StreamError, StreamParams, StreamUsage, StreamingCompletionProvider};
 use crate::services::llm_logging::{
     self, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage, LogResponse,
@@ -158,14 +158,10 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
     );
 
     let messages = vec![
-        CompletionMessage {
-            role: CompletionRole::System,
-            content: augmented_system_prompt,
-        },
-        CompletionMessage {
-            role: CompletionRole::User,
-            content: "The chat is beginning now. Greet the user immediately in-character and invite them to engage.".to_string(),
-        },
+        StreamMessage::system(augmented_system_prompt),
+        StreamMessage::user(
+            "The chat is beginning now. Greet the user immediately in-character and invite them to engage.",
+        ),
     ];
 
     let params = StreamParams {
@@ -227,8 +223,8 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
                 messages: messages
                     .iter()
                     .map(|m| LogRequestMessage {
-                        role: m.role.as_str().to_string(),
-                        content: m.content.clone(),
+                        role: m.role_str().to_string(),
+                        content: m.content().to_string(),
                         attachments: None,
                     })
                     .collect(),

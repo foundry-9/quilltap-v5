@@ -97,9 +97,9 @@ use crate::cheap_llm::{
 };
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, connection_profiles, DbError};
-use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
+use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::model::stream::{StreamParams, StreamingCompletionProvider};
+use crate::model::stream::{StreamMessage, StreamParams, StreamingCompletionProvider};
 use crate::rng_patterns::detect_and_convert_rng_patterns;
 use crate::services::build_context::{self, BuildContextInput, BuildContextSeams, BuiltContext};
 use crate::services::carina_runner::{PostProsperoCarinaError, RunCarinaQuery};
@@ -1888,15 +1888,19 @@ where
 
     // Build the stream params from the wrapper's formatted messages (v4 forwards
     // `formattedMessages`, the model params, no tools [corpus], no web search).
-    let stream_messages: Vec<CompletionMessage> = formatted_messages
+    // An assistant turn's persisted `thoughtSignature` rides through (the google
+    // round-trip — v4 passes it on the message; P4.13 threads it to the wire).
+    let stream_messages: Vec<StreamMessage> = formatted_messages
         .iter()
-        .map(|m| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                _ => CompletionRole::User,
+        .map(|m| match m.role.as_str() {
+            "system" => StreamMessage::system(m.content.clone()),
+            "assistant" => StreamMessage::Assistant {
+                content: m.content.clone(),
+                tool_calls: Vec::new(),
+                reasoning_content: None,
+                thought_signature: m.thought_signature.clone(),
             },
-            content: m.content.clone(),
+            _ => StreamMessage::user(m.content.clone()),
         })
         .collect();
     // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`

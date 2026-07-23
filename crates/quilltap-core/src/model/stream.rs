@@ -41,6 +41,133 @@ use std::sync::Arc;
 
 pub use super::completion::{CompletionMessage, CompletionRole};
 
+// ============================================================================
+// The carrying message type (P4.13 unit 1)
+// ============================================================================
+
+/// One entry in an assistant turn's `toolCalls` array (v4
+/// `LLMMessage.toolCalls[]`). Serializes byte-identical to v4's
+/// `{ id, type: 'function', function: { name, arguments } }`. Canonical home of
+/// the type both the threading helpers and the stream boundary carry (moved here
+/// from `services::tool_call_threading`, which re-exports it).
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct ToolCallPayload {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub function: ToolCallFunction,
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+pub struct ToolCallFunction {
+    pub name: String,
+    /// The `JSON.stringify(arguments)` string.
+    pub arguments: String,
+}
+
+/// A message of a streaming call — v4's `LLMMessage` as the chat path sends it
+/// to `streamMessage`. The carrying type of the provider-I/O seam (P4.13
+/// unit 1): unlike the old `[{role, content}]` view (which silently discarded
+/// the tool-call linkage before any request builder ran — dogfood finding #25),
+/// this type can represent everything the wire needs, and its illegal states
+/// are unrepresentable:
+///
+/// - a native tool result **cannot exist without its provider call ID**
+///   ([`StreamMessage::Tool`] requires one; v4's id-less arm is the explicit
+///   `[Tool Result: …]` user-text fallback, [`StreamMessage::tool_result_fallback`]);
+/// - an assistant turn that invoked tools **carries its calls in the same
+///   variant** — the calls cannot be separated from the turn.
+///
+/// The canned tier-3 key ([`canned_stream_key`]) projects role+content only, so
+/// oracle-recorded keys are unchanged by the metadata riding here.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StreamMessage {
+    System {
+        content: String,
+    },
+    User {
+        content: String,
+    },
+    Assistant {
+        content: String,
+        /// The native tool calls this turn made (empty for a plain turn). When
+        /// non-empty the request builders emit the provider's paired
+        /// assistant-with-tool-calls shape.
+        tool_calls: Vec<ToolCallPayload>,
+        /// The assistant's own reasoning text (v4 `msg.reasoningContent`) —
+        /// echoed by the DeepSeek / Z.AI transforms on a tool-call turn.
+        reasoning_content: Option<String>,
+        /// The Gemini thought signature (v4 `msg.thoughtSignature`) — the
+        /// google round-trip.
+        thought_signature: Option<String>,
+    },
+    /// A native tool result, paired to its call by `call_id` (required by
+    /// construction — v4's providers either drop or mis-send an id-less tool
+    /// message, so v5 makes one unrepresentable; the id-less case is the
+    /// explicit user-text fallback below).
+    Tool {
+        call_id: String,
+        /// The tool's function name (v4 `msg.name` — google's `functionResponse`
+        /// correlation; `None` falls back to the call id there).
+        name: Option<String>,
+        content: String,
+    },
+}
+
+impl StreamMessage {
+    pub fn system(content: impl Into<String>) -> Self {
+        StreamMessage::System {
+            content: content.into(),
+        }
+    }
+
+    pub fn user(content: impl Into<String>) -> Self {
+        StreamMessage::User {
+            content: content.into(),
+        }
+    }
+
+    /// A plain assistant turn (no tool calls, no reasoning metadata).
+    pub fn assistant(content: impl Into<String>) -> Self {
+        StreamMessage::Assistant {
+            content: content.into(),
+            tool_calls: Vec::new(),
+            reasoning_content: None,
+            thought_signature: None,
+        }
+    }
+
+    /// v4's id-less tool-result framing (the `tool_call_threading` fallback
+    /// rule): a plain **user** message `[Tool Result: <name>]\n<content>`. This
+    /// is the explicit variant of "the provider gave no call ID" — v4 behavior,
+    /// not a v5 invention; it survives every provider formatter.
+    pub fn tool_result_fallback(name: &str, content: &str) -> Self {
+        StreamMessage::User {
+            content: format!("[Tool Result: {name}]\n{content}"),
+        }
+    }
+
+    /// The v4 wire role string.
+    pub fn role_str(&self) -> &'static str {
+        match self {
+            StreamMessage::System { .. } => "system",
+            StreamMessage::User { .. } => "user",
+            StreamMessage::Assistant { .. } => "assistant",
+            StreamMessage::Tool { .. } => "tool",
+        }
+    }
+
+    /// The message's text content (the canned-key / log projection).
+    pub fn content(&self) -> &str {
+        match self {
+            StreamMessage::System { content }
+            | StreamMessage::User { content }
+            | StreamMessage::Assistant { content, .. }
+            | StreamMessage::Tool { content, .. } => content,
+        }
+    }
+}
+
 /// Token usage of a stream (v4 `TokenUsage`, typically on the final chunk).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct StreamUsage {
@@ -174,7 +301,7 @@ impl std::error::Error for StreamError {}
 /// canned key hashes it verbatim.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StreamParams {
-    pub messages: Vec<CompletionMessage>,
+    pub messages: Vec<StreamMessage>,
     pub model: String,
     /// `None` when the profile omits a custom temperature.
     pub temperature: Option<f64>,
@@ -242,16 +369,32 @@ impl<T: StreamingCompletionProvider> StreamingCompletionProvider for Arc<T> {
 /// oracle's mock computes the identical string, so a call either matches an entry
 /// registered on both sides or surfaces as a corpus omission on both sides.
 ///
-/// This reuses [`super::completion::canned_completion_key`]'s exact form so the
-/// two seams share one key discipline — a streamed call and its non-streamed
-/// twin over the same messages hash identically.
-pub fn canned_stream_key(
+/// This reuses [`super::completion::canned_completion_key`]'s exact byte form
+/// (via the shared parts renderer) so the two seams share one key discipline — a
+/// streamed call and its non-streamed twin over the same messages hash
+/// identically, and the tool-call metadata a [`StreamMessage`] carries never
+/// shifts an oracle-recorded key.
+pub fn canned_stream_key<M: super::completion::CannedKeyMessage>(
     provider: &str,
     model: &str,
     temperature: Option<f64>,
-    messages: &[CompletionMessage],
+    messages: &[M],
 ) -> String {
-    super::completion::canned_completion_key(provider, model, temperature, messages)
+    super::completion::canned_key_from_parts(
+        provider,
+        model,
+        temperature,
+        messages.iter().map(|m| (m.key_role(), m.key_content())),
+    )
+}
+
+impl super::completion::CannedKeyMessage for StreamMessage {
+    fn key_role(&self) -> &str {
+        self.role_str()
+    }
+    fn key_content(&self) -> &str {
+        self.content()
+    }
 }
 
 /// A deterministic [`StreamingCompletionProvider`] for the tier-3 differential.
@@ -279,12 +422,15 @@ impl CannedStreamingProvider {
     /// Register the exact chunk sequence for the call `(provider, model,
     /// temperature, messages)`. The sequence may end in an `Err` to model a
     /// mid-stream (or, if it is the only item, a pre-first-chunk) failure.
-    pub fn with_stream(
+    /// Registration stays keyed by `[{role, content}]` (the oracle-recorded
+    /// shape), so corpora register with plain [`CompletionMessage`]s while
+    /// lookups project the richer [`StreamMessage`] to the identical key.
+    pub fn with_stream<M: super::completion::CannedKeyMessage>(
         mut self,
         provider: &str,
         model: &str,
         temperature: Option<f64>,
-        messages: &[CompletionMessage],
+        messages: &[M],
         chunks: Vec<StreamChunkResult>,
     ) -> Self {
         let key = canned_stream_key(provider, model, temperature, messages);
@@ -295,12 +441,12 @@ impl CannedStreamingProvider {
     /// Convenience: register a successful stream from content-only chunks plus a
     /// terminal `done` chunk carrying `usage`. The strings become successive
     /// content deltas; the final item is `StreamChunk::done(usage)`.
-    pub fn with_content_stream(
+    pub fn with_content_stream<M: super::completion::CannedKeyMessage>(
         self,
         provider: &str,
         model: &str,
         temperature: Option<f64>,
-        messages: &[CompletionMessage],
+        messages: &[M],
         deltas: &[&str],
         usage: Option<StreamUsage>,
     ) -> Self {
@@ -355,11 +501,7 @@ impl StreamingCompletionProvider for CannedStreamingProvider {
 mod tests {
     use super::*;
 
-    fn params(
-        model: &str,
-        temperature: Option<f64>,
-        messages: Vec<CompletionMessage>,
-    ) -> StreamParams {
+    fn params(model: &str, temperature: Option<f64>, messages: Vec<StreamMessage>) -> StreamParams {
         StreamParams {
             messages,
             model: model.to_string(),
@@ -393,8 +535,8 @@ mod tests {
     #[tokio::test]
     async fn replays_chunks_in_registration_order() {
         let messages = vec![
-            CompletionMessage::system("you are a character"),
-            CompletionMessage::user("hello"),
+            StreamMessage::system("you are a character"),
+            StreamMessage::user("hello"),
         ];
         let provider = CannedStreamingProvider::new().with_content_stream(
             "ANTHROPIC",
@@ -468,7 +610,7 @@ mod tests {
             served: Mutex::new(Vec::new()),
         });
         let clone = Arc::clone(&arc);
-        let p = params("m", None, vec![CompletionMessage::user("x")]);
+        let p = params("m", None, vec![StreamMessage::user("x")]);
         // First call via one clone: served.
         let first = drain(arc.stream_message("P", None, &p).await).await;
         assert_eq!(first[0].as_ref().unwrap().content, "first");
@@ -479,7 +621,7 @@ mod tests {
 
     #[tokio::test]
     async fn mid_stream_failure_surfaces_after_the_chunks_before_it() {
-        let messages = vec![CompletionMessage::user("stream then die")];
+        let messages = vec![StreamMessage::user("stream then die")];
         let provider = CannedStreamingProvider::new().with_stream(
             "OPENAI",
             "gpt-x",
@@ -504,7 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn failure_before_first_chunk_is_a_single_error() {
-        let messages = vec![CompletionMessage::user("fail immediately")];
+        let messages = vec![StreamMessage::user("fail immediately")];
         let provider = CannedStreamingProvider::new().with_stream(
             "OPENAI",
             "gpt-x",
@@ -527,7 +669,7 @@ mod tests {
             .stream_message(
                 "ANTHROPIC",
                 None,
-                &params("m", Some(0.3), vec![CompletionMessage::user("unknown")]),
+                &params("m", Some(0.3), vec![StreamMessage::user("unknown")]),
             )
             .await;
         let items = drain(rx).await;
@@ -543,14 +685,14 @@ mod tests {
     async fn key_is_sensitive_to_temperature_and_messages() {
         // The failover path re-issues the same messages on a different provider
         // or with a changed temperature — each variant is its own entry.
-        let base = vec![CompletionMessage::user("hi")];
-        let changed = vec![CompletionMessage::user("hi!")];
+        let base = vec![StreamMessage::user("hi")];
+        let changed = vec![StreamMessage::user("hi!")];
         let provider = CannedStreamingProvider::new()
             .with_content_stream("P", "m", Some(0.3), &base, &["a"], None)
             .with_content_stream("P", "m", Some(0.9), &base, &["b"], None)
             .with_content_stream("P", "m", Some(0.3), &changed, &["c"], None);
 
-        let first = |t: Option<f64>, msgs: Vec<CompletionMessage>| {
+        let first = |t: Option<f64>, msgs: Vec<StreamMessage>| {
             let provider = &provider;
             async move {
                 let rx = provider
@@ -569,7 +711,7 @@ mod tests {
         // Models the streaming service's fold: accumulate `content`, remember the
         // last `usage` / `cache_usage`, act on `done` — the shape primary-stream
         // will reuse.
-        let messages = vec![CompletionMessage::user("tell me a story")];
+        let messages = vec![StreamMessage::user("tell me a story")];
         let provider = CannedStreamingProvider::new().with_stream(
             "ANTHROPIC",
             "claude",

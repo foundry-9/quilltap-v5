@@ -189,18 +189,55 @@ pub fn canned_completion_key(
     temperature: Option<f64>,
     messages: &[CompletionMessage],
 ) -> String {
+    canned_key_from_parts(
+        provider,
+        model,
+        temperature,
+        messages
+            .iter()
+            .map(|m| (m.role.as_str(), m.content.as_str())),
+    )
+}
+
+/// A message type whose role + content project into the canned tier-3 key.
+/// Implemented by [`CompletionMessage`] (the oracle-recorded registration shape)
+/// and the stream half's `StreamMessage` (the carrying type), so a canned stream
+/// can be registered from either while both hash to the identical key bytes.
+pub trait CannedKeyMessage {
+    fn key_role(&self) -> &str;
+    fn key_content(&self) -> &str;
+}
+
+impl CannedKeyMessage for CompletionMessage {
+    fn key_role(&self) -> &str {
+        self.role.as_str()
+    }
+    fn key_content(&self) -> &str {
+        &self.content
+    }
+}
+
+/// The shared byte layout behind [`canned_completion_key`] and the stream half's
+/// `canned_stream_key`: provider, model, temperature, and the messages projected
+/// to `[{role, content}]` JSON. One renderer so the two key functions cannot
+/// drift — a richer stream message keys identically to its role+content twin.
+pub(crate) fn canned_key_from_parts<'a>(
+    provider: &str,
+    model: &str,
+    temperature: Option<f64>,
+    parts: impl Iterator<Item = (&'a str, &'a str)>,
+) -> String {
     let temp = match temperature {
         // f64 Display matches JS Number→string for the plain literals used here
         // (e.g. `0.3`); the key only needs equality, not JS formatting fidelity.
         Some(t) => t.to_string(),
         None => "-".to_string(),
     };
-    let rendered: Vec<serde_json::Value> = messages
-        .iter()
-        .map(|m| {
+    let rendered: Vec<serde_json::Value> = parts
+        .map(|(role, content)| {
             serde_json::json!({
-                "role": m.role.as_str(),
-                "content": m.content,
+                "role": role,
+                "content": content,
             })
         })
         .collect();

@@ -157,11 +157,7 @@ fn build_decoder(selection: DecoderSelection) -> Box<dyn StreamDecoder + Send> {
 fn request_input_from_stream_params(params: &StreamParams) -> RequestInput {
     RequestInput {
         model: params.model.clone(),
-        messages: params
-            .messages
-            .iter()
-            .map(|m| RequestMessage::text(m.role.as_str(), &m.content))
-            .collect(),
+        messages: params.messages.iter().map(request_message_of).collect(),
         temperature: params.temperature,
         max_tokens: params.max_tokens,
         top_p: params.top_p,
@@ -181,6 +177,53 @@ fn request_input_from_stream_params(params: &StreamParams) -> RequestInput {
         previous_response_id: params.previous_response_id.clone(),
         strict_max_tokens: false,
         stream: true,
+    }
+}
+
+/// Map one carrying-type message to the builder-facing [`RequestMessage`] —
+/// **every field crosses** (P4.13 unit 2). This is the conversion the old
+/// role+content projection performed lossily: the tool-call linkage, reasoning
+/// content, and thought signature now reach the per-provider formatters, so a
+/// tool result pairs with its call on the follow-up stream instead of being
+/// dropped (chat-completions / responses API), mis-sent with an empty
+/// `tool_use_id` (anthropic), or refused (openrouter).
+fn request_message_of(m: &crate::model::stream::StreamMessage) -> RequestMessage {
+    use crate::model::stream::StreamMessage;
+    match m {
+        StreamMessage::System { content } => RequestMessage::text("system", content),
+        StreamMessage::User { content } => RequestMessage::text("user", content),
+        StreamMessage::Assistant {
+            content,
+            tool_calls,
+            reasoning_content,
+            thought_signature,
+        } => RequestMessage {
+            role: "assistant".to_string(),
+            content: content.clone(),
+            tool_calls: tool_calls
+                .iter()
+                .map(|tc| crate::model::request_builder::ToolCallMsg {
+                    id: tc.id.clone(),
+                    type_: tc.kind.to_string(),
+                    name: tc.function.name.clone(),
+                    arguments: tc.function.arguments.clone(),
+                })
+                .collect(),
+            reasoning_content: reasoning_content.clone(),
+            thought_signature: thought_signature.clone(),
+            ..Default::default()
+        },
+        StreamMessage::Tool {
+            call_id,
+            name,
+            content,
+        } => RequestMessage {
+            role: "tool".to_string(),
+            content: content.clone(),
+            tool_call_id: Some(call_id.clone()),
+            name: name.clone(),
+            ..Default::default()
+        },
     }
 }
 
@@ -367,7 +410,6 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::completion::CompletionMessage;
     use crate::model::transport::{BoxFuture, StreamBytes, TransportError, TransportResponse};
     use std::sync::Mutex;
 
@@ -429,7 +471,7 @@ mod tests {
 
     fn params(model: &str) -> StreamParams {
         StreamParams {
-            messages: vec![CompletionMessage::user("hi")],
+            messages: vec![crate::model::stream::StreamMessage::user("hi")],
             model: model.to_string(),
             temperature: Some(0.7),
             max_tokens: Some(1024),

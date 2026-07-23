@@ -79,8 +79,7 @@ use crate::tools::pseudo_tool_support::ToolMode;
 
 use super::{
     b, build_brahma_system_prompt, normalize_tool_call_signature, plain_message, requires_api_key,
-    resolve_brahma_connection_profile, s, to_completion_messages, MAX_AGENT_TURNS,
-    MAX_DUPLICATE_TOOL_CALLS,
+    resolve_brahma_connection_profile, s, MAX_AGENT_TURNS, MAX_DUPLICATE_TOOL_CALLS,
 };
 
 // ===========================================================================
@@ -766,7 +765,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
         Some(Value::Array(tools.to_vec()))
     };
     let params = StreamParams {
-        messages: to_completion_messages(messages),
+        messages: crate::services::tool_call_threading::to_stream_messages(messages),
         model: model.to_string(),
         // v4 passes `modelParams: {}` — NO temperature.
         temperature: None,

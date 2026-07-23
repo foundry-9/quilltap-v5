@@ -437,7 +437,7 @@ mod tests {
 
     fn base_params() -> StreamParams {
         StreamParams {
-            messages: vec![crate::model::completion::CompletionMessage::user("hi")],
+            messages: vec![crate::model::stream::StreamMessage::user("hi")],
             model: "m".into(),
             temperature: Some(0.7),
             max_tokens: Some(4096),

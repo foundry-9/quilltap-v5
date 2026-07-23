@@ -41,7 +41,6 @@ use serde_json::Value;
 use crate::db::runtime::Db;
 use crate::db::{chats, DbError};
 use crate::finish_reason::extract_finish_reason;
-use crate::model::completion::{CompletionMessage, CompletionRole};
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
 
 use super::agent_mode::{build_force_final_message, generate_iteration_summary, ResolvedAgentMode};
@@ -50,8 +49,8 @@ use super::primary_stream::{
     apply_reasoning_chunk, flush_reasoning_segment, PreservePartialOnError, StreamingState,
 };
 use super::tool_call_threading::{
-    build_assistant_tool_call_message, build_tool_result_messages, DetectedToolCall,
-    ThreadedMessage,
+    build_assistant_tool_call_message, build_tool_result_messages, to_stream_messages,
+    DetectedToolCall, ThreadedMessage,
 };
 use super::tool_execution::{
     process_tool_calls, GeneratedImage, StatusContext, ToolCall, ToolExecutionContext, ToolMessage,
@@ -457,9 +456,10 @@ where
         current_response.clear();
         current_raw_response = None;
 
-        // Re-stream (v4 :338–384).
+        // Re-stream (v4 :338–384). The slate crosses the stream boundary
+        // losslessly — tool-call linkage included (P4.13 unit 2).
         let mut params = base_params.clone();
-        params.messages = to_completion_messages(&current_messages);
+        params.messages = to_stream_messages(&current_messages);
         let mut emitted_streaming_status = false;
         let mut rx = provider
             .stream_message(&provider_name, base_url.as_deref(), &params)
@@ -549,7 +549,7 @@ where
             });
 
             let mut params = base_params.clone();
-            params.messages = to_completion_messages(&current_messages);
+            params.messages = to_stream_messages(&current_messages);
             let mut rx = provider
                 .stream_message(&provider_name, base_url.as_deref(), &params)
                 .await;
@@ -621,24 +621,6 @@ fn to_detected(tc: &ToolCall) -> DetectedToolCall {
     }
 }
 
-/// Convert the threaded message slate to the stream's `[{role, content}]` view —
-/// the re-stream keys on role+content (the threading metadata is provider wire
-/// state the canned key ignores, matching v4's `streamMessage` seam).
-fn to_completion_messages(messages: &[ThreadedMessage]) -> Vec<CompletionMessage> {
-    messages
-        .iter()
-        .map(|m| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                "tool" => CompletionRole::Tool,
-                _ => CompletionRole::User,
-            },
-            content: m.content.clone(),
-        })
-        .collect()
-}
-
 /// The `AttachmentResults` → JSON shape the streaming state carries (mirrors
 /// [`super::primary_stream`]'s private converter).
 fn attachment_results_to_value(
@@ -663,6 +645,7 @@ fn db_to_stream(e: DbError) -> StreamError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::completion::{CompletionMessage, CompletionRole};
     use crate::model::stream::{CannedStreamingProvider, StreamChunk, StreamUsage};
     use crate::services::chat_events::RecordingSink;
     use crate::services::tool_execution::{create_tool_context, CannedToolRunner, ToolResult};

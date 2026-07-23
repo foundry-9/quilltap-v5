@@ -9,6 +9,65 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.13 the provider-I/O rewrite (branch `claude/provider-io-rewrite-abd736`, in progress 2026-07-23)
+
+Drift-check at lane start: v4 clean at `e646f58b` (zero commits past the
+baseline); v5 survey citations re-verified (`b94c3158..HEAD` docs-only).
+
+### Units 1–2 — the carrying type + the linkage threaded (phase A)
+
+The streaming boundary's message type can now represent everything v4's
+`LLMMessage` sends. `model/stream.rs` gains **`StreamMessage`** — an enum
+(`System`/`User`/`Assistant`/`Tool`) whose illegal states are
+unrepresentable: `Tool` requires `call_id` by construction (the id-less
+case is the explicit `tool_result_fallback` constructor emitting v4's
+`[Tool Result: <name>]\n<content>` user framing), and an assistant turn
+that invoked tools carries its `tool_calls` in the same variant.
+`ToolCallPayload`/`ToolCallFunction` moved from `tool_call_threading` to
+`model/stream.rs` (re-exported at the old path). `StreamParams.messages`
+is now `Vec<StreamMessage>`.
+
+Threading (the #25 fix): `tool_call_threading::to_stream_message[s]` is
+the ONE lossless conversion; all four flattening sites converted —
+`native_tool_loop.rs` (both re-stream sites), `brahma_console/mod.rs`
+(+ the FALSE "the request builder reconstructs" doc comment DELETED),
+`brahma_console/orchestrator.rs`, and `text_tool_loop.rs`'s
+continuation (a FOURTH site the order's table didn't list — its ledger
+entries carry reasoning/thought-signature). `streaming_provider.rs`'s
+`request_input_from_stream_params` maps every field through
+(`request_message_of`). **Also fixed in the same class:
+`carina_query.rs`** — v4 carina.service.ts:663–688 threads assistant
+`toolCalls` + tool-result `toolCallId`/`name`; v5's inline loop was
+flattening them (role-only `CompletionRole::Tool` with the id
+discarded). The orchestrator's primary-stream params now carry an
+assistant turn's persisted `thoughtSignature` (the Gemini round-trip,
+previously dropped at the same boundary).
+
+Canned-key discipline: `canned_stream_key` / `CannedStreamingProvider`
+registration are generic over a `CannedKeyMessage` role+content
+projection shared with `canned_completion_key` (one renderer, identical
+bytes) — oracle-recorded keys cannot shift.
+
+Differential proof: TEN tier-3 families regenerated fresh from v4 at
+`e646f58b` (recipes verbatim from each case header; regen script kept in
+the lane's scratch log) and re-run by name, zero SKIP, all green:
+native-tool-loop (22), text-tool-loop (43), orchestrator (201), brahma
+console (19), brahma orchestrator (20), carina-query (46),
+primary-stream (38), answer-confirmation (56), memory-pipeline-jobs
+(36), danger-gatekeeper (7). Jest substring gotcha: `-- orchestrator-tier3`
+also collects `brahma-orchestrator-tier3` (env-missing FAIL) — use
+`-- cases/orchestrator-tier3`.
+
+**⚠ Pre-existing red found (NOT this lane's):**
+`enclave_step_tier3_equivalence` fails against a FRESH `e646f58b`
+oracle — the oracle now has the fold-episode SUMMARIZATION `llm_logs`
+row (v4's summary check folds episodes) that v5's ENCLAVE step path
+never writes; reproduced identically on main at `57117ecc`. The
+fold-episode seam went live in the Salon orchestrator's
+`run_summary_check` wiring (P4.6bj) but the enclave step's spine
+apparently doesn't run it. Deferred loudly to the post-rewrite
+dogfood-fixing round.
+
 ## Round record — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1): UNIFIED on main (2026-07-22) — THE CAMPAIGN CLOSES
 
 **All three lanes CLOSED and unified; the episodic-recall drift

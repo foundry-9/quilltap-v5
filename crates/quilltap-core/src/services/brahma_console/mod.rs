@@ -42,7 +42,6 @@ use serde_json::Value;
 use crate::db::runtime::Db;
 use crate::db::{api_keys, connection_profiles};
 use crate::jsstr::js_trim;
-use crate::model::completion::{CompletionMessage, CompletionRole};
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
 use crate::provider_manifest::Registry;
 use crate::services::agent_mode::{
@@ -59,8 +58,8 @@ use crate::services::pseudo_tool::{
 };
 use crate::services::tool_build::{build_tools, BuildToolsInput};
 use crate::services::tool_call_threading::{
-    build_assistant_tool_call_message, build_tool_result_messages, DetectedToolCall,
-    ThreadedMessage,
+    build_assistant_tool_call_message, build_tool_result_messages, to_stream_messages,
+    DetectedToolCall, ThreadedMessage,
 };
 use crate::services::tool_execution::{
     process_tool_calls, StatusContext, ToolCall, ToolExecutionContext,
@@ -249,26 +248,10 @@ impl EventSink for NoopSink {
     fn emit(&self, _event: ChatEvent) {}
 }
 
-/// Convert the threaded message slate to the role+content stream shape (v4 passes
-/// `ThreadedMessage[]` straight to `streamMessage`; the v5 stream boundary carries
-/// role+content only — `toolCalls`/reasoning are request-local continuation state
-/// the provider request builder reconstructs, as `native_tool_loop` does).
-pub(super) fn to_completion_messages(messages: &[ThreadedMessage]) -> Vec<CompletionMessage> {
-    messages
-        .iter()
-        .map(|m| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                "tool" => CompletionRole::Tool,
-                _ => CompletionRole::User,
-            },
-            content: m.content.clone(),
-        })
-        .collect()
-}
-
 /// One streamed LLM call → `(answer, rawResponse, reasoning, thoughtSignature)`.
+/// The slate crosses the stream boundary losslessly (v4 passes
+/// `ThreadedMessage[]` straight to `streamMessage`; P4.13 unit 2 made the v5
+/// boundary carry the tool-call linkage instead of flattening it away).
 async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     provider: &str,
@@ -284,7 +267,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         Some(Value::Array(tools.to_vec()))
     };
     let params = StreamParams {
-        messages: to_completion_messages(messages),
+        messages: to_stream_messages(messages),
         model: model.to_string(),
         // v4 passes `modelParams: {}` — NO temperature (never the profile's).
         temperature: None,

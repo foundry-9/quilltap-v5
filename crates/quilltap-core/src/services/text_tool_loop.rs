@@ -61,12 +61,11 @@
 use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
-use crate::model::completion::{CompletionMessage, CompletionRole};
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::primary_stream::{apply_reasoning_chunk, PreservePartialOnError, StreamingState};
-use super::tool_call_threading::ThreadedMessage;
+use super::tool_call_threading::{to_stream_message, ThreadedMessage};
 use super::tool_execution::{
     process_tool_calls, GeneratedImage, StatusContext, ToolCall, ToolExecutionContext, ToolMessage,
     ToolRunner,
@@ -632,11 +631,13 @@ where
         character_id: Some(character_id.to_string()),
     }));
 
-    // continuationMessages = [...formattedMessages, ...ledger].
-    let mut continuation_messages: Vec<CompletionMessage> =
+    // continuationMessages = [...formattedMessages, ...ledger]. The slate crosses
+    // the stream boundary losslessly (P4.13 unit 2) — the ledger's assistant
+    // entries carry their reasoning/thought-signature metadata through.
+    let mut continuation_messages: Vec<crate::model::stream::StreamMessage> =
         Vec::with_capacity(formatted_messages.len() + ledger.len());
-    continuation_messages.extend(formatted_messages.iter().map(to_completion_message));
-    continuation_messages.extend(ledger.iter().map(to_completion_message));
+    continuation_messages.extend(formatted_messages.iter().map(to_stream_message));
+    continuation_messages.extend(ledger.iter().map(to_stream_message));
 
     // Push the empty slot FIRST so a mid-stream failure preserves partial content.
     raw_responses.push(String::new());
@@ -678,20 +679,6 @@ where
         }
     }
     Ok(())
-}
-
-/// The threaded message → stream `[{role, content}]` view (the canned key ignores
-/// the threading metadata, matching v4's `streamMessage` seam).
-fn to_completion_message(m: &ThreadedMessage) -> CompletionMessage {
-    CompletionMessage {
-        role: match m.role.as_str() {
-            "system" => CompletionRole::System,
-            "assistant" => CompletionRole::Assistant,
-            "tool" => CompletionRole::Tool,
-            _ => CompletionRole::User,
-        },
-        content: m.content.clone(),
-    }
 }
 
 // ===========================================================================
@@ -737,6 +724,7 @@ fn assemble_stripped_with_offsets<Strat: TextToolStrategy + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::completion::{CompletionMessage, CompletionRole};
     use crate::model::stream::{CannedStreamingProvider, StreamChunk, StreamUsage};
     use crate::services::chat_events::RecordingSink;
     use crate::services::primary_stream::EffectiveProfile;

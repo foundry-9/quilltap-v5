@@ -869,8 +869,8 @@ pub(crate) async fn log_chat_message_call(
         .messages
         .iter()
         .map(|m| PrefixMessage {
-            role: m.role.as_str().to_string(),
-            content: Value::String(m.content.clone()),
+            role: m.role_str().to_string(),
+            content: Value::String(m.content().to_string()),
             name: None,
             tool_call_id: None,
             tool_calls: None,
@@ -893,8 +893,8 @@ pub(crate) async fn log_chat_message_call(
                 .messages
                 .iter()
                 .map(|m| LogRequestMessage {
-                    role: m.role.as_str().to_string(),
-                    content: m.content.clone(),
+                    role: m.role_str().to_string(),
+                    content: m.content().to_string(),
                     attachments: None,
                 })
                 .collect(),
@@ -1125,7 +1125,7 @@ where
         // The retry re-issues the SAME messages (the tool schemas were never in
         // the message body), so it must key to the same canned stream slot as the
         // primary call keyed on (provider, model, temperature, messages).
-        let _ = canned_stream_key; // documented: same key discipline as the seam.
+        let _ = canned_stream_key::<crate::model::stream::StreamMessage>; // documented: same key discipline as the seam.
 
         // v4's retry `streamMessage` call (primary-stream.service.ts:246–256) passes
         // NO `characterId` (unlike the primary attempt at :192), so the retry's

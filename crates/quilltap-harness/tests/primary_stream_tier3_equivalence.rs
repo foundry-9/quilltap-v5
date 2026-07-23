@@ -53,8 +53,8 @@ use std::sync::Mutex;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
-    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
-    StreamingCompletionProvider,
+    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
+    StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::llm_logging::LogContext;
@@ -483,7 +483,17 @@ async fn primary_stream_tier3_matches_oracle() {
         ]
     };
     let base_params = |messages: Vec<CompletionMessage>| StreamParams {
-        messages,
+        // The canned registration keeps the oracle-recorded `[{role, content}]`
+        // shape; the params carry the equivalent StreamMessage projection
+        // (identical canned key bytes).
+        messages: messages
+            .iter()
+            .map(|m| match m.role {
+                CompletionRole::System => StreamMessage::system(m.content.clone()),
+                CompletionRole::Assistant => StreamMessage::assistant(m.content.clone()),
+                _ => StreamMessage::user(m.content.clone()),
+            })
+            .collect(),
         model: spec.profile.model_name.clone(),
         temperature: Some(1.0),
         max_tokens: Some(4096),

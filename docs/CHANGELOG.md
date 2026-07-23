@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+P4.13 units 1–2 (the provider-I/O rewrite, phase A): the streaming
+boundary now carries the tool-call linkage to the wire. `StreamParams.messages`
+is a new `StreamMessage` enum (system/user/assistant/tool) that can represent
+everything v4's `LLMMessage` sends — assistant `toolCalls`, tool-result
+`toolCallId`+`name`, `reasoningContent`, `thoughtSignature` — with the illegal
+states unrepresentable (a native tool result cannot be built without its call
+ID; the id-less case is v4's explicit `[Tool Result: …]` user-text fallback).
+All four flattening sites (the native tool loop, the Brahma console + its
+orchestrator, the text-tool loop's continuation) and the Carina query loop
+now convert losslessly, and `request_input_from_stream_params` maps every
+field through to the request builders — fixing dogfood finding #25 (native
+tool results were dropped/mis-sent on every provider, so characters retried
+the same call forever). The Carina loop also threads its assistant
+`toolCalls` and tool-result ids (v4 carina.service.ts:663–688 — the same
+defect class, previously flattened). The primary stream now carries an
+assistant turn's persisted `thoughtSignature` (the Gemini round-trip).
+The Brahma console's false "the request builder reconstructs" doc comment is
+deleted. Canned tier-3 keys are unchanged (the key projects role+content);
+ten tier-3 differential families re-run green over oracles regenerated fresh
+at v4 `e646f58b`.
+
+Known pre-existing red (NOT this change; reproduced on main with the same
+fresh oracle): `enclave_step_tier3_equivalence` — a fresh `e646f58b`
+enclave-step oracle now includes the fold-episode SUMMARIZATION `llm_logs`
+row that the v5 enclave step path does not produce (the fold-episode seam is
+wired in the orchestrator's summary check but not in the enclave step's).
+Follow-up owed outside this lane.
+
 Recorded the human ruling on the P4.14 sort fix: the non-validating
 stable merge sort (arm a), per the order's recommendation. All three
 lanes of the provider-I/O rewrite round are now cleared to dispatch.

@@ -83,7 +83,7 @@ fn tool_call_signature_is_stable_and_string_insensitive() {
 }
 
 #[test]
-fn to_completion_messages_maps_roles() {
+fn to_stream_messages_maps_roles() {
     let msgs = vec![
         plain_message("system", "s"),
         plain_message("assistant", "a"),
@@ -91,13 +91,15 @@ fn to_completion_messages_maps_roles() {
         plain_message("user", "u"),
         plain_message("weird", "w"),
     ];
-    let out = to_completion_messages(&msgs);
-    use crate::model::completion::CompletionRole::*;
-    assert_eq!(out[0].role, System);
-    assert_eq!(out[1].role, Assistant);
-    assert_eq!(out[2].role, Tool);
-    assert_eq!(out[3].role, User);
-    assert_eq!(out[4].role, User); // unknown → user
+    let out = to_stream_messages(&msgs);
+    assert_eq!(out[0].role_str(), "system");
+    assert_eq!(out[1].role_str(), "assistant");
+    // An id-less tool message takes v4's explicit user-text fallback framing
+    // (unreachable from the threading builders, which never emit one).
+    assert_eq!(out[2].role_str(), "user");
+    assert_eq!(out[2].content(), "[Tool Result: ]\nt");
+    assert_eq!(out[3].role_str(), "user");
+    assert_eq!(out[4].role_str(), "user"); // unknown → user
 }
 
 // ---------------------------------------------------------------------------

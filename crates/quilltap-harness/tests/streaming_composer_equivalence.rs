@@ -40,7 +40,6 @@ use quilltap_core::model::transport::{
     BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
     TransportResponse,
 };
-use quilltap_core::model::CompletionMessage;
 use serde_json::{json, Map, Value};
 
 fn streams_dir() -> PathBuf {
@@ -215,7 +214,9 @@ impl ProviderTransport for ReplayTransport {
 
 fn params(model: &str) -> StreamParams {
     StreamParams {
-        messages: vec![CompletionMessage::user("composer replay")],
+        messages: vec![quilltap_core::model::stream::StreamMessage::user(
+            "composer replay",
+        )],
         model: model.to_string(),
         temperature: Some(0.7),
         max_tokens: None,

@@ -22,6 +22,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::jsstr::js_trim;
+use crate::model::stream::StreamMessage;
 
 /// A tool call as surfaced by v4's `detectToolCallsInResponse` — the subset the
 /// threading helpers consume. `arguments` is carried as an order-preserving
@@ -41,22 +42,10 @@ pub struct DetectedToolCall {
 // `tool_call_threading::ToolMessage` keeps resolving for existing consumers.
 pub use super::tool_execution::ToolMessage;
 
-/// One entry in an assistant turn's `toolCalls` array. Serializes byte-identical
-/// to v4's `{ id, type: 'function', function: { name, arguments } }`.
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct ToolCallPayload {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub kind: &'static str,
-    pub function: ToolCallFunction,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct ToolCallFunction {
-    pub name: String,
-    /// The `JSON.stringify(arguments)` string.
-    pub arguments: String,
-}
+// The canonical `ToolCallPayload` / `ToolCallFunction` moved to the model layer
+// (P4.13 unit 1 — the stream boundary carries them now); re-exported so existing
+// consumers keep resolving here.
+pub use crate::model::stream::{ToolCallFunction, ToolCallPayload};
 
 /// A provider-agnostic outgoing chat message. `None`-valued optional fields are
 /// dropped on serialization, matching JS `JSON.stringify` dropping `undefined`
@@ -82,7 +71,7 @@ pub struct ThreadedMessage {
 /// preserve-order `serde_json`. String escaping and object/array shaping already
 /// match `JSON.stringify`; the number normalization is the only divergence to
 /// close over the JSON value space tool arguments occupy.
-fn stringify_arguments(arguments: &Value) -> String {
+pub(crate) fn stringify_arguments(arguments: &Value) -> String {
     serde_json::to_string(&normalize_numbers(arguments)).unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -165,6 +154,46 @@ pub fn build_assistant_tool_call_message(
         tool_call_id: None,
         tool_calls: tool_calls_payload,
     }
+}
+
+/// Convert one threaded message to the stream boundary's carrying type
+/// (P4.13 unit 2) — **lossless**: the tool-call linkage, reasoning content, and
+/// thought signature all ride through to the request builders. The old
+/// `[{role, content}]` projection at this seam is what dropped the linkage
+/// before any builder ran (dogfood finding #25).
+pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
+    match m.role.as_str() {
+        "system" => StreamMessage::System {
+            content: m.content.clone(),
+        },
+        "assistant" => StreamMessage::Assistant {
+            content: m.content.clone(),
+            tool_calls: m.tool_calls.clone().unwrap_or_default(),
+            reasoning_content: m.reasoning_content.clone(),
+            thought_signature: m.thought_signature.clone(),
+        },
+        "tool" => match m.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
+            Some(call_id) => StreamMessage::Tool {
+                call_id: call_id.to_string(),
+                name: m.name.clone(),
+                content: m.content.clone(),
+            },
+            // Unreachable from `build_tool_result_messages` (its id-less arm
+            // already emits the user framing below); kept total with the same
+            // v4 fallback rule rather than panicking on a hand-built message.
+            None => {
+                StreamMessage::tool_result_fallback(m.name.as_deref().unwrap_or(""), &m.content)
+            }
+        },
+        _ => StreamMessage::User {
+            content: m.content.clone(),
+        },
+    }
+}
+
+/// [`to_stream_message`] over a slate.
+pub fn to_stream_messages(messages: &[ThreadedMessage]) -> Vec<StreamMessage> {
+    messages.iter().map(to_stream_message).collect()
 }
 
 /// Build the per-result messages that follow the assistant tool-call turn. A

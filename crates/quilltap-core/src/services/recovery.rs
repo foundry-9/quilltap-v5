@@ -29,7 +29,7 @@
 
 use crate::db::runtime::Db;
 use crate::format_bytes::format_bytes;
-use crate::model::completion::{CompletionMessage, CompletionRole};
+use crate::model::stream::StreamMessage;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
 
 use super::chat_events::{ChatEvent, DonePayload, EventSink};
@@ -271,14 +271,8 @@ where
     );
 
     let recovery_messages = vec![
-        CompletionMessage {
-            role: CompletionRole::System,
-            content: system_prompt,
-        },
-        CompletionMessage {
-            role: CompletionRole::User,
-            content: user_message,
-        },
+        StreamMessage::system(system_prompt),
+        StreamMessage::user(user_message),
     ];
 
     let recovery_type = if is_token_limit {
