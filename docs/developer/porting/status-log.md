@@ -30351,3 +30351,72 @@ quilltap` against a **fresh named volume**:
   — a real dist asset with the right MIME off the traversal-guarded path.
 
 `static_serve.rs` untouched, as the order froze it.
+
+### Unit 4 — `quilltap-web` finds its dist without being told (the one Rust unit)
+
+New module `crates/quilltap-web/src/spa.rs`. The chain, mirroring the shape
+`quilltap-host::paths::resolve_base_dir` already gives `--data-dir`:
+
+1. `--spa-dir <path>` — **verbatim, unvalidated**,
+2. `QUILLTAP_SPA_DIR` (non-empty) — **verbatim, unvalidated**,
+3. `<exe dir>/spa`, then `<exe dir>/../share/quilltap/spa` — each accepted
+   only if it holds an `index.html`,
+4. `None` — the embedded placeholder pages, unchanged.
+
+Two design points worth keeping:
+
+- **Explicit is an instruction, a guess must prove itself.** Links 1–2 are
+  not validated: `--spa-dir`'s semantics are frozen (the Playwright suite
+  passes it and is their proof), and validating an operator's explicit path
+  would silently do something other than what they asked. Links 3–4 *are*
+  validated, because an unvalidated guess would make the new banner announce
+  an SPA that is not there.
+- **The chain is a pure function** — `resolve_spa_dir(flag, env, exe_dir)` —
+  with `resolve_spa_dir_for_process` the only thing that touches
+  `std::env`/`current_exe`. So the eight unit tests never mutate the ambient
+  environment (process-global, and it races other tests in the same binary).
+
+Candidate 3b (`../share/quilltap/spa`) is what makes the FHS install layout
+work: `/usr/local/bin/quilltap-web` finds `/usr/local/share/quilltap/spa`
+with no configuration at all.
+
+**The banner** (`main.rs`) gained an arm either way: "The parlour is
+furnished from `<dir>`." on stdout, or, on stderr, "The parlour stands
+unfurnished: no Angular dist was found… Name one with `--spa-dir <path>` or
+`QUILLTAP_SPA_DIR`, or set the dist down beside the binary as `./spa`."
+Checked first that nothing parses this binary's stdout — `global-setup.ts`
+redirects both streams into a log file and polls `/health` — so extra lines
+are safe. `--help` grew an ENVIRONMENT section for both vars.
+
+**The Dockerfile switched from the unit-3 ENTRYPOINT flag to
+`ENV QUILLTAP_SPA_DIR=/usr/local/share/quilltap/spa`** so that
+`docker run … --spa-dir /elsewhere` can still override it (an
+ENTRYPOINT-embedded flag cannot be overridden without `--entrypoint`), which
+is the same reasoning that already made the data dir an env var. The layout
+would resolve through link 3b even with the var removed; stating it keeps
+the container legible instead of clever.
+
+`static_serve.rs` untouched (frozen). The Tauri shell is untouched: it calls
+`web_state(…, None)` directly and never goes through the resolver, so the
+qtap-protocol shell keeps serving its dist its own way.
+
+**Tests: 8, one per link plus the precedence and tail cases** —
+`flag_wins_over_everything_and_is_taken_verbatim`,
+`env_wins_over_the_binary_relative_default`,
+`an_empty_env_var_does_not_count_as_explicit`,
+`finds_the_dist_sitting_beside_the_binary`,
+`finds_the_fhs_install_layout_the_container_uses`,
+`the_beside_candidate_is_searched_before_the_share_one`,
+`a_candidate_without_an_index_html_is_not_a_dist`,
+`nothing_anywhere_yields_none_the_placeholder_tail`. All green.
+
+**The exit-gate bare-binary proof** (the order's "copied alone to a scratch
+directory next to its `spa/`"): `target/debug/quilltap-web` copied to a
+scratch dir, the dist extracted from the `spa` build stage into `./spa`
+beside it, run as `./quilltap-web --port 3011 --data-dir ./data` with
+`QUILLTAP_SPA_DIR` explicitly unset — banner: "The parlour is furnished from
+…/bare-binary/spa."; `GET /` carried `main-XX5ODPXG.js`. Then `spa/` renamed
+away and re-run: the unfurnished warning printed and `GET /` carried no
+hashed bundle (the placeholder). Both arms behave.
+
+`quilltap-web` 0.0.37 → **0.0.38** (the lane's only crate-source change).

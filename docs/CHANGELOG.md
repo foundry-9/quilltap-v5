@@ -137,6 +137,15 @@ self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
 =======
+quilltap-web now finds its SPA dist without being told. The resolution chain
+is --spa-dir, then QUILLTAP_SPA_DIR, then a dist sitting beside the binary
+(./spa), then ../share/quilltap/spa, then the placeholder pages as before.
+Explicit paths are used verbatim; the binary-relative guesses only count if
+they actually hold an index.html. The startup banner now names the directory
+the SPA is served from, or warns that only placeholder pages will be served
+and how to fix it -- a silent fallback to placeholders was the failure that
+went unnoticed for five months. --help documents both env vars.
+
 The Docker image now serves the real Angular app instead of the two
 placeholder pages. The dist is copied to /usr/local/share/quilltap/spa and
 the entrypoint points the server at it. A fresh container answers /health,

@@ -40,6 +40,9 @@ pub mod photos_routes;
 // === P4.6w: documents ===
 pub mod qtap_target_route;
 // === end P4.6w ===
+// === P4.10: where the Angular dist comes from ===
+pub mod spa;
+// === end P4.10 ===
 pub mod state;
 pub mod static_serve;
 // === P4.6au: the home-dashboard REST edge ===

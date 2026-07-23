@@ -90,10 +90,18 @@ COPY --from=spa /spa/dist/quilltap/browser /usr/local/share/quilltap/spa
 # The conventional container data dir (paths.rs resolves it automatically in
 # a container; the env var makes it explicit for spawned terminals too).
 ENV QUILLTAP_DATA_DIR=/app/quilltap
+
+# Where the dist above lives. An env var rather than an ENTRYPOINT flag so
+# `docker run … --spa-dir /elsewhere` can still override it (the flag is the
+# first link of the chain in `quilltap_web::spa`) — the same reason the data
+# dir is an env var. Note the layout would resolve without this: the binary
+# is in /usr/local/bin, so the chain's ../share/quilltap/spa candidate finds
+# it. Stating it keeps the container's behavior legible rather than clever.
+ENV QUILLTAP_SPA_DIR=/usr/local/share/quilltap/spa
+
 VOLUME /app/quilltap
 EXPOSE 3000
 
 # The container binds all interfaces (D2 — the container boundary is the trust
 # boundary; put a proxy in front for more).
-ENTRYPOINT ["quilltap-web", "--host", "0.0.0.0", "--port", "3000", \
-            "--spa-dir", "/usr/local/share/quilltap/spa"]
+ENTRYPOINT ["quilltap-web", "--host", "0.0.0.0", "--port", "3000"]
