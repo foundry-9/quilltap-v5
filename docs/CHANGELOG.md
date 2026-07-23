@@ -2,6 +2,7 @@
 
 ## Recent Changes
 
+<<<<<<< HEAD
 P4.13 units 7-8 + 10 (records): verified the Brahma Console's loop-bug
 compensation is verbatim v4 behavior (stays); recorded the reasoning/
 thought-signature riders as pinned by the unit-3 call-site test; updated
@@ -110,6 +111,12 @@ enclave-step oracle now includes the fold-episode SUMMARIZATION `llm_logs`
 row that the v5 enclave step path does not produce (the fold-episode seam is
 wired in the orchestrator's summary check but not in the enclave step's).
 Follow-up owed outside this lane.
+=======
+Recorded work order P4.14's lane record (including the crate-wide sort audit
+table, site by site) and marked the memory-injector sort panic FIXED in the
+dogfood findings. Docs only, no code change.
+
+>>>>>>> ec30f566 (Record the P4.14 lane: the sort audit table and the fixed dogfood finding)
 Fixed the crash that killed live Salon turns: the memory injector's sort
 comparators are not total orders, and Rust's sort validates while V8's does
 not. `format_dynamic_memory_head` and `format_memories_for_context` (and, from

@@ -161,7 +161,26 @@ catch, since every fixture is built fresh.
   stream fixtures likewise stay untrusted as wire-shape evidence
   (`openai-basic`/`grok-basic`/`openai-reasoning` carry a top-level
   `output_text` no real response has).
-- **LOCALIZED (2026-07-23, server stderr backtrace) — the memory-injector sort comparator panics on real data, killing the turn.**
+- **FIXED (2026-07-23, work order P4.14 — arm (a), the non-validating stable
+  merge sort) — the memory-injector sort comparator panics on real data, killing the turn.**
+  `crates/quilltap-core/src/stable_sort.rs`'s `stable_sort_by_unchecked` now
+  runs both injector comparators (and, from the same audit sweep, the Post
+  Office's `sort_newest_first`, which has the identical defect via v4's
+  `Number.isFinite` guard — reachable only on malformed `sentAt` frontmatter).
+  The comparators are byte-unchanged; only the sort driving them moved. All
+  five affected differential families re-ran byte-green over oracles
+  regenerated fresh at `e646f58b`, so no committed slate reaches the
+  contradictory region where this sort may diverge from V8. **#26's re-check is
+  unblocked from the panic side** — a build_context panic can no longer kill
+  `run_summary_check` before the fold gate is evaluated — but its cheap-LLM
+  side still waits on the P4.13 rewrite; re-check #26 in the post-rewrite
+  dogfood run. Two refinements to the diagnosis below, learned while landing:
+  the trigger is **~20** memories, not 50 (driftsort's insertion-sort fast
+  path), AND the slate must not already read as one detected run — an epsilon
+  ladder fed in ladder order is skipped entirely, so only a shuffled slate (a
+  real cosine-ordered recall slate) actually sorts. The original localization
+  follows.
+- **(the localization, 2026-07-23, server stderr backtrace) — the memory-injector sort comparator panics on real data, killing the turn.**
   `thread '<unnamed>' panicked … user-provided comparison function does not
   correctly implement a total order`, during a Salon send on the Friday copy;
   the character could not respond, and it did not reproduce on retry. **Not

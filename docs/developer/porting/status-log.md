@@ -197,6 +197,147 @@ fold-episode seam went live in the Salon orchestrator's
 `run_summary_check` wiring (P4.6bj) but the enclave step's spine
 apparently doesn't run it. Deferred loudly to the post-rewrite
 dogfood-fixing round.
+## Lane record — P4.14, the memory-injector sort comparators made panic-free (CLOSED, 2026-07-23)
+
+**Branch `claude/p4-14-memory-sort-total-order-156889`, 3 commits. Every unit
+landed; nothing deferred.** Executes the human ruling of 2026-07-23: **arm (a)**,
+a non-validating stable merge sort. v4 drift-checked clean at the pinned
+baseline `e646f58b` at lane start (`git log e646f58b..HEAD` empty, tree clean).
+
+**The defect.** `slice::sort_by` (driftsort) validates its comparator and
+panics; V8's `Array.prototype.sort` (TimSort) never does. Several of v4's
+comparators — ported faithfully, and equally broken on both sides — are not
+total orders. On the Friday copy one of them killed a live Salon send, and with
+it the context-summary fold gate (`run_summary_check` runs at the END of
+`process_message`, so a `build_context` panic pre-empts it — the leading
+candidate cause of finding #26).
+
+**Unit 1 — `crates/quilltap-core/src/stable_sort.rs` (commit `4f038ab1`).**
+`stable_sort_by_unchecked`: a bottom-up stable merge sort over **indices**, with
+the resulting permutation applied by `slice::swap`. No `unsafe` anywhere — the
+name refers only to the comparator's total-order contract going unverified —
+and allocation bounded at `2 * len` `usize`. Ties take from the left half, the
+same rule `slice::sort_by` uses, which is what makes it a drop-in. Four
+property tests: exact equality with `slice::sort_by` over lengths
+`0,1,2,3,7,19,20,21,40,41,64,128,200,501` × tie densities `1,3,17,100000`
+(payload index in the tuple makes stability observable, so equality proves order
+AND stability); tie order preserved at n=300; the injector's epsilon comparator
+survived at n=200 with a permutation check; the all-`Equal` comparator left as
+an identity.
+
+**Units 2 + 3 + the audit — the swaps and their regressions (commit `873d86df`).**
+Three sites moved to `stable_sort_by_unchecked`, each with a `why`-comment
+naming its intransitivity and the TimSort fact (this is precisely the invariant
+a later reader would "simplify" back into a panic):
+
+| Site | Comparator | Verdict |
+| --- | --- | --- |
+| `memory_injector.rs` `format_memories_for_context` (was `:508`) | 0.05 epsilon window over weight, else score | **VIOLATES — swapped.** Weights 0.00/0.04/0.08 give a==b, b==c, a<c |
+| `memory_injector.rs` `format_dynamic_memory_head` (was `:865`) | the epsilon window **plus** the `blended_after` early return | **VIOLATES — swapped.** The confirmed dogfood panic site; two independent sources |
+| `post_office/mailbox.rs` `sort_newest_first` | `(Some,Some) if ta!=tb => time`, else path — v4's `Number.isFinite` guard | **VIOLATES — swapped** (found by the sweep). A letter with unparseable `sentAt` compares to everything by path while parseable ones compare by time: `{t=10,"a"}, {t=5,"z"}, {t=None,"m"}` cycles. 98/120 shuffled 24–128-letter slates panic. Reachable only on malformed frontmatter, so lower-probability than the injector's, but the same class and the same crash |
+| `memory_injector.rs:670` `relevance_entries` | `cmp_num(b.relevance - a.relevance)` | Total — difference form. For finite floats `b-a == 0` iff `b == a` (Sterbenz makes near subtraction exact; distant values cannot round to zero) and the sign is exact, so it is a plain key comparison. Kept |
+| `memory_injector.rs:694` `importance_entries` | `cmp_num(b.weight - a.weight)` | Total — same. Kept |
+| `turn_order.rs:130,156` | `b.talkativeness().partial_cmp(&a…)` | Total — key comparison. Kept |
+| `db/conversation_search.rs:128` | `b.score.partial_cmp(&a.score)` | Total — key comparison. Kept |
+| `tools/photo.rs:472` | `partial_cmp` on `relevance_score.unwrap_or(0.0)` | Total — key comparison over a defaulted key. Kept |
+| `tools/self_inventory.rs:1057,1174` | bool, then bool, then `locale_compare` | Total — lexicographic tuple. Kept |
+| `embedding_blob.rs:374` | `match (Some,Some)/(Some,None)/(None,Some)/(None,None)` | Total — Option order with None last, tie-broken by key. The exhaustive match is what saves it; contrast the mailbox's guarded arm. Kept |
+| everything else in the crate | `.cmp()` on strings/ints, `sort_by_key`, `locale_compare`, lexicographic tuples | Total by construction. Kept |
+
+The sweep was mechanical: an awk pass over every `sort_by(` body in
+`quilltap-core/src`, flagging comparators containing a threshold (`abs()`,
+`> 0.`, `< 0.`) or an `Option`-pair match — the two shapes that can branch on
+something other than the key. It surfaced exactly two candidates
+(`embedding_blob.rs:374`, `post_office/mailbox.rs`), one benign and one real.
+No total-order site was touched.
+
+**The residual, recorded not fixed:** every one of the "Kept" float comparators
+maps NaN to `Equal` (via `unwrap_or(Ordering::Equal)` or `cmp_num`), which would
+be non-total if a NaN ever reached them. That is a different, unobserved hazard
+from the one this lane fixes — the dogfood panic was explicitly **not** NaN —
+and a weight or score arriving as NaN is a data-integrity bug worth surfacing
+rather than sorting around. Left alone deliberately.
+
+**Regressions (unit 3).** In `memory_injector.rs`, a
+`intransitive_comparator_regression` module: shuffled 200-entry epsilon-ladder
+slates through the real `format_dynamic_memory_head` (mixed `blended_after`
+presence, so both intransitivity sources are live) and
+`format_memories_for_context`, plus a pin that the **fully**-blended head arm
+still ranks by descending blended score — that arm is a plain key comparison and
+so a genuine total order, which is worth showing explicitly since it is half of
+the same comparator. In `mailbox.rs`, a 128-letter slate with every fourth
+`sentAt` unparseable. All three were verified raising the exact production panic
+(`smallsort.rs:860`, same message) against the pre-swap code before the swap
+landed.
+
+**Two conditions must hold together for driftsort to reach its check — this is
+why the committed differentials never caught a live-crashing bug:**
+1. the slate must leave the insertion-sort fast path (**~20** elements, not the
+   50 the order estimated — but the memory-injector oracle's largest input slate
+   is **8**), and
+2. it must not already read as one detected run. An epsilon ladder fed **in
+   ladder order** does: every adjacent pair falls inside the 0.05 window, so the
+   run detector walks the whole array and returns having merged nothing. Only a
+   shuffled slate — which is what a real recall slate, ordered by cosine score
+   rather than by weight, is — actually sorts. The first repro attempt passed
+   for exactly this reason.
+
+**Unit 4 — the differentials.** All five affected families regenerated FRESH at
+v4 `e646f58b` (each in its own clean invocation, output counts verified) and
+re-run BY NAME with `--nocapture`, **zero SKIP, all byte-green**:
+`memory_injector_equivalence` (72 rows), `memory_weighting_equivalence` (17
+cases), `ranking_blend_equivalence` (5 blend / 5 cosine / 10 age),
+`build_context_tier3_equivalence` (25 ops over a freshly built two-DB fixture),
+and `mail_carina_tools_equivalence` (8 mail scenarios + 9 carina cases) — the
+last added by the lane because the audit swap touched the Post Office. **No
+committed slate reaches the contradictory region**, so the swap is measurably
+output-neutral: the differentials passed identically before and after, which for
+a stable sort is the proof that both sorts agree on every slate under test. Had
+any slate landed in the contradictory region the diff would have gone red, which
+is the tripwire the ruling asked for.
+
+**Regen recipes** (all from `~/source/quilltap-server`, v4 clean at
+`e646f58b` — no pinned worktree needed; Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`; jest cases staged outside any `.claude/`
+path because jest ignores them there):
+
+```
+V5=~/source/quilltap-v5 ; N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+TZ=UTC npx tsx $V5/harness/oracle/cases/memory-injector.ts  > /tmp/oracle-memory-injector.ndjson   # 72
+TZ=UTC npx tsx $V5/harness/oracle/cases/memory-weighting.ts > /tmp/oracle-weighting.ndjson         # 17
+TZ=UTC npx tsx $V5/harness/oracle/cases/ranking-blend.ts    > /tmp/oracle-ranking.ndjson           # 20
+
+QT_FIXTURE_OUT=/tmp/qt-bc-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-bc-mount.db   npx tsx $V5/harness/oracle/fixtures/build-context-tier3-fixture.ts
+TZ=UTC QT_FIXTURE_BC_MAIN=/tmp/qt-bc-main.db QT_FIXTURE_BC_MOUNT=/tmp/qt-bc-mount.db QT_ORACLE_OUT=/tmp/oracle-build-context.ndjson   npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- build-context-tier3   # 25
+
+STAGE=/tmp/qt-oracle-stage ; rm -rf $STAGE
+mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $V5/harness/oracle/cases/{mail-tools,carina-tool}.test.ts $STAGE/harness/oracle/cases/
+cp $V5/harness/oracle/fixtures/mail-carina-tools.json        $STAGE/harness/oracle/fixtures/
+QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db   $N/node --import tsx $V5/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts
+TZ=UTC QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db QT_ORACLE_OUT=/tmp/oracle-mail-tools.ndjson   $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- mail-tools     # 8
+QT_ORACLE_OUT=/tmp/oracle-carina-tool.ndjson   $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- carina-tool    # 9
+```
+
+**No fixture was changed** — the lane consumes the existing families and
+authored no new oracle — so **no other oracle is invalidated**, and every
+committed NDJSON keeps its prior vintage.
+
+**The gate (this Mac, authoritative):** `cargo fmt --all --check` clean; clippy
+`--workspace --all-targets -D warnings` green BOTH feature sets (default +
+`--features quilltap-core/native-transport`); `cargo build --workspace` clean;
+`TZ=UTC cargo test --workspace` with all ten differential env vars set —
+**367 test binaries / 1,524 passed / 0 failed / 0 ignored**. No SPA file
+touched, so no `ng` gate was owed. Versions: **core 0.0.331** (the only crate
+whose source changed; harness needed no bump — the lane re-ran its tests without
+editing them, so the order's "core + harness" reduces to core alone).
+
+**Owed onward.** Finding #26's re-check belongs to the post-rewrite dogfood run:
+the panic side is now clear, but its cheap-LLM side still waits on P4.13. The
+live proof that a real Salon send survives a big recall slate is a dogfood item
+— the panic was data-dependent and did not reproduce on retry, so only real
+Friday-copy traffic can confirm it in situ.
 
 ## Round record — the episodic-recall drift catch-up, ROUND 3 of 3 (P4.d14 ∥ P4.d15 ∥ P4.9H1): UNIFIED on main (2026-07-22) — THE CAMPAIGN CLOSES
 
