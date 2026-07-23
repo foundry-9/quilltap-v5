@@ -64,8 +64,30 @@ catch, since every fixture is built fresh.
   byte-faithful to v4** — internal structure is free, the request/response
   corpus is the contract, and the refactor is only safe because that corpus
   exists. It needs the two missing legs first (a recorded-body response-parse
-  corpus per #24; call-site pins per #25). Not yet an order — decide scope and
-  sequencing at the next `/setupphase`.
+  corpus per #24; call-site pins per #25).
+  **RULED 2026-07-23 (human), three parts:**
+  1. **Drift risk accepted** — the human commits to keeping v4 pure for provider
+     I/O unless a major upstream breakage forces a change. A restructured v5
+     provider layer therefore does not owe v4 re-portability.
+  2. **NOT a precedent.** The divergence is scoped to provider I/O ONLY. v4's
+     general shape is retained everywhere else for the rest of the port. Where
+     something else is ugly purely because it was inherited from the Node
+     backend or the React frontend, that is grounds to *revisit case by case*,
+     not licence to restructure. (This overrides the "state it as a precedent"
+     recommendation made when the proposal was raised.)
+  3. **Sequencing stands:** the verification legs land BEFORE the restructuring
+     (P4.12 → the recorded-body response-parse corpus → the refactor proper).
+     P4.12 unit 1's type work is the refactor's first piece either way.
+- **Post-5.0 intent (human, 2026-07-23) — a thorough de-Node refactor, AFTER
+  release.** 5.0 = the full working port of 4.8.0, no Node backend, no React
+  frontend, the app's shape as it stands today. Once that is released and
+  working in production, the intended follow-on is a deep refactor of everything
+  Node was constraining: the multithreading model (removing async/await shapes
+  that exist only as workarounds for a single-threaded runtime), and a broader
+  move to WebSockets, among others. **Nothing in the port should be
+  pre-emptively restructured for this** — it is the reason a merely-inherited
+  awkwardness can be left alone now and revisited later, and the reason the
+  provider-I/O divergence is deliberately a one-off rather than a first step.
 - **Carried out of finding #24 — the non-streaming response parsers have NO
   oracle differential.** `request_builder_equivalence` covers the request side
   (both modes, all eight providers, since P4.11); nothing covers

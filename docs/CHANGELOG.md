@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Recorded the human ruling on the proposed provider-I/O refactor: the
+divergence is accepted and scoped to provider I/O only, drift risk
+accepted, explicitly not a precedent for the rest of the port, with the
+wire bytes remaining byte-faithful and the verification legs landing
+first. Also recorded the post-5.0 intent to refactor what Node was
+constraining once 5.0 ships. No code change.
+
 Recorded dogfood findings #25 (tool-call linkage never reaches the wire —
 provider-native tool use loops forever on every provider) and the open,
 unlocalized memory-injector sort panic, and wrote work order P4.12 to
