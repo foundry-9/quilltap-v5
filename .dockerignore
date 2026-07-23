@@ -2,6 +2,14 @@ target
 .git
 docs
 harness
-apps
 .claude
 crates/quilltap-web/tests/fixtures
+
+# The SPA sources DO enter the context (the Node stage runs `ng build`); only
+# the regenerable/irrelevant parts stay out. `ng build` reads angular.json,
+# tsconfig*.json, .postcssrc.json, package*.json, src/ and public/ —
+# tsconfig.app.json includes `src/**/*.ts` only, so e2e/ is not a build input.
+apps/web/node_modules
+apps/web/dist
+apps/web/.angular
+apps/web/e2e

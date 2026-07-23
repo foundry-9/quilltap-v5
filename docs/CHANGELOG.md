@@ -111,12 +111,10 @@ enclave-step oracle now includes the fold-episode SUMMARIZATION `llm_logs`
 row that the v5 enclave step path does not produce (the fold-episode seam is
 wired in the orchestrator's summary check but not in the enclave step's).
 Follow-up owed outside this lane.
-=======
 Recorded work order P4.14's lane record (including the crate-wide sort audit
 table, site by site) and marked the memory-injector sort panic FIXED in the
 dogfood findings. Docs only, no code change.
 
->>>>>>> ec30f566 (Record the P4.14 lane: the sort audit table and the fixed dogfood finding)
 Fixed the crash that killed live Salon turns: the memory injector's sort
 comparators are not total orders, and Rust's sort validates while V8's does
 not. `format_dynamic_memory_head` and `format_memories_for_context` (and, from
@@ -138,6 +136,15 @@ stable like TimSort and produces exactly what `slice::sort_by` produces on any
 self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
+=======
+Fixed the Docker build, which could not compile. The build stage never
+copied `assets/`, but `quilltap-core`'s seed_assets.rs includes the three
+sample-content seed files from there at compile time, so every `docker
+build` failed with three "couldn't read" errors. Added `COPY assets` and
+narrowed `.dockerignore` from a blanket `apps` exclusion to just the
+regenerable parts (node_modules, dist, .angular, e2e), so the SPA sources
+reach the build context.
+>>>>>>> ba0cee27 (fix(docker): copy the seed assets so the image can compile)
 
 Recorded the human ruling on the P4.14 sort fix: the non-validating
 stable merge sort (arm a), per the order's recommendation. All three

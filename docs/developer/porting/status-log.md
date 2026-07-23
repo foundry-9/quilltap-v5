@@ -30240,3 +30240,61 @@ copy — also P4.6bj's and P4.d12–d15's owed live proof).
 
 Final versions: core **0.0.328**, harness **0.0.282**, host 0.0.30, web
 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
+
+---
+
+## P4.10 — the dev-grade packaging close-out (lane record)
+
+Lane branch `claude/dockerfile-spa-packaging-c7e7df`, based on main
+`57117ecc`. Single lane, no siblings. v4 drift-checked at lane start: HEAD
+`e646f58b`, clean — the oracle baseline holds. This lane ports nothing, so
+it introduces no oracle case and regenerates no fixture; the differential
+discipline has no surface here (unit 4 is the one Rust change and is a
+v5-only resolution chain with no v4 analog — v4 has no `--spa-dir`, it
+serves the SPA from Next.js).
+
+### Unit 1 — the build inputs (`docker build` compiles again)
+
+**The premise verified first, as the order required.** `docker build .` on
+the lane's base failed exactly as surveyed, with three errors:
+
+```
+error: couldn't read crates/quilltap-core/src/services/quilltap_import/
+       ../../../../../assets/first-startup/imports/lorian-and-riya.qtap
+error: couldn't read .../assets/first-startup/avatars/Lorian.webp
+error: couldn't read .../assets/first-startup/avatars/Riya.webp
+error: could not compile `quilltap-core` (lib) due to 3 previous errors
+```
+
+Cause as surveyed: the P4.4u4 seed assets (2026-07-11) reach OUT of
+`crates/` at compile time, and the P4.2-era Dockerfile copies only
+`rust-toolchain.toml`, the manifests, the sys crate, and `crates`.
+
+Fix: `COPY assets ./assets`, placed above `COPY crates` — ~140 KB of
+committed binaries that essentially never change, so it belongs with the
+slow-changing layers where it does not invalidate the cargo cache on
+app-code edits.
+
+`.dockerignore`: the blanket `apps` exclusion replaced with
+`apps/web/node_modules`, `apps/web/dist`, `apps/web/.angular`,
+`apps/web/e2e`. Confirmed from the tree before excluding `e2e`:
+`angular.json` builds `quilltap` from `src/main.ts` with
+`tsConfig: tsconfig.app.json`, whose `include` is `src/**/*.ts` only;
+assets come from `public/`; styles pull `src/styles.css` plus two
+`node_modules` CSS files. So the build inputs are `angular.json`,
+`tsconfig*.json`, `.postcssrc.json`, `package*.json`, `src/`, `public/` —
+`e2e/` and `tooling/` are not among them.
+
+**Survey correction:** the order's starting-points section says
+`apps/web/.nvmrc` pins Node v24.13.1. **There is no `.nvmrc` anywhere in
+the tree** (`find . -name .nvmrc` outside node_modules: no hits). The only
+Node pin in `apps/web/package.json` is `"packageManager": "npm@11.8.0"`;
+there is no `engines` block. The Node major for unit 2 therefore comes from
+the documented dev toolchain (Node 24 — `~/.nvm/versions/node/v24.13.1`,
+the version CLAUDE.md names for the jest/tsx oracles), not from a pin file.
+
+Exit met, and then some: the build does not merely get past the Rust stage,
+it completes — `cargo build --release -p quilltap-web` finished in 1m00s
+inside the container (the amalgamation came from the BuildKit cache mount)
+and the runtime image exported. No Rust source touched, so no crate version
+bump.

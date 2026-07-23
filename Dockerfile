@@ -31,7 +31,14 @@ COPY rust-toolchain.toml ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates/quilltap-sqlite3mc-sys ./crates/quilltap-sqlite3mc-sys
 
-# The rest of the tree (docs/harness excluded via .dockerignore).
+# The committed sample-content seed assets. `quilltap-core`'s seed_assets.rs
+# reaches OUT of crates/ to include_str!/include_bytes! these at compile time
+# (the P4.4u4 seed), so the workspace does not compile without them. ~140 KB
+# of committed binaries that almost never change — a slow-changing layer, so
+# it belongs above COPY crates.
+COPY assets ./assets
+
+# The rest of the tree (docs/harness/apps excluded via .dockerignore).
 COPY crates ./crates
 
 # BuildKit cache mounts keep the amalgamation object + dependency rlibs warm;
