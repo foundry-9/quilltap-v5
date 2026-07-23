@@ -30420,3 +30420,40 @@ away and re-run: the unfurnished warning printed and `GET /` carried no
 hashed bundle (the placeholder). Both arms behave.
 
 `quilltap-web` 0.0.37 → **0.0.38** (the lane's only crate-source change).
+
+### Unit 5 — the CLI in the image (D12)
+
+The Rust stage builds `-p quilltap-web -p quilltap-cli` in one `cargo build`
+(one dependency graph, one cache mount) and the runtime stage copies the
+`quilltap` binary — the crate is `quilltap-cli`, the `[[bin]]` is `quilltap`
+— to `/usr/local/bin/quilltap`.
+
+Verified on the rebuilt image against a fresh volume:
+
+- banner: "The parlour is furnished from /usr/local/share/quilltap/spa." —
+  the unit-4 chain resolving through `QUILLTAP_SPA_DIR` inside the container,
+- `GET /` still carries `main-XX5ODPXG.js`,
+- `docker exec qt-u5 quilltap --version` → `0.0.2`,
+- `docker exec qt-u5 quilltap db --tables` → `Database not found:
+  /app/quilltap/data/quilltap.db` — **correct** on a volume that has not been
+  through first-run setup yet; re-checked after the exit-gate setup walk (see
+  the round record) against a provisioned instance.
+
+Also rewrote the Dockerfile's header comment for the three stages, and noted
+the dev-grade non-goals (no non-root user, no healthcheck, no multi-arch, no
+size-golfing, no release) in the file itself so the next reader does not have
+to find this order to know what was deliberately left out.
+
+### Unit 6 — a compose file: DELIBERATELY SKIPPED (not deferred)
+
+The order made this conditional — "Skip it if unit 3's `docker run` line is
+short enough to live in the doc; do not invent configuration surface." It is:
+
+```
+docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap quilltap
+```
+
+One line, one port, one volume, no environment. A compose file would add a
+second place where the port binding and volume name are declared — a
+divergence risk for zero ergonomic gain — so none was written. This is a
+closed decision, not a banked deferral: nothing refuses, nothing is missing.

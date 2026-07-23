@@ -3,12 +3,22 @@
 #   docker build -t quilltap .
 #   docker run -p 3000:3000 -v quilltap-data:/app/quilltap quilltap
 #
-# Multi-stage: the Rust build (the SQLite3MC amalgamation C compile is the
-# slow layer — BuildKit cache mounts keep target/ + the cargo registry warm
-# across builds, and the pinned `quilltap-sqlite3mc-sys` version means the
-# 12 MB C compile only ever happens once per cache), then a slim runtime
-# image running the `quilltap-web` binary on 0.0.0.0 with the conventional
-# volume mount `/app/quilltap` as the data dir.
+# Three stages, two of them concurrent:
+#
+#   build — the Rust binaries (`quilltap-web` + the `quilltap` CLI). The
+#     SQLite3MC amalgamation C compile is the slow layer; BuildKit cache
+#     mounts keep target/ + the cargo registry warm across builds, and the
+#     pinned `quilltap-sqlite3mc-sys` version means the 12 MB C compile only
+#     ever happens once per cache.
+#   spa — `ng build`, the Angular dist. Shares no layer with `build`, so
+#     BuildKit runs the two at the same time.
+#   runtime — a slim image running `quilltap-web` on 0.0.0.0, serving that
+#     dist, with the conventional volume mount `/app/quilltap` as the data
+#     dir and the CLI on PATH for `docker exec`.
+#
+# Dev-grade by decree (Phase-4 deliverable 6): no non-root user, no
+# healthcheck, no multi-arch, no size-golfing, and emphatically no release
+# (D21) — nothing here is published, signed, or tagged.
 
 # --------------------------------------------------------------------------
 # Build stage
@@ -45,9 +55,10 @@ COPY crates ./crates
 # the binary is copied OUT of the cache mount so the runtime stage can see it.
 RUN --mount=type=cache,target=/src/target \
     --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo build --release -p quilltap-web \
+    cargo build --release -p quilltap-web -p quilltap-cli \
     && mkdir -p /out \
-    && cp target/release/quilltap-web /out/quilltap-web
+    && cp target/release/quilltap-web /out/quilltap-web \
+    && cp target/release/quilltap /out/quilltap
 
 # --------------------------------------------------------------------------
 # SPA stage — the Angular dist (P4.5+). Independent of the Rust stage, so
@@ -81,6 +92,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/quilltap-web /usr/local/bin/quilltap-web
+
+# The `quilltap` CLI (D12), so `docker exec -it <c> quilltap db --tables`
+# reaches the running instance. Inside a live container the CLI is subject to
+# the single-writer rule: its write paths refuse against a running server.
+# That refusal is the design, not a defect — see docs/developer/running.md.
+COPY --from=build /out/quilltap /usr/local/bin/quilltap
 
 # The Angular dist, in the FHS share location beside the binary. Without it
 # the server falls back to the two embedded placeholder pages — which is what

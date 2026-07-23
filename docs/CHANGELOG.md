@@ -137,6 +137,9 @@ self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
 =======
+The quilltap CLI now ships in the Docker image, so `docker exec -it <c>
+quilltap db --tables` reaches a running instance (D12).
+
 quilltap-web now finds its SPA dist without being told. The resolution chain
 is --spa-dir, then QUILLTAP_SPA_DIR, then a dist sitting beside the binary
 (./spa), then ../share/quilltap/spa, then the placeholder pages as before.
