@@ -72,7 +72,8 @@ catch, since every fixture is built fresh.
   before then — most of them live in or adjacent to the seam the rewrite
   restructures, so fixing twice is waste. Open at the close of the
   2026-07-23 walk: **#25** (tool linkage never reaches the wire — order
-  `p4.12` written), **#26** (the fold never fires — unlocalized), **#27**
+  `p4.12` written, RULED 2026-07-23 to FOLD INTO the rewrite rather than land
+  ahead of it; tool use stays broken until the rewrite ships), **#26** (the fold never fires — unlocalized), **#27**
   (corpus-shaped cheap-LLM config in `run_summary_check`), **#28** (the
   retrospective classifier never returns true — needs a v4 bench
   comparison), the **memory-injector sort panic** (LOCALIZED to
