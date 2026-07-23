@@ -82,6 +82,11 @@ RUN apt-get update \
 
 COPY --from=build /out/quilltap-web /usr/local/bin/quilltap-web
 
+# The Angular dist, in the FHS share location beside the binary. Without it
+# the server falls back to the two embedded placeholder pages — which is what
+# every image built before this one did.
+COPY --from=spa /spa/dist/quilltap/browser /usr/local/share/quilltap/spa
+
 # The conventional container data dir (paths.rs resolves it automatically in
 # a container; the env var makes it explicit for spawned terminals too).
 ENV QUILLTAP_DATA_DIR=/app/quilltap
@@ -90,4 +95,5 @@ EXPOSE 3000
 
 # The container binds all interfaces (D2 — the container boundary is the trust
 # boundary; put a proxy in front for more).
-ENTRYPOINT ["quilltap-web", "--host", "0.0.0.0", "--port", "3000"]
+ENTRYPOINT ["quilltap-web", "--host", "0.0.0.0", "--port", "3000", \
+            "--spa-dir", "/usr/local/share/quilltap/spa"]

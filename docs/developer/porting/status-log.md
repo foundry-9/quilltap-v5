@@ -30323,3 +30323,31 @@ pre-existing CommonJS-bailout warnings; no budget error.
 
 Timing note for the round record: the Angular build itself runs in ~7s in
 the container; `npm ci` is the stage's real cost.
+
+### Unit 3 — the dist lands in the runtime image and is served
+
+`COPY --from=spa /spa/dist/quilltap/browser /usr/local/share/quilltap/spa`
+(the FHS share location beside `/usr/local/bin/quilltap-web` — chosen with
+unit 4 in mind, so the binary-relative fallback can find it without the
+container path being special-cased in Rust), and the ENTRYPOINT extended
+with `--spa-dir /usr/local/share/quilltap/spa`. `EXPOSE 3000` and the
+`--host 0.0.0.0` container policy (D2) unchanged.
+
+Exit met. `docker run -d -p 127.0.0.1:3010:3000 -v qt-u3-data:/app/quilltap
+quilltap` against a **fresh named volume**:
+
+- boot banner: "Quilltap is at home — the parlour door stands open at
+  http://0.0.0.0:3000/ …"
+- `GET /health` → `{"status":"locked","version":"0.0.37",
+  "dbKeyState":"needs-setup",…}` — the correct fresh-instance state.
+- `GET /` → contains `main-XX5ODPXG.js`, the **hashed bundle marker**. This
+  is the assertion the order demanded instead of a 200 check: the
+  placeholder page has no hashed script tag, so a 200 alone would have
+  passed against the very failure this order exists to fix.
+- `GET /setup` → the same marker (the SPA fallback covers `/setup` when a
+  dist is configured — `static_serve.rs:46`), so the locked-vault first-run
+  screen is the real Angular one.
+- `GET /styles-6J7DZ3NB.css` → `200 text/css; charset=utf-8`, 345,659 bytes
+  — a real dist asset with the right MIME off the traversal-guarded path.
+
+`static_serve.rs` untouched, as the order froze it.

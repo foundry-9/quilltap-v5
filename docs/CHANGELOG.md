@@ -137,6 +137,12 @@ self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
 =======
+The Docker image now serves the real Angular app instead of the two
+placeholder pages. The dist is copied to /usr/local/share/quilltap/spa and
+the entrypoint points the server at it. A fresh container answers /health,
+serves the hashed Angular bundle at / and /setup, and serves dist assets
+with the right content types.
+
 Added an Angular build stage to the Dockerfile, so the image has a real SPA
 dist to ship. Node 24 on bookworm, lockfile-first so `npm ci` caches
 independently of source edits; emits `dist/quilltap/browser`, the same path
