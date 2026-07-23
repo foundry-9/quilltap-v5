@@ -546,6 +546,21 @@ crate/file region per round, a v4 drift check opens every round):
   outstanding half** — M3 was recorded demoable at P4.2/P4.5 on the strength
   of the pieces, but no image has ever served the SPA. Release/signing/
   updater stay deferred (D21) and this order does not touch them.
+- **P4.11 — the non-streaming request builders** (added 2026-07-22 from
+  dogfood finding #23; **the highest-priority open item, ahead of P4.10**).
+  Every request builder hard-codes `"stream": true` and ignores
+  `RequestInput.stream`, so every non-streaming caller gets an SSE body where
+  it expects JSON: **no non-streaming LLM call in v5 has ever worked in
+  production.** That is the whole cheap-LLM family — memory extraction,
+  context summary, fold-episode, titles, scene state, answer confirmation,
+  image-prompt crafting, outfit selection, Carina, llm-consult. It survived a
+  differential-verified port because `request_builder_equivalence` records
+  only v4's `streamMessage`, so the non-streaming half of the builder was
+  never oracle-checked — the order's unit 1 closes that blind spot before any
+  builder is touched. Order:
+  `work-orders/p4.11-non-streaming-request-builders.md`. **Until it lands,
+  the P4.6bj and P4.d12–d15 "LIVE" claims are unproven on real data** — those
+  pipelines are wired correctly and die at the provider call.
 
 Milestones (each independently demoable):
 

@@ -1074,6 +1074,27 @@ records THERE. Update this summary only when a phase or round completes.
   only Rust touch). **Not** a D21 release item: nothing is published, signed,
   or tagged. It is a strong next-round candidate — until it lands, no one can
   run v5's server mode without building it from source by hand.
+- **P4.11 — the non-streaming request builders: ORDER WRITTEN, not started
+  (2026-07-22). THE HIGHEST-PRIORITY OPEN ITEM.** Dogfood finding #23: every
+  request builder hard-codes `"stream": true` and ignores
+  `RequestInput.stream`, so every non-streaming caller receives an SSE body
+  where it expects JSON (`response parse: expected value at line 1 column
+  1`). **No non-streaming LLM call in v5 has ever worked in production** —
+  the whole cheap-LLM family (memory extraction, context summary,
+  fold-episode, titles, scene state, answer confirmation, image-prompt
+  crafting, outfit selection, Carina, llm-consult) on every
+  chat-completions / Anthropic / Responses provider. Empirically confirmed
+  against DeepSeek: `stream:false` returns parseable JSON, `stream:true`
+  returns `chat.completion.chunk` frames. It survived the port because
+  `request_builder_equivalence` records only v4's `streamMessage` — the
+  non-streaming half of the builder was **never oracle-checked**; the order's
+  unit 1 closes that blind spot first. Order:
+  `work-orders/p4.11-non-streaming-request-builders.md` (nine units).
+  **⚠ Until it lands, the P4.6bj and P4.d12–d15 "LIVE" claims are unproven
+  on real data** — those pipelines are wired correctly and die at the
+  provider call. (Dogfood #22, the sibling finding, is FIXED on main
+  `2aa3d01b`: the per-turn tool context passed `None` for every optional
+  field, killing `doc_list_files`/`doc_grep`/`project_info`/`generate_image`.)
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
