@@ -213,6 +213,84 @@ mod tests {
             .any(|(k, v)| k == "User-Agent" && v == "Quilltap/test"));
     }
 
+    /// Dogfood finding #23's regression pin, AT THE CALL SITE. The differential
+    /// corpus builds its own `RequestInput`s, so it could never have caught the
+    /// real defect: this composition sets `stream: false` but every builder
+    /// hard-coded `"stream": true`, so every cheap-LLM call in production asked
+    /// for SSE and then failed to parse the frames as JSON. Assert on the bytes
+    /// this function actually hands the transport.
+    #[tokio::test]
+    async fn cheap_llm_calls_ask_for_a_non_streaming_body() {
+        let policy = TransportPolicy::default();
+        let cases: &[(&str, &[u8])] = &[
+            (
+                "DEEPSEEK",
+                br#"{"choices":[{"message":{"content":"a"},"finish_reason":"stop"}],"usage":{}}"#,
+            ),
+            (
+                "ANTHROPIC",
+                br#"{"content":[{"type":"text","text":"a"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}"#,
+            ),
+            (
+                "OPENAI",
+                br#"{"status":"completed","output":[],"output_text":"a","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
+            ),
+        ];
+        for (provider, body) in cases {
+            let transport = FakeTransport {
+                body: body.to_vec(),
+                seen: std::sync::Mutex::new(None),
+            };
+            execute_completion(
+                &transport,
+                provider,
+                None,
+                "synthetic-key",
+                &params("some-model"),
+                &policy,
+                "Quilltap/test",
+                None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{provider}: {}", e.message));
+            let seen = transport.seen.lock().unwrap().clone().unwrap();
+            let sent = String::from_utf8(seen.body).expect("utf8 body");
+            assert!(
+                !sent.contains(r#""stream":true"#),
+                "{provider} asked the provider to STREAM on the non-streaming path: {sent}"
+            );
+            // Anthropic omits the key entirely on `sendMessage`; the others send
+            // it false. Either way the wire must never say true here.
+            assert!(
+                sent.contains(r#""stream":false"#) || !sent.contains(r#""stream""#),
+                "{provider} sent an unexpected stream flag: {sent}"
+            );
+        }
+        // Google carries the distinction in the URL, not the body.
+        let transport = FakeTransport {
+            body: br#"{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{}}"#.to_vec(),
+            seen: std::sync::Mutex::new(None),
+        };
+        execute_completion(
+            &transport,
+            "GOOGLE",
+            None,
+            "synthetic-key",
+            &params("gemini-2.5-flash"),
+            &policy,
+            "Quilltap/test",
+            None,
+        )
+        .await
+        .expect("google completion");
+        let seen = transport.seen.lock().unwrap().clone().unwrap();
+        assert!(
+            seen.url.contains(":generateContent") && !seen.url.contains("streamGenerateContent"),
+            "google used the streaming endpoint on the non-streaming path: {}",
+            seen.url
+        );
+    }
+
     #[tokio::test]
     async fn google_injects_key_as_query_param() {
         // A minimal google generateContent body.

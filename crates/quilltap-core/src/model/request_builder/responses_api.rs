@@ -288,6 +288,10 @@ fn openai_base(input: &RequestInput, item_input: Vec<Value>, instructions: Optio
     b
 }
 
+/// v4 `OpenAIProvider.streamMessage` / `.sendMessage`. Both spread the same
+/// `buildBaseRequestParams` result and append `stream` last (`true` / `false`);
+/// nothing else moves between the two methods — the whole Responses-API family
+/// differs only by the flag.
 pub fn build_openai_body(input: &RequestInput) -> Value {
     let (item_input, instructions) = format_openai_messages(&input.messages);
     let base = openai_base(input, item_input.clone(), instructions);
@@ -302,11 +306,11 @@ pub fn build_openai_body(input: &RequestInput) -> Value {
             Value::Array(extract_last_user_message(&item_input)),
         );
         b.set("previous_response_id", json!(prev));
-        b.set("stream", json!(true));
+        b.set("stream", json!(input.stream));
         b.into_value()
     } else {
         let mut b = base;
-        b.set("stream", json!(true));
+        b.set("stream", json!(input.stream));
         b.into_value()
     }
 }
@@ -327,7 +331,7 @@ pub fn build_grok_body(input: &RequestInput) -> Value {
             num(input.max_tokens.unwrap_or(4096) as f64),
         )
         .set("top_p", num(input.top_p.unwrap_or(1.0)))
-        .set("stream", json!(true));
+        .set("stream", json!(input.stream));
     if let Some(stop) = &input.stop {
         b.set("stop", json!(stop));
     }

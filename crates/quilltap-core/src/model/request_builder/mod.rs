@@ -123,8 +123,12 @@ pub struct RequestInput {
     pub previous_response_id: Option<String>,
     /// v4 `params.strictMaxTokens` (openai background-task reasoning floor).
     pub strict_max_tokens: bool,
-    /// Whether the stream path is being built (`stream: true`) vs the
-    /// non-streaming send (`stream: false`). Defaults to the streaming path.
+    /// Which v4 plugin method is being reproduced: `streamMessage` (`true`) or
+    /// `sendMessage` (`false`). Defaults to the streaming path.
+    ///
+    /// This is NOT a body field to flip — the two methods are separate literals
+    /// in every plugin, and the deltas differ per provider (P4.11; each is pinned
+    /// by a `mode`-tagged vector in `request-envelopes.recorded.ndjson`).
     pub stream: bool,
 }
 
@@ -162,6 +166,10 @@ pub enum BuildError {
     /// The provider's request builder is deferred (e.g. google's genai wire
     /// framing).
     Deferred(String),
+    /// v4's plugin (or its SDK) refuses these params CLIENT-SIDE and sends no
+    /// request at all — reproduced so v5 fails where v4 fails instead of
+    /// inventing a body v4 would never put on the wire.
+    ProviderRefused(String),
 }
 
 impl std::fmt::Display for BuildError {
@@ -169,6 +177,7 @@ impl std::fmt::Display for BuildError {
         match self {
             BuildError::UnknownProvider(p) => write!(f, "unknown provider: {p}"),
             BuildError::Deferred(p) => write!(f, "request builder deferred: {p}"),
+            BuildError::ProviderRefused(m) => write!(f, "provider refused the request: {m}"),
         }
     }
 }
@@ -215,7 +224,7 @@ pub fn build_request_with_registry(
         "GROK" => responses_api::build_grok_body(input),
         "DEEPSEEK" => chat_completions::build_deepseek_body(input),
         "Z_AI" => chat_completions::build_zai_body(input),
-        "OPENROUTER" => chat_completions::build_openrouter_body(input),
+        "OPENROUTER" => chat_completions::build_openrouter_body(input)?,
         "OLLAMA" => chat_completions::build_ollama_body(input),
         "OPENAI_COMPATIBLE" => chat_completions::build_openai_compatible_body(input),
         other => return Err(BuildError::UnknownProvider(other.to_string())),

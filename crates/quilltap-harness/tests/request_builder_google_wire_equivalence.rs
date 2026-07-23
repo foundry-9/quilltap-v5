@@ -8,11 +8,15 @@
 //! against that captured body — proving the reframing (generationConfig split,
 //! `{name,args}`→`{args,name}`, systemInstruction wrapper, root key order).
 //!
-//! Regenerate the fixture (Node 24, from the google plugin dir):
-//!   cd ~/source/quilltap-server/plugins/dist/qtap-plugin-google
-//!   node <V5>/harness/oracle/providers/record-request-envelopes.mjs \
-//!     --provider google \
-//!     --out <V5>/harness/oracle/fixtures/request-envelopes/google-wire.recorded.ndjson
+//! **Both modes (P4.11 unit 6).** The fixture now carries a `stream` half
+//! (`generateContentStream`) and a `send` half (`generateContent`). The genai
+//! wire BODY is byte-identical between them — the whole streaming distinction
+//! lives in the URL (`:streamGenerateContent?alt=sse` vs `:generateContent`), so
+//! this differential asserts the URL too.
+//!
+//! Regenerate the fixture (Node 24):
+//!   V4=~/source/quilltap-server V5=<repo-root> \
+//!     bash <V5>/harness/oracle/providers/regenerate-google-wire.sh
 //! (The fixture is committed; no env var needed to run.)
 
 use quilltap_core::model::request_builder::{
@@ -83,7 +87,7 @@ fn message_from_json(m: &Value) -> RequestMessage {
     }
 }
 
-fn input_from_json(input: &Value) -> RequestInput {
+fn input_from_json(input: &Value, stream: bool) -> RequestInput {
     let messages = input
         .get("messages")
         .and_then(Value::as_array)
@@ -119,9 +123,7 @@ fn input_from_json(input: &Value) -> RequestInput {
             .get("strictMaxTokens")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        // The genai wire body is stream-independent; the recorder captured the
-        // streaming path.
-        stream: true,
+        stream,
     }
 }
 
@@ -131,10 +133,18 @@ fn google_wire_body_matches_recorded() {
         .unwrap_or_else(|e| panic!("cannot read google wire fixture: {e}"));
 
     let mut count = 0usize;
+    let mut modes = std::collections::HashSet::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let case = row.get("case").and_then(Value::as_str).unwrap_or("?");
-        let input = input_from_json(&row["input"]);
+        let mode = row.get("mode").and_then(Value::as_str).unwrap_or("stream");
+        let stream = match mode {
+            "stream" => true,
+            "send" => false,
+            other => panic!("unknown recorded mode {other:?}"),
+        };
+        modes.insert(mode.to_string());
+        let input = input_from_json(&row["input"], stream);
         let built = build_request("GOOGLE", &input).expect("build_request GOOGLE");
 
         // The recorded body is the exact bytes the SDK sent; compare byte-for-byte.
@@ -143,10 +153,26 @@ fn google_wire_body_matches_recorded() {
                 .expect("parse recorded body");
         let got = serde_json::to_string(&built.body).unwrap();
         let want = serde_json::to_string(&recorded_body).unwrap();
-        assert_eq!(got, want, "google wire body diverged (case '{case}')");
+        assert_eq!(
+            got, want,
+            "google wire body diverged (case '{case}' [{mode}])"
+        );
+
+        // The url is where the streaming split lives for this provider.
+        assert_eq!(
+            built.url,
+            row["url"].as_str().expect("recorded url"),
+            "google url diverged (case '{case}' [{mode}])"
+        );
         count += 1;
     }
 
     assert!(count > 0, "google wire fixture looks empty");
-    eprintln!("OK: google wire framing matched recorded ({count} cases).");
+    for mode in ["stream", "send"] {
+        assert!(
+            modes.contains(mode),
+            "google wire fixture missing mode {mode}"
+        );
+    }
+    eprintln!("OK: google wire framing matched recorded ({count} cases, both modes).");
 }

@@ -1,14 +1,26 @@
 //! The chat-completions family request builders (W4.7c part 2): DeepSeek, Z.AI,
 //! OpenRouter (the raw-fetch tools/vision path), Ollama, and the OpenAI-compatible
-//! base. Ported from each plugin's `streamMessage` request-body construction; the
-//! DeepSeek `reasoning_content` echo transform lives in [`chat_messages`].
+//! base. Ported from each plugin's `streamMessage` AND `sendMessage` request-body
+//! construction; the DeepSeek `reasoning_content` echo transform lives in
+//! [`chat_messages`].
 //!
 //! Every builder inserts keys in v4's exact assignment order (the SDK / raw fetch
 //! sends `JSON.stringify(body)` verbatim — see the module note).
+//!
+//! **`RequestInput.stream` selects which v4 method is being reproduced** (P4.11).
+//! The non-streaming halves are NOT "the streaming body with the flag flipped" —
+//! each plugin differs, and the differences are recorded, not reasoned:
+//!
+//! - DeepSeek / Z.AI: `stream` flips and `stream_options` disappears.
+//! - OpenAI-compatible: `sendMessage` omits the `stream` key ENTIRELY, and `stop`
+//!   sits before it in both modes (v5 used to emit `stop` last — a pre-existing
+//!   divergence this provider's first-ever corpus coverage exposed).
+//! - Ollama: `stream` flips.
+//! - OpenRouter: a different builder altogether — see [`build_openrouter_body`].
 
 use serde_json::{json, Value};
 
-use super::{num, Body, RequestInput, RequestMessage};
+use super::{num, Body, BuildError, RequestInput, RequestMessage};
 
 // ============================================================================
 // Shared chat-completions message formatting
@@ -93,8 +105,11 @@ fn response_format(input: &RequestInput) -> Option<Value> {
 }
 
 /// The base chat-completions body (model, messages, temperature/max_tokens/top_p
-/// with v4's defaults, stream, stream_options). The caller layers tools / stop /
-/// etc. on top in v4's order.
+/// with v4's defaults, stream, and — on the streaming path only — stream_options).
+/// The caller layers tools / stop / etc. on top in v4's order.
+///
+/// v4's DeepSeek / Z.AI `sendMessage` keeps `stream` in the same slot with `false`
+/// and simply omits `stream_options`.
 fn base_body(input: &RequestInput, messages: Value) -> Body {
     let mut b = Body::new();
     b.set("model", json!(input.model))
@@ -102,8 +117,10 @@ fn base_body(input: &RequestInput, messages: Value) -> Body {
         .set("temperature", num(input.temperature.unwrap_or(0.7)))
         .set("max_tokens", num(input.max_tokens.unwrap_or(4096) as f64))
         .set("top_p", num(input.top_p.unwrap_or(1.0)))
-        .set("stream", json!(true))
-        .set("stream_options", json!({ "include_usage": true }));
+        .set("stream", json!(input.stream));
+    if input.stream {
+        b.set("stream_options", json!({ "include_usage": true }));
+    }
     b
 }
 
@@ -115,12 +132,27 @@ fn stop_value(input: &RequestInput) -> Option<Value> {
 // OpenAI-compatible base
 // ============================================================================
 
-/// v4 `OpenAICompatibleProvider.streamMessage`. The plainest chat-completions
-/// body — no tools, no profile params, just `user` on a cache key.
+/// v4 `OpenAICompatibleProvider.streamMessage` / `.sendMessage`
+/// (`@quilltap/plugin-utils`). The plainest chat-completions body — no tools, no
+/// profile params, just `user` on a cache key.
+///
+/// This provider does NOT share [`base_body`]'s key order: v4 writes one object
+/// literal per method, with `stop` BEFORE the stream keys, and `sendMessage`
+/// carries no `stream` key at all (the OpenAI SDK's non-streaming create sends
+/// the literal verbatim).
 pub fn build_openai_compatible_body(input: &RequestInput) -> Value {
     let messages = chat_messages(&input.messages, false, false);
-    let mut b = base_body(input, messages);
-    b.set_opt("stop", stop_value(input));
+    let mut b = Body::new();
+    b.set("model", json!(input.model))
+        .set("messages", messages)
+        .set("temperature", num(input.temperature.unwrap_or(0.7)))
+        .set("max_tokens", num(input.max_tokens.unwrap_or(4096) as f64))
+        .set("top_p", num(input.top_p.unwrap_or(1.0)))
+        .set_opt("stop", stop_value(input));
+    if input.stream {
+        b.set("stream", json!(true))
+            .set("stream_options", json!({ "include_usage": true }));
+    }
     if let Some(k) = &input.cache_key {
         if !k.is_empty() {
             b.set("user", json!(k));
@@ -303,7 +335,44 @@ fn openrouter_tool(tool: &Value) -> Value {
     })
 }
 
-pub fn build_openrouter_body(input: &RequestInput) -> Value {
+/// `profileParameters.reasoningEffort`, when it is a non-empty string.
+fn openrouter_reasoning_effort(input: &RequestInput) -> Option<&str> {
+    input
+        .profile_parameters
+        .as_ref()
+        .and_then(|p| p.get("reasoningEffort"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+}
+
+/// `profileParameters.fallbackModels`, when it is a non-empty array.
+fn openrouter_fallback_models(input: &RequestInput) -> Option<&Vec<Value>> {
+    input
+        .profile_parameters
+        .as_ref()
+        .and_then(|p| p.get("fallbackModels"))
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+}
+
+/// The two OpenRouter request builders. v4's `streamMessage` and `sendMessage`
+/// take **completely different code paths**, so this is not a flag flip:
+///
+/// - streaming (tools / vision) → [`build_openrouter_stream_body`], a raw
+///   `fetch` to `/chat/completions` with a hand-built chat-completions body;
+/// - non-streaming → [`build_openrouter_send_body`], `@openrouter/sdk`'s
+///   `chat.send()`, whose Speakeasy-generated zod codec re-emits the body in the
+///   SDK's own (camelCase-alphabetical) field order, renames camelCase to
+///   snake_case, and DROPS every key its schema does not declare.
+pub fn build_openrouter_body(input: &RequestInput) -> Result<Value, BuildError> {
+    if input.stream {
+        Ok(build_openrouter_stream_body(input))
+    } else {
+        build_openrouter_send_body(input)
+    }
+}
+
+fn build_openrouter_stream_body(input: &RequestInput) -> Value {
     let messages = chat_messages(&input.messages, false, false);
     let mut b = Body::new();
     b.set("model", json!(input.model))
@@ -333,21 +402,214 @@ pub fn build_openrouter_body(input: &RequestInput) -> Value {
     if input.tools.as_ref().is_some_and(|t| !t.is_empty()) {
         b.set("tool_choice", json!("auto"));
     }
+    // `route: 'fallback'` rides the fallbackModels profile param (the streaming
+    // raw-fetch path sends `route` but NOT `models` — v4's own asymmetry).
+    if openrouter_fallback_models(input).is_some() {
+        b.set("route", json!("fallback"));
+    }
     // reasoning is ALWAYS set (effort from profile, else {exclude:false}).
-    let reasoning_effort = input
-        .profile_parameters
-        .as_ref()
-        .and_then(|p| p.get("reasoningEffort"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
     b.set(
         "reasoning",
-        match reasoning_effort {
+        match openrouter_reasoning_effort(input) {
             Some(e) => json!({ "effort": e, "exclude": false }),
             None => json!({ "exclude": false }),
         },
     );
     b.into_value()
+}
+
+/// One message as the @openrouter/sdk re-emits it: `{content, role}` and nothing
+/// else. An assistant turn's `tool_calls` are silently DROPPED (they are not in
+/// the SDK's assistant-message schema) — a v4 behaviour, carried faithfully.
+fn openrouter_send_message(msg: &RequestMessage) -> Value {
+    let mut m = Body::new();
+    if msg.role == "assistant" && !msg.tool_calls.is_empty() {
+        m.set("content", content_or_null(&msg.content));
+    } else {
+        m.set("content", json!(msg.content));
+    }
+    m.set("role", json!(msg.role));
+    m.into_value()
+}
+
+/// One tool as the SDK re-emits it: `{function: {description?, name, parameters?},
+/// type}`, reading v4's already-formatted `{type, function:{…}}` shape.
+fn openrouter_send_tool(tool: &Value) -> Value {
+    let f = tool.get("function");
+    let get = |k: &str| f.and_then(|f| f.get(k)).cloned();
+    let mut func = Body::new();
+    func.set_opt("description", get("description"))
+        .set("name", get("name").unwrap_or(Value::Null))
+        .set_opt("parameters", get("parameters"));
+    let mut t = Body::new();
+    t.set("function", func.into_value()).set(
+        "type",
+        tool.get("type").cloned().unwrap_or(json!("function")),
+    );
+    t.into_value()
+}
+
+/// `provider` — the merged `providerPreferences` bag (plus `enableZDR` →
+/// `dataCollection: 'deny'`), emitted in the SDK's schema order with its
+/// snake_case names. v4 only forwards these six keys.
+fn openrouter_send_provider(input: &RequestInput) -> Option<Value> {
+    let profile = input.profile_parameters.as_ref()?;
+    let prefs = profile.get("providerPreferences");
+    let get = |k: &str| {
+        prefs
+            .and_then(|p| p.get(k))
+            .cloned()
+            .filter(|v| !v.is_null())
+    };
+    let zdr = profile.get("enableZDR").and_then(Value::as_bool) == Some(true);
+    let data_collection = if zdr {
+        Some(json!("deny"))
+    } else {
+        get("dataCollection")
+    };
+
+    let mut p = Body::new();
+    // v4's guards: `!== undefined` for allowFallbacks, plain truthiness for the
+    // rest (an empty array / empty string is skipped).
+    p.set_opt("allow_fallbacks", get("allowFallbacks"));
+    p.set_opt("data_collection", data_collection.filter(truthy));
+    p.set_opt("ignore", get("ignore").filter(truthy));
+    p.set_opt("only", get("only").filter(truthy));
+    p.set_opt("order", get("order").filter(truthy));
+    p.set_opt(
+        "require_parameters",
+        get("requireParameters").filter(truthy),
+    );
+    let v = p.into_value();
+    if v.as_object().is_some_and(|o| o.is_empty()) {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// JS truthiness for the values v4 guards with a bare `if (x)`: `false`, `0`,
+/// `""` and empty containers are all skipped (an empty array is truthy in JS but
+/// v4's `provider.order = []` would be pointless — keep JS semantics exactly:
+/// only `false` / `0` / `""` / `null` are falsy).
+fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Bool(b) => *b,
+        Value::Null => false,
+        Value::String(s) => !s.is_empty(),
+        Value::Number(n) => n.as_f64() != Some(0.0),
+        _ => true,
+    }
+}
+
+/// `response_format` as the SDK re-emits v4's `responseFormat`.
+fn openrouter_send_response_format(input: &RequestInput) -> Option<Value> {
+    let rf = input.response_format.as_ref()?;
+    let ty = rf.get("type").and_then(Value::as_str)?;
+    if ty == "json_schema" {
+        if let Some(schema) = rf.get("jsonSchema") {
+            let mut js = Body::new();
+            js.set_opt("name", schema.get("name").cloned())
+                .set_opt("schema", schema.get("schema").cloned())
+                .set(
+                    "strict",
+                    schema.get("strict").cloned().unwrap_or(json!(true)),
+                );
+            let mut out = Body::new();
+            out.set("json_schema", js.into_value())
+                .set("type", json!("json_schema"));
+            return Some(out.into_value());
+        }
+    }
+    if ty == "text" {
+        return None;
+    }
+    Some(json!({ "type": ty }))
+}
+
+/// v4 `OpenRouterProvider.sendMessage` → `@openrouter/sdk` `chat.send()`.
+///
+/// Key order is the SDK's `ChatRequest` schema order (its camelCase field names
+/// sorted), NOT v4's assignment order, and the outbound transform renames to
+/// snake_case: `maxTokens, messages, model, models, plugins, provider, reasoning,
+/// responseFormat, stop, stream, temperature, toolChoice, tools, topP, user`.
+/// Keys the schema does not declare are dropped — which is why v4's
+/// `route: 'fallback'` and `reasoning.exclude` never reach the wire here.
+fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError> {
+    // v4 drops tool messages without a toolCallId, then hands the rest to the
+    // SDK — where a `tool`-role message fails input validation and NO request is
+    // made. Reproduce the refusal rather than inventing a body v4 never sends.
+    let messages: Vec<&RequestMessage> = input
+        .messages
+        .iter()
+        .filter(|m| !(m.role == "tool" && m.tool_call_id.is_none()))
+        .collect();
+    if messages.iter().any(|m| m.role == "tool") {
+        return Err(BuildError::ProviderRefused(
+            "OPENROUTER: the @openrouter/sdk rejects a tool-role message on the \
+             non-streaming path (its schema wants toolCallId, not tool_call_id), \
+             so v4 sends no request at all"
+                .to_string(),
+        ));
+    }
+
+    let has_tools = input.tools.as_ref().is_some_and(|t| !t.is_empty());
+    let mut b = Body::new();
+    b.set("max_tokens", num(input.max_tokens.unwrap_or(4096) as f64))
+        .set(
+            "messages",
+            Value::Array(
+                messages
+                    .iter()
+                    .map(|m| openrouter_send_message(m))
+                    .collect(),
+            ),
+        );
+    // `models` REPLACES `model` when fallbacks are configured (v4 deletes it).
+    match openrouter_fallback_models(input) {
+        Some(fallbacks) => {
+            let mut models = vec![json!(input.model)];
+            models.extend(fallbacks.iter().cloned());
+            b.set("models", Value::Array(models));
+        }
+        None => {
+            b.set("model", json!(input.model));
+        }
+    }
+    if input.web_search_enabled {
+        b.set("plugins", json!([{ "id": "web", "max_results": 5 }]));
+    }
+    b.set_opt("provider", openrouter_send_provider(input));
+    b.set(
+        "reasoning",
+        match openrouter_reasoning_effort(input) {
+            Some(e) => json!({ "effort": e }),
+            None => json!({}),
+        },
+    );
+    b.set_opt("response_format", openrouter_send_response_format(input));
+    b.set_opt("stop", stop_value(input));
+    b.set("stream", json!(false))
+        .set("temperature", num(input.temperature.unwrap_or(0.7)));
+    if has_tools {
+        b.set("tool_choice", json!("auto")).set(
+            "tools",
+            Value::Array(
+                input
+                    .tools
+                    .as_ref()
+                    .map(|t| t.iter().map(openrouter_send_tool).collect())
+                    .unwrap_or_default(),
+            ),
+        );
+    }
+    b.set("top_p", num(input.top_p.unwrap_or(1.0)));
+    if let Some(k) = &input.cache_key {
+        if !k.is_empty() {
+            b.set("user", json!(k));
+        }
+    }
+    Ok(b.into_value())
 }
 
 // ============================================================================
@@ -365,7 +627,7 @@ pub fn build_ollama_body(input: &RequestInput) -> Value {
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
-        .set("stream", json!(true))
+        .set("stream", json!(input.stream))
         .set("options", options.into_value());
     if let Some(t) = &input.tools {
         if !t.is_empty() {

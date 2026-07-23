@@ -4,9 +4,21 @@
 //! For every committed line, this reconstructs the [`RequestInput`] from the
 //! recorded `input` params, runs the Rust `model::request_builder`, and diffs the
 //! built body / url / method byte-for-byte against the request envelope RECORDED
-//! by intercepting the outgoing `fetch` of v4's REAL plugin `streamMessage`
-//! (`record-request-envelopes.mjs`) — the SDK / raw fetch sends
-//! `JSON.stringify(body)` verbatim, so the body is a byte comparison.
+//! by intercepting the outgoing `fetch` of v4's REAL plugin — the SDK / raw fetch
+//! sends `JSON.stringify(body)` verbatim, so the body is a byte comparison.
+//!
+//! **Both halves (P4.11).** Each line carries a `mode`: `"stream"` drives v4's
+//! `streamMessage`, `"send"` its `sendMessage`, and the mode becomes
+//! `RequestInput.stream`. A line with no `mode` predates P4.11 and means
+//! `"stream"`. Recording only the streaming half is how dogfood #23 — every
+//! builder hard-coding `stream: true`, so every non-streaming caller in
+//! production got an SSE body it could not parse — survived a
+//! differential-verified port; the coverage assertion at the bottom is what
+//! keeps a (provider, mode) pair from going missing again.
+//!
+//! A line may instead carry `refused: true`: v4's plugin (or its SDK) rejected
+//! the params CLIENT-SIDE and made no request. Those diff against
+//! `BuildError::ProviderRefused` — a refusal is a contract, not a gap.
 //!
 //! Covers every `RequestTransform` branch: anthropic (plain + sampling-rejected +
 //! thinking + caching + tools/stop + tool-roundtrip), openai (first-call vs
@@ -87,7 +99,7 @@ fn message_from_json(m: &Value) -> RequestMessage {
     }
 }
 
-fn input_from_json(input: &Value) -> RequestInput {
+fn input_from_json(input: &Value, stream: bool) -> RequestInput {
     let messages = input
         .get("messages")
         .and_then(Value::as_array)
@@ -123,15 +135,36 @@ fn input_from_json(input: &Value) -> RequestInput {
             .get("strictMaxTokens")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        stream: true,
+        stream,
     }
 }
+
+/// `mode` → `RequestInput.stream`. Absent means the pre-P4.11 streaming vectors.
+fn stream_from_mode(row: &Value) -> bool {
+    match row.get("mode").and_then(Value::as_str).unwrap_or("stream") {
+        "stream" => true,
+        "send" => false,
+        other => panic!("unknown recorded mode {other:?}"),
+    }
+}
+
+/// The (provider, case, mode) triples where v4 itself refuses before any HTTP
+/// call. Enumerated, never inferred: an unexpected refusal line is a recorder or
+/// oracle regression, and a refusal that quietly stops being recorded is exactly
+/// the "no case" silence that hid dogfood #23.
+const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
+    // The @openrouter/sdk's ChatToolMessage schema wants `toolCallId`; v4 sends
+    // `tool_call_id`, so a tool round-trip fails the SDK's INPUT validation and
+    // no request leaves the process. (v4's own defect, carried faithfully.)
+    ("OPENROUTER", "tool-roundtrip", "send"),
+];
 
 #[test]
 fn request_builder_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed request-envelope NDJSON");
     let mut rows = 0usize;
-    let mut providers = std::collections::HashSet::new();
+    let mut refusals = 0usize;
+    let mut pairs = std::collections::HashSet::new();
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -140,36 +173,68 @@ fn request_builder_matches_v4() {
         let row: Value = serde_json::from_str(line).unwrap();
         let plugin = row["provider"].as_str().unwrap();
         let case = row["case"].as_str().unwrap();
+        let mode = row.get("mode").and_then(Value::as_str).unwrap_or("stream");
         let provider = registry_id(plugin);
-        providers.insert(provider.clone());
+        pairs.insert((provider.clone(), mode.to_string()));
         rows += 1;
 
-        let input = input_from_json(&row["input"]);
-        let built = build_request(&provider, &input)
-            .unwrap_or_else(|e| panic!("{provider}/{case}: build failed: {e}"));
+        let input = input_from_json(&row["input"], stream_from_mode(&row));
+        let built = build_request(&provider, &input);
+
+        // A recorded refusal: v4 made no request, so v5 must not build one.
+        if row.get("refused").and_then(Value::as_bool) == Some(true) {
+            assert!(
+                EXPECTED_REFUSALS.contains(&(provider.as_str(), case, mode)),
+                "{provider}/{case}[{mode}] recorded a NEW refusal — v4 rejected the \
+                 params before any request ({}). Add it to EXPECTED_REFUSALS with \
+                 the reason, or fix the recorder.",
+                row.get("error").and_then(Value::as_str).unwrap_or("?")
+            );
+            match built {
+                Err(quilltap_core::model::request_builder::BuildError::ProviderRefused(_)) => {}
+                Err(e) => panic!("{provider}/{case}[{mode}]: expected ProviderRefused, got {e}"),
+                Ok(_) => {
+                    panic!("{provider}/{case}[{mode}]: v4 REFUSES these params but v5 built a body")
+                }
+            }
+            refusals += 1;
+            continue;
+        }
+
+        let built =
+            built.unwrap_or_else(|e| panic!("{provider}/{case}[{mode}]: build failed: {e}"));
 
         // Body byte-exact (the transforms live here).
         let want_body = row["body"].as_str().unwrap();
         let got_body = built.body_string();
         assert_eq!(
             got_body, want_body,
-            "\n{provider}/{case} BODY diverged\n  got:  {got_body}\n  want: {want_body}\n"
+            "\n{provider}/{case}[{mode}] BODY diverged\n  got:  {got_body}\n  want: {want_body}\n"
         );
 
         // Method + url.
         assert_eq!(
             built.method,
             row["method"].as_str().unwrap(),
-            "{provider}/{case} method"
+            "{provider}/{case}[{mode}] method"
         );
         assert_eq!(
             built.url,
             row["url"].as_str().unwrap(),
-            "{provider}/{case} url"
+            "{provider}/{case}[{mode}] url"
         );
     }
 
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
+    assert_eq!(
+        refusals,
+        EXPECTED_REFUSALS.len(),
+        "every enumerated refusal must still be recorded — a vanished refusal line \
+         reads as 'no case', which is how a whole mode went unchecked before"
+    );
+
+    // Coverage: EVERY provider in BOTH modes. Not an eyeball — the blind spot
+    // this closes was precisely a mode nobody noticed was absent.
     for p in [
         "ANTHROPIC",
         "OPENAI",
@@ -178,7 +243,14 @@ fn request_builder_matches_v4() {
         "GROK",
         "Z_AI",
         "OPENROUTER",
+        "OPENAI_COMPATIBLE",
     ] {
-        assert!(providers.contains(p), "corpus missing provider {p}");
+        for mode in ["stream", "send"] {
+            assert!(
+                pairs.contains(&(p.to_string(), mode.to_string())),
+                "corpus missing provider {p} in mode {mode}"
+            );
+        }
     }
+    eprintln!("OK: {rows} request envelopes ({refusals} recorded refusal(s)) matched v4.");
 }

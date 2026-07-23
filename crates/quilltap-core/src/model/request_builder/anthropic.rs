@@ -264,8 +264,13 @@ pub fn build_body(input: &RequestInput) -> Value {
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", Value::Array(messages))
-        .set("max_tokens", num(effective_max as f64))
-        .set("stream", json!(true));
+        .set("max_tokens", num(effective_max as f64));
+    // v4's `sendMessage` builds the SAME literal MINUS the `stream` key — it does
+    // not send `stream: false` (the Anthropic SDK carries streaming in its own
+    // request options, not the body). Everything after this slot is shared.
+    if input.stream {
+        b.set("stream", json!(true));
+    }
 
     if thinking_enabled {
         b.set(

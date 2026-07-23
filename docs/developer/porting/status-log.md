@@ -29583,3 +29583,169 @@ real row, and the finalizer's `cheap_llm_settings_present` gate v4-faithful
 there: `chat_settings` is keyed by `userId`, so `cheapLLMSettings` is the
 GLOBAL cheap-LLM config, not a per-chat profile. The next diagnostic step is
 to establish whether the job row is being enqueued before any code changes.
+
+---
+
+## P4.11 units 1–7 — every request builder honours `RequestInput.stream`, and the corpus grows the leg that should have caught it
+
+**Lane:** `claude/p4.11-non-streaming-request-builders` (single lane).
+**Order:** `work-orders/p4.11-non-streaming-request-builders.md`.
+**v4 baseline:** `e646f58b` — drift-checked at lane start, `git log
+e646f58b..HEAD` empty, checkout clean, so oracles regenerated straight from
+`~/source/quilltap-server`.
+
+Dogfood finding #23: every builder hard-coded `"stream": true` and ignored
+`RequestInput.stream`, so **no non-streaming LLM call in v5 had ever worked
+in production** — the whole cheap-LLM family got an SSE body where it
+expected JSON (`response parse: expected value at line 1 column 1`). It
+survived a differential-verified port because
+`request_builder_equivalence` recorded only v4's `streamMessage`; the
+non-streaming half of the builder had never been oracle-checked.
+
+### Unit 1 — the oracle grows a `send` leg
+
+`record-request-envelopes.mjs` takes `--mode stream|send` (default
+`stream`); `send` drives `await inst.sendMessage(params, 'test-api-key')`
+and returns a canned **JSON** response per wire family instead of the SSE
+one. Every line now carries `mode`, and a missing `mode` still reads as
+`"stream"`. `regenerate-request-envelopes.sh` drives both modes for every
+provider and concatenates stream-first, so the streaming block stays a
+contiguous, diffable prefix; the new `regenerate-google-wire.sh` does the
+same for the google wire fixture.
+
+Two recorder repairs the `send` leg forced:
+
+- **ReadableStream bodies.** `@openrouter/sdk` hands `fetch` a stream, not
+  a string — the old capture stringified it to `[object ReadableStream]`.
+  The interceptor now drains a stream body (safe: the request is never
+  forwarded) and falls back to `Request.clone().text()`.
+- **Loud misses.** A case that never reached `fetch` records
+  `{refused: true, error: <first line>}` and the recorder prints a `⚠ N
+  case(s) captured NO request` line. A missing capture that reads as "no
+  case" is precisely how this bug hid; only the first line of the thrown
+  message is kept, because the zod dumps are multi-KB and
+  SDK-version-specific while the CONTRACT is "v4 refuses here".
+
+### Unit 2 — v4's `sendMessage` read for EVERY plugin (the deltas, recorded)
+
+| plugin | `sendMessage` vs `streamMessage` |
+| --- | --- |
+| deepseek, z-ai | `stream` flips to `false` in the same slot; `stream_options` disappears. Nothing else moves. |
+| ollama | `stream` flips. Nothing else moves. |
+| openai, grok | `stream` flips. Both spread the same base params and append `stream` last; the chained branch keeps `input, previous_response_id, stream`. |
+| anthropic | **the `stream` key is ABSENT** — v4's `sendMessage` literal is `{model, messages, max_tokens}` and the SDK carries streaming in its request options, not the body. |
+| openai-compatible | **the `stream` key is ABSENT**, and `stop` sits BEFORE the stream keys in both methods. |
+| google | body byte-identical in both modes; the whole distinction is the url (`:streamGenerateContent?alt=sse` → `:generateContent`). |
+| **openrouter** | **a different builder entirely** — see below. |
+
+The order predicted "at least one provider differs by more than the flag".
+It is OpenRouter, and by a mile: `streamMessage` raw-`fetch`es a hand-built
+chat-completions body, while `sendMessage` goes through `@openrouter/sdk`
+0.13.66 — a Speakeasy zod codec that re-emits the request in its OWN field
+order (schema-declaration order = its camelCase names sorted), renames
+camelCase → snake_case, and **drops every key its schema does not
+declare**. Observed, on real recordings:
+
+- key order `max_tokens, messages, model|models, plugins, provider,
+  reasoning, response_format, stop, stream, temperature, tool_choice,
+  tools, top_p, user`;
+- `reasoning.exclude` is **dropped** (`{exclude:false}` → `{}`);
+- `route: 'fallback'` is **dropped**; `models` replaces `model`;
+- web search rides `plugins: [{id:"web", max_results:5}]`, not a
+  `web_search_preview` tool;
+- messages re-emit as `{content, role}` and an assistant turn's
+  `tool_calls` are **silently stripped**;
+- a `tool`-role message fails the SDK's INPUT validation outright — **v4
+  sends no request at all.**
+
+Two provider-level facts the widened corpus exposed, both recorded rather
+than reasoned:
+
+- **OPENAI_COMPATIBLE had NO corpus coverage at all**, in either mode. It
+  is now recorded (three cases × two modes) via the bundled plugin's
+  re-export of `@quilltap/plugin-utils`, at v5's manifest base url.
+- Its v5 streaming body put `stop` **after** `stream_options`; v4 puts it
+  before. A pre-existing divergence, invisible until the provider entered
+  the corpus, fixed here.
+- v5's OpenRouter streaming body never set `route: 'fallback'` on a
+  `fallbackModels` profile. Also pre-existing, also fixed, also now pinned.
+
+### Units 3–6 — the builders
+
+`chat_completions.rs`: `base_body` sets `stream` from `input.stream` and
+emits `stream_options` only on the streaming path; `build_ollama_body` the
+same. `build_openai_compatible_body` no longer shares `base_body` — v4
+writes a separate literal per method, so it builds its own with `stop`
+before the stream keys and no `stream` key at all when non-streaming.
+`build_openrouter_body` splits into `build_openrouter_stream_body`
+(unchanged bytes + the `route` fix) and a new `build_openrouter_send_body`
+reproducing the SDK's serialization. `anthropic.rs` omits the `stream` key
+entirely when non-streaming. `responses_api.rs` threads `input.stream`
+through all three sites (chained, first-call, grok). `google.rs` needed no
+change — `google_chat_url` already switched on `stream`, and the
+regenerated fixture proves the body is mode-independent.
+
+**New: `BuildError::ProviderRefused`.** v5 now fails where v4 fails
+instead of inventing a body v4 would never put on the wire (the OpenRouter
+tool-role case). `build_request` already returned `Result`, so this is
+additive.
+
+### Unit 7 — the differential checks both halves
+
+`request_builder_equivalence` reconstructs `RequestInput.stream` from each
+line's `mode` and diffs both. A `refused: true` line must match
+`BuildError::ProviderRefused`, and the (provider, case, mode) triple must
+appear in the test's `EXPECTED_REFUSALS` table — a NEW refusal fails loudly
+and a VANISHED one fails the count assertion, because a refusal that stops
+being recorded reads as "no case". The coverage assertion now requires
+every one of the eight providers in BOTH modes.
+`request_builder_google_wire_equivalence` gained the same `mode` plumbing
+plus a **url** assertion (that is where google's streaming split lives).
+
+**Corpus:** 34 → **93** lines (34 stream + 34 send + 25 new openrouter /
+openai-compatible vectors), google-wire 5 → **10**.
+
+**The byte-identity proof.** The regenerated streaming half was diffed
+against the committed file with the new `mode` key stripped: **all 34
+pre-existing streaming vectors byte-identical, zero diverged.** No
+streaming byte moved.
+
+### The call-site pin
+
+`completion_provider::tests::cheap_llm_calls_ask_for_a_non_streaming_body`
+asserts on the bytes `execute_completion` actually hands the transport, for
+DEEPSEEK / ANTHROPIC / OPENAI (never `"stream":true`; either `false` or
+absent) plus GOOGLE's url. **The corpus alone could never have caught the
+real defect** — it builds its own `RequestInput`s and never executes the
+composition that sets `stream: false`. Same lesson as dogfood #22.
+
+**Regen recipe** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+```bash
+V4=~/source/quilltap-server V5=<repo-root> \
+  bash <V5>/harness/oracle/providers/regenerate-request-envelopes.sh
+V4=~/source/quilltap-server V5=<repo-root> \
+  bash <V5>/harness/oracle/providers/regenerate-google-wire.sh
+cargo test -p quilltap-harness --test request_builder_equivalence \
+  --test request_builder_google_equivalence \
+  --test request_builder_google_wire_equivalence -- --nocapture
+```
+
+Both fixtures are committed; the differentials need no env var and cannot
+SKIP.
+
+**Deferred loud (recorded, not closed):** v4's OpenRouter `streamMessage`
+routes a **no-tools / no-images** request through the SDK's `callModel()`
+OpenResponses shape (a different url and body) rather than the raw
+chat-completions `fetch` v5's streaming builder ports. That path is
+UNPORTED. This lane deliberately records the openrouter `no-tools` case in
+`send` mode ONLY — pinning a streaming vector there would assert a gap this
+lane did not close. Non-streaming no-tools (the cheap-LLM shape) IS covered.
+
+**Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` green on both feature sets; `cargo test
+--workspace` **367 binaries / 1,513 passed / 0 failed**;
+`request_builder_equivalence` **93 envelopes (1 recorded refusal)** and
+`request_builder_google_wire_equivalence` **10 cases, both modes**, over
+fixtures regenerated fresh at `e646f58b`, zero SKIPs. quilltap-core 0.0.326
+→ 0.0.327, quilltap-harness 0.0.281 → 0.0.282.

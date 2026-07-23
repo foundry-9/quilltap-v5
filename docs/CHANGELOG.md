@@ -2,6 +2,37 @@
 
 ## Recent Changes
 
+Fixed dogfood finding #23: no non-streaming LLM call in v5 had ever
+worked. Every request builder hard-coded "stream": true and ignored
+RequestInput.stream, so the entire cheap-LLM family (memory extraction,
+context summary, fold-episode, titles, scene state, answer confirmation,
+image-prompt crafting, outfit selection, Carina, llm-consult) received an
+SSE body where it expected JSON and failed with "response parse: expected
+value at line 1 column 1". Every builder now honours the flag, reproducing
+v4's sendMessage body byte-for-byte: DeepSeek/Z.AI/Ollama/OpenAI/Grok flip
+the flag (and drop stream_options), Anthropic and the OpenAI-compatible
+base omit the stream key entirely, Google switches only its URL, and
+OpenRouter builds a completely different body because v4's non-streaming
+path goes through @openrouter/sdk rather than a raw fetch. The bug
+survived a differential-verified port because the request-envelope corpus
+recorded only v4's streamMessage, so that half is now recorded too: the
+recorder takes --mode stream|send, every line carries its mode, the
+differential diffs both halves, and a coverage assertion requires all
+eight providers in both modes. The corpus grows 34 to 93 lines with the
+34 pre-existing streaming vectors byte-identical. Along the way the
+widened corpus exposed three pre-existing divergences, all fixed: the
+OPENAI_COMPATIBLE provider had no corpus coverage at all and its
+streaming body ordered stop after stream_options (v4 puts it before),
+and v5's OpenRouter streaming body never set route: "fallback". New
+BuildError::ProviderRefused makes v5 fail where v4 fails — the
+@openrouter/sdk rejects a tool-role message client-side and sends no
+request. A regression test at the call site asserts the bytes
+execute_completion actually hands the transport, which the corpus alone
+could never have caught. Gate: cargo fmt / clippy both feature sets
+clean, cargo test --workspace 1,513 passed / 0 failed, the three
+request-builder differentials green over fixtures regenerated fresh at
+v4 e646f58b. quilltap-core 0.0.327, quilltap-harness 0.0.282.
+
 Fixed dogfood finding #22: characters could never use the
 project-context tools. The per-turn tool context was built with every
 optional field set to None at both call sites, so doc_list_files,
