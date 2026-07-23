@@ -29790,3 +29790,58 @@ that column first.
 server should log to the console at all. There is no tracing subscriber
 anywhere in the workspace. That is a real question and it wants its own
 decision.
+
+### Unit 9 — the live proof on the Friday copy (💸 real spend)
+
+**Done, and the quartet lands.** Instance: `~/qt-dogfood-friday/Friday`
+(the standing rsync COPY — the live iCloud instance was never opened).
+Release `quilltap-web` on port 3411, two `chatSend` dispatches into "The
+Architecture of Two Anchors" (a multi-character salon on DeepSeek), server
+stopped afterwards.
+
+**The pre-state — finding #23's fingerprint on real data.** The instance
+carries a v4 history and one v5 dogfood window from earlier the same night
+(2026-07-23 03:06–03:40). In that v5 window `llm_logs` holds `CHAT_MESSAGE`
+(DEEPSEEK, streaming) and `DANGER_CLASSIFICATION` (OpenAI moderation — a
+separate endpoint) and **not one cheap-LLM row of any type**, while two
+`MEMORY_EXTRACTION` jobs were enqueued and reported `COMPLETED` with
+`lastError: null` and `memories.MAX(createdAt)` never moved past
+`2026-07-22T17:29:37.950Z` (a v4-era stamp). Jobs that "succeed" and mint
+nothing, with no log row to look at, is exactly the shape that reads as
+"extraction never ran" — see unit 8.
+
+**The post-state.** Across the two sends (05:27–05:33Z):
+
+| check | result |
+| --- | --- |
+| `background_jobs` MEMORY_EXTRACTION | **2 rows, COMPLETED, `lastError` null** (05:31:42→05:31:58, 05:32:12→05:32:28) |
+| `memories` MAX(createdAt) | `2026-07-22T17:29:37.950Z` → **`2026-07-23T05:32:12.505Z`** — fresh AUTO rows, `kind: semantic`, carrying `occurredAt` |
+| `llm_logs` cheap-LLM rows | **24 MEMORY_EXTRACTION** (DEEPSEEK / deepseek-v4-flash) **+ 1 TITLE_GENERATION** — the first cheap-LLM calls v5 has ever completed |
+| `debugMemoryLogs` failure list | absent — but see the gap below |
+
+Spot-checking a logged response shows a real, parsed non-streaming body:
+`{"keywords":[…],"temporal":"present","context":"information","paraphrase":
+"…","retrospective":false,"timeRange":null,"entities":[…]}` — the P4.d13
+distill signals. Before this lane that call returned SSE frames and died at
+`response parse: expected value at line 1 column 1`.
+
+**This is also P4.6bj's owed live proof**, and P4.d12–d15's: the
+extraction/fold pipeline and three rounds of episodic work run in
+production and mint episodic memories on real data. The minted rows carry
+`occurredAt` distinct from `createdAt` (the round-3 anchor stamp) and the
+row count moved 26,572 → 26,557, i.e. the housekeeping merge consolidated
+as designed.
+
+**Two observations recorded, NOT fixed here (out of this lane's scope):**
+
+1. **`chat_messages.debugMemoryLogs` is never written by v5.** It is null on
+   every message of both new turns (and every earlier v5 turn). v4 persists
+   the memory handler's reasoning there, and the order names it as the first
+   column to read when diagnosing the pipeline. v5 has no writer for it, so
+   that diagnostic instrument does not exist yet.
+2. **The extraction trigger is turn-count-gated, not per-turn.** The first
+   send produced five in-turn distill calls but enqueued no extraction job;
+   the second send enqueued two. Both behaviours are consistent with v4's
+   cadence, but nothing in v5 pins it — the P4.6bj record's "establish
+   whether the job row is being enqueued" question is answered YES, and the
+   cadence itself remains unpinned by any differential.

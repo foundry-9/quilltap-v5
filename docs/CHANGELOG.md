@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Proved the non-streaming fix on real data. Two messages sent through a
+DeepSeek salon on the Friday dogfood copy produced 24 MEMORY_EXTRACTION
+and 1 TITLE_GENERATION rows in llm_logs — the first cheap-LLM calls v5 has
+ever completed — two MEMORY_EXTRACTION jobs COMPLETED with no error, and
+fresh AUTO memories carrying occurredAt, moving the newest memory stamp
+forward by a day. Earlier the same night, before the fix, the same
+instance logged chat streaming and moderation calls and not one cheap-LLM
+row, while extraction jobs reported COMPLETED and minted nothing. This is
+also the live proof owed by P4.6bj and by the three episodic-recall
+rounds. Two things observed and recorded but not fixed: v5 never writes
+chat_messages.debugMemoryLogs, so v4's first diagnostic instrument for
+this pipeline does not exist yet, and the extraction trigger's turn-count
+cadence is pinned by no differential.
+
 Recorded, after checking v4, that a FAILED cheap-LLM call writes no
 llm_logs row: v4 invokes logCall only on sendToProvider's three success
 arms and a throw reaches the outer catch untouched, so v5's matching
