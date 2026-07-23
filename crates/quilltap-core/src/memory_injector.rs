@@ -17,8 +17,16 @@
 //! chars-per-token rate, which the differential pins at the default.
 //!
 //! Sort order matters: v4 uses `Array.prototype.sort` (stable) with float
-//! comparators, so ties preserve input order. Rust's `slice::sort_by` is stable,
-//! and the comparators map `>0 → Greater`, `<0 → Less`, `==0 → Equal` exactly.
+//! comparators, so ties preserve input order. The comparators map `>0 →
+//! Greater`, `<0 → Less`, `==0 → Equal` exactly.
+//!
+//! Two of those comparators are **not total orders** — v4's own epsilon-window
+//! and `blendedAfter` rules — which V8's TimSort tolerates and Rust's
+//! `slice::sort_by` panics on. Those two sites run
+//! [`crate::stable_sort::stable_sort_by_unchecked`] instead: equally stable,
+//! never validating. The remaining sorts here are plain key comparisons and
+//! stay on `slice::sort_by`. See the `why`-comments at each site and the
+//! regression module at the foot of this file (work order P4.14).
 //!
 //! The decayed `effectiveWeight` used for ranking + the debug records flows
 //! through [`crate::memory_weighting::calculate_effective_weight`], whose
@@ -32,6 +40,7 @@ use crate::jsnum::to_fixed;
 use crate::memory_weighting::{
     calculate_effective_weight, format_relative_age, MemoryInputs, DEFAULT_WEIGHTING_CONFIG,
 };
+use crate::stable_sort::stable_sort_by_unchecked;
 use crate::token_estimation::{
     estimate_tokens as est_tokens_rate, truncate_to_token_limit, DEFAULT_CHARS_PER_TOKEN,
 };
@@ -505,7 +514,17 @@ pub fn format_memories_for_context(
         .collect();
 
     // sort by weight (primary), score (tiebreaker within 0.05).
-    with_weight.sort_by(|(ra, wa), (rb, wb)| {
+    //
+    // ⚠ NOT a total order, and deliberately kept that way: the 0.05 window makes
+    // weights 0.00 / 0.04 / 0.08 give a == b, b == c, a < c. That is v4's own
+    // comparator (`lib/chat/context/memory-injector.ts:281`) and its decisions
+    // ARE the ranking output, so it must not be "fixed". V8's TimSort never
+    // validates a comparator; Rust's `slice::sort_by` does and PANICS on a real
+    // recall slate — hence `stable_sort_by_unchecked`, which is stable like
+    // TimSort but never checks. See `crate::stable_sort` and the regression
+    // module at the foot of this file (work order P4.14). Do not simplify this
+    // back to `sort_by`.
+    stable_sort_by_unchecked(&mut with_weight, |(ra, wa), (rb, wb)| {
         let weight_diff = wb - wa;
         if weight_diff.abs() > 0.05 {
             return cmp_num(weight_diff);
@@ -862,7 +881,14 @@ pub fn format_dynamic_memory_head(
         })
         .collect();
 
-    ranked.sort_by(|(ra, wa), (rb, wb)| {
+    // ⚠ NOT a total order — the confirmed dogfood panic site. Two independent
+    // sources: the 0.05 epsilon window (as in `format_memories_for_context`
+    // above) AND the `blendedAfter` branch, which returns early only when BOTH
+    // sides carry a value, so different pairs get ordered by different criteria.
+    // Both are v4's (`lib/chat/context/memory-injector.ts:553`) and both stay.
+    // `slice::sort_by` panics here on a live recall slate; see `crate::stable_sort`
+    // and the regression module at the foot of this file (work order P4.14).
+    stable_sort_by_unchecked(&mut ranked, |(ra, wa), (rb, wb)| {
         let a_adj = ra
             .recall_adjustment
             .as_ref()
@@ -1067,6 +1093,139 @@ mod episodic_visibility_tests {
                 .contains("[today · the third night at sea]"),
             "content: {}",
             formatted.content
+        );
+    }
+}
+
+#[cfg(test)]
+mod intransitive_comparator_regression {
+    //! Regression for work order P4.14 — the dogfood panic
+    //! `user-provided comparison function does not correctly implement a total
+    //! order`, raised from `format_dynamic_memory_head` on a live Salon send.
+    //!
+    //! v4's comparators (ported verbatim; see the `why`-comments at the sort
+    //! sites) are NOT total orders: the `Math.abs(weightDiff) > 0.05` rule makes
+    //! weights 0.00 / 0.04 / 0.08 compare a == b, b == c, a < c, and the dynamic
+    //! head's `blendedAfter` branch orders different pairs by different criteria.
+    //! V8's TimSort never validates its comparator, so v4 silently produces
+    //! arbitrary-but-deterministic order; Rust's `slice::sort_by` (driftsort)
+    //! DOES validate, in `smallsort`'s bidirectional merge, and panics.
+    //!
+    //! Two conditions have to hold together for driftsort to reach that merge,
+    //! which is exactly why every committed differential stayed green:
+    //!   * the slate must be long enough to leave the insertion-sort fast path
+    //!     (~20 elements — the fixture slates are far shorter), and
+    //!   * it must not already read as one detected run. An epsilon ladder fed
+    //!     in ladder order does: every ADJACENT pair falls inside the 0.05
+    //!     window, so driftsort's run detector walks the whole array and returns
+    //!     without merging anything. Only a shuffled slate — a real recall slate,
+    //!     ordered by cosine score, not by weight — actually sorts.
+    //!
+    //! Empirically 40/40 shuffles panic at n = 128 and n = 200; at n = 64 only
+    //! 13/40 do, so these slates use n = 200.
+    //!
+    //! Both sites now run [`crate::stable_sort::stable_sort_by_unchecked`].
+    //! These slates panic before that swap and pass after.
+
+    use super::*;
+
+    const NOW_MS: f64 = 1_781_524_800_000.0; // 2026-06-15T12:00:00.000Z
+
+    /// A slate long enough to leave driftsort's insertion-sort fast path, with an
+    /// epsilon ladder of weights (0.00 / 0.04 / 0.08 …) so adjacent pairs fall
+    /// inside the 0.05 window and compare by score while distant pairs compare by
+    /// weight, and scores running the opposite way so the two criteria disagree.
+    /// Shuffled by a fixed LCG so the run detector cannot short-circuit it.
+    fn epsilon_ladder(n: usize, with_blended: bool) -> Vec<InjectorResult> {
+        let mut slate: Vec<InjectorResult> = (0..n)
+            .map(|i| InjectorResult {
+                memory: InjectorMemory {
+                    id: format!("{i:08}-1111-4111-8111-111111111111"),
+                    content: Some(format!("the {i}th brass fitting on the orrery")),
+                    summary: format!("orrery fitting {i}"),
+                    importance: 0.5,
+                    keywords: vec!["orrery".to_string()],
+                    about_character_id: None,
+                    reinforced_importance: None,
+                    created_at_ms: NOW_MS,
+                    last_reinforced_at_ms: None,
+                    last_accessed_at_ms: None,
+                    reinforcement_count: None,
+                    graph_degree: 0,
+                    kind_episodic: false,
+                    occurred_at_ms: None,
+                    narrative_time: None,
+                },
+                score: 1.0 - (i as f64) * 0.001,
+                effective_weight: Some((i as f64) * 0.04),
+                raw_weight: None,
+                // Mixed presence: only every third entry carries a blendedAfter,
+                // so the head's `(Some, Some)` early return fires for some pairs
+                // and not others — a second, independent intransitivity source.
+                recall_adjustment: (with_blended && i % 3 == 0).then(|| RecallAdjustment {
+                    multiplier: Some(1.2),
+                    fired: vec!["scope".to_string()],
+                    blended_before: Some(0.5),
+                    blended_after: Some(0.5 + (i as f64) * 0.01),
+                }),
+            })
+            .collect();
+
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        for i in (1..slate.len()).rev() {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            slate.swap(i, ((state >> 33) as usize) % (i + 1));
+        }
+        slate
+    }
+
+    #[test]
+    fn dynamic_head_survives_the_intransitive_comparator() {
+        // Mixed `blendedAfter` presence: the head's `(Some, Some)` early return
+        // fires for some pairs and the epsilon rule for the rest, so BOTH
+        // intransitivity sources are live.
+        let results = epsilon_ladder(200, true);
+        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        assert!(formatted.memories_used > 0, "the head produced no entries");
+    }
+
+    #[test]
+    fn memories_for_context_survives_the_intransitive_comparator() {
+        let results = epsilon_ladder(200, false);
+        let formatted = format_memories_for_context(&results, 100_000, NOW_MS);
+        assert!(
+            formatted.memories_used > 0,
+            "the memory block produced no entries"
+        );
+    }
+
+    /// The head with `blendedAfter` on EVERY entry: that comparator is a plain
+    /// key comparison and so IS a total order — it never panicked. Pinned so a
+    /// future reader can see which half of the head's comparator is the broken
+    /// one, and so the sort swap is proven not to have changed this arm.
+    #[test]
+    fn dynamic_head_fully_blended_slate_is_ranked_by_blended_score() {
+        let mut results = epsilon_ladder(200, true);
+        for (i, r) in results.iter_mut().enumerate() {
+            r.recall_adjustment = Some(RecallAdjustment {
+                multiplier: Some(1.0),
+                fired: Vec::new(),
+                blended_before: Some(0.4),
+                blended_after: Some(((i % 7) as f64) * 0.03),
+            });
+        }
+        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        assert!(formatted.memories_used > 0, "the head produced no entries");
+        let blended: Vec<f64> = formatted
+            .debug_memories
+            .iter()
+            .map(|d| d.blended_after.expect("every entry carries a blend"))
+            .collect();
+        assert!(
+            blended.windows(2).all(|w| w[0] >= w[1]),
+            "head not in descending blended order: {blended:?}"
         );
     }
 }

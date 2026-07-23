@@ -313,8 +313,19 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
 
 /// v4 `sortNewestFirst`: newest `sentAt` first; ties (or unparseable dates) fall
 /// back to `b.path.localeCompare(a.path)` (descending by path).
+///
+/// ⚠ NOT a total order, and kept that way — it is v4's
+/// (`lib/post-office/mailbox.ts:262`). The `Number.isFinite` guard means a
+/// letter whose `sentAt` will not parse compares to EVERY other letter by path,
+/// while two parseable ones compare by time, so `a < b` (by time), `b > c` and
+/// `c > a` (both by path) can form a cycle: letters {t=10,"a"}, {t=5,"z"},
+/// {t=None,"m"} do. It needs a malformed/missing `sentAt` to reach — the
+/// injector's epsilon rule breaks on ordinary data, this one only on bad
+/// frontmatter — but the failure mode is identical: `slice::sort_by` panics
+/// (98/120 shuffled 24–128-letter slates in the P4.14 audit probe) where V8
+/// silently returns. Hence [`crate::stable_sort::stable_sort_by_unchecked`].
 fn sort_newest_first(letters: &mut [DeliveredLetterSummary]) {
-    letters.sort_by(|a, b| {
+    crate::stable_sort::stable_sort_by_unchecked(letters, |a, b| {
         match (iso_to_ms(&a.sent_at), iso_to_ms(&b.sent_at)) {
             (Some(ta), Some(tb)) if ta != tb => tb.cmp(&ta), // tb - ta → newest first
             // v4: `b.path.localeCompare(a.path)`.
@@ -359,5 +370,60 @@ mod tests {
             preface,
             "> In reply to your letter of February 1, 2026 at 09:05 AM:\n>\n> Line one\n>\n> Line two"
         );
+    }
+
+    fn summary(sent_at: &str, path: &str) -> DeliveredLetterSummary {
+        DeliveredLetterSummary {
+            path: path.to_string(),
+            from: "Friday".to_string(),
+            sent_at: sent_at.to_string(),
+            body: String::new(),
+            alerted: false,
+            in_reply_to: None,
+        }
+    }
+
+    /// The ordinary mailbox — every `sentAt` parses and all differ — is a plain
+    /// key comparison. Pins that the P4.14 sort swap left it untouched.
+    #[test]
+    fn sorts_parseable_letters_newest_first() {
+        let mut letters = vec![
+            summary("2026-02-01T09:00:00.000Z", "inbox/a.md"),
+            summary("2026-02-03T09:00:00.000Z", "inbox/b.md"),
+            summary("2026-02-02T09:00:00.000Z", "inbox/c.md"),
+        ];
+        sort_newest_first(&mut letters);
+        let paths: Vec<&str> = letters.iter().map(|l| l.path.as_str()).collect();
+        assert_eq!(paths, ["inbox/b.md", "inbox/c.md", "inbox/a.md"]);
+    }
+
+    /// P4.14 audit: a letter with unparseable frontmatter `sentAt` makes the
+    /// comparator intransitive (it compares to everything by path while the rest
+    /// compare by time). `slice::sort_by` panics on a big enough shuffled slate;
+    /// `stable_sort_by_unchecked` must not.
+    #[test]
+    fn survives_letters_with_unparseable_sent_at() {
+        let mut letters: Vec<DeliveredLetterSummary> = (0..128)
+            .map(|i| {
+                let sent_at = if i % 4 == 0 {
+                    "not a date".to_string()
+                } else {
+                    format!("2026-02-{:02}T{:02}:00:00.000Z", (i % 28) + 1, i % 24)
+                };
+                summary(&sent_at, &format!("inbox/{:03}.md", (i * 37) % 128))
+            })
+            .collect();
+
+        let mut state: u64 = 0x51ED_2718_2818_2845;
+        for i in (1..letters.len()).rev() {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            letters.swap(i, ((state >> 33) as usize) % (i + 1));
+        }
+
+        let before = letters.len();
+        sort_newest_first(&mut letters);
+        assert_eq!(letters.len(), before, "letters lost during the sort");
     }
 }

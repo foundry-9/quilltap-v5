@@ -110,6 +110,19 @@ enclave-step oracle now includes the fold-episode SUMMARIZATION `llm_logs`
 row that the v5 enclave step path does not produce (the fold-episode seam is
 wired in the orchestrator's summary check but not in the enclave step's).
 Follow-up owed outside this lane.
+Fixed the crash that killed live Salon turns: the memory injector's sort
+comparators are not total orders, and Rust's sort validates while V8's does
+not. `format_dynamic_memory_head` and `format_memories_for_context` (and, from
+the same audit, the Post Office's `sortNewestFirst`) now run
+`stable_sort_by_unchecked`. The comparators themselves are unchanged — they are
+v4's, and their decisions are the ranking output. Because the panic fired at
+the end of `process_message`, it also killed the context-summary fold gate
+before it could be evaluated; that path is unblocked from the panic side.
+
+The audit swept every sort in quilltap-core and swapped only the three sites
+that can actually violate totality; key-comparison, difference-form,
+locale-compare and lexicographic-tuple sites keep `slice::sort_by`.
+
 Added quilltap-core's `stable_sort` module: `stable_sort_by_unchecked`, a
 bottom-up stable merge sort that runs its comparator without validating it.
 Rust's `slice::sort_by` panics when a comparator is not a total order; several
