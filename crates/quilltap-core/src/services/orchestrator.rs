@@ -140,8 +140,8 @@ use crate::services::text_tool_loop::{
 use crate::services::tool_build::{self, BuildToolsInput};
 use crate::services::tool_call_threading::ThreadedMessage;
 use crate::services::tool_execution::{
-    create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage,
-    ToolWhisperContext,
+    create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult,
+    ToolExecutionContext, ToolMessage, ToolWhisperContext,
 };
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
@@ -542,6 +542,47 @@ pub fn build_pricing_context(db: &Db, user_id: &str) -> PricingContext {
     }
 }
 
+/// The identifiers [`turn_tool_context`] threads into the per-turn
+/// [`ToolExecutionContext`].
+pub(crate) struct TurnToolContextArgs<'a> {
+    pub chat_id: &'a str,
+    pub user_id: &'a str,
+    pub character_id: &'a str,
+    pub character_participant_id: &'a str,
+    pub image_profile_id: Option<&'a str>,
+    pub project_id: Option<&'a str>,
+}
+
+/// Build the per-turn tool context (v4 `orchestrator.service.ts:1136–1151`).
+///
+/// Extracted so both loops build it identically and so the *threading* is
+/// testable: v4 passes the chat's real `imageProfileId` and `projectId` here, and
+/// passing `None` instead silently disables every tool that gates on them —
+/// `generate_image` ("Image generation is not enabled for this chat") and the
+/// project-context tools `doc_list_files` / `doc_grep` / `project_info`
+/// ("… requires a project context"). Dogfood finding #22 was exactly that: both
+/// call sites hard-coded `None`, so those tools could never succeed in
+/// production, while the tier-3 corpus — which drives the loops directly with its
+/// own contexts — never saw the call sites at all.
+///
+/// Still unthreaded, deliberately (see the note at `_image_profile_id`):
+/// `browser_user_agent` (no source in v5's request path) and `loaded_memories`
+/// (needs the `BuiltContext.debug_*` → [`LoadedMemoriesContext`] conversion plus a
+/// `self_inventory` differential).
+pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionContext {
+    create_tool_context(
+        args.chat_id,
+        args.user_id,
+        args.character_id,
+        args.character_participant_id,
+        args.image_profile_id.map(String::from),
+        None,
+        args.project_id.map(String::from),
+        None,
+        None,
+    )
+}
+
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
 /// reproducing every unported-subsystem gate and routing the subsystem body
 /// through an [`OrchestratorSeams`] method. Returns the [`ProcessMessageResult`]
@@ -638,7 +679,14 @@ where
     let character = resolution.character.clone();
     let connection_profile = resolution.connection_profile.clone();
     // `image_profile_id` feeds the tool build (self_inventory / wardrobe /
-    // image tools), a wave-4 seam kept inactive in the corpus.
+    // image tools) AND the per-turn tool context, where it gates `generate_image`.
+    //
+    // Still NOT threaded into the tool context (v4 passes both;
+    // orchestrator.service.ts:1143–1151): `browserUserAgent` — v5's request path
+    // carries no User-Agent at all — and `loadedMemories`, which needs the
+    // `BuiltContext.debug_*` bags converted into `LoadedMemoriesContext` and so
+    // owes a `self_inventory` differential. Until then `self_inventory` reports an
+    // empty memory slate. Both are recorded in the dogfood standing notes.
     let _image_profile_id = resolution.image_profile_id.clone();
     let user_participant_id = resolution.user_participant_id.clone();
     let is_multi_character = resolution.is_multi_character;
@@ -1964,17 +2012,14 @@ where
             tool_calls: None,
         })
         .collect();
-    let mut loop_tool_context = create_tool_context(
-        chat_id.clone(),
-        user_id.clone(),
-        character_id.clone(),
-        character_participant_id.clone(),
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+    let mut loop_tool_context = turn_tool_context(TurnToolContextArgs {
+        chat_id: &chat_id,
+        user_id: &user_id,
+        character_id: &character_id,
+        character_participant_id: &character_participant_id,
+        image_profile_id: _image_profile_id.as_deref(),
+        project_id: json_str(&chat, "projectId").as_deref(),
+    });
     loop_tool_context.pending_wardrobe_announcements = pending_wardrobe.clone();
     native_tool_loop::run_native_tool_loop(
         db,
@@ -2025,17 +2070,16 @@ where
             .collect()
     };
     let make_text_context = || {
-        let mut c = create_tool_context(
-            chat_id.clone(),
-            user_id.clone(),
-            character_id.clone(),
-            character_participant_id.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        // Same identifiers as the native loop's context above — v4 threads ONE
+        // `toolContext` into both loops.
+        let mut c = turn_tool_context(TurnToolContextArgs {
+            chat_id: &chat_id,
+            user_id: &user_id,
+            character_id: &character_id,
+            character_participant_id: &character_participant_id,
+            image_profile_id: _image_profile_id.as_deref(),
+            project_id: json_str(&chat, "projectId").as_deref(),
+        });
         c.pending_wardrobe_announcements = pending_wardrobe.clone();
         c
     };
@@ -3644,5 +3688,69 @@ mod tests {
         let _emb = CannedEmbeddingProvider::new();
         let settings = OrchestratorChatSettings::defaults_present();
         assert_eq!(settings.project_context_reinject_interval, 5);
+    }
+
+    // --- turn_tool_context (dogfood finding #22) -------------------------------
+
+    fn ctx_args<'a>(
+        image_profile_id: Option<&'a str>,
+        project_id: Option<&'a str>,
+    ) -> TurnToolContextArgs<'a> {
+        TurnToolContextArgs {
+            chat_id: "chat-1",
+            user_id: "user-1",
+            character_id: "char-1",
+            character_participant_id: "part-1",
+            image_profile_id,
+            project_id,
+        }
+    }
+
+    /// The regression: a chat that HAS a project and an image profile must carry
+    /// both into the tool context, or `doc_list_files` / `doc_grep` /
+    /// `project_info` answer "requires a project context" and `generate_image`
+    /// answers "not enabled for this chat" — the finding-#22 symptom.
+    #[test]
+    fn turn_tool_context_threads_project_and_image_profile() {
+        let ctx = turn_tool_context(ctx_args(Some("img-profile-1"), Some("project-7")));
+        assert_eq!(ctx.project_id.as_deref(), Some("project-7"));
+        assert_eq!(ctx.image_profile_id.as_deref(), Some("img-profile-1"));
+        // The identifiers v4 has always threaded stay correct.
+        assert_eq!(ctx.chat_id, "chat-1");
+        assert_eq!(ctx.user_id, "user-1");
+        assert_eq!(ctx.character_id.as_deref(), Some("char-1"));
+        assert_eq!(ctx.calling_participant_id.as_deref(), Some("part-1"));
+    }
+
+    /// The guard: a chat with NO project must still yield `None`, so the
+    /// project-context refusal keeps firing where v4 fires it. Threading the ids
+    /// must not turn the guard into a lie.
+    #[test]
+    fn turn_tool_context_leaves_a_projectless_chat_unset() {
+        let ctx = turn_tool_context(ctx_args(None, None));
+        assert!(ctx.project_id.is_none());
+        assert!(ctx.image_profile_id.is_none());
+    }
+
+    /// v4's `projectId || undefined` / `imageProfileId || undefined`: an empty
+    /// string is falsy and collapses to absent, NOT to `Some("")` (which would
+    /// pass the `is_some()` guards and then fail deeper on a lookup).
+    #[test]
+    fn turn_tool_context_collapses_empty_strings_to_absent() {
+        let ctx = turn_tool_context(ctx_args(Some(""), Some("")));
+        assert!(ctx.project_id.is_none());
+        assert!(ctx.image_profile_id.is_none());
+    }
+
+    /// Both loops must see the same context — v4 builds ONE `toolContext` and
+    /// threads it into the native loop and the text passes alike.
+    #[test]
+    fn turn_tool_context_is_identical_for_both_loops() {
+        let native = turn_tool_context(ctx_args(Some("img-1"), Some("proj-1")));
+        let text = turn_tool_context(ctx_args(Some("img-1"), Some("proj-1")));
+        assert_eq!(native.project_id, text.project_id);
+        assert_eq!(native.image_profile_id, text.image_profile_id);
+        assert_eq!(native.chat_id, text.chat_id);
+        assert_eq!(native.calling_participant_id, text.calling_participant_id);
     }
 }

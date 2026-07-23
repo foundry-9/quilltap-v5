@@ -36,7 +36,50 @@ catch, since every fixture is built fresh.
 | 20 | No "character detail → State Editor" entry found | **Walk-script error, not a gap** — the state cascade has NO character tier in v4 or v5 (`StateEntityType = chat \| project \| group \| general`); no v4 character screen opens a state editor. All four real tiers' entry points exist in v5 (chat: the sidebar opener; project: Prospero settings card; group: the group editor; general: Settings→Chat) | **NOT A BUG** (2026-07-22) — the walk script overpromised; recorded so it isn't re-reported |
 | 21 | Can't see how to make a custom tool read `$state` in the Workbench | **Faithfully ported v4 behavior** — the builder form deliberately never AUTHORS `$state` in either version (identical "Edit $state references in the raw JSON" microcopy at all three sites); authoring is the dual-mode editor's JSON mode (`{ "$state": "path", "fallback": … }` in roll fields / comparator operands / parameter defaults, `{{state.path}}` in messages) or Pascal in-chat; the proving bench's Mock-state card is for testing resolution | **NOT A BUG** (2026-07-22) — usage documented in the walk notes |
 
+| 22 | In a PROJECT chat, asking a character to list files in a folder fails every time: `doc_list_files` returns `Error: List files requires a project context`, and the character retries the same call in a loop (both the `uri` form and the `folder`+`mount_point` form) | Port divergence — the **tool context was built with every optional field hard-coded `None`**. v4's `orchestrator.service.ts:1136–1151` passes `imageProfileId`, `chat.projectId`, `browserUserAgent` and the loaded-memories bag into `createToolContext`; v5's `process_message` passed `None` at all five optional positions, at BOTH call sites (the native loop and the text passes). The guard the user hit is faithfully ported and lives in v4 too (`text-handlers.ts:815`) — it was firing because `ctx.project_id` was always absent, never because the URI was wrong. Two more tools were silently dead the same way: `doc_grep` ("Grep requires a project context"), `project_info`, and `generate_image` (`ctx.image_profile_id` absent → "Image generation is not enabled for this chat"). Invisible to the tier-3 orchestrator differential because that harness drives the tool loops with **its own** contexts — the call sites are never executed by the corpus (the same corpus-invisible class as finding #16's `Real*` seams) | **FIXED** — both call sites thread `chat.projectId` + the resolved `image_profile_id` through a new shared `turn_tool_context` helper (extracted so the threading is unit-testable); four regression tests pin the fixed behavior AND the guards (a projectless chat still yields `None` so the refusal keeps firing where v4 fires it; v4's `|| undefined` empty-string collapse; both loops identical). `orchestrator_tier3` re-run green over a fresh oracle |
+
 ## Standing notes for the next orders
+
+- **Carried out of finding #22 — two tool-context fields still unthreaded
+  (loud here, not in code).** `turn_tool_context` now passes `project_id`
+  and `image_profile_id`; v4 passes two more that v5 still sends as `None`:
+  - **`loadedMemories`** — v4 forwards `builtContext.{debugMemories,
+    debugInterCharacterMemories,debugMemoryRecap}` so `self_inventory` can
+    report the exact memory slate the LLM saw this turn. All three exist on
+    v5's `BuiltContext`, but the types don't line up (`Vec<Value>` /
+    `Option<Vec<DebugInterCharacterOut>>` vs `LoadedMemoriesContext`'s typed
+    `semantic`/`interCharacter`), so it needs a conversion **plus** a
+    `self_inventory` differential — a small rider, not a dogfood commit.
+    Until it lands, `self_inventory` reports an empty memory slate in
+    production.
+  - **`browserUserAgent`** — v5's request path carries no User-Agent at all;
+    nothing to thread yet. Genuinely unported input, not a wiring slip.
+  Both are commented at `_image_profile_id` in `orchestrator.rs`.
+
+- **Also observed at the 2026-07-22 pass, not yet filed as a finding: v5 has
+  no tool-result hide/show control.** Every tool result is whispered into the
+  Salon as a `Private whisper` bubble carrying the raw JSON envelope
+  (`{"toolName":…,"success":…,"arguments":…,"callId":…}`), where v4 has a
+  proper show/hide affordance for tool output. Reported by the human during
+  the finding-#22 walk. Scope it against v4's tool-display controls when the
+  next Salon slice runs — it is a rendering/affordance gap, not a dispatch
+  one, and the whisper-gate sets (`ALWAYS_PRIVATE_TOOLS` / `VAULT_READ_TOOLS`
+  in `tool_execution.rs`) are already ported faithfully.
+
+- **UNRESOLVED at the 2026-07-22 pass — the memory pipeline produced nothing
+  on two closed turns** (P4.6bj's owed live proof). Static tracing found the
+  wiring intact: both handlers ARE registered in `ProductionSpineFactory`
+  (`spine.rs:2578,2585`), `HostOrchestratorSeams::chat_settings` reads the
+  real row, and the finalizer's `&& settings.cheap_llm_settings_present` gate
+  is v4-faithful (v4 gates one frame deeper, inside
+  `triggerTurnMemoryExtraction` — `memory-trigger.service.ts:65`). Note the
+  gate reads **global** settings, not per-chat: `chat_settings` is keyed by
+  `userId` (v4 `repos.chatSettings.findByUserId`), so `cheapLLMSettings` is
+  the one global cheap-LLM config — the walk script's "a chat with a cheap-LLM
+  profile" phrasing was wrong and is corrected here. **Next diagnostic step:**
+  determine whether the job row is being ENQUEUED (gate passes, runner or
+  handler at fault) or NOT (gate fails, i.e. the settings read returns no
+  `cheapLLMSettings`) before changing any code.
 
 - **The 2026-07-22 dogfood pass — coverage so far (walk paused here).**
   WALKED: the New-Chat picker + outfit seed (episodic round 1 — findings

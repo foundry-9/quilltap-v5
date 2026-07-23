@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Fixed dogfood finding #22: characters could never use the
+project-context tools. The per-turn tool context was built with every
+optional field set to None at both call sites, so doc_list_files,
+doc_grep and project_info always answered "requires a project context"
+(the character would retry the same call in a loop), and generate_image
+always answered "Image generation is not enabled for this chat". v4
+passes the chat's projectId and imageProfileId here; both are now
+threaded through a shared turn_tool_context helper, with four
+regression tests covering the fix and its guards (a projectless chat
+still yields None, so the refusal keeps firing where v4 fires it;
+empty strings collapse to absent per v4's `|| undefined`; both tool
+loops build an identical context). The tier-3 orchestrator differential
+never caught this because that harness drives the tool loops with its
+own contexts and never executes the call sites. Two fields v4 also
+passes remain unthreaded and are recorded in the dogfood standing
+notes: loadedMemories (needs a type conversion plus a self_inventory
+differential; self_inventory reports an empty memory slate until then)
+and browserUserAgent (no source exists in v5's request path). Gate:
+cargo fmt / clippy both feature sets clean, cargo test --workspace
+1,512 passed / 0 failed, orchestrator_tier3 green over a freshly
+regenerated oracle. quilltap-core 0.0.326.
+
 Unified the e646f58b v4-drift catch-up round (P4.d16 the workspace
 deep-links re-port ∥ P4.d17 the thinking-indicator + Madman's Box
 re-port) onto main — the four-commit v4 drift is fully absorbed and the

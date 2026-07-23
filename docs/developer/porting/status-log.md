@@ -29502,3 +29502,84 @@ tier-3 sidebar deferrals, `p4.9i2` (HelpChat), M6 rows 5+, the
 conversion port. Versions: SPA **0.5.263**; crates unchanged (core
 0.0.325, harness 0.0.281, host 0.0.30, web 0.0.37, cli 0.0.2,
 quilltap-tauri 0.0.4).
+
+## Dogfood finding #22 — the per-turn tool context was built with every optional field `None` (2026-07-22)
+
+Found by the human during the P4.6bj ∥ P4.d13/14/15 ∥ P4.d10 ∥ P4.6bg
+dogfood pass, walking the fs-documents surface on the Friday copy: in a
+project chat, asking a character to list the files in a folder failed on
+every attempt with `Error: List files requires a project context`, and the
+character retried the same `doc_list_files` call in a loop. Both argument
+forms failed — the `uri` form
+(`qtap://Project%20Files%3A%20Voyages%20of%20the%20Covenant/Specs/`) and the
+`folder` + `mount_point` form — which was the tell that the failure was
+upstream of URI parsing.
+
+**Diagnosis.** The guard is faithfully ported and exists in v4 too
+(`lib/tools/handlers/doc-edit/text-handlers.ts:815` ↔
+`tools/doc_edit/text.rs:1013`); it was firing because `ctx.project_id` was
+always absent. v4's `orchestrator.service.ts:1136–1151` passes
+`imageProfileId`, `chat.projectId`, `options.browserUserAgent` and the
+loaded-memories bag into `createToolContext`. v5's `process_message` passed
+`None` at all five optional positions, at BOTH call sites — the native tool
+loop's `loop_tool_context` and the text passes' `make_text_context`. Three
+more behaviors were dead the same way and nobody had reported them yet:
+`doc_grep` ("Grep requires a project context"), `project_info`, and
+`generate_image` (`ctx.image_profile_id` absent → the dispatcher guard's
+"Image generation is not enabled for this chat").
+
+**Why no differential caught it.** `orchestrator_tier3` drives the tool
+loops with contexts it constructs itself, so the corpus never executes the
+two call sites. Same corpus-invisible class as finding #16's `Real*` seams:
+the harness proves the loop, not the wiring into the loop. Re-running the
+family over a fresh `e646f58b` oracle is green both before and after the
+fix, which is the evidence for that claim rather than an argument against
+the fix.
+
+**The fix.** Extracted `turn_tool_context(TurnToolContextArgs)` above
+`process_message` — both call sites now build the context through it,
+threading `json_str(&chat, "projectId")` and the already-resolved
+`_image_profile_id`. The extraction is deliberate: it makes the *threading*
+unit-testable without standing up a full `process_message` fixture (the
+existing orchestrator tests are chain-guard self-tests that short-circuit
+long before the tool loop).
+
+Four regression tests in `services::orchestrator::tests`:
+- `turn_tool_context_threads_project_and_image_profile` — the reported
+  behavior; a project chat carries both ids.
+- `turn_tool_context_leaves_a_projectless_chat_unset` — **the guard**: a
+  chat with no project still yields `None`, so the project-context refusal
+  keeps firing exactly where v4 fires it. Threading the ids must not turn
+  the guard into a lie.
+- `turn_tool_context_collapses_empty_strings_to_absent` — v4's
+  `projectId || undefined` / `imageProfileId || undefined`; `Some("")` would
+  pass the `is_some()` guards and fail deeper on a lookup.
+- `turn_tool_context_is_identical_for_both_loops` — v4 builds ONE
+  `toolContext` and threads it into the native loop and the text passes.
+
+**Left unthreaded, loud (commented at `_image_profile_id`, and in the
+dogfood standing notes):** `loaded_memories` — all three sources exist on
+v5's `BuiltContext` (`debug_memories`, `debug_inter_character_memories`,
+`debug_memory_recap`) but the types don't line up with
+`LoadedMemoriesContext`, so it needs a conversion **plus** a
+`self_inventory` differential; until it lands `self_inventory` reports an
+empty memory slate in production. `browser_user_agent` — v5's request path
+carries no User-Agent at all, so there is nothing to thread yet.
+
+**Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` green; `cargo test --workspace` (TZ=UTC) **1,512
+passed / 0 failed** (up 4 by the new tests); `orchestrator_tier3_equivalence`
+green over an oracle regenerated fresh from `~/source/quilltap-server` at
+`e646f58b` (jest needs `--testTimeout=120000` — the standing tier-3 oracle
+gotcha; the default 5 s times out inside v4's `buildTools`). quilltap-core
+0.0.325 → 0.0.326.
+
+**Still open from the same pass, NOT fixed here:** the memory pipeline
+produced nothing on two closed turns (P4.6bj's owed live proof). Static
+tracing found the wiring intact — both handlers registered
+(`spine.rs:2578,2585`), `HostOrchestratorSeams::chat_settings` reading the
+real row, and the finalizer's `cheap_llm_settings_present` gate v4-faithful
+(v4 gates one frame deeper, `memory-trigger.service.ts:65`). Also corrected
+there: `chat_settings` is keyed by `userId`, so `cheapLLMSettings` is the
+GLOBAL cheap-LLM config, not a per-chat profile. The next diagnostic step is
+to establish whether the job row is being enqueued before any code changes.
