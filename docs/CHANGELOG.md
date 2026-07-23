@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Unified the P4.11 non-streaming-request-builders lane onto main
+(2026-07-23) — the order is CLOSED and dogfood finding #23 is FIXED. A
+single lane, based directly on main, so unification was a fast-forward
+with no conflicts and no cross-lane wires. The full gate ran on the unify
+tip: cargo fmt clean, clippy green on both feature sets, release build
+clean, cargo test --workspace 367 binaries / 1,513 passed / 0 failed with
+the request-envelope and google-wire fixtures regenerated fresh from v4
+at e646f58b (byte-identical to the committed files — 93 and 10 lines)
+and the three request-builder differentials re-run by name (93 envelopes
+incl. 1 recorded refusal; google wire 10 cases, both modes; zero SKIPs);
+ng test 211 files / 2,547 passed, ng build clean, and the full Playwright
+suite 117 passed / 0 failed / 0 skipped against the fresh dist and freshly
+built debug binaries.
+Final versions: quilltap-core 0.0.328, quilltap-harness 0.0.282, host
+0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263
+(unchanged — the lane touched no apps/web file).
+
 Proved the non-streaming fix on real data. Two messages sent through a
 DeepSeek salon on the Friday dogfood copy produced 24 MEMORY_EXTRACTION
 and 1 TITLE_GENERATION rows in llm_logs — the first cheap-LLM calls v5 has

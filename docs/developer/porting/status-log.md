@@ -29845,3 +29845,68 @@ as designed.
    cadence, but nothing in v5 pins it — the P4.6bj record's "establish
    whether the job row is being enqueued" question is answered YES, and the
    cadence itself remains unpinned by any differential.
+
+---
+
+## Round record — P4.11 (the non-streaming request builders): UNIFIED on main (2026-07-23) — ORDER CLOSED, dogfood #23 FIXED, the cheap-LLM family LIVE on real data
+
+**Single lane (`claude/p4.11-non-streaming-request-builders`, 3 commits),
+based directly on main HEAD (`973e0135`), so unification was a
+fast-forward: zero cherry-picks, zero conflicts, zero cross-lane wires (no
+siblings; the order has no Shared-contract section).** Versions accumulate
+trivially: core 0.0.326 → 0.0.328, harness 0.0.281 → 0.0.282; every other
+crate and the SPA untouched (the lane changed no `apps/web` file).
+
+**Scope delivered (verified against the order's nine units — the lane
+record above carries the detail):** units 1–7 (the both-mode oracle leg +
+all eight providers' builders + the dual-mode differential with coverage
+and refusal assertions + the call-site byte pin), unit 8 (recorded: v4
+does NOT log failed cheap calls, v5 matches — the error-row divergence
+candidate awaits a human ruling), unit 9 (the live quartet on the Friday
+copy — also P4.6bj's and P4.d12–d15's owed live proof).
+
+**The gate (all on the unify tip, `e588fbd3`):**
+- v4 drift-checked at unification: HEAD `e646f58b`, tree clean — the
+  oracle baseline holds.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` green BOTH feature sets; release build
+  clean.
+- Both fixture families regenerated FRESH from `~/source/quilltap-server`
+  at `e646f58b` (Node 24): `request-envelopes.recorded.ndjson` (93 lines)
+  and `google-wire.recorded.ndjson` (10 lines) — **byte-identical to the
+  committed files** (git status clean after regen), the freshness proof.
+- The three differentials re-run BY NAME with `--nocapture`:
+  `request_builder_equivalence` "93 request envelopes (1 recorded
+  refusal(s)) matched v4", `request_builder_google_equivalence` green,
+  `request_builder_google_wire_equivalence` "10 cases, both modes". Zero
+  SKIPs (both fixtures are committed; these tests take no env var and
+  cannot skip).
+- `cargo test --workspace` (TZ=UTC): **367 binaries / 1,513 passed / 0
+  failed.**
+- SPA: `ng test` **211 files / 2,547 / 0**; `ng build` clean; full
+  Playwright **117 passed / 0 failed / 0 skipped (2.8m)** from the fresh
+  dist against freshly built debug binaries (even the documented wardrobe
+  `set_all` flake was green this run).
+
+**Standing after this round (all durable in the order header +
+`dogfood-findings.md` #23 + phase-4.md):**
+- The OpenRouter streaming no-tools/no-images `callModel()` OpenResponses
+  path stays UNPORTED (send-mode covered; no streaming vector pinned
+  there — pinning one would assert a gap the lane did not close).
+- A failed cheap-LLM call writes NO `llm_logs` row (v4-faithful). The
+  Inspector stays empty on provider outages — the deliberate-divergence
+  candidate (error rows on the failure arms) awaits a human ruling.
+- v5 has NO writer for `chat_messages.debugMemoryLogs` — v4's first
+  diagnostic instrument for the memory pipeline does not exist yet.
+- The extraction trigger's turn-count cadence is pinned by no
+  differential.
+- Whether the server should log to the console at all (no tracing
+  subscriber exists anywhere in the workspace) is a real, open question.
+- Top next candidates (phase-4.md): **P4.10** (the dev-grade packaging
+  close-out — now the top open order), the episodic/sidebar/
+  memory-pipeline dogfood pass (now meaningful: the cheap-LLM family
+  actually runs), `p4.9h2`, the sidebar tier-3 deferrals, `p4.9i2`
+  (HelpChat), M6 rows 5+, the conversion port.
+
+Final versions: core **0.0.328**, harness **0.0.282**, host 0.0.30, web
+0.0.37, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.

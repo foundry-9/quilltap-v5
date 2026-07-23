@@ -1074,27 +1074,34 @@ records THERE. Update this summary only when a phase or round completes.
   only Rust touch). **Not** a D21 release item: nothing is published, signed,
   or tagged. It is a strong next-round candidate — until it lands, no one can
   run v5's server mode without building it from source by hand.
-- **P4.11 — the non-streaming request builders: ORDER WRITTEN, not started
-  (2026-07-22). THE HIGHEST-PRIORITY OPEN ITEM.** Dogfood finding #23: every
-  request builder hard-codes `"stream": true` and ignores
-  `RequestInput.stream`, so every non-streaming caller receives an SSE body
-  where it expects JSON (`response parse: expected value at line 1 column
-  1`). **No non-streaming LLM call in v5 has ever worked in production** —
-  the whole cheap-LLM family (memory extraction, context summary,
-  fold-episode, titles, scene state, answer confirmation, image-prompt
-  crafting, outfit selection, Carina, llm-consult) on every
-  chat-completions / Anthropic / Responses provider. Empirically confirmed
-  against DeepSeek: `stream:false` returns parseable JSON, `stream:true`
-  returns `chat.completion.chunk` frames. It survived the port because
-  `request_builder_equivalence` records only v4's `streamMessage` — the
-  non-streaming half of the builder was **never oracle-checked**; the order's
-  unit 1 closes that blind spot first. Order:
-  `work-orders/p4.11-non-streaming-request-builders.md` (nine units).
-  **⚠ Until it lands, the P4.6bj and P4.d12–d15 "LIVE" claims are unproven
-  on real data** — those pipelines are wired correctly and die at the
-  provider call. (Dogfood #22, the sibling finding, is FIXED on main
-  `2aa3d01b`: the per-turn tool context passed `None` for every optional
-  field, killing `doc_list_files`/`doc_grep`/`project_info`/`generate_image`.)
+- **P4.11 — the non-streaming request builders: CLOSED, UNIFIED on main
+  (2026-07-23, single lane) — dogfood finding #23 FIXED; the cheap-LLM
+  family is LIVE on real data.** Every request builder honours
+  `RequestInput.stream`, reproducing v4's `sendMessage` body byte-for-byte
+  per provider: DeepSeek/Z.AI/Ollama/OpenAI/Grok flip the flag (dropping
+  `stream_options`), Anthropic + OpenAI-compatible OMIT the `stream` key,
+  Google switches only its URL, and OpenRouter builds a wholly different
+  body (`@openrouter/sdk` zod re-emission — key reorder, snake_case,
+  undeclared-key drops, and the new `BuildError::ProviderRefused` where the
+  SDK refuses client-side so v4 sends nothing). The blind spot that let a
+  total outage survive a differential-verified port is closed: the
+  request-envelope corpus records BOTH modes for all EIGHT providers (34 →
+  93 lines + google-wire 5 → 10, coverage-asserted, the 34 pre-existing
+  streaming vectors byte-identical), plus a call-site regression test on
+  the bytes `execute_completion` hands the transport. Three pre-existing
+  divergences the widened corpus exposed are fixed (OPENAI_COMPATIBLE had
+  NO coverage + its `stop` key-order bug; OpenRouter's missing
+  `route:'fallback'`). The unit-9 live quartet on the Friday copy — 24
+  MEMORY_EXTRACTION + 1 TITLE_GENERATION `llm_logs` rows, jobs COMPLETED,
+  fresh AUTO memories with `occurredAt` — **is P4.6bj's and P4.d12–d15's
+  owed live proof: extraction/fold and three episodic rounds now run in
+  production.** Unit 8 recorded (no code change): v4 does NOT log failed
+  cheap calls and v5 matches; an error-row divergence awaits a human
+  ruling. Deferred loud: OpenRouter's streaming no-tools `callModel()`
+  path (unported), no v5 writer for `chat_messages.debugMemoryLogs`, the
+  extraction cadence unpinned by any differential, no console logging
+  anywhere (a standing open question). (Dogfood #22, the sibling finding,
+  was already FIXED on main `2aa3d01b`.)
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
@@ -1105,10 +1112,12 @@ records THERE. Update this summary only when a phase or round completes.
   `8bf3cb5f`-or-earlier per the paragraphs below. Oracles regenerate
   directly from `~/source/quilltap-server`; pin a detached worktree
   only on drift/dirty (recipe: `oracle-regen-pinned-v4-worktree`).
-  ⚠ v4 is mid-4.8/4.9 dev — drift-check before every round. Versions
-  (after the 2026-07-22 drift-round unification): core 0.0.325, harness
-  0.0.281, host 0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4,
-  SPA 0.5.263.
+  ⚠ v4 is mid-4.8/4.9 dev — drift-check before every round. The P4.11
+  unification (2026-07-23) regenerated the request-envelope +
+  google-wire fixtures at `e646f58b` (34 → 93 + 5 → 10 lines, both-mode)
+  — v4 verified still at `e646f58b`, clean. Versions (after the
+  2026-07-23 P4.11 unification): core 0.0.328, harness 0.0.282, host
+  0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
   The previous baseline paragraph follows for history:
   **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
   unification (2026-07-22).** v4 HEAD is `e646f58b` (4 commits past the

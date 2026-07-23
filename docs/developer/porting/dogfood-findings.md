@@ -68,9 +68,21 @@ catch, since every fixture is built fresh.
   one, and the whisper-gate sets (`ALWAYS_PRIVATE_TOOLS` / `VAULT_READ_TOOLS`
   in `tool_execution.rs`) are already ported faithfully.
 
-- **⚠ FINDING #23 — ORDER WRITTEN:
-  `work-orders/p4.11-non-streaming-request-builders.md`** (2026-07-22; single
-  lane, nine units). The single highest-value item in the backlog: **no
+- **✅ FINDING #23 — FIXED (P4.11, unified on main 2026-07-23):
+  `work-orders/p4.11-non-streaming-request-builders.md`** (single lane, nine
+  units; the lane record is in `status-log.md`). Every builder honours
+  `RequestInput.stream`; the corpus now records BOTH modes for all eight
+  providers (34 → 93 lines, the streaming half byte-identical); the unit-9
+  live proof on the Friday copy minted the first cheap-LLM rows v5 has ever
+  completed (24 MEMORY_EXTRACTION + 1 TITLE_GENERATION in `llm_logs`, fresh
+  AUTO memories with `occurredAt`), which is also P4.6bj's and the episodic
+  campaign's owed live proof. Still open from the lane record: v5 never
+  writes `chat_messages.debugMemoryLogs` (v4's first diagnostic instrument
+  for this pipeline does not exist yet); the extraction cadence is pinned by
+  no differential; a failed cheap call still writes no `llm_logs` row
+  (v4-faithful — the divergence candidate awaits a human ruling). The
+  original finding text follows.
+  The single highest-value item in the backlog: **no
   non-streaming LLM call in v5 has ever worked in production.** The order
   carries the full survey; the scoping notes that produced it follow.
   1. **Five builder sites** must honour `RequestInput.stream` instead of

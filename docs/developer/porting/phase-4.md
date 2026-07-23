@@ -546,21 +546,25 @@ crate/file region per round, a v4 drift check opens every round):
   outstanding half** — M3 was recorded demoable at P4.2/P4.5 on the strength
   of the pieces, but no image has ever served the SPA. Release/signing/
   updater stay deferred (D21) and this order does not touch them.
-- **P4.11 — the non-streaming request builders** (added 2026-07-22 from
-  dogfood finding #23; **the highest-priority open item, ahead of P4.10**).
-  Every request builder hard-codes `"stream": true` and ignores
-  `RequestInput.stream`, so every non-streaming caller gets an SSE body where
-  it expects JSON: **no non-streaming LLM call in v5 has ever worked in
-  production.** That is the whole cheap-LLM family — memory extraction,
-  context summary, fold-episode, titles, scene state, answer confirmation,
-  image-prompt crafting, outfit selection, Carina, llm-consult. It survived a
-  differential-verified port because `request_builder_equivalence` records
-  only v4's `streamMessage`, so the non-streaming half of the builder was
-  never oracle-checked — the order's unit 1 closes that blind spot before any
-  builder is touched. Order:
-  `work-orders/p4.11-non-streaming-request-builders.md`. **Until it lands,
-  the P4.6bj and P4.d12–d15 "LIVE" claims are unproven on real data** — those
-  pipelines are wired correctly and die at the provider call.
+- **P4.11 — the non-streaming request builders: CLOSED (unified on main
+  2026-07-23).** Dogfood finding #23 FIXED: every request builder honours
+  `RequestInput.stream` (v4's `sendMessage` body byte-for-byte per provider —
+  Anthropic/OpenAI-compatible OMIT the key, Google switches only its URL,
+  OpenRouter builds a whole different body via `@openrouter/sdk` semantics,
+  incl. the new `BuildError::ProviderRefused` where v4's SDK refuses
+  client-side). The blind spot that let it survive is closed: the
+  request-envelope corpus records BOTH modes for all EIGHT providers
+  (34 → 93 lines + google-wire 5 → 10, coverage-asserted, streaming half
+  byte-identical), plus a call-site regression test on the bytes
+  `execute_completion` hands the transport. The unit-9 live quartet on the
+  Friday copy is P4.6bj's and P4.d12–d15's owed live proof — the cheap-LLM
+  family (memory extraction, titles, distill, …) runs in production. Left
+  open, recorded loud in the lane record: the OpenRouter streaming
+  no-tools `callModel()` path (unported), the failed-call `llm_logs` row
+  (deliberate-divergence candidate awaiting a human ruling — v4 logs no
+  failures, v5 matches), `chat_messages.debugMemoryLogs` (no v5 writer),
+  the unpinned extraction cadence, and the no-console-logging question.
+  Order: `work-orders/p4.11-non-streaming-request-builders.md`.
 
 Milestones (each independently demoable):
 
