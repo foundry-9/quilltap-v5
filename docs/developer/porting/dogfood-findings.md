@@ -75,8 +75,8 @@ catch, since every fixture is built fresh.
   `p4.12` written), **#26** (the fold never fires — unlocalized), **#27**
   (corpus-shaped cheap-LLM config in `run_summary_check`), **#28** (the
   retrospective classifier never returns true — needs a v4 bench
-  comparison), the **memory-injector sort panic** (unlocalized; needs a
-  backtrace), and the error-row logging ruled above.
+  comparison), the **memory-injector sort panic** (LOCALIZED to
+  `format_dynamic_memory_head`; NOT in the seam the rewrite touches, so deferring it behind the rewrite saves no duplicated work — it crashes turns today), and the error-row logging ruled above.
 - **Walk scope at the 2026-07-23 close — what was and was not covered.**
   WALKED CLEAN: title generation, AUTO memories dated to story dates (the
   P4.d14 live proof), avatar regeneration, automatic story-background
