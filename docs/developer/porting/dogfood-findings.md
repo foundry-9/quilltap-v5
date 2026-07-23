@@ -81,6 +81,30 @@ catch, since every fixture is built fresh.
   handler at fault) or NOT (gate fails, i.e. the settings read returns no
   `cheapLLMSettings`) before changing any code.
 
+- **The 2026-07-22 pass, part 2 (P4.6bj ∥ P4.d13/14/15 ∥ P4.d10/be ∥ P4.6bg)
+  — what walked CLEAN.** The **state cascade is fully walked and clean**: all
+  four tiers round-tripped (chat via the sidebar opener, group via the group
+  editor, project via the Prospero card, general via Settings→Chat — the
+  general tier verified to survive a **server restart**, which is the one that
+  exercises the mount-document write). Workbench mock-state and the
+  cross-tier cascade precedence were **deferred by the human, not walked** —
+  they are the remaining state-cascade gap. The **fs-documents surface walked
+  clean** apart from finding #22: the general-scope "New blank document"
+  round-tripped (created, saved to real disk, reopened, edited, saved again —
+  the mtime-conflict path), the file was confirmed on disk, an external write
+  was picked up on reopen, and a PNG uploaded to a store came back **WebP**
+  (the P4.6bg unit-6 transcode wire, live on real data for the first time).
+  NOT walked at all this pass: everything in the section-B episodic list
+  below, plus the 💸 items.
+
+- **Requested during the pass, already a named seam: automatic pickup of
+  external file edits.** External writes are seen on *reopen* but nothing
+  watches the filesystem — that is the chokidar-equivalent fs watcher (+ the
+  db-store-event emitter chain), an existing loud refusing seam from P4.6y,
+  listed in `m6-screen-parity.md` §5.3. The human's read ("maybe post-v5") is
+  consistent with where it sits; no new order needed, but if it gets promoted
+  it belongs with the store-event chain, not on its own.
+
 - **The 2026-07-22 dogfood pass — coverage so far (walk paused here).**
   WALKED: the New-Chat picker + outfit seed (episodic round 1 — findings
   #16/#17), the ChatSidebar + Story's Clock (P4.9H1 — finding #19), the
