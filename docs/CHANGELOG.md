@@ -137,6 +137,12 @@ self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
 =======
+Added an Angular build stage to the Dockerfile, so the image has a real SPA
+dist to ship. Node 24 on bookworm, lockfile-first so `npm ci` caches
+independently of source edits; emits `dist/quilltap/browser`, the same path
+the Tauri config names as its frontendDist. The stage is independent of the
+Rust stage, so BuildKit runs them concurrently.
+
 Fixed the Docker build, which could not compile. The build stage never
 copied `assets/`, but `quilltap-core`'s seed_assets.rs includes the three
 sample-content seed files from there at compile time, so every `docker

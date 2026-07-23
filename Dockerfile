@@ -50,6 +50,28 @@ RUN --mount=type=cache,target=/src/target \
     && cp target/release/quilltap-web /out/quilltap-web
 
 # --------------------------------------------------------------------------
+# SPA stage — the Angular dist (P4.5+). Independent of the Rust stage, so
+# BuildKit runs the two concurrently.
+# --------------------------------------------------------------------------
+FROM node:24-bookworm AS spa
+
+WORKDIR /spa
+
+# Lockfile first: `npm ci` is the slow layer and only needs to re-run when a
+# dependency actually moves, not on every source edit.
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# The build inputs: angular.json + the tsconfigs + postcss + src/ + public/.
+# (`tsconfig.app.json` includes `src/**/*.ts` only; e2e/ never enters the
+# context — see .dockerignore.)
+COPY apps/web/ ./
+
+# Emits dist/quilltap/browser — the same path tauri.conf.json names as
+# frontendDist, so desktop and server ship the identical bundle.
+RUN npm run build
+
+# --------------------------------------------------------------------------
 # Runtime stage
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime

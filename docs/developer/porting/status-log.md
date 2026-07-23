@@ -30298,3 +30298,28 @@ it completes — `cargo build --release -p quilltap-web` finished in 1m00s
 inside the container (the amalgamation came from the BuildKit cache mount)
 and the runtime image exported. No Rust source touched, so no crate version
 bump.
+
+### Unit 2 — the SPA build stage
+
+A `node:24-bookworm` stage (`AS spa`), lockfile-first so `npm ci` is its own
+cached layer, then `COPY apps/web/ ./` and `npm run build`. It shares no
+layer with the Rust stage, so BuildKit schedules the two concurrently.
+
+Node major chosen as **24** — see the unit-1 survey correction: there is no
+`.nvmrc` to read, so the pin comes from the documented dev toolchain (Node
+24.13.1) and `package.json`'s `"packageManager": "npm@11.8.0"`. The image's
+bundled npm is 11.16.0, which satisfies the lockfile (`lockfileVersion` 3)
+without a corepack step.
+
+An `--mount=type=cache,target=/root/.npm` keeps the npm cache warm across
+builds, matching the cargo cache-mount discipline already in the file.
+
+Exit met: `docker build --target spa` succeeded and the stage's
+`dist/quilltap/browser/` holds **111 files**, including
+`index.html` with a hashed `<script src="main-XX5ODPXG.js" type="module">`
+and `styles-6J7DZ3NB.css` — the hashed-bundle marker the exit gate asserts
+on (the placeholder page has no such tag). `ng build` produced only the
+pre-existing CommonJS-bailout warnings; no budget error.
+
+Timing note for the round record: the Angular build itself runs in ~7s in
+the container; `npm ci` is the stage's real cost.
