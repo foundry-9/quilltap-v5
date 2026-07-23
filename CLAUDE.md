@@ -1060,6 +1060,20 @@ records THERE. Update this summary only when a phase or round completes.
   candidates: the episodic/sidebar/memory-pipeline dogfood pass,
   `p4.9h2`, the sidebar tier-3 deferrals, `p4.9i2`, M6 rows 5+ — see
   phase-4.md.
+- **P4.10 — the dev-grade packaging close-out: ORDER WRITTEN, not started
+  (2026-07-22).** The three run modes are all decided and built (D1 desktop
+  + server, D12 CLI), but Phase-4 deliverable 6 ("Packaging (dev-grade)")
+  never got finished: the **Dockerfile predates the SPA** — it copies no
+  `assets/` (so the P4.4u4 seed `include_bytes!` fail to compile), builds no
+  `ng build` dist (`.dockerignore` excludes `apps`), and passes no
+  `--spa-dir`, the only way to reach one (no env / binary-relative
+  fallback), so the image serves the placeholder pages. Every piece works
+  independently — Playwright runs the real `quilltap-web` over a real dist —
+  so this is assembly, not porting. Order:
+  `work-orders/p4.10-dockerfile-spa-packaging.md` (single lane; unit 4 is the
+  only Rust touch). **Not** a D21 release item: nothing is published, signed,
+  or tagged. It is a strong next-round candidate — until it lands, no one can
+  run v5's server mode without building it from source by hand.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

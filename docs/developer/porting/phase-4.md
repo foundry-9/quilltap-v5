@@ -44,6 +44,18 @@ Phase 4 is everything between that library and a human.
    import/export, help chat, …), ported with the same differential discipline.
 6. **Packaging (dev-grade)** — a Dockerfile for the web deployment and a Tauri
    bundle. No release process (standing hard stop).
+   **⚠ UNFINISHED (noted 2026-07-22) — the one Phase-4 deliverable still
+   half-built.** The Dockerfile dates from P4.2, *before* the SPA existed, and
+   was never revisited: it copies no `assets/` (so the three P4.4u4
+   `include_bytes!`/`include_str!` seed assets fail to compile), builds no
+   Angular dist (`.dockerignore` excludes `apps` wholesale), and its
+   ENTRYPOINT passes no `--spa-dir` — which is the *only* way to reach a dist
+   (`quilltap-web/src/main.rs:47,87`; no env or binary-relative fallback), so
+   the image serves the embedded placeholder pages. Every piece works
+   independently — the Playwright suite runs the real binary over a real
+   `ng build` dist via `--spa-dir` — they have just never been assembled.
+   **The close-out is `work-orders/p4.10-dockerfile-spa-packaging.md`**
+   (a single lane; it does not touch the D21 release deferral).
 
 ## Locked decisions
 
@@ -525,6 +537,15 @@ crate/file region per round, a v4 drift check opens every round):
 - **P4.7 — `quilltap-tauri`.** The shell around the finished SPA: webview,
   custom protocol for resources, the same host driver set, native niceties
   as progressive enhancement (D14's one-seam rule keeps this thin).
+- **P4.10 — the dev-grade packaging close-out** (added 2026-07-22, extends
+  the decomposition past P4.8's M6 review). The Dockerfile builds and serves
+  the real SPA, `quilltap-web` resolves its dist without `--spa-dir`, the
+  `quilltap` CLI ships inside the image (D12), and one doc says how to run
+  all three modes. Order:
+  `work-orders/p4.10-dockerfile-spa-packaging.md`. **Retires milestone M3's
+  outstanding half** — M3 was recorded demoable at P4.2/P4.5 on the strength
+  of the pieces, but no image has ever served the SPA. Release/signing/
+  updater stay deferred (D21) and this order does not touch them.
 
 Milestones (each independently demoable):
 

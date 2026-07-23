@@ -743,6 +743,7 @@ not sufficient.
 | Pool | Status | Source |
 | --- | --- | --- |
 | **D21 — release / signing / notarization / updater / bundles** | deferred; the repo also carries a *"don't initiate a release"* hard stop | `phase-4.md:272-277`; `CLAUDE.md` hard stops |
+| **Dev-grade packaging — the Docker image ships no SPA** | **unfinished, not deferred** (noted 2026-07-22): the P4.2-era Dockerfile copies no `assets/` (fails to compile since P4.4u4), builds no Angular dist, and passes no `--spa-dir`, so the container serves placeholder pages. This is Phase-4 deliverable 6, not a D21 release question — a person cannot run the server mode today. Order written: `work-orders/p4.10-dockerfile-spa-packaging.md` | `phase-4.md:45-58`; `Dockerfile`; `crates/quilltap-web/src/main.rs:47,87` |
 | **uniffi / mobile** | deferred until Tauri-mobile is proven or disproven | `phase-4.md:272-273`, `:37`, `:268` |
 | **Native niceties** (menus beyond defaults, tray, dock badge, window-state persistence, deep links) | deferred (D14 progressive enhancement) | `status-log.md:14862-14866` |
 | **Windows/Linux one-origin re-checks** | macOS-verified only; the `http://qtap.localhost` Windows window-URL shape is **not** wired in `tauri.conf.json` | `status-log.md:15458-15464`, `:15516-15517` |
@@ -760,8 +761,9 @@ do these things), even though none is a screen.
 ### 5.4 The short answer
 
 If the workspace ruling lands on option (a): retirement needs backlog items
-1–10 plus the outstanding M5 walk, the Windows/Linux re-checks, and a D21
-release story. If it lands on (b): add item 16, which is plausibly larger
+1–10 plus the outstanding M5 walk, the Windows/Linux re-checks, **P4.10 (the
+packaging close-out — a retiring v4 user has to be able to *run* v5)**, and a
+D21 release story. If it lands on (b): add item 16, which is plausibly larger
 than 1–15 combined. Nothing in the data layer stands in the way in either
 case.
 
