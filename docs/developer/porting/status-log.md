@@ -81,6 +81,38 @@ Google `thoughtSignature` on the model turn's text part (seeded via
 inputs) and the tier-3 (mocks the provider) both bypass.
 `WireStreamingProvider::transport_ref()` added for the read-back.
 
+### Unit 4 — the recorded-body response-parse corpus (the #24 close-out)
+
+New committed family `harness/oracle/fixtures/response-bodies/
+response-bodies.recorded.ndjson` (29 cases, nine families) + regen
+`harness/oracle/providers/regenerate-response-bodies.sh` +
+`record-response-bodies.mjs` (modeled on the request-envelope
+recorder): each v4 plugin's REAL `sendMessage` under a fetch mock
+BENEATH the SDK, per the survey's SDK-normalization-trap note. Rust
+side: the always-on `response_parse_equivalence` (no env; committed
+corpus; coverage-guarded per family). **Capture tier: every body is
+doc-derived `synthetic: true`** — real-capture upgrades are banked for
+the human-assisted unit 9 (the pepper/keys are never in-sandbox).
+
+**Two REAL v5 parse bugs caught and fixed by the first corpus run:**
+(1) the OPENROUTER non-streaming parse read camelCase off the
+snake_case wire — usage parsed to ZEROS on every OpenRouter
+`sendMessage` in production; v5 now reproduces the @openrouter/sdk
+inbound zod (declared keys stripped/renamed/schema-ordered,
+`openrouter_sdk_normalize`) and reads + `raw`s the normalized object,
+preserving v4's quirk that `usage.cachedTokens` never materializes
+(cacheUsage stays absent even with cached tokens on the wire); (2)
+GOOGLE's `build_google_raw` read a top-level `functionCalls` key that
+is a genai-SDK GETTER, not a wire key — now reproduced from
+`candidates[0].content.parts[].functionCall` per the getter (first
+candidate, absent when empty, `{name, args}` with absent fields
+dropped). SDK-recorder gotchas for the record: the @openrouter/sdk
+ChatResult REQUIRES `system_fingerprint` (nullable) or refuses;
+google's oracle `raw.sdkHttpResponse` carries the LIVE HTTP headers
+(a transport artifact — excluded from the diff, documented in the
+test header). The old `openrouter_camel_case` unit test (hand-authored
+camelCase fixture) rewritten to the wire shape.
+
 **⚠ Pre-existing red found (NOT this lane's):**
 `enclave_step_tier3_equivalence` fails against a FRESH `e646f58b`
 oracle — the oracle now has the fold-episode SUMMARIZATION `llm_logs`

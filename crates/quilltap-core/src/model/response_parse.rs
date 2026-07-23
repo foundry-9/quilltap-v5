@@ -12,8 +12,12 @@
 //!     finishReason / usage / raw only), `DeepSeek` (+ `reasoning_content`, tool
 //!     calls, and the `prompt_cache_hit_tokens` cache-read subtraction), `ZAi`
 //!     (+ reasoning / tools / `prompt_tokens_details.cached_tokens` subtraction),
-//!     `OpenRouter` (the camelCase normalized shape: `finishReason`,
-//!     `promptTokens`, `message.reasoning`, `cachedTokens`/`cacheDiscount`).
+//!     `OpenRouter` (the SNAKE_CASE wire normalized through the reproduced
+//!     @openrouter/sdk inbound zod — declared keys, camelCase renames, schema
+//!     order — then read as v4 reads the SDK object: `finishReason`,
+//!     `promptTokens`, `message.reasoning`; `usage.cachedTokens` is a key the
+//!     SDK never materializes, so cacheUsage stays absent — a v4 quirk the
+//!     recorded-body corpus pins).
 //!   - **responses-API JSON** ([`parse_responses_api`], OpenAI / Grok):
 //!     `output_text`, reasoning summaries, `input_tokens`/`output_tokens` minus
 //!     cached, and the `buildRawResponse` chat-completions-shaped `raw`.
@@ -143,7 +147,25 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
 
     match flavor {
         ChatFlavor::OpenRouter => {
-            // camelCase normalized shape.
+            // v4's `sendMessage` reads the object the @openrouter/sdk returns,
+            // which is the WIRE body passed through the SDK's inbound zod:
+            // declared keys only (unknown keys stripped), snake_case renamed to
+            // camelCase, keys re-emitted in schema-declaration order. The
+            // recorded-body corpus caught v5 reading camelCase off the raw
+            // snake_case wire (usage parsed to zeros on every OpenRouter
+            // non-streaming call — the #24 class); normalize first, exactly as
+            // the SDK does, and use the normalized object for BOTH the field
+            // reads and `raw` (v4's `raw: response` is the SDK object).
+            let normalized = openrouter_sdk_normalize(response);
+            let response = &normalized;
+            let empty = Value::Null;
+            let choice = response
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|a| a.first())
+                .unwrap_or(&empty);
+            let msg = choice.get("message").unwrap_or(&empty);
+            let usage = response.get("usage").cloned().unwrap_or(Value::Null);
             let content = choice
                 .get("message")
                 .and_then(|m| m.get("content"))
@@ -189,7 +211,7 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                 reasoning_content: reasoning,
                 thought_signature: None,
                 cache_usage,
-                raw: response.clone(),
+                raw: normalized.clone(),
             }
         }
         _ => {
@@ -261,6 +283,191 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
             }
         }
     }
+}
+
+/// The @openrouter/sdk `ChatResult` inbound normalization, reproduced from the
+/// SDK's Speakeasy zod schemas (`esm/models/chatresult.js` and its nested
+/// models): declared keys only (unknown wire keys are STRIPPED), snake_case
+/// renamed to camelCase, keys re-emitted in schema-declaration order. This is
+/// the response-side twin of the request builder's zod re-emission — v4's
+/// `sendMessage` reads (and returns as `raw`) the object the SDK's inbound
+/// transform produced, never the wire body itself.
+///
+/// Values whose nested schemas v4 chats never exercise are passed through
+/// verbatim (a documented seam, not silence): `logprobs` contents (v4 never
+/// requests logprobs), `audio` / `images`, `reasoningDetails` items, and the
+/// `openrouterMetadata` value.
+fn openrouter_sdk_normalize(response: &Value) -> Value {
+    let copy = |src: &Value, m: &mut Map<String, Value>, wire: &str, out: &str| {
+        if let Some(v) = src.get(wire) {
+            m.insert(out.to_string(), v.clone());
+        }
+    };
+
+    let norm_prompt_details = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(v, &mut m, "audio_tokens", "audioTokens");
+        copy(v, &mut m, "cache_write_tokens", "cacheWriteTokens");
+        copy(v, &mut m, "cached_tokens", "cachedTokens");
+        copy(v, &mut m, "video_tokens", "videoTokens");
+        Value::Object(m)
+    };
+    let norm_completion_details = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(
+            v,
+            &mut m,
+            "accepted_prediction_tokens",
+            "acceptedPredictionTokens",
+        );
+        copy(v, &mut m, "audio_tokens", "audioTokens");
+        copy(v, &mut m, "reasoning_tokens", "reasoningTokens");
+        copy(
+            v,
+            &mut m,
+            "rejected_prediction_tokens",
+            "rejectedPredictionTokens",
+        );
+        Value::Object(m)
+    };
+    let norm_cost_details = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(
+            v,
+            &mut m,
+            "upstream_inference_completions_cost",
+            "upstreamInferenceCompletionsCost",
+        );
+        copy(
+            v,
+            &mut m,
+            "upstream_inference_cost",
+            "upstreamInferenceCost",
+        );
+        copy(
+            v,
+            &mut m,
+            "upstream_inference_prompt_cost",
+            "upstreamInferencePromptCost",
+        );
+        Value::Object(m)
+    };
+    let norm_server_tool_details = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(v, &mut m, "tool_calls_executed", "toolCallsExecuted");
+        copy(v, &mut m, "tool_calls_requested", "toolCallsRequested");
+        copy(v, &mut m, "web_search_requests", "webSearchRequests");
+        Value::Object(m)
+    };
+    let norm_usage = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(v, &mut m, "completion_tokens", "completionTokens");
+        if let Some(d) = v.get("completion_tokens_details") {
+            m.insert("completionTokensDetails".into(), norm_completion_details(d));
+        }
+        copy(v, &mut m, "cost", "cost");
+        if let Some(d) = v.get("cost_details") {
+            m.insert("costDetails".into(), norm_cost_details(d));
+        }
+        copy(v, &mut m, "is_byok", "isByok");
+        copy(v, &mut m, "prompt_tokens", "promptTokens");
+        if let Some(d) = v.get("prompt_tokens_details") {
+            m.insert("promptTokensDetails".into(), norm_prompt_details(d));
+        }
+        if let Some(d) = v.get("server_tool_use_details") {
+            m.insert("serverToolUseDetails".into(), norm_server_tool_details(d));
+        }
+        copy(v, &mut m, "total_tokens", "totalTokens");
+        Value::Object(m)
+    };
+    let norm_tool_call = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        if let Some(f) = v.get("function") {
+            let mut fm = Map::new();
+            copy(f, &mut fm, "arguments", "arguments");
+            copy(f, &mut fm, "name", "name");
+            m.insert("function".into(), Value::Object(fm));
+        }
+        copy(v, &mut m, "id", "id");
+        copy(v, &mut m, "type", "type");
+        Value::Object(m)
+    };
+    let norm_message = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(v, &mut m, "audio", "audio");
+        copy(v, &mut m, "content", "content");
+        copy(v, &mut m, "images", "images");
+        copy(v, &mut m, "name", "name");
+        copy(v, &mut m, "reasoning", "reasoning");
+        copy(v, &mut m, "reasoning_details", "reasoningDetails");
+        copy(v, &mut m, "refusal", "refusal");
+        copy(v, &mut m, "role", "role");
+        if let Some(tc) = v.get("tool_calls").and_then(Value::as_array) {
+            m.insert(
+                "toolCalls".into(),
+                Value::Array(tc.iter().map(norm_tool_call).collect()),
+            );
+        }
+        Value::Object(m)
+    };
+    let norm_choice = |v: &Value| -> Value {
+        if !v.is_object() {
+            return v.clone();
+        }
+        let mut m = Map::new();
+        copy(v, &mut m, "finish_reason", "finishReason");
+        copy(v, &mut m, "index", "index");
+        copy(v, &mut m, "logprobs", "logprobs");
+        if let Some(msg) = v.get("message") {
+            m.insert("message".into(), norm_message(msg));
+        }
+        Value::Object(m)
+    };
+
+    let mut m = Map::new();
+    if let Some(choices) = response.get("choices").and_then(Value::as_array) {
+        m.insert(
+            "choices".into(),
+            Value::Array(choices.iter().map(norm_choice).collect()),
+        );
+    }
+    copy(response, &mut m, "created", "created");
+    copy(response, &mut m, "id", "id");
+    copy(response, &mut m, "model", "model");
+    copy(response, &mut m, "object", "object");
+    copy(
+        response,
+        &mut m,
+        "openrouter_metadata",
+        "openrouterMetadata",
+    );
+    copy(response, &mut m, "service_tier", "serviceTier");
+    copy(response, &mut m, "system_fingerprint", "systemFingerprint");
+    if let Some(u) = response.get("usage") {
+        m.insert("usage".into(), norm_usage(u));
+    }
+    Value::Object(m)
 }
 
 /// The OpenAI SDK's `response.output_text` convenience getter, reproduced from
@@ -579,15 +786,35 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
 
 fn build_google_raw(response: &Value) -> Value {
     let mut obj = response.as_object().cloned().unwrap_or_default();
-    // v4 adds a flattened functionCalls array (name/args) when present.
-    if let Some(fcs) = response.get("functionCalls").and_then(Value::as_array) {
-        let mapped: Vec<Value> = fcs
+    // v4 adds a flattened functionCalls array (name/args) when present —
+    // `response.functionCalls` is a genai-SDK GETTER over
+    // `candidates[0].content.parts[].functionCall` (first candidate only;
+    // `undefined` when there are no parts or no calls), NOT a wire key. The
+    // recorded-body corpus caught v5 reading a top-level `functionCalls` key no
+    // body carries (the #24 class); reproduce the getter from the arrays.
+    let getter_calls: Vec<&Value> = response
+        .get("candidates")
+        .and_then(Value::as_array)
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("content"))
+        .and_then(|c| c.get("parts"))
+        .and_then(Value::as_array)
+        .map(|parts| parts.iter().filter_map(|p| p.get("functionCall")).collect())
+        .unwrap_or_default();
+    if !getter_calls.is_empty() {
+        let mapped: Vec<Value> = getter_calls
             .iter()
             .map(|fc| {
-                json!({
-                    "name": fc.get("name").cloned().unwrap_or(Value::Null),
-                    "args": fc.get("args").cloned().unwrap_or(Value::Null),
-                })
+                // v4 `{ name: fc.name, args: fc.args }` — an absent field is
+                // `undefined` and drops from the serialized object.
+                let mut m = Map::new();
+                if let Some(n) = fc.get("name") {
+                    m.insert("name".into(), n.clone());
+                }
+                if let Some(a) = fc.get("args") {
+                    m.insert("args".into(), a.clone());
+                }
+                Value::Object(m)
             })
             .collect();
         obj.insert("functionCalls".into(), Value::Array(mapped));
@@ -816,15 +1043,31 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_camel_case() {
+    fn openrouter_normalizes_the_wire_like_the_sdk() {
+        // The WIRE is snake_case; the @openrouter/sdk's inbound zod renames it
+        // camelCase before v4 reads it (the P4.13 unit-4 corpus caught the old
+        // camelCase-input assumption — a hand-authored fixture that proved
+        // nothing about wire shape, the #24 class).
         let r = json!({
-            "choices": [{ "message": { "content": "hi", "reasoning": "r" }, "finishReason": "stop" }],
-            "usage": { "promptTokens": 10, "completionTokens": 2, "totalTokens": 12, "cachedTokens": 3 }
+            "id": "gen-1", "model": "openai/gpt-4o", "object": "chat.completion",
+            "created": 1_700_000_000, "system_fingerprint": null,
+            "choices": [{ "logprobs": null, "finish_reason": "stop", "index": 0,
+                "message": { "role": "assistant", "content": "hi", "reasoning": "r", "refusal": null } }],
+            "usage": { "prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12,
+                "prompt_tokens_details": { "cached_tokens": 3 } }
         });
         let p = parse_chat_completions(&r, ChatFlavor::OpenRouter);
         assert_eq!(p.content, "hi");
         assert_eq!(p.reasoning_content.as_deref(), Some("r"));
-        assert_eq!(p.usage.prompt_tokens, 7); // 10 - 3
-        assert_eq!(p.cache_usage.unwrap().cached_tokens, Some(3));
+        // v4 reads `usage.cachedTokens` off the SDK object — a key the SDK
+        // never materializes (cached tokens live under promptTokensDetails), so
+        // cacheUsage stays absent and nothing is subtracted (the v4 quirk the
+        // recorded corpus pins; do not "fix" it).
+        assert_eq!(p.usage.prompt_tokens, 10);
+        assert!(p.cache_usage.is_none());
+        // The raw is the SDK-normalized object, camelCase in schema order.
+        assert_eq!(p.raw["systemFingerprint"], Value::Null);
+        assert_eq!(p.raw["usage"]["promptTokensDetails"]["cachedTokens"], 3);
+        assert!(p.raw.get("system_fingerprint").is_none());
     }
 }

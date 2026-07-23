@@ -2,6 +2,32 @@
 
 ## Recent Changes
 
+P4.13 unit 4: the recorded-body response-parse corpus (dogfood finding #24's
+close-out — response_parse.rs previously had no oracle differential at all).
+New committed corpus harness/oracle/fixtures/response-bodies/
+response-bodies.recorded.ndjson (29 cases, all nine provider families, every
+parse arm: reasoning, tool calls, cache usage, incomplete/finish-reason
+variants) recorded by running each v4 plugin's REAL sendMessage with the
+network mocked UNDERNEATH its SDK, so the SDK unwrap (openai addOutputText,
+the @openrouter/sdk inbound zod, the genai .text/functionCalls accessors)
+runs inside the oracle loop; regen script
+harness/oracle/providers/regenerate-response-bodies.sh. New always-on
+differential response_parse_equivalence diffs v5's parse_for_provider
+field-by-field. All bodies are doc-derived (synthetic: true) — the trust
+boundary stays marked until families gain real captures.
+
+The corpus immediately caught and fixed two REAL v5 parse bugs (the #24
+class): (1) OPENROUTER non-streaming read the SDK's camelCase keys off the
+snake_case wire, so usage parsed to zeros on every OpenRouter sendMessage —
+v5 now reproduces the SDK's inbound normalization (declared keys, camelCase
+renames, schema order) and uses the normalized object for reads and raw,
+including v4's quirk that usage.cachedTokens never materializes so cacheUsage
+stays absent; (2) GOOGLE's raw read a top-level functionCalls key that only
+exists as a genai-SDK getter — now reproduced from
+candidates[0].content.parts per the getter's semantics. The old
+openrouter_camel_case unit test (a hand-authored camelCase fixture — exactly
+the class the #24 memory note warns about) was rewritten to the wire shape.
+
 P4.13 unit 3 (+ unit 8's riders): the tool-linkage CALL-SITE pin. A new
 always-on harness test (`tool_wire_call_site`) drives the real native tool
 loop through the real WireStreamingProvider with only the transport faked,
