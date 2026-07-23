@@ -110,6 +110,14 @@ enclave-step oracle now includes the fold-episode SUMMARIZATION `llm_logs`
 row that the v5 enclave step path does not produce (the fold-episode seam is
 wired in the orchestrator's summary check but not in the enclave step's).
 Follow-up owed outside this lane.
+Added quilltap-core's `stable_sort` module: `stable_sort_by_unchecked`, a
+bottom-up stable merge sort that runs its comparator without validating it.
+Rust's `slice::sort_by` panics when a comparator is not a total order; several
+of v4's comparators are not, and V8's TimSort never checks. The new sort is
+stable like TimSort and produces exactly what `slice::sort_by` produces on any
+self-consistent comparator (property-tested across the length sweep, ties
+included). No `unsafe`: it merges over indices and applies the permutation with
+swaps. No call sites yet.
 
 Recorded the human ruling on the P4.14 sort fix: the non-validating
 stable merge sort (arm a), per the order's recommendation. All three

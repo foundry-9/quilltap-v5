@@ -214,6 +214,7 @@ pub mod select_speaker;
 pub mod semver;
 pub mod services;
 pub mod skip_signal;
+pub mod stable_sort;
 pub mod state;
 pub mod system_prompt;
 pub mod tag_style;
