@@ -32568,3 +32568,152 @@ such ceiling, so the reader takes a `&[u8]`. Line splitting is still done at the
 BYTE level, so a multi-byte UTF-8 sequence can never be split. 7 unit tests.
 
 No fixture changed; no other oracle invalidated.
+
+### Lane record — P4.9G4 unit 2: the export surface LIVE + the import READ half (2026-07-24)
+
+**Landed.** `api/system_qtap.rs` (new), `quilltap-web/src/qtap_routes.rs` (new),
+`services/quilltap_import/preview.rs` (new), the P4.9G4 engine arms, and the
+`system_import_equivalence` differential. **Export is live end-to-end; import is
+live up to and including the preview, and refuses loudly at execute.**
+
+- **Dispatch verbs wired LIVE:** `systemExportEntities`, `systemExportPreview`,
+  `systemImportPreview`. Their GET edges were already on main from P4.9G1; this
+  lane only deleted its own names from `engine.rs`'s shared refusal arm and
+  appended real arms inside `// ── P4.9G4 arms ──` markers (Shared contract §3).
+  `systemImportExecute` KEEPS a named refusal (see the deferral below).
+- **`POST /api/v1/system/tools?action=export`** — the `.qtap` download, with v4's
+  three headers verbatim (`application/x-ndjson`, the
+  `attachment; filename="quilltap-<type>-<YYYY-MM-DD>.qtap"` derivation, and
+  `Cache-Control: no-store`). ⚠ **One deliberate shape divergence:** v4 STREAMS
+  the body (`createNdjsonStream` → a `ReadableStream`) to dodge V8's ~512 MB
+  string ceiling; v5 materializes it, because Rust has no such ceiling. The bytes
+  on the wire are identical — only the memory profile differs. Recorded here so a
+  future very-large-instance dogfood knows where to look.
+- **`POST ?action=import-preview`** — the multipart `file` leg (the client always
+  holds a `File`, so this is the live path) plus v4's JSON `{exportData}`
+  fallback, the shallow `validateExportFile` manifest gate with its one fixed
+  message, then `previewImport`. `system_data_routes::system_tools_post` grew a
+  `HeaderMap` parameter so the leg can re-drive the shared multipart parser over
+  the already-buffered body; the added arms sit in the §3 labelled block.
+- **`preview_import`** — v4's count-only pass: the id-only conflict test for every
+  kind, the character id-then-case-insensitive-name fallback with
+  `matchedExistingId`, the `&&`-spread shapes (a kind's key appears only when its
+  array is non-empty; `entities.memories` appears whenever `data.memories` EXISTS,
+  including `[]`, because an empty array is truthy in JS).
+
+**Differential — `system_import_equivalence`, 19 cases, ZERO SKIP, exact.**
+Each round-trip case runs v4's REAL `createNdjsonStream` over the fixture, feeds
+those exact bytes back through v4's REAL `loadQtapFromUpload` chain
+(`peekFormat` → `readNdjsonLines` → `assembleExportFromStream`) and v4's REAL
+`previewImport`, and emits the bytes as `qtapBase64` — so the Rust side provably
+replays identical input. Diffed: the assembled `{manifest, data}` (exact, key
+order included), the preview body (exact), and the reader's throwing arms.
+
+One documented masking: where v4's error message EMBEDS the JSON engine's own
+parse sentence (V8's `Unexpected token 'o', "not json" is not valid JSON` vs
+serde's `expected ident at line 1 column 2`), the differential masks that
+sentence and diffs v4's WRAPPER exactly. That is the standing
+"`is not valid JSON:` wording seam" (banked since P4.6bb), not a new deferral.
+
+Regen recipe (Node 24, from the v4 checkout; jest ignores `.claude/`, so the case
+goes through a `/tmp` mirror):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-sysimport-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-import.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-import.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-import
+```
+
+Then `QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson cargo test -p
+quilltap-harness --test system_import_equivalence -- --nocapture`.
+
+#### ⚠ FINDING — a v4 bug the differential exposed (owed a human ruling)
+
+`assembleExportFromStream`'s blob reassembly (`quilltap-import-stream.ts:284`)
+tests `accum.received.every(v => typeof v === 'string')` over a SPARSE array
+(`new Array(chunkCount)`). **`Array.prototype.every` skips holes**, so it is true
+as soon as the FIRST chunk lands, whatever `chunkCount` says. v4 then finalizes
+the blob with `received.join('')` (holes render as the empty string) and DELETES
+the accumulator — so chunk 1 of a 2-chunk blob hits the "received without
+preceding doc_mount_blob" throw.
+
+**Net effect: v4 cannot round-trip a document-store blob larger than the 3 MB
+chunk size.** It silently keeps the first 3 MB and then errors the import. Every
+blob under 3 MB has `chunkCount === 1` and is unaffected, which is why this has
+never been noticed.
+
+This lane **reproduces the quirk verbatim** — the oracle proves v4 does not throw
+on the truncated-blob case, and diverging unilaterally would change the file
+format's meaning. It is pinned in both directions by
+`v4s_sparse_every_finalizes_a_blob_on_its_first_chunk` (a core unit test) and by
+the `throw_ndjson_truncated_blob` differential case. **Owed: a human ruling** —
+this is a v4-first data-integrity bug, and the fix belongs in v4 (or in a ruled
+v5 divergence), not in a lane.
+
+#### 🔶 DEFERRED, LOUD AND NAMED — `executeImport` (the write half)
+
+The whole import EXECUTE pipeline is **OPEN**. It refuses by name at every
+entrance rather than half-working:
+
+- `Request::SystemImportExecute` → `system_qtap::import_not_available("Import")`
+- `POST ?action=import-execute` → the same message, through
+  `qtap_routes::import_execute_not_landed()`
+- The SPA's Import dialog therefore shows a clear "recognized but not yet
+  available (the P4.9G4 import pipeline is not landed; export works)".
+
+**Resume list** (v4 sources all under `lib/import/quilltap-import/`):
+
+1. `execute.ts:41` — the orchestrator: the ten-map `IdMappingState`, the two
+   zeroed `QuilltapExportCounts` bags in v4's literal key order, the numbered
+   dependency order (tags → the three profile families → roleplay templates →
+   projects → groups → characters → chats+messages → conversation annotations →
+   chat documents → group membership/linked stores → memories → document stores
+   → reconcile), and the single outer `catch` → `success:false` with the message
+   appended to `warnings`.
+2. `import-profiles.ts` / `import-entities.ts` / `import-characters.ts` /
+   `import-document-stores.ts` — the per-entity importers, all four conflict
+   strategies. **The seed subset already on main
+   (`services/quilltap_import/{characters,memories,reconcile}.rs`) covers
+   characters+memories at `skip` only and must keep passing its committed P4.4u4
+   differentials** — extend it rather than forking it.
+3. `legacy-presets.ts` — the pre-rework outfit-preset → composite fold.
+4. `reconcile.ts:25` — the six post-write remap loops.
+5. The route-level `'replace'` → `'overwrite'` remap (`route.ts:780`) and the
+   `conflictStrategy` validation message (`route.ts:776`), plus the multipart
+   `options` string part and its `'Invalid JSON: Failed to parse options'` arm.
+6. A tier-2 DB-state differential over all four strategies, with the minted-UUID
+   positional remap for `duplicate` (recipe:
+   `tool-handler-differential-minted-remap`).
+
+**Two v4 quirks banked from the survey, for whoever resumes** (both read from the
+source, NOT yet ported):
+
+- The `skip` arm maps an entity onto **its own source id** for every kind except
+  characters, which map onto the matched EXISTING id — elsewhere the id IS the
+  match key (`import-entities.ts:43`, `import-profiles.ts:54`).
+- The `duplicate` arm for the three profile families, roleplay templates,
+  projects, groups and chats mints a `randomUUID()` INTO the id map and then
+  creates a row with a DIFFERENT freshly-minted id, so the map points at a row
+  that does not exist (`import-profiles.ts:65-66`, `import-entities.ts:138-139`
+  and friends). A latent v4 bug; a faithful port must reproduce it, so the tier-2
+  diff should pin it explicitly.
+
+#### e2e
+
+The `export → import round-trip` beat (the lane's §3-owned test body) is fleshed
+out and LIVE: it drives the Export dialog to a real browser download, asserts the
+downloaded bytes' envelope + footer, then re-uploads those same bytes and asserts
+the live `?action=import-preview` leg answered (the manifest the SERVER
+reassembled, and the `Exists` conflict chip). It deliberately stops before
+pressing Import — that is the deferral above.
+
+No fixture changed; no other oracle invalidated.

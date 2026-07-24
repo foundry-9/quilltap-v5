@@ -127,6 +127,9 @@ pub async fn system_tools_get(
 pub async fn system_tools_post(
     State(state): State<SharedState>,
     Query(q): Query<HashMap<String, String>>,
+    // P4.9G4: the import legs need the raw headers so they can re-drive the
+    // multipart parser over the buffered body (v4 branches on `content-type`).
+    headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let action = q.get("action").map(String::as_str).unwrap_or("");
@@ -166,6 +169,13 @@ pub async fn system_tools_post(
             )
             .await
         }
+        // ── P4.9G4 ──
+        "export" => crate::qtap_routes::export_download(&state, &body).await,
+        "import-preview" => {
+            crate::qtap_routes::import_preview(&state, &headers, body.clone()).await
+        }
+        "import-execute" => crate::qtap_routes::import_execute_not_landed(),
+        // ── end P4.9G4 ──
         "delete-data" => {
             let confirm = parsed
                 .get("confirm")

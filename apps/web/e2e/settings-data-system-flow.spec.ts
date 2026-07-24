@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
@@ -172,14 +174,81 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await expect(page.getByText(/Queue (Running|Stopped)/).first()).toBeVisible();
   });
 
+  /**
+   * P4.9G4: a LIVE `.qtap` export download, then that same file fed straight
+   * back into the Import dialog's preview.
+   *
+   * The export half drives the dialog end-to-end and captures the real browser
+   * download, so the whole chain is under test: the SPA's `fetch` → the
+   * `?action=export` web-edge leg → the NDJSON writer → the `Content-Disposition`
+   * filename. The import half re-uploads the downloaded bytes and asserts the
+   * live `?action=import-preview` leg answered — the reader (format sniff →
+   * line parse → reassembly) and `previewImport` both ran on the server.
+   *
+   * Import EXECUTE is this lane's named deferral; the beat deliberately stops at
+   * the preview and does not press Import.
+   */
   test('export → import round-trip', async ({ page }) => {
     await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=system&section=import-export');
+
+    // ── Export ────────────────────────────────────────────────────────────────
     await page.getByRole('button', { name: 'Export Data' }).click();
     await expect(page.getByText('Select the type of data you want to export')).toBeVisible({
       timeout: 15_000,
     });
-    // The full export→import round-trip is fleshed out when the web-edge legs land.
+    // Tags: the smallest type, and the only one whose flow skips the options
+    // step (`showExportButton()` is true on `select` for non-character/chat
+    // types), so the walk is two clicks.
+    await page.getByRole('radio', { name: 'Tags', exact: true }).check();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('Export All')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+    await expect(page.getByText('Export Complete')).toBeVisible({ timeout: 15_000 });
+
+    // The downloaded bytes ARE the server's NDJSON: line 1 must be the envelope.
+    const qtapPath = await download.path();
+    expect(qtapPath).toBeTruthy();
+    const qtap = readFileSync(qtapPath!, 'utf8');
+    const firstLine = JSON.parse(qtap.split('\n')[0]) as {
+      kind: string;
+      format: string;
+      version: number;
+      manifest: { exportType: string; format: string; version: string };
+    };
+    expect(firstLine.kind).toBe('__envelope__');
+    expect(firstLine.format).toBe('qtap-ndjson');
+    expect(firstLine.version).toBe(1);
+    expect(firstLine.manifest.exportType).toBe('tags');
+    expect(firstLine.manifest.format).toBe('quilltap-export');
+    expect(firstLine.manifest.version).toBe('1.0');
+    // The last non-empty line is the footer carrying the authoritative counts.
+    const lines = qtap.split('\n').filter((l) => l.length > 0);
+    const footer = JSON.parse(lines[lines.length - 1]) as { kind: string };
+    expect(footer.kind).toBe('__footer__');
+
+    await page.getByRole('button', { name: 'Close' }).click();
+
+    // ── Import (preview only) ────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Import Data' }).click();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: 'application/x-ndjson',
+      buffer: Buffer.from(qtap, 'utf8'),
+    });
+
+    // The preview step renders only under `@if (preview(); as p)`, so these
+    // assertions can only pass once the live `?action=import-preview` leg has
+    // answered. `Export Type` carries the manifest the SERVER reassembled from
+    // the uploaded bytes, and every tag in this file already exists here (same
+    // instance) — so the `Exists` chip is the proof `previewImport` ran its
+    // conflict test against the real database.
+    await expect(page.getByText('Export Type', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('tags', { exact: true })).toBeVisible();
+    await expect(page.getByText('Exists', { exact: true }).first()).toBeVisible();
   });
 });

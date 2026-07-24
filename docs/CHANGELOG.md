@@ -27,6 +27,23 @@ and a row count of every table in all three databases against v4's real
 delete service — including the tables the wipe must not touch. One known
 gap: files stored in the old on-disk layout have their records removed but
 their bytes left behind (mount-store bytes are cleared).
+Exporting your data is now live end-to-end (P4.9G4 unit 2). The Export Data
+dialog runs against the real server: pick a type, pick what to include, and a
+`.qtap` file downloads with exactly the bytes v4 would have written. The
+Import Data dialog's first two steps are live too — drop a `.qtap` in and the
+server reads it (both the streaming and the older single-blob format) and
+tells you what it contains and what would collide with data you already have.
+Nothing is written yet: pressing Import still reports, clearly and by name,
+that the import step is not available. A second differential replays v4's own
+exported bytes through the ported reader and preview — 19 cases, exact.
+
+Two things v4 does that we now do identically, and one of them is a bug worth
+knowing about: an exported attachment larger than 3 MB does not survive being
+imported again. v4 splits big attachments into chunks on the way out but,
+because of a JavaScript array quirk, keeps only the first chunk on the way
+back in. v5 reproduces that faithfully rather than diverging the file format
+on its own; the porting log flags it for a decision.
+
 Built the `.qtap` export writer (P4.9G4 unit 1). Exporting your data now
 produces exactly the file v4 produces: the same records, in the same order,
 with the same bytes on every line. All ten export kinds are covered —

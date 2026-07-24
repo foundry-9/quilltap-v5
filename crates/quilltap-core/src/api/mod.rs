@@ -64,6 +64,9 @@ pub mod system;
 // === end P4.6z ===
 // === P4.9G1: the Data & System server surface ===
 pub mod system_data;
+// ── P4.9G4 ──
+pub mod system_qtap;
+// ── end P4.9G4 ──
 // === end P4.9G1 ===
 // === P4.6ae: files family (lane A, append-only) ===
 pub mod files;

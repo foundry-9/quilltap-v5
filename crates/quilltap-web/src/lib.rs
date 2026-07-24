@@ -57,6 +57,9 @@ pub mod text_replacements_routes;
 // === end P4.6ak ===
 // === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
 pub mod wardrobe_routes;
+// ── P4.9G4 ──
+pub mod qtap_routes;
+// ── end P4.9G4 ──
 // === end P4.9f1 ===
 
 use std::net::SocketAddr;

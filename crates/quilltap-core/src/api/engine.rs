@@ -445,6 +445,12 @@ impl CoreEngine {
     }
 
     /// The open `Db`, when ready (a clone — the runtime handle is `Clone`).
+    /// The host-supplied app version (v4 `packageJson.version`). Read by the
+    /// `.qtap` export's manifest at the web edge (P4.9G4).
+    pub fn app_version(&self) -> String {
+        self.inner.config.version.clone()
+    }
+
     pub fn db(&self) -> Option<Db> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Some(r.db.clone()),
@@ -757,16 +763,47 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // ── end P4.9G3 ──
-            // Export/import/backup land in the sibling P4.9G4 / P4.9G5 lanes;
-            // until then they answer the loud not-assembled refusal (never a
-            // silent stub).
+            // ── P4.9G4 arms ──
+            Request::SystemExportEntities { entity_type } => match self.ready_db() {
+                Ok(db) => super::system_qtap::export_entities(&db, SINGLE_USER_ID, &entity_type),
+                Err(r) => r,
+            },
+            Request::SystemExportPreview {
+                entity_type,
+                scope,
+                selected_ids,
+                include_memories,
+            } => match self.ready_db() {
+                Ok(db) => super::system_qtap::export_preview(
+                    &db,
+                    SINGLE_USER_ID,
+                    crate::services::qtap_export::ExportOptions {
+                        entity_type,
+                        // v4's route: `searchParams.get('scope') || 'all'`.
+                        scope: scope
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| "all".into()),
+                        selected_ids,
+                        include_memories,
+                    },
+                ),
+                Err(r) => r,
+            },
+            Request::SystemImportPreview { export_data } => match self.ready_db() {
+                Ok(db) => super::system_qtap::import_preview(&db, SINGLE_USER_ID, &export_data),
+                Err(r) => r,
+            },
+            // The import EXECUTE half is P4.9G4's deferral; until it lands the verb
+            // answers a NAMED refusal rather than a silent no-op.
+            Request::SystemImportExecute { .. } => {
+                super::system_qtap::import_not_available("Import")
+            }
+            // ── end P4.9G4 ──
+            // Backup/restore land in the sibling P4.9G5 lane; until then they
+            // answer the loud not-assembled refusal (never a silent stub).
             Request::SystemBackupCreate
             | Request::SystemRestorePreview { .. }
-            | Request::SystemRestoreExecute { .. }
-            | Request::SystemExportEntities { .. }
-            | Request::SystemExportPreview { .. }
-            | Request::SystemImportPreview { .. }
-            | Request::SystemImportExecute { .. } => Response::error(
+            | Request::SystemRestoreExecute { .. } => Response::error(
                 ErrorKind::Internal,
                 "This Data & System action is recognized but not yet available (P4.9G1 deferral).",
             ),

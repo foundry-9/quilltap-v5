@@ -226,7 +226,9 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                 }
                 manifest = Some(record.get("manifest").cloned().unwrap_or(Value::Null));
             }
-            "__footer__" => footer_counts = Some(record.get("counts").cloned().unwrap_or(Value::Null)),
+            "__footer__" => {
+                footer_counts = Some(record.get("counts").cloned().unwrap_or(Value::Null))
+            }
             "tag" => tags.push(data()),
             "connection_profile" => connection_profiles.push(data()),
             "image_profile" => image_profiles.push(data()),
@@ -259,7 +261,11 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                 slot.1
                     .entry("wardrobeItems")
                     .or_insert_with(|| Value::Array(Vec::new()));
-                if let Some(arr) = slot.1.get_mut("wardrobeItems").and_then(Value::as_array_mut) {
+                if let Some(arr) = slot
+                    .1
+                    .get_mut("wardrobeItems")
+                    .and_then(Value::as_array_mut)
+                {
                     arr.push(data());
                 }
             }
@@ -337,7 +343,10 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                 ] {
                     meta.insert(key.into(), obj.get(key).cloned().unwrap_or(Value::Null));
                 }
-                meta.insert("descriptionUpdatedAt".into(), nullish(&obj, "descriptionUpdatedAt"));
+                meta.insert(
+                    "descriptionUpdatedAt".into(),
+                    nullish(&obj, "descriptionUpdatedAt"),
+                );
                 meta.insert("extractedText".into(), nullish(&obj, "extractedText"));
                 meta.insert(
                     "extractedTextSha256".into(),
@@ -398,9 +407,22 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                         .unwrap_or_default()
                         .to_string(),
                 );
-                if blob_accumulators[pos].1.received.iter().all(Option::is_some) {
+                // ⚠ v4's `accum.received.every(v => typeof v === 'string')` runs over
+                // a SPARSE array (`new Array(chunkCount)`), and
+                // `Array.prototype.every` SKIPS HOLES — so it is true as soon as the
+                // FIRST chunk lands, whatever `chunkCount` says. v4 then finalizes
+                // the blob with `received.join('')` (holes render as the empty
+                // string) and DELETES the accumulator, so chunk 1 of a 2-chunk blob
+                // hits the "received without preceding doc_mount_blob" throw.
+                //
+                // In other words v4 cannot round-trip a blob larger than the 3 MB
+                // chunk size. Reproduced verbatim (the differential pins it); the
+                // lane record raises it as a v4 bug owed a human ruling. Do NOT
+                // "fix" it here — that would silently diverge the file format.
+                if !blob_accumulators[pos].1.received.is_empty() {
                     let (_, accum) = blob_accumulators.remove(pos);
                     let mut blob = accum.meta;
+                    // `Array.prototype.join('')` renders a hole as the empty string.
                     blob.insert(
                         "dataBase64".into(),
                         Value::String(
@@ -426,12 +448,17 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
         );
     };
 
+    // Only reachable for a blob whose `doc_mount_blob` record was never followed
+    // by ANY chunk (see the sparse-array note above).
     if !blob_accumulators.is_empty() {
         let pending: Vec<Value> = blob_accumulators
             .iter()
             .map(|(_, a)| {
                 let mut m = Map::new();
-                m.insert("sha256".into(), a.meta.get("sha256").cloned().unwrap_or(Value::Null));
+                m.insert(
+                    "sha256".into(),
+                    a.meta.get("sha256").cloned().unwrap_or(Value::Null),
+                );
                 m.insert(
                     "received".into(),
                     Value::from(a.received.iter().filter(|v| v.is_some()).count()),
@@ -613,8 +640,8 @@ pub fn load_qtap_from_upload(body: &[u8]) -> Result<QuilltapExport, String> {
         }
         QtapFormat::Legacy => {
             let text = collect_legacy_json(body, MAX_LEGACY_IMPORT_BYTES)?;
-            let parsed: Value = serde_json::from_str(&text)
-                .map_err(|e| format!("Invalid JSON: {e}"))?;
+            let parsed: Value =
+                serde_json::from_str(&text).map_err(|e| format!("Invalid JSON: {e}"))?;
             // v4 casts without validating — the route's `validateExportFile` gate
             // runs next and is what rejects a malformed payload.
             Ok(QuilltapExport {
@@ -663,8 +690,14 @@ mod tests {
         let legacy = br#"{"manifest":{"format":"quilltap-export","version":"1.0"},"data":{}}"#;
         assert_eq!(peek_format(legacy), QtapFormat::Legacy);
         // The marker only counts with the regex's exact shape.
-        assert_eq!(peek_format(br#"{"format" : "qtap-ndjson"}"#), QtapFormat::Ndjson);
-        assert_eq!(peek_format(br#"{"formatx":"qtap-ndjson"}"#), QtapFormat::Legacy);
+        assert_eq!(
+            peek_format(br#"{"format" : "qtap-ndjson"}"#),
+            QtapFormat::Ndjson
+        );
+        assert_eq!(
+            peek_format(br#"{"formatx":"qtap-ndjson"}"#),
+            QtapFormat::Legacy
+        );
     }
 
     #[test]
@@ -703,34 +736,64 @@ mod tests {
     }
 
     #[test]
-    fn missing_envelope_and_truncated_blobs_throw_v4s_messages() {
+    fn missing_envelope_throws_v4s_message() {
         let err = assemble_export_from_stream(&[json!({"kind":"tag","data":{}})]).unwrap_err();
         assert_eq!(
             err,
             "NDJSON export missing envelope — first line must be a __envelope__ record"
         );
+    }
 
+    #[test]
+    fn a_blob_with_no_chunks_at_all_is_the_only_truncation_error() {
         let records = vec![
             json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
                    "manifest":{"exportType":"document-stores","counts":{}}}),
             json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","sha256":"s","chunkCount":2}}),
-            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"AA=="}),
         ];
         let err = assemble_export_from_stream(&records).unwrap_err();
-        assert!(err.starts_with("NDJSON export truncated: 1 blob(s) missing chunks — "), "{err}");
+        assert!(
+            err.starts_with("NDJSON export truncated: 1 blob(s) missing chunks — "),
+            "{err}"
+        );
+    }
+
+    /// ⚠ v4's sparse-array `every` (see the `doc_mount_blob_chunk` arm): the blob
+    /// finalizes on the FIRST chunk, so a 2-chunk blob silently keeps only chunk 0
+    /// and chunk 1 then finds no accumulator. Pinned so the quirk cannot drift
+    /// silently in either direction.
+    #[test]
+    fn v4s_sparse_every_finalizes_a_blob_on_its_first_chunk() {
+        let head = vec![
+            json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
+                   "manifest":{"exportType":"document-stores","counts":{}}}),
+            json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","sha256":"s","chunkCount":2}}),
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"YWFh"}),
+        ];
+        let out = assemble_export_from_stream(&head).unwrap();
+        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFh");
+
+        let mut with_second = head.clone();
+        with_second.push(
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":2,"dataBase64":"YmJi"}),
+        );
+        let err = assemble_export_from_stream(&with_second).unwrap_err();
+        assert_eq!(
+            err,
+            "doc_mount_blob_chunk received without preceding doc_mount_blob (sha256=s)"
+        );
     }
 
     #[test]
-    fn blob_chunks_rejoin_in_index_order() {
+    fn a_single_chunk_blob_rejoins_and_keeps_v4s_meta_key_order() {
         let records = vec![
             json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
                    "manifest":{"exportType":"document-stores","counts":{}}}),
-            json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","relativePath":"a","sha256":"s","chunkCount":2}}),
-            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":2,"dataBase64":"YmJi"}),
-            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"YWFh"}),
+            json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","relativePath":"a","sha256":"s","chunkCount":1}}),
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":1,"dataBase64":"YWFh"}),
         ];
         let out = assemble_export_from_stream(&records).unwrap();
-        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFhYmJi");
+        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFh");
         // The meta subset keeps v4's literal key order, with dataBase64 last.
         let keys: Vec<&str> = out.data["blobs"][0]
             .as_object()

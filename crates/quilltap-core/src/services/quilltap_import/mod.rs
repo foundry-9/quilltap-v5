@@ -40,6 +40,7 @@
 mod characters;
 mod memories;
 pub mod ndjson;
+pub mod preview;
 mod reconcile;
 pub mod reset;
 pub mod seed;
