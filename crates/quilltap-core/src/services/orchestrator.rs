@@ -1711,6 +1711,83 @@ where
             (None, None)
         };
 
+    // --- Proactive memory recall (pre-compute.service.ts proactiveRecallTask,
+    //     P4.19) ---
+    // v4 runs this in the SAME `Promise.all` as the compression cache check above;
+    // v5 runs them sequentially at this one spine site — the parallelism is a
+    // latency optimization with no DB-observable effect (see `pre_compute.rs`). The
+    // task distills the messages since this character last spoke into recall signals
+    // and pre-searches the character's memories; a non-empty result rides
+    // buildContext as the `'pre-searched'` dynamic head (suppressing the fallback
+    // distill there), and the signals seed the retrospective cadence on both paths.
+    //
+    // Characters present in the room this turn: the responding character plus every
+    // other character participant (`participant_characters` is keyed by characterId
+    // and empty in single-character chats). Threaded into the proactive recall path
+    // so memories ABOUT a present character get the participant-aware boost (item 4);
+    // the dynamic-head fallback computes the same set itself (v4
+    // orchestrator.service.ts:1013).
+    let present_about_character_ids: Vec<String> = {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut out: Vec<String> = Vec::new();
+        if !character_id.is_empty() && seen.insert(character_id.clone()) {
+            out.push(character_id.clone());
+        }
+        for id in participant_characters.keys() {
+            if !id.is_empty() && seen.insert(id.clone()) {
+                out.push(id.clone());
+            }
+        }
+        out
+    };
+    // v4 `dangerSettings` in the cheap-LLM subset the reroute reads.
+    let danger_for_recall = crate::cheap_llm::DangerousContentSettings {
+        mode: danger_settings.mode.clone(),
+        uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+    };
+    let (pre_searched_memories, recall_signals) = {
+        // The two status frames (`recalling_keywords`, `recalling_memories`) v4 emits
+        // from inside `proactiveRecallTask`; the closure stamps the character name/id.
+        let mut emit_status = |stage: &str, message: String| {
+            sink.emit(ChatEvent::status(StatusPayload {
+                stage: stage.to_string(),
+                message,
+                tool_name: None,
+                character_name: Some(character_name.clone()),
+                character_id: Some(character_id.clone()),
+            }));
+        };
+        let recall_input = crate::services::pre_compute::ProactiveRecallInput {
+            chat: &chat,
+            character_id: &character_id,
+            character_name: &character_name,
+            character_participant_id: &character_participant_id,
+            present_about_character_ids: &present_about_character_ids,
+            is_continue_mode,
+            content: &content,
+            existing_messages: &existing_messages,
+            cheap_llm_selection: cheap_llm_selection.as_ref(),
+            danger_settings: &danger_for_recall,
+            available_profiles: &available_cheap_profiles,
+            user_id: &user_id,
+            chat_id: &chat_id,
+            now_ms: input.clock.now_ms,
+        };
+        match crate::services::pre_compute::proactive_recall_task(
+            db,
+            deps.embedding,
+            deps.completion,
+            deps.executor,
+            &recall_input,
+            &mut emit_status,
+        )
+        .await
+        {
+            Some(outcome) => (outcome.memories, outcome.signals),
+            None => (None, None),
+        }
+    };
+
     // --- Build context (orchestrator.service.ts:908–1010) ---
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "gathering".into(),
@@ -1767,6 +1844,10 @@ where
         // (v4 orchestrator.service.ts:1030 threads `turnSkip` through
         // `buildMessageContext` into buildContext).
         turn_skip: turn_skip.clone(),
+        // Proactive memory recall results (v4 orchestrator.service.ts:1075-1076 pass
+        // `preSearchedMemories` / `recallSignals` into `buildMessageContext`, P4.19).
+        pre_searched_memories,
+        recall_signals,
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -3178,6 +3259,16 @@ pub(crate) struct BuildContextArgs<'a> {
     /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
     /// (regenerate-swipe) that never offer the pass.
     pub turn_skip: Option<build_context::TurnSkip>,
+    /// The proactive pre-compute distill's semantic-search results (v4
+    /// `preSearchedMemories`, P4.19). When non-empty, buildContext takes the
+    /// `'pre-searched'` memory path and skips its own fallback distill. `None` for
+    /// the sibling entry points (regenerate-swipe) that don't run the proactive task.
+    pub pre_searched_memories:
+        Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
+    /// The proactive pre-compute distill's turn-level recall signals (v4
+    /// `recallSignals`, P4.19), seeding the retrospective cadence on both memory
+    /// paths. `None` for the sibling entry points.
+    pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
 }
 
 /// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
@@ -3296,6 +3387,8 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
         turn_skip: args.turn_skip,
+        pre_searched_memories: args.pre_searched_memories,
+        recall_signals: args.recall_signals,
     }
 }
 

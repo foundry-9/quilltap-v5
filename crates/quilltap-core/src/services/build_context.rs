@@ -500,6 +500,21 @@ pub struct BuildContextInput {
     /// `recently_addressed` adds a caution to answer rather than pass. Never
     /// persisted. `None` / `offer_skip: false` → no note.
     pub turn_skip: Option<TurnSkip>,
+    /// v4 `options.preSearchedMemories` — the proactive pre-compute distill's
+    /// semantic-search results (P4.19, `pre_compute::proactive_recall_task`). When
+    /// present AND non-empty, the two-pool memory retrieval takes the
+    /// `'pre-searched'` path: these become the dynamic head (archive-overlap
+    /// filtered) and the fallback distill block is skipped entirely
+    /// (`context-manager.ts:1141-1145`). Every non-orchestrator caller passes
+    /// `None`, leaving the fallback path unchanged.
+    pub pre_searched_memories: Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
+    /// v4 `options.recallSignals` — the turn-level recall signals the proactive
+    /// distillation emitted (retrospective / timeRange / entities / paraphrase).
+    /// Seeds `turn_recall_signals` so the retrospective cadence (enlarged head +
+    /// mini-recap) fires on BOTH the pre-searched and fallback paths without
+    /// re-running the distillation (`context-manager.ts:1139`). `None` when the
+    /// proactive path didn't run or its extraction failed.
+    pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
 }
 
 /// v4's `turnSkip` option bag (`{ offerSkip, recentlyAddressed, characterName }`).
@@ -1999,12 +2014,15 @@ where
     let memory_search_query =
         build_recent_window_query(&input.existing_messages, input.new_user_message.as_deref());
     let mut whispered_memory_ids: Vec<String> = Vec::new();
-    // Turn-level recall signals (retrospective / timeRange / entities) — set by
-    // the fallback distillation below; consumed by the retrospective head sizing
-    // there AND by the mini-recap after the whisper assembles (v4 declares it at
-    // function scope for exactly that reason, context-manager.ts:1118).
+    // Turn-level recall signals (retrospective / timeRange / entities). The
+    // proactive pre-compute path hands them in via `input.recall_signals` (v4
+    // `turnRecallSignals = options.recallSignals ?? null`, context-manager.ts:1139);
+    // the fallback distillation below fills them when the proactive path didn't run.
+    // Consumed by the retrospective head sizing there AND by the mini-recap after
+    // the whisper assembles (v4 declares it at function scope for exactly that
+    // reason, context-manager.ts:1118).
     let mut turn_recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch> =
-        None;
+        input.recall_signals.clone();
 
     if !input.skip_memories && !input.character.id.is_empty() {
         let compaction_gen = input.chat.compaction_generation;
@@ -2030,7 +2048,24 @@ where
 
         let mut dynamic_head_results: Vec<InjectorResult> = Vec::new();
 
-        if !memory_search_query.is_empty() {
+        if let Some(pre_searched) = input
+            .pre_searched_memories
+            .as_ref()
+            .filter(|p| !p.is_empty())
+        {
+            // v4 `context-manager.ts:1141-1145` — the `'pre-searched'` memory path.
+            // The proactive pre-compute distill (P4.19) already keyword-distilled
+            // and semantic-searched this turn; use its results as the dynamic head
+            // (archive-overlap filtered), and skip the fallback distill block
+            // entirely. `turn_recall_signals` is already seeded from
+            // `input.recall_signals` above, so the retrospective head sizing +
+            // mini-recap fire identically on this path.
+            dynamic_head_results = pre_searched
+                .iter()
+                .filter(|r| json_str(&r.memory, "id").is_none_or(|id| !archive_ids.contains(&id)))
+                .map(injector_result_from_search)
+                .collect();
+        } else if !memory_search_query.is_empty() {
             // Query distillation (v4 `extractMemorySearchKeywords`, W4.6a). Falls
             // back to the raw recent-window query.
             let mut distilled_query = memory_search_query.clone();

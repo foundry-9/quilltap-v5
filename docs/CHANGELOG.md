@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Wired the proactive pre-compute distill into the v5 chat spine (P4.19, units
+2–3). `BuildContextInput` gains `pre_searched_memories` + `recall_signals`
+(v4 `preSearchedMemories` / `recallSignals`); build_context takes the
+`'pre-searched'` memory path when the former is non-empty (the results become
+the archive-filtered dynamic head and the fallback distill is skipped), and
+`recall_signals` seeds `turn_recall_signals` so the retrospective cadence
+fires on both paths — mirroring v4 `context-manager.ts:1139-1145`. The
+orchestrator runs `proactive_recall_task` after cheap-LLM/danger resolution,
+adjacent to the compression pre-compute and before buildContext (v4's
+`Promise.all` parallelism collapsed to a sequential same-site call — no
+DB-observable effect), emitting the two status frames and threading the
+outcome through `BuildContextArgs`. Regenerate-swipe passes `None` (it does
+not run the proactive task). Behavior on the never-spoke path is unchanged.
+
 Ported v4's proactive pre-compute distill (`proactiveRecallTask`) as a new
 `quilltap-core::services::pre_compute` module (P4.19, unit 1): the windowing
 of the messages since a character last spoke (participant-scoped, with the

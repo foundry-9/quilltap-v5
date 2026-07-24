@@ -275,6 +275,10 @@ where
         // Regenerate-as-swipe never offers the "nothing to add" pass (v4 passes
         // no `turnSkip`).
         turn_skip: None,
+        // Regenerate-swipe does not run the proactive pre-compute distill (P4.19);
+        // its rebuild falls through to buildContext's own fallback path, as before.
+        pre_searched_memories: None,
+        recall_signals: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

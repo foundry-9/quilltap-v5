@@ -31596,3 +31596,26 @@ windowing/guard cases of v4's `proactiveRecallTask` jest suite
 (`pre-compute.service.test.ts:138-264`); the distill/search legs are proven
 end-to-end by the tier-3 differential (below). `cargo test -p quilltap-core
 pre_compute` green (5/5); clippy clean. Core → 0.0.342.
+
+**Units 2–3 — `BuildContextInput` fields + fallback suppression + spine
+integration.** `BuildContextInput` gains `pre_searched_memories:
+Option<Vec<SemanticSearchResult>>` and `recall_signals:
+Option<DistilledSearch>` (v4 `preSearchedMemories` / `recallSignals`).
+build_context now seeds `turn_recall_signals` from `input.recall_signals`
+(v4 `context-manager.ts:1139`) and, when `pre_searched_memories` is non-empty,
+takes the `'pre-searched'` path — the results become the archive-overlap-
+filtered dynamic head and the fallback distill block is skipped entirely
+(`context-manager.ts:1141-1145`); otherwise the existing fallback runs
+unchanged. The two fields thread through `BuildContextArgs` +
+`build_context_input` (the single assembly point); the orchestrator
+`process_message` runs `proactive_recall_task` after cheap-LLM/danger
+resolution, adjacent to the compression pre-compute and before
+`build_context_input`, computing `present_about_character_ids` (v4
+orchestrator.service.ts:1013) and wiring an `emit_status` closure that stamps
+character name/id onto the sink frames. v4's `Promise.all` parallelism is
+collapsed to a sequential same-site call (recorded in a comment + the module
+doc — no DB-observable effect). Regenerate-swipe passes `None`/`None` (no
+proactive task). The harness `build_context_tier3` construction site gains the
+two `None` fields. Full workspace `cargo test` green (differentials skip
+without env vars — validated in unit 4); the never-spoke corpus paths are
+behaviorally unchanged. Core → 0.0.343, harness → 0.0.289.

@@ -631,6 +631,8 @@ async fn build_context_tier3_matches_oracle() {
             now_ms: FIXED_NOW_MS,
             local_offset_minutes: 0,
             minutes_since_last_timestamp_announcement: None,
+            pre_searched_memories: None,
+            recall_signals: None,
         };
 
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
