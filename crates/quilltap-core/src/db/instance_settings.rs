@@ -253,6 +253,16 @@ pub fn get_max_concurrent_jobs(main: &Connection) -> Result<i64, DbError> {
     }
 }
 
+/// v4 `setMaxConcurrentJobs(value)` (`lib/instance-settings/index.ts:95`): reject
+/// a non-finite value, floor + clamp to `[1, 32]`, and persist as a STRING
+/// (P4.9G1 — the tasks-queue concurrency cap setter). The Zod-1..32 gate at the
+/// verb edge means production callers never reach the clamp, but it carries v4's
+/// storage semantics faithfully.
+pub fn set_max_concurrent_jobs(main: &Connection, value: i64) -> Result<(), DbError> {
+    let clamped = value.clamp(1, 32);
+    write_setting(main, KEY_MAX_CONCURRENT_JOBS, &clamped.to_string())
+}
+
 /// v4 `getLastMaintenanceSweepAt()` — the last daily-maintenance-pass instant as
 /// Unix milliseconds, or `None` when never recorded / unparseable (v4 returns a
 /// `Date` or null; the host driver only needs the instant for the recent-run

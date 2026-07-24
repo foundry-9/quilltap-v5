@@ -1,0 +1,627 @@
+//! The Data & System server surface (P4.9G1) — the dispatch handlers behind the
+//! Settings "Data & System" tab's job-queue + delete-all cards, plus the host
+//! job-pump control seam.
+//!
+//! This module ports v4's tasks-queue / jobs / concurrency handlers
+//! (`app/api/v1/system/tools/route.ts` + `system/jobs*`) as free functions over
+//! the already-complete [`crate::db::background_jobs`] repo, and the
+//! delete-all-data verbs (which compose [`crate::services::delete_all`]).
+//!
+//! ## Processor status is host-owned (P4.0)
+//!
+//! v4's `getProcessorStatus()` reports on a forked child process. The host owns
+//! ALL cadence in v5, so processor start/stop/status + `wakeProcessor` ride the
+//! [`JobPumpControl`] seam on `EngineAssembly`. A `None` seam (read-only
+//! embedders, canned assemblies) → the engine arms answer the loud
+//! not-assembled refusal. The free functions here take the host-supplied
+//! [`ProcessorStatus`] / concurrency value as parameters so the differential can
+//! direct-drive them with a pinned status (P4.d7's direct-drive recipe).
+
+use serde::Serialize;
+use serde_json::{Map, Value};
+
+use crate::db::background_jobs::{
+    BackgroundJob, BackgroundJobsRepository, BjCreate, CreateOptions,
+};
+use crate::db::runtime::Db;
+use crate::db::{characters_read, instance_settings, js_number_to_json, DbError};
+
+use super::types::{ErrorKind, Response};
+
+fn internal(e: impl std::fmt::Display) -> Response {
+    Response::error(ErrorKind::Internal, e.to_string())
+}
+fn bad_request(msg: impl Into<String>) -> Response {
+    Response::error(ErrorKind::BadRequest, msg)
+}
+fn not_found(resource: &str) -> Response {
+    Response::error(ErrorKind::NotFound, format!("{resource} not found"))
+}
+
+// ── The host job-pump control seam ───────────────────────────────────────────
+
+/// v4 `getProcessorStatus()` (`background-jobs/host/processor-host.ts:321`) — the
+/// child-process dispatcher snapshot surfaced by the tasks-queue reads.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessorStatus {
+    pub running: bool,
+    pub processing: bool,
+    pub in_flight: i64,
+    pub child_crashed: bool,
+}
+
+impl ProcessorStatus {
+    fn to_json(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("running".into(), Value::Bool(self.running));
+        m.insert("processing".into(), Value::Bool(self.processing));
+        m.insert("inFlight".into(), Value::from(self.in_flight));
+        m.insert("childCrashed".into(), Value::Bool(self.child_crashed));
+        Value::Object(m)
+    }
+}
+
+/// The host-owned background-job pump control (P4.9G1). `None` on
+/// `EngineAssembly` → the tasks-queue / control / concurrency-set arms answer
+/// the loud not-assembled refusal. All four operations are synchronous (v4's
+/// processor surface is sync).
+pub trait JobPumpControl: Send + Sync {
+    /// v4 `getProcessorStatus()`.
+    fn status(&self) -> ProcessorStatus;
+    /// v4 `startProcessor()` (idempotent `ensureProcessorRunning`).
+    fn start(&self);
+    /// v4 `stopProcessor()`.
+    fn stop(&self);
+    /// v4 `wakeProcessor()` — nudge the dispatcher so a new cap applies now.
+    fn wake(&self);
+}
+
+// ── Pure helpers (v4 `route.ts` `estimateTokensForJob` / `getJobTypeName`) ────
+
+/// v4 `estimateTokensForJob(job)` (`tools/route.ts:80`). `payload` is the parsed
+/// job payload; string lengths use `ceil(len/4)`.
+pub fn estimate_tokens_for_job(job_type: &str, payload: &Value) -> i64 {
+    let base = 500i64;
+    let str_len = |key: &str| -> i64 {
+        payload
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|s| s.chars().count() as i64)
+            .unwrap_or(0)
+    };
+    let ceil_div4 = |n: i64| -> i64 { (n + 3) / 4 };
+    match job_type {
+        "MEMORY_EXTRACTION" => {
+            base + ceil_div4(str_len("userMessage")) + ceil_div4(str_len("assistantMessage")) + 300
+        }
+        "INTER_CHARACTER_MEMORY" => {
+            base + ceil_div4(str_len("userMessage")) + ceil_div4(str_len("assistantMessage")) + 400
+        }
+        "CONTEXT_SUMMARY" => base + 2000,
+        "TITLE_UPDATE" => base + 300,
+        "CHAT_DANGER_CLASSIFICATION" => base + 1000,
+        "SCENE_STATE_TRACKING" => base + 800,
+        "LLM_LOG_CLEANUP"
+        | "EMBEDDING_GENERATE"
+        | "EMBEDDING_REFIT"
+        | "EMBEDDING_REINDEX_ALL"
+        | "CHARACTER_AVATAR_GENERATION"
+        | "CONVERSATION_RENDER"
+        | "STORY_BACKGROUND_GENERATION" => 0,
+        _ => base,
+    }
+}
+
+/// v4 `getJobTypeName(type)` (`tools/route.ts:126`) — the display-name lookup;
+/// unknown types fall back to the raw enum string.
+pub fn job_type_name(job_type: &str) -> &str {
+    match job_type {
+        "MEMORY_EXTRACTION" => "Memory Extraction",
+        "INTER_CHARACTER_MEMORY" => "Character Memory",
+        "CONTEXT_SUMMARY" => "Context Summary",
+        "TITLE_UPDATE" => "Title Update",
+        "LLM_LOG_CLEANUP" => "LLM Log Cleanup",
+        "EMBEDDING_GENERATE" => "Embedding Generation",
+        "EMBEDDING_REFIT" => "Vocabulary Refit",
+        "EMBEDDING_REINDEX_ALL" => "Re-embed All Memories",
+        "STORY_BACKGROUND_GENERATION" => "Story Background",
+        "CHAT_DANGER_CLASSIFICATION" => "Danger Classification",
+        "SCENE_STATE_TRACKING" => "Scene State Tracking",
+        "CHARACTER_AVATAR_GENERATION" => "Avatar Generation",
+        "CONVERSATION_RENDER" => "Conversation Render",
+        other => other,
+    }
+}
+
+fn parse_payload(job: &BackgroundJob) -> Value {
+    serde_json::from_str(&job.payload).unwrap_or_else(|_| Value::Object(Map::new()))
+}
+
+/// The full hydrated `BackgroundJob` row (v4 `BackgroundJobSchema` shape): NULL
+/// columns are ABSENT (the sqlite backend omits them — the llm-logs-proven
+/// hydrate behavior), numbers emitted JS-style (whole floats → integers).
+fn job_to_full_json(job: &BackgroundJob) -> Value {
+    let mut m = Map::new();
+    m.insert("id".into(), Value::from(job.id.clone()));
+    m.insert("userId".into(), Value::from(job.user_id.clone()));
+    m.insert("type".into(), Value::from(job.job_type.clone()));
+    m.insert("status".into(), Value::from(job.status.clone()));
+    m.insert("payload".into(), parse_payload(job));
+    m.insert("priority".into(), js_number_to_json(job.priority));
+    m.insert("attempts".into(), js_number_to_json(job.attempts));
+    m.insert("maxAttempts".into(), js_number_to_json(job.max_attempts));
+    if let Some(err) = &job.last_error {
+        m.insert("lastError".into(), Value::from(err.clone()));
+    }
+    m.insert("scheduledAt".into(), Value::from(job.scheduled_at.clone()));
+    if let Some(v) = &job.started_at {
+        m.insert("startedAt".into(), Value::from(v.clone()));
+    }
+    if let Some(v) = &job.completed_at {
+        m.insert("completedAt".into(), Value::from(v.clone()));
+    }
+    m.insert("createdAt".into(), Value::from(job.created_at.clone()));
+    m.insert("updatedAt".into(), Value::from(job.updated_at.clone()));
+    Value::Object(m)
+}
+
+// ── tasks-queue GET (v4 `handleTasksQueue`) ──────────────────────────────────
+
+/// v4 `GET /api/v1/system/tools?action=tasks-queue` (`route.ts:205`). The
+/// processor status + concurrency cap are host-supplied (the seam / instance
+/// settings); the DB-derived stats + active job set are built here.
+pub fn tasks_queue(
+    db: &Db,
+    user_id: &str,
+    processor_status: &ProcessorStatus,
+    max_concurrent_jobs: i64,
+) -> Response {
+    let user_id = user_id.to_string();
+    let built: Result<Value, DbError> = db.read_main(|main| {
+        let repo = BackgroundJobsRepository::new(main);
+        let stats = repo.get_stats(Some(&user_id))?;
+        let pending = repo.find_by_user_id(&user_id, Some("PENDING"))?;
+        let processing = repo.find_by_user_id(&user_id, Some("PROCESSING"))?;
+        let failed = repo.find_by_user_id(&user_id, Some("FAILED"))?;
+        let paused = repo.find_by_user_id(&user_id, Some("PAUSED"))?;
+
+        // Active set: [processing, pending, retry-eligible failed, paused],
+        // deduped by id in insertion order (v4 `route.ts:218`).
+        let mut seen = std::collections::HashSet::new();
+        let mut active: Vec<BackgroundJob> = Vec::new();
+        let mut push = |job: BackgroundJob, active: &mut Vec<BackgroundJob>| {
+            if seen.insert(job.id.clone()) {
+                active.push(job);
+            }
+        };
+        for j in processing {
+            push(j, &mut active);
+        }
+        for j in pending {
+            push(j, &mut active);
+        }
+        for j in failed {
+            if j.attempts < j.max_attempts {
+                push(j, &mut active);
+            }
+        }
+        for j in paused {
+            push(j, &mut active);
+        }
+
+        // Sort: priority DESC, then scheduledAt ASC (v4 `route.ts:231`).
+        active.sort_by(|a, b| {
+            b.priority
+                .partial_cmp(&a.priority)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let am = crate::clock::iso_to_ms(&a.scheduled_at).unwrap_or(0);
+                    let bm = crate::clock::iso_to_ms(&b.scheduled_at).unwrap_or(0);
+                    am.cmp(&bm)
+                })
+        });
+
+        // Character-name cache (payload.characterId → character.name) for jobs
+        // whose payload sets characterId but not characterName.
+        let mut name_cache: std::collections::HashMap<String, Option<String>> =
+            std::collections::HashMap::new();
+        let mut total_tokens = 0i64;
+        let mut jobs_out: Vec<Value> = Vec::with_capacity(active.len());
+        for job in &active {
+            let payload = parse_payload(job);
+            let tokens = estimate_tokens_for_job(&job.job_type, &payload);
+            total_tokens += tokens;
+
+            let mut m = Map::new();
+            m.insert("id".into(), Value::from(job.id.clone()));
+            m.insert("type".into(), Value::from(job.job_type.clone()));
+            m.insert(
+                "typeName".into(),
+                Value::from(job_type_name(&job.job_type).to_string()),
+            );
+            m.insert("status".into(), Value::from(job.status.clone()));
+            m.insert("priority".into(), js_number_to_json(job.priority));
+            m.insert("attempts".into(), js_number_to_json(job.attempts));
+            m.insert("maxAttempts".into(), js_number_to_json(job.max_attempts));
+            m.insert("scheduledAt".into(), Value::from(job.scheduled_at.clone()));
+            if let Some(v) = &job.started_at {
+                m.insert("startedAt".into(), Value::from(v.clone()));
+            }
+            if let Some(v) = &job.last_error {
+                m.insert("lastError".into(), Value::from(v.clone()));
+            }
+            m.insert("estimatedTokens".into(), Value::from(tokens));
+            if let Some(chat_id) = payload.get("chatId").and_then(Value::as_str) {
+                m.insert("chatId".into(), Value::from(chat_id.to_string()));
+            }
+            // characterName: explicit payload value, else resolve via characterId.
+            let char_name = match payload.get("characterName").and_then(Value::as_str) {
+                Some(n) => Some(n.to_string()),
+                None => match payload.get("characterId").and_then(Value::as_str) {
+                    Some(cid) => {
+                        if let Some(cached) = name_cache.get(cid) {
+                            cached.clone()
+                        } else {
+                            let resolved =
+                                characters_read::find_by_id_raw(main, cid)?.and_then(|c| {
+                                    c.get("name").and_then(Value::as_str).map(str::to_string)
+                                });
+                            name_cache.insert(cid.to_string(), resolved.clone());
+                            resolved
+                        }
+                    }
+                    None => None,
+                },
+            };
+            if let Some(name) = char_name {
+                m.insert("characterName".into(), Value::from(name));
+            }
+            jobs_out.push(Value::Object(m));
+        }
+
+        // stats bag — key order pending, processing, failed, completed, dead,
+        // paused, activeTotal (v4 `route.ts:287`, deliberately not QueueStats order).
+        let mut stats_m = Map::new();
+        stats_m.insert("pending".into(), Value::from(stats.pending));
+        stats_m.insert("processing".into(), Value::from(stats.processing));
+        stats_m.insert("failed".into(), Value::from(stats.failed));
+        stats_m.insert("completed".into(), Value::from(stats.completed));
+        stats_m.insert("dead".into(), Value::from(stats.dead));
+        stats_m.insert("paused".into(), Value::from(stats.paused));
+        stats_m.insert("activeTotal".into(), Value::from(active.len() as i64));
+
+        let mut root = Map::new();
+        root.insert("stats".into(), Value::Object(stats_m));
+        root.insert("jobs".into(), Value::Array(jobs_out));
+        root.insert("totalEstimatedTokens".into(), Value::from(total_tokens));
+        root.insert("processorStatus".into(), processor_status.to_json());
+        root.insert("maxConcurrentJobs".into(), Value::from(max_concurrent_jobs));
+        Ok(Value::Object(root))
+    });
+
+    match built {
+        Ok(v) => Response::System(v),
+        Err(e) => internal(e),
+    }
+}
+
+// ── tasks-queue control (v4 `handleTasksQueueControl`) ───────────────────────
+
+/// Validate the `start`|`stop` action; on success returns the post-action
+/// response body (the caller runs the seam side-effect between).
+pub fn tasks_queue_control_response(action: &str, processor_status: &ProcessorStatus) -> Response {
+    let mut m = Map::new();
+    m.insert("success".into(), Value::Bool(true));
+    m.insert("action".into(), Value::from(action.to_string()));
+    m.insert("processorStatus".into(), processor_status.to_json());
+    Response::System(Value::Object(m))
+}
+
+/// v4's `!['start','stop'].includes(action)` → `badRequest`.
+pub fn validate_control_action(action: &str) -> Result<(), Response> {
+    if action == "start" || action == "stop" {
+        Ok(())
+    } else {
+        Err(bad_request("Invalid action. Must be \"start\" or \"stop\""))
+    }
+}
+
+// ── concurrency get/set (v4 `handleJobConcurrency*`) ─────────────────────────
+
+pub fn job_concurrency_get_response(concurrency: i64) -> Response {
+    let mut m = Map::new();
+    m.insert("success".into(), Value::Bool(true));
+    m.insert("concurrency".into(), Value::from(concurrency));
+    Response::System(Value::Object(m))
+}
+
+/// v4 `jobConcurrencySchema` (`z.number().int().min(1).max(32)`). Out-of-range /
+/// non-integer → v5's error envelope (a documented divergence from v4's Zod
+/// `details` array — the order maps validation to "v5's error envelope"; the
+/// SPA slider is 1..32 so production never trips it).
+pub fn validate_concurrency(value: i64) -> Result<i64, Response> {
+    if (1..=32).contains(&value) {
+        Ok(value)
+    } else {
+        Err(Response::error(
+            ErrorKind::BadRequest,
+            "Validation error: maxConcurrentJobs must be an integer between 1 and 32",
+        ))
+    }
+}
+
+pub async fn job_concurrency_set(db: &Db, value: i64) -> Response {
+    let concurrency = match validate_concurrency(value) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let written = db
+        .write(move |w| {
+            instance_settings::set_max_concurrent_jobs(w.main().connection(), concurrency)
+        })
+        .await;
+    match written {
+        Ok(()) => job_concurrency_get_response(concurrency),
+        Err(e) => internal(e),
+    }
+}
+
+/// Read the persisted concurrency cap (for the GET verb + the tasks-queue read).
+pub fn read_max_concurrent_jobs(db: &Db) -> Result<i64, Response> {
+    db.read_main(instance_settings::get_max_concurrent_jobs)
+        .map_err(internal)
+}
+
+// ── single-job GET / control / delete (v4 `system/jobs/[id]`) ────────────────
+
+pub fn job_get(db: &Db, id: &str) -> Response {
+    let id = id.to_string();
+    let found = db.read_main(move |main| BackgroundJobsRepository::new(main).find_by_id(&id));
+    match found {
+        Ok(Some(job)) => {
+            let mut m = Map::new();
+            m.insert("job".into(), job_to_full_json(&job));
+            Response::System(Value::Object(m))
+        }
+        Ok(None) => not_found("Job"),
+        Err(e) => internal(e),
+    }
+}
+
+/// The pause/resume/delete guard outcome so the engine arm can run the seam
+/// side-effect (v4 resumes call `ensureProcessorRunning`).
+pub enum JobControlOutcome {
+    Responded(Response),
+    /// A resume succeeded — the engine arm should nudge the pump before replying.
+    Resumed(Response),
+}
+
+/// v4 `POST /api/v1/system/jobs/[id]?action=pause|resume`.
+pub async fn job_control(db: &Db, id: &str, action: &str) -> JobControlOutcome {
+    if action != "pause" && action != "resume" {
+        return JobControlOutcome::Responded(bad_request(
+            "Invalid action. Available actions: pause, resume",
+        ));
+    }
+    let id_owned = id.to_string();
+    let action_owned = action.to_string();
+    let result: Result<Response, DbError> = db.write(move |w| {
+        let repo = w.main().background_jobs();
+        let Some(job) = repo.find_by_id(&id_owned)? else {
+            return Ok(not_found("Job"));
+        };
+        if action_owned == "pause" {
+            if job.status != "PENDING" && job.status != "FAILED" {
+                return Ok(bad_request(format!(
+                    "Cannot pause a job with status \"{}\". Only PENDING or FAILED jobs can be paused.",
+                    job.status
+                )));
+            }
+            match repo.pause(&id_owned)? {
+                Some(updated) => {
+                    let mut m = Map::new();
+                    m.insert("job".into(), job_to_full_json(&updated));
+                    Ok(Response::System(Value::Object(m)))
+                }
+                None => Ok(internal("Failed to pause job")),
+            }
+        } else {
+            if job.status != "PAUSED" {
+                return Ok(bad_request(format!(
+                    "Cannot resume a job with status \"{}\". Only PAUSED jobs can be resumed.",
+                    job.status
+                )));
+            }
+            match repo.resume(&id_owned)? {
+                Some(updated) => {
+                    let mut m = Map::new();
+                    m.insert("job".into(), job_to_full_json(&updated));
+                    Ok(Response::System(Value::Object(m)))
+                }
+                None => Ok(internal("Failed to resume job")),
+            }
+        }
+    }).await;
+    match result {
+        Ok(resp) => {
+            let succeeded_resume = action == "resume" && matches!(resp, Response::System(_));
+            if succeeded_resume {
+                JobControlOutcome::Resumed(resp)
+            } else {
+                JobControlOutcome::Responded(resp)
+            }
+        }
+        Err(e) => JobControlOutcome::Responded(internal(e)),
+    }
+}
+
+/// v4 `DELETE /api/v1/system/jobs/[id]` — blocks a PROCESSING job.
+pub async fn job_delete(db: &Db, id: &str) -> Response {
+    let id_owned = id.to_string();
+    let result: Result<Response, DbError> = db
+        .write(move |w| {
+            let repo = w.main().background_jobs();
+            let Some(job) = repo.find_by_id(&id_owned)? else {
+                return Ok(not_found("Job"));
+            };
+            if job.status == "PROCESSING" {
+                return Ok(bad_request(
+                    "Cannot delete a job that is currently processing",
+                ));
+            }
+            if repo.delete(&id_owned)? {
+                let mut m = Map::new();
+                m.insert("success".into(), Value::Bool(true));
+                Ok(Response::System(Value::Object(m)))
+            } else {
+                Ok(internal("Failed to delete job"))
+            }
+        })
+        .await;
+    match result {
+        Ok(resp) => resp,
+        Err(e) => internal(e),
+    }
+}
+
+// ── jobs collection GET / POST (v4 `system/jobs/route.ts`) ───────────────────
+
+/// v4 `GET /api/v1/system/jobs` — stats + activeByType + processor, plus the
+/// optional `jobs` (50 newest) and `pendingForChat` legs.
+pub fn jobs_list(
+    db: &Db,
+    user_id: &str,
+    include_jobs: bool,
+    chat_id: Option<&str>,
+    processor_status: &ProcessorStatus,
+) -> Response {
+    let user_id = user_id.to_string();
+    let chat_id = chat_id.map(str::to_string);
+    let built: Result<Value, DbError> = db.read_main(|main| {
+        let repo = BackgroundJobsRepository::new(main);
+        let stats = repo.get_stats(Some(&user_id))?;
+        let active_by_type = repo.get_active_counts_by_type(Some(&user_id))?;
+
+        let mut stats_m = Map::new();
+        stats_m.insert("pending".into(), Value::from(stats.pending));
+        stats_m.insert("processing".into(), Value::from(stats.processing));
+        stats_m.insert("completed".into(), Value::from(stats.completed));
+        stats_m.insert("failed".into(), Value::from(stats.failed));
+        stats_m.insert("dead".into(), Value::from(stats.dead));
+        stats_m.insert("paused".into(), Value::from(stats.paused));
+
+        let mut by_type_m = Map::new();
+        for (t, c) in active_by_type {
+            by_type_m.insert(t, Value::from(c));
+        }
+
+        let mut root = Map::new();
+        root.insert("stats".into(), Value::Object(stats_m));
+        root.insert("activeByType".into(), Value::Object(by_type_m));
+        root.insert("processor".into(), processor_status.to_json());
+        if include_jobs {
+            let jobs: Vec<Value> = repo
+                .find_by_user_id(&user_id, None)?
+                .into_iter()
+                .take(50)
+                .map(|j| job_to_full_json(&j))
+                .collect();
+            root.insert("jobs".into(), Value::Array(jobs));
+        }
+        if let Some(cid) = &chat_id {
+            let pending: Vec<Value> = repo
+                .find_pending_for_chat(cid)?
+                .into_iter()
+                .map(|j| job_to_full_json(&j))
+                .collect();
+            root.insert("pendingForChat".into(), Value::Array(pending));
+        }
+        Ok(Value::Object(root))
+    });
+    match built {
+        Ok(v) => Response::System(v),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4's `BackgroundJobTypeEnum` (23 values) — the enqueue type gate.
+const JOB_TYPES: &[&str] = &[
+    "MEMORY_EXTRACTION",
+    "INTER_CHARACTER_MEMORY",
+    "CONTEXT_SUMMARY",
+    "TITLE_UPDATE",
+    "LLM_LOG_CLEANUP",
+    "EMBEDDING_GENERATE",
+    "EMBEDDING_REFIT",
+    "EMBEDDING_REINDEX_ALL",
+    "EMBEDDING_REAPPLY_PROFILE",
+    "STORY_BACKGROUND_GENERATION",
+    "CHAT_DANGER_CLASSIFICATION",
+    "SCENE_STATE_TRACKING",
+    "CHARACTER_AVATAR_GENERATION",
+    "CONVERSATION_RENDER",
+    "MEMORY_HOUSEKEEPING",
+    "MEMORY_REGENERATE_CHAT",
+    "MEMORY_REGENERATE_ALL",
+    "WARDROBE_OUTFIT_ANNOUNCEMENT",
+    "AUTONOMOUS_ROOM_TURN",
+    "AUTONOMOUS_ROOM_SCHEDULE_TICK",
+    "CARINA_MEMORY_EXTRACTION",
+    "CHARACTER_HEADSHOULDERS_BACKFILL",
+    "REGENERATE_CONVERSATION_SUMMARIES",
+];
+
+/// v4 `POST /api/v1/system/jobs` — enqueue a job (201). Returns the id + the
+/// fixed message. The engine arm nudges the pump after a success.
+#[allow(clippy::too_many_arguments)]
+pub async fn jobs_enqueue(
+    db: &Db,
+    user_id: &str,
+    job_type: &str,
+    payload: &Value,
+    priority: Option<f64>,
+    max_attempts: Option<f64>,
+    new_id: &str,
+    now_iso: &str,
+) -> Response {
+    if !JOB_TYPES.contains(&job_type) {
+        return bad_request(format!(
+            "Invalid job type. Must be one of: {}",
+            JOB_TYPES.join(", ")
+        ));
+    }
+    if !payload.is_object() {
+        return bad_request("Payload is required and must be an object");
+    }
+    let create = BjCreate {
+        user_id: user_id.to_string(),
+        job_type: job_type.to_string(),
+        status: Some("PENDING".to_string()),
+        payload: payload.clone(),
+        priority: priority.unwrap_or(0.0),
+        attempts: 0.0,
+        max_attempts: max_attempts.unwrap_or(3.0),
+        last_error: None,
+        scheduled_at: now_iso.to_string(),
+        started_at: None,
+        completed_at: None,
+    };
+    let opts = CreateOptions {
+        id: new_id.to_string(),
+        created_at: now_iso.to_string(),
+        updated_at: now_iso.to_string(),
+    };
+    let written = db
+        .write(move |w| w.main().background_jobs().create(&create, &opts))
+        .await;
+    match written {
+        Ok(()) => {
+            let mut m = Map::new();
+            m.insert("jobId".into(), Value::from(new_id.to_string()));
+            m.insert("message".into(), Value::from("Job created successfully"));
+            Response::System(Value::Object(m))
+        }
+        Err(e) => internal(e),
+    }
+}

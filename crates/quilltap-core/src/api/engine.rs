@@ -168,6 +168,14 @@ pub struct EngineAssembly {
     /// answers a loud not-assembled error.
     pub recall_replay: Option<Arc<dyn super::recall_replay::RecallReplayDriver>>,
     // === end P4.d13 ===
+    // === P4.9G1: the host job-pump control seam ===
+    /// The background-job pump control (start/stop/status + wake — the host owns
+    /// ALL cadence, P4.0). Behind the `SystemTasksQueue*` /
+    /// `SystemJobConcurrencySet` / `SystemJobControl` arms. `None` (read-only
+    /// embedders, canned assemblies) → those arms answer the loud not-assembled
+    /// refusal.
+    pub job_pump: Option<Arc<dyn super::system_data::JobPumpControl>>,
+    // === end P4.9G1 ===
 }
 
 impl EngineAssembly {
@@ -198,6 +206,9 @@ impl EngineAssembly {
             // === P4.d13 ===
             recall_replay: None,
             // === end P4.d13 ===
+            // === P4.9G1 ===
+            job_pump: None,
+            // === end P4.9G1 ===
         }
     }
 }
@@ -350,6 +361,10 @@ struct ReadyEngine {
     /// The recall-replay runner (P4.d13; `None` for spine-less assemblies —
     /// the `ChatRecallReplay` arm answers the loud not-assembled error).
     recall_replay: Option<Arc<dyn super::recall_replay::RecallReplayDriver>>,
+    /// The background-job pump control (P4.9G1; `None` for read-only embedders —
+    /// the tasks-queue/control/concurrency-set/job-control arms answer the loud
+    /// not-assembled refusal).
+    job_pump: Option<Arc<dyn super::system_data::JobPumpControl>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -649,6 +664,88 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+
+            // === P4.9G1: the Data & System server surface ===
+            Request::SystemTasksQueue => match self.ready_job_pump() {
+                Ok((db, pump)) => {
+                    let status = pump.status();
+                    match super::system_data::read_max_concurrent_jobs(&db) {
+                        Ok(max) => {
+                            super::system_data::tasks_queue(&db, SINGLE_USER_ID, &status, max)
+                        }
+                        Err(r) => r,
+                    }
+                }
+                Err(r) => r,
+            },
+            Request::SystemTasksQueueControl { action } => match self.ready_job_pump() {
+                Ok((_db, pump)) => match super::system_data::validate_control_action(&action) {
+                    Ok(()) => {
+                        if action == "start" {
+                            pump.start();
+                        } else {
+                            pump.stop();
+                        }
+                        super::system_data::tasks_queue_control_response(&action, &pump.status())
+                    }
+                    Err(r) => r,
+                },
+                Err(r) => r,
+            },
+            Request::SystemJobConcurrencyGet => match self.ready_db() {
+                Ok(db) => match super::system_data::read_max_concurrent_jobs(&db) {
+                    Ok(max) => super::system_data::job_concurrency_get_response(max),
+                    Err(r) => r,
+                },
+                Err(r) => r,
+            },
+            Request::SystemJobConcurrencySet {
+                max_concurrent_jobs,
+            } => match self.ready_job_pump() {
+                Ok((db, pump)) => {
+                    let resp =
+                        super::system_data::job_concurrency_set(&db, max_concurrent_jobs).await;
+                    if matches!(resp, Response::System(_)) {
+                        pump.wake();
+                    }
+                    resp
+                }
+                Err(r) => r,
+            },
+            Request::SystemJobGet { id } => match self.ready_db() {
+                Ok(db) => super::system_data::job_get(&db, &id),
+                Err(r) => r,
+            },
+            Request::SystemJobControl { id, action } => match self.ready_db() {
+                Ok(db) => match super::system_data::job_control(&db, &id, &action).await {
+                    super::system_data::JobControlOutcome::Responded(resp) => resp,
+                    super::system_data::JobControlOutcome::Resumed(resp) => {
+                        // v4 resume calls ensureProcessorRunning — best-effort nudge.
+                        self.nudge_job_pump();
+                        resp
+                    }
+                },
+                Err(r) => r,
+            },
+            Request::SystemJobDelete { id } => match self.ready_db() {
+                Ok(db) => super::system_data::job_delete(&db, &id).await,
+                Err(r) => r,
+            },
+            // Delete-all + export/import/backup land in later P4.9G1 units; until
+            // then they answer the loud not-assembled refusal (never a silent stub).
+            Request::SystemDeleteDataPreview
+            | Request::SystemDeleteData { .. }
+            | Request::SystemBackupCreate
+            | Request::SystemRestorePreview { .. }
+            | Request::SystemRestoreExecute { .. }
+            | Request::SystemExportEntities { .. }
+            | Request::SystemExportPreview { .. }
+            | Request::SystemImportPreview { .. }
+            | Request::SystemImportExecute { .. } => Response::error(
+                ErrorKind::Internal,
+                "This Data & System action is recognized but not yet available (P4.9G1 deferral).",
+            ),
+            // === end P4.9G1 ===
             Request::MessageEdit {
                 message_id,
                 content,
@@ -3446,6 +3543,35 @@ impl CoreEngine {
         }
     }
 
+    /// The Db + job-pump control under the readiness gate (P4.9G1). A ready
+    /// engine without the pump (read-only embedder — no cadence) answers the loud
+    /// not-assembled refusal (the image-generation precedent; the host wires it
+    /// LIVE), keeping the tasks-queue control surface deferred there.
+    fn ready_job_pump(
+        &self,
+    ) -> Result<(Db, Arc<dyn super::system_data::JobPumpControl>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.job_pump {
+                Some(pump) => Ok((r.db.clone(), pump.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "job pump not assembled (job-pump-control seam deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// Best-effort pump nudge (v4 resume → `ensureProcessorRunning`). A resumed
+    /// job is persisted regardless; if no pump is assembled the nudge is a no-op.
+    fn nudge_job_pump(&self) {
+        if let EngineState::Ready(r) = &*self.inner.state.lock().unwrap() {
+            if let Some(pump) = &r.job_pump {
+                pump.start();
+            }
+        }
+    }
+
     /// The Db + avatar-preview renderer under the readiness gate (P4.9f1). An
     /// unwired seam is NOT an error here: the handler runs its guard tiers live
     /// and only the RENDER step answers the loud not-assembled refusal (the
@@ -3951,6 +4077,7 @@ fn open_ready(
         brahma_console_send: assembly.brahma_console_send,
         blob_webp: assembly.blob_webp,
         recall_replay: assembly.recall_replay,
+        job_pump: assembly.job_pump,
     })
 }
 

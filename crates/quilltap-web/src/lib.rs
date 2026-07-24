@@ -48,6 +48,9 @@ pub mod static_serve;
 // === P4.6au: the home-dashboard REST edge ===
 pub mod system_routes;
 // === end P4.6au ===
+// === P4.9G1: the Data & System server surface REST edges ===
+pub mod system_data_routes;
+// === end P4.9G1 ===
 pub mod terminal_routes;
 // === P4.6ak: text-replacements + get-background REST edges ===
 pub mod text_replacements_routes;
@@ -287,6 +290,18 @@ pub fn build_router(state: SharedState) -> Router {
         // === end P4.6ar ===
         // === P4.6au: the home dashboard ===
         .route("/api/v1/system/home", get(system_routes::system_home_get))
+        // === P4.9G1: the Data & System server surface ===
+        .route(
+            "/api/v1/system/tools",
+            get(system_data_routes::system_tools_get).post(system_data_routes::system_tools_post),
+        )
+        .route(
+            "/api/v1/system/jobs/{id}",
+            get(system_data_routes::system_job_get)
+                .delete(system_data_routes::system_job_delete)
+                .post(system_data_routes::system_job_post),
+        )
+        // === end P4.9G1 ===
         // === end P4.6au ===
         // === P4.9I1A: the dedicated brahma-console CRUD + send surface ===
         .route(

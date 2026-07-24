@@ -38,6 +38,7 @@ pub mod files_store;
 pub mod host;
 pub mod image_codec;
 pub mod instances;
+pub mod job_pump;
 pub mod lock;
 pub mod paths;
 pub mod providers;

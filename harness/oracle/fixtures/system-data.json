@@ -1,0 +1,109 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "jobs": [
+    {
+      "id": "b6000000-0000-4000-8000-000000000001",
+      "type": "MEMORY_EXTRACTION",
+      "status": "PENDING",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001", "characterId": "a1000000-0000-4000-8000-000000000001", "userMessage": "Hello there, old friend.", "assistantMessage": "Well met upon the road." },
+      "priority": 5,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:01.000Z",
+      "createdAt": "2020-01-01T00:00:01.000Z",
+      "updatedAt": "2020-01-01T00:00:01.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000002",
+      "type": "TITLE_UPDATE",
+      "status": "PROCESSING",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002", "characterName": "Riya" },
+      "priority": 10,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:02.000Z",
+      "startedAt": "2020-01-01T00:05:00.000Z",
+      "createdAt": "2020-01-01T00:00:02.000Z",
+      "updatedAt": "2020-01-01T00:05:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000003",
+      "type": "CONTEXT_SUMMARY",
+      "status": "FAILED",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 0,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "lastError": "provider timed out",
+      "scheduledAt": "2020-01-01T00:00:03.000Z",
+      "createdAt": "2020-01-01T00:00:03.000Z",
+      "updatedAt": "2020-01-01T00:06:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000004",
+      "type": "INTER_CHARACTER_MEMORY",
+      "status": "FAILED",
+      "payload": { "characterId": "a1000000-0000-4000-8000-000000000002", "userMessage": "abcd", "assistantMessage": "efgh" },
+      "priority": 0,
+      "attempts": 3,
+      "maxAttempts": 3,
+      "lastError": "exhausted retries",
+      "scheduledAt": "2020-01-01T00:00:04.000Z",
+      "createdAt": "2020-01-01T00:00:04.000Z",
+      "updatedAt": "2020-01-01T00:07:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000005",
+      "type": "EMBEDDING_GENERATE",
+      "status": "COMPLETED",
+      "payload": { "characterId": "a1000000-0000-4000-8000-000000000001" },
+      "priority": 0,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:05.000Z",
+      "startedAt": "2020-01-01T00:08:00.000Z",
+      "completedAt": "2020-01-01T00:09:00.000Z",
+      "createdAt": "2020-01-01T00:00:05.000Z",
+      "updatedAt": "2020-01-01T00:09:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000006",
+      "type": "SCENE_STATE_TRACKING",
+      "status": "DEAD",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "priority": 0,
+      "attempts": 3,
+      "maxAttempts": 3,
+      "lastError": "killed on startup",
+      "scheduledAt": "2020-01-01T00:00:06.000Z",
+      "createdAt": "2020-01-01T00:00:06.000Z",
+      "updatedAt": "2020-01-01T00:10:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000007",
+      "type": "CHAT_DANGER_CLASSIFICATION",
+      "status": "PAUSED",
+      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002", "characterId": "a1000000-0000-4000-8000-000000000002" },
+      "priority": 2,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:07.000Z",
+      "createdAt": "2020-01-01T00:00:07.000Z",
+      "updatedAt": "2020-01-01T00:11:00.000Z"
+    },
+    {
+      "id": "b6000000-0000-4000-8000-000000000008",
+      "type": "REGENERATE_CONVERSATION_SUMMARIES",
+      "status": "PENDING",
+      "payload": {},
+      "priority": 0,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:08.000Z",
+      "createdAt": "2020-01-01T00:00:08.000Z",
+      "updatedAt": "2020-01-01T00:00:08.000Z"
+    }
+  ]
+}

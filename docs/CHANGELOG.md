@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.9G1 (Data & System server half), unit 1: ported the tasks-queue and
+jobs surface. The Settings "Data & System" tab's Tasks Queue card now has
+its server backing — the tasks-queue read (stats bag, deduped active job
+set with retry-eligibility filtering, per-job token estimates, character
+name resolution), processor start/stop, job concurrency get/set (1–32),
+and single-job get/pause/resume/delete (with the processing-delete
+block). The background-job pump is host-owned: a new `JobPumpControl`
+seam on the engine assembly wraps the in-process pump loop's running
+gate + wake handle, so the tasks-queue Stop/Start control actually halts
+and resumes claiming. Added the v4-URL parity REST edges
+(`/api/v1/system/tools` and `/api/v1/system/jobs/{id}`) and a new
+committed `system-data-*` fixture family. Verified by the
+`system_jobs_routes_equivalence` differential (18 cases) against v4's
+real route handlers. Delete-all, export/import, and backup/restore
+answer a loud "recognized but not yet available" refusal until their
+later units land.
+
 Planned the pre-compute + Data & System round and wrote its three work
 orders (P4.19 proactive pre-compute distill port; P4.9G1 Data & System
 server half — backup/restore, .qtap export/import, tasks queue,

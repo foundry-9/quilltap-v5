@@ -9,6 +9,100 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.9G1 (Data & System server half), IN PROGRESS on `claude/p4-9g1-data-system-porting-f6b376`
+
+**Baseline: v4 `e646f58b` (drift-checked clean at lane start).** This is the
+server half of the P4.19 ∥ P4.9G1 ∥ P4.9G2 round — the four unported Data &
+System cards' server surface (tasks-queue, delete-all, `.qtap` export/import,
+backup/restore). The lane is large; it lands the tractable, self-contained
+families first with full differential rigor and defers the heavier ones LOUDLY.
+
+**All sixteen §1 CoreRequest variants are DEFINED (`api/types.rs`)** so G2's
+name-for-name mirror + the wire-contract hold from the start. Verbs whose family
+hasn't landed yet answer a loud "recognized but not yet available" refusal (never
+a silent stub).
+
+### Unit 1 — the tasks-queue + jobs surface (LANDED, differential-verified)
+
+Ported v4's `handleTasksQueue` / `handleTasksQueueControl` / `handleJobConcurrency*`
+(`app/api/v1/system/tools/route.ts`) + `system/jobs/[id]` GET/DELETE/POST as free
+functions over the already-complete `db::background_jobs` repo, in the new
+`api/system_data.rs`:
+
+- **tasks-queue GET**: the stats bag (key order `pending, processing, failed,
+  completed, dead, paused, activeTotal` — deliberately not `QueueStats` order),
+  the deduped active set `[processing, pending, retry-eligible FAILED, paused]`
+  sorted priority-DESC then scheduledAt-ASC, per-job serialization
+  (`estimateTokensForJob` + `getJobTypeName` ported pure; `chatId`/`characterName`
+  conditionally present — characterName resolved from `payload.characterId` via a
+  per-request cache; NULL columns ABSENT per the llm-logs-proven hydrate),
+  `totalEstimatedTokens`, `processorStatus`, `maxConcurrentJobs`.
+- **tasks-queue control** (start/stop) + **job-concurrency get/set** (Zod 1–32 →
+  v5's error envelope on out-of-range, a documented divergence from v4's Zod
+  `details`; the SPA slider never trips it) with `set_max_concurrent_jobs` added
+  additively to `db/instance_settings.rs`.
+- **job get / pause / resume / delete** with the PROCESSING-delete block and the
+  pause/resume status guards; the full-job body matches `BackgroundJobSchema`.
+
+**The host job-pump seam (P4.0).** Processor start/stop/status + wake ride a new
+`JobPumpControl` seam on `EngineAssembly` (`None` → loud not-assembled refusal).
+The host impl (`quilltap-host/src/job_pump.rs`) wraps a shared `running`
+`AtomicBool` gate + the pump `wake` Notify; `host::pump_loop` now checks the gate
+before claiming, so the Stop control genuinely halts claiming (an in-flight job
+finishes on its own — a deliberate divergence from v4's child SIGTERM).
+**Documented simplification:** the in-process runner exposes no live in-flight
+counter, so `processing`/`inFlight` are reported idle (0/false) vs v4's
+child-dispatcher snapshot — the `running` gate is faithful; the differential pins
+the whole status via a test double so equivalence is unaffected.
+
+**REST edges** (v4-URL parity): `/api/v1/system/tools` GET/POST (action-dispatched)
+and `/api/v1/system/jobs/{id}` GET/DELETE/POST, in the new
+`quilltap-web/src/system_data_routes.rs`. `jobs_list`/`jobs_enqueue` (the
+`/api/v1/system/jobs` collection GET/POST — Tier 2, no §1 verb) are written but
+not yet REST-wired (they need pump access from a verb-less edge; disposition in a
+later unit).
+
+**Fixture:** new committed `system-data-{main,mount,llmlogs}.db` family +
+`build-system-data-fixture.ts` + `system-data.json` (a broad user graph +
+`background_jobs` rows in every status incl. a PROCESSING one for the delete-block
+arm and a retry-exhausted FAILED for the active-set filter; llm_logs partition;
+`instance_settings` table for the concurrency setter). Built by driving v4's REAL
+repos (the standard fixture-builder pattern).
+
+**Differential:** `system_jobs_routes_equivalence` (18 cases, all green) —
+direct-drives the Rust free functions (P4.d7 recipe) over a fresh fixture copy
+per case and diffs {status, body, extra} against the `system-jobs-routes` oracle,
+which drives v4's REAL route handlers with the processor module MOCKED to a pinned
+status. Mutation cases (pause/resume) normalize the fresh `updatedAt`/`scheduledAt`.
+
+**Oracle regen recipe** (Node 24, from the v4 checkout; jest ignores `.claude/` →
+cp to a /tmp mirror):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-sysjobs-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-jobs-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/.../system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/.../system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-jobs.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-jobs-routes
+# then: QT_ORACLE_SYSTEM_JOBS=/tmp/oracle-system-jobs.ndjson TZ=UTC \
+#   cargo test -p quilltap-harness --test system_jobs_routes_equivalence -- --nocapture
+```
+Fixture regen: same env vars →
+`node --import tsx harness/oracle/fixtures/build-system-data-fixture.ts` (then
+delete stray `.db-journal`).
+
+**OPEN under P4.9G1 (the later units):** the delete-all family (§1 verbs
+`systemDeleteDataPreview`/`systemDeleteData` — loud-refused now), the `.qtap`
+export/import family, and backup/restore. See the work order's tiered
+deliverables. Versions after unit 1: core 0.0.342, harness 0.0.289, web 0.0.40,
+host 0.0.33.
+
 ## Round record — the provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on main (2026-07-23)
 
 **All three lanes landed on `unify/provider-io-round` and fast-forwarded

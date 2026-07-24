@@ -489,6 +489,10 @@ impl EngineAssembler for HostAssembler {
         let runner = JobRunner::new(db.clone(), registry);
         let (stop_tx, stop_rx) = watch::channel(false);
         let wake = Arc::new(Notify::new());
+        // P4.9G1: the job-pump-control gate. `running` starts true (the pump
+        // claims jobs); the tasks-queue Stop/Start control toggles it via the
+        // `HostJobPump` seam. `pump_loop` checks it before claiming.
+        let job_pump_running = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
         // Enqueue wake → runner flag + pump-loop notify.
         let wake_target: Arc<WakeFn> = {
@@ -501,8 +505,12 @@ impl EngineAssembler for HostAssembler {
         };
         register_wake_target(&wake_target);
 
-        self.rt
-            .spawn(pump_loop(runner.clone(), wake, stop_rx.clone()));
+        self.rt.spawn(pump_loop(
+            runner.clone(),
+            wake.clone(),
+            stop_rx.clone(),
+            job_pump_running.clone(),
+        ));
         self.rt.spawn(stuck_reset_loop(
             runner,
             stop_rx.clone(),
@@ -622,6 +630,13 @@ impl EngineAssembler for HostAssembler {
             // but unread (behavior unchanged: the handlers still refuse). ===
             blob_webp: Some(std::sync::Arc::new(crate::image_codec::HostImageCodec)),
             // === end P4.6bf ===
+            // === P4.9G1: the job-pump control seam, wired LIVE (the host owns the
+            // in-process pump loop + its running gate + wake handle). ===
+            job_pump: Some(std::sync::Arc::new(crate::job_pump::HostJobPump::new(
+                job_pump_running,
+                wake,
+            ))),
+            // === end P4.9G1 ===
         })
     }
 }
@@ -702,7 +717,12 @@ fn seed_sample_content(db: &Db) -> Result<(), String> {
 
 /// v4's dispatcher loop over the ported [`JobRunner::pump_claim`]:
 /// orphan-reset once, then pump on wake / next-due delay / the 2 s poll.
-async fn pump_loop(runner: JobRunner, wake: Arc<Notify>, mut stop: watch::Receiver<bool>) {
+async fn pump_loop(
+    runner: JobRunner,
+    wake: Arc<Notify>,
+    mut stop: watch::Receiver<bool>,
+    running: Arc<std::sync::atomic::AtomicBool>,
+) {
     // v4 job-dispatcher.ts:113 `resetOrphanedJobs().catch(err =>
     // log.error('Error resetting orphaned jobs at startup', …))`.
     match runner.reset_orphaned_jobs().await {
@@ -719,6 +739,20 @@ async fn pump_loop(runner: JobRunner, wake: Arc<Notify>, mut stop: watch::Receiv
     loop {
         if *stop.borrow() {
             break;
+        }
+        // P4.9G1: the tasks-queue Stop control clears `running`; while stopped
+        // the loop claims no new jobs and just waits for a wake / poll / stop.
+        if !running.load(std::sync::atomic::Ordering::Relaxed) {
+            tokio::select! {
+                _ = wake.notified() => {}
+                res = stop.changed() => {
+                    if res.is_err() || *stop.borrow() {
+                        break;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(POLL_INTERVAL_MS.max(1) as u64)) => {}
+            }
+            continue;
         }
         let outcome = runner.pump_claim().await;
         if *stop.borrow() {

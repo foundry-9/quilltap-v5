@@ -2289,6 +2289,91 @@ pub enum Request {
         limit: Option<serde_json::Value>,
     },
     // === end P4.d13 ===
+
+    // === P4.9G1: the Data & System server surface (16 verbs; §1 contract) ===
+    // Backup / restore (backup CREATE + the download/upload legs are web-edge
+    // only — see quilltap-web routes). Restore preview/execute + backup create
+    // ride dispatch.
+    /// v4 `POST /api/v1/system/backup` — stage the full-graph zip, register it in
+    /// the temp store, return `{success, backupId, manifest}`.
+    SystemBackupCreate,
+    /// v4 `POST /api/v1/system/restore?action=preview` `{uploadId}`.
+    #[serde(rename_all = "camelCase")]
+    SystemRestorePreview {
+        upload_id: String,
+    },
+    /// v4 `POST /api/v1/system/restore` `{uploadId, mode:'replace'|'new-account'}`.
+    #[serde(rename_all = "camelCase")]
+    SystemRestoreExecute {
+        upload_id: String,
+        mode: String,
+    },
+    /// v4 `GET /api/v1/system/tools?action=export-entities&type=`.
+    #[serde(rename_all = "camelCase")]
+    SystemExportEntities {
+        entity_type: String,
+    },
+    /// v4 `GET /api/v1/system/tools?action=export-preview`.
+    #[serde(rename_all = "camelCase")]
+    SystemExportPreview {
+        entity_type: String,
+        #[serde(default)]
+        scope: Option<String>,
+        #[serde(default)]
+        selected_ids: Vec<String>,
+        #[serde(default)]
+        include_memories: bool,
+    },
+    /// v4 `POST /api/v1/system/tools?action=import-preview` (JSON `{exportData}`;
+    /// the multipart leg is web-edge only).
+    #[serde(rename_all = "camelCase")]
+    SystemImportPreview {
+        export_data: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/system/tools?action=import-execute` (JSON leg).
+    #[serde(rename_all = "camelCase")]
+    SystemImportExecute {
+        export_data: serde_json::Value,
+        options: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/system/tools?action=tasks-queue`.
+    SystemTasksQueue,
+    /// v4 `POST /api/v1/system/tools?action=tasks-queue` `{action:'start'|'stop'}`.
+    #[serde(rename_all = "camelCase")]
+    SystemTasksQueueControl {
+        action: String,
+    },
+    /// v4 `GET /api/v1/system/tools?action=job-concurrency`.
+    SystemJobConcurrencyGet,
+    /// v4 `POST /api/v1/system/tools?action=job-concurrency` (Zod 1..32).
+    #[serde(rename_all = "camelCase")]
+    SystemJobConcurrencySet {
+        max_concurrent_jobs: i64,
+    },
+    /// v4 `GET /api/v1/system/jobs/[id]`.
+    #[serde(rename_all = "camelCase")]
+    SystemJobGet {
+        id: String,
+    },
+    /// v4 `POST /api/v1/system/jobs/[id]?action=pause|resume`.
+    #[serde(rename_all = "camelCase")]
+    SystemJobControl {
+        id: String,
+        action: String,
+    },
+    /// v4 `DELETE /api/v1/system/jobs/[id]`.
+    #[serde(rename_all = "camelCase")]
+    SystemJobDelete {
+        id: String,
+    },
+    /// v4 `GET /api/v1/system/tools?action=delete-data-preview`.
+    SystemDeleteDataPreview,
+    /// v4 `POST /api/v1/system/tools?action=delete-data` `{confirm}`.
+    #[serde(rename_all = "camelCase")]
+    SystemDeleteData {
+        confirm: String,
+    },
+    // === end P4.9G1 ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
