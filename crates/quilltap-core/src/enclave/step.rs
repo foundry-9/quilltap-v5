@@ -714,13 +714,18 @@ where
     // the shell body.
     let turn_result = process_message(orch, &input).await;
     if let Err(e) = &turn_result {
-        // Diagnostics hook for the differential/regeneration workflows ONLY
-        // (the swallow otherwise hides e.g. a missing fixture table behind a
-        // silent no-message turn). Host-side logging proper is out of scope
-        // for the core; v4 logs the same swallow via `handleStreamError`.
-        if std::env::var("QT_STEP_DEBUG").is_ok() {
-            eprintln!("enclave step: turn error (swallowed, v4 shell semantics): {e:?}");
-        }
+        // The swallow otherwise hides e.g. a missing fixture table behind a
+        // silent no-message turn. v4 logs the same swallow via
+        // `handleStreamError` (error level). With P4.18 the core has a log
+        // surface, so this is an unconditional `tracing::error!` — `RUST_LOG`
+        // is the gate now, replacing the old `QT_STEP_DEBUG` env hook. The
+        // harness/oracle installs no subscriber, so events are dropped there
+        // (no NDJSON contamination).
+        tracing::error!(
+            target: "quilltap::enclave",
+            error = ?e,
+            "Enclave step turn error (swallowed, v4 shell semantics)",
+        );
     }
     drop(turn_result);
 

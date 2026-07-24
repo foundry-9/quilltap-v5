@@ -315,10 +315,14 @@ fn repair_folder_case_collisions(db: &Connection) -> Result<u64, DbError> {
             let new_name = next_suffixed_name(&mut sibling_lower, &loser.name);
             rename_folder_row(db, loser, &new_name)?;
             renamed += 1;
-            eprintln!(
-                "Mount-index case repair: renamed folder that collided with a sibling except for casing \
-                 (mountPointId={}, keptFolder={}, oldName={}, newName={}, oldPath={})",
-                loser.mount_point_id, keeper.name, loser.name, new_name, loser.path
+            tracing::info!(
+                target: "quilltap::mount_repair",
+                mount_point_id = %loser.mount_point_id,
+                kept_folder = %keeper.name,
+                old_name = %loser.name,
+                new_name = %new_name,
+                old_path = %loser.path,
+                "Mount-index case repair: renamed folder that collided with a sibling except for casing",
             );
         }
     }
@@ -426,10 +430,13 @@ fn repair_link_case_collisions(db: &Connection) -> Result<u64, DbError> {
                 params![new_rel, new_file_name, loser.id],
             )?;
             renamed += 1;
-            eprintln!(
-                "Mount-index case repair: renamed file that collided with a sibling except for casing \
-                 (mountPointId={}, keptPath={}, oldPath={}, newPath={})",
-                loser.mount_point_id, keeper.relative_path, loser.relative_path, new_rel
+            tracing::info!(
+                target: "quilltap::mount_repair",
+                mount_point_id = %loser.mount_point_id,
+                kept_path = %keeper.relative_path,
+                old_path = %loser.relative_path,
+                new_path = %new_rel,
+                "Mount-index case repair: renamed file that collided with a sibling except for casing",
             );
         }
     }
@@ -525,10 +532,13 @@ pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbErro
                 params![new_name, loser.id],
             )?;
             renamed += 1;
-            eprintln!(
-                "Mount-index case repair: renamed document store whose name collided with a peer except for casing \
-                 (mountPointId={}, keptMountPointId={}, oldName={}, newName={})",
-                loser.id, keeper_id, loser.name, new_name
+            tracing::info!(
+                target: "quilltap::mount_repair",
+                mount_point_id = %loser.id,
+                kept_mount_point_id = %keeper_id,
+                old_name = %loser.name,
+                new_name = %new_name,
+                "Mount-index case repair: renamed document store whose name collided with a peer except for casing",
             );
         }
     }

@@ -268,20 +268,20 @@ where
         let max_tokens = consult_max_tokens(options.max_output_chars as f64);
 
         // v4's `logger.debug('Custom-tool consult dispatching', {…})` — the
-        // same eight fields at the same point. The core has no logging crate;
-        // `eprintln!` is the module convention (as in `help_doc_sync`).
-        // `promptLength` is JS `prompt.length`, a UTF-16 count.
-        eprintln!(
-            "[pascal.llm-consult] Custom-tool consult dispatching \
-             (chatId {}, provider {}, model {}, dangerous {}, promptLength {}, \
-             maxOutputChars {}, maxTokens {})",
-            chat_id.as_deref().unwrap_or("null"),
-            selection.provider,
-            selection.model_name,
+        // same fields at the same point, at the same DEBUG level (P4.18 gives
+        // the core a real log surface, so this is now `tracing::debug!` instead
+        // of the old `eprintln!` module convention). `promptLength` is JS
+        // `prompt.length`, a UTF-16 count.
+        tracing::debug!(
+            target: "quilltap::pascal",
+            chat_id = chat_id.as_deref().unwrap_or("null"),
+            provider = %selection.provider,
+            model = %selection.model_name,
             dangerous,
-            crate::jsstr::utf16_len(prompt),
-            options.max_output_chars,
-            max_tokens
+            prompt_length = crate::jsstr::utf16_len(prompt),
+            max_output_chars = options.max_output_chars,
+            max_tokens,
+            "Custom-tool consult dispatching",
         );
 
         let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {

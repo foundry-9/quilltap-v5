@@ -61,7 +61,11 @@ pub fn system_home(db: &Db, user_id: &str, fallback_name: Option<&str>) -> Respo
         // v4's catch-all: the route logs the error and answers this fixed
         // message.
         Err(e) => {
-            eprintln!("[system.home] failed to build the home dashboard payload: {e}");
+            tracing::error!(
+                target: "quilltap::system",
+                error = %e,
+                "Failed to build the home dashboard payload",
+            );
             Response::error(ErrorKind::Internal, "Failed to load the home dashboard")
         }
     }

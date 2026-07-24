@@ -731,7 +731,7 @@ pub fn group_state_get(db: &Db, group_id: &str) -> Response {
         Ok(None) => not_found("Group"),
         // v4's catch answers the fixed `serverError('Failed to get state')`.
         Err(e) => {
-            eprintln!("[Groups v1] Error getting state: {e}");
+            tracing::error!(target: "quilltap::groups", error = %e, "Error getting state");
             Response::error(ErrorKind::Internal, "Failed to get state")
         }
     }
@@ -798,7 +798,7 @@ pub async fn group_state_reset(db: &Db, group_id: &str) -> Response {
         Ok(None) => not_found("Group"),
         // v4's reset handler's own catch → `serverError('Failed to reset state')`.
         Err(e) => {
-            eprintln!("[Groups v1] Error resetting state: {e}");
+            tracing::error!(target: "quilltap::groups", error = %e, "Error resetting state");
             Response::error(ErrorKind::Internal, "Failed to reset state")
         }
     }

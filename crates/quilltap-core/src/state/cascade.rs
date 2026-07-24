@@ -206,17 +206,21 @@ pub fn resolve_group_candidates(
     let ids = collect_group_ids(mount, chat, scope);
     let mut groups: Vec<Value> = Vec::new();
     for id in ids {
-        let hydrated = mount.and_then(|mount| {
-            match GroupsRepository::new(main, mount).find_by_id(&id) {
-                Ok(g) => g,
-                Err(e) => {
-                    eprintln!(
-                        "[StateCascade] Could not hydrate a candidate group; skipping (group {id}): {e}"
-                    );
-                    None
-                }
-            }
-        });
+        let hydrated =
+            mount.and_then(
+                |mount| match GroupsRepository::new(main, mount).find_by_id(&id) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "quilltap::state",
+                            group_id = %id,
+                            error = %e,
+                            "Could not hydrate a candidate group; skipping",
+                        );
+                        None
+                    }
+                },
+            );
         if let Some(group) = hydrated {
             groups.push(group);
         }
@@ -264,17 +268,21 @@ pub fn resolve_state_cascade(
         .map(str::to_string);
     if let Some(pid) = &project_id {
         // Any throw → warn + {} (a missing mount-index counts as unavailable).
-        let loaded = mount.and_then(|mount| {
-            match ProjectsRepository::new(main, mount).find_by_id(pid) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!(
-                        "[StateCascade] Could not load project state for merge; using {{}} (project {pid}): {e}"
-                    );
-                    None
-                }
-            }
-        });
+        let loaded =
+            mount.and_then(
+                |mount| match ProjectsRepository::new(main, mount).find_by_id(pid) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "quilltap::state",
+                            project_id = %pid,
+                            error = %e,
+                            "Could not load project state for merge; using {{}}",
+                        );
+                        None
+                    }
+                },
+            );
         if let Some(project) = loaded {
             project_state = as_state_object(project.get("state"));
         }

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.18 (unit 3): convert the remaining raw `eprintln!` swallow/notice sites
+in quilltap-core (files no sibling lane owns) to `tracing` at v4-matched
+levels — the state cascade project/group degrade (warn), the enclave step's
+swallowed turn error (error; the old QT_STEP_DEBUG env gate replaced by
+RUST_LOG — the harness installs no subscriber, so no NDJSON contamination),
+the groups/system state error paths (error), the unwired
+MountRefreshScheduler skip (warn), the Pascal consult-dispatch line (debug,
+matching v4's logger.debug), and the mount-index case-repair rename notices
+(info). The sibling-owned sites (orchestrator, courier_transport,
+chat_settings, build_context, distill, recall_replay) are left for a
+post-round sweep.
+
 P4.18 (units 1+2+4+5): the server is no longer silent. quilltap-web,
 quilltap-tauri, and quilltap-cli now initialize a `tracing` stderr
 subscriber, env-filtered by `RUST_LOG` (default `info`, v4's `LOG_LEVEL`

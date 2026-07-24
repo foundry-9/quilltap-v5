@@ -849,8 +849,11 @@ fn schedule_refresh(
         None => {
             // The seam is unwired (defaults to None until unification wires lane
             // A's reindex/embed services). Loudly note the skip (never silent).
-            eprintln!(
-                "MountRefreshScheduler unwired — skipping document-store refresh for {file_path} (mount {mount_point_id})"
+            tracing::warn!(
+                target: "quilltap::documents",
+                file_path = %file_path,
+                mount_point_id = %mount_point_id,
+                "MountRefreshScheduler unwired — skipping document-store refresh",
             );
         }
     }
