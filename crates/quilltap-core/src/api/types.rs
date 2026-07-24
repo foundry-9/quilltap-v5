@@ -2353,18 +2353,18 @@ pub enum Request {
     /// v4 `GET /api/v1/system/jobs/[id]`.
     #[serde(rename_all = "camelCase")]
     SystemJobGet {
-        id: String,
+        job_id: String,
     },
     /// v4 `POST /api/v1/system/jobs/[id]?action=pause|resume`.
     #[serde(rename_all = "camelCase")]
     SystemJobControl {
-        id: String,
+        job_id: String,
         action: String,
     },
     /// v4 `DELETE /api/v1/system/jobs/[id]`.
     #[serde(rename_all = "camelCase")]
     SystemJobDelete {
-        id: String,
+        job_id: String,
     },
     /// v4 `GET /api/v1/system/tools?action=delete-data-preview`.
     SystemDeleteDataPreview,

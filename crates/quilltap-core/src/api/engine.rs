@@ -712,12 +712,12 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::SystemJobGet { id } => match self.ready_db() {
-                Ok(db) => super::system_data::job_get(&db, &id),
+            Request::SystemJobGet { job_id } => match self.ready_db() {
+                Ok(db) => super::system_data::job_get(&db, &job_id),
                 Err(r) => r,
             },
-            Request::SystemJobControl { id, action } => match self.ready_db() {
-                Ok(db) => match super::system_data::job_control(&db, &id, &action).await {
+            Request::SystemJobControl { job_id, action } => match self.ready_db() {
+                Ok(db) => match super::system_data::job_control(&db, &job_id, &action).await {
                     super::system_data::JobControlOutcome::Responded(resp) => resp,
                     super::system_data::JobControlOutcome::Resumed(resp) => {
                         // v4 resume calls ensureProcessorRunning — best-effort nudge.
@@ -727,8 +727,8 @@ impl CoreEngine {
                 },
                 Err(r) => r,
             },
-            Request::SystemJobDelete { id } => match self.ready_db() {
-                Ok(db) => super::system_data::job_delete(&db, &id).await,
+            Request::SystemJobDelete { job_id } => match self.ready_db() {
+                Ok(db) => super::system_data::job_delete(&db, &job_id).await,
                 Err(r) => r,
             },
             // Delete-all + export/import/backup land in later P4.9G1 units; until

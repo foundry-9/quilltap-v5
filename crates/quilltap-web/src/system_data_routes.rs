@@ -185,27 +185,32 @@ pub async fn system_tools_post(
 
 pub async fn system_job_get(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
+    Path(job_id): Path<String>,
 ) -> AxumResponse {
-    dispatch_system(&state, CoreRequest::SystemJobGet { id }, StatusCode::OK).await
+    dispatch_system(&state, CoreRequest::SystemJobGet { job_id }, StatusCode::OK).await
 }
 
 pub async fn system_job_delete(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
+    Path(job_id): Path<String>,
 ) -> AxumResponse {
-    dispatch_system(&state, CoreRequest::SystemJobDelete { id }, StatusCode::OK).await
+    dispatch_system(
+        &state,
+        CoreRequest::SystemJobDelete { job_id },
+        StatusCode::OK,
+    )
+    .await
 }
 
 pub async fn system_job_post(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
+    Path(job_id): Path<String>,
     Query(q): Query<HashMap<String, String>>,
 ) -> AxumResponse {
     let action = q.get("action").cloned().unwrap_or_default();
     dispatch_system(
         &state,
-        CoreRequest::SystemJobControl { id, action },
+        CoreRequest::SystemJobControl { job_id, action },
         StatusCode::OK,
     )
     .await

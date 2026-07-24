@@ -25,7 +25,10 @@ fn round_trip(wire: serde_json::Value, expected: Request) {
 #[test]
 fn p4_9g1_sixteen_wire_shapes() {
     // Backup / restore.
-    round_trip(json!({ "type": "systemBackupCreate" }), Request::SystemBackupCreate);
+    round_trip(
+        json!({ "type": "systemBackupCreate" }),
+        Request::SystemBackupCreate,
+    );
     round_trip(
         json!({ "type": "systemRestorePreview", "uploadId": "u1" }),
         Request::SystemRestorePreview {
@@ -89,7 +92,10 @@ fn p4_9g1_sixteen_wire_shapes() {
     );
 
     // Tasks queue + jobs + concurrency.
-    round_trip(json!({ "type": "systemTasksQueue" }), Request::SystemTasksQueue);
+    round_trip(
+        json!({ "type": "systemTasksQueue" }),
+        Request::SystemTasksQueue,
+    );
     round_trip(
         json!({ "type": "systemTasksQueueControl", "action": "start" }),
         Request::SystemTasksQueueControl {
@@ -107,19 +113,23 @@ fn p4_9g1_sixteen_wire_shapes() {
         },
     );
     round_trip(
-        json!({ "type": "systemJobGet", "id": "j1" }),
-        Request::SystemJobGet { id: "j1".into() },
+        json!({ "type": "systemJobGet", "jobId": "j1" }),
+        Request::SystemJobGet {
+            job_id: "j1".into(),
+        },
     );
     round_trip(
-        json!({ "type": "systemJobControl", "id": "j1", "action": "pause" }),
+        json!({ "type": "systemJobControl", "jobId": "j1", "action": "pause" }),
         Request::SystemJobControl {
-            id: "j1".into(),
+            job_id: "j1".into(),
             action: "pause".into(),
         },
     );
     round_trip(
-        json!({ "type": "systemJobDelete", "id": "j1" }),
-        Request::SystemJobDelete { id: "j1".into() },
+        json!({ "type": "systemJobDelete", "jobId": "j1" }),
+        Request::SystemJobDelete {
+            job_id: "j1".into(),
+        },
     );
 
     // Delete-all.

@@ -1,6 +1,6 @@
-import { expect, request as pwRequest, test, type Page } from './support/fixtures';
+import { expect, test, type Page } from './support/fixtures';
 
-import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { E2E_PASSPHRASE } from './support/env';
 
 /**
  * ORDERING: this rides the SHARED global-setup server and only unlocks it if the
@@ -13,31 +13,27 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * unlockState / chatSettingsUpdate): the eight-card tab walk + a `?section=`
  * deep-link, a passphrase round-trip (changed to a temp value and BACK, so the
  * shared server's passphrase is left exactly as found), and the app-wide
- * auto-lock provider's idle warning under a Playwright fake clock. The
- * Tasks Queue / Import-Export / Delete-All beats need the sixteen §1 verbs
- * P4.9G1 delivers, so they ACTIVATE-AT-UNIFY behind a probe.
+ * auto-lock provider's idle warning under a Playwright fake clock.
+ *
+ * ACTIVATED AT UNIFICATION (2026-07-24): P4.9G1 landed the tasks-queue family,
+ * so the Tasks Queue beat now runs LIVE against `systemTasksQueue`, and the
+ * Import/Export beat runs its client-side step-1 walk. The lane's original
+ * `systemTasksQueue` probe was RETIRED as too coarse: G1 DEFINED all sixteen
+ * §1 variants but only IMPLEMENTED the tasks-queue family, so the probe passes
+ * for verbs that still answer the loud "recognized but not yet available"
+ * refusal. The one genuinely-blocked beat is gated by name below instead.
  */
 
 const TEMP_PASSPHRASE = 'a temporary interlude';
 
-/** ACTIVATE-AT-UNIFY: the Data & System server verbs land in sibling P4.9G1. */
-let serverBackendReady = false;
-
-test.beforeAll(async () => {
-  try {
-    const ctx = await pwRequest.newContext();
-    const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'systemTasksQueue' } });
-    const body = (await res.json().catch(() => null)) as
-      | { type?: string; data?: { message?: string } }
-      | null;
-    await ctx.dispose();
-    const unknownVariant =
-      body?.type === 'error' && /unknown variant/i.test(String(body?.data?.message ?? ''));
-    serverBackendReady = body != null && !unknownVariant;
-  } catch {
-    serverBackendReady = false;
-  }
-});
+/**
+ * The delete-all family is OPEN under P4.9G1 (`systemDeleteDataPreview` /
+ * `systemDeleteData` answer the not-yet-available refusal — see the lane record
+ * in `status-log.md` and the order's status header). Flip to `true` in the same
+ * change that lands the delete-all unit; the beat below is already written
+ * against the real flow.
+ */
+const DELETE_ALL_SERVER_LANDED = false;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -156,22 +152,25 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await savedOff;
   });
 
-  // === ACTIVATE-AT-UNIFY (needs P4.9G1's §1 verbs) ===
+  // === ACTIVATED AT UNIFICATION over P4.9G1's landed tasks-queue family ===
 
-  test('tasks queue: view a background job', async ({ page }) => {
-    test.skip(!serverBackendReady, 'Needs P4.9G1 systemTasksQueue (ACTIVATE-AT-UNIFY)');
+  test('tasks queue: the card renders live server state', async ({ page }) => {
     await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=system&section=tasks-queue');
     await expect(page.getByText('Simultaneous Labours', { exact: false })).toBeVisible({
       timeout: 15_000,
     });
-    // The stats + queue render from the live systemTasksQueue verb.
     await expect(page.getByText('Queue Items', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // The processor pill renders ONLY under `@if (data())` — so it appears only
+    // once the live `systemTasksQueue` verb has answered. That makes this the
+    // assertion that actually proves P4.9G1's server surface, not just chrome.
+    await expect(
+      page.getByText(/^Queue (Running|Stopped)$/).first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('export → import round-trip', async ({ page }) => {
-    test.skip(!serverBackendReady, 'Needs P4.9G1 export/import legs (ACTIVATE-AT-UNIFY)');
     await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=system&section=import-export');
@@ -186,11 +185,14 @@ test.describe('P4.9G2 — the Data & System tab', () => {
 /**
  * The delete-all beat runs LAST in its OWN spec file-position, sequenced after
  * every other beat: the fixture is copied fresh per run, so a full wipe is safe.
- * ACTIVATE-AT-UNIFY behind the same probe.
+ * STILL GATED: the delete-all server family is OPEN under P4.9G1.
  */
 test.describe('P4.9G2 — Delete All Data (destructive; last)', () => {
   test('delete-all preview → confirm → complete', async ({ page }) => {
-    test.skip(!serverBackendReady, 'Needs P4.9G1 systemDeleteData (ACTIVATE-AT-UNIFY)');
+    test.skip(
+      !DELETE_ALL_SERVER_LANDED,
+      'P4.9G1 delete-all family OPEN (systemDeleteDataPreview/systemDeleteData refuse)',
+    );
     await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=system&section=delete-all-data');
