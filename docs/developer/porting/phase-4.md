@@ -2598,14 +2598,14 @@ Four lanes, ownership fully disjoint (each order carries the binding map):
   `initiatedBy`, `delegatedDisplay` short-circuit) so TOOL rows stop
   rendering as raw-JSON whisper bubbles; rider: v4's dynamic
   `whispered to <names>` label. SPA-only; bumps SPA.
-- **P4.18** (`work-orders/p4.18-tracing-subscriber.md`) — **NEEDS A HUMAN
-  RULING before dispatch** (the standing 2026-07-23 open question, now
-  order-shaped): arm (a) recommended — `tracing` + `tracing-subscriber`
+- **P4.18** (`work-orders/p4.18-tracing-subscriber.md`) — **RULED
+  2026-07-24 (human): arm (a) — cleared to dispatch** (the standing
+  2026-07-23 open question, settled): `tracing` + `tracing-subscriber`
   in the three bins + events at the surveyed swallow sites (job runner,
   spine error frames, host pump, `log_failed_call`), `RUST_LOG` default
   info, explicitly NO differential (log records are operator output, not
-  data); arms (b) eprintln-only / (c) status quo recorded. Owns the bins,
-  `host.rs`/`spine.rs`, `job_runner.rs`/`cheap_llm_exec.rs`.
+  data); arms (b) eprintln-only / (c) status quo recorded in the order.
+  Owns the bins, `host.rs`/`spine.rs`, `job_runner.rs`/`cheap_llm_exec.rs`.
 
 Left out of the round deliberately: P4.13 unit 9 (💸 live tool-use walk)
 and the response-bodies corpus real-capture upgrades — both ride the
