@@ -32295,3 +32295,76 @@ clean · `TZ=UTC cargo test --workspace --no-fail-fast` with both `QT_ORACLE_SYS
 vars: **373 test binaries, zero failures** (372 → 373 with the new differential),
 both system families running by name with zero SKIP. Versions: core 0.0.347,
 harness 0.0.294.
+
+## Lane record — P4.9G3 unit 2: the two REST remainders (jobs collection + change-passphrase alias) (2026-07-24)
+
+### `GET|POST /api/v1/system/jobs` — the collection edge
+
+The §1 wire surface is FROZEN and carries **no verb for the jobs collection**,
+so this is a **web-edge-only leg**: `system_data_routes::system_jobs_collection_{get,post}`
+reach `api::system_data::{jobs_list, jobs_enqueue_now}` directly over
+`host.core().db()` (the established raw-edge pattern — `files_routes` /
+`terminal_routes`), plus the job pump.
+
+- **The pump question the order flagged is answered: no new seam was needed.**
+  `JobPumpControl` already exists on `EngineAssembly` (P4.9G1) — it just had no
+  public accessor. Added `CoreEngine::job_pump_control()` next to the existing
+  `CoreEngine::db()`, in a `// ── P4.9G3 ──` marked block far from the shared
+  refusal-arm region. The edge uses it for both v4 behaviours: the
+  `ensureProcessorRunning()` v4 calls at the top of GET and inside `enqueueJob`
+  (the pump's idempotent `start`), and the `processor` snapshot in the GET body.
+  A `None` pump (read-only embedder, no cadence) answers the loud not-assembled
+  refusal with the same wording the dispatch arms use.
+- `jobs_enqueue_now` was added to `api/system_data.rs` so the minted id +
+  timestamp stay in core (`jobs_enqueue` keeps taking them explicitly so the
+  differential can pin them). The POST answers **201**, v4's status.
+- One ordering note: v4 nudges the pump inside `enqueueJob`, before returning;
+  v5 nudges after a successful create. Equivalent for an idempotent start, and
+  it means a rejected body never wakes the pump.
+
+### `system_jobs_collection_equivalence` — the new differential (8 cases, green first run)
+
+`jobs_list` / `jobs_enqueue` were **P4.9G1's blind spot**: written with no edge
+and no oracle case, so they had never been diffed against v4. Wiring the edge
+closed that with a new oracle (`harness/oracle/cases/system-jobs-collection.test.ts`)
+driving v4's REAL `app/api/v1/system/jobs/route.ts` handlers.
+
+Cases: the four GET shapes (plain / `includeJobs=true` / `chatId` /
+both) · the enqueue (201 + the read-back row) · and the three refusals
+(unknown type, missing payload, payload not an object). Processor status pinned
+identically on both sides. The enqueue case normalizes the minted `jobId` and
+the created row's `id`/`scheduledAt`/`createdAt`/`updatedAt`; type, status,
+payload, priority, attempts and maxAttempts are diffed verbatim, as is the
+resulting job count. **All eight matched on the first run** — the P4.9G1 port
+was correct, it just had no proof.
+
+Regen: identical shape to the delete-data recipe above, with
+`-- system-jobs-collection`, `QT_ORACLE_OUT=/tmp/oracle-system-jobs-collection.ndjson`,
+then `QT_ORACLE_SYSTEM_JOBS_COLLECTION=… cargo test -p quilltap-harness --test
+system_jobs_collection_equivalence -- --nocapture`.
+
+### `POST /api/v1/system/unlock?action=change-passphrase` — the alias (tier 2)
+
+v5 had **no `/api/v1/system/unlock` route at all** (the SPA uses the dispatch
+verbs). The alias adds the path with the ONE action the order names, mapping
+`{oldPassphrase, newPassphrase}` onto the existing `Request::ChangePassphrase`
+verb — which already reproduces v4's messages and status kinds verbatim
+(`Unauthorized` "Current passphrase is incorrect", the BadRequest
+"Application must be unlocked before changing the passphrase") — and answering
+v4's `{success:true}` on the `Ack`.
+
+**Named scope limit:** v4's four sibling unlock actions (`setup` / `unlock` /
+`store` / `lock`) all have dispatch verbs the SPA uses and get **no** REST alias
+in this lane; they answer `unknown_action` at this path. Aliasing them would
+mean inventing v4-envelope shapes for four more responses with no differential
+behind them — out of scope, recorded here rather than done quietly. No
+differential covers the alias itself (it is a pure re-exposure of a verb already
+covered by the engine's own tests).
+
+### Gate at this commit
+
+fmt clean · clippy `--workspace --all-targets -D warnings` clean **plain AND
+`--features quilltap-core/native-transport`** (the `db_and_pump` helper boxes its
+`AxumResponse` error — `result_large_err`) · `TZ=UTC cargo test --workspace
+--no-fail-fast` with all three `QT_ORACLE_SYSTEM_*` vars: **374 test binaries,
+zero failures**. Versions: core 0.0.348, harness 0.0.295, web 0.0.41.

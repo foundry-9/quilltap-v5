@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Two REST endpoints v5 was missing now answer at their v4 addresses: the
+background-jobs collection (queue stats, per-type active counts, the recent
+job list, pending jobs for a chat, and creating a job) and changing the
+database passphrase. The job-listing and job-creation code had been written
+earlier with nothing calling it and never checked against v4; wiring it up
+came with a new differential that does check it, case for case.
+
 Delete All Data now works. The Settings card's preview shows real counts —
 characters, chats, tags, files, memories, API keys, backups, projects, the
 three profile kinds and both template kinds — and confirming the wipe

@@ -9,9 +9,11 @@
 //! - `GET  /api/v1/system/jobs/{id}`
 //! - `DELETE /api/v1/system/jobs/{id}`
 //! - `POST /api/v1/system/jobs/{id}?action=pause|resume`
+//! - `GET|POST /api/v1/system/jobs` — the COLLECTION (P4.9G3; web-edge-only)
+//! - `POST /api/v1/system/unlock?action=change-passphrase` (P4.9G3; the alias)
 //!
 //! The export/import/backup/restore edges (streaming NDJSON, multipart, byte
-//! legs) land in later P4.9G1 units.
+//! legs) land in the sibling P4.9G4 / P4.9G5 lanes.
 
 use std::collections::HashMap;
 
@@ -215,3 +217,159 @@ pub async fn system_job_post(
     )
     .await
 }
+
+// ── P4.9G3 ──────────────────────────────────────────────────────────────────
+//
+// `/api/v1/system/jobs` (the COLLECTION) and the change-passphrase alias are
+// **web-edge-only** legs: the §1 wire surface (FROZEN this round) has no verb
+// for the jobs collection, and the passphrase change already has one
+// (`Request::ChangePassphrase`) that this alias simply re-exposes at v4's URL.
+// The collection edge therefore reaches `api::system_data`'s free functions
+// directly over `host.core().db()` — the established raw-edge pattern
+// (`files_routes` / `terminal_routes`) — plus the host job-pump control.
+
+use quilltap_core::api::system_data::{self, JobPumpControl, ProcessorStatus};
+use quilltap_core::api::SINGLE_USER_ID;
+use quilltap_core::db::runtime::Db;
+use std::sync::Arc;
+
+/// The Db + job pump, or the loud typed refusal (a locked engine / a read-only
+/// embedder with no cadence assembled — the same refusal the dispatch
+/// tasks-queue arms answer).
+/// (The `Err` is boxed: an `AxumResponse` dwarfs the `Ok` tuple — clippy
+/// `result_large_err`.)
+fn db_and_pump(state: &SharedState) -> Result<(Db, Arc<dyn JobPumpControl>), Box<AxumResponse>> {
+    let Some(host) = state.host() else {
+        return Err(Box::new(error_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Server is not running",
+        )));
+    };
+    let Some(db) = host.core().db() else {
+        return Err(Box::new(error_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Database is locked",
+        )));
+    };
+    let Some(pump) = host.core().job_pump_control() else {
+        return Err(Box::new(error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "job pump not assembled (job-pump-control seam deferral)",
+        )));
+    };
+    Ok((db, pump))
+}
+
+/// v4 `GET /api/v1/system/jobs` (`system/jobs/route.ts:23`) — queue stats +
+/// per-type active counts + the processor snapshot, with the optional
+/// `includeJobs=true` (50 newest) and `chatId` (pending-for-chat) legs. v4 calls
+/// `ensureProcessorRunning()` first; here that is the pump's idempotent `start`.
+pub async fn system_jobs_collection_get(
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let (db, pump) = match db_and_pump(&state) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    pump.start();
+    let include_jobs = q.get("includeJobs").map(String::as_str) == Some("true");
+    let chat_id = q.get("chatId").filter(|s| !s.is_empty()).cloned();
+    let status: ProcessorStatus = pump.status();
+    system_body(
+        system_data::jobs_list(
+            &db,
+            SINGLE_USER_ID,
+            include_jobs,
+            chat_id.as_deref(),
+            &status,
+        ),
+        StatusCode::OK,
+    )
+}
+
+/// v4 `POST /api/v1/system/jobs` (`route.ts:71`) — enqueue a job; **201** on
+/// success. The type gate and the payload-must-be-an-object gate live in the
+/// core fn (v4's `BackgroundJobTypeEnum.safeParse` + the explicit check).
+pub async fn system_jobs_collection_post(
+    State(state): State<SharedState>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    let (db, pump) = match db_and_pump(&state) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let job_type = parsed
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let payload = parsed.get("payload").cloned().unwrap_or(Value::Null);
+    // v4: `typeof priority === 'number' ? priority : undefined`.
+    let priority = parsed.get("priority").and_then(Value::as_f64);
+    let max_attempts = parsed.get("maxAttempts").and_then(Value::as_f64);
+
+    let resp = system_data::jobs_enqueue_now(
+        &db,
+        SINGLE_USER_ID,
+        &job_type,
+        &payload,
+        priority,
+        max_attempts,
+    )
+    .await;
+    // v4 nudges the processor before enqueueing; either order is equivalent for
+    // an idempotent start, and doing it after means a rejected body never wakes
+    // the pump.
+    if matches!(resp, CoreResponse::System(_)) {
+        pump.start();
+    }
+    system_body(resp, StatusCode::CREATED)
+}
+
+/// v4 `POST /api/v1/system/unlock?action=change-passphrase`
+/// (`system/unlock/route.ts:318`) — the REST alias over the existing
+/// `Request::ChangePassphrase` verb (which already reproduces v4's messages and
+/// status kinds). Body `{oldPassphrase, newPassphrase}` → `{success:true}`.
+///
+/// **Scope, named:** only this one action is aliased. v4's four sibling actions
+/// (`setup` / `unlock` / `store` / `lock`) all have dispatch verbs the SPA uses;
+/// they get no REST alias in this lane and answer `unknown_action` here.
+pub async fn system_unlock_post(
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    let action = q.get("action").map(String::as_str).unwrap_or("");
+    if action != "change-passphrase" {
+        return unknown_action(action);
+    }
+    let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let str_field = |key: &str| {
+        parsed
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let req = CoreRequest::ChangePassphrase {
+        old_passphrase: str_field("oldPassphrase"),
+        new_passphrase: str_field("newPassphrase"),
+    };
+    match dispatch_core(&state, req).await {
+        Ok(CoreResponse::Ack(_)) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            "{\"success\":true}",
+        )
+            .into_response(),
+        Ok(CoreResponse::Error(e)) => error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(r) => r,
+    }
+}
+// ── end P4.9G3 ──

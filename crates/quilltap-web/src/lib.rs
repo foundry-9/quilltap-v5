@@ -302,6 +302,17 @@ pub fn build_router(state: SharedState) -> Router {
                 .post(system_data_routes::system_job_post),
         )
         // === end P4.9G1 ===
+        // === P4.9G3: the jobs COLLECTION edge + the change-passphrase alias ===
+        .route(
+            "/api/v1/system/jobs",
+            get(system_data_routes::system_jobs_collection_get)
+                .post(system_data_routes::system_jobs_collection_post),
+        )
+        .route(
+            "/api/v1/system/unlock",
+            axum::routing::post(system_data_routes::system_unlock_post),
+        )
+        // === end P4.9G3 ===
         // === end P4.6au ===
         // === P4.9I1A: the dedicated brahma-console CRUD + send surface ===
         .route(

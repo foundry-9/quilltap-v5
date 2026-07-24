@@ -452,6 +452,22 @@ impl CoreEngine {
         }
     }
 
+    // ── P4.9G3 ──
+    /// The host-wired job-pump control, when ready and assembled. The
+    /// `/api/v1/system/jobs` COLLECTION edge (v4 `system/jobs/route.ts`) is
+    /// web-edge-only — the §1 wire surface has no verb for it — so the edge needs
+    /// the same `ProcessorStatus` / `ensureProcessorRunning` the dispatch arms
+    /// reach through [`ready_job_pump`](Self::ready_job_pump). `None` on a
+    /// read-only embedder (no cadence) → the edge answers the loud
+    /// not-assembled refusal, exactly like the tasks-queue arms.
+    pub fn job_pump_control(&self) -> Option<Arc<dyn super::system_data::JobPumpControl>> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.job_pump.clone(),
+            EngineState::Locked { .. } => None,
+        }
+    }
+    // ── end P4.9G3 ──
+
     async fn dispatch_impl(&self, req: Request) -> Response {
         match req {
             Request::Health => self.health(),

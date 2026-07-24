@@ -626,6 +626,32 @@ pub async fn jobs_enqueue(
     }
 }
 
+/// [`jobs_enqueue`] with the id + timestamp minted here (v4's repo `create`
+/// mints both). The collection POST is a web-edge-only leg — the §1 wire surface
+/// has no verb for it — so the minting must not leak to the transport;
+/// [`jobs_enqueue`] keeps taking them explicitly so the differential can pin
+/// them.
+pub async fn jobs_enqueue_now(
+    db: &Db,
+    user_id: &str,
+    job_type: &str,
+    payload: &Value,
+    priority: Option<f64>,
+    max_attempts: Option<f64>,
+) -> Response {
+    jobs_enqueue(
+        db,
+        user_id,
+        job_type,
+        payload,
+        priority,
+        max_attempts,
+        &uuid::Uuid::new_v4().to_string(),
+        &crate::clock::now_iso(),
+    )
+    .await
+}
+
 // ── delete-all-data (v4 `handleDeleteDataPreview` / `handleDeleteData`) ──────
 
 /// v4's server-side confirmation sentinel (`tools/route.ts:155`) — re-checked
