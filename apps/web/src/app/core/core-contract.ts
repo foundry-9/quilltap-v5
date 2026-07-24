@@ -1847,7 +1847,12 @@ export interface PascalMeta {
  */
 export interface MessageDto {
   id: string;
-  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  /**
+   * `TOOL` is a real persisted role (v4 `saveToolMessages` — one `role:'TOOL'`
+   * row per tool result) that the salon read projects verbatim; the Salon renders
+   * it through `qt-tool-message` (P4.17), not the normal message row.
+   */
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM' | 'TOOL';
   content: string;
   tokenCount: number | null;
   promptTokens: number | null;
@@ -1879,6 +1884,14 @@ export interface MessageDto {
   confirmationRevised?: boolean;
   confirmationNotes?: string | null;
   confirmationOriginalContent?: string | null;
+  /**
+   * Character-initiated `role:'TOOL'` rows folded into this assistant message for
+   * embedded rendering (v4 `app/salon/[id]/group-tool-messages.ts` —
+   * `groupToolMessagesIntoAssistants`). A pure rendering annotation, never
+   * persisted; present only on a shallow clone of a host assistant. See
+   * `chat/group-tool-messages.ts`.
+   */
+  attachedToolMessages?: MessageDto[];
 }
 
 /** An enriched participant on the conversation detail (v4 `enrichParticipantDetail`). */

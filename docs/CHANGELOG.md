@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.17 unit 1 (SPA): added the `qt-tool-message` component — a port of v4's
+`ToolMessage.tsx`. It renders a `role:'TOOL'` message as a collapsible
+Tool Request / Tool Response card with a Success/Failed badge, tool-icon
+header, attribution line, and wardrobe action notice, in both the embedded
+(nested in a character bubble) and standalone (full row + avatar) layouts.
+Envelope parse handles the old `toolName` and new `tool` keys plus the
+parse-failure fallback; `delegatedDisplay` rows render nothing. Copy
+buttons surface v4's toast copy on an inline aria-live status line (v5 has
+no toast system). Image thumbnails are a loud deferral. Not wired into the
+Salon yet (unit 2). MessageDto gains `role:'TOOL'` and the
+`attachedToolMessages` render annotation. 19-case byte-fidelity spec.
+
 Dispositioned dogfood finding #28 (retrospective recall) as NOT-A-BUG for
 the classifier: the retrospective distill is a faithful port of v4, and the
 finding's premise was wrong. Benching v4's real classifier (deepseek-v4-flash,
