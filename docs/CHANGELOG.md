@@ -74,6 +74,15 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 8 (SPA): the Import / Export card + both 5-step wizards. Export
+(type / select / options / exporting / complete) lists entities via
+systemExportEntities and streams the .qtap via the web-edge export leg
+(apiUrl → Blob), with v4's quirky total-step counter reproduced. Import
+(file / preview / options / importing / complete) drag-drops a .qtap,
+sniffs NDJSON-vs-legacy client-side, and previews/executes over the
+multipart web-edge legs. Over G1's verb + the web-edge legs — the deep
+flows are ACTIVATE-AT-UNIFY; specs green (5).
+
 P4.9G2 unit 7 (SPA): the Backup & Restore card + both dialogs. Backup is a
 single step (systemBackupCreate → anchor-stream the single-use zip via
 apiUrl). Restore is a 4-step wizard (pick / upload+preview / mode /

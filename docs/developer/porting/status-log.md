@@ -31851,3 +31851,28 @@ profiles.connection` relabel, and warnings. `backup-restore-card.ts` hosts
 both + reloads the app on `restoreComplete` (v4 `:66`). Live wizard flow +
 e2e beat are ACTIVATE-AT-UNIFY. Spec: card opens dialogs, backup
 dispatch+close + error-keeps-open, restore step-1 Next gate.
+
+### Unit 8 — Import / Export card + both 5-step wizards (ACTIVATE-AT-UNIFY)
+
+`import-export.types.ts` holds the shared constants (EXPORTABLE_TYPES, the
+ten-entry ENTITY_TYPE_LABELS, `toExportEntityType` camel→kebab,
+`formatBytes`). `export-dialog.ts` ports v4 `export-dialog.tsx` +
+`useExportData.ts`: the 5 steps (type/select/options/exporting/complete +
+error), entity listing via `systemExportEntities {entityType}`, the streamed
+`.qtap` download via the web-edge `POST ?action=export` leg (`apiUrl()` →
+`response.blob()` → `triggerBlobDownload`, filename `quilltap-<type>-<date>
+.qtap`), the memory-count recompute, and — carried VERBATIM — v4's quirky
+`getTotalSteps` (Options reads "3 of 4", error "1 of 5") + the Export-vs-Next
+button branch (non-memory types show Export on the select step).
+`import-dialog.ts` ports v4 `import-dialog.tsx` + `useImportData.ts`: the 5
+steps (file/preview/options/importing/complete + error), the drag-drop zone,
+the client-side `parseExportFile` sniff (NDJSON envelope `data:{}` vs legacy
+monolith, with v4's exact error strings), preview + execute over the
+multipart web-edge legs (`?action=import-preview|import-execute` — the client
+always holds the File, so the JSON dispatch legs are the unreached fallback),
+the auto-enable-memories-on-preview, and the imported/skipped/warnings
+summary. `import-export-card.ts` hosts both (inner card/h2 dropped — the
+CollapsibleCard supplies them). Live flows + e2e beat are
+ACTIVATE-AT-UNIFY. Spec: card opens export, the total-step quirk, entity
+load + Export-button branch, legacy parse + reject-non-Quilltap (a fake File
+supplies the jsdom-unimplemented `Blob.text`).
