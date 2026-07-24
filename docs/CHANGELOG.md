@@ -61,6 +61,10 @@ the shared fixture and diffs the output line by line — 42 cases, byte-exact.
 Also ported the `.qtap` upload reader: the format sniff, the line-by-line
 NDJSON parse, and the reassembler that folds a streamed export back into the
 shape the importer consumes.
+Recorded where the Backup & Restore work stands in its work order: the
+backing-up half is finished and working; restoring from a backup has not
+been started. Documentation only.
+
 The Create Backup button now works. Quilltap packages everything it
 gathered into a zip archive, holds it for thirty minutes, and hands it to
 your browser as a download; the archive is deleted the moment it has been
