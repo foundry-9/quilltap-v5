@@ -25,6 +25,9 @@
 //! resolved from the per-call `task_type` through [`map_task_type_to_log_type`].
 //! The writer never throws, so the port awaits (the watermark precedent) rather
 //! than v4's fire-and-forget `.catch`; the DB effect is identical.
+//!
+//! **A FAILED provider call also writes a row** — a deliberate divergence from
+//! v4, ruled 2026-07-23 (P4.13 unit 6): see `log_failed_call`.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -145,7 +148,8 @@ pub struct CheapLlmLogConfig {
 #[derive(Default)]
 pub struct CheapLlmTaskExecutor {
     profiles_without_custom_temp: Mutex<HashSet<String>>,
-    /// When present, every successful provider call writes an `llm_logs` row.
+    /// When present, every provider call writes an `llm_logs` row — success
+    /// rows v4-faithful, failure rows per the ruled divergence (unit 6).
     log: Option<CheapLlmLogConfig>,
 }
 
@@ -167,18 +171,15 @@ impl CheapLlmTaskExecutor {
     /// v4 `logCall` (core-execution.ts:93): summarize the just-completed
     /// provider call and write one `llm_logs` row (no-op when logging is off).
     ///
-    /// **A FAILED call writes NOTHING — v4-faithful, and it costs hours.**
-    /// v4 calls `logCall` only on `sendToProvider`'s success arms
-    /// (core-execution.ts:131 / :141 / :153); a throw propagates to the outer
-    /// `catch` at :260, which turns it into `{success:false, error}` and logs no
-    /// row. So a provider outage leaves the LLM Inspector completely empty and
-    /// reads as "the task never ran" — that is exactly how dogfood finding #23
-    /// (every non-streaming request asking for SSE) stayed invisible through a
-    /// whole dogfood pass. v5 reproduces the silence deliberately; making the
-    /// error arms write a row (the `LogResponse.error` field already exists and
-    /// is hard-coded `None`) would be a **deliberate divergence from v4** and
-    /// wants a human ruling, not a lane decision. Recorded in the P4.11 lane
-    /// record.
+    /// **The failure arms now write a row too — RULED 2026-07-23 (P4.13
+    /// unit 6), a deliberate divergence from v4.** v4 calls `logCall` only on
+    /// `sendToProvider`'s success arms (core-execution.ts:131 / :141 / :153);
+    /// a throw logs nothing, so a provider outage leaves the LLM Inspector
+    /// empty and reads as "the task never ran" — exactly how dogfood finding
+    /// #23 stayed invisible through a whole dogfood pass (finding #26 repeated
+    /// the lesson). The human ruling the P4.11 record requested came back YES:
+    /// see [`Self::log_failed_call`]. The SUCCESS arms below stay byte-faithful
+    /// to v4.
     /// The cheap path sets no `durationMs`/`cacheUsage`/`rawProviderUsage`/
     /// `requestHashes`; the request carries `temperature` only when one was sent
     /// (v4 spreads `...(temperature !== undefined ? { temperature } : {})`, which
@@ -240,6 +241,63 @@ impl CheapLlmTaskExecutor {
         let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
     }
 
+    /// The failed-call error row — a DELIBERATE divergence from v4, RULED
+    /// 2026-07-23 (P4.13 unit 6): v4 logs NOTHING when a cheap-LLM call fails,
+    /// which made findings #23/#26 cost hours of invisible failure arms — and
+    /// v5 has no console to fall back on. The row is a normal cheap-LLM row
+    /// whose response is `{content: "", error: <text>, …}` with no usage —
+    /// distinguishable from every success row (those always log `error: null`).
+    /// The success arms above stay byte-faithful to v4.
+    #[allow(clippy::too_many_arguments)]
+    async fn log_failed_call(
+        &self,
+        task_type: Option<&str>,
+        selection: &CheapLlmSelection,
+        messages: &[CompletionMessage],
+        temperature: Option<f64>,
+        effective_max_tokens: i64,
+        character_id: Option<&str>,
+        error_text: &str,
+    ) {
+        let Some(cfg) = &self.log else {
+            return;
+        };
+        let params = LogLlmCallParams {
+            user_id: cfg.user_id.clone(),
+            log_type: map_task_type_to_log_type(task_type),
+            message_id: cfg.message_id.clone(),
+            chat_id: cfg.chat_id.clone(),
+            character_id: character_id.map(str::to_string),
+            provider: selection.provider.clone(),
+            model_name: selection.model_name.clone(),
+            request: LogRequest {
+                messages: messages
+                    .iter()
+                    .map(|m| LogRequestMessage {
+                        role: m.role.as_str().to_string(),
+                        content: m.content.clone(),
+                        attachments: None,
+                    })
+                    .collect(),
+                temperature,
+                max_tokens: Some(effective_max_tokens),
+                tools: None,
+            },
+            response: LogResponse {
+                content: String::new(),
+                error: Some(error_text.to_string()),
+                finish_reason: None,
+                tool_calls: None,
+            },
+            usage: None,
+            cache_usage: None,
+            raw_provider_usage: None,
+            request_hashes: None,
+            duration_ms: None,
+        };
+        let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
+    }
+
     /// v4 `sendToProvider` minus the host-side API-key step: build the params
     /// the cheap path sets (strict max-tokens floor of 2048, temperature 0.3
     /// unless the profile is known not to support one, the per-character cache
@@ -276,13 +334,30 @@ impl CheapLlmTaskExecutor {
             .expect("temp cache lock")
             .contains(&profile_key);
         if known_no_temp {
-            let response = completion
+            let response = match completion
                 .send_message(
                     &selection.provider,
                     selection.base_url.as_deref(),
                     &params(None),
                 )
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(error) => {
+                    // The ruled error row (see `log_failed_call`).
+                    self.log_failed_call(
+                        task_type,
+                        selection,
+                        messages,
+                        None,
+                        effective_max_tokens,
+                        character_id,
+                        &error.message,
+                    )
+                    .await;
+                    return Err(error);
+                }
+            };
             // v4 logs after every successful provider call (with the temperature
             // actually sent — none here).
             self.log_call(
@@ -335,13 +410,30 @@ impl CheapLlmTaskExecutor {
                         .lock()
                         .expect("temp cache lock")
                         .insert(profile_key);
-                    let response = completion
+                    let response = match completion
                         .send_message(
                             &selection.provider,
                             selection.base_url.as_deref(),
                             &params(None),
                         )
-                        .await?;
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(retry_error) => {
+                            // The ruled error row (see `log_failed_call`).
+                            self.log_failed_call(
+                                task_type,
+                                selection,
+                                messages,
+                                None,
+                                effective_max_tokens,
+                                character_id,
+                                &retry_error.message,
+                            )
+                            .await;
+                            return Err(retry_error);
+                        }
+                    };
                     self.log_call(
                         task_type,
                         selection,
@@ -357,6 +449,18 @@ impl CheapLlmTaskExecutor {
                         usage: response.usage,
                     })
                 } else {
+                    // The ruled error row (see `log_failed_call`) — the
+                    // temperature actually sent on the failing call was 0.3.
+                    self.log_failed_call(
+                        task_type,
+                        selection,
+                        messages,
+                        Some(0.3),
+                        effective_max_tokens,
+                        character_id,
+                        &error.message,
+                    )
+                    .await;
                     Err(error)
                 }
             }
@@ -684,6 +788,9 @@ mod tests {
         );
         assert!(request.contains("\"maxTokens\":2048"), "request: {request}");
         assert!(response.contains("a tidy summary"), "response: {response}");
+        // A SUCCESS row always logs `error: null` — the discriminator the
+        // ruled failure row (below) is distinguishable by.
+        assert!(response.contains("\"error\":null"), "response: {response}");
         assert!(
             usage
                 .as_deref()
@@ -693,5 +800,109 @@ mod tests {
         );
         // The cheap path sets no durationMs.
         assert_eq!(*duration, None);
+    }
+
+    /// The RULED failed-call error row (P4.13 unit 6, a deliberate divergence
+    /// from v4 — see `log_failed_call`): a failing provider call writes ONE
+    /// `llm_logs` row carrying the provider, model, mapped task type, and the
+    /// error text, with empty content and no usage. No oracle differential is
+    /// possible for a deliberate divergence — this test IS the pin.
+    #[tokio::test]
+    async fn failed_call_writes_the_ruled_error_row() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let messages = vec![CompletionMessage::user("extract memories")];
+        // A provider that fails the 0.3-temperature attempt with a
+        // NON-temperature error (no retry — the terminal fall-through arm).
+        let provider = CannedCompletionProvider::new().with_failure(
+            "DEEPSEEK",
+            "deepseek-chat",
+            Some(0.3),
+            &messages,
+            "402 Payment Required: Insufficient Balance",
+        );
+
+        let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: "user-1".to_string(),
+            chat_id: Some("chat-9".to_string()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let sel = selection("DEEPSEEK", "deepseek-chat");
+
+        let r = exec
+            .execute(
+                &provider,
+                &sel,
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("memory-extraction-self"),
+            )
+            .await;
+        assert!(!r.success);
+
+        let rows: Vec<(String, String, String, String, Option<String>)> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn
+                    .prepare("SELECT type, provider, modelName, response, usage FROM llm_logs")?;
+                let out = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+
+        assert_eq!(rows.len(), 1, "exactly one error row written");
+        let (typ, provider_col, model, response, usage) = &rows[0];
+        assert_eq!(typ, "MEMORY_EXTRACTION");
+        assert_eq!(provider_col, "DEEPSEEK");
+        assert_eq!(model, "deepseek-chat");
+        assert!(
+            response.contains("\"error\":\"402 Payment Required: Insufficient Balance\""),
+            "response: {response}"
+        );
+        assert!(
+            response.contains("\"content\":\"\""),
+            "response: {response}"
+        );
+        assert_eq!(usage.as_deref(), None, "an error row carries no usage");
     }
 }
