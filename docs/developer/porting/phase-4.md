@@ -2715,12 +2715,18 @@ remainder next.
 
 **Next candidates, in rough value order:**
 
-1. **Finish P4.9G1** (`work-orders/p4.9g1-data-system-server.md`, status
-   header enumerates the resume list) — delete-all, `.qtap` export/import,
-   backup/restore, plus the `jobs`-collection REST edge. The SPA is already
-   built and waiting on all three; the delete-all e2e beat is written and
-   gated behind one named constant (`DELETE_ALL_SERVER_LANDED`). Each family
-   is independently shippable, so this can be one lane per family.
+1. **Finish P4.9G1** — **PLANNED 2026-07-24 as a three-lane round; the orders
+   are committed.** The remainder was split one lane per family (they are
+   disjoint in both v4 and v5, with exactly one cross-lane seam):
+   `work-orders/p4.9g3-delete-all-and-rest-remainders.md` (delete-all + the
+   `jobs`-collection and change-passphrase REST edges),
+   `work-orders/p4.9g4-qtap-export-import.md`, and
+   `work-orders/p4.9g5-backup-restore.md`. P4.9G1 itself stays open as the
+   historical record and survey archive — **do not work it directly**; its
+   §Shared contract / §Ownership are superseded by the three new orders'.
+   Round plan (drift check, the binding contract, the six new differentials,
+   what was left out, the disk-budget note): `status-log.md`, "Round planned —
+   the 'finish P4.9G1' round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5), 2026-07-24".
 2. **A dogfood pass** over this round's live surfaces — the Data & System tab
    (passphrase, auto-lock enforcement, tasks queue, LLM logs) and the
    proactive pre-compute in real chats. Note P4.19's own framing: it is a

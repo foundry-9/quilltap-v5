@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Planned the next round of work: the three Data & System features whose
+buttons are already on screen but whose server side has not been written
+yet — Backup & Restore, Import / Export, and Delete All Data. Each now has
+its own detailed work order so the three can be built side by side, with the
+one place they overlap (restoring a backup in "replace" mode has to clear
+your existing data first) written down explicitly in all three. No code
+changed; this is planning only.
+
 Unified the pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2).
 The Settings "Data & System" tab is no longer a placeholder: it ships v4's
 full card order — Encryption Passphrase, Auto-Lock (with the app-wide idle

@@ -32065,3 +32065,105 @@ the mounted auto-lock provider's listeners are passive/capture and never
 preventDefault). The runnable Data & System beats (tab walk / passphrase /
 auto-lock) passed cleanly across two full-suite runs. `/unify` re-runs the
 full suite on its own branch.
+
+---
+
+## Round planned — the "finish P4.9G1" round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5), 2026-07-24
+
+**Drift check: v4 HEAD is `e646f58b`, identical to the recorded oracle baseline
+— `git log e646f58b..HEAD --oneline` in `~/source/quilltap-server` is empty and
+the tree is clean. No drift; no catch-up owed. Every lane re-checks at start.**
+
+### Scope
+
+Discharge the OPEN remainder of `p4.9g1-data-system-server.md`: the three heavy
+Data & System server families the P4.19 ∥ P4.9G1 ∥ P4.9G2 round left refusing.
+Their SPA halves are **already on main and waiting** (P4.9G2 units 7/8/9 —
+Backup & Restore, Import / Export, Delete All Data — each answering the loud
+"recognized but not yet available" refusal today), so this round is what turns
+three built cards live.
+
+### The split — three lanes
+
+| Order | Lane scope | v4 source weight |
+| --- | --- | --- |
+| `work-orders/p4.9g3-delete-all-and-rest-remainders.md` | `deleteUserData` / `deleteAllUserData` / `previewDeleteAllUserData` + the two verbs + the `/api/v1/system/jobs` collection edge + the change-passphrase REST alias | `delete-service.ts` 349 lines |
+| `work-orders/p4.9g4-qtap-export-import.md` | the streaming NDJSON `.qtap` writer + export listing/preview + the full import pipeline (four conflict strategies) + the streaming and multipart web-edge legs | `lib/export/**` ~1.7k + `lib/import/quilltap-import/**` ~2.0k lines |
+| `work-orders/p4.9g5-backup-restore.md` | backup create + the single-use download, restore upload/preview/execute in both modes, the ~40-entity UUID remap, the 24-phase orchestrator | `lib/backup/**` ~3.1k lines |
+
+**Why three and not one or two.** The three families are genuinely disjoint in
+v4 (`lib/backup/**` ∥ `lib/export`+`lib/import` ∥ `delete-service.ts`) and in
+v5 (`services/backup/**` ∥ `services/qtap_export`+`services/quilltap_import`
+∥ `services/delete_all.rs`). Exactly **one** cross-lane code dependency exists —
+restore's `replace` mode calls `deleteUserData` — and it is pinned as Shared
+contract §2 with an exact Rust signature and an ACTIVATE-AT-UNIFY marker, the
+same idiom this repo has used for every seam wire since P4.6y.
+
+### The binding Shared contract (verbatim in all three orders)
+
+- **§1 — the wire surface is FROZEN.** All sixteen §1 CoreRequest variants are
+  already on main (`api/types.rs:2293-2375`), pinned by `p4_9g1_wire_contract`,
+  and the SPA is built against them. No lane may rename a variant or field; a
+  genuine mismatch with v4 is a STOP-and-report. The four web-edge-only legs are
+  assigned by lane (export stream + import multipart → G4; backup download +
+  restore octet-stream upload → G5).
+- **§2 — the one cross-lane seam.** G3 delivers
+  `services::delete_all::delete_user_data(&Db, &str) -> Result<(), DbError>`;
+  G5 writes its `replace`-mode call site as a loud refusal carrying the
+  `ACTIVATE-AT-UNIFY (P4.9G5 ← P4.9G3 §2)` marker and ships
+  `system_restore_equivalence` covering `new-account` only. **The unifier flips
+  the call site and adds the `replace` case.**
+- **§3 — shared-file regions.** Four files are unavoidably multi-lane:
+  `api/engine.rs` (the single "not yet available" arm at `:736-746` — each lane
+  deletes only its own variant names and appends `// ── P4.9G<n> arms ──`
+  blocks above it; the last lane picked deletes the emptied arm),
+  `system_data_routes.rs` (labelled blocks at the end of each `?action=` match),
+  `lib.rs` `build_router` (G5 registers backup/restore paths, G3 the jobs
+  collection + unlock alias, G4 nothing), and
+  `apps/web/e2e/settings-data-system-flow.spec.ts` (G3 = the gate constant + the
+  delete-all describe; G4 = the export→import test body; G5 = a new appended
+  test). `services/mod.rs`, `CHANGELOG` and this log stay append-only shared.
+
+### Fixtures
+
+All three lanes consume the committed `system-data-{main,mount,llmlogs}.db`
+family (P4.9G1 unit 1) and its builder
+`harness/oracle/fixtures/build-system-data-fixture.ts` + `system-data.json`. A
+lane that extends it **owns regenerating and re-running
+`system_jobs_routes_equivalence`** (which rides the same family) and must flag
+the change in its lane record so the unifier re-runs the siblings' differentials.
+G5 additionally commits a small sanitized `.zip` backup as the restore
+differential's input.
+
+### Six new differentials, all fresh at `e646f58b`
+
+`system_delete_data_equivalence` (tier-2 DB row-count map incl. the tables that
+must NOT change — `instance_settings` above all) · `system_export_equivalence`
+(line-by-line NDJSON diff over all ten entity types) ·
+`system_import_equivalence` (tier-2 DB diff per conflict strategy) ·
+`system_backup_equivalence` (manifest + extracted archive tree, **never the zip
+bytes**) · `system_restore_equivalence` (tier-2 DB diff, `new-account` in-lane
+and `replace` at unification). P4.9G1's `system_jobs_routes_equivalence` is the
+in-repo exemplar over this fixture; its regen recipe is in the P4.9G1 lane
+record above.
+
+### Deliberately left out of this round
+
+- **A dogfood pass.** The 2026-07-24 walk left Part D (retrospective-recall live
+  behaviour) and Part F items 15/16 unwalked, and P4.19's pre-compute + the whole
+  Data & System tab are unwalked live. That is a strong candidate for the round
+  AFTER this one — but it is human-driven and would not parallelise with three
+  heavy port lanes.
+- **M6 rows 6+** and the remaining `p4.9*` backlog — nothing there is blocked by
+  this round, and adding a fourth lane would exceed the disk budget (see below).
+- **The dead `?action=capabilities-report` stub** (recorded as NOT-PORTED under
+  P4.9G1) and the out-of-scope surfaces from the 2026-07-24 M6 correction
+  (capabilities report, global search, tools search-replace, API-key
+  export/import) — other surfaces own those.
+
+### Execution note
+
+Three parallel worktrees at default cargo settings will not fit: `df -h ~` shows
+~141 GB free and a single long lane has grown a `target/` to ~70 GB, 64 GB of it
+`target/debug/incremental`. **Every lane exports `CARGO_INCREMENTAL=0`** (stated
+in all three gates), which keeps a worktree target in the 10–20 GB range.
