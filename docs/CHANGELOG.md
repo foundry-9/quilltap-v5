@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Planned the post-rewrite dogfood-fixing round (docs only): four work
+orders written — P4.15 (thread the real cheap-LLM config into both
+hard-coded summary-check sites, finding #27, plus the self_inventory
+loadedMemories rider), P4.16 (bench v4's retrospective distill on both
+candidate windows and disposition finding #28), P4.17 (port v4's
+ToolMessage rendering so tool results stop showing as raw-JSON whisper
+bubbles), and P4.18 (a tracing subscriber for the silent server — awaits
+a human ruling before dispatch). Planning surveys corrected two stale
+records: the debugMemoryLogs writer gap does not exist (both v5 handlers
+already write it), and finding #27 covers two call sites with the enclave
+step as the correct reference.
+
 The courier paste-resolver now runs the fold-episode pass when a resolved
 chat crosses the summary cadence — the third and last bare-NoopSeams
 summary-check call site (after the Salon orchestrator and the enclave

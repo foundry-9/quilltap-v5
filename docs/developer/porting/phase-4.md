@@ -2547,3 +2547,68 @@ bench comparison first), the tracing-subscriber question, and the
 `chat_messages.debugMemoryLogs` writer — all belong to the post-rewrite
 dogfood-fixing run. The next `/setupphase` plans that run once this round
 unifies.
+
+## The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥ P4.18) — PLANNED 2026-07-24
+
+**The round the 2026-07-23 sequencing ruling ordered second** (rewrite →
+**this** → a fresh dogfood walk): the open dogfood findings #26/#27/#28,
+the tracing-subscriber question, and the dogfood-reported riders. v4
+drift-checked clean at `e646f58b` at planning. Two survey corrections to
+the standing records, verified 2026-07-24:
+
+- **The `chat_messages.debugMemoryLogs` "writer gap" does not exist.**
+  Both v5 extraction handlers already write it, byte-matching v4
+  (`memory_extraction_job.rs:338`, `carina_memory_extraction.rs:257`).
+  The P4.11 lane record's "no v5 writer" line is stale; P4.15 unit 6
+  corrects the records. The item DROPS from the round's scope.
+- **Finding #27 is TWO sites, not one:** `orchestrator.rs` AND
+  `courier_transport.rs` both hard-code the corpus-shaped cheap-LLM
+  selection config; the enclave step's `run_summary_fold` is already
+  correct and is the reference implementation. The single-profile corpora
+  make the defect differential-invisible — the fix's equivalence test MUST
+  add a case where the selected profile differs from the responder's.
+- **Finding #28's leading cause localized:** v5 has NO proactive
+  pre-compute distill path (`pre-compute.service.ts` — the
+  `messagesSinceLastSpoke` window that usually classifies the
+  backward-looking question nearly alone); v5 always runs the fallback
+  `slice(-12)` window. Prompt + parse are tier-1 proven byte-exact; the
+  bench decides bug vs NOT-A-BUG.
+
+Four lanes, ownership fully disjoint (each order carries the binding map):
+
+- **P4.15** (`work-orders/p4.15-cheap-llm-config-thread.md`) — thread the
+  real `cheapLLMSettings` + the user's connection profiles into both
+  broken `run_summary_check` sites (finding #27; #26 closes at the walk —
+  every identified cause is then fixed and error rows would surface a
+  residual), with selected-profile differentials over extended
+  multi-profile fixtures; tier-2 rider: the finding-#22 carry-out
+  (`loadedMemories` → `self_inventory`). Owns `orchestrator.rs`,
+  `courier_transport.rs`, `chat_settings.rs`; bumps core + harness.
+- **P4.16** (`work-orders/p4.16-retrospective-distill-bench.md`) —
+  diagnosis-first: bench v4's real distill classifier on the captured
+  Friday turns over BOTH windows (💸 small, capped ~20 cheap calls) and
+  disposition #28 (NOT-A-BUG record, or the follow-up proactive-path
+  order `p4.19` — the port itself crosses P4.15's files and is explicitly
+  NOT landed from this lane). Owns `build_context.rs`, `distill.rs`,
+  `recall_replay.rs` (touched only if its arms require); bumps only if
+  source lands.
+- **P4.17** (`work-orders/p4.17-tool-message-display.md`) — port v4's
+  `ToolMessage.tsx` (collapsible Tool Request/Response, Success/Failed
+  badge, tool-icon header, embedded-vs-standalone grouping via
+  `initiatedBy`, `delegatedDisplay` short-circuit) so TOOL rows stop
+  rendering as raw-JSON whisper bubbles; rider: v4's dynamic
+  `whispered to <names>` label. SPA-only; bumps SPA.
+- **P4.18** (`work-orders/p4.18-tracing-subscriber.md`) — **NEEDS A HUMAN
+  RULING before dispatch** (the standing 2026-07-23 open question, now
+  order-shaped): arm (a) recommended — `tracing` + `tracing-subscriber`
+  in the three bins + events at the surveyed swallow sites (job runner,
+  spine error frames, host pump, `log_failed_call`), `RUST_LOG` default
+  info, explicitly NO differential (log records are operator output, not
+  data); arms (b) eprintln-only / (c) status quo recorded. Owns the bins,
+  `host.rs`/`spine.rs`, `job_runner.rs`/`cheap_llm_exec.rs`.
+
+Left out of the round deliberately: P4.13 unit 9 (💸 live tool-use walk)
+and the response-bodies corpus real-capture upgrades — both ride the
+fresh dogfood walk that follows this round; the proactive-path port
+(conditional on P4.16's bench); the chokidar-equivalent fs watcher and
+the other standing seams (unchanged).
