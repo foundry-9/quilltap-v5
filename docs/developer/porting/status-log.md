@@ -97,11 +97,64 @@ Fixture regen: same env vars →
 `node --import tsx harness/oracle/fixtures/build-system-data-fixture.ts` (then
 delete stray `.db-journal`).
 
-**OPEN under P4.9G1 (the later units):** the delete-all family (§1 verbs
-`systemDeleteDataPreview`/`systemDeleteData` — loud-refused now), the `.qtap`
-export/import family, and backup/restore. See the work order's tiered
-deliverables. Versions after unit 1: core 0.0.342, harness 0.0.289, web 0.0.40,
-host 0.0.33.
+### Unit 1b — the §1 wire-contract guard (LANDED)
+
+`p4_9g1_wire_contract` pins all sixteen §1 CoreRequest wire shapes (`type` tag +
+payload field names) so G2's `core-contract.ts` mirror can be diffed by name at
+unification, and so the not-yet-landed families' verb shapes are frozen for G2 to
+build against now. Pure serialization contract (no oracle/fixture).
+
+### OPEN under P4.9G1 (the later units — full v4 surveys captured for the follow-up)
+
+The lane deliberately stopped after the tasks-queue family + the wire contract
+(the most tractable, self-contained, fully-verifiable slice) rather than start a
+partial port of the heavier families near budget's end. The following are DEFINED
+(§1 variants exist) but their handlers answer the loud "recognized but not yet
+available" refusal:
+
+- **Delete-all** (`systemDeleteDataPreview`/`systemDeleteData`): port
+  `deleteUserData` table-for-table (v4 `lib/backup/restore/delete-service.ts`:
+  memories per-character first; the ~14-repo bulk delete in v4's order; files
+  through storage; `clearFormat3Entities` last — 7 main + 10 mount raw DELETEs,
+  `instance_settings` deliberately preserved), API-key deletion after core, the
+  `DeleteSummary` shape (`{characters, chats, tags, files, memories, apiKeys,
+  backups, projects, profiles:{connection,image,embedding}, templates:{prompt,
+  roleplay}}`), the `DELETE_ALL_MY_DATA` sentinel re-check. Differential:
+  `system_delete_data_equivalence` — a tier-2 DB-state diff (row-count map of the
+  cleared tables + preserved `instance_settings`) after v4's real
+  `deleteAllUserData`/`previewDeleteAllUserData` vs the Rust port, over the
+  system-data fixture (which already carries the graph + a `/backups` .zip file +
+  an apiKey for the backups/apiKeys counts). NOTE the cascade-behavior risk: v5's
+  per-repo delete must reach the same residual as v4's; verify method-by-method.
+- **`.qtap` export/import**: the streaming NDJSON writer (`lib/export/
+  ndjson-writer.ts` `createNdjsonStream` — envelope + per-entity generators with
+  `_tagNames`/`_apiKeyLabel`/`_participantInfo`/blob-chunk resolution + footer;
+  `application/x-ndjson`, filename `quilltap-<type>-<date>.qtap`, `Cache-Control:
+  no-store`), `previewExport`, export-entities; import preview + execute
+  (`lib/import/quilltap-import/*` — the four conflict strategies incl. the
+  `replace`→`overwrite` route remap, all entity importers + reconcile). Note the
+  EXISTING `services/quilltap_import` is the seed-subset (characters+memories+skip,
+  refuses everything else) — the full import extends/replaces it. Differentials:
+  `system_export_equivalence` (NDJSON line diff) + `system_import_equivalence`
+  (tier-2 DB diff per strategy).
+- **Backup/restore**: the largest family — `createBackup` (38-entity
+  `collectUserData` → staging tree → zip; the 30-min single-use temp store) + the
+  streaming download leg; restore upload (octet-stream → tmp zip, 1-hour TTL map,
+  the `getPendingUpload` userId-ignored quirk), preview, and execute in both modes
+  (replace = delete-then-restore; new-account = the ~40-entity `UuidRemapper`
+  field-list remap — reuse the minted-values machinery). Differentials:
+  `system_backup_equivalence` (manifest + extracted archive-tree diff, never zip
+  bytes) + `system_restore_equivalence` (tier-2 DB diff both modes). The full
+  survey detail for all three families lives in the work order + the round's
+  survey findings.
+
+The web-edge-only legs (backup download, restore octet-stream upload, export
+NDJSON stream, import multipart) and the Tier-2 `jobs`-collection GET/POST edge
+also land with their families. `jobs_list`/`jobs_enqueue` core fns are already
+written (unit 1) pending their edge.
+
+Versions after the P4.9G1 lane (units 1 + 1b): core 0.0.342, harness 0.0.290,
+web 0.0.40, host 0.0.33.
 
 ## Round record — the provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on main (2026-07-23)
 
