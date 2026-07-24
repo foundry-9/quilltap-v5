@@ -970,6 +970,7 @@ where
         let fold_result = run_summary_fold(
             db,
             orch.completion,
+            orch.embedding,
             sdeps.fold_executor,
             &chat_id,
             &user_id,
@@ -990,12 +991,22 @@ where
 /// The 9c fold body (v4 autonomous-room-turn.ts:850–876): resolve the fold
 /// profile — the responding participant's connection profile ?? the default
 /// profile ?? the first — and run the ported
-/// [`crate::services::context_summary::check_and_generate_summary_if_needed`]
+/// [`crate::services::context_summary::check_and_generate_summary_if_needed_with_seams`]
 /// with `awaitFold: true`. Errors bubble to the caller's swallow.
+///
+/// The fold-time episode pass runs LIVE here via
+/// [`crate::services::context_summary::FoldEpisodePassSeams`] — v4's
+/// `checkAndGenerateSummaryIfNeeded` → `generateContextSummary` calls the real
+/// `runFoldEpisodePass` on this path too (the enclave-step oracle cans only the
+/// provider, so the differential pins the fold's cheap-LLM call); the
+/// cross-subsystem arms stay no-ops per the orchestrator-oracle mock set the
+/// enclave oracle reuses (the same tracked deferral as the orchestrator's
+/// in-loop check).
 #[allow(clippy::too_many_arguments)]
-async fn run_summary_fold<C: CompletionProvider>(
+async fn run_summary_fold<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync>(
     db: &Db,
     completion: &C,
+    embedding: &E,
     executor: &CheapLlmTaskExecutor,
     chat_id: &str,
     user_id: &str,
@@ -1071,7 +1082,15 @@ async fn run_summary_fold<C: CompletionProvider>(
         uncensored_text_profile_id: resolved.settings.uncensored_text_profile_id.clone(),
     });
 
-    crate::services::context_summary::check_and_generate_summary_if_needed(
+    // The fold's cheap-LLM call runs outside the run-id scope (see the 9c call
+    // site), so the seams carry the same UNtagged executor as the fold itself.
+    let seams = crate::services::context_summary::FoldEpisodePassSeams {
+        db,
+        embedding,
+        completion,
+        executor,
+    };
+    crate::services::context_summary::check_and_generate_summary_if_needed_with_seams(
         db,
         completion,
         executor,
@@ -1085,6 +1104,7 @@ async fn run_summary_fold<C: CompletionProvider>(
         // Group 8; the differential's fixture providers resolve identically).
         None,
         true, // awaitFold
+        &seams,
     )
     .await?;
     Ok(())

@@ -30685,3 +30685,46 @@ belongs to the v4-retirement / release story, `m6-screen-parity.md` §5.3.
 Versions after the lane: **quilltap-web 0.0.37 → 0.0.38**; every other crate
 and the SPA untouched (core 0.0.329, harness 0.0.282, host 0.0.30, cli
 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263).
+## The enclave-step fold-episode wire — the pre-existing `enclave_step_tier3_equivalence` red FIXED (2026-07-23, on main)
+
+The P4.13 lane flagged (and main at `57117ecc` reproduced) a stale-red:
+`enclave_step_tier3_equivalence` against a FRESH `e646f58b` oracle failed
+on `table llm_logs mismatch` — the oracle carries one extra UNtagged
+SUMMARIZATION row whose system prompt is the fold-episode consolidation
+prompt ("You are consolidating a batch of roleplay conversation turns
+into EPISODE records…"). Cause: P4.6bj wired `FoldEpisodePassSeams` into
+the Salon orchestrator's `run_summary_check` only; the enclave step's 9c
+fold body (`run_summary_fold`, `enclave/step.rs`) still called the bare
+`check_and_generate_summary_if_needed`, which hardwires `NoopSeams` — so
+the fold-time episode pass never ran on the autonomous-room path, while
+v4's `handleAutonomousRoomTurn` → `checkAndGenerateSummaryIfNeeded` →
+`generateContextSummary` runs the real `runFoldEpisodePass` there too.
+
+**Fix:** `run_summary_fold` now constructs `FoldEpisodePassSeams { db,
+embedding, completion, executor }` — the embedding provider threaded from
+`orch.embedding` (the step was already generic over `EMB`) — and calls
+`check_and_generate_summary_if_needed_with_seams`, the exact orchestrator
+precedent. The seams carry the same UNtagged fold executor as the fold
+itself (v4 runs the pass outside the `runWithAutonomousRunId` scope →
+`LogContext::none()`, matching the oracle's untagged row). The
+cross-subsystem arms stay no-ops per the orchestrator-oracle mock set the
+enclave oracle reuses (the same tracked deferral as the in-loop check).
+
+**Proof:** fixture + oracle regenerated FRESH from v4 at `e646f58b`
+(checkout clean; TZ=UTC per the case header; jest driven off the MAIN
+checkout's case path — the worktree's `.claude/` copy is
+jest-path-ignored, identical bytes verified). Red reproduced pre-fix
+(`table llm_logs mismatch`, the missing fold SUMMARIZATION row), green
+post-fix. `cargo test -p quilltap-core` 1,037/0; clippy clean both
+feature sets (core default + native-transport, harness); workspace
+`cargo check --all-targets` clean. This family has no committed oracle
+(env-pointed `QT_ORACLE_ENCLAVE_STEP` / `QT_FIXTURE_ENCLAVE_STEP_*`), so
+no fixture moved.
+
+**Follow-up spawned (chip):** the courier paste-resolver's
+`run_summary_check` (`services/courier_transport.rs`) has the same
+bare-variant gap — unpinned today (its corpus stays below the fold
+cadence) and needing an embedding-provider thread through `chat_media` →
+engine → host spine, plus an at-cadence courier corpus case to pin it.
+
+Versions: core 0.0.329 → **0.0.330**; everything else untouched.
