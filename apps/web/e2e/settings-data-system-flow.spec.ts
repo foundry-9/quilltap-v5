@@ -231,7 +231,9 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     const footer = JSON.parse(lines[lines.length - 1]) as { kind: string };
     expect(footer.kind).toBe('__footer__');
 
-    await page.getByRole('button', { name: 'Close' }).click();
+    // The dialog's header X carries `aria-label="Close"` too, so the role
+    // locator is ambiguous — target the FOOTER button explicitly.
+    await page.locator('[qt-modal-footer] button:has-text("Close")').click();
 
     // ── Import (preview only) ────────────────────────────────────────────────
     await page.getByRole('button', { name: 'Import Data' }).click();
@@ -240,6 +242,10 @@ test.describe('P4.9G2 — the Data & System tab', () => {
       mimeType: 'application/x-ndjson',
       buffer: Buffer.from(qtap, 'utf8'),
     });
+
+    // Step 1 only STAGES the file; `Next` is what fires the preview request.
+    await expect(page.getByText(download.suggestedFilename(), { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Next' }).click();
 
     // The preview step renders only under `@if (preview(); as p)`, so these
     // assertions can only pass once the live `?action=import-preview` leg has

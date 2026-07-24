@@ -27,6 +27,10 @@ and a row count of every table in all three databases against v4's real
 delete service — including the tables the wipe must not touch. One known
 gap: files stored in the old on-disk layout have their records removed but
 their bytes left behind (mount-store bytes are cleared).
+The browser walk for the new export→import flow now runs live: it downloads a
+real `.qtap`, checks the file's first and last lines, then feeds the same file
+back in and reads the server's summary of what it contains.
+
 Exporting your data is now live end-to-end (P4.9G4 unit 2). The Export Data
 dialog runs against the real server: pick a type, pick what to include, and a
 `.qtap` file downloads with exactly the bytes v4 would have written. The

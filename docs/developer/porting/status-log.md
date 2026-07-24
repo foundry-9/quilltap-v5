@@ -32717,3 +32717,19 @@ reassembled, and the `Exists` conflict chip). It deliberately stops before
 pressing Import — that is the deferral above.
 
 No fixture changed; no other oracle invalidated.
+
+**P4.9G4 e2e gate (2026-07-24).** The `export → import round-trip` beat runs
+LIVE. Two gesture fixes it needed on its first real run, both worth remembering:
+the dialog's header X carries `aria-label="Close"`, so `getByRole('button',
+{name:'Close'})` is a strict-mode violation (target the `[qt-modal-footer]`
+button instead); and the Import dialog's step 1 only STAGES the chosen file —
+`Next` is what fires the preview request, so a beat that only calls
+`setInputFiles` never reaches the preview step. Full suite after the fixes:
+**124 passed / 1 skipped (the gated delete-all beat) / 0 failed**, over a fresh
+`ng build` dist and the debug binaries from the workspace gate.
+
+⚠ Operational note for a parallel round: the e2e port (`PORT = 4319` in
+`e2e/support/env.ts`) is FIXED, and an interrupted Playwright run leaves its
+`quilltap-web` child holding the instance's write lock — the next `globalSetup`
+then dies with "Database is currently in use — held by PID N". Kill that PID
+before re-running.
