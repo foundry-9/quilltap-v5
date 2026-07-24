@@ -31810,3 +31810,23 @@ it), `systemJobGet/Control/Delete {jobId, …}`, `systemDeleteDataPreview {}`,
 `systemDeleteData {confirm}` (server gate `DELETE_ALL_MY_DATA`). The four
 web-edge-only legs (backup download, restore upload, export stream, import
 multipart) carry no verb and ride `apiUrl()`. ng build clean.
+
+### Unit 6 — the Tasks Queue card family (ACTIVATE-AT-UNIFY)
+
+Ports v4 `components/tools/tasks-queue/` (index + hook + TaskFilters +
+TaskItem + TaskDetails) to `settings/system/`: `tasks-queue.api.ts` (the
+DTOs + `formatTokens`/`formatRelativeDate` + wrappers over the six §1
+verbs), `task-item.ts` (one row; status glyph/color, priority badge, the
+meta line, status-gated pause/resume + always-view + hidden-while-PROCESSING
+delete), `task-details-modal.ts` (over `qt-modal`; v4's title+`type`
+subtitle become the modal title + a body line), and `tasks-queue-card.ts`
+(the orchestrator — the "Simultaneous Labours" slider 1..32/default 4 with
+v4's drag-then-commit-on-mouseup logic and the register verbatim, the 3-col
+stats + the wrapped detailed breakdown, the inline filters with the
+processor pill, the 5 s poll via `injectQuery`'s reactive `refetchInterval`
+gated on `autoRefresh` (off by default), and the per-job actions). The §1
+concurrency SET field is `maxConcurrentJobs` (v4's route body key is
+`concurrency`; G1 maps it). Verified INERT against the contract — its live
+behaviour + e2e beat are ACTIVATE-AT-UNIFY over G1's verbs. Spec: stats +
+row render, start-control dispatch, concurrency-commit dispatch, view-opens-
+modal, empty state.

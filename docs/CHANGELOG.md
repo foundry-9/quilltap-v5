@@ -74,6 +74,14 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 6 (SPA): the Tasks Queue card family — summary + detailed
+stats, per-job rows with pause/resume/view/delete, a processor start/stop
+control, a 5 s auto-refresh poll (off by default), the job-detail modal,
+and the "Simultaneous Labours" concurrency slider (1–32, default 4, house
+register verbatim). Over the six §1 tasks/jobs verbs P4.9G1 delivers — its
+live behaviour and e2e beat are ACTIVATE-AT-UNIFY; it compiles and renders
+against the contract now. Specs green (5).
+
 P4.9G2 unit 1 (contract half): the sixteen Data & System §1 verbs mirrored
 name-for-name in core-contract.ts (systemBackupCreate/RestorePreview/
 RestoreExecute, ExportEntities/ExportPreview, ImportPreview/ImportExecute,
