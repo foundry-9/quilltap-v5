@@ -31387,3 +31387,32 @@ suppression look, `browserUserAgent`, the sibling-owned `eprintln!`
 sweep (orchestrator / courier_transport / chat_settings /
 build_context / distill / recall_replay), file-transport log parity,
 the response-bodies real-capture upgrades.
+
+## Round planned — the pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2), 2026-07-24
+
+Planned immediately after the 2026-07-24 dogfood walk closed the ruled
+rewrite→fix→walk sequence (walk CLEAN; P4.13 + findings #25/#22/#26/#27
+closed there — headers/records updated in this same commit). v4
+drift-checked clean at `e646f58b` (HEAD = baseline, tree clean). Three
+orders committed under `work-orders/`:
+`p4.19-proactive-precompute-distill.md` (the P4.16-recommended fidelity
+port of v4's `proactiveRecallTask`; chat-spine lane, new
+`QT_ORACLE_PRECOMPUTE` tier-3 family),
+`p4.9g1-data-system-server.md` (backup/restore, `.qtap` export/import,
+tasks queue + a new `EngineAssembly` job-pump-control seam,
+delete-all-data; sixteen new §1 verbs, new
+`system-data-{main,mount,llmlogs}.db` fixture family), and
+`p4.9g2-data-system-spa.md` (the `system` settings tab, nine cards, the
+LLMLogViewerModal + character-edit LLM-logs section (M6 F2), and the
+app-wide auto-lock idle provider). Fresh surveys (four agents) are baked
+into the orders; notable survey outcomes recorded at planning: the
+`p4.9g` scope correction (four dialogs re-binned off the Data & System
+tab — correction block in `m6-screen-parity.md` §2.6), passphrase-change
+/ auto-lock storage / LLM-logging key ALREADY EXIST server-side (G1 does
+not rebuild them), the compression half of v4's pre-compute service is
+already ported inline, and the banked sibling-owned `eprintln!` sweep is
+ALREADY SATISFIED (zero remaining in the six named files — the banked
+item dies here). Deliberately left out: `browserUserAgent` (ownership
+crosses G1's web files), the next dogfood pass's Part D / F15-16 items,
+the response-bodies real-capture upgrades. The full planning block is in
+`phase-4.md`.

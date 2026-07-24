@@ -560,6 +560,33 @@ tab": the tab is the host for **eight** dialogs plus the LLM-logs card.
 because both are app-layout-mounted console surfaces with the same
 `chatType` wire enum backing them (`core-contract.ts:1514`).
 
+> **SCOPE CORRECTION (2026-07-24, verified at `e646f58b` during the P4.9G
+> round survey — import-graph checked):** four of the dialogs this file
+> routed to `p4.9g` do NOT live on the Data & System tab, and the P4.9G
+> round therefore does not carry them:
+>
+> - **CapabilitiesReportDialog** + `capabilities-report-card` are hosted on
+>   the **Providers tab** (`components/settings/tabs/ProvidersTabContent.tsx:10,74`)
+>   → re-binned to a future **Providers-tab rider** (unscheduled).
+> - **SearchDialog** is the **global toolbar's** search
+>   (`components/search/search-bar.tsx:218` → `components/layout/page-toolbar.tsx`,
+>   route `GET /api/v1/ui/search`) → re-binned to a future
+>   **global-search/toolbar lane** (unscheduled; v5 has no page-toolbar yet).
+> - **SearchReplaceModal** (tools variant) is opened from the chat views
+>   (`app/salon/[id]/components/ChatModals.tsx`, `CharacterDetailView.tsx`)
+>   → re-binned to **`p4.9e3`** (the chat-admin dialog family), where its
+>   host barrel already lives.
+> - **ExportKeysDialog / ImportKeysDialog** are hosted on the **API Keys
+>   tab** (`components/settings/api-keys-tab.tsx`) → re-binned to a future
+>   **API-Keys-tab rider** (unscheduled).
+>
+> What the Data & System tab (`components/settings/tabs/
+> DataSystemTabContent.tsx:32-78`) actually hosts, in card order:
+> Encryption Passphrase, Auto-Lock, Plugins (**WON'T-PORT**, locked
+> decision), Backup & Restore, Import / Export, LLM Logging (toggle),
+> Tasks Queue, LLM Logs, Delete All Data. The P4.9G1 ∥ P4.9G2 orders carry
+> exactly that list.
+
 ---
 
 ## 3. The deferral cross-reference

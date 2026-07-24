@@ -1105,8 +1105,9 @@ records THERE. Update this summary only when a phase or round completes.
   `carina_memory_extraction.rs:257`.) (Dogfood #22, the sibling finding,
   was already FIXED on main `2aa3d01b`.)
 - **The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on
-  main (2026-07-23) — P4.14 and P4.10 CLOSED; P4.13 OPEN on exactly one
-  item (unit 9, the 💸 human live proof on the Friday copy).** The ruled
+  main (2026-07-23) — ALL THREE CLOSED** (P4.13's last item, unit 9's 💸
+  human live proof, completed at the 2026-07-24 dogfood walk — findings
+  #25 and #22 CLOSED there). The ruled
   one-off divergence executed: the `StreamMessage` carrying type
   end-to-end — **tool-call linkage reaches the wire on all eight
   providers (dogfood #25 FIXED, closes at the walk)** — with FIVE
@@ -1144,9 +1145,9 @@ records THERE. Update this summary only when a phase or round completes.
   now closed. Versions after it: core 0.0.338, harness 0.0.287, host
   0.0.31. Standing loud: the all-synthetic response-bodies corpus,
   #26/#27/#28 + tracing-subscriber (`debugMemoryLogs` is NOT a gap — v5
-  writes it; the P4.11 note was stale, corrected by P4.15). **Next: the
-  post-rewrite dogfood-fixing run, then a fresh dogfood walk (the
-  ruled sequence); P4.13 unit 9 rides that walk.**
+  writes it; the P4.11 note was stale, corrected by P4.15). The ruled
+  sequence's remaining legs (the dogfood-fixing run, then the fresh
+  walk) BOTH RAN — see the next two bullets.
 - **The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥
   P4.18): UNIFIED on main (2026-07-24) — ALL FOUR CLOSED.** Finding #27
   FIXED (both summary-check sites thread the real `cheapLLMSettings` +
@@ -1165,10 +1166,23 @@ records THERE. Update this summary only when a phase or round completes.
   rider LANDED (`self_inventory` reports the real slate). Gate: 369
   binaries / 1,550 / 0 (the four affected families fresh at `e646f58b`
   by name zero SKIP), clippy both feature sets, release build, ng 213
-  files / 2,583, full Playwright 119/119 zero skips. **Next: the fresh
-  dogfood walk (the ruled sequence's third leg) — P4.13 unit 9 rides
-  it, plus the #26 close-out re-check.** Deferred loud: browserUserAgent,
-  the sibling-owned `eprintln!` sweep, file-transport log parity.
+  files / 2,583, full Playwright 119/119 zero skips. Deferred loud:
+  browserUserAgent, the sibling-owned `eprintln!` sweep, file-transport
+  log parity.
+- **The 2026-07-24 post-rewrite dogfood walk (the ruled sequence's third
+  leg): COMPLETE, walked CLEAN — zero new findings.** On the Friday
+  copy: Part A tool use across OpenAI/Anthropic/DeepSeek (**#25 + #22
+  CLOSED — P4.13 unit 9 complete, the provider-I/O round closes**; the
+  P4.17 card live; #29/#30 surfaced and dispositioned NOT-A-BUG,
+  v4-faithful, queued as post-5.0 v4-first product items), Part B the
+  context-summary fold + cheap-LLM config (**#26 + #27 CLOSED** — three
+  fold cycles on the configured cheap profile; 66/66 AUTO memories carry
+  `occurredAt`), the 💸 llm-consult live, Part E the recall-replay CLI
+  (the P4.d13 live proof), Part F outfit + heavy-character items. NOT
+  walked (the next pass starts here): Part D retrospective-recall live
+  behavior (the #28 downstream look), Part F items 15/16 (Story's Clock
+  jump; per-chat Core-whisper override), items 10/11 (blocked by #30).
+  Record: `dogfood-findings.md`.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

@@ -2593,13 +2593,22 @@ Versions: core 0.0.341, harness 0.0.288, host 0.0.32, web 0.0.39, cli
 **Standing after the round:** finding #26 has every identified cause
 fixed (#23/P4.11, the sort panic/P4.14, error rows/P4.13, #27/P4.15) and
 now a tracing surface to catch any residual — it CLOSES at the fresh
-dogfood walk. **The walk is the next step (the ruled sequence's third
+dogfood walk. ~~**The walk is the next step (the ruled sequence's third
 leg): P4.13 unit 9 (💸 live tool-use proof) rides it, plus the #26
 re-check, the P4.17 tool-card on real data, and the first
-tracing-assisted session.** Also banked: the proactive pre-compute
-fidelity port, the downstream retrospective-whisper look, the
-sibling-owned `eprintln!` sweep, file-transport log parity, the
-response-bodies real-capture upgrades. The original planning block
+tracing-assisted session.**~~ **THE WALK RAN 2026-07-24 and walked
+CLEAN — zero new findings.** P4.13 unit 9 completed (tool use live on
+OpenAI/Anthropic/DeepSeek — #25 + #22 CLOSED; the provider-I/O round
+closes whole); #26 + #27 CLOSED on the Friday copy (three fold cycles on
+the configured cheap profile); the P4.17 card and the tracing surface
+both proved live; #29/#30 surfaced and dispositioned NOT-A-BUG
+(v4-faithful; queued post-5.0 v4-first). Not walked: Part D
+retrospective-recall live behavior, Part F 15/16, items 10/11 — the next
+pass's starting list, recorded in `dogfood-findings.md`. Still banked:
+the proactive pre-compute fidelity port, the downstream
+retrospective-whisper look, the sibling-owned `eprintln!` sweep,
+file-transport log parity, the response-bodies real-capture upgrades
+(the walk did NOT capture real bodies). The original planning block
 follows.
 
 ## The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥ P4.18) — PLANNED 2026-07-24
@@ -2666,3 +2675,66 @@ and the response-bodies corpus real-capture upgrades — both ride the
 fresh dogfood walk that follows this round; the proactive-path port
 (conditional on P4.16's bench); the chokidar-equivalent fs watcher and
 the other standing seams (unchanged).
+
+## The pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2) — PLANNED 2026-07-24
+
+**The first round after the ruled rewrite→fix→walk sequence closed** (the
+2026-07-24 walk ran CLEAN — see the round block above; P4.13/#25/#22/#26/#27
+all closed at it). v4 drift-checked clean at `e646f58b` at planning (HEAD
+exactly the baseline, tree clean). Scope: M6 backlog row 5 (`p4.9g`, the
+Data & System settings tab — the top unstarted row by value) as a
+server ∥ SPA pair, plus the one banked Rust-spine item P4.16's disposition
+explicitly recommended for scheduling. Three lanes, ownership fully
+disjoint (each order carries the binding map; `services/mod.rs` is the one
+append-only shared file):
+
+- **P4.19** (`work-orders/p4.19-proactive-precompute-distill.md`) — the
+  proactive pre-compute distill port (v4
+  `pre-compute.service.ts` `proactiveRecallTask`): the per-character
+  `messagesSinceLastSpoke` window, distill + semantic pre-search
+  (limit 20 / minImportance 0.3 / cap 10), `BuildContextInput.
+  {pre_searched_memories, recall_signals}`, and fallback suppression
+  mirroring `context-manager.ts:1141-1145`. A FIDELITY port by P4.16's
+  own framing — not expected to raise retrospective bite rate. New
+  tier-3 pre-compute differential (`QT_ORACLE_PRECOMPUTE`) +
+  `orchestrator_tier3`/build-context extensions. Owns the chat spine;
+  bumps core + harness. (The compression half of v4's pre-compute is
+  already ported inline — verified 2026-07-24, `orchestrator.rs:
+  1673-1712`.)
+- **P4.9G1** (`work-orders/p4.9g1-data-system-server.md`) — the Data &
+  System server half: `.qtap` NDJSON export/import (both legs), the
+  tasks-queue family over the already-complete `db/background_jobs.rs`
+  (+ a NEW `EngineAssembly` job-pump-control seam — the host owns
+  cadence), delete-all-data (the `DELETE_ALL_MY_DATA` sentinel,
+  v4's exact deletion order), and backup/restore (zip staging, the
+  single-use 30-min temp store, octet-stream upload, replace +
+  new-account-remap modes). Sixteen new dispatch verbs (§1, binding) +
+  v4-parity REST edges + byte/stream/multipart web-edge legs; a new
+  committed `system-data-{main,mount,llmlogs}.db` fixture family; five
+  differential families + a wire-contract pin. Bumps core + harness +
+  web + host. Survey correction folded in: passphrase-change, auto-lock
+  storage/Lock, and the LLM-logging key ALREADY EXIST server-side —
+  G1 does not rebuild them.
+- **P4.9G2** (`work-orders/p4.9g2-data-system-spa.md`) — the Data &
+  System SPA half: the `system` tab in v4's nine-card order (Plugins
+  renders nothing — WON'T-PORT), the passphrase / auto-lock / LLM-logging
+  cards over EXISTING verbs, the backup/restore + export/import wizard
+  dialogs, the tasks-queue card ("Simultaneous Labours"), the
+  LLMLogViewerModal + the character-edit LLM-logs section (M6 F2), the
+  delete-all card, and the app-wide **auto-lock idle provider**
+  (completing the unlock screen's waiting `AUTOLOCK_RETURN_KEY` loop).
+  ACTIVATE-AT-UNIFY beats over G1's verbs. Bumps SPA.
+
+Scope corrections recorded at planning (in `m6-screen-parity.md` under
+§2.6, dated 2026-07-24): the capabilities report (Providers tab), the
+global search dialog (toolbar), the tools SearchReplaceModal (chat views →
+`p4.9e3`), and the API-key export/import dialogs (API Keys tab) do NOT
+live on the Data & System tab and are NOT this round's work. Also settled
+at planning: **the banked sibling-owned `eprintln!` sweep is ALREADY
+SATISFIED** (surveyed 2026-07-24 — zero `eprintln!` in all six named
+files; the banked item dies). Left out deliberately: `browserUserAgent`
+threading (crosses G1's quilltap-web files — banked until a round where
+the ownership fits), the downstream retrospective-whisper look + Part D /
+Part F 15-16 walk items (the NEXT dogfood pass's list), the
+response-bodies real-capture upgrades, and the other standing seams
+(unchanged).

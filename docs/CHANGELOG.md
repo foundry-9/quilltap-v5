@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Planned the pre-compute + Data & System round and wrote its three work
+orders (P4.19 proactive pre-compute distill port; P4.9G1 Data & System
+server half — backup/restore, .qtap export/import, tasks queue,
+delete-all-data; P4.9G2 Data & System SPA half — the settings tab, nine
+cards, and the auto-lock idle provider). Closed out the walk-completion
+records: the P4.13 order header, CLAUDE.md status bullets, and
+phase-4.md standing note now reflect the clean 2026-07-24 dogfood walk
+(P4.13 closed; findings #25/#22/#26/#27 closed). Recorded the p4.9g
+scope correction in m6-screen-parity.md (capabilities report, global
+search, tools search-replace, and API-key export/import dialogs live on
+other surfaces) and the survey finding that the banked eprintln sweep is
+already satisfied. Docs only; no version bumps.
+
 Unified the post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥
 P4.18) on main — all four lanes closed. Context summaries now run on the
 user's configured cheap LLM at both remaining call sites, with new
