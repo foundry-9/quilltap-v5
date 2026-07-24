@@ -65,8 +65,15 @@ catch, since every fixture is built fresh.
   (`memory-trigger.service.ts:132`), so the divergence is narrower than it
   looks — v4 surfaces the failure to its console, v5 has no console to
   surface it to. **The related open question — whether the server should have
-  a tracing subscriber at all — remains open**, and this ruling does not
-  settle it.
+  a tracing subscriber at all — was RULED 2026-07-24 (human): arm (a), adopt
+  `tracing` + `tracing-subscriber`, and LANDED as P4.18.** The three bins now
+  init a stderr fmt subscriber env-filtered by `RUST_LOG` (default `info` —
+  v4's `LOG_LEVEL` INFO analog), and the surveyed swallow sites (the job
+  runner, the spine's transport-shell error frames, the host pump/seeding, the
+  cheap-LLM failed-call row, the state cascade, the mount-index repair) emit
+  structured events. Log output is operator output, not data — no differential
+  applies (a first for this port). File-transport parity (v4's
+  `combined.log`/`error.log` rotation) stays tier-3, deferred until asked.
 - **SEQUENCING RULED 2026-07-23 (human): the provider-I/O rewrite lands
   FIRST, then a dedicated dogfood-fixing run, then a fresh dogfood walk.**
   The open dogfood findings are deliberately NOT being fixed piecemeal
@@ -337,18 +344,25 @@ catch, since every fixture is built fresh.
   anything. It said, verbatim, `[Memory] SELF extraction failed for <name>:
   response parse: expected value at line 1 column 1` ×4.
 
-- **Reading a running dogfood instance: use `quilltap db`, not the console.**
-  `quilltap-host`/`quilltap-web` emit essentially NOTHING to stdout/stderr after
-  the startup banner — there is no tracing/log subscriber in the workspace, and
-  the job runner logs nothing at all, so "watch the server console" is never a
-  usable instruction. The `logs/` dir in a Friday copy is **v4's** winston
-  output, not v5's. Instead: `./target/release/quilltap db --data-dir <instance>
-  --json "<sql>"` takes arbitrary SQL, opens READ-ONLY, needs no passphrase on
-  this instance, and is safe alongside the running server (`--llm-logs` /
-  `--mount-points` switch partitions). The queue triage query is
+- **Reading a running dogfood instance: the console now speaks (P4.18), and
+  `quilltap db` reads the tables.** As of P4.18 (2026-07-24) `quilltap-web`,
+  `quilltap-tauri`, and `quilltap-cli` init a `tracing` stderr subscriber, so
+  the server is no longer silent after the banner: the job runner narrates its
+  lifecycle (Dispatching / Job completed / Job failed), and the swallow sites
+  that hid findings #23/#26 (the cheap-LLM failed-call, the spine error frames,
+  the context-fold/pump paths) now emit structured events. Filter with
+  `RUST_LOG` (default `info`; `RUST_LOG=debug` adds the `tower-http` per-request
+  line; `RUST_LOG=quilltap::jobs=debug,quilltap::cheap_llm=debug` narrows to the
+  job/cheap-LLM targets). Events go to **stderr** — the CLI's stdout stays clean
+  piped table output. The `logs/` dir in a Friday copy is still **v4's** winston
+  output, not v5's (v5's file-transport parity is the deferred tier-3 item).
+  For the durable record, `quilltap db` still reads the tables directly:
+  `./target/release/quilltap db --data-dir <instance> --json "<sql>"` takes
+  arbitrary SQL, opens READ-ONLY, needs no passphrase on this instance, and is
+  safe alongside the running server (`--llm-logs` / `--mount-points` switch
+  partitions). The queue triage query is
   `SELECT type,status,attempts,lastError,createdAt,completedAt FROM
-  background_jobs WHERE type='…' ORDER BY createdAt DESC`. Whether the silent
-  server should gain a log surface is a product question worth raising.
+  background_jobs WHERE type='…' ORDER BY createdAt DESC`.
 
 - **The 2026-07-22 pass, part 2 (P4.6bj ∥ P4.d13/14/15 ∥ P4.d10/be ∥ P4.6bg)
   — what walked CLEAN.** The **state cascade is fully walked and clean**: all

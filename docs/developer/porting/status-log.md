@@ -30995,3 +30995,114 @@ the oracle tree to `/tmp`):**
   is the new row + `defaultCheapProfileId`.
 - The `enclave_step_tier3` oracle is TZ-sensitive; regen with `TZ=UTC` or the
   `chats` table diverges.
+## P4.18 — give the silent server a log surface (tracing subscriber + events at the swallow sites) (lane record)
+
+**RULED 2026-07-24 (human): arm (a) — adopt `tracing` + `tracing-subscriber`.**
+The lane closes the standing open question from the 2026-07-23 error-row ruling
+("whether the server should have a tracing subscriber at all — remains open").
+v4 is NOT silent: it logs structured JSON to the console (and/or rotated files)
+at every one of the corresponding swallow sites; v5 was silent from P4.2 to
+here, which made findings #23/#26 cost hours of invisible failure arms. Adding a
+log surface *restores* v4-parity of operability.
+
+**No differential applies — a first for this port.** Log records are operator
+output, not data; there is no oracle for them and none was regenerated. The
+fidelity obligation stays on the DB/wire/UI surfaces. The lane consumed and
+produced NO fixtures. v4 baseline `e646f58b`, verified clean at lane start
+(`git log e646f58b..HEAD` empty).
+
+### Unit 1 — deps + the init helper (the subscriber in the three bins)
+
+`tracing` (direct) + `tracing-subscriber` (`env-filter` + `fmt`) are added where
+used: `tracing` direct on `quilltap-core` and `quilltap-host` (already
+transitive via the axum/tokio stack — the dep only pins the macro surface);
+`tracing-subscriber` on `quilltap-web` (the shared init helper) and
+`quilltap-cli` (its inline init). `quilltap-tauri` needs no new dep — it calls
+the web helper. The canonical helper is `quilltap_web::init_tracing()`: a
+stderr fmt subscriber env-filtered by `RUST_LOG` (default `info` — v4's
+`LOG_LEVEL` INFO analog), installed with `try_init` (idempotent; a second call
+or a test-installed subscriber is a harmless no-op). Called first thing in
+`quilltap-web`'s `main`, `quilltap-tauri`'s `run`, and (inlined, because the CLI
+must not depend on `quilltap-web`) `quilltap-cli`'s `main`. Stderr only — the
+CLI's stdout is piped user output (the `p4.3-quilltap-cli` note); the web/tauri
+startup banner stays on stdout. NOT in `Host::start` (it runs per-assembly and
+in tests; the subscriber is process-global while the events belong in
+host/core).
+
+### Unit 2 — events at the tier-1 swallow sites
+
+The job runner (`quilltap-core::services::job_runner`) now narrates its
+lifecycle (the "logs nothing at all" dogfood complaint): `Dispatching job`
+(info), `Job completed` (info), `Job failed` (warn), `Error claiming next job`
+(error), and `Failed to record job completion/failure` (error, on the
+previously best-effort `let _ = …mark_*` writes) — context keys matched to v4's
+`job-dispatcher.ts` sites (jobId/type/attempts/error). The spine
+(`quilltap-host::spine`) emits a server-side `tracing::error!` beside each of
+the three transport-shell `Event::chat_error` frames (initial stream, turn
+chain, Brahma Console) — the frame reaches only a live SSE client; the event
+records the failure regardless. The host (`quilltap-host::host`) logs the
+job-pump orphan-reset (v4 "Error resetting orphaned jobs at startup") and the
+stuck-sweep (v4 "Error in stuck-job sweep"), and the two general-state seeding
+`eprintln!` became `tracing` info/warn. `cheap_llm_exec::log_failed_call` emits
+a `tracing::error!` beside the DB error row, BEFORE the log-config guard, so a
+failed cheap call is visible even with no `llm_logs` context attached (the
+exact arm that hid findings #23/#26).
+
+### Unit 3 — the `eprintln!` conversions (non-sibling files)
+
+The remaining raw `eprintln!` swallow/notice sites in files no sibling owns:
+`state/cascade.rs` (×2, warn — project/group hydration degrade), `enclave/step.rs`
+(error — the swallowed turn error; the old `QT_STEP_DEBUG` env gate REPLACED by
+`RUST_LOG` — the harness installs no subscriber, so events drop there, no NDJSON
+contamination), `api/groups.rs` (×2, error), `api/system.rs` (error, home
+payload), `documents/mod.rs` (warn — the unwired `MountRefreshScheduler` skip),
+`pascal/llm_consult.rs` (debug — v4's `logger.debug('Custom-tool consult
+dispatching')`, same fields, same level), `db/mount_index_case_repair.rs` (×3,
+info — the case-repair rename notices). NOT touched (sibling-owned / post-round
+sweep, deferred loud): `orchestrator.rs`, `courier_transport.rs`,
+`chat_settings.rs`, `build_context.rs`, `distill.rs`, `recall_replay.rs`.
+
+### Unit 4 — request logging (tier 2)
+
+`tower-http`'s `TraceLayer::new_for_http()` on `build_router` — the analog of
+v4's `logRequest`. It emits request/response events at DEBUG and failures at
+ERROR, so the default `info` filter stays quiet and
+`RUST_LOG=tower_http=debug` (or `RUST_LOG=debug`) surfaces the per-request line
+on demand. `tower-http` was already in the lockfile (via reqwest); only the
+`trace` feature is net-new. No per-token span on the hot path.
+
+### Unit 5 — the guards (no differential)
+
+`quilltap-web`: `tracing_filter_directive` extracted pure (RUST_LOG → directive)
+so a test pins the `info` default and the respect-RUST_LOG behavior without
+mutating the process env; plus an `init_tracing` idempotency test.
+`quilltap-core`: `failed_job_emits_a_tracing_event` installs a minimal capturing
+`Layer` via `set_default` (thread-local; the current-thread test runtime fires
+the events on the test thread) and asserts a failing job produces a
+`WARN quilltap::jobs` "Job failed" event, with the FAILED row unchanged (the
+event is purely additive). `tracing-subscriber` is a `quilltap-core`
+**dev**-dependency for this test only (the render subscriber lives in the bins).
+
+### The P4.18 exit gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean, AND with `--features quilltap-core/native-transport`;
+`TZ=UTC cargo test --workspace` = **1542 passed / 0 failed** (the 4 new tests —
+1 core smoke + 3 web init — ran, +4 over the 1538 baseline); `cargo build
+--release -p quilltap-web` clean. Manual boot (release `quilltap-web`, temp data
+dir, ephemeral port): the stdout banner prints; under `RUST_LOG=debug` a
+`GET /health` produces the `tower_http::trace` `on_request`/`on_response` lines
+on stderr (`latency=0 ms status=423`); under the default `info` level those
+lines are correctly suppressed (0 `tower_http` hits) — the filter behaves.
+
+### Deferrals (loud)
+
+- **File transport + rotation parity** (v4's `combined.log`/`error.log`,
+  10 MB × 10 backups under `<dataDir>/logs`, `LOG_OUTPUT=file|both`): tier-3,
+  write only if the human asks — the console covers the dogfood need. The
+  `logs/` dir in a Friday copy is v4's winston output, not v5's.
+- **tokio task instrumentation** (`tokio/tracing`) and any log-viewer UI: tier-3.
+- **The sibling-owned `eprintln!` sites** (`orchestrator.rs`,
+  `courier_transport.rs`, `chat_settings.rs`, `build_context.rs`, `distill.rs`,
+  `recall_replay.rs`): a post-round sweep, left for after P4.15/P4.16 land.
+- **CLAUDE.md standing line**: updated at unification, not in-lane.

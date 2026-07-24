@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.18 (unit 6, docs): the status-log lane record, and the dogfood-findings
+standing notes updated — the "should the server have a tracing subscriber"
+open question is RULED (arm (a), landed) and the "reading a running
+instance" note now says the console speaks (RUST_LOG-filtered), with
+`quilltap db` still the durable table read.
+
 P4.18 (unit 3): convert the remaining raw `eprintln!` swallow/notice sites
 in quilltap-core (files no sibling lane owns) to `tracing` at v4-matched
 levels — the state cascade project/group degrade (warn), the enclave step's
