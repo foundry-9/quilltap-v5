@@ -31314,3 +31314,76 @@ document-mode response-parse race. **All three passed both in isolation
 lane changed — the lane is SPA-tool-card-only and cannot reach terminal,
 document-pane, or workspace-tab state. Flagged for the unifier's awareness,
 not owned here.
+
+## Round record — the post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥ P4.18): UNIFIED on main 2026-07-24
+
+The round the 2026-07-23 sequencing ruling ordered second (rewrite →
+**this** → a fresh dogfood walk). Four lanes, ownership fully disjoint,
+all four CLOSED; lane records above. v4 drift-checked clean at `e646f58b`
+at every lane start AND at unification (before and after the oracle
+regens).
+
+**Reconciliation.** `unify/dogfood-fixing-round` from main `7f02e660`;
+cherry-picked in order P4.15 (2 commits) → P4.18 (3) → P4.16 (1) → P4.17
+(4). Conflicts were docs-only (CHANGELOG ×3, status-log ×2,
+dogfood-findings ×1 — the findings-table hunk resolved by taking
+P4.15/P4.18's #26/#27 rows + P4.16's #28 row), zero source conflicts —
+ownership held. Unification wires: the core version RECOUNT (P4.15's and
+P4.18's identical 338→339 bumps merged silently at cherry-pick — the
+known gotcha; accumulated to **0.0.341** = 338 + P4.15×1 + P4.18×2) +
+the status-log record-order normalization (P4.16/P4.17 had prepended
+their records at the top; moved to the chronological end).
+
+**Cross-lane observations recorded at unification:** P4.16's bench
+evidence and P4.15's #27 fix are mutually reinforcing for finding #26's
+close-out (the fold now selects the configured cheap profile AND any
+residual failure is visible via the P4.13 error row + the P4.18 tracing
+event at `log_failed_call` — three independent nets where there were
+zero). The P4.16-deferred seam-comment annotations
+(`build_context.rs:2141`, `orchestrator.rs:271,870`) remain deliberately
+untouched (the disposition lives in the findings table + lane record).
+
+**Gate (all on the unify branch, TZ=UTC):** `cargo fmt --all --check`
+clean; `cargo clippy --workspace --all-targets -- -D warnings` clean,
+plain AND `--features quilltap-core/native-transport`; `cargo build
+--release` clean; `cargo test --workspace` with the four affected
+families' env vars: **369 test binaries / 1,550 passed / 0 failed**
+(+12 over the 1,538 baseline — the lanes' new tests all ran). The four
+affected families regenerated FRESH from `~/source/quilltap-server` at
+`e646f58b` and re-run by name `--nocapture`, zero SKIP:
+`orchestrator_tier3_equivalence` (200-line oracle, incl. the new
+`CheapDefault` selected-profile pin), `courier_images_routes_equivalence`
+(14 cases, `[resolve_cadence tables] OK` — the selected-profile
+`llm_logs` pin visibly ran), `enclave_step_tier3_equivalence` (TZ=UTC
+regen, the no-regression proof for the already-correct site),
+`self_inventory_equivalence` (the populated loadedMemories section).
+Regen note: the self-inventory FIXTURE builder wants
+`QT_FIXTURE_{MAIN,MOUNT,LLMLOGS}` while its CASE wants
+`QT_FIXTURE_SELFINV_*` — the case-header recipe alone under-specifies
+the builder env. SPA: ng test **213 files / 2,583**; `ng build` clean;
+full Playwright **119/119 zero skips** against the fresh dist + current
+debug bins.
+
+**Tidy-up folded into the docs commit:** four accidentally-committed
+EMPTY `.db-journal` files (`episodic-recall-{main,mount}`,
+`mounts-{main,mount}` — TRUNCATE-mode leftovers tracked since
+P4.d13/P4.6v, zero bytes, referenced by nothing) are deleted from the
+tree; the e2e run removes them from disk at runtime, which is how they
+surfaced. The standing rule from the P4.15 lane record applies: journal
+files are never fixtures — delete strays after any oracle/fixture regen.
+
+**Versions:** core 0.0.341, harness 0.0.288, host 0.0.32, web 0.0.39,
+cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.267.
+
+**Standing after the round (durable next-step list):** the fresh
+dogfood walk is the ruled sequence's third leg — P4.13 unit 9 (💸 the
+live tool-use proof) rides it, plus the finding-#26 close-out re-check,
+the P4.17 tool card on real data, and the first tracing-assisted
+session (`RUST_LOG=info` is now the default surface; the "watch the
+server console" instruction works for the first time). Banked, in the
+findings table + order headers: the proactive pre-compute fidelity
+port (recommended-not-ordered), the downstream retrospective-whisper
+suppression look, `browserUserAgent`, the sibling-owned `eprintln!`
+sweep (orchestrator / courier_transport / chat_settings /
+build_context / distill / recall_replay), file-transport log parity,
+the response-bodies real-capture upgrades.

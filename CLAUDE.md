@@ -1147,6 +1147,28 @@ records THERE. Update this summary only when a phase or round completes.
   writes it; the P4.11 note was stale, corrected by P4.15). **Next: the
   post-rewrite dogfood-fixing run, then a fresh dogfood walk (the
   ruled sequence); P4.13 unit 9 rides that walk.**
+- **The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥
+  P4.18): UNIFIED on main (2026-07-24) — ALL FOUR CLOSED.** Finding #27
+  FIXED (both summary-check sites thread the real `cheapLLMSettings` +
+  all user profiles + danger; selected-profile differential cases close
+  the single-profile blind spot; absent-key default `PROVIDER_CHEAPEST`
+  — the enclave's `"AUTO"` is a dead phantom) ∥ finding #28
+  dispositioned NOT-A-BUG (classifier) — v4's real classifier benched
+  over both windows (20 💸 calls); the misses are the cheap MODEL +
+  temp-0.3 noise; banked: the unported proactive pre-compute path
+  (fidelity item), the downstream whisper-suppression look ∥ the
+  ToolMessage rendering port (collapsible tool card both layouts +
+  grouping + `whispered to <names>`; the raw-JSON whisper gone; live
+  e2e beat) ∥ the RULED arm-(a) tracing surface (subscriber in all
+  three bins, events at the swallow sites, `TraceLayer`; log output
+  explicitly outside the differential contract). The #22 `loadedMemories`
+  rider LANDED (`self_inventory` reports the real slate). Gate: 369
+  binaries / 1,550 / 0 (the four affected families fresh at `e646f58b`
+  by name zero SKIP), clippy both feature sets, release build, ng 213
+  files / 2,583, full Playwright 119/119 zero skips. **Next: the fresh
+  dogfood walk (the ruled sequence's third leg) — P4.13 unit 9 rides
+  it, plus the #26 close-out re-check.** Deferred loud: browserUserAgent,
+  the sibling-owned `eprintln!` sweep, file-transport log parity.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
@@ -1164,10 +1186,17 @@ records THERE. Update this summary only when a phase or round completes.
   unification (2026-07-23) re-verified v4 at `e646f58b` clean and
   regenerated ALL THREE provider corpora byte-identical (request-envelopes
   93, google-wire 10, response-bodies 29 — the new family, all
-  `synthetic: true` pending real captures). Versions (after the 2026-07-23
-  provider-I/O-round unification): core 0.0.337, harness 0.0.286, host
-  0.0.30, web 0.0.38, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
-  The previous versions line follows for history: (after the P4.11
+  `synthetic: true` pending real captures). The dogfood-fixing-round
+  unification (2026-07-24) regenerated the orchestrator / courier-images /
+  enclave-step / self-inventory oracles fresh — v4 verified still at
+  `e646f58b`, clean. Versions (after the 2026-07-24 dogfood-fixing-round
+  unification): core 0.0.341, harness 0.0.288, host 0.0.32, web 0.0.39,
+  cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.267.
+  The previous versions line follows for history: (after the 2026-07-23
+  provider-I/O-round unification, then the courier fold-episode
+  follow-up) core 0.0.337 → 0.0.338, harness 0.0.286 → 0.0.287, host
+  0.0.30 → 0.0.31, web 0.0.38, cli 0.0.2, quilltap-tauri 0.0.4, SPA
+  0.5.263; (after the P4.11
   unification) core 0.0.328 (0.0.329 after a parallel dogfood fix),
   harness 0.0.282, host 0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri
   0.0.4, SPA 0.5.263.

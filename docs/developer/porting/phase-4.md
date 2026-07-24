@@ -2548,6 +2548,60 @@ bench comparison first), the tracing-subscriber question, and the
 dogfood-fixing run. The next `/setupphase` plans that run once this round
 unifies.
 
+## The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥ P4.18) — UNIFIED on main 2026-07-24
+
+**ALL FOUR LANES CLOSED.** Delivered: **P4.15** — finding #27 FIXED: both
+broken `run_summary_check` sites (orchestrator + courier) thread the real
+`cheapLLMSettings` + ALL the user's connection profiles + resolved danger
+settings (absent-key default `PROVIDER_CHEAPEST` — the enclave's `"AUTO"`
+default is a dead phantom; v4 has no `AUTO` strategy); the single-profile
+differential blind spot is closed (both families gained a
+selected-profile case — the fold/episode/title `llm_logs` rows carry the
+configured cheap profile, red-then-green; the enclave family green
+untouched); the finding-#22 `loadedMemories` rider LANDED
+(`self_inventory` reports the real turn slate; `browserUserAgent` still
+loud). **P4.16** — finding #28 dispositioned **NOT-A-BUG (classifier)**
+with evidence (v5's classifier fires on the exact sampled turns; v4's
+real classifier benched 20 💸 calls over both windows — the tight-vs-wide
+window is a weak-to-null discriminator; the misses are the cheap MODEL
+(gpt-5-nano ≪ deepseek-v4-flash) + temp-0.3 noise); no source changed, no
+`p4.19` ordered; two threads banked in the findings table (the unported
+proactive pre-compute path — recommended-not-ordered fidelity item; the
+downstream whisper-suppression look — a future dogfood item). **P4.17** —
+the ToolMessage rendering port: TOOL rows render as v4's collapsible tool
+card (both layouts, grouping via `initiatedBy`, avatar-fallback,
+`delegatedDisplay` short-circuit, `whispered to <names>` label rider,
+36 new specs + a live e2e beat); the raw-JSON whisper bubble is gone.
+**P4.18** — the ruled arm (a) tracing surface: `init_tracing()` in all
+three bins (`RUST_LOG` default info), events at the job runner / spine
+error frames / host pump / `log_failed_call`, the non-sibling
+`eprintln!` conversions, `tower-http` `TraceLayer` at debug; log output
+is explicitly OUTSIDE the differential contract (a first, recorded).
+
+Unification wires: the core version recount (identical 338→339 bumps
+merged silently → 0.0.341) + status-log record-order normalization. Gate:
+fmt clean; clippy both feature sets `-D warnings` clean; release build
+clean; `cargo test --workspace` (TZ=UTC, all four affected families'
+env vars) **369 binaries / 1,550 / 0**; the four families re-run by name
+over oracles regenerated FRESH from v4 at `e646f58b` (v4 verified clean
+before and after) — zero SKIP, the courier `resolve_cadence`
+selected-profile case visibly OK; ng test **213 files / 2,583**; ng build
+clean; full Playwright **119/119 zero skips** against the fresh dist.
+Versions: core 0.0.341, harness 0.0.288, host 0.0.32, web 0.0.39, cli
+0.0.3, quilltap-tauri 0.0.5, SPA 0.5.267.
+
+**Standing after the round:** finding #26 has every identified cause
+fixed (#23/P4.11, the sort panic/P4.14, error rows/P4.13, #27/P4.15) and
+now a tracing surface to catch any residual — it CLOSES at the fresh
+dogfood walk. **The walk is the next step (the ruled sequence's third
+leg): P4.13 unit 9 (💸 live tool-use proof) rides it, plus the #26
+re-check, the P4.17 tool-card on real data, and the first
+tracing-assisted session.** Also banked: the proactive pre-compute
+fidelity port, the downstream retrospective-whisper look, the
+sibling-owned `eprintln!` sweep, file-transport log parity, the
+response-bodies real-capture upgrades. The original planning block
+follows.
+
 ## The post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥ P4.18) — PLANNED 2026-07-24
 
 **The round the 2026-07-23 sequencing ruling ordered second** (rewrite →

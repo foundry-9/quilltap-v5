@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Unified the post-rewrite dogfood-fixing round (P4.15 ∥ P4.16 ∥ P4.17 ∥
+P4.18) on main — all four lanes closed. Context summaries now run on the
+user's configured cheap LLM at both remaining call sites, with new
+differential cases pinning the selected profile (finding #27); the
+retrospective-recall classifier was benched against v4's real classifier
+and dispositioned not-a-bug (the misses are model choice and sampling
+noise, finding #28); tool results render as v4's collapsible tool card
+instead of a raw-JSON whisper bubble, with whisper labels naming their
+targets; and the server has a log surface for the first time (tracing
+subscriber in all three binaries, RUST_LOG default info, events at the
+previously silent failure sites, request logging at debug).
+self_inventory now reports the real loaded-memory slate (finding #22
+carry-out). Unification wires: core version recount to 0.0.341;
+status-log record-order normalization. Gate: 369 test binaries / 1,550 /
+0 with the four affected oracle families regenerated fresh at v4
+e646f58b and re-run by name (zero skips); clippy both feature sets;
+release build; ng test 2,583; ng build clean; full Playwright 119/119
+(zero skips) against the fresh dist. Final versions: core 0.0.341,
+harness 0.0.288, host 0.0.32, web 0.0.39, cli 0.0.3, quilltap-tauri
+0.0.5, SPA 0.5.267. Next: the fresh dogfood walk (P4.13 unit 9 rides it,
+plus the finding-#26 close-out).
+
 P4.17 units 5+6 (SPA): a live Playwright walk of the tool-result card
 (seeded on Solo Voyage via global-setup CLI writes — a character rng run
 folded into an embedded card + a user Prospero run as an expandable chip;
