@@ -74,6 +74,19 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 10 + lane close (SPA): the Data & System e2e beats and the
+final gate. A live Playwright walk (settings-data-system-flow) of the
+fitted-out tab over verbs already on main: the eight-card walk with a
+?section= deep-link, a passphrase round-trip (changed to a temp value and
+back so the shared server is left as found), and the app-wide auto-lock
+provider's idle warning under a fake clock. The Tasks Queue / Import-Export
+/ Delete-All beats ACTIVATE-AT-UNIFY behind a systemTasksQueue probe.
+settings.spec.ts updated (the system tab replaces the placeholder). SPA
+bumped to 0.5.268. Gate: ng test 223 files / 2,621, ng build clean, full
+Playwright 121 passed + 3 ACTIVATE-AT-UNIFY skips (the one red,
+salon-composer-modes' KaTeX beat, is a pre-existing run-order flake this
+lane doesn't touch); zero crates diffs.
+
 P4.9G2 unit 1 (shell half): the Data & System tab replaces its placeholder
 in settings.ts. system-tab.ts is the CollapsibleCard stack in v4's exact
 order (Encryption Passphrase, Auto-Lock, Backup & Restore, Import / Export,

@@ -31908,3 +31908,34 @@ WON'T-PORT (`phase-4.md:273-276`) and renders NOTHING (the Memory-tab
 no-dead-cards convention) — a comment marks where it would sit. Spec: the
 eight card titles in order + no Plugins card, over a permissive stub that
 answers every mounted card's fetch.
+
+### Unit 10 — the Data & System e2e beats + the lane close-out
+
+`apps/web/e2e/settings-data-system-flow.spec.ts` rides the SHARED
+global-setup server (sorts after `foundation`). Three runnable beats over
+verbs already on main: (1) the eight-card tab walk asserting v4's order + no
+Plugins card + the placeholder gone + a `?section=auto-lock` deep-link
+force-open; (2) a passphrase round-trip — E2E_PASSPHRASE → a temp value →
+back to E2E_PASSPHRASE, so the shared server is left EXACTLY as found (later
+specs' `maybeUnlock` still works); (3) the app-wide auto-lock provider's
+idle warning under a Playwright fake clock (`page.clock.install` +
+`fastForward('01:05')` past the 1-minute warning threshold, short of the
+2-minute lock), then disabling auto-lock to restore. Three ACTIVATE-AT-UNIFY
+beats (tasks-queue view, export→import, delete-all — the last in its own
+describe) skip behind a `systemTasksQueue` probe until P4.9G1's verbs land.
+`settings.spec.ts` updated: the `system` tab now renders `qt-settings-system`
+(not the retired placeholder), with a permissive CoreClient stub. No
+`global-setup.ts` seed added — the `background_jobs` seed the queue beat
+wants activates WITH that beat at unification (deferred, recorded). SPA
+bumped 0.5.267 → 0.5.268.
+
+**Gate (lane close):** `ng test` 223 files / 2,621 all green; `ng build`
+clean; zero `crates/**` diffs (proof: `git diff --name-only main...HEAD --
+'crates/**'` empty). Full Playwright (built debug bins + fresh dist): 121
+passed, 3 ACTIVATE-AT-UNIFY skips, 1 red — `salon-composer-modes`'s KaTeX
+`$$`-math beat, a PRE-EXISTING run-order flake (flagged run-order-flaky in
+the memory notes; this SPA-only lane touches no salon/composer/KaTeX code;
+the mounted auto-lock provider's listeners are passive/capture and never
+preventDefault). The runnable Data & System beats (tab walk / passphrase /
+auto-lock) passed cleanly across two full-suite runs. `/unify` re-runs the
+full suite on its own branch.
