@@ -97,6 +97,18 @@ const LOG_2 = 'e5000000-0000-4000-8000-000000000002';
 const CHAT_SETTINGS = 'ab000000-0000-4000-8000-000000000001';
 const TRR_1 = 'ae000000-0000-4000-8000-000000000001';
 const TRR_2 = 'ae000000-0000-4000-8000-000000000002';
+// ── P4.9G5 additions: one row in every table the backup collector dumps ──────
+const PROVIDER_MODEL_1 = 'b1000000-0000-4000-8000-000000000001';
+const PROMPT_TEMPLATE_1 = 'b2000000-0000-4000-8000-000000000001';
+const PLUGIN_CONFIG_1 = 'b3000000-0000-4000-8000-000000000001';
+const CHAR_PLUGIN_DATA_1 = 'b4000000-0000-4000-8000-000000000001';
+const ANNOTATION_1 = 'b5000000-0000-4000-8000-000000000001';
+const CHAT_DOCUMENT_1 = 'b7000000-0000-4000-8000-000000000001';
+const CONV_CHUNK_1 = 'b8000000-0000-4000-8000-000000000001';
+const TFIDF_VOCAB_1 = 'b9000000-0000-4000-8000-000000000001';
+const EMBEDDING_STATUS_1 = 'ba000000-0000-4000-8000-000000000001';
+const VECTOR_ENTRY_1 = 'bb000000-0000-4000-8000-000000000001';
+const MOUNT_BLOB_1 = 'bc000000-0000-4000-8000-000000000001';
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -577,6 +589,159 @@ async function main(): Promise<void> {
         );
     }
   }
+
+  // 14b. P4.9G5 — one row in every remaining table `collectUserData` dumps, so
+  //      the backup differential proves each entity's marshaling rather than an
+  //      empty `[]`. Pinned ids; every write goes through v4's REAL repos.
+  await repos.providerModels.create(
+    {
+      provider: 'OPENAI_COMPATIBLE',
+      modelId: 'mock-model',
+      modelType: 'chat',
+      displayName: 'Mock Model',
+      baseUrl: 'http://127.0.0.1:1/v1',
+      contextWindow: 8192,
+      maxOutputTokens: 2048,
+      deprecated: false,
+      experimental: false,
+    } as never,
+    { id: PROVIDER_MODEL_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.promptTemplates.create(
+    {
+      userId: spec.userId,
+      name: 'Fixture Prompt',
+      content: 'Speak plainly and carry a small lantern.',
+      description: 'The fixture prompt template.',
+      isBuiltIn: false,
+      category: 'COMPANION',
+      modelHint: null,
+      tags: [TAG_2],
+    } as never,
+    { id: PROMPT_TEMPLATE_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.pluginConfigs.create(
+    {
+      userId: spec.userId,
+      pluginName: 'qtap-plugin-fixture',
+      config: { endpoint: 'http://127.0.0.1:1', retries: 2 },
+      enabled: true,
+    } as never,
+    { id: PLUGIN_CONFIG_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.characterPluginData.create(
+    {
+      characterId: LORIAN,
+      pluginName: 'qtap-plugin-fixture',
+      data: { visits: 3, lastPort: 'Ravenna' },
+    } as never,
+    { id: CHAR_PLUGIN_DATA_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.conversationAnnotations.create(
+    {
+      chatId: CHAT_1,
+      messageIndex: 1,
+      sourceMessageId: MSG_12,
+      characterName: 'Lorian',
+      content: 'A note in the margin.',
+    } as never,
+    { id: ANNOTATION_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.chatDocuments.create(
+    {
+      chatId: CHAT_1,
+      filePath: 'notes/intro.md',
+      scope: 'project',
+      mountPoint: null,
+      displayTitle: 'Intro',
+      isActive: true,
+    } as never,
+    { id: CHAT_DOCUMENT_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  // The chunk carries a real embedding so the backup's `encodeEmbedding`
+  // (header-aware `blobToFloat32`) is exercised on both sides.
+  await repos.conversationChunks.create(
+    {
+      chatId: CHAT_1,
+      interchangeIndex: 0,
+      content: 'Hello there. / A fine day for a voyage.',
+      participantNames: ['Lorian'],
+      messageIds: [MSG_11, MSG_12],
+      embedding: new Float32Array([0.1, -0.25, 0.5, 0.75]),
+    } as never,
+    { id: CONV_CHUNK_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.tfidfVocabularies.create(
+    {
+      profileId: EMB_PROFILE,
+      userId: spec.userId,
+      vocabulary: JSON.stringify([
+        ['road', 0],
+        ['harbour', 1],
+      ]),
+      idf: JSON.stringify([0.5, 1.5]),
+      avgDocLength: 4.5,
+      vocabularySize: 2,
+      includeBigrams: true,
+      fittedAt: TS,
+    } as never,
+    { id: TFIDF_VOCAB_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.embeddingStatus.create(
+    {
+      userId: spec.userId,
+      entityType: 'MEMORY',
+      entityId: MEM_1,
+      profileId: EMB_PROFILE,
+      status: 'EMBEDDED',
+      embeddedAt: TS,
+      error: null,
+    } as never,
+    { id: EMBEDDING_STATUS_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  // A per-character vector index + one entry (the meta row's id is minted by the
+  // repo and baked into the committed fixture, so it stays deterministic).
+  await repos.vectorIndices.saveMeta(LORIAN, 4);
+  await repos.vectorIndices.addEntry({
+    id: VECTOR_ENTRY_1,
+    characterId: LORIAN,
+    embedding: new Float32Array([0.1, -0.25, 0.5, 0.75]),
+  } as never);
+
+  // 14c. One doc-mount blob attached to the stored file, so the backup's
+  //      `mount-blobs/<id>` byte-staging leg has something to stage.
+  const blobFileId = (
+    midb.prepare('SELECT id FROM doc_mount_files ORDER BY createdAt, id LIMIT 1').get() as
+      | { id: string }
+      | undefined
+  )?.id;
+  if (!blobFileId) throw new Error('no doc_mount_files row to attach a blob to');
+  const blobBytes = Buffer.from('fixture-mount-blob-bytes', 'utf8');
+  const { createHash } = await import('node:crypto');
+  midb
+    .prepare(
+      'INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(
+      MOUNT_BLOB_1,
+      blobFileId,
+      createHash('sha256').update(blobBytes).digest('hex'),
+      blobBytes.length,
+      'application/octet-stream',
+      blobBytes,
+      TS,
+      TS,
+    );
+
+  // 14d. Two instance_settings rows — every provisioned instance carries the
+  //      mount-point routing keys, and the backup snapshots them verbatim.
+  mainDb
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('generalMountPointId', '"11111111-2222-4333-8444-555555555555"');
+  mainDb
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('lanternBackgroundsMountPointId', '"66666666-7777-4888-8999-aaaaaaaaaaaa"');
 
   // 15. background_jobs — one row in every status (the tasks-queue + jobs corpus).
   for (const job of spec.jobs) {

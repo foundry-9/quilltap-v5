@@ -36,6 +36,9 @@ pub mod ariel_notifications;
 pub mod aurora_notifications;
 pub mod avatar_generation;
 pub mod avatar_prompt;
+// === P4.9G5 ===
+pub mod backup;
+// === end P4.9G5 ===
 pub mod brahma_console;
 pub mod build_context;
 pub mod builtin_embedding;

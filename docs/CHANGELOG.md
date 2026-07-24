@@ -61,6 +61,17 @@ the shared fixture and diffs the output line by line — 42 cases, byte-exact.
 Also ported the `.qtap` upload reader: the format sniff, the line-by-line
 NDJSON parse, and the reassembler that folds a streamed export back into the
 shape the importer consumes.
+Began the Backup & Restore server family. Quilltap can now gather everything
+a backup contains — every character, chat and message, memories, files,
+profiles, templates, projects, groups, plugin data, the document stores and
+their attachments, and the settings that tie them together — and lay it out
+on disk exactly the way the old app does, file for file and byte for byte,
+including the summary manifest that counts what went in. Nothing is lost
+when a file cannot be read: the backup notes it and carries on, as before.
+The test fixture grew a row in every table a backup touches, so each part of
+the export is checked against the real old-app code rather than assumed.
+Downloading the finished archive, and restoring from one, are still to come
+and continue to say so plainly.
 
 Planned the next round of work: the three Data & System features whose
 buttons are already on screen but whose server side has not been written

@@ -9,6 +9,139 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.9G5 (backup / restore), IN PROGRESS on `claude/p4-backup-restore-docs-6085f9`
+
+**Baseline: v4 `e646f58b` (drift-checked clean at lane start: `git log
+e646f58b..HEAD` empty, tree clean).** Lane 3 of 3 in the "finish P4.9G1" round.
+
+### Unit 1 — `collectUserData` + `createManifest` + the staging tree (LANDED, differential-verified)
+
+The read-and-project half of v4 `createBackup`, in the new
+`services/backup/{collect,manifest,staging,marshal}.rs`:
+
+- **`collect_user_data`** (v4 `backup-service.ts:135`) — all 38 collections
+  across the three partitions. Families whose v5 read already reproduces v4's
+  `findAll` are reused from `db::` (characters overlay, chats + their inline
+  message events, tags, connection/image profiles, memories, provider models,
+  projects, groups, chat settings); the other ~20 are marshaled from raw rows
+  here. `dumpMountIndexTable`'s eight `SELECT *` dumps, the two serialized
+  shapes (`SerializedConversationChunk` / `SerializedVectorEntry`), the
+  header-aware `encodeEmbedding`, the doc-mount blob metadata split, and
+  `dumpInstanceSettings` all ported.
+- **The marshaling rule, stated once** (`marshal.rs`): v4's base repository runs
+  `SELECT *` → `hydrateRow` → the adapter turns SQL NULL into an ABSENT key →
+  Zod `safeParse`. So the wire shape is **Zod schema declaration order** with
+  every `.nullable().optional()` NULL column **omitted**, and `.default(...)`
+  fields materialized. Each entity is an ordered field spec; `F::{Str,StrOpt,
+  Num,NumOpt,Bool,BoolOpt,Json(default),JsonOpt,Raw}` walks it.
+- **`create_manifest`** (`:432`) — the 41-key count bag in v4's exact key order.
+  `appVersion` is a PARAMETER: v4 reads `process.env.npm_package_version` with a
+  `'2.0.0'` fallback, which makes it an environment property, not a data
+  property (the host passes v5's version; the differential pins both sides).
+- **`stage_backup`** (`:584-734`) — the 38 data files in v4's exact order and
+  filenames, then user files under `files/<storageKey>`, then doc-mount blob
+  bytes under `mount-blobs/<id>`, then npm plugins and theme bundles, and the
+  manifest LAST. `write_json_array_file` reproduces v4's streamed layout
+  byte-for-byte (empty array → `[]\n`; otherwise each element pretty-printed at
+  indent 2 then shifted two more spaces, `,\n` between, `]\n` last) and
+  `write_json_file` (the manifest) has NO trailing newline. Both pinned by unit
+  tests as well as the differential. Warn-and-continue on an unreadable file or
+  blob is carried as a `StageReport` rather than an error.
+
+**Deliberate divergences, recorded:**
+
+- **No WAL checkpoint.** v4 checkpoints all three partitions first (`:556-570`);
+  v5 opens `journal_mode = TRUNCATE` (the standing cloud-sync rule), so there is
+  no WAL to flush.
+- **Missing-table tolerance.** v4 wraps every repo read in `safeQuery(..., [])`,
+  so a table an instance never provisioned yields `[]`. The port reproduces that
+  for the missing-table case specifically (other SQL errors still surface rather
+  than silently emptying a backup). The live example is `wardrobe_items`: post
+  vault-cutover, v4's `wardrobe.findAll()` reads the LEGACY main-DB table, which
+  a modern instance never populates — wardrobe rides the archive as
+  `Wardrobe/*.md` documents inside the vault mount instead. `wardrobe-items.json`
+  is therefore legitimately `[]` and its marshaler is **unproven by the
+  fixture** (noted for the restore side, whose phase 19 only consumes it for
+  LEGACY backups).
+
+**Two findings banked (neither is this lane's file to change):**
+
+1. **`db::character_plugin_data::find_by_character_id` parses `data`; v4 does
+   not.** v4's repository lists no JSON columns, so `findByCharacterId` (and
+   therefore `getPluginDataMap`, which feeds `buildTools`' `toolConfigs`) hands
+   callers the RAW JSON text. The oracle shows the backup's
+   `character-plugin-data.json` carrying `"data": "{\"visits\":3,…}"` — a
+   string. The backup reads the column itself rather than reuse that function.
+   Worth a follow-up: if the parse is wrong for `getPluginDataMap` too, plugin
+   tool configs see an object where v4 sees a string.
+2. **v5's store/vault OVERLAY readers emit v4's fields in a different key
+   ORDER.** v4 merges slim-row → managed fields → store properties; v5 merges
+   slim-row → properties → managed. Same field set, same values. **No prior
+   differential could see it**: `serde_json`'s `preserve_order` map is an
+   `IndexMap`, whose `PartialEq` is order-INDEPENDENT, so every object-level
+   diff in the repo compares as a set. It surfaces only under a byte-level
+   archive diff. Affects `characters.json`, `chats.json` (the inline message
+   events, via `chats_messages_read::get_messages`), `projects.json`,
+   `groups.json`. Left as a recorded divergence — JSON key order carries no
+   meaning and restore reads by key; reshuffling shared overlay readers for a
+   byte diff would be tail-wagging.
+
+**Differential: `system_backup_equivalence`** (2 cases, green) — runs the Rust
+collector + manifest + staging over a fresh fixture copy and diffs the
+**extracted archive tree** against v4's REAL `createBackup`: the relative path
+set first, then per file the exact bytes (34 of 38 data files + the manifest) or
+sha256+size (the staged binary payloads). Never the zip bytes — v4 shells out to
+`zip -r`, v5 will use a zip crate, and framing differs by design. The four
+overlay-hydrated files above are compared after canonicalizing key order and
+re-rendering with the same pretty layout, so content AND formatting still fail
+loudly. Normalized and nothing else: `manifest.createdAt`/`appVersion`, and
+`characters.json`'s NESTED `physicalDescription.createdAt`/`.updatedAt` (the
+vault overlay synthesizes the default physical description at read time and
+stamps it "now" on both sides — its `id` is derived, not random, and IS
+compared; the normalizer keys off six-space indentation so the character's own
+timestamps stay under diff). Cases: `backup_full` (41 entries, the user file's
+bytes seeded on disk) and `backup_missing_file` (40 entries — the
+warn-and-continue arm leaves no `files/` subtree at all).
+
+**⚠ FIXTURE CHANGED — the unifier must re-run G3's and G4's differentials.**
+`system-data-{main,mount,llmlogs}.db` were regenerated with a row in every
+remaining table `collectUserData` dumps, so each entity's marshaling is proven
+rather than an empty `[]`: provider model, prompt template, plugin config,
+character plugin data, conversation annotation, chat document, conversation
+chunk (with a real embedding, so `encodeEmbedding`'s quantized round-trip is
+exercised), tfidf vocabulary, embedding status, a `vector_indices` meta + a
+`vector_entries` row, one `doc_mount_blobs` row (so the `mount-blobs/` staging
+leg has something to stage), and two `instance_settings` routing keys. This
+lane re-generated the `system-jobs-routes` oracle and re-ran
+`system_jobs_routes_equivalence` over the new fixture: **18/18 green,
+unaffected.** G3's `system_delete_data_equivalence` and G4's export/import
+differentials ride the same family and were authored against the OLD fixture —
+their oracles must be regenerated at unification.
+
+**Oracle regen recipe** (Node 24, from the v4 checkout; jest ignores `.claude/`
+→ cp to a /tmp mirror). ⚠ The case must `doMock` the file-storage manager back
+to the REAL module — `jest.setup.ts` stubs `downloadFile` to the literal
+`'mock file content'`, which silently fakes the very staging leg under test:
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-sysbackup-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-backup.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-backup.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-backup
+# then: QT_ORACLE_SYSTEM_BACKUP=/tmp/oracle-system-backup.ndjson TZ=UTC \
+#   cargo test -p quilltap-harness --test system_backup_equivalence -- --nocapture
+```
+Fixture regen (same three env vars) →
+`node --import tsx harness/oracle/fixtures/build-system-data-fixture.ts`, then
+delete the stray `.db-journal` files (the standing P4.15 rule).
+
 ## Round record — the pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2): UNIFIED on main (2026-07-24)
 
 All three lanes reconciled on `unify/p4.19-p4.9g` and fast-forwarded to main.

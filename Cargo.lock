@@ -3818,6 +3818,7 @@ version = "0.0.295"
 dependencies = [
  "base64 0.22.1",
  "flate2",
+ "hex",
  "quilltap-core",
  "quilltap-host",
  "regex",

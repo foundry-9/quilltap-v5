@@ -34,6 +34,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 # the frontmatter), then recomputes the content-addressed shas from the
 # normalized bytes so both sides align. Only that test tree needs these.
 sha2 = "0.10"
+# The P4.9G5 backup differential hashes the archive's binary payloads (staged
+# user files + doc-mount blob bytes) rather than diffing them inline.
+hex = "0.4"
 regex = "1"
 # The file-attachment tier-3 differential base64-encodes the fixture's per-file
 # bytes to build the (B) processFileAttachmentFallback `data` payload.
