@@ -2485,14 +2485,17 @@ feature sets/release build clean; 369 binaries / 1,538 / 0 with all
 differential env vars; the round's 20 named families re-run
 `--nocapture` over oracles regenerated fresh at `e646f58b`, zero SKIP;
 all three committed corpora byte-identical after fresh regen; ng test
-2,547; ng build clean; full Playwright green zero skips. **Standing
-(loud):** the pre-existing `enclave_step_tier3` red vs a FRESH oracle
-(the enclave step's spine never runs fold-episode — v5 gap, reproduced
-on pre-round main; belongs to the post-rewrite dogfood-fixing run);
-the response-bodies corpus is all `synthetic: true` pending real
-captures; #26/#27/#28 + the tracing-subscriber question +
-`debugMemoryLogs` writer are the dogfood-fixing run's scope. The
-original planning block follows.
+2,547; ng build clean; full Playwright green zero skips. The
+pre-existing `enclave_step_tier3` red P4.13 found was FIXED on a
+parallel branch and folded in at this same unification
+(`enclave/step.rs` runs the fold-episode pass via
+`FoldEpisodePassSeams`; differential green over a fresh TZ=UTC
+`e646f58b` oracle; core → 0.0.337). **Standing (loud):** the
+response-bodies corpus is all `synthetic: true` pending real captures;
+the courier paste-resolver carries the enclave step's twin
+bare-NoopSeams fold gap (unpinned); #26/#27/#28 + the
+tracing-subscriber question + `debugMemoryLogs` writer are the
+dogfood-fixing run's scope. The original planning block follows.
 
 ## The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10) — PLANNED 2026-07-23
 

@@ -72,15 +72,28 @@ started" standing) was done here.
   2,547 / 0**; `ng build` clean; **full Playwright green, zero skips**,
   against the fresh dist + freshly rebuilt debug binaries.
 
+**The fourth pick — the enclave fold fix folded in at unification.**
+The pre-existing `enclave_step_tier3` red P4.13 found (v5's enclave step
+ran the bare NoopSeams summary fold, so the fold-time episode pass never
+ran on the autonomous-room path) had already been FIXED on the parallel
+branch `claude/cool-greider-6e3858` (`cf127028`, one file:
+`enclave/step.rs` — `run_summary_fold` now builds `FoldEpisodePassSeams`,
+the orchestrator precedent), left off main deliberately while this round
+was mid-flight. Cherry-picked here (core → **0.0.337**) and proven on
+the merged tree: the enclave-step oracle regenerated fresh at `e646f58b`
+and the differential green by name. ⚠ Regen gotcha reconfirmed the hard
+way: the enclave-step jest ORACLE invocation needs `TZ=UTC` in the env
+(the P4.d12 note; the case file says so at `:54`) — without it the cron
+`scheduleNextRunAt` stamps record local time and the differential fails
+on exactly that field. The full gate re-ran after the pick (fmt, clippy
+both sets, release build, the workspace suite, full Playwright).
+
 **Standing after the round (all durable in the order headers +
 `dogfood-findings.md` + phase-4.md):**
-- **The pre-existing `enclave_step_tier3` red** vs a FRESH `e646f58b`
-  oracle (found by P4.13, reproduced on pre-round main): v4's enclave
-  step folds episodes via the summary check; v5's enclave step spine
-  never runs fold-episode. The committed oracle predates the fold and
-  stays green, which is why the workspace suite passes — regenerating
-  that family fresh WILL go red until the gap is fixed. The
-  dogfood-fixing run's first Rust item.
+- The COURIER paste-resolver carries the same bare-NoopSeams fold gap
+  the enclave step had (unpinned — its corpus stays below fold cadence);
+  a follow-up chip was spawned by the greider session. Belongs to the
+  dogfood-fixing run.
 - The `response-bodies` corpus is **entirely doc-derived
   (`synthetic: true`)** — v4/v5 parse agreement proven, wire shape not;
   real-capture upgrades ride unit 9 / dogfooding (recipe in the
@@ -97,8 +110,9 @@ started" standing) was done here.
 - Next: `/setupphase` for the dogfood-fixing run; then the fresh
   dogfood walk (P4.13 unit 9 rides it — 💸 ask first).
 
-Final versions: core **0.0.336**, harness **0.0.286**, host 0.0.30,
-web **0.0.38**, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
+Final versions: core **0.0.337** (0.0.336 + the enclave-fold pick),
+harness **0.0.286**, host 0.0.30, web **0.0.38**, cli 0.0.2,
+quilltap-tauri 0.0.4, SPA 0.5.263.
 
 ## Lane record — P4.13 the provider-I/O rewrite (branch `claude/provider-io-rewrite-abd736`, lane complete 2026-07-23; unit 9's live walk BANKED for the human)
 

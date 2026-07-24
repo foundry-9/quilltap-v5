@@ -1126,13 +1126,16 @@ records THERE. Update this summary only when a phase or round completes.
   vars; the round's 20 named families `--nocapture` zero SKIP over
   fresh `e646f58b` oracles; three corpora byte-fresh; clippy both
   feature sets; release build; ng 2,547; full Playwright green zero
-  skips. Standing loud: the PRE-EXISTING `enclave_step_tier3` red vs a
-  fresh oracle (the enclave step never runs fold-episode — the
-  dogfood-fixing run's first Rust item), the all-synthetic
-  response-bodies corpus, #26/#27/#28 + tracing-subscriber +
-  `debugMemoryLogs`. **Next: the post-rewrite dogfood-fixing run, then
-  a fresh dogfood walk (the ruled sequence); P4.13 unit 9 rides that
-  walk.**
+  skips. The pre-existing `enclave_step_tier3` red P4.13 found (the
+  enclave step never ran fold-episode) was FIXED on a parallel branch
+  and folded in at this same unification (`enclave/step.rs` →
+  `FoldEpisodePassSeams`; differential green over a fresh TZ=UTC
+  oracle; core → 0.0.337). Standing loud: the all-synthetic
+  response-bodies corpus, the courier paste-resolver's twin
+  bare-NoopSeams fold gap (unpinned), #26/#27/#28 +
+  tracing-subscriber + `debugMemoryLogs`. **Next: the post-rewrite
+  dogfood-fixing run, then a fresh dogfood walk (the ruled sequence);
+  P4.13 unit 9 rides that walk.**
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
@@ -1151,7 +1154,7 @@ records THERE. Update this summary only when a phase or round completes.
   regenerated ALL THREE provider corpora byte-identical (request-envelopes
   93, google-wire 10, response-bodies 29 — the new family, all
   `synthetic: true` pending real captures). Versions (after the 2026-07-23
-  provider-I/O-round unification): core 0.0.336, harness 0.0.286, host
+  provider-I/O-round unification): core 0.0.337, harness 0.0.286, host
   0.0.30, web 0.0.38, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
   The previous versions line follows for history: (after the P4.11
   unification) core 0.0.328 (0.0.329 after a parallel dogfood fix),

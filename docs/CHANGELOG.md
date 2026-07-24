@@ -11,10 +11,14 @@ a live turn is gone, and the Docker image now builds and serves the real
 app. Gate: 369 test binaries / 1,538 / 0 with the round's 20 differentials
 re-run by name over oracles regenerated fresh at v4 e646f58b (zero SKIP,
 all three provider corpora byte-identical); clippy both feature sets;
-release build; ng test 2,547; full Playwright green zero skips. Final
-versions: core 0.0.336, harness 0.0.286, web 0.0.38, SPA 0.5.263. Still
-open on P4.13: unit 9, the human live proof on the Friday copy (real
-spend), which also closes finding #25's row.
+release build; ng test 2,547; full Playwright green zero skips. The same
+unification folded in the parallel enclave-fold fix: the enclave step's
+summary fold now runs the fold-time episode pass (the fresh-oracle
+enclave_step_tier3 red is gone; the differential is green over a TZ=UTC
+oracle regenerated at e646f58b). Final versions: core 0.0.337, harness
+0.0.286, web 0.0.38, SPA 0.5.263. Still open on P4.13: unit 9, the human
+live proof on the Friday copy (real spend), which also closes finding
+#25's row.
 
 P4.13 units 7-8 + 10 (records): verified the Brahma Console's loop-bug
 compensation is verbatim v4 behavior (stays); recorded the reasoning/
