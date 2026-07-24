@@ -41,7 +41,9 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::chat_timestamp::{TimestampConfig, TimestampFormat, TimestampMode};
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::db::{characters_read, chats_read};
+use quilltap_core::db::{characters_read, chats_read, memories_read};
+use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
+use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
@@ -94,6 +96,41 @@ struct SpecOp {
     /// compression call — proven by the completion provider recording no compression key).
     #[serde(default)]
     cached_compression: Option<SpecCachedCompression>,
+    /// P4.19: the proactive pre-compute distill's outcome. When present, buildContext
+    /// takes the 'pre-searched' memory path (these become the dynamic head; the
+    /// fallback distill is skipped) and `recall_signals` seeds the retro head sizing.
+    #[serde(default)]
+    pre_searched_memories: Vec<SpecPreSearched>,
+    #[serde(default)]
+    recall_signals: Option<SpecRecallSignals>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecPreSearched {
+    id: String,
+    score: f64,
+    effective_weight: f64,
+    raw_weight: f64,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecRecallSignals {
+    #[serde(default)]
+    keywords: Vec<String>,
+    #[serde(default)]
+    retrospective: bool,
+    #[serde(default)]
+    time_range: Option<SpecTimeRange>,
+    #[serde(default)]
+    entities: Vec<String>,
+}
+
+#[derive(Deserialize, Clone)]
+struct SpecTimeRange {
+    from: String,
+    to: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -631,8 +668,53 @@ async fn build_context_tier3_matches_oracle() {
             now_ms: FIXED_NOW_MS,
             local_offset_minutes: 0,
             minutes_since_last_timestamp_announcement: None,
-            pre_searched_memories: None,
-            recall_signals: None,
+            // P4.19: the proactive pre-compute outcome. Synthesize the
+            // SemanticSearchResults from real memory rows (identical JSON both
+            // sides) with the spec's scores/weights; recall_signals carries the
+            // parsed distill (only `retrospective` + episodic fields are read).
+            pre_searched_memories: if op.pre_searched_memories.is_empty() {
+                None
+            } else {
+                let ids: Vec<String> =
+                    op.pre_searched_memories.iter().map(|m| m.id.clone()).collect();
+                let rows = db
+                    .read_main(|c| memories_read::find_by_ids(c, &ids))
+                    .expect("read pre-searched memories");
+                let by_id: std::collections::HashMap<String, Value> = rows
+                    .into_iter()
+                    .filter_map(|r| {
+                        r.get("id")
+                            .and_then(Value::as_str)
+                            .map(|id| (id.to_string(), r.clone()))
+                    })
+                    .collect();
+                Some(
+                    op.pre_searched_memories
+                        .iter()
+                        .map(|m| SemanticSearchResult {
+                            memory: by_id.get(&m.id).cloned().expect("pre-searched memory row"),
+                            score: m.score,
+                            used_embedding: true,
+                            effective_weight: m.effective_weight,
+                            raw_weight: m.raw_weight,
+                            recall_adjustment: None,
+                        })
+                        .collect(),
+                )
+            },
+            recall_signals: op.recall_signals.as_ref().map(|s| DistilledSearch {
+                keywords: s.keywords.clone(),
+                retrospective: s.retrospective,
+                time_range: s
+                    .time_range
+                    .as_ref()
+                    .map(|t| DistillTimeRange {
+                        from: t.from.clone(),
+                        to: t.to.clone(),
+                    }),
+                entities: s.entities.clone(),
+                ..Default::default()
+            }),
         };
 
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)

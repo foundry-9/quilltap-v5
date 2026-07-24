@@ -1,6 +1,6 @@
 {
   "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads. P4.d15: the corpus also carries dated vault conversation summaries in Ada's vault (the retrospective mini-recap's substrate) plus one seeded on-fold relevant-conversations whisper (the mini-recap's conversation-id dedup source).",
-  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures — never a real pepper.",
+  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures \u2014 never a real pepper.",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "b0000000-0000-4000-8000-0000000000e1",
   "seedTimestamp": "2024-01-01T00:00:00.000Z",
@@ -377,7 +377,7 @@
       0.05,
       0.0
     ],
-    "They recall sketching the analytical engine loops at Lighthouse Point. — Lighthouse Point": [
+    "They recall sketching the analytical engine loops at Lighthouse Point. \u2014 Lighthouse Point": [
       1.0,
       0.0,
       0.0
@@ -520,7 +520,7 @@
         {
           "id": "d0000000-0000-4000-8000-0000000000d2",
           "role": "user",
-          "content": "The Librarian deposits a précis of the conversation to date upon the table — file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
+          "content": "The Librarian deposits a pr\u00e9cis of the conversation to date upon the table \u2014 file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines."
         },
         {
           "id": "d0000000-0000-4000-8000-0000000000d3",
@@ -687,6 +687,143 @@
       "compressionEnabled": false,
       "distillEnabled": true,
       "timestampMode": null
+    },
+    {
+      "name": "pre_searched_head_suppresses_fallback",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "preSearchedMemories": [
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e1",
+          "score": 0.99,
+          "effectiveWeight": 0.99,
+          "rawWeight": 0.99
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e2",
+          "score": 0.88,
+          "effectiveWeight": 0.88,
+          "rawWeight": 0.88
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e3",
+          "score": 0.77,
+          "effectiveWeight": 0.77,
+          "rawWeight": 0.77
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e4",
+          "score": 0.66,
+          "effectiveWeight": 0.66,
+          "rawWeight": 0.66
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e5",
+          "score": 0.55,
+          "effectiveWeight": 0.55,
+          "rawWeight": 0.55
+        },
+        {
+          "id": "ce000000-0000-4000-8000-00000000f000",
+          "score": 0.44,
+          "effectiveWeight": 0.44,
+          "rawWeight": 0.44
+        },
+        {
+          "id": "ce000000-0000-4000-8000-00000000f001",
+          "score": 0.33,
+          "effectiveWeight": 0.33,
+          "rawWeight": 0.33
+        }
+      ],
+      "recallSignals": {
+        "keywords": [
+          "engine"
+        ],
+        "retrospective": false,
+        "timeRange": null,
+        "entities": []
+      }
+    },
+    {
+      "name": "pre_searched_head_retrospective_sizes_up",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "preSearchedMemories": [
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e1",
+          "score": 0.99,
+          "effectiveWeight": 0.99,
+          "rawWeight": 0.99
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e2",
+          "score": 0.88,
+          "effectiveWeight": 0.88,
+          "rawWeight": 0.88
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e3",
+          "score": 0.77,
+          "effectiveWeight": 0.77,
+          "rawWeight": 0.77
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e4",
+          "score": 0.66,
+          "effectiveWeight": 0.66,
+          "rawWeight": 0.66
+        },
+        {
+          "id": "ce000000-0000-4000-8000-0000000000e5",
+          "score": 0.55,
+          "effectiveWeight": 0.55,
+          "rawWeight": 0.55
+        },
+        {
+          "id": "ce000000-0000-4000-8000-00000000f000",
+          "score": 0.44,
+          "effectiveWeight": 0.44,
+          "rawWeight": 0.44
+        },
+        {
+          "id": "ce000000-0000-4000-8000-00000000f001",
+          "score": 0.33,
+          "effectiveWeight": 0.33,
+          "rawWeight": 0.33
+        }
+      ],
+      "recallSignals": {
+        "keywords": [
+          "engine"
+        ],
+        "retrospective": true,
+        "timeRange": {
+          "from": "2026-06-01T00:00:00.000Z",
+          "to": "2026-06-07T23:59:59.999Z"
+        },
+        "entities": []
+      }
     }
   ],
   "vaultConversationSummaries": [
@@ -744,7 +881,7 @@
     {
       "chatId": "cc000000-0000-4000-8000-0000000000c1",
       "chatTitle": "Analytical Engine",
-      "summary": "This very conversation's own summary — excluded by excludeConversationId.",
+      "summary": "This very conversation's own summary \u2014 excluded by excludeConversationId.",
       "participantCharacterIds": [
         "ca000000-0000-4000-8000-0000000000a1"
       ],
@@ -763,7 +900,7 @@
     {
       "id": "cf000000-0000-4000-8000-0000000000e1",
       "role": "ASSISTANT",
-      "content": "*The conversation has wandered on, and the Commonplace Book re-marks the past dialogues that now bear on the present —*\n\n### Relevant Past Conversations\n\n#### Engine Loops Revisited (2024-06-08) (`cf000000-0000-4000-8000-0000000000f2`)\n\n_Pass any of the conversation IDs above (in backticks) to the `read_conversation` tool to revisit the full transcript._",
+      "content": "*The conversation has wandered on, and the Commonplace Book re-marks the past dialogues that now bear on the present \u2014*\n\n### Relevant Past Conversations\n\n#### Engine Loops Revisited (2024-06-08) (`cf000000-0000-4000-8000-0000000000f2`)\n\n_Pass any of the conversation IDs above (in backticks) to the `read_conversation` tool to revisit the full transcript._",
       "systemSender": "commonplaceBook",
       "systemKind": "relevant-conversations",
       "createdAt": "2024-06-10T00:00:00.000Z"

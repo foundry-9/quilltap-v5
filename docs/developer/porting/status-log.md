@@ -31651,3 +31651,42 @@ QT_ORACLE_OUT=/tmp/oracle-precompute.ndjson npx jest --silent --watchman=false
 --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" --
 precompute`. Run: `QT_ORACLE_PRECOMPUTE=/tmp/oracle-precompute.ndjson cargo test
 -p quilltap-harness --test precompute_equivalence -- --nocapture`.
+
+**Unit 4b — the `build_context_tier3` extension (pre-searched suppression).**
+Two new ops in `build-context-tier3.json` + the oracle/Rust construction (a new
+`preSearchedMemories` op field carrying `{id, score, effectiveWeight,
+rawWeight}` entries synthesized from real memory rows so both sides read
+identical memory JSON, plus a `recallSignals` field). `pre_searched_head_
+suppresses_fallback` (non-retrospective) renders the seven-entry set as the
+archive-filtered dynamic head with the fallback distill skipped;
+`pre_searched_head_retrospective_sizes_up` sets `recallSignals.retrospective`
+true over the same set and the larger retrospective head budget renders one MORE
+memory than the non-retro op — proving `recall_signals` seeds
+`turn_recall_signals` on the pre-searched path (v4 `context-manager.ts:1139`).
+The whole BuiltContext (formatted memory section + debug memories) matches v4's
+REAL `buildContext` byte-for-byte both ops. Harness → 0.0.291. Regen: the
+build-context recipe in `build_context_tier3_equivalence.rs`'s header (STAGE
+`build-context-tier3.test.ts` + `.json` + `build-context-tier3-fixture.ts` +
+`build-context-summary-service-fixture.ts`; `QT_ORACLE_BUILD_CONTEXT`).
+
+**Unit 4c — `orchestrator_tier3` un-mock: BLOCKED by a pre-existing v4-jest
+environment regression (documented, not silently skipped).** The correct step
+is to un-mock `runPreContextPreCompute` in `orchestrator-tier3.test.ts` (done in
+this branch — the mock's original rationale, "the Rust orchestrator ports only
+the compression half," is now stale) so v4 runs the real proactive path
+matching v5. On this corpus only ONE chat (`c860cf74`, the sole spoken chat with
+a trailing user turn) reaches a proactive distill, adding a `recalling_keywords`
+frame + a proactive-distill `llm_logs` row — which v5 now produces too (the
+corpus seeds no memories, so the search is empty, the outcome undefined, and
+buildContext's fallback still runs — no suppression here). **The oracle CANNOT
+be regenerated in the current environment:** the UNMODIFIED committed oracle
+(restored from git HEAD) fails identically — `toolRegistry` is undefined at the
+`await import('@/lib/plugins/tool-registry')` in `buildTools`
+(`streaming.service.ts:297`), an ESM/CJS dynamic-import interop regression that
+tears the jest env down on every chat (`Cannot read properties of undefined
+(reading 'getAllPlugins')` + `require after teardown`). This is entirely
+independent of P4.19 (it fails the mocked oracle too) and blocks the whole
+orchestrator differential repo-wide; a `jest.doMock` requireActual pin did not
+help. The spine wiring is instead pinned by the `precompute` (producer) +
+`build_context` (consumer/suppression) differentials; the orchestrator un-mock
+validates once the v4-jest env is repaired (a separate infra fix owed).

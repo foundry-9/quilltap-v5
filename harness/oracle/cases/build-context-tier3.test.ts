@@ -385,6 +385,31 @@ async function main(): Promise<void> {
       }
     }
 
+    // P4.19: the proactive pre-compute distill's outcome (preSearchedMemories +
+    // recallSignals). When present, buildContext takes the 'pre-searched' memory
+    // path (the filtered entries become the dynamic head; the fallback distill is
+    // skipped) and recallSignals seeds the retrospective head sizing. The entries
+    // are synthesized from real memory rows so both sides read identical memory
+    // JSON; scores/weights come from the op spec verbatim.
+    if (op.preSearchedMemories) {
+      const rows = await repos.memories.findByIds(
+        op.preSearchedMemories.map((m: { id: string }) => m.id)
+      );
+      const byId = new Map(rows.map((r: { id: string }) => [r.id, r]));
+      options.preSearchedMemories = op.preSearchedMemories.map(
+        (m: { id: string; score: number; effectiveWeight: number; rawWeight: number }) => ({
+          memory: byId.get(m.id),
+          score: m.score,
+          usedEmbedding: true,
+          effectiveWeight: m.effectiveWeight,
+          rawWeight: m.rawWeight,
+          recallAdjustment: undefined,
+        })
+      );
+      options.recallSignals = op.recallSignals;
+      options.cheapLLMSelection = cheapLLMSelection;
+    }
+
     const result = await buildContext(options as never);
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));
 

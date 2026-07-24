@@ -416,30 +416,24 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/memory/cheap-llm-tasks', () =>
     jest.requireActual('@/lib/memory/cheap-llm-tasks'),
   );
-  // W4.11a: `runPreContextPreCompute`'s `proactiveRecallTask` (pre-compute.service.ts:156)
-  // fires the memory-keyword-extraction distill a SECOND time per turn (before
-  // buildContext's own recap distill). That pre-compute recall path is a documented
-  // Rust-spine deferral — the Rust orchestrator ports only the compression half of
-  // pre-compute (`get_cached_compression`) and buildContext's recap distill, NOT the
-  // pre-compute recall — so v4 would otherwise log ~2× the MEMORY_EXTRACTION rows.
-  // Mock the whole wrapper to its inert empty result: `preSearchedMemories:
-  // undefined` (the empty-memory corpus already yields undefined) and
-  // `cachedCompressionResponse: undefined` (compression is disabled / the cache is
-  // empty — the Rust spine computes the same). Behaviorally identical to the real
-  // pre-compute here (the pre-existing tables/events stay green); it only removes the
-  // pre-compute distill's llm_logs rows so the cheap-LLM rows match the Rust spine.
-  jest.doMock('@/lib/services/chat-message/pre-compute.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/pre-compute.service');
-    return {
-      __esModule: true,
-      ...actual,
-      runPreContextPreCompute: async () => ({
-        cachedCompressionResponse: undefined,
-        preSearchedMemories: undefined,
-        stopKeepAlive: () => undefined,
-      }),
-    };
-  });
+  // P4.19: `runPreContextPreCompute` now runs REAL both sides — the Rust spine
+  // ports `proactiveRecallTask` (`quilltap_core::services::pre_compute`), so its
+  // per-turn distill + pre-search fire in `process_message`. On this corpus the
+  // proactive path only reaches a distill for the ONE chat where the responding
+  // character already spoke AND a message follows (c860cf74: the trailing user
+  // turn is the window); there the proactive keyword-extraction cheap-LLM call
+  // (answered by the createLLMProvider mock, recorded as a canned key the Rust
+  // distill replays) lands its own MEMORY_EXTRACTION `llm_logs` row and emits the
+  // `recalling_keywords` status frame — the Rust spine does the same. The corpus
+  // seeds no memories, so `searchMemoriesSemantic` returns empty → the proactive
+  // outcome is undefined and buildContext's own fallback distill still runs (no
+  // suppression here; the pre-searched suppression path is pinned by the
+  // `precompute` + `build-context` families). Compression is disabled, so the
+  // sibling compressionTask no-ops. (Was mocked to an inert result while the Rust
+  // spine had not yet ported the proactive path.)
+  jest.doMock('@/lib/services/chat-message/pre-compute.service', () =>
+    jest.requireActual('@/lib/services/chat-message/pre-compute.service'),
+  );
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };

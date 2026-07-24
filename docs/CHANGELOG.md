@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Extended the `build_context` tier-3 differential with two pre-searched ops
+(P4.19, unit 4) — the consumer-side suppression proof. `pre_searched_head_
+suppresses_fallback` passes a synthetic seven-entry `preSearchedMemories` +
+non-retrospective `recallSignals`: buildContext renders those as the dynamic
+head (archive-overlap filtered) and skips the fallback distill.
+`pre_searched_head_retrospective_sizes_up` sets `recallSignals.retrospective`
+true over the same set, and the larger retrospective head budget renders one
+more memory — proving `recall_signals` seeds `turn_recall_signals` on the
+pre-searched path. Both green byte-for-byte against v4's REAL `context-manager`.
+
 Added the tier-3 `precompute` differential (P4.19, unit 4) — the primary
 equivalence proof for the proactive distill. A jest real-DB oracle drives v4's
 REAL `runPreContextPreCompute` / `proactiveRecallTask` (only the cheap-LLM
