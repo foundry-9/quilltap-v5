@@ -31690,3 +31690,20 @@ orchestrator differential repo-wide; a `jest.doMock` requireActual pin did not
 help. The spine wiring is instead pinned by the `precompute` (producer) +
 `build_context` (consumer/suppression) differentials; the orchestrator un-mock
 validates once the v4-jest env is repaired (a separate infra fix owed).
+
+**Unit 4d — tier-2 close-out (keep-alive + seam sweep).** The keep-alive
+question is RESOLVED in writing: v4's per-turn compression-miss `setInterval`
+keep-alive (`pre-compute.service.ts:98-124`) is deliberately NOT ported — v5's
+`quilltap-web` SSE layer already keep-alives the entire connection every 15 s
+(`events::KEEP_ALIVE_INTERVAL`, always-on `: keep-alive\n\n`), which strictly
+subsumes v4's per-turn interval and keeps the transport-agnostic boundary clean
+(a heartbeat is a transport concern, not spine logic). Porting it into the spine
+would double the keep-alive; recorded in the `pre_compute` module doc, so
+`stopKeepAlive` has no v5 analog. The seam-comment sweep updated the two named
+stale notes (`build_context.rs` retrospective-multi-probe "mirrors the proactive
+path"; `orchestrator.rs` the one-cheap-LLM-selection block) to reference the
+now-ported `pre_compute::proactive_recall_task`. Also surveyed 2026-07-24: the
+banked `eprintln!` sweep is already satisfied (zero in `orchestrator.rs`,
+`courier_transport.rs`, `db/chat_settings.rs`, `build_context.rs`,
+`memory_recap/distill.rs`, both `recall_replay.rs`) — the banked item dies here.
+Core → 0.0.345.

@@ -934,9 +934,10 @@ where
     // cheapest-model seam is injected `None` (no plugin → the legacy cheap-model
     // map, matching the `context_summary` / `build_context_tier3` precedent). This
     // closes the spine-plumbing deferral: the resolved selection now flows into
-    // buildContext (the recap/distill feeders + the cached-compression window) and
-    // the finalizer's async-compression trigger — previously `None`, which left
-    // those feeders inert in `process_message`.
+    // buildContext (the recap/distill feeders + the cached-compression window), the
+    // proactive pre-compute distill (P4.19, `pre_compute::proactive_recall_task`,
+    // wired below), and the finalizer's async-compression trigger — previously
+    // `None`, which left those feeders inert in `process_message`.
     let available_cheap_profiles: Vec<CheapLlmProfile> = {
         let uid = user_id.clone();
         db.read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))

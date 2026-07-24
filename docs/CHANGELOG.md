@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Resolved the P4.19 tier-2 items. The keep-alive question: v4's per-turn 15 s
+compression-miss `setInterval` keep-alive is deliberately NOT ported into the
+spine — v5 keep-alives at the transport layer (`quilltap-web`'s global SSE
+stream sends `: keep-alive` every 15 s for the whole connection), which
+subsumes v4's per-turn interval and keeps the transport-agnostic boundary
+clean; recorded loudly in the `pre_compute` module doc. Swept the now-stale
+proactive-path seam notes (`build_context.rs` retrospective multi-probe;
+`orchestrator.rs` cheap-LLM-selection block) to reference the ported
+`pre_compute::proactive_recall_task`.
+
 Extended the `build_context` tier-3 differential with two pre-searched ops
 (P4.19, unit 4) — the consumer-side suppression proof. `pre_searched_head_
 suppresses_fallback` passes a synthetic seven-entry `preSearchedMemories` +

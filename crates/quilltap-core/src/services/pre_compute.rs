@@ -24,6 +24,20 @@
 //! suppresses build_context's own fallback distill exactly as v4
 //! `context-manager.ts:1141-1145`, and `recall_signals` seeds the retrospective
 //! cadence on both paths.
+//!
+//! **The keep-alive is deliberately NOT ported here (recorded).** v4's
+//! `runPreContextPreCompute` arms a 15 s `setInterval` keep-alive during a
+//! compression-cache miss (`pre-compute.service.ts:98-124`) so an SSE proxy does
+//! not drop the connection during a long buildContext. v5 keep-alives at the
+//! TRANSPORT layer instead — `quilltap-web`'s one global SSE stream sends
+//! `: keep-alive\n\n` every 15 s for the WHOLE connection
+//! (`quilltap-web::events::KEEP_ALIVE_INTERVAL`), which strictly subsumes v4's
+//! per-turn interval (always on, not just during compression) and keeps the
+//! boundary clean (a heartbeat is a transport concern, not spine business logic).
+//! Porting v4's per-turn interval into the spine would double the keep-alive and
+//! violate the transport-agnostic boundary — so this module owns only the
+//! proactive task, and `RunPreContextPreComputeResult.stopKeepAlive` has no v5
+//! analog.
 
 use serde_json::Value;
 

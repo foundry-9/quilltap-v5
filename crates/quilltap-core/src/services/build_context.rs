@@ -2173,7 +2173,8 @@ where
                     &input.chat.commonplace_recall_history,
                 )),
             };
-            // Retrospective multi-probe (mirrors the proactive path).
+            // Retrospective multi-probe (mirrors the proactive path in
+            // `pre_compute::proactive_recall_task`, now ported — P4.19).
             let mut extra_probes: Vec<String> = Vec::new();
             if fallback_retro {
                 if let Some(signals) = &turn_recall_signals {
