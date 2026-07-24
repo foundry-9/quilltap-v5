@@ -1098,9 +1098,11 @@ records THERE. Update this summary only when a phase or round completes.
   production.** Unit 8 recorded (no code change): v4 does NOT log failed
   cheap calls and v5 matches; an error-row divergence awaits a human
   ruling. Deferred loud: OpenRouter's streaming no-tools `callModel()`
-  path (unported), no v5 writer for `chat_messages.debugMemoryLogs`, the
-  extraction cadence unpinned by any differential, no console logging
-  anywhere (a standing open question). (Dogfood #22, the sibling finding,
+  path (unported), the extraction cadence unpinned by any differential, no
+  console logging anywhere (a standing open question). (The prior "no v5
+  writer for `chat_messages.debugMemoryLogs`" line was STALE — corrected by
+  P4.15: both extraction handlers write it, `memory_extraction_job.rs:338` /
+  `carina_memory_extraction.rs:257`.) (Dogfood #22, the sibling finding,
   was already FIXED on main `2aa3d01b`.)
 - **The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on
   main (2026-07-23) — P4.14 and P4.10 CLOSED; P4.13 OPEN on exactly one
@@ -1141,7 +1143,8 @@ records THERE. Update this summary only when a phase or round completes.
   llm-logs partition) — all three bare-summary-check call sites are
   now closed. Versions after it: core 0.0.338, harness 0.0.287, host
   0.0.31. Standing loud: the all-synthetic response-bodies corpus,
-  #26/#27/#28 + tracing-subscriber + `debugMemoryLogs`. **Next: the
+  #26/#27/#28 + tracing-subscriber (`debugMemoryLogs` is NOT a gap — v5
+  writes it; the P4.11 note was stale, corrected by P4.15). **Next: the
   post-rewrite dogfood-fixing run, then a fresh dogfood walk (the
   ruled sequence); P4.13 unit 9 rides that walk.**
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the

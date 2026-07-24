@@ -30821,3 +30821,177 @@ resolver) run the fold-episode pass — the class is closed; the standing
 rule ("any NEW summary-check call site must use `_with_seams`") lives in
 the `courier-fold-episode-fix` memory note and the `why`-comment at the
 call site.
+
+---
+
+## P4.15 — thread the real cheap-LLM config into both summary-check call sites (finding #27) + the `self_inventory` loadedMemories rider (finding #22 carry-out)
+
+**Order:** `work-orders/p4.15-cheap-llm-config-thread.md`. First lane of the
+post-rewrite dogfood-fixing round (the 2026-07-23 ruled sequence: rewrite →
+**this** → a fresh dogfood walk). v4 baseline `e646f58b`, drift-checked clean at
+lane start (`git log e646f58b..HEAD` empty; only an untracked sibling scratch
+file `_bench_p416.mts`, no `lib/` drift). **On main 2026-07-24.**
+
+### The defect (#27) and the fix (units 1 + 2)
+
+v4's `triggerContextSummaryCheck` (`memory-trigger.service.ts:104-135`) hands the
+REAL `chatSettings.cheapLLMSettings` + `availableProfiles =
+repos.connections.findByUserId(userId)` to `checkAndGenerateSummaryIfNeeded`, so
+the cheap-LLM selection can honour a configured `defaultCheapProfileId` /
+`USER_DEFINED` / `isCheap` profile. v5 had THREE spine call sites; two were broken
+identically (hard-coded `strategy: "AUTO"`, `user_defined_profile_id: None`,
+`default_cheap_profile_id: None`, `fallback_to_local: false`, and
+`available_profiles = from_ref(&responding_profile)` — a single profile), under
+docstrings admitting the corpus shaped the constants. With priorities 1–3 of
+`get_cheap_llm_provider` starved, selection always fell to
+`getCheapestModel(responding.provider)` — the #27 symptom.
+
+- **Unit 1 — orchestrator (`orchestrator.rs::run_summary_check`).** The parsed
+  cheap-LLM fields ALREADY rode `OrchestratorChatSettings` (Round-3 Group 8, the
+  compression selection) and `available_cheap_profiles` was ALREADY the same
+  `find_by_user_id` load resolved earlier in `process_message` — so the fix reuses
+  both. New helper `cheap_llm_settings_from_orchestrator` builds the summary
+  service's `CheapLlmSettings` from the struct (empty strategy →
+  `PROVIDER_CHEAPEST`, mirroring the compression path's empty-guard); the resolved
+  effective `danger_settings` is injected (v4's `generateContextSummary` resolves
+  danger internally, only consulted on a dangerous chat). `run_summary_check` grew
+  three params (`cheap_settings`, `available_profiles`, `danger`); the hard-coded
+  block + the `from_ref` slice are gone.
+- **Unit 2 — courier (`courier_transport.rs::run_summary_check`).** The caller
+  already fetched the RAW stored `chat_settings` Value (`resolve_external_turn:651`);
+  the fix threads `chat_settings.as_ref()` + `&chat` in. New helper
+  `cheap_llm_settings_from_stored` parses `cheapLLMSettings` field-by-field from the
+  Value (absent strategy → `PROVIDER_CHEAPEST`); profiles via
+  `connection_profiles::find_by_user_id` mapped through
+  `orchestrator::cheap_llm_profile_from_value`; danger resolved from
+  `dangerousContentSettings` + the chat (the enclave-step pattern). `from_ref` gone.
+
+**Finding: the enclave's `"AUTO"` default is a dead phantom.** The order's "AUTO
+only when the key is absent" copies the enclave step, but v4's
+`CheapLLMStrategyEnum` is `['USER_DEFINED','PROVIDER_CHEAPEST','LOCAL_FIRST']` —
+there is **no `AUTO`**, and the Zod default is `PROVIDER_CHEAPEST`
+(`settings.types.ts:51`). The enclave's `unwrap_or("AUTO")` never fires (the gate
+guarantees a Zod-written object with a real strategy) and would match no selection
+branch if it did. Both new sites use `PROVIDER_CHEAPEST` as the absent-key default
+— the real default, and consistent with the compression selection in
+`orchestrator.rs`. The enclave step was NOT touched (out of scope; its `"AUTO"`
+stays inert and its differential green).
+
+### The differentials — the heart of the lane (unit 3)
+
+Every corpus was single-profile-effective, so the existing differentials PASSED
+with the hard-coded config (the #16/#22 corpus-invisible-call-site class). Each
+fixed site therefore gained a case where the SELECTED cheap profile differs from
+the responding profile, pinned via the `llm_logs` row's provider/model columns.
+
+- **`orchestrator_tier3`** — a 6th connection profile `CheapDefault`
+  (`f0000006…`, OPENAI/`cheap-configured-model`) + `cheapLLMSettings.
+  defaultCheapProfileId` pointing at it (`orchestrator-tier3.json`, builder type
+  extended, the Rust `HarnessOrchestratorSeams` seam's
+  `cheap_llm_default_cheap_profile_id` mirrored). Every cheap call now selects it
+  (priority 1); the `summary_fold` case's SUMMARIZATION + TITLE_GENERATION rows
+  (responder = ANTHROPIC/claude-sonnet) carry OPENAI/`cheap-configured-model`, not
+  `getCheapestModel(ANTHROPIC)`. RED reproduced by temporarily restoring the
+  hard-coded body (the broken summary's uncanned cheap call cascades to a table +
+  event-trace mismatch); green post-fix. Fixture + oracle transient (`/tmp`).
+- **`courier_images_routes` (`resolve_cadence`)** — a second connection profile
+  `CONN_CHEAP` (`c0000002…`, OPENAI/`cheap-configured-model`, distinct from the
+  responder's OPENAI_COMPATIBLE/mock-model) + `defaultCheapProfileId` in the built
+  `chat_settings` row (`build-courier-images-web-fixture.ts`; created AFTER all
+  vault/image mints — see the gotcha below). The three llm_logs rows
+  (SUMMARIZATION fold + episode + TITLE_GENERATION) carry it. RED reproduced by
+  the same temporary hard-code: `[resolve_cadence tables] MISMATCH` isolated to
+  the llm_logs rows (a clean, targeted red); green post-fix. Committed `.db`
+  fixtures regenerated (`courier-images-{main,mount,llmlogs}.db` + `.meta.json`).
+- **`enclave_step_tier3`** — re-run green untouched as the no-regression proof
+  (its site was already correct). **Its oracle regen needs `TZ=UTC` on the Node/jest
+  steps** (not just the Rust `cargo test`) — a non-UTC regen produced a `chats`
+  table mismatch on the "Daily broken zero" case; UTC regen green.
+
+**API-key safety of the cross-provider config:** the cheap-LLM call's API-key
+acquisition is a no-op on both sides (the Rust executor's boundary starts at the
+provider call — `cheap_llm_exec.rs:8-14`; v4 mocks `getApiKeyForCheapLLMSelection
+→ 'test-key'`), so pointing `defaultCheapProfileId` at a different-provider profile
+is safe and makes the #27 catch vivid (both provider + model columns differ).
+
+### The rider (#22 carry-out, unit 4 — tier 2, LANDED)
+
+`turn_tool_context` now threads `loadedMemories` (was `None`).
+`loaded_memories_from_debug(semantic, inter, recap)` converts
+`BuiltContext.{debug_memories, debug_inter_character_memories, debug_memory_recap}`
+into `LoadedMemoriesContext`, narrowing each semantic entry to the four keys the
+`self_inventory` builder consumes (`builders.ts:318-329`); built once and passed to
+BOTH loop call sites. An empty slate still yields a PRESENT context (v4 always
+passes the object → `available: true`, empty arrays — never the `Unavailable`
+arm). The conversion takes the three fields (not the whole `BuiltContext`, which
+has no `Default` and lives in P4.16's `build_context.rs`) so it is unit-testable.
+**The consumer was already covered** by the `self_inventory` family
+(`full_sections` with `withLoadedMemories:true` asserts the populated section;
+`loaded_memories_absent` the Unavailable arm) — re-run green. Unit tests cover the
+conversion (narrowing + empty) + the threading. `browserUserAgent` stays
+unthreaded, loud. The orchestrator differential re-ran green (the threading is
+inert in that corpus — no tools invoked).
+
+### Corrections (unit 6)
+
+- **The `debugMemoryLogs` "writer gap" was STALE — no gap exists.** Both v5
+  extraction handlers already write it, byte-matching v4:
+  `services/memory_extraction_job.rs:338` and
+  `services/carina_memory_extraction.rs:257` (v4 `memory-extraction.ts:203-207` /
+  `carina-memory-extraction.ts:164-169`). Corrected in `dogfood-findings.md` (the
+  #23/P4.11 note) and CLAUDE.md's standing lines. The P4.11 status-log record's
+  "no v5 writer" line predates these landings and is superseded by THIS record
+  (status-log is append-only — the correction lives here, not by editing the old
+  lines).
+- **Finding #27 → FIXED**; **finding #22 carry-out → loadedMemories DONE**,
+  browserUserAgent still loud; **finding #26** — every identified cause is now
+  fixed (#23/P4.11, the sort panic/P4.14, failed-cheap-call error rows/P4.13, and
+  #27/P4.15); it CLOSES at the fresh dogfood walk with P4.13 unit 9.
+
+### Deferrals (loud)
+
+`browserUserAgent` (no v5 source); the #26 live re-check (rides the fresh dogfood
+walk with P4.13 unit 9); any tracing/log emission (P4.18's subject).
+
+### Gate
+
+`cargo fmt --all --check`; clippy `--workspace --all-targets` both feature sets
+(`-D warnings`) clean; `cargo test --workspace` (TZ=UTC, all four differential env
+vars set) zero failures; the four families by name — `orchestrator_tier3`,
+`courier_images_routes`, `enclave_step_tier3`, `self_inventory` — each ran (1
+passed, zero SKIP). No SPA files touched (`git diff` under `apps/web` empty; the
+committed `.db` fixtures live under `crates/quilltap-web/tests/fixtures`, which the
+e2e seed reads dynamically — it copies only CONN + never `chat_settings`, so
+CONN_CHEAP + `defaultCheapProfileId` are invisible to the salon walk). Versions:
+core 0.0.339, harness 0.0.288.
+
+**Oracle regen recipes (all from `~/source/quilltap-server`, v4 `e646f58b`, Node 24
+at `~/.nvm/versions/node/v24.13.1/bin`, `TZ=UTC`; jest ignores `.claude/` → mirror
+the oracle tree to `/tmp`):**
+- orchestrator: build `build-orchestrator-fixture.ts` → `/tmp/qt-orch-{main,mount}.db`;
+  `jest … --testTimeout=120000 --roots "$PWD" --roots /tmp/qt-oracle/cases --
+  '/orchestrator-tier3\.test'` (the `/`-anchored pattern excludes
+  `brahma-orchestrator-tier3`) → `/tmp/oracle-orchestrator.ndjson`.
+- courier-images: `node --import tsx build-courier-images-web-fixture.ts` with
+  `QT_FIXTURE_CI_{MAIN,MOUNT,LLMLOGS}` pointed at the COMMITTED `.db` paths (writes
+  them in place + `.meta.json`); then `jest … -- courier-images-routes` with the
+  `QT_FIXTURE_CI_*` + `QT_FIXTURE_CI_META` env → `/tmp/oracle-courier-images.ndjson`.
+  **Delete the stray `*.db-journal` files after** (TRUNCATE-mode leftovers, not
+  fixtures).
+- enclave (no-regression): build `build-enclave-step-fixture.ts`; `jest … --
+  enclave-step-tier3` → `/tmp/oracle-enclave-step.ndjson`. **`TZ=UTC` REQUIRED on
+  the Node/jest steps.**
+- self_inventory: `node --import tsx build-self-inventory-fixture.ts` then `node
+  --import tsx cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson` (plain tsx —
+  no jest, no `.claude` issue).
+
+### Gotchas worth a memory note
+
+- Adding a connection profile to the courier fixture shifts the committed vault/img
+  ids (`repos.connections.create` consumes the builder's non-seeded
+  `crypto.randomUUID` sequence — regenerating always churns them). Harmless: every
+  consumer reads them dynamically (`.meta.json` + wholesale mount-table copy). The
+  profile is created after all vault/image mints anyway, so the only INTENDED delta
+  is the new row + `defaultCheapProfileId`.
+- The `enclave_step_tier3` oracle is TZ-sensitive; regen with `TZ=UTC` or the
+  `chats` table diverges.

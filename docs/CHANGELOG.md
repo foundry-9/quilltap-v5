@@ -23,6 +23,10 @@ both tool loops, so the loaded-memories section is populated instead of
 "No loaded-memory data available for this turn". `browserUserAgent` stays
 unthreaded (v5's request path carries no User-Agent).
 
+Corrected a stale record: the `chat_messages.debugMemoryLogs` "writer gap"
+does not exist — both v5 extraction handlers already write it, matching v4
+(`memory_extraction_job.rs`, `carina_memory_extraction.rs`).
+
 Planned the post-rewrite dogfood-fixing round (docs only): four work
 orders written — P4.15 (thread the real cheap-LLM config into both
 hard-coded summary-check sites, finding #27, plus the self_inventory
