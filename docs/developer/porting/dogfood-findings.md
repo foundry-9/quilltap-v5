@@ -52,6 +52,22 @@ catch, since every fixture is built fresh.
 
 | 30 | Running a **global** custom tool (`lambda`, in the "Quilltap General" store) from the composer's Custom Tools button rolls against the wrong character's fact sheet: the operator expected it to use their own played character's `metadata` (Charlie — `toolAbilities` includes `programmable`, so the tool should succeed), but it resolved outcome #3 "API Listening Agent not installed" — the branch for `toolAbilities ncontains programmable`, which matches the OTHER (LLM) character Friday's sheet (`analyze, display, architect`, no `programmable`) | **Faithfully ported v4 behavior** — a tool that every participant resolves identically (a shared/global store) dedups to ONE **unlabelled** roster listing whose `asCharacterId` is `sightings[0]`, the **first chat participant** (v4 `route.ts:209-210` / v5 `custom_tools.rs:279-281`). The run then rolls against THAT character's `metadata` (v4 `handleRun` `metadata = asCharacterId ? perspective.metadata : {}`, byte-identical to v5 `custom_tools.rs:418-422`). In this chat Friday (controlledBy `llm`) is participant[0] and Charlie (controlledBy `user`, the operator's own character) is participant[1], so the run resolved as Friday. v4's `CustomToolsDropdown.handleRun` passes the listing's `asCharacterId` with NO "run as me" override — identical to v5's `custom-tools-popup.ts:380`. **Empirically proven from the run's stored `pascalMeta`:** `metadataTested: {toolAbilities: "analyze, display, architect"}` (Friday's sheet, NOT Charlie's), `outcomeIndex: 2`, `invokedBy: "user"`, roll `value: 1.9958` — a roll that PASSED `gte:1`, so it would have hit outcome #1 (success) had it tested Charlie's `programmable` sheet. The rule is "resolve as participant[0]", which is USUALLY the operator's own character (matching the human's prior experience) — this chat is the outlier because it was created leading with the LLM character (Friday at [0], Charlie at [1]) | **NOT A BUG** (2026-07-24) — v5 reproduces v4 exactly. That a user-initiated composer run resolves as the arbitrary-first participant (here the LLM character) rather than the operator's OWN character is a genuine UX papercut, but it is v4's behavior → a **v4-first product change** (added to the post-5.0 list below) |
 
+- **The 2026-07-24 post-rewrite dogfood walk — coverage summary.** WALKED CLEAN
+  on the Friday copy: **Part A** tool use across OpenAI/Anthropic/DeepSeek (#25
+  + #22 CLOSED; the embedded P4.17 card; #29/#30 surfaced as v4-faithful),
+  **Part B** the context-summary fold + cheap-LLM config (#26 + #27 CLOSED —
+  three fold cycles on chat `e71847c4`, all on `deepseek-v4-flash`; 66/66 AUTO
+  memories carry `occurredAt`), **Part C/llm-consult** fired live (a 2937-char
+  `CUSTOM_TOOL_CONSULT`), **Part E** the recall-replay CLI, and **Part F**
+  items 14 (a composite outfit resolved all components) and 17 (a heavy
+  character's tabs driven by card bodies + keyboard). **P4.13 unit 9 is
+  complete — the provider-I/O round can close.** NOT walked this pass (the next
+  pass starts here): Part D retrospective-recall live behavior (the #28
+  downstream look — classifier fires but no whisper), Part F items 15 (Story's
+  Clock + a narrated time jump) and 16 (per-chat Core-whisper override +
+  chat-tier State Editor opener), and items 10/11 (a metadata-reading Pascal
+  tool that consults an LLM — doubly blocked by #30, deferred). No
+  legacy/broken-vault characters exist on this instance (item 18 N/A).
 - **Part E (recall-replay CLI) walked CLEAN 2026-07-24 — the P4.d13 live
   proof, plus two working-as-designed observations recorded so they aren't
   re-reported.** `quilltap recall-replay <chatId>` ran against the Friday copy
