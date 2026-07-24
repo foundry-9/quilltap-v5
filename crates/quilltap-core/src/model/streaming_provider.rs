@@ -60,7 +60,7 @@ use crate::model::decoders::{
     OllamaNdjsonDecoder, ResponsesApiSseDecoder, StreamDecoder,
 };
 use crate::model::provider_auth::apply_auth;
-use crate::model::request_builder::{build_request, google, RequestInput, RequestMessage};
+use crate::model::request_builder::{build_request, google, RequestInput};
 use crate::model::stream::{
     StreamChunkResult, StreamError, StreamParams, StreamingCompletionProvider,
 };
@@ -117,11 +117,13 @@ pub fn decoder_selection(provider: &str, model: &str) -> Option<DecoderSelection
     Some(match manifest.stream_decoder {
         ManifestDecoder::ChatCompletionsSse => {
             // The flavor split the manifest does not carry (W4.7b — an internal
-            // selector over ONE shared parser).
-            let flavor = match provider {
-                "DEEPSEEK" => ChatCompletionsFlavor::DeepSeek,
-                "Z_AI" => ChatCompletionsFlavor::ZAi,
-                "OPENROUTER" => ChatCompletionsFlavor::OpenRouterRaw,
+            // selector over ONE shared parser), keyed off the one dispatch
+            // table (P4.13 unit 5).
+            use crate::model::provider_io::ProviderKind;
+            let flavor = match ProviderKind::of(provider) {
+                Some(ProviderKind::DeepSeek) => ChatCompletionsFlavor::DeepSeek,
+                Some(ProviderKind::ZAi) => ChatCompletionsFlavor::ZAi,
+                Some(ProviderKind::OpenRouter) => ChatCompletionsFlavor::OpenRouterRaw,
                 _ => ChatCompletionsFlavor::OpenAiCompatible,
             };
             DecoderSelection::ChatCompletions(flavor)
@@ -157,7 +159,10 @@ fn build_decoder(selection: DecoderSelection) -> Box<dyn StreamDecoder + Send> {
 fn request_input_from_stream_params(params: &StreamParams) -> RequestInput {
     RequestInput {
         model: params.model.clone(),
-        messages: params.messages.iter().map(request_message_of).collect(),
+        // The carrying enum flows through UNCONVERTED (P4.13 unit 5) — there is
+        // no boundary left at which a field could be dropped (finding #25's
+        // structural cause was exactly a conversion here).
+        messages: params.messages.clone(),
         temperature: params.temperature,
         max_tokens: params.max_tokens,
         top_p: params.top_p,
@@ -177,53 +182,6 @@ fn request_input_from_stream_params(params: &StreamParams) -> RequestInput {
         previous_response_id: params.previous_response_id.clone(),
         strict_max_tokens: false,
         stream: true,
-    }
-}
-
-/// Map one carrying-type message to the builder-facing [`RequestMessage`] —
-/// **every field crosses** (P4.13 unit 2). This is the conversion the old
-/// role+content projection performed lossily: the tool-call linkage, reasoning
-/// content, and thought signature now reach the per-provider formatters, so a
-/// tool result pairs with its call on the follow-up stream instead of being
-/// dropped (chat-completions / responses API), mis-sent with an empty
-/// `tool_use_id` (anthropic), or refused (openrouter).
-fn request_message_of(m: &crate::model::stream::StreamMessage) -> RequestMessage {
-    use crate::model::stream::StreamMessage;
-    match m {
-        StreamMessage::System { content } => RequestMessage::text("system", content),
-        StreamMessage::User { content } => RequestMessage::text("user", content),
-        StreamMessage::Assistant {
-            content,
-            tool_calls,
-            reasoning_content,
-            thought_signature,
-        } => RequestMessage {
-            role: "assistant".to_string(),
-            content: content.clone(),
-            tool_calls: tool_calls
-                .iter()
-                .map(|tc| crate::model::request_builder::ToolCallMsg {
-                    id: tc.id.clone(),
-                    type_: tc.kind.to_string(),
-                    name: tc.function.name.clone(),
-                    arguments: tc.function.arguments.clone(),
-                })
-                .collect(),
-            reasoning_content: reasoning_content.clone(),
-            thought_signature: thought_signature.clone(),
-            ..Default::default()
-        },
-        StreamMessage::Tool {
-            call_id,
-            name,
-            content,
-        } => RequestMessage {
-            role: "tool".to_string(),
-            content: content.clone(),
-            tool_call_id: Some(call_id.clone()),
-            name: name.clone(),
-            ..Default::default()
-        },
     }
 }
 

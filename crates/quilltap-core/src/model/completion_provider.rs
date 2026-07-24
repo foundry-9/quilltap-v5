@@ -21,22 +21,33 @@ use crate::model::completion::{
     CompletionError, CompletionParams, CompletionResponse, CompletionUsage,
 };
 use crate::model::provider_auth::apply_auth;
-use crate::model::request_builder::{build_request, RequestInput, RequestMessage};
+use crate::model::request_builder::{build_request, RequestInput};
 use crate::model::response_parse::parse_for_provider;
+use crate::model::stream::StreamMessage;
 use crate::model::transport::{
     transport_headers, BoxFuture, ProviderTransport, TransportPolicy, TransportRequest,
 };
 use crate::provider_manifest::Registry;
 
 /// Build the provider-agnostic [`RequestInput`] from a [`CompletionParams`] (the
-/// non-streaming cheap-LLM shape).
+/// non-streaming cheap-LLM shape). The cheap path only ever builds
+/// `system`/`user` messages (v4 same); the role union's other arms map to their
+/// plain-text equivalents — a `Tool`-role completion message has no id and no
+/// representation on this path, so it is dropped exactly as v4's builders drop
+/// an id-less tool message (unreachable from every cheap-LLM caller).
 fn request_input_from_params(params: &CompletionParams) -> RequestInput {
+    use crate::model::completion::CompletionRole;
     RequestInput {
         model: params.model.clone(),
         messages: params
             .messages
             .iter()
-            .map(|m| RequestMessage::text(m.role.as_str(), &m.content))
+            .filter_map(|m| match m.role {
+                CompletionRole::System => Some(StreamMessage::system(m.content.clone())),
+                CompletionRole::User => Some(StreamMessage::user(m.content.clone())),
+                CompletionRole::Assistant => Some(StreamMessage::assistant(m.content.clone())),
+                CompletionRole::Tool => None,
+            })
             .collect(),
         temperature: params.temperature,
         max_tokens: Some(params.max_tokens),

@@ -205,6 +205,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             reasoning_content: None,
             tool_call_id: None,
             tool_calls: None,
+            cache_control: None,
         },
         ThreadedMessage {
             role: "user".into(),
@@ -214,6 +215,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             reasoning_content: None,
             tool_call_id: None,
             tool_calls: None,
+            cache_control: None,
         },
     ];
     let tool_context = create_tool_context(

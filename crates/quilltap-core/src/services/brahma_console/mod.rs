@@ -672,6 +672,7 @@ pub(super) fn plain_message(role: &str, content: &str) -> ThreadedMessage {
         reasoning_content: None,
         tool_call_id: None,
         tool_calls: None,
+        cache_control: None,
     }
 }
 

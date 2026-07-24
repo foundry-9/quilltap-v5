@@ -537,6 +537,7 @@ fn assistant_ledger_entry(latest: &str, state: &StreamingState) -> ThreadedMessa
         reasoning_content: state.reasoning_content.clone(),
         tool_call_id: None,
         tool_calls: None,
+        cache_control: None,
     }
 }
 
@@ -556,6 +557,7 @@ fn nudge_user_entry(duplicate_count: usize) -> ThreadedMessage {
         reasoning_content: None,
         tool_call_id: None,
         tool_calls: None,
+        cache_control: None,
     }
 }
 
@@ -573,6 +575,7 @@ fn tool_result_ledger_entry<Strat: TextToolStrategy + ?Sized>(
         reasoning_content: None,
         tool_call_id: None,
         tool_calls: None,
+        cache_control: None,
     }
 }
 

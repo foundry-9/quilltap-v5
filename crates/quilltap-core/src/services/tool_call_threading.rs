@@ -64,6 +64,12 @@ pub struct ThreadedMessage {
     pub tool_call_id: Option<String>,
     #[serde(rename = "toolCalls", skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCallPayload>>,
+    /// v4 `msg.cacheControl` (`{ type: 'ephemeral' }`) — the summary-head
+    /// prompt-cache breakpoint, carried through the loop slates so a re-stream
+    /// keeps the breakpoint v4 keeps (P4.13 unit 5; absent everywhere else, so
+    /// slate serialization is unchanged when `None`).
+    #[serde(rename = "cacheControl", skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<Value>,
 }
 
 /// v4 `JSON.stringify(arguments)`: normalize integer-valued floats to bare
@@ -153,6 +159,7 @@ pub fn build_assistant_tool_call_message(
         reasoning_content: reasoning_content.map(str::to_string),
         tool_call_id: None,
         tool_calls: tool_calls_payload,
+        cache_control: None,
     }
 }
 
@@ -171,6 +178,7 @@ pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
             tool_calls: m.tool_calls.clone().unwrap_or_default(),
             reasoning_content: m.reasoning_content.clone(),
             thought_signature: m.thought_signature.clone(),
+            cache_control: m.cache_control.clone(),
         },
         "tool" => match m.tool_call_id.as_deref().filter(|id| !id.is_empty()) {
             Some(call_id) => StreamMessage::Tool {
@@ -187,6 +195,7 @@ pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
         },
         _ => StreamMessage::User {
             content: m.content.clone(),
+            cache_control: m.cache_control.clone(),
         },
     }
 }
@@ -213,6 +222,7 @@ pub fn build_tool_result_messages(tool_messages: &[ToolMessage]) -> Vec<Threaded
                     reasoning_content: None,
                     tool_call_id: Some(call_id.to_string()),
                     tool_calls: None,
+                    cache_control: None,
                 },
                 None => ThreadedMessage {
                     role: "user".to_string(),
@@ -222,6 +232,7 @@ pub fn build_tool_result_messages(tool_messages: &[ToolMessage]) -> Vec<Threaded
                     reasoning_content: None,
                     tool_call_id: None,
                     tool_calls: None,
+                    cache_control: None,
                 },
             },
         )

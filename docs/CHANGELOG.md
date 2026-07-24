@@ -2,6 +2,37 @@
 
 ## Recent Changes
 
+P4.13 unit 6: a failed cheap-LLM call now writes an llm_logs error row (a
+DELIBERATE divergence from v4, ruled 2026-07-23 — v4 logs nothing on
+failure, which is how findings #23/#26 stayed invisible). The row carries
+the provider, model, mapped task type, the request summary, and the error
+text in response.error, with empty content and no usage — distinguishable
+from every success row (those always log error: null). Wired at all three
+terminal failure arms of cheap_llm_exec's send_to_provider; the success
+arms are byte-unchanged (pinned by the extended logging unit test plus a
+new error-row unit test — no oracle differential is possible for a
+deliberate divergence).
+
+P4.13 unit 5: the provider-I/O restructure under the phase-A net (the
+design note is appended to the work order). The carrying StreamMessage enum
+now flows from the loops THROUGH the request builders unconverted:
+RequestInput.messages is Vec<StreamMessage>, the RequestMessage/ToolCallMsg
+bag is deleted, and the builders' id-less-tool arms (the chat-completions
+drop, the responses-API drop, the anthropic tool_use_id:"" malformed arm,
+OpenRouter's filter half) are gone as unrepresentable — each recorded with
+a why-comment. StreamMessage/ThreadedMessage gain cache_control (v4
+LLMMessage.cacheControl) so the boundary can represent everything v4's
+streamMessage maps; it stays unpopulated on the chat path because v4's own
+buildMessageContext drops the summary-head stamp before the provider (a
+survey correction recorded in the design note — threading it would have
+been a divergence). One dispatch table: model/provider_io.rs's ProviderKind
+replaces the three independent provider-string matches (request builder,
+response parse, decoder flavor split). Byte-fidelity proof: request-envelope
+corpus (93), google request + wire (10), the five stream decoders, the
+tool-wire call-site pins, the response-bodies corpus (29), and the ten
+tier-3 mocked-LLM families all green with byte-identical committed fixtures
+and unshifted canned keys.
+
 P4.13 unit 4: the recorded-body response-parse corpus (dogfood finding #24's
 close-out — response_parse.rs previously had no oracle differential at all).
 New committed corpus harness/oracle/fixtures/response-bodies/

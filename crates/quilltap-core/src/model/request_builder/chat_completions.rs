@@ -20,7 +20,7 @@
 
 use serde_json::{json, Value};
 
-use super::{num, Body, BuildError, RequestInput, RequestMessage};
+use super::{num, Body, BuildError, RequestInput, StreamMessage};
 
 // ============================================================================
 // Shared chat-completions message formatting
@@ -41,41 +41,48 @@ fn content_or_null(content: &str) -> Value {
 /// `tc.type` (OpenRouter / Ollama / base). `echo_reasoning` appends
 /// `reasoning_content` on a tool-call assistant turn (the DeepSeek / Z.AI rule).
 fn chat_messages(
-    messages: &[RequestMessage],
+    messages: &[StreamMessage],
     literal_function_type: bool,
     echo_reasoning: bool,
 ) -> Value {
     let mut out = Vec::new();
     for msg in messages {
-        match msg.role.as_str() {
-            "tool" => {
-                let Some(tcid) = &msg.tool_call_id else {
-                    continue; // backward-compat: drop tool messages without an id
-                };
+        match msg {
+            // A tool result ALWAYS pairs by id — the carrying enum requires
+            // one by construction, so v4's "drop tool messages without an id"
+            // backward-compat arm is unrepresentable here (the id-less case
+            // became the explicit user-text fallback upstream).
+            StreamMessage::Tool {
+                call_id, content, ..
+            } => {
                 out.push(json!({
                     "role": "tool",
-                    "tool_call_id": tcid,
-                    "content": msg.content,
+                    "tool_call_id": call_id,
+                    "content": content,
                 }));
             }
-            "assistant" if !msg.tool_calls.is_empty() => {
-                let tool_calls: Vec<Value> = msg
-                    .tool_calls
+            StreamMessage::Assistant {
+                content,
+                tool_calls,
+                reasoning_content,
+                ..
+            } if !tool_calls.is_empty() => {
+                let tool_calls: Vec<Value> = tool_calls
                     .iter()
                     .map(|tc| {
                         json!({
                             "id": tc.id,
-                            "type": if literal_function_type { "function" } else { tc.type_.as_str() },
-                            "function": { "name": tc.name, "arguments": tc.arguments },
+                            "type": if literal_function_type { "function" } else { tc.kind },
+                            "function": { "name": tc.function.name, "arguments": tc.function.arguments },
                         })
                     })
                     .collect();
                 let mut m = Body::new();
                 m.set("role", json!("assistant"))
-                    .set("content", content_or_null(&msg.content))
+                    .set("content", content_or_null(content))
                     .set("tool_calls", Value::Array(tool_calls));
                 if echo_reasoning {
-                    if let Some(rc) = &msg.reasoning_content {
+                    if let Some(rc) = reasoning_content {
                         if !rc.is_empty() {
                             m.set("reasoning_content", json!(rc));
                         }
@@ -85,7 +92,7 @@ fn chat_messages(
             }
             _ => {
                 // system / assistant (no tool calls) / user → {role, content}
-                out.push(json!({ "role": msg.role, "content": msg.content }));
+                out.push(json!({ "role": msg.role_str(), "content": msg.content() }));
             }
         }
     }
@@ -421,14 +428,14 @@ fn build_openrouter_stream_body(input: &RequestInput) -> Value {
 /// One message as the @openrouter/sdk re-emits it: `{content, role}` and nothing
 /// else. An assistant turn's `tool_calls` are silently DROPPED (they are not in
 /// the SDK's assistant-message schema) — a v4 behaviour, carried faithfully.
-fn openrouter_send_message(msg: &RequestMessage) -> Value {
+fn openrouter_send_message(msg: &StreamMessage) -> Value {
     let mut m = Body::new();
-    if msg.role == "assistant" && !msg.tool_calls.is_empty() {
-        m.set("content", content_or_null(&msg.content));
+    if matches!(msg, StreamMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty()) {
+        m.set("content", content_or_null(msg.content()));
     } else {
-        m.set("content", json!(msg.content));
+        m.set("content", json!(msg.content()));
     }
-    m.set("role", json!(msg.role));
+    m.set("role", json!(msg.role_str()));
     m.into_value()
 }
 
@@ -536,15 +543,16 @@ fn openrouter_send_response_format(input: &RequestInput) -> Option<Value> {
 /// Keys the schema does not declare are dropped — which is why v4's
 /// `route: 'fallback'` and `reasoning.exclude` never reach the wire here.
 fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError> {
-    // v4 drops tool messages without a toolCallId, then hands the rest to the
-    // SDK — where a `tool`-role message fails input validation and NO request is
-    // made. Reproduce the refusal rather than inventing a body v4 never sends.
-    let messages: Vec<&RequestMessage> = input
-        .messages
+    // v4 drops tool messages without a toolCallId (unrepresentable in the
+    // carrying enum — the id-less case is the user-text fallback upstream, so
+    // that FILTER half is gone), then hands the rest to the SDK — where a
+    // `tool`-role message fails input validation and NO request is made.
+    // Reproduce the refusal rather than inventing a body v4 never sends.
+    let messages: Vec<&StreamMessage> = input.messages.iter().collect();
+    if messages
         .iter()
-        .filter(|m| !(m.role == "tool" && m.tool_call_id.is_none()))
-        .collect();
-    if messages.iter().any(|m| m.role == "tool") {
+        .any(|m| matches!(m, StreamMessage::Tool { .. }))
+    {
         return Err(BuildError::ProviderRefused(
             "OPENROUTER: the @openrouter/sdk rejects a tool-role message on the \
              non-streaming path (its schema wants toolCallId, not tool_call_id), \

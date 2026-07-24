@@ -47,59 +47,24 @@ pub use google::sanitize_schema_for_google;
 // Input value (the LLMParams subset the chat path passes)
 // ============================================================================
 
-/// One assistant tool call carried on a message (v4 `LLMMessage.toolCalls[]`).
-#[derive(Clone, Debug, Default)]
-pub struct ToolCallMsg {
-    pub id: String,
-    /// v4 `tc.type` (usually `"function"`).
-    pub type_: String,
-    pub name: String,
-    /// The raw arguments JSON STRING (v4 `tc.function.arguments`).
-    pub arguments: String,
-}
-
-/// A message in the provider-agnostic shape (v4 `LLMMessage`). `content` is the
-/// text; the tool / reasoning / thought-signature fields drive the per-provider
-/// message formatting. Attachments are out of scope here (the chat path's
-/// formatted messages are text; multimodal is the file subsystem's concern).
-#[derive(Clone, Debug, Default)]
-pub struct RequestMessage {
-    /// `"system"` | `"user"` | `"assistant"` | `"tool"`.
-    pub role: String,
-    pub content: String,
-    /// Present on a `tool`-role result (v4 `msg.toolCallId`).
-    pub tool_call_id: Option<String>,
-    /// Present on an assistant turn that invoked tools (v4 `msg.toolCalls`).
-    pub tool_calls: Vec<ToolCallMsg>,
-    /// The assistant's own reasoning text (v4 `msg.reasoningContent`) — echoed by
-    /// the deepseek / z-ai transforms on a tool-call turn.
-    pub reasoning_content: Option<String>,
-    /// The Gemini thought signature (v4 `msg.thoughtSignature`) — the google
-    /// round-trip.
-    pub thought_signature: Option<String>,
-    /// A caller-supplied ephemeral cache-control hint (v4 `msg.cacheControl`).
-    pub cache_control: Option<Value>,
-    /// v4 `msg.name` — a tool message's function name (google correlation).
-    pub name: Option<String>,
-}
-
-impl RequestMessage {
-    /// A plain text message.
-    pub fn text(role: &str, content: &str) -> RequestMessage {
-        RequestMessage {
-            role: role.to_string(),
-            content: content.to_string(),
-            ..Default::default()
-        }
-    }
-}
+// The message representation is the ONE carrying type of the provider-I/O
+// seam (P4.13 unit 5): the same [`StreamMessage`] the loops build flows into
+// the builders unconverted, so a field can no longer be dropped at a boundary
+// the corpus does not execute (findings #24/#25's structural cause). The old
+// `RequestMessage`/`ToolCallMsg` bag — whose all-optional fields made an
+// id-less tool result representable — is GONE; re-exported here for the
+// builder family modules.
+pub use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload};
 
 /// The provider-agnostic request input (v4 `LLMParams` subset). Optional fields
 /// map to v4's `?? default` / `if present` handling per provider.
 #[derive(Clone, Debug, Default)]
 pub struct RequestInput {
     pub model: String,
-    pub messages: Vec<RequestMessage>,
+    /// v4 `LLMMessage[]` — the carrying enum; attachments are out of scope here
+    /// (the chat path's formatted messages are text; multimodal is the file
+    /// subsystem's concern).
+    pub messages: Vec<StreamMessage>,
     pub temperature: Option<f64>,
     pub max_tokens: Option<i64>,
     pub top_p: Option<f64>,
@@ -197,15 +162,18 @@ pub fn build_request_with_registry(
     provider: &str,
     input: &RequestInput,
 ) -> Result<BuiltRequest, BuildError> {
+    use crate::model::provider_io::ProviderKind;
     let manifest = registry
         .get_provider(provider)
+        .ok_or_else(|| BuildError::UnknownProvider(provider.to_string()))?;
+    let kind = ProviderKind::of(provider)
         .ok_or_else(|| BuildError::UnknownProvider(provider.to_string()))?;
     let headers = auth_headers(manifest);
 
     // Google's genai endpoint is model-specific (`/models/{model}:…`) and its wire
     // body is the SDK reframing (W4.7d) — handled separately from the fixed-path
     // chat-completions / responses / anthropic builders.
-    if provider == "GOOGLE" {
+    if kind == ProviderKind::Google {
         let url = google::google_chat_url(&manifest.base_url, &input.model, input.stream);
         let body = google::build_google_wire_body(input)
             .map_err(|e| BuildError::Deferred(format!("GOOGLE wire framing: {e}")))?;
@@ -218,16 +186,16 @@ pub fn build_request_with_registry(
     }
 
     let url = format!("{}{}", manifest.base_url, manifest.endpoints.chat);
-    let body = match provider {
-        "ANTHROPIC" => anthropic::build_body(input),
-        "OPENAI" => responses_api::build_openai_body(input),
-        "GROK" => responses_api::build_grok_body(input),
-        "DEEPSEEK" => chat_completions::build_deepseek_body(input),
-        "Z_AI" => chat_completions::build_zai_body(input),
-        "OPENROUTER" => chat_completions::build_openrouter_body(input)?,
-        "OLLAMA" => chat_completions::build_ollama_body(input),
-        "OPENAI_COMPATIBLE" => chat_completions::build_openai_compatible_body(input),
-        other => return Err(BuildError::UnknownProvider(other.to_string())),
+    let body = match kind {
+        ProviderKind::Anthropic => anthropic::build_body(input),
+        ProviderKind::OpenAi => responses_api::build_openai_body(input),
+        ProviderKind::Grok => responses_api::build_grok_body(input),
+        ProviderKind::DeepSeek => chat_completions::build_deepseek_body(input),
+        ProviderKind::ZAi => chat_completions::build_zai_body(input),
+        ProviderKind::OpenRouter => chat_completions::build_openrouter_body(input)?,
+        ProviderKind::Ollama => chat_completions::build_ollama_body(input),
+        ProviderKind::OpenAiCompatible => chat_completions::build_openai_compatible_body(input),
+        ProviderKind::Google => unreachable!("handled above"),
     };
 
     Ok(BuiltRequest {

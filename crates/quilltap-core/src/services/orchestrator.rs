@@ -1899,6 +1899,7 @@ where
                 tool_calls: Vec::new(),
                 reasoning_content: None,
                 thought_signature: m.thought_signature.clone(),
+                cache_control: None,
             },
             _ => StreamMessage::user(m.content.clone()),
         })
@@ -2014,6 +2015,7 @@ where
             reasoning_content: None,
             tool_call_id: None,
             tool_calls: None,
+            cache_control: None,
         })
         .collect();
     let mut loop_tool_context = turn_tool_context(TurnToolContextArgs {
@@ -2070,6 +2072,7 @@ where
                 reasoning_content: None,
                 tool_call_id: None,
                 tool_calls: None,
+                cache_control: None,
             })
             .collect()
     };

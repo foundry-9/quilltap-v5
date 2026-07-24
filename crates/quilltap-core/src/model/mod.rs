@@ -29,6 +29,7 @@ pub mod embedding_wire;
 pub mod image;
 pub mod image_dialects;
 pub(crate) mod provider_auth;
+pub mod provider_io;
 pub mod provider_models_api;
 pub mod request_builder;
 pub mod response_parse;

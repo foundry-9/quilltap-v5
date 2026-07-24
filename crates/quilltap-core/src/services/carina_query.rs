@@ -598,6 +598,7 @@ where
             tool_calls: assistant_tool_calls,
             reasoning_content: None,
             thought_signature: None,
+            cache_control: None,
         });
         for tm in &results.tool_messages {
             match tm.call_id.as_deref().filter(|id| !id.is_empty()) {

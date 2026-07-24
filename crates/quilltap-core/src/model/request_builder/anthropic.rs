@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::{num, Body, RequestInput, RequestMessage};
+use super::{num, Body, RequestInput, StreamMessage};
 
 /// v4 `SAMPLING_PARAMS_REJECTED_MODELS` (current source): these models reject
 /// `temperature`/`top_p`/`top_k` outright and 400 on fixed-budget thinking.
@@ -61,19 +61,14 @@ struct CacheOpts {
     ttl: Option<String>,
 }
 
-/// The non-system, tool-id-filtered messages (v4's `nonSystemMessages`).
-fn non_system(messages: &[RequestMessage]) -> Vec<&RequestMessage> {
+/// The non-system messages (v4's `nonSystemMessages`). v4 also filtered
+/// tool messages without a `toolCallId` here — that arm is unrepresentable in
+/// the carrying enum (the id-less case became the user-text fallback upstream),
+/// so the old `tool_use_id: ""` MALFORMED emission below it is gone with it.
+fn non_system(messages: &[StreamMessage]) -> Vec<&StreamMessage> {
     messages
         .iter()
-        .filter(|m| {
-            if m.role == "system" {
-                return false;
-            }
-            if m.role == "tool" && m.tool_call_id.is_none() {
-                return false;
-            }
-            true
-        })
+        .filter(|m| !matches!(m, StreamMessage::System { .. }))
         .collect()
 }
 
@@ -81,11 +76,12 @@ fn non_system(messages: &[RequestMessage]) -> Vec<&RequestMessage> {
 /// subsystem's concern). Batches consecutive tool results, expands assistant
 /// tool-calls into content blocks, and attaches `cache_control` to the last user
 /// message (system_and_long_context) or a caller-flagged message.
-fn format_messages(messages: &[RequestMessage], cache: Option<&CacheOpts>) -> Vec<Value> {
+fn format_messages(messages: &[StreamMessage], cache: Option<&CacheOpts>) -> Vec<Value> {
     let non = non_system(messages);
     let last_user_index: Option<usize> =
         if cache.is_some_and(|c| c.strategy == "system_and_long_context") {
-            non.iter().rposition(|m| m.role == "user")
+            non.iter()
+                .rposition(|m| matches!(m, StreamMessage::User { .. }))
         } else {
             None
         };
@@ -96,19 +92,27 @@ fn format_messages(messages: &[RequestMessage], cache: Option<&CacheOpts>) -> Ve
     while i < non.len() {
         let msg = non[i];
 
-        if msg.role == "tool" {
+        if let StreamMessage::Tool {
+            call_id, content, ..
+        } = msg
+        {
             let mut blocks = vec![json!({
                 "type": "tool_result",
-                "tool_use_id": msg.tool_call_id.clone().unwrap_or_default(),
-                "content": msg.content,
+                "tool_use_id": call_id,
+                "content": content,
             })];
-            while i + 1 < non.len() && non[i + 1].role == "tool" {
+            while i + 1 < non.len() {
+                let StreamMessage::Tool {
+                    call_id, content, ..
+                } = non[i + 1]
+                else {
+                    break;
+                };
                 i += 1;
-                let next = non[i];
                 blocks.push(json!({
                     "type": "tool_result",
-                    "tool_use_id": next.tool_call_id.clone().unwrap_or_default(),
-                    "content": next.content,
+                    "tool_use_id": call_id,
+                    "content": content,
                 }));
             }
             out.push(json!({ "role": "user", "content": blocks }));
@@ -116,24 +120,31 @@ fn format_messages(messages: &[RequestMessage], cache: Option<&CacheOpts>) -> Ve
             continue;
         }
 
-        if msg.role == "assistant" && !msg.tool_calls.is_empty() {
-            let mut content = Vec::new();
-            if !msg.content.is_empty() {
-                content.push(json!({ "type": "text", "text": msg.content }));
+        if let StreamMessage::Assistant {
+            content,
+            tool_calls,
+            ..
+        } = msg
+        {
+            if !tool_calls.is_empty() {
+                let mut blocks = Vec::new();
+                if !content.is_empty() {
+                    blocks.push(json!({ "type": "text", "text": content }));
+                }
+                for tc in tool_calls {
+                    let input: Value =
+                        serde_json::from_str(&tc.function.arguments).unwrap_or_else(|_| json!({}));
+                    blocks.push(
+                        json!({ "type": "tool_use", "id": tc.id, "name": tc.function.name, "input": input }),
+                    );
+                }
+                out.push(json!({ "role": "assistant", "content": blocks }));
+                i += 1;
+                continue;
             }
-            for tc in &msg.tool_calls {
-                let input: Value =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
-                content.push(
-                    json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": input }),
-                );
-            }
-            out.push(json!({ "role": "assistant", "content": content }));
-            i += 1;
-            continue;
         }
 
-        let role = if msg.role == "user" {
+        let role = if matches!(msg, StreamMessage::User { .. }) {
             "user"
         } else {
             "assistant"
@@ -141,18 +152,17 @@ fn format_messages(messages: &[RequestMessage], cache: Option<&CacheOpts>) -> Ve
         let is_last_user = Some(i) == last_user_index;
         let honor_msg_cc = cache.is_some()
             && msg
-                .cache_control
-                .as_ref()
+                .cache_control()
                 .and_then(|c| c.get("type"))
                 .and_then(Value::as_str)
                 == Some("ephemeral");
         if is_last_user || honor_msg_cc {
             out.push(json!({
                 "role": role,
-                "content": [{ "type": "text", "text": msg.content, "cache_control": cache_control(ttl) }],
+                "content": [{ "type": "text", "text": msg.content(), "cache_control": cache_control(ttl) }],
             }));
         } else {
-            out.push(json!({ "role": role, "content": msg.content }));
+            out.push(json!({ "role": role, "content": msg.content() }));
         }
         i += 1;
     }
@@ -198,10 +208,10 @@ fn apply_mid_history_breakpoint(messages: &mut [Value], ttl: Option<&str>) {
 
 pub fn build_body(input: &RequestInput) -> Value {
     // System messages (string, non-empty).
-    let system_messages: Vec<&RequestMessage> = input
+    let system_messages: Vec<&StreamMessage> = input
         .messages
         .iter()
-        .filter(|m| m.role == "system" && !m.content.is_empty())
+        .filter(|m| matches!(m, StreamMessage::System { .. }) && !m.content().is_empty())
         .collect();
 
     let profile = input.profile_parameters.as_ref();
@@ -292,7 +302,7 @@ pub fn build_body(input: &RequestInput) -> Value {
                     let mut block = Body::new();
                     block
                         .set("type", json!("text"))
-                        .set("text", json!(m.content));
+                        .set("text", json!(m.content()));
                     if i == 0 {
                         block.set("cache_control", cache_control(cache_ttl.as_deref()));
                     }
@@ -301,11 +311,11 @@ pub fn build_body(input: &RequestInput) -> Value {
                 .collect();
             b.set("system", Value::Array(blocks));
         } else if system_messages.len() == 1 {
-            b.set("system", json!(system_messages[0].content));
+            b.set("system", json!(system_messages[0].content()));
         } else {
             let blocks: Vec<Value> = system_messages
                 .iter()
-                .map(|m| json!({ "type": "text", "text": m.content }))
+                .map(|m| json!({ "type": "text", "text": m.content() }))
                 .collect();
             b.set("system", Value::Array(blocks));
         }

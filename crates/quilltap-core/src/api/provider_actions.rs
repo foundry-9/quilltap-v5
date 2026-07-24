@@ -59,7 +59,7 @@ use serde_json::{json, Value};
 use crate::db::runtime::Db;
 use crate::model::provider_auth::apply_auth;
 use crate::model::provider_models_api::{models_list_request, parse_models_list};
-use crate::model::request_builder::{build_request, RequestInput, RequestMessage};
+use crate::model::request_builder::{build_request, RequestInput, StreamMessage};
 use crate::model::transport::transport_headers;
 use crate::model::wire::SyncWireTransport;
 use crate::provider_manifest::Registry;
@@ -236,11 +236,7 @@ impl<T: SyncWireTransport> WireConnectionValidator<'_, T> {
     ) -> bool {
         let input = RequestInput {
             model: model.to_string(),
-            messages: vec![RequestMessage {
-                role: "user".to_string(),
-                content: "test".to_string(),
-                ..Default::default()
-            }],
+            messages: vec![StreamMessage::user("test")],
             max_tokens,
             stream: false,
             ..Default::default()

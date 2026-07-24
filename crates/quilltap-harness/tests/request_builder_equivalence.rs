@@ -28,7 +28,7 @@
 //! LOGIC is verified in `request_builder_google_equivalence`.
 
 use quilltap_core::model::request_builder::{
-    build_request, RequestInput, RequestMessage, ToolCallMsg,
+    build_request, RequestInput, StreamMessage, ToolCallFunction, ToolCallPayload,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -46,56 +46,73 @@ fn opt_str(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-fn message_from_json(m: &Value) -> RequestMessage {
-    let tool_calls = m
-        .get("toolCalls")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .map(|tc| ToolCallMsg {
-                    id: tc
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
-                    type_: tc
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .unwrap_or("function")
-                        .to_string(),
-                    name: tc
-                        .get("function")
-                        .and_then(|f| f.get("name"))
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
-                    arguments: tc
-                        .get("function")
-                        .and_then(|f| f.get("arguments"))
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
+fn message_from_json(m: &Value) -> StreamMessage {
+    let content = m
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    match m.get("role").and_then(Value::as_str).unwrap_or_default() {
+        "system" => StreamMessage::system(content),
+        "assistant" => StreamMessage::Assistant {
+            content,
+            tool_calls: m
+                .get("toolCalls")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .map(|tc| {
+                            // The corpus only records type "function" (v4's
+                            // detection emits nothing else); the enum's static
+                            // kind makes any other type a loud loader error.
+                            assert_eq!(
+                                tc.get("type").and_then(Value::as_str),
+                                Some("function"),
+                                "corpus tool call with a non-function type"
+                            );
+                            ToolCallPayload {
+                                id: tc
+                                    .get("id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                kind: "function",
+                                function: ToolCallFunction {
+                                    name: tc
+                                        .get("function")
+                                        .and_then(|f| f.get("name"))
+                                        .and_then(Value::as_str)
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                    arguments: tc
+                                        .get("function")
+                                        .and_then(|f| f.get("arguments"))
+                                        .and_then(Value::as_str)
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                },
+                            }
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .unwrap_or_default();
-    RequestMessage {
-        role: m
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        content: m
-            .get("content")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        tool_call_id: opt_str(m, "toolCallId"),
-        tool_calls,
-        reasoning_content: opt_str(m, "reasoningContent"),
-        thought_signature: opt_str(m, "thoughtSignature"),
-        cache_control: m.get("cacheControl").cloned(),
-        name: opt_str(m, "name"),
+                .unwrap_or_default(),
+            reasoning_content: opt_str(m, "reasoningContent"),
+            thought_signature: opt_str(m, "thoughtSignature"),
+            cache_control: m.get("cacheControl").cloned(),
+        },
+        // An id-less tool message is unrepresentable in v5 (the carrying enum
+        // requires the call id); a corpus vector carrying one must FAIL the
+        // loader loudly rather than be silently reshaped.
+        "tool" => StreamMessage::Tool {
+            call_id: opt_str(m, "toolCallId")
+                .expect("corpus tool message without a toolCallId (unrepresentable in v5)"),
+            name: opt_str(m, "name"),
+            content,
+        },
+        _ => StreamMessage::User {
+            content,
+            cache_control: m.get("cacheControl").cloned(),
+        },
     }
 }
 

@@ -16,7 +16,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::{RequestInput, RequestMessage};
+use super::{RequestInput, StreamMessage};
 
 /// JSON-Schema fields Google's function-calling API rejects (v4
 /// `UNSUPPORTED_SCHEMA_FIELDS`).
@@ -157,49 +157,62 @@ pub struct GoogleContents {
 /// user messages, batches tool responses, and emits `contents` — attaching
 /// `thoughtSignature` to assistant text parts (the Gemini 3 round-trip).
 pub fn format_messages_for_google(
-    messages: &[RequestMessage],
+    messages: &[StreamMessage],
     model: &str,
     has_tools: bool,
 ) -> GoogleContents {
     let is_thinking = is_thinking_model(model);
 
-    let system_msgs: Vec<&RequestMessage> =
-        messages.iter().filter(|m| m.role == "system").collect();
+    let system_msgs: Vec<&StreamMessage> = messages
+        .iter()
+        .filter(|m| matches!(m, StreamMessage::System { .. }))
+        .collect();
     let system_instruction = if system_msgs.is_empty() {
         None
     } else {
         Some(
             system_msgs
                 .iter()
-                .map(|m| m.content.as_str())
+                .map(|m| m.content())
                 .collect::<Vec<_>>()
                 .join("\n\n"),
         )
     };
-    let non_system: Vec<&RequestMessage> = messages.iter().filter(|m| m.role != "system").collect();
+    let non_system: Vec<&StreamMessage> = messages
+        .iter()
+        .filter(|m| !matches!(m, StreamMessage::System { .. }))
+        .collect();
 
     let mut should_disable_tools = false;
     if has_tools && !supports_tool_calling(model) {
         should_disable_tools = true;
     }
     if !should_disable_tools && is_thinking && has_tools {
-        let legacy = non_system
-            .iter()
-            .filter(|m| m.role == "assistant")
-            .any(|m| m.thought_signature.is_none());
+        let legacy = non_system.iter().any(|m| {
+            matches!(
+                m,
+                StreamMessage::Assistant {
+                    thought_signature: None,
+                    ..
+                }
+            )
+        });
         if legacy {
             should_disable_tools = true;
         }
     }
 
-    // Merge consecutive plain user messages (not tool results).
-    let mut merged: Vec<RequestMessage> = Vec::new();
+    // Merge consecutive plain user messages (not tool results — v4 also guarded
+    // `msg.toolCallId == null`, vacuous here: a User variant never carries one).
+    let mut merged: Vec<StreamMessage> = Vec::new();
     for msg in &non_system {
-        if let Some(last) = merged.last_mut() {
-            if last.role == "user" && msg.role == "user" && msg.tool_call_id.is_none() {
-                last.content = format!("{}\n\n{}", last.content, msg.content);
-                continue;
-            }
+        if let (
+            Some(StreamMessage::User { content: last, .. }),
+            StreamMessage::User { content, .. },
+        ) = (merged.last_mut(), msg)
+        {
+            *last = format!("{last}\n\n{content}");
+            continue;
         }
         merged.push((*msg).clone());
     }
@@ -213,15 +226,20 @@ pub fn format_messages_for_google(
     };
 
     for msg in &merged {
-        // Tool result (role tool, or any message with a tool_call_id).
-        if msg.role == "tool" || msg.tool_call_id.is_some() {
-            let response = serde_json::from_str::<Value>(&msg.content)
-                .unwrap_or_else(|_| json!({ "result": msg.content }));
-            let function_name = msg
-                .name
-                .clone()
-                .or_else(|| msg.tool_call_id.clone())
-                .unwrap_or_else(|| "unknown_function".to_string());
+        // Tool result. v4's arm also caught "any message with a toolCallId"
+        // regardless of role — unrepresentable in the carrying enum (only a
+        // Tool variant pairs by id), so that half is gone; and the
+        // `"unknown_function"` fallback is unreachable (name falls back to the
+        // REQUIRED call id) but kept as v4's written chain.
+        if let StreamMessage::Tool {
+            call_id,
+            name,
+            content,
+        } = msg
+        {
+            let response = serde_json::from_str::<Value>(content)
+                .unwrap_or_else(|_| json!({ "result": content }));
+            let function_name = name.clone().unwrap_or_else(|| call_id.clone());
             pending.push(
                 json!({ "functionResponse": { "name": function_name, "response": response } }),
             );
@@ -231,35 +249,47 @@ pub fn format_messages_for_google(
         flush(&mut pending, &mut contents);
         let mut parts: Vec<Value> = Vec::new();
 
-        if msg.role == "assistant" && !msg.tool_calls.is_empty() {
-            if !msg.content.is_empty() {
-                if let Some(sig) = &msg.thought_signature {
-                    parts.push(json!({ "text": msg.content, "thoughtSignature": sig }));
-                } else {
-                    parts.push(json!({ "text": msg.content }));
+        if let StreamMessage::Assistant {
+            content,
+            tool_calls,
+            thought_signature,
+            ..
+        } = msg
+        {
+            if !tool_calls.is_empty() {
+                if !content.is_empty() {
+                    if let Some(sig) = thought_signature {
+                        parts.push(json!({ "text": content, "thoughtSignature": sig }));
+                    } else {
+                        parts.push(json!({ "text": content }));
+                    }
                 }
+                for tc in tool_calls {
+                    let args: Value =
+                        serde_json::from_str(&tc.function.arguments).unwrap_or_else(|_| json!({}));
+                    parts.push(
+                        json!({ "functionCall": { "name": tc.function.name, "args": args } }),
+                    );
+                }
+                contents.push(json!({ "role": "model", "parts": parts }));
+                continue;
             }
-            for tc in &msg.tool_calls {
-                let args: Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
-                parts.push(json!({ "functionCall": { "name": tc.name, "args": args } }));
-            }
-            contents.push(json!({ "role": "model", "parts": parts }));
-            continue;
         }
 
-        if !msg.content.is_empty() {
-            if msg.role == "assistant" {
-                if let Some(sig) = &msg.thought_signature {
-                    parts.push(json!({ "text": msg.content, "thoughtSignature": sig }));
-                } else {
-                    parts.push(json!({ "text": msg.content }));
-                }
+        if !msg.content().is_empty() {
+            if let StreamMessage::Assistant {
+                content,
+                thought_signature: Some(sig),
+                ..
+            } = msg
+            {
+                parts.push(json!({ "text": content, "thoughtSignature": sig }));
             } else {
-                parts.push(json!({ "text": msg.content }));
+                parts.push(json!({ "text": msg.content() }));
             }
         }
 
-        let role = if msg.role == "assistant" {
+        let role = if matches!(msg, StreamMessage::Assistant { .. }) {
             "model"
         } else {
             "user"

@@ -113,6 +113,43 @@ google's oracle `raw.sdkHttpResponse` carries the LIVE HTTP headers
 test header). The old `openrouter_camel_case` unit test (hand-authored
 camelCase fixture) rewritten to the wire shape.
 
+### Unit 5 — the restructure (the design note is in the order)
+
+The enum flows through: `RequestInput.messages: Vec<StreamMessage>`;
+`RequestMessage`/`ToolCallMsg` DELETED (`request_input_from_stream_params`
+now clones the messages — no boundary left to drop a field at); every
+family builder consumes the enum's variants; the id-less-tool arms
+(chat-completions `continue`, responses-API `if let Some(id)`, anthropic
+`tool_use_id: ""`, OpenRouter's filter half) deleted as unrepresentable
+with why-comments recording v4's arms. `ProviderKind`
+(`model/provider_io.rs`) is the ONE provider-string dispatch point
+(builder + parse + decoder flavor). `cache_control` became REPRESENTABLE
+(StreamMessage User/Assistant + ThreadedMessage, serde `cacheControl`
+skip-if-none) but deliberately UNPOPULATED on the chat path — survey
+correction: v4's own `buildMessageContext` final map
+(context-builder.service.ts:753–771) drops the summary-head stamp, so
+the anthropic per-message cache arm is dead in v4 too; threading it
+would have been a divergence (recorded in the design note). The three
+harness corpus loaders build the enum and FAIL LOUDLY on an id-less
+tool vector (none exist). Proof: request-envelopes (93) + google ×2 +
+five decoders + the unit-3 pins + the unit-4 corpus + ten tier-3
+families, all green, fixtures byte-identical, canned keys unshifted;
+full workspace test green.
+
+### Unit 6 — the ruled failed-cheap-call error row
+
+`cheap_llm_exec::log_failed_call` + wires at all three terminal failure
+arms of `send_to_provider` (the known-no-temp send, the
+temperature-retry send, the non-temperature fall-through). Row shape: a
+normal cheap-LLM row with `response: {content: "", error: <text>, …}`
+and NULL usage; success arms byte-unchanged. Pinned by unit tests (the
+new `failed_call_writes_the_ruled_error_row` + an `error: null`
+assertion added to the success-row test) — no oracle differential is
+possible for a deliberate divergence. `log_call`'s why-comment now
+cites the ruling (it previously documented the v4-faithful silence and
+asked for exactly this ruling). The tracing-subscriber question stays
+open (explicitly not this unit's).
+
 **⚠ Pre-existing red found (NOT this lane's):**
 `enclave_step_tier3_equivalence` fails against a FRESH `e646f58b`
 oracle — the oracle now has the fold-episode SUMMARIZATION `llm_logs`

@@ -6,7 +6,7 @@
 
 use serde_json::{json, Value};
 
-use super::{num, Body, RequestInput, RequestMessage, ToolCallMsg};
+use super::{num, Body, RequestInput, StreamMessage, ToolCallPayload};
 
 // ============================================================================
 // Message formatting (Responses API input items)
@@ -22,15 +22,15 @@ fn user_content(content: &str) -> Value {
     }
 }
 
-fn function_call_items(tool_calls: &[ToolCallMsg]) -> Vec<Value> {
+fn function_call_items(tool_calls: &[ToolCallPayload]) -> Vec<Value> {
     tool_calls
         .iter()
         .map(|tc| {
             json!({
                 "type": "function_call",
                 "call_id": tc.id,
-                "name": tc.name,
-                "arguments": tc.arguments,
+                "name": tc.function.name,
+                "arguments": tc.function.arguments,
             })
         })
         .collect()
@@ -38,32 +38,36 @@ fn function_call_items(tool_calls: &[ToolCallMsg]) -> Vec<Value> {
 
 /// v4 OpenAI `formatMessagesForResponsesAPI`: the FIRST system message becomes
 /// top-level `instructions`; later system messages become `developer` role items.
-fn format_openai_messages(messages: &[RequestMessage]) -> (Vec<Value>, Option<String>) {
+/// A tool result always carries its `call_id` (the enum requires one — v4's
+/// `if (msg.toolCallId)` drop arm is unrepresentable).
+fn format_openai_messages(messages: &[StreamMessage]) -> (Vec<Value>, Option<String>) {
     let mut instructions: Option<String> = None;
     let mut input = Vec::new();
     for msg in messages {
-        match msg.role.as_str() {
-            "system" if instructions.is_none() => {
-                instructions = Some(msg.content.clone());
+        match msg {
+            StreamMessage::System { content } if instructions.is_none() => {
+                instructions = Some(content.clone());
             }
-            "system" => {
+            StreamMessage::System { content } => {
+                input.push(json!({ "type": "message", "role": "developer", "content": content }));
+            }
+            StreamMessage::Tool {
+                call_id, content, ..
+            } => {
+                input.push(json!({ "type": "function_call_output", "call_id": call_id, "output": content }));
+            }
+            StreamMessage::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                input.push(json!({ "type": "message", "role": "assistant", "content": content }));
+                input.extend(function_call_items(tool_calls));
+            }
+            StreamMessage::User { content, .. } => {
                 input.push(
-                    json!({ "type": "message", "role": "developer", "content": msg.content }),
+                    json!({ "type": "message", "role": "user", "content": user_content(content) }),
                 );
-            }
-            "tool" => {
-                if let Some(id) = &msg.tool_call_id {
-                    input.push(json!({ "type": "function_call_output", "call_id": id, "output": msg.content }));
-                }
-            }
-            "assistant" => {
-                input.push(
-                    json!({ "type": "message", "role": "assistant", "content": msg.content }),
-                );
-                input.extend(function_call_items(&msg.tool_calls));
-            }
-            _ => {
-                input.push(json!({ "type": "message", "role": "user", "content": user_content(&msg.content) }));
             }
         }
     }
@@ -72,26 +76,30 @@ fn format_openai_messages(messages: &[RequestMessage]) -> (Vec<Value>, Option<St
 
 /// v4 Grok `formatMessagesForResponsesAPI`: system stays as a `system`-role item
 /// (xAI has no `developer`/`instructions`).
-fn format_grok_messages(messages: &[RequestMessage]) -> Vec<Value> {
+fn format_grok_messages(messages: &[StreamMessage]) -> Vec<Value> {
     let mut input = Vec::new();
     for msg in messages {
-        match msg.role.as_str() {
-            "tool" => {
-                if let Some(id) = &msg.tool_call_id {
-                    input.push(json!({ "type": "function_call_output", "call_id": id, "output": msg.content }));
-                }
+        match msg {
+            StreamMessage::Tool {
+                call_id, content, ..
+            } => {
+                input.push(json!({ "type": "function_call_output", "call_id": call_id, "output": content }));
             }
-            "system" => {
-                input.push(json!({ "type": "message", "role": "system", "content": msg.content }));
+            StreamMessage::System { content } => {
+                input.push(json!({ "type": "message", "role": "system", "content": content }));
             }
-            "assistant" => {
+            StreamMessage::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                input.push(json!({ "type": "message", "role": "assistant", "content": content }));
+                input.extend(function_call_items(tool_calls));
+            }
+            StreamMessage::User { content, .. } => {
                 input.push(
-                    json!({ "type": "message", "role": "assistant", "content": msg.content }),
+                    json!({ "type": "message", "role": "user", "content": user_content(content) }),
                 );
-                input.extend(function_call_items(&msg.tool_calls));
-            }
-            _ => {
-                input.push(json!({ "type": "message", "role": "user", "content": user_content(&msg.content) }));
             }
         }
     }

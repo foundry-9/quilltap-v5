@@ -409,6 +409,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                 reasoning_content: None,
                 tool_call_id: None,
                 tool_calls: None,
+                cache_control: None,
             })
             .collect();
         let tool_context = create_tool_context(

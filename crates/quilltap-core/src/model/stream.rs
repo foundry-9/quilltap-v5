@@ -87,6 +87,10 @@ pub enum StreamMessage {
     },
     User {
         content: String,
+        /// v4 `msg.cacheControl` (`{ type: 'ephemeral' }`) — the summary-head
+        /// prompt-cache breakpoint the context builder stamps; consumed by the
+        /// anthropic builder's per-message cache arm.
+        cache_control: Option<serde_json::Value>,
     },
     Assistant {
         content: String,
@@ -100,6 +104,8 @@ pub enum StreamMessage {
         /// The Gemini thought signature (v4 `msg.thoughtSignature`) — the
         /// google round-trip.
         thought_signature: Option<String>,
+        /// v4 `msg.cacheControl` — see [`StreamMessage::User`].
+        cache_control: Option<serde_json::Value>,
     },
     /// A native tool result, paired to its call by `call_id` (required by
     /// construction — v4's providers either drop or mis-send an id-less tool
@@ -124,6 +130,7 @@ impl StreamMessage {
     pub fn user(content: impl Into<String>) -> Self {
         StreamMessage::User {
             content: content.into(),
+            cache_control: None,
         }
     }
 
@@ -134,6 +141,17 @@ impl StreamMessage {
             tool_calls: Vec::new(),
             reasoning_content: None,
             thought_signature: None,
+            cache_control: None,
+        }
+    }
+
+    /// The per-message cache-control hint (v4 `msg.cacheControl`; `None` on
+    /// roles that never carry one).
+    pub fn cache_control(&self) -> Option<&serde_json::Value> {
+        match self {
+            StreamMessage::User { cache_control, .. }
+            | StreamMessage::Assistant { cache_control, .. } => cache_control.as_ref(),
+            _ => None,
         }
     }
 
@@ -144,6 +162,7 @@ impl StreamMessage {
     pub fn tool_result_fallback(name: &str, content: &str) -> Self {
         StreamMessage::User {
             content: format!("[Tool Result: {name}]\n{content}"),
+            cache_control: None,
         }
     }
 
@@ -161,7 +180,7 @@ impl StreamMessage {
     pub fn content(&self) -> &str {
         match self {
             StreamMessage::System { content }
-            | StreamMessage::User { content }
+            | StreamMessage::User { content, .. }
             | StreamMessage::Assistant { content, .. }
             | StreamMessage::Tool { content, .. } => content,
         }

@@ -856,16 +856,20 @@ pub fn parse_ollama(response: &Value) -> NonStreamingResponse {
 /// picks the family from the manifest's stream decoder; the non-streaming shape
 /// mirrors it).
 pub fn parse_for_provider(provider: &str, response: &Value) -> NonStreamingResponse {
-    match provider {
-        "ANTHROPIC" => parse_anthropic(response),
-        "OPENAI" | "GROK" => parse_responses_api(response),
-        "GOOGLE" => parse_google(response),
-        "OLLAMA" => parse_ollama(response),
-        "DEEPSEEK" => parse_chat_completions(response, ChatFlavor::DeepSeek),
-        "Z_AI" => parse_chat_completions(response, ChatFlavor::ZAi),
-        "OPENROUTER" => parse_chat_completions(response, ChatFlavor::OpenRouter),
-        // OPENAI_COMPATIBLE + any unknown chat-completions provider.
-        _ => parse_chat_completions(response, ChatFlavor::OpenAiCompatible),
+    use super::provider_io::ProviderKind;
+    match ProviderKind::of(provider) {
+        Some(ProviderKind::Anthropic) => parse_anthropic(response),
+        Some(ProviderKind::OpenAi | ProviderKind::Grok) => parse_responses_api(response),
+        Some(ProviderKind::Google) => parse_google(response),
+        Some(ProviderKind::Ollama) => parse_ollama(response),
+        Some(kind) => parse_chat_completions(
+            response,
+            kind.chat_parse_flavor()
+                .expect("every remaining kind is a chat-completions flavor"),
+        ),
+        // An unknown provider falls back to the chat-completions base (v4's
+        // default plugin shape).
+        None => parse_chat_completions(response, ChatFlavor::OpenAiCompatible),
     }
 }
 
