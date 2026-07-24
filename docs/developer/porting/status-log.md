@@ -32450,3 +32450,37 @@ this round; editing it would be out of ownership and would collide. **Handed to
 the unifier** to re-check on a quiet machine — if it stays red there, it wants
 its own follow-up (the likely fix is the beat's own pause/turn-drain gesture,
 not product code).
+
+## Lane record — P4.9G3 FINAL GATE (2026-07-24) — the lane is COMPLETE
+
+v4 re-verified at the pinned baseline `e646f58b`, clean tree; all three oracles
+generated there.
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, **plain AND
+  `--features quilltap-core/native-transport`**.
+- `TZ=UTC cargo test --workspace --no-fail-fast` with all three
+  `QT_ORACLE_SYSTEM_*` vars — **374 test binaries, 1,562 tests, ZERO failures**
+  (372 → 374: two new differentials).
+- By name, `--nocapture`, zero SKIP: `system_delete_data_equivalence` **7/7 OK**
+  · `system_jobs_collection_equivalence` **8/8 OK** ·
+  `system_jobs_routes_equivalence` **18/18 OK** (the sibling family re-run as a
+  control; its oracle was regenerated fresh even though no fixture moved).
+- `cargo build --release` — clean.
+- SPA: `ng build` clean · `ng test` **223 files / 2,621 tests passed** · full
+  Playwright **124 passed / 1 failed**, the failure being the pre-existing,
+  out-of-surface `salon-composer-modes` red analysed above; the delete-all beat
+  passes LAST as test #125.
+
+**Fixtures: NONE changed.** The `system-data-{main,mount,llmlogs}.db` family is
+byte-identical to what P4.9G1 committed, so no sibling differential is
+invalidated and G4/G5 need no re-run on this lane's account.
+
+**Versions:** core 0.0.348, harness 0.0.295, web 0.0.41, SPA 0.5.269.
+(host / cli / quilltap-tauri untouched.)
+
+**Order status: every tier-1 and tier-2 item is LANDED.** The lane's only
+standing deferral is the one named in `services/delete_all.rs`: legacy
+`<base>/files/**` disk bytes survive the wipe (metadata rows go; mount-blob
+bytes are truncated by `clear_format3_entities`) — closing it needs a
+`StorageBackend` threaded to the dispatch layer, which no lane owns this round.
