@@ -32368,3 +32368,85 @@ fmt clean · clippy `--workspace --all-targets -D warnings` clean **plain AND
 `AxumResponse` error — `result_large_err`) · `TZ=UTC cargo test --workspace
 --no-fail-fast` with all three `QT_ORACLE_SYSTEM_*` vars: **374 test binaries,
 zero failures**. Versions: core 0.0.348, harness 0.0.295, web 0.0.41.
+
+## Lane record — P4.9G3 unit 3 (tier 2): the delete-all e2e beat, ACTIVATED — and MOVED (2026-07-24)
+
+### The beat's "runs last" premise was false — it was running eighth-from-last
+
+The order's tier 2 said to flip `DELETE_ALL_SERVER_LANDED` to `true` at
+`settings-data-system-flow.spec.ts:36`, where P4.9G2 had left the beat with the
+comment *"runs LAST in its OWN spec file-position, sequenced after every other
+beat"*. **That is not true.** Playwright orders spec FILES by path
+(`workers: 1`, `fullyParallel: false`), and EIGHT files sort after
+`settings-data-…`: `settings-flow`, `setup-flow`, `terminal-flow`,
+`wardrobe-flow`, `workbench-flow`, and the three `workspace-*` files — every one
+of which reads the seeded graph a full wipe destroys.
+
+So the beat MOVED to a new lane-owned file, **`apps/web/e2e/zz-delete-all-destructive.spec.ts`**,
+whose `zz-` prefix is load-bearing and is documented as such in the file header.
+The shared spec keeps a short comment where the block was, pointing at the new
+file. Nothing else in the shared spec was touched (G4 owns the export→import
+body; G5 appends at the end of the main describe) — but **the unifier should
+expect a small conflict at the tail of that file** if a sibling also edits near
+it.
+
+### Two real defects the first live run caught
+
+1. **A strict-mode locator violation.** `getByRole('button', {name: 'Delete All
+   Data'})` matched TWO elements: the destructive button AND the collapsible
+   card header, whose accessible name is "Delete All Data Permanently"
+   (Playwright's name matching is substring, not exact). Fixed by scoping to
+   `qt-delete-data-card` and passing `exact: true`.
+2. **Cross-lane PORT CONTENTION — worth a memory note.** The isolated re-run
+   then failed with the *server-side* refusal "This Data & System action is
+   recognized but not yet available (P4.9G1 deferral)" — from a binary that has
+   no delete arms. Cause: `e2e/support/env.ts` hard-codes `PORT = 4319` with no
+   env override, and the **sibling P4.9G4 worktree was running its own e2e
+   server on the same port**, so this lane's Playwright talked to THEIR server.
+   The three parallel lanes of this round cannot run Playwright at the same
+   time. Diagnosis recipe: `lsof -nP -iTCP:4319 -sTCP:LISTEN` prints the owning
+   worktree's binary path in `pgrep -fl quilltap-web`. Do NOT "fix" this by
+   editing `env.ts` mid-round (shared file); wait for the port.
+
+### Result
+
+With the port free, the beat passes live end-to-end against the real server —
+preview counts → Continue → typed `DELETE` → `Delete Everything` → "Successfully
+deleted N items". The full-suite re-run is recorded in the lane's final gate
+below.
+
+### Full-suite result + one PRE-EXISTING red this lane did NOT cause
+
+Full Playwright over a fresh `ng build` dist + the lane's debug binaries:
+**124 passed, 1 failed.** The delete-all beat ran **last (test #125) and PASSED**
+— the ordering fix works.
+
+The one red is `salon-composer-modes.spec.ts:181` ("a `$$` math message renders
+KaTeX live; single-`$` math promotes; `$50`/`$20` stays plain text"), which is
+**outside this lane's ownership and outside its surface**. Evidence it is not
+this lane's doing:
+
+- It **PASSED** in this lane's FIRST full run (16:23) and failed in the second
+  (17:02) — with the **identical `quilltap-web` binary (built 16:21) and the
+  identical dist (built 16:22)**. Nothing was rebuilt between the two runs, so
+  the differing outcome cannot be a code difference.
+- The failure snapshot shows the second message still sitting in the composer
+  with a **"Nudge Bram"** affordance visible — the chat parked on an AI turn and
+  swallowed the send. That is exactly the nondeterminism the beat's OWN comment
+  documents ("the group's inherited turn state varies across a full-suite run…
+  it can park on an AI turn (Nudge affordance, composer DISABLED), swallowing
+  this beat's second send"), and the same class as the P4.9J1 note about this
+  beat needing a pause-before-send gesture.
+- Nothing this lane touched is on that path: `services::delete_all` is reachable
+  only from the two delete verbs, the jobs-collection edge is only reachable
+  from `/api/v1/system/jobs`, and `CoreEngine::job_pump_control()` is inert until
+  called. The committed fixtures are byte-unmutated (`git status` clean under
+  `crates/quilltap-web/tests/fixtures`) — the wipe leaked nothing.
+- Today's ratio: 1 pass / 3 fails (one full-suite pass, one full-suite fail, two
+  isolated fails), on a machine running three parallel lanes.
+
+**Not fixed here on purpose:** `salon-composer-modes.spec.ts` belongs to no lane
+this round; editing it would be out of ownership and would collide. **Handed to
+the unifier** to re-check on a quiet machine — if it stays red there, it wants
+its own follow-up (the likely fix is the beat's own pause/turn-drain gesture,
+not product code).

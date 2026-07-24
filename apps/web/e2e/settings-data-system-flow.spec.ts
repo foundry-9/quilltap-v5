@@ -27,13 +27,12 @@ import { E2E_PASSPHRASE } from './support/env';
 const TEMP_PASSPHRASE = 'a temporary interlude';
 
 /**
- * The delete-all family is OPEN under P4.9G1 (`systemDeleteDataPreview` /
- * `systemDeleteData` answer the not-yet-available refusal — see the lane record
- * in `status-log.md` and the order's status header). Flip to `true` in the same
- * change that lands the delete-all unit; the beat below is already written
- * against the real flow.
+ * The delete-all beat and its `DELETE_ALL_SERVER_LANDED` gate MOVED to
+ * `zz-delete-all-destructive.spec.ts` when P4.9G3 landed the server family
+ * (2026-07-24). It wipes the SHARED instance, and eight spec files sort after
+ * this one — the beat's old "runs last" premise was never true. The `zz-`
+ * filename is load-bearing. (P4.9G3 owned this block; nothing else moved.)
  */
-const DELETE_ALL_SERVER_LANDED = false;
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -182,32 +181,5 @@ test.describe('P4.9G2 — the Data & System tab', () => {
       timeout: 15_000,
     });
     // The full export→import round-trip is fleshed out when the web-edge legs land.
-  });
-});
-
-/**
- * The delete-all beat runs LAST in its OWN spec file-position, sequenced after
- * every other beat: the fixture is copied fresh per run, so a full wipe is safe.
- * STILL GATED: the delete-all server family is OPEN under P4.9G1.
- */
-test.describe('P4.9G2 — Delete All Data (destructive; last)', () => {
-  test('delete-all preview → confirm → complete', async ({ page }) => {
-    test.skip(
-      !DELETE_ALL_SERVER_LANDED,
-      'P4.9G1 delete-all family OPEN (systemDeleteDataPreview/systemDeleteData refuse)',
-    );
-    await page.goto('/salon');
-    await maybeUnlock(page);
-    await page.goto('/settings?tab=system&section=delete-all-data');
-    await page.getByRole('button', { name: 'Delete All Data' }).click();
-    await expect(page.getByText('The following data will be permanently deleted')).toBeVisible({
-      timeout: 15_000,
-    });
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.locator('input[placeholder="Type DELETE to confirm"]').fill('DELETE');
-    await page.getByRole('button', { name: 'Delete Everything' }).click();
-    await expect(page.getByText('Successfully deleted', { exact: false })).toBeVisible({
-      timeout: 30_000,
-    });
   });
 });

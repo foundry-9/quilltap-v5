@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The browser test suite now walks Delete All Data for real: open the card,
+read the preview counts, type the confirmation, and see the completion
+notice. It runs as the very last test file, since it wipes the shared test
+instance — it had been sitting in the middle of the suite, where it would
+have destroyed the data eight later test files depend on.
+
 Two REST endpoints v5 was missing now answer at their v4 addresses: the
 background-jobs collection (queue stats, per-type active counts, the recent
 job list, pending jobs for a chat, and creating a job) and changing the
