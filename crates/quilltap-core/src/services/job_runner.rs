@@ -342,9 +342,16 @@ impl JobRunner {
                         next_wake_ms,
                     };
                 }
-                Err(_) => {
+                Err(e) => {
                     // A claim read failed (transient DB hiccup). Stop this pump;
-                    // the poll interval re-tries. Never break the loop.
+                    // the poll interval re-tries. Never break the loop. v4
+                    // job-dispatcher.ts:99 `log.error('Error in claim loop', …)`
+                    // — the loop used to swallow this in silence.
+                    tracing::error!(
+                        target: "quilltap::jobs",
+                        error = %e,
+                        "Error claiming next job",
+                    );
                     return PumpOutcome {
                         dispatched,
                         next_wake_ms: None,
@@ -388,6 +395,17 @@ impl JobRunner {
     /// with v4's failure shape). Errors from the mark step are swallowed (best
     /// effort — the row's state is already the source of truth).
     async fn run_one(&self, job: &BackgroundJob) {
+        // v4 job-dispatcher.ts:190 `log.info('Dispatching job to child', …)` —
+        // the job runner narrates its lifecycle (it "logs nothing at all" was
+        // the dogfood standing complaint). Info level, so a quiet default still
+        // shows what the pump is working on.
+        tracing::info!(
+            target: "quilltap::jobs",
+            job_id = %job.id,
+            job_type = %job.job_type,
+            attempts = job.attempts,
+            "Dispatching job",
+        );
         let outcome = match self.inner.registry.get(&job.job_type) {
             Some(handler) => handler.handle(&self.inner.db, job).await,
             None => JobOutcome::Failed(HandlerRegistry::unregistered_error(&job.job_type)),
@@ -396,7 +414,7 @@ impl JobRunner {
         match outcome {
             JobOutcome::Completed(result) => {
                 let id = job.id.clone();
-                let _ = self
+                if let Err(e) = self
                     .inner
                     .db
                     .write(move |writers| {
@@ -404,12 +422,41 @@ impl JobRunner {
                             .mark_completed(&id, result.as_ref())
                             .map(|_| ())
                     })
-                    .await;
+                    .await
+                {
+                    // The row's state is still the source of truth; a failed mark
+                    // was previously invisible. v4 has no exact analog (its parent
+                    // applies writes atomically), but a lost terminal transition
+                    // is worth an error.
+                    tracing::error!(
+                        target: "quilltap::jobs",
+                        job_id = %job.id,
+                        error = %e,
+                        "Failed to record job completion",
+                    );
+                } else {
+                    // v4 job-dispatcher.ts:238 `log.info('Job completed', …)`.
+                    tracing::info!(
+                        target: "quilltap::jobs",
+                        job_id = %job.id,
+                        job_type = %job.job_type,
+                        "Job completed",
+                    );
+                }
             }
             JobOutcome::Failed(message) => {
+                // v4 job-dispatcher.ts:226 `log.warn('Job failed in child', …)`.
+                tracing::warn!(
+                    target: "quilltap::jobs",
+                    job_id = %job.id,
+                    job_type = %job.job_type,
+                    attempts = job.attempts,
+                    error = %message,
+                    "Job failed",
+                );
                 let id = job.id.clone();
                 let msg = message.clone();
-                let _ = self
+                if let Err(e) = self
                     .inner
                     .db
                     .write(move |writers| {
@@ -417,7 +464,15 @@ impl JobRunner {
                             .mark_failed(&id, &msg)
                             .map(|_| ())
                     })
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        target: "quilltap::jobs",
+                        job_id = %job.id,
+                        error = %e,
+                        "Failed to record job failure",
+                    );
+                }
                 // v4 job-dispatcher.ts:230/248 (`reconcileFailedAutonomousTurnIfNeeded`):
                 // on the failure of an AUTONOMOUS_ROOM_TURN job, nudge its room out
                 // of a silent `running` wedge — the single-attempt turn job going
@@ -587,6 +642,86 @@ mod tests {
             )?)
         })
         .unwrap()
+    }
+
+    // === P4.18 unit 5: the failed-job log-surface smoke test ===
+
+    /// A minimal `tracing` capturing layer: it records `"<LEVEL> <target> <msg>"`
+    /// for every event, so the smoke test can assert the runner narrates a
+    /// failure instead of swallowing it in silence (the pre-P4.18 behavior that
+    /// cost findings #23/#26 hours of invisible failure arms).
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct MessageVisitor(String);
+    impl tracing::field::Visit for MessageVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0 = format!("{value:?}");
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let mut visitor = MessageVisitor(String::new());
+            event.record(&mut visitor);
+            let meta = event.metadata();
+            self.0.lock().unwrap().push(format!(
+                "{} {} {}",
+                meta.level(),
+                meta.target(),
+                visitor.0
+            ));
+        }
+    }
+
+    /// A failed job emits a `quilltap::jobs` WARN "Job failed" event (P4.18) —
+    /// log records are operator output, not data, so this is a plain smoke
+    /// assertion, NOT a differential (no oracle drives log output). The job's
+    /// FAILED row is unchanged: the event is purely additive visibility.
+    #[tokio::test]
+    async fn failed_job_emits_a_tracing_event() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let (_dir, db) = make_db();
+        enqueue(&db, "boom1", "T", 0.0, "2020-01-01T00:00:01.000Z").await;
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut reg = HandlerRegistry::new();
+        reg.register(
+            "T",
+            Box::new(RecordingHandler {
+                seen: seen.clone(),
+                succeed: false,
+            }),
+        );
+        let runner = JobRunner::new(db.clone(), reg);
+
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            // Thread-local default for this (current-thread) test runtime — the
+            // runner's events fire on this thread, so they are captured.
+            let _guard = tracing::subscriber::set_default(subscriber);
+            runner.pump_claim().await;
+        }
+
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            captured.contains("Job failed"),
+            "expected a 'Job failed' event; captured:\n{captured}"
+        );
+        assert!(
+            captured.contains("WARN quilltap::jobs"),
+            "the failure event should be a WARN on the quilltap::jobs target; captured:\n{captured}"
+        );
+        // The behavior is unchanged — the row still goes FAILED; the event is
+        // additive.
+        assert_eq!(status_of(&db, "boom1"), "FAILED");
     }
 
     /// Priority DESC, then createdAt ASC — the ported claim order — is observed

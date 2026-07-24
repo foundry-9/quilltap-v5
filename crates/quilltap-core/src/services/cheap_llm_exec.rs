@@ -259,6 +259,20 @@ impl CheapLlmTaskExecutor {
         character_id: Option<&str>,
         error_text: &str,
     ) {
+        // The event beside the DB error row (P4.18). Emitted BEFORE the config
+        // guard so a failed cheap call is visible even when no llm-logs context
+        // is attached — findings #23/#26 were exactly this arm failing in total
+        // silence. v4's cheap path logs nothing here, but v5 has no console to
+        // fall back on; the console IS the fallback now.
+        tracing::error!(
+            target: "quilltap::cheap_llm",
+            task_type = task_type.unwrap_or("unknown"),
+            provider = %selection.provider,
+            model = %selection.model_name,
+            character_id = character_id.unwrap_or(""),
+            error = error_text,
+            "Cheap-LLM call failed",
+        );
         let Some(cfg) = &self.log else {
             return;
         };

@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.18 (units 1+2+4+5): the server is no longer silent. quilltap-web,
+quilltap-tauri, and quilltap-cli now initialize a `tracing` stderr
+subscriber, env-filtered by `RUST_LOG` (default `info`, v4's `LOG_LEVEL`
+INFO analog); the CLI's stderr-only so its stdout stays clean piped
+output. The job runner narrates its lifecycle (Dispatching / Job completed
+/ Job failed) and the swallow sites that hid dogfood findings #23/#26 now
+emit structured events: the cheap-LLM failed-call (beside the DB error
+row, even without an llm_logs context), the spine's three transport-shell
+error frames, the host job-pump orphan-reset / stuck-sweep, and the
+general-state seeding. A `tower-http` TraceLayer logs requests at debug so
+`RUST_LOG=debug` surfaces a per-request line without drowning the default.
+Guards: the init helper's RUST_LOG default/respect + idempotency, and a
+smoke test that a failed job emits a WARN event. Log output is operator
+output, not data — no differential applies (a first for this port).
+
 Fixed finding #27: context-summary checks now run on the configured cheap
 LLM, not the responding character's own model. Both hard-coded call sites —
 the Salon orchestrator's deferred check and the courier paste-resolver's —

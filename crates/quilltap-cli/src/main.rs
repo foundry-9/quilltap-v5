@@ -175,7 +175,26 @@ fn launcher_main(args: &[String]) {
     out::exit(0);
 }
 
+/// The CLI's log surface (P4.18): a `tracing-subscriber` fmt subscriber on
+/// **stderr**, env-filtered by `RUST_LOG` (default `info`). Same recipe as
+/// `quilltap_web::init_tracing`, inlined because the CLI does not (and should
+/// not) depend on `quilltap-web`. Stderr only — the CLI's stdout is piped user
+/// output (`db`/`docs` tables), which must never carry log lines. Idempotent by
+/// `try_init`. In practice silent for normal CLI verbs (they run no job pump or
+/// cheap-LLM path); it exists so `RUST_LOG=debug quilltap …` can surface
+/// core/host events when a verb does touch an instrumented path.
+fn init_cli_tracing() {
+    use tracing_subscriber::{fmt, EnvFilter};
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 fn main() {
+    init_cli_tracing();
+
     let cli_args: Vec<String> = std::env::args().skip(1).collect();
     let sub_idx = locate_subcommand(&cli_args);
 

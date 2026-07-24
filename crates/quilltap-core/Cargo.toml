@@ -97,6 +97,13 @@ jiff = "0.2.31"
 # features (for `#[tokio::test]`) live in dev-dependencies below.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 
+# P4.18: structured `tracing` events at the swallow sites (the job runner, the
+# cheap-LLM failed-call row, the `eprintln!` conversions). `tracing` is already
+# transitive here via the axum/tokio stack; making it a direct dep only pins
+# the macro surface. The subscriber that renders these events lives in the bins
+# (`quilltap-web`), never in the library — the library only emits.
+tracing = "0.1"
+
 # W4.7d: the concrete `reqwest` provider transport, behind the NON-DEFAULT
 # `native-transport` feature so the default core build stays IO-free (the STOP
 # rule). rustls (not native-tls) to avoid an OpenSSL system dep. Only compiled
@@ -113,3 +120,7 @@ tempfile = "3"
 # Test-only: the runtime self-tests use `#[tokio::test]` and a multi-thread
 # runtime to exercise concurrent writers. Feature-unioned with the dep above.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+# P4.18 unit 5: the job-runner smoke test installs a capturing `Layer` to assert
+# a failed job emits a `tracing` event (the render subscriber lives in the bins,
+# but the test needs one to observe the event).
+tracing-subscriber = { version = "0.3", features = ["registry"] }

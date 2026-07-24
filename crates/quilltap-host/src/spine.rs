@@ -1033,7 +1033,16 @@ where
         let initial = match orchestrator::process_message(&mut deps, &input).await {
             Ok(r) => r,
             Err(e) => {
-                // v4 handleStreamError: the transport-shell error frame.
+                // v4 handleStreamError: the transport-shell error frame. The
+                // frame reaches only a live SSE client; the server was otherwise
+                // silent about a failed send — emit a server-side event beside it
+                // so the console/log surface records it too (P4.18).
+                tracing::error!(
+                    target: "quilltap::chat",
+                    chat_id = %chat_id,
+                    error = %e,
+                    "Chat send failed while streaming the initial turn",
+                );
                 let _ = self.events.send(Event::chat_error(
                     &chat_id,
                     ChatErrorPayload {
@@ -1116,7 +1125,15 @@ where
         if let Err(e) = chain_result {
             // v4's chain errors reach the same stream shell; the initial turn
             // already succeeded, so surface the frame and keep the result (v4's
-            // response stream closes after the frame).
+            // response stream closes after the frame). Log it server-side too
+            // (P4.18) — the initial turn's success would otherwise hide a
+            // silently-broken chain.
+            tracing::error!(
+                target: "quilltap::chat",
+                chat_id = %chat_id,
+                error = %e,
+                "Turn chain failed after the initial turn",
+            );
             let _ = self.events.send(Event::chat_error(
                 &chat_id,
                 ChatErrorPayload {
@@ -1177,6 +1194,12 @@ where
             Ok(result) => Ok(serde_json::json!({ "messageId": result.message_id })),
             Err(e) => {
                 // v4 `encodeErrorEvent(message, 'fatal_error', '')`.
+                tracing::error!(
+                    target: "quilltap::chat",
+                    chat_id = %chat_id,
+                    error = %e.message,
+                    "Brahma Console send failed",
+                );
                 let _ = self.events.send(Event::chat_error(
                     &chat_id,
                     ChatErrorPayload {

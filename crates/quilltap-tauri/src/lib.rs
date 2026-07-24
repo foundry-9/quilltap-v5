@@ -103,6 +103,11 @@ fn parse_args() -> Args {
 /// served `StartupStatus` (a conflicted/failed instance still answers
 /// `health` — the SPA's setup/lock surfaces need it).
 pub fn run() {
+    // The log surface, before boot (P4.18) — shares the HTTP binary's helper so
+    // the format is uniform across deployments. Events go to stderr under
+    // `RUST_LOG` (default `info`).
+    quilltap_web::init_tracing();
+
     let args = parse_args();
     let base_dir =
         match quilltap_web::resolve_instance_base_dir(args.data_dir, args.instance.as_deref()) {

@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-host"
-version = "0.0.31"
+version = "0.0.32"
 edition = "2021"
 publish = false
 
@@ -25,6 +25,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # The host owns all cadence (D20): a multi-thread runtime + timers. `sync` for
 # Notify/watch; the core itself stays scheduler-free.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+# P4.18: structured `tracing` events at the host swallow sites (the job pump
+# orphan-reset / stuck-sweep errors, the spine's transport-shell error frames,
+# the general-state seeding). The subscriber lives in the bins; the host emits.
+tracing = "0.1"
 # System IANA timezone for the enclave cron driver (v4 evaluates crons in the
 # process zone). Same pinned line as the core's.
 jiff = "0.2"

@@ -69,6 +69,11 @@ fn parse_args() -> Result<Args, String> {
 }
 
 fn main() {
+    // The log surface, before anything else runs (P4.18). Events go to stderr,
+    // env-filtered by `RUST_LOG` (default `info`); the startup banner below
+    // stays on stdout.
+    quilltap_web::init_tracing();
+
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {

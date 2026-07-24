@@ -650,13 +650,16 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // of the state cascade). Idempotent; never heals existing
                 // content; warn-and-continue on error (v4's try/catch).
                 match general_state::ensure_general_state_file(main, mount_index) {
-                    Ok(true) => {
-                        eprintln!("Seeded general state.json in the Quilltap General mount")
-                    }
+                    Ok(true) => tracing::info!(
+                        target: "quilltap::boot",
+                        "Seeded general state.json in the Quilltap General mount",
+                    ),
                     Ok(false) => {}
-                    Err(e) => {
-                        eprintln!("Error ensuring general state.json, continuing startup: {e}")
-                    }
+                    Err(e) => tracing::warn!(
+                        target: "quilltap::boot",
+                        error = %e,
+                        "Error ensuring general state.json, continuing startup",
+                    ),
                 }
             }
             Ok(())
@@ -700,7 +703,19 @@ fn seed_sample_content(db: &Db) -> Result<(), String> {
 /// v4's dispatcher loop over the ported [`JobRunner::pump_claim`]:
 /// orphan-reset once, then pump on wake / next-due delay / the 2 s poll.
 async fn pump_loop(runner: JobRunner, wake: Arc<Notify>, mut stop: watch::Receiver<bool>) {
-    let _ = runner.reset_orphaned_jobs().await;
+    // v4 job-dispatcher.ts:113 `resetOrphanedJobs().catch(err =>
+    // log.error('Error resetting orphaned jobs at startup', …))`.
+    match runner.reset_orphaned_jobs().await {
+        Ok(0) => {}
+        Ok(n) => {
+            tracing::info!(target: "quilltap::jobs", count = n, "Reset orphaned jobs at startup")
+        }
+        Err(e) => tracing::error!(
+            target: "quilltap::jobs",
+            error = %e,
+            "Error resetting orphaned jobs at startup",
+        ),
+    }
     loop {
         if *stop.borrow() {
             break;
@@ -741,7 +756,21 @@ async fn stuck_reset_loop(runner: JobRunner, mut stop: watch::Receiver<bool>, in
         if *stop.borrow() {
             break;
         }
-        let _ = runner.tick_stuck_reset(STUCK_JOB_TIMEOUT_MINUTES).await;
+        // v4 job-dispatcher.ts:106 `resetStuckJobs().catch(err =>
+        // log.error('Error in stuck-job sweep', …))`.
+        match runner.tick_stuck_reset(STUCK_JOB_TIMEOUT_MINUTES).await {
+            Ok(0) => {}
+            Ok(n) => tracing::warn!(
+                target: "quilltap::jobs",
+                count = n,
+                "Reset stuck jobs",
+            ),
+            Err(e) => tracing::error!(
+                target: "quilltap::jobs",
+                error = %e,
+                "Error in stuck-job sweep",
+            ),
+        }
     }
 }
 

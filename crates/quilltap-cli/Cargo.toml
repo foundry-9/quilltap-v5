@@ -9,7 +9,7 @@
 
 [package]
 name = "quilltap-cli"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 publish = false
 
@@ -29,6 +29,11 @@ libc = "0.2"
 # Local-time rendering for `docs ls` (v4 formatLsDate uses the process TZ).
 # Same pinned line as the core's.
 jiff = "0.2"
+# P4.18: a stderr-only `tracing` subscriber so core/host events surface under
+# `RUST_LOG` WITHOUT ever touching stdout (the CLI's stdout is piped user output
+# — see the p4.3-quilltap-cli note). The CLI does not depend on `quilltap-web`,
+# so it initializes its own subscriber inline (same recipe as the web helper).
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
 tempfile = "3"

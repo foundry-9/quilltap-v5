@@ -8,7 +8,7 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.38"
+version = "0.0.39"
 edition = "2021"
 publish = false
 
@@ -28,6 +28,14 @@ rusqlite = { workspace = true }
 base64 = "0.22"
 sha2 = "0.10"
 hex = "0.4"
+# P4.18: the process-global log surface. `tracing` events are emitted at the
+# swallow sites (v4's hand-rolled Logger analog); `tracing-subscriber` is the
+# stderr fmt subscriber, env-filtered by `RUST_LOG` (default `info` — v4's
+# `LOG_LEVEL` default INFO). `tower-http`'s TraceLayer is the request-log
+# analog of v4's `logRequest`, mounted at `debug` (unit 4).
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tower-http = { version = "0.6", features = ["trace"] }
 
 [dev-dependencies]
 tempfile = "3"

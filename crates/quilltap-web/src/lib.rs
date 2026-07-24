@@ -71,6 +71,48 @@ use serde_json::json;
 
 pub use state::{SharedState, StartupStatus, WebState};
 
+/// Initialize the process-global log surface (P4.18): a `tracing-subscriber`
+/// fmt subscriber writing to **stderr**, env-filtered by `RUST_LOG` (default
+/// `info` when unset — the analog of v4's `LOG_LEVEL` default INFO).
+///
+/// This restores v4-parity of *operability*: v4 is NOT silent — it logs
+/// structured JSON to the console (and/or rotated files) at every one of the
+/// swallow sites v5 ported the logic of. v5 was silent from P4.2 to here, which
+/// made findings #23/#26 cost hours of invisible failure arms.
+///
+/// Call once per process, first thing in each bin's entrypoint — never in
+/// `Host::start` (it runs per-assembly and in tests; the subscriber is
+/// process-global while the *events* belong in host/core). Idempotent by
+/// `try_init`: a second call, or a test harness that already installed a
+/// subscriber, is a harmless no-op rather than a panic. Writing to stderr keeps
+/// the banner/user output on stdout clean.
+///
+/// Log records are operator output, not data — **no differential applies** (a
+/// first for this port; the fidelity obligation stays on the DB/wire/UI
+/// surfaces).
+pub fn init_tracing() {
+    use tracing_subscriber::{fmt, EnvFilter};
+    let directive = tracing_filter_directive(std::env::var("RUST_LOG").ok().as_deref());
+    // Lossy parse (env_logger-style): an invalid directive keeps its valid
+    // parts rather than panicking the boot.
+    let filter = EnvFilter::new(directive);
+    let _ = fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
+/// The effective `EnvFilter` directive: `RUST_LOG` when set and non-blank, else
+/// the `info` default (v4's `LOG_LEVEL` default INFO). Pulled out pure so a
+/// test can pin the default/respect behavior without mutating the process
+/// environment (env mutation races the parallel test threads).
+fn tracing_filter_directive(rust_log: Option<&str>) -> String {
+    match rust_log {
+        Some(s) if !s.trim().is_empty() => s.to_string(),
+        _ => "info".to_string(),
+    }
+}
+
 /// Resolve the instance root for a host process: explicit `--data-dir` →
 /// `--instance` (the launcher registry) → `QUILLTAP_DATA_DIR` → the platform
 /// default (docker-aware). Shared by the HTTP binary and the Tauri shell so
@@ -294,6 +336,12 @@ pub fn build_router(state: SharedState) -> Router {
         // === end P4.9a ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
+        // P4.18 (unit 4): the request-log analog of v4's `logRequest`. `tower-http`'s
+        // `TraceLayer` emits request/response events at DEBUG and failures at ERROR,
+        // so the default `info` filter stays quiet and `RUST_LOG=tower_http=debug`
+        // (or `RUST_LOG=debug`) surfaces the per-request line on demand — never
+        // drowning the default, never a per-token span on the hot path.
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
 
@@ -350,4 +398,39 @@ pub fn web_state(
 pub async fn serve(router: Router, addr: SocketAddr) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, router).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === P4.18 unit 5: the init-helper guards. Log output is operator output,
+    // not data — no differential applies; these are plain unit tests. ===
+
+    /// The filter directive defaults to `info` (v4's `LOG_LEVEL` default INFO)
+    /// when `RUST_LOG` is unset or blank.
+    #[test]
+    fn filter_directive_defaults_to_info() {
+        assert_eq!(tracing_filter_directive(None), "info");
+        assert_eq!(tracing_filter_directive(Some("")), "info");
+        assert_eq!(tracing_filter_directive(Some("   ")), "info");
+    }
+
+    /// A set `RUST_LOG` is honored verbatim (including per-target directives).
+    #[test]
+    fn filter_directive_respects_rust_log() {
+        assert_eq!(tracing_filter_directive(Some("debug")), "debug");
+        assert_eq!(
+            tracing_filter_directive(Some("quilltap::jobs=trace,tower_http=debug,info")),
+            "quilltap::jobs=trace,tower_http=debug,info"
+        );
+    }
+
+    /// `init_tracing` is idempotent: `try_init` fails silently on a second
+    /// install, so repeated calls (bins share a process with tests) never panic.
+    #[test]
+    fn init_tracing_is_idempotent() {
+        init_tracing();
+        init_tracing();
+    }
 }
