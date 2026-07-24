@@ -109,6 +109,17 @@ tracing = "0.1"
 # rule). rustls (not native-tls) to avoid an OpenSSL system dep. Only compiled
 # when the feature is on; expected to migrate to the CLI/host crate later.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "stream"], optional = true }
+# P4.9G5: the backup archive. v4 shells out to `zip -r`/`unzip`; v5 links a zip
+# crate instead (the pre-approved mechanism divergence — the archive TREE is the
+# equivalence claim, never the zip framing). deflate-flate2 only: flate2 is
+# already in the tree, and none of the exotic codecs (bzip2/lzma/zstd/aes) can
+# appear in an archive Quilltap itself wrote.
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
+# zip's `deflate-flate2` brings flate2 in WITHOUT a compression backend; naming
+# flate2 directly here selects its default pure-Rust `rust_backend`
+# (miniz_oxide), the same backend the harness already links — no C zlib, and no
+# change to any existing DEFLATE output in the tree.
+flate2 = "1"
 
 [features]
 # Pulls the reqwest transport + the tokio runtime it needs. NON-DEFAULT: the

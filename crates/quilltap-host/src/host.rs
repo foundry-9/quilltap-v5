@@ -35,6 +35,7 @@ use std::time::Duration;
 
 use tokio::sync::{watch, Notify};
 
+use crate::backup_services::{HostBackupServices, SystemClock};
 use quilltap_core::api::{
     BootError, CoreConfig, CoreEngine, EngineAssembler, EngineAssembly, EngineShutdown, Event,
     InstanceDirectory,
@@ -196,6 +197,10 @@ impl std::error::Error for HostError {}
 /// stop the drivers — dispatch `Lock` (or end the runtime) to tear down.
 pub struct Host {
     core: CoreEngine,
+    /// P4.9G5: the backup host services. Held on the HOST (not per-assembly) so
+    /// the single-use download store survives a lock/unlock cycle, matching
+    /// v4's `globalThis`-anchored map.
+    backup_services: Arc<HostBackupServices>,
     /// The CURRENT assembly's terminal manager (filled on assemble, cleared
     /// on shutdown — a lock/unlock cycle swaps it).
     terminal: Arc<Mutex<Option<Arc<TerminalManager>>>>,
@@ -215,8 +220,15 @@ impl Host {
         });
 
         let terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>> = Arc::new(Mutex::new(None));
+        // P4.9G5: one backup-services instance per HOST (see the field's note).
+        let backup_services = Arc::new(HostBackupServices::new(
+            config.base_dir.clone(),
+            config.version.clone(),
+            Arc::new(SystemClock),
+        ));
         let assembler = HostAssembler {
             base_dir: config.base_dir.clone(),
+            backup_services: backup_services.clone(),
             spine: config.spine,
             terminal: config.terminal,
             terminal_slot: terminal_slot.clone(),
@@ -249,9 +261,17 @@ impl Host {
 
         Ok(Host {
             core,
+            backup_services,
             terminal: terminal_slot,
             base_dir,
         })
+    }
+
+    /// P4.9G5: the backup host services. `quilltap-web`'s byte-level download
+    /// leg (`GET /api/v1/system/backup/{id}`) reads the single-use temp store
+    /// through this — it serves bytes, so it has no dispatch verb.
+    pub fn backup_services(&self) -> &Arc<HostBackupServices> {
+        &self.backup_services
     }
 
     /// The boundary handle (`Clone`) transports dispatch through.
@@ -320,6 +340,9 @@ impl JobHandler for SharedHandler {
 
 struct HostAssembler {
     base_dir: PathBuf,
+    /// P4.9G5: shared with the `Host` so the web-edge download leg and the
+    /// dispatch verb see the same temp store.
+    backup_services: Arc<HostBackupServices>,
     spine: Option<Arc<dyn SpineFactory>>,
     terminal: bool,
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
@@ -637,6 +660,13 @@ impl EngineAssembler for HostAssembler {
                 wake,
             ))),
             // === end P4.9G1 ===
+            // === P4.9G5: the backup host seam, wired LIVE — the disk storage
+            // backend, the plugins/themes directories, the app version, the
+            // system clock, and the single-use 30-minute download store (held
+            // on the Host, so it survives a lock/unlock cycle the way v4's
+            // globalThis-anchored map does). ===
+            backup_host: Some(self.backup_services.clone()),
+            // === end P4.9G5 ===
         })
     }
 }

@@ -61,6 +61,14 @@ the shared fixture and diffs the output line by line — 42 cases, byte-exact.
 Also ported the `.qtap` upload reader: the format sniff, the line-by-line
 NDJSON parse, and the reassembler that folds a streamed export back into the
 shape the importer consumes.
+The Create Backup button now works. Quilltap packages everything it
+gathered into a zip archive, holds it for thirty minutes, and hands it to
+your browser as a download; the archive is deleted the moment it has been
+sent, and it can only be downloaded once. An archive left unclaimed is
+cleaned off disk when its half hour is up. Restoring from a backup is
+still not written, and continues to say so plainly rather than pretending
+otherwise.
+
 Began the Backup & Restore server family. Quilltap can now gather everything
 a backup contains — every character, chat and message, memories, files,
 profiles, templates, projects, groups, plugin data, the document stores and

@@ -63,6 +63,9 @@ pub mod settings;
 pub mod system;
 // === end P4.6z ===
 // === P4.9G1: the Data & System server surface ===
+// === P4.9G5 ===
+pub mod system_backup;
+// === end P4.9G5 ===
 pub mod system_data;
 // ── P4.9G4 ──
 pub mod system_qtap;

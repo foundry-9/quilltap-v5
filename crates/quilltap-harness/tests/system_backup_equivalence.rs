@@ -16,6 +16,13 @@
 //!   `process.env.npm_package_version` with a `'2.0.0'` fallback — an
 //!   environment property; v5 carries its own crate version and the host passes
 //!   it in).
+//! - `data/characters.json`'s **nested** `physicalDescription.createdAt` /
+//!   `.updatedAt`: the vault overlay synthesizes the default physical
+//!   description at read time and stamps it "now" on both sides. Its `id` is
+//!   derived, not random, and IS compared. The normalizer keys off indentation
+//!   (six spaces = one level inside the character object), so the character's
+//!   own timestamps stay under diff.
+//!
 //! ## Four files are compared order-insensitively (recorded divergence)
 //!
 //! `characters.json`, `chats.json`, `projects.json` and `groups.json` come from
@@ -35,12 +42,13 @@
 //! re-rendered with the same pretty layout before comparison, so a real content
 //! or indentation drift still fails. The other 34 data files stay byte-exact.
 //!
-//! - `data/characters.json`'s **nested** `physicalDescription.createdAt` /
-//!   `.updatedAt`: the vault overlay synthesizes the default physical
-//!   description at read time and stamps it "now" on both sides. Its `id` is
-//!   derived, not random, and IS compared. The normalizer keys off indentation
-//!   (six spaces = one level inside the character object), so the character's
-//!   own timestamps stay under diff.
+//! ## The zip round-trip
+//!
+//! The `backup_full` case additionally runs the whole `create_backup`
+//! orchestration over a test `BackupHost` and extracts the archive it produces:
+//! the extracted tree must reproduce the directly-staged tree exactly, under a
+//! single `quilltap-backup-<stamp>` root. That is the claim about the zip —
+//! never its bytes.
 //!
 //! Generate the oracle (see `harness/oracle/cases/system-backup.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_BACKUP=/tmp/oracle-system-backup.ndjson \
@@ -51,7 +59,8 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::backup::{
-    collect_user_data, create_manifest, stage_backup, HostCounts, HostDirs,
+    collect_user_data, create_backup, create_manifest, stage_backup, BackupHost, HostCounts,
+    HostDirs,
 };
 use quilltap_core::services::file_storage::StorageBackend;
 use serde_json::Value;
@@ -91,6 +100,68 @@ impl StorageBackend for ScratchBackend {
     fn exists(&self, key: &str) -> Result<bool, String> {
         Ok(self.download(key).is_ok())
     }
+}
+
+/// A [`BackupHost`] over the case's scratch root: the scratch storage backend,
+/// a scratch temp dir, no plugins/themes directories, the pinned app version,
+/// and a frozen clock. Its temp store is a plain cell — the single-use and TTL
+/// behaviour is the host impl's own unit tests; here it only has to hand the
+/// zip path back.
+struct TestBackupHost {
+    root: PathBuf,
+    files_root: PathBuf,
+    stored: std::sync::Mutex<Option<(String, PathBuf)>>,
+}
+
+impl BackupHost for TestBackupHost {
+    fn storage(&self) -> std::sync::Arc<dyn StorageBackend> {
+        std::sync::Arc::new(ScratchBackend {
+            root: self.files_root.clone(),
+        })
+    }
+    fn temp_dir(&self) -> PathBuf {
+        self.root.join("tmp")
+    }
+    fn host_dirs(&self) -> HostDirs {
+        HostDirs::default()
+    }
+    fn app_version(&self) -> String {
+        NORMALIZED.to_string()
+    }
+    fn now_ms(&self) -> i64 {
+        0
+    }
+    fn store_backup(&self, backup_id: &str, zip_path: &Path) {
+        *self.stored.lock().unwrap() = Some((backup_id.to_string(), zip_path.to_path_buf()));
+    }
+    fn take_backup(&self, _backup_id: &str) -> Option<PathBuf> {
+        self.stored.lock().unwrap().take().map(|(_, p)| p)
+    }
+}
+
+/// Extract `zip_path` under `dest`, returning the single `quilltap-backup-*`
+/// root's path (the shape v4's `extractZipToTemp` looks for).
+fn unzip_to(zip_path: &Path, dest: &Path) -> PathBuf {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path).expect("open zip"))
+        .expect("read archive");
+    archive.extract(dest).expect("extract");
+    let mut roots: Vec<PathBuf> = std::fs::read_dir(dest)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_dir()
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("quilltap-backup-"))
+        })
+        .collect();
+    assert_eq!(
+        roots.len(),
+        1,
+        "expected exactly one staging root in the zip"
+    );
+    roots.pop().unwrap()
 }
 
 struct Scratch {
@@ -377,6 +448,43 @@ fn system_backup_equivalence() {
             let dest = PathBuf::from(dump).join(name);
             let _ = std::fs::remove_dir_all(&dest);
             copy_tree(&staging, &dest);
+        }
+
+        // 0. The zip round-trip, on the full case only: `create_backup` collects,
+        //    stages, and zips; extracting the archive must reproduce the staged
+        //    tree byte-for-byte, under a single `quilltap-backup-<stamp>` root.
+        if seed_file_bytes {
+            let host = TestBackupHost {
+                root: scratch.root.clone(),
+                files_root: files_root.clone(),
+                stored: std::sync::Mutex::new(None),
+            };
+            let created =
+                create_backup(&db, &host, USER, "2026-03-01T00:00:00.000Z").expect("create_backup");
+            assert!(
+                created
+                    .zip_path
+                    .ends_with("quilltap-backup-2026-03-01T00-00-00-000Z.zip"),
+                "archive name follows v4's `[:.]`→`-` stamp: {:?}",
+                created.zip_path
+            );
+            let out = scratch.root.join("unzipped");
+            let root = unzip_to(&created.zip_path, &out);
+            let from_zip = describe(&root);
+            let direct = describe(&staging);
+            if from_zip != direct {
+                let zk: Vec<&String> = from_zip.keys().collect();
+                let dk: Vec<&String> = direct.keys().collect();
+                failures.push(format!(
+                    "[{name}] the zip round-trip did not reproduce the staged tree\n  \
+                     zip paths: {zk:?}\n  staged paths: {dk:?}"
+                ));
+            } else {
+                println!(
+                    "OK {name}: zip round-trip reproduced {} entries",
+                    from_zip.len()
+                );
+            }
         }
 
         // 1. The manifest object.

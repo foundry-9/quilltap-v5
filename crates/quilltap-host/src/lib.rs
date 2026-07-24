@@ -33,6 +33,9 @@
 
 pub mod apply_fs;
 pub mod avatar_preview;
+// === P4.9G5 ===
+pub mod backup_services;
+// === end P4.9G5 ===
 pub mod env;
 pub mod files_store;
 pub mod host;
@@ -48,6 +51,7 @@ pub mod wire;
 
 pub use apply_fs::ApplyFsOps;
 pub use avatar_preview::HostAvatarPreviewRenderer;
+pub use backup_services::{HostBackupServices, SystemClock};
 pub use files_store::LocalStorageBackend;
 pub use host::{Host, HostConfig};
 pub use image_codec::HostImageCodec;

@@ -35,8 +35,11 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 # normalized bytes so both sides align. Only that test tree needs these.
 sha2 = "0.10"
 # The P4.9G5 backup differential hashes the archive's binary payloads (staged
-# user files + doc-mount blob bytes) rather than diffing them inline.
+# user files + doc-mount blob bytes) rather than diffing them inline, and
+# UNZIPS the archive `create_backup` produces to prove the zip round-trip
+# preserves the staged tree exactly.
 hex = "0.4"
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
 regex = "1"
 # The file-attachment tier-3 differential base64-encodes the fixture's per-file
 # bytes to build the (B) processFileAttachmentFallback `data` payload.

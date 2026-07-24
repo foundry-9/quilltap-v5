@@ -20,6 +20,9 @@
 //! `Request`/`Response`/`Event` contract; every decision lives behind
 //! `CoreEngine::dispatch` (or, for the byte routes, the ported repo reads).
 
+// === P4.9G5 ===
+pub mod backup_routes;
+// === end P4.9G5 ===
 pub mod brahma_routes;
 pub mod characters_routes;
 pub mod custom_tools_routes;
@@ -316,6 +319,16 @@ pub fn build_router(state: SharedState) -> Router {
             axum::routing::post(system_data_routes::system_unlock_post),
         )
         // === end P4.9G3 ===
+        // === P4.9G5: the byte-level backup legs ===
+        .route(
+            "/api/v1/system/backup",
+            post(backup_routes::system_backup_post),
+        )
+        .route(
+            "/api/v1/system/backup/{id}",
+            get(backup_routes::system_backup_download),
+        )
+        // === end P4.9G5 ===
         // === end P4.6au ===
         // === P4.9I1A: the dedicated brahma-console CRUD + send surface ===
         .route(

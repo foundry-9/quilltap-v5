@@ -29,6 +29,12 @@ use crate::state::SharedState;
 use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
 /// Unwrap a `Response::System(Value)` to the raw route body at `status`.
+/// Re-exported for the P4.9G5 backup edges, which answer the same envelope.
+pub fn system_body_public(resp: CoreResponse, status: StatusCode) -> AxumResponse {
+    system_body(resp, status)
+}
+
+/// Unwrap a `Response::System(Value)` to the raw route body at `status`.
 fn system_body(resp: CoreResponse, status: StatusCode) -> AxumResponse {
     match resp {
         CoreResponse::System(v) => (

@@ -118,6 +118,99 @@ unaffected.** G3's `system_delete_data_equivalence` and G4's export/import
 differentials ride the same family and were authored against the OLD fixture —
 their oracles must be regenerated at unification.
 
+### Unit 2 — the archive, the temp store, `systemBackupCreate`, and the download leg (LANDED)
+
+**Backup is live end-to-end.** The SPA's Create Backup dialog (P4.9G2 unit 7,
+already on main) now creates and downloads a real archive.
+
+- **`services/backup/archive.rs`** — `zip_staging_dir`. **Mechanism divergence
+  (pre-approved, recorded):** v4 shells out to `zip -r <zip> <folderName>`; v5
+  links `zip` 8 (`default-features = false`, `deflate-flate2` only — none of the
+  exotic codecs can appear in an archive Quilltap itself wrote). `zip`'s
+  `deflate-flate2` brings flate2 in WITHOUT a backend, so quilltap-core names
+  `flate2` directly to select its default pure-Rust `rust_backend`
+  (miniz_oxide) — the same backend the harness already links, so no existing
+  DEFLATE output in the tree moves. Entries are written sorted, each prefixed
+  `<folderName>/`, streamed 64 KB at a time, `large_file(true)` so a >4 GB
+  archive picks Zip64 per entry instead of failing.
+- **`services::backup::create_backup`** — v4 `createBackup`'s orchestration
+  (`:548`): collect → manifest (with the two filesystem-derived counts) → the
+  private temp directory → the `quilltap-backup-<ISO with [:.] → ->` staging
+  folder → stage → zip → drop the staging folder, keeping the zip. Any failure
+  removes the whole temp directory (v4's `catch`, `:760`).
+- **The `BackupHost` seam** (`EngineAssembly.backup_host`) — one trait for
+  everything the family needs from the host: the disk storage backend, the
+  scratch / plugins / themes directories, the app version (v4's
+  `process.env.npm_package_version || '2.0.0'` analogue), an **injected clock**,
+  and the single-use temp store. `None` → the loud not-assembled refusal.
+- **`quilltap-host::backup_services`** — the live impl. v4's pending-download
+  map is a module-level `Map` on `globalThis` with a one-minute `setInterval`
+  sweep; v5 makes it host state behind a `Mutex<HashMap>` with a **lazy** sweep
+  (every store/take first drops expired entries and unlinks their zips). Same
+  observable behavior, one less thread, and testable — two unit tests pin
+  single-use retrieval and the 30-minute expiry-plus-unlink. It hangs off the
+  `Host`, not the assembly, so the store survives a lock/unlock cycle the way
+  v4's `globalThis` anchor does.
+- **`api/system_backup.rs`** — `backup_create`: run, mint the id, register the
+  zip, answer `{success, backupId, manifest}`. v4's generic
+  `serverError('Failed to create backup')` is kept verbatim (v4 leaks no cause).
+  `iso_from_millis` writes `new Date(ms).toISOString()` out by hand
+  (`civil_from_days`) so the format is pinned rather than borrowed from a date
+  crate; three vectors pin it — epoch, a normal instant, a leap day.
+- **`quilltap-web/src/backup_routes.rs`** — `POST /api/v1/system/backup` (201,
+  v4-URL parity) and `GET /api/v1/system/backup/{id}`, registered in
+  `build_router` under the §3 P4.9G5 label. The download reaches the host's
+  store directly (`Host::backup_services`) because it serves bytes, not JSON.
+  Single-use, `Content-Length`, the download-time filename stamp, and the
+  unlink-plus-rmdir all carried. **One divergence, recorded:** v4 streams from
+  disk and deletes on stream close; v5 reads the archive, deletes immediately,
+  and serves the bytes. Identical observable result, and it removes a failure
+  mode v4 has (a client that disconnects mid-stream leaves v4's zip on disk
+  until the sweep) — at the cost of holding one archive in memory for the
+  response. Revisit if archives get large enough to matter.
+
+**Differential:** `system_backup_equivalence` grew a zip round-trip phase — the
+`backup_full` case runs the whole `create_backup` over a test `BackupHost` and
+extracts the archive; the extracted tree must reproduce the directly-staged tree
+exactly, under a single `quilltap-backup-<stamp>` root, and the archive filename
+must follow v4's `[:.]`→`-` stamp. Still never the zip bytes.
+
+**Deferred loudly (tier 2, NOT landed): the e2e beat.** The order's gate makes a
+landed beat oblige a full Playwright run over a fresh `ng build` dist and
+rebuilt debug bins; this lane did not have the budget to run that honestly, so
+the beat is not written rather than written and unverified. **The unifier should
+add it** — the SPA half is live, so `backup create → download` walks today;
+`restore preview` cannot until the restore family lands. Zero `apps/web` files
+were touched by this lane and the SPA version is unchanged.
+
+### OPEN under P4.9G5 — the resume list
+
+Units 3–5 of the order's unit order are **not started**. Their verbs keep the
+loud "recognized but not yet available" refusal in `engine.rs` (the shared §3
+arm now carries `SystemRestorePreview` / `SystemRestoreExecute` alongside G3's
+and G4's variants; `SystemBackupCreate` was removed from it).
+
+1. **Unit 3** — `parseBackupZip` + `legacy-migrations` + `previewRestore` (the
+   35-field summary) + `systemRestorePreview` + the octet-stream
+   `?action=upload` leg (the back-pressured write to a temp zip, the 1-hour TTL
+   map with lazy cleanup, and v4's `getPendingUpload(uploadId, userId)` quirk —
+   it takes a `userId` and never checks it, `restore/route.ts:56`).
+2. **Unit 4** — `remapBackupData` (the ~40-entity field list) + restore
+   `new-account`.
+3. **Unit 5** — restore `replace`, whose `delete_user_data` call site is the
+   §2 ACTIVATE-AT-UNIFY marker (G3 delivers the function).
+
+The `system_restore_equivalence` differential does not exist yet, and neither
+does the committed sanitized `.zip` archive fixture the order specifies as its
+input. The `BackupHost` seam is the natural place to hang the upload store: add
+`store_upload` / `get_upload` / `remove_upload` beside the backup pair (same
+lazy-sweep shape, `UPLOAD_TTL_MS = 60*60*1000`), and the web edge already has
+the `Host::backup_services()` handle it needs.
+
+Also unproven by the fixture, and noted for whoever ports restore phase 19: the
+`wardrobe_items` marshaler (the legacy main-DB table a post-cutover instance
+never populates — see unit 1's missing-table note).
+
 **Oracle regen recipe** (Node 24, from the v4 checkout; jest ignores `.claude/`
 → cp to a /tmp mirror). ⚠ The case must `doMock` the file-storage manager back
 to the REAL module — `jest.setup.ts` stubs `downloadFile` to the literal

@@ -176,6 +176,15 @@ pub struct EngineAssembly {
     /// refusal.
     pub job_pump: Option<Arc<dyn super::system_data::JobPumpControl>>,
     // === end P4.9G1 ===
+    // === P4.9G5: the backup host seam ===
+    /// Everything the backup family needs from the host process: the disk
+    /// storage backend, the scratch/plugins/themes directories, the app
+    /// version, an injected clock, and the process-lifetime single-use
+    /// temp store the download leg reads (P4.0 — process-lifetime state is
+    /// host state). `None` (read-only embedders, canned assemblies) → the
+    /// `SystemBackupCreate` arm answers the loud not-assembled refusal.
+    pub backup_host: Option<Arc<dyn crate::services::backup::BackupHost>>,
+    // === end P4.9G5 ===
 }
 
 impl EngineAssembly {
@@ -208,6 +217,7 @@ impl EngineAssembly {
             // === end P4.d13 ===
             // === P4.9G1 ===
             job_pump: None,
+            backup_host: None,
             // === end P4.9G1 ===
         }
     }
@@ -365,6 +375,9 @@ struct ReadyEngine {
     /// the tasks-queue/control/concurrency-set/job-control arms answer the loud
     /// not-assembled refusal).
     job_pump: Option<Arc<dyn super::system_data::JobPumpControl>>,
+    /// The backup host services (P4.9G5; `None` for read-only embedders — the
+    /// `SystemBackupCreate` arm answers the loud not-assembled refusal).
+    backup_host: Option<Arc<dyn crate::services::backup::BackupHost>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -799,10 +812,15 @@ impl CoreEngine {
                 super::system_qtap::import_not_available("Import")
             }
             // ── end P4.9G4 ──
-            // Backup/restore land in the sibling P4.9G5 lane; until then they
-            // answer the loud not-assembled refusal (never a silent stub).
-            Request::SystemBackupCreate
-            | Request::SystemRestorePreview { .. }
+            // ── P4.9G5 arms ──
+            Request::SystemBackupCreate => match self.ready_backup_host() {
+                Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),
+                Err(r) => r,
+            },
+            // ── end P4.9G5 ──
+            // RESTORE is P4.9G5's open remainder (units 3-5); until it lands both
+            // verbs answer the loud not-assembled refusal (never a silent stub).
+            Request::SystemRestorePreview { .. }
             | Request::SystemRestoreExecute { .. } => Response::error(
                 ErrorKind::Internal,
                 "This Data & System action is recognized but not yet available (P4.9G1 deferral).",
@@ -3624,6 +3642,23 @@ impl CoreEngine {
         }
     }
 
+    /// The db + the backup host services (P4.9G5). `None` → the loud
+    /// not-assembled refusal, never a silent stub.
+    fn ready_backup_host(
+        &self,
+    ) -> Result<(Db, Arc<dyn crate::services::backup::BackupHost>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.backup_host {
+                Some(h) => Ok((r.db.clone(), h.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "Backup is not available on this host (no backup services assembled).",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     /// Best-effort pump nudge (v4 resume → `ensureProcessorRunning`). A resumed
     /// job is persisted regardless; if no pump is assembled the nudge is a no-op.
     fn nudge_job_pump(&self) {
@@ -4140,6 +4175,7 @@ fn open_ready(
         blob_webp: assembly.blob_webp,
         recall_replay: assembly.recall_replay,
         job_pump: assembly.job_pump,
+        backup_host: assembly.backup_host,
     })
 }
 
