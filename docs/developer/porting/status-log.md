@@ -31563,3 +31563,36 @@ item dies here). Deliberately left out: `browserUserAgent` (ownership
 crosses G1's web files), the next dogfood pass's Part D / F15-16 items,
 the response-bodies real-capture upgrades. The full planning block is in
 `phase-4.md`.
+
+## Lane record — P4.19 the proactive pre-compute distill port (`proactiveRecallTask`): IN PROGRESS on branch `claude/p4-19-proactive-precompute-distill-6c8c32`
+
+The Rust-spine lane of the P4.19 ∥ P4.9G1 ∥ P4.9G2 round. Ports v4's
+`lib/services/chat-message/pre-compute.service.ts` `proactiveRecallTask` into
+the v5 chat spine so every character turn runs the per-character proactive
+distill + semantic pre-search *before* buildContext, the results ride
+`BuildContextInput`, and a non-empty pre-search suppresses build_context's
+fallback distill exactly as v4 `context-manager.ts:1141-1145`. Origin: the
+P4.16 disposition of dogfood #28 (a fidelity port, honestly not a symptom
+fix). v4 baseline `e646f58b`, drift-checked clean at lane start.
+
+**Unit 1 — `services/pre_compute.rs` (the module).** New module housing
+`proactive_recall_task` (+ `ProactiveRecallInput` / `ProactiveRecallOutcome`)
+and the pure `messages_since_last_spoke` windowing helper. Transcribes v4's
+windowing (participant-scoped last-spoke index via `rposition`; the trailing
+USER/ASSISTANT slice; the just-saved user line appended off continue-mode),
+the distill leg (uncensored reroute for dangerous chats via
+`resolve_uncensored_cheap_llm_selection`; tool-artifact stripping; the
+`ExtractionClock` from the injected `now_ms`; the empty-keywords guard), and
+the pre-search leg (paraphrase-or-keywords query; the full `RecallContextInput`
+from `read_memory_recall_settings` + `commonplaceRecallHistory`; the
+retrospective entity/date multi-probes; `search_memories_semantic` with
+limit 20 / minImportance 0.3; the `.take(10)` cap; empty-or-throw → `memories:
+None` with signals still flowing). Emits the two status frames
+(`recalling_keywords` / `recalling_memories`) through an `emit_status`
+callback the caller stamps with character name/id. Doc-comments the structural
+divergence (v4's one service holds both tasks; v5's compression half stays
+inline at its landed orchestrator site). Five unit tests port the pure
+windowing/guard cases of v4's `proactiveRecallTask` jest suite
+(`pre-compute.service.test.ts:138-264`); the distill/search legs are proven
+end-to-end by the tier-3 differential (below). `cargo test -p quilltap-core
+pre_compute` green (5/5); clippy clean. Core → 0.0.342.

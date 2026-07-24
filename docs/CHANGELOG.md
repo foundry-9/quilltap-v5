@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Ported v4's proactive pre-compute distill (`proactiveRecallTask`) as a new
+`quilltap-core::services::pre_compute` module (P4.19, unit 1): the windowing
+of the messages since a character last spoke (participant-scoped, with the
+just-saved user line appended off continue-mode), the cheap-LLM keyword
+distill leg, and the semantic pre-search leg, carrying v4's why-comments and
+the deliberate structural divergence (v5's compression half stays at its
+landed inline orchestrator site). Unit tests port the pure windowing/guard
+cases of v4's jest suite.
+
 P4.9G1 (Data & System server half), unit 1: ported the tasks-queue and
 jobs surface. The Settings "Data & System" tab's Tasks Queue card now has
 its server backing — the tasks-queue read (stats bag, deduped active job
