@@ -1183,6 +1183,39 @@ records THERE. Update this summary only when a phase or round completes.
   behavior (the #28 downstream look), Part F items 15/16 (Story's Clock
   jump; per-chat Core-whisper override), items 10/11 (blocked by #30).
   Record: `dogfood-findings.md`.
+- **The pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2):
+  UNIFIED on main (2026-07-24) — P4.19 and P4.9G2 CLOSED; P4.9G1 PARTIAL
+  (resume there).** The chat spine now runs v4's proactive pre-compute
+  distill before buildContext (`services/pre_compute.rs`; the pre-searched
+  head suppresses the fallback distill), pinned by a new tier-3 `precompute`
+  differential (8 cases) + two new `build_context_tier3` ops ∥ the Data &
+  System **tasks-queue + jobs server family** (`api/system_data.rs`, the host
+  `JobPumpControl` seam — Stop genuinely halts claiming, v4-parity REST
+  edges, the committed `system-data-*` fixture, an 18-case differential),
+  with all sixteen §1 verbs DEFINED and unlanded ones refusing loudly ∥ the
+  **whole Data & System SPA tab** (nine cards in v4's order, both backup
+  dialogs, both 5-step import/export wizards, the delete-all dialog, the LLM
+  log viewer + character-edit F2 section, and the app-wide **auto-lock idle
+  provider** — the enforcement half v5 never had). The §1 name-for-name wire
+  diff caught a REAL drift before it shipped: the three job verbs carried
+  `id` server-side vs `jobId` client-side, so every per-job Tasks Queue
+  action would have failed to deserialize live — reconciled toward `jobId`.
+  P4.19's `orchestrator_tier3` "BLOCKED" finding was CORRECTED at
+  unification: it does not reproduce from main (oracle regenerates, 227 rows,
+  differential green) — unit 4c is CLOSED and no v4-jest infra fix is owed.
+  Gate: 372 binaries / 1,560 / 0, four families regenerated fresh at
+  `e646f58b` and re-run by name zero SKIP, clippy both feature sets, release
+  build, ng 223 files / 2,621, full Playwright 124 passed / 1 gated skip / 0
+  failed. **⚠ Three Data & System cards are BUILT but their server families
+  are OPEN** (Backup & Restore, Import / Export, Delete All Data — they answer
+  the loud not-yet-available refusal), which is the top reason to run
+  P4.9G1's remainder next; its order's status header enumerates the resume
+  list, and the delete-all e2e beat is written and gated behind the named
+  `DELETE_ALL_SERVER_LANDED` constant. Next candidates: finish P4.9G1, a
+  dogfood pass over this round's live surfaces (+ the still-owed walk Part D
+  and Part F items 15/16), or M6 rows 6+ — see phase-4.md. Versions: core
+  0.0.346, harness 0.0.293, host 0.0.33, web 0.0.40, cli 0.0.3,
+  quilltap-tauri 0.0.5, SPA 0.5.268.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
@@ -1203,7 +1236,11 @@ records THERE. Update this summary only when a phase or round completes.
   `synthetic: true` pending real captures). The dogfood-fixing-round
   unification (2026-07-24) regenerated the orchestrator / courier-images /
   enclave-step / self-inventory oracles fresh — v4 verified still at
-  `e646f58b`, clean. Versions (after the 2026-07-24 dogfood-fixing-round
+  `e646f58b`, clean. The pre-compute + Data & System round's unification
+  (2026-07-24) re-verified v4 at `e646f58b` clean and regenerated the
+  precompute (NEW), system-jobs-routes (NEW), build-context-tier3 and
+  orchestrator-tier3 families fresh there. Versions (after the 2026-07-24
+  dogfood-fixing-round
   unification): core 0.0.341, harness 0.0.288, host 0.0.32, web 0.0.39,
   cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.267.
   The previous versions line follows for history: (after the 2026-07-23

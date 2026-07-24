@@ -215,7 +215,7 @@ item at `status-log.md:14678-14679`.
 | New character | `app/aurora/new/NewCharacterView.tsx` | `screens/characters/new/new-character.ts`, `app.routes.ts:41-45` | **PARITY** (P4.6g) |
 | Detail (9 tabs) | `app/aurora/[id]/view/CharacterDetailView.tsx` | `screens/characters/view/character-detail.ts:46-58`, `app.routes.ts:55-59` | **PARITY** (P4.6g/i/j) |
 | Edit | `app/aurora/[id]/edit/CharacterEditView.tsx` | `screens/characters/edit/character-edit.ts`, `app.routes.ts:50-54` | **PARITY** (P4.6g) |
-| Character LLM-logs section | `CharacterEditView.tsx:390` → `LLMLogsSection.tsx:102` | absent (F2) | **MISSING** → `p4.9g` |
+| Character LLM-logs section | `CharacterEditView.tsx:390` → `LLMLogsSection.tsx:102` | `characters/edit/llm-logs-section.ts` | **DONE** (`p4.9g2`, 2026-07-24) |
 | Depiction-guidelines no-vault hint | proactive suppression | proactive suppression on both appearance tabs | **PARITY** (P4.6aw) |
 | Group detail | `app/aurora/groups/[id]/GroupDetailView.tsx` | `screens/groups/group-editor.ts`, `app.routes.ts:46-49` | **PARITY** (P4.6l) |
 
@@ -253,7 +253,7 @@ v4 and v5 both ship a seven-tab hall in the same order —
 | Commonplace Book | `MemorySearchTabContent` (`:50`) | `memory/memory-tab.ts` (`settings.ts:57-59`) | **PARITY** (P4.6t) |
 | Images | `ImagesTabContent` (`:52`) | `images/images-tab.ts` (`settings.ts:60-62`) | **PARITY** (P4.6r/aq/at) |
 | Templates & Prompts | `TemplatesPromptsTabContent` (`:54`) | `templates/templates-tab.ts` (`settings.ts:63-65`) | **PARITY (partial)** — see below |
-| **Data & System** | `DataSystemTabContent` (`:56`) | **placeholder** (`settings.ts:66-68`) | **MISSING** → `p4.9g` |
+| **Data & System** | `DataSystemTabContent` (`:56`) | `settings/system/system-tab.ts` (nine cards) | **DONE** (`p4.9g2`, 2026-07-24) — three cards' SERVER families still OPEN under `p4.9g1` |
 | Settings wizard | `app/settings/wizard/SettingsWizardView.tsx` | `screens/settings/wizard/wizard-screen.ts`, `app.routes.ts:86-90` | **PARITY** (P4.6e) |
 
 Templates & Prompts renders its Roleplay Templates card for real and
@@ -524,7 +524,7 @@ source list: it names `reset-builtins` alongside them, but reset-builtins
 | Template form / preview | `components/settings/…` | `screens/settings/templates/template-{form,preview}-modal.ts` | **PARITY** (P4.6r) |
 | **Prompt library** | `components/settings/prompts/index.tsx:16` + `PromptList/PromptCard/PromptModal/PreviewModal` | absent — deferral at `templates/templates-tab.ts:9-14` | **MISSING** → `p4.9h` |
 | **Core Whisper card** | `components/settings/core-whisper/CoreWhisperSection.tsx`, mounted `TemplatesPromptsTabContent.tsx:28` | absent (F3) | **MISSING** → `p4.9h` |
-| Export/Import keys | `components/settings/api-keys/{ExportKeysDialog,ImportKeysDialog}.tsx` | absent | **MISSING** → `p4.9g` |
+| Export/Import keys | `components/settings/api-keys/{ExportKeysDialog,ImportKeysDialog}.tsx` | absent | **MISSING** → API Keys tab (re-binned 2026-07-24, §2.6) |
 | Embedding ProfileModal | `components/settings/embedding-profiles/ProfileModal.tsx` | absent | **MISSING** → `p4.9h` |
 | Plugin config / upgrade modals | `components/settings/plugins/{PluginConfigModal,UpgradeConfirmModal}.tsx` | absent | **WON'T-PORT** (D21) |
 | ThemePreviewModal | `components/settings/appearance/components/ThemePreviewModal.tsx` | absent | **MISSING** → `p4.9c` |
@@ -543,14 +543,14 @@ real directories.
 
 | Dialog | v4 | v5 | Verdict |
 | --- | --- | --- | --- |
-| **LLMLogViewerModal** | `components/chat/LLMLogViewerModal.tsx:16`; hosts `llm-logs-card.tsx:133` + `LLMLogsSection.tsx:102` | absent (F2) | **MISSING** → `p4.9g` |
-| Backup / Restore | `components/tools/backup-dialog.tsx`, `components/tools/restore/RestoreDialog.tsx` | absent | **MISSING** → `p4.9g` |
-| Export / Import | `components/tools/{export,import}-dialog.tsx` | absent | **MISSING** → `p4.9g` |
-| Capabilities report | `components/tools/capabilities-report-dialog.tsx` | absent | **MISSING** → `p4.9g` |
-| SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | absent | **MISSING** → `p4.9g` |
+| **LLMLogViewerModal** | `components/chat/LLMLogViewerModal.tsx:16`; hosts `llm-logs-card.tsx:133` + `LLMLogsSection.tsx:102` | `chat/llm-log-viewer-modal.ts` | **DONE** (`p4.9g2`, 2026-07-24) |
+| Backup / Restore | `components/tools/backup-dialog.tsx`, `components/tools/restore/RestoreDialog.tsx` | `settings/system/{backup,restore}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
+| Export / Import | `components/tools/{export,import}-dialog.tsx` | `settings/system/{export,import}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
+| Capabilities report | `components/tools/capabilities-report-dialog.tsx` | absent | **MISSING** → Providers tab (re-binned 2026-07-24, §2.6) |
+| SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | absent | **MISSING** → `p4.9e3` (re-binned 2026-07-24, §2.6) |
 | Housekeeping dialog | `components/memory/housekeeping-dialog.tsx` | `memory/housekeeping-dialog.ts:21` | **PARITY** (P4.6t) |
 | Memory-creation dialog | `components/import/memory-creation-dialog.tsx` | absent | **MISSING** → `p4.9h` |
-| Search dialog | `components/search/search-dialog.tsx` | absent | **MISSING** → `p4.9g` |
+| Search dialog | `components/search/search-dialog.tsx` | absent | **MISSING** → toolbar (re-binned 2026-07-24, §2.6) |
 | HelpChatDialog | `components/help-chat/HelpChatDialog.tsx`, mounted `app-layout.tsx:135` | absent | **MISSING** → `p4.9i` |
 | BrahmaConsoleDialog | `components/brahma-console/BrahmaConsoleDialog.tsx`, mounted `app-layout.tsx:136` | absent | **MISSING** → `p4.9i` |
 
@@ -625,7 +625,7 @@ next-order pool"* block).
 | Depiction-guidelines `disabledHint` (`status-log.md:14691-14693`) | LANDED (P4.6aw, this round) |
 | Files: rich text/pdf preview, rich FolderPicker, drag relocation, workspace-tab drill (`p4.6af:16-18`) | §4 `p4.9n` |
 | Files: cross-mount move/copy UI, DnD relocation, FilePreview family (`p4.6aa:21-27`) | §4 `p4.9n` |
-| Data & System tab (`p4.8:135-138`) | §1.5 → `p4.9g` |
+| Data & System tab (`p4.8:135-138`) | §1.5 → `p4.9g` — **DONE 2026-07-24**; P4.9G1's three server families OPEN |
 | Prompt library + Core Whisper (`p4.8:133-134`, `status-log.md:13879`) | §1.5, §2.5 → `p4.9h` |
 | Structured per-provider parameters editor (`status-log.md:8031-8033`) | §1.5 (DIVERGENCE) |
 | Formatting-prompt helper; tag pickers (`status-log.md:8033-8035`) | §1.5 → `p4.9h` |
@@ -666,7 +666,7 @@ lanes). These are liftable straight into `/setupphase`.
 | 2 | `p4.9c-about-profile` | `/about` + `/profile` + ThemePreviewModal; render the version **locally** (divergence from v4's shields.io fetch) | rider | none |
 | 3 | `p4.9b-generate-image-screen` | `/generate-image` route + StandaloneGenerateImageDialog + ImageProfilePicker; un-omits the homepage quick action | lane | `image_generation` seam (P4.6ai, LIVE) |
 | 4 | `p4.9d-quick-hide-provider` | the provider + tag-hide + hide-dangerous across salon list, home, characters, prospero; the `tags-tab` `quickHide` authoring column | lane | tags surface (landed) |
-| 5 | `p4.9g-data-system-tab` | the Data & System tab + its 8 dialogs (LLMLogViewer ×2 hosts, backup, restore, export, import, capabilities, search) + image-profile validate/list-models | round | llm-logs reads (P4.6ar, landed); live providers for validate |
+| 5 | ~~`p4.9g-data-system-tab`~~ | **DONE 2026-07-24** (P4.9G1 ∥ P4.9G2) for the tab + LLMLogViewer ×2 hosts + backup/restore/export/import/delete-all dialogs. **Remainder: P4.9G1's delete-all, export/import and backup/restore SERVER families are OPEN** (the SPA cards refuse loudly). Capabilities report → Providers tab; search dialog → toolbar; image-profile validate/list-models still needs live providers — all re-binned at the 2026-07-24 scope correction (§2.6) | — | — |
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
 | 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |

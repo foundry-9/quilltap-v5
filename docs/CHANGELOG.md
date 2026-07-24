@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Unified the pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2).
+The Settings "Data & System" tab is no longer a placeholder: it ships v4's
+full card order — Encryption Passphrase, Auto-Lock (with the app-wide idle
+provider v5 never had), LLM Logging, Backup & Restore, Import / Export,
+Tasks Queue, LLM Logs, and Delete All Data — plus the LLM log viewer modal
+and the character-edit LLM-logs section. The Tasks Queue card is live
+end-to-end against the newly ported server surface; the backup, export/import
+and delete-all cards are built and wait on their server families, which
+answer a clear "not yet available" rather than failing quietly. Chat turns
+now run v4's proactive pre-compute distill before assembling context, so
+recalled memories are searched per character up front and the fallback
+window is skipped when that search finds something.
+
+Reconciled one contract drift the round's wire check caught before it could
+ship: the three job verbs disagreed on their id field between server and
+client, which would have made view/pause/resume/delete silently do nothing
+in the Tasks Queue card. Gate: 372 test binaries / 1,560 Rust tests, four
+oracle families regenerated fresh from v4 and re-run by name, clippy clean
+on both feature sets, 223 SPA test files / 2,621 tests, and the full
+browser suite at 124 passed with the one delete-all beat gated by name on
+its unlanded server family. Versions: core 0.0.346, harness 0.0.293, host
+0.0.33, web 0.0.40, SPA 0.5.268.
+
 Resolved the P4.19 tier-2 items. The keep-alive question: v4's per-turn 15 s
 compression-miss `setInterval` keep-alive is deliberately NOT ported into the
 spine — v5 keep-alives at the transport layer (`quilltap-web`'s global SSE

@@ -2676,6 +2676,67 @@ fresh dogfood walk that follows this round; the proactive-path port
 (conditional on P4.16's bench); the chokidar-equivalent fs watcher and
 the other standing seams (unchanged).
 
+## The pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2) — UNIFIED on main 2026-07-24
+
+**P4.19 CLOSED. P4.9G2 CLOSED. P4.9G1 PARTIAL — resume there.** Full round
+record (wires, gate, corrections) in `status-log.md`; the planning block that
+scoped it follows below.
+
+**Landed.** The chat spine runs v4's proactive pre-compute distill before
+buildContext (`services/pre_compute.rs`; the pre-searched head suppresses the
+fallback distill), pinned by a new tier-3 `precompute` differential (8 cases)
+and two new `build_context_tier3` ops ∥ the Data & System **tasks-queue + jobs
+server family** (`api/system_data.rs`, the host `JobPumpControl` seam, v4-parity
+REST edges, the committed `system-data-*` fixture, an 18-case differential),
+with all sixteen §1 verbs DEFINED and the unlanded ones refusing loudly ∥ the
+**whole Data & System SPA tab** (nine cards in v4's order, both backup dialogs,
+both 5-step import/export wizards, the delete-all dialog, the LLM log viewer +
+character-edit F2 section, and the app-wide auto-lock idle provider).
+
+**The unification wire earned its keep:** the §1 name-for-name diff caught the
+three job verbs disagreeing on their id field (`id` server-side vs `jobId`
+client-side) — every per-job action in the Tasks Queue card would have failed
+to deserialize live. Reconciled toward `jobId`. Also corrected here: P4.19's
+`orchestrator_tier3` "BLOCKED" finding did NOT reproduce from main — the oracle
+regenerates cleanly (227 rows) and the differential passes, so unit 4c is
+CLOSED and no v4-jest infra fix is owed (the lane's blockage was worktree-local).
+
+**Gate:** 372 binaries / 1,560 / 0; four families regenerated fresh at
+`e646f58b` and re-run by name zero SKIP; clippy both feature sets; release
+build; ng 223 files / 2,621; full Playwright 124 passed / 1 gated skip / 0
+failed. Versions: core 0.0.346, harness 0.0.293, host 0.0.33, web 0.0.40,
+SPA 0.5.268.
+
+**⚠ The one user-visible gap:** three Data & System cards (Backup & Restore,
+Import / Export, Delete All Data) are fully built in the SPA but their server
+families are OPEN — a user clicking them gets the loud "recognized but not yet
+available" refusal. That is the single largest reason to run P4.9G1's
+remainder next.
+
+**Next candidates, in rough value order:**
+
+1. **Finish P4.9G1** (`work-orders/p4.9g1-data-system-server.md`, status
+   header enumerates the resume list) — delete-all, `.qtap` export/import,
+   backup/restore, plus the `jobs`-collection REST edge. The SPA is already
+   built and waiting on all three; the delete-all e2e beat is written and
+   gated behind one named constant (`DELETE_ALL_SERVER_LANDED`). Each family
+   is independently shippable, so this can be one lane per family.
+2. **A dogfood pass** over this round's live surfaces — the Data & System tab
+   (passphrase, auto-lock enforcement, tasks queue, LLM logs) and the
+   proactive pre-compute in real chats. Note P4.19's own framing: it is a
+   FIDELITY port, so unchanged retrospective bite is NOT a failure. The
+   standing walk list also still owes **Part D** (the retrospective downstream
+   look) and **Part F items 15/16** (Story's Clock jump; per-chat Core-whisper
+   override) from the 2026-07-24 walk.
+3. **M6 backlog rows 6+** (`m6-screen-parity.md` §4) — the next unstarted
+   screen-parity rows.
+4. The standing pools: `p4.9i2` (help/HelpChat, which also holds the banked
+   `math-notation.md`), `p4.9e3` (tools SearchReplaceModal), `p4.9h2`, the
+   sidebar tier-3 deferrals, `browserUserAgent` threading (still banked on
+   ownership), and D21 (release/signing, never yet started).
+
+---
+
 ## The pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2) — PLANNED 2026-07-24
 
 **The first round after the ruled rewrite→fix→walk sequence closed** (the

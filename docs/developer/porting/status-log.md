@@ -9,6 +9,118 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2): UNIFIED on main (2026-07-24)
+
+All three lanes reconciled on `unify/p4.19-p4.9g` and fast-forwarded to main.
+**P4.19 CLOSED. P4.9G2 CLOSED. P4.9G1 PARTIAL** — its tasks-queue + jobs family
+landed with full differential rigor; delete-all, `.qtap` export/import, and
+backup/restore stay OPEN behind loud "recognized but not yet available"
+refusals (all sixteen §1 verbs are DEFINED, so the SPA is built and waiting).
+
+**Ownership held.** No source-level conflicts across the three lanes — the only
+shared files were `Cargo.lock`, the two version-bearing `Cargo.toml`s, the
+CHANGELOG, and this log. Every lane's non-doc content was verified
+byte-identical on the unify branch after the picks (`git diff <lane> HEAD` empty
+over each lane's file list), and each lane's doc additions were verified present
+verbatim and contiguous.
+
+### The unification wires
+
+**1. The §1 wire diff found a real drift (3 of 16 verbs).** Diffing P4.9G1's
+`api/types.rs` against P4.9G2's `core-contract.ts` name-for-name:
+`systemJobGet` / `systemJobControl` / `systemJobDelete` carried `id`
+server-side but `jobId` in the SPA client. Live, every per-job action in the
+Tasks Queue card (view / pause / resume / delete) would have failed to
+deserialize — the card renders, the buttons do nothing. **Resolved toward
+`jobId`**: it matches the dominant v5 convention (`chat_id` / `character_id` /
+`memory_id`; the bare `id` of `LlmLogGet` is the minority), v4 has no wire name
+to be faithful to here (its route takes a path param, so this is a v5-internal
+naming choice), and it leaves the SPA untouched. Renamed in `types.rs`,
+`engine.rs`, and the `quilltap-web` route edge, and re-pinned all three shapes
+in `p4_9g1_wire_contract`. The other thirteen verbs matched exactly. *This is
+precisely what the wire-contract unit was written to catch, and it caught it.*
+
+**2. The ACTIVATE-AT-UNIFY probe was retired as too coarse.** P4.9G2 gated its
+three deferred beats behind a `systemTasksQueue` probe that tested for an
+"unknown variant" error. But P4.9G1 DEFINED all sixteen variants while
+IMPLEMENTING only the tasks-queue family, so the probe passes for verbs that
+still refuse — it would have activated the delete-all beat into a guaranteed
+failure. Replaced with per-family honesty: the tasks-queue and import/export
+beats now run unconditionally, and delete-all is gated behind a named
+`DELETE_ALL_SERVER_LANDED` constant that points at P4.9G1's OPEN family and
+says to flip it in the same change that lands the unit.
+
+**3. The tasks-queue beat was strengthened to prove the server, not the
+chrome.** As authored it asserted only "Simultaneous Labours" and "Queue
+Items", both static. It now also asserts the stat tiles and processor pill,
+which render only inside `@if (data(); as d)` — i.e. only once the live
+`systemTasksQueue` verb has answered. First run failed on the pill's anchored
+regex (`/^Queue (Running|Stopped)$/`): that text node shares a span with the
+status dot and Playwright's regex matching is not whitespace-normalized. The
+page snapshot at failure showed the live surface working perfectly ("Queue
+Running", "1 Active Jobs", "27 Completed", concurrency 4, a real job row), so
+the gesture was fixed, not the assertion — re-aimed at the stat-tile leaf
+labels with the pill left unanchored.
+
+**4. P4.9G2's deferred job seed is NOT needed** (recorded, no work owed): the
+e2e fixture already carries `background_jobs` rows — the activated beat
+rendered a real job row ("LLM Log Cleanup, Attempt 2/3") with live stats.
+
+**5. Version recount.** The cherry-pick silently collapsed one core bump (G1
+unit 1 and P4.19 unit 1 both moved 0.0.341 → 0.0.342, an identical change git
+auto-merged as one). Corrected by accumulation: core 0.0.341 + 1 + 4 = 0.0.346;
+harness 0.0.288 + 2 + 3 = 0.0.293; host 0.0.33, web 0.0.40 (G1); SPA 0.5.268.
+
+### The correction to P4.19's unit 4c
+
+The lane recorded `orchestrator_tier3` regen as BLOCKED by a v4-jest
+environment regression. **It is not blocked — it is CLOSED.** See the
+correction block in the P4.19 lane record below: from the main checkout, with
+the lane's un-mocked case staged verbatim, the oracle regenerated cleanly (227
+rows) and the differential passes. The lane's blockage was worktree-local, not
+a v4 defect. Banked as a hazard: a jest oracle that regenerates from a worktree
+may resolve a different `node_modules` than one run from main.
+
+### Gate (all green, run on the unify branch)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean BOTH plain and with `--features
+  quilltap-core/native-transport`; release build clean.
+- **372 test binaries / 1,560 tests / 0 failed** (main before the round: 369 /
+  1,550).
+- **Four oracle families regenerated FRESH from `~/source/quilltap-server` at
+  `e646f58b` (verified clean), each re-run BY NAME with `--nocapture`, zero
+  SKIPs:** `precompute_equivalence` (8 cases, all named in output),
+  `system_jobs_routes_equivalence` (18 cases, all named),
+  `build_context_tier3_equivalence` (29-row oracle; both new pre-searched ops
+  confirmed present by name), `orchestrator_tier3_equivalence` (227 rows, over
+  the newly un-mocked case).
+- SPA: `ng test` 223 files / 2,621 passed; `ng build` clean (fresh dist).
+- **Full Playwright: 124 passed, 1 skipped, 0 failed** — the one skip is the
+  delete-all beat, gated by name on P4.9G1's OPEN family. Note the documented
+  run-order-sensitive `wardrobe-flow.spec.ts:252` `set_all` flake surfaced in
+  one intermediate full run and was re-proven green in file-isolation (3/3,
+  :252 at ~507 ms, matching its recorded signature) before a clean final full
+  run. **Isolation caveat worth remembering:** re-proving that beat with
+  `--grep` FAILS 3/3, because the file runs serially and an earlier beat
+  creates the "Brass Goggles" item it depends on — isolate by spec FILE, never
+  by grep.
+
+### What stays OPEN after this round
+
+- **P4.9G1's three heavy families** — delete-all, `.qtap` export/import,
+  backup/restore. Full v4 surveys are captured in the lane record below and in
+  the order; the §1 verbs are defined and refuse loudly; the SPA cards, dialogs
+  and wizards are BUILT and will light up as each family lands. The delete-all
+  e2e beat is written against the real flow and gated by one named constant.
+- The `jobs`-collection edge (`GET/POST /api/v1/system/jobs`): `jobs_list` /
+  `jobs_enqueue` core fns exist, the REST edge lands with its family.
+- Documented simplification (not a gap): the in-process pump exposes no live
+  in-flight counter, so `processing`/`inFlight` report idle; the `running` gate
+  is faithful and the differential pins the whole status via a test double.
+- The `browserUserAgent` threading stays banked (ownership crosses G1's web
+  files). The banked `eprintln!` sweep is DEAD — P4.19 surveyed it satisfied.
+
 ## Lane record — P4.9G1 (Data & System server half), IN PROGRESS on `claude/p4-9g1-data-system-porting-f6b376`
 
 **Baseline: v4 `e646f58b` (drift-checked clean at lane start).** This is the
@@ -31690,6 +31802,20 @@ orchestrator differential repo-wide; a `jest.doMock` requireActual pin did not
 help. The spine wiring is instead pinned by the `precompute` (producer) +
 `build_context` (consumer/suppression) differentials; the orchestrator un-mock
 validates once the v4-jest env is repaired (a separate infra fix owed).
+
+> **CORRECTION at unification (2026-07-24) — unit 4c is NOT blocked; it is
+> CLOSED.** The blockage did not reproduce from the main checkout. Run from
+> `~/source/quilltap-v5` against v4 at `e646f58b` (clean), with the lane's
+> un-mocked `orchestrator-tier3.test.ts` staged to `/tmp` verbatim, the oracle
+> regenerated cleanly (227 rows) and `orchestrator_tier3_equivalence` passes
+> over it. So the un-mocked proactive path IS differential-verified end-to-end
+> and no v4-jest infra fix is owed. The `toolRegistry`-undefined teardown the
+> lane hit was environment-local to its worktree, not a v4 regression — worth
+> remembering as a worktree-vs-main jest hazard (module resolution reaching a
+> different `node_modules`), not as a v4 defect. The lane's fallback reasoning
+> (pinning the wiring via `precompute` + `build_context`) stands on its own and
+> those differentials remain green; this correction simply adds the third,
+> stronger proof the lane could not obtain.
 
 **Unit 4d — tier-2 close-out (keep-alive + seam sweep).** The keep-alive
 question is RESOLVED in writing: v4's per-turn compression-miss `setInterval`
