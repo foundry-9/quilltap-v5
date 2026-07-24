@@ -83,6 +83,13 @@ interface Spec {
 
 // ── Pinned entity ids (shared verbatim with the Rust differential) ──────────
 const CONN = 'c0000001-0000-4000-8000-000000000001';
+// finding #27: a SECOND connection profile, distinct provider/model from the
+// responder's CONN (OPENAI_COMPATIBLE/mock-model). `chatSettings.cheapLLMSettings.
+// defaultCheapProfileId` points here, so the at-cadence resolve's fold + episode +
+// title cheap-LLM calls run on THIS profile (priority 1 of getCheapLLMProvider) —
+// not `getCheapestModel(OPENAI_COMPATIBLE)` (= gpt-4o-mini). The e2e seed copies
+// only CONN + never chat_settings, so this addition is invisible to the salon walk.
+const CONN_CHEAP = 'c0000002-0000-4000-8000-000000000002';
 const APIKEY = 'a0000001-0000-4000-8000-000000000001';
 
 const LORA = 'a1000000-0000-4000-8000-000000000001'; // llm character (photo-album target)
@@ -610,11 +617,28 @@ async function main(): Promise<void> {
   } as never);
 
   // The user's chat_settings row: cheapLLMSettings gates the memory-extraction
-  // + summary-check triggers ON. PROVIDER_CHEAPEST with no user-defined /
-  // default-cheap profile and fallbackToLocal false is branch-identical to the
-  // fixed selection config v5's route path passes ("AUTO" matches neither the
-  // USER_DEFINED nor the LOCAL_FIRST branch). dangerousContentSettings is left
-  // absent — both sides default mode OFF, so the danger trigger bails.
+  // + summary-check triggers ON. `defaultCheapProfileId: CONN_CHEAP` (finding #27)
+  // selects the configured cheap profile (priority 1 of getCheapLLMProvider), so
+  // the resolve's fold/episode/title cheap-LLM calls run on CONN_CHEAP
+  // (OPENAI/cheap-configured-model) — not `getCheapestModel(OPENAI_COMPATIBLE)`.
+  // dangerousContentSettings is left absent — both sides default mode OFF, so the
+  // danger trigger bails.
+  // finding #27: the configured cheap profile (a DIFFERENT provider/model). The
+  // cheap-LLM call is canned on both sides (no API-key acquisition — the Rust
+  // boundary starts at the provider call; v4 mocks the key), so a cross-provider
+  // profile is safe and makes the #27 catch vivid (both provider + model columns
+  // differ from the responder's fallback). Created HERE (after every vault/image
+  // mint) so the pinned-id sequence — and thus the committed vault/img ids — is
+  // unshifted; the only fixture delta is this row + `defaultCheapProfileId`.
+  await repos.connections.create(
+    {
+      userId: spec.userId,
+      name: 'Cheap Default',
+      provider: 'OPENAI',
+      modelName: 'cheap-configured-model',
+    } as never,
+    { id: CONN_CHEAP, createdAt: TS, updatedAt: TS } as never,
+  );
   await repos.chatSettings.create(
     {
       userId: spec.userId,
@@ -622,6 +646,7 @@ async function main(): Promise<void> {
       cheapLLMSettings: {
         strategy: 'PROVIDER_CHEAPEST',
         fallbackToLocal: false,
+        defaultCheapProfileId: CONN_CHEAP,
         embeddingProvider: 'OPENAI',
       },
     } as never,

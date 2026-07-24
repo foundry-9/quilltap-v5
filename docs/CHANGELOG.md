@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Fixed finding #27: context-summary checks now run on the configured cheap
+LLM, not the responding character's own model. Both hard-coded call sites —
+the Salon orchestrator's deferred check and the courier paste-resolver's —
+now thread the real stored `cheapLLMSettings`, all of the user's connection
+profiles (`connection_profiles::find_by_user_id`), and the resolved danger
+settings into the summary check, exactly as the enclave step already did;
+the hard-coded `AUTO` / no-default / single-profile block is gone. Closed
+the differential blind spot that let it slip: both families (orchestrator
+tier-3 and the courier `resolve_cadence` arm) gained a second connection
+profile and a `defaultCheapProfileId` selecting it, so the fold / episode /
+title `llm_logs` rows now carry the selected profile, not
+`getCheapestModel(responding.provider)` — red reproduced pre-fix, green
+post-fix; the enclave family re-ran green untouched.
+
+Fixed the finding-#22 carry-out: `self_inventory` now reports the real
+memory slate the LLM saw this turn. The orchestrator converts the built
+context's debug memory bags into `LoadedMemoriesContext` and threads it into
+both tool loops, so the loaded-memories section is populated instead of
+"No loaded-memory data available for this turn". `browserUserAgent` stays
+unthreaded (v5's request path carries no User-Agent).
+
 Planned the post-rewrite dogfood-fixing round (docs only): four work
 orders written — P4.15 (thread the real cheap-LLM config into both
 hard-coded summary-check sites, finding #27, plus the self_inventory

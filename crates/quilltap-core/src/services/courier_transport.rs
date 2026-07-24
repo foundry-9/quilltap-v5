@@ -692,10 +692,20 @@ pub async fn resolve_external_turn<C: CompletionProvider + Sync, E: EmbeddingPro
         .await?;
 
         // Context-summary check — gated on cheapLLMSettings. Below cadence in the
-        // corpus → a no-op (no fold, no title enqueue).
+        // corpus → a no-op (no fold, no title enqueue). The REAL stored settings +
+        // the whole chat are threaded so the cheap-LLM selection honours the user's
+        // configured cheap profile (finding #27).
         if cheap_llm_present {
             run_summary_check(
-                db, completion, embedding, executor, chat_id, user_id, &profile,
+                db,
+                completion,
+                embedding,
+                executor,
+                chat_id,
+                user_id,
+                &profile,
+                chat_settings.as_ref(),
+                &chat,
             )
             .await?;
         }
@@ -769,6 +779,38 @@ fn resolve_trigger_connection_profile(
 /// cross-subsystem arms stay no-ops per the orchestrator-oracle mock set the
 /// courier oracle reuses (the same tracked deferral as the orchestrator's
 /// in-loop check).
+/// Parse the stored `cheapLLMSettings` sub-object into the summary service's
+/// [`context_summary::CheapLlmSettings`], field-by-field (v4 passes
+/// `chatSettings.cheapLLMSettings` straight through). The stored object always
+/// carries the Zod-defaulted sub-keys, so the per-field defaults here fire only
+/// when the object is absent entirely; `PROVIDER_CHEAPEST` is the real
+/// `CheapLLMStrategyEnum` default (the enum has no "AUTO").
+fn cheap_llm_settings_from_stored(
+    settings: Option<&Value>,
+) -> crate::services::context_summary::CheapLlmSettings {
+    let cheap = settings.and_then(|s| s.get("cheapLLMSettings"));
+    crate::services::context_summary::CheapLlmSettings {
+        strategy: cheap
+            .and_then(|c| c.get("strategy"))
+            .and_then(Value::as_str)
+            .unwrap_or("PROVIDER_CHEAPEST")
+            .to_string(),
+        user_defined_profile_id: cheap
+            .and_then(|c| c.get("userDefinedProfileId"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        default_cheap_profile_id: cheap
+            .and_then(|c| c.get("defaultCheapProfileId"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        fallback_to_local: cheap
+            .and_then(|c| c.get("fallbackToLocal"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync>(
     db: &Db,
     completion: &C,
@@ -777,39 +819,45 @@ async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + 
     chat_id: &str,
     user_id: &str,
     profile: &Value,
+    settings: Option<&Value>,
+    chat: &Value,
 ) -> Result<(), DbError> {
-    let cheap_profile = crate::cheap_llm::CheapLlmProfile {
-        id: profile
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        provider: profile
-            .get("provider")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        model_name: profile
-            .get("modelName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        base_url: profile
-            .get("baseUrl")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        is_cheap: false,
-        is_dangerous_compatible: false,
-        parameters: None,
-        max_tokens: None,
-        model_class: None,
+    // The `current` connection profile is the responder's (v4 passes
+    // `connectionProfile` as the selection's basis).
+    let cheap_profile = crate::services::orchestrator::cheap_llm_profile_from_value(profile);
+
+    // finding #27: v4's route path (`triggerContextSummaryCheck` →
+    // `checkAndGenerateSummaryIfNeeded`, `memory-trigger.service.ts:104-135`)
+    // hands the REAL stored `cheapLLMSettings` + ALL the user's connection profiles
+    // (`repos.connections.findByUserId`), so a configured `defaultCheapProfileId` /
+    // `USER_DEFINED` / `isCheap` profile wins — not a hard-coded config over the
+    // responder profile alone.
+    let cheap_settings = cheap_llm_settings_from_stored(settings);
+
+    let uid = user_id.to_string();
+    let available = db.read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))?;
+    let available_profiles: Vec<_> = available
+        .iter()
+        .map(crate::services::orchestrator::cheap_llm_profile_from_value)
+        .collect();
+
+    // v4's `generateContextSummary` resolves the user's danger settings internally
+    // (only consulted on an active-dangerous chat); the ported service takes them
+    // injected. Mirror the enclave step (`enclave/step.rs`): resolve from the global
+    // sub-object + the chat, so a dangerous room does the uncensored swap on both
+    // sides. A non-dangerous chat resolves to mode OFF (no swap).
+    let global_danger: Option<crate::db::chat_settings::DangerousContentSettings> = settings
+        .and_then(|s| s.get("dangerousContentSettings"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let resolved = crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
+        global_danger,
+        Some(chat),
+    );
+    let danger = crate::cheap_llm::DangerousContentSettings {
+        mode: resolved.settings.mode.clone(),
+        uncensored_text_profile_id: resolved.settings.uncensored_text_profile_id.clone(),
     };
-    let cheap_settings = crate::services::context_summary::CheapLlmSettings {
-        strategy: "AUTO".to_string(),
-        user_defined_profile_id: None,
-        default_cheap_profile_id: None,
-        fallback_to_local: false,
-    };
+
     // The seams carry the same executor as the fold itself (the route path has
     // no autonomous-run scope, so both stay UNtagged).
     let seams = crate::services::context_summary::FoldEpisodePassSeams {
@@ -825,9 +873,9 @@ async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + 
         chat_id,
         &cheap_profile,
         &cheap_settings,
-        std::slice::from_ref(&cheap_profile),
+        &available_profiles,
         user_id,
-        None,
+        Some(&danger),
         None,
         true,
         &seams,
@@ -899,4 +947,61 @@ pub async fn cancel_external_turn(
     Ok(CancelExternalTurnOutcome::Cancelled {
         message_id: message_id.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// finding #27: a stored `cheapLLMSettings` with a configured
+    /// `defaultCheapProfileId` (and `USER_DEFINED` strategy) is parsed straight
+    /// through — the field-by-field parse the courier resolver now feeds the
+    /// cheap-LLM selection, so a configured profile wins over the responder's.
+    #[test]
+    fn cheap_settings_carry_the_configured_default_profile() {
+        let settings = json!({
+            "cheapLLMSettings": {
+                "strategy": "USER_DEFINED",
+                "userDefinedProfileId": "cp-user-defined",
+                "defaultCheapProfileId": "cp-default-cheap",
+                "fallbackToLocal": true,
+            }
+        });
+        let cheap = cheap_llm_settings_from_stored(Some(&settings));
+        assert_eq!(cheap.strategy, "USER_DEFINED");
+        assert_eq!(
+            cheap.user_defined_profile_id.as_deref(),
+            Some("cp-user-defined")
+        );
+        assert_eq!(
+            cheap.default_cheap_profile_id.as_deref(),
+            Some("cp-default-cheap")
+        );
+        assert!(cheap.fallback_to_local);
+    }
+
+    /// An absent `strategy` sub-key defaults to `PROVIDER_CHEAPEST` (the real Zod
+    /// default; the enum has no "AUTO"), never a phantom strategy that would match
+    /// no selection branch.
+    #[test]
+    fn cheap_settings_absent_strategy_defaults_to_provider_cheapest() {
+        let settings = json!({ "cheapLLMSettings": { "fallbackToLocal": false } });
+        let cheap = cheap_llm_settings_from_stored(Some(&settings));
+        assert_eq!(cheap.strategy, "PROVIDER_CHEAPEST");
+        assert_eq!(cheap.user_defined_profile_id, None);
+        assert_eq!(cheap.default_cheap_profile_id, None);
+        assert!(!cheap.fallback_to_local);
+    }
+
+    /// A wholly-absent settings object (`None`) also defaults cleanly — the caller
+    /// only reaches `run_summary_check` when the presence gate already fired, but
+    /// the parse stays total.
+    #[test]
+    fn cheap_settings_from_none_defaults() {
+        let cheap = cheap_llm_settings_from_stored(None);
+        assert_eq!(cheap.strategy, "PROVIDER_CHEAPEST");
+        assert_eq!(cheap.default_cheap_profile_id, None);
+        assert!(!cheap.fallback_to_local);
+    }
 }

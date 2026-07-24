@@ -1258,12 +1258,20 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
                 custom_classification_prompt: None,
             }),
             // Round-3 Group 8: the fixture's `cheapLLMSettings =
-            // { strategy: PROVIDER_CHEAPEST, fallbackToLocal: false }`. The spine
-            // resolves the cheap-LLM selection from this + the connection profiles,
-            // and threads it into buildContext (activating the recap/distill feeders).
+            // { strategy: PROVIDER_CHEAPEST, fallbackToLocal: false,
+            //   defaultCheapProfileId: <CheapDefault> }`. The spine resolves the
+            // cheap-LLM selection from this + the connection profiles, and threads it
+            // into buildContext (activating the recap/distill feeders).
+            // finding #27: the `defaultCheapProfileId` (priority 1) is what the fixed
+            // summary check honours — the fold's cheap-LLM `llm_logs` row records the
+            // CheapDefault profile (OPENAI/cheap-configured-model), NOT
+            // `getCheapestModel(ANTHROPIC)`. This value MUST mirror the fixture's
+            // `chatSettings.cheapLLMSettings.defaultCheapProfileId`.
             cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
             cheap_llm_user_defined_profile_id: None,
-            cheap_llm_default_cheap_profile_id: None,
+            cheap_llm_default_cheap_profile_id: Some(
+                "f0000006-0000-4000-8000-000000000006".to_string(),
+            ),
             cheap_llm_fallback_to_local: false,
         })
     }

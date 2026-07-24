@@ -37,13 +37,20 @@
    "name": "TextBlockModel",
    "provider": "OPENAI",
    "modelName": "o1-mini"
+  },
+  {
+   "id": "f0000006-0000-4000-8000-000000000006",
+   "name": "CheapDefault",
+   "provider": "OPENAI",
+   "modelName": "cheap-configured-model"
   }
  ],
  "chatSettings": {
   "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
   "cheapLLMSettings": {
    "strategy": "PROVIDER_CHEAPEST",
-   "fallbackToLocal": false
+   "fallbackToLocal": false,
+   "defaultCheapProfileId": "f0000006-0000-4000-8000-000000000006"
   },
   "compressionEnabled": false,
   "autoDetectRng": true,

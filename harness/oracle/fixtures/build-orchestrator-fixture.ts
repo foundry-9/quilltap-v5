@@ -103,7 +103,10 @@ interface Spec {
   }>;
   chatSettings: {
     id: string;
-    cheapLLMSettings: { strategy: string; fallbackToLocal: boolean };
+    // finding #27: `defaultCheapProfileId` selects a configured cheap profile
+    // (priority 1 of `getCheapLLMProvider`), so the summary/fold cheap-LLM call
+    // runs on THAT profile — not `getCheapestModel(responding.provider)`.
+    cheapLLMSettings: { strategy: string; fallbackToLocal: boolean; defaultCheapProfileId?: string };
     compressionEnabled: boolean;
     autoDetectRng: boolean;
     answerConfirmationEnabled: boolean;

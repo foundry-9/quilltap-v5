@@ -140,8 +140,9 @@ use crate::services::text_tool_loop::{
 use crate::services::tool_build::{self, BuildToolsInput};
 use crate::services::tool_call_threading::ThreadedMessage;
 use crate::services::tool_execution::{
-    create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult,
-    ToolExecutionContext, ToolMessage, ToolWhisperContext,
+    create_tool_context, save_tool_messages, GeneratedImage, LoadedInterCharacterMemory,
+    LoadedMemoriesContext, LoadedSemanticMemory, SaveToolMessagesResult, ToolExecutionContext,
+    ToolMessage, ToolWhisperContext,
 };
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
@@ -551,6 +552,65 @@ pub(crate) struct TurnToolContextArgs<'a> {
     pub character_participant_id: &'a str,
     pub image_profile_id: Option<&'a str>,
     pub project_id: Option<&'a str>,
+    /// The memory slate the LLM saw this turn (v4 passes
+    /// `{ semantic, interCharacter, recap }` — dogfood finding #22). `None` only
+    /// off the send path (an out-of-prompt tool invocation), which is what yields
+    /// `self_inventory`'s `Unavailable` arm.
+    pub loaded_memories: Option<&'a LoadedMemoriesContext>,
+}
+
+/// Convert the built context's debug memory bags into the [`LoadedMemoriesContext`]
+/// `self_inventory` reads (dogfood finding #22 carry-out). v4 passes the debug bags
+/// through unfiltered (`orchestrator.service.ts:1136–1151`:
+/// `{ semantic: builtContext.debugMemories, interCharacter:
+/// builtContext.debugInterCharacterMemories, recap: builtContext.debugMemoryRecap }`);
+/// the `self_inventory` builder (`builders.ts:318–329`) then keeps only
+/// `{summary, importance, score, effectiveWeight}` per semantic entry and
+/// `{aboutCharacterName, summary, importance}` per inter-character entry, which is
+/// exactly the [`LoadedSemanticMemory`] / [`LoadedInterCharacterMemory`] shape — so
+/// the narrowing happens here. An empty slate still yields a PRESENT context (v4
+/// always passes the object), which is `available: true` with empty arrays — never
+/// the `Unavailable` arm (that is reserved for out-of-prompt tool invocations).
+///
+/// Takes the three `BuiltContext` fields directly (rather than the whole struct) so
+/// the conversion is unit-testable without constructing a full built context.
+fn loaded_memories_from_debug(
+    semantic: &[Value],
+    inter_character: Option<&[build_context::DebugInterCharacterOut]>,
+    recap: Option<&str>,
+) -> LoadedMemoriesContext {
+    let semantic = semantic
+        .iter()
+        .map(|m| LoadedSemanticMemory {
+            summary: m
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            importance: m.get("importance").and_then(Value::as_f64).unwrap_or(0.0),
+            score: m.get("score").and_then(Value::as_f64).unwrap_or(0.0),
+            effective_weight: m
+                .get("effectiveWeight")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
+        })
+        .collect();
+    let inter_character = inter_character
+        .map(|v| {
+            v.iter()
+                .map(|m| LoadedInterCharacterMemory {
+                    about_character_name: m.about_character_name.clone(),
+                    summary: m.summary.clone(),
+                    importance: m.importance,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    LoadedMemoriesContext {
+        semantic,
+        inter_character,
+        recap: recap.map(str::to_string),
+    }
 }
 
 /// Build the per-turn tool context (v4 `orchestrator.service.ts:1136–1151`).
@@ -565,10 +625,12 @@ pub(crate) struct TurnToolContextArgs<'a> {
 /// production, while the tier-3 corpus — which drives the loops directly with its
 /// own contexts — never saw the call sites at all.
 ///
-/// Still unthreaded, deliberately (see the note at `_image_profile_id`):
-/// `browser_user_agent` (no source in v5's request path) and `loaded_memories`
-/// (needs the `BuiltContext.debug_*` → [`LoadedMemoriesContext`] conversion plus a
-/// `self_inventory` differential).
+/// `loaded_memories` is now threaded too (dogfood finding #22 carry-out): both
+/// loops pass the `BuiltContext.debug_*` → [`LoadedMemoriesContext`] conversion, so
+/// `self_inventory`'s loaded-memories section reports the real slate the LLM saw
+/// instead of the `Unavailable` arm. Still unthreaded, deliberately (see the note
+/// at `_image_profile_id`): `browser_user_agent` — v5's request path carries no
+/// User-Agent at all.
 pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionContext {
     create_tool_context(
         args.chat_id,
@@ -579,7 +641,7 @@ pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionC
         None,
         args.project_id.map(String::from),
         None,
-        None,
+        args.loaded_memories.cloned(),
     )
 }
 
@@ -681,12 +743,11 @@ where
     // `image_profile_id` feeds the tool build (self_inventory / wardrobe /
     // image tools) AND the per-turn tool context, where it gates `generate_image`.
     //
-    // Still NOT threaded into the tool context (v4 passes both;
-    // orchestrator.service.ts:1143–1151): `browserUserAgent` — v5's request path
-    // carries no User-Agent at all — and `loadedMemories`, which needs the
-    // `BuiltContext.debug_*` bags converted into `LoadedMemoriesContext` and so
-    // owes a `self_inventory` differential. Until then `self_inventory` reports an
-    // empty memory slate. Both are recorded in the dogfood standing notes.
+    // `loadedMemories` is now threaded too (finding #22 carry-out — see
+    // `turn_tool_context`, built once below from `built_context`). Still NOT threaded
+    // (v4 passes it; orchestrator.service.ts:1143–1151): `browserUserAgent` — v5's
+    // request path carries no User-Agent at all — recorded in the dogfood standing
+    // notes as a genuine unported input, not a wiring slip.
     let _image_profile_id = resolution.image_profile_id.clone();
     let user_participant_id = resolution.user_participant_id.clone();
     let is_multi_character = resolution.is_multi_character;
@@ -2018,6 +2079,14 @@ where
             cache_control: None,
         })
         .collect();
+    // finding #22 carry-out: the memory slate the LLM saw this turn, threaded into
+    // BOTH loops' tool contexts so `self_inventory` reports the real loaded memories
+    // (v4 passes the same object to `createToolContext`).
+    let turn_loaded_memories = loaded_memories_from_debug(
+        &built_context.debug_memories,
+        built_context.debug_inter_character_memories.as_deref(),
+        built_context.debug_memory_recap.as_deref(),
+    );
     let mut loop_tool_context = turn_tool_context(TurnToolContextArgs {
         chat_id: &chat_id,
         user_id: &user_id,
@@ -2025,6 +2094,7 @@ where
         character_participant_id: &character_participant_id,
         image_profile_id: _image_profile_id.as_deref(),
         project_id: json_str(&chat, "projectId").as_deref(),
+        loaded_memories: Some(&turn_loaded_memories),
     });
     loop_tool_context.pending_wardrobe_announcements = pending_wardrobe.clone();
     native_tool_loop::run_native_tool_loop(
@@ -2086,6 +2156,7 @@ where
             character_participant_id: &character_participant_id,
             image_profile_id: _image_profile_id.as_deref(),
             project_id: json_str(&chat, "projectId").as_deref(),
+            loaded_memories: Some(&turn_loaded_memories),
         });
         c.pending_wardrobe_announcements = pending_wardrobe.clone();
         c
@@ -2382,7 +2453,32 @@ where
                 // v4's summary check runs on `connectionProfile` (the ORIGINAL),
                 // not the rerouted `effectiveProfile` (W4.2u). Equal when no reroute.
                 let original_profile = to_effective_profile(&connection_profile);
-                run_summary_check(deps, &chat_id, &user_id, &original_profile).await?;
+                // finding #27: the cheap-LLM selection uses the REAL stored
+                // `cheapLLMSettings` + ALL the user's connection profiles (v4
+                // `memory-trigger.service.ts:104-135`), not a hard-coded config over
+                // the responding profile alone. The parsed fields already ride the
+                // orchestrator settings (Round-3 Group 8, the compression selection),
+                // and `available_cheap_profiles` is the same `findByUserId` load; reuse
+                // both.
+                let cheap_settings = cheap_llm_settings_from_orchestrator(settings);
+                // v4's `generateContextSummary` resolves the user's danger settings
+                // internally (only consulted on an active-dangerous chat); the ported
+                // service takes them injected. Pass the already-resolved effective
+                // settings so a dangerous room does the uncensored swap on both sides.
+                let summary_danger = crate::cheap_llm::DangerousContentSettings {
+                    mode: danger_settings.mode.clone(),
+                    uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+                };
+                run_summary_check(
+                    deps,
+                    &chat_id,
+                    &user_id,
+                    &original_profile,
+                    &cheap_settings,
+                    &available_cheap_profiles,
+                    Some(&summary_danger),
+                )
+                .await?;
             }
         }
 
@@ -2679,12 +2775,40 @@ async fn persist_tools_only(
     .await
 }
 
-/// Run the context-summary check (the finalizer's deferred invocation). The
-/// cheap-LLM profile / settings / available-profiles are resolved above the seam;
-/// the corpus keeps them consistent with the compression selection. When the gate
+/// Build the summary service's [`context_summary::CheapLlmSettings`] from the
+/// orchestrator's already-parsed chat settings. The `OrchestratorChatSettings`
+/// fields are populated by the spine's settings reader (`PROVIDER_CHEAPEST` when a
+/// stored object is absent); an empty `strategy` collapses to the same default the
+/// compression selection uses above, so both cheap-LLM paths select identically for
+/// the same stored settings — exactly as v4's single `chatSettings.cheapLLMSettings`
+/// does.
+fn cheap_llm_settings_from_orchestrator(
+    settings: &OrchestratorChatSettings,
+) -> crate::services::context_summary::CheapLlmSettings {
+    crate::services::context_summary::CheapLlmSettings {
+        strategy: if settings.cheap_llm_strategy.is_empty() {
+            "PROVIDER_CHEAPEST".to_string()
+        } else {
+            settings.cheap_llm_strategy.clone()
+        },
+        user_defined_profile_id: settings.cheap_llm_user_defined_profile_id.clone(),
+        default_cheap_profile_id: settings.cheap_llm_default_cheap_profile_id.clone(),
+        fallback_to_local: settings.cheap_llm_fallback_to_local,
+    }
+}
+
+/// Run the context-summary check (the finalizer's deferred invocation). v4's
+/// `triggerContextSummaryCheck` (`memory-trigger.service.ts:104-135`) hands the
+/// REAL stored `cheapLLMSettings` + ALL the user's connection profiles (a
+/// `repos.connections.findByUserId`) to `checkAndGenerateSummaryIfNeeded`, so the
+/// cheap-LLM selection can honour a configured `defaultCheapProfileId` /
+/// `USER_DEFINED` / `isCheap` profile — the fix for dogfood finding #27, where the
+/// summary previously always fell to `getCheapestModel(responding.provider)`. The
+/// caller resolves `cheap_settings` / `available_profiles` / `danger` above the seam
+/// (from the same reads the compression selection already performs). When the gate
 /// fires a fold, `check_and_generate_summary_if_needed` writes the summary + the
 /// title enqueue through the `Db` — the effect the differential banks.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>(
     deps: &OrchestratorDeps<
         '_,
@@ -2705,6 +2829,9 @@ async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST,
     chat_id: &str,
     user_id: &str,
     profile: &EffectiveProfile,
+    cheap_settings: &crate::services::context_summary::CheapLlmSettings,
+    available_profiles: &[crate::cheap_llm::CheapLlmProfile],
+    danger: Option<&crate::cheap_llm::DangerousContentSettings>,
 ) -> Result<(), DbError>
 where
     EMB: EmbeddingProvider + Sync,
@@ -2721,8 +2848,9 @@ where
     PROS: PostProsperoCarinaError,
     PF: PricingFetch + Send + Sync,
 {
-    // The cheap-LLM profile the summary uses IS the effective profile in the
-    // corpus (single-profile chats); the settings are a fixed low-window config.
+    // The `current` connection profile is the responding profile (v4 passes
+    // `connectionProfile` as the selection's basis); the SELECTION then runs over
+    // `cheap_settings` + `available_profiles`, so a configured cheap profile wins.
     let cheap_profile = crate::cheap_llm::CheapLlmProfile {
         id: profile.id.clone(),
         provider: profile.provider.clone(),
@@ -2733,12 +2861,6 @@ where
         parameters: None,
         max_tokens: None,
         model_class: None,
-    };
-    let cheap_settings = super::context_summary::CheapLlmSettings {
-        strategy: "AUTO".to_string(),
-        user_defined_profile_id: None,
-        default_cheap_profile_id: None,
-        fallback_to_local: false,
     };
     // The fold-time episode pass runs LIVE here (v4's in-loop check calls the
     // real `generateContextSummary`, `runFoldEpisodePass` included — the
@@ -2756,10 +2878,10 @@ where
         deps.executor,
         chat_id,
         &cheap_profile,
-        &cheap_settings,
-        std::slice::from_ref(&cheap_profile),
+        cheap_settings,
+        available_profiles,
         user_id,
-        None,
+        danger,
         None,
         true,
         &seams,
@@ -3710,6 +3832,7 @@ mod tests {
             character_participant_id: "part-1",
             image_profile_id,
             project_id,
+            loaded_memories: None,
         }
     }
 
@@ -3759,5 +3882,119 @@ mod tests {
         assert_eq!(native.image_profile_id, text.image_profile_id);
         assert_eq!(native.chat_id, text.chat_id);
         assert_eq!(native.calling_participant_id, text.calling_participant_id);
+    }
+
+    // --- finding #22 carry-out: the loadedMemories threading -------------------
+
+    /// The `BuiltContext.debug_*` bags convert into the [`LoadedMemoriesContext`]
+    /// shape `self_inventory` reads — the semantic narrowing keeps only the four
+    /// consumed keys; inter-character + recap carry through.
+    #[test]
+    fn loaded_memories_conversion_narrows_to_the_consumed_shape() {
+        let semantic = vec![serde_json::json!({
+            "summary": "winter ledger",
+            "importance": 0.8,
+            "score": 0.5,
+            "effectiveWeight": 0.4,
+            // extra keys v4 carries through JSON.stringify but the builder drops:
+            "memoryId": "m-1",
+            "recallFired": true,
+        })];
+        let inter = vec![build_context::DebugInterCharacterOut {
+            about_character_name: "Jeeves".to_string(),
+            summary: "shared the umbrella".to_string(),
+            importance: 0.6,
+        }];
+        let loaded = loaded_memories_from_debug(
+            &semantic,
+            Some(&inter),
+            Some("mid-way through the ledgers"),
+        );
+        assert_eq!(loaded.semantic.len(), 1);
+        assert_eq!(loaded.semantic[0].summary, "winter ledger");
+        assert!((loaded.semantic[0].importance - 0.8).abs() < 1e-12);
+        assert!((loaded.semantic[0].score - 0.5).abs() < 1e-12);
+        assert!((loaded.semantic[0].effective_weight - 0.4).abs() < 1e-12);
+        assert_eq!(loaded.inter_character.len(), 1);
+        assert_eq!(loaded.inter_character[0].about_character_name, "Jeeves");
+        assert_eq!(loaded.recap.as_deref(), Some("mid-way through the ledgers"));
+    }
+
+    /// An empty built context still yields a PRESENT (not `None`) loaded-memories
+    /// context — v4 always passes the object, so `self_inventory` reports
+    /// `available: true` with empty arrays, never the `Unavailable` arm.
+    #[test]
+    fn loaded_memories_conversion_empty_is_present_not_unavailable() {
+        let loaded = loaded_memories_from_debug(&[], None, None);
+        assert!(loaded.semantic.is_empty());
+        assert!(loaded.inter_character.is_empty());
+        assert_eq!(loaded.recap, None);
+    }
+
+    /// The converted slate threads into the tool context both loops receive.
+    #[test]
+    fn turn_tool_context_threads_loaded_memories() {
+        let loaded = LoadedMemoriesContext {
+            semantic: vec![LoadedSemanticMemory {
+                summary: "a memory".to_string(),
+                importance: 0.7,
+                score: 0.3,
+                effective_weight: 0.2,
+            }],
+            inter_character: Vec::new(),
+            recap: Some("recap".to_string()),
+        };
+        let mut args = ctx_args(None, None);
+        args.loaded_memories = Some(&loaded);
+        let ctx = turn_tool_context(args);
+        let threaded = ctx.loaded_memories.expect("loaded memories threaded");
+        assert_eq!(threaded.semantic.len(), 1);
+        assert_eq!(threaded.recap.as_deref(), Some("recap"));
+        // Absent (the out-of-prompt path) stays None → the Unavailable arm.
+        let absent = turn_tool_context(ctx_args(None, None));
+        assert!(absent.loaded_memories.is_none());
+    }
+
+    // --- finding #27: the summary check's cheap-LLM settings threading ---------
+
+    /// A configured `defaultCheapProfileId` (and the other stored fields) reach the
+    /// summary check's [`CheapLlmSettings`] — the field carried past the presence
+    /// bool. With this the cheap-LLM selection can honour the configured profile
+    /// instead of always falling to `getCheapestModel(responding.provider)`.
+    #[test]
+    fn summary_cheap_settings_carry_the_configured_default_profile() {
+        let mut s = OrchestratorChatSettings::defaults_present();
+        s.cheap_llm_strategy = "USER_DEFINED".to_string();
+        s.cheap_llm_user_defined_profile_id = Some("cp-user-defined".to_string());
+        s.cheap_llm_default_cheap_profile_id = Some("cp-default-cheap".to_string());
+        s.cheap_llm_fallback_to_local = true;
+        let cheap = cheap_llm_settings_from_orchestrator(&s);
+        assert_eq!(cheap.strategy, "USER_DEFINED");
+        assert_eq!(
+            cheap.user_defined_profile_id.as_deref(),
+            Some("cp-user-defined")
+        );
+        assert_eq!(
+            cheap.default_cheap_profile_id.as_deref(),
+            Some("cp-default-cheap")
+        );
+        assert!(cheap.fallback_to_local);
+    }
+
+    /// An empty `strategy` (the `OrchestratorChatSettings::default()` shape, when no
+    /// stored object supplied one) collapses to `PROVIDER_CHEAPEST` — the real Zod
+    /// default — matching the compression selection's empty-guard. Never "AUTO"
+    /// (not a valid `CheapLLMStrategyEnum` member).
+    #[test]
+    fn summary_cheap_settings_default_strategy_is_provider_cheapest() {
+        let s = OrchestratorChatSettings {
+            cheap_llm_strategy: String::new(),
+            ..OrchestratorChatSettings::default()
+        };
+        let cheap = cheap_llm_settings_from_orchestrator(&s);
+        assert_eq!(cheap.strategy, "PROVIDER_CHEAPEST");
+        assert_eq!(cheap.user_defined_profile_id, None);
+        assert_eq!(cheap.default_cheap_profile_id, None);
+        assert!(!cheap.fallback_to_local);
     }
 }
