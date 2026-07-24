@@ -74,6 +74,14 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 1 (shell half): the Data & System tab replaces its placeholder
+in settings.ts. system-tab.ts is the CollapsibleCard stack in v4's exact
+order (Encryption Passphrase, Auto-Lock, Backup & Restore, Import / Export,
+LLM Logging, Tasks Queue, LLM Logs, Delete All Data) with sectionId
+deep-links; cards default closed (v4's default for this tab). The Plugins
+slot is a locked WON'T-PORT — it renders nothing (the Memory-tab
+convention). Spec asserts the eight cards in order and no Plugins card.
+
 P4.9G2 unit 9 (SPA): the Delete All Data card + 4-step dialog
 (preview/confirm/deleting/complete), double-gated — the user types DELETE
 and the wire body carries confirm DELETE_ALL_MY_DATA (systemDeleteData;

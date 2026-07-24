@@ -8,8 +8,8 @@ import { AppearanceTab } from './appearance/appearance-tab';
 import { ChatTab } from './chat/chat-tab';
 import { ImagesTab } from './images/images-tab';
 import { MemoryTab } from './memory/memory-tab';
-import { SettingsPlaceholder } from './placeholder-tab';
 import { ProvidersTab } from './providers/providers-tab';
+import { SystemTab } from './system/system-tab';
 import { TemplatesTab } from './templates/templates-tab';
 
 /**
@@ -39,7 +39,7 @@ import { TemplatesTab } from './templates/templates-tab';
     TemplatesTab,
     ImagesTab,
     MemoryTab,
-    SettingsPlaceholder,
+    SystemTab,
   ],
   template: `
     <div class="qt-page-container" [attr.data-subsystem]="subsystem()">
@@ -76,7 +76,7 @@ import { TemplatesTab } from './templates/templates-tab';
               <qt-settings-templates />
             }
             @case ('system') {
-              <qt-settings-placeholder title="Data &amp; System" />
+              <qt-settings-system />
             }
             @default {
               <qt-settings-providers />

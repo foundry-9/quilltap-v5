@@ -31894,3 +31894,17 @@ present fields, and renders the `projects` row — a dogfood-#6-style
 correctness fix. Live behaviour + e2e beat are ACTIVATE-AT-UNIFY. Spec:
 preview-on-open + a real (non-NaN) total incl. Projects, the typed-DELETE
 gate + the `DELETE_ALL_MY_DATA` wire token + the complete summary.
+
+### Unit 1 (shell half) — the system-tab replaces the placeholder
+
+`system/system-tab.ts` (`qt-settings-system`) ports v4
+`DataSystemTabContent.tsx`: the `CollapsibleCard` stack in v4's exact card
+order with per-card `sectionId` deep-links and the descriptions verbatim,
+replacing the `qt-settings-placeholder` at `settings.ts:78-80` (the
+`SettingsPlaceholder` import dropped — no other tab used it). Cards default
+CLOSED — v4's `CollapsibleCard` default, and this tab (unlike Images) passes
+no `defaultOpen`; `?section=` force-opens one. The Plugins slot is the locked
+WON'T-PORT (`phase-4.md:273-276`) and renders NOTHING (the Memory-tab
+no-dead-cards convention) — a comment marks where it would sit. Spec: the
+eight card titles in order + no Plugins card, over a permissive stub that
+answers every mounted card's fetch.
