@@ -42,8 +42,6 @@ use std::path::{Path, PathBuf};
 use quilltap_core::chat_timestamp::{TimestampConfig, TimestampFormat, TimestampMode};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{characters_read, chats_read, memories_read};
-use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
-use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
@@ -53,6 +51,8 @@ use quilltap_core::services::build_context::{
     RealBuildContextSeams,
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
+use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::system_prompt::{Character as SysChar, UserCharacter};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -675,8 +675,11 @@ async fn build_context_tier3_matches_oracle() {
             pre_searched_memories: if op.pre_searched_memories.is_empty() {
                 None
             } else {
-                let ids: Vec<String> =
-                    op.pre_searched_memories.iter().map(|m| m.id.clone()).collect();
+                let ids: Vec<String> = op
+                    .pre_searched_memories
+                    .iter()
+                    .map(|m| m.id.clone())
+                    .collect();
                 let rows = db
                     .read_main(|c| memories_read::find_by_ids(c, &ids))
                     .expect("read pre-searched memories");
@@ -705,13 +708,10 @@ async fn build_context_tier3_matches_oracle() {
             recall_signals: op.recall_signals.as_ref().map(|s| DistilledSearch {
                 keywords: s.keywords.clone(),
                 retrospective: s.retrospective,
-                time_range: s
-                    .time_range
-                    .as_ref()
-                    .map(|t| DistillTimeRange {
-                        from: t.from.clone(),
-                        to: t.to.clone(),
-                    }),
+                time_range: s.time_range.as_ref().map(|t| DistillTimeRange {
+                    from: t.from.clone(),
+                    to: t.to.clone(),
+                }),
                 entities: s.entities.clone(),
                 ..Default::default()
             }),

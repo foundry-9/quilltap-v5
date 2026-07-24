@@ -3264,8 +3264,7 @@ pub(crate) struct BuildContextArgs<'a> {
     /// `preSearchedMemories`, P4.19). When non-empty, buildContext takes the
     /// `'pre-searched'` memory path and skips its own fallback distill. `None` for
     /// the sibling entry points (regenerate-swipe) that don't run the proactive task.
-    pub pre_searched_memories:
-        Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
+    pub pre_searched_memories: Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
     /// The proactive pre-compute distill's turn-level recall signals (v4
     /// `recallSignals`, P4.19), seeding the retrospective cadence on both memory
     /// paths. `None` for the sibling entry points.

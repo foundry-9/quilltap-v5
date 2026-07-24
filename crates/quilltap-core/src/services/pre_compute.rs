@@ -239,7 +239,10 @@ where
             let role = role.to_lowercase();
             if role == "assistant" {
                 let cleaned = crate::chat_tasks::strip_tool_artifacts(content)?;
-                Some(DistillMessage { role, content: cleaned })
+                Some(DistillMessage {
+                    role,
+                    content: cleaned,
+                })
             } else {
                 Some(DistillMessage {
                     role,
@@ -388,7 +391,10 @@ where
 /// cadence fires. (v5 collapses the empty-and-throw arms here: `search.
 /// unwrap_or_default()` maps a search error to the empty list, which v4's `catch`
 /// returns identically.)
-fn finish_outcome(results: Vec<SemanticSearchResult>, signals: DistilledSearch) -> ProactiveRecallOutcome {
+fn finish_outcome(
+    results: Vec<SemanticSearchResult>,
+    signals: DistilledSearch,
+) -> ProactiveRecallOutcome {
     let memories = if results.is_empty() {
         None
     } else {
@@ -473,10 +479,7 @@ mod tests {
         let window = messages_since_last_spoke(&events, "p-char", false, "a fresh user line")
             .expect("window");
         assert_eq!(
-            window
-                .iter()
-                .map(|(_, c)| c.as_str())
-                .collect::<Vec<_>>(),
+            window.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>(),
             vec!["a new question", "a fresh user line"],
         );
     }
@@ -493,8 +496,7 @@ mod tests {
             msg("ASSISTANT", "my line", "p-char"),
             msg("USER", "u2", "p-user"),
         ];
-        let window =
-            messages_since_last_spoke(&events, "p-char", false, "").expect("window");
+        let window = messages_since_last_spoke(&events, "p-char", false, "").expect("window");
         assert_eq!(
             window.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>(),
             vec!["u2"],
@@ -509,8 +511,7 @@ mod tests {
         // Continue mode, no trailing user/assistant messages → empty window → None.
         assert!(messages_since_last_spoke(&events, "p-char", true, "ignored").is_none());
         // Non-continue with content → the pushed user line makes it non-empty.
-        let window =
-            messages_since_last_spoke(&events, "p-char", false, "typed").expect("window");
+        let window = messages_since_last_spoke(&events, "p-char", false, "typed").expect("window");
         assert_eq!(
             window.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>(),
             vec!["typed"],
@@ -526,8 +527,7 @@ mod tests {
             json!({ "type": "status", "role": "USER", "content": "not a message" }),
             msg("USER", "real", "p-user"),
         ];
-        let window =
-            messages_since_last_spoke(&events, "p-char", false, "").expect("window");
+        let window = messages_since_last_spoke(&events, "p-char", false, "").expect("window");
         assert_eq!(
             window.iter().map(|(_, c)| c.as_str()).collect::<Vec<_>>(),
             vec!["real"],

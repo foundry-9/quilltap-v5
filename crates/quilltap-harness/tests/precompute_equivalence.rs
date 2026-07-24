@@ -331,7 +331,11 @@ async fn precompute_matches_oracle() {
             danger_settings: &danger,
             available_profiles: &[],
             user_id: &spec.user_id,
-            chat_id: case.chat.get("id").and_then(Value::as_str).unwrap_or("chat"),
+            chat_id: case
+                .chat
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("chat"),
             now_ms: spec.now_ms as i64,
         };
 
