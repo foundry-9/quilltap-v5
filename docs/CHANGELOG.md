@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.17 units 5+6 (SPA): a live Playwright walk of the tool-result card
+(seeded on Solo Voyage via global-setup CLI writes — a character rng run
+folded into an embedded card + a user Prospero run as an expandable chip;
+collapsed by default → expand request → expand response → Success badge,
+and the raw JSON envelope never leaks). Closes the 2026-07-22 dogfood
+standing note "v5 has no tool-result hide/show control" (dogfood-findings.md
+→ FIXED) and adds the Salon tool-card parity row to m6-screen-parity.md.
+
 P4.17 unit 3 (SPA): the whisper label now names its targets. The message
 row's hardcoded "Private whisper" is replaced with v4's dynamic "whispered
 to <names>" (each `targetParticipantId` mapped to its participant's

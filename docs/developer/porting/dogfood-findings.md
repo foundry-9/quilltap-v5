@@ -264,15 +264,26 @@ catch, since every fixture is built fresh.
     nothing to thread yet. Genuinely unported input, not a wiring slip. Still
     commented at `_image_profile_id` in `orchestrator.rs`.
 
-- **Also observed at the 2026-07-22 pass, not yet filed as a finding: v5 has
-  no tool-result hide/show control.** Every tool result is whispered into the
-  Salon as a `Private whisper` bubble carrying the raw JSON envelope
+- **✅ Also observed at the 2026-07-22 pass — FIXED (P4.17, SPA-only lane):
+  v5 had no tool-result hide/show control.** Every tool result was whispered
+  into the Salon as a `Private whisper` bubble carrying the raw JSON envelope
   (`{"toolName":…,"success":…,"arguments":…,"callId":…}`), where v4 has a
-  proper show/hide affordance for tool output. Reported by the human during
-  the finding-#22 walk. Scope it against v4's tool-display controls when the
-  next Salon slice runs — it is a rendering/affordance gap, not a dispatch
-  one, and the whisper-gate sets (`ALWAYS_PRIVATE_TOOLS` / `VAULT_READ_TOOLS`
-  in `tool_execution.rs`) are already ported faithfully.
+  proper show/hide affordance for tool output. **P4.17 ported v4's
+  `ToolMessage.tsx` as `qt-tool-message`**: a `role:'TOOL'` message now renders
+  as a collapsible Tool Request / Tool Response card (both default-collapsed,
+  v4's `▶`/`▼` glyphs, 80-char previews) with a Success/Failed badge, tool-icon
+  header, and attribution line, in both the embedded (character-initiated runs
+  folded into the calling bubble via `groupToolMessagesIntoAssistants`) and
+  standalone (user-initiated Prospero runs — a collapsed announcement chip that
+  expands to the card) layouts. The other half of the wording complaint went
+  with it: the message row's hardcoded `Private whisper` became v4's dynamic
+  `whispered to <names>`. It was a rendering/affordance gap, not a dispatch one:
+  the whisper-gate sets (`ALWAYS_PRIVATE_TOOLS` / `VAULT_READ_TOOLS` in
+  `tool_execution.rs`) and the client whisper filter were already faithful and
+  did not change. `generate_image` result thumbnails stay a loud deferral (v5
+  renders chat images through the assistant bubble, P4.6ac). Verified by a
+  19-case component spec, the ported grouping test (11 cases), 5 render-item
+  cases, and a live Playwright walk over two seeded TOOL rows.
 
 - **✅ FINDING #23 — FIXED (P4.11, unified on main 2026-07-23):
   `work-orders/p4.11-non-streaming-request-builders.md`** (single lane, nine

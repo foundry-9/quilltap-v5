@@ -427,6 +427,50 @@ export default async function globalSetup(): Promise<void> {
       `AND NOT EXISTS (SELECT 1 FROM connection_profiles WHERE isDefault = 1);`,
   );
 
+  // P4.17: seed a tool-run turn on "Solo Voyage" so `salon-tool-message-flow
+  // .spec.ts` walks the tool-result card affordance over real data. v4/v5 both
+  // persist tool results as `role:'TOOL'` rows (`saveToolMessages`), but the
+  // committed salon fixture builder does not seed them into this chat, and this
+  // lane may not touch the committed fixture DBs (`crates/**`); a CLI write here
+  // is the owned, faithful stand-in.
+  //
+  // The three rows land AFTER the fixture seedTimestamp (every fixture row shares
+  // `2026-02-01T00:00:00.000Z`, so their relative order among the ties is
+  // DB-defined); the DISTINCT, ascending timestamps here make the turn
+  // deterministic regardless of that tie order:
+  //
+  //  1. A host assistant turn (the calling character) — guaranteed the last row
+  //     before the tool, so the fold has a valid host.
+  //  2. A character-initiated run (participantId = the same character, no
+  //     systemSender): `groupToolMessagesIntoAssistants` folds it into row 1 and
+  //     it renders as an EMBEDDED card.
+  //  3. A user-initiated Prospero run (systemSender='prospero'): stays a
+  //     collapsed announcement chip that expands to the standalone card.
+  //
+  // The assistant carries no token counts, so it adds no `qt-token-badge` (the
+  // token-cost flow asserts badges per-row, never an absolute count).
+  runCliWrite(
+    cli,
+    `INSERT INTO chat_messages (id, chatId, type, role, content, participantId, provider, modelName, createdAt) VALUES (` +
+      `'d1000000-0000-4000-8000-000000000100', 'c1000000-0000-4000-8000-000000000001', 'message', 'ASSISTANT', ` +
+      `'Let me roll for that.', 'b1000000-0000-4000-8000-000000000001', 'OPENAI_COMPATIBLE', 'mock-model', ` +
+      `'2026-02-01T00:00:50.000Z');`,
+  );
+  runCliWrite(
+    cli,
+    `INSERT INTO chat_messages (id, chatId, type, role, content, participantId, createdAt) VALUES (` +
+      `'d1000000-0000-4000-8000-000000000101', 'c1000000-0000-4000-8000-000000000001', 'message', 'TOOL', ` +
+      `'{"toolName":"rng","success":true,"result":"Rolled 1d20: [17]","prompt":"1d20","arguments":{"type":20}}', ` +
+      `'b1000000-0000-4000-8000-000000000001', '2026-02-01T00:01:00.000Z');`,
+  );
+  runCliWrite(
+    cli,
+    `INSERT INTO chat_messages (id, chatId, type, role, content, systemSender, systemKind, createdAt) VALUES (` +
+      `'d1000000-0000-4000-8000-000000000102', 'c1000000-0000-4000-8000-000000000001', 'message', 'TOOL', ` +
+      `'{"tool":"search","toolName":"search","initiatedBy":"user","operatorName":"Charles","prompt":"lighthouse lore","result":"Found 3 references.","success":true}', ` +
+      `'prospero', 'tool-run', '2026-02-01T00:02:00.000Z');`,
+  );
+
   // Launch the real server (no env pepper → locked) serving the built SPA.
   const logFd = openSync(SERVER_LOG, 'w');
   const child = spawn(

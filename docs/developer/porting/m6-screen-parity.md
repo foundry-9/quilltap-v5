@@ -181,6 +181,7 @@ PARITY the moment `p4.9b` lands. The card-Chat divergence is recorded at
 | New chat | `app/salon/new/page.tsx:19-179` | `screens/new-chat/new-chat-page.ts`, route `app.routes.ts:23-26` | **PARITY** (P4.6q) |
 | Terminal pop-out | `app/salon/[id]/terminal/[sessionId]/page.tsx:14-80` | `screens/salon/terminal-popout.ts`, route `app.routes.ts:27-30` | **PARITY** (P4.6u) |
 | LLM Inspector slide-over | `components/chat/LLMInspectorPanel.tsx:42`, mounted `SalonView.tsx:1696` | `chat/llm-inspector-panel.ts:138`, mounted `salon-conversation.ts:362` | **PARITY** (P4.6as) — see F2 |
+| Tool-result card | `components/chat/ToolMessage.tsx` + `group-tool-messages.ts` | `chat/tool-message.ts` + `chat/group-tool-messages.ts` | **PARITY** (P4.17) — `generate_image` thumbnails deferred (assistant bubble renders chat images, P4.6ac) |
 | Autonomous-include toggle | `components/dashboard/nav-user-menu-quick-hide.tsx:100-105` (user menu) | `screens/salon/autonomous-visibility.ts:13-14` (salon-list header) | **DIVERGENCE-DOCUMENTED** |
 | Tag-hide / hide-dangerous filtering | `components/providers/quick-hide-provider.tsx:183-209` | absent — `screens/salon/salon-list.ts:24-28` | **MISSING** → `p4.9d` |
 | Per-chat Core Whisper override | `SalonView.tsx:1760-1763` → `ChatSidebar` | absent (F3) | **MISSING** → `p4.9h` |

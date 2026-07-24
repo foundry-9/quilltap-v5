@@ -138,6 +138,84 @@ availableProfiles)`), and called v4's real `extractMemorySearchKeywords` N×
 per window. Windows were reconstructed from the logged distill requests +
 `chat_messages`. Run: `cd ~/source/quilltap-server && ~/.nvm/versions/node/v24.13.1/bin/node --import tsx _bench_p416.mts <bench-input.json> 5 <out.json>`. Cleanup: v4 bench file removed, the 3 bench-startup physical
 backups (~1.8 GB) removed from the copy's `data/backups/`, scratch discarded.
+## Lane record — P4.17 ToolMessage rendering (the dogfood tool-result card): COMPLETE on branch (SPA-only lane of the post-rewrite dogfood-fixing round)
+
+**SPA-only; zero `crates/**` diffs (verified `git diff --stat`). Closes the
+2026-07-22 dogfood observation "v5 has no tool-result hide/show control —
+every tool result is whispered into the Salon as a `Private whisper` bubble
+carrying the raw JSON envelope."** v4 baseline `e646f58b`, drift-checked
+clean at lane start (`git log e646f58b..HEAD` empty). Bumps SPA only
+(0.5.263 → 0.5.267).
+
+**The verification item resolved YES (it sized the lane to full tier 1).**
+v5 persists character-initiated tool runs as separate `role:'TOOL'` rows
+(`save_tool_messages` — `participantId` = the calling character, no
+`systemSender`, whisper-gated to the user participant) AND user-initiated
+runs (`chat_add_tool_result` — `systemSender:'prospero'`,
+`systemKind:'tool-run'`, `initiatedBy:'user'`, `operatorName`). The salon
+read projects both verbatim (`chats_messages_read.rs` — no role filter), so
+both the standalone branch AND the embedded grouping were needed.
+
+**Units (five commits, one per unit):**
+
+1. **`qt-tool-message`** (`chat/tool-message.ts` + 19-case spec) — port of v4
+   `components/chat/ToolMessage.tsx`. Both layouts (embedded/standalone), the
+   envelope parse (old `toolName` / new `tool` + the parse-failure fallback),
+   the `toolInfo` name/icon table, the two default-collapsed sections (v4's
+   `▶`/`▼` glyphs, 80-char `getPreviewText`, `formatRequestContent` /
+   `formatResultContent`), the Success/Failed badge, the header attribution
+   (`<actor> ran <tool>` vs the embedded emoji branch), the wardrobe action
+   notice (`buildWardrobeActionSummary`), and the `delegatedDisplay`
+   null-render. Copy buttons surface v4's toast copy on an inline `role=status`
+   line (v5 has no toast system — `chat-section.ts §2` precedent). MessageDto
+   gains `role:'TOOL'` + the `attachedToolMessages` render annotation.
+2. **Detection + placement** (`chat/group-tool-messages.ts` + 11-case spec;
+   `chat-view-model.ts` buildRenderItems + 5 render-item cases; `message-list
+   .ts`, `message-row.ts`, `announcement-group.ts`) — `groupToolMessagesInto
+   Assistants` folds character runs into their host bubble (embedded); a new
+   `tool` render-item variant (checked before the announcement-chip test)
+   hosts orphan character runs standalone, with the v4 avatar-fallback walk;
+   Prospero runs keep their collapsed-chip identity and expand to the card via
+   `AnnouncementGroup`.
+3. **Whisper-label rider** (`message-row.ts`) — the hardcoded `Private whisper`
+   → v4's dynamic `whispered to <names>` (`MessageRow.tsx:321-327` +
+   `participantNames`); updated the salon-conversation read-path spec + 2 label
+   cases.
+4. **Specs** — folded into units 1–3 (co-located): the 19-case component spec,
+   the 11-case grouping port, the 5 render-item cases, the 2 whisper cases; all
+   byte-transcribed from v4 with line cites (the SPA differential analog).
+5. **e2e beat** (`e2e/salon-tool-message-flow.spec.ts` + `global-setup.ts`
+   seed) — three CLI-write rows on Solo Voyage (host assistant + character rng
+   run + Prospero search run; distinct ascending timestamps make the fold
+   deterministic against the fixture's `createdAt` ties). Walk: collapsed by
+   default → expand request → expand response → Success badge; the raw envelope
+   never leaks; the Prospero chip expands to an attributed card. **Seeded via
+   `global-setup` CLI writes (Option B), NOT the committed fixture DB, because
+   the fixture DBs live under `crates/**` which this lane may not touch.**
+
+**Gotcha banked:** the committed salon fixture stamps EVERY row with the same
+`createdAt` (`2026-02-01T00:00:00.000Z`), so a seeded TOOL row appended at a
+later timestamp lands after all of them but the fixture rows' order among the
+ties is DB-defined — if a USER row sorts last, the character tool doesn't fold
+(`hostIndex=-1`). Seed a dedicated host assistant with a distinct earlier-than-
+the-tool timestamp to make the fold deterministic.
+
+**Gate (SPA lane):** `ng test` 213 files / 2583 (36 new), `ng build` clean,
+the P4.17 e2e beat green (2/2, live), and the full Playwright suite **119/119
+green** against a rebuilt dist. No `crates/**` diff. Binaries for the e2e are
+the worktree's own debug build (crates unchanged, so main-equivalent).
+
+**Flake note (pre-existing, NOT this lane):** a FIRST full run hit 3
+run-order-dependent flakes — `workspace-flow` (the Solo Voyage composer
+hidden by leftover terminal/document-pane state; the exact
+"group-turn-chain terminal state disables the composer" flake documented at
+the p4.9j unification) + a terminal-tab count + `salon-documents` a
+document-mode response-parse race. **All three passed both in isolation
+(17/17, with this lane's seed present) and on a clean second full run
+(119/119).** None touches the tool-card / grouping / whisper surface this
+lane changed — the lane is SPA-tool-card-only and cannot reach terminal,
+document-pane, or workspace-tab state. Flagged for the unifier's awareness,
+not owned here.
 
 ## Round record — the provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on main (2026-07-23)
 
