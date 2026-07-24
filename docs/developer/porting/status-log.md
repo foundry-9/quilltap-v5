@@ -31619,3 +31619,35 @@ proactive task). The harness `build_context_tier3` construction site gains the
 two `None` fields. Full workspace `cargo test` green (differentials skip
 without env vars — validated in unit 4); the never-spoke corpus paths are
 behaviorally unchanged. Core → 0.0.343, harness → 0.0.289.
+
+**Unit 4a — the tier-3 `precompute` differential (`QT_ORACLE_PRECOMPUTE`).**
+The primary equivalence proof. `harness/oracle/cases/precompute.test.ts` (jest
+real-DB, the recall-replay recipe) drives v4's REAL `runPreContextPreCompute`
+over fresh copies of the committed `episodic-recall-{main,mount}.db` fixture per
+case — ONLY `executeCheapLLMTask` is canned (the distill text runs through v4's
+REAL parse), compression disabled, `searchMemoriesSemantic` + the builtin TF-IDF
+embedding REAL, the whole clock frozen to `$nowMs`. `precompute_equivalence.rs`
+runs v5's REAL `proactive_recall_task` over the same copies with the same canned
+distill + real embedding, diffing the outcome — `preSearchedMemories`
+(id/order + score/effectiveWeight/rawWeight/recallAdjustment, at 1e-12) +
+`recallSignals` (`signals_json()`). Eight cases green: never-spoke /
+continue-mode-empty-window / extraction-fail → both `null`; spoke-then-window /
+dangerous-reroute / retrospective-multi-probe / multi-character → memories +
+signals; search-empty (Pip, no memories) → `null` memories with signals STILL
+flowing. The correct memories + recallAdjustment prove the assembled search
+invocation (query, recall context, entity anchors, occurred-within, probes)
+transitively — a wrong field re-ranks the real results. New committed spec
+`harness/oracle/fixtures/precompute-cases.json` (the episodic-recall `.db`
+fixture is UNCHANGED — no other family invalidated). `finish_outcome` extracted
+from `proactive_recall_task` so the 10-cap + empty-drops-memories cases are pure
+unit specs (jest "caps at 10" ported). Core → 0.0.344, harness → 0.0.290.
+
+Regen recipe (Node 24, v4 checkout clean at `e646f58b`; STAGE outside
+`.claude/`): copy `precompute.test.ts` + `precompute-cases.json` +
+`episodic-recall.json` to `$STAGE/harness/oracle/{cases,fixtures}`, then
+`TZ=UTC QT_FIXTURE_ER_MAIN=<worktree>/crates/quilltap-web/tests/fixtures/
+episodic-recall-main.db QT_FIXTURE_ER_MOUNT=…/episodic-recall-mount.db
+QT_ORACLE_OUT=/tmp/oracle-precompute.ndjson npx jest --silent --watchman=false
+--testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" --
+precompute`. Run: `QT_ORACLE_PRECOMPUTE=/tmp/oracle-precompute.ndjson cargo test
+-p quilltap-harness --test precompute_equivalence -- --nocapture`.

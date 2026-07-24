@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Added the tier-3 `precompute` differential (P4.19, unit 4) — the primary
+equivalence proof for the proactive distill. A jest real-DB oracle drives v4's
+REAL `runPreContextPreCompute` / `proactiveRecallTask` (only the cheap-LLM
+distill canned) over the committed episodic-recall fixture; the Rust side runs
+`proactive_recall_task` over fresh copies with the same canned distill + the
+real builtin TF-IDF embedding and diffs the whole outcome (memories
+id/order/score/recallAdjustment + the parsed recall signals) at 1e-12. Eight
+cases green: never-spoke / continue-mode-empty-window / extraction-fail → both
+`null`; spoke-then-window / dangerous-reroute / retrospective-multi-probe /
+multi-character → memories + signals; search-empty → `null` memories with the
+signals still flowing. The 10-cap + windowing/guard cases are the
+`pre_compute.rs` unit specs. `QT_ORACLE_PRECOMPUTE`.
+
 Wired the proactive pre-compute distill into the v5 chat spine (P4.19, units
 2–3). `BuildContextInput` gains `pre_searched_memories` + `recall_signals`
 (v4 `preSearchedMemories` / `recallSignals`); build_context takes the

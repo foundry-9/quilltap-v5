@@ -337,7 +337,7 @@ where
     // `search_memories_semantic` returns `Result`; every non-(Ok non-empty) arm
     // converges on `memories: None` (v4 logs a warning on the throw arm — outside
     // the differential contract, so not reproduced).
-    let memories = match search_memories_semantic(
+    let search = search_memories_semantic(
         db,
         embedding,
         input.character_id,
@@ -361,30 +361,76 @@ where
             ..Default::default()
         },
     )
-    .await
-    {
-        Ok(results) if !results.is_empty() => Some(results.into_iter().take(10).collect()),
-        _ => None,
-    };
+    .await;
 
-    Some(ProactiveRecallOutcome {
+    // v4: on non-empty results → `{ memories: results.slice(0, 10), signals }`; on
+    // empty OR a throw → `{ memories: undefined, signals }` (signals STILL flow).
+    Some(finish_outcome(search.unwrap_or_default(), signals))
+}
+
+/// v4's search-outcome shaping (`pre-compute.service.ts:328-339`): non-empty
+/// results become the memories capped at 10 (`.slice(0, 10)`); an empty list
+/// yields `memories: None` — but the signals STILL flow so the retrospective
+/// cadence fires. (v5 collapses the empty-and-throw arms here: `search.
+/// unwrap_or_default()` maps a search error to the empty list, which v4's `catch`
+/// returns identically.)
+fn finish_outcome(results: Vec<SemanticSearchResult>, signals: DistilledSearch) -> ProactiveRecallOutcome {
+    let memories = if results.is_empty() {
+        None
+    } else {
+        Some(results.into_iter().take(10).collect())
+    };
+    ProactiveRecallOutcome {
         memories,
         signals: Some(signals),
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     //! Unit specs porting v4's `proactiveRecallTask` jest suite
-    //! (`pre-compute.service.test.ts:138-264`). The guard + windowing cases are
-    //! covered here against the pure [`messages_since_last_spoke`] helper; the
-    //! distill/search legs (jest cases "extracts-then-searches", "uncensored
-    //! reroute", "extraction fails", "search throws", "caps at 10") are proven
-    //! end-to-end against v4's REAL code by the tier-3 `precompute` differential
+    //! (`pre-compute.service.test.ts:138-264`). The guard/windowing cases run
+    //! against the pure [`messages_since_last_spoke`] helper and the 10-cap
+    //! against [`finish_outcome`]; the distill/search legs (jest
+    //! "extracts-then-searches" / "extraction fails" / "search throws" /
+    //! search-empty-signals-flow / multi-character) are proven end-to-end against
+    //! v4's REAL code by the tier-3 `precompute` differential
     //! (`QT_ORACLE_PRECOMPUTE`), which drives the whole `proactive_recall_task`
-    //! over a fixture DB — a stronger check than a mocked unit here could be.
+    //! over a fixture DB — a stronger check than a mocked unit here could be. The
+    //! uncensored reroute (jest "routes through the uncensored cheap-LLM
+    //! selection") is the pure `resolve_uncensored_cheap_llm_selection`, itself
+    //! tier-1 differentialed in `cheap_llm`.
     use super::*;
     use serde_json::json;
+
+    fn fake_result(id: &str) -> SemanticSearchResult {
+        SemanticSearchResult {
+            memory: json!({ "id": id }),
+            score: 0.5,
+            used_embedding: true,
+            effective_weight: 0.5,
+            raw_weight: 0.5,
+            recall_adjustment: None,
+        }
+    }
+
+    /// jest "caps the returned memory list at 10".
+    #[test]
+    fn caps_memories_at_ten() {
+        let many: Vec<SemanticSearchResult> =
+            (0..15).map(|i| fake_result(&format!("m{i}"))).collect();
+        let out = finish_outcome(many, DistilledSearch::default());
+        assert_eq!(out.memories.expect("memories").len(), 10);
+    }
+
+    /// An empty result set → `memories: None`, but the signals STILL flow (v4's
+    /// search-empty arm; the retrospective cadence still fires downstream).
+    #[test]
+    fn empty_results_drop_memories_keep_signals() {
+        let out = finish_outcome(Vec::new(), DistilledSearch::default());
+        assert!(out.memories.is_none());
+        assert!(out.signals.is_some());
+    }
 
     fn msg(role: &str, content: &str, participant: &str) -> Value {
         json!({
