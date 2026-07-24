@@ -103,7 +103,7 @@ export interface ImageClickEvent {
 
         <div class="qt-chat-message" [class]="bubbleClass()">
           @if (variant() === 'whisper') {
-            <div class="qt-chat-whisper-label">Private whisper</div>
+            <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}</div>
           } @else if (variant() === 'silent') {
             <div class="qt-chat-silent-label">Silent — inner thoughts</div>
           }
@@ -475,6 +475,21 @@ export class MessageRow {
   });
 
   protected readonly bubbleClass = computed(() => `qt-chat-message-${this.variant()}`);
+
+  /**
+   * The whisper label's target names (v4 `MessageRow.tsx:321-327` +
+   * `participantNames` `SalonView.tsx:181`): each `targetParticipantId` mapped to
+   * its participant's character name, or "unknown", comma-joined. Replaces the
+   * former hardcoded "Private whisper" so the operator sees who a private line
+   * went to.
+   */
+  protected readonly whisperTargets = computed(() => {
+    const ids = this.message().targetParticipantIds ?? [];
+    const participants = this.chat().participants;
+    return ids
+      .map((id) => participants.find((p) => p.id === id)?.character?.name || 'unknown')
+      .join(', ');
+  });
 
   protected readonly reasoningBlocks = computed(() => {
     const m = this.message();

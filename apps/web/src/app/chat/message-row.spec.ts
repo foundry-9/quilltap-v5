@@ -399,3 +399,20 @@ describe('MessageRow — the per-message LLM-logs entry (v4 MessageActionBar.tsx
     ).not.toBeNull();
   });
 });
+
+describe('MessageRow — whisper label (P4.17 unit 3)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('names the whisper targets (v4 "whispered to <names>", MessageRow.tsx:321-327)', () => {
+    const fixture = render(message({ targetParticipantIds: ['p1'] }));
+    const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
+    expect(label).not.toBeNull();
+    expect(label.textContent.trim()).toBe('whispered to Lorian');
+  });
+
+  it('falls back to "unknown" for an unresolved target id', () => {
+    const fixture = render(message({ targetParticipantIds: ['p1', 'ghost'] }));
+    const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
+    expect(label.textContent.trim()).toBe('whispered to Lorian, unknown');
+  });
+});

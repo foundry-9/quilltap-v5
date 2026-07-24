@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.17 unit 3 (SPA): the whisper label now names its targets. The message
+row's hardcoded "Private whisper" is replaced with v4's dynamic "whispered
+to <names>" (each `targetParticipantId` mapped to its participant's
+character name, "unknown" when unresolved) — the other half of the
+dogfood wording complaint.
+
 P4.17 unit 2 (SPA): wired tool-result rendering into the Salon. A
 `role:'TOOL'` message no longer renders as a raw-JSON whisper bubble.
 Character-initiated tool runs fold into their host assistant bubble (new

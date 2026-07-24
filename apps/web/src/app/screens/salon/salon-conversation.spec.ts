@@ -307,8 +307,8 @@ describe('SalonConversation (read path)', () => {
     expect(text).toContain('A fine morning it is.');
     expect(text).toContain('Friday');
 
-    // Whisper label.
-    expect(text).toContain('Private whisper');
+    // Whisper label — names the target (v4 "whispered to <names>"; w1 → pu = Bertie).
+    expect(text).toContain('whispered to Bertie');
 
     // Reasoning block (collapsible).
     expect(fixture.nativeElement.querySelector('.qt-chat-thinking')).toBeTruthy();
