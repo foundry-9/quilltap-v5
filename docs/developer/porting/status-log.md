@@ -9,7 +9,21 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
-## Lane record — P4.13 the provider-I/O rewrite (branch `claude/provider-io-rewrite-abd736`, in progress 2026-07-23)
+## Lane record — P4.13 the provider-I/O rewrite (branch `claude/provider-io-rewrite-abd736`, lane complete 2026-07-23; unit 9's live walk BANKED for the human)
+
+**Disposition: units 1–8 + 10 LANDED; unit 9 (💸 live proof on the
+Friday copy) is human-assisted and OPEN — finding #25's row reads FIXED
+and closes after that walk (re-check #22's retry loop on the same
+walk). P4.12 flipped to CLOSED-BY-P4.13.** Tier-3 deferrals carried
+loud (unchanged by this lane): the OpenRouter streaming
+no-tools/no-images `callModel()` OpenResponses path stays UNPORTED (the
+P4.11 deferral, deliberately not absorbed); the tracing subscriber +
+`chat_messages.debugMemoryLogs` writer stay open questions; #26/#27/#28
+stay for the post-rewrite dogfood-fixing run; the extraction-cadence
+differential stays unpinned. NEW loud deferral: the response-bodies
+corpus is entirely doc-derived (`synthetic: true`) — real-capture
+upgrades per family ride unit 9 / later dogfooding (recorder header
+has the recipe).
 
 Drift-check at lane start: v4 clean at `e646f58b` (zero commits past the
 baseline); v5 survey citations re-verified (`b94c3158..HEAD` docs-only).
@@ -149,6 +163,30 @@ possible for a deliberate divergence. `log_call`'s why-comment now
 cites the ruling (it previously documented the v4-faithful silence and
 asked for exactly this ruling). The tracing-subscriber question stays
 open (explicitly not this unit's).
+
+### Unit 7 — the Brahma workaround re-check: v4-FAITHFUL, STAYS
+
+Both compensation sites are verbatim v4 (orchestrator.service.ts at
+`e646f58b`): the prior-TOOL-rows-as-`[Tool Result: …]`-user-text
+threading (:277–283, via the same `buildConversationMessages` the Salon
+uses — v4's own comment calls it "the console's loop bug" fix) and the
+`isStuck` re-inject-as-prose (:425–451, byte-matching text incl. the
+"do NOT call any more tools" nudge and the content-only assistant turn
+rationale). NOT a v5 crutch for #25 — with results now genuinely
+arriving, the workaround remains v4's belt-and-suspenders and is kept.
+No code change.
+
+### Unit 8 — the reasoning/thought-signature riders: PINNED (in unit 3)
+
+The DeepSeek/Z.AI `reasoning_content` echo on the tool-call turn and
+the Google `thoughtSignature` on the model turn's text part are
+asserted in `tool_wire_call_site` (seeded via
+`state.reasoning_content`/`thought_signature`); the units-1-2 commit
+also threads a HISTORY assistant turn's persisted `thoughtSignature`
+into the primary-stream params (the round-trip's other half, previously
+dropped at the same boundary). No extra oracle work was needed — the
+request-envelope corpus already pins the byte shapes
+(`reasoning-echo`/`thought-sig` vectors).
 
 **⚠ Pre-existing red found (NOT this lane's):**
 `enclave_step_tier3_equivalence` fails against a FRESH `e646f58b`

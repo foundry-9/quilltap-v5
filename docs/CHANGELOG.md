@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.13 units 7-8 + 10 (records): verified the Brahma Console's loop-bug
+compensation is verbatim v4 behavior (stays); recorded the reasoning/
+thought-signature riders as pinned by the unit-3 call-site test; updated
+dogfood finding #25 to FIXED (closes after the human live walk, which also
+re-checks #22's retry loop), marked the error-row ruling LANDED and the #24
+response-parse carry-out CLOSED in the standing notes, and flipped P4.12 to
+CLOSED-BY-P4.13. Docs only, no code change.
+
 P4.13 unit 6: a failed cheap-LLM call now writes an llm_logs error row (a
 DELIBERATE divergence from v4, ruled 2026-07-23 — v4 logs nothing on
 failure, which is how findings #23/#26 stayed invisible). The row carries
