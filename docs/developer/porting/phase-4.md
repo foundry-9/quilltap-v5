@@ -2459,6 +2459,41 @@ SPA switch.
 
 The next `/setupphase` plans rounds 2/3 once round 1 lands.
 
+## The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10) — UNIFIED on main 2026-07-23
+
+**All three lanes landed; P4.14 and P4.10 are CLOSED; P4.13 stays OPEN on
+exactly one item — unit 9, the 💸 human live proof on the Friday copy**
+(a Salon turn where a character USES a tool result, on OpenAI + Anthropic
++ one chat-completions provider; it also re-checks #22's retry loop,
+closes #25's row, and can upgrade response-bodies corpus families from
+`synthetic: true` to real captures). Delivered: the `StreamMessage`
+carrying type end-to-end (tool linkage reaches the wire on all eight
+providers — a FOURTH flattening site found in the text-tool loop and a
+FIFTH in the Carina query loop, both fixed), the always-on
+`tool_wire_call_site` byte pin, the 29-case recorded-body
+`response_parse_equivalence` corpus (which caught two MORE #24-class
+production bugs on its first run: OpenRouter usage parsed to zeros;
+Google raw's getter-only `functionCalls` key), the phase-B restructure
+(`RequestMessage` deleted, `ProviderKind` as the one dispatch point,
+id-less-tool arms unrepresentable), the ruled failed-cheap-call
+`llm_logs` error row, the P4.14 non-validating stable merge sort (both
+injector comparators + the audit-found Post Office `sort_newest_first`),
+and the P4.10 packaging close-out (the Docker image builds, serves the
+real SPA, ships the CLI; `quilltap-web` resolves its dist unaided;
+`docs/developer/running.md`). Gate at unification: fmt/clippy both
+feature sets/release build clean; 369 binaries / 1,538 / 0 with all
+differential env vars; the round's 20 named families re-run
+`--nocapture` over oracles regenerated fresh at `e646f58b`, zero SKIP;
+all three committed corpora byte-identical after fresh regen; ng test
+2,547; ng build clean; full Playwright green zero skips. **Standing
+(loud):** the pre-existing `enclave_step_tier3` red vs a FRESH oracle
+(the enclave step's spine never runs fold-episode — v5 gap, reproduced
+on pre-round main; belongs to the post-rewrite dogfood-fixing run);
+the response-bodies corpus is all `synthetic: true` pending real
+captures; #26/#27/#28 + the tracing-subscriber question +
+`debugMemoryLogs` writer are the dogfood-fixing run's scope. The
+original planning block follows.
+
 ## The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10) — PLANNED 2026-07-23
 
 **The round the 2026-07-23 human rulings dictate** (recorded in

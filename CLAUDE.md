@@ -1102,6 +1102,37 @@ records THERE. Update this summary only when a phase or round completes.
   extraction cadence unpinned by any differential, no console logging
   anywhere (a standing open question). (Dogfood #22, the sibling finding,
   was already FIXED on main `2aa3d01b`.)
+- **The provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on
+  main (2026-07-23) — P4.14 and P4.10 CLOSED; P4.13 OPEN on exactly one
+  item (unit 9, the 💸 human live proof on the Friday copy).** The ruled
+  one-off divergence executed: the `StreamMessage` carrying type
+  end-to-end — **tool-call linkage reaches the wire on all eight
+  providers (dogfood #25 FIXED, closes at the walk)** — with FIVE
+  flattening sites fixed (the order's three + the text-tool loop's
+  continuation + the Carina query loop), the always-on
+  `tool_wire_call_site` byte pin and 29-case `response_parse_equivalence`
+  recorded-body corpus (its first run caught two MORE #24-class
+  production bugs: OpenRouter usage parsed to ZEROS; Google raw's
+  getter-only `functionCalls`), the phase-B restructure (`RequestMessage`
+  deleted, `ProviderKind` the one dispatch point, id-less-tool arms
+  unrepresentable), the ruled failed-cheap-call `llm_logs` error row (a
+  deliberate divergence), the P4.14 non-validating stable merge sort
+  (arm (a) ruled; both injector comparators + the audit-found Post
+  Office `sort_newest_first` — the live turn-killing panic is gone,
+  #26's re-check unblocked panic-side), and the P4.10 packaging
+  close-out (the Docker image builds/serves the real SPA + ships the
+  CLI; dist resolution chain; `docs/developer/running.md`; container
+  walk human-verified). Gate: 369 binaries / 1,538 / 0 with all env
+  vars; the round's 20 named families `--nocapture` zero SKIP over
+  fresh `e646f58b` oracles; three corpora byte-fresh; clippy both
+  feature sets; release build; ng 2,547; full Playwright green zero
+  skips. Standing loud: the PRE-EXISTING `enclave_step_tier3` red vs a
+  fresh oracle (the enclave step never runs fold-episode — the
+  dogfood-fixing run's first Rust item), the all-synthetic
+  response-bodies corpus, #26/#27/#28 + tracing-subscriber +
+  `debugMemoryLogs`. **Next: the post-rewrite dogfood-fixing run, then
+  a fresh dogfood walk (the ruled sequence); P4.13 unit 9 rides that
+  walk.**
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
@@ -1115,9 +1146,17 @@ records THERE. Update this summary only when a phase or round completes.
   ⚠ v4 is mid-4.8/4.9 dev — drift-check before every round. The P4.11
   unification (2026-07-23) regenerated the request-envelope +
   google-wire fixtures at `e646f58b` (34 → 93 + 5 → 10 lines, both-mode)
-  — v4 verified still at `e646f58b`, clean. Versions (after the
-  2026-07-23 P4.11 unification): core 0.0.328, harness 0.0.282, host
-  0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
+  — v4 verified still at `e646f58b`, clean. The provider-I/O-round
+  unification (2026-07-23) re-verified v4 at `e646f58b` clean and
+  regenerated ALL THREE provider corpora byte-identical (request-envelopes
+  93, google-wire 10, response-bodies 29 — the new family, all
+  `synthetic: true` pending real captures). Versions (after the 2026-07-23
+  provider-I/O-round unification): core 0.0.336, harness 0.0.286, host
+  0.0.30, web 0.0.38, cli 0.0.2, quilltap-tauri 0.0.4, SPA 0.5.263.
+  The previous versions line follows for history: (after the P4.11
+  unification) core 0.0.328 (0.0.329 after a parallel dogfood fix),
+  harness 0.0.282, host 0.0.30, web 0.0.37, cli 0.0.2, quilltap-tauri
+  0.0.4, SPA 0.5.263.
   The previous baseline paragraph follows for history:
   **Oracle baseline: UNIFORM `8bf3cb5f` after the episodic round-3
   unification (2026-07-22).** v4 HEAD is `e646f58b` (4 commits past the
