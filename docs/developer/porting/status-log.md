@@ -30742,3 +30742,68 @@ cadence) and needing an embedding-provider thread through `chat_media` →
 engine → host spine, plus an at-cadence courier corpus case to pin it.
 
 Versions: core 0.0.329 → **0.0.330**; everything else untouched.
+## The courier paste-resolver's fold-episode gap — FIXED, pinned by a new at-cadence differential case (2026-07-23)
+
+The sibling of the enclave-step 9c fix (now unified on main as `2edd268a`):
+`courier_transport::run_summary_check` — the paste-resolver's v4
+`triggerContextSummaryCheck` analog — called the bare
+`check_and_generate_summary_if_needed` (`NoopSeams`), so a courier-resolved
+chat crossing the fold cadence folded WITHOUT running `runFoldEpisodePass`.
+v4's route path reaches the real pass through the same
+`checkAndGenerateSummaryIfNeeded` → `generateContextSummary`. Same class of
+gap, third call site (P4.6bj wired the orchestrator; the enclave-step fix
+unified with the P4.13 round; this closes the courier arm — rebased onto
+that round's main with no file overlap).
+
+**The fix.** `run_summary_check` now builds `FoldEpisodePassSeams`
+(episode pass live; the four cross-subsystem arms stay no-ops — the standing
+orchestrator-family deferral) and calls the `_with_seams` variant. The catch
+the chip predicted: `resolve_external_turn` carried no `EmbeddingProvider`,
+so one is threaded through
+`chat_media::message_resolve_external_turn` → the host spine's
+`CourierResolveDriver` (`&*state.embedding`). Zero behavior change below
+cadence (the seams only alter the fold body).
+
+**The differential (the corpus could not pin this — extended).** The
+courier fixture family gains `CHAT_CADENCE` (`c1…04`): 11 USER + 10
+ASSISTANT settled messages + a pending placeholder whose responder
+participant carries the fixture's connection profile, a `chat_settings` row
+with `cheapLLMSettings` (PROVIDER_CHEAPEST / no user-defined / no
+default-cheap / fallbackToLocal false — branch-identical to the route
+path's fixed selection config; "AUTO" matches neither strategy branch),
+`lastRenameCheckInterchange: 10` (title checkpoint quiet at interchange
+11), and a NEW committed EMPTY `courier-images-llmlogs.db` partition
+(schema materialized via a sentinel create+delete through v4's real repo).
+The oracle's new `resolve_cadence` case drives v4's REAL route: the three
+triggers fire (`if (connectionProfile)` true), the gate folds turns 1–5,
+and the case pins the settle + `contextSummary`/anchors/fold cursor + the
+context-summary event + the MEMORY_EXTRACTION enqueue + **three
+`llm_logs` rows over stable columns — the fold call, the fold-episode call
+AND the fold tail's TITLE_GENERATION call, with the title write pinned
+("The Lantern Ledger") (prompt bytes via the oracle-recorded canned keys;
+episode response an explicit `[]`, keeping the gate/memory-write machinery
+— separately proven by the context-summary + memory-pipeline families —
+out of this route family)**. The title canning earned its keep at the
+rebase: on the pre-round base both sides' UNcanned title calls failed
+silently and the case ran green with two rows; the P4.13 round's ruled
+failed-cheap-call error row (`08da2c41`) then surfaced v5's title failure
+as a third GOT row — the canned title turns that arm into a real pin
+(three rows both sides) instead of an invisible no-op. Oracle mechanics worth recording:
+v4's route path is DOUBLY fire-and-forget (`void trigger…` and the check's
+own `generateContextSummaryAsync`), so the oracle wraps
+`checkAndGenerateSummaryIfNeeded` to force `awaitFold: true` (v4's own
+autonomous-room arm — same committed state) and captures every trigger
+promise, draining to quiescence before the dumps; the canned completions
+ride the case payload's `canned` field (the `image_bytes` pseudo-case
+precedent); the four fold arms are jest-mocked to no-ops matching
+`FoldEpisodePassSeams`.
+
+**Proof.** Red reproduced pre-fix (bare-check body: `resolve_cadence
+tables` MISMATCH — the episode `llm_logs` row missing), green post-fix;
+oracle regenerated fresh from `~/source/quilltap-server` at `e646f58b`
+(drift-checked clean, 14 cases). `courier_images_routes_equivalence` green
+by name with zero SKIPs (all 14 case names checked `OK`). The e2e courier
+seed is unaffected by design (it copies ONLY the two pinned chats by id and
+never touches `chat_settings`).
+
+Versions: core 0.0.338, harness 0.0.287, host 0.0.31.

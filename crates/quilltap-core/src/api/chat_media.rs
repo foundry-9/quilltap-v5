@@ -166,13 +166,19 @@ pub fn resolve_outcome_to_response(outcome: ResolveExternalTurnOutcome) -> Respo
 /// v4 `handleResolveExternalTurn`. Wraps
 /// [`resolve_external_turn`](crate::services::courier_transport::resolve_external_turn)
 /// (the settle + the three post-turn triggers, which fire only when a connection
-/// profile resolves) and maps the outcome to v4's envelope. The completion provider
-/// and cheap executor are supplied by the host driver (production) or a mock (the
-/// differential, whose fixture resolves no profile → triggers skipped).
+/// profile resolves) and maps the outcome to v4's envelope. The completion,
+/// embedding and cheap executor are supplied by the host driver (production) or
+/// canned providers (the differential: the no-profile case skips the triggers;
+/// the at-cadence case fires them and pins the summary fold + the fold-episode
+/// pass).
 #[allow(clippy::too_many_arguments)]
-pub async fn message_resolve_external_turn<C: crate::model::completion::CompletionProvider>(
+pub async fn message_resolve_external_turn<
+    C: crate::model::completion::CompletionProvider + Sync,
+    E: crate::model::embedding::EmbeddingProvider + Sync,
+>(
     db: &Db,
     completion: &C,
+    embedding: &E,
     executor: &crate::services::cheap_llm_exec::CheapLlmTaskExecutor,
     user_id: &str,
     chat_id: &str,
@@ -183,6 +189,7 @@ pub async fn message_resolve_external_turn<C: crate::model::completion::Completi
     match crate::services::courier_transport::resolve_external_turn(
         db,
         completion,
+        embedding,
         executor,
         chat_id,
         message_id,

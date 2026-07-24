@@ -39,6 +39,21 @@
  *      chat the acting user doesn't own).
  *   8. An image profile (the imageProfileGenerate arm's subject; provider
  *      OPENAI so v4's createImageProvider probe passes).
+ *   9. CHAT_CADENCE — the AT-CADENCE courier chat (the fold-episode pin): 21
+ *      settled alternating messages (11 USER + 10 ASSISTANT) + a pending
+ *      ASSISTANT placeholder whose responder participant carries
+ *      `connectionProfileId: CONN` — so the resolve settles interchange 11 and
+ *      the three post-turn triggers FIRE (v4 `if (connectionProfile)` is true):
+ *      memory extraction enqueues, danger bails (mode defaults OFF), and the
+ *      summary check's gate folds turns 1–5 (11 − 0 > FOLD_TRIGGER_DELTA 10),
+ *      running the summary fold AND `runFoldEpisodePass`. A `chat_settings`
+ *      row supplies `cheapLLMSettings` (PROVIDER_CHEAPEST, no user-defined /
+ *      default-cheap profile, fallbackToLocal false — branch-identical to the
+ *      v5 route path's fixed selection config); `lastRenameCheckInterchange:
+ *      10` keeps the TITLE_UPDATE checkpoint quiet at interchange 11. The
+ *      empty `courier-images-llmlogs.db` partition (schema materialized, zero
+ *      rows) is emitted alongside so the Rust side can open an llm-logs
+ *      partition and diff the fold + episode SUMMARIZATION rows.
  *
  * The minted char-vault ids / project official-store id / the real ingested
  * image fileId + its STORED bytes are echoed to a JSON sidecar
@@ -50,6 +65,7 @@
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CI_MAIN=$W/crates/quilltap-web/tests/fixtures/courier-images-main.db \
  *   QT_FIXTURE_CI_MOUNT=$W/crates/quilltap-web/tests/fixtures/courier-images-mount.db \
+ *   QT_FIXTURE_CI_LLMLOGS=$W/crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db \
  *     $N/node --import tsx $W/harness/oracle/fixtures/build-courier-images-web-fixture.ts
  */
 
@@ -101,6 +117,13 @@ const CF_OTHER = 'f1000000-0000-4000-8000-000000000004'; // linked to CHAT_OTHER
 
 const IP = 'a6000000-0000-4000-8000-000000000001'; // image profile (generate arm)
 
+// CHAT_CADENCE — the at-cadence courier chat (the fold-episode pin).
+const CHAT_CADENCE = 'c1000000-0000-4000-8000-000000000004';
+const PC_LORA = 'e4000000-0000-4000-8000-000000000001';
+const PC_USER = 'e4000000-0000-4000-8000-000000000002';
+const MSG_CAD_PENDING = 'd4000000-0000-4000-8000-000000000022';
+const CHAT_SETTINGS_ID = 'a9000000-0000-4000-8000-000000000001';
+
 // A tiny valid PNG (the ingest input for the save-image subject image).
 const PNG_BYTES = [
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -117,10 +140,13 @@ async function main(): Promise<void> {
 
   const mainOut = process.env.QT_FIXTURE_CI_MAIN;
   const mountOut = process.env.QT_FIXTURE_CI_MOUNT;
-  if (!mainOut || !mountOut) {
-    throw new Error('QT_FIXTURE_CI_MAIN and QT_FIXTURE_CI_MOUNT must point at the .db files');
+  const llmLogsOut = process.env.QT_FIXTURE_CI_LLMLOGS;
+  if (!mainOut || !mountOut || !llmLogsOut) {
+    throw new Error(
+      'QT_FIXTURE_CI_MAIN, QT_FIXTURE_CI_MOUNT and QT_FIXTURE_CI_LLMLOGS must point at the .db files',
+    );
   }
-  for (const out of [mainOut, mountOut]) {
+  for (const out of [mainOut, mountOut, llmLogsOut]) {
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
       const p = out + suffix;
       if (existsSync(p)) rmSync(p);
@@ -134,6 +160,7 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = mainOut;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountOut;
+  process.env.SQLITE_LLM_LOGS_PATH = llmLogsOut;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -523,6 +550,110 @@ async function main(): Promise<void> {
     } as never,
     { id: IP, createdAt: TS, updatedAt: TS } as never,
   );
+
+  // 9. CHAT_CADENCE — the at-cadence courier chat (the fold-episode pin). The
+  //    responder participant carries CONN, so the resolve fires the three
+  //    post-turn triggers; 11 USER + 10 ASSISTANT settled messages put the
+  //    post-resolve interchange at 11 (> FOLD_TRIGGER_DELTA 10 → 'fold').
+  await repos.chats.create(
+    {
+      userId: spec.userId,
+      title: 'Courier Cadence',
+      chatType: 'salon',
+      contextSummary: null,
+      isPaused: true,
+      participants: [
+        mkParticipant(PC_LORA, LORA, 'llm', CONN),
+        mkParticipant(PC_USER, RIYA, 'user', null),
+      ],
+      tags: [],
+    } as never,
+    { id: CHAT_CADENCE, createdAt: TS, updatedAt: TS } as never,
+  );
+  const cadenceMessages: unknown[] = [];
+  for (let k = 1; k <= 21; k++) {
+    const isUser = k % 2 === 1;
+    const turn = isUser ? (k + 1) / 2 : k / 2;
+    cadenceMessages.push({
+      id: `d4000000-0000-4000-8000-0000000000${String(k).padStart(2, '0')}`,
+      type: 'message',
+      role: isUser ? 'USER' : 'ASSISTANT',
+      content: isUser
+        ? `Turn ${turn}: Riya asks what the harbor lanterns are signalling tonight.`
+        : `Turn ${turn}: Lora reads the lantern code aloud and notes it in her ledger.`,
+      participantId: isUser ? PC_USER : PC_LORA,
+      createdAt: new Date(Date.UTC(2026, 2, 20, 0, k * 10, 0)).toISOString(),
+      attachments: [],
+      ...(isUser ? {} : { provider: 'OPENAI_COMPATIBLE', modelName: 'mock-model' }),
+    });
+  }
+  cadenceMessages.push({
+    id: MSG_CAD_PENDING,
+    type: 'message',
+    role: 'ASSISTANT',
+    content: '',
+    participantId: PC_LORA,
+    createdAt: new Date(Date.UTC(2026, 2, 20, 3, 40, 0)).toISOString(),
+    attachments: [],
+    provider: 'OPENAI_COMPATIBLE',
+    modelName: 'mock-model',
+    pendingExternalPrompt: 'Copy this to your LLM, then paste Lora’s reply.',
+    pendingExternalPromptFull: 'Full context bundle for Lora’s eleventh turn.',
+  });
+  await repos.chats.addMessages(CHAT_CADENCE, cadenceMessages as never);
+  // addMessages bumps chat metadata; restore the seed flags + park the title
+  // checkpoint cursor at 10 so interchange 11 fires ONLY the summary gate.
+  await repos.chats.update(CHAT_CADENCE, {
+    isPaused: true,
+    lastRenameCheckInterchange: 10,
+    updatedAt: TS,
+  } as never);
+
+  // The user's chat_settings row: cheapLLMSettings gates the memory-extraction
+  // + summary-check triggers ON. PROVIDER_CHEAPEST with no user-defined /
+  // default-cheap profile and fallbackToLocal false is branch-identical to the
+  // fixed selection config v5's route path passes ("AUTO" matches neither the
+  // USER_DEFINED nor the LOCAL_FIRST branch). dangerousContentSettings is left
+  // absent — both sides default mode OFF, so the danger trigger bails.
+  await repos.chatSettings.create(
+    {
+      userId: spec.userId,
+      tagStyles: {},
+      cheapLLMSettings: {
+        strategy: 'PROVIDER_CHEAPEST',
+        fallbackToLocal: false,
+        embeddingProvider: 'OPENAI',
+      },
+    } as never,
+    { id: CHAT_SETTINGS_ID, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // Materialize the EMPTY llm_logs partition schema (create a sentinel row via
+  // v4's real repo — which lazily runs the DDL — then delete it), so the Rust
+  // side can open the committed llm-logs partition and diff the at-cadence
+  // resolve's fold + episode SUMMARIZATION rows against a zero-row baseline.
+  const SENTINEL_LL = 'ff000000-0000-4000-8000-0000000000ff';
+  const sentinelCreated = await repos.llmLogs.create(
+    {
+      userId: spec.userId,
+      type: 'CHAT_MESSAGE',
+      provider: 'OPENAI_COMPATIBLE',
+      modelName: 'mock-model',
+      request: { messages: [], messageCount: 0, temperature: null, maxTokens: null },
+      response: { content: '', contentLength: 0, error: null, finishReason: 'stop' },
+    } as never,
+    { id: SENTINEL_LL, createdAt: TS } as never,
+  );
+  if (!sentinelCreated) throw new Error('llm_logs sentinel row failed');
+  const { getRawLLMLogsDatabase, closeLLMLogsSQLiteClient } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const llmLogsDb = getRawLLMLogsDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  } | null;
+  if (!llmLogsDb) throw new Error('llm-logs raw handle unavailable');
+  llmLogsDb.prepare('DELETE FROM llm_logs WHERE id = ?').run(SENTINEL_LL);
+  closeLLMLogsSQLiteClient();
 
   // Materialize the empty background-jobs table the add-tool-result / chat-files
   // paths never sweep but the harness's fresh copies must read identically.

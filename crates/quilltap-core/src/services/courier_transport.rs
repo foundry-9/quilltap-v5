@@ -26,6 +26,7 @@ use crate::courier::render_markdown::{
 use crate::db::runtime::Db;
 use crate::db::{chats, chats_messages_read, chats_read, connection_profiles, DbError};
 use crate::model::completion::CompletionProvider;
+use crate::model::embedding::EmbeddingProvider;
 use crate::services::chat_events::{ChatEvent, DonePayload, EventSink, PendingExternalTurnPayload};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::message_context::FormattedMsg;
@@ -533,9 +534,10 @@ pub enum ResolveExternalTurnOutcome {
 /// triggers (memory extraction / danger classification / summary check). Awaited
 /// per the watermark precedent (v4 fire-and-forgets; same DB effect once settled).
 #[allow(clippy::too_many_arguments)]
-pub async fn resolve_external_turn<C: CompletionProvider>(
+pub async fn resolve_external_turn<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync>(
     db: &Db,
     completion: &C,
+    embedding: &E,
     executor: &CheapLlmTaskExecutor,
     chat_id: &str,
     message_id: &str,
@@ -692,7 +694,10 @@ pub async fn resolve_external_turn<C: CompletionProvider>(
         // Context-summary check — gated on cheapLLMSettings. Below cadence in the
         // corpus → a no-op (no fold, no title enqueue).
         if cheap_llm_present {
-            run_summary_check(db, completion, executor, chat_id, user_id, &profile).await?;
+            run_summary_check(
+                db, completion, embedding, executor, chat_id, user_id, &profile,
+            )
+            .await?;
         }
     }
 
@@ -754,11 +759,20 @@ fn resolve_trigger_connection_profile(
 
 /// The paste-resolver's context-summary check (v4 `triggerContextSummaryCheck` →
 /// `checkAndGenerateSummaryIfNeeded`). Constructs a cheap profile/settings from the
-/// resolved connection profile (the corpus keeps the chat below the summary cadence,
-/// so this is a no-op there).
-async fn run_summary_check<C: CompletionProvider>(
+/// resolved connection profile.
+///
+/// The fold-time episode pass runs LIVE here via
+/// [`crate::services::context_summary::FoldEpisodePassSeams`] — v4's
+/// `checkAndGenerateSummaryIfNeeded` → `generateContextSummary` calls the real
+/// `runFoldEpisodePass` on this path too (the courier differential's at-cadence
+/// resolve case pins the fold's + the episode pass's cheap-LLM calls); the
+/// cross-subsystem arms stay no-ops per the orchestrator-oracle mock set the
+/// courier oracle reuses (the same tracked deferral as the orchestrator's
+/// in-loop check).
+async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync>(
     db: &Db,
     completion: &C,
+    embedding: &E,
     executor: &CheapLlmTaskExecutor,
     chat_id: &str,
     user_id: &str,
@@ -796,7 +810,15 @@ async fn run_summary_check<C: CompletionProvider>(
         default_cheap_profile_id: None,
         fallback_to_local: false,
     };
-    crate::services::context_summary::check_and_generate_summary_if_needed(
+    // The seams carry the same executor as the fold itself (the route path has
+    // no autonomous-run scope, so both stay UNtagged).
+    let seams = crate::services::context_summary::FoldEpisodePassSeams {
+        db,
+        embedding,
+        completion,
+        executor,
+    };
+    crate::services::context_summary::check_and_generate_summary_if_needed_with_seams(
         db,
         completion,
         executor,
@@ -808,6 +830,7 @@ async fn run_summary_check<C: CompletionProvider>(
         None,
         None,
         true,
+        &seams,
     )
     .await?;
     Ok(())

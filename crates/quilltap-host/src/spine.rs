@@ -1751,6 +1751,7 @@ where
                         quilltap_core::api::chat_media::message_resolve_external_turn(
                             &state.db,
                             &*state.completion,
+                            &*state.embedding,
                             &executor,
                             SINGLE_USER_ID,
                             &chat_id,
