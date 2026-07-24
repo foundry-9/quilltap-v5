@@ -17,6 +17,7 @@ import { WardrobeControlDialog } from '../wardrobe/wardrobe-control-dialog';
 import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
 import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
 import { WorkspaceService } from '../workspace/workspace.service';
+import { AutoLockProvider } from '../screens/settings/system/auto-lock-provider';
 import { UserMenu } from './user-menu';
 
 interface NavItem {
@@ -98,6 +99,7 @@ const NAV_ITEMS: NavItem[] = [
     WardrobeControlDialog,
     BrahmaEntry,
     DocumentsRailEntry,
+    AutoLockProvider,
   ],
   template: `
     <div class="qt-app-layout">
@@ -185,6 +187,11 @@ const NAV_ITEMS: NavItem[] = [
       <!-- The global wardrobe dialog, mounted once at the layout level
            (v4 app-layout.tsx:126-138). Renders nothing while closed. -->
       <qt-wardrobe-control-dialog />
+
+      <!-- The app-wide auto-lock idle provider (v4 app/layout.tsx mounts
+           AutoLockProvider). Headless — renders only its warning banner. It
+           runs only in the operational shell, matching v4's setup/unlock skip. -->
+      <qt-auto-lock-provider />
     </div>
   `,
 })

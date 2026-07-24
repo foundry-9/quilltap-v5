@@ -74,6 +74,16 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 units 2–4 (SPA, the Data & System tab's no-server-dependency
+cards): the Encryption Passphrase card (over the existing changePassphrase
+verb; empty new passphrase removes protection), the Auto-Lock card plus
+the app-wide auto-lock idle provider (fetch config from unlockState, track
+throttled DOM activity, check idle every 60 s, warn one minute out via an
+inline banner, then lock and redirect to /unlock — completing the unlock
+screen's existing return-aware loop, which now consumes its key one-shot),
+and the LLM Logging card (enable/verbose/retention on
+chatSettings.llmLoggingSettings). v4's two window CustomEvents become a
+signals service. The provider mounts in the shell. Specs green (12).
 
 Planned the pre-compute + Data & System round and wrote its three work
 orders (P4.19 proactive pre-compute distill port; P4.9G1 Data & System

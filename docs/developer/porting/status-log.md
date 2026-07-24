@@ -31707,3 +31707,62 @@ banked `eprintln!` sweep is already satisfied (zero in `orchestrator.rs`,
 `courier_transport.rs`, `db/chat_settings.rs`, `build_context.rs`,
 `memory_recap/distill.rs`, both `recall_replay.rs`) — the banked item dies here.
 Core → 0.0.345.
+## Lane P4.9G2 — the Data & System SPA half (in progress, 2026-07-24)
+
+SPA-only lane (zero `crates/**` diffs); bumps SPA only. v4 drift-checked
+clean at `e646f58b` at lane start. Sibling **P4.9G1** delivers the sixteen
+§1 verbs this lane consumes; beats needing them are authored
+ACTIVATE-AT-UNIFY. Four fresh v4 surveys (backup/restore, tasks-queue,
+delete/llm, import/export) drive the ports. New files live under
+`apps/web/src/app/screens/settings/system/`.
+
+### Unit 2 — Encryption Passphrase card + the settings-changed signals service
+
+`system-settings-signals.service.ts` replaces v4's two window CustomEvents
+(`quilltap-passphrase-changed`, `quilltap-autolock-settings-changed`,
+`ChangePassphraseCard.tsx:53` / `AutoLockSettingsCard.tsx:92`) with a root
+singleton carrying two bump-counter signals — same fan-out, no `window`
+bus. `change-passphrase-card.ts` ports v4
+`components/settings/ChangePassphraseCard.tsx` over the EXISTING
+`changePassphrase` dispatch verb (no G1 work): three password fields, the
+mismatch gate (`:14`), the removal sentinel (both new+confirm empty →
+`newPassphrase: ''`, `:15`/`:95`), the success banner ("required on the
+next restart", `:125`), and the passphrase-changed signal on success. Form
+submit uses the native `submit` event + `preventDefault` (no FormsModule).
+Spec: mismatch gate, dispatch round-trip + reset + notify, empty-new
+removal path, error-envelope surfacing.
+
+### Unit 3 — Auto-Lock card + the app-wide auto-lock provider
+
+`auto-lock-settings-card.ts` ports v4 `AutoLockSettingsCard.tsx`: extends
+the shared `ChatSettingsCard`, reads `hasUserPassphrase` from a card-local
+`unlockState` query and the `autoLockSettings` bag from chat settings,
+gates the whole card on a passphrase existing (`:126-136`), and saves
+`{enabled, idleMinutes}` (default `{false, 15}`) with the idle-minutes
+input carrying a local draft that only round-trips on blur/Enter when
+`>= 1` (`:105-116`). On save it flashes "Settings saved" and nudges the
+provider; a passphrase-changed signal invalidates the unlock-state query.
+`auto-lock-provider.ts` is the enforcement half v5 has never had — a
+headless component (mounted once in the shell, which renders only in the
+operational state, matching v4's setup/unlock skip) reproducing v4
+`auto-lock-provider.tsx` cadence exactly: config from `unlockState`,
+throttled DOM activity (30 s), a 60 s idle check, a one-minute warning, and
+on timeout the `lock` verb + a hard redirect to `/unlock`. Pre-ruled
+divergences: config via the dispatch verb (not a raw fetch), and the
+warning as an inline `role="status"` banner (v5 has no toast bus, `p4.9m`).
+The unlock screen (`screens/unlock/unlock.ts`) now consumes
+`AUTOLOCK_RETURN_KEY` one-shot so the auto-lock copy shows for that lock
+only. Spec: the passphrase gate, the toggle + hidden-minutes-while-off, the
+save+notify, the minutes-draft-on-blur.
+
+### Unit 4 — LLM Logging card
+
+`llm-logging-settings-card.ts` ports v4
+`components/settings/chat-settings/LLMLoggingSettings.tsx`: extends
+`ChatSettingsCard` over `chatSettings.llmLoggingSettings` (already
+round-trips, `db/chat_settings.rs:242`). Enable / verbose / retention-days
+(default `{true, false, 30}`), verbose+retention disabled while logging is
+off, retention coerced `parseInt||0` and clamped `0..365`, the privacy
+note verbatim. v4's per-key `handleLLMLoggingChange` becomes a whole-bag
+merge through the shared card's `save`. Spec: defaults, persisted load,
+whole-bag merge PUT, empty-retention→0.

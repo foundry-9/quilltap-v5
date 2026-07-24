@@ -114,7 +114,14 @@ function readAutoLockReturn(): boolean {
     return false;
   }
   try {
-    return sessionStorage.getItem(AUTOLOCK_RETURN_KEY) !== null;
+    const present = sessionStorage.getItem(AUTOLOCK_RETURN_KEY) !== null;
+    // One-shot: consume the key so the auto-lock copy shows for THIS lock only.
+    // The app-wide `AutoLockProvider` re-sets it on the next idle timeout; a
+    // manual lock (with no key set) then correctly shows the ordinary copy.
+    if (present) {
+      sessionStorage.removeItem(AUTOLOCK_RETURN_KEY);
+    }
+    return present;
   } catch {
     return false;
   }
