@@ -2,7 +2,6 @@
 
 ## Recent Changes
 
-<<<<<<< HEAD
 P4.13 units 7-8 + 10 (records): verified the Brahma Console's loop-bug
 compensation is verbatim v4 behavior (stays); recorded the reasoning/
 thought-signature riders as pinned by the unit-3 call-site test; updated
@@ -136,7 +135,6 @@ stable like TimSort and produces exactly what `slice::sort_by` produces on any
 self-consistent comparator (property-tested across the length sweep, ties
 included). No `unsafe`: it merges over indices and applies the permutation with
 swaps. No call sites yet.
-=======
 Added docs/developer/running.md: how to actually run the three modes
 (desktop, server, CLI), what each is for, where the data directory lands per
 platform, the first-run setup/unlock flow and what the pepper is, the
@@ -175,7 +173,6 @@ build` failed with three "couldn't read" errors. Added `COPY assets` and
 narrowed `.dockerignore` from a blanket `apps` exclusion to just the
 regenerable parts (node_modules, dist, .angular, e2e), so the SPA sources
 reach the build context.
->>>>>>> ba0cee27 (fix(docker): copy the seed assets so the image can compile)
 
 Recorded the human ruling on the P4.14 sort fix: the non-validating
 stable merge sort (arm a), per the order's recommendation. All three
