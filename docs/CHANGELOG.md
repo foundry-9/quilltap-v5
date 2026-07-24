@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Dispositioned dogfood finding #28 (retrospective recall) as NOT-A-BUG for
+the classifier: the retrospective distill is a faithful port of v4, and the
+finding's premise was wrong. Benching v4's real classifier (deepseek-v4-flash,
+20 calls on the Friday copy) showed the tight-vs-diluted conversation window
+barely changes the verdict; the real drivers of the misses are the cheap
+model in use (gpt-5-nano is far weaker than deepseek-v4-flash) and temp-0.3
+sampling noise. v5's own classifier already returns retrospective recall on
+real backward-looking prose. Two separate threads were surfaced for later,
+neither a classifier bug: the unported proactive pre-compute path (a
+v4-fidelity item) and a downstream whisper-suppression path (the finding's
+symptom persists on turns where the classifier does fire). Diagnosis only —
+no code changed.
+
 P4.18 (unit 6, docs): the status-log lane record, and the dogfood-findings
 standing notes updated — the "should the server have a tracing subscriber"
 open question is RULED (arm (a), landed) and the "reading a running

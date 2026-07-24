@@ -9,6 +9,136 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.16 finding-#28 retrospective-distill bench (branch `claude/p4-16-retrospective-distill-bench-31cc26`, 2026-07-24)
+
+**Disposition: finding #28's CLASSIFIER question is closed NOT-A-BUG — the
+retrospective distill is faithfully ported v4 behavior and the finding's
+premise ("the classifier never returns true") is empirically false.** This
+was a diagnosis-first lane (no source changed; a pure NOT-A-BUG close). Two
+separate, real threads were surfaced for the human, neither a classifier
+defect: **(a)** the missing proactive pre-compute path (a v4-fidelity port,
+already a recorded spine deferral — the bench says it would NOT reliably fix
+the symptom, so it is flagged, NOT ordered); **(b)** the residual symptom is
+DOWNSTREAM of the classifier (the two silent `return None` gates / the
+multi-character chain), which reopens the finding's "narrowed to the
+classifier" as incomplete.
+
+Drift-check at lane start: v4 clean at `e646f58b` (zero commits past the
+baseline). 💸 spend: 20 real `deepseek-v4-flash` cheap calls on the Friday
+COPY (`~/qt-dogfood-friday/Friday`), well under the order's ~20 cap. The
+live instance was never touched; the pepper was decrypted in-process (the
+internal no-passphrase sentinel) and never printed, logged, or written.
+
+### The evidence (three legs)
+
+**Leg 1 — v5's own classifier already fires on real backward-looking
+prose.** The Friday copy's `llm_logs` (queried via `quilltap db --llm-logs`)
+carry **152** search-side distills (2026-07-21→23; the episodic
+`retrospective` field is new at v4 `8bf3cb5f`), of which **20 read
+`retrospective:true`** — 17 from v4 production (mostly 07-21, pre the 07-23
+17:13 rsync) and **3 from the v5 dogfood session itself** (post-rsync
+20:44–22:12: OpenAI 20:49:34, DeepSeek 21:44:17 & 21:50:21). The 3
+dogfood-session `true` rows are on the exact turns the finding sampled
+("…coherence monitor that Amy was talking about, again. I've forgotten." →
+`true`/`past`; "…find your own conversations about this?" → `true`). So the
+finding's "zero rows carry `retrospective:true`" was a sampling artifact —
+the classifier fires *inconsistently*, not never.
+
+**Leg 2 — the tight-vs-wide window is a weak-to-null discriminator (v4's
+REAL classifier benched).** Two clearly backward-looking turns; each window
+run 5× at temp 0.3 through v4's real `extractMemorySearchKeywords`
+(deepseek-v4-flash, the chat's configured cheap model). TIGHT = the question
+~alone (the extreme proactive case v4's `messagesSinceLastSpoke` approaches);
+WIDE = the exact diluted fallback window v5 logged (`slice(-12)`+user msg):
+
+| turn | TIGHT `retrospective:true` | WIDE `true` | note |
+|---|---|---|---|
+| Q1 "coherence monitor… again, I've forgotten" | **2/5** | **1/5** | both weak/unstable |
+| Q2 "…find your own conversations about this?" | **4/5** | **5/5** | window irrelevant; wide higher |
+
+By the order's pre-committed rule (port-divergence needs ≥½ tight AND ≤¼
+wide) NEITHER turn qualifies → both NOT-A-BUG-leaning. Q2 lands in the "true
+on BOTH" arm (window not the discriminator).
+
+**Leg 3 — the misses are driven by the MODEL and temp-0.3 sampling noise,
+not a v5 code divergence.** (a) v4/DeepSeek returns **5/5 `true` on the exact
+Q2 WIDE window** where the walk's v5/**gpt-5-nano** logged `false` — the
+model is the discriminator (gpt-5-nano is markedly weaker at this
+classification; the finding's Q2 turns happened to route to OpenAI). (b) The
+verdict flips run-to-run on byte-identical input: Q1 tight 2/5; the same Q2
+question logged `true`@20:49:34 then `false`@20:54:25 in production. The
+prompt bytes + parse are tier-1-proven byte-identical between v4 and v5
+(`distill_search_extraction_equivalence`, corpus
+`memory-search-extraction.json`), so there is no classifier port bug — v4's
+classifier is exactly as noisy/model-dependent/weakly-window-sensitive as
+v5's.
+
+Representative raw (bench, Q1 TIGHT, DeepSeek, verbatim from the copy's
+`llm_logs`): rep0 `{"keywords":["coherence monitor","explanation","forgotten
+details"],"temporal":"past",…,"retrospective":true,…}`; rep1 same window →
+`"temporal":"present",…"retrospective":false`. The full per-rep transcript
+is `p416-bench-out.json` (scratch; the parsed `MemorySearchExtraction` per
+rep — the exact object the recall pipeline consumes).
+
+### Why the proactive-path port is NOT ordered as the #28 fix
+
+The one structural divergence is real and previously recorded: v5 has ONLY
+the fallback distill (`build_context.rs:2043-2077`); v4 additionally runs a
+proactive pre-compute distill (`lib/services/chat-message/pre-compute.service.ts`,
+`proactiveRecallTask` `:172`). Survey correction to the order's framing: the
+proactive task is **per-character** (keys on `characterParticipant.id`,
+returns `undefined` and falls through to the fallback when the character has
+never spoken), feeds `messagesSinceLastSpoke` (messages since THAT character
+last spoke + the just-saved user msg), AND does the semantic pre-search
+(`preSearchedMemories`) + suppresses the per-character fallback. So porting it
+is a **full `pre-compute.service.ts` service port** crossing `orchestrator.rs`
++ `BuildContextInput` (P4.15's files this round). The bench shows its window
+is only marginally tighter than `slice(-12)` (a weak discriminator), so it
+would improve v4-FIDELITY and within-turn CONSISTENCY but would NOT reliably
+raise the bite rate — model choice + sampling noise dominate. It stays the
+existing spine deferral; **recommended for the human to schedule as a fidelity
+port, honestly not a symptom fix.** No `p4.19` order was written (the
+port-divergence arm did not fire).
+
+### The reopened downstream thread (beyond this lane's classifier mandate)
+
+The classifier fired `true` on turns where the finding reports NO retrospective
+whisper surfaced (e.g. Amy 21:44:17). That points downstream of the classifier
+— the two silent `return None` gates (`build_context.rs:1496` spam-guard
+signature, ring `commonplaceRecallHistory`, `RETRO_SIGNATURE_TURNS = 3`;
+`:1577` empty result) and/or the multi-character chain surfacing only one
+character's result. Plausibly v4-faithful (the spam-guard would suppress
+repeated recall asks, which the walk did). The finding's "narrowed to the
+classifier" is thus incomplete; the downstream look is a future dogfood item,
+not this lane's scope.
+
+### Deferred loud (this lane)
+
+- The proactive pre-compute path port (recorded spine deferral; recommended,
+  not ordered — full `pre-compute.service.ts` port, P4.15's files).
+- The downstream retrospective-whisper suppression investigation (gates /
+  chain — a future dogfood pass).
+- Any prompt strengthening is v4-first product work (v4's DeepSeek gives only
+  2/5 on Q1 tight — the prompt is weak on soft recall phrasing in v4 too).
+- **The seam comments at `build_context.rs:2141` and `orchestrator.rs:271,870`
+  were left UNTOUCHED on purpose** — annotating them would convert a
+  source-free NOT-A-BUG close into a full-workspace gate + version bump for a
+  comment, and `orchestrator.rs` is P4.15's this round. The disposition lives
+  in this record + the findings table (where the unifier/human read).
+
+### Bench recipe (reproducible; throwaway, no committed fixture)
+
+The bench (`_bench_p416.mts`, a throwaway in the v4 checkout, REMOVED at lane
+end so v4 stays clean for drift checks) decrypted the pepper in-process via
+`decryptPepperWithParams(<copy>/data/quilltap.dbkey, '__quilltap_no_passphrase__')`,
+set `ENCRYPTION_MASTER_PEPPER` + `QUILLTAP_DATA_DIR=~/qt-dogfood-friday/Friday`,
+resolved each chat's real cheap selection exactly as `recall-replay.ts:47-73`
+(`getCheapLLMProvider(anchorProfile, chatSettings.cheapLLMSettings,
+availableProfiles)`), and called v4's real `extractMemorySearchKeywords` N×
+per window. Windows were reconstructed from the logged distill requests +
+`chat_messages`. Run: `cd ~/source/quilltap-server && ~/.nvm/versions/node/v24.13.1/bin/node --import tsx _bench_p416.mts <bench-input.json> 5 <out.json>`. Cleanup: v4 bench file removed, the 3 bench-startup physical
+backups (~1.8 GB) removed from the copy's `data/backups/`, scratch discarded.
+
 ## Round record — the provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10): UNIFIED on main (2026-07-23)
 
 **All three lanes landed on `unify/provider-io-round` and fast-forwarded
