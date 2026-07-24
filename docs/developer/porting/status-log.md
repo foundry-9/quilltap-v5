@@ -30807,3 +30807,17 @@ seed is unaffected by design (it copies ONLY the two pinned chats by id and
 never touches `chat_settings`).
 
 Versions: core 0.0.338, harness 0.0.287, host 0.0.31.
+
+**UNIFIED on main 2026-07-24** (single lane, based on the round tip
+`4f4adf07` — a fast-forward; no conflicts, no wires owed). Unification
+gate: v4 re-verified clean at `e646f58b`; the courier oracle regenerated
+fresh (14 cases) and `courier_images_routes_equivalence` green by name
+zero SKIP (incl. `resolve_cadence` + tables); fmt / clippy both feature
+sets / release build clean; `cargo test --workspace` 369 binaries /
+1,538 / 0; ng test 2,547; ng build clean; full Playwright green zero
+skips against the fresh dist + rebuilt debug bins. With this, all three
+bare-summary-check call sites (orchestrator P4.6bj, enclave step, courier
+resolver) run the fold-episode pass — the class is closed; the standing
+rule ("any NEW summary-check call site must use `_with_seams`") lives in
+the `courier-fold-episode-fix` memory note and the `why`-comment at the
+call site.

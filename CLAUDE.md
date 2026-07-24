@@ -1130,12 +1130,20 @@ records THERE. Update this summary only when a phase or round completes.
   enclave step never ran fold-episode) was FIXED on a parallel branch
   and folded in at this same unification (`enclave/step.rs` →
   `FoldEpisodePassSeams`; differential green over a fresh TZ=UTC
-  oracle; core → 0.0.337). Standing loud: the all-synthetic
-  response-bodies corpus, the courier paste-resolver's twin
-  bare-NoopSeams fold gap (unpinned), #26/#27/#28 +
-  tracing-subscriber + `debugMemoryLogs`. **Next: the post-rewrite
-  dogfood-fixing run, then a fresh dogfood walk (the ruled sequence);
-  P4.13 unit 9 rides that walk.**
+  oracle; core → 0.0.337). The courier paste-resolver's twin
+  bare-NoopSeams fold gap was FIXED and unified right after the round
+  (2026-07-24, single follow-up lane): `courier_transport`'s
+  `run_summary_check` runs `FoldEpisodePassSeams`, the embedding
+  provider threaded through `resolve_external_turn` → the spine's
+  `CourierResolveDriver`, and the courier differential grew the
+  at-cadence `resolve_cadence` case (14 cases, fresh `e646f58b`
+  oracle; the extended fixture family committed incl. a new empty
+  llm-logs partition) — all three bare-summary-check call sites are
+  now closed. Versions after it: core 0.0.338, harness 0.0.287, host
+  0.0.31. Standing loud: the all-synthetic response-bodies corpus,
+  #26/#27/#28 + tracing-subscriber + `debugMemoryLogs`. **Next: the
+  post-rewrite dogfood-fixing run, then a fresh dogfood walk (the
+  ruled sequence); P4.13 unit 9 rides that walk.**
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

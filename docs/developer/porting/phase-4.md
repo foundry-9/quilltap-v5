@@ -2492,8 +2492,13 @@ parallel branch and folded in at this same unification
 `FoldEpisodePassSeams`; differential green over a fresh TZ=UTC
 `e646f58b` oracle; core → 0.0.337). **Standing (loud):** the
 response-bodies corpus is all `synthetic: true` pending real captures;
-the courier paste-resolver carries the enclave step's twin
-bare-NoopSeams fold gap (unpinned); #26/#27/#28 + the
+~~the courier paste-resolver carries the enclave step's twin
+bare-NoopSeams fold gap (unpinned)~~ **FIXED + unified 2026-07-24**
+(the courier fold-episode follow-up lane: `FoldEpisodePassSeams` in
+`courier_transport::run_summary_check`, embedding threaded through the
+spine's `CourierResolveDriver`, the differential's new at-cadence
+`resolve_cadence` case over the extended committed fixture family —
+core 0.0.338, harness 0.0.287, host 0.0.31); #26/#27/#28 + the
 tracing-subscriber question + `debugMemoryLogs` writer are the
 dogfood-fixing run's scope. The original planning block follows.
 

@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+The courier paste-resolver now runs the fold-episode pass when a resolved
+chat crosses the summary cadence — the third and last bare-NoopSeams
+summary-check call site (after the Salon orchestrator and the enclave
+step). The embedding provider is threaded through resolve_external_turn
+into the host spine's CourierResolveDriver. The courier differential grew
+an at-cadence resolve case pinning the fold settle, both SUMMARIZATION
+llm_logs rows, the MEMORY_EXTRACTION enqueue, and the title write, over an
+extended committed fixture family (including a new empty llm-logs
+partition); red reproduced pre-fix, green post-fix over a fresh e646f58b
+oracle (14 cases). Unification gate: 369 test binaries / 1,538 / 0; the
+courier differential by name zero SKIP; clippy both feature sets; release
+build; ng test 2,547; full Playwright green. Versions: core 0.0.338,
+harness 0.0.287, host 0.0.31.
+
 Unified the provider-I/O rewrite round (P4.13 ∥ P4.14 ∥ P4.10) on main.
 Provider-native tool use works again on all eight providers (the tool-call
 linkage reaches the wire — dogfood #25, plus two more production parse bugs
