@@ -74,6 +74,15 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 7 (SPA): the Backup & Restore card + both dialogs. Backup is a
+single step (systemBackupCreate → anchor-stream the single-use zip via
+apiUrl). Restore is a 4-step wizard (pick / upload+preview / mode /
+progress) — the upload is a raw octet-stream over XHR so "Uploading N%"
+shows, preview + execute ride systemRestorePreview/Execute (UI import →
+wire new-account), and a completed replace-mode restore reloads the app.
+A small download-utils (url + blob anchor download). Over G1's verbs + the
+upload leg — the deep wizard flow is ACTIVATE-AT-UNIFY; specs green (4).
+
 P4.9G2 unit 6 (SPA): the Tasks Queue card family — summary + detailed
 stats, per-job rows with pause/resume/view/delete, a processor start/stop
 control, a 5 s auto-refresh poll (off by default), the job-detail modal,

@@ -31830,3 +31830,24 @@ concurrency SET field is `maxConcurrentJobs` (v4's route body key is
 behaviour + e2e beat are ACTIVATE-AT-UNIFY over G1's verbs. Spec: stats +
 row render, start-control dispatch, concurrency-commit dispatch, view-opens-
 modal, empty state.
+
+### Unit 7 — Backup & Restore card + both dialogs (ACTIVATE-AT-UNIFY)
+
+`download-utils.ts` ports v4 `lib/download-utils.ts` (browser arm):
+`triggerUrlDownload` (anchor to an `apiUrl()`-resolved path — the backup
+zip) + `triggerBlobDownload` (the `.qtap` export, unit 8). `backup-dialog.ts`
+ports v4 `backup-dialog.tsx`: one step — `systemBackupCreate` → `{backupId,
+filename?}` → stream the single-use zip via `GET /system/backup/{id}` (a
+web-edge leg); the create response has no `filename` so the client fallback
+(`quilltap-backup-<ISO :.→->.zip`) always runs; v4's success toast dropped
+(no bus). `restore-dialog.ts` ports v4 `RestoreDialog.tsx` +
+`useRestoreData.ts`: the 4-step wizard (source/preview/mode/progress) over
+`qt-modal`, the raw octet-stream XHR upload driving `Uploading N%` (a
+web-edge leg via `apiUrl()`), preview + execute over
+`systemRestorePreview`/`systemRestoreExecute`, the UI `import`→wire
+`new-account` map, the replace-mode confirm gate, the error-bounces-to-mode
+behaviour, the 5-card preview vs the summary's `API Keys =
+profiles.connection` relabel, and warnings. `backup-restore-card.ts` hosts
+both + reloads the app on `restoreComplete` (v4 `:66`). Live wizard flow +
+e2e beat are ACTIVATE-AT-UNIFY. Spec: card opens dialogs, backup
+dispatch+close + error-keeps-open, restore step-1 Next gate.
