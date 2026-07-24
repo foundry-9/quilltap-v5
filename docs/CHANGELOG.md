@@ -27,6 +27,19 @@ and a row count of every table in all three databases against v4's real
 delete service — including the tables the wipe must not touch. One known
 gap: files stored in the old on-disk layout have their records removed but
 their bytes left behind (mount-store bytes are cleared).
+Built the `.qtap` export writer (P4.9G4 unit 1). Exporting your data now
+produces exactly the file v4 produces: the same records, in the same order,
+with the same bytes on every line. All ten export kinds are covered —
+characters (with wardrobe, plugin data and memories), chats (with messages,
+annotations and Document Mode state), roleplay templates, the three profile
+families, tags, projects, groups, and document stores (folders, documents,
+and blobs split into chunks). API keys are never exported; only the key's
+label rides along. The pre-export preview and the entity picker's listing
+are ported alongside. A new differential drives v4's real export writer over
+the shared fixture and diffs the output line by line — 42 cases, byte-exact.
+Also ported the `.qtap` upload reader: the format sniff, the line-by-line
+NDJSON parse, and the reassembler that folds a streamed export back into the
+shape the importer consumes.
 
 Planned the next round of work: the three Data & System features whose
 buttons are already on screen but whose server side has not been written

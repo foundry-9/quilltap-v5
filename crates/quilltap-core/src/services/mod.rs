@@ -123,6 +123,9 @@ pub mod provider_failover;
 pub mod provisioning;
 pub mod pseudo_tool;
 pub mod queue_service;
+// ── P4.9G4 ──
+pub mod qtap_export;
+// ── end P4.9G4 ──
 pub mod quilltap_import;
 pub mod recall_replay;
 pub mod recovery;

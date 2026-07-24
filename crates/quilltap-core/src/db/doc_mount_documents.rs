@@ -498,3 +498,51 @@ impl<'c> DocMountDocumentsRepository<'c> {
             })
     }
 }
+
+/// v4 `docMountDocuments.findByMountPointId(mountPointId)` as the full joined
+/// `DocMountDocumentWithLink` row (P4.9G4 — the `.qtap` document-store export).
+/// Same 3-table join, same unsorted natural order as v4's raw prepared statement
+/// (`doc-mount-documents.repository.ts:284`).
+pub fn find_full_json_by_mount_point_id(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    use serde_json::{Map, Value};
+    let mut stmt = conn.prepare(
+        "SELECT d.id, d.fileId, d.content, d.contentSha256, d.plainTextLength, \
+                d.createdAt, d.updatedAt, \
+                l.id AS linkId, l.mountPointId, l.relativePath, l.fileName, \
+                l.folderId, l.lastModified, \
+                f.fileType \
+           FROM doc_mount_file_links l \
+           JOIN doc_mount_documents d ON d.fileId = l.fileId \
+           JOIN doc_mount_files f ON f.id = l.fileId \
+          WHERE l.mountPointId = ?1",
+    )?;
+    let names: Vec<String> = stmt
+        .column_names()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+    let rows = stmt.query_map(params![mount_point_id], |row| {
+        let mut obj = Map::new();
+        for (i, name) in names.iter().enumerate() {
+            let v = match row.get_ref(i)? {
+                rusqlite::types::ValueRef::Null => Value::Null,
+                rusqlite::types::ValueRef::Integer(n) => serde_json::json!(n),
+                rusqlite::types::ValueRef::Real(f) => super::js_number_to_json(f),
+                rusqlite::types::ValueRef::Text(t) => {
+                    Value::String(String::from_utf8_lossy(t).into_owned())
+                }
+                rusqlite::types::ValueRef::Blob(b) => serde_json::json!(b.len()),
+            };
+            obj.insert(name.clone(), v);
+        }
+        Ok(Value::Object(obj))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}

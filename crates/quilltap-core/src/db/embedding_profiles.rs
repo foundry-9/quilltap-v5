@@ -362,3 +362,83 @@ impl<'c> EmbeddingProfilesRepository<'c> {
         Ok(found.is_some())
     }
 }
+
+// ============================================================================
+// The net-read (full v4 shape) view — P4.9G4
+// ============================================================================
+
+/// Every column an `EmbeddingProfile` carries, in `EmbeddingProfileSchema`
+/// declaration order (v4 `lib/schemas/profile.types.ts:172`). The scoped
+/// [`EmbeddingProfileRow`] deliberately omits `name`/`isDefault`/`tags`/the
+/// timestamps; the `.qtap` export needs the whole row.
+const EP_FULL_COLUMNS: &str = "id, userId, name, provider, apiKeyId, baseUrl, modelName, \
+     dimensions, truncateToDimensions, normalizeL2, isDefault, tags, createdAt, updatedAt";
+
+/// Marshal one `embedding_profiles` row (selected in [`EP_FULL_COLUMNS`] order)
+/// into the v4 net-read shape: `.nullable().optional()` columns are OMITTED when
+/// SQL NULL (v4's Zod parse drops `undefined`), bools coerced from INTEGER, and
+/// `tags` parsed (`NULL`/empty → `[]`, the Zod default).
+fn marshal_ep_full_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    use serde_json::{Map, Value};
+    let mut obj = Map::new();
+    obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+    obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+    obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
+    obj.insert("provider".into(), Value::String(r.get::<_, String>(3)?));
+    if let Some(s) = r.get::<_, Option<String>>(4)? {
+        obj.insert("apiKeyId".into(), Value::String(s));
+    }
+    if let Some(s) = r.get::<_, Option<String>>(5)? {
+        obj.insert("baseUrl".into(), Value::String(s));
+    }
+    obj.insert("modelName".into(), Value::String(r.get::<_, String>(6)?));
+    if let Some(d) = r.get::<_, Option<f64>>(7)? {
+        obj.insert("dimensions".into(), super::js_number_to_json(d));
+    }
+    if let Some(d) = r.get::<_, Option<f64>>(8)? {
+        obj.insert("truncateToDimensions".into(), super::js_number_to_json(d));
+    }
+    obj.insert("normalizeL2".into(), Value::Bool(r.get::<_, i64>(9)? == 1));
+    obj.insert("isDefault".into(), Value::Bool(r.get::<_, i64>(10)? == 1));
+    obj.insert(
+        "tags".into(),
+        match r.get::<_, Option<String>>(11)? {
+            Some(raw) if !raw.is_empty() => {
+                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Array(Vec::new()))
+            }
+            _ => Value::Array(Vec::new()),
+        },
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(12)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(13)?));
+    Ok(Value::Object(obj))
+}
+
+/// v4 `repos.embeddingProfiles.findById(id)` as the full net-read shape.
+pub fn find_full_json_by_id(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        &format!("SELECT {EP_FULL_COLUMNS} FROM embedding_profiles WHERE id = ?1"),
+        params![id],
+        marshal_ep_full_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
+/// v4 `repos.embeddingProfiles.findAll()` as the full net-read shape — insertion
+/// (rowid) order, matching v4's unsorted `collection.find({})`.
+pub fn find_all_full_json(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {EP_FULL_COLUMNS} FROM embedding_profiles"))?;
+    let rows = stmt.query_map([], marshal_ep_full_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}

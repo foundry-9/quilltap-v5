@@ -326,3 +326,49 @@ impl<'c> ConversationAnnotationsRepository<'c> {
         }
     }
 }
+
+/// v4 `globalRepos.conversationAnnotations.findByChatId(chatId)` as the FULL
+/// net-read row (P4.9G4 — the `.qtap` export needs every column, not the merge
+/// triple [`Self::find_by_chat_id`] returns). Key order is
+/// `ConversationAnnotationSchema` declaration order
+/// (`lib/schemas/scriptorium.types.ts:18`); `sourceMessageId` is
+/// `.nullable().optional()` so a SQL NULL OMITS the key (v4's Zod parse drops
+/// `undefined`, which `JSON.stringify` then never emits).
+pub fn find_full_json_by_chat_id(
+    conn: &Connection,
+    chat_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    use serde_json::{Map, Value};
+    let mut stmt = conn.prepare(
+        "SELECT id, chatId, messageIndex, sourceMessageId, characterName, content, \
+                createdAt, updatedAt \
+           FROM conversation_annotations WHERE chatId = ?1",
+    )?;
+    let rows = stmt.query_map(params![chat_id], |r| {
+        let mut obj = Map::new();
+        obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+        obj.insert("chatId".into(), Value::String(r.get::<_, String>(1)?));
+        // REAL affinity on disk; v4's Zod `.int()` parse keeps the JS number, which
+        // stringifies without a fractional part for integral values.
+        obj.insert(
+            "messageIndex".into(),
+            super::js_number_to_json(r.get::<_, f64>(2)?),
+        );
+        if let Some(s) = r.get::<_, Option<String>>(3)? {
+            obj.insert("sourceMessageId".into(), Value::String(s));
+        }
+        obj.insert(
+            "characterName".into(),
+            Value::String(r.get::<_, String>(4)?),
+        );
+        obj.insert("content".into(), Value::String(r.get::<_, String>(5)?));
+        obj.insert("createdAt".into(), Value::String(r.get::<_, String>(6)?));
+        obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(7)?));
+        Ok(Value::Object(obj))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}

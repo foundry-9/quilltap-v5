@@ -32270,6 +32270,69 @@ N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 TMPO=/tmp/qt-sysdel-oracle
 rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
 cp "$V5W/harness/oracle/cases/system-delete-data.test.ts" "$TMPO/cases/"
+### Lane record — P4.9G4 unit 1: the `.qtap` export writer + the upload reader (2026-07-24)
+
+**Landed.** `services/qtap_export/**` (v4 `lib/export/ndjson-writer.ts` +
+`quilltap-export-service.ts` + the route-level `handleExportEntities`) and
+`services/quilltap_import/ndjson.rs` (v4 `lib/import/ndjson-reader.ts` +
+`quilltap-import-stream.ts` + `loadQtapFromUpload`).
+
+- **The writer** materializes v4's async-generator stream as a `Vec<Value>` in
+  yield order: envelope (with v4's deliberate EMPTY `manifest.counts`) → the
+  per-type generator → footer (the authoritative, insertion-ordered counts). All
+  ten entity types, both scopes, `includeMemories` on/off, the `sanitizeProfile`
+  `apiKeyId` strip + `_apiKeyLabel`, the `_tagNames` / `_participantInfo` /
+  `_characterRosterNames` / `_member*` / `_linkedStoreMountPointIds` synthetics,
+  the ephemeral-chat-state drop (`commonplaceRecallHistory` /
+  `commonplaceSceneCache`), and the doc-store blob 3 MB chunking.
+- **⚠ The key-order finding.** v4 emits every entity as `schema.parse(row)`, so
+  each `.qtap` line's key order is the ZOD SCHEMA's declaration order. v5's read
+  paths marshal in COLUMN order (documented in `db/characters_read.rs`'s header —
+  every other differential in the port compares over key-order-independent
+  `Value`s, so it never mattered). Rather than reorder those landed read paths
+  (wide, unrelated, and risky), the writer reorders at its own boundary:
+  `services/qtap_export/key_order.rs` + the committed `schema-key-order.json`,
+  dumped byte-exactly from v4's real schemas by the checked-in
+  `harness/oracle/fixtures/dump-export-key-order.ts` (the standing
+  `byte-exact-static-data-transcription` idiom). `reorder` is NON-LOSSY: a key the
+  table doesn't name still ships, appended after the templated ones — a v4 schema
+  that drifts shows up as a differential failure, not a dropped column.
+  **Wardrobe items are deliberately NOT templated**: v4 reads them off the
+  character VAULT, never through `WardrobeItemSchema.parse`, so they carry the
+  vault document's own key order (which the v5 vault read already reproduces).
+- **New db readers** (small additive appends, in v4 Zod-schema key order):
+  `embedding_profiles::{find_full_json_by_id,find_all_full_json}`,
+  `api_keys::find_label_by_id`,
+  `conversation_annotations::find_full_json_by_chat_id`,
+  `chat_documents::find_full_json_by_chat_id`,
+  `doc_mount_documents::find_full_json_by_mount_point_id`,
+  `project_doc_mount_links::find_project_ids_by_mount_point_id`.
+- **Two real port bugs the differential caught before they shipped:** the
+  doc-store folder record emitted `parentId: null` where v4 OMITS the key
+  (`.nullable().optional()` → `undefined` → `JSON.stringify` drops it), and the
+  first cut reordered wardrobe items into schema order (see above).
+- **Faithful asymmetry recorded:** v4's `?action=export-entities` switch covers
+  only EIGHT of the ten types — `groups` and `document-stores` fall through to
+  `Unknown entity type: <t>` (400), while `previewExport` handles all ten.
+
+**Differential — `system_export_equivalence`, 42 cases, ZERO SKIP, byte-exact.**
+Drives v4's REAL `createNdjsonStream` / `previewExport` / the route GET over a
+fresh copy of the committed `system-data-*` family per case and diffs the NDJSON
+**line by line**. Two wall-clock exceptions, both documented in the test header:
+`manifest.createdAt` (the Rust side is handed the oracle's own value) and
+`character.data.physicalDescription.{createdAt,updatedAt}` (a default physical
+description is MINTED at read time by the vault overlay on both sides; its `id`
+is derived and does match). `appVersion` is NOT normalized — the oracle emits v4's
+`package.json` version in a `_meta` line and the Rust side is handed it verbatim.
+
+Regen recipe (Node 24, from the v4 checkout; jest ignores `.claude/` so the case
+goes through a `/tmp` mirror):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-sysexport-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-export.test.ts" "$TMPO/cases/"
 cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
 cd ~/source/quilltap-server
 QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
@@ -32484,3 +32547,24 @@ standing deferral is the one named in `services/delete_all.rs`: legacy
 `<base>/files/**` disk bytes survive the wipe (metadata rows go; mount-blob
 bytes are truncated by `clear_format3_entities`) — closing it needs a
 `StorageBackend` threaded to the dispatch layer, which no lane owns this round.
+QT_ORACLE_OUT=/tmp/oracle-system-export.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-export
+```
+
+Then `QT_ORACLE_SYSTEM_EXPORT=/tmp/oracle-system-export.ndjson cargo test -p
+quilltap-harness --test system_export_equivalence -- --nocapture`.
+
+The key-order table regenerates separately (its own header carries the recipe):
+`$N/node --import tsx $V5W/harness/oracle/fixtures/dump-export-key-order.ts >
+$V5W/crates/quilltap-core/src/services/qtap_export/schema-key-order.json`.
+
+**Reader.** `peek_format` / `read_ndjson_lines` / `collect_legacy_json` /
+`assemble_export_from_stream` / `load_qtap_from_upload`, with v4's error strings
+verbatim (they reach the user through the route's `badRequest(err.message)`).
+One deliberate shape change: v4 works over a Web `ReadableStream` to dodge V8's
+string ceiling; the Rust edge already holds the upload as `Bytes` and Rust has no
+such ceiling, so the reader takes a `&[u8]`. Line splitting is still done at the
+BYTE level, so a multi-byte UTF-8 sequence can never be split. 7 unit tests.
+
+No fixture changed; no other oracle invalidated.

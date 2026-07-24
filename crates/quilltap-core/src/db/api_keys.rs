@@ -295,3 +295,18 @@ pub fn get_api_keys_by_user_id(conn: &Connection, user_id: &str) -> Result<Vec<A
     }
     Ok(out)
 }
+
+/// v4 `connections.findApiKeyById(id)?.label` — the label alone (the `.qtap`
+/// export's `_apiKeyLabel` resolver, P4.9G4). `None` when the key is absent.
+pub fn find_label_by_id(conn: &Connection, id: &str) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT label FROM api_keys WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}

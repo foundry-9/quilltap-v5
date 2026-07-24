@@ -646,6 +646,44 @@ fn row_to_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatDocumentFull> {
     })
 }
 
+/// v4 `globalRepos.chatDocuments.findByChatId(chatId)` as the FULL net-read row
+/// (P4.9G4 — the `.qtap` export). Key order is `ChatDocumentSchema` declaration
+/// order (`lib/schemas/chat-document.types.ts:21`); the two
+/// `.nullable().optional()` columns OMIT their key when SQL NULL.
+pub fn find_full_json_by_chat_id(
+    conn: &Connection,
+    chat_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    use serde_json::{Map, Value};
+    let mut stmt = conn.prepare(
+        "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                createdAt, updatedAt \
+           FROM chat_documents WHERE chatId = ?1",
+    )?;
+    let rows = stmt.query_map(params![chat_id], |r| {
+        let mut obj = Map::new();
+        obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+        obj.insert("chatId".into(), Value::String(r.get::<_, String>(1)?));
+        obj.insert("filePath".into(), Value::String(r.get::<_, String>(2)?));
+        obj.insert("scope".into(), Value::String(r.get::<_, String>(3)?));
+        if let Some(s) = r.get::<_, Option<String>>(4)? {
+            obj.insert("mountPoint".into(), Value::String(s));
+        }
+        if let Some(s) = r.get::<_, Option<String>>(5)? {
+            obj.insert("displayTitle".into(), Value::String(s));
+        }
+        obj.insert("isActive".into(), Value::Bool(r.get::<_, i64>(6)? == 1));
+        obj.insert("createdAt".into(), Value::String(r.get::<_, String>(7)?));
+        obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(8)?));
+        Ok(Value::Object(obj))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

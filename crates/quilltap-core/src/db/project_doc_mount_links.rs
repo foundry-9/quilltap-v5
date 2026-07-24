@@ -237,3 +237,21 @@ impl<'c> ProjectDocMountLinksRepository<'c> {
             .map_err(DbError::from)
     }
 }
+
+/// v4 `projectDocMountLinks.findByMountPointId(mountPointId)` — the project ids
+/// linked to one store (P4.9G4 — the `.qtap` document-store export emits one
+/// `project_doc_mount_link` record per row). Natural (rowid) order, matching v4's
+/// unsorted `findByFilter`.
+pub fn find_project_ids_by_mount_point_id(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> Result<Vec<String>, DbError> {
+    let mut stmt =
+        conn.prepare("SELECT projectId FROM project_doc_mount_links WHERE mountPointId = ?1")?;
+    let rows = stmt.query_map(params![mount_point_id], |row| row.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
