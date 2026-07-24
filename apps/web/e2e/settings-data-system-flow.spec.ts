@@ -162,12 +162,15 @@ test.describe('P4.9G2 — the Data & System tab', () => {
       timeout: 15_000,
     });
     await expect(page.getByText('Queue Items', { exact: true })).toBeVisible({ timeout: 15_000 });
-    // The processor pill renders ONLY under `@if (data())` — so it appears only
-    // once the live `systemTasksQueue` verb has answered. That makes this the
-    // assertion that actually proves P4.9G1's server surface, not just chrome.
-    await expect(
-      page.getByText(/^Queue (Running|Stopped)$/).first(),
-    ).toBeVisible({ timeout: 15_000 });
+    // The stat tiles and the processor pill render ONLY under `@if (data(); as d)`
+    // — they appear only once the live `systemTasksQueue` verb has answered. That
+    // makes these the assertions that prove P4.9G1's server surface rather than
+    // static chrome. The tile labels are their own leaf elements (exact match);
+    // the pill's text node shares a span with the status dot, so it is matched
+    // UNANCHORED — Playwright's regex matching is not whitespace-normalized.
+    await expect(page.getByText('Active Jobs', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Est. Tokens', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Queue (Running|Stopped)/).first()).toBeVisible();
   });
 
   test('export → import round-trip', async ({ page }) => {
