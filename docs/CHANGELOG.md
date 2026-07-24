@@ -74,6 +74,13 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 1 (contract half): the sixteen Data & System §1 verbs mirrored
+name-for-name in core-contract.ts (systemBackupCreate/RestorePreview/
+RestoreExecute, ExportEntities/ExportPreview, ImportPreview/ImportExecute,
+TasksQueue/TasksQueueControl, JobConcurrencyGet/Set, JobGet/Control/Delete,
+DeleteDataPreview/DeleteData), for the unifier's wire diff against G1's
+api/types.rs. Payloads derived from v4's route bodies; the diff reconciles.
+
 P4.9G2 unit 5 (SPA): the LLM Logs card, the LLMLogViewerModal, and the
 character-edit LLM Logs section (M6 F2). The viewer modal is a pure
 presentational port of v4's LLMLogViewerModal — a multi-log selector, a

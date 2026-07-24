@@ -31790,3 +31790,23 @@ badge (v4 `:80-82`). Two fetch helpers added to `chat/llm-logs.api.ts`. Specs:
 the modal (closed/empty guard, request tab, default temp/maxTokens, usage
 counts + two-decimal duration, error banner, selector-only-when->1), the card
 (empty state, row render, click-opens-modal).
+
+### Unit 1 (contract half) — the sixteen §1 verbs mirrored in core-contract.ts
+
+Added the sixteen Data & System §1 CoreRequest variants + interfaces
+name-for-name for the unifier's wire diff against G1's `api/types.rs`
+(the `p4_6ar_wire_contract` precedent). Payloads derived from the four v4
+surveys: `systemBackupCreate {}`, `systemRestorePreview {uploadId}`,
+`systemRestoreExecute {uploadId, mode:'replace'|'new-account'}` (the UI
+`import`→wire `new-account` map), `systemExportEntities {entityType}` (v4's
+`?type=` renamed off the envelope tag), `systemExportPreview {...}`
+(SPECULATIVE — v4 has no export-preview route; mirrored by name only, the
+SPA does not call it), `systemImportPreview {exportData}` /
+`systemImportExecute {exportData, options}` (the JSON legs; multipart is
+web-edge), `systemTasksQueue {}`, `systemTasksQueueControl {action}`,
+`systemJobConcurrencyGet {}`, `systemJobConcurrencySet {maxConcurrentJobs}`
+(§1's dispatch field name; the v4 route body key is `concurrency`, G1 maps
+it), `systemJobGet/Control/Delete {jobId, …}`, `systemDeleteDataPreview {}`,
+`systemDeleteData {confirm}` (server gate `DELETE_ALL_MY_DATA`). The four
+web-edge-only legs (backup download, restore upload, export stream, import
+multipart) carry no verb and ride `apiUrl()`. ng build clean.

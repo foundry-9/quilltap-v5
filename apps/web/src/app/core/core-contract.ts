@@ -3810,7 +3810,28 @@ export type MemoryRequest =
   | BrahmaConsoleSetModelRequest
   | BrahmaConsoleDeleteRequest
   | BrahmaConsoleMessagesRequest
-  | BrahmaConsoleSendRequest;
+  | BrahmaConsoleSendRequest
+  // P4.9G2 — the Data & System tab's sixteen §1 verbs (P4.9G1 delivers them in
+  // `api/types.rs`; this lane mirrors them name-for-name, the unifier diffs the
+  // two at unification). The interfaces live in the P4.9G2 block appended at the
+  // end of this file. Payloads are the best-guess derivation from v4's route
+  // bodies (the G1 survey table is authoritative); the wire diff reconciles.
+  | SystemBackupCreateRequest
+  | SystemRestorePreviewRequest
+  | SystemRestoreExecuteRequest
+  | SystemExportEntitiesRequest
+  | SystemExportPreviewRequest
+  | SystemImportPreviewRequest
+  | SystemImportExecuteRequest
+  | SystemTasksQueueRequest
+  | SystemTasksQueueControlRequest
+  | SystemJobConcurrencyGetRequest
+  | SystemJobConcurrencySetRequest
+  | SystemJobGetRequest
+  | SystemJobControlRequest
+  | SystemJobDeleteRequest
+  | SystemDeleteDataPreviewRequest
+  | SystemDeleteDataRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -5042,4 +5063,154 @@ export interface ChatRegenerateAvatarRequest {
    */
   equippedSlots?: EquippedSlots;
   imageProfileId?: string;
+}
+
+// ===========================================================================
+// P4.9G2 — the Data & System tab's dispatch surface (folded at unification).
+//
+// §1 of the P4.19 ∥ P4.9G1 ∥ P4.9G2 round contract: the sixteen new
+// CoreRequest variants P4.9G1 implements in `api/types.rs` and this lane
+// (P4.9G2) mirrors NAME-FOR-NAME (the `p4_6ar_wire_contract` precedent — the
+// unifier diffs the two by name at unification). Payload fields are the
+// best-guess derivation from v4's route bodies (the G1 survey table is
+// authoritative); the wire diff reconciles any field-level drift. Response
+// bodies ride the server's envelope and are read DEFENSIVELY via
+// `CoreClient.dispatchData` (the settings/home precedent — no `CoreResponse`
+// variants added); their shapes live in `screens/settings/system/*.api.ts`.
+//
+// The four WEB-EDGE-ONLY legs (no dispatch verb — reached via `apiUrl()` raw):
+//   GET  /api/v1/system/backup/{id}                     (single-use zip stream)
+//   POST /api/v1/system/restore?action=upload           (octet-stream → {uploadId})
+//   POST /api/v1/system/tools?action=export             (NDJSON .qtap stream)
+//   POST /api/v1/system/tools?action=import-preview|import-execute (multipart legs)
+// ===========================================================================
+
+/** v4 `POST /api/v1/system/backup` — body `{}`; response `{backupId, manifest}`. */
+export interface SystemBackupCreateRequest {
+  type: 'systemBackupCreate';
+}
+
+/** v4 `POST /api/v1/system/restore?action=preview` — `{uploadId}` → `{preview}`. */
+export interface SystemRestorePreviewRequest {
+  type: 'systemRestorePreview';
+  uploadId: string;
+}
+
+/**
+ * v4 `POST /api/v1/system/restore` (no action) — `{uploadId, mode}` → `{summary}`.
+ * The UI radio `import` maps to the wire `new-account` (v4 `useRestoreData.ts:180`).
+ */
+export interface SystemRestoreExecuteRequest {
+  type: 'systemRestoreExecute';
+  uploadId: string;
+  mode: 'replace' | 'new-account';
+}
+
+/**
+ * v4 `GET /api/v1/system/tools?action=export-entities&type=<entityType>` — lists
+ * the exportable entities of a type → `{entities, memoryCount}`. `entityType`
+ * renames v4's `?type=` query (which would collide with the envelope tag — the
+ * `LlmLogsListRequest.logType` precedent).
+ */
+export interface SystemExportEntitiesRequest {
+  type: 'systemExportEntities';
+  entityType: string;
+}
+
+/**
+ * A dry-run of what an export would contain. v4 has no `export-preview` route
+ * (the entity listing IS the picker); this speculative dispatch verb is mirrored
+ * from §1 by NAME and reconciled at unification — the SPA does not call it (the
+ * actual bytes stream from the web-edge `?action=export` leg).
+ */
+export interface SystemExportPreviewRequest {
+  type: 'systemExportPreview';
+  entityType: string;
+  scope?: 'all' | 'selected';
+  selectedIds?: string[];
+  includeMemories?: boolean;
+}
+
+/**
+ * v4 `POST /api/v1/system/tools?action=import-preview` — the JSON leg
+ * (`{exportData}`). The multipart leg (a real `File`) is web-edge-only. Response
+ * is the server `ImportPreview`.
+ */
+export interface SystemImportPreviewRequest {
+  type: 'systemImportPreview';
+  exportData: unknown;
+}
+
+/**
+ * v4 `POST /api/v1/system/tools?action=import-execute` — the JSON leg
+ * (`{exportData, options}`). Response is the server `ImportResult`.
+ */
+export interface SystemImportExecuteRequest {
+  type: 'systemImportExecute';
+  exportData: unknown;
+  options: {
+    selectedIds?: Record<string, string[]>;
+    conflictStrategy: string;
+    importMemories: boolean;
+  };
+}
+
+/** v4 `GET /api/v1/system/tools?action=tasks-queue` — stats + rows + processor status. */
+export interface SystemTasksQueueRequest {
+  type: 'systemTasksQueue';
+}
+
+/** v4 `POST /api/v1/system/tools?action=tasks-queue` — `{action}` start/stop. */
+export interface SystemTasksQueueControlRequest {
+  type: 'systemTasksQueueControl';
+  action: 'start' | 'stop';
+}
+
+/** v4 `GET /api/v1/system/tools?action=job-concurrency` — `{concurrency}`. */
+export interface SystemJobConcurrencyGetRequest {
+  type: 'systemJobConcurrencyGet';
+}
+
+/**
+ * v4 `POST /api/v1/system/tools?action=job-concurrency`. The v4 route body key
+ * is `concurrency`; §1 names the DISPATCH field `maxConcurrentJobs` (G1 maps it
+ * to v4's `concurrency` at the REST edge). Bounds 1..32, default 4.
+ */
+export interface SystemJobConcurrencySetRequest {
+  type: 'systemJobConcurrencySet';
+  maxConcurrentJobs: number;
+}
+
+/** v4 `GET /api/v1/system/jobs/{id}` — `{job}` (the full BackgroundJob entity). */
+export interface SystemJobGetRequest {
+  type: 'systemJobGet';
+  jobId: string;
+}
+
+/** v4 `POST /api/v1/system/jobs/{id}?action=pause|resume` — `{job}`. */
+export interface SystemJobControlRequest {
+  type: 'systemJobControl';
+  jobId: string;
+  action: 'pause' | 'resume';
+}
+
+/** v4 `DELETE /api/v1/system/jobs/{id}` — `{success}`. */
+export interface SystemJobDeleteRequest {
+  type: 'systemJobDelete';
+  jobId: string;
+}
+
+/** v4 `GET /api/v1/system/tools?action=delete-data-preview` — `{summary}`. */
+export interface SystemDeleteDataPreviewRequest {
+  type: 'systemDeleteDataPreview';
+}
+
+/**
+ * v4 `POST /api/v1/system/tools?action=delete-data` — `{confirm}` → `{summary}`.
+ * The server gate requires `confirm === 'DELETE_ALL_MY_DATA'` (v4
+ * `tools/route.ts:155`); the typed-`DELETE` gate is client-only.
+ */
+export interface SystemDeleteDataRequest {
+  type: 'systemDeleteData';
+  confirm: string;
 }
