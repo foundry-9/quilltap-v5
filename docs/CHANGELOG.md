@@ -74,6 +74,15 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 5 (SPA): the LLM Logs card, the LLMLogViewerModal, and the
+character-edit LLM Logs section (M6 F2). The viewer modal is a pure
+presentational port of v4's LLMLogViewerModal — a multi-log selector, a
+metadata bar, and request/response/usage tabs — over the qt-modal shell,
+reading the v5 LlmLogDto's live content chain. The Data & System card
+lists the twenty most recent logs (llmLogsList, limit 20) and the F2
+section lazily lists a character's ten, both opening the shared modal.
+Two fetch helpers added to llm-logs.api.ts. Specs green (9).
+
 P4.9G2 units 2–4 (SPA, the Data & System tab's no-server-dependency
 cards): the Encryption Passphrase card (over the existing changePassphrase
 verb; empty new passphrase removes protection), the Auto-Lock card plus

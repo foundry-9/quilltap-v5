@@ -31,6 +31,7 @@ import {
 } from './character-form';
 import { AvatarPickerModal } from './avatar-picker-modal';
 import { CharacterDetailsTab } from './details-tab';
+import { CharacterLlmLogsSection } from './llm-logs-section';
 import { CharacterSystemPromptsTab } from './system-prompts-tab';
 
 const EDIT_TABS: Tab[] = [
@@ -70,6 +71,7 @@ const EDIT_TABS: Tab[] = [
     AvatarPickerModal,
     CharacterDeleteDialog,
     CharacterChooseOutfitCard,
+    CharacterLlmLogsSection,
   ],
   template: `
     <div class="character-edit qt-page-container text-foreground">
@@ -195,6 +197,10 @@ const EDIT_TABS: Tab[] = [
             </button>
           </div>
         </form>
+
+        <!-- v4 CharacterEditView.tsx:436 — the collapsible LLM Logs section
+             (M6 F2), mounted right after the form. -->
+        <qt-character-llm-logs-section [characterId]="characterId()!" />
 
         <div class="mt-6 flex gap-3">
           <button

@@ -31766,3 +31766,27 @@ off, retention coerced `parseInt||0` and clamped `0..365`, the privacy
 note verbatim. v4's per-key `handleLLMLoggingChange` becomes a whole-bag
 merge through the shared card's `save`. Spec: defaults, persisted load,
 whole-bag merge PUT, empty-retention→0.
+
+### Unit 5 — LLM Logs card + LLMLogViewerModal + character-edit LLMLogsSection (F2)
+
+`chat/llm-log-viewer-modal.ts` ports v4 `components/chat/LLMLogViewerModal.tsx`
+— a PURE presentational modal (multi-log selector when `logs.length > 1`, a
+metadata bar, request/response/usage tabs) over the `qt-modal` shell. Distinct
+from the existing `LLMInspectorEntry` (an expandable slide-over row); v4 keeps
+both and their formatting differs (the modal's "[... truncated ...]" marker, the
+two-decimal duration, the selector). Content fields read the v5 `LlmLogDto` live
+chain (`content` → `fullContent`/`contentPreview`, the inspector-entry
+precedent) — v5 stores `content` where v4's schema names the now-deprecated
+`contentPreview`; v4's "Full Messages (Verbose)" block is dropped (v5's request
+summary carries no `fullMessages`) and "Full Content" renders from the typed
+`response.fullContent`. `settings/system/llm-logs-card.ts` lists the twenty most
+recent logs (`llmLogsList {limit:'20'}`, `fetchRecentLlmLogs`) with v4's card
+type-label map (`Compression`/`Custom Tool`, distinct from the inspector's),
+opening the modal on a row. `characters/edit/llm-logs-section.ts` is the M6 F2
+host — a lazy (`enabled: isExpanded`) collapsible listing a character's ten most
+recent (`fetchCharacterLlmLogs`), mounted in `character-edit.ts` right after the
+form (v4 `CharacterEditView.tsx:436`); only `CHARACTER_WIZARD` is remapped in its
+badge (v4 `:80-82`). Two fetch helpers added to `chat/llm-logs.api.ts`. Specs:
+the modal (closed/empty guard, request tab, default temp/maxTokens, usage
+counts + two-decimal duration, error banner, selector-only-when->1), the card
+(empty state, row render, click-opens-modal).

@@ -144,6 +144,31 @@ export async function fetchChatLlmLogs(core: CoreClient, chatId: string): Promis
 }
 
 /**
+ * The recent-logs list (v4 `llm-logs-card.tsx:14-17` — `GET /llm-logs?limit=20`,
+ * the default `findRecent` branch). `limit` is a RAW STRING on the wire (v5's
+ * `llmLogsList` ports v4's `parseInt`/`Math.min` body).
+ */
+export async function fetchRecentLlmLogs(core: CoreClient, limit = 20): Promise<LlmLogDto[]> {
+  const req: LlmLogsListRequest = { type: 'llmLogsList', limit: String(limit) };
+  const data = await core.dispatchData(req);
+  return (data as unknown as LlmLogsListResponse).logs ?? [];
+}
+
+/**
+ * A character's recent logs (v4 `characters/LLMLogsSection.tsx:22-24` —
+ * `GET /llm-logs?characterId=…&limit=10`, the `findByCharacterId` branch).
+ */
+export async function fetchCharacterLlmLogs(
+  core: CoreClient,
+  characterId: string,
+  limit = 10,
+): Promise<LlmLogDto[]> {
+  const req: LlmLogsListRequest = { type: 'llmLogsList', characterId, limit: String(limit) };
+  const data = await core.dispatchData(req);
+  return (data as unknown as LlmLogsListResponse).logs ?? [];
+}
+
+/**
  * Which messages have logs (v4 `useLLMLogs.ts:35-41`): the set of `messageId`s
  * present on the chat's logs. Drives the per-message "View LLM logs" icon.
  *
