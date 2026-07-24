@@ -74,6 +74,15 @@ committed `system-data-*` fixture family. Verified by the
 real route handlers. Delete-all, export/import, and backup/restore
 answer a loud "recognized but not yet available" refusal until their
 later units land.
+P4.9G2 unit 9 (SPA): the Delete All Data card + 4-step dialog
+(preview/confirm/deleting/complete), double-gated — the user types DELETE
+and the wire body carries confirm DELETE_ALL_MY_DATA (systemDeleteData;
+preview via systemDeleteDataPreview). Deliberate v5 correction: v4's client
+DeleteSummary declared a `personas` field the server never returns, so its
+Total Items computed to NaN and never showed projects — v5 uses the real
+server shape, sums only present fields, and renders the projects row. Over
+G1's verbs — live behaviour + e2e beat ACTIVATE-AT-UNIFY; specs green (2).
+
 P4.9G2 unit 8 (SPA): the Import / Export card + both 5-step wizards. Export
 (type / select / options / exporting / complete) lists entities via
 systemExportEntities and streams the .qtap via the web-edge export leg

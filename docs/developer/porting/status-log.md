@@ -31876,3 +31876,21 @@ CollapsibleCard supplies them). Live flows + e2e beat are
 ACTIVATE-AT-UNIFY. Spec: card opens export, the total-step quirk, entity
 load + Export-button branch, legacy parse + reject-non-Quilltap (a fake File
 supplies the jsdom-unimplemented `Blob.text`).
+
+### Unit 9 — Delete All Data card + 4-step dialog (ACTIVATE-AT-UNIFY)
+
+`delete-data-card.ts` ports v4 `components/tools/delete-data-card.tsx`: the
+button + the destructive 4-step dialog (preview/confirm/deleting/complete)
+over `qt-modal`, double-gated — the client types `DELETE` (upper-cased on
+every keystroke) AND the wire body carries `{confirm:'DELETE_ALL_MY_DATA'}`
+(the server gate, v4 `tools/route.ts:155`). Preview via
+`systemDeleteDataPreview`, delete via `systemDeleteData`; error bounces back
+to `confirm`. **Deliberate divergence (recorded):** v4's client
+`DeleteSummary` declared a required `personas` field the SERVER NEVER
+RETURNS, so v4's `getTotalCount` summed `undefined` → a `NaN` "Total Items"
+(and its preview never rendered `projects`, which the server DOES return).
+v5 ports the REAL server shape (`delete-service.ts:191-209`), sums only
+present fields, and renders the `projects` row — a dogfood-#6-style
+correctness fix. Live behaviour + e2e beat are ACTIVATE-AT-UNIFY. Spec:
+preview-on-open + a real (non-NaN) total incl. Projects, the typed-DELETE
+gate + the `DELETE_ALL_MY_DATA` wire token + the complete summary.
