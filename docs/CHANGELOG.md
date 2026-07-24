@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Delete All Data now works. The Settings card's preview shows real counts —
+characters, chats, tags, files, memories, API keys, backups, projects, the
+three profile kinds and both template kinds — and confirming the wipe
+actually clears them, along with every mount-store document, chunk, blob and
+folder. The typed confirmation is re-checked on the server, so a request
+without the exact sentinel is refused. Your saved instance settings (the
+job-concurrency cap and anything startup wrote) deliberately survive the
+wipe. Verified by a new differential that diffs both the returned summary
+and a row count of every table in all three databases against v4's real
+delete service — including the tables the wipe must not touch. One known
+gap: files stored in the old on-disk layout have their records removed but
+their bytes left behind (mount-store bytes are cleared).
+
 Planned the next round of work: the three Data & System features whose
 buttons are already on screen but whose server side has not been written
 yet — Backup & Restore, Import / Export, and Delete All Data. Each now has

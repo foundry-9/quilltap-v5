@@ -625,3 +625,52 @@ pub async fn jobs_enqueue(
         Err(e) => internal(e),
     }
 }
+
+// ── delete-all-data (v4 `handleDeleteDataPreview` / `handleDeleteData`) ──────
+
+/// v4's server-side confirmation sentinel (`tools/route.ts:155`) — re-checked
+/// here independently of whatever the client typed into its dialog.
+pub const DELETE_ALL_CONFIRM: &str = "DELETE_ALL_MY_DATA";
+
+fn delete_summary_body(summary: &crate::services::delete_all::DeleteSummary) -> Response {
+    let mut m = Map::new();
+    m.insert("success".into(), Value::Bool(true));
+    m.insert(
+        "summary".into(),
+        serde_json::to_value(summary).unwrap_or(Value::Null),
+    );
+    Response::System(Value::Object(m))
+}
+
+/// v4 `GET /api/v1/system/tools?action=delete-data-preview` (`route.ts:182`) —
+/// counts only, no writes. Body `{success:true, summary}`; a thrown error is
+/// v4's `serverError('Failed to preview data deletion')`.
+pub fn delete_data_preview(db: &Db, user_id: &str) -> Response {
+    match crate::services::delete_all::preview_delete_all_user_data(db, user_id) {
+        Ok(summary) => delete_summary_body(&summary),
+        Err(e) => {
+            tracing::error!(target: "quilltap::system_data", error = %e, "Preview delete failed");
+            Response::error(ErrorKind::Internal, "Failed to preview data deletion")
+        }
+    }
+}
+
+/// v4 `POST /api/v1/system/tools?action=delete-data` (`route.ts:149`). The
+/// `{confirm:'DELETE_ALL_MY_DATA'}` sentinel is re-checked server-side; a
+/// mismatch is v4's `badRequest` with the verbatim message. Body
+/// `{success:true, summary}`; a thrown error is `serverError('Failed to delete
+/// data')`.
+pub async fn delete_data(db: &Db, user_id: &str, confirm: &str) -> Response {
+    if confirm != DELETE_ALL_CONFIRM {
+        return bad_request(
+            "Confirmation required. Send { \"confirm\": \"DELETE_ALL_MY_DATA\" }".to_string(),
+        );
+    }
+    match crate::services::delete_all::delete_all_user_data(db, user_id).await {
+        Ok(summary) => delete_summary_body(&summary),
+        Err(e) => {
+            tracing::error!(target: "quilltap::system_data", error = %e, "Delete all data failed");
+            Response::error(ErrorKind::Internal, "Failed to delete data")
+        }
+    }
+}

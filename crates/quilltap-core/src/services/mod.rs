@@ -73,6 +73,9 @@ pub mod dangerous_content;
 // === P4.9c: the data-directory resolver (lane C, append-only) ===
 pub mod data_dir;
 // === end P4.9c ===
+// === P4.9G3: the delete-all-data family (lane G3, append-only) ===
+pub mod delete_all;
+// === end P4.9G3 ===
 pub mod embedding_provider;
 pub mod embedding_refit_job;
 pub mod file_fallback;

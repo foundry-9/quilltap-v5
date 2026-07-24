@@ -731,11 +731,20 @@ impl CoreEngine {
                 Ok(db) => super::system_data::job_delete(&db, &job_id).await,
                 Err(r) => r,
             },
-            // Delete-all + export/import/backup land in later P4.9G1 units; until
-            // then they answer the loud not-assembled refusal (never a silent stub).
-            Request::SystemDeleteDataPreview
-            | Request::SystemDeleteData { .. }
-            | Request::SystemBackupCreate
+            // ── P4.9G3 arms ──
+            Request::SystemDeleteDataPreview => match self.ready_db() {
+                Ok(db) => super::system_data::delete_data_preview(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::SystemDeleteData { confirm } => match self.ready_db() {
+                Ok(db) => super::system_data::delete_data(&db, SINGLE_USER_ID, &confirm).await,
+                Err(r) => r,
+            },
+            // ── end P4.9G3 ──
+            // Export/import/backup land in the sibling P4.9G4 / P4.9G5 lanes;
+            // until then they answer the loud not-assembled refusal (never a
+            // silent stub).
+            Request::SystemBackupCreate
             | Request::SystemRestorePreview { .. }
             | Request::SystemRestoreExecute { .. }
             | Request::SystemExportEntities { .. }

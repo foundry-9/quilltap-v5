@@ -32167,3 +32167,131 @@ Three parallel worktrees at default cargo settings will not fit: `df -h ~` shows
 ~141 GB free and a single long lane has grown a `target/` to ~70 GB, 64 GB of it
 `target/debug/incremental`. **Every lane exports `CARGO_INCREMENTAL=0`** (stated
 in all three gates), which keeps a worktree target in the 10–20 GB range.
+
+## Lane record — P4.9G3 unit 1: the delete-all-data family (branch `claude/p4-9g3-delete-rest-remainders-106fce`, 2026-07-24)
+
+**Drift check first:** `git log e646f58b..HEAD --oneline` in `~/source/quilltap-server`
+is EMPTY and the tree is clean — v4 is still at the round's pinned baseline
+`e646f58b`. All oracles below were generated there.
+
+### What landed
+
+- **`crates/quilltap-core/src/services/delete_all.rs`** (new) — v4
+  `lib/backup/restore/delete-service.ts` ported table-for-table:
+  - `delete_user_data(db, user_id) -> Result<(), DbError>` — the Shared-contract
+    §2 signature **exactly** (P4.9G5's replace-mode dependency). The whole wipe
+    runs inside ONE `db.write` closure, so the collect → delete sequence sees a
+    single consistent view and the mount-index / llm-logs siblings are reached
+    through the same `WriterSet`.
+  - `delete_all_user_data` / `preview_delete_all_user_data` + the `DeleteSummary`
+    shape (v4's literal field order, `camelCase` → `apiKeys`).
+  - `clear_format3_entities` — v4's 7 main + 10 mount raw `DELETE`s, each
+    independently guarded; `instance_settings` deliberately untouched.
+  - v4's hard-coded `llmLogs.findAll(10000)` limit carried verbatim
+    (`find_recent(user_id, 10_000.0)` — `createdAt DESC LIMIT 10000`).
+  - v4's warn-only loops preserved: a failing API-key delete does not abort the
+    rest; a `NoMount` wardrobe delete does not abort the wipe.
+- **`api/system_data.rs`** — `delete_data_preview` + `delete_data` (the
+  `DELETE_ALL_MY_DATA` sentinel re-checked server-side with v4's verbatim
+  `badRequest` message), both wrapping the service error in v4's fixed
+  `serverError` string with a `tracing::error!` at the swallow site (the P4.18
+  pattern — the generic 500 body is v4-faithful, but the cause is now logged).
+- **`api/engine.rs`** — the two real arms inside `// ── P4.9G3 arms ──` markers;
+  `SystemDeleteDataPreview` / `SystemDeleteData` removed from the shared
+  "recognized but not yet available" arm (seven variants remain, for G4 + G5).
+- **The REST edges already existed** (P4.9G1 wrote
+  `?action=delete-data-preview` GET and `?action=delete-data` POST in
+  `system_data_routes.rs`, dispatching the verbs); they went live unchanged when
+  the engine arms landed. No `system_data_routes.rs` edit was needed for unit 1.
+
+### Three deliberate, documented divergences (module docs carry the long form)
+
+1. **Slim id collection.** v4 gathers its lists with the OVERLAID finders
+   (`characters.findByUserId`, `projects.findAll`, `groups.findAll`), which DROP
+   an entity whose vault / official store is unavailable — a broken vault
+   silently survives "delete all my data" and is under-counted in the summary.
+   v5 collects ids with `SELECT id … [WHERE userId = ?]`. Identical on healthy
+   data (what the differential exercises), strictly better on broken data.
+2. **The file byte sweep is metadata-only.** v4 calls
+   `fileStorageManager.deleteFile(file)` before each row delete; v5's dispatch
+   layer threads no `StorageBackend` (the standing files-family precedent in
+   `api::files::file_delete`). Mount-blob bytes are still reclaimed —
+   `clear_format3_entities` truncates `doc_mount_blobs` / `doc_mount_file_links`
+   wholesale. **Legacy `<base>/files/**` disk bytes survive the wipe: the loud,
+   named deferral of this lane.** (v4's try/catch wraps BOTH steps, so a throwing
+   byte delete makes v4 skip that row; v5 always deletes the row = v4's success
+   path, which is what the oracle records.)
+3. **Wardrobe.** v4's `wardrobe.findAll()` reads the `wardrobe_items` SQL table,
+   but wardrobe items are vault-only (v4's `create` refuses a SQL fallback), so
+   the table is empty on every real instance and the loop is a no-op. Ported
+   faithfully over `delete_vault_wardrobe_item`; NOT corpus-exercised (flagged).
+
+### v4's `safeQuery` fallback is load-bearing — the finding that cost the first red
+
+Every v4 finder in this family runs under
+`AbstractBaseRepository.safeQuery(op, msg, ctx, [])` — the **fallback** overload,
+which swallows the error and yields `[]`. That is not academic: v4 creates a
+collection's table lazily, so the committed fixture has **no `prompt_templates`
+table at all** and v4 counts it as zero. The first differential run was five reds
+(`no such table: prompt_templates`) until the port reproduced the fallback
+(`list_or_empty`). The DELETE calls stay strict — v4's deletes use the
+no-fallback overload and rethrow.
+
+### `system_delete_data_equivalence` — the new differential (7 cases, all green)
+
+Direct-drives `api::system_data::{delete_data_preview, delete_data}` over a FRESH
+copy of ALL THREE partitions per case, and diffs (a) the `{success, summary}`
+body against v4's REAL route handlers and (b) a row-count map over **every table
+in all three databases** (`main.<t>` / `mount.<t>` / `llm.<t>`, enumerated from
+`sqlite_master`). The full map — not just the tables expected to change — is the
+cascade tripwire the order asked for.
+
+Cases: `pristine_counts` (the preview baseline) · `delete_data_preview` (equals
+pristine → proves no writes) · `delete_data_wrong_confirm` (400, nothing
+written) · `delete_data` · `delete_data_twice` (idempotence: zeros summary, no
+further change) · `delete_data_keeps_instance_settings` · `delete_data_preview_after_wipe`.
+
+`delete_data_keeps_instance_settings` is the answer to a weak assertion: the
+committed fixture has ZERO `instance_settings` rows, so a surviving-table check
+would have been a coincidental `0 == 0`. The case therefore WRITES a row first
+(through the concurrency verb) and then wipes — the survivor is the assertion.
+
+**One documented normalization:** the count maps are compared over the UNION of
+both key sets with an absent table counting as 0. v4 lazily `ensureCollection`s a
+repo's table on first touch, so its wipe SIDE-EFFECT-CREATES empty
+`prompt_templates` / `wardrobe_items` tables the fixture never had; v5 never
+creates schema outside provisioning. An empty table present on one side only is
+that artifact, not state — a table with ROWS on one side still fails.
+
+### Regen recipe (Node 24, from the v4 checkout; jest ignores `.claude/` paths)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-sysdel-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-delete-data.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-delete-data.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-delete-data
+# then, in the worktree:
+QT_ORACLE_SYSTEM_DELETE_DATA=/tmp/oracle-system-delete-data.ndjson \
+  cargo test -p quilltap-harness --test system_delete_data_equivalence -- --nocapture
+```
+
+**No fixture changed.** The `system-data-*` family is byte-identical to what
+P4.9G1 committed, so no sibling differential is invalidated;
+`system_jobs_routes_equivalence` was regenerated fresh at `e646f58b` and re-run
+anyway (18/18) as a control.
+
+### Gate at this commit
+
+`cargo fmt --all --check` clean · `cargo clippy --workspace --all-targets -D warnings`
+clean · `TZ=UTC cargo test --workspace --no-fail-fast` with both `QT_ORACLE_SYSTEM_*`
+vars: **373 test binaries, zero failures** (372 → 373 with the new differential),
+both system families running by name with zero SKIP. Versions: core 0.0.347,
+harness 0.0.294.
