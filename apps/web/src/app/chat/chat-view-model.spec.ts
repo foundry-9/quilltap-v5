@@ -117,3 +117,83 @@ describe('buildRenderItems', () => {
     }
   });
 });
+
+const TOOL = (extra: Record<string, unknown> = {}) =>
+  JSON.stringify({ toolName: 'rng', success: true, result: '17', ...extra });
+
+describe('buildRenderItems — TOOL rows (P4.17)', () => {
+  it('folds a character-initiated TOOL row into its host assistant (embedded, no tool item)', () => {
+    const items = buildRenderItems([
+      msg({ id: 'u', role: 'USER', createdAt: '2024-01-01T00:00:01.000Z' }),
+      msg({ id: 'a', role: 'ASSISTANT', participantId: 'p1', createdAt: '2024-01-01T00:00:02.000Z' }),
+      msg({ id: 't', role: 'TOOL', participantId: 'p1', content: TOOL(), createdAt: '2024-01-01T00:00:03.000Z' }),
+    ]);
+    expect(items.map((i) => i.type)).toEqual(['message', 'message']);
+    const host = items[1];
+    expect(host.type === 'message' && host.message.attachedToolMessages?.map((m) => m.id)).toEqual([
+      't',
+    ]);
+  });
+
+  it('renders an orphan character TOOL row (no host in its turn) as a standalone tool item', () => {
+    const items = buildRenderItems([
+      msg({ id: 'u', role: 'USER', createdAt: '2024-01-01T00:00:01.000Z' }),
+      msg({ id: 't', role: 'TOOL', participantId: 'p1', content: TOOL(), createdAt: '2024-01-01T00:00:02.000Z' }),
+    ]);
+    expect(items.map((i) => i.type)).toEqual(['message', 'tool']);
+  });
+
+  it('renders a user-initiated Prospero TOOL row as a collapsed announcement chip', () => {
+    const items = buildRenderItems([
+      msg({ id: 'a', role: 'ASSISTANT', participantId: 'p1', createdAt: '2024-01-01T00:00:01.000Z' }),
+      msg({
+        id: 't',
+        role: 'TOOL',
+        systemSender: 'prospero',
+        systemKind: 'tool-run',
+        content: TOOL({ initiatedBy: 'user', operatorName: 'Charles' }),
+        createdAt: '2024-01-01T00:00:02.000Z',
+      }),
+    ]);
+    expect(items.map((i) => i.type)).toEqual(['message', 'announcement-group']);
+    const group = items[1];
+    expect(group.type === 'announcement-group' && group.chips[0].sender).toBe('Prospero');
+    expect(group.type === 'announcement-group' && group.chips[0].message.id).toBe('t');
+  });
+
+  it('borrows the preceding assistant participant for a standalone TOOL row with none (avatar walk)', () => {
+    // A user-initiated tool WITHOUT a systemSender (no Prospero label) does not
+    // fold and carries no participant — the walk borrows p1 from the assistant.
+    const items = buildRenderItems([
+      msg({ id: 'a', role: 'ASSISTANT', participantId: 'p1', createdAt: '2024-01-01T00:00:01.000Z' }),
+      msg({
+        id: 't',
+        role: 'TOOL',
+        participantId: null,
+        content: TOOL({ initiatedBy: 'user' }),
+        createdAt: '2024-01-01T00:00:02.000Z',
+      }),
+    ]);
+    const tool = items[1];
+    expect(tool.type).toBe('tool');
+    expect(tool.type === 'tool' && tool.message.participantId).toBe('p1');
+  });
+
+  it('does not borrow across a USER boundary for the avatar walk', () => {
+    const items = buildRenderItems([
+      msg({ id: 'a', role: 'ASSISTANT', participantId: 'p1', createdAt: '2024-01-01T00:00:01.000Z' }),
+      msg({ id: 'u', role: 'USER', createdAt: '2024-01-01T00:00:02.000Z' }),
+      msg({
+        id: 't',
+        role: 'TOOL',
+        participantId: null,
+        content: TOOL({ initiatedBy: 'user' }),
+        createdAt: '2024-01-01T00:00:03.000Z',
+      }),
+    ]);
+    const tool = items[2];
+    expect(tool.type).toBe('tool');
+    // No borrow: the USER row broke the walk.
+    expect(tool.type === 'tool' && tool.message.participantId).toBeNull();
+  });
+});

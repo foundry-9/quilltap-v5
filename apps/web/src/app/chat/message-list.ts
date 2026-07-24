@@ -21,6 +21,7 @@ import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-model';
 import { MessageRow, type ImageClickEvent } from './message-row';
 import { StreamingMessage } from './streaming-message';
+import { ToolMessage } from './tool-message';
 import { Icon } from '../ui/icon';
 import { VirtualRow } from './virtual-row';
 
@@ -47,7 +48,7 @@ import { VirtualRow } from './virtual-row';
   // scroll container.
   host: { class: 'flex flex-col flex-1 min-h-0' },
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MessageRow, AnnouncementGroup, StreamingMessage, VirtualRow, Icon],
+  imports: [MessageRow, AnnouncementGroup, StreamingMessage, ToolMessage, VirtualRow, Icon],
   template: `
     <div #scroll class="qt-chat-messages">
       <div class="qt-chat-messages-list">
@@ -88,8 +89,10 @@ import { VirtualRow } from './virtual-row';
                     (saveImage)="saveImage.emit($event)"
                     (courierSettled)="courierSettled.emit($event)"
                   />
+                } @else if (item.type === 'tool') {
+                  <qt-tool-message [message]="item.message" [chat]="chat()" />
                 } @else {
-                  <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" />
+                  <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" [chat]="chat()" />
                 }
               </div>
             }
@@ -117,8 +120,10 @@ import { VirtualRow } from './virtual-row';
               (saveImage)="saveImage.emit($event)"
               (courierSettled)="courierSettled.emit($event)"
             />
+          } @else if (item.type === 'tool') {
+            <qt-tool-message [message]="item.message" [chat]="chat()" />
           } @else {
-            <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" />
+            <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" [chat]="chat()" />
           }
         }
 
@@ -265,7 +270,7 @@ export class MessageList {
   }
 
   protected itemKey(item: ReturnType<typeof buildRenderItems>[number]): string {
-    return item.type === 'message' ? item.message.id : `grp-${item.chips[0]?.id ?? ''}`;
+    return item.type === 'announcement-group' ? `grp-${item.chips[0]?.id ?? ''}` : item.message.id;
   }
 
   protected streamItemKey(item: RenderItem): string {

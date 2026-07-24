@@ -7,6 +7,7 @@
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { normalizeAvatarSrc } from '../ui/avatar-stack';
+import { groupToolMessagesIntoAssistants } from './group-tool-messages';
 import {
   getAnnouncementImportance,
   getSystemKindDisplayLabel,
@@ -135,9 +136,13 @@ export interface AnnouncementChip {
   message: MessageDto;
 }
 
-/** One rendered item: a normal message row, or a run of Staff chips. */
+/**
+ * One rendered item: a normal message row, a standalone tool-result card, or a
+ * run of Staff chips.
+ */
 export type RenderItem =
   | { type: 'message'; message: MessageDto }
+  | { type: 'tool'; message: MessageDto }
   | { type: 'announcement-group'; chips: AnnouncementChip[] };
 
 /**
@@ -155,10 +160,41 @@ export function isAnnouncementChip(message: MessageDto): boolean {
 }
 
 /**
- * Build the render-item list, packing consecutive announcement chips into one
- * flex-wrapping group (v4 `announcement-render-items`).
+ * Resolve the author for a standalone TOOL row by borrowing the nearest
+ * preceding character-assistant's participant when the row carries none (v4
+ * `VirtualizedMessageList.tsx:228-247`). Historical TOOL rows persisted before
+ * character attribution was added are identifiable by position only; the walk
+ * stops at a USER boundary so it never reaches back into a prior turn.
+ */
+function resolveToolAvatar(message: MessageDto, grouped: MessageDto[], i: number): MessageDto {
+  if (message.systemSender || message.participantId) return message;
+  for (let k = i - 1; k >= 0; k--) {
+    const prev = grouped[k];
+    if (prev.role === 'ASSISTANT' && prev.participantId) {
+      return { ...message, participantId: prev.participantId };
+    }
+    if (prev.role === 'USER') break;
+  }
+  return message;
+}
+
+/**
+ * Build the render-item list. First fold character-initiated TOOL rows into
+ * their host assistant (v4 `groupToolMessagesIntoAssistants` — they render
+ * embedded inside the character's bubble); then, over the folded flow, pack
+ * consecutive announcement chips into one flex-wrapping group (v4
+ * `announcement-render-items`).
+ *
+ * Standalone TOOL rows that survive the fold split two ways, matching v4:
+ *  - a `systemSender` TOOL row (a user-initiated Prospero run) is a collapsed
+ *    announcement chip like any Staff row (v4 `isCollapsedAnnouncement` catches
+ *    every `systemSender`) — it expands to the tool card in `AnnouncementGroup`;
+ *  - a TOOL row with no `systemSender` (an orphan character run with no host in
+ *    its turn) becomes a standalone `tool` item, checked BEFORE the chip test so
+ *    it is never swept into an announcement group.
  */
 export function buildRenderItems(messages: MessageDto[]): RenderItem[] {
+  const grouped = groupToolMessagesIntoAssistants(messages);
   const items: RenderItem[] = [];
   let run: AnnouncementChip[] = [];
 
@@ -169,8 +205,12 @@ export function buildRenderItems(messages: MessageDto[]): RenderItem[] {
     }
   };
 
-  for (const message of messages) {
-    if (isAnnouncementChip(message)) {
+  for (let i = 0; i < grouped.length; i++) {
+    const message = grouped[i];
+    if (message.role === 'TOOL' && !message.systemSender) {
+      flush();
+      items.push({ type: 'tool', message: resolveToolAvatar(message, grouped, i) });
+    } else if (isAnnouncementChip(message)) {
       run.push({
         id: message.id,
         sender: getSystemSenderDisplayName(message.systemSender),

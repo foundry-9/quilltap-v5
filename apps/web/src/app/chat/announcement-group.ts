@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
+import type { ChatDetail } from '../core/core-contract';
 import { TerminalEmbed } from '../terminal/terminal-embed';
 import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Icon } from '../ui/icon';
 import type { AnnouncementChip } from './chat-view-model';
 import { MessageContent } from './message-content';
+import { ToolMessage } from './tool-message';
 
 /**
  * A packed row of collapsed Staff announcement chips (v4 `qt-chat-announcement-group`).
@@ -21,7 +23,7 @@ import { MessageContent } from './message-content';
 @Component({
   selector: 'qt-announcement-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MessageContent, TerminalEmbed],
+  imports: [Icon, MessageContent, TerminalEmbed, ToolMessage],
   template: `
     <div class="qt-chat-announcement-group">
       @for (chip of chips(); track chip.id) {
@@ -41,18 +43,25 @@ import { MessageContent } from './message-content';
     </div>
 
     @for (chip of expandedChips(); track chip.id) {
-      <div class="qt-chat-message-row qt-chat-message-row-assistant">
-        <div class="qt-chat-message-body">
-          <div class="qt-chat-message qt-chat-message-system">
-            <qt-message-content [content]="chip.message.content" />
-            @if (terminalSessionId(chip); as sid) {
-              <div class="mt-2">
-                <qt-terminal-embed [sessionId]="sid" [chatId]="chatId()" />
-              </div>
-            }
+      @if (chip.message.role === 'TOOL') {
+        <!-- A user-initiated Prospero tool run: the expanded chip shows the full
+             tool card (v4 renders the standalone MessageRow → ToolMessage for an
+             expanded TOOL announcement). -->
+        <qt-tool-message [message]="chip.message" [chat]="chat()" />
+      } @else {
+        <div class="qt-chat-message-row qt-chat-message-row-assistant">
+          <div class="qt-chat-message-body">
+            <div class="qt-chat-message qt-chat-message-system">
+              <qt-message-content [content]="chip.message.content" />
+              @if (terminalSessionId(chip); as sid) {
+                <div class="mt-2">
+                  <qt-terminal-embed [sessionId]="sid" [chatId]="chatId()" />
+                </div>
+              }
+            </div>
           </div>
         </div>
-      </div>
+      }
     }
   `,
 })
@@ -60,6 +69,8 @@ export class AnnouncementGroup {
   readonly chips = input.required<AnnouncementChip[]>();
   /** The parent chat id (the embed binds pop-out / kill against it). */
   readonly chatId = input.required<string>();
+  /** The parent chat — threaded to an expanded TOOL chip's card for author resolution. */
+  readonly chat = input.required<ChatDetail>();
 
   /**
    * The bound terminal session for an Ariel session-opened chip (v4 `MessageRow`

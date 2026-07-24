@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.17 unit 2 (SPA): wired tool-result rendering into the Salon. A
+`role:'TOOL'` message no longer renders as a raw-JSON whisper bubble.
+Character-initiated tool runs fold into their host assistant bubble (new
+`group-tool-messages.ts` port of v4's `groupToolMessagesIntoAssistants`)
+and render embedded; an orphan character run (no host in its turn) renders
+as a standalone `qt-tool-message` card, with the v4 avatar-fallback walk
+borrowing the nearest preceding assistant's participant; a user-initiated
+Prospero run stays a collapsed announcement chip that expands to the card
+(via `AnnouncementGroup`). `buildRenderItems` folds first, then classifies;
+the new `tool` render-item variant is checked before the announcement-chip
+test. Ported the v4 grouping test case-for-case (11 cases) + 5 render-item
+cases.
+
 P4.17 unit 1 (SPA): added the `qt-tool-message` component — a port of v4's
 `ToolMessage.tsx`. It renders a `role:'TOOL'` message as a collapsible
 Tool Request / Tool Response card with a Success/Failed badge, tool-icon

@@ -22,6 +22,7 @@ import {
 } from './system-message-labels';
 import { ThinkingBlock } from './thinking-block';
 import { TokenBadge } from './token-badge';
+import { ToolMessage } from './tool-message';
 
 /** The bubble variant for a message (drives the qt-chat-message-* class). */
 type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
@@ -43,7 +44,7 @@ export interface ImageClickEvent {
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock, TokenBadge],
+  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
   template: `
     <div
       class="qt-chat-message-row"
@@ -160,6 +161,18 @@ export interface ImageClickEvent {
                     <qt-icon name="zoom-in" class="w-4 h-4" />
                   </div>
                 </button>
+              }
+            </div>
+          }
+
+          @if (!editing() && attachedToolMessages().length > 0) {
+            <!-- Character-initiated tool results folded into this bubble (v4
+                 MessageRow trailing-tools block :428-440) — each renders embedded
+                 so the calls read as separate flourishes under the character's
+                 prose. -->
+            <div class="qt-chat-message-tools">
+              @for (tm of attachedToolMessages(); track tm.id) {
+                <qt-tool-message [embedded]="true" [message]="tm" [chat]="chat()" />
               }
             </div>
           }
@@ -430,6 +443,13 @@ export class MessageRow {
   protected readonly imageAttachments = computed(() =>
     (this.message().attachments || []).filter((a) => a.mimeType.startsWith('image/')),
   );
+
+  /**
+   * Character-initiated TOOL rows folded into this assistant by
+   * `groupToolMessagesIntoAssistants` — rendered embedded below the prose (v4
+   * MessageRow's trailing-tools block). Empty on every non-host message.
+   */
+  protected readonly attachedToolMessages = computed(() => this.message().attachedToolMessages ?? []);
 
   protected thumbFor(att: MessageAttachment): string {
     return thumbnailUrl(att.id);
