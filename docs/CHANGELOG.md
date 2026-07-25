@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Planned the next round of porting work: finishing the restore side of Backup &
+Restore. Creating a backup already works end to end; restoring one does not, and
+the two screens that would use it answer a plain "not yet available." The work is
+split into two independent pieces that can be built at the same time — the part
+that reads a backup archive and either previews it or writes it back into the
+database, and the part that rewrites every internal identifier so a backup can be
+restored *alongside* existing data instead of over it. The second piece is the one
+where a single omitted field silently produces a restored library whose
+cross-references point at nothing, so it gets its own dedicated correctness test
+against v4's real code, run over a deliberately wide set of inputs. Also carried
+forward, as a required task rather than a footnote, the lesson from the backup
+half: v4 tolerates a database table that was never created, and the test fixtures
+cannot see when that tolerance is missing. Documentation only; no product code
+changed.
+
 Unified two independent verification lanes. **Ruled a deliberate divergence
 from v4 in the import reader**: v4 cannot re-import its own export of any
 document-store file larger than 3 MB — its reassembler treats a blob as

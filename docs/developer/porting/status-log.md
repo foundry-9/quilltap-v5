@@ -9,6 +9,75 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round planned — the "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6), 2026-07-24
+
+**Scope:** P4.9G5 units 3–5 — the whole restore side. **Baseline: v4
+`e646f58b`, drift-checked clean at planning** (`git log e646f58b..HEAD` empty,
+tree clean). No drift debt; oracles regenerate straight from
+`~/source/quilltap-server`.
+
+**Two lanes, and the split is narrower than the last round's on purpose.** The
+restore side is ~2,510 lines of v4 (`restore/archive.ts` 372 + `json-stream.ts`
+163 + `legacy-migrations.ts` 105 + `preview.ts` 79 + `uuid-remapper.ts` 181 +
+`restore/uuid-remap.ts` 452 + `restore/restore.ts` 901 + the route 259), and
+almost all of it hinges on **one** type: whatever `parseBackupZip` returns. Any
+split that puts the parse on one side of a lane boundary and its consumers on the
+other is a split two lanes cannot compile across — so the read side, the preview,
+the upload leg and the orchestrator all stay in ONE lane.
+
+The one piece that genuinely detaches is **`remapBackupData`**: it is a pure
+`BackupData → BackupData` transform, and `BackupData` is **already on main**
+(`services/backup/collect.rs:78-117`, 38 public `Vec<Value>` fields,
+constructible from outside the module) because unit 1 landed it. So it gets its
+own lane, with a **tier-1 exact** differential and a deterministic id source on
+both sides — no normalization at all. That is also where the risk actually is:
+the remap is ~110 field names across 38 entities, and a single omission produces
+a restored graph whose foreign keys point at rows that were never created. A
+byte-level differential over a wide corpus is the only thing that finds that, and
+it is cheap once the corpus exists.
+
+- **`work-orders/p4.9g5-backup-restore.md`** (re-scoped in place; units 1–2 are
+  the historical record) — the restore vertical: `json-stream` + `parseBackupZip`
+  + `legacy-migrations` + `previewRestore` + `systemRestorePreview` + the
+  octet-stream upload leg + the phase-ordered orchestrator in **both** modes, the
+  `system_restore_equivalence` tier-2 DB-state differential, and the committed
+  archive fixtures. Bumps core, harness, web, host.
+- **`work-orders/p4.9g6-uuid-remap.md`** (new) — `UuidRemapper` +
+  `remapBackupData`, pure, plus `backup_uuid_remap_equivalence` and its committed
+  corpus. Bumps core, harness. Touches no route, no verb, no engine arm, no
+  `apps/web` file.
+
+**Two things the last round's outcome changed in this lane's favour:**
+
+1. **`delete_user_data` is on main**, differential-verified, at exactly the
+   signature the old §2 pinned. So restore **`replace`** — the mode the SPA's
+   "Replace" option actually sends — needs no seam and lands fully proven inside
+   one lane. The unit order was swapped to put it before `new-account`.
+2. **The old §2 seam inverts.** It is now `remap_backup_data` (G6 delivers, G5
+   consumes) with the ACTIVATE-AT-UNIFY marker on the `new-account` arm, and the
+   unifier's follow-on is the `new-account` differential case rather than the
+   `replace` one.
+
+**The `if_table` warning is carried forward as a tier-1 obligation, not a note.**
+Units 1–2 shipped a real bug — v4's `safeQuery(..., [])` tolerance was reproduced
+only for the reads going through `query_all`, so Create Backup returned a bare 500
+on any instance that had never touched `provider_models` — and the differential
+was structurally blind to it because the fixture carries every table. Restore has
+the same shape at `restore.ts:84` (`repos.connections.findAll()` to build the
+taken-names set). The order tells the lane to grep its reads and to say
+explicitly, in the lane record, why the *write* side is safe on a provisioned
+instance rather than leaving that assumption unexamined.
+
+**Deliberately NOT in this round:** P4.9G4's import EXECUTE half (still OPEN,
+still refusing by name, fully disjoint files — it would make a clean third lane
+if the round is widened), the `.qtap`/`backup` dogfood pass, and the standing
+`walk Part D` / `Part F items 15/16` dogfood debt.
+
+**One survey correction worth carrying:** the old order said `previewRestore`
+returns a "35-field" summary. **It is 41 keys** (`restore/preview.ts:29-74`),
+two of them constants (`userInstalledThemes: 0`, `warnings: []`). Count from the
+source.
+
 ## Unification record — the sparse-array ruling + corpus-shape lanes (2026-07-24)
 
 Two independent single-commit lanes, unified together on
