@@ -15,6 +15,10 @@ must not fail where it doesn't, and v5 must — so it can never drift into an
 unnoticed difference. Also removed a hand-written count in the sample-content
 import test that had gone stale against v4 (see below).
 
+Note for anyone still on v4: that 3 MB import bug is a v4 bug, and v4 is not
+fixed. Only v5 can restore a backup containing a document-store file larger
+than 3 MB. The matching one-line fix to v4 is scheduled for after 5.0 ships.
+
 Fixed a stale check in the sample-content import differential. The test
 compares every imported row against v4's real import, and that comparison was
 passing; what failed was a hand-written follow-up count asserting the import

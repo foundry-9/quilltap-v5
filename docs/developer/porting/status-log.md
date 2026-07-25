@@ -118,11 +118,15 @@ multi-chunk rejoin, the out-of-order rejoin, and the short-stream error;
 assertion (each chunk is base64-encoded separately and the reader rejoins the
 ENCODED strings, so only the last chunk may carry padding).
 
-**Not done, deliberately:** v4 itself is unfixed. A one-line change there
+**Not done during the port, deliberately — but QUEUED, not dropped.** v4 itself
+is unfixed. A one-line change there
 (`received.filter(v => typeof v === 'string').length === chunkCount`) would let
-real v4 instances import large-blob backups too, but it moves the oracle and v4
-is being retired — worth doing only if a v4 user actually hits this before
-retirement.
+real v4 instances import large-blob backups too, but making it now moves the
+oracle baseline mid-flight. The ruling originally left it at "worth doing only
+if a v4 user actually hits this before retirement"; **the human overrode that
+2026-07-24** — they run v4 in production and judged it will bite — so it is on
+the **post-5.0 v4-side fixes** list in `dogfood-findings.md`, which that
+correction opened.
 
 ## Banked finding — `qtap_import_equivalence`'s stale corpus-shape constant (2026-07-24)
 

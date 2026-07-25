@@ -1258,7 +1258,10 @@ records THERE. Update this summary only when a phase or round completes.
   reaches v4's OWN truncation error, which its sparse `every` had made
   unreachable. Asserted both directions via `EXPECTED_DIVERGENCES` in
   `system_import_equivalence.rs`; rationale in the status log's "Ruling — the
-  sparse-array blob divergence". Next candidates: finish
+  sparse-array blob divergence". **v4's own half is QUEUED post-5.0** (human,
+  2026-07-24) on the new "post-5.0 v4-side FIXES" list in
+  `dogfood-findings.md` — a one-liner in v4, deliberately not made during the
+  port because it moves the oracle baseline. Next candidates: finish
   P4.9G5's restore side, then P4.9G4's import execute; or a dogfood pass over
   this round's live surfaces (+ the still-owed walk Part D and Part F items
   15/16) — see phase-4.md. Versions after the round: core 0.0.352, harness

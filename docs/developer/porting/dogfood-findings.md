@@ -184,6 +184,26 @@ catch, since every fixture is built fresh.
   pre-emptively restructured for this** — it is the reason a merely-inherited
   awkwardness can be left alone now and revisited later, and the reason the
   provider-I/O divergence is deliberately a one-off rather than a first step.
+- **Post-5.0 v4-side FIXES (human, 2026-07-24) — real v4 bugs v5 has already
+  fixed, whose v4 half is queued rather than dropped.** Distinct from the
+  papercut list below: these ARE bugs, and v5 does NOT reproduce them. What is
+  queued is the change to v4 itself, so instances still running v4 before
+  retirement get the fix too.
+  - **v4 cannot re-import its own export of a document-store blob over 3 MB**
+    (the sparse-array blob divergence, ruled 2026-07-24 — see
+    `status-log.md`). `assembleExportFromStream`'s
+    `received.every(v => typeof v === 'string')` runs over a SPARSE
+    `new Array(chunkCount)`; `every` skips holes, so the blob finalizes on its
+    FIRST chunk, silently truncates, and the next chunk throws
+    `received without preceding doc_mount_blob` — the whole import fails. The
+    fix is one line in v4 `lib/import/quilltap-import-stream.ts:283`:
+    `received.filter(v => typeof v === 'string').length === accum.chunkCount`.
+    v5's reader already waits for every chunk, so a v5 instance is unaffected;
+    this is purely so a v4 user can restore a large-blob backup. **Queued at
+    the human's request 2026-07-24** — the ruling had left it as "worth doing
+    only if a v4 user hits this first", and the human (who runs v4 on Friday)
+    judged that it will bite. Deliberately NOT done during the port: it moves
+    the oracle baseline mid-flight.
 - **Post-5.0 product improvements (v4-first) — the running list of dogfood-surfaced
   UX papercuts that are v4-faithful today and therefore must change in v4 FIRST,
   then port.** These are NOT bugs (v5 reproduces v4 exactly) and NOT for the port
