@@ -1261,8 +1261,12 @@ records THERE. Update this summary only when a phase or round completes.
   sparse-array blob divergence". Next candidates: finish
   P4.9G5's restore side, then P4.9G4's import execute; or a dogfood pass over
   this round's live surfaces (+ the still-owed walk Part D and Part F items
-  15/16) — see phase-4.md. Versions: core 0.0.352, harness 0.0.299, host
-  0.0.34, web 0.0.43, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.270.
+  15/16) — see phase-4.md. Versions after the round: core 0.0.352, harness
+  0.0.299, host 0.0.34, web 0.0.43, cli 0.0.3, quilltap-tauri 0.0.5, SPA
+  0.5.270. **After the two follow-up lanes that unified the same day** (the
+  sparse-array ruling + the `qtap_import` corpus-shape fix, and the SPA
+  bundle-warnings lane): core **0.0.353**, harness **0.0.301**, SPA
+  **0.5.271**; host/web/cli/tauri unchanged.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

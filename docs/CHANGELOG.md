@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Unified two independent verification lanes. **Ruled a deliberate divergence
+from v4 in the import reader**: v4 cannot re-import its own export of any
+document-store file larger than 3 MB — its reassembler treats a blob as
+complete the moment the first chunk arrives, then joins the pieces it has,
+producing a silently truncated file and a failed import. v5 now waits for
+every chunk. The change is read-only: what v5 *writes* is byte-identical to
+v4, so nothing v5 produces becomes less readable in v4 than it already was,
+and blobs under 3 MB take exactly the same path in both. The divergence is
+recorded in the differential itself, which now asserts both sides of it — v4
+must not fail where it doesn't, and v5 must — so it can never drift into an
+unnoticed difference. Also removed a hand-written count in the sample-content
+import test that had gone stale against v4 (see below).
+
 Fixed a stale check in the sample-content import differential. The test
 compares every imported row against v4's real import, and that comparison was
 passing; what failed was a hand-written follow-up count asserting the import

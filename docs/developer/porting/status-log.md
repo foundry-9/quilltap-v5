@@ -9,6 +9,175 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Unification record — the sparse-array ruling + corpus-shape lanes (2026-07-24)
+
+Two independent single-commit lanes, unified together on
+`unify/sparse-array-and-corpus-shape`. Not a planned round: both came out of
+findings the "finish P4.9G1" round surfaced. v4 re-verified at `e646f58b`,
+clean tree, before and after.
+
+- **`claude/assemble-export-stream-sparse-array-6b9ade`** — the ruled v4
+  divergence + the reader fix. Full rationale in the ruling section immediately
+  below; the ruled behavior is pinned by `EXPECTED_DIVERGENCES` in
+  `system_import_equivalence.rs`, which asserts BOTH directions (v4 must not
+  throw; v5 must, with the truncation message) and fails loudly if any OTHER
+  case ever stops throwing on the v4 side.
+- **`claude/happy-franklin-747776`** — `qtap_import_equivalence`'s stale
+  corpus-shape constant, replaced with a structural assertion. Banked finding
+  below.
+
+**Ownership was clean.** The two lanes touched disjoint test files
+(`system_import_equivalence.rs` vs `qtap_import_equivalence.rs` — different
+families despite the similar names) and only overlapped on `Cargo.toml`,
+`Cargo.lock` and the two doc files. Zero source conflicts; both cherry-picks
+applied without a single manual resolution.
+
+**⚠ The silent-version-merge trap fired exactly as the playbook predicts.**
+Both lanes bumped `quilltap-harness` 0.0.299 → 0.0.300 off the same base, so
+the two identical bumps auto-merged into ONE and the cherry-picks reported no
+conflict at all. RECOUNTED as base + total bumps: harness **0.0.301** (299 +2),
+core **0.0.353** (352 +1, lane A only). Do not trust a clean merge here — count.
+
+**A second trap worth recording: a cleaned-up `/tmp` oracle is a FAILURE, not a
+skip.** The first full-workspace run came back `1,588 passed / 4 failed`. The
+cause was not either lane: four `QT_ORACLE_SYSTEM_*` env vars pointed at NDJSON
+files deleted during the previous round's cleanup, and these harnesses treat a
+named-but-missing oracle as an error (correctly — silent skipping is the worse
+failure mode, per `oracle-regen-silent-stale-pass`). Regenerating all four
+fresh at `e646f58b` cleared it. **The lesson: an env var set to a path that no
+longer exists reads exactly like a port regression.** Check the paths before
+diagnosing the code.
+
+### Gate at unification
+
+`cargo fmt --all --check` clean · `cargo clippy --workspace --all-targets -D
+warnings` clean **plain AND `--features quilltap-core/native-transport`** ·
+`TZ=UTC cargo test --workspace --no-fail-fast` with all seven
+`QT_ORACLE_*` vars: **377 test binaries / 1,592 tests / 0 failed** (1,591 →
+1,592: lane A replaced one pinned v4-quirk test with two rejoin tests, lane B
+added structural assertions) · by name `--nocapture` zero SKIP:
+`system_import_equivalence` **10/10** (incl. the ruled
+`throw_ndjson_truncated_blob` divergence case), `qtap_import_equivalence`
+**green** over a freshly rebuilt fixture + oracle, `system_export_equivalence`
+**42/42** re-run as a control (lane A touched that module, test-only) ·
+`cargo build --release` clean · `ng test` 223 files / 2,621 passed · `ng build`
+zero warnings · full Playwright over a fresh dist + fresh RELEASE binary:
+**126 passed / 0 failed / 0 skipped**.
+
+**One `ng test` run reported 8 failures and did not reproduce** across three
+subsequent clean runs (2,621 passed each). Zero SPA source changed on this
+branch (`git diff --name-only main...HEAD -- apps/web/` is EMPTY), so it cannot
+be a change here; the failing run was the one chained after a release build in
+the same invocation, i.e. resource contention. Recorded rather than buried.
+
+### What this changes for the open orders
+
+`p4.9g4-qtap-export-import.md`'s "⚠ owed a human ruling" is now **RULED and
+discharged** — its status header is updated. The import EXECUTE half remains its
+open remainder, unaffected by this ruling (the divergence is in the reader that
+feeds both preview and execute, so execute inherits the corrected behavior when
+it lands).
+
+## Ruling — the sparse-array blob divergence (2026-07-24)
+
+**The bug (v4 `lib/import/quilltap-import-stream.ts:283`).** The blob
+reassembler allocates `received = new Array(chunkCount)` — a SPARSE array — and
+finalizes on `received.every(v => typeof v === 'string')`.
+`Array.prototype.every` **skips holes**, so it is true the moment the FIRST
+chunk lands, whatever `chunkCount` says. v4 then joins (holes render as `''`),
+pushes a silently-truncated blob, and DELETES the accumulator — so chunk 1
+of a 2-chunk blob hits the `doc_mount_blob_chunk received without preceding
+doc_mount_blob` throw and the whole import fails. The writer chunks at
+`BLOB_CHUNK_BYTES = 3 MB`, so **v4 cannot re-import its own export of any
+document-store blob over 3 MB.**
+
+**The ruling: v5 diverges — the reader waits for every chunk.** Four reasons:
+
+1. **It is reader-only; the format is untouched.** v5's writer still emits v4's
+   exact bytes. v4 already fails on a >3 MB blob from either writer, so nothing
+   v5 produces becomes less readable than it already was — v5 simply reads a
+   strict superset.
+2. **The divergence is confined to `chunkCount >= 2`.** 0- and 1-chunk blobs
+   take identical paths, which is every blob in every committed fixture (the
+   `roundtrip_document-stores` differential case is unchanged and green).
+3. **It restores v4's own intent rather than inventing behavior.** v4 already
+   carries an end-of-stream truncation check with its own message; the sparse
+   `every` is what made that code unreachable. v5's short-stream error is that
+   string, unedited.
+4. **This is the backup path.** Bug-compatibility here means silently corrupting
+   a user's document blob and then hard-failing the restore — the one place
+   where matching v4 costs more than it buys.
+
+**How it stays honest.** `EXPECTED_DIVERGENCES` in
+`system_import_equivalence.rs` names the single case
+(`throw_ndjson_truncated_blob`) and asserts BOTH directions: v4 must not throw,
+v5 must throw the truncation message. Any other oracle case where v4 stops
+throwing now fails loudly instead of being tolerated. Core unit tests pin the
+multi-chunk rejoin, the out-of-order rejoin, and the short-stream error;
+`blob_chunk_size_matches_v4` gained the load-bearing `BLOB_CHUNK_BYTES % 3 == 0`
+assertion (each chunk is base64-encoded separately and the reader rejoins the
+ENCODED strings, so only the last chunk may carry padding).
+
+**Not done, deliberately:** v4 itself is unfixed. A one-line change there
+(`received.filter(v => typeof v === 'string').length === chunkCount`) would let
+real v4 instances import large-blob backups too, but it moves the oracle and v4
+is being retired — worth doing only if a v4 user actually hits this before
+retirement.
+
+## Banked finding — `qtap_import_equivalence`'s stale corpus-shape constant (2026-07-24)
+
+**Symptom.** `qtap_import_equivalence` failed at line 323 with
+`assertion left == right failed: 28 vault links (incl. 4 wardrobe .md/char)
+left: 30 right: 28`. Pre-existing and unrelated to any in-flight change
+(confirmed by reverting the only in-flight edit and re-running).
+
+**Diagnosis: v4 drift v5 had ALREADY absorbed — not an import regression.** The
+failing line sits AFTER the row-for-row diff, and that diff PASSED: all nine
+tables, including `doc_mount_file_links` at **30 rows on both sides**, plus the
+`doc_mount_files` / `_documents` row count and `fileSizeBytes` multiset. So the
+port matched v4 exactly; only the hand-written literal disagreed.
+
+The two extra links are **not** wardrobe/outfit (the natural first guess, since
+`8bf3cb5f` landed the outfit feature after the assertion was written). v4
+`8bc43333` (2026-07-17, squashed into `d68638b4`) added a per-character
+`metadata.json` fact sheet to `scaffoldCharacterMount`
+(`lib/mount-index/character-scaffold.ts:60`). Two imported characters × one new
+vault file = +2 links, 28 → 30. v5 ports that file (**P4.6az**) — which is
+precisely why the row diff stayed green. The assertion was written 2026-07-11 in
+`62b4c048` (P4.4u4) and never touched since; the v4 feature landed six days
+later.
+
+**Fix — assert shape, not the total.** Deriving the total from the oracle would
+be vacuous (the diff above already asserts `got == want`), so the two halves are
+now treated by provenance:
+
+- The `Wardrobe/*.md` links stay pinned at **8** (4 items per character) — they
+  come from the committed `.qtap` seed asset, so they are stable and meaningful
+  — plus a distinctness check.
+- The scaffold half is asserted **structurally**: every non-wardrobe
+  `relativePath` appears exactly twice (once per imported character), the vault
+  keystone `properties.json` is present, and the distinct set is ≥ 10 (a
+  non-degeneracy floor). A future v4 scaffold file passes with no edit; a missing
+  file for one character, a collapsed import, or an empty corpus still fails.
+
+**The general trap** (banked, applies to every tier-2 differential): a
+hand-written row-count assertion placed downstream of a passing `got == want`
+diff is not a check on the port — it is a check on **v4**, written in v5's
+source, that nothing updates when v4 moves. It can only ever assert what the
+oracle already says, so it adds no proof and adds rot. When such a block needs a
+number, ask where the number comes from: **seed-derived** (a committed fixture /
+asset) → pin it; **v4-derived** (a scaffold list, a default set) → assert the
+structure instead. Diagnose direction first — diff green + constant red means v4
+drift already absorbed, not a v5 bug.
+
+**Visibility.** This red can sit unnoticed between rounds: the test SKIPs
+silently when `QT_ORACLE_QTAPIMPORT` is unset, as every differential here does by
+design. Deriving the assertion removes the rot but not the invisibility.
+
+**Verification.** Fixture + oracle regenerated from `~/source/quilltap-server` at
+the baseline `e646f58b` (checkout clean); `qtap_import_equivalence` green, and
+the unset-env skip path still clean. No product code changed; the committed
+oracle vintage is unmoved. quilltap-harness 0.0.300.
 ## Maintenance record — the SPA bundle-warnings lane: UNIFIED on main (2026-07-24)
 
 Not a porting unit and not part of any round — an ad-hoc SPA build-hygiene
@@ -191,52 +360,6 @@ run-order flakes, and the clean full run is the evidence.
 - **Scope limit recorded, not done** (G3): v4's four sibling unlock actions
   (`setup`/`unlock`/`store`/`lock`) get no REST alias; they answer
   `unknown_action` at that path.
-
-## Ruling — the sparse-array blob divergence (2026-07-24)
-
-**The bug (v4 `lib/import/quilltap-import-stream.ts:283`).** The blob
-reassembler allocates `received = new Array(chunkCount)` — a SPARSE array — and
-finalizes on `received.every(v => typeof v === 'string')`.
-`Array.prototype.every` **skips holes**, so it is true the moment the FIRST
-chunk lands, whatever `chunkCount` says. v4 then joins (holes render as `''`),
-pushes a silently-truncated blob, and DELETES the accumulator — so chunk 1
-of a 2-chunk blob hits the `doc_mount_blob_chunk received without preceding
-doc_mount_blob` throw and the whole import fails. The writer chunks at
-`BLOB_CHUNK_BYTES = 3 MB`, so **v4 cannot re-import its own export of any
-document-store blob over 3 MB.**
-
-**The ruling: v5 diverges — the reader waits for every chunk.** Four reasons:
-
-1. **It is reader-only; the format is untouched.** v5's writer still emits v4's
-   exact bytes. v4 already fails on a >3 MB blob from either writer, so nothing
-   v5 produces becomes less readable than it already was — v5 simply reads a
-   strict superset.
-2. **The divergence is confined to `chunkCount >= 2`.** 0- and 1-chunk blobs
-   take identical paths, which is every blob in every committed fixture (the
-   `roundtrip_document-stores` differential case is unchanged and green).
-3. **It restores v4's own intent rather than inventing behavior.** v4 already
-   carries an end-of-stream truncation check with its own message; the sparse
-   `every` is what made that code unreachable. v5's short-stream error is that
-   string, unedited.
-4. **This is the backup path.** Bug-compatibility here means silently corrupting
-   a user's document blob and then hard-failing the restore — the one place
-   where matching v4 costs more than it buys.
-
-**How it stays honest.** `EXPECTED_DIVERGENCES` in
-`system_import_equivalence.rs` names the single case
-(`throw_ndjson_truncated_blob`) and asserts BOTH directions: v4 must not throw,
-v5 must throw the truncation message. Any other oracle case where v4 stops
-throwing now fails loudly instead of being tolerated. Core unit tests pin the
-multi-chunk rejoin, the out-of-order rejoin, and the short-stream error;
-`blob_chunk_size_matches_v4` gained the load-bearing `BLOB_CHUNK_BYTES % 3 == 0`
-assertion (each chunk is base64-encoded separately and the reader rejoins the
-ENCODED strings, so only the last chunk may carry padding).
-
-**Not done, deliberately:** v4 itself is unfixed. A one-line change there
-(`received.filter(v => typeof v === 'string').length === chunkCount`) would let
-real v4 instances import large-blob backups too, but it moves the oracle and v4
-is being retired — worth doing only if a v4 user actually hits this before
-retirement.
 
 ## Lane record — P4.9G5 (backup / restore), IN PROGRESS on `claude/p4-backup-restore-docs-6085f9`
 
@@ -33196,57 +33319,3 @@ button instead); and the Import dialog's step 1 only STAGES the chosen file —
 then dies with "Database is currently in use — held by PID N". Kill that PID
 before re-running.
 
-## Banked finding — `qtap_import_equivalence`'s stale corpus-shape constant (2026-07-24)
-
-**Symptom.** `qtap_import_equivalence` failed at line 323 with
-`assertion left == right failed: 28 vault links (incl. 4 wardrobe .md/char)
-left: 30 right: 28`. Pre-existing and unrelated to any in-flight change
-(confirmed by reverting the only in-flight edit and re-running).
-
-**Diagnosis: v4 drift v5 had ALREADY absorbed — not an import regression.** The
-failing line sits AFTER the row-for-row diff, and that diff PASSED: all nine
-tables, including `doc_mount_file_links` at **30 rows on both sides**, plus the
-`doc_mount_files` / `_documents` row count and `fileSizeBytes` multiset. So the
-port matched v4 exactly; only the hand-written literal disagreed.
-
-The two extra links are **not** wardrobe/outfit (the natural first guess, since
-`8bf3cb5f` landed the outfit feature after the assertion was written). v4
-`8bc43333` (2026-07-17, squashed into `d68638b4`) added a per-character
-`metadata.json` fact sheet to `scaffoldCharacterMount`
-(`lib/mount-index/character-scaffold.ts:60`). Two imported characters × one new
-vault file = +2 links, 28 → 30. v5 ports that file (**P4.6az**) — which is
-precisely why the row diff stayed green. The assertion was written 2026-07-11 in
-`62b4c048` (P4.4u4) and never touched since; the v4 feature landed six days
-later.
-
-**Fix — assert shape, not the total.** Deriving the total from the oracle would
-be vacuous (the diff above already asserts `got == want`), so the two halves are
-now treated by provenance:
-
-- The `Wardrobe/*.md` links stay pinned at **8** (4 items per character) — they
-  come from the committed `.qtap` seed asset, so they are stable and meaningful
-  — plus a distinctness check.
-- The scaffold half is asserted **structurally**: every non-wardrobe
-  `relativePath` appears exactly twice (once per imported character), the vault
-  keystone `properties.json` is present, and the distinct set is ≥ 10 (a
-  non-degeneracy floor). A future v4 scaffold file passes with no edit; a missing
-  file for one character, a collapsed import, or an empty corpus still fails.
-
-**The general trap** (banked, applies to every tier-2 differential): a
-hand-written row-count assertion placed downstream of a passing `got == want`
-diff is not a check on the port — it is a check on **v4**, written in v5's
-source, that nothing updates when v4 moves. It can only ever assert what the
-oracle already says, so it adds no proof and adds rot. When such a block needs a
-number, ask where the number comes from: **seed-derived** (a committed fixture /
-asset) → pin it; **v4-derived** (a scaffold list, a default set) → assert the
-structure instead. Diagnose direction first — diff green + constant red means v4
-drift already absorbed, not a v5 bug.
-
-**Visibility.** This red can sit unnoticed between rounds: the test SKIPs
-silently when `QT_ORACLE_QTAPIMPORT` is unset, as every differential here does by
-design. Deriving the assertion removes the rot but not the invisibility.
-
-**Verification.** Fixture + oracle regenerated from `~/source/quilltap-server` at
-the baseline `e646f58b` (checkout clean); `qtap_import_equivalence` green, and
-the unset-env skip path still clean. No product code changed; the committed
-oracle vintage is unmoved. quilltap-harness 0.0.300.

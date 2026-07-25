@@ -3816,7 +3816,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.300"
+version = "0.0.301"
 dependencies = [
  "base64 0.22.1",
  "flate2",
