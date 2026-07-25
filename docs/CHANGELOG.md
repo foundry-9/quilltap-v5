@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+Cleared every warning from the SPA build. The app's first load was carrying
+2.09 MB of JavaScript, 591 kB over the configured budget, because two
+always-mounted shell components each held a static reference to a heavy
+library: the Brahma Console entry reached the markdown renderer (KaTeX,
+syntax highlighting, the whole remark/rehype pipeline) and the global
+wardrobe dialog reached the rich text editor (ProseMirror). Both are dialogs
+that render nothing until opened, so both now load on first open instead of
+at startup. First load drops to 947 kB — 494 kB to 204 kB over the wire —
+with no change in behavior. Upgraded xterm (the terminal emulator) to 6.0,
+which ships a modern module format and clears the two "is not ESM" warnings;
+the full terminal walk — spawn, echo, kill, re-attach, exit — was re-run
+against it. The last such warning comes from a small helper package deep
+inside a markdown dependency that has no modern build and no alternative; it
+is now listed as a known exception so the build stays silent and a genuinely
+new one would stand out. Re-verified on top of the Data & System round: a
+build with zero warnings and a 947.52 kB initial bundle, 223 SPA test files /
+2,621 tests, and the full browser suite at 126 passed / 0 failed / 0 skipped
+— including the whole terminal walk (spawn, echo, kill, re-attach, exit)
+against the new xterm, and the wardrobe and Brahma Console walks that are now
+the only things that load the two deferred chunks. No Rust changed. SPA
+0.5.271.
+
 Unified the "finish P4.9G1" round. Two of the three Data & System features
 that had buttons but no server behind them now work: **Delete All Data**
 (preview counts, the typed confirmation, and the wipe) and **Export** (the
@@ -108,24 +130,6 @@ The test fixture grew a row in every table a backup touches, so each part of
 the export is checked against the real old-app code rather than assumed.
 Downloading the finished archive, and restoring from one, are still to come
 and continue to say so plainly.
-Cleared every warning from the SPA build. The app's first load was carrying
-2.09 MB of JavaScript, 591 kB over the configured budget, because two
-always-mounted shell components each held a static reference to a heavy
-library: the Brahma Console entry reached the markdown renderer (KaTeX,
-syntax highlighting, the whole remark/rehype pipeline) and the global
-wardrobe dialog reached the rich text editor (ProseMirror). Both are dialogs
-that render nothing until opened, so both now load on first open instead of
-at startup. First load drops to 947 kB — 494 kB to 204 kB over the wire —
-with no change in behavior. Upgraded xterm (the terminal emulator) to 6.0,
-which ships a modern module format and clears the two "is not ESM" warnings;
-the full terminal walk — spawn, echo, kill, re-attach, exit — was re-run
-against it. The last such warning comes from a small helper package deep
-inside a markdown dependency that has no modern build and no alternative; it
-is now listed as a known exception so the build stays silent and a genuinely
-new one would stand out. Gate: 223 SPA test files / 2,621 tests, the full
-browser suite at 124 passed / 0 failed, and a clean build with zero
-warnings. SPA 0.5.269.
-
 Planned the next round of work: the three Data & System features whose
 buttons are already on screen but whose server side has not been written
 yet — Backup & Restore, Import / Export, and Delete All Data. Each now has

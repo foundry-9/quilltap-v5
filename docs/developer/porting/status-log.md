@@ -9,6 +9,61 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Maintenance record — the SPA bundle-warnings lane: UNIFIED on main (2026-07-24)
+
+Not a porting unit and not part of any round — an ad-hoc SPA build-hygiene
+branch (`claude/bundle-warnings-commonjs-2a28b5`) unified on its own. **Zero
+Rust source changed** (`git diff --name-only main...HEAD -- crates/ harness/
+Cargo.*` empty), so no oracle, no differential, and no v4 survey applies. v4
+re-verified at `e646f58b`, clean.
+
+### What landed
+
+- **Two eagerly-mounted shell dialogs moved behind `@defer`**, each on the
+  SAME `isOpen` signal its own template already gated on, so the change is
+  behaviour-identical by construction:
+  - `BrahmaEntry` → `qt-brahma-console-dialog` — the dialog's message list
+    pulls the whole markdown render stack (unified + remark/rehype + katex +
+    highlight.js, ~646 kB) and the entry is mounted eagerly by the shell.
+  - `Shell` → `qt-wardrobe-control-dialog` — the item editor reaches
+    `markdown-field` → `rich-editor`, dragging ProseMirror + markdown-it
+    (~389 kB) in from one static reference.
+- **xterm 5.5 → 6.0** (+ `@xterm/addon-fit` 0.10 → 0.11), which ships a real
+  ESM build and clears both "is not ESM" warnings.
+- **`allowedCommonJsDependencies: ["extend"]`** in `angular.json` — a
+  transitive CommonJS helper inside the markdown dependency tree with no
+  modern build. Declaring it keeps the build silent so a genuinely NEW warning
+  stands out, rather than living in a permanently noisy build.
+
+### Verified at unification (the lane's claims re-run, not trusted)
+
+The branch carried **zero commits** — all the work sat uncommitted in its
+worktree, so it was preserved as a commit first, then cherry-picked. Its
+CHANGELOG claimed a gate taken on the OLD base (`ce693c1a`, Playwright 124);
+that was re-run on top of main and the entry corrected.
+
+- `ng build`: **zero warnings** (grep for warning/bailout/budget/CommonJS/ESM
+  is empty) and **initial total 947.52 kB / 204.46 kB transfer** — down from
+  the claimed 2.09 MB, which had been 591 kB over the configured budget.
+- `ng test`: 223 files / 2,621 passed.
+- Full Playwright: **126 passed / 0 failed / 0 skipped**, including the
+  terminal walk (spawn → echo → kill → re-attach → exit — the xterm-6 proof)
+  and the wardrobe + Brahma Console walks, which are now the only beats that
+  load the two deferred chunks.
+- Rust: unchanged, so `cargo test --workspace` (377 binaries / 1,591 / 0) and
+  the clippy/oracle results are INHERITED from `ac76b1ac` on bit-identical
+  sources; `cargo fmt --check`, `cargo clippy --workspace --all-targets -D
+  warnings` and `cargo build --release` were re-run as confirmation and are
+  clean.
+
+**`npm install --package-lock-only` is NOT enough for a dependency bump** — it
+updates the lock but leaves `node_modules` on the old version, so the build
+would have silently linked xterm 5.5 and the warnings would have persisted. A
+real `npm install` is required in the unifying worktree.
+
+Version: SPA **0.5.271** (0.5.268 +1 P4.9G3, +1 the round's backup beat, +1
+this lane — recounted, since the lane branched at 0.5.269).
+
 ## Round record — the "finish P4.9G1" round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5): UNIFIED on main (2026-07-24)
 
 All three lanes reconciled on `unify/finish-p4.9g1` and fast-forwarded to main.
