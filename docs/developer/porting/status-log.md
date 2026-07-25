@@ -9,6 +9,99 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — P4.9G5 restore-execute (single lane): UNIFIED on main (2026-07-25)
+
+**P4.9G5 is CLOSED. Restore is LIVE in both modes** — the Backup & Restore family
+is complete end to end, and the last of the four Data & System cards that answered
+a refusal now works. One lane, `claude/p4-9g5-unit4-restore`, cherry-picked clean
+(no conflicts — nothing else was in flight). v4 re-verified at **`e646f58b`**,
+clean tree, before and after; the oracle baseline does not move.
+
+Scope was **verified against the order's tier list rather than taken on trust**,
+which is how the wire below was found. Everything the lane claimed is on main:
+both modes, the three divergences, the two recorded gaps, the retired banked
+directory.
+
+### The unification wire — the order's missing differential arm
+
+The order's tier-1 item 5 names five required arms. Four existed; **the fifth,
+`restore_preview_writes_nothing`, did not** — and nothing else in the tree covered
+it. `system_restore_equivalence` diffs the preview's 41-key summary and asserts the
+extract directory is cleaned up, and its header says preview is "filesystem-only,
+touching no database" — but that was an **assertion about the port, not a proof of
+it**. No test anywhere ran a preview with a database in reach and then looked at
+the database, so a preview that quietly wrote would have passed every test in the
+repo.
+
+The gap is worth more than its size: preview is the one restore leg a user is
+invited to run **speculatively**, against a library they have not agreed to
+replace yet. "It only reads" has to be verified.
+
+`preview_writes_nothing` (in `system_restore_state`) seeds a full library by
+restoring an archive, then previews all five committed archives against it —
+including the two that throw — comparing every table in all three partitions
+before and after and asserting the extract directory is gone each time. No oracle,
+no env var, so it cannot silently skip; and it refuses to pass vacuously by
+requiring the seeded instance to have rows in more than 20 tables (38 in practice).
+**Mutation-checked:** one row inserted between the dumps fails the arm by name.
+
+### What the lane delivered (full detail in its own record, immediately below)
+
+- **Both modes live**: the 35-phase orchestrator, `new-account` over P4.9G6's
+  `remap_backup_data` — which finally has its caller, so
+  `p4_9g6_seam_contract`'s compile-time pins are now load-bearing rather than
+  aspirational.
+- **THREE divergences, not the two ruled.** Implementing the ruling found the
+  broadest one: v4 runs phase 5 (files) before both the Uploads mount
+  `deleteUserData` truncates and the project stores that restore at phase 13, so
+  **v4 cannot restore any user file into a fresh or wiped target in either mode**,
+  and the `>= 2` fix alone would not have helped. Queued for the v4-side list with
+  the other two.
+- **Both of the previous lane's open leads answered, and one was diagnosed
+  backwards** — the `doc_mount_chunks` gap is not a baseline difference (the
+  oracle's new `preState` dump proves both baselines are zero) but a real v5 gap in
+  `create_character`'s vault write path.
+- **Two v5 gaps recorded with tripwire assertions, neither fixed, neither
+  restore's**: vault chunking, and `chat_settings` writing explicit `null`s where
+  Zod omits absent optionals. Both owe follow-ups; both fail their assertion when
+  closed, so neither can rot into an excuse.
+- The orchestrator file is `orchestrator.rs`: v4's `restore/restore.ts` filename
+  would nest a `restore` module in a `restore` module and `clippy -D warnings`
+  rejects it. `restore()` is re-exported, so the call path is unchanged.
+
+### Gate (on the unify branch, before the fast-forward)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean **plain AND** with `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- Oracles regenerated **fresh** at `e646f58b`, each in its own clean invocation via
+  a `/tmp` mirror (Node 24): `system-restore` (9 cases — 5 preview + 4 restore),
+  `system-backup` (2), `backup-uuid-remap` (19; **corpus byte-identical**, sha256
+  `c62aa987…`).
+- `TZ=UTC cargo test --workspace --no-fail-fast` with all three env vars:
+  **381 test binaries / 1,621 tests / 0 failed.**
+- The five families **by name** with `--nocapture`, zero SKIP:
+  `system_restore_state` 4 restore cases + the new preview arm,
+  `system_restore_equivalence` 5/5, `system_backup_equivalence` 3 OK lines,
+  `backup_uuid_remap_equivalence` 19/19, `p4_9g6_seam_contract` 2/2.
+- **No `apps/web` file was touched**, so no `ng test`, `ng build` or Playwright run
+  was owed — and none was run. Stated explicitly rather than left ambiguous.
+- No fixture changed, so no other oracle family is invalidated.
+
+Versions: core **0.0.356**, harness **0.0.305** (304 from the lane, +1 for the
+wire), host **0.0.36**; web 0.0.44, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.271
+unchanged.
+
+### STILL OPEN under P4.9G5 — exactly one item
+
+**The tier-2 e2e beat** (upload → preview → restore). It must run after the
+delete-all describe, because a real restore wipes the shared e2e instance, and
+landing it obliges a full Playwright run over a fresh `ng build` dist plus rebuilt
+debug binaries. Three consecutive lanes have now deferred it for the same reason;
+the server half is fully proven, so it is a small write whenever an SPA-touching
+round next runs a Playwright gate anyway. **That is the natural place to land it —
+it does not deserve a round of its own.**
+
 ## Lane record — P4.9G5 units 4+5 (the restore orchestrator): LANDED, both modes
 
 **Branch `claude/p4-9g5-unit4-restore`.** v4 drift-checked at lane start: clean at

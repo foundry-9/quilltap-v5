@@ -1313,6 +1313,46 @@ records THERE. Update this summary only when a phase or round completes.
   `docs/developer/porting/banked/p4.9g5-unit4/`)**; or P4.9G4's import execute
   (unblocked, disjoint); or a dogfood pass (+ the owed walk Part D and Part F
   items 15/16) — see phase-4.md.
+- **P4.9G5 restore-execute: CLOSED, UNIFIED on main (2026-07-25, single lane) —
+  RESTORE IS LIVE IN BOTH MODES and the Backup & Restore family is COMPLETE.**
+  All four Data & System cards that once answered a refusal now work.
+  `systemRestoreExecute` runs v4's 35-phase orchestrator in `replace` **and**
+  `new-account` (over P4.9G6's `remap_backup_data` — which finally has its
+  caller, making `p4_9g6_seam_contract`'s compile-time pins load-bearing);
+  `system_restore_state` diffs **43 tables across all three partitions** against
+  v4's real restore over four archives (incl. `restore_new_account`, so the mode
+  that went live is the mode that is proven). **THREE divergences, not the two
+  ruled** — implementing the ruling found the broadest: v4 runs phase 5 (files)
+  before both the Uploads mount `deleteUserData` truncates AND the project stores
+  that restore at phase 13, so **v4 cannot restore any user file into a fresh or
+  wiped target in either mode**, and the `>= 2` gate fix alone would not have
+  helped; v5 runs files after the doc-store family (no write changed, only when
+  it happens — v4's own comment calls the list "dependency order"). All three
+  v4-side fixes queued post-5.0. Both of the previous lane's open leads are
+  answered and **one was diagnosed backwards**: the `doc_mount_chunks` gap is not
+  a baseline difference (the oracle's new `preState` dump proves both baselines
+  are zero) but a real v5 gap. The unification wire closed the order's
+  never-delivered tier-1 arm `restore_preview_writes_nothing` — preview being
+  read-only had been *asserted in a comment, never proven*, so a preview that
+  wrote would have passed every test in the repo; now proven over a populated
+  library and all five archives, mutation-checked. Gate: fmt; clippy both feature
+  sets; release build; **381 binaries / 1,621 / 0**; five families by name over
+  fresh `e646f58b` oracles zero SKIP (uuid-remap corpus byte-identical); **no
+  `apps/web` touched so no SPA run owed**. Versions: core 0.0.356, harness
+  0.0.305, host 0.0.36; web 0.0.44, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.271
+  unchanged. **TWO v5 gaps recorded with tripwires that FAIL when closed, neither
+  fixed, neither restore's:** (a) a freshly provisioned character vault is not
+  chunked for search where v4 chunks each document as `create_character` writes
+  it (invisible to the characters differentials — none dump that table); (b)
+  `chat_settings.cheapLLMSettings` writes explicit `null`s where Zod omits absent
+  `.nullable().optional()` keys (needs `Option<Option<String>>` across the
+  settings bags). **STILL OPEN — one item:** the tier-2 e2e beat (upload →
+  preview → restore), which must run after the delete-all describe and obliges a
+  full Playwright run; three lanes have deferred it, and it should ride the next
+  round that already touches `apps/web`. Next: **P4.9G4's import execute** (the
+  last unported Data & System half), a restore/Data-&-System dogfood pass (+ the
+  owed walk Part D and Part F items 15/16), the two recorded gaps, or M6 rows 6+
+  — see phase-4.md.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

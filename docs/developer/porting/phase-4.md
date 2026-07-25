@@ -2676,6 +2676,73 @@ fresh dogfood walk that follows this round; the proactive-path port
 (conditional on P4.16's bench); the chokidar-equivalent fs watcher and
 the other standing seams (unchanged).
 
+## P4.9G5 restore-execute (single lane) — UNIFIED on main 2026-07-25
+
+**P4.9G5 CLOSED. Restore is LIVE in both modes, and the Backup & Restore family is
+complete end to end.** All four Data & System cards that once answered a refusal
+now work. Round record at the top of `status-log.md`.
+
+`systemRestoreExecute` runs v4's 35-phase orchestrator in `replace` **and**
+`new-account` (the latter over P4.9G6's `remap_backup_data`, which finally has its
+caller — so `p4_9g6_seam_contract`'s compile-time pins are load-bearing now).
+`system_restore_state` diffs **43 tables across all three partitions** against v4's
+real restore over four archives.
+
+**THREE divergences, not the two ruled.** Implementing the 2026-07-25 ruling found
+the broadest one: v4 runs phase 5 (files) before both the Uploads mount
+`deleteUserData` truncates and the project stores that restore at phase 13, so v4
+cannot restore any user file into a fresh or wiped target **in either mode** — the
+`>= 2` gate fix alone would not have helped. v5 runs files after the doc-store
+family; no write changed, only when it happens. All three v4-side fixes are queued
+post-5.0 in `dogfood-findings.md`.
+
+**The unification wire:** the order's tier-1 arm
+`restore_preview_writes_nothing` had never been delivered, and nothing else covered
+it — preview being read-only was asserted in a comment, never proven, so a preview
+that wrote would have passed everything. It is now proven over a populated library
+and all five archives, and mutation-checked.
+
+**Gate:** fmt; clippy both feature sets; release build; 381 binaries / 1,621 / 0;
+five families by name over fresh `e646f58b` oracles, zero SKIP; corpus
+byte-identical; no `apps/web` touched so no SPA run owed. Versions: core 0.0.356,
+harness 0.0.305, host 0.0.36.
+
+### Two v5 gaps recorded with tripwires — neither fixed, neither restore's
+
+Both fail their own assertion when closed, so neither can rot into an excuse:
+
+1. **A freshly provisioned character vault is not chunked for search.** v4 writes
+   one `doc_mount_chunks` row per vault document as `create_character` writes it;
+   v5 writes none, so a new character's vault is not semantically searchable until
+   something reindexes. Invisible to the characters family's differentials because
+   none of them dump that table. **Follow-up owed there, not here.**
+2. **`chat_settings.cheapLLMSettings` writes explicit `null`s** where Zod omits
+   absent optionals (`.nullable().optional()`). Pre-existing in the chat-settings
+   write path; correct modelling is `Option<Option<String>>` across the settings
+   bags, which ripples through every consumer.
+
+### STILL OPEN under P4.9G5 — one item, and where it belongs
+
+The tier-2 **e2e beat** (upload → preview → restore). It must run after the
+delete-all describe (a real restore wipes the shared e2e instance) and obliges a
+full Playwright run. Three lanes have deferred it for that reason. The server half
+is proven, so it is a small write — **land it inside the next round that already
+touches `apps/web` and runs a Playwright gate**, rather than giving it a round.
+
+**Next candidates, in rough value order:**
+
+1. **`work-orders/p4.9g4-qtap-export-import.md` — resume at import EXECUTE.** The
+   last unported half of the Data & System surface, fully unblocked and disjoint;
+   its resume list is in that order's header and the lane record.
+2. **A dogfood pass over restore and the Data & System surfaces** — restore in both
+   modes on a Friday copy is the obvious first walk, plus the standing debt (**walk
+   Part D**, **Part F items 15/16**).
+3. **The two recorded gaps above**, either as a small round or as riders.
+4. **M6 backlog rows 6+**, then the standing pools (`p4.9i2`, `p4.9e3`, `p4.9h2`,
+   the sidebar tier-3 deferrals, `browserUserAgent`, D21).
+
+---
+
 ## The "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6) — UNIFIED on main 2026-07-25
 
 **P4.9G6 CLOSED. P4.9G5 still OPEN at units 4–5 — blocked on a human ruling at
