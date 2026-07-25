@@ -407,22 +407,35 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                         .unwrap_or_default()
                         .to_string(),
                 );
-                // ⚠ v4's `accum.received.every(v => typeof v === 'string')` runs over
+                // ⚠ DELIBERATE DIVERGENCE FROM v4 (ruled 2026-07-24) — the ONE
+                // place this reader does not reproduce v4.
+                //
+                // v4's `accum.received.every(v => typeof v === 'string')` runs over
                 // a SPARSE array (`new Array(chunkCount)`), and
                 // `Array.prototype.every` SKIPS HOLES — so it is true as soon as the
                 // FIRST chunk lands, whatever `chunkCount` says. v4 then finalizes
                 // the blob with `received.join('')` (holes render as the empty
                 // string) and DELETES the accumulator, so chunk 1 of a 2-chunk blob
-                // hits the "received without preceding doc_mount_blob" throw.
+                // hits the "received without preceding doc_mount_blob" throw. In
+                // other words v4 silently truncates, then hard-fails, on any
+                // document-store blob larger than the 3 MB `BLOB_CHUNK_BYTES` — it
+                // cannot re-import its own export.
                 //
-                // In other words v4 cannot round-trip a blob larger than the 3 MB
-                // chunk size. Reproduced verbatim (the differential pins it); the
-                // lane record raises it as a v4 bug owed a human ruling. Do NOT
-                // "fix" it here — that would silently diverge the file format.
-                if !blob_accumulators[pos].1.received.is_empty() {
+                // v5 requires every slot. The divergence is reader-only and confined
+                // to `chunkCount >= 2`: the writer is untouched (v5 emits v4's exact
+                // bytes), and 0-/1-chunk blobs behave identically, so no file changes
+                // meaning — v5 just reads a strict superset of what v4 can read. The
+                // truncated case now reaches v4's OWN end-of-stream check below,
+                // which the sparse `every` had made unreachable; that error string is
+                // v4's, unedited. See the rationale in `status-log.md`.
+                if blob_accumulators[pos]
+                    .1
+                    .received
+                    .iter()
+                    .all(Option::is_some)
+                {
                     let (_, accum) = blob_accumulators.remove(pos);
                     let mut blob = accum.meta;
-                    // `Array.prototype.join('')` renders a hole as the empty string.
                     blob.insert(
                         "dataBase64".into(),
                         Value::String(
@@ -448,8 +461,10 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
         );
     };
 
-    // Only reachable for a blob whose `doc_mount_blob` record was never followed
-    // by ANY chunk (see the sparse-array note above).
+    // v4's truncation check, verbatim. In v4 this is only reachable for a blob
+    // that received NO chunk at all (its sparse `every` finalized on the first
+    // one); in v5 it also catches the genuinely-short stream the check was
+    // written for — see the divergence note in the `doc_mount_blob_chunk` arm.
     if !blob_accumulators.is_empty() {
         let pending: Vec<Value> = blob_accumulators
             .iter()
@@ -745,7 +760,7 @@ mod tests {
     }
 
     #[test]
-    fn a_blob_with_no_chunks_at_all_is_the_only_truncation_error() {
+    fn a_blob_with_no_chunks_at_all_is_a_truncation_error() {
         let records = vec![
             json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
                    "manifest":{"exportType":"document-stores","counts":{}}}),
@@ -758,30 +773,53 @@ mod tests {
         );
     }
 
-    /// ⚠ v4's sparse-array `every` (see the `doc_mount_blob_chunk` arm): the blob
-    /// finalizes on the FIRST chunk, so a 2-chunk blob silently keeps only chunk 0
-    /// and chunk 1 then finds no accumulator. Pinned so the quirk cannot drift
-    /// silently in either direction.
+    /// The RULED divergence (see the `doc_mount_blob_chunk` arm): where v4's
+    /// sparse-array `every` finalizes a multi-chunk blob on its FIRST chunk —
+    /// silently truncating it, then throwing "received without preceding
+    /// doc_mount_blob" on chunk 1 — v5 waits for every slot and rejoins them.
     #[test]
-    fn v4s_sparse_every_finalizes_a_blob_on_its_first_chunk() {
+    fn a_multi_chunk_blob_rejoins_every_chunk_unlike_v4() {
         let head = vec![
             json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
                    "manifest":{"exportType":"document-stores","counts":{}}}),
             json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","sha256":"s","chunkCount":2}}),
             json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"YWFh"}),
         ];
-        let out = assemble_export_from_stream(&head).unwrap();
-        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFh");
 
-        let mut with_second = head.clone();
-        with_second.push(
-            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":2,"dataBase64":"YmJi"}),
-        );
-        let err = assemble_export_from_stream(&with_second).unwrap_err();
+        // Chunk 0 alone no longer finalizes the blob — it stays pending and the
+        // stream is reported as truncated (v4's own end-of-stream message, which
+        // its sparse `every` had made unreachable).
+        let err = assemble_export_from_stream(&head).unwrap_err();
         assert_eq!(
             err,
-            "doc_mount_blob_chunk received without preceding doc_mount_blob (sha256=s)"
+            "NDJSON export truncated: 1 blob(s) missing chunks — \
+             [{\"sha256\":\"s\",\"received\":1,\"expected\":2}]"
         );
+
+        // With both chunks the blob round-trips, in index order.
+        let mut both = head.clone();
+        both.push(
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":2,"dataBase64":"YmJi"}),
+        );
+        let out = assemble_export_from_stream(&both).unwrap();
+        assert_eq!(out.data["blobs"].as_array().unwrap().len(), 1);
+        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFhYmJi");
+    }
+
+    /// Chunks arriving out of order still rejoin by index, and the blob finalizes
+    /// only once the last hole is filled.
+    #[test]
+    fn out_of_order_chunks_rejoin_by_index() {
+        let records = vec![
+            json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
+                   "manifest":{"exportType":"document-stores","counts":{}}}),
+            json!({"kind":"doc_mount_blob","data":{"mountPointId":"m","sha256":"s","chunkCount":3}}),
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":2,"total":3,"dataBase64":"Y2Nj"}),
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":3,"dataBase64":"YWFh"}),
+            json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":3,"dataBase64":"YmJi"}),
+        ];
+        let out = assemble_export_from_stream(&records).unwrap();
+        assert_eq!(out.data["blobs"][0]["dataBase64"], "YWFhYmJiY2Nj");
     }
 
     #[test]

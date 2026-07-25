@@ -183,13 +183,60 @@ run-order flakes, and the clean full run is the evidence.
 - **P4.9G3's one deferral:** legacy `<base>/files/**` disk bytes survive the
   wipe (metadata rows go; mount-blob bytes are truncated). Needs a
   `StorageBackend` threaded to the dispatch layer — no lane owns that.
-- **A v4 BUG owed a human ruling** (G4 banked it): `assembleExportFromStream`'s
-  `every()` over a SPARSE array means **v4 cannot round-trip a document-store
-  blob larger than the 3 MB chunk size**. v5 reproduces it verbatim, pinned in
-  both directions. Detail in the P4.9G4 lane record.
+- **A v4 BUG — RULED 2026-07-24: v5 DIVERGES** (G4 banked it).
+  `assembleExportFromStream`'s `every()` over a SPARSE array means **v4 cannot
+  round-trip a document-store blob larger than the 3 MB chunk size**. v5 now
+  requires every chunk. See "Ruling — the sparse-array blob divergence" below;
+  the original finding is in the P4.9G4 lane record.
 - **Scope limit recorded, not done** (G3): v4's four sibling unlock actions
   (`setup`/`unlock`/`store`/`lock`) get no REST alias; they answer
   `unknown_action` at that path.
+
+## Ruling — the sparse-array blob divergence (2026-07-24)
+
+**The bug (v4 `lib/import/quilltap-import-stream.ts:283`).** The blob
+reassembler allocates `received = new Array(chunkCount)` — a SPARSE array — and
+finalizes on `received.every(v => typeof v === 'string')`.
+`Array.prototype.every` **skips holes**, so it is true the moment the FIRST
+chunk lands, whatever `chunkCount` says. v4 then joins (holes render as `''`),
+pushes a silently-truncated blob, and DELETES the accumulator — so chunk 1
+of a 2-chunk blob hits the `doc_mount_blob_chunk received without preceding
+doc_mount_blob` throw and the whole import fails. The writer chunks at
+`BLOB_CHUNK_BYTES = 3 MB`, so **v4 cannot re-import its own export of any
+document-store blob over 3 MB.**
+
+**The ruling: v5 diverges — the reader waits for every chunk.** Four reasons:
+
+1. **It is reader-only; the format is untouched.** v5's writer still emits v4's
+   exact bytes. v4 already fails on a >3 MB blob from either writer, so nothing
+   v5 produces becomes less readable than it already was — v5 simply reads a
+   strict superset.
+2. **The divergence is confined to `chunkCount >= 2`.** 0- and 1-chunk blobs
+   take identical paths, which is every blob in every committed fixture (the
+   `roundtrip_document-stores` differential case is unchanged and green).
+3. **It restores v4's own intent rather than inventing behavior.** v4 already
+   carries an end-of-stream truncation check with its own message; the sparse
+   `every` is what made that code unreachable. v5's short-stream error is that
+   string, unedited.
+4. **This is the backup path.** Bug-compatibility here means silently corrupting
+   a user's document blob and then hard-failing the restore — the one place
+   where matching v4 costs more than it buys.
+
+**How it stays honest.** `EXPECTED_DIVERGENCES` in
+`system_import_equivalence.rs` names the single case
+(`throw_ndjson_truncated_blob`) and asserts BOTH directions: v4 must not throw,
+v5 must throw the truncation message. Any other oracle case where v4 stops
+throwing now fails loudly instead of being tolerated. Core unit tests pin the
+multi-chunk rejoin, the out-of-order rejoin, and the short-stream error;
+`blob_chunk_size_matches_v4` gained the load-bearing `BLOB_CHUNK_BYTES % 3 == 0`
+assertion (each chunk is base64-encoded separately and the reader rejoins the
+ENCODED strings, so only the last chunk may carry padding).
+
+**Not done, deliberately:** v4 itself is unfixed. A one-line change there
+(`received.filter(v => typeof v === 'string').length === chunkCount`) would let
+real v4 instances import large-blob backups too, but it moves the oracle and v4
+is being retired — worth doing only if a v4 user actually hits this before
+retirement.
 
 ## Lane record — P4.9G5 (backup / restore), IN PROGRESS on `claude/p4-backup-restore-docs-6085f9`
 
@@ -33044,7 +33091,7 @@ QT_ORACLE_OUT=/tmp/oracle-system-import.ndjson \
 Then `QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson cargo test -p
 quilltap-harness --test system_import_equivalence -- --nocapture`.
 
-#### ⚠ FINDING — a v4 bug the differential exposed (owed a human ruling)
+#### ⚠ FINDING — a v4 bug the differential exposed (RULED 2026-07-24 — see below)
 
 `assembleExportFromStream`'s blob reassembly (`quilltap-import-stream.ts:284`)
 tests `accum.received.every(v => typeof v === 'string')` over a SPARSE array
@@ -33059,13 +33106,20 @@ chunk size.** It silently keeps the first 3 MB and then errors the import. Every
 blob under 3 MB has `chunkCount === 1` and is unaffected, which is why this has
 never been noticed.
 
-This lane **reproduces the quirk verbatim** — the oracle proves v4 does not throw
-on the truncated-blob case, and diverging unilaterally would change the file
-format's meaning. It is pinned in both directions by
-`v4s_sparse_every_finalizes_a_blob_on_its_first_chunk` (a core unit test) and by
-the `throw_ndjson_truncated_blob` differential case. **Owed: a human ruling** —
-this is a v4-first data-integrity bug, and the fix belongs in v4 (or in a ruled
-v5 divergence), not in a lane.
+This lane **reproduced the quirk verbatim** and escalated it rather than ruling
+in-lane, which was the right call.
+
+**RULED 2026-07-24 — v5 diverges: the reader waits for every chunk.** The
+divergence is reader-only (the writer still emits v4's exact bytes) and confined
+to `chunkCount >= 2`, so the file format's meaning is unchanged; the short stream
+now reaches v4's own end-of-stream truncation error, which the sparse `every` had
+made unreachable. The lane's pin
+`v4s_sparse_every_finalizes_a_blob_on_its_first_chunk` was replaced by
+`a_multi_chunk_blob_rejoins_every_chunk_unlike_v4` +
+`out_of_order_chunks_rejoin_by_index`, and the `throw_ndjson_truncated_blob`
+differential case now runs through `EXPECTED_DIVERGENCES`, which asserts BOTH
+sides (v4 does not throw; v5 does, with the truncation message). Full rationale:
+"Ruling — the sparse-array blob divergence", near the top of this log.
 
 #### 🔶 DEFERRED, LOUD AND NAMED — `executeImport` (the write half)
 

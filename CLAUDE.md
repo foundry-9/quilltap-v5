@@ -1249,10 +1249,16 @@ records THERE. Update this summary only when a phase or round completes.
   `SystemRestoreExecute` are the only two variants left in `engine.rs`'s
   not-yet-available arm. Deferred loud: legacy `<base>/files/**` disk bytes
   survive the wipe (needs a `StorageBackend` at the dispatch layer); v4's four
-  sibling unlock actions get no REST alias. **⚠ A v4 BUG owed a human
-  ruling:** `assembleExportFromStream`'s `every()` over a SPARSE array means
-  v4 cannot round-trip a document-store blob larger than the 3 MB chunk size;
-  v5 reproduces it verbatim, pinned both directions. Next candidates: finish
+  sibling unlock actions get no REST alias. **A v4 BUG — RULED 2026-07-24,
+  v5 DIVERGES (the port's one deliberate reader divergence):**
+  `assembleExportFromStream`'s `every()` over a SPARSE array means v4 cannot
+  round-trip a document-store blob larger than the 3 MB chunk size; v5's
+  reader now waits for every chunk (reader-only — the writer still emits v4's
+  exact bytes, and 0-/1-chunk blobs are unchanged), and the short stream
+  reaches v4's OWN truncation error, which its sparse `every` had made
+  unreachable. Asserted both directions via `EXPECTED_DIVERGENCES` in
+  `system_import_equivalence.rs`; rationale in the status log's "Ruling — the
+  sparse-array blob divergence". Next candidates: finish
   P4.9G5's restore side, then P4.9G4's import execute; or a dogfood pass over
   this round's live surfaces (+ the still-owed walk Part D and Part F items
   15/16) — see phase-4.md. Versions: core 0.0.352, harness 0.0.299, host

@@ -25,6 +25,14 @@ use serde_json::{Map, Value};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
+/// Oracle cases where v5 deliberately does NOT match v4, each one ruled and
+/// recorded. Exactly one entry: v4's sparse-array `every` finalizes a
+/// multi-chunk blob on its first chunk, so v4 cannot re-import a document-store
+/// blob larger than its own 3 MB `BLOB_CHUNK_BYTES`. v5 requires every chunk
+/// (reader-only; the writer stays byte-identical). Ruled 2026-07-24 — the
+/// rationale is in `ndjson.rs` and the status log.
+const EXPECTED_DIVERGENCES: &[&str] = &["throw_ndjson_truncated_blob"];
+
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
@@ -166,13 +174,33 @@ fn system_import_read_matches_oracle() {
             "throw" => {
                 let got = load_qtap_from_upload(&decode(&exp["qtapBase64"]));
                 match exp["error"].as_str() {
-                    // A `null` error means v4 did NOT throw — the truncated-blob
-                    // arm, which v4's sparse-array `every` silently accepts (see
-                    // the note in `ndjson.rs`). The Rust reader must accept it too.
+                    // A `null` error means v4 did NOT throw. The ONLY such case is
+                    // the short multi-chunk blob, where v4's sparse-array `every`
+                    // finalizes on the first chunk and silently truncates the blob
+                    // — the RULED divergence (see the note in `ndjson.rs`). v5 must
+                    // throw here, with v4's own end-of-stream truncation message,
+                    // so the divergence stays asserted in both directions rather
+                    // than merely tolerated.
                     None => {
-                        if let Err(msg) = got {
-                            failed.push(format!("{name}: oracle did not throw, rust threw: {msg}"));
+                        if !EXPECTED_DIVERGENCES.contains(&name) {
+                            failed.push(format!(
+                                "{name}: oracle did not throw and the case is not a \
+                                 recorded divergence — add it to EXPECTED_DIVERGENCES \
+                                 with a ruling, or fix the reader"
+                            ));
                             continue;
+                        }
+                        match got {
+                            Err(msg)
+                                if msg.starts_with(
+                                    "NDJSON export truncated: 1 blob(s) missing chunks — ",
+                                ) => {}
+                            other => {
+                                failed.push(format!(
+                                    "{name}: expected the ruled truncation divergence, got {other:?}"
+                                ));
+                                continue;
+                            }
                         }
                     }
                     Some(expected) => match got {

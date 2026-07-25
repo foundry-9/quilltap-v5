@@ -441,6 +441,12 @@ mod tests {
     fn blob_chunk_size_matches_v4() {
         // v4 `BLOB_CHUNK_BYTES = 3 * 1024 * 1024` (`ndjson-writer.ts:38`).
         assert_eq!(BLOB_CHUNK_BYTES, 3_145_728);
+        // …and it must stay a multiple of 3. Each chunk is base64-encoded on its
+        // own and the reader rejoins the ENCODED strings, so only the final chunk
+        // may carry padding — otherwise a multi-chunk blob decodes to garbage.
+        // Load-bearing since the reader stopped reproducing v4's sparse-array
+        // `every` and multi-chunk blobs actually reassemble (see `ndjson.rs`).
+        assert_eq!(BLOB_CHUNK_BYTES % 3, 0);
     }
 
     #[test]

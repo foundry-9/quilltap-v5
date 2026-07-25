@@ -23,6 +23,17 @@ build with zero warnings and a 947.52 kB initial bundle, 223 SPA test files /
 against the new xterm, and the wardrobe and Brahma Console walks that are now
 the only things that load the two deferred chunks. No Rust changed. SPA
 0.5.271.
+Fixed a data-integrity bug carried over from v4: an export containing a
+document-store file larger than 3 MB could not be read back in. The reader
+stopped waiting after the first piece of a large file, kept only that piece,
+and then failed the whole import when the next piece arrived. Large files now
+reassemble correctly, and a genuinely incomplete export is reported as
+truncated instead of being silently accepted. Exports themselves are written
+exactly as before, so nothing about the file format changed, and files under
+3 MB behaved correctly all along. This is a deliberate departure from v4's
+behavior — the one place the importer does not match it — recorded with its
+reasoning and checked in both directions by the test suite. Versions: core
+0.0.353, harness 0.0.300.
 
 Unified the "finish P4.9G1" round. Two of the three Data & System features
 that had buttons but no server behind them now work: **Delete All Data**
