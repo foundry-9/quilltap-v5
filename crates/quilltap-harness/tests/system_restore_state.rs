@@ -64,7 +64,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::backup::restore::{restore, RestoreMode, RestoreSummary};
+use quilltap_core::services::backup::restore::{
+    preview_restore, restore, RestoreMode, RestoreSummary,
+};
 use quilltap_core::services::backup::{BackupHost, HostDirs};
 use quilltap_core::services::file_storage::{PixelCodec, StorageBackend};
 use quilltap_core::services::provisioning::{provision_fresh_instance, SINGLE_USER_ID};
@@ -672,6 +674,94 @@ fn compare_baseline(
             }
         }
     }
+}
+
+/// The order's `restore_preview_writes_nothing` arm — added at unification,
+/// because no lane delivered it.
+///
+/// `system_restore_equivalence` diffs the preview's 41-key summary against v4's
+/// and asserts the extract directory is cleaned up, and its header states that
+/// `previewRestore` is "filesystem-only, touching no database". **That was an
+/// assertion about the port, not a proof of it.** Nothing anywhere ran a preview
+/// with a database in reach and checked the database afterwards — so a preview
+/// that quietly wrote would have passed every test in the tree.
+///
+/// It matters more than it looks: preview is the one restore leg a user is
+/// invited to run speculatively, on an instance full of data they have not agreed
+/// to replace yet. "It only reads" has to be verified, not asserted.
+///
+/// This needs no oracle. It is an invariant of v5's own preview — v4's behaviour
+/// is already pinned by the summary diff — so it runs unconditionally and can
+/// never silently skip for a missing env var.
+#[test]
+fn preview_writes_nothing() {
+    let scratch = fresh_scratch("preview-readonly");
+    let instance = scratch.root.join("instance");
+    let db = fresh_instance(&instance);
+    // Restore a full archive first, so the preview runs against an instance with
+    // real data in every table rather than a bare fresh one — a write that only
+    // touched populated tables would slip past an empty instance.
+    let host = TestHost {
+        root: scratch.root.clone(),
+    };
+    std::fs::create_dir_all(host.temp_dir()).unwrap();
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(restore(
+            &db,
+            &host,
+            &archives_dir().join("restore-archive.zip"),
+            RestoreMode::Replace,
+            SINGLE_USER_ID,
+        ))
+        .expect("seed restore succeeded");
+    drop(db);
+
+    let before = read_state(&instance);
+    let populated = before
+        .values()
+        .flat_map(|t| t.values())
+        .filter(|rows| !rows.is_empty())
+        .count();
+    assert!(
+        populated > 20,
+        "the seed restore should leave a populated instance; only {populated} tables have rows"
+    );
+
+    // Every archive, including the two that throw.
+    for archive in [
+        "restore-archive.zip",
+        "restore-archive-legacy.zip",
+        "restore-archive-minimal.zip",
+        "restore-archive-missing-required.zip",
+        "restore-archive-malformed.zip",
+    ] {
+        let preview_root = scratch.root.join(format!("preview-{archive}"));
+        std::fs::create_dir_all(&preview_root).unwrap();
+        // The result is irrelevant here; `system_restore_equivalence` owns the
+        // summary and the thrown messages. What matters is the database after.
+        let _ = preview_restore(&archives_dir().join(archive), &preview_root);
+
+        let after = read_state(&instance);
+        assert_eq!(
+            after, before,
+            "previewing {archive} MUTATED the database — preview must be read-only"
+        );
+        assert!(
+            is_empty(&preview_root),
+            "previewing {archive} left its extract directory behind"
+        );
+    }
+    println!("OK preview_writes_nothing: 5 archives previewed over {populated} populated tables, zero writes");
+}
+
+/// Is `dir` empty? (Local to this file; the equivalence family has its own.)
+fn is_empty(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|mut e| e.next().is_none())
+        .unwrap_or(true)
 }
 
 fn read_state(dir: &Path) -> BTreeMap<String, BTreeMap<String, Vec<Value>>> {

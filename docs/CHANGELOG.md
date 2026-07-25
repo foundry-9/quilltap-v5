@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Proved that previewing a backup cannot change anything. The preview step is the
+one part of restore you are invited to run speculatively — on a library full of
+data you have not agreed to replace — and until now "it only reads" was a claim in
+a comment rather than something checked. It is now checked: a full library is
+built, all five test archives are previewed against it including the two that
+fail, and the entire database is compared before and after, table by table. The
+check was then deliberately broken to confirm it notices.
+
 Restoring from a backup works, in both modes. You can restore over what is there
 now, or restore a backup alongside your existing library — the second rewrites
 every internal identifier as it goes, so nothing collides with what you already
