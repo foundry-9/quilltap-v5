@@ -14,7 +14,9 @@ use super::types::{ErrorKind, Response};
 use crate::db::runtime::Db;
 use crate::services::qtap_export::{self, ExportError, ExportOptions};
 use crate::services::quilltap_import::preview::preview_import;
-use crate::services::quilltap_import::QuilltapExport;
+use crate::services::quilltap_import::{
+    ConflictStrategy, ImportCounts, ImportOptions, ImportResult, QuilltapExport,
+};
 
 /// Run a read across BOTH partitions (main + mount-index), the idiom every
 /// store-backed read in `api/` uses.
@@ -189,16 +191,132 @@ pub fn import_preview(db: &Db, user_id: &str, export_data: &Value) -> Response {
     }
 }
 
-/// The `not yet available` body the unlanded import verbs answer with, so a
-/// client gets a named refusal rather than a silent no-op.
-pub fn import_not_available(what: &str) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        format!(
-            "{what} is recognized but not yet available (the P4.9G4 import pipeline \
-             is not landed; export works)."
-        ),
-    )
+/// v4 `handleImportExecute`'s JSON leg (`route.ts:717`) — the dispatch verb
+/// carries `{exportData, options}` directly. NOTE v4's execute leg does NOT
+/// validate the export manifest (unlike preview): a malformed `exportData`
+/// reaches `executeImport`, whose own TypeError catch answers
+/// `success: false`.
+pub async fn import_execute(
+    db: &Db,
+    user_id: &str,
+    export_data: &Value,
+    options: &Value,
+) -> Response {
+    // v4 `if (!exportData)` / `if (!options)` — falsy (the JSON leg can only
+    // produce `null` here) → the two fixed messages.
+    if export_data.is_null() {
+        return Response::error(ErrorKind::BadRequest, "Missing required field: exportData");
+    }
+    if options.is_null() {
+        return Response::error(ErrorKind::BadRequest, "Missing required field: options");
+    }
+    let export = QuilltapExport {
+        manifest: export_data.get("manifest").cloned().unwrap_or(Value::Null),
+        data: export_data.get("data").cloned().unwrap_or(Value::Null),
+    };
+    // JS distinguishes a MISSING `data` key (`undefined`) from an explicit
+    // `null` in the TypeError wording; `Value` cannot, so carry the flag.
+    let data_key_absent = export_data.get("data").is_none();
+    run_import_execute(db, user_id, export, data_key_absent, options).await
+}
+
+/// The shared execute tail both legs (dispatch JSON + web-edge multipart) run
+/// after loading the export: v4's `conflictStrategy` validation, the
+/// `'replace'` → `'overwrite'` remap (`route.ts:780`), the `importMemories ||
+/// false` truthiness, then `executeImport` on the writer.
+pub async fn run_import_execute(
+    db: &Db,
+    user_id: &str,
+    export: QuilltapExport,
+    data_key_absent: bool,
+    options: &Value,
+) -> Response {
+    let strategy = options
+        .get("conflictStrategy")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mapped = match strategy {
+        "skip" => ConflictStrategy::Skip,
+        // Map 'replace' to 'overwrite' for the import service (legacy compat).
+        "replace" | "overwrite" => ConflictStrategy::Overwrite,
+        "duplicate" => ConflictStrategy::Duplicate,
+        _ => {
+            return Response::error(
+                ErrorKind::BadRequest,
+                "Invalid conflictStrategy. Must be one of: skip, replace, overwrite, duplicate",
+            )
+        }
+    };
+    let opts = ImportOptions {
+        conflict_strategy: mapped,
+        // v4 `includeMemories: importMemories || false` — JS truthiness, then
+        // only ever used in a boolean test.
+        include_memories: js_truthy(options.get("importMemories")),
+        include_related_entities: false,
+        selected_ids: options.get("selectedIds").cloned(),
+    };
+
+    // A missing `data` key reads as `undefined` in v4, so `executeImport`'s
+    // first property access throws with the `undefined` wording; the pipeline's
+    // own null arm covers the explicit-`null` wording.
+    if data_key_absent {
+        let result = ImportResult {
+            success: false,
+            imported: ImportCounts::default(),
+            skipped: ImportCounts::default(),
+            warnings: vec![
+                "Import failed: Cannot read properties of undefined (reading 'tags')".to_string(),
+            ],
+            imported_character_ids: Vec::new(),
+        };
+        return Response::System(result.to_value());
+    }
+
+    let uid = user_id.to_string();
+    let out = db
+        .write(move |ws| {
+            let main = ws.main().connection();
+            let Some(mi) = ws.mount_index() else {
+                return Err(crate::db::DbError::PartitionUnavailable(
+                    crate::write_partition::WriteDbTarget::MountIndex,
+                ));
+            };
+            crate::services::quilltap_import::execute_import(
+                main,
+                mi.connection(),
+                &uid,
+                &export,
+                &opts,
+            )
+            .map_err(|e| match e {
+                crate::services::quilltap_import::ImportError::Db(db_err) => db_err,
+                // Unreachable in practice: `execute_import` folds every non-parse
+                // failure into the success:false result (v4's one big catch); the
+                // parse-side variants never arise from an already-loaded export.
+                other => crate::db::DbError::WriterSpawn(other.to_string()),
+            })
+        })
+        .await;
+
+    match out {
+        Ok(result) => Response::System(result.to_value()),
+        // v4's catch → `serverError('Failed to execute import')`.
+        Err(e) => {
+            tracing::error!(error = %e, "Import execution failed");
+            Response::error(ErrorKind::Internal, "Failed to execute import")
+        }
+    }
+}
+
+/// JS truthiness over a JSON value (`importMemories || false`, `if (!options)`).
+pub fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Array(_)) | Some(Value::Object(_)) => true,
+    }
 }
 
 #[cfg(test)]

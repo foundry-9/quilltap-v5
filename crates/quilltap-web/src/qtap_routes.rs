@@ -8,8 +8,9 @@
 //!   response headers verbatim (`route.ts:422-428`).
 //! - `POST ?action=import-preview` — multipart `file` (or the legacy JSON
 //!   `{exportData}` leg), the format sniff, and the read-only preview.
-//! - `POST ?action=import-execute` — **NOT LANDED**; answers a NAMED refusal
-//!   (the write half of the import pipeline is this lane's deferral).
+//! - `POST ?action=import-execute` — multipart `file` + `options` (a JSON
+//!   string part), else JSON `{exportData, options}`; the `'replace'` →
+//!   `'overwrite'` remap happens in the shared core tail.
 
 use axum::body::{Body, Bytes};
 use axum::extract::Request;
@@ -173,14 +174,92 @@ pub async fn import_preview(state: &SharedState, headers: &HeaderMap, body: Byte
     }
 }
 
-/// `POST /api/v1/system/tools?action=import-execute`.
-///
-/// **NOT LANDED — the write half of the import pipeline is this lane's deferral.**
-/// It answers the same NAMED refusal the dispatch verb gives, so the Import
-/// dialog reports a clear "not yet available" instead of appearing to succeed.
-pub fn import_execute_not_landed() -> AxumResponse {
-    match system_qtap::import_not_available("Import") {
+/// `POST /api/v1/system/tools?action=import-execute` — v4 `handleImportExecute`
+/// (`route.ts:717`). Multipart `file` + `options` (a JSON **string** part), else
+/// JSON `{exportData, options}`. The `'replace'` → `'overwrite'` remap and the
+/// `conflictStrategy` validation live in the shared
+/// [`system_qtap::run_import_execute`] tail. NOTE: unlike preview, v4's execute
+/// leg does NOT validate the export manifest — a malformed export reaches
+/// `executeImport`'s own catch.
+pub async fn import_execute(state: &SharedState, headers: &HeaderMap, body: Bytes) -> AxumResponse {
+    let content_type = headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let (export, data_key_absent, options) = if content_type.contains("multipart/form-data") {
+        let mut req = Request::new(Body::from(body));
+        *req.headers_mut() = headers.clone();
+        let form = match FormData::from_request(req, &()).await {
+            Ok(f) => f,
+            Err(_) => return bad_request("No file provided"),
+        };
+        let Some(file) = form.file("file") else {
+            return bad_request("No file provided");
+        };
+        // v4 surfaces the loader's own message through `badRequest(err.message)`.
+        let export = match load_qtap_from_upload(&file.bytes) {
+            Ok(e) => e,
+            Err(msg) => return bad_request(&msg),
+        };
+        // `if (optionsStr)` — an absent OR empty options part leaves `options`
+        // undefined, which the shared missing-options arm answers.
+        let options = match form.text("options").filter(|s| !s.is_empty()) {
+            Some(s) => match serde_json::from_str::<Value>(&s) {
+                Ok(v) => v,
+                Err(_) => return bad_request("Invalid JSON: Failed to parse options"),
+            },
+            None => Value::Null,
+        };
+        (export, false, options)
+    } else {
+        let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+        let Some(export_data) = parsed.get("exportData").filter(|v| !v.is_null()) else {
+            return bad_request("Missing required field: exportData");
+        };
+        let export = QuilltapExport {
+            manifest: export_data.get("manifest").cloned().unwrap_or(Value::Null),
+            data: export_data.get("data").cloned().unwrap_or(Value::Null),
+        };
+        let data_key_absent = export_data.get("data").is_none();
+        let options = parsed.get("options").cloned().unwrap_or(Value::Null);
+        (export, data_key_absent, options)
+    };
+
+    // v4 `if (!options)` — JS falsy.
+    if !system_qtap::js_truthy(Some(&options)) {
+        return bad_request("Missing required field: options");
+    }
+
+    let Some(host) = state.host() else {
+        return error_json(StatusCode::SERVICE_UNAVAILABLE, "server failed to start");
+    };
+    let Some(db) = host.core().db() else {
+        return error_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The database is locked. Unlock it to continue.",
+        );
+    };
+
+    let resp = system_qtap::run_import_execute(
+        &db,
+        quilltap_core::api::engine::SINGLE_USER_ID,
+        export,
+        data_key_absent,
+        &options,
+    )
+    .await;
+    match resp {
+        quilltap_core::api::Response::System(v) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
         quilltap_core::api::Response::Error(e) => error_to_http(e),
-        _ => error_json(StatusCode::INTERNAL_SERVER_ERROR, "not available"),
+        _ => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to execute import",
+        ),
     }
 }

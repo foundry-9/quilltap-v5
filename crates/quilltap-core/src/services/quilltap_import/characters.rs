@@ -1,23 +1,35 @@
-//! v4 `importCharacters` (`import-characters.ts`) — the seed subset:
-//! id-then-name existence check → `skip`, else `create_character` (mints a fresh
-//! id, provisions the vault, projects the managed fields) + per-character
-//! wardrobe. The legacy `scenario` string → `scenarios[]` migration FIRES for the
-//! seed (both characters carry the legacy field). The archetype-skip and the
-//! `legacyPresetToComposite` fold are NOT taken (no `outfitPresets`, all wardrobe
-//! items have a `characterId`). Non-empty `pluginData` is a loud refusal.
+//! v4 `importCharacters` (`import-characters.ts`) — id-then-name existence check
+//! (the name fallback is the cross-instance import path), all four conflict
+//! strategies, the legacy `scenario` string → `scenarios[]` migration, per-
+//! character wardrobe (folding pre-rework `outfitPresets` into composites), and
+//! per-character plugin data.
+//!
+//! Strategy notes carried from v4:
+//! - **skip** maps the source id onto the MATCHED EXISTING id (unlike every
+//!   other kind, where the id itself is the match key).
+//! - **overwrite** maps onto the existing id FIRST, deletes the existing slim
+//!   row (repo-level `_delete` — the old vault is orphaned, exactly as in v4),
+//!   drops the name-map entry so it can't re-match, then falls through to the
+//!   plain create — whose REAL minted id then overwrites the map entry.
+//! - **duplicate** creates under `<name> (imported)` and maps the REAL created
+//!   id (characters do NOT take the phantom-id quirk the other kinds have).
 
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{ConflictStrategy, IdMap, ImportError, ImportOptions};
+use super::{ConflictStrategy, IdMap, ImportOptions};
+use crate::db::character_plugin_data::CharacterPluginDataRepository;
 use crate::db::character_vault::create_character;
-use crate::db::characters::{AvatarOverride, CharacterCreate, PartnerLink, TimestampConfig};
+use crate::db::characters::{
+    AvatarOverride, CharacterCreate, CharactersRepository, PartnerLink, TimestampConfig,
+};
 use crate::db::characters_read;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::db::vault_wardrobe_public::{create_vault_wardrobe_item, WardrobePublicError};
+use crate::db::DbError;
 use crate::vault_overlay::WardrobeItem;
 
 pub(super) struct Counts {
@@ -159,24 +171,31 @@ pub(super) fn import_characters(
     options: &ImportOptions,
     id_map: &mut IdMap,
     warnings: &mut Vec<String>,
-) -> Result<Counts, ImportError> {
+) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
 
     // Pre-fetch existing characters for name-based matching (cross-instance
-    // imports). v4 lowercases the name for the map key.
+    // imports). v4 lowercases the name for the map key; a later duplicate name
+    // overwrites the earlier entry (JS `Map.set` — the LAST one wins).
     let existing = characters_read::find_all_raw(main)?;
-    let existing_by_name: Vec<(String, String)> = existing
-        .iter()
-        .filter_map(|c| {
-            let id = c.get("id").and_then(Value::as_str)?;
-            let name = c.get("name").and_then(Value::as_str)?;
-            Some((name.to_lowercase(), id.to_string()))
-        })
-        .collect();
+    let mut existing_by_name: Vec<(String, String)> = Vec::new();
+    for c in &existing {
+        let (Some(id), Some(name)) = (
+            c.get("id").and_then(Value::as_str),
+            c.get("name").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let key = name.to_lowercase();
+        match existing_by_name.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = id.to_string(),
+            None => existing_by_name.push((key, id.to_string())),
+        }
+    }
 
     for raw_character in characters {
-        let character = migrate_character_scenarios(raw_character);
+        let mut character = migrate_character_scenarios(raw_character);
         let source_id = character
             .get("id")
             .and_then(Value::as_str)
@@ -188,109 +207,148 @@ pub(super) fn import_characters(
             .unwrap_or_default()
             .to_string();
 
-        // Check by ID first (same-instance re-import), then by name
-        // (cross-instance).
-        let existing_id: Option<String> = match characters_read::find_by_id_raw(main, &source_id)? {
-            Some(_) => Some(source_id.clone()),
-            None => existing_by_name
-                .iter()
-                .find(|(n, _)| *n == name.to_lowercase())
-                .map(|(_, id)| id.clone()),
-        };
+        let out: Result<(), String> = (|| {
+            // Check by ID first (same-instance re-import), then by name
+            // (cross-instance).
+            let existing_id: Option<String> =
+                match characters_read::find_by_id_raw(main, &source_id)
+                    .map_err(|e| e.to_string())?
+                {
+                    Some(_) => Some(source_id.clone()),
+                    None => existing_by_name
+                        .iter()
+                        .find(|(n, _)| *n == name.to_lowercase())
+                        .map(|(_, id)| id.clone()),
+                };
 
-        if let Some(existing_id) = existing_id {
-            match options.conflict_strategy {
-                ConflictStrategy::Skip => {
-                    skipped += 1;
-                    id_map.set(source_id.clone(), existing_id);
-                    continue;
+            let mut duplicate_rename = false;
+            if let Some(existing_id) = existing_id {
+                match options.conflict_strategy {
+                    ConflictStrategy::Skip => {
+                        skipped += 1;
+                        id_map.set(source_id.clone(), existing_id);
+                        return Ok(());
+                    }
+                    ConflictStrategy::Overwrite => {
+                        // Map old import id to the existing id before deleting, so
+                        // related entities get re-linked to the replacement should
+                        // the create below fail; the create's real id then
+                        // overwrites this entry.
+                        id_map.set(source_id.clone(), existing_id.clone());
+                        CharactersRepository::new(main)
+                            .delete(&existing_id)
+                            .map_err(|e| e.to_string())?;
+                        // Remove from the name map so we don't re-match.
+                        existing_by_name.retain(|(n, _)| *n != name.to_lowercase());
+                    }
+                    ConflictStrategy::Duplicate => {
+                        duplicate_rename = true;
+                    }
                 }
-                // Dead for both seed consumers — refuse loudly (the subset guard in
-                // `execute_import` already rejects these strategies up front, so
-                // this is belt-and-braces).
-                other => {
-                    return Err(ImportError::UnsupportedConflictStrategy(other));
+            }
+
+            if duplicate_rename {
+                // v4: create({...charData, name: `${name} (imported)`}) — the
+                // override reaches the slim row AND the vault provisioning.
+                if let Some(obj) = character.as_object_mut() {
+                    obj.insert(
+                        "name".to_string(),
+                        Value::String(format!("{name} (imported)")),
+                    );
                 }
             }
+
+            // Build the slim row + the vault-managed inputs from the (migrated)
+            // character, then create end-to-end. `create_character` mints a fresh
+            // id (v4's `repos.characters.create` strips the source id).
+            let slim: ImportedSlim =
+                serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
+            // Deserializing the WHOLE character threads `metadata` through the
+            // round-trip: `CharacterVaultWriteInput` carries the fact sheet, so
+            // `create_character` projects it into `metadata.json`.
+            let vault: CharacterVaultWriteInput =
+                serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
+
+            let new_id = create_character(main, mount, &slim.into_create(user_id), &vault)
+                .map_err(|e| e.to_string())?;
+            id_map.set(source_id.clone(), new_id.clone());
+
+            // Per-character wardrobe items (folding any legacy outfitPresets into
+            // composites for pre-rework `.qtap` exports).
+            import_character_wardrobe_items(main, mount, raw_character, &new_id, warnings);
+
+            // Per-character plugin data.
+            import_character_plugin_data(main, raw_character, &new_id, warnings);
+
+            imported += 1;
+            Ok(())
+        })();
+        if let Err(e) = out {
+            // v4 wraps each character in a try that pushes to warnings and
+            // continues.
+            warnings.push(format!("Failed to import character \"{name}\": {e}"));
+            tracing::warn!(character_id = %source_id, error = %e, "Failed to import character");
         }
-
-        // Loud refusal: non-empty pluginData is outside the subset. The seed
-        // characters carry none (the key is absent).
-        if let Some(plugin_data) = raw_character.get("pluginData").and_then(Value::as_object) {
-            if !plugin_data.is_empty() {
-                return Err(ImportError::UnsupportedPluginData {
-                    character_name: name,
-                });
-            }
-        }
-
-        // The create path: build the slim row + the vault-managed inputs from the
-        // (migrated) character, then create end-to-end. `create_character` mints a
-        // fresh id (v4's `repos.characters.create` strips the source id).
-        let slim: ImportedSlim = match serde_json::from_value(character.clone()) {
-            Ok(s) => s,
-            Err(e) => {
-                warnings.push(format!("Failed to import character \"{name}\": {e}"));
-                continue;
-            }
-        };
-        // Deserializing the WHOLE character here is what threads `metadata` through
-        // the qtap round-trip: `CharacterVaultWriteInput` carries the fact sheet, so
-        // `create_character` → `write_character_vault_managed_fields` projects it into
-        // `metadata.json` (the guarded write). `into_create` deliberately does NOT —
-        // there is no DB column. Omitting the field here would silently drop the fact
-        // sheet on every import.
-        let vault: CharacterVaultWriteInput = match serde_json::from_value(character.clone()) {
-            Ok(v) => v,
-            Err(e) => {
-                warnings.push(format!("Failed to import character \"{name}\": {e}"));
-                continue;
-            }
-        };
-
-        let new_id = match create_character(main, mount, &slim.into_create(user_id), &vault) {
-            Ok(id) => id,
-            Err(e) => {
-                // v4 wraps each character in a try that pushes to warnings and
-                // continues. But a store failure here means the vault write broke
-                // mid-transaction — surface it as the top-level catch (success:false)
-                // by propagating the DbError.
-                return Err(ImportError::Db(e));
-            }
-        };
-        id_map.set(source_id.clone(), new_id.clone());
-
-        // Per-character wardrobe items (folding legacy outfitPresets is NOT taken —
-        // the seed carries none).
-        import_character_wardrobe_items(main, mount, raw_character, &new_id, warnings)?;
-
-        imported += 1;
     }
 
     Ok(Counts { imported, skipped })
 }
 
-/// v4 `importCharacterWardrobeItems` (the seed path): each item with a
-/// `characterId` (archetype items — `characterId: null` — are skipped) is
+/// v4 `importCharacterWardrobeItems` (`import-characters.ts:187`): each item with
+/// a `characterId` (archetype items — `characterId: null` — are skipped) is
 /// re-created under `newCharacterId` with `migratedFromClothingRecordId: null`,
-/// via the **vault-backed** `repos.wardrobe.create` (each item is projected into
-/// the character vault's `Wardrobe/` folder — there is no slim `wardrobe_items`
-/// row). Strips id/characterId/createdAt/updatedAt (create mints a fresh id).
+/// via the **vault-backed** `repos.wardrobe.create`. Strips id/characterId/
+/// createdAt/updatedAt (create mints).
+///
+/// Back-compat: pre-rework exports may carry `outfitPresets`; each is folded
+/// into a composite item — UNLESS the import already contains wardrobe items
+/// with a non-empty `componentItemIds` (a post-rework export), in which case the
+/// fold is skipped so the same composite isn't double-created.
 fn import_character_wardrobe_items(
     main: &Connection,
     mount: &Connection,
     raw_character: &Value,
     new_character_id: &str,
     warnings: &mut Vec<String>,
-) -> Result<(), ImportError> {
-    let items = match raw_character.get("wardrobeItems").and_then(Value::as_array) {
-        Some(items) if !items.is_empty() => items,
-        _ => return Ok(()),
-    };
+) {
+    let mut combined: Vec<Value> = raw_character
+        .get("wardrobeItems")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(presets) = raw_character
+        .get("outfitPresets")
+        .and_then(Value::as_array)
+        .filter(|p| !p.is_empty())
+    {
+        let has_composites = combined.iter().any(|item| {
+            item.get("componentItemIds")
+                .and_then(Value::as_array)
+                .map(|a| !a.is_empty())
+                .unwrap_or(false)
+        });
+        if has_composites {
+            tracing::debug!(
+                new_character_id,
+                "Skipping legacy outfit-preset fold; export already contains composite wardrobe items"
+            );
+        } else {
+            combined.extend(
+                presets
+                    .iter()
+                    .map(super::legacy_presets::legacy_preset_to_composite),
+            );
+        }
+    }
+
+    if combined.is_empty() {
+        return;
+    }
 
     let links = DocMountFileLinksRepository::new(mount);
     let docs = DocMountDocumentsRepository::new(mount);
-    for item in items {
+    for item in &combined {
         // Skip archetype items (characterId = null) — shared, not per-character.
         let has_character_id = item
             .get("characterId")
@@ -323,7 +381,6 @@ fn import_character_wardrobe_items(
                 .get("isDefault")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
-            // `replace` is a create-time flag; the import payload never sets it.
             replace: item
                 .get("replace")
                 .and_then(Value::as_bool)
@@ -351,8 +408,33 @@ fn import_character_wardrobe_items(
             }
         }
     }
+}
 
-    Ok(())
+/// v4 `importCharacterPluginData` (`import-characters.ts:264`): upsert each
+/// plugin's payload under the new character id; per-plugin failure → warning +
+/// continue.
+fn import_character_plugin_data(
+    main: &Connection,
+    raw_character: &Value,
+    new_character_id: &str,
+    warnings: &mut Vec<String>,
+) {
+    let Some(plugin_data) = raw_character.get("pluginData").and_then(Value::as_object) else {
+        return;
+    };
+    if plugin_data.is_empty() {
+        return;
+    }
+    let repo = CharacterPluginDataRepository::new(main);
+    for (plugin_name, data) in plugin_data {
+        if let Err(e) = repo.upsert(new_character_id, plugin_name, data.clone()) {
+            warnings.push(format!(
+                "Failed to import plugin data for \"{plugin_name}\": {e}"
+            ));
+            tracing::warn!(plugin_name = %plugin_name, character_id = %new_character_id, error = %e,
+                "Failed to import plugin data");
+        }
+    }
 }
 
 /// `Some(string)` when the key holds a string, else `None` — v4's `?? null` on

@@ -34415,3 +34415,195 @@ with `use quilltap_core::services::backup::uuid_remapper::UuidRemapper;`. The
 Note `remap_backup_data` returns a fresh `BackupData` and **does not** carry a
 manifest — v5's `BackupData` has no such field, so the caller keeps whatever
 `parseBackupZip` attached.
+
+## Lane record — P4.9G4-resumed (the import EXECUTE half)
+
+**Branch** `claude/p4-9g4-qtap-export-import-bb8141`. v4 drift-checked at lane
+start: `~/source/quilltap-server` clean at **`e646f58b`**, `git log
+e646f58b..HEAD` empty. **P4.9G4 is now CLOSED** — export, preview and execute are
+all live, and `.qtap` import works end to end at every entrance.
+
+### What landed
+
+The whole `executeImport` pipeline, ported module for module against v4's
+`lib/import/quilltap-import/**`:
+
+- **`mod.rs`** — the orchestrator. The ten-map `IdMaps`, the two count bags in
+  v4's literal key order (the eleven zeroed keys plus the seven optional extras
+  the sidecar/doc-store phases assign — modeled as `Option<u32>` +
+  `skip_serializing_if`, which reproduces v4's "the key only appears when the
+  phase ran" wire shape), the numbered dependency order including the three
+  inline sidecar phases (7a conversation annotations, 7b chat documents, 7c
+  group membership + linked stores), and the one big `try` whose `catch`
+  answers `success:false` with `Import failed: <msg>` appended to `warnings`.
+  **The P4.4u4 subset refusals are GONE** — `ImportError` keeps only its
+  parse-side variants, and the seed consumers (`seed.rs` / `reset.rs`) now run
+  the full pipeline unchanged.
+- **`entities.rs`** — tags, roleplay templates, projects, groups, chats (with
+  messages). **`profiles.rs`** — the three profile families with the shared
+  taken-name set and `makeUniqueProfileName`. **`characters.rs`** — extended
+  from the seed subset to all four strategies + plugin data + the legacy fold.
+  **`document_stores.rs`** — mount points, folders, documents, blobs, project
+  links, and the overwrite clear. **`memories.rs`** — the full remap.
+  **`legacy_presets.rs`** — the preset → composite fold. **`reconcile.rs`** —
+  extended from the character loop to all seven of v4's loops.
+- **The verb + the edges** — `system_qtap::import_execute` (the JSON dispatch
+  leg) and the shared `run_import_execute` tail; the web edge's multipart leg
+  (`file` + the `options` JSON string part) in `qtap_routes.rs`. The
+  `'replace'` → `'overwrite'` remap and the four-value `conflictStrategy`
+  validation live in the shared tail so both legs get them identically.
+  `engine.rs`'s `SystemImportExecute` arm is real; **no "not yet available" arm
+  remains anywhere in this lane's surface.**
+
+### Two v5 bugs the differential found (both fixed here)
+
+1. **`character_plugin_data.data` was double-encoded on every round-trip.** v4's
+   column serializer (`backends/sqlite/json-columns.ts:110`) JSON-stringifies
+   arrays and objects but passes a **string or number through unchanged**, and
+   v4 reads this column back as raw TEXT — so an export carries the stored text
+   verbatim and re-importing must store the same bytes. v5 called
+   `serde_json::to_string` unconditionally, wrapping an already-JSON string in a
+   second layer of quoting and escapes each time. Fixed in
+   `db/character_plugin_data.rs` (`serialize_column_value`, v4's rule); the
+   committed `character_plugin_data_upsert_tier2` differential is unaffected
+   because it only ever passes objects.
+2. **Imported blobs stored an empty `originalFileName`/`originalMimeType` where
+   v4 stores SQL NULL.** A document-store export emits `null` for both on every
+   blob; v5's `CreateBlobInput` types them `String`, so the absent key became
+   `''` and the link upsert wrote an empty string. ⚠ **Fixed in this lane's own
+   module with a targeted corrective UPDATE, not at the source** — the proper
+   fix is widening `LinkBlobInput.original_file_name` / `original_mime_type` to
+   `Option<String>`, but `db/doc_mount_file_links.rs` is **P4.6BK's exclusive
+   file this round** (round-2 §Ownership), so this lane reproduces v4's exact
+   net state instead of editing it. **Escalation for the unifier: when that type
+   is widened the corrective block in `document_stores.rs` collapses into the
+   `create` call above it.**
+
+### The differential — `system_import_state` (11 cases, all green)
+
+New oracle `harness/oracle/cases/system-import-execute.test.ts` drives v4's REAL
+`executeImport` and v4's REAL tools-route POST handler over a fresh copy of the
+committed `system-data-*` family per case, and dumps **every table in all three
+partitions** before and after. The payload is not hand-written: it is the merge
+of v4's own `createNdjsonStream` output for all ten export types over the
+fixture, emitted into the NDJSON so both sides provably import identical bytes.
+
+Cases: the four strategies over the merged all-type payload (`skip` /
+`overwrite` / `duplicate`, plus a cross-instance `skip` whose ids are all
+rewritten so the character name-match path fires), a hand-built legacy-folds
+payload (scenario string → scenarios, `outfitPresets` → composites,
+`annotationButtons` → delimiters, a missing `supportsImageUpload`, and the three
+memory arms), and six route arms (missing `exportData` / missing `options` /
+bad strategy / the undefined-`data` TypeError catch / the `'replace'` remap
+with a full state diff / the multipart bad-`options` string).
+
+Normalization is the restore differential's two ORIGIN rules — a UUID or ISO
+timestamp absent from both the pre-import dump and the payload is minted /
+write-clock stamped and gets a positional label; everything else is exact. One
+addition that differential did not need: **`derived_hashes`**, because a content
+hash can live in a DIFFERENT table from its content (`doc_mount_files.sha256`
+vs `doc_mount_documents.content`), which the per-object "did a composite change"
+heuristic cannot see. Engine-authored sentences inside `warnings` (SQLite
+constraint text, Zod's union error) are masked after their deterministic
+prefixes; every other warning is compared verbatim.
+
+**Two v4 quirks pinned, not fixed.** The `duplicate` arm's phantom map ids (a
+`randomUUID()` goes into the id map while the row is created under a *different*
+minted id, so the map points at nothing) ride into memory FKs — the case asserts
+those FKs **dangle**, so a port that "helpfully" fixed the quirk would fail. And
+`skip` maps every kind onto its own source id except characters, which map onto
+the matched existing id. Both are reproduced verbatim.
+
+**Also pinned: v4 cannot re-import a memory that carries an embedding.** Its
+NDJSON writer emits `JSON.stringify(Float32Array)` — the `{"0":…}` object — and
+`MemorySchema.embedding`'s union accepts none of that, so every such memory
+lands in the per-item catch and is skipped. v5 reproduces the reject.
+
+### ⚠ §2 — the `doc_mount_chunks` tripwire (P4.6BK)
+
+Dumped, never normalized away, and asserted in both directions per the round's
+shared contract. The gap's true predicate is **"a database document was
+written"**, not "a character was created": v4 re-chunks on every document write
+— the payload's own documents AND the managed fields a freshly provisioned
+character vault / project store / group store receives — so it both mints chunk
+rows and REPLACES existing ones, while v5 writes none. The assertions:
+
+1. v5 must never MINT a chunk row (fires when the gap closes);
+2. every chunk row v5 KEPT must be byte-identical to its fixture row (v5 only
+   ever deletes, via the overwrite clear);
+3. v4 must mint rows exactly when documents were written;
+4. the `doc_mount_file_links.chunkCount` column gap must be exactly
+   (v4 > 0, v5 == 0), and must appear exactly when new links were created.
+
+**Stated cost, since it is a real limit:** while the gap is open this
+differential cannot compare the two engines' chunk DELETIONS — v4's rewrites
+delete rows v5 keeps, so the deleted sets are incomparable by construction.
+Every other consequence of the overwrite clear (links, files, documents, blobs)
+IS compared row for row. `KNOWN_V5_GAPS` is named exactly as in
+`system_restore_state.rs:106` so P4.6BK finds every site.
+
+The oracle case follows the existing `qtap-import.ts` convention and does **not**
+set `QUILLTAP_JOB_CHILD` — flagged for the unifier per §2's closing note rather
+than changed unilaterally.
+
+### Shared-file edits (all inside the round's discipline)
+
+`api/engine.rs` — the existing `SystemImportExecute` arm edited in place (E2A
+appends elsewhere). `services/mod.rs` — one labelled `P4.9G4` region adding
+`profile_names`. `system_data_routes.rs` — the existing `import-execute` arm
+retargeted. **`api/types.rs` was NOT touched** (frozen; `SystemImportExecute`'s
+existing `{export_data, options}` shape needed no change).
+
+Two small additions outside the import module, both unowned this round:
+`services/profile_names.rs` (new — the v4 name helpers, promoted from two
+private copies in `api/settings.rs` and `backup/restore/orchestrator.rs`, which
+now import it), `db/chats.rs` (`ChatUpdate.project_id`, which reconcile needs
+and which had no setter), and `db/project_doc_mount_links.rs`
+(`find_all_pairs`, the importer's already-linked dedupe set).
+
+### Regen recipes
+
+The execute oracle (Node 24, from the v4 checkout; jest ignores `.claude/`, so
+the case goes through a `/tmp` mirror):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-sysimportexec-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-import-execute.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-import-execute.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=600000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-import-execute
+```
+
+Then `TZ=UTC QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson
+cargo test -p quilltap-harness --test system_import_state -- --nocapture`.
+
+**No fixture changed**, so no other oracle is invalidated. The three
+differentials this lane's code could move were regenerated fresh at `e646f58b`
+and re-run by name anyway — `qtap_import_equivalence` (the P4.4u4 seed subset,
+now running through the full pipeline), `system_import_equivalence` (19 cases)
+and `system_export_equivalence` (42 cases) — all green, zero SKIPs, 61 per-case
+OK lines between the latter two.
+
+### Gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -D warnings`
+both plain and with `--features quilltap-core/native-transport`;
+`TZ=UTC cargo test --workspace --no-fail-fast` with every env var set —
+**382 binaries / 1,626 tests / 0 failed**; `cargo build --release`. **No
+`apps/web` file was touched, so no `ng` or Playwright run is owed** (per the
+round's gate delta; P4.9E2B owns Playwright). The e2e `export → import
+round-trip` beat on main stops before pressing Import and still passes as
+written — extending it to press Import is left to E2B's run.
+
+### Deferred, loud and named
+
+- The blob `originalFileName` type widening (above) — a cross-lane escalation,
+  not a behavior gap: the stored state already matches v4.
+- The oracle's `QUILLTAP_JOB_CHILD` convention question (§2's closing note).

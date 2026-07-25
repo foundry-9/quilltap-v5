@@ -242,6 +242,21 @@ impl<'c> ProjectDocMountLinksRepository<'c> {
 /// linked to one store (P4.9G4 — the `.qtap` document-store export emits one
 /// `project_doc_mount_link` record per row). Natural (rowid) order, matching v4's
 /// unsorted `findByFilter`.
+/// v4 `projectDocMountLinks.findAll()` as the qtap importer consumes it — every
+/// `(projectId, mountPointId)` pair, natural (rowid) order (P4.9G4: the import's
+/// already-linked dedupe set).
+pub fn find_all_pairs(conn: &Connection) -> Result<Vec<(String, String)>, DbError> {
+    let mut stmt = conn.prepare("SELECT projectId, mountPointId FROM project_doc_mount_links")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 pub fn find_project_ids_by_mount_point_id(
     conn: &Connection,
     mount_point_id: &str,

@@ -180,7 +180,9 @@ pub async fn system_tools_post(
         "import-preview" => {
             crate::qtap_routes::import_preview(&state, &headers, body.clone()).await
         }
-        "import-execute" => crate::qtap_routes::import_execute_not_landed(),
+        "import-execute" => {
+            crate::qtap_routes::import_execute(&state, &headers, body.clone()).await
+        }
         // ── end P4.9G4 ──
         "delete-data" => {
             let confirm = parsed

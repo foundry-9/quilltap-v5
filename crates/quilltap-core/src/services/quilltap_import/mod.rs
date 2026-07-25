@@ -1,59 +1,49 @@
-//! The **seed subset** of v4's quilltap-import service (P4.4u4) — exactly the
-//! code paths the `lorian-and-riya.qtap` sample-content seed and the
-//! `reset-builtins` route exercise: the legacy monolithic-JSON parse + the
-//! subset [`execute_import`] (characters with the legacy `scenario` → `scenarios`
-//! migration + per-character wardrobe, then memories, then the character
-//! reconcile loop), `conflictStrategy: 'skip'` (id-then-name existence check),
-//! the shared id-map, and the counts/warnings result shape.
+//! v4's quilltap-import service (`lib/import/quilltap-import/**`) — the full
+//! `.qtap` import pipeline: the legacy monolithic-JSON parse (`validation.ts`),
+//! the streaming NDJSON reassembler ([`ndjson`]), the count-only
+//! [`preview::preview_import`], and [`execute_import`] — v4 `executeImport`
+//! (`execute.ts:41`) with the ten-map id-mapping state, all four conflict
+//! strategies (the route maps `'replace'` → `'overwrite'` before it gets here),
+//! the per-entity importers, the chat sidecars, the legacy folds, and the
+//! post-write [`reconcile`] pass.
 //!
-//! v4 sources: `lib/import/quilltap-import/{validation,execute,import-characters,
-//! import-entities,reconcile}.ts` + the barrel `quilltap-import-service.ts`.
-//!
-//! ## The deliberate divergence — refuse loudly, never import a fraction
-//!
-//! Everything OUTSIDE the subset is a **hard typed refusal** ([`ImportError`]),
-//! not a silent skip. v4 would import tags / profiles / templates / projects /
-//! groups / chats / annotations / chatDocuments / document stores; this port
-//! refuses them because importing only the characters+memories slice of a richer
-//! payload would silently drop the rest. The seed file (data keys exactly
-//! `['characters','memories']`) never trips it. The NDJSON serialization
-//! (`format: 'qtap-ndjson'`) and the `overwrite`/`duplicate` conflict strategies
-//! are dead for both seed consumers and refuse on sniff.
-//!
-//! ## The two serializations, one of which is dead
-//!
-//! `.qtap` is NOT an archive. Legacy monolithic JSON (`manifest.format ===
-//! 'quilltap-export'`, `version === '1.0'`, hard-pinned in v4
-//! `validation.ts:48,55`) is the seed format and the only one ported. The
-//! streaming NDJSON reassembler is unported (refusal on sniff).
+//! This module began as the P4.4u4 **seed subset** (characters + memories at
+//! `skip` only, everything else a loud typed refusal); the P4.9G4 import-execute
+//! unit extended it to the full v4 surface, so the subset refusals are gone —
+//! the seed consumers ([`seed`], [`reset`]) now run through the same full
+//! pipeline with the same options they always passed.
 //!
 //! ## Composition — no re-port
 //!
 //! [`execute_import`] operates directly over the MAIN + MOUNT-INDEX connections
 //! (run it inside a single [`crate::db::runtime::Db::write`] closure — the
-//! sync-handlers-over-both-connections idiom). It composes the already-ported
-//! primitives: [`create_character`] (slim row + vault provision + managed-field
-//! projection, which mints a fresh id — so imported ids are minted, matching v4's
-//! `repos.characters.create`), [`WardrobeRepository::create`],
-//! [`MemoriesRepository::create`], and the character reads.
+//! sync-handlers-over-both-connections idiom) and composes the already-ported
+//! repositories. v4's error discipline is carried arm for arm: per-item
+//! failures warn (or, for tags/templates/profiles, only log) and continue;
+//! loop-preamble failures throw into the one big catch, which answers
+//! `success: false` with `Import failed: <message>` appended to `warnings`.
 
 mod characters;
+mod document_stores;
+mod entities;
+mod legacy_presets;
 mod memories;
 pub mod ndjson;
 pub mod preview;
+mod profiles;
 mod reconcile;
 pub mod reset;
 pub mod seed;
 pub mod seed_assets;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::DbError;
 
-/// v4 `ConflictStrategy` (`lib/export/types.ts`). Only `Skip` is ported — both
-/// seed consumers pass it; `Overwrite`/`Duplicate` are a loud refusal (the
-/// interactive import route is a future vertical).
+/// v4 `ConflictStrategy` (`lib/export/types.ts`) as `executeImport` receives it —
+/// the route's `'replace'` has already been remapped to `'overwrite'`
+/// (`route.ts:780`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConflictStrategy {
@@ -62,15 +52,17 @@ pub enum ConflictStrategy {
     Duplicate,
 }
 
-/// v4 `ImportOptions` (the subset the seed path passes). `include_related_entities`
-/// is **read by nothing** in the v4 pipeline (grep-confirmed) — carried for
-/// fidelity with `seedFromImports`' call site.
+/// v4 `ImportOptions` (`types.ts:88`). `include_related_entities` and
+/// `selected_ids` are **read by nothing** in the v4 pipeline (grep-confirmed) —
+/// carried for fidelity with the route's call site.
 #[derive(Debug, Clone)]
 pub struct ImportOptions {
     pub conflict_strategy: ConflictStrategy,
     pub include_memories: bool,
     /// Dead option — no code reads it. Kept to mirror v4's call site verbatim.
     pub include_related_entities: bool,
+    /// Dead option — the route forwards it, nothing consumes it.
+    pub selected_ids: Option<Value>,
 }
 
 impl ImportOptions {
@@ -81,21 +73,50 @@ impl ImportOptions {
             conflict_strategy: ConflictStrategy::Skip,
             include_memories: true,
             include_related_entities: false,
+            selected_ids: None,
         }
     }
 }
 
-/// The per-entity counts v4 threads through (`QuilltapExportCounts`, the subset
-/// this port touches). Absent kinds stay 0.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// v4 `QuilltapExportCounts` as `executeImport` materializes it: the eleven
+/// literal keys zeroed up front (`execute.ts:71-97`), plus the optional extras
+/// the sidecar/document-store phases assign only when their data is present.
+/// Field order here IS the wire key order (serde emits declaration order).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportCounts {
     pub characters: u32,
+    pub chats: u32,
+    pub messages: u32,
+    pub roleplay_templates: u32,
+    pub connection_profiles: u32,
+    pub image_profiles: u32,
+    pub embedding_profiles: u32,
+    pub tags: u32,
     pub memories: u32,
+    pub projects: u32,
+    pub groups: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_annotations: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_documents: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_stores: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_store_folders: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_store_documents: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_store_blobs: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_store_project_links: Option<u32>,
 }
 
-/// v4 `ImportResult` (the subset). `imported_character_ids` is the values of the
-/// character id-map — for `skip` these are the existing/created destination ids.
-#[derive(Debug, Clone)]
+/// v4 `ImportResult` (`types.ts:93`). `imported_character_ids` is the values of
+/// the character id-map — for `duplicate` these are the freshly created
+/// characters (the Salon "Summon from Lore" flow reads them).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub success: bool,
     pub imported: ImportCounts,
@@ -104,17 +125,26 @@ pub struct ImportResult {
     pub imported_character_ids: Vec<String>,
 }
 
-/// A parsed + validated legacy-JSON export (v4 `QuilltapExport`). `manifest` and
-/// `data` stay dynamic [`Value`]s — v4's `getExportData` reads them the same way.
+impl ImportResult {
+    /// The raw route body (v4 `NextResponse.json(result)`), key order included.
+    pub fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+}
+
+/// A parsed + validated export (v4 `QuilltapExport`). `manifest` and `data` stay
+/// dynamic [`Value`]s — v4's `getExportData` reads them the same way.
 #[derive(Debug, Clone)]
 pub struct QuilltapExport {
     pub manifest: Value,
     pub data: Value,
 }
 
-/// A hard, typed refusal — the deliberate divergence from v4. Distinct from the
-/// per-item `warnings` inside [`ImportResult`]: these mean "this payload is
-/// outside the ported subset" and are returned as `Err` before any writes.
+/// A hard, typed refusal from the PARSE side (`validation.ts` + the NDJSON
+/// sniff). Distinct from the per-item `warnings` inside [`ImportResult`]:
+/// these mean "this is not a readable `.qtap` payload" and are returned as
+/// `Err` before any writes. (`Db` carries a store failure surfaced by a
+/// consumer that treats the whole parse+import as one fallible step.)
 #[derive(Debug)]
 pub enum ImportError {
     /// `JSON.parse` failed, or the top level is not an object (v4
@@ -122,21 +152,16 @@ pub enum ImportError {
     ParseJson(String),
     /// `manifest` missing or not an object.
     MissingManifest,
-    /// `manifest.format` is neither the ported `quilltap-export` legacy format.
+    /// `manifest.format` is not the legacy `quilltap-export` format.
     InvalidFormat { got: String },
-    /// The streaming NDJSON serialization (`format: 'qtap-ndjson'`) — unported.
+    /// The streaming NDJSON serialization (`format: 'qtap-ndjson'`) reached the
+    /// legacy-JSON parser — the seed path's entrance; the routes go through
+    /// [`ndjson::load_qtap_from_upload`] instead.
     Ndjson,
     /// `manifest.version` is not the pinned `'1.0'`.
     UnsupportedVersion { got: String },
     /// `data` missing or not an object.
     MissingData,
-    /// The payload carries entity kinds outside the ported subset
-    /// (characters + memories). The unsupported keys are enumerated.
-    UnsupportedEntities(Vec<String>),
-    /// A conflict strategy other than `skip` — dead for both seed consumers.
-    UnsupportedConflictStrategy(ConflictStrategy),
-    /// A per-character non-empty `pluginData` payload — outside the subset.
-    UnsupportedPluginData { character_name: String },
     /// A store/DB write failed at a non-per-item chokepoint.
     Db(DbError),
 }
@@ -152,28 +177,13 @@ impl std::fmt::Display for ImportError {
             ImportError::Ndjson => write!(
                 f,
                 "The streaming NDJSON export format ('qtap-ndjson') is not supported by the \
-                 sample-content importer (only the legacy monolithic 'quilltap-export' JSON is)."
+                 legacy monolithic-JSON parser (upload the file through the import route, \
+                 which sniffs and reassembles it)."
             ),
             ImportError::UnsupportedVersion { got } => {
                 write!(f, "Unsupported version: {got}. Only 1.0 is supported.")
             }
             ImportError::MissingData => write!(f, "Missing or invalid data section"),
-            ImportError::UnsupportedEntities(keys) => write!(
-                f,
-                "The sample-content importer supports only 'characters' and 'memories'; \
-                 refusing to import a fraction of a payload that also carries: {}",
-                keys.join(", ")
-            ),
-            ImportError::UnsupportedConflictStrategy(s) => write!(
-                f,
-                "Only the 'skip' conflict strategy is supported by the sample-content \
-                 importer; got {s:?}."
-            ),
-            ImportError::UnsupportedPluginData { character_name } => write!(
-                f,
-                "Character {character_name:?} carries pluginData, which the sample-content \
-                 importer does not support."
-            ),
             ImportError::Db(e) => write!(f, "Import failed: {e}"),
         }
     }
@@ -187,14 +197,10 @@ impl From<DbError> for ImportError {
     }
 }
 
-/// The entity kinds the ported subset handles. Any OTHER top-level `data` key is
-/// a loud refusal.
-const SUPPORTED_ENTITY_KEYS: &[&str] = &["characters", "memories"];
-
-/// An insertion-ordered id-map (source id → destination id) — the ported subset's
-/// analog of v4's `idMaps.characters` (`Map`, insertion-ordered). Only the
-/// characters map is non-empty for the seed; the other nine v4 maps stay empty.
-/// Insertion order matters: `imported_character_ids` is `Array.from(map.values())`.
+/// An insertion-ordered id-map (source id → destination id) — v4's `Map`
+/// (insertion-ordered). Insertion order matters: `imported_character_ids` is
+/// `Array.from(map.values())`, and the reconcile loops iterate entries in
+/// insertion order.
 #[derive(Default)]
 pub(crate) struct IdMap(Vec<(String, String)>);
 
@@ -217,11 +223,39 @@ impl IdMap {
     fn values(&self) -> Vec<String> {
         self.0.iter().map(|(_, v)| v.clone()).collect()
     }
+
+    fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
+/// v4 `IdMappingState` (`types.ts:107`) — the ten insertion-ordered maps.
+#[derive(Default)]
+pub(crate) struct IdMaps {
+    pub tags: IdMap,
+    pub characters: IdMap,
+    pub chats: IdMap,
+    pub connection_profiles: IdMap,
+    pub image_profiles: IdMap,
+    pub embedding_profiles: IdMap,
+    pub roleplay_templates: IdMap,
+    pub projects: IdMap,
+    pub groups: IdMap,
+    pub mount_points: IdMap,
+}
+
+/// `item.id` as a string (v4 reads it untyped; absent → `""`).
+pub(crate) fn id_of(item: &Value) -> String {
+    item.get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// v4 `parseExportFile` + `validateExportFormat` (`validation.ts`) — parse the
 /// legacy monolithic JSON and hard-pin `format`/`version`. Diverges only to sniff
-/// and loudly refuse the NDJSON serialization.
+/// and loudly refuse the NDJSON serialization (the seed path's entrance never
+/// sees one; the routes reassemble NDJSON via [`ndjson::load_qtap_from_upload`]).
 pub fn parse_export_file(json_string: &str) -> Result<QuilltapExport, ImportError> {
     let data: Value = serde_json::from_str(json_string).map_err(|e| {
         // A `qtap-ndjson` stream is line-delimited, not one JSON object, so it
@@ -281,16 +315,15 @@ fn validate_export_format(data: &Value) -> Result<(), ImportError> {
     Ok(())
 }
 
-/// v4 `executeImport` (`execute.ts:41`) restricted to the ported subset:
-/// characters (with scenario-migration + wardrobe) → memories (gated) → the
-/// character reconcile loop. Operates over the MAIN + MOUNT-INDEX connections
-/// (run inside one `Db::write` closure).
+/// v4 `executeImport` (`execute.ts:41`) — the full dependency-ordered pipeline
+/// over the MAIN + MOUNT-INDEX connections (run inside one `Db::write` closure).
 ///
-/// Returns `Err(ImportError)` for a payload OUTSIDE the subset (the deliberate
-/// divergence — enumerated unsupported keys / conflict strategy). Otherwise
-/// returns the v4-shaped [`ImportResult`]; a DB write failure at a top-level
-/// chokepoint yields `success: false` with the error in `warnings` (v4's
-/// one-big-try catch), while per-item failures land in `warnings` and continue.
+/// Always returns `Ok(ImportResult)` in practice: v4 wraps the whole body in one
+/// `try` whose `catch` answers `success: false` with the error appended to
+/// `warnings` — a chokepoint failure (a loop preamble's `findAll`, a
+/// mid-transaction store failure) takes that arm rather than erroring the call.
+/// The `Result` return survives for the seed/reset consumers' historical
+/// signature.
 pub fn execute_import(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
@@ -298,38 +331,34 @@ pub fn execute_import(
     export: &QuilltapExport,
     options: &ImportOptions,
 ) -> Result<ImportResult, ImportError> {
-    // Subset guard — refuse loudly BEFORE any write.
-    if options.conflict_strategy != ConflictStrategy::Skip {
-        return Err(ImportError::UnsupportedConflictStrategy(
-            options.conflict_strategy,
-        ));
-    }
-    let data = export.data.as_object().ok_or(ImportError::MissingData)?;
-    let unsupported: Vec<String> = data
-        .iter()
-        // v4's importers no-op on empty arrays; only a NON-EMPTY unsupported kind
-        // is a fraction we'd silently drop.
-        .filter(|(k, v)| {
-            !SUPPORTED_ENTITY_KEYS.contains(&k.as_str())
-                && v.as_array().map(|a| !a.is_empty()).unwrap_or(!v.is_null())
-        })
-        .map(|(k, _)| k.clone())
-        .collect();
-    if !unsupported.is_empty() {
-        let mut keys = unsupported;
-        keys.sort();
-        return Err(ImportError::UnsupportedEntities(keys));
-    }
-
     let mut warnings: Vec<String> = Vec::new();
     let mut imported = ImportCounts::default();
     let mut skipped = ImportCounts::default();
-    // The character id-map (source id → destination id). The other nine v4 id-maps
-    // are empty for the subset (no tags/profiles/templates/projects/groups/chats/
-    // mountPoints in a supported payload).
-    let mut character_id_map = IdMap::default();
+    let mut id_maps = IdMaps::default();
 
-    // The one-big-try body: a DB error at a chokepoint → success:false (v4 catch).
+    // v4 `getExportData` is a bare cast; the body's first read (`data.tags`)
+    // throws only for null/undefined. Any other non-object (string, number,
+    // array) property-reads to `undefined` everywhere, so every phase skips and
+    // the result is a successful zero-count import — reproduced by the
+    // empty-map walk below.
+    let empty = serde_json::Map::new();
+    let data = match export.data.as_object() {
+        Some(d) => d,
+        None if export.data.is_null() => {
+            warnings
+                .push("Import failed: Cannot read properties of null (reading 'tags')".to_string());
+            return Ok(ImportResult {
+                success: false,
+                imported,
+                skipped,
+                warnings,
+                imported_character_ids: Vec::new(),
+            });
+        }
+        None => &empty,
+    };
+
+    // The one-big-try body: a chokepoint error → success:false (v4's catch).
     let outcome = import_body(
         main,
         mount,
@@ -339,7 +368,7 @@ pub fn execute_import(
         &mut imported,
         &mut skipped,
         &mut warnings,
-        &mut character_id_map,
+        &mut id_maps,
     );
 
     match outcome {
@@ -348,27 +377,36 @@ pub fn execute_import(
             imported,
             skipped,
             warnings,
-            imported_character_ids: character_id_map.values(),
+            imported_character_ids: id_maps.characters.values(),
         }),
-        Err(ImportError::Db(e)) => {
-            // v4's catch: return success:false with the error appended to warnings.
+        Err(e) => {
+            // v4's catch: success:false with the error appended to warnings.
             warnings.push(format!("Import failed: {e}"));
             Ok(ImportResult {
                 success: false,
                 imported,
                 skipped,
                 warnings,
-                imported_character_ids: character_id_map.values(),
+                imported_character_ids: id_maps.characters.values(),
             })
         }
-        // A subset violation surfaced mid-run (e.g. pluginData) stays a hard Err.
-        Err(other) => Err(other),
     }
 }
 
-/// The dependency-ordered import steps (v4 `executeImport`'s try body, subset):
-/// characters → memories → reconcile. Extracted so the mutable borrows of the
-/// counts / warnings / id-map end before [`execute_import`] builds the result.
+/// A non-empty JSON array under `key` (v4's `data.<key> && data.<key>.length > 0`
+/// gate — only a non-empty ARRAY iterates in practice).
+fn non_empty_array<'a>(
+    data: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Option<&'a Vec<Value>> {
+    data.get(key)
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+}
+
+/// The dependency-ordered import steps — v4 `executeImport`'s try body.
+/// Extracted so the mutable borrows end before `execute_import` builds the
+/// result.
 #[allow(clippy::too_many_arguments)]
 fn import_body(
     main: &rusqlite::Connection,
@@ -379,39 +417,319 @@ fn import_body(
     imported: &mut ImportCounts,
     skipped: &mut ImportCounts,
     warnings: &mut Vec<String>,
-    character_id_map: &mut IdMap,
-) -> Result<(), ImportError> {
-    // 6. Characters (the seed's projects/groups/etc. steps don't fire).
-    if let Some(chars) = data.get("characters").and_then(Value::as_array) {
-        if !chars.is_empty() {
-            let counts = characters::import_characters(
-                main,
-                mount,
-                user_id,
-                chars,
-                options,
-                character_id_map,
-                warnings,
-            )?;
-            imported.characters = counts.imported;
-            skipped.characters = counts.skipped;
-        }
+    id_maps: &mut IdMaps,
+) -> Result<(), DbError> {
+    // 1. Tags (no dependencies).
+    if let Some(items) = non_empty_array(data, "tags") {
+        let c = entities::import_tags(main, user_id, items, options, &mut id_maps.tags)?;
+        imported.tags = c.imported;
+        skipped.tags = c.skipped;
     }
 
-    // 8. Memories (gated on include_memories).
-    if options.include_memories {
-        if let Some(mems) = data.get("memories").and_then(Value::as_array) {
-            if !mems.is_empty() {
-                let counts = memories::import_memories(main, mems, character_id_map, warnings)?;
-                imported.memories = counts.imported;
-                skipped.memories = counts.skipped;
+    // 2. Connection profiles.
+    if let Some(items) = non_empty_array(data, "connectionProfiles") {
+        let c = profiles::import_connection_profiles(
+            main,
+            user_id,
+            items,
+            options,
+            &mut id_maps.connection_profiles,
+        )?;
+        imported.connection_profiles = c.imported;
+        skipped.connection_profiles = c.skipped;
+    }
+
+    // 3. Image profiles.
+    if let Some(items) = non_empty_array(data, "imageProfiles") {
+        let c = profiles::import_image_profiles(
+            main,
+            user_id,
+            items,
+            options,
+            &mut id_maps.image_profiles,
+        )?;
+        imported.image_profiles = c.imported;
+        skipped.image_profiles = c.skipped;
+    }
+
+    // 4. Embedding profiles.
+    if let Some(items) = non_empty_array(data, "embeddingProfiles") {
+        let c = profiles::import_embedding_profiles(
+            main,
+            user_id,
+            items,
+            options,
+            &mut id_maps.embedding_profiles,
+        )?;
+        imported.embedding_profiles = c.imported;
+        skipped.embedding_profiles = c.skipped;
+    }
+
+    // 5. Roleplay templates.
+    if let Some(items) = non_empty_array(data, "roleplayTemplates") {
+        let c = entities::import_roleplay_templates(
+            main,
+            user_id,
+            items,
+            options,
+            &mut id_maps.roleplay_templates,
+        )?;
+        imported.roleplay_templates = c.imported;
+        skipped.roleplay_templates = c.skipped;
+    }
+
+    // 5.5. Projects (before characters since projects reference characters in
+    // roster).
+    if let Some(items) = non_empty_array(data, "projects") {
+        let c = entities::import_projects(
+            main,
+            mount,
+            items,
+            options,
+            &mut id_maps.projects,
+            warnings,
+        )?;
+        imported.projects = c.imported;
+        skipped.projects = c.skipped;
+    }
+
+    // 5.6. Groups (before characters since groups reference characters in
+    // membership).
+    if let Some(items) = non_empty_array(data, "groups") {
+        let c =
+            entities::import_groups(main, mount, items, options, &mut id_maps.groups, warnings)?;
+        imported.groups = c.imported;
+        skipped.groups = c.skipped;
+    }
+
+    // 6. Characters.
+    if let Some(items) = non_empty_array(data, "characters") {
+        let c = characters::import_characters(
+            main,
+            mount,
+            user_id,
+            items,
+            options,
+            &mut id_maps.characters,
+            warnings,
+        )?;
+        imported.characters = c.imported;
+        skipped.characters = c.skipped;
+    }
+
+    // 7. Chats.
+    if let Some(items) = non_empty_array(data, "chats") {
+        let c =
+            entities::import_chats(main, user_id, items, options, &mut id_maps.chats, warnings)?;
+        imported.chats = c.imported;
+        imported.messages = c.messages;
+        skipped.chats = c.skipped;
+    }
+
+    // 7a. Conversation annotations attached to imported chats. Remap chatId
+    // through the chats map; sourceMessageId stays as-is because the message
+    // import preserves message ids.
+    if let Some(items) = non_empty_array(data, "conversationAnnotations") {
+        let repo =
+            crate::db::conversation_annotations::ConversationAnnotationsRepository::new(main);
+        let mut annotations_imported = 0u32;
+        for annotation in items {
+            let source_chat_id = annotation
+                .get("chatId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let remapped_chat_id = id_maps
+                .chats
+                .get(source_chat_id)
+                .unwrap_or(source_chat_id)
+                .to_string();
+            let now = crate::clock::now_iso();
+            let out = repo.create(
+                &crate::db::conversation_annotations::CaCreate {
+                    chat_id: remapped_chat_id,
+                    message_index: annotation
+                        .get("messageIndex")
+                        .and_then(Value::as_f64)
+                        .unwrap_or_default(),
+                    source_message_id: annotation
+                        .get("sourceMessageId")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string()),
+                    character_name: annotation
+                        .get("characterName")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    content: annotation
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                },
+                &crate::db::conversation_annotations::CreateOptions {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            );
+            match out {
+                Ok(()) => annotations_imported += 1,
+                Err(e) => warnings.push(format!("Failed to import conversation annotation: {e}")),
+            }
+        }
+        imported.conversation_annotations = Some(annotations_imported);
+    }
+
+    // 7b. Chat documents (Document Mode pane state). Remap chatId; the rest is
+    // opaque path/scope metadata that survives without remapping.
+    if let Some(items) = non_empty_array(data, "chatDocuments") {
+        let repo = crate::db::chat_documents::ChatDocumentsRepository::new(main);
+        let mut chat_docs_imported = 0u32;
+        for cd in items {
+            let source_chat_id = cd.get("chatId").and_then(Value::as_str).unwrap_or_default();
+            let remapped_chat_id = id_maps
+                .chats
+                .get(source_chat_id)
+                .unwrap_or(source_chat_id)
+                .to_string();
+            let now = crate::clock::now_iso();
+            let out = repo.create(
+                &crate::db::chat_documents::CdCreate {
+                    chat_id: remapped_chat_id,
+                    file_path: cd
+                        .get("filePath")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    scope: cd
+                        .get("scope")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    mount_point: cd
+                        .get("mountPoint")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string()),
+                    display_title: cd
+                        .get("displayTitle")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string()),
+                    is_active: cd.get("isActive").and_then(Value::as_bool).unwrap_or(false),
+                },
+                &crate::db::chat_documents::CreateOptions {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            );
+            match out {
+                Ok(()) => chat_docs_imported += 1,
+                Err(e) => warnings.push(format!("Failed to import chat document: {e}")),
+            }
+        }
+        imported.chat_documents = Some(chat_docs_imported);
+    }
+
+    // 7c. Group character membership and linked document stores. Remap group and
+    // character ids; skip members/links that don't exist in the import.
+    if let Some(groups_data) = non_empty_array(data, "groups") {
+        let members_repo =
+            crate::db::group_character_members::GroupCharacterMembersRepository::new(mount);
+        let links_repo = crate::db::group_doc_mount_links::GroupDocMountLinksRepository::new(mount);
+        for group_export in groups_data {
+            let source_group_id = id_of(group_export);
+            let remapped_group_id = id_maps
+                .groups
+                .get(&source_group_id)
+                .unwrap_or(source_group_id.as_str())
+                .to_string();
+
+            // Re-establish character membership.
+            if let Some(member_ids) = group_export
+                .get("_memberCharacterIds")
+                .and_then(Value::as_array)
+            {
+                for character_id in member_ids.iter().filter_map(Value::as_str) {
+                    let Some(remapped_character_id) = id_maps.characters.get(character_id) else {
+                        // v4 debug-logs and skips — the character is not in the import.
+                        continue;
+                    };
+                    if let Err(e) =
+                        members_repo.add_member(&remapped_group_id, remapped_character_id)
+                    {
+                        // v4: logged, no warnings entry.
+                        tracing::warn!(
+                            group_id = %remapped_group_id,
+                            character_id = %remapped_character_id,
+                            error = %e,
+                            "Failed to add group member"
+                        );
+                    }
+                }
+            }
+
+            // Link additional document stores (beyond the official mount point).
+            if let Some(store_ids) = group_export
+                .get("_linkedStoreMountPointIds")
+                .and_then(Value::as_array)
+            {
+                for mount_point_id in store_ids.iter().filter_map(Value::as_str) {
+                    let Some(remapped_mount_point_id) = id_maps.mount_points.get(mount_point_id)
+                    else {
+                        continue;
+                    };
+                    if let Err(e) = links_repo.link(&remapped_group_id, remapped_mount_point_id) {
+                        tracing::warn!(
+                            group_id = %remapped_group_id,
+                            mount_point_id = %remapped_mount_point_id,
+                            error = %e,
+                            "Failed to link document store to group"
+                        );
+                    }
+                }
             }
         }
     }
 
-    // Post-import reconciliation (the character loop; every branch no-ops for the
-    // seed but is ported faithfully — it is cheap and the differential covers it).
-    reconcile::reconcile_characters(main, mount, character_id_map, warnings)?;
+    // 8. Memories (if includeMemories is enabled).
+    if options.include_memories {
+        if let Some(items) = non_empty_array(data, "memories") {
+            let c = memories::import_memories(main, items, id_maps, warnings)?;
+            imported.memories = c.imported;
+            skipped.memories = c.skipped;
+        }
+    }
+
+    // 9. Document stores (Scriptorium) — mount point configs plus, for
+    //    database-backed mounts, folder structures, document bodies and blobs.
+    if let Some(mount_points) = non_empty_array(data, "mountPoints") {
+        let mount_points = mount_points.clone();
+        let arr = |key: &str| -> Vec<Value> {
+            data.get(key)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let c = document_stores::import_document_stores(
+            mount,
+            &mount_points,
+            &arr("folders"),
+            &arr("documents"),
+            &arr("blobs"),
+            &arr("projectLinks"),
+            options,
+            id_maps,
+            warnings,
+        )?;
+        imported.document_stores = Some(c.mount_points);
+        imported.document_store_folders = Some(c.folders);
+        imported.document_store_documents = Some(c.documents);
+        imported.document_store_blobs = Some(c.blobs);
+        imported.document_store_project_links = Some(c.project_links);
+    }
+
+    // Post-import reconciliation.
+    reconcile::reconcile_relationships(main, mount, id_maps, warnings);
     Ok(())
 }
 
@@ -478,56 +796,6 @@ mod tests {
     }
 
     #[test]
-    fn refuses_unsupported_entities_before_writing() {
-        let main = Connection::open_in_memory().unwrap();
-        let mount = Connection::open_in_memory().unwrap();
-        let export = QuilltapExport {
-            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
-            // characters (supported) alongside a NON-EMPTY unsupported kind.
-            data: json!({
-                "characters": [],
-                "projects": [{"id": "p1"}],
-                "tags": [{"id": "t1"}],
-            }),
-        };
-        let err = execute_import(
-            &main,
-            &mount,
-            "user",
-            &export,
-            &ImportOptions::seed_defaults(),
-        )
-        .expect_err("unsupported entities refuse");
-        match err {
-            ImportError::UnsupportedEntities(keys) => {
-                // Enumerated + sorted; empty supported arrays don't trip it.
-                assert_eq!(keys, vec!["projects".to_string(), "tags".to_string()]);
-            }
-            other => panic!("expected UnsupportedEntities, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn refuses_non_skip_conflict_strategy() {
-        let main = Connection::open_in_memory().unwrap();
-        let mount = Connection::open_in_memory().unwrap();
-        let export = QuilltapExport {
-            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
-            data: json!({"characters": []}),
-        };
-        for strat in [ConflictStrategy::Overwrite, ConflictStrategy::Duplicate] {
-            let opts = ImportOptions {
-                conflict_strategy: strat,
-                include_memories: true,
-                include_related_entities: false,
-            };
-            let err = execute_import(&main, &mount, "user", &export, &opts)
-                .expect_err("non-skip refuses");
-            assert!(matches!(err, ImportError::UnsupportedConflictStrategy(_)));
-        }
-    }
-
-    #[test]
     fn empty_supported_payload_is_a_clean_no_op() {
         let main = Connection::open_in_memory().unwrap();
         let mount = Connection::open_in_memory().unwrap();
@@ -546,5 +814,83 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.imported, ImportCounts::default());
         assert!(result.imported_character_ids.is_empty());
+    }
+
+    #[test]
+    fn null_data_takes_v4s_typeerror_catch() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let export = QuilltapExport {
+            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
+            data: Value::Null,
+        };
+        let result = execute_import(
+            &main,
+            &mount,
+            "user",
+            &export,
+            &ImportOptions::seed_defaults(),
+        )
+        .expect("null data answers success:false, not Err");
+        assert!(!result.success);
+        assert_eq!(
+            result.warnings,
+            vec!["Import failed: Cannot read properties of null (reading 'tags')".to_string()]
+        );
+    }
+
+    #[test]
+    fn result_body_key_order_is_v4s() {
+        let imported = ImportCounts {
+            conversation_annotations: Some(2),
+            document_stores: Some(1),
+            ..Default::default()
+        };
+        let result = ImportResult {
+            success: true,
+            imported,
+            skipped: ImportCounts::default(),
+            warnings: vec![],
+            imported_character_ids: vec![],
+        };
+        let v = result.to_value();
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(|s| s.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "success",
+                "imported",
+                "skipped",
+                "warnings",
+                "importedCharacterIds"
+            ]
+        );
+        let imported_keys: Vec<&str> = v["imported"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(
+            imported_keys,
+            vec![
+                "characters",
+                "chats",
+                "messages",
+                "roleplayTemplates",
+                "connectionProfiles",
+                "imageProfiles",
+                "embeddingProfiles",
+                "tags",
+                "memories",
+                "projects",
+                "groups",
+                "conversationAnnotations",
+                "documentStores",
+            ]
+        );
+        // The skipped bag never gains the optional extras.
+        let skipped_keys = v["skipped"].as_object().unwrap().len();
+        assert_eq!(skipped_keys, 11);
     }
 }

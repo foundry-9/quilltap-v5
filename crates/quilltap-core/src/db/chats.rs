@@ -502,6 +502,12 @@ pub struct ChatUpdate {
     /// `Some(Some(id))` sets it; `Some(None)` clears to SQL NULL; `None` leaves it
     /// unset.
     pub roleplay_template_id: Option<Option<String>>,
+    /// Nullable `projectId` — set by the qtap import's reconcile pass
+    /// ([`crate::services::quilltap_import::reconcile`], v4
+    /// `repos.chats.update(newId, { projectId })`) when an imported chat's
+    /// project FK remaps onto an imported project. `Some(Some(id))` sets it;
+    /// `Some(None)` clears to SQL NULL; `None` leaves it unset.
+    pub project_id: Option<Option<String>>,
     /// `agentTurnCount` (REAL) — set by the native tool loop in agent mode
     /// ([`crate::services::native_tool_loop`]) once per iteration
     /// (`repos.chats.update(chatId, { agentTurnCount })`, no `updatedAt` bump).
@@ -934,6 +940,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.roleplay_template_id {
             set_col!("roleplayTemplateId", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.project_id {
+            set_col!("projectId", Box::new(v.clone()));
         }
         if let Some(v) = patch.agent_turn_count {
             set_col!("agentTurnCount", Box::new(v));

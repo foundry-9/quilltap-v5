@@ -121,6 +121,9 @@ pub mod pascal_writer;
 pub mod pre_compute;
 pub mod pricing_fetcher;
 pub mod primary_stream;
+// ── P4.9G4 ──
+pub mod profile_names;
+// ── end P4.9G4 ──
 pub mod prospero_notifications;
 pub mod provider_failover;
 pub mod provisioning;

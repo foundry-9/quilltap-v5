@@ -1,28 +1,65 @@
 //! v4 `importMemories` (`import-entities.ts:387`) — remap-only, always insert (no
-//! conflict check). For the seed: `characterId` MUST resolve through the character
-//! id-map (else warn + skip); `aboutCharacterId` remaps through the SAME character
-//! map (both seed characters reference each other) or → null; `chatId`/`projectId`
-//! remap through the (empty) chats/projects maps → null; `tags` remap through the
-//! (empty) tags map → themselves. `sourceMessageId`/`lastReinforcedAt` and the
-//! rest pass through. Strips id/createdAt/updatedAt (create mints a fresh id).
+//! conflict check). `characterId` MUST resolve through the character id-map (else
+//! warn + skip); `aboutCharacterId` remaps through the SAME character map or →
+//! null; `chatId`/`projectId` remap through the chats/projects maps or → null
+//! (which, after a `duplicate` import, can be a PHANTOM id — the map quirk rides
+//! straight into the stored FK, exactly as in v4); `tags` remap through the tags
+//! map with `get(tag) || tag` (an unmapped tag keeps its ORIGINAL id, unlike the
+//! null-on-miss FK remaps). Strips id/createdAt/updatedAt (create mints).
+//!
+//! ## The embedding shape trap, carried faithfully
+//!
+//! v4's NDJSON writer emits a memory's embedding as `JSON.stringify(Float32Array)`
+//! — the `{"0":v0,"1":v1,…}` object — and v4's `MemorySchema.embedding` union
+//! (Float32Array | number[] | Buffer | string) accepts NONE of that, so a v4
+//! export that carries embeddings cannot re-import its memories: each one lands
+//! in the per-item catch as `Failed to import memory: <ZodError>` + `skipped++`.
+//! v5 reproduces the reject (warn + skip) for any embedding that is neither
+//! null/absent nor a plain number array; the differential masks the engine
+//! sentence (the standing parser-wording seam).
 
 use rusqlite::Connection;
 use serde_json::Value;
 
-use super::{IdMap, ImportError};
+use super::IdMaps;
 use crate::db::memories::{CreateOptions, MemCreate, MemoriesRepository};
+use crate::db::DbError;
 
 pub(super) struct Counts {
     pub imported: u32,
     pub skipped: u32,
 }
 
+/// The remapped embedding, or `Err` for a shape v4's Zod union rejects.
+fn parse_embedding(memory: &Value) -> Result<Option<Vec<f32>>, String> {
+    match memory.get("embedding") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(arr)) => {
+            let mut out = Vec::with_capacity(arr.len());
+            for v in arr {
+                match v.as_f64() {
+                    Some(f) => out.push(f as f32),
+                    None => {
+                        return Err(
+                            "invalid embedding: expected an array of numbers or null".to_string()
+                        )
+                    }
+                }
+            }
+            Ok(Some(out))
+        }
+        // The `{"0":…}` stringified-Float32Array shape (and anything else) — v4's
+        // union rejects it (see the module header).
+        Some(_) => Err("invalid embedding: expected an array of numbers or null".to_string()),
+    }
+}
+
 pub(super) fn import_memories(
     main: &Connection,
     memories: &[Value],
-    character_id_map: &IdMap,
+    id_maps: &IdMaps,
     warnings: &mut Vec<String>,
-) -> Result<Counts, ImportError> {
+) -> Result<Counts, DbError> {
     let mut imported = 0u32;
     let mut skipped = 0u32;
 
@@ -35,7 +72,7 @@ pub(super) fn import_memories(
             .get("characterId")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let Some(new_character_id) = character_id_map.get(source_character_id) else {
+        let Some(new_character_id) = id_maps.characters.get(source_character_id) else {
             warnings.push(format!(
                 "Memory references non-existent character {source_character_id}"
             ));
@@ -46,15 +83,37 @@ pub(super) fn import_memories(
         // Remap aboutCharacterId if present (Characters-Not-Personas: who the memory
         // is about). `idMaps.characters.get(...) || null`.
         let about_character_id = match memory.get("aboutCharacterId").and_then(Value::as_str) {
-            Some(about) => character_id_map.get(about).map(|s| s.to_string()),
+            Some(about) => id_maps.characters.get(about).map(|s| s.to_string()),
             None => None,
         };
 
-        // chatId / projectId remap through empty maps → null. `tags` remap through
-        // the empty tags map → unchanged (each `get(tag) || tag`).
-        let chat_id: Option<String> = None; // idMaps.chats is empty
-        let project_id: Option<String> = None; // idMaps.projects is empty
-        let tags = str_array(memory, "tags"); // tags map empty → identity
+        // chatId / projectId: `idMaps.<kind>.get(...) || null` when present (which
+        // may surface a phantom `duplicate`-arm id — the carried quirk).
+        let chat_id = memory
+            .get("chatId")
+            .and_then(Value::as_str)
+            .and_then(|c| id_maps.chats.get(c))
+            .map(|s| s.to_string());
+        let project_id = memory
+            .get("projectId")
+            .and_then(Value::as_str)
+            .and_then(|p| id_maps.projects.get(p))
+            .map(|s| s.to_string());
+
+        // tags: `get(tag) || tag` — an unmapped tag keeps its original id.
+        let tags: Vec<String> = str_array(memory, "tags")
+            .into_iter()
+            .map(|t| id_maps.tags.get(&t).map(|s| s.to_string()).unwrap_or(t))
+            .collect();
+
+        let embedding = match parse_embedding(memory) {
+            Ok(e) => e,
+            Err(msg) => {
+                warnings.push(format!("Failed to import memory: {msg}"));
+                skipped += 1;
+                continue;
+            }
+        };
 
         let create = MemCreate {
             character_id: new_character_id.to_string(),
@@ -67,18 +126,16 @@ pub(super) fn import_memories(
             tags,
             // MemorySchema defaults (materialized by v4's `_create` validation):
             // importance 0.5, reinforcementCount 1, reinforcedImportance 0.5,
-            // source 'MANUAL'. The seed carries every one explicitly.
+            // source 'MANUAL'.
             importance: memory
                 .get("importance")
                 .and_then(Value::as_f64)
                 .unwrap_or(0.5),
-            embedding: None,
+            embedding,
             source: opt_str(memory, "source").unwrap_or_else(|| "MANUAL".to_string()),
             witnessed_context: opt_str(memory, "witnessedContext"),
-            // Episodic spine (v4 8bf3cb5f): the seed rows predate the feature,
-            // so these read straight from the JSON with the MemorySchema
-            // defaults (occurredAt/narrativeTime absent → NULL, entities [],
-            // kind 'semantic').
+            // Episodic spine (v4 8bf3cb5f): occurredAt/narrativeTime absent →
+            // NULL, entities [], kind 'semantic'.
             occurred_at: opt_str(memory, "occurredAt"),
             narrative_time: opt_str(memory, "narrativeTime"),
             entities: str_array(memory, "entities"),

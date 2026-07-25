@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Importing a `.qtap` file now actually imports it. The Import wizard's last step
+used to answer "not yet available"; it now writes. Every kind of thing an export
+can carry comes across — characters with their wardrobes and plugin data, chats
+with their messages, annotations and open documents, tags, connection/image/
+embedding profiles, roleplay templates, projects, groups with their membership,
+memories, and whole document stores including folders, files and images — and all
+four conflict choices work: skip what is already there, replace it, or bring it in
+alongside as a copy. Relationships are stitched back up afterwards, so an imported
+chat still points at the imported character, and a memory still points at the chat
+it came from. Very old export files are still readable: a character's single
+`scenario` becomes a scenario list, pre-rework outfit presets fold into composite
+wardrobe items, and an old template's annotation buttons become delimiters.
+
+The import is checked against the old app's real importer over all four conflict
+strategies, comparing every row of every table in all three databases after the
+import, plus the wizard's own error responses. Two bugs the comparison found are
+fixed: plugin data was being re-wrapped in a second layer of JSON quoting on every
+round-trip, and imported images were storing an empty original filename where the
+old app stores none at all.
+
 Planned the next round of porting work: finishing the `.qtap` import so the
 Import wizard stops refusing, building the in-chat Post Office (Insert
 Announcement, Compose Mail, Whisper, and the composer gutter buttons they hang

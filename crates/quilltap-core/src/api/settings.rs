@@ -45,6 +45,7 @@ use crate::db::{
     roleplay_templates, tags, DbError,
 };
 use crate::provider_manifest::{Capability, Registry};
+use crate::services::profile_names::normalize_profile_name;
 
 use super::types::{ErrorKind, Response};
 
@@ -86,13 +87,6 @@ fn mask_api_key(api_key: &str) -> String {
 fn mask_api_key_preview(key_value: &str) -> String {
     let truncated: String = key_value.chars().take(32).collect();
     mask_api_key(&truncated)
-}
-
-/// v4 `normalizeProfileName` (`lib/llm/connection-profile-names.ts`): `trim()`
-/// then `toLowerCase()`. `str::to_lowercase` is byte-identical to JS
-/// `toLowerCase` (closed case-mapping seam).
-fn normalize_profile_name(name: &str) -> String {
-    name.trim().to_lowercase()
 }
 
 /// v4 `isValidModelClassName` (`lib/llm/model-classes.ts`) — exact, case-sensitive

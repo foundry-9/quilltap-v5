@@ -25,8 +25,11 @@
 //! schema field is `z.unknown()`, i.e. an **open / arbitrary-JSON VALUE column**.
 //! A non-null, non-Buffer, non-Date object/array value is stored by v4's
 //! `prepareForStorage` as compact JSON text (`shouldStoreAsJson` → `toJson` =
-//! `JSON.stringify`). It is modeled here as a [`serde_json::Value`] and stored via
-//! `serde_json::to_string`, mirroring v4. The rest of the row is plain strings
+//! `JSON.stringify`) — but a **string or number is stored verbatim**, which is
+//! what a `.qtap` round-trip depends on (the export carries the column's raw
+//! TEXT, and re-importing must not add a second layer of quoting). It is modeled
+//! here as a [`serde_json::Value`] and stored through the same rule. The rest of
+//! the row is plain strings
 //! (`characterId`, `pluginName`) plus the timestamps — no booleans, no numbers,
 //! no nullable columns. (This is the same `data`-as-open-JSON shape `image_profiles`
 //! banked for its `parameters` column.)
@@ -184,11 +187,29 @@ impl<'c> CharacterPluginDataRepository<'c> {
         Self { conn }
     }
 
-    /// Insert an entry with the given pinned id + timestamps. `data` → compact
-    /// JSON text; `characterId`/`pluginName` pass through as strings.
+    /// v4's generic column serializer for this TEXT column
+    /// (`backends/sqlite/json-columns.ts:110-126` `serializeValue`): an array or
+    /// object is `JSON.stringify`d, but **a string or number passes through
+    /// unchanged**. That matters here because `data` is an opaque plugin
+    /// payload: v4 reads the column back as raw TEXT (never re-parsed — see
+    /// [`marshal_row`]), so a `.qtap` export carries whatever text was stored,
+    /// and re-importing it must store the SAME text. A blanket
+    /// `serde_json::to_string` would wrap an already-JSON string in a second
+    /// layer of quoting and escapes on every round-trip.
+    fn serialize_column_value(v: &serde_json::Value) -> Result<String, DbError> {
+        match v {
+            serde_json::Value::String(s) => Ok(s.clone()),
+            serde_json::Value::Number(n) => Ok(n.to_string()),
+            other => serde_json::to_string(other)
+                .map_err(|e| DbError::Key(format!("data serialize: {e}"))),
+        }
+    }
+
+    /// Insert an entry with the given pinned id + timestamps. `data` is stored
+    /// through v4's column serializer ([`Self::serialize_column_value`]);
+    /// `characterId`/`pluginName` pass through as strings.
     pub fn create(&self, data: &CpdCreate, opts: &CreateOptions) -> Result<(), DbError> {
-        let data_json = serde_json::to_string(&data.data)
-            .map_err(|e| DbError::Key(format!("data serialize: {e}")))?;
+        let data_json = Self::serialize_column_value(&data.data)?;
 
         self.conn.execute(
             "INSERT INTO character_plugin_data \
@@ -239,8 +260,7 @@ impl<'c> CharacterPluginDataRepository<'c> {
             values.push(Box::new(plugin_name.clone()));
         }
         if let Some(data) = &patch.data {
-            let data_json = serde_json::to_string(data)
-                .map_err(|e| DbError::Key(format!("data serialize: {e}")))?;
+            let data_json = Self::serialize_column_value(data)?;
             assignments.push(format!("data = ?{}", values.len() + 1));
             values.push(Box::new(data_json));
         }

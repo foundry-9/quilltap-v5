@@ -806,11 +806,16 @@ impl CoreEngine {
                 Ok(db) => super::system_qtap::import_preview(&db, SINGLE_USER_ID, &export_data),
                 Err(r) => r,
             },
-            // The import EXECUTE half is P4.9G4's deferral; until it lands the verb
-            // answers a NAMED refusal rather than a silent no-op.
-            Request::SystemImportExecute { .. } => {
-                super::system_qtap::import_not_available("Import")
-            }
+            Request::SystemImportExecute {
+                export_data,
+                options,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::system_qtap::import_execute(&db, SINGLE_USER_ID, &export_data, &options)
+                        .await
+                }
+                Err(r) => r,
+            },
             // ── end P4.9G4 ──
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate => match self.ready_backup_host() {

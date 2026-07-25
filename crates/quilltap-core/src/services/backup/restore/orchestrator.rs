@@ -44,6 +44,7 @@ use crate::db::runtime::{Db, WriterSet};
 use crate::db::DbError;
 use crate::services::backup::{BackupHost, HostDirs};
 use crate::services::file_storage::PixelCodec;
+use crate::services::profile_names::{make_unique_profile_name, normalize_profile_name};
 
 /// v4 `RestoreOptions.mode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1620,27 +1621,6 @@ fn project_properties(p: &Value) -> Value {
         }
     }
     Value::Object(m)
-}
-
-fn normalize_profile_name(name: &str) -> String {
-    name.trim().to_lowercase()
-}
-
-/// v4 `makeUniqueProfileName` (`lib/llm/connection-profile-names.ts`) — `desired`
-/// trimmed, or `desired (2)`, `desired (3)`, … until it stops colliding.
-fn make_unique_profile_name(desired: &str, taken: &HashSet<String>) -> String {
-    let base = desired.trim().to_string();
-    if !taken.contains(&normalize_profile_name(&base)) {
-        return base;
-    }
-    let mut i = 2u32;
-    loop {
-        let candidate = format!("{base} ({i})");
-        if !taken.contains(&normalize_profile_name(&candidate)) {
-            return candidate;
-        }
-        i += 1;
-    }
 }
 
 fn table_exists(conn: &Connection, table: &str) -> bool {
