@@ -1388,6 +1388,17 @@ records THERE. Update this summary only when a phase or round completes.
   candidates: a dogfood pass over this round's live surfaces (+ the owed walk
   Part D and Part F items 15/16), the `chatRng` verb, M6 rows 8/10 — see
   phase-4.md.
+- **⚠ v4 DRIFT DEBT (2026-07-25): v4 is at `e3a9654f`, one commit past the
+  baseline, WITH A DIRTY TREE.** "fix(timestamps): fictional story clocks were
+  frozen and read in the wrong timezone" — **NOT lib-free**: it rewrites
+  `lib/chat/timestamp-utils.ts` (ported as `chat_timestamp.rs`), adds a
+  migration (`anchor-fictional-clock-base.ts`), and touches the chats route +
+  `TimestampConfigCard`. It lands on the **Story's Clock** (P4.9H1). A catch-up
+  round is OWED and is the next round's first item. **Regenerate oracles from a
+  PINNED detached worktree until it runs** (`oracle-regen-pinned-v4-worktree`) —
+  the dirty tree makes a plain regen non-reproducible. The committed baseline
+  stays `e646f58b`; the 2026-07-25 round's 22 families were all regenerated
+  there, with v4 verified clean, before this landed.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

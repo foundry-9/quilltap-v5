@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Recorded that the old app has changed since this round's checks were run — a fix
+to how fictional story clocks are frozen and read across timezones. The new app
+does not carry it yet; catching up is the next piece of work.
+
 The in-chat Post Office is open. Three composer dialogs arrive together: Insert
 Announcement posts a bubble signed by a member of staff, a character, or a name
 you make up — and can have an off-scene character rewrite your line in their own

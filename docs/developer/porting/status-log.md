@@ -137,6 +137,24 @@ byte for byte. Taking that on unilaterally at unification is the wrong trade. Th
 recipe is here and in G4's order header; it belongs to a round that owns
 `db/doc_mount_file_links.rs` outright.
 
+### ⚠ v4 drifted immediately after the gate — recorded, not absorbed
+
+The post-unification drift check found v4 at **`e3a9654f`** ("fix(timestamps):
+fictional story clocks were frozen and read in the wrong timezone"), one commit
+past the baseline, **with a dirty tree**. It is NOT lib-free: `lib/chat/
+timestamp-utils.ts` (+98) is ported as `crates/quilltap-core/src/
+chat_timestamp.rs`, and the commit also adds a migration
+(`migrations/scripts/anchor-fictional-clock-base.ts`) and touches
+`app/api/v1/chats/route.ts` + `TimestampConfigCard.tsx`. It lands on the Story's
+Clock (P4.9H1). **A catch-up round is OWED and is the next round's first item.**
+
+**This round's gate is unaffected.** v4 was verified clean at `e646f58b` at
+unification start and every one of the 22 oracle families was regenerated there
+before the drift landed. The committed oracle baseline therefore stays
+`e646f58b` — but until the catch-up runs, regenerate from a PINNED detached
+worktree (`oracle-regen-pinned-v4-worktree`), because the dirty tree makes a
+plain regen non-reproducible.
+
 ### Versions
 
 Four lanes bumped `core` and `harness` off the same base, so the identical bumps

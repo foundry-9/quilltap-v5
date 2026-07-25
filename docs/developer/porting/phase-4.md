@@ -3001,8 +3001,26 @@ E2A's fired on the first merged run, which is the discipline working. Full round
 record, including the gate numbers and the one escalation deliberately not taken,
 in `status-log.md`.
 
+**⚠ v4 DRIFTED immediately after this round's gate — a catch-up is OWED and it
+comes FIRST.** v4 moved `e646f58b` → **`e3a9654f`** ("fix(timestamps): fictional
+story clocks were frozen and read in the wrong timezone") **and the checkout is
+DIRTY** (in-flight custom-tools edits). This one is NOT lib-free: it rewrites
+`lib/chat/timestamp-utils.ts` (+98 lines), which v5 has ported as
+`crates/quilltap-core/src/chat_timestamp.rs`, and it adds a **migration**
+(`migrations/scripts/anchor-fictional-clock-base.ts`) plus changes to
+`app/api/v1/chats/route.ts` and `TimestampConfigCard.tsx`. It lands squarely on
+**the Story's Clock**, P4.9H1's headline feature. Until the catch-up runs,
+regenerate oracles from a PINNED detached worktree at the baseline (recipe:
+`oracle-regen-pinned-v4-worktree`) — the tree being dirty means a plain regen is
+not reproducible. **This round's own gate is unaffected**: every oracle was
+regenerated at `e646f58b` with v4 verified clean, before the drift landed.
+
 **Next candidates, in rough value order:**
 
+0. **The `e3a9654f` timestamps drift catch-up** (see the warning above) — the
+   re-port of `chat_timestamp.rs`, the chats-route change, the SPA card, and a
+   ruling on the migration (v5's migration runner is still deferred, so an
+   instance v4 has anchored may need handling).
 1. **A dogfood pass** over everything this round made reachable — `.qtap` import
    execute on real data, the three Post Office dialogs (the announcement rewrite
    costs real money), and search over a freshly created character's vault. The
