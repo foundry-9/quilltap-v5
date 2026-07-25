@@ -32335,6 +32335,28 @@ the oracle tree to `/tmp`):**
   --import tsx cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson` (plain tsx —
   no jest, no `.claude` issue).
 
+### The live suite caught a second real regression — the composer's width floor
+
+Adding two buttons to the composer's action row took it from seven to nine, and
+in a NARROW chat pane (Document/Terminal split; a workspace tab beside the rail)
+the row out-competed the `flex-1` message box, whose contenteditable child will
+shrink to nothing. The box measured zero and Playwright read it as **hidden** —
+**six beats across `salon-documents-flow` and `workspace-flow` failed on a
+composer they could no longer click**, none of them mine, all of them my doing.
+
+This is exactly what v4's two-COLUMN gutter grid avoids: six tools cost two
+buttons' width there, nine cost nine here. Rather than rebuild v4's grid (v5's
+row also carries four controls v4 keeps elsewhere), `_chat.css` gained a
+`min-width: 12rem` floor on `.qt-chat-composer-input` and `flex-wrap` on both
+`.qt-chat-composer-inner` and `.qt-chat-composer-actions`, so a pane too narrow
+for both drops the tools to their own line. Wide layouts are unchanged (the
+floor sits far below the actual width and nothing wraps). All six beats green
+after the fix, then the full suite.
+
+**The lesson generalizes:** a component spec cannot see this. `ng test` was green
+through the whole regression, because the failure only exists at a viewport width
+no unit test renders.
+
 ### Gotchas worth a memory note
 
 - Adding a connection profile to the courier fixture shifts the committed vault/img
@@ -35104,3 +35126,200 @@ enum ships complete with `pascal` in it (asserted by a unit test in
 **No file under `apps/web` was touched**, so no `ng test`, no `ng build` and no
 Playwright run is owed — stated explicitly per the order's gate item 7. P4.9E2B
 owns every SPA file and builds against §1.
+
+## P4.9E2B — the in-chat Post Office SPA (2026-07-25)
+
+Branch `claude/post-office-spa-porting-9ea316`. Lane 3 of 4 in the "import
+execute + Post Office + chunk-on-write" round; the round's only `apps/web`
+toucher, so the only lane with a Playwright gate — which is why it also carries
+P4.9G5's owed restore beat. **No `crates/**` file was touched, so no cargo gate
+is owed** (`quilltap-web` + `quilltap-cli` were BUILT, unmodified, only because
+the e2e harness needs the binaries).
+
+v4 baseline `e646f58b`, drift-checked at lane start (`git log e646f58b..HEAD`
+empty, tree clean).
+
+### Landed
+
+**U1 — the §1 wire + the data layer** (`3c76156a`). The four frozen §1 variants
+in `core/core-contract.ts` (`chatAnnouncementPost` / `chatAnnouncementPreview` /
+`chatSendMail` / `chatMailboxList`), the `kind`-tagged `AnnouncerSenderWire`, and
+`StaffSenderWire`'s ten names — written exactly as the shared contract pins them
+so the unifier's name-for-name diff against P4.9E2A is mechanical.
+`chat/post-office/post-office.api.ts` carries the query keys, the four dispatch
+helpers, and the announcement dialog's own connection-profile projection (the
+characters vertical's helper drops `isDefault`, which the default-profile
+resolution needs), with v4's coercions field-for-field. `screens/profile/
+format-date.ts` hoisted to `shared/format-date.ts` — its own header asked for
+that once a second screen needed it — and grew v4's DATE-ONLY `formatDate`.
+
+**U2 — Insert Announcement** (`c20b35e0`). `chat/post-office/insert-announcement-
+dialog.ts`: three sender arms, v4's staff roster in v4's DISPLAY order (not the
+enum's), the off-scene picker (participants filtered out, name-sorted, lazily
+loaded exactly where v4 lazily loads), and the preview → approve / edit /
+regenerate loop. Defaults are resolved rather than stored so they follow the
+picked character (user-controlled → as-is; LLM → own profile → system default →
+as-is); the system-prompt picker appears only above one prompt.
+
+**U3 — Compose Mail** (`ba70f969`). `chat/post-office/compose-mail-dialog.ts`,
+with v4's asymmetric lists intact: sign only as a player-character in THIS chat,
+address ANY workspace character minus the sender. The effective recipient is
+derived, not stored-and-synced (v4's own posture); the postbox query is keyed by
+character id so switching sender refetches and drops the quoted reply.
+
+**U4 — Whisper + its opener** (`a2de3ab0`). `chat/post-office/whisper-dialog.ts`
+plus the `ParticipantCard` whisper button threaded through `participants-section`
+→ `chat-sidebar` → `salon-conversation`, gated on v4's rule (three or more ACTIVE
+participants; never the operator's own seat).
+
+**U5 — the gutter + the salon wiring** (`5179f872`). The megaphone and envelope
+in `chat-composer.ts`, with the whole gutter group re-ordered to v4's grid fill
+order; all three dialogs mounted in `salon-conversation.ts`; `backgroundFlash` →
+`chatFlash` so the Post Office can use v4's own delivery copy ("Suparṇā has the
+letter and is already aloft.") — v5 still has no toast bus.
+
+**U6 — the beats** (this commit). `e2e/salon-post-office-flow.spec.ts` (7 beats)
+and `e2e/zzz-restore-destructive.spec.ts` (P4.9G5's owed walk).
+
+### Two findings that changed the order's scope
+
+**1. Tier 1 item 5 (composer drag-and-drop upload) is a PHANTOM — nothing is
+owed.** v4 has no drag-and-drop file upload in the composer at `e646f58b`:
+`grep -in "drag\|drop"` over `app/salon/[id]/components/ChatComposer.tsx`,
+`components/chat/ComposerGutterTools.tsx`, `app/salon/[id]/hooks/
+useFileAttachments.ts` and `components/markdown-editor/` finds no handler; the
+only `drag` hits in the chat family are the sidebar's resize splitter. The claim
+originated in v5's OWN P4.6ac lane record (`status-log.md:14556`, "gutter tools +
+drag-and-drop stay locked deferrals"), propagated into `m6-screen-parity.md`
+§2.2 and row 9, and from there into this order. Both are corrected; the stale
+sentence is gone from `chat-composer.ts`. Building it would have been an
+invention, not a port.
+
+**2. Tier 2 item 8 (the RNG dropdown) is DEFERRED — a §1 escalation.** The order
+states "the RNG server verb is already live (P4.d5 …), so the RNG dropdown needs
+SPA work only." That is not so. P4.d5 ported the rng TOOL
+(`quilltap-core::tools::rng`); v4's dropdown posts
+`POST /api/v1/chats/[id]?action=rng` (`app/api/v1/chats/[id]/actions/rng.ts` —
+executeRngTool + formatRngResults + a preview mode + a TOOL-row write), and v5's
+dispatch surface has no `chatRng` variant at all (`grep -rn "Rng" crates/
+quilltap-core/src/api/` finds only a `autoDetectRng` settings key). Adding it is
+a server change outside this lane's ownership, so the dropdown is deferred WHOLE
+rather than built against a verb that answers an error. The composer's class
+comment names it, as does the m6 row. **The pending-tool-result hand-off
+(`onPendingToolResult`) defers with it** — the `chatSend.pendingToolResults`
+field already exists in `core-contract.ts:53`, so only the producer is missing.
+
+### Tier 2 item 9 — checked, and deliberately NOT done
+
+v5's Salon already centralizes modal state as one signal per modal
+(`showDocumentPicker`, `showStandaloneGenerate`, `showGallery`, `showStateEditor`,
+`showEditEnclave`, `cascade`, `saveImageTarget`, `modalImage`). The item says to
+add a `useModalState` analogue "if — and only if — v5's salon does not already
+have one". It has one; a hook would be a SECOND pattern. The three new dialogs
+follow the existing one.
+
+### Divergences from v4, with reasons
+
+1. **No `FloatingDialog`.** v4 hangs Insert Announcement and Compose Mail off a
+   draggable, geometry-persisting dialog. v5 has no such primitive, so both are
+   centered `qt-modal`s — the ruling already made for the Brahma Console
+   (`brahma-console-dialog.ts:14`).
+2. **The announcement picker's avatar.** v4 renders `c.avatarUrl ? <img> :
+   <placeholder>`, but v4's `GET /api/v1/characters` never returns `avatarUrl`
+   (verified at `e646f58b`: absent from the route and both handlers), so v4
+   always draws the placeholder circle. The placeholder is carried rather than
+   quietly upgraded to v5's real `defaultImage` avatar — the standing rule is to
+   port vestigial v4 code faithfully and sweep it deliberately. **A candidate for
+   that sweep**, since the upgrade is one call to `characterAvatarSrc`.
+3. **The whisper's turn runs in the Salon, not the dialog.** v4's dialog owns its
+   `fetch` and calls `onSent` from a closure that outlives its own unmount —
+   React permits that. An Angular `output()` is torn down on destroy, so a dialog
+   that closes first and emits afterwards emits into nothing. **This was caught
+   by the live e2e beat, not by inspection**: the first draft closed, sent, and
+   the chat never refetched — the whisper sat invisible until something else
+   refetched. The dialog is now a form (report the line, close) and
+   `SalonConversation.onWhisperSend` runs the send, preserving v4's
+   close-then-await order and its swallowed failure.
+4. **The whisper's error path.** v4 splits the round trip into headers
+   (`response.ok`, a failure there throws BEFORE the close) and body (the drain,
+   after). v5's dispatch has no header/body seam, so the close cannot be gated on
+   a status that does not exist yet. "Close immediately so the operator isn't
+   waiting" is preserved; keeping the dialog open on an immediate rejection is
+   not.
+5. **v4's toasts → an inline flash.** No toast bus in v5 (`p4.9m`). The
+   announcement's "Announcement posted" and mail's "Suparṇā has the letter and is
+   already aloft." render in the Salon's shared `chatFlash` strip; dialog-local
+   failures render as `qt-alert-error` inside the dialog.
+
+### The e2e beats
+
+`e2e/salon-post-office-flow.spec.ts` — sorts after `foundation.spec.ts`, rides
+the shared server, starts the mock LLM on `MOCK_LLM_PORT`.
+
+LIVE in-lane (5):
+- the gutter offers the megaphone and the envelope, in v4's order
+- Insert Announcement opens with the staff roster and the off-scene picker
+  (drives the LIVE `characterList` + `connectionProfileList`)
+- Compose Mail opens signed by the operator's character, addressed to the roster
+- **whisper a private line to one character, over the real send spine** (a real
+  turn through the real binary and the mock LLM; asserts the line and its
+  `whispered to Aria` label land in the transcript)
+- the whisper affordance is withheld below three active participants
+
+**ACTIVATE-AT-UNIFY (2) — by name, for the unifier:**
+- `post a staff announcement into the scene` (needs `chatAnnouncementPost`)
+- `post a letter as the operator's character` (needs `chatSendMail`)
+
+Both self-activate with **no edit**: each calls `postOfficeVerbsLive(page)`,
+which fires ONE `chatMailboxList` dispatch with a blank `characterId` and reads
+the body for a serde union failure (`unknown variant` / `did not match any
+variant`). A landed verb answers a real error envelope and the beat proceeds; an
+unlanded one annotates `activate-at-unification` and returns. Nothing is written
+either way. **The unifier only has to run the suite.**
+
+`e2e/zzz-restore-destructive.spec.ts` — **P4.9G5's owed beat, closed.** Upload →
+preview → restore over the committed `crates/quilltap-web/tests/fixtures/
+restore-archives/restore-archive.zip` (read-only; built by v4's REAL
+`createBackup`, so the beat never leans on v5's zip writer). Mode: **Import as
+New Data** = the wire's `new-account`, i.e. the arm that runs P4.9G6's UUID
+remap. ⚠ **The `zzz-` prefix is load-bearing**: it must sort after
+`zz-delete-all-destructive.spec.ts`, and restoring onto the just-wiped instance
+is the point, not an accident — that is exactly the shape of P4.9G5's third
+ruled divergence (v4 restores files before the places files live). A note was
+added to the delete-all spec's header so the next lane does not "fix" the
+ordering. `test.setTimeout(120_000)`; the default 30s is far too short.
+
+### Gotchas worth a memory note
+
+- **`RichEditor` defers its content emit by a microtask** (`replaceContent`'s
+  `queueMicrotask`, so a `value`-effect write cannot re-enter change detection).
+  A spec that calls `setMarkdown` and clicks synchronously sees the PRE-EDIT
+  state — six tests failed this way before the helper learned to settle. Any
+  spec driving `qt-markdown-field` must await a tick.
+- **An Angular `output()` is dead after destroy.** A dialog that closes itself
+  and then reports completion silently drops the report. Where v4's React
+  component gets away with it, v5 must move the work to the host. (Divergence 3.)
+- **`openSidebarSection` expands the strip itself.** Clicking "Expand chat
+  sidebar" first races the helper's own `count()` probe, which then chases a
+  button that has already gone — a 30s timeout with a misleading message.
+- **Widening a flex toolbar is a layout change, not an additive one.** See the
+  section above — nine buttons in a row that fitted seven cost six unrelated
+  beats. Anything added to `.qt-chat-composer-actions` should be checked at the
+  split-pane width.
+- The modal header's ✕ carries `aria-label="Close"`, so `getByRole('button',
+  {name: 'Close'})` is a strict-mode violation on any `qt-modal`. Scope to
+  `[qt-modal-footer]`. (The banked P4.9G4 gesture, hit again here.)
+
+### Fixtures
+
+**None changed.** No `.db` file, no oracle, no NDJSON — this lane invalidates
+nothing. The restore beat READS a committed archive that belongs to the Rust
+harness; the Post Office beats need no seed (Group Expedition's three
+participants and Solo Voyage's two already give the whisper gate both arms, and
+the announcement picker's off-scene case).
+
+### Gate
+
+`ng test` 227 files / 2,671; `ng build` clean; the full Playwright suite over a
+fresh dist and freshly built debug binaries. SPA `0.5.271` → `0.5.276` (this
+lane is the round's only SPA bumper, so the version line merges cleanly).

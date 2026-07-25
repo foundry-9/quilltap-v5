@@ -440,14 +440,19 @@ Every row here is absent from v5; each absence proof is
 family (`status-log.md:14681-14683`), widened by the order
 (`p4.8:139-143`).
 
+⚠ **Path note (corrected by P4.9E2B, verified at v4 `e646f58b`).** Every bare
+`ChatModals.tsx` below is **`app/salon/[id]/components/ChatModals.tsx`** — the
+barrel lives beside `SalonView`, NOT under `components/chat/`. (§4's own entry
+records the full path; the table's shorthand reads as the wrong one.)
+
 | Dialog | v4 | Proposed order |
 | --- | --- | --- |
 | CreateNPCDialog | `components/chat/CreateNPCDialog.tsx`, nested in `AddCharacterDialog.tsx:616` | `p4.9e1` |
 | AddCharacterDialog | `components/chat/AddCharacterDialog.tsx`, `ChatModals.tsx:305` | `p4.9e1` |
 | SummonFromLoreModal | `components/chat/SummonFromLoreModal.tsx`, nested `AddCharacterDialog.tsx:624` | `p4.9e1` |
-| ComposeMailDialog | `components/chat/ComposeMailDialog.tsx`, `ChatModals.tsx:332` | `p4.9e2` |
-| InsertAnnouncementDialog | `ChatModals.tsx:317` | `p4.9e2` |
-| WhisperDialog | `components/chat/WhisperDialog.tsx`, `SalonView.tsx:1806` | `p4.9e2` |
+| ComposeMailDialog | `components/chat/ComposeMailDialog.tsx`, `ChatModals.tsx:332` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
+| InsertAnnouncementDialog | `ChatModals.tsx:317` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
+| WhisperDialog | `components/chat/WhisperDialog.tsx`, `SalonView.tsx:1806` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
 | MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` |
 | ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` |
 | BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` |
@@ -470,9 +475,20 @@ open/close state in `app/salon/[id]/hooks/useModalState.ts`, so `p4.9e*`
 should port the barrel + the state hook together rather than dialog-by-
 dialog.
 
-Also standing in this family: the announcement/mail/RNG **gutter tools**
-and drag-and-drop upload (`status-log.md:10465`) — the entry points these
-dialogs hang off. `p4.9e2` must carry them or the dialogs have no opener.
+Also standing in this family: the announcement/mail/RNG **gutter tools** —
+the entry points these dialogs hang off. `p4.9e2` must carry them or the
+dialogs have no opener. **P4.9E2B landed the announcement + mail buttons** in
+v4's grid fill order; the RNG dropdown is DEFERRED, and not for want of SPA
+work: v4's dropdown posts `POST /chats/{id}?action=rng`
+(`app/api/v1/chats/[id]/actions/rng.ts`) and v5's dispatch surface carries no
+such verb. P4.d5 ported the rng TOOL, not that route. It needs a server lane.
+
+⚠ **The "drag-and-drop upload" in this row was a phantom** — struck by P4.9E2B
+after a v4 survey at `e646f58b`: there is NO drag handler in
+`app/salon/[id]/components/ChatComposer.tsx`, `ComposerGutterTools.tsx`,
+`app/salon/[id]/hooks/useFileAttachments.ts`, or `components/markdown-editor/`.
+The phrase entered v5's own deferral list in P4.6ac's lane record
+(`status-log.md:14556`) and propagated here. Nothing is owed.
 
 ### 2.3 Wardrobe
 
@@ -670,7 +686,7 @@ lanes). These are liftable straight into `/setupphase`.
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
 | 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |
-| 9 | `p4.9e2-chat-post-office-dialogs` | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points + DnD upload** | lane | post-office writers (landed) |
+| 9 | ~~`p4.9e2-chat-post-office-dialogs`~~ **DONE 2026-07-25** (P4.9E2A server ∥ P4.9E2B SPA) | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points**. Deferred: the RNG dropdown — v5 has no `?action=rng` verb, so it needs a server lane. The row's "DnD upload" was a PHANTOM (see §2.2) | lane | post-office writers (landed) |
 | 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | `?action=update-tool-settings` (`core-contract.ts:858`) |
 | 11 | `p4.9i` → **`p4.9i1` + `p4.9i2`** | BrahmaConsoleDialog (+ its `asTab` re-skin) ∥ HelpChatDialog. **SPLIT 2026-07-18** — two surfaces, two backends, ~2,500 LOC (see the §1.6 correction). `p4.9i1` = the unported multi-turn `orchestrator.service.ts` + chat-CRUD dispatch + the dialog (and it must carry `HelpChatComposer` + the `qt-help-*` styles, which Brahma depends on). `p4.9i2` = the 9-component help family + read verbs for the help docs `help_doc_sync.rs` already writes. ⚠ P4.d11 bank note (2026-07-20): v4 REWROTE `help/math-notation.md` at `5915b04e` (the "discreet doorman" copy, alongside the single-dollar promotion) — the eventual help port copies the NEW text, not the b8b12695-era file already banked at P4.d9 | lane each | `p4.9i1`: W4.5b one-shot engine (landed). `p4.9i2`: nothing above `help_doc_sync.rs` |
 | 12 | `p4.9k-character-ai-dialogs` | AIWizard, Optimizer, system-prompts import/preview, ExternalPrompt/ReverseUser | round | tier-3 LLM services |

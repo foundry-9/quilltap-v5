@@ -716,7 +716,7 @@
    * Composer inner wrapper
    */
   .qt-chat-composer-inner {
-    @apply flex items-center;
+    @apply flex items-center flex-wrap;
     gap: var(--qt-chat-toolbar-gap);
     @apply max-w-4xl mx-auto;
   }
@@ -807,6 +807,15 @@
   .qt-chat-composer-input {
     @apply flex-1;
     @apply min-h-12 max-h-48;
+    /* Never let the tool row squeeze the message box out of existence. v4 keeps
+       its gutter tools in a TWO-COLUMN grid beside the input, so six of them
+       cost two buttons' width; v5 flattens them into one row, which in a narrow
+       pane (Document/Terminal split, a workspace tab beside the rail) can
+       out-compete a `flex-1` box whose contenteditable child is happy to shrink
+       to nothing — the box then measures zero and reads as HIDDEN. The floor
+       plus the wrap on `.qt-chat-composer-inner` keeps the input typable and
+       drops the tools to their own line instead. */
+    min-width: 12rem;
     @apply resize-none;
     @apply w-full;
     @apply text-sm;
@@ -1121,7 +1130,7 @@
    * Composer actions container
    */
   .qt-chat-composer-actions {
-    @apply flex items-center gap-2;
+    @apply flex items-center gap-2 flex-wrap justify-end;
   }
 
   /**

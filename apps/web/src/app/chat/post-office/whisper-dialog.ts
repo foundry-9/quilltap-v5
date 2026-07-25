@@ -1,6 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
-
-import { CoreClient } from '../../core/core-client';
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 
 /**
  * The Whisper dialog (v4 `components/chat/WhisperDialog.tsx`): a private line to
@@ -17,14 +15,22 @@ import { CoreClient } from '../../core/core-client';
  * drain matters — abandoning the stream would abort the server-side turn — and
  * an aborted read is swallowed on purpose ("Stream may be aborted, that's OK").
  *
- * ONE forced divergence, and it is in the error path. v4 splits the round trip
- * into headers (`response.ok` — a failure here throws BEFORE the close) and body
- * (the drain, after). v5's `dispatch` is a single round trip with no header/body
- * seam, so the close cannot be gated on a status that does not exist yet: the
- * dialog closes first and a failure is swallowed to the console, exactly as v4
- * swallows its own. The user-visible property v4 was after — "close immediately
- * so the user isn't waiting" — is preserved; what is lost is v4's ability to
- * keep the dialog open on an immediate rejection.
+ * **The turn itself belongs to the Salon, not to this dialog**, and that split is
+ * forced by the framework rather than chosen. v4's dialog owns its `fetch` and
+ * calls `onSent` from a closure that outlives its own unmount — React lets it.
+ * An Angular `output()` is torn down when the component is destroyed, so a
+ * dialog that closed first and emitted afterwards would emit into nothing: the
+ * chat would never refetch and the whisper would sit invisible until something
+ * else refetched. So the dialog is a form — it reports the line and closes — and
+ * `SalonConversation` runs the send, keeping v4's close-then-await order and its
+ * swallowed failure at the call site.
+ *
+ * The other divergence is in the error path. v4 splits the round trip into
+ * headers (`response.ok` — a failure there throws BEFORE the close) and body (the
+ * drain, after). v5's dispatch has no header/body seam, so the close cannot be
+ * gated on a status that does not exist yet. The property v4 wanted — "close
+ * immediately so the user isn't waiting" — is preserved; what is lost is v4's
+ * ability to keep the dialog open on an immediate rejection.
  */
 @Component({
   selector: 'qt-whisper-dialog',
@@ -64,7 +70,7 @@ import { CoreClient } from '../../core/core-client';
             type="button"
             class="qt-button qt-button-primary"
             [disabled]="message().trim().length === 0 || sending()"
-            (click)="send()"
+            (click)="commit()"
           >
             {{ sending() ? 'Sending...' : 'Whisper' }}
           </button>
@@ -74,60 +80,41 @@ import { CoreClient } from '../../core/core-client';
   `,
 })
 export class WhisperDialog {
-  private readonly core = inject(CoreClient);
-
-  readonly chatId = input.required<string>();
   readonly targetName = input.required<string>();
+  /** Carried on `send` so the Salon needs no lookup of its own. */
   readonly targetParticipantId = input.required<string>();
-  /** The user-controlled participant the human is Speaking As (null = default). */
-  readonly speakingAsParticipantId = input<string | null>(null);
 
   readonly close = output<void>();
-  /** The turn finished — the salon refetches and resumes turn order (v4 `onSent`). */
-  readonly sent = output<void>();
+  /** The operator committed a line — the Salon runs the turn (v4's own `fetch`). */
+  readonly send = output<{ targetParticipantId: string; content: string }>();
 
   protected readonly message = signal('');
+  /**
+   * Kept for the `disabled` bindings v4 carries. In practice it flips for one
+   * tick, because the dialog closes the instant the line is committed — the
+   * documented consequence of the divergence above.
+   */
   protected readonly sending = signal(false);
 
   /** v4 `handleKeyDown` (`:78-86`): Enter sends, Shift+Enter newlines, Escape closes. */
   protected onKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      void this.send();
+      this.commit();
     }
     if (event.key === 'Escape') {
       this.close.emit();
     }
   }
 
-  /** v4 `handleSend` (`:34-76`) — see the class comment for the sequencing. */
-  protected async send(): Promise<void> {
+  /** v4 `handleSend` (`:34-76`) — hand the line over, clear, and close at once. */
+  protected commit(): void {
     const content = this.message().trim();
     if (!content || this.sending()) return;
-
     this.sending.set(true);
-    const request = this.core.dispatch({
-      type: 'chatSend',
-      chatId: this.chatId(),
-      content,
-      targetParticipantIds: [this.targetParticipantId()],
-      speakingAsParticipantId: this.speakingAsParticipantId() ?? undefined,
-    });
-
+    this.send.emit({ targetParticipantId: this.targetParticipantId(), content });
     // Close first — the operator should not wait out the reply (v4 `:53-55`).
     this.message.set('');
     this.close.emit();
-
-    try {
-      // The v5 analogue of v4's drain: the dispatch settles when the server-side
-      // turn completes. Abandoning it would abort the turn, so it is awaited.
-      await request;
-      this.sent.emit();
-    } catch (error) {
-      // v4 `:71-73` — a failed whisper is logged, not surfaced.
-      console.error('Failed to send whisper:', error);
-    } finally {
-      this.sending.set(false);
-    }
   }
 }

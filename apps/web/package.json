@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.276",
+  "version": "0.5.277",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",

@@ -19,6 +19,10 @@ import { E2E_PASSPHRASE } from './support/env';
  * The instance itself is a fresh copy of the committed fixture per run
  * (`global-setup.ts`), so wiping it at the end is safe.
  *
+ * ONE spec file now sorts after this one, by design:
+ * `zzz-restore-destructive.spec.ts` (P4.9E2B carried P4.9G5's owed beat), which
+ * restores a backup onto the instance this wipe leaves empty.
+ *
  * Server side: `systemDeleteDataPreview` / `systemDeleteData` over
  * `quilltap-core::services::delete_all`, differential-verified by
  * `system_delete_data_equivalence` (the summary body + a row-count map over

@@ -60,6 +60,13 @@ export interface ComposerSend {
  * The composition-mode toggle leads the row: it is v4's own composer-level
  * control (`ChatComposer.tsx`), not one of the gutter tools.
  *
+ * ⚠ The row is now NINE wide, where v4's grid spends only two columns on six
+ * tools. That difference is load-bearing in a narrow pane: `_chat.css` gives the
+ * message box a `min-width` floor and lets both the inner wrapper and this row
+ * wrap, or the tools crowd the box to zero width and it stops being clickable at
+ * all (see the P4.9E2B lane record). Check the split-pane width before adding a
+ * tenth.
+ *
  * v4 has **no** composer drag-and-drop upload — the phrase appeared in v5's own
  * deferral note (P4.6ac's lane record) and propagated, but there is no drag
  * handler anywhere in v4's chat components, salon page, file-attachment hook or

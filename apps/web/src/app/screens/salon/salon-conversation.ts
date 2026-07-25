@@ -449,11 +449,9 @@ interface CascadePrompt {
 
     @if (whisperTarget(); as target) {
       <qt-whisper-dialog
-        [chatId]="chatId()!"
         [targetName]="target.name"
         [targetParticipantId]="target.participantId"
-        [speakingAsParticipantId]="activeSpeakerId()"
-        (sent)="onWhisperSent()"
+        (send)="onWhisperSend($event)"
         (close)="whisperTarget.set(null)"
       />
     }
@@ -1001,10 +999,36 @@ export class SalonConversation {
     });
   }
 
-  /** v4 `onSent` (`:1802-1805`) — the whisper turn finished; refetch the chat. */
-  protected async onWhisperSent(): Promise<void> {
-    this.whisperTarget.set(null);
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  /**
+   * Run the whispered turn (v4 `WhisperDialog.handleSend` + `SalonView`'s
+   * `onSent`, `:1802-1805`). The dialog has already closed itself, so this runs
+   * behind it: a bare `chatSend` — deliberately NOT `runTurn`, which would raise
+   * the optimistic bubble and the streaming overlay a whisper does not get in v4
+   * — awaited to completion so the server-side turn is not abandoned, then the
+   * chat is refetched. A failure is logged, never surfaced (v4 `:71-73`).
+   */
+  protected async onWhisperSend(event: {
+    targetParticipantId: string;
+    content: string;
+  }): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    try {
+      await this.core.dispatchExpect(
+        {
+          type: 'chatSend',
+          chatId,
+          content: event.content,
+          targetParticipantIds: [event.targetParticipantId],
+          speakingAsParticipantId: this.activeSpeakerId() ?? undefined,
+        },
+        'chatSend',
+      );
+    } catch (error) {
+      console.error('Failed to send whisper:', error);
+      return;
+    }
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */

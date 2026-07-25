@@ -68,6 +68,16 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Fixed the message box vanishing when the chat pane is narrow. With a document or
+terminal open beside the conversation, the row of composer tools could crowd the
+box out entirely; it now keeps a minimum width and the tools drop to their own
+line instead.
+
+Restoring a backup is now walked end to end by the test suite — pick an archive,
+see what is in it, restore it — against a real archive the old app produced. The
+walk runs last of all, after the one that empties the library, because restoring
+onto an empty library is the honest test and the awkward one.
+
 The composer grew a megaphone and an envelope, which open the announcement and
 mail dialogs. The whole tool row now sits in the order the old app arranges it
 in, and the two tools that are still missing are named rather than quietly
