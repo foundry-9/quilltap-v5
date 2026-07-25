@@ -2985,3 +2985,71 @@ the ownership fits), the downstream retrospective-whisper look + Part D /
 Part F 15-16 walk items (the NEXT dogfood pass's list), the
 response-bodies real-capture upgrades, and the other standing seams
 (unchanged).
+
+---
+
+## The import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥ P4.9E2A ∥ P4.9E2B ∥ P4.6BK) — PLANNED 2026-07-25
+
+v4 drift-checked clean at `e646f58b` at planning (HEAD exactly the baseline,
+tree clean — `git log e646f58b..HEAD --oneline` empty). Four lanes, ownership
+fully disjoint; `api/engine.rs` and two `mod.rs` files are the only shared
+source files and are append-only per labelled region.
+
+Scope is set by what the handoff sources actually say is owed: the **one**
+remaining OPEN order remainder on main (G4's import execute), the highest-value
+unstarted M6 screen row whose dependencies are all landed (row 9, the in-chat
+Post Office dialogs — its post-office writers shipped in W4.6b), and the
+higher-impact of the two v5 gaps P4.9G5 recorded with tripwires.
+
+- **P4.9G4-resumed** (`work-orders/p4.9g4-qtap-export-import.md`, resumed
+  against its own header + a new "Round 2" section) — `executeImport`: the
+  ten-map orchestrator and its numbered dependency order, the four per-entity
+  importers, the legacy-preset fold, the reconcile pass, all four conflict
+  strategies + the route's `'replace'` → `'overwrite'` remap, the multipart
+  `options` part, and the four-strategy DB-state differential. **The last
+  unported Data & System half** — the SPA's Import wizard refuses by name today.
+  Bumps core + harness + web.
+- **P4.9E2A** (`work-orders/p4.9e2a-post-office-server.md`) — the in-chat Post
+  Office server surface: the unported `lib/services/announcer/**` (`writer.ts` +
+  `character-voiced.ts`, 310 lines), four dispatch verbs (announcement, the
+  character-voiced preview, send-mail, mailbox list), a new committed
+  `post-office-{main,mount}.db` fixture, a tier-2 route differential and a
+  tier-3 mocked-LLM differential. **Unblocks the banked `979aec66` drift**
+  (Pascal in Insert Announcement), which was NO-PORT-NOW only because this
+  surface was unported. Owns `api/types.rs` this round. Bumps core + harness.
+- **P4.9E2B** (`work-orders/p4.9e2b-post-office-spa.md`) — the in-chat Post
+  Office SPA: Insert Announcement (with the preview→approve/edit/regenerate
+  loop), Compose Mail, Whisper, the announcement/mail/RNG gutter buttons and
+  composer drag-and-drop — closing the deferral `chat-composer.ts:46` names by
+  hand. **The round's only `apps/web` toucher and only Playwright gate, so it
+  also carries the owed P4.9G5 restore e2e beat** (upload → preview → restore),
+  which three consecutive lanes have deferred for want of exactly that gate.
+  Bumps SPA.
+- **P4.6BK** (`work-orders/p4.6bk-chunk-on-write.md`) — chunk-on-write: v5 never
+  chunks a database-backed document as it is written where v4 always does
+  (v4 `lib/mount-index/database-store.ts:133-155`), so every freshly provisioned
+  character vault, project store and group store is semantically unsearchable
+  until something reindexes it. The gap survived because the **oracle side was
+  pinned with `QUILLTAP_JOB_CHILD=1`** — 38 sites at planning — so both sides
+  compared chunk-free. The lane closes the gap at both v5 write sites, un-pins
+  the oracle cases (fixture builders stay pinned, so no committed `.db` moves),
+  adds chunk coverage where none existed, and removes the `KNOWN_V5_GAPS`
+  tripwire in `system_restore_state.rs`. Owns the round's §2 tripwire discipline.
+  Bumps core + harness.
+
+**Left out of this round deliberately:**
+
+- **The `chat_settings` explicit-`null` gap** (the second P4.9G5 tripwire —
+  v5 writes `null` where Zod omits absent `.nullable().optional()` keys). It
+  needs `Option<Option<String>>` across the settings bags, which ripples through
+  every consumer, and G4 is actively adding a new `ChatSettingsCreate`
+  consumer. It is tripwired, so it cannot rot; it wants a round where nothing
+  else touches settings.
+- **The owed dogfood walk items** — Part D (the retrospective downstream look)
+  and Part F items 15/16 (Story's Clock jump; per-chat Core-whisper override),
+  plus a pass over the Data & System surfaces. A walk after this round covers
+  more ground: restore, import execute and the Post Office all land into it.
+- **M6 rows 8 and 10** (`p4.9e1` cast dialogs, `p4.9e3` chat-admin dialogs).
+  Row 8 depends on tier-3 LLM services for Summon; row 10 is a round in itself
+  and needs `?action=update-tool-settings`. Row 9 was chosen because every
+  dependency is already landed.

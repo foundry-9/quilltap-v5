@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Planned the next round of porting work: finishing the `.qtap` import so the
+Import wizard stops refusing, building the in-chat Post Office (Insert
+Announcement, Compose Mail, Whisper, and the composer gutter buttons they hang
+off), and fixing a real gap where newly written store documents were never
+indexed for search. Work orders only — no behavior changed.
+
 Proved that previewing a backup cannot change anything. The preview step is the
 one part of restore you are invited to run speculatively — on a library full of
 data you have not agreed to replace — and until now "it only reads" was a claim in
