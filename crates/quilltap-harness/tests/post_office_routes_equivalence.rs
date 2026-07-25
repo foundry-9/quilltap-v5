@@ -24,15 +24,17 @@
 //!    `details` and v5 has none, then compare the rest — the gap is asserted, not
 //!    normalized away.
 //!
-//! ## The `doc_mount_chunks` tripwire (order §2)
+//! ## The `doc_mount_chunks` tripwire (order §2) — CLOSED at unification
 //!
-//! [`CHUNK_ON_WRITE_GAP`] — v4's `writeDatabaseDocument` chunks every write; v5's
-//! does not (P4.6BK's subject). The two send-mail cases that deliver a letter
-//! therefore differ by exactly one chunk in the recipient vault. The counts are
-//! DUMPED (never omitted, never normalized) and asserted as `v4 == v5 + 1`, so
-//! **the assertion FAILS when P4.6BK closes the gap** — the same discipline as
-//! `KNOWN_V5_GAPS` in `crates/quilltap-harness/tests/system_restore_state.rs`.
-//! P4.6BK removes this entry at unification and re-runs the family.
+//! v4's `writeDatabaseDocument` chunks every write; when this lane was written
+//! v5's did not, so the two send-mail cases that deliver a letter differed by
+//! exactly one chunk in the recipient vault. Per order §2 the counts were DUMPED
+//! and asserted as `v4 == v5 + 1`, so the assertion would FAIL the moment the gap
+//! closed.
+//!
+//! **P4.6BK closed it in the same round** and the tripwire fired as designed. The
+//! `chunkCount` in `recipientShape` is now part of the ordinary equality diff —
+//! nothing is plucked out, and the two sides agree.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-post-office.ndjson npx jest -- post-office-routes
@@ -80,12 +82,6 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "preview_empty_seed",
     "send_mail_empty_body",
 ];
-
-/// ⚠ NOT a ruled divergence — the unfixed v5 gap P4.6BK closes (order §2). Each
-/// entry is a case whose recipient vault gains exactly one chunk in v4 and none
-/// in v5 because a letter was written. **The assertion fails when the gap
-/// closes** — that is the point.
-const CHUNK_ON_WRITE_GAP: &[&str] = &["send_mail_ok", "send_mail_reply"];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -412,31 +408,8 @@ fn post_office_routes_match_oracle() {
             eprintln!("[{name}] body OK.");
         }
 
-        if let Some(mut got_tables) = tables {
-            let mut want_tables = want["tables"].clone();
-            // The P4.6BK chunk-on-write gap: dumped, then asserted as
-            // `v4 == v5 + 1` and lifted out of the equality diff. FAILS when 6BK
-            // closes the gap.
-            if CHUNK_ON_WRITE_GAP.contains(&name) {
-                let pluck = |v: &mut Value| -> Option<i64> {
-                    v.get_mut("recipientShape")?
-                        .as_object_mut()?
-                        .remove("chunkCount")?
-                        .as_i64()
-                };
-                match (pluck(&mut want_tables), pluck(&mut got_tables)) {
-                    (Some(v4), Some(v5)) if v4 == v5 + 1 => {
-                        eprintln!("[{name} chunks] KNOWN GAP holds: v4={v4}, v5={v5} (P4.6BK).");
-                    }
-                    (v4, v5) => {
-                        eprintln!(
-                            "[{name} chunks] the P4.6BK chunk-on-write gap no longer holds \
-                             (v4={v4:?}, v5={v5:?}) — remove the CHUNK_ON_WRITE_GAP entry"
-                        );
-                        failed.push(format!("{name}_chunk_gap"));
-                    }
-                }
-            }
+        if let Some(got_tables) = tables {
+            let want_tables = want["tables"].clone();
             if norm(&got_tables) != norm(&want_tables) {
                 eprintln!(
                     "[{name} tables] MISMATCH:\n{}",
