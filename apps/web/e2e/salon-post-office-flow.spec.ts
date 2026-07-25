@@ -248,6 +248,19 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     await footerButton(page, 'Post Announcement').click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByText('Announcement posted')).toBeVisible({ timeout: 15_000 });
+
+    // A Staff announcement lands COLLAPSED, as a chip in the announcement group —
+    // v4 collapses it the same way and only renders the body once the chip is
+    // expanded (`qt-announcement-group`'s header spells this out). So the bubble
+    // has to be opened before its text is anywhere in the DOM; asserting on the
+    // list without this click reads the chip's own label ("The Librarian
+    // announcement 11:13 AM") and never the line that was posted.
+    const chip = page
+      .locator('.qt-chat-announcement-chip')
+      .filter({ hasText: 'The Librarian' })
+      .last();
+    await expect(chip).toBeVisible({ timeout: 15_000 });
+    await chip.click();
     await expect(page.locator('.qt-chat-messages-list')).toContainText(line, { timeout: 15_000 });
   });
 
