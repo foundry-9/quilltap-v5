@@ -33393,7 +33393,7 @@ then dies with "Database is currently in use — held by PID N". Kill that PID
 before re-running.
 
 
-### Lane record — P4.9G5-resumed, unit 3 (restore parse / preview / upload leg)
+## Lane record — P4.9G5-resumed, unit 3 (restore parse / preview / upload leg)
 
 **Branch** `claude/p4-9g5-backup-restore-9fc155`. v4 drift-checked at lane start:
 `~/source/quilltap-server` clean at **`e646f58b`**, `git log e646f58b..HEAD` empty.
@@ -33551,7 +33551,7 @@ Gate at this commit: fmt clean, clippy clean on BOTH feature sets, `TZ=UTC cargo
 test --workspace --no-fail-fast` 378 binaries / 0 failed, the new differential by
 name with `--nocapture` and all five per-case OK lines visible.
 
-### Lane record — P4.9G5-resumed, unit 4 (restore execute): NOT LANDED, and why
+## Lane record — P4.9G5-resumed, unit 4 (restore execute): NOT LANDED, and why
 
 **Unit 4 is deliberately NOT landed. `SystemRestoreExecute` still refuses, by
 name.** The order's tier-3 rule is explicit — "refuse the whole verb or land the
@@ -33732,3 +33732,237 @@ on a beat whose server half is only half the story (the RESTORE the wizard walks
 toward still refuses). The previous lane deferred exactly this beat for the same
 reason and the round agreed that was right. **Land it with unit 4**, where the
 walk can go upload → preview → restore and mean something.
+
+## Lane record — P4.9G6: the new-account UUID remap (branch `claude/p4-9g6-uuid-remap-3e519a`, 2026-07-25)
+
+**Status: COMPLETE on branch. Tier 1 and tier 2 both landed in full; nothing
+deferred.** Lane 2 of 2 in the "finish the restore side" round (P4.9G5-resumed ∥
+P4.9G6). Drift-checked at lane start: `git log e646f58b..HEAD` in
+`~/source/quilltap-server` is empty and the tree is clean — **v4 is still at the
+pinned baseline `e646f58b`.**
+
+One commit, because the two modules are one unit: the remapper is unusable
+without the entity table and the entity table is meaningless without the memo,
+and `.claude/commands/commit.md` §1 forbids landing a ported unit without its
+equivalence test.
+
+### What landed
+
+1. **`crates/quilltap-core/src/services/backup/uuid_remapper.rs`** — v4
+   `lib/backup/uuid-remapper.ts`. All four primitives (`remap` / `remap_array` /
+   `remap_fields` / `remap_array_fields`) plus `mapping()` / `clear()` /
+   `size()`, at the §2 signatures the round's Shared contract pins, with the
+   injectable id source (`with_id_source`) the differential runs on both sides.
+   Production construction (`UuidRemapper::new`) mints `Uuid::new_v4()`.
+2. **`crates/quilltap-core/src/services/backup/uuid_remap.rs`** —
+   `MOUNT_POINT_SETTING_KEYS` (exactly three) and `remap_backup_data`, the ~40
+   entity field-list rewrite, field for field and **in v4's statement order**
+   (statement order fixes the order ids enter the memo, which the counting id
+   source pins).
+3. **`crates/quilltap-harness/tests/backup_uuid_remap_equivalence.rs`** — a NEW
+   tier-1 **exact** family, 19 cases, zero normalization.
+4. **`harness/oracle/fixtures/uuid-remap-corpus.json`** + its generator/oracle
+   `harness/oracle/cases/backup-uuid-remap.test.ts` (both new, committed).
+5. Tier 2 in full: nine Rust unit tests over the primitives, and the corpus
+   coverage assertion.
+
+`services/backup/mod.rs` got only the labelled `// ── P4.9G6 modules ──` region
+(§3). Its doc comment is untouched — that is P4.9G5's edit.
+
+### The differential: what it actually claims
+
+Both sides mint `00000000-0000-4000-8000-<12-digit counter, from 1>` (the oracle
+`doMock`s `crypto.randomUUID`; the harness passes the identical closure to
+`with_id_source`), so **there is no normalizer in this family at all** — if one
+is ever needed, the id source has come unpinned. Per case it compares:
+
+1. **All 38 collections, byte-level** (`serde_json::to_string` both sides).
+   `preserve_order` makes object key ORDER observable, and key order is exactly
+   what v4's three order traps are about.
+2. **The key set of v4's returned object** — 38 keys, no more. v4's
+   `manifest: data.manifest` is `undefined` here and dropped by
+   `JSON.stringify`, which is the direct evidence for the §2 claim that manifest
+   pass-through is the caller's business.
+3. **`getMapping()` entry-for-entry and in insertion order** — the direct proof
+   that cross-references stayed connected. A pass that minted a second id for an
+   already-seen key diverges here even when the collections happen to agree.
+4. **`getSize()`**.
+
+Plus the oracle records `inputUnchanged` per case (v4's transform must not mutate
+its input; true for all 19).
+
+**Sensitivity was proven by mutation, not assumed** — the whole thing went green
+on the first run, which is the moment to be suspicious. Three deliberate
+mutations, each reverted:
+
+| mutation | differences reported |
+| --- | --- |
+| `shift_remove("clothingRecords")` → `remove` (i.e. swap-remove, trap 2) | 1 |
+| dropped `"entityId"` from the `embeddingStatus` field list | 2 |
+| reversed the `remapFields` → `remapArrayFields` chain (trap 3) | 12 |
+
+### The corpus is pinned by hash — a stale corpus cannot green-light a pass
+
+The oracle case is ALSO the corpus generator: one invocation writes
+`uuid-remap-corpus.json` (the INPUTS) and the NDJSON (v4's OUTPUTS), and stamps
+every NDJSON line with the sha256 of the corpus bytes it just wrote. The Rust
+test recomputes that hash from the **committed** file and refuses to run on a
+mismatch. This matters because the `wide` case is generated, not typed: without
+the hash, a regenerated NDJSON diffed against a stale committed corpus would be
+comparing two different inputs.
+
+The corpus is **byte-stable across regens** — verified by generating twice and
+diffing. The one source of churn was pinned deliberately: the vault overlay
+synthesizes a character's `physicalDescription` at READ time and stamps
+`createdAt`/`updatedAt` "now", so `stabilizeWide` writes `2026-01-01T00:00:00.000Z`
+over those two nested fields and nothing else. `remap_backup_data` never reads
+them; it rewrites `physicalDescription.id`, which is derived, not random, and
+stays fully under diff. `system_backup_equivalence` already normalizes the same
+two fields for the same reason.
+
+### The cases (19)
+
+`wide` — v4's OWN `createBackup` projection of the committed
+`system-data-{main,mount,llmlogs}.db` family, read back out of the archive's
+`data/*.json`. ⚠ **`collectUserData` is module-private in v4** (`backup-service.ts:135`
+— `async function`, not exported), so the archive is the only honest way to get
+its output; `data/<file>.json` IS the collection array, one file per collection.
+129 ids remapped, every collection non-empty except `wardrobeItems`.
+
+Then eighteen hand-authored edge documents, each named and noted in the corpus:
+`all_empty`, `legacy_persona_links`, `partner_links`,
+`physical_descriptions_plural`, `clothing_records`, `avatar_overrides`,
+`chat_settings_bags_present` / `_null_ids` / `_absent`, `instance_settings`,
+`null_and_absent_scalars`, `array_field_guards`, `mixed_key_types`,
+`repeated_id_across_entities`, `groups_official_mount_point`,
+`pass_through_collections`, `doc_mount_graph`, `user_id_position`.
+
+The tier-2 coverage assertion is what keeps that list honest: it fails if ANY of
+the 38 collections has no non-empty row anywhere in the corpus (the standing
+`harness-corpus-shape-constants-rot` rule — a hand-counted "19 cases pass" line
+would not notice a collection quietly going empty). It also asserts the corpus's
+own `_meta.collections` list equals the entity table the test walks.
+
+### v4 behaviours worth remembering (found in the survey, pinned by the corpus)
+
+- **`[]` is truthy in JS.** `if (legacyRecord.clothingRecords)` deletes an EMPTY
+  array; `!remapped.partnerLinks` is false when `partnerLinks` is `[]`, so a
+  character carrying `partnerLinks: []` and a legacy `personaLinks` does **not**
+  get the fold. Both arms are in the corpus (`clothing_records` case `cr-b`,
+  `legacy_persona_links` case `char-c`).
+- **The `personaLinks` fold APPENDS.** `partnerLinks` is absent by the guard, so
+  the assignment lands after `userId`, and only `{partnerId, isDefault}` survive
+  — the source link's other keys are gone. An absent `isDefault` writes
+  `undefined`, which `JSON.stringify` drops, so the key is simply omitted.
+- **`avatarOverrides` are rebuilt**, not patched: exactly `{chatId, imageId}`,
+  `chatId` remapped first.
+- **The three `chatSettings` bags use conditional spreads**, so a `null` or
+  empty nested id is left EXACTLY as it was rather than being overwritten with a
+  remapped value — and `storyBackgroundsSettings` is guarded on its single
+  `defaultImageProfileId`, not on the bag, so a bag whose id is null is not even
+  rewritten.
+- **A mount-key `instance_settings` row is REBUILT as `{key, value}`**, dropping
+  any other column it carried and fixing the key order; a mount key with an
+  empty `value` falls to the pass-through arm untouched.
+- **`memories`, `groups`, `wardrobeItems`, `chatDocuments`,
+  `conversationChunks`, the two vector families, the ten doc-mount families,
+  `characterPluginData` and `conversationAnnotations` get NO `userId` rewrite.**
+  `groups.officialMountPointId` is deliberately NOT remapped (`groups.create`
+  discards it and provisions a fresh store).
+- **`characterPluginData` and `conversationAnnotations` are evaluated inside the
+  return literal**, i.e. AFTER `instanceSettings` — which is where they land in
+  the memo. The port reproduces that placement.
+
+### Recorded divergences (both out of contract, neither reachable from `remap_backup_data`)
+
+1. **Composite memo keys.** v4 keys a JS `Map`, so an array/object key compares
+   by reference identity (two structurally identical objects get two different
+   new ids); the port keys structurally (one shared id). Unreachable:
+   `remap_fields` only rewrites `typeof === 'string'` values, and every direct
+   `remap` call site in the entity table passes a scalar. Primitive keys ARE
+   faithful — the port keys by a discriminant-tagged representation so `"5.5"`
+   and `5.5` stay distinct entries that collapse to one `getMapping()` key
+   exactly as JS does (the `mixed_key_types` case pins it, `mapping_object()`
+   reproducing the `Record` fold's overwrite-in-place semantics).
+2. **A non-object `obj` handed to `remap_fields` / `remap_array_fields`.** JS's
+   `typeof [] === 'object'`, so v4 would spread an array into `{0: …, 1: …}`;
+   the port returns it unchanged. v4's own signature
+   (`T extends Record<string, any>`) puts that out of contract.
+
+Also recorded: **a path divergence, deliberate.** v4 keeps `uuid-remapper.ts` at
+`lib/backup/` and `uuid-remap.ts` under `restore/`; v5 puts both flat under
+`services/backup/` so this lane owns two whole files and P4.9G5 owns the whole
+`restore/` directory.
+
+### Gate (2026-07-25)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, plain **and**
+  `--features quilltap-core/native-transport`.
+- `TZ=UTC QT_ORACLE_UUID_REMAP=… cargo test --workspace --no-fail-fast`:
+  **378 test binaries / 1,602 tests / 0 failed.**
+- `QT_ORACLE_UUID_REMAP=… cargo test -p quilltap-harness --test
+  backup_uuid_remap_equivalence -- --nocapture`: **19/19 OK lines, zero SKIP.**
+- `cargo build --release` clean.
+- **No `apps/web` file is touched by this lane, so no `ng test`, no `ng build`
+  and no Playwright run is owed.** Stated explicitly per the order's gate item 7.
+- Versions: core `0.0.353` → `0.0.354`, harness `0.0.301` → `0.0.302`. (⚠ The
+  sibling bumps the same two crates off the same base — identical bumps merge
+  SILENTLY at cherry-pick; the unifier RECOUNTS as base + total bumps across both
+  lanes.)
+
+### Oracle regen recipe — `backup-uuid-remap` (writes BOTH artifacts)
+
+Regenerating the NDJSON **rewrites the committed corpus in place**; commit both
+or the hash guard fails. The full recipe also lives in the oracle case's header.
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<the v5 worktree>
+TMPO=/tmp/qt-uuidremap-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/backup-uuid-remap.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_CORPUS_OUT=$V5W/harness/oracle/fixtures/uuid-remap-corpus.json \
+QT_ORACLE_OUT=/tmp/oracle-backup-uuid-remap.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- backup-uuid-remap
+# then, from the v5 worktree:
+QT_ORACLE_UUID_REMAP=/tmp/oracle-backup-uuid-remap.ndjson \
+  cargo test -p quilltap-harness --test backup_uuid_remap_equivalence -- --nocapture
+```
+
+Grep the NDJSON before trusting a pass (the `oracle-regen-silent-stale-pass`
+rule — an erroring builder leaves the OLD file): the run must print
+`... (19 cases) and corpus ... (sha256 …)`, and `wc -l` on the NDJSON must be 19.
+
+### Fixtures
+
+- **Consumed read-only, unmodified:**
+  `crates/quilltap-web/tests/fixtures/system-data-{main,mount,llmlogs}.db`. This
+  lane changed no `.db` file and invalidates no other oracle.
+- **Delivered:** `harness/oracle/fixtures/uuid-remap-corpus.json`.
+- ⚠ **If P4.9G5 widens `system-data-*`, this lane's `wide` case must be
+  regenerated at unification** with the recipe above — the corpus hash guard will
+  fail loudly until it is, which is the intended behaviour, not a flake.
+- No stray `.db-journal` (the standing P4.15 rule); `git status` verified clean
+  of one.
+
+### For the unifier
+
+The §2 seam is delivered at exactly the pinned signatures. P4.9G5's
+ACTIVATE-AT-UNIFY call site becomes:
+
+```rust
+let mut remapper = UuidRemapper::new();
+let data = services::backup::uuid_remap::remap_backup_data(&parsed.data, user_id, &mut remapper);
+```
+
+with `use quilltap_core::services::backup::uuid_remapper::UuidRemapper;`. The
+`new-account` case then joins `system_restore_equivalence` per G5's §Fixtures.
+Note `remap_backup_data` returns a fresh `BackupData` and **does not** carry a
+manifest — v5's `BackupData` has no such field, so the caller keeps whatever
+`parseBackupZip` attached.

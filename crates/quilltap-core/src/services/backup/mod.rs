@@ -15,6 +15,10 @@ mod marshal;
 pub mod restore;
 // ── end P4.9G5 restore ──
 pub mod staging;
+// ── P4.9G6 modules ──
+pub mod uuid_remap;
+pub mod uuid_remapper;
+// ── end P4.9G6 ──
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

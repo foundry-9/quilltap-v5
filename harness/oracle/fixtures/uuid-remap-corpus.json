@@ -1,0 +1,3599 @@
+{
+  "_meta": {
+    "baseline": "e646f58b",
+    "generatedBy": "harness/oracle/cases/backup-uuid-remap.test.ts",
+    "idSource": "00000000-0000-4000-8000-<12-digit counter, from 1>",
+    "widePinnedStamp": "2026-01-01T00:00:00.000Z",
+    "collections": [
+      "characters",
+      "chats",
+      "tags",
+      "connectionProfiles",
+      "imageProfiles",
+      "embeddingProfiles",
+      "memories",
+      "files",
+      "promptTemplates",
+      "roleplayTemplates",
+      "providerModels",
+      "projects",
+      "groups",
+      "llmLogs",
+      "pluginConfigs",
+      "chatSettings",
+      "folders",
+      "wardrobeItems",
+      "characterPluginData",
+      "conversationAnnotations",
+      "chatDocuments",
+      "instanceSettings",
+      "embeddingStatus",
+      "conversationChunks",
+      "tfidfVocabularies",
+      "vectorIndexMetas",
+      "vectorEntries",
+      "docMountPoints",
+      "docMountFolders",
+      "docMountFiles",
+      "docMountFileLinks",
+      "docMountChunks",
+      "docMountDocuments",
+      "docMountBlobs",
+      "projectDocMountLinks",
+      "groupDocMountLinks",
+      "groupCharacterMembers",
+      "textReplacementRules"
+    ]
+  },
+  "cases": [
+    {
+      "name": "wide",
+      "note": "v4's own createBackup projection of the committed system-data-* fixture family — every collection carries a row",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "a1000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Lorian",
+            "title": null,
+            "identity": null,
+            "description": "Lorian of the fixture.",
+            "manifesto": null,
+            "personality": null,
+            "scenarios": [],
+            "firstMessage": null,
+            "exampleDialogues": null,
+            "systemPrompts": [],
+            "defaultConnectionProfileId": "c0000001-0000-4000-8000-000000000001",
+            "metadata": {},
+            "isFavorite": false,
+            "npc": false,
+            "talkativeness": 0.5,
+            "controlledBy": "llm",
+            "characterDocumentMountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "canChooseOutfit": false,
+            "partnerLinks": [],
+            "aliases": [],
+            "pronouns": null,
+            "tags": [
+              "a5000000-0000-4000-8000-000000000001"
+            ],
+            "avatarOverrides": [],
+            "physicalDescription": {
+              "id": "e9b693dc-119f-8798-b890-cfa8787a110a",
+              "name": "default",
+              "usageContext": null,
+              "headAndShouldersPrompt": null,
+              "shortPrompt": null,
+              "mediumPrompt": null,
+              "longPrompt": null,
+              "completePrompt": null,
+              "fullDescription": null,
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "updatedAt": "2026-01-01T00:00:00.000Z"
+            },
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.071Z"
+          },
+          {
+            "id": "a1000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Riya",
+            "title": null,
+            "identity": null,
+            "description": "Riya of the fixture.",
+            "manifesto": null,
+            "personality": null,
+            "scenarios": [],
+            "firstMessage": null,
+            "exampleDialogues": null,
+            "systemPrompts": [],
+            "defaultConnectionProfileId": "c0000001-0000-4000-8000-000000000001",
+            "metadata": {},
+            "isFavorite": false,
+            "npc": false,
+            "talkativeness": 0.5,
+            "controlledBy": "llm",
+            "characterDocumentMountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "canChooseOutfit": false,
+            "partnerLinks": [],
+            "aliases": [],
+            "pronouns": null,
+            "tags": [
+              "a5000000-0000-4000-8000-000000000001"
+            ],
+            "avatarOverrides": [],
+            "physicalDescription": {
+              "id": "d27e24f4-dbab-8554-bfb7-b7a308f36e61",
+              "name": "default",
+              "usageContext": null,
+              "headAndShouldersPrompt": null,
+              "shortPrompt": null,
+              "mediumPrompt": null,
+              "longPrompt": null,
+              "completePrompt": null,
+              "fullDescription": null,
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "updatedAt": "2026-01-01T00:00:00.000Z"
+            },
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.105Z"
+          }
+        ],
+        "chats": [
+          {
+            "id": "c1000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "participants": [
+              {
+                "id": "e1000000-0000-4000-8000-000000000001",
+                "type": "CHARACTER",
+                "characterId": "a1000000-0000-4000-8000-000000000001",
+                "controlledBy": "llm",
+                "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+                "displayOrder": 0,
+                "isActive": true,
+                "status": "active",
+                "hasHistoryAccess": false,
+                "createdAt": "2026-03-01T00:00:00.000Z",
+                "updatedAt": "2026-03-01T00:00:00.000Z"
+              }
+            ],
+            "title": "A Lesson in Lift",
+            "tags": [
+              "a5000000-0000-4000-8000-000000000001"
+            ],
+            "messageCount": 2,
+            "lastMessageAt": "2026-07-24T20:50:57.144Z",
+            "lastRenameCheckInterchange": 0,
+            "compactionGeneration": 0,
+            "lastSummaryTurn": 0,
+            "lastSummaryTokens": 0,
+            "lastFullRebuildTurn": 0,
+            "summaryAnchorMessageIds": [],
+            "isPaused": false,
+            "isManuallyRenamed": false,
+            "impersonatingParticipantIds": [],
+            "allLLMPauseTurnCount": 0,
+            "turnQueue": "[]",
+            "spokenThisCycleParticipantIds": "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "documentEditingMode": false,
+            "documentMode": "normal",
+            "dividerPosition": 45,
+            "terminalMode": "normal",
+            "rightPaneVerticalSplit": 50,
+            "projectId": "a3000000-0000-4000-8000-000000000001",
+            "totalPromptTokens": 0,
+            "totalCompletionTokens": 0,
+            "requestFullContextOnNextMessage": false,
+            "disabledTools": [],
+            "disabledToolGroups": [],
+            "forceToolsOnNextMessage": false,
+            "allowCrossCharacterVaultReads": false,
+            "state": {},
+            "agentTurnCount": 0,
+            "dangerCategories": [],
+            "chatType": "salon",
+            "runMilestonesAnnounced": 0,
+            "runDestructiveToolsAllowed": 0,
+            "budgetExcludeCacheHits": 1,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.144Z",
+            "messages": [
+              {
+                "type": "message",
+                "id": "d1000000-0000-4000-8000-000000000001",
+                "role": "USER",
+                "content": "Hello there.",
+                "attachments": [],
+                "createdAt": "2026-03-03T00:00:00.000Z",
+                "participantId": "e1000000-0000-4000-8000-000000000001"
+              },
+              {
+                "type": "message",
+                "id": "d1000000-0000-4000-8000-000000000002",
+                "role": "ASSISTANT",
+                "content": "A fine day for a voyage.",
+                "attachments": [],
+                "createdAt": "2026-03-04T00:00:00.000Z",
+                "participantId": "e1000000-0000-4000-8000-000000000001",
+                "provider": "OPENAI_COMPATIBLE",
+                "modelName": "mock-model"
+              }
+            ]
+          },
+          {
+            "id": "c1000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "participants": [
+              {
+                "id": "e1000000-0000-4000-8000-000000000002",
+                "type": "CHARACTER",
+                "characterId": "a1000000-0000-4000-8000-000000000002",
+                "controlledBy": "llm",
+                "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+                "displayOrder": 0,
+                "isActive": true,
+                "status": "active",
+                "hasHistoryAccess": false,
+                "createdAt": "2026-03-01T00:00:00.000Z",
+                "updatedAt": "2026-03-01T00:00:00.000Z"
+              }
+            ],
+            "title": "Quiet Interlude",
+            "tags": [],
+            "messageCount": 0,
+            "lastRenameCheckInterchange": 0,
+            "compactionGeneration": 0,
+            "lastSummaryTurn": 0,
+            "lastSummaryTokens": 0,
+            "lastFullRebuildTurn": 0,
+            "summaryAnchorMessageIds": [],
+            "isPaused": false,
+            "isManuallyRenamed": false,
+            "impersonatingParticipantIds": [],
+            "allLLMPauseTurnCount": 0,
+            "turnQueue": "[]",
+            "spokenThisCycleParticipantIds": "[]",
+            "documentEditingMode": false,
+            "documentMode": "normal",
+            "dividerPosition": 45,
+            "terminalMode": "normal",
+            "rightPaneVerticalSplit": 50,
+            "totalPromptTokens": 0,
+            "totalCompletionTokens": 0,
+            "requestFullContextOnNextMessage": false,
+            "disabledTools": [],
+            "disabledToolGroups": [],
+            "forceToolsOnNextMessage": false,
+            "allowCrossCharacterVaultReads": false,
+            "state": {},
+            "agentTurnCount": 0,
+            "dangerCategories": [],
+            "chatType": "salon",
+            "runMilestonesAnnounced": 0,
+            "runDestructiveToolsAllowed": 0,
+            "budgetExcludeCacheHits": 1,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-05T00:00:00.000Z",
+            "messages": []
+          }
+        ],
+        "tags": [
+          {
+            "id": "a5000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Companion",
+            "nameLower": "companion",
+            "quickHide": false,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "a5000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Rival",
+            "nameLower": "rival",
+            "quickHide": false,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "connectionProfiles": [
+          {
+            "id": "c0000001-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Local Mock",
+            "provider": "OPENAI_COMPATIBLE",
+            "transport": "api",
+            "courierDeltaMode": true,
+            "apiKeyId": "a0000001-0000-4000-8000-000000000001",
+            "baseUrl": "http://127.0.0.1:1/v1",
+            "modelName": "mock-model",
+            "parameters": {},
+            "isDefault": false,
+            "isCheap": false,
+            "allowWebSearch": false,
+            "useNativeWebSearch": false,
+            "allowToolUse": true,
+            "pseudoToolMode": "auto",
+            "isDangerousCompatible": false,
+            "supportsImageUpload": false,
+            "tags": [],
+            "sortIndex": 0,
+            "totalTokens": 0,
+            "totalPromptTokens": 0,
+            "totalCompletionTokens": 0,
+            "messageCount": 0,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "imageProfiles": [
+          {
+            "id": "a6000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Primary Imagery",
+            "provider": "OPENAI_COMPATIBLE",
+            "apiKeyId": "a0000001-0000-4000-8000-000000000001",
+            "baseUrl": "http://127.0.0.1:1/v1",
+            "modelName": "mock-image-model",
+            "parameters": {
+              "steps": 30
+            },
+            "isDefault": true,
+            "isDangerousCompatible": false,
+            "tags": [
+              "a5000000-0000-4000-8000-000000000001"
+            ],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "embeddingProfiles": [
+          {
+            "id": "a8000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Local Embeddings",
+            "provider": "OPENAI",
+            "baseUrl": "http://127.0.0.1:1/v1",
+            "modelName": "mock-embed",
+            "dimensions": 8,
+            "normalizeL2": false,
+            "isDefault": true,
+            "tags": [],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "memories": [
+          {
+            "id": "ad000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "content": "Lorian remembers the road.",
+            "summary": "the road",
+            "keywords": [],
+            "tags": [],
+            "importance": 0.6,
+            "source": "AUTO",
+            "entities": [],
+            "kind": "semantic",
+            "reinforcementCount": 1,
+            "relatedMemoryIds": [],
+            "reinforcedImportance": 0.6,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "ad000000-0000-4000-8000-000000000002",
+            "characterId": "a1000000-0000-4000-8000-000000000002",
+            "content": "Riya recalls the harbour.",
+            "summary": "the harbour",
+            "keywords": [],
+            "tags": [],
+            "importance": 0.4,
+            "source": "MANUAL",
+            "entities": [],
+            "kind": "semantic",
+            "reinforcementCount": 1,
+            "relatedMemoryIds": [],
+            "reinforcedImportance": 0.4,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "files": [
+          {
+            "id": "f0000001-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "originalFilename": "portrait.png",
+            "mimeType": "image/png",
+            "size": 128,
+            "width": 16,
+            "height": 16,
+            "linkedTo": [],
+            "source": "UPLOADED",
+            "category": "IMAGE",
+            "tags": [],
+            "storageKey": "e18e05bc-63e8-4539-8a85-719b7a508850/portrait.png",
+            "fileStatus": "ok",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "promptTemplates": [
+          {
+            "id": "b2000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "Fixture Prompt",
+            "content": "Speak plainly and carry a small lantern.",
+            "description": "The fixture prompt template.",
+            "isBuiltIn": false,
+            "category": "COMPANION",
+            "tags": [
+              "a5000000-0000-4000-8000-000000000002"
+            ],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "roleplayTemplates": [
+          {
+            "id": "a4000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "name": "House Style",
+            "description": "The fixture template.",
+            "systemPrompt": "Write plainly.",
+            "isBuiltIn": false,
+            "tags": [],
+            "delimiters": [],
+            "renderingPatterns": [],
+            "narrationDelimiters": "*",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "providerModels": [
+          {
+            "id": "b1000000-0000-4000-8000-000000000001",
+            "provider": "OPENAI_COMPATIBLE",
+            "modelId": "mock-model",
+            "modelType": "chat",
+            "displayName": "Mock Model",
+            "baseUrl": "http://127.0.0.1:1/v1",
+            "contextWindow": 8192,
+            "maxOutputTokens": 2048,
+            "deprecated": false,
+            "experimental": false,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "projects": [
+          {
+            "id": "a3000000-0000-4000-8000-000000000001",
+            "name": "The Voyage",
+            "officialMountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.117Z",
+            "description": "A fixture project.",
+            "instructions": null,
+            "state": {},
+            "allowAnyCharacter": false,
+            "characterRoster": [
+              "a1000000-0000-4000-8000-000000000001",
+              "a1000000-0000-4000-8000-000000000002"
+            ],
+            "color": "#334455",
+            "defaultDisabledTools": [],
+            "defaultDisabledToolGroups": [],
+            "backgroundDisplayMode": "project"
+          }
+        ],
+        "groups": [
+          {
+            "id": "a2000000-0000-4000-8000-000000000001",
+            "name": "The Crew",
+            "officialMountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.130Z",
+            "description": "A fixture group.",
+            "instructions": null,
+            "state": {}
+          }
+        ],
+        "llmLogs": [
+          {
+            "id": "e5000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "type": "CHAT_MESSAGE",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "provider": "OPENAI_COMPATIBLE",
+            "modelName": "mock-model",
+            "request": {
+              "messageCount": 0,
+              "messages": [],
+              "temperature": null,
+              "maxTokens": null,
+              "toolCount": 0
+            },
+            "response": {
+              "content": "hello",
+              "contentLength": 5,
+              "error": null,
+              "finishReason": "stop"
+            },
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "e5000000-0000-4000-8000-000000000002",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "type": "MEMORY_EXTRACTION",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "provider": "OPENAI_COMPATIBLE",
+            "modelName": "mock-model",
+            "request": {
+              "messageCount": 0,
+              "messages": [],
+              "temperature": null,
+              "maxTokens": null,
+              "toolCount": 0
+            },
+            "response": {
+              "content": "hello",
+              "contentLength": 5,
+              "error": null,
+              "finishReason": "stop"
+            },
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "pluginConfigs": [
+          {
+            "id": "b3000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "pluginName": "qtap-plugin-fixture",
+            "config": {
+              "endpoint": "http://127.0.0.1:1",
+              "retries": 2
+            },
+            "enabled": true,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "chatSettings": [
+          {
+            "id": "ab000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "avatarDisplayMode": "ALWAYS",
+            "avatarDisplayStyle": "CIRCULAR",
+            "tagStyles": {},
+            "cheapLLMSettings": {
+              "strategy": "PROVIDER_CHEAPEST",
+              "fallbackToLocal": false,
+              "embeddingProvider": "OPENAI"
+            },
+            "themePreference": {
+              "activeThemeId": null,
+              "colorMode": "system",
+              "showNavThemeSelector": false
+            },
+            "sidebarWidth": 256,
+            "defaultTimestampConfig": {
+              "mode": "NONE",
+              "format": "FRIENDLY",
+              "useFictionalTime": false,
+              "autoPrepend": true,
+              "intervalMinutes": 15
+            },
+            "memoryCascadePreferences": {
+              "onMessageDelete": "ASK_EVERY_TIME",
+              "onSwipeRegenerate": "DELETE_MEMORIES"
+            },
+            "autoHousekeepingSettings": {
+              "enabled": false,
+              "perCharacterCap": 2000,
+              "perCharacterCapOverrides": {},
+              "autoMergeSimilarThreshold": 0.9,
+              "mergeSimilar": false
+            },
+            "memoryExtractionLimits": {
+              "enabled": false,
+              "maxPerHour": 20,
+              "softStartFraction": 0.7,
+              "softFloor": 0.7
+            },
+            "autonomousRoomSettings": {
+              "dailyTokenBudget": null,
+              "defaultFreshnessWindowMs": 43200000,
+              "visibilityDefault": "owner_only",
+              "destructiveToolPolicy": "opt_in_per_room"
+            },
+            "tokenDisplaySettings": {
+              "showPerMessageTokens": false,
+              "showPerMessageCost": false,
+              "showChatTotals": false,
+              "showSystemEvents": false
+            },
+            "contextCompressionSettings": {
+              "enabled": true,
+              "windowSize": 5,
+              "compressionTargetTokens": 800,
+              "systemPromptTargetTokens": 1500,
+              "projectContextReinjectInterval": 5
+            },
+            "llmLoggingSettings": {
+              "enabled": true,
+              "verboseMode": false,
+              "retentionDays": 30
+            },
+            "autoDetectRng": false,
+            "customTools": true,
+            "compositionModeDefault": false,
+            "composerSpellcheck": true,
+            "textReplacementsEnabled": true,
+            "autoScrollOnResponseComplete": false,
+            "agentModeSettings": {
+              "maxTurns": 10,
+              "defaultEnabled": false
+            },
+            "coreWhisper": {
+              "enabled": true,
+              "interval": 12,
+              "silenceThreshold": 3,
+              "packetTokenBudget": 4096,
+              "fireOnContextTransition": true
+            },
+            "thinkingDisplay": {
+              "defaultVisible": true,
+              "defaultCollapsed": true
+            },
+            "answerConfirmationSettings": {
+              "enabled": false
+            },
+            "storyBackgroundsSettings": {
+              "enabled": false,
+              "defaultImageProfileId": null
+            },
+            "dangerousContentSettings": {
+              "mode": "OFF",
+              "threshold": 0.7,
+              "scanTextChat": true,
+              "scanImagePrompts": true,
+              "scanImageGeneration": false,
+              "displayMode": "SHOW",
+              "showWarningBadges": true
+            },
+            "autoLockSettings": {
+              "enabled": false,
+              "idleMinutes": 15
+            },
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "folders": [
+          {
+            "id": "a9000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "path": "/notes",
+            "name": "Notes",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "wardrobeItems": [],
+        "characterPluginData": [
+          {
+            "id": "b4000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "pluginName": "qtap-plugin-fixture",
+            "data": "{\"visits\":3,\"lastPort\":\"Ravenna\"}",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "conversationAnnotations": [
+          {
+            "id": "b5000000-0000-4000-8000-000000000001",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "messageIndex": 1,
+            "sourceMessageId": "d1000000-0000-4000-8000-000000000002",
+            "characterName": "Lorian",
+            "content": "A note in the margin.",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "chatDocuments": [
+          {
+            "id": "b7000000-0000-4000-8000-000000000001",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "filePath": "notes/intro.md",
+            "scope": "project",
+            "displayTitle": "Intro",
+            "isActive": true,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "instanceSettings": [
+          {
+            "key": "generalMountPointId",
+            "value": "\"11111111-2222-4333-8444-555555555555\""
+          },
+          {
+            "key": "lanternBackgroundsMountPointId",
+            "value": "\"66666666-7777-4888-8999-aaaaaaaaaaaa\""
+          }
+        ],
+        "embeddingStatus": [
+          {
+            "id": "ba000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "entityType": "MEMORY",
+            "entityId": "ad000000-0000-4000-8000-000000000001",
+            "profileId": "a8000000-0000-4000-8000-000000000001",
+            "status": "EMBEDDED",
+            "embeddedAt": "2026-03-01T00:00:00.000Z",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.210Z"
+          }
+        ],
+        "conversationChunks": [
+          {
+            "id": "b8000000-0000-4000-8000-000000000001",
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "interchangeIndex": 0,
+            "content": "Hello there. / A fine day for a voyage.",
+            "participantNames": [
+              "Lorian"
+            ],
+            "messageIds": [
+              "d1000000-0000-4000-8000-000000000001",
+              "d1000000-0000-4000-8000-000000000002"
+            ],
+            "embedding": [
+              0.10039369761943817,
+              -0.24803149700164795,
+              0.501968502998352,
+              0.75
+            ],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "tfidfVocabularies": [
+          {
+            "id": "b9000000-0000-4000-8000-000000000001",
+            "profileId": "a8000000-0000-4000-8000-000000000001",
+            "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+            "vocabulary": "[[\"road\",0],[\"harbour\",1]]",
+            "idf": "[0.5,1.5]",
+            "avgDocLength": 4.5,
+            "vocabularySize": 2,
+            "includeBigrams": true,
+            "fittedAt": "2026-03-01T00:00:00.000Z",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-07-24T20:50:57.209Z"
+          }
+        ],
+        "vectorIndexMetas": [
+          {
+            "id": "a1000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "version": 1,
+            "dimensions": 4,
+            "createdAt": "2026-07-24T20:50:57.212Z",
+            "updatedAt": "2026-07-24T20:50:57.212Z"
+          }
+        ],
+        "vectorEntries": [
+          {
+            "id": "bb000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "embedding": [
+              0.10039369761943817,
+              -0.24803149700164795,
+              0.501968502998352,
+              0.75
+            ],
+            "createdAt": "2026-07-24T20:50:57.212Z"
+          }
+        ],
+        "docMountPoints": [
+          {
+            "id": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "name": "Lorian Character Vault",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "character",
+            "includePatterns": "[\"*.md\",\"*.txt\",\"*.pdf\",\"*.docx\"]",
+            "excludePatterns": "[\".git\",\"node_modules\",\".obsidian\",\".trash\"]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 11,
+            "chunkCount": 7,
+            "totalSizeBytes": 453,
+            "createdAt": "2026-07-24T20:50:56.976Z",
+            "updatedAt": "2026-07-24T20:50:57.200Z"
+          },
+          {
+            "id": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "name": "Riya Character Vault",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "character",
+            "includePatterns": "[\"*.md\",\"*.txt\",\"*.pdf\",\"*.docx\"]",
+            "excludePatterns": "[\".git\",\"node_modules\",\".obsidian\",\".trash\"]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 0,
+            "chunkCount": 0,
+            "totalSizeBytes": 0,
+            "createdAt": "2026-07-24T20:50:57.074Z",
+            "updatedAt": "2026-07-24T20:50:57.074Z"
+          },
+          {
+            "id": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "name": "Project Files: The Voyage",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "documents",
+            "includePatterns": "[]",
+            "excludePatterns": "[\".git\",\"node_modules\",\".obsidian\",\".trash\"]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 0,
+            "chunkCount": 0,
+            "totalSizeBytes": 0,
+            "createdAt": "2026-07-24T20:50:57.116Z",
+            "updatedAt": "2026-07-24T20:50:57.116Z"
+          },
+          {
+            "id": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "name": "Group Files: The Crew",
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "documents",
+            "includePatterns": "[]",
+            "excludePatterns": "[\".git\",\"node_modules\",\".obsidian\",\".trash\"]",
+            "enabled": 1,
+            "lastScannedAt": null,
+            "scanStatus": "idle",
+            "lastScanError": null,
+            "conversionStatus": "idle",
+            "conversionError": null,
+            "fileCount": 0,
+            "chunkCount": 0,
+            "totalSizeBytes": 0,
+            "createdAt": "2026-07-24T20:50:57.129Z",
+            "updatedAt": "2026-07-24T20:50:57.129Z"
+          }
+        ],
+        "docMountFolders": [
+          {
+            "id": "f35713d8-8141-4649-a825-ac5ecaa1e8a4",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "Prompts",
+            "path": "Prompts",
+            "createdAt": "2026-07-24T20:50:56.982Z",
+            "updatedAt": "2026-07-24T20:50:56.982Z"
+          },
+          {
+            "id": "63a75c85-83ee-42af-9819-f1afefe5804d",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "Scenarios",
+            "path": "Scenarios",
+            "createdAt": "2026-07-24T20:50:56.983Z",
+            "updatedAt": "2026-07-24T20:50:56.983Z"
+          },
+          {
+            "id": "8cc313e5-b735-4331-a83d-f0823a2ce6a4",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "Wardrobe",
+            "path": "Wardrobe",
+            "createdAt": "2026-07-24T20:50:56.984Z",
+            "updatedAt": "2026-07-24T20:50:56.984Z"
+          },
+          {
+            "id": "51c4ed31-fcb5-4900-904a-8678197602c1",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "Outfits",
+            "path": "Outfits",
+            "createdAt": "2026-07-24T20:50:56.984Z",
+            "updatedAt": "2026-07-24T20:50:56.984Z"
+          },
+          {
+            "id": "58c91e3a-95c7-4fb4-a7d0-fe2337d17405",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "lore",
+            "path": "lore",
+            "createdAt": "2026-07-24T20:50:56.985Z",
+            "updatedAt": "2026-07-24T20:50:56.985Z"
+          },
+          {
+            "id": "b2538ad0-7870-4983-87cc-eb1caaa390c0",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "images",
+            "path": "images",
+            "createdAt": "2026-07-24T20:50:56.985Z",
+            "updatedAt": "2026-07-24T20:50:56.985Z"
+          },
+          {
+            "id": "2a716eb9-cc3e-4723-a251-ab704e7d2e93",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "files",
+            "path": "files",
+            "createdAt": "2026-07-24T20:50:56.986Z",
+            "updatedAt": "2026-07-24T20:50:56.986Z"
+          },
+          {
+            "id": "7e9d3dd3-27aa-4262-a5d3-559ad5531dcf",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "Prompts",
+            "path": "Prompts",
+            "createdAt": "2026-07-24T20:50:57.074Z",
+            "updatedAt": "2026-07-24T20:50:57.074Z"
+          },
+          {
+            "id": "84374474-2322-483e-b224-3a71edc29e0e",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "Scenarios",
+            "path": "Scenarios",
+            "createdAt": "2026-07-24T20:50:57.075Z",
+            "updatedAt": "2026-07-24T20:50:57.075Z"
+          },
+          {
+            "id": "bc14371c-41b3-433a-9e07-4463d3cc57e5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "Wardrobe",
+            "path": "Wardrobe",
+            "createdAt": "2026-07-24T20:50:57.075Z",
+            "updatedAt": "2026-07-24T20:50:57.075Z"
+          },
+          {
+            "id": "cdafbb35-6063-4213-8dec-26819af18651",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "Outfits",
+            "path": "Outfits",
+            "createdAt": "2026-07-24T20:50:57.076Z",
+            "updatedAt": "2026-07-24T20:50:57.076Z"
+          },
+          {
+            "id": "eafeaff5-fa8a-4f03-af16-5bfe7d8e75ae",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "lore",
+            "path": "lore",
+            "createdAt": "2026-07-24T20:50:57.076Z",
+            "updatedAt": "2026-07-24T20:50:57.076Z"
+          },
+          {
+            "id": "2fd76e89-1dad-4de8-b6c4-db9b210b334b",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "images",
+            "path": "images",
+            "createdAt": "2026-07-24T20:50:57.077Z",
+            "updatedAt": "2026-07-24T20:50:57.077Z"
+          },
+          {
+            "id": "5799f032-00bd-4db2-9719-00c920a52ee3",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "parentId": null,
+            "name": "files",
+            "path": "files",
+            "createdAt": "2026-07-24T20:50:57.077Z",
+            "updatedAt": "2026-07-24T20:50:57.077Z"
+          },
+          {
+            "id": "94170ffb-afc5-4801-8e61-22182f2caf94",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "parentId": null,
+            "name": "notes",
+            "path": "notes",
+            "createdAt": "2026-07-24T20:50:57.190Z",
+            "updatedAt": "2026-07-24T20:50:57.190Z"
+          }
+        ],
+        "docMountFiles": [
+          {
+            "id": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "fileSizeBytes": 0,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:56.988Z",
+            "updatedAt": "2026-07-24T20:50:56.988Z"
+          },
+          {
+            "id": "6b9bdcc2-9654-4801-bf02-c67f7cf83d5b",
+            "sha256": "6af3e8b0a140e9f104d3291f427f569887f9b397d3f5a45449947555a58e59f1",
+            "fileSizeBytes": 128,
+            "fileType": "json",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.050Z",
+            "updatedAt": "2026-07-24T20:50:57.050Z"
+          },
+          {
+            "id": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "fileSizeBytes": 2,
+            "fileType": "json",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.053Z",
+            "updatedAt": "2026-07-24T20:50:57.053Z"
+          },
+          {
+            "id": "d882b333-0a24-408e-bd56-2dd69595b51a",
+            "sha256": "a4d58ef379824e554a0d2027315010633a1ec8043145d047249a318dbfe2920b",
+            "fileSizeBytes": 73,
+            "fileType": "json",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.056Z",
+            "updatedAt": "2026-07-24T20:50:57.056Z"
+          },
+          {
+            "id": "cbd486be-0f86-499f-85c7-7656687844cb",
+            "sha256": "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
+            "fileSizeBytes": 132,
+            "fileType": "json",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.059Z",
+            "updatedAt": "2026-07-24T20:50:57.059Z"
+          },
+          {
+            "id": "6bfd73b9-1602-40d7-85e9-bc2513897d2c",
+            "sha256": "54ad9d378acdac9ea0ae643724ef2ab3e77ab961358a1b901e53213facab6694",
+            "fileSizeBytes": 22,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.063Z",
+            "updatedAt": "2026-07-24T20:50:57.063Z"
+          },
+          {
+            "id": "e0cfe9f2-506d-4299-929c-2539d0f29b28",
+            "sha256": "d3a87080d6e3ee8b060ccf3ccbffe0dd0aa029e6d219c436fc96f5c2231ef7bf",
+            "fileSizeBytes": 20,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.098Z",
+            "updatedAt": "2026-07-24T20:50:57.098Z"
+          },
+          {
+            "id": "a596aef2-d5fc-4d71-8bc4-b716acd7d5c7",
+            "sha256": "f6d7255ee4ce7e63c64777055179749418556dcfda8be14895c6cab213abf291",
+            "fileSizeBytes": 272,
+            "fileType": "json",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.118Z",
+            "updatedAt": "2026-07-24T20:50:57.118Z"
+          },
+          {
+            "id": "db041744-ca71-45df-9e21-349d6e3e41ef",
+            "sha256": "5619f6262d71257645fceddf17a79edec09da17b080ffbfd29b4036c2c68c995",
+            "fileSizeBytes": 18,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.120Z",
+            "updatedAt": "2026-07-24T20:50:57.120Z"
+          },
+          {
+            "id": "37d14e16-4511-4344-a3db-a5e86be9f556",
+            "sha256": "eaf514699d8adacadecd4dcc7b6bd17fb61da924cb03496386d04f4316ecb3d5",
+            "fileSizeBytes": 16,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.133Z",
+            "updatedAt": "2026-07-24T20:50:57.133Z"
+          },
+          {
+            "id": "523f4062-7cc0-4c2d-ab82-ea98fd03749d",
+            "sha256": "5e86eadb6a9bf755386bfa58e6e5042a9e81625afe12589c6b23c4853a964c75",
+            "fileSizeBytes": 201,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.154Z",
+            "updatedAt": "2026-07-24T20:50:57.154Z"
+          },
+          {
+            "id": "baa9ec81-0696-4167-b5b7-1e5f1e5adc79",
+            "sha256": "e7bc84837f97ba390837b115d8b7321581e6e9d96cd1cb47523959f34c082e7e",
+            "fileSizeBytes": 23,
+            "fileType": "markdown",
+            "source": "database",
+            "createdAt": "2026-07-24T20:50:57.191Z",
+            "updatedAt": "2026-07-24T20:50:57.191Z"
+          }
+        ],
+        "docMountFileLinks": [
+          {
+            "id": "29d136ca-a0c0-4849-9b72-d9750d7d9e30",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "identity.md",
+            "fileName": "identity.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.061Z",
+            "createdAt": "2026-07-24T20:50:56.988Z",
+            "updatedAt": "2026-07-24T20:50:57.063Z"
+          },
+          {
+            "id": "4c1d334f-ad81-465d-ba63-a880633879c3",
+            "fileId": "6bfd73b9-1602-40d7-85e9-bc2513897d2c",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "description.md",
+            "fileName": "description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 22,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.063Z",
+            "createdAt": "2026-07-24T20:50:57.041Z",
+            "updatedAt": "2026-07-24T20:50:57.065Z"
+          },
+          {
+            "id": "025c390f-2808-4990-8d66-bdc0d3737098",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "manifesto.md",
+            "fileName": "manifesto.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.065Z",
+            "createdAt": "2026-07-24T20:50:57.043Z",
+            "updatedAt": "2026-07-24T20:50:57.066Z"
+          },
+          {
+            "id": "dd82b8a4-4b7d-4f94-ab1c-61dd94d5afb8",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "personality.md",
+            "fileName": "personality.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.067Z",
+            "createdAt": "2026-07-24T20:50:57.045Z",
+            "updatedAt": "2026-07-24T20:50:57.068Z"
+          },
+          {
+            "id": "d9cc6b68-7d1d-4e3a-993e-76cad53d1217",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "physical-description.md",
+            "fileName": "physical-description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.046Z",
+            "createdAt": "2026-07-24T20:50:57.046Z",
+            "updatedAt": "2026-07-24T20:50:57.048Z"
+          },
+          {
+            "id": "10d3a88f-de4c-470f-a3f7-8954c60328a7",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "example-dialogues.md",
+            "fileName": "example-dialogues.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.068Z",
+            "createdAt": "2026-07-24T20:50:57.048Z",
+            "updatedAt": "2026-07-24T20:50:57.070Z"
+          },
+          {
+            "id": "8e8dacec-7db4-4327-9836-f5b86564dab5",
+            "fileId": "cbd486be-0f86-499f-85c7-7656687844cb",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "properties.json",
+            "fileName": "properties.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 132,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.059Z",
+            "createdAt": "2026-07-24T20:50:57.050Z",
+            "updatedAt": "2026-07-24T20:50:57.060Z"
+          },
+          {
+            "id": "e5b0fe46-f415-4b04-861f-af459da3c4e4",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "metadata.json",
+            "fileName": "metadata.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 2,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.053Z",
+            "createdAt": "2026-07-24T20:50:57.053Z",
+            "updatedAt": "2026-07-24T20:50:57.055Z"
+          },
+          {
+            "id": "f11f4e2c-afc9-4bf4-a55b-671b435d18f1",
+            "fileId": "d882b333-0a24-408e-bd56-2dd69595b51a",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "physical-prompts.json",
+            "fileName": "physical-prompts.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 73,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.056Z",
+            "createdAt": "2026-07-24T20:50:57.056Z",
+            "updatedAt": "2026-07-24T20:50:57.057Z"
+          },
+          {
+            "id": "8a7cb71a-04ab-4dc5-a127-68f860a7abf1",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "identity.md",
+            "fileName": "identity.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.096Z",
+            "createdAt": "2026-07-24T20:50:57.078Z",
+            "updatedAt": "2026-07-24T20:50:57.098Z"
+          },
+          {
+            "id": "ca2602b0-a316-4c1f-a0a7-e379eb44f874",
+            "fileId": "e0cfe9f2-506d-4299-929c-2539d0f29b28",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "description.md",
+            "fileName": "description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 20,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.098Z",
+            "createdAt": "2026-07-24T20:50:57.080Z",
+            "updatedAt": "2026-07-24T20:50:57.100Z"
+          },
+          {
+            "id": "2fc17338-781f-4bc0-be4f-1f822db9d2d7",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "manifesto.md",
+            "fileName": "manifesto.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.100Z",
+            "createdAt": "2026-07-24T20:50:57.082Z",
+            "updatedAt": "2026-07-24T20:50:57.102Z"
+          },
+          {
+            "id": "13f128c1-3d5e-4730-af01-821342d29d03",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "personality.md",
+            "fileName": "personality.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.102Z",
+            "createdAt": "2026-07-24T20:50:57.083Z",
+            "updatedAt": "2026-07-24T20:50:57.103Z"
+          },
+          {
+            "id": "3c5fdcec-22ff-48ec-b4b6-b7c331795451",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "physical-description.md",
+            "fileName": "physical-description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.085Z",
+            "createdAt": "2026-07-24T20:50:57.085Z",
+            "updatedAt": "2026-07-24T20:50:57.087Z"
+          },
+          {
+            "id": "6bb263c9-2a6f-4f7a-bccf-e55f267e4b50",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "example-dialogues.md",
+            "fileName": "example-dialogues.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.103Z",
+            "createdAt": "2026-07-24T20:50:57.087Z",
+            "updatedAt": "2026-07-24T20:50:57.104Z"
+          },
+          {
+            "id": "aa131945-4fc5-4ea4-b9f6-2a555926cc80",
+            "fileId": "cbd486be-0f86-499f-85c7-7656687844cb",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "properties.json",
+            "fileName": "properties.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 132,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.094Z",
+            "createdAt": "2026-07-24T20:50:57.089Z",
+            "updatedAt": "2026-07-24T20:50:57.095Z"
+          },
+          {
+            "id": "56d92a4d-55c0-4a2c-a855-8f1c5786d7fa",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "metadata.json",
+            "fileName": "metadata.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 2,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.091Z",
+            "createdAt": "2026-07-24T20:50:57.091Z",
+            "updatedAt": "2026-07-24T20:50:57.091Z"
+          },
+          {
+            "id": "cec20b02-597f-4c73-9999-c073118ed8d4",
+            "fileId": "d882b333-0a24-408e-bd56-2dd69595b51a",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "relativePath": "physical-prompts.json",
+            "fileName": "physical-prompts.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 73,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.092Z",
+            "createdAt": "2026-07-24T20:50:57.092Z",
+            "updatedAt": "2026-07-24T20:50:57.093Z"
+          },
+          {
+            "id": "dea601de-2c7b-4c9e-9c2b-5220c6401645",
+            "fileId": "a596aef2-d5fc-4d71-8bc4-b716acd7d5c7",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "relativePath": "properties.json",
+            "fileName": "properties.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 272,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.118Z",
+            "createdAt": "2026-07-24T20:50:57.118Z",
+            "updatedAt": "2026-07-24T20:50:57.119Z"
+          },
+          {
+            "id": "3b367e7e-15f1-43f4-b7cd-c74428efc10d",
+            "fileId": "db041744-ca71-45df-9e21-349d6e3e41ef",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "relativePath": "description.md",
+            "fileName": "description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 18,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.120Z",
+            "createdAt": "2026-07-24T20:50:57.120Z",
+            "updatedAt": "2026-07-24T20:50:57.122Z"
+          },
+          {
+            "id": "a72b1fab-b7d3-4028-817b-fc3fd0669696",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "relativePath": "instructions.md",
+            "fileName": "instructions.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.123Z",
+            "createdAt": "2026-07-24T20:50:57.123Z",
+            "updatedAt": "2026-07-24T20:50:57.126Z"
+          },
+          {
+            "id": "87517507-1d32-4c31-ad7e-dfd1fbe9140a",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "relativePath": "state.json",
+            "fileName": "state.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 2,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.126Z",
+            "createdAt": "2026-07-24T20:50:57.126Z",
+            "updatedAt": "2026-07-24T20:50:57.127Z"
+          },
+          {
+            "id": "02d75bb1-9bf6-48f4-9bfd-64ce1e85b275",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "relativePath": "properties.json",
+            "fileName": "properties.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 2,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.131Z",
+            "createdAt": "2026-07-24T20:50:57.131Z",
+            "updatedAt": "2026-07-24T20:50:57.132Z"
+          },
+          {
+            "id": "f11c2d45-4ee9-4c29-9387-2c19597c3291",
+            "fileId": "37d14e16-4511-4344-a3db-a5e86be9f556",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "relativePath": "description.md",
+            "fileName": "description.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 16,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.133Z",
+            "createdAt": "2026-07-24T20:50:57.133Z",
+            "updatedAt": "2026-07-24T20:50:57.134Z"
+          },
+          {
+            "id": "e387046a-3f1c-45e2-bc18-c5363ddaab98",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "relativePath": "instructions.md",
+            "fileName": "instructions.md",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 0,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 0,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.135Z",
+            "createdAt": "2026-07-24T20:50:57.135Z",
+            "updatedAt": "2026-07-24T20:50:57.137Z"
+          },
+          {
+            "id": "a0fc4c89-6f07-4b46-ae5b-86dea631a6e2",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "relativePath": "state.json",
+            "fileName": "state.json",
+            "folderId": null,
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 2,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.137Z",
+            "createdAt": "2026-07-24T20:50:57.137Z",
+            "updatedAt": "2026-07-24T20:50:57.138Z"
+          },
+          {
+            "id": "3399b346-e261-41df-8242-6bcb1ea2090e",
+            "fileId": "523f4062-7cc0-4c2d-ab82-ea98fd03749d",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "Wardrobe/Travelling Coat.md",
+            "fileName": "Travelling Coat.md",
+            "folderId": "8cc313e5-b735-4331-a83d-f0823a2ce6a4",
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 201,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.154Z",
+            "createdAt": "2026-07-24T20:50:57.154Z",
+            "updatedAt": "2026-07-24T20:50:57.158Z"
+          },
+          {
+            "id": "5db1cf85-5632-4679-970e-b6cfd5816dd1",
+            "fileId": "baa9ec81-0696-4167-b5b7-1e5f1e5adc79",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "relativePath": "notes/intro.md",
+            "fileName": "intro.md",
+            "folderId": "94170ffb-afc5-4801-8e61-22182f2caf94",
+            "originalFileName": null,
+            "originalMimeType": null,
+            "description": "",
+            "descriptionUpdatedAt": null,
+            "conversionStatus": "converted",
+            "conversionError": null,
+            "plainTextLength": 23,
+            "extractedText": null,
+            "extractedTextSha256": null,
+            "extractionStatus": "none",
+            "extractionError": null,
+            "chunkCount": 1,
+            "allowEmbed": 1,
+            "allowCharacterRead": 1,
+            "allowCharacterWrite": 1,
+            "lastModified": "2026-07-24T20:50:57.191Z",
+            "createdAt": "2026-07-24T20:50:57.191Z",
+            "updatedAt": "2026-07-24T20:50:57.193Z"
+          }
+        ],
+        "docMountChunks": [
+          {
+            "id": "40785d73-55fc-4833-b8e4-ecc639e291f4",
+            "linkId": "e5b0fe46-f415-4b04-861f-af459da3c4e4",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "{}",
+            "tokenCount": 1,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.055Z",
+            "updatedAt": "2026-07-24T20:50:57.055Z"
+          },
+          {
+            "id": "99ac020a-9ddf-4319-bd68-b455cf8f7271",
+            "linkId": "f11f4e2c-afc9-4bf4-a55b-671b435d18f1",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
+            "tokenCount": 19,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.058Z",
+            "updatedAt": "2026-07-24T20:50:57.058Z"
+          },
+          {
+            "id": "ad44b98c-2b02-439c-a666-d77674d9e71e",
+            "linkId": "8e8dacec-7db4-4327-9836-f5b86564dab5",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
+            "tokenCount": 33,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.061Z",
+            "updatedAt": "2026-07-24T20:50:57.061Z"
+          },
+          {
+            "id": "2706ca23-923e-4965-9838-4d8bb4380685",
+            "linkId": "4c1d334f-ad81-465d-ba63-a880633879c3",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "Lorian of the fixture.",
+            "tokenCount": 6,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.065Z",
+            "updatedAt": "2026-07-24T20:50:57.065Z"
+          },
+          {
+            "id": "ff4585b3-3bab-4264-935a-a0dcf6c50c03",
+            "linkId": "56d92a4d-55c0-4a2c-a855-8f1c5786d7fa",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "chunkIndex": 0,
+            "content": "{}",
+            "tokenCount": 1,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.092Z",
+            "updatedAt": "2026-07-24T20:50:57.092Z"
+          },
+          {
+            "id": "07e19620-cf7a-4a53-9b5f-b18ed30b5e39",
+            "linkId": "cec20b02-597f-4c73-9999-c073118ed8d4",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "chunkIndex": 0,
+            "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
+            "tokenCount": 19,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.094Z",
+            "updatedAt": "2026-07-24T20:50:57.094Z"
+          },
+          {
+            "id": "52930adb-50b0-4695-bb0d-27ec6567353e",
+            "linkId": "aa131945-4fc5-4ea4-b9f6-2a555926cc80",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "chunkIndex": 0,
+            "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
+            "tokenCount": 33,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.096Z",
+            "updatedAt": "2026-07-24T20:50:57.096Z"
+          },
+          {
+            "id": "05ef0a79-b44b-4e95-82fd-a7558044f021",
+            "linkId": "ca2602b0-a316-4c1f-a0a7-e379eb44f874",
+            "mountPointId": "f6b22d51-85e5-4bee-a053-262dd965962f",
+            "chunkIndex": 0,
+            "content": "Riya of the fixture.",
+            "tokenCount": 5,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.100Z",
+            "updatedAt": "2026-07-24T20:50:57.100Z"
+          },
+          {
+            "id": "fccdf543-28ff-4906-b488-8b72833588f1",
+            "linkId": "dea601de-2c7b-4c9e-9c2b-5220c6401645",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "chunkIndex": 0,
+            "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"a1000000-0000-4000-8000-000000000001\",\n    \"a1000000-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#334455\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"project\"\n}",
+            "tokenCount": 68,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.120Z",
+            "updatedAt": "2026-07-24T20:50:57.120Z"
+          },
+          {
+            "id": "33893bc9-d741-4f5e-9148-15a908d81d0b",
+            "linkId": "3b367e7e-15f1-43f4-b7cd-c74428efc10d",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "chunkIndex": 0,
+            "content": "A fixture project.",
+            "tokenCount": 5,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.122Z",
+            "updatedAt": "2026-07-24T20:50:57.122Z"
+          },
+          {
+            "id": "73cd8820-2a01-4bde-ab1d-275b89b3b977",
+            "linkId": "87517507-1d32-4c31-ad7e-dfd1fbe9140a",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "chunkIndex": 0,
+            "content": "{}",
+            "tokenCount": 1,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.127Z",
+            "updatedAt": "2026-07-24T20:50:57.127Z"
+          },
+          {
+            "id": "d4bb8538-0e1b-4b6d-8631-7e1d89809592",
+            "linkId": "02d75bb1-9bf6-48f4-9bfd-64ce1e85b275",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "chunkIndex": 0,
+            "content": "{}",
+            "tokenCount": 1,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.132Z",
+            "updatedAt": "2026-07-24T20:50:57.132Z"
+          },
+          {
+            "id": "89ad401f-84d2-4427-8518-a105c6553092",
+            "linkId": "f11c2d45-4ee9-4c29-9387-2c19597c3291",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "chunkIndex": 0,
+            "content": "A fixture group.",
+            "tokenCount": 4,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.134Z",
+            "updatedAt": "2026-07-24T20:50:57.134Z"
+          },
+          {
+            "id": "7e952607-b70f-4d5f-9b6c-0bf3528ea545",
+            "linkId": "a0fc4c89-6f07-4b46-ae5b-86dea631a6e2",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "chunkIndex": 0,
+            "content": "{}",
+            "tokenCount": 1,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.139Z",
+            "updatedAt": "2026-07-24T20:50:57.139Z"
+          },
+          {
+            "id": "eed91b6d-07b0-4402-abf6-fce581b1a07e",
+            "linkId": "3399b346-e261-41df-8242-6bcb1ea2090e",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "---\nid: ac000000-0000-4000-8000-000000000001\ntitle: Travelling Coat\ntypes:\n  - top\nimagePrompt: brown coat\ncreatedAt: 2026-03-01T00:00:00.000Z\nupdatedAt: 2026-03-01T00:00:00.000Z\n---\n\nA weathered coat.",
+            "tokenCount": 51,
+            "headingContext": null,
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.158Z",
+            "updatedAt": "2026-07-24T20:50:57.158Z"
+          },
+          {
+            "id": "c1ccd64b-782c-41b5-affa-5cf2787cd3d0",
+            "linkId": "5db1cf85-5632-4679-970e-b6cfd5816dd1",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "# Intro\n\nStore content.",
+            "tokenCount": 6,
+            "headingContext": "Intro",
+            "embedding": null,
+            "createdAt": "2026-07-24T20:50:57.194Z",
+            "updatedAt": "2026-07-24T20:50:57.194Z"
+          },
+          {
+            "id": "a7000000-0000-4000-8000-000000000001",
+            "linkId": "29d136ca-a0c0-4849-9b72-d9750d7d9e30",
+            "mountPointId": "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "chunkIndex": 0,
+            "content": "Store content.",
+            "tokenCount": 3,
+            "headingContext": null,
+            "embedding": [
+              1
+            ],
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "docMountDocuments": [
+          {
+            "id": "9994b516-8766-4506-949b-1d303a5793c2",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "content": "",
+            "contentSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "plainTextLength": 0,
+            "createdAt": "2026-07-24T20:50:56.988Z",
+            "updatedAt": "2026-07-24T20:50:56.988Z"
+          },
+          {
+            "id": "c9c929e2-f5d1-43da-8d1f-eb89446c96e1",
+            "fileId": "6b9bdcc2-9654-4801-bf02-c67f7cf83d5b",
+            "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
+            "contentSha256": "6af3e8b0a140e9f104d3291f427f569887f9b397d3f5a45449947555a58e59f1",
+            "plainTextLength": 128,
+            "createdAt": "2026-07-24T20:50:57.050Z",
+            "updatedAt": "2026-07-24T20:50:57.050Z"
+          },
+          {
+            "id": "d5976fc1-f284-451d-ab92-428cc62cba1b",
+            "fileId": "a398329c-a5f5-4abb-bfa4-57b50fb15af6",
+            "content": "{}",
+            "contentSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "plainTextLength": 2,
+            "createdAt": "2026-07-24T20:50:57.053Z",
+            "updatedAt": "2026-07-24T20:50:57.053Z"
+          },
+          {
+            "id": "d40fd719-4d5d-4a1e-a975-590ddc1f9407",
+            "fileId": "d882b333-0a24-408e-bd56-2dd69595b51a",
+            "content": "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}",
+            "contentSha256": "a4d58ef379824e554a0d2027315010633a1ec8043145d047249a318dbfe2920b",
+            "plainTextLength": 73,
+            "createdAt": "2026-07-24T20:50:57.056Z",
+            "updatedAt": "2026-07-24T20:50:57.056Z"
+          },
+          {
+            "id": "290704aa-b2ee-4509-9202-40ebaf2a6ac6",
+            "fileId": "cbd486be-0f86-499f-85c7-7656687844cb",
+            "content": "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}",
+            "contentSha256": "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
+            "plainTextLength": 132,
+            "createdAt": "2026-07-24T20:50:57.059Z",
+            "updatedAt": "2026-07-24T20:50:57.059Z"
+          },
+          {
+            "id": "87f17797-bc3d-473e-833f-b5e03791d3f0",
+            "fileId": "6bfd73b9-1602-40d7-85e9-bc2513897d2c",
+            "content": "Lorian of the fixture.",
+            "contentSha256": "54ad9d378acdac9ea0ae643724ef2ab3e77ab961358a1b901e53213facab6694",
+            "plainTextLength": 22,
+            "createdAt": "2026-07-24T20:50:57.063Z",
+            "updatedAt": "2026-07-24T20:50:57.063Z"
+          },
+          {
+            "id": "5989b381-8ffa-469d-8730-4bf06bcf979d",
+            "fileId": "e0cfe9f2-506d-4299-929c-2539d0f29b28",
+            "content": "Riya of the fixture.",
+            "contentSha256": "d3a87080d6e3ee8b060ccf3ccbffe0dd0aa029e6d219c436fc96f5c2231ef7bf",
+            "plainTextLength": 20,
+            "createdAt": "2026-07-24T20:50:57.098Z",
+            "updatedAt": "2026-07-24T20:50:57.098Z"
+          },
+          {
+            "id": "9aaba575-3538-4c98-a544-b1be841afe2b",
+            "fileId": "a596aef2-d5fc-4d71-8bc4-b716acd7d5c7",
+            "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"a1000000-0000-4000-8000-000000000001\",\n    \"a1000000-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#334455\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"project\"\n}",
+            "contentSha256": "f6d7255ee4ce7e63c64777055179749418556dcfda8be14895c6cab213abf291",
+            "plainTextLength": 272,
+            "createdAt": "2026-07-24T20:50:57.118Z",
+            "updatedAt": "2026-07-24T20:50:57.118Z"
+          },
+          {
+            "id": "b11f66c0-853d-4440-bf47-a65c7341cc79",
+            "fileId": "db041744-ca71-45df-9e21-349d6e3e41ef",
+            "content": "A fixture project.",
+            "contentSha256": "5619f6262d71257645fceddf17a79edec09da17b080ffbfd29b4036c2c68c995",
+            "plainTextLength": 18,
+            "createdAt": "2026-07-24T20:50:57.120Z",
+            "updatedAt": "2026-07-24T20:50:57.120Z"
+          },
+          {
+            "id": "0f9ccbef-b177-40dc-955e-282e9319ae69",
+            "fileId": "37d14e16-4511-4344-a3db-a5e86be9f556",
+            "content": "A fixture group.",
+            "contentSha256": "eaf514699d8adacadecd4dcc7b6bd17fb61da924cb03496386d04f4316ecb3d5",
+            "plainTextLength": 16,
+            "createdAt": "2026-07-24T20:50:57.133Z",
+            "updatedAt": "2026-07-24T20:50:57.133Z"
+          },
+          {
+            "id": "b1b0ef94-a721-42cd-8ff8-1dd00a0eb917",
+            "fileId": "523f4062-7cc0-4c2d-ab82-ea98fd03749d",
+            "content": "---\nid: ac000000-0000-4000-8000-000000000001\ntitle: Travelling Coat\ntypes:\n  - top\nimagePrompt: brown coat\ncreatedAt: 2026-03-01T00:00:00.000Z\nupdatedAt: 2026-03-01T00:00:00.000Z\n---\n\nA weathered coat.",
+            "contentSha256": "5e86eadb6a9bf755386bfa58e6e5042a9e81625afe12589c6b23c4853a964c75",
+            "plainTextLength": 201,
+            "createdAt": "2026-07-24T20:50:57.154Z",
+            "updatedAt": "2026-07-24T20:50:57.154Z"
+          },
+          {
+            "id": "1292773e-ca00-4872-8c86-00e14dd9248a",
+            "fileId": "baa9ec81-0696-4167-b5b7-1e5f1e5adc79",
+            "content": "# Intro\n\nStore content.",
+            "contentSha256": "e7bc84837f97ba390837b115d8b7321581e6e9d96cd1cb47523959f34c082e7e",
+            "plainTextLength": 23,
+            "createdAt": "2026-07-24T20:50:57.191Z",
+            "updatedAt": "2026-07-24T20:50:57.191Z"
+          }
+        ],
+        "docMountBlobs": [
+          {
+            "id": "bc000000-0000-4000-8000-000000000001",
+            "fileId": "71d0d637-e9de-48a5-8104-05fad4aaace5",
+            "sha256": "796efd8c1a95df1b089875c1831676347c1a8dd4a49bbabd6e6e9ac24940b80b",
+            "sizeBytes": 24,
+            "storedMimeType": "application/octet-stream",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "projectDocMountLinks": [
+          {
+            "id": "ad8ed9e1-535e-46e9-916a-911cfefb1546",
+            "projectId": "a3000000-0000-4000-8000-000000000001",
+            "mountPointId": "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "createdAt": "2026-07-24T20:50:57.116Z",
+            "updatedAt": "2026-07-24T20:50:57.116Z"
+          }
+        ],
+        "groupDocMountLinks": [
+          {
+            "id": "681cb5d3-a9a6-42d5-8c15-99bcdb2a5002",
+            "groupId": "a2000000-0000-4000-8000-000000000001",
+            "mountPointId": "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "createdAt": "2026-07-24T20:50:57.130Z",
+            "updatedAt": "2026-07-24T20:50:57.130Z"
+          }
+        ],
+        "groupCharacterMembers": [
+          {
+            "id": "7f36d9e6-6e56-4529-9e14-3fba0d271391",
+            "groupId": "a2000000-0000-4000-8000-000000000001",
+            "characterId": "a1000000-0000-4000-8000-000000000001",
+            "createdAt": "2026-07-24T20:50:57.140Z",
+            "updatedAt": "2026-07-24T20:50:57.140Z"
+          }
+        ],
+        "textReplacementRules": [
+          {
+            "id": "ae000000-0000-4000-8000-000000000001",
+            "fromText": "teh",
+            "toText": "the",
+            "caseSensitive": false,
+            "enabled": true,
+            "sortOrder": 0,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "ae000000-0000-4000-8000-000000000002",
+            "fromText": "adn",
+            "toText": "and",
+            "caseSensitive": true,
+            "enabled": true,
+            "sortOrder": 1,
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "all_empty",
+      "note": "every collection absent/empty at once — the ten v4 reads without a `|| []` still need the key present",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "legacy_persona_links",
+      "note": "char A: legacy personaLinks folded to partnerLinks (only partnerId+isDefault survive) then deleted — note the FOLD APPENDS partnerLinks after userId; char B: personaLinks present but partnerLinks ALSO present, so the fold is skipped and personaLinks survives verbatim; char C: personaLinks present with partnerLinks EMPTY ([] is truthy in JS, so the fold is still skipped)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "userId": "old-user",
+            "name": "A",
+            "personaLinks": [
+              {
+                "personaId": "persona-1",
+                "isDefault": true,
+                "extra": "dropped"
+              },
+              {
+                "personaId": "persona-2"
+              }
+            ]
+          },
+          {
+            "id": "char-b",
+            "name": "B",
+            "partnerLinks": [
+              {
+                "partnerId": "persona-1",
+                "isDefault": false
+              }
+            ],
+            "personaLinks": [
+              {
+                "personaId": "persona-9",
+                "isDefault": true
+              }
+            ]
+          },
+          {
+            "id": "char-c",
+            "name": "C",
+            "partnerLinks": [],
+            "personaLinks": [
+              {
+                "personaId": "persona-8",
+                "isDefault": true
+              }
+            ]
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "partner_links",
+      "note": "partnerLinks (new format): `{...link, partnerId}` keeps every other key AND partnerId's position; the same partnerId in two links memoizes to one new id",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-p",
+            "partnerLinks": [
+              {
+                "partnerId": "p-1",
+                "isDefault": true,
+                "nickname": "kept"
+              },
+              {
+                "note": "partnerId is APPENDED here",
+                "partnerId": "p-1"
+              }
+            ]
+          },
+          {
+            "id": "char-q",
+            "partnerLinks": null
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "physical_descriptions_plural",
+      "note": "legacy plural array with a row collapses to the singular (and APPENDS the key, since the singular was absent) then deletes the plural; an EMPTY plural collapses to null; the singular path remaps id in place; a null singular is left alone",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "pd-a",
+            "physicalDescriptions": [
+              {
+                "id": "pd-1",
+                "height": "tall",
+                "characterId": "pd-a"
+              },
+              {
+                "id": "pd-2",
+                "height": "ignored"
+              }
+            ],
+            "trailing": "proves shift_remove, not swap_remove"
+          },
+          {
+            "id": "pd-b",
+            "physicalDescriptions": [],
+            "trailing": "still last"
+          },
+          {
+            "id": "pd-c",
+            "physicalDescription": {
+              "id": "pd-3",
+              "height": "short"
+            }
+          },
+          {
+            "id": "pd-d",
+            "physicalDescription": null
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "clothing_records",
+      "note": "a truthy legacy clothingRecords is deleted (shift_remove — `trailing` must keep its place); a null one is NOT deleted",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "cr-a",
+            "clothingRecords": [
+              {
+                "id": "x"
+              }
+            ],
+            "trailing": "still last"
+          },
+          {
+            "id": "cr-b",
+            "clothingRecords": [],
+            "trailing": "empty array is TRUTHY in JS"
+          },
+          {
+            "id": "cr-c",
+            "clothingRecords": null,
+            "trailing": "kept"
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "avatar_overrides",
+      "note": "each override is REBUILT as exactly {chatId, imageId} — extra keys are dropped, chatId is remapped first",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "ao-a",
+            "avatarOverrides": [
+              {
+                "imageId": "img-1",
+                "chatId": "chat-1",
+                "extra": "dropped"
+              },
+              {
+                "chatId": "chat-1",
+                "imageId": "img-2"
+              }
+            ]
+          },
+          {
+            "id": "ao-b",
+            "avatarOverrides": []
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "chat_settings_bags_present",
+      "note": "all three nested bags present with truthy ids — each id remapped in place, key order preserved",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-1",
+            "userId": "old-user",
+            "imageDescriptionProfileId": "idp-1",
+            "uncensoredImageDescriptionProfileId": "uidp-1",
+            "defaultRoleplayTemplateId": "drt-1",
+            "cheapLLMSettings": {
+              "enabled": true,
+              "userDefinedProfileId": "cheap-1",
+              "defaultCheapProfileId": "cheap-2",
+              "imagePromptProfileId": "cheap-3"
+            },
+            "dangerousContentSettings": {
+              "uncensoredTextProfileId": "danger-1",
+              "uncensoredImageProfileId": "danger-2",
+              "level": 1
+            },
+            "storyBackgroundsSettings": {
+              "enabled": true,
+              "defaultImageProfileId": "story-1"
+            }
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "chat_settings_bags_null_ids",
+      "note": "the bags exist but every nested id is null/empty — the conditional spreads write NOTHING, so the nulls survive; storyBackgroundsSettings is guarded on its one id, so the bag is not rewritten at all",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-2",
+            "imageDescriptionProfileId": null,
+            "cheapLLMSettings": {
+              "userDefinedProfileId": null,
+              "defaultCheapProfileId": "",
+              "imagePromptProfileId": "cheap-only"
+            },
+            "dangerousContentSettings": {
+              "uncensoredTextProfileId": null
+            },
+            "storyBackgroundsSettings": {
+              "defaultImageProfileId": null,
+              "enabled": false
+            }
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "chat_settings_bags_absent",
+      "note": "no nested bags at all (and a null one) — no key is invented",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-3",
+            "userId": "old-user"
+          },
+          {
+            "id": "cs-4",
+            "cheapLLMSettings": null,
+            "storyBackgroundsSettings": null
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "instance_settings",
+      "note": "all three MOUNT_POINT_SETTING_KEYS remap and are REBUILT as exactly {key,value} (dropping any other column, and fixing the key order); a non-mount key passes through byte-identical; a mount key with an EMPTY value passes through unchanged",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [
+          {
+            "key": "lanternBackgroundsMountPointId",
+            "value": "mount-1"
+          },
+          {
+            "value": "mount-2",
+            "key": "userUploadsMountPointId",
+            "updatedAt": "dropped"
+          },
+          {
+            "key": "generalMountPointId",
+            "value": "mount-3"
+          },
+          {
+            "key": "somethingElse",
+            "value": "mount-1"
+          },
+          {
+            "key": "generalMountPointId",
+            "value": ""
+          },
+          {
+            "key": "userUploadsMountPointId",
+            "value": null
+          }
+        ],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "null_and_absent_scalars",
+      "note": "remapFields' `typeof === 'string'` guard: null, a number, a bool and an absent key are all left exactly as they were",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-1",
+            "projectId": null,
+            "linkedTo": null,
+            "tags": [
+              "tag-1"
+            ],
+            "userId": "old-user",
+            "size": 12
+          },
+          {
+            "id": "file-2",
+            "projectId": 7,
+            "linkedTo": [],
+            "tags": []
+          },
+          {
+            "id": "file-3"
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [
+          {
+            "id": "log-1",
+            "messageId": null,
+            "chatId": "chat-x",
+            "characterId": false
+          }
+        ],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [
+          {
+            "id": "folder-1",
+            "parentFolderId": null,
+            "projectId": "proj-1"
+          },
+          {
+            "parentFolderId": "folder-1",
+            "id": "folder-2"
+          }
+        ],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "array_field_guards",
+      "note": "remapArrayFields' Array.isArray guard: a non-array is left alone (it is NOT routed through remapArray's dead [] branch); an empty array stays empty",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [
+          {
+            "id": "m-1",
+            "tags": [],
+            "relatedMemoryIds": 3,
+            "chatId": "chat-y"
+          }
+        ],
+        "files": [
+          {
+            "id": "g-1",
+            "linkedTo": "not-an-array",
+            "tags": []
+          },
+          {
+            "id": "g-2",
+            "linkedTo": null,
+            "tags": {
+              "nope": true
+            }
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "mixed_key_types",
+      "note": "the keying trap: a UUID array carrying a string, a number, the SAME number as a string, null and true — v4 keys a JS Map, so \"5.5\" and 5.5 are DIFFERENT entries that collapse to one key in getMapping()",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "k-1",
+            "tags": [
+              "a",
+              5.5,
+              "5.5",
+              null,
+              true,
+              "a"
+            ],
+            "linkedTo": []
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "repeated_id_across_entities",
+      "note": "memoization is the whole mechanism: chat.id, memory.chatId, chatDocument.chatId, conversationChunk.chatId and conversationAnnotation.chatId all resolve to ONE new id",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "shared-chat",
+            "userId": "old-user",
+            "projectId": "shared-project",
+            "tags": [
+              "shared-tag"
+            ],
+            "impersonatingParticipantIds": [
+              "part-1"
+            ],
+            "participants": [
+              {
+                "id": "part-1",
+                "characterId": "shared-char",
+                "connectionProfileId": null
+              },
+              {
+                "id": "part-2",
+                "characterId": "shared-char",
+                "imageProfileId": "ip-1"
+              }
+            ],
+            "messages": [
+              {
+                "id": "msg-1",
+                "swipeGroupId": "swipe-1",
+                "participantId": "part-1",
+                "attachments": []
+              },
+              {
+                "id": "msg-2",
+                "participantId": "part-2",
+                "attachments": [
+                  "file-att-1",
+                  "file-att-1"
+                ],
+                "content": "kept"
+              }
+            ]
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [
+          {
+            "id": "ep-1",
+            "apiKeyId": "ak-1",
+            "tags": []
+          }
+        ],
+        "memories": [
+          {
+            "id": "mem-1",
+            "chatId": "shared-chat",
+            "characterId": "shared-char",
+            "tags": []
+          }
+        ],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [
+          {
+            "id": "shared-project",
+            "characterRoster": [
+              "shared-char"
+            ]
+          }
+        ],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [
+          {
+            "id": "wi-1",
+            "characterId": "shared-char",
+            "componentItemIds": [
+              "wi-2"
+            ]
+          },
+          {
+            "id": "wi-2",
+            "characterId": "shared-char"
+          }
+        ],
+        "characterPluginData": [
+          {
+            "id": "cpd-1",
+            "characterId": "shared-char",
+            "data": "{}"
+          }
+        ],
+        "conversationAnnotations": [
+          {
+            "id": "ca-1",
+            "chatId": "shared-chat",
+            "sourceMessageId": "msg-1"
+          }
+        ],
+        "chatDocuments": [
+          {
+            "id": "cd-1",
+            "chatId": "shared-chat"
+          }
+        ],
+        "instanceSettings": [],
+        "embeddingStatus": [
+          {
+            "id": "es-1",
+            "entityId": "mem-1",
+            "profileId": "ep-1"
+          }
+        ],
+        "conversationChunks": [
+          {
+            "id": "cc-1",
+            "chatId": "shared-chat",
+            "messageIds": [
+              "msg-1",
+              "msg-2"
+            ]
+          }
+        ],
+        "tfidfVocabularies": [
+          {
+            "id": "tv-1",
+            "profileId": "ep-1"
+          }
+        ],
+        "vectorIndexMetas": [
+          {
+            "id": "shared-char",
+            "characterId": "shared-char"
+          }
+        ],
+        "vectorEntries": [
+          {
+            "id": "mem-1",
+            "characterId": "shared-char",
+            "embedding": [
+              0.5
+            ]
+          }
+        ],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "groups_official_mount_point",
+      "note": "ONLY the group id is remapped — officialMountPointId is deliberately left alone (groups.create discards it and provisions a fresh store), and groups get NO userId rewrite",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [
+          {
+            "id": "group-1",
+            "officialMountPointId": "mount-1",
+            "userId": "old-user",
+            "name": "G"
+          }
+        ],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "mount-1",
+            "name": "store"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [
+          {
+            "id": "gdml-1",
+            "groupId": "group-1",
+            "mountPointId": "mount-1"
+          }
+        ],
+        "groupCharacterMembers": [
+          {
+            "id": "gcm-1",
+            "groupId": "group-1",
+            "characterId": "char-1"
+          }
+        ],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "pass_through_collections",
+      "note": "providerModels (global) and textReplacementRules (global config, nothing references rule ids) pass through untouched — ids included",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [
+          {
+            "id": "pm-1",
+            "provider": "anthropic",
+            "userId": "old-user"
+          }
+        ],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [
+          {
+            "id": "trr-1",
+            "find": "a",
+            "replace": "b",
+            "userId": "old-user"
+          }
+        ]
+      }
+    },
+    {
+      "name": "doc_mount_graph",
+      "note": "the document-store tables: a file id shared by its document and blob rows resolves to one new id, and every FK is rewritten",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [
+          {
+            "id": "proj-1",
+            "characterRoster": []
+          }
+        ],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [
+          {
+            "id": "pc-1",
+            "pluginId": "plug",
+            "enabled": true
+          }
+        ],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "mp-1",
+            "name": "notes"
+          }
+        ],
+        "docMountFolders": [
+          {
+            "id": "fol-1",
+            "mountPointId": "mp-1",
+            "parentId": null
+          },
+          {
+            "id": "fol-2",
+            "mountPointId": "mp-1",
+            "parentId": "fol-1"
+          }
+        ],
+        "docMountFiles": [
+          {
+            "id": "dmf-1",
+            "sha256": "abc"
+          }
+        ],
+        "docMountFileLinks": [
+          {
+            "id": "link-1",
+            "fileId": "dmf-1",
+            "mountPointId": "mp-1",
+            "folderId": "fol-2"
+          }
+        ],
+        "docMountChunks": [
+          {
+            "id": "chunk-1",
+            "linkId": "link-1",
+            "mountPointId": "mp-1"
+          }
+        ],
+        "docMountDocuments": [
+          {
+            "id": "doc-1",
+            "fileId": "dmf-1"
+          }
+        ],
+        "docMountBlobs": [
+          {
+            "id": "blob-1",
+            "fileId": "dmf-1"
+          }
+        ],
+        "projectDocMountLinks": [
+          {
+            "id": "pdml-1",
+            "projectId": "proj-1",
+            "mountPointId": "mp-1"
+          }
+        ],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "user_id_position",
+      "note": "trap 1: an EXISTING userId keeps its position with the new value; an absent one is APPENDED",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [
+          {
+            "userId": "old-user",
+            "id": "tag-1",
+            "name": "first-key-was-userId"
+          },
+          {
+            "id": "tag-2",
+            "name": "no userId at all"
+          }
+        ],
+        "connectionProfiles": [
+          {
+            "id": "cp-1",
+            "apiKeyId": "ak-1",
+            "tags": [
+              "tag-2"
+            ]
+          }
+        ],
+        "imageProfiles": [
+          {
+            "id": "ip-1",
+            "apiKeyId": null,
+            "tags": []
+          }
+        ],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [
+          {
+            "id": "pt-1",
+            "userId": "old-user",
+            "tags": [
+              "tag-1"
+            ]
+          }
+        ],
+        "roleplayTemplates": [
+          {
+            "id": "rt-1",
+            "tags": []
+          }
+        ],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    }
+  ]
+}

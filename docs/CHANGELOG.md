@@ -24,6 +24,23 @@ this stage, and the extracted copy of the archive is always cleaned up, includin
 when the read fails. Actually writing a backup back into the database is the next
 step and still refuses by name.
 
+Built the piece that lets a backup be restored *alongside* your existing data
+instead of over the top of it. Restoring into a fresh account means every
+internal identifier in the archive has to be rewritten to a new one — and every
+cross-reference has to be rewritten to match, so a chat still knows which
+memories belong to it, a character still knows which wardrobe items are its own,
+and a document store still points at its own files. Get one field name wrong out
+of roughly a hundred and the restore appears to succeed while quietly leaving
+pieces of the library pointing at nothing. So this arrived with a correctness
+test against v4's real code run over nineteen inputs — a full-size backup taken
+from a real database, plus eighteen hand-built documents covering every awkward
+corner (old backup formats, missing values, empty lists, values that are shared
+between two different records). All thirty-eight kinds of record are compared
+exactly, down to the ordering of fields. The test was then deliberately broken
+three different ways to confirm it actually notices. This is groundwork: it is
+not yet wired into the restore screen, which still says restore is not
+available.
+
 Planned the next round of porting work: finishing the restore side of Backup &
 Restore. Creating a backup already works end to end; restoring one does not, and
 the two screens that would use it answer a plain "not yet available." The work is
