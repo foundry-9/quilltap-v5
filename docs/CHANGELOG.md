@@ -68,6 +68,11 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Built the Compose Mail dialog — the Post Office proper. Write a letter as one of
+the characters you are playing, address it to anyone in your library (they need
+not be in the scene), and optionally quote a letter already sitting in your own
+postbox. Its server half is being built alongside it.
+
 Built the Insert Announcement dialog. You can drop a line into a scene as one of
 the Salon's staff, as a character who isn't in the room, or under a name you make
 up on the spot. Pick an off-scene character and the dialog will offer to have
