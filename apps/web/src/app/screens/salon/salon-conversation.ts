@@ -35,6 +35,9 @@ import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
 import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
+import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
+import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
+import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
@@ -159,6 +162,9 @@ interface CascadePrompt {
     StateEditorModal,
     LLMInspectorPanel,
     ChatSidebar,
+    InsertAnnouncementDialog,
+    ComposeMailDialog,
+    WhisperDialog,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
@@ -233,6 +239,7 @@ interface CascadePrompt {
           (editEnclave)="showEditEnclave.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
+          (whisper)="onWhisper($event)"
         />
       }
     </div>
@@ -250,7 +257,7 @@ interface CascadePrompt {
         (toggleInspector)="toggleInspector()"
       />
 
-      @if (backgroundFlash(); as flash) {
+      @if (chatFlash(); as flash) {
         <div
           class="mx-4 mt-2"
           [class.qt-alert-success]="flash.kind === 'success'"
@@ -262,7 +269,7 @@ interface CascadePrompt {
             <button
               type="button"
               class="qt-button-ghost qt-button-sm flex-shrink-0"
-              (click)="backgroundFlash.set(null)"
+              (click)="chatFlash.set(null)"
             >
               Dismiss
             </button>
@@ -325,6 +332,8 @@ interface CascadePrompt {
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
         (openGenerate)="showStandaloneGenerate.set(true)"
+        (openAnnouncement)="showAnnouncement.set(true)"
+        (openMail)="showComposeMail.set(true)"
         (customToolRan)="onCustomToolRan()"
       />
     </ng-template>
@@ -417,6 +426,35 @@ interface CascadePrompt {
         [userCharacterName]="firstUserCharacter()?.name"
         (imageDeleted)="onCourierSettled()"
         (close)="showGallery.set(false)"
+      />
+    }
+
+    @if (showAnnouncement() && chatId(); as id) {
+      <qt-insert-announcement-dialog
+        [chatId]="id"
+        [participantCharacterIds]="participantCharacterIds()"
+        (posted)="onAnnouncementPosted()"
+        (close)="showAnnouncement.set(false)"
+      />
+    }
+
+    @if (showComposeMail() && chatId(); as id) {
+      <qt-compose-mail-dialog
+        [chatId]="id"
+        [participants]="mailParticipants()"
+        (posted)="onMailPosted()"
+        (close)="showComposeMail.set(false)"
+      />
+    }
+
+    @if (whisperTarget(); as target) {
+      <qt-whisper-dialog
+        [chatId]="chatId()!"
+        [targetName]="target.name"
+        [targetParticipantId]="target.participantId"
+        [speakingAsParticipantId]="activeSpeakerId()"
+        (sent)="onWhisperSent()"
+        (close)="whisperTarget.set(null)"
       />
     }
 
@@ -712,8 +750,12 @@ export class SalonConversation {
   private readonly poller = new StoryBackgroundPoller();
   /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
   private readonly _pollerTeardown = this.destroyRef.onDestroy(() => this.poller.stop());
-  /** v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in. */
-  protected readonly backgroundFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
+  /**
+   * v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in.
+   * Shared by every in-chat action that v4 answers with a toast (the background
+   * regeneration below, and the Post Office's delivery notice).
+   */
+  protected readonly chatFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
     null,
   );
   protected readonly regeneratingBackground = signal(false);
@@ -749,12 +791,12 @@ export class SalonConversation {
     const chatId = this.chatId();
     if (!chatId) return;
     this.regeneratingBackground.set(true);
-    this.backgroundFlash.set(null);
+    this.chatFlash.set(null);
     try {
       const result = await regenerateChatBackground(this.core, chatId);
       // Both §2 success arms are shown verbatim: "…queued" and "…already in
       // progress" are distinct states the user should be able to tell apart.
-      this.backgroundFlash.set({ kind: 'success', message: result.message });
+      this.chatFlash.set({ kind: 'success', message: result.message });
       this.poller.start(
         this.backgroundVar(),
         async () => (await this.backgroundQuery.refetch()).data ?? null,
@@ -765,7 +807,7 @@ export class SalonConversation {
       // the §2 badRequest strings ("Story backgrounds are not enabled. …") reach
       // the user — falling back to its generic copy.
       const message = error instanceof Error ? error.message : String(error);
-      this.backgroundFlash.set({
+      this.chatFlash.set({
         kind: 'error',
         message: message || 'Failed to regenerate background',
       });
@@ -912,6 +954,73 @@ export class SalonConversation {
 
   // --- the Edit-Enclave modal (v4 SalonView, autonomous rooms only) ---
   protected readonly showEditEnclave = signal(false);
+
+  // -------------------------------------------------------------------------
+  // The Post Office (P4.9E2B) — v4 mounts these from `ChatModals` /`SalonView`
+  // off `useModalState`. v5 keeps its established signal-per-modal pattern
+  // rather than introducing a second one (the P4.9E2B tier-2 item 9 check:
+  // v5 already has an answer, so a centralized hook would be the second
+  // pattern, not the first).
+  // -------------------------------------------------------------------------
+
+  /** The Insert Announcement dialog (v4 `ChatModals.tsx:317`). */
+  protected readonly showAnnouncement = signal(false);
+  /** The Compose Mail dialog (v4 `ChatModals.tsx:332`). */
+  protected readonly showComposeMail = signal(false);
+  /** The whisper target (v4 `SalonView.tsx:150` `whisperTarget`). */
+  protected readonly whisperTarget = signal<{ participantId: string; name: string } | null>(null);
+
+  /** The character ids already in the scene — the announcement picker excludes them. */
+  protected readonly participantCharacterIds = computed<string[]>(() =>
+    (this.chat()?.participants ?? [])
+      .map((p) => p.character?.id)
+      .filter((id): id is string => !!id),
+  );
+
+  /**
+   * The chat's CHARACTER participants as Compose Mail wants them: the workspace
+   * character id (not the participant id — the mail action addresses characters),
+   * the name, and who controls them.
+   */
+  protected readonly mailParticipants = computed<ComposeMailParticipant[]>(() =>
+    (this.chat()?.participants ?? [])
+      .filter((p) => p.type === 'CHARACTER' && p.character)
+      .map((p) => ({
+        id: p.character!.id,
+        name: p.character!.name,
+        controlledBy: p.controlledBy === 'user' ? ('user' as const) : ('llm' as const),
+      })),
+  );
+
+  /** v4 `handleWhisper` (`SalonView.tsx:195-199`) — resolve the name, open the dialog. */
+  protected onWhisper(participantId: string): void {
+    const participant = (this.chat()?.participants ?? []).find((p) => p.id === participantId);
+    this.whisperTarget.set({
+      participantId,
+      name: participant?.character?.name ?? 'Unknown',
+    });
+  }
+
+  /** v4 `onSent` (`:1802-1805`) — the whisper turn finished; refetch the chat. */
+  protected async onWhisperSent(): Promise<void> {
+    this.whisperTarget.set(null);
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
+  protected async onAnnouncementPosted(): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message: 'Announcement posted' });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /** v4's own success copy, verbatim (`ComposeMailDialog.tsx:143`). */
+  protected async onMailPosted(): Promise<void> {
+    this.chatFlash.set({
+      kind: 'success',
+      message: 'Suparṇā has the letter and is already aloft.',
+    });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
 
   /**
    * The STANDALONE generate-image dialog (v4 `StandaloneGenerateImageDialog`).

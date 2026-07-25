@@ -257,3 +257,78 @@ describe('ChatComposer — text-replacement gating (v4 textReplacementsEnabled)'
     expect(richEditor(fixture).textReplacementRules()).toBeNull();
   });
 });
+
+describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTools)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('raises openAnnouncement and openMail from v4’s two row-1 buttons', () => {
+    const fixture = render();
+    const seen: string[] = [];
+    fixture.componentInstance.openAnnouncement.subscribe(() => seen.push('announcement'));
+    fixture.componentInstance.openMail.subscribe(() => seen.push('mail'));
+
+    (
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Insert announcement"]',
+      ) as HTMLButtonElement
+    ).click();
+    (
+      fixture.nativeElement.querySelector('button[aria-label="Post a letter"]') as HTMLButtonElement
+    ).click();
+
+    expect(seen).toEqual(['announcement', 'mail']);
+  });
+
+  it('carries v4’s titles verbatim', () => {
+    const fixture = render();
+    const megaphone = fixture.nativeElement.querySelector(
+      'button[aria-label="Insert announcement"]',
+    ) as HTMLButtonElement;
+    const envelope = fixture.nativeElement.querySelector(
+      'button[aria-label="Post a letter"]',
+    ) as HTMLButtonElement;
+    expect(megaphone.title).toBe('Insert announcement');
+    expect(envelope.title).toBe('Post a letter');
+  });
+
+  it('orders the gutter group by v4’s grid fill order', () => {
+    // v4 `ComposerGutterTools.tsx:36-46` fills a two-column grid left to right:
+    // announcement, mail / library-file, camera / paperclip, RNG / wand. Library
+    // file is p4.9e3 and RNG has no v5 server verb, so those two are absent —
+    // the rest keep v4's relative order, flattened into v5's single row.
+    const fixture = render();
+    const labels = [...fixture.nativeElement.querySelectorAll('.qt-chat-composer-actions button')]
+      .map((b) => (b as HTMLElement).getAttribute('aria-label'))
+      .filter((l): l is string =>
+        [
+          'Insert announcement',
+          'Post a letter',
+          'Generate image',
+          'Attach a file',
+        ].includes(l ?? ''),
+      );
+    expect(labels).toEqual([
+      'Insert announcement',
+      'Post a letter',
+      'Generate image',
+      'Attach a file',
+    ]);
+  });
+
+  it('disables both while the composer is disabled (v4’s `disabled` prop)', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    expect(
+      (
+        fixture.nativeElement.querySelector(
+          'button[aria-label="Insert announcement"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (fixture.nativeElement.querySelector('button[aria-label="Post a letter"]') as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+});

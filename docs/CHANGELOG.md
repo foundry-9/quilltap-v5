@@ -68,6 +68,15 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+The composer grew a megaphone and an envelope, which open the announcement and
+mail dialogs. The whole tool row now sits in the order the old app arranges it
+in, and the two tools that are still missing are named rather than quietly
+absent: the library-file picker, which is a separate piece of work, and the dice
+roller, which has no server side in the new app yet.
+
+The old app has no drag-and-drop file upload in the composer. A note in our own
+records had claimed otherwise for months; it was wrong, and nothing is owed.
+
 Whispering works again. Each character in the cast list carries a whisper button
 — shown once there are three or more of you in the room, since with two there is
 nobody to keep a message from — and it opens a small dialog for a private line

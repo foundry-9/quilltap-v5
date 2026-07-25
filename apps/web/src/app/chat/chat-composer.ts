@@ -42,9 +42,28 @@ export interface ComposerSend {
  * leg, showing attached-file chips and the duplicate-conflict resolver; the file
  * ids ride the send. The **Generate Image** gutter tool (v4
  * `ComposerGutterTools:102-112`) raises `openGenerate`, which the Salon answers
- * with the standalone generate dialog — v4's only opener for it. The
- * announcement/mail/RNG gutter tools + drag-and-drop remain locked deferrals
- * (`p4.9e2`).
+ * with the standalone generate dialog — v4's only opener for it.
+ *
+ * **The gutter group follows v4's grid fill order** (`ComposerGutterTools.tsx
+ * :36-46`: announcement, mail / library-file, camera / paperclip, RNG / wand),
+ * flattened into v5's single action row. Two of v4's six are absent and both are
+ * named deferrals, not omissions:
+ *
+ *  - **Library file** belongs to `p4.9e3` (`LibraryFilePickerModal`).
+ *  - **RNG** has no v5 server verb. v4's dropdown posts
+ *    `POST /chats/{id}?action=rng` (`app/api/v1/chats/[id]/actions/rng.ts`),
+ *    which v5's dispatch surface does not carry — P4.d5 ported the rng *tool*
+ *    (`quilltap-core::tools::rng`), not that route. Adding it is a server change
+ *    outside this lane's ownership, so the dropdown is deferred whole rather
+ *    than built against a verb that answers an error. (P4.9E2B tier 2, item 8.)
+ *
+ * The composition-mode toggle leads the row: it is v4's own composer-level
+ * control (`ChatComposer.tsx`), not one of the gutter tools.
+ *
+ * v4 has **no** composer drag-and-drop upload — the phrase appeared in v5's own
+ * deferral note (P4.6ac's lane record) and propagated, but there is no drag
+ * handler anywhere in v4's chat components, salon page, file-attachment hook or
+ * markdown editor at `e646f58b`. Nothing is owed here.
  */
 @Component({
   selector: 'qt-chat-composer',
@@ -124,6 +143,47 @@ export interface ComposerSend {
             <qt-icon name="file" class="w-5 h-5" />
           </button>
 
+          <!-- v4 gutter row 1, col 1: Insert Announcement (ComposerGutterTools
+               :66-75), down to its title, aria-label and megaphone glyph. -->
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            title="Insert announcement"
+            aria-label="Insert announcement"
+            [disabled]="disabled()"
+            (click)="openAnnouncement.emit()"
+          >
+            <qt-icon name="megaphone" class="w-5 h-5" />
+          </button>
+
+          <!-- v4 gutter row 1, col 2: Compose Mail — pairs with the megaphone as
+               another "insert a special message" action (The Post Office). -->
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            title="Post a letter"
+            aria-label="Post a letter"
+            [disabled]="disabled()"
+            (click)="openMail.emit()"
+          >
+            <qt-icon name="mail" class="w-5 h-5" />
+          </button>
+
+          <!-- v4 gutter row 2, col 2: Generate Image (:102-112). It is v4's ONLY
+               opener for the standalone generate dialog. (Row 2 col 1, Library
+               file, is p4.9e3.) -->
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            title="Generate image"
+            aria-label="Generate image"
+            (click)="openGenerate.emit()"
+          >
+            <qt-icon name="camera" class="w-5 h-5" />
+          </button>
+
+          <!-- v4 gutter row 3, col 1: Attach File (:114-130). (Col 2, RNG, has no
+               v5 server verb — see the class comment.) -->
           <button
             type="button"
             class="qt-chat-toolbar-button"
@@ -135,26 +195,13 @@ export interface ComposerSend {
             <qt-icon name="paperclip" class="w-5 h-5" />
           </button>
 
-          <!-- Pascal's custom tools (v4's composer-gutter button, bespoke here —
-               the popup gates its own visibility on the roster). -->
+          <!-- v4 gutter row 4, col 1: Pascal's custom tools (bespoke here — the
+               popup gates its own visibility on the roster). -->
           <qt-custom-tools-popup
             [chatId]="chatId()"
             [disabled]="disabled()"
             (ran)="customToolRan.emit()"
           />
-
-          <!-- v4's single Generate Image gutter button (ComposerGutterTools
-               :102-112), down to its title, aria-label and camera glyph. It is
-               v4's ONLY opener for the standalone generate dialog. -->
-          <button
-            type="button"
-            class="qt-chat-toolbar-button"
-            title="Generate image"
-            aria-label="Generate image"
-            (click)="openGenerate.emit()"
-          >
-            <qt-icon name="camera" class="w-5 h-5" />
-          </button>
 
           @if (!documentActive()) {
             <button
@@ -265,6 +312,10 @@ export class ChatComposer implements OnInit {
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
   readonly openGenerate = output<void>();
+  /** The megaphone — the Salon answers with the Insert Announcement dialog. */
+  readonly openAnnouncement = output<void>();
+  /** The envelope — the Salon answers with the Compose Mail dialog. */
+  readonly openMail = output<void>();
   /** A manual custom-tool run landed — the salon refetches the chat (v4 `onRan`). */
   readonly customToolRan = output<void>();
   /** The user flipped the mode via the toolbar toggle; the salon persists it. */
