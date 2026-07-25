@@ -33195,3 +33195,58 @@ button instead); and the Import dialog's step 1 only STAGES the chosen file —
 `quilltap-web` child holding the instance's write lock — the next `globalSetup`
 then dies with "Database is currently in use — held by PID N". Kill that PID
 before re-running.
+
+## Banked finding — `qtap_import_equivalence`'s stale corpus-shape constant (2026-07-24)
+
+**Symptom.** `qtap_import_equivalence` failed at line 323 with
+`assertion left == right failed: 28 vault links (incl. 4 wardrobe .md/char)
+left: 30 right: 28`. Pre-existing and unrelated to any in-flight change
+(confirmed by reverting the only in-flight edit and re-running).
+
+**Diagnosis: v4 drift v5 had ALREADY absorbed — not an import regression.** The
+failing line sits AFTER the row-for-row diff, and that diff PASSED: all nine
+tables, including `doc_mount_file_links` at **30 rows on both sides**, plus the
+`doc_mount_files` / `_documents` row count and `fileSizeBytes` multiset. So the
+port matched v4 exactly; only the hand-written literal disagreed.
+
+The two extra links are **not** wardrobe/outfit (the natural first guess, since
+`8bf3cb5f` landed the outfit feature after the assertion was written). v4
+`8bc43333` (2026-07-17, squashed into `d68638b4`) added a per-character
+`metadata.json` fact sheet to `scaffoldCharacterMount`
+(`lib/mount-index/character-scaffold.ts:60`). Two imported characters × one new
+vault file = +2 links, 28 → 30. v5 ports that file (**P4.6az**) — which is
+precisely why the row diff stayed green. The assertion was written 2026-07-11 in
+`62b4c048` (P4.4u4) and never touched since; the v4 feature landed six days
+later.
+
+**Fix — assert shape, not the total.** Deriving the total from the oracle would
+be vacuous (the diff above already asserts `got == want`), so the two halves are
+now treated by provenance:
+
+- The `Wardrobe/*.md` links stay pinned at **8** (4 items per character) — they
+  come from the committed `.qtap` seed asset, so they are stable and meaningful
+  — plus a distinctness check.
+- The scaffold half is asserted **structurally**: every non-wardrobe
+  `relativePath` appears exactly twice (once per imported character), the vault
+  keystone `properties.json` is present, and the distinct set is ≥ 10 (a
+  non-degeneracy floor). A future v4 scaffold file passes with no edit; a missing
+  file for one character, a collapsed import, or an empty corpus still fails.
+
+**The general trap** (banked, applies to every tier-2 differential): a
+hand-written row-count assertion placed downstream of a passing `got == want`
+diff is not a check on the port — it is a check on **v4**, written in v5's
+source, that nothing updates when v4 moves. It can only ever assert what the
+oracle already says, so it adds no proof and adds rot. When such a block needs a
+number, ask where the number comes from: **seed-derived** (a committed fixture /
+asset) → pin it; **v4-derived** (a scaffold list, a default set) → assert the
+structure instead. Diagnose direction first — diff green + constant red means v4
+drift already absorbed, not a v5 bug.
+
+**Visibility.** This red can sit unnoticed between rounds: the test SKIPs
+silently when `QT_ORACLE_QTAPIMPORT` is unset, as every differential here does by
+design. Deriving the assertion removes the rot but not the invisibility.
+
+**Verification.** Fixture + oracle regenerated from `~/source/quilltap-server` at
+the baseline `e646f58b` (checkout clean); `qtap_import_equivalence` green, and
+the unset-env skip path still clean. No product code changed; the committed
+oracle vintage is unmoved. quilltap-harness 0.0.300.

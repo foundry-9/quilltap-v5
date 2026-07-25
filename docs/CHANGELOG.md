@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Fixed a stale check in the sample-content import differential. The test
+compares every imported row against v4's real import, and that comparison was
+passing; what failed was a hand-written follow-up count asserting the import
+produces 28 vault links. v4's character scaffold has since gained a twelfth
+file — the per-character `metadata.json` fact sheet, added in 4.8.0 — so each
+of the two imported characters now carries one more vault file and the real
+total is 30. v5 already ports that file, which is why the row-for-row
+comparison stayed green; only the literal was out of date. The count is no
+longer written by hand: the wardrobe half stays pinned at four items per
+character, since it comes from the committed sample file, and the scaffold
+half is now checked by its shape — every scaffold file must appear exactly
+once per imported character, the vault keystone must be among them, and the
+set must not be degenerate. A future v4 scaffold file will pass without
+edits, and a genuine import regression still fails. No product code changed.
+quilltap-harness 0.0.300.
+
 Cleared every warning from the SPA build. The app's first load was carrying
 2.09 MB of JavaScript, 591 kB over the configured budget, because two
 always-mounted shell components each held a static reference to a heavy

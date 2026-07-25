@@ -320,10 +320,60 @@ fn qtap_import_tier2_matches_oracle() {
     );
     assert_eq!(rows_len("memories"), 42, "42 memory rows");
     assert_eq!(rows_len("points"), 2, "2 vault mount-point rows");
+
+    // The link TOTAL is deliberately not pinned to a literal. It is two halves and
+    // only one of them is ours: the `Wardrobe/*.md` links come from the committed
+    // `.qtap` seed (4 items per character) and are fixed, while every other link is
+    // a file from v4's own `scaffoldCharacterMount` list — which GROWS. It gained
+    // `metadata.json` in 4.8.0 (v4 `8bc43333`, squashed into `d68638b4`), taking the
+    // total 28 → 30, and the hand-written 28 then went red for a v4 feature v5 had
+    // already ported (P4.6az) — a false alarm the row-for-row diff above had already
+    // cleared. So the scaffold half is asserted by its SHAPE instead: one link per
+    // scaffold file per imported character. The diff above is what proves the port;
+    // this block only catches a degenerate corpus.
+    let links = {
+        let i = TABLES.iter().position(|t| t.oracle_key == "links").unwrap();
+        got[i]["rows"].as_array().unwrap()
+    };
+    let (wardrobe, scaffold): (Vec<&str>, Vec<&str>) = links
+        .iter()
+        .map(|r| r["relativePath"].as_str().unwrap_or_default())
+        .partition(|p| p.starts_with("Wardrobe/"));
     assert_eq!(
-        rows_len("links"),
-        28,
-        "28 vault links (incl. 4 wardrobe .md/char)"
+        wardrobe.len(),
+        8,
+        "4 wardrobe `.md` per character × 2 characters (seed-derived): {wardrobe:?}"
+    );
+    let mut distinct_wardrobe = wardrobe.clone();
+    distinct_wardrobe.sort_unstable();
+    distinct_wardrobe.dedup();
+    assert_eq!(
+        distinct_wardrobe.len(),
+        wardrobe.len(),
+        "wardrobe item titles collided into one path: {wardrobe:?}"
+    );
+    let mut scaffold_counts: HashMap<&str, usize> = HashMap::new();
+    for p in &scaffold {
+        *scaffold_counts.entry(p).or_default() += 1;
+    }
+    let mut offenders: Vec<String> = scaffold_counts
+        .iter()
+        .filter(|(_, n)| **n != 2)
+        .map(|(p, n)| format!("{p} ×{n}"))
+        .collect();
+    offenders.sort();
+    assert!(
+        offenders.is_empty(),
+        "every vault scaffold file should appear once per imported character: {offenders:?}"
+    );
+    assert!(
+        scaffold_counts.contains_key("properties.json"),
+        "the vault keystone `properties.json` is missing from the links"
+    );
+    assert!(
+        scaffold_counts.len() >= 10,
+        "only {} distinct vault scaffold files — the corpus looks degenerate",
+        scaffold_counts.len()
     );
 
     // The files / documents content sha is a minted-content seam (wardrobe .md
