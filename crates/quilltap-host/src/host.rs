@@ -485,6 +485,7 @@ impl EngineAssembler for HostAssembler {
             consult,
             brahma_console_send,
             recall_replay,
+            announcement_preview,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -502,10 +503,11 @@ impl EngineAssembler for HostAssembler {
                     bundle.consult,
                     bundle.brahma_console_send,
                     bundle.recall_replay,
+                    bundle.announcement_preview,
                 )
             }
             None => (
-                None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None,
             ),
         };
 
@@ -667,16 +669,16 @@ impl EngineAssembler for HostAssembler {
             // globalThis-anchored map does). ===
             backup_host: Some(self.backup_services.clone()),
             // === end P4.9G5 ===
-            // === P4.9E2A: the in-chat announcement-preview seam. **NOT WIRED
-            // YET** — the in-character rewriter needs the spine's completion
-            // provider + cheap executor + embedding provider, and this lane owns
-            // neither `spine.rs` nor `quilltap-host`'s version (order
-            // §Ownership). `None` → the `ChatAnnouncementPreview` arm answers the
-            // loud not-assembled refusal AFTER v4's validation / character /
-            // profile arms, so the Insert Announcement dialog renders the reason
-            // rather than breaking. The wire recipe is in the lane record (the
-            // P4.9f1 `avatar_preview` precedent). ===
-            announcement_preview: None,
+            // === P4.9E2A: the in-chat announcement-preview seam, WIRED LIVE at
+            // the round's unification over the spine's completion + embedding
+            // providers (`HostAnnouncementPreviewRunner`, which rebuilds the
+            // logging cheap executor per call so the request's own user/chat land
+            // on the `llm_logs` row, as v4 does). Spine-less assemblies keep
+            // `None` → the arm answers the loud not-assembled refusal AFTER v4's
+            // validation / character / profile arms, so the Insert Announcement
+            // dialog renders the reason rather than breaking.
+            // ⚠ LIVE means real money: one cheap-LLM call per Generate. ===
+            announcement_preview,
             // === end P4.9E2A ===
         })
     }

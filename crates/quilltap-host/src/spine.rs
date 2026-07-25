@@ -517,6 +517,86 @@ impl ConsultRunner for HostConsultRunner {
     }
 }
 
+/// The in-chat announcement-preview runner (P4.9E2A, wired at that round's
+/// unification) — the host's live `EngineAssembly.announcement_preview` seam
+/// behind the Insert Announcement dialog's Generate button.
+///
+/// P4.9E2A shipped a ready-made `AnnouncementPreviewRunner` but had to leave the
+/// seam `None`: it owned neither `spine.rs` nor the host's assembly. This is that
+/// construction, with one deliberate difference from the shipped runner — it
+/// rebuilds the **logging** `CheapLlmTaskExecutor` per call from the request's
+/// own `user_id` + `chat_id`, the way [`HostConsultRunner`] rebuilds its
+/// provider. v4 passes `userId`, `chatId` and `character.id` straight into
+/// `executeCheapLLMTask` (`lib/services/announcer/character-voiced.ts:159-170`),
+/// so the call lands on an `llm_logs` row in v4 and must land on one here; the
+/// shipped runner's single assembly-time executor cannot carry per-request
+/// identity. The differential's ROUTE cases use the shipped runner with a
+/// non-logging executor because that fixture family has no llm-logs partition.
+///
+/// ⚠ LIVE means real money: one cheap-LLM call per press of Generate.
+struct HostAnnouncementPreviewRunner<C, E> {
+    db: Db,
+    completion: Arc<C>,
+    embedding: Arc<E>,
+}
+
+impl<C, E> quilltap_core::api::chat_post_office::AnnouncementPreviewDriver
+    for HostAnnouncementPreviewRunner<C, E>
+where
+    C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
+    E: quilltap_core::model::embedding::EmbeddingProvider + Send + Sync,
+{
+    fn run(
+        &self,
+        input: quilltap_core::api::chat_post_office::CharacterVoicedRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        quilltap_core::api::chat_post_office::CharacterVoicedOutcome,
+                        String,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: self.db.clone(),
+                user_id: input.user_id.clone(),
+                chat_id: Some(input.chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            let result = quilltap_core::services::announcer::character_voiced::
+                generate_character_voiced_announcement(
+                    &self.db,
+                    &*self.completion,
+                    &*self.embedding,
+                    &executor,
+                    &quilltap_core::services::announcer::character_voiced::
+                        CharacterVoicedAnnouncementParams {
+                        chat_id: &input.chat_id,
+                        character: &input.character,
+                        profile: &input.profile,
+                        seed_markdown: &input.seed_markdown,
+                        system_prompt_id: input.system_prompt_id.as_deref(),
+                        user_id: &input.user_id,
+                        now_ms: quilltap_core::clock::now_unix_ms() as f64,
+                    },
+                )
+                .await;
+            Ok(
+                quilltap_core::api::chat_post_office::CharacterVoicedOutcome {
+                    success: result.success,
+                    proposed_markdown: result.proposed_markdown,
+                    error: result.error,
+                },
+            )
+        })
+    }
+}
+
 /// The pricing-backed [`CostTracker`] (v4 `estimateMessageCost` — the W4.7e
 /// cascade over the held fetcher + a per-call [`PricingContext`]).
 pub struct PricingCostTracker<'a, PF: PricingFetch> {
@@ -2472,6 +2552,11 @@ pub struct SpineBundle {
     /// The recall-replay runner (P4.d13 — episodic recall §3; `None` for canned
     /// test factories — the arm answers the loud not-assembled error).
     pub recall_replay: Option<Arc<dyn quilltap_core::api::recall_replay::RecallReplayDriver>>,
+    /// The in-chat announcement-preview runner (P4.9E2A, wired at the round's
+    /// unification; `None` for canned test factories — the
+    /// `ChatAnnouncementPreview` arm answers the loud not-assembled refusal).
+    pub announcement_preview:
+        Option<Arc<dyn quilltap_core::api::chat_post_office::AnnouncementPreviewDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2552,6 +2637,11 @@ impl SpineFactory for ProductionSpineFactory {
         // workbench bench). It holds only the wire config — the provider and
         // the logging executor are rebuilt per consult.
         let consult: Arc<dyn ConsultRunner> = Arc::new(HostConsultRunner { wire: wire.clone() });
+        // P4.9E2A (the unification wire): the announcement rewriter shares the
+        // send/create drivers' provider Arcs; cloned here because `completion`
+        // and `embedding` move into `chat_create` below.
+        let announcement_completion = Arc::clone(&completion);
+        let announcement_embedding = Arc::clone(&embedding);
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
@@ -2665,6 +2755,19 @@ impl SpineFactory for ProductionSpineFactory {
             // P4.9I1A: the Brahma Console orchestrator — the same spine backs it
             // (streaming + tool runner + pricing), on real spend.
             brahma_console_send: Some(Arc::clone(&spine) as _),
+            // P4.9E2A (the unification wire): the in-character announcement
+            // rewriter, LIVE. The lane shipped the runner and its seam but owned
+            // neither `spine.rs` nor the host's assembly, so it left the seam
+            // `None`; this is the one construction its record specified, over the
+            // same completion + embedding providers and the same logging cheap
+            // executor the rest of the spine uses. ⚠ Once wired the rewrite costs
+            // real money — one cheap-LLM call per Generate in the Insert
+            // Announcement dialog.
+            announcement_preview: Some(Arc::new(HostAnnouncementPreviewRunner {
+                db: db.clone(),
+                completion: announcement_completion,
+                embedding: announcement_embedding,
+            })),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),

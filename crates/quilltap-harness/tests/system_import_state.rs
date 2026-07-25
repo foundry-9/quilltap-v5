@@ -25,18 +25,19 @@
 //! union error) are masked after their deterministic prefixes — the standing
 //! parser-wording seam; every other warning is compared verbatim.
 //!
-//! ## ⚠ KNOWN v5 GAP — `doc_mount_chunks` (the P4.6BK tripwire)
+//! ## `doc_mount_chunks` — the P4.6BK tripwire, CLOSED at unification
 //!
 //! v4 re-chunks on every database-document write — the payload's own documents
 //! AND the managed fields a freshly provisioned character vault / project store
-//! / group store receives. v5 writes no chunks at all (they come only from the
-//! explicit reindex/embed paths). Per the round's shared contract §2 this is
-//! dumped and asserted, never normalized away — the exact shape of
-//! `KNOWN_V5_GAPS` in `system_restore_state.rs:106`: v5 must carry ONLY
-//! fixture-literal chunk rows and must never modify one, v4 must mint rows
-//! exactly when documents were written, and the moment the two sides agree the
-//! assertion FAILS so P4.6BK removes it. `doc_mount_file_links.chunkCount` is
-//! the same gap's column-level face and gets the same treatment.
+//! / group store receives. When this lane was written, v5 wrote no chunks at
+//! all, so the round's shared contract §2 had this family dump the table and
+//! assert the gap with a tripwire that FAILED once the gap closed.
+//!
+//! **P4.6BK closed it in the same round.** The tripwire fired exactly as
+//! designed (v5 now mints chunk rows, and `doc_mount_file_links.chunkCount` now
+//! agrees), so it is gone: `doc_mount_chunks` is diffed row for row like every
+//! other table, and `chunkCount` is compared as an ordinary column. Nothing here
+//! is skipped or normalized on that account any more.
 //!
 //! Generate the oracle (see `system-import-execute.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
@@ -57,10 +58,6 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-
-/// §2 tripwire — see the module header. `(partition, table)`, the exact shape of
-/// `KNOWN_V5_GAPS` in `system_restore_state.rs:106` so P4.6BK finds every site.
-const KNOWN_V5_GAPS: &[(&str, &str)] = &[("mountIndex", "doc_mount_chunks")];
 
 /// A whole-instance dump: partition → table → rows.
 type StateDump = BTreeMap<String, BTreeMap<String, Vec<Value>>>;
@@ -572,154 +569,6 @@ fn normalize_side(
     (norm_result, norm_state)
 }
 
-/// Strip `chunkCount` from every `doc_mount_file_links` row, returning the
-/// stripped state + the per-row chunkCount vector (rowid order).
-fn strip_link_chunk_counts(state: &StateDump) -> (StateDump, Vec<i64>) {
-    let mut out = state.clone();
-    let mut counts = Vec::new();
-    if let Some(rows) = out
-        .get_mut("mountIndex")
-        .and_then(|t| t.get_mut("doc_mount_file_links"))
-    {
-        for row in rows.iter_mut() {
-            if let Some(obj) = row.as_object_mut() {
-                let c = obj
-                    .remove("chunkCount")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-                counts.push(c);
-            }
-        }
-    }
-    (out, counts)
-}
-
-/// The §2 chunk-gap assertions — precise, both directions (see the header).
-///
-/// The gap's true predicate is **"a database document was written"**, not "a
-/// character was created": v4 re-chunks on every document write (its
-/// `emitDocumentWritten` → `reindexSingleFile` chain, which v5 does not have),
-/// so v4 both MINTS chunk rows and REPLACES existing ones — including the
-/// fixture's own — while v5 leaves the table alone except for the overwrite
-/// clear. That asymmetry is why the surviving fixture rows cannot be compared
-/// across sides, and it is stated as a cost rather than papered over:
-///
-/// **What this differential cannot see while the gap is open:** whether the two
-/// engines' overwrite-clears delete the same chunk rows. v4's rewrites delete
-/// rows v5 keeps, so the deleted sets are incomparable by construction. Every
-/// other consequence of the clear (links, files, documents, blobs) IS compared
-/// row for row, immediately below.
-#[allow(clippy::too_many_arguments)]
-fn assert_chunk_gap(
-    name: &str,
-    literals: &HashSet<String>,
-    got: &StateDump,
-    want: &StateDump,
-    pre: &StateDump,
-    documents_written: bool,
-    links_created: bool,
-    link_counts_got: &[i64],
-    link_counts_want: &[i64],
-    failures: &mut Vec<String>,
-) {
-    for (partition, table) in KNOWN_V5_GAPS {
-        let empty = Vec::new();
-        let rows_of = |s: &StateDump| -> Vec<Value> {
-            s.get(*partition)
-                .and_then(|t| t.get(*table))
-                .unwrap_or(&empty)
-                .clone()
-        };
-        let got_rows = rows_of(got);
-        let want_rows = rows_of(want);
-        let fixture_rows = rows_of(pre);
-        let id_is_literal = |row: &Value| {
-            row.get("id")
-                .and_then(Value::as_str)
-                .map(|id| literals.contains(id))
-                .unwrap_or(false)
-        };
-
-        // 1. v5 must never MINT a chunk row. When this fires the gap has CLOSED
-        //    (P4.6BK landed): remove the KNOWN_V5_GAPS entry and diff the table
-        //    row for row.
-        let v5_minted = got_rows.iter().filter(|r| !id_is_literal(r)).count();
-        if v5_minted != 0 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v5 minted {v5_minted} chunk rows — the recorded \
-                 v5 chunking gap appears CLOSED. Remove the KNOWN_V5_GAPS entry and diff this \
-                 table row for row."
-            ));
-        }
-
-        // 2. Every chunk row v5 KEPT must be byte-identical to its fixture row:
-        //    v5 only ever deletes (the overwrite clear), never edits.
-        for row in got_rows.iter() {
-            let id = row.get("id").and_then(Value::as_str).unwrap_or("");
-            match fixture_rows
-                .iter()
-                .find(|f| f.get("id").and_then(Value::as_str) == Some(id))
-            {
-                Some(f) if f == row => {}
-                Some(_) => failures.push(format!(
-                    "[{name}] {partition}.{table}: v5 MODIFIED fixture chunk row {id} — v5 is \
-                     meant to leave this table untouched apart from the overwrite clear"
-                )),
-                None => { /* minted — reported by assertion 1 */ }
-            }
-        }
-
-        // 3. v4 must mint chunk rows exactly when documents were written.
-        let v4_minted = want_rows.iter().filter(|r| !id_is_literal(r)).count();
-        if documents_written && v4_minted == 0 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v4 minted NO chunk rows for a case that wrote \
-                 documents — the gap's premise moved; re-examine the tripwire"
-            ));
-        }
-        if !documents_written && v4_minted != 0 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v4 minted {v4_minted} chunk rows in a case that \
-                 wrote no documents — unclassified writes; investigate"
-            ));
-        }
-    }
-
-    // The column-level face of the same gap. A per-row `chunkCount` difference
-    // must be exactly (v4 > 0, v5 == 0) — v5 writes 0 on a fresh link and never
-    // updates one; v4's reindex sets the real count.
-    if link_counts_got.len() != link_counts_want.len() {
-        // Reported by the row diff too; nothing more to say here.
-        return;
-    }
-    let mut gap_rows = 0usize;
-    for (i, (g, w)) in link_counts_got.iter().zip(link_counts_want).enumerate() {
-        if g != w {
-            if *g == 0 && *w > 0 {
-                gap_rows += 1;
-            } else {
-                failures.push(format!(
-                    "[{name}] doc_mount_file_links row {i}: chunkCount rust {g} vs oracle {w} — \
-                     not the recorded (v4>0, v5==0) gap shape"
-                ));
-            }
-        }
-    }
-    if links_created && gap_rows == 0 {
-        failures.push(format!(
-            "[{name}] doc_mount_file_links: no chunkCount gap rows in a case that created new \
-             links — the recorded v5 chunking gap appears CLOSED. Remove this tripwire (P4.6BK) \
-             and compare chunkCount exactly."
-        ));
-    }
-    if !links_created && gap_rows != 0 {
-        failures.push(format!(
-            "[{name}] doc_mount_file_links: {gap_rows} chunkCount gap rows in a case that \
-             created no links — unclassified divergence; investigate"
-        ));
-    }
-}
-
 fn diff_states(name: &str, got: &StateDump, want: &StateDump, failures: &mut Vec<String>) {
     let all_tables: HashSet<(String, String)> = got
         .iter()
@@ -893,7 +742,6 @@ fn run_execute_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<
         &case["result"],
         &got_state,
         &want_state,
-        &pre,
         &literals,
         failures,
     );
@@ -910,64 +758,24 @@ fn compare_execute(
     want_result: &Value,
     got_state: &StateDump,
     want_state: &StateDump,
-    pre: &StateDump,
     literals: &HashSet<String>,
     failures: &mut Vec<String>,
 ) {
-    // The chunk gap's two predicates, both read off v4's own count bag.
-    //
-    // A database document is written either because the payload carried one
-    // (`documentStoreDocuments`) or because creating a character / project /
-    // group PROVISIONED a store and projected its managed fields into it. v4
-    // re-chunks on every such write, so that union is when it mints chunk rows.
-    let imported = |k: &str| {
-        want_result
-            .get("imported")
-            .and_then(|i| i.get(k))
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-    };
-    let provisioned =
-        imported("characters") > 0 || imported("projects") > 0 || imported("groups") > 0;
-    let documents_written = imported("documentStoreDocuments") > 0 || provisioned;
-
-    // The `chunkCount` COLUMN only diverges on a link row v5 freshly created
-    // (v5 writes 0 and never updates it; v4's reindex writes the real count).
-    // Writing a document into a link that already exists leaves the fixture's
-    // count in place on both sides, so the column gap needs new links, not just
-    // new documents.
-    let links_created = provisioned || imported("documentStores") > 0;
-
-    // The chunk gap's column face, stripped BEFORE normalization.
-    let (got_stripped, got_link_counts) = strip_link_chunk_counts(got_state);
-    let (want_stripped, want_link_counts) = strip_link_chunk_counts(want_state);
-
-    assert_chunk_gap(
-        name,
-        literals,
-        got_state,
-        want_state,
-        pre,
-        documents_written,
-        links_created,
-        &got_link_counts,
-        &want_link_counts,
-        failures,
-    );
-
-    let skip: HashSet<(&str, &str)> = KNOWN_V5_GAPS.iter().copied().collect();
+    // P4.6BK closed the chunk gap in this round, so nothing is skipped here:
+    // every table, including `doc_mount_chunks`, is diffed row for row.
+    let skip: HashSet<(&str, &str)> = HashSet::new();
     let (got_norm_result, got_norm_state) = normalize_side(
         literals,
         derived_hashes(got_state, literals),
         got_result,
-        &got_stripped,
+        got_state,
         &skip,
     );
     let (want_norm_result, want_norm_state) = normalize_side(
         literals,
         derived_hashes(want_state, literals),
         want_result,
-        &want_stripped,
+        want_state,
         &skip,
     );
 
@@ -1055,7 +863,6 @@ fn run_route_case(
                     body,
                     &got_state,
                     &want_state,
-                    &pre,
                     &literals,
                     failures,
                 );
