@@ -36,6 +36,22 @@ mismatch (legacy wardrobe items now restore at the old app's exact phase
 position) and completed the kept-image caption chunking that had been stubbed
 out.
 
+The Post Office is open on the server side. Three in-chat actions now work
+through the new app's own boundary: posting an announcement bubble signed by a
+Staff member, by a character who is not in the scene, or by a free-text name;
+posting a letter as one of the characters you are playing, optionally in reply
+to one already in your postbox; and listing that character's mailbox for the
+"In reply to" picker. All three refuse exactly where the old app refuses,
+including the two authorization checks that are deliberately different from each
+other — writing mail as a character you do not play is a 400, reading their
+mailbox is a 403. Checked case for case against the old app's real handlers over
+a new test library, including the quirk where reading a mailbox can repair a
+character's broken vault link.
+
+The in-character rewrite offered by the Insert Announcement dialog is defined but
+not yet connected to a model, so it answers a clearly worded refusal naming what
+is missing rather than failing silently.
+
 Planned the next round of porting work: finishing the `.qtap` import so the
 Import wizard stops refusing, building the in-chat Post Office (Insert
 Announcement, Compose Mail, Whisper, and the composer gutter buttons they hang

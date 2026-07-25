@@ -667,6 +667,17 @@ impl EngineAssembler for HostAssembler {
             // globalThis-anchored map does). ===
             backup_host: Some(self.backup_services.clone()),
             // === end P4.9G5 ===
+            // === P4.9E2A: the in-chat announcement-preview seam. **NOT WIRED
+            // YET** — the in-character rewriter needs the spine's completion
+            // provider + cheap executor + embedding provider, and this lane owns
+            // neither `spine.rs` nor `quilltap-host`'s version (order
+            // §Ownership). `None` → the `ChatAnnouncementPreview` arm answers the
+            // loud not-assembled refusal AFTER v4's validation / character /
+            // profile arms, so the Insert Announcement dialog renders the reason
+            // rather than breaking. The wire recipe is in the lane record (the
+            // P4.9f1 `avatar_preview` precedent). ===
+            announcement_preview: None,
+            // === end P4.9E2A ===
         })
     }
 }

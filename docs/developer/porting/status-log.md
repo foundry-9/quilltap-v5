@@ -34803,3 +34803,160 @@ committed `restore-archives/`, `--testTimeout=300000`).
   families — the refresh layer, not this lane's surface.
 
 Versions: core 0.0.356 → 0.0.357, harness 0.0.305 → 0.0.306.
+
+---
+
+## P4.9E2A — the in-chat Post Office server surface (lane record, part 1 of 2)
+
+**Branch:** `claude/p4-9e2a-post-office-porting-36a4c3`.
+**v4 baseline:** `e646f58b`, drift-checked at lane start
+(`git log e646f58b..HEAD --oneline` empty, tree clean).
+
+### What landed in this commit (units 1–3)
+
+1. **`services/announcer/writer.rs`** — v4 `lib/services/announcer/writer.ts`.
+   `post_adhoc_announcement` (the trim-to-empty → `None` arm, the chat guard,
+   the persisted broadcast through the single writer), `StaffSender` (all ten of
+   `STAFF_SENDER_ENUM`, including `pascal`) and `AnnouncerSender`. v4's
+   never-throws why-comment is carried forward verbatim on the Rust function —
+   the `Ok`/`Err` collapse into `Option` IS that contract.
+2. **§1 — the wire surface**, added to `api/types.rs` inside a labelled
+   `P4.9E2A` region: `ChatAnnouncementPost` / `ChatAnnouncementPreview` /
+   `ChatSendMail` / `ChatMailboxList`, plus `AnnouncerSenderWire` (tagged on
+   `kind`) and `StaffSenderWire`, plus the `Response::ChatPostOffice` body
+   variant.
+3. **`api/chat_post_office.rs`** — all four handlers, each reproducing v4's
+   validation, authorization arm, status and message. The four dispatch arms
+   live in a labelled `// ── P4.9E2A arms ──` region in `api/engine.rs`; nothing
+   else in that file moved except the new seam field (below).
+4. **The new committed fixture family `post-office-{main,mount}.db`**, built by
+   v4's REAL repositories + the REAL `deliverLetter`.
+5. **`post_office_routes_equivalence`** — 32 cases, green, covering every happy
+   path and every named error arm of all four verbs plus the mailbox GET's
+   vault write.
+
+### §1 note — it did NOT move, but the snippet needed one addition
+
+The order's §1 code block writes `#[serde(tag = "kind", rename_all =
+"camelCase")]` on `AnnouncerSenderWire` with fields `staff_id` /
+`character_id` / `display_name`. serde's enum-level `rename_all` renames
+**variants only**, so as literally written the wire fields would have been
+`staff_id`, not v4's `staffId`. §1's prose freezes "field names, casing and
+nesting", so the port adds a per-variant `#[serde(rename_all = "camelCase")]`
+to achieve the stated casing. **The wire bytes are exactly what §1 specifies**
+— `{"kind":"staff","staffId":…}` / `{"kind":"character","characterId":…}` /
+`{"kind":"custom","displayName":…}` — so P4.9E2B needs no change.
+
+### v4 quirks reproduced (each named in the port's comments)
+
+- **Two authorization arms, two statuses.** `send-mail`'s rejection is a **400**
+  (`send-mail.ts:39`), `mailbox`'s is a **403** (`mailbox.ts:36`). Not unified.
+- **`findByIdRaw` vs `findById` per call site.** send-mail and mailbox read
+  sender/recipient RAW (v4's own comment: a hollow-but-present vault must not
+  503 there); announcement and announcement-preview use the overlay `findById`.
+- **The mailbox GET writes.** `ensureCharacterVault` runs before the listing, so
+  reading a mailbox can provision — or, in the fixture's ELISE case, ADOPT — a
+  vault. Diffed, not normalized: the case dumps the character's vault FK and the
+  store's shape before/after.
+- **Whitespace-only content is NOT a Zod rejection.** `min(1)` passes; the
+  writer's trim then empties it and v4 answers `badRequest('Failed to post
+  announcement …')`. Both arms are separate cases
+  (`announcement_empty_content` vs `announcement_whitespace_content`).
+
+### Three recorded differences, each asserted in BOTH directions
+
+1. **`V4_CREATED_CASES`** — v4 answers **201** on the two `created`-style arms;
+   v5's dispatch boundary has no per-verb success status (every success is 200 at
+   the HTTP edge — the standing `ChatCreate` precedent). The six affected cases
+   assert `v4 == 201 ∧ v5 == 200`; the BODY is diffed byte-for-byte, which is
+   what §1 freezes.
+2. **`VALIDATION_DETAILS_GAP`** — v4's Zod arm answers `{error: 'Validation
+   error', details: […]}`; v5's error envelope carries no `details` array (the
+   standing, named P4.6bb deferral). Five cases assert v4 HAS a non-empty
+   `details` and v5 has none, then diff the rest.
+3. **`CHUNK_ON_WRITE_GAP` (order §2, the P4.6BK tripwire)** — v4's
+   `writeDatabaseDocument` chunks every write; v5's does not. The two send-mail
+   cases that deliver a letter dump the recipient vault's `chunkCount` and assert
+   `v4 == v5 + 1`. **The assertion FAILS when P4.6BK closes the gap** — the
+   `KNOWN_V5_GAPS` discipline of
+   `crates/quilltap-harness/tests/system_restore_state.rs:106`. **P4.6BK removes
+   this entry at unification and re-runs the family.**
+
+`announcement_unknown_staff` is the one case whose rejection moves layers: v4
+rejects `staffId:'quartermaster'` at the Zod enum, while the typed §1 boundary
+makes an unknown staff id unrepresentable, so the rejection happens at dispatch
+deserialization. The case asserts THAT (a real `serde_json::from_value` on the
+raw `Request` JSON must fail) and then compares v5's dispatch-edge envelope to
+v4's body.
+
+### Coverage is shape-asserted, not counted
+
+The differential builds a `BTreeSet` of the case names it drove and asserts it
+equals the oracle's key set, so a case added on either side fails loudly instead
+of being silently skipped (`harness-corpus-shape-constants-rot`). It also
+asserts the NDJSON is non-empty (`oracle-regen-silent-stale-pass`).
+
+### ⚠ One file outside this lane's Ownership was touched
+
+`crates/quilltap-host/src/host.rs` gained exactly one line —
+`announcement_preview: None,` in a labelled `P4.9E2A` region — because
+`EngineAssembly` is a struct literal there and a new field breaks the build
+otherwise. `quilltap-host` is bumped (0.0.36 → 0.0.37) for it. No sibling lane
+in this round touches `host.rs`, so no conflict is expected; the unifier should
+still recount the bump.
+
+### Regen recipe — `post-office-{main,mount}.db` (⚠ TZ=UTC)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd ~/source/quilltap-server
+TZ=UTC \
+QT_FIXTURE_PO_MAIN=$W/crates/quilltap-web/tests/fixtures/post-office-main.db \
+QT_FIXTURE_PO_MOUNT=$W/crates/quilltap-web/tests/fixtures/post-office-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-post-office-fixture.ts
+rm -f $W/crates/quilltap-web/tests/fixtures/post-office-*-journal
+```
+
+Rebuilding the fixture re-mints every character-vault id (they are random), so
+**the oracle must be regenerated straight afterwards** — the meta sidecar
+(`post-office-main.db.meta.json`) carries the new vault ids and both sides read
+it.
+
+### Regen recipe — `QT_ORACLE_POST_OFFICE` (⚠ TZ=UTC)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-po-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/post-office-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/post-office-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_PO_MAIN=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db \
+QT_FIXTURE_PO_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/post-office-mount.db \
+QT_FIXTURE_PO_META=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db.meta.json \
+QT_ORACLE_OUT=/tmp/oracle-post-office.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- post-office-routes
+wc -l /tmp/oracle-post-office.ndjson   # must be 32
+```
+
+**Finding — `TZ=UTC` is load-bearing here and it caught a real difference on the
+first run.** v4's `buildReplyPreface` formats the quoted letter's date with
+`toLocaleString` in the HOST zone; v5's `format_date_time` is UTC. Generated in
+`America/Chicago` the reply preface read "04:15 AM" against v5's "09:15 AM" and
+`send_mail_reply` went red — the family's only first-run failure, and proof the
+table diff is sensitive rather than vacuous. Both the fixture builder and the
+oracle case now **throw** when `getTimezoneOffset() !== 0` (the
+`chat-timestamp.ts` guard), so a future regen cannot silently emit a
+locale-shifted fixture.
+
+### Fixtures
+
+- **Delivered (new, committed):** `post-office-main.db`, `post-office-mount.db`,
+  `post-office-main.db.meta.json` under
+  `crates/quilltap-web/tests/fixtures/`, plus
+  `harness/oracle/fixtures/post-office-web.json` and
+  `build-post-office-fixture.ts`.
+- **No existing fixture moved**, so **no other oracle is invalidated**.
+- No stray `.db-journal` (the standing P4.15 rule) — the builder deletes them and
+  `git status` was verified clean of them.

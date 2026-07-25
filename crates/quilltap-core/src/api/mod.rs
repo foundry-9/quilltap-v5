@@ -77,6 +77,9 @@ pub mod files;
 // === P4.6ak: text-replacements (lane A, append-only) ===
 pub mod text_replacements;
 // === end P4.6ak ===
+// === P4.9E2A: the in-chat Post Office / Announcer surface (append-only) ===
+pub mod chat_post_office;
+// === end P4.9E2A ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

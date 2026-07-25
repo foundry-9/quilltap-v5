@@ -185,6 +185,18 @@ pub struct EngineAssembly {
     /// `SystemBackupCreate` arm answers the loud not-assembled refusal.
     pub backup_host: Option<Arc<dyn crate::services::backup::BackupHost>>,
     // === end P4.9G5 ===
+    // === P4.9E2A: the in-chat announcement-preview seam ===
+    /// The in-character announcement rewriter — the host holds the completion
+    /// provider + cheap executor + embedding provider the rewrite's Commonplace
+    /// recall and cheap-LLM call ride (the `recall_replay` precedent). `None`
+    /// (read-only embedders, canned assemblies) → the `ChatAnnouncementPreview`
+    /// arm answers the loud not-assembled refusal AFTER running v4's validation
+    /// / character / profile arms, so the dialog can render the reason.
+    /// **The host wire is DEFERRED to unification** (the P4.9f1 `avatar_preview`
+    /// precedent — this lane owns neither `quilltap-host` nor its version bump;
+    /// the recipe is in the lane record).
+    pub announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
+    // === end P4.9E2A ===
 }
 
 impl EngineAssembly {
@@ -219,6 +231,9 @@ impl EngineAssembly {
             job_pump: None,
             backup_host: None,
             // === end P4.9G1 ===
+            // === P4.9E2A ===
+            announcement_preview: None,
+            // === end P4.9E2A ===
         }
     }
 }
@@ -378,6 +393,12 @@ struct ReadyEngine {
     /// The backup host services (P4.9G5; `None` for read-only embedders — the
     /// `SystemBackupCreate` arm answers the loud not-assembled refusal).
     backup_host: Option<Arc<dyn crate::services::backup::BackupHost>>,
+    // === P4.9E2A ===
+    /// The in-character announcement rewriter (P4.9E2A; `None` until the
+    /// deferred host wire — the `ChatAnnouncementPreview` arm then answers the
+    /// loud not-assembled refusal after v4's own validation arms).
+    announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
+    // === end P4.9E2A ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -817,6 +838,76 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // ── end P4.9G4 ──
+            // ── P4.9E2A arms ──
+            Request::ChatAnnouncementPost {
+                chat_id,
+                content_markdown,
+                sender,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_post_office::chat_announcement_post(
+                        &db,
+                        &chat_id,
+                        &content_markdown,
+                        &sender,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatAnnouncementPreview {
+                chat_id,
+                seed_markdown,
+                character_id,
+                connection_profile_id,
+                system_prompt_id,
+            } => match self.ready_db_and_announcement_preview() {
+                Ok((db, driver)) => {
+                    super::chat_post_office::chat_announcement_preview(
+                        &db,
+                        driver.as_ref(),
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &seed_markdown,
+                        &character_id,
+                        &connection_profile_id,
+                        system_prompt_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatSendMail {
+                chat_id,
+                from_character_id,
+                to_character_id,
+                body_markdown,
+                in_reply_to_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_post_office::chat_send_mail(
+                        &db,
+                        &chat_id,
+                        &from_character_id,
+                        &to_character_id,
+                        &body_markdown,
+                        in_reply_to_path.as_deref(),
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatMailboxList {
+                chat_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_post_office::chat_mailbox_list(&db, &chat_id, &character_id).await
+                }
+                Err(r) => r,
+            },
+            // ── end P4.9E2A ──
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate => match self.ready_backup_host() {
                 Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),
@@ -3570,6 +3661,28 @@ impl CoreEngine {
         }
     }
 
+    // ── P4.9E2A ──
+    /// The Db + optional announcement-preview driver under the readiness gate.
+    /// A ready engine without the driver still answers — the handler runs v4's
+    /// validation / character / connection-profile arms and only refuses at the
+    /// rewrite step (mirrors v4, where those checks precede the generation).
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_announcement_preview(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.announcement_preview.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // ── end P4.9E2A ──
+
     /// The Db + optional recall-replay driver under the readiness gate (P4.d13).
     /// A ready engine without the driver still answers — the handler runs the
     /// body-coercion / settings / anchor arms and only refuses at the run step
@@ -4185,6 +4298,9 @@ fn open_ready(
         recall_replay: assembly.recall_replay,
         job_pump: assembly.job_pump,
         backup_host: assembly.backup_host,
+        // === P4.9E2A ===
+        announcement_preview: assembly.announcement_preview,
+        // === end P4.9E2A ===
     })
 }
 

@@ -152,3 +152,6 @@ pub mod turn_orchestrator;
 pub mod turn_transcript;
 pub mod user_identity_resolver;
 pub mod wardrobe_transfers;
+// ── P4.9E2A ──
+pub mod announcer;
+// ── end P4.9E2A ──

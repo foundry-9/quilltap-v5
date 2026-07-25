@@ -2374,7 +2374,81 @@ pub enum Request {
         confirm: String,
     },
     // === end P4.9G1 ===
+    // === P4.9E2A: the in-chat Post Office / Announcer surface (§1, frozen) ===
+    /// v4 `POST /api/v1/chats/[id]?action=announcement` — post an ad-hoc
+    /// announcement bubble. 201 on success.
+    #[serde(rename_all = "camelCase")]
+    ChatAnnouncementPost {
+        chat_id: String,
+        content_markdown: String,
+        sender: AnnouncerSenderWire,
+    },
+    /// v4 `POST /api/v1/chats/[id]?action=announcement-preview` — generate an
+    /// in-character rewrite. Persists nothing.
+    #[serde(rename_all = "camelCase")]
+    ChatAnnouncementPreview {
+        chat_id: String,
+        seed_markdown: String,
+        character_id: String,
+        connection_profile_id: String,
+        system_prompt_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/chats/[id]?action=send-mail` — post a letter as one of the
+    /// operator's player-characters. 201 on success.
+    #[serde(rename_all = "camelCase")]
+    ChatSendMail {
+        chat_id: String,
+        from_character_id: String,
+        to_character_id: String,
+        body_markdown: String,
+        in_reply_to_path: Option<String>,
+    },
+    /// v4 `GET /api/v1/chats/[id]?action=mailbox&characterId=…` — list a
+    /// player-character's `Mail/` letters, for the Compose Mail "In reply to"
+    /// dropdown. NOTE: v4 provisions the vault on this read path.
+    #[serde(rename_all = "camelCase")]
+    ChatMailboxList {
+        chat_id: String,
+        character_id: String,
+    },
+    // === end P4.9E2A ===
 }
+
+// === P4.9E2A: the announcer sender union (§1, frozen) ===
+
+/// v4's `insertAnnouncementSchema.sender` discriminated union (`schemas.ts:193`),
+/// tagged on `kind`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// (The per-variant `rename_all` is what puts `staffId` / `characterId` /
+/// `displayName` on the wire: serde's enum-level `rename_all` renames VARIANTS
+/// only, so the §1 casing needs it stated per arm.)
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum AnnouncerSenderWire {
+    #[serde(rename_all = "camelCase")]
+    Staff { staff_id: StaffSenderWire },
+    #[serde(rename_all = "camelCase")]
+    Character { character_id: String },
+    #[serde(rename_all = "camelCase")]
+    Custom { display_name: String },
+}
+
+/// v4 `STAFF_SENDER_ENUM` (`schemas.ts:180`) — exactly these ten, this spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StaffSenderWire {
+    Lantern,
+    Aurora,
+    Librarian,
+    Concierge,
+    Prospero,
+    Host,
+    CommonplaceBook,
+    Ariel,
+    Suparna,
+    Pascal,
+}
+
+// === end P4.9E2A ===
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
 /// an `Option<Option<T>>` field decodes an ABSENT field to `None`, an explicit
@@ -2627,6 +2701,18 @@ pub enum Response {
     /// `wardrobe_routes_equivalence`.
     ChatOutfit(serde_json::Value),
     // === end P4.9f1 ===
+    // === P4.9E2A: the in-chat Post Office / Announcer surface (§1, frozen) ===
+    /// A Post Office / Announcer body — `{success, message}` (announcement
+    /// post), `{success, proposedMarkdown}` (preview), `{success, path}`
+    /// (send-mail), `{letters: [{path, from, sentAt}]}` (mailbox). Pinned by
+    /// `post_office_routes_equivalence`.
+    ///
+    /// v4 answers **201** on the two `created`-style arms; the dispatch
+    /// boundary carries no per-verb success status (every success is 200 at the
+    /// HTTP edge — the standing `ChatCreate` precedent), so the BODY is what
+    /// §1 freezes.
+    ChatPostOffice(serde_json::Value),
+    // === end P4.9E2A ===
     Error(CoreError),
 }
 
