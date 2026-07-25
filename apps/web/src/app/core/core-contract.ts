@@ -126,6 +126,84 @@ export interface ChatSetActiveSpeakerRequest {
 }
 
 // ---------------------------------------------------------------------------
+// The Post Office — the in-chat announcement + mail wire contract (§1, written
+// verbatim and identically in the P4.9E2A and P4.9E2B work orders; only P4.9E2A
+// may add the Rust half, and neither lane may deviate). Field names, casing and
+// nesting are FROZEN.
+//
+// The Whisper dialog is deliberately NOT here: it posts to the ordinary chat-send
+// spine with `targetParticipantIds`, which is already on main (v4
+// `components/chat/WhisperDialog.tsx:39-47`).
+// ---------------------------------------------------------------------------
+
+/** v4 `STAFF_SENDER_ENUM` (`schemas.ts:180`) — exactly these ten, this spelling. */
+export type StaffSenderWire =
+  | 'lantern'
+  | 'aurora'
+  | 'librarian'
+  | 'concierge'
+  | 'prospero'
+  | 'host'
+  | 'commonplaceBook'
+  | 'ariel'
+  | 'suparna'
+  | 'pascal';
+
+/** v4's discriminated announcer union, tagged on `kind`. */
+export type AnnouncerSenderWire =
+  | { kind: 'staff'; staffId: StaffSenderWire }
+  | { kind: 'character'; characterId: string }
+  | { kind: 'custom'; displayName: string };
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=announcement` — post an ad-hoc
+ * announcement bubble. 201 on success.
+ */
+export interface ChatAnnouncementPostRequest {
+  type: 'chatAnnouncementPost';
+  chatId: string;
+  contentMarkdown: string;
+  sender: AnnouncerSenderWire;
+}
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=announcement-preview` — generate an
+ * in-character rewrite. Persists nothing.
+ */
+export interface ChatAnnouncementPreviewRequest {
+  type: 'chatAnnouncementPreview';
+  chatId: string;
+  seedMarkdown: string;
+  characterId: string;
+  connectionProfileId: string;
+  systemPromptId?: string | null;
+}
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=send-mail` — post a letter as one of the
+ * operator's player-characters. 201 on success.
+ */
+export interface ChatSendMailRequest {
+  type: 'chatSendMail';
+  chatId: string;
+  fromCharacterId: string;
+  toCharacterId: string;
+  bodyMarkdown: string;
+  inReplyToPath?: string | null;
+}
+
+/**
+ * v4 `GET /api/v1/chats/[id]?action=mailbox&characterId=…` — list a
+ * player-character's `Mail/` letters, for the Compose Mail "In reply to"
+ * dropdown. NOTE: v4 provisions the vault on this read path.
+ */
+export interface ChatMailboxListRequest {
+  type: 'chatMailboxList';
+  chatId: string;
+  characterId: string;
+}
+
+// ---------------------------------------------------------------------------
 // Pascal custom tools — the composer popup's wire contract (§4, OWNER: lane
 // P4.6ay). The two verbs are the SPA's path to `GET`/`POST
 // /api/v1/chats/{id}/custom-tools`; the response `type` string is lane-AY-owned,
@@ -1439,6 +1517,12 @@ export type CoreRequest =
   | ChatImpersonateRequest
   | ChatStopImpersonateRequest
   | ChatSetActiveSpeakerRequest
+  // --- The Post Office, the in-chat announcement + mail surface (§1; P4.9E2A
+  //     implements the server side) ---
+  | ChatAnnouncementPostRequest
+  | ChatAnnouncementPreviewRequest
+  | ChatSendMailRequest
+  | ChatMailboxListRequest
   // --- Pascal custom tools, the composer popup's path (P4.6ay implements the
   //     server side; the two REST legs are GET/POST /chats/{id}/custom-tools) ---
   | ChatCustomToolsListRequest

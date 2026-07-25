@@ -68,6 +68,10 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Laid the groundwork for the in-chat Post Office: the wire shapes the announcement
+and mail dialogs talk over, and the small helpers they need. Nothing is visible
+yet — the dialogs come next, and the server half is being built in parallel.
+
 Planned the next round of porting work: finishing the `.qtap` import so the
 Import wizard stops refusing, building the in-chat Post Office (Insert
 Announcement, Compose Mail, Whisper, and the composer gutter buttons they hang

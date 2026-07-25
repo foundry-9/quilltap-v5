@@ -4,7 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import { formatDateTime, formatProfileDate } from './format-date';
+import { formatDateTime, formatProfileDate } from '../../shared/format-date';
 import { ProfilePage } from './profile-page';
 import { fetchProfile, setProfileAvatar, updateProfile } from './profile.api';
 

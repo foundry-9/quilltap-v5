@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 
 import { Icon } from '../../ui/icon';
-import { formatProfileDate } from './format-date';
+import { formatProfileDate } from '../../shared/format-date';
 import type { UserProfile } from './profile.api';
 
 /**
