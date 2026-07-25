@@ -33550,3 +33550,185 @@ never uploads). No behavior of units 1-2 moved; that differential stays green.
 Gate at this commit: fmt clean, clippy clean on BOTH feature sets, `TZ=UTC cargo
 test --workspace --no-fail-fast` 378 binaries / 0 failed, the new differential by
 name with `--nocapture` and all five per-case OK lines visible.
+
+### Lane record — P4.9G5-resumed, unit 4 (restore execute): NOT LANDED, and why
+
+**Unit 4 is deliberately NOT landed. `SystemRestoreExecute` still refuses, by
+name.** The order's tier-3 rule is explicit — "refuse the whole verb or land the
+whole mode; a restore that runs some phases and silently skips others is worse
+than one that refuses" — and the differential this unit is required to ship
+cannot be made green without a human ruling that is not a lane's to make. What
+follows is everything the next lane needs so none of it is re-derived.
+
+The orchestrator itself WAS written, compiles, and passes the workspace build; it
+is banked as a patch (see "Banked WIP" at the end) rather than committed, because
+committing it would mean either shipping it live and unproven or shipping it
+dead behind a refusal — both of which the order forbids.
+
+#### ⚠ FINDING 1 (the lane's headline) — v4 cannot restore a modern backup's document stores
+
+Run the `system-restore` oracle's Part 2 and read `summary.warnings`. Against a
+**format-4 archive that v4 itself produced**, v4's REAL restore reports:
+
+- `Failed to restore document store "<name>"` for **every** `doc_mount_points`
+  row — 4 of 4 — with Zod errors `includePatterns: expected array, received
+  string`, `excludePatterns: expected array, received string`, `enabled:
+  expected boolean, received number`.
+- `Failed to restore doc-store file link "<path>"` for **every**
+  `doc_mount_file_links` row — 28 of 28 — with `allowEmbed: expected boolean,
+  received number`.
+
+**Cause.** `dumpMountIndexTable` (`backup-service.ts:72`) is a raw
+`SELECT * FROM "<table>"`, so the archive carries the ON-DISK column values: JSON
+*text* for the array columns and INTEGER 0/1 for the booleans. `restore.ts` hands
+those straight to `globalRepos.docMountPoints.create` /
+`globalRepos.docMountFileLinks.create`, whose base `_create` Zod-parses. Every
+row is rejected.
+
+**Consequence.** `doc_mount_folders` (15), `doc_mount_files` (12),
+`doc_mount_documents` (12) and `doc_mount_chunks` (17) DO restore — their schemas
+have no array/boolean columns — so a restored instance ends up with all the
+document CONTENT and none of the stores or links that reach it. Every character
+vault, project store and group store is unreachable: characters come back with no
+identity / description / personality, projects and groups with no store.
+
+#### ⚠ FINDING 2 — v4 restores no user files from a format-3/4 backup
+
+`getFileFromExtractedBackup` (`archive.ts:334`) gates the
+`files/<storageKey>` lookup on `backupFormat === 2`. A modern manifest declares
+`backupFormat: 4`, so the lookup is skipped, the legacy
+`files/<category>/<id>_<originalFilename>` path misses, and every file becomes a
+`File not found in backup: <name>` warning. The archive DOES contain the bytes at
+`files/<storageKey>` — the backup half is fine; only the reader's gate is wrong.
+
+Both findings are reproducible in one command (the regen recipe below) and belong
+on the **post-5.0 v4-side FIXES** list in `dogfood-findings.md`, where they have
+been added.
+
+#### Why this blocks unit 4's differential
+
+v5's port, written faithfully against `restore.ts`, does NOT reproduce either
+failure — and could only be made to by deliberately mis-typing its own inputs:
+
+- v5's `DmpCreate.include_patterns` is `Vec<String>` and its reader returns `[]`
+  for a JSON-text column, so the mount point is created (with empty patterns)
+  where v4 rejects it. `enabled`/`allowEmbed` likewise fall to their defaults.
+- v5's `get_file_from_extracted_backup` reproduces v4's `=== 2` gate exactly, so
+  it *does* reproduce finding 2 — but the file phase then has nothing to write,
+  and v5's counter matches v4's zero only by accident of the same bug.
+
+So the tier-2 state diff is not an equality: v5 restores three families v4
+cannot. That is the same SHAPE as the sparse-array blob divergence — a v4 bug the
+port is better off diverging from, asserted both ways in the differential — and
+that one was **ruled by a human** (2026-07-24). **This one needs the same ruling
+before unit 4 can land.** The WIP differential already carries the
+`EXPECTED_DIVERGENCES` scaffolding for it (v4 must restore ZERO, v5 must restore
+more than zero, both asserted), so the ruling is the only missing input.
+
+#### FINDING 3 — the differential needs BASELINE SUBTRACTION
+
+Discovered while the state diff was being brought up, and worth more than the
+hours it cost: **the two sides' fresh instances are not proven identical beyond
+what `provisioning_equivalence` covers** (schema + the seed user / chat settings /
+embedding profile + roleplay templates + the three built-in mount points and
+their folders). The restore state diff surfaced differences that are NOT restore
+differences — e.g. in the `restore_minimal` case v4's post-restore
+`doc_mount_chunks` held 8 rows and v5's held 0.
+
+The next lane should **dump the pre-restore state on both sides and diff only the
+delta**, rather than diffing the absolute post-state. That also removes the one
+brittle part of the WIP normalizer (minted-id labels assigned in walk order shift
+wholesale when either side has an extra row anywhere earlier in the walk).
+
+Two specific leads worth chasing while doing that, both unresolved:
+
+- The 8-vs-0 `doc_mount_chunks` gap in `restore_minimal` is a **baseline or
+  `delete_user_data`** difference, not a restore one. `system_delete_data_
+  equivalence` covers `delete_data` / `delete_data_preview` (the account-wide
+  path); `delete_user_data` — the per-user wipe restore's `replace` mode calls —
+  has **no differential of its own**. That is a real coverage hole.
+- In the same case v5 restored 0 user files where the archive has one. Likely the
+  Quilltap Uploads mount is gone by the time phase 5 runs, because
+  `delete_user_data` removed it — which, if so, means v5's `replace` restore
+  cannot land any project-less file. Worth confirming first; it may be a third
+  v4-vs-v5 difference or a v5 bug.
+
+#### What the WIP orchestrator got right (so it is not re-derived)
+
+The port is essentially complete and compiles; the notes below are the parts that
+took the work.
+
+- **v4's user-scoped repositories RE-OWN every row.** `getUserRepositories(id)`'s
+  `create` spreads `{...data, userId: this.userId}` (`user-scoped.ts:84`), so
+  tags / connection profiles / image + embedding profiles / files / characters /
+  chats / memories / projects / groups / llm logs all take the TARGET user's id
+  and the archive's `userId` is discarded. The `globalRepos.*` phases do not:
+  `chatSettings` keeps the archive's `userId` (v4 strips only id/createdAt/
+  updatedAt), while prompt/roleplay templates, plugin configs, folders, tfidf
+  vocabularies and embedding status set `targetUserId` EXPLICITLY. Getting this
+  wrong is invisible until a cross-instance restore.
+- **Timestamps are not preserved.** v4 destructures `createdAt`/`updatedAt` off
+  every row and passes only `{id}` — every restored row is stamped with the write
+  clock. The single exception is `llmLogs`, which passes `{id, createdAt}`
+  (`:333`).
+- **Three phases do not preserve the id either**: memories (`:235`), prompt
+  templates (`:251`) and roleplay templates (`:267`) all destructure `id` away,
+  so they get fresh ones. Provider models go through `upsertModel` (no id at all).
+- **Only ONE v5 repository write path was missing**: `doc_mount_file_links` has
+  no plain `create(data, opts)` — every other writer there is a purpose-built
+  `link_*` helper that mints a row from a file on disk, where restore re-lays an
+  existing row column for column. The WIP adds `create_from_row`.
+- **`create_character` needed an id-preserving sibling** (`create_character_with_
+  options`); the existing one mints. v4's `characters.create` drops any incoming
+  `characterDocumentMountPointId` and provisions a FRESH vault, which v5's
+  already does.
+- **`ChatSettingsCreate` needed `Deserialize`** (v4's key is `cheapLLMSettings`,
+  three capitals — not the camelCase derivation; the four nullable columns need
+  `#[serde(default)]` because the archive omits a NULL column entirely).
+- **`BackupHost` needs a `pixel_codec()`**: phase 5 writes through
+  `writeUserUploadToMountStore` / `writeProjectFileToMountStore`, both of which
+  transcode bitmaps, so a restored file must take the same codec path a live
+  upload takes. Neither bridge touches the legacy `<base>/files` `StorageBackend`.
+- **Phases 23/24** (npm plugins, theme bundles) are a documented no-op when the
+  host declares no such directory; the counters report 0 rather than staying
+  silent.
+
+#### Banked WIP
+
+`/tmp/qt-p4.9g5-unit4-wip/` (this machine only, not committed):
+`restore.rs` (the orchestrator, ~1 400 lines, all 35 phases), `rows.rs` (the
+JSON-row accessors), `system_restore_state.rs` (the tier-2 state differential
+with the divergence scaffolding), and `unit4-tracked-edits.diff` (the additive
+repo methods + the seam + the engine arm). Regenerate from this record if it is
+gone — every non-obvious decision above is written down.
+
+#### Regen recipe — the restore oracle (Parts 1 AND 2)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-sysrestore-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-restore
+```
+
+Eight cases: five `preview_*` (consumed by `system_restore_equivalence`, green)
+and three `restore_*` (the banked evidence above; no Rust consumer until unit 4).
+No fixture changed, so no other oracle family is invalidated.
+
+#### Tier 2 — the e2e beat: DEFERRED, with the reason
+
+The order's tier-2 item (append **upload → preview** to the end of the main
+describe in `apps/web/e2e/settings-data-system-flow.spec.ts`, over the archive
+the existing create → download beat just produced) is **not landed**. Both legs
+it would drive are live and differential-proven, so the beat is a small write —
+but verifying it means a full Playwright run over a fresh `ng build` dist and
+rebuilt debug binaries, and this lane stopped at unit 3 rather than spending that
+on a beat whose server half is only half the story (the RESTORE the wizard walks
+toward still refuses). The previous lane deferred exactly this beat for the same
+reason and the round agreed that was right. **Land it with unit 4**, where the
+walk can go upload → preview → restore and mean something.

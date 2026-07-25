@@ -204,6 +204,32 @@ catch, since every fixture is built fresh.
     only if a v4 user hits this first", and the human (who runs v4 on Friday)
     judged that it will bite. Deliberately NOT done during the port: it moves
     the oracle baseline mid-flight.
+  - **⚠ AWAITING A HUMAN RULING (found 2026-07-25, P4.9G5 unit 4) — v4 cannot
+    restore a modern backup's document stores, and restores no user files at
+    all.** Two separate bugs, both demonstrated by running v4's REAL `restore`
+    against v4's REAL backup of a modern instance (the `system-restore` oracle's
+    Part 2; full evidence and warning text in the lane record):
+    1. **Every `doc_mount_points` and `doc_mount_file_links` row is rejected.**
+       `dumpMountIndexTable` (`backup-service.ts:72`) is a raw `SELECT *`, so
+       the archive carries `includePatterns`/`excludePatterns` as JSON *text*
+       and `enabled`/`allowEmbed` as INTEGER 0/1 — and `restore.ts` feeds those
+       to repository `create`s whose Zod schemas demand `string[]` / `boolean`.
+       The folders, file rows, documents and chunks DO restore, so the result is
+       a graph with all the content and none of the stores or links that reach
+       it: **every character vault, project store and group store comes back
+       unreachable.** The fix is on the BACKUP side (parse the JSON columns and
+       coerce the booleans in `dumpMountIndexTable`) or the restore side
+       (coerce before `create`) — the human's call which.
+    2. **No user file is restored.** `getFileFromExtractedBackup`
+       (`archive.ts:334`) gates the `files/<storageKey>` lookup on
+       `backupFormat === 2`, but a modern manifest declares `backupFormat: 4`.
+       One-line fix: `backupFormat >= 2`.
+    Unlike the sparse-array entry above, **v5 has NOT yet diverged** — unit 4 is
+    open precisely because the divergence needs the same explicit ruling that
+    one got. v5's faithful port naturally restores all three families (its typed
+    readers coerce), so the ruling is "confirm v5 diverges, and pin it both ways
+    in `system_restore_state`" — the differential already carries the
+    `EXPECTED_DIVERGENCES` scaffolding for exactly that.
 - **Post-5.0 product improvements (v4-first) — the running list of dogfood-surfaced
   UX papercuts that are v4-faithful today and therefore must change in v4 FIRST,
   then port.** These are NOT bugs (v5 reproduces v4 exactly) and NOT for the port

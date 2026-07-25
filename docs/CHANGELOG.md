@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Found two bugs in v4's restore while building v5's, both by running v4's own code
+against a backup v4 itself produced. Restoring a current backup into v4 silently
+loses every document store: the characters, projects and groups come back, and so
+does all their written content, but nothing links the two, so every character
+vault reads as empty. Separately, no uploaded file is restored at all — the bytes
+are in the archive, but the reader looks for them under a naming scheme two
+versions old. Neither bug affects making a backup, only restoring one. v5's
+restore does not have either problem, but shipping that difference is a decision
+for a person rather than a machine, so it is written up and waiting. Nothing in
+this change alters behavior.
+
 Restoring from a backup now gets as far as the preview. You can upload a backup
 archive and see exactly what it contains — every count, down to the individual
 document-store rows — before deciding anything. Old archives are understood too:
