@@ -3,6 +3,11 @@
 //! - `GET /api/v1/system/backup/{id}` — the SINGLE-USE archive download.
 //! - `POST /api/v1/system/backup` — v4-URL parity for the create verb (which
 //!   also rides `POST /api/dispatch` as `systemBackupCreate`); v4 answers 201.
+//! - `POST /api/v1/system/restore?action=upload|preview|<none>` — v4's
+//!   three-way action dispatch. The **upload** leg is web-edge-only (a raw
+//!   octet-stream body streamed to a temp zip, which is what the SPA's XHR
+//!   sends); the other two unwrap to the `systemRestorePreview` /
+//!   `systemRestoreExecute` verbs, which is how the SPA actually reaches them.
 //!
 //! The download has no dispatch verb because it streams bytes rather than JSON
 //! (the qtap-target byte route and the fs raw read are the precedents). It
@@ -24,9 +29,14 @@
 //! restore side's upload leg (unported) is the place that decision gets
 //! revisited if archives get large enough to matter.
 
-use axum::extract::{Path as AxumPath, State};
+use std::collections::HashMap;
+use std::io::Write;
+
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
+use serde_json::Value;
+use tokio_stream::StreamExt;
 
 use quilltap_core::api::Request as CoreRequest;
 use quilltap_core::services::backup::BackupHost;
@@ -83,6 +93,172 @@ pub async fn system_backup_download(
         bytes,
     )
         .into_response()
+}
+
+/// `POST /api/v1/system/restore` — v4's three-way `?action=` dispatch
+/// (`app/api/v1/system/restore/route.ts:246`).
+///
+/// The body is taken as an `axum::body::Body` rather than `Bytes` so the upload
+/// leg can stream it to disk; the two JSON actions collect it first.
+pub async fn system_restore_post(
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+    body: axum::body::Body,
+) -> AxumResponse {
+    match q.get("action").map(String::as_str).unwrap_or("") {
+        "upload" => handle_upload(&state, body).await,
+        "preview" => {
+            let Some(parsed) = collect_json(body).await else {
+                return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
+            };
+            let Some(upload_id) = required_upload_id(&parsed) else {
+                return error_json(StatusCode::BAD_REQUEST, "uploadId is required");
+            };
+            match dispatch_core(&state, CoreRequest::SystemRestorePreview { upload_id }).await {
+                Ok(resp) => system_body_public(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // Default: restore.
+        _ => {
+            let Some(parsed) = collect_json(body).await else {
+                return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
+            };
+            let Some(upload_id) = required_upload_id(&parsed) else {
+                return error_json(StatusCode::BAD_REQUEST, "uploadId is required");
+            };
+            // v4 validates the mode at the route (`:202`) before it ever looks
+            // the upload up; the core arm validates it again for the dispatch
+            // entrance, which is the one the SPA actually uses.
+            let mode = parsed
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if mode != "replace" && mode != "new-account" {
+                return error_json(
+                    StatusCode::BAD_REQUEST,
+                    "mode must be \"replace\" or \"new-account\"",
+                );
+            }
+            match dispatch_core(
+                &state,
+                CoreRequest::SystemRestoreExecute { upload_id, mode },
+            )
+            .await
+            {
+                Ok(resp) => system_body_public(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+    }
+}
+
+/// v4 `handleUpload` (`route.ts:86`) — the raw octet-stream body streamed to
+/// `<temp>/quilltap-restore-<uuid>.zip`, answering `{success, uploadId, size}`.
+///
+/// **The back-pressure, in v5's idiom.** v4 has to `await writeStream.once
+/// ('drain')` because Node's `write` buffers without bound; a synchronous
+/// `write_all` per chunk simply cannot outrun the disk, which is the same
+/// guarantee with none of the bookkeeping. The body is never fully resident.
+async fn handle_upload(state: &SharedState, body: axum::body::Body) -> AxumResponse {
+    let Some(host) = state.host() else {
+        return error_json(StatusCode::SERVICE_UNAVAILABLE, "Server is not ready");
+    };
+    let services = host.backup_services();
+    let upload_id = uuid::Uuid::new_v4().to_string();
+    let temp_zip_path = services
+        .temp_dir()
+        .join(format!("quilltap-restore-{upload_id}.zip"));
+
+    let mut file = match std::fs::File::create(&temp_zip_path) {
+        Ok(f) => std::io::BufWriter::new(f),
+        Err(e) => {
+            tracing::error!(error = %e, "restore upload: could not open the temp file");
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to upload backup file",
+            );
+        }
+    };
+
+    let mut stream = body.into_data_stream();
+    let mut total: u64 = 0;
+    let mut empty = true;
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                drop(file);
+                let _ = std::fs::remove_file(&temp_zip_path);
+                tracing::error!(error = %e, upload_id, "restore upload failed");
+                return error_json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to upload backup file",
+                );
+            }
+        };
+        empty = false;
+        total += chunk.len() as u64;
+        if let Err(e) = file.write_all(&chunk) {
+            drop(file);
+            let _ = std::fs::remove_file(&temp_zip_path);
+            tracing::error!(error = %e, upload_id, "restore upload failed");
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to upload backup file",
+            );
+        }
+    }
+    if let Err(e) = file.flush() {
+        drop(file);
+        let _ = std::fs::remove_file(&temp_zip_path);
+        tracing::error!(error = %e, upload_id, "restore upload failed");
+        return error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to upload backup file",
+        );
+    }
+    drop(file);
+
+    // v4 `if (!body) return badRequest('No request body')` (`:90`). A hyper body
+    // is never absent, so the observable equivalent is a body that yielded no
+    // bytes at all — which is what a `fetch` with no payload produces.
+    if empty {
+        let _ = std::fs::remove_file(&temp_zip_path);
+        return error_json(StatusCode::BAD_REQUEST, "No request body");
+    }
+
+    services.store_upload(&upload_id, &temp_zip_path);
+    tracing::info!(
+        upload_id,
+        size = total,
+        "[System Restore v1] Upload complete"
+    );
+
+    (
+        StatusCode::OK,
+        [("content-type", "application/json")],
+        serde_json::json!({ "success": true, "uploadId": upload_id, "size": total }).to_string(),
+    )
+        .into_response()
+}
+
+/// v4's `await req.json()` inside its `try` — `None` is `badRequest('Invalid
+/// JSON body')`.
+async fn collect_json(body: axum::body::Body) -> Option<Value> {
+    let bytes = axum::body::to_bytes(body, 8 * 1024 * 1024).await.ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// v4's `const { uploadId } = body; if (!uploadId) …` — JS falsiness, so an
+/// empty string is "missing" too.
+fn required_upload_id(parsed: &Value) -> Option<String> {
+    parsed
+        .get("uploadId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// v4 `new Date().toISOString().replace(/[:.]/g, '-')` for the download

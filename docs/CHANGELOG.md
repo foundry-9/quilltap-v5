@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Restoring from a backup now gets as far as the preview. You can upload a backup
+archive and see exactly what it contains — every count, down to the individual
+document-store rows — before deciding anything. Old archives are understood too:
+backups from before the wardrobe rework carry their outfits in a shape that no
+longer exists, and those are folded into the current one as the archive is read.
+An archive that is not a Quilltap backup, or that is missing a file it must have,
+says so plainly instead of failing halfway. Nothing is written to the database at
+this stage, and the extracted copy of the archive is always cleaned up, including
+when the read fails. Actually writing a backup back into the database is the next
+step and still refuses by name.
+
 Planned the next round of porting work: finishing the restore side of Backup &
 Restore. Creating a backup already works end to end; restoring one does not, and
 the two screens that would use it answer a plain "not yet available." The work is

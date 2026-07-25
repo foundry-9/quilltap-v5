@@ -328,6 +328,10 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/system/backup/{id}",
             get(backup_routes::system_backup_download),
         )
+        .route(
+            "/api/v1/system/restore",
+            post(backup_routes::system_restore_post),
+        )
         // === end P4.9G5 ===
         // === end P4.6au ===
         // === P4.9I1A: the dedicated brahma-console CRUD + send surface ===

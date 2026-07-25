@@ -817,14 +817,21 @@ impl CoreEngine {
                 Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),
                 Err(r) => r,
             },
-            // ── end P4.9G5 ──
-            // RESTORE is P4.9G5's open remainder (units 3-5); until it lands both
-            // verbs answer the loud not-assembled refusal (never a silent stub).
-            Request::SystemRestorePreview { .. }
-            | Request::SystemRestoreExecute { .. } => Response::error(
+            Request::SystemRestorePreview { upload_id } => match self.ready_backup_host() {
+                Ok((_db, host)) => super::system_backup::restore_preview(host.as_ref(), &upload_id),
+                Err(r) => r,
+            },
+            // The EXECUTE half is P4.9G5 unit 4/5; until it lands the verb
+            // answers a loud typed refusal naming the module it is waiting on
+            // (never a silent stub, and never a partial restore).
+            Request::SystemRestoreExecute { .. } => Response::error(
                 ErrorKind::Internal,
-                "This Data & System action is recognized but not yet available (P4.9G1 deferral).",
+                "Restoring a backup is recognized but not yet available \
+                 (P4.9G5 unit 4: services::backup::restore::restore). Upload and \
+                 preview work; the execute step is deliberately refused whole \
+                 rather than restoring part of the graph.",
             ),
+            // ── end P4.9G5 ──
             // === end P4.9G1 ===
             Request::MessageEdit {
                 message_id,

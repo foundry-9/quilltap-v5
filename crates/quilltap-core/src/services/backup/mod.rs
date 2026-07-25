@@ -1,16 +1,19 @@
 //! The backup family (P4.9G5) — v4 `lib/backup/**`.
 //!
-//! Landed: the read-and-project half ([`collect_user_data`],
+//! The backup direction: the read-and-project half ([`collect_user_data`],
 //! [`create_manifest`], [`stage_backup`]), the archive ([`archive`]), and the
-//! `createBackup` orchestration over the [`BackupHost`] seam. The restore side
-//! (upload / preview / execute) is NOT ported — see the order's status header
-//! and the lane record for the resume list; its verbs answer the loud
-//! not-yet-available refusal.
+//! `createBackup` orchestration over the [`BackupHost`] seam.
+//!
+//! The restore direction lives in [`restore`] — the upload store, the archive
+//! parse, `previewRestore`, and the phase-ordered orchestrator.
 
 pub mod archive;
 pub mod collect;
 pub mod manifest;
 mod marshal;
+// ── P4.9G5 restore ──
+pub mod restore;
+// ── end P4.9G5 restore ──
 pub mod staging;
 
 use std::path::{Path, PathBuf};
@@ -52,6 +55,24 @@ pub trait BackupHost: Send + Sync {
     /// v4 `retrieveTemporaryBackup` (`:115`) — **single-use**: the entry is
     /// removed on read, so a backup can only be downloaded once.
     fn take_backup(&self, backup_id: &str) -> Option<PathBuf>;
+
+    // ── The restore side's pending-upload store (v4's route-module state,
+    //    `app/api/v1/system/restore/route.ts:38`; `UPLOAD_TTL_MS` = 1 hour,
+    //    swept lazily at the top of every handler). Same reasoning as the
+    //    backup store: process-lifetime state belongs to the host. ──
+    /// v4 `pendingUploads.set(uploadId, {path, createdAt, userId})` (`:118`).
+    fn store_upload(&self, upload_id: &str, zip_path: &Path);
+    /// v4 `getPendingUpload(uploadId, userId)` (`:56`) — a PEEK, not a take:
+    /// preview leaves the upload in place so a restore can follow it.
+    ///
+    /// **v4 quirk, carried faithfully:** that function takes a `userId` and
+    /// **never reads it** — it validates the UUID shape (done by the caller
+    /// here) and map presence, nothing more. Single-user v5 has no second user
+    /// for it to matter to, but the shape is the shape.
+    fn get_upload(&self, upload_id: &str) -> Option<PathBuf>;
+    /// v4 `removePendingUpload` (`:66`) — drop the entry and unlink its temp
+    /// zip. Errors ignored, as v4 ignores them.
+    fn remove_upload(&self, upload_id: &str);
 }
 
 /// v4 `createBackup`'s return (`backup-service.ts:548`).

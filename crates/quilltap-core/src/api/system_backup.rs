@@ -7,14 +7,15 @@
 //! /api/v1/system/backup/{id}`), because it streams bytes rather than JSON —
 //! `quilltap-web::backup_routes`.
 //!
-//! NOT landed (they keep the loud "recognized but not yet available" refusal in
-//! `engine.rs`): `systemRestorePreview` / `systemRestoreExecute` and the
-//! octet-stream upload leg. The order's status header carries the resume list.
+//! Also landed: `systemRestorePreview` — v4 `POST
+//! /api/v1/system/restore?action=preview` (`system/restore/route.ts:145`) over
+//! the host's pending-upload store. The UPLOAD that fills that store is a
+//! web-edge-only leg (octet-stream body → temp zip), like the download.
 
 use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
-use crate::services::backup::{create_backup, BackupHost};
+use crate::services::backup::{create_backup, restore::preview_restore, BackupHost};
 
 use super::types::{ErrorKind, Response};
 
@@ -47,6 +48,51 @@ pub fn backup_create(db: &Db, host: &dyn BackupHost) -> Response {
     body.insert("backupId".into(), Value::String(backup_id));
     body.insert("manifest".into(), created.manifest);
     Response::System(Value::Object(body))
+}
+
+/// v4's `UUID_REGEX` (`system/restore/route.ts:35`) — the shape check
+/// `getPendingUpload` runs before it even looks in the map, so a non-UUID
+/// `uploadId` answers "Upload not found or expired" rather than a 404.
+fn is_uuid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    b.iter().enumerate().all(|(i, c)| match i {
+        8 | 13 | 18 | 23 => *c == b'-',
+        _ => c.is_ascii_hexdigit(),
+    })
+}
+
+/// v4 `POST /api/v1/system/restore?action=preview` (`route.ts:145`).
+///
+/// `{uploadId}` → `{success:true, preview}`. Both failure arms are v4's,
+/// verbatim: an unknown/expired/ill-shaped id is `badRequest('Upload not found
+/// or expired')`, and a parse failure is `serverError(error.message)` — this
+/// handler **leaks the message**, unlike backup create, because the malformed-
+/// archive wording is what tells the user their file is not a backup.
+pub fn restore_preview(host: &dyn BackupHost, upload_id: &str) -> Response {
+    if !is_uuid(upload_id) {
+        return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
+    }
+    let Some(zip_path) = host.get_upload(upload_id) else {
+        return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
+    };
+    match preview_restore(&zip_path, &host.temp_dir()) {
+        Ok(preview) => {
+            let mut body = Map::new();
+            body.insert("success".into(), Value::Bool(true));
+            body.insert(
+                "preview".into(),
+                serde_json::to_value(preview).unwrap_or(Value::Null),
+            );
+            Response::System(Value::Object(body))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Error generating restore preview");
+            Response::error(ErrorKind::Internal, &e)
+        }
+    }
 }
 
 /// `new Date(ms).toISOString()` — the manifest's `createdAt` and (with `[:.]`

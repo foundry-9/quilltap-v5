@@ -137,6 +137,14 @@ impl BackupHost for TestBackupHost {
     fn take_backup(&self, _backup_id: &str) -> Option<PathBuf> {
         self.stored.lock().unwrap().take().map(|(_, p)| p)
     }
+    // The RESTORE side's pending-upload store (added with unit 3). This case
+    // never uploads — the backup direction is what it measures — so the three
+    // are inert here; `system_restore_equivalence` exercises them.
+    fn store_upload(&self, _upload_id: &str, _zip_path: &Path) {}
+    fn get_upload(&self, _upload_id: &str) -> Option<PathBuf> {
+        None
+    }
+    fn remove_upload(&self, _upload_id: &str) {}
 }
 
 /// Extract `zip_path` under `dest`, returning the single `quilltap-backup-*`

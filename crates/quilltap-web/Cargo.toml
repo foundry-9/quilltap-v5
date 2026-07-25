@@ -8,7 +8,7 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.43"
+version = "0.0.44"
 edition = "2021"
 publish = false
 
@@ -28,6 +28,9 @@ rusqlite = { workspace = true }
 base64 = "0.22"
 sha2 = "0.10"
 hex = "0.4"
+# P4.9G5: the restore upload leg mints v4's `randomUUID()` upload id at the edge
+# (the id names the temp zip and keys the host's pending-upload map).
+uuid = { version = "1", features = ["v4"] }
 # P4.18: the process-global log surface. `tracing` events are emitted at the
 # swallow sites (v4's hand-rolled Logger analog); `tracing-subscriber` is the
 # stderr fmt subscriber, env-filtered by `RUST_LOG` (default `info` — v4's

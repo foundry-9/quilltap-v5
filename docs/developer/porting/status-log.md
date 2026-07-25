@@ -33392,3 +33392,161 @@ button instead); and the Import dialog's step 1 only STAGES the chosen file —
 then dies with "Database is currently in use — held by PID N". Kill that PID
 before re-running.
 
+
+### Lane record — P4.9G5-resumed, unit 3 (restore parse / preview / upload leg)
+
+**Branch** `claude/p4-9g5-backup-restore-9fc155`. v4 drift-checked at lane start:
+`~/source/quilltap-server` clean at **`e646f58b`**, `git log e646f58b..HEAD` empty.
+
+Landed the whole read side of restore, and with it the second of the two
+"recognized but not yet available" variants in `engine.rs` — the shared arm is
+gone; `SystemRestoreExecute` now answers a refusal that names the module it is
+waiting on rather than a generic deferral string.
+
+**Ported (new `services/backup/restore/`):**
+
+- `json_stream.rs` — v4's hand-rolled streaming array scanner, ported
+  faithfully rather than replaced by `serde_json::from_str::<Vec<Value>>`. Two
+  reasons, both behavior: its five thrown messages are **observable** (the
+  preview route leaks `error.message` to the client, `route.ts:176`), and it
+  **rejects top-level scalars** (`:115`) where a permissive parse would accept
+  `[1,2]`. v5 scans BYTES rather than v4's UTF-16 code units — every structural
+  JSON character is ASCII and every continuation byte is >= 0x80, so the state
+  machine is identical; only the three "got X" sites decode a char back out, via
+  a small `JSON.stringify`-of-one-character helper (unit-tested against newline,
+  U+0001, and a non-ASCII char).
+  **One deliberate wording change, recorded:** v4's I/O failures surface Node's
+  `ENOENT: ... open '<absolute temp path>'`. That text is engine-specific AND
+  machine-specific (the extract dir is a fresh mkdtemp), so v5 leads with the
+  RELATIVE path instead — `data/tags.json: No such file or directory (os error
+  2)`. The differential's `preview_missing_required` case asserts on the file
+  both sides name, not the phrasing; every message v4 actually authored is
+  compared verbatim.
+- `legacy_migrations.rs` — `dedupeAndOrderSlotTypes` (incl. the all-null →
+  `['accessories']` tail, `:70`), `orderedComponentIds`,
+  `upgradeLegacyEquippedSlots` (idempotent), plus `looks_legacy`, the predicate
+  v4 inlines at `archive.ts:157-167` (a slot holding a **string** OR holding
+  **null** — the old shape uses null where the new one uses `[]`). JS truthiness
+  is reproduced explicitly rather than assumed.
+- `archive.rs` — `cleanupDir` / `extractZipToTemp` / `parseBackupZip` /
+  `getFileFromExtractedBackup` / `countNpmPluginsInExtractedBackup`, with the
+  required-vs-optional split intact (manifest + characters/chats/tags/the three
+  profile families/memories/files throw; everything else falls back to `[]`) and
+  both parse-time legacy folds.
+  **The extract dir is owned, not `finally`-d:** `ExtractedBackup` carries it and
+  removes it in `Drop`, so v4's two `finally cleanupDir(extractDir)` sites become
+  one place no path can leak. The differential asserts it — every case runs
+  against a private scratch root and the root must be EMPTY when the call
+  returns, on the success path and on both failure paths.
+- `preview.rs` — `previewRestore`, the 41-key `RestoreSummary`. (The order's
+  older header said 35; it is 41 — counted from `preview.ts:29-74`.) Both
+  constants carried: `userInstalledThemes` is hard-coded `0` and `warnings` is
+  always `[]`.
+- `mod.rs` — the typed `RestoreSummary` / `ProfileCounts` / `TemplateCounts` in
+  v4's field order, which is what reaches the wire.
+
+**Mechanism divergences (both pre-approved):** v5 extracts with the `zip` crate
+instead of shelling out to `unzip`; and v5 takes the scratch root from the caller
+(ultimately `BackupHost::temp_dir()`) where v4 always uses `os.tmpdir()`.
+
+**The seam + the edges.**
+
+- `BackupHost` grew the pending-UPLOAD store — `store_upload` / `get_upload` /
+  `remove_upload`, alongside the landed 30-minute backup store. `get_upload` is a
+  **peek**, not a take: v4's preview reads the archive and leaves it in place so
+  the restore that follows uses the same upload. The host impl
+  (`quilltap-host/src/backup_services.rs`) mirrors the landed pattern — a second
+  `Mutex<HashMap>`, `UPLOAD_TTL_MS` = 1 hour (v4 `route.ts:36`), the same LAZY
+  sweep in place of v4's `cleanupExpiredUploads()` call at the top of each
+  handler, and the same injected clock, so both TTL boundaries are unit-tested
+  (at the TTL: kept; past it: swept and the file unlinked).
+- **v4's userId quirk carried and named in a doc comment:**
+  `getPendingUpload(uploadId, userId)` (`:56`) takes a `userId` and **never reads
+  it** — it validates the UUID shape and map presence only. v5's `get_upload`
+  takes no userId at all and the UUID-shape check lives in the core arm, which is
+  the same observable behavior (an ill-shaped id answers "Upload not found or
+  expired") with the dead parameter removed.
+- `api/system_backup.rs::restore_preview` — the `systemRestorePreview` arm.
+  v4's two failure shapes both carried: an unknown/expired/ill-shaped id is
+  `badRequest('Upload not found or expired')`, and a parse failure is
+  `serverError(error.message)` — this handler **leaks the message**, unlike
+  backup create, because the malformed-archive wording is what tells the user
+  their file is not a backup. The cause is also logged (`tracing::error!`).
+- `quilltap-web/src/backup_routes.rs::system_restore_post` — v4's three-way
+  `?action=` dispatch on the new `POST /api/v1/system/restore` route.
+  `?action=upload` is web-edge-only: the raw octet-stream body is **streamed**
+  to `<temp>/quilltap-restore-<uuid>.zip` and never fully resident. v4 needs
+  `await writeStream.once('drain')` because Node's `write` buffers without
+  bound; a synchronous `write_all` per chunk cannot outrun the disk, which is
+  the same guarantee. v4's `if (!body)` becomes "the body yielded no bytes at
+  all", which is what a payload-less request produces. Failure unlinks the
+  partial file and answers `serverError('Failed to upload backup file')`.
+  The other two actions unwrap to the dispatch verbs, with v4's route-level
+  `badRequest`s (`'Invalid JSON body'`, `'uploadId is required'`, `'mode must be
+  "replace" or "new-account"'`) reproduced at the edge.
+
+**Differential — `system_restore_equivalence` (NEW), 5 preview cases, green on
+the first run** (incl. both legacy folds). Fresh oracle at `e646f58b`.
+
+**Fixtures (NEW, committed):**
+`crates/quilltap-web/tests/fixtures/restore-archives/` — five archives, ~90 KB
+total. The base one is produced by v4's **REAL `createBackup`** over the
+committed `system-data-*` family (already test-pepper synthetic), and **both
+sides read the same bytes**: if each side restored an archive it had written
+itself, the claim would quietly depend on v5's zip WRITER being right. As it
+stands the claim is "given identical bytes on disk, the two restore paths agree"
+— strictly stronger, and independent of the backup half.
+
+- `restore-archive.zip` — the full archive (`files/` seeded)
+- `restore-archive-legacy.zip` — + `data/outfit-presets.json` (two presets, one
+  with every slot null so the `['accessories']` fallback fires) and one chat's
+  `equippedOutfit` rewritten to the pre-rework single-UUID-or-null shape
+- `restore-archive-minimal.zip` — every OPTIONAL data file removed
+- `restore-archive-missing-required.zip` — `data/tags.json` removed (must throw)
+- `restore-archive-malformed.zip` — neither a `quilltap-backup-*` root nor a
+  `manifest.json`
+
+Builder: `harness/oracle/fixtures/build-restore-archives.test.ts` (regen recipe
+in its header). **No existing fixture changed**, so no other oracle family is
+invalidated — the `system-data-*` family is read, never written.
+
+Regen recipes (both in their file headers, verbatim):
+
+```
+# the committed archives (only when the system-data fixture family moves)
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-restore-archives
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/fixtures/build-restore-archives.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ARCHIVE_OUT=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- build-restore-archives
+
+# the oracle
+TMPO=/tmp/qt-sysrestore-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-restore
+
+# the diff
+QT_ORACLE_SYSTEM_RESTORE=/tmp/oracle-system-restore.ndjson \
+  cargo test -p quilltap-harness --test system_restore_equivalence -- --nocapture
+```
+
+**One landed file touched outside the new module, mechanically:**
+`crates/quilltap-harness/tests/system_backup_equivalence.rs`'s `TestBackupHost`
+implements the three new trait methods as inert no-ops (the backup direction
+never uploads). No behavior of units 1-2 moved; that differential stays green.
+
+Gate at this commit: fmt clean, clippy clean on BOTH feature sets, `TZ=UTC cargo
+test --workspace --no-fail-fast` 378 binaries / 0 failed, the new differential by
+name with `--nocapture` and all five per-case OK lines visible.

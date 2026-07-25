@@ -24,6 +24,11 @@ use crate::files_store::LocalStorageBackend;
 /// v4 `BACKUP_EXPIRY_MS` (`temporary-storage.ts:29`).
 const BACKUP_EXPIRY_MS: i64 = 30 * 60 * 1000;
 
+/// v4 `UPLOAD_TTL_MS` (`app/api/v1/system/restore/route.ts:36`) — the pending
+/// RESTORE upload's window. Longer than the backup store's: a user picks a file
+/// and then reads a preview before committing.
+const UPLOAD_TTL_MS: i64 = 60 * 60 * 1000;
+
 /// The wall clock, injected so the TTL is testable.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> i64;
@@ -53,6 +58,11 @@ pub struct HostBackupServices {
     clock: Arc<dyn Clock>,
     storage: Arc<dyn StorageBackend>,
     pending: Mutex<HashMap<String, PendingBackup>>,
+    /// The RESTORE side's pending uploads (v4's `pendingUploads` map). Same
+    /// lazy-sweep shape as `pending`, a different TTL, and — unlike the backup
+    /// store — retrieval is a PEEK: preview reads the archive and leaves it in
+    /// place so the restore that follows can use the same upload.
+    uploads: Mutex<HashMap<String, PendingBackup>>,
 }
 
 impl HostBackupServices {
@@ -65,6 +75,7 @@ impl HostBackupServices {
             clock,
             storage,
             pending: Mutex::new(HashMap::new()),
+            uploads: Mutex::new(HashMap::new()),
         }
     }
 
@@ -81,6 +92,24 @@ impl HostBackupServices {
         for id in expired {
             if let Some(b) = pending.remove(&id) {
                 remove_zip_and_dir(&b.zip_path);
+            }
+        }
+    }
+
+    /// v4 `cleanupExpiredUploads()` (`system/restore/route.ts:43`), which v4
+    /// calls at the top of all three handlers. The uploaded zip is a bare file
+    /// in the temp root (not its own directory, unlike a staged backup), so
+    /// only the file is unlinked.
+    fn sweep_uploads(&self, uploads: &mut HashMap<String, PendingBackup>) {
+        let now = self.clock.now_ms();
+        let expired: Vec<String> = uploads
+            .iter()
+            .filter(|(_, u)| now - u.created_at_ms > UPLOAD_TTL_MS)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in expired {
+            if let Some(u) = uploads.remove(&id) {
+                let _ = std::fs::remove_file(&u.zip_path);
             }
         }
     }
@@ -136,6 +165,31 @@ impl BackupHost for HostBackupServices {
         self.sweep(&mut pending);
         pending.remove(backup_id).map(|b| b.zip_path)
     }
+
+    fn store_upload(&self, upload_id: &str, zip_path: &Path) {
+        let mut uploads = self.uploads.lock().unwrap();
+        self.sweep_uploads(&mut uploads);
+        uploads.insert(
+            upload_id.to_string(),
+            PendingBackup {
+                zip_path: zip_path.to_path_buf(),
+                created_at_ms: self.clock.now_ms(),
+            },
+        );
+    }
+
+    fn get_upload(&self, upload_id: &str) -> Option<PathBuf> {
+        let mut uploads = self.uploads.lock().unwrap();
+        self.sweep_uploads(&mut uploads);
+        uploads.get(upload_id).map(|u| u.zip_path.clone())
+    }
+
+    fn remove_upload(&self, upload_id: &str) {
+        let mut uploads = self.uploads.lock().unwrap();
+        if let Some(u) = uploads.remove(upload_id) {
+            let _ = std::fs::remove_file(&u.zip_path);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -190,5 +244,35 @@ mod tests {
         clock.0.store(2 * BACKUP_EXPIRY_MS + 1, Ordering::SeqCst);
         assert_eq!(svc.take_backup("id-2"), None, "past the TTL: swept");
         assert!(!zip.exists(), "the expired archive is deleted from disk");
+    }
+
+    #[test]
+    fn upload_retrieval_is_a_peek_and_removal_unlinks() {
+        let clock = Arc::new(FixedClock(AtomicI64::new(1_000)));
+        let (svc, dir) = services(clock);
+        let zip = dir.path().join("up.zip");
+        std::fs::write(&zip, b"z").unwrap();
+        svc.store_upload("u-1", &zip);
+        assert_eq!(svc.get_upload("u-1"), Some(zip.clone()));
+        // A peek, not a take: preview reads it, then restore reads it again.
+        assert_eq!(svc.get_upload("u-1"), Some(zip.clone()));
+        svc.remove_upload("u-1");
+        assert_eq!(svc.get_upload("u-1"), None);
+        assert!(!zip.exists(), "removePendingUpload unlinks the temp zip");
+    }
+
+    #[test]
+    fn an_upload_past_the_one_hour_ttl_is_swept() {
+        let clock = Arc::new(FixedClock(AtomicI64::new(0)));
+        let (svc, dir) = services(clock.clone());
+        let zip = dir.path().join("up.zip");
+        std::fs::write(&zip, b"z").unwrap();
+        svc.store_upload("u-1", &zip);
+
+        clock.0.store(UPLOAD_TTL_MS, Ordering::SeqCst);
+        assert!(svc.get_upload("u-1").is_some(), "exactly at the TTL: kept");
+        clock.0.store(UPLOAD_TTL_MS + 1, Ordering::SeqCst);
+        assert_eq!(svc.get_upload("u-1"), None, "past the TTL: swept");
+        assert!(!zip.exists(), "the expired upload is deleted from disk");
     }
 }
