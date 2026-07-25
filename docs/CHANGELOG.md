@@ -68,6 +68,11 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Fixed a test that could fail for the wrong reason: it typed a second message
+while the first was still being answered, when the message box does not accept
+input. It now waits. (The bug was in the test, not the app, and it was there
+before this work.)
+
 Fixed the message box vanishing when the chat pane is narrow. With a document or
 terminal open beside the conversation, the row of composer tools could crowd the
 box out entirely; it now keeps a minimum width and the tools drop to their own

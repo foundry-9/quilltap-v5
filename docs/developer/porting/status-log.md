@@ -32357,6 +32357,28 @@ after the fix, then the full suite.
 through the whole regression, because the failure only exists at a viewport width
 no unit test renders.
 
+### A third finding: a PRE-EXISTING flake in the math beat, diagnosed and fixed
+
+The gate's second full run failed one beat this lane never touches —
+`salon-composer-modes.spec.ts:181`, the `$$` KaTeX / `$50` currency walk — and it
+then reproduced in ISOLATION, which is not flake behaviour. It was A/B'd three
+ways before being believed: without the new `_chat.css` rules (still failed),
+without the two new composer buttons (still failed), and finally against **main's
+`apps/web/src` entire** (`git checkout main -- src`, the new modules removed, a
+clean `ng build`) — **it fails on main too.** Not this lane's.
+
+The cause, from the failure snapshot: the beat's SECOND send races the first
+send's turn. Pausing auto-responses stops the CHAIN, not the responder already
+chosen, so a reply still streams — and while it does, `canSend()` is false and
+the composer's Send button is swapped for Stop, so the beat's `Enter` is
+swallowed and the second message never posts. Its own header comment anticipates
+the *shape* of this ("the group turn chain's terminal state is run-order
+dependent"); the pause it added does not cover the in-flight case.
+
+Fixed here, inside this lane's `apps/web` ownership, with one gesture: wait for
+`.qt-chat-stop-button` to be gone before typing the second message. The beat is
+about RENDERING, so waiting costs it nothing. 4/4 green after.
+
 ### Gotchas worth a memory note
 
 - Adding a connection profile to the courier fixture shifts the committed vault/img
@@ -35302,6 +35324,10 @@ ordering. `test.setTimeout(120_000)`; the default 30s is far too short.
 - **`openSidebarSection` expands the strip itself.** Clicking "Expand chat
   sidebar" first races the helper's own `count()` probe, which then chases a
   button that has already gone — a 30s timeout with a misleading message.
+- **A beat that fails in isolation is not automatically yours.** Three A/Bs —
+  drop the CSS, drop the new buttons, then build main's `apps/web/src` whole —
+  turned "my lane broke the math beat" into "main breaks it too, and here is
+  why". The last A/B is the cheap decisive one; reach for it sooner.
 - **Widening a flex toolbar is a layout change, not an additive one.** See the
   section above — nine buttons in a row that fitted seven cost six unrelated
   beats. Anything added to `.qt-chat-composer-actions` should be checked at the
@@ -35320,6 +35346,8 @@ the announcement picker's off-scene case).
 
 ### Gate
 
-`ng test` 227 files / 2,671; `ng build` clean; the full Playwright suite over a
-fresh dist and freshly built debug binaries. SPA `0.5.271` → `0.5.276` (this
-lane is the round's only SPA bumper, so the version line merges cleanly).
+`ng test` 227 files / 2,669; `ng build` clean; the full Playwright suite over a
+fresh dist and freshly built debug binaries (`cargo build -p quilltap-web -p
+quilltap-cli` — those crates were BUILT, never modified). SPA `0.5.271` →
+`0.5.278` (this lane is the round's only SPA bumper, so the version line merges
+cleanly).

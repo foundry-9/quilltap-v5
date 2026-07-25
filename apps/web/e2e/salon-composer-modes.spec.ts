@@ -225,6 +225,15 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // `$x^2$` rather than `$\pi r^2$` on purpose: the composer serializer
     // backslash-escapes typed `\` (the same seam the `$$`-block comment above
     // documents), while `^` serializes cleanly — and `^` is a LATEX_MARKER.
+    // Wait out the FIRST send's turn before typing the second. Pausing stops the
+    // CHAIN, not the responder already chosen, so a reply still streams — and
+    // while it does, the composer's `canSend` is false and its Send button is
+    // swapped for Stop, so an Enter here is silently swallowed and the second
+    // message never posts. (Deterministic enough to fail in isolation on main
+    // too, which is how P4.9E2B's gate found it; the beat is about RENDERING,
+    // so waiting costs it nothing.)
+    await expect(page.locator('.qt-chat-stop-button')).toHaveCount(0, { timeout: 30_000 });
+
     await composerEditor(page).click();
     await page.keyboard.type('He slid $50 across the table, then another $20, as $x^2$ glowed on the board.');
     await page.keyboard.press('Enter');
