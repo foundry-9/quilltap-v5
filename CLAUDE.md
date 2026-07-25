@@ -1216,6 +1216,47 @@ records THERE. Update this summary only when a phase or round completes.
   and Part F items 15/16), or M6 rows 6+ — see phase-4.md. Versions: core
   0.0.346, harness 0.0.293, host 0.0.33, web 0.0.40, cli 0.0.3,
   quilltap-tauri 0.0.5, SPA 0.5.268.
+- **The "finish P4.9G1" round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5): UNIFIED on main
+  (2026-07-24) — P4.9G3 CLOSED; P4.9G4 and P4.9G5 PARTIAL.** Two of the four
+  built-but-refusing Data & System cards went LIVE: **Delete All Data**
+  (`services/delete_all.rs` ported table-for-table, the `DELETE_ALL_MY_DATA`
+  sentinel re-check, `system_delete_data_equivalence` 7 cases diffing a
+  row-count map of EVERY table in all three partitions) and **Create Backup**
+  (38-collection collect → manifest → staging tree → zip, the `BackupHost`
+  single-use 30-min temp store, the byte download leg). **Export is LIVE**
+  (all ten types, byte-exact NDJSON, 42 cases) and **Import is live through
+  the PREVIEW** (19 cases). Riders: the `/api/v1/system/jobs` collection edge
+  — closing P4.9G1's blind spot where `jobs_list`/`jobs_enqueue` had no edge
+  and no oracle (8 cases, green first run) — and the change-passphrase REST
+  alias. **The unification wire caught a REAL production bug no lane could
+  see:** `collect.rs` applied v4's missing-table tolerance only to its
+  `query_all` reads, not the ~7 direct `db::` finder reads, so **Create Backup
+  returned a bare 500 on any instance that had never touched provider models
+  (or tags, or connection profiles)** — v4 lazily creates the collection and
+  `safeQuery`s to `[]`. Fixed (`if_table`/`if_table_opt`) plus a
+  `tracing::error!` at the swallow site; the differential was blind because
+  the fixture had just been widened to carry every table, while the e2e
+  instance genuinely lacks them. Gate: 377 binaries / 1,591 / 0 with all SIX
+  system families regenerated fresh at `e646f58b` **against the widened
+  `system-data-*` fixture** and re-run by name zero SKIP, clippy both feature
+  sets, release build, ng 223 files / 2,621, full Playwright **126 passed / 0
+  failed / 0 skips** (the two per-lane reds were the documented run-order
+  flakes and did not reproduce). `api/types.rs` stayed FROZEN all round — the
+  §1 diff vs `core-contract.ts` is clean. **STILL OPEN, both named in their
+  order headers:** P4.9G5 units 3–5 (the WHOLE restore side — §2 is unblocked,
+  `delete_user_data` is on main at the pinned signature) and P4.9G4's import
+  EXECUTE; both refuse loudly by name, and `SystemRestorePreview` /
+  `SystemRestoreExecute` are the only two variants left in `engine.rs`'s
+  not-yet-available arm. Deferred loud: legacy `<base>/files/**` disk bytes
+  survive the wipe (needs a `StorageBackend` at the dispatch layer); v4's four
+  sibling unlock actions get no REST alias. **⚠ A v4 BUG owed a human
+  ruling:** `assembleExportFromStream`'s `every()` over a SPARSE array means
+  v4 cannot round-trip a document-store blob larger than the 3 MB chunk size;
+  v5 reproduces it verbatim, pinned both directions. Next candidates: finish
+  P4.9G5's restore side, then P4.9G4's import execute; or a dogfood pass over
+  this round's live surfaces (+ the still-owed walk Part D and Part F items
+  15/16) — see phase-4.md. Versions: core 0.0.352, harness 0.0.299, host
+  0.0.34, web 0.0.43, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.270.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

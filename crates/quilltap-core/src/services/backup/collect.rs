@@ -29,6 +29,51 @@ use crate::db::{
 };
 use crate::embedding_blob::blob_to_float32;
 
+/// The missing-table fallback for the collect reads that DON'T go through
+/// [`query_all`] (which already guards itself with `table_exists`) — the ones
+/// that reuse a typed `db::` finder instead.
+///
+/// v4's base repository reaches every collection through `getCollection()`,
+/// which lazily `ensureCollection`s the table, and wraps the read in
+/// `safeQuery(..., [])` (`base.repository.ts:252-267`). So on an instance that
+/// never provisioned a given collection, v4 returns `[]` and the backup carries
+/// an empty array. v5 provisions no schema outside provisioning, so the same
+/// read raised `no such table` and failed the WHOLE backup.
+///
+/// **Found at this round's unification**, by the first live walk of
+/// `systemBackupCreate` against the e2e instance: `no such table:
+/// provider_models` → a bare 500 on the Create Backup button. The lane's
+/// differential could not see it — it runs against the `system-data-*` fixture,
+/// which unit 1 had extended with a row in every collected table, so every
+/// table existed there. Any real instance that never touched provider models
+/// (or tags, or connection profiles…) could not be backed up at all.
+///
+/// Only the missing-table case falls back; every other SQL error still
+/// surfaces rather than being silently swallowed into an empty backup — the
+/// same line [`table_exists`] already draws.
+fn if_table<T>(
+    conn: &rusqlite::Connection,
+    table: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    if !table_exists(conn, table) {
+        return Ok(Vec::new());
+    }
+    read()
+}
+
+/// [`if_table`] for a finder that yields at most one row (`chat_settings`).
+fn if_table_opt<T>(
+    conn: &rusqlite::Connection,
+    table: &str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    if !table_exists(conn, table) {
+        return Ok(None);
+    }
+    read()
+}
+
 /// Every collection a backup carries, in v4's `BackupData` order.
 pub struct BackupData {
     pub characters: Vec<Value>,
@@ -337,7 +382,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
     // without one cannot have characters at all.
     let (characters, projects, groups) = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let characters = characters_read::find_all(main, mount)?;
+            let characters = if_table(main, "characters", || {
+                characters_read::find_all(main, mount)
+            })?;
             let projects = crate::db::projects::ProjectsRepository::new(main, mount)
                 .find_all()
                 .unwrap_or_default();
@@ -351,7 +398,7 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
     let main_side = db.read_main(|main| {
         // Chats carry their message events inline (v4 `ChatWithMessages`), and
         // only `type === 'message'` events survive the filter (`:196`).
-        let mut chats = chats_read::find_all(main)?;
+        let mut chats = if_table(main, "chats", || chats_read::find_all(main))?;
         for chat in &mut chats {
             let id = chat
                 .get("id")
@@ -433,19 +480,23 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
             vector_entries.extend(read_vector_entries(main, cid)?);
         }
 
-        let chat_settings = match crate::db::chat_settings::find_by_user_id(main, user_id)? {
+        let chat_settings = match if_table_opt(main, "chat_settings", || {
+            crate::db::chat_settings::find_by_user_id(main, user_id)
+        })? {
             Some(v) => vec![v],
             None => Vec::new(),
         };
 
         Ok(MainSide {
             chats,
-            tags: tags::find_all(main)?,
-            connection_profiles: connection_profiles::find_all(main)?,
-            image_profiles: image_profiles::find_all(main)?,
+            tags: if_table(main, "tags", || tags::find_all(main))?,
+            connection_profiles: if_table(main, "connection_profiles", || {
+                connection_profiles::find_all(main)
+            })?,
+            image_profiles: if_table(main, "image_profiles", || image_profiles::find_all(main))?,
             embedding_profiles: query_all(main, "embedding_profiles", EMBEDDING_PROFILES, "", &[])?,
             memories,
-            files: collect_files(main)?,
+            files: if_table(main, "files", || collect_files(main))?,
             prompt_templates: query_all(
                 main,
                 "prompt_templates",
@@ -460,7 +511,7 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 "userId = ?1",
                 &[&user_id],
             )?,
-            provider_models: provider_models::find_all(main)?,
+            provider_models: if_table(main, "provider_models", || provider_models::find_all(main))?,
             plugin_configs: query_all(
                 main,
                 "plugin_configs",

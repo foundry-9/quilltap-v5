@@ -2715,18 +2715,27 @@ remainder next.
 
 **Next candidates, in rough value order:**
 
-1. **Finish P4.9G1** — **PLANNED 2026-07-24 as a three-lane round; the orders
-   are committed.** The remainder was split one lane per family (they are
-   disjoint in both v4 and v5, with exactly one cross-lane seam):
-   `work-orders/p4.9g3-delete-all-and-rest-remainders.md` (delete-all + the
-   `jobs`-collection and change-passphrase REST edges),
-   `work-orders/p4.9g4-qtap-export-import.md`, and
-   `work-orders/p4.9g5-backup-restore.md`. P4.9G1 itself stays open as the
-   historical record and survey archive — **do not work it directly**; its
-   §Shared contract / §Ownership are superseded by the three new orders'.
-   Round plan (drift check, the binding contract, the six new differentials,
-   what was left out, the disk-budget note): `status-log.md`, "Round planned —
-   the 'finish P4.9G1' round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5), 2026-07-24".
+1. **Finish the Data & System server remainder** — the three-lane round RAN
+   and **UNIFIED on main 2026-07-24** (round record at the top of
+   `status-log.md`). **P4.9G3 CLOSED**; **P4.9G4** and **P4.9G5** stay OPEN on
+   named remainders, and they are the two highest-value next items:
+   - **`work-orders/p4.9g5-backup-restore.md` — resume at unit 3**, the whole
+     restore side (`parseBackupZip` + `previewRestore` + the octet-stream
+     upload leg; `remapBackupData` + `new-account`; then `replace`). Shared
+     contract §2 is UNBLOCKED — `services::delete_all::delete_user_data` is on
+     main at the pinned signature, so unit 5 just calls it. Landing units 3–5
+     deletes the last "recognized but not yet available" arm in `engine.rs`.
+     ⚠ Read that order's header first: this round shipped a real bug (missing
+     lazily-created tables failed the WHOLE backup) that the fixture-based
+     differential could not see — restore's reads must apply the same
+     `if_table` rule.
+   - **`work-orders/p4.9g4-qtap-export-import.md` — resume at import
+     EXECUTE** (`executeImport`: ten id maps, four per-entity importers,
+     legacy presets, reconcile, four conflict strategies, the multipart
+     `options` part, and the four-strategy DB-state differential).
+   Live today from this round: Delete All Data, Create Backup (+ download),
+   Export (all ten types), Import through the preview.
+
 2. **A dogfood pass** over this round's live surfaces — the Data & System tab
    (passphrase, auto-lock enforcement, tasks queue, LLM logs) and the
    proactive pre-compute in real chats. Note P4.19's own framing: it is a

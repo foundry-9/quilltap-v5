@@ -25,12 +25,16 @@ use super::types::{ErrorKind, Response};
 /// v4 catches every failure and answers its generic `serverError('Failed to
 /// create backup')` rather than leaking the cause; the port keeps that wording
 /// and puts the detail nowhere the client can see it (matching v4's shape) —
-/// the underlying error is the caller's to log.
+/// but the cause is logged at the swallow site (the P4.18 arm-(a) pattern), so
+/// a failing backup is diagnosable from the server log instead of being a bare
+/// 500. Found at the round's unification: the first live walk of this verb hit
+/// exactly that wall, with nothing anywhere saying why.
 pub fn backup_create(db: &Db, host: &dyn BackupHost) -> Response {
     let created_at = iso_from_millis(host.now_ms());
     let created = match create_backup(db, host, super::engine::SINGLE_USER_ID, &created_at) {
         Ok(c) => c,
-        Err(_) => {
+        Err(e) => {
+            tracing::error!(error = %e, "createBackup failed");
             return Response::error(ErrorKind::Internal, "Failed to create backup");
         }
     };

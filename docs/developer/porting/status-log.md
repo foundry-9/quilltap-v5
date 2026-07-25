@@ -9,6 +9,133 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the "finish P4.9G1" round (P4.9G3 ∥ P4.9G4 ∥ P4.9G5): UNIFIED on main (2026-07-24)
+
+All three lanes reconciled on `unify/finish-p4.9g1` and fast-forwarded to main.
+**P4.9G3 CLOSED. P4.9G4 PARTIAL** (export + the import READ half live; import
+EXECUTE refuses by name). **P4.9G5 PARTIAL** (backup live end-to-end; the whole
+restore side, units 3–5, not started). v4 re-verified at the pinned baseline
+`e646f58b`, clean tree, before and after; every oracle below regenerated there.
+
+### What the unification wire did — and the real bug it caught
+
+**1. G5 widened the shared fixture; G3's and G4's ports had never met it.** Unit
+1 of P4.9G5 added a row to every table its collector dumps, growing
+`system-data-main.db` 319 KB → 475 KB. G3 and G4 had verified against the
+narrower committed family. All six oracle families were therefore regenerated
+FRESH at `e646f58b` **against the widened fixture** and re-run by name — 
+`system_jobs_routes` 18/18 · `system_jobs_collection` 8/8 ·
+`system_delete_data` 7/7 · `system_export` 42/42 · `system_import` 19/19 ·
+`system_backup` 3/3, zero SKIP. All green: the two siblings' ports hold on the
+wider data. This was the round's single largest risk and it is discharged.
+
+**2. The §1 contract held completely — because `api/types.rs` was FROZEN.**
+`git diff main...HEAD -- crates/quilltap-core/src/api/types.rs` is EMPTY: no lane
+touched the wire surface. The sixteen verb tags were still diffed name-for-name
+against `apps/web/src/app/core/core-contract.ts` and match exactly, as do the
+payload field names for every verb whose family landed (`entityType`, `scope`,
+`selectedIds`, `includeMemories`, `exportData`, `options`, `confirm`). Freezing
+the contract up-front — P4.9G1's decision — is what made three parallel lanes on
+one dispatch surface safe.
+
+**3. The §3 region discipline worked, with one wrinkle.** The three
+labelled-region conflicts (`api/engine.rs`'s single refusal arm,
+`quilltap-web/src/lib.rs`'s `build_router`) resolved mechanically as unions. The
+refusal arm did NOT disappear as the order predicted: restore is still open, so
+it survives holding exactly `SystemRestorePreview | SystemRestoreExecute`, and
+its comment was rewritten to name P4.9G5 units 3–5 as the reason.
+
+**4. ⚠ A NOT-version-only Cargo.toml conflict — the playbook's exact warning.**
+G5's `Cargo.toml` deltas add `zip` + `flate2` (core) and `hex` + `zip`
+(harness), not just versions. A blind `--theirs`/`--ours` would have silently
+dropped a dependency and broken the build. The conflict hunks themselves were
+version-only (the dep additions auto-merged), but the check is what proved it.
+
+**5. THE REAL BUG — backup was broken on every ordinary instance.** The
+unifier wrote the e2e beat P4.9G5 had deliberately left unwritten (its own
+status header said `backup create → download` would walk today). It failed:
+"Failed to create backup". The cause was invisible because `backup_create`
+swallowed the error unlogged — so the first fix was a `tracing::error!` at the
+swallow site (the P4.18 arm-(a) pattern G3 had already applied to delete-all).
+That revealed **`no such table: provider_models`**.
+
+v4's base repository reaches every collection through `getCollection()`, which
+lazily `ensureCollection`s the table, and wraps the read in
+`safeQuery(..., [])` (`base.repository.ts:252-267`) — so a collection an
+instance never provisioned yields `[]` and the backup carries an empty array.
+G5's collector had reproduced that for the reads going through `query_all`
+(guarded by its own `table_exists`), but NOT for the ~7 reads that reuse a typed
+`db::` finder directly. **On any instance that had never touched provider models
+— or tags, or connection profiles — Create Backup returned a bare 500.** Fixed
+with `if_table` / `if_table_opt` in `services/backup/collect.rs`, drawing the
+same line `table_exists` already drew: only the missing-table case falls back,
+every other SQL error still surfaces.
+
+**Why no lane could catch it:** the differential runs against the `system-data-*`
+fixture, which unit 1 had just extended with a row in every collected table — so
+every table existed there. The e2e instance is a different fixture lineage and
+genuinely lacks them. It took the two halves on one branch. This is the same
+`safeQuery`-fallback finding G3 banked in its own lane record; G5 had not applied
+it to its direct-finder reads.
+
+**6. A stale server from an UNRELATED worktree squatted port 4319.** An
+orphaned `bundle-warnings-commonjs-2a28b5` worktree was running its own e2e
+server on the shared hard-coded port, poisoning several diagnostic runs with
+"Address already in use" and results from a foreign binary. Compounding it:
+`e2e/support/env.ts`'s `webBinary()` prefers `target/release` over
+`target/debug`, so rebuilding debug between diagnosis attempts changed nothing
+— the suite kept running a release binary that predated the fix. **Both are
+worth remembering: check `lsof -nP -iTCP:4319 -sTCP:LISTEN` AND rebuild
+RELEASE before trusting a Playwright result.**
+
+### Versions — RECOUNTED, not merged
+
+All three lanes bumped core/harness/web off the same base and landed identical
+numbers, which merge silently. Recounted as base + total bumps: core 0.0.346 +6
+= **0.0.352**, harness 0.0.293 +6 = **0.0.299**, web 0.0.40 +3 = **0.0.43**,
+host 0.0.33 +1 = **0.0.34**, SPA 0.5.268 +1 (G3) +1 (the unifier's backup beat)
+= **0.5.270**.
+
+### Gate at unification
+
+`cargo fmt --all --check` clean · `cargo clippy --workspace --all-targets -D
+warnings` clean **plain AND `--features quilltap-core/native-transport`** ·
+`TZ=UTC cargo test --workspace --no-fail-fast` with all six `QT_ORACLE_SYSTEM_*`
+vars: **377 test binaries / 1,591 tests / 0 failed** (372/1,560 → 377/1,591:
+five new differentials) · the six families by name `--nocapture` zero SKIP with
+per-case OK lines · `cargo build --release` clean · `ng test` **223 files /
+2,621 passed** · `ng build` clean · full Playwright over a fresh dist + a fresh
+RELEASE binary: **126 passed, 0 failed, 0 skipped** — including G3's delete-all
+beat (running genuinely last, from its own `zz-` file), G4's export→import
+round-trip, and the unifier's new backup create→download walk. The
+`salon-composer-modes` KaTeX red and the `wardrobe-flow` `set_all` red that each
+lane saw in its own worktree did NOT reproduce here; both are the documented
+run-order flakes, and the clean full run is the evidence.
+
+### What is OPEN after this round
+
+- **P4.9G4 — import EXECUTE** (`executeImport`: the ten id maps, the four
+  per-entity importers, legacy presets, reconcile, the four conflict strategies
+  + the route's `'replace'`→`'overwrite'` remap, the multipart `options` part,
+  and the tier-2 four-strategy DB-state differential). Refuses by name at both
+  entrances.
+- **P4.9G5 — the whole restore side** (units 3–5: `parseBackupZip` +
+  legacy-migrations + `previewRestore` + the octet-stream upload leg;
+  `remapBackupData` + `new-account`; then `replace`, which is the §2
+  `delete_user_data` call site — **G3's half of that seam IS on main and
+  verified, so §2 is unblocked and needs no further contract work**). Plus the
+  `system_restore_equivalence` differential and its archive fixture.
+- **P4.9G3's one deferral:** legacy `<base>/files/**` disk bytes survive the
+  wipe (metadata rows go; mount-blob bytes are truncated). Needs a
+  `StorageBackend` threaded to the dispatch layer — no lane owns that.
+- **A v4 BUG owed a human ruling** (G4 banked it): `assembleExportFromStream`'s
+  `every()` over a SPARSE array means **v4 cannot round-trip a document-store
+  blob larger than the 3 MB chunk size**. v5 reproduces it verbatim, pinned in
+  both directions. Detail in the P4.9G4 lane record.
+- **Scope limit recorded, not done** (G3): v4's four sibling unlock actions
+  (`setup`/`unlock`/`store`/`lock`) get no REST alias; they answer
+  `unknown_action` at that path.
+
 ## Lane record — P4.9G5 (backup / restore), IN PROGRESS on `claude/p4-backup-restore-docs-6085f9`
 
 **Baseline: v4 `e646f58b` (drift-checked clean at lane start: `git log

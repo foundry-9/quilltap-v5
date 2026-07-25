@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+Unified the "finish P4.9G1" round. Two of the three Data & System features
+that had buttons but no server behind them now work: **Delete All Data**
+(preview counts, the typed confirmation, and the wipe) and **Export** (the
+`.qtap` download, all ten data types), with **Import** live as far as the
+preview — pressing Import still says so plainly rather than doing nothing.
+**Create Backup** works end to end: it builds the archive and downloads it.
+Restoring from a backup, and actually executing an import, are the two
+pieces still to come; both refuse clearly by name.
+
+Unification caught a real bug no single lane could see: creating a backup
+failed outright with a bare 500 on any instance that had never used one of
+the collections it archives (provider models, say). v4 quietly treats a
+missing collection as empty; v5 now does too, and the failure is logged
+instead of silent. The new backup walk-through test is what found it — it
+runs against an instance that genuinely lacks those tables, which the
+fixture-based test could not.
+
+Gate: 377 test binaries / 1,591 Rust tests / 0 failed; all six Data & System
+oracle families regenerated fresh from v4 and re-run by name against the
+widened fixture, zero skips; clippy clean on both feature sets; release
+build; 223 SPA test files / 2,621 tests; the full browser suite at 126
+passed, zero failures, zero skips. Versions: core 0.0.352, harness 0.0.299,
+web 0.0.43, host 0.0.34, SPA 0.5.270.
+
 The browser test suite now walks Delete All Data for real: open the card,
 read the preview counts, type the confirmation, and see the completion
 notice. It runs as the very last test file, since it wipes the shared test

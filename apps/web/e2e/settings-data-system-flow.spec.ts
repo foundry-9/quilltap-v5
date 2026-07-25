@@ -257,4 +257,49 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await expect(page.getByText('tags', { exact: true })).toBeVisible();
     await expect(page.getByText('Exists', { exact: true }).first()).toBeVisible();
   });
+
+  /**
+   * ADDED AT UNIFICATION over P4.9G5's landed backup half.
+   *
+   * P4.9G5 deliberately shipped no e2e beat (writing one obliged a full
+   * Playwright run the lane could not honestly afford), but its own status
+   * header records that `backup create → download` would walk today. This is
+   * that walk, and it is the only place the two halves meet: the SPA card that
+   * has been sitting on main since P4.9G2 unit 7, and the server family that
+   * landed this round.
+   *
+   * The chain under test is the whole thing — `systemBackupCreate` (collect →
+   * manifest → 38-file staging tree → zip → the single-use temp store), then
+   * `triggerUrlDownload` against the byte leg `GET /api/v1/system/backup/{id}`.
+   * Capturing a real browser download is what proves the leg streamed actual
+   * archive bytes rather than an error envelope.
+   *
+   * RESTORE is P4.9G5's open remainder (units 3–5), so this beat stops at the
+   * backup half and never opens the Restore dialog.
+   */
+  test('backup: create → the single-use zip download streams real bytes', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=system&section=backup-restore');
+
+    await page.getByRole('button', { name: 'Create Backup', exact: true }).click();
+    await expect(page.getByText('Create a complete backup of your Quilltap data')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download Backup', exact: true }).click();
+    const download = await downloadPromise;
+
+    // The create response carries no `filename`, so the client fallback always
+    // runs — asserting the shape pins that documented P4.9G2 behaviour too.
+    expect(download.suggestedFilename()).toMatch(/^quilltap-backup-.*\.zip$/);
+
+    // A zip local-file-header magic ("PK\x03\x04") is the cheapest proof the
+    // byte leg streamed the archive rather than a JSON error body.
+    const zipPath = await download.path();
+    expect(zipPath).toBeTruthy();
+    const head = readFileSync(zipPath!).subarray(0, 4);
+    expect([...head]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+  });
 });
