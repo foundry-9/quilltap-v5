@@ -49,7 +49,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 }
 
 test.describe('P4.9G2 — the Data & System tab', () => {
-  test('the tab renders v4\'s card order (no Plugins) and honours a ?section= deep link', async ({
+  test("the tab renders v4's card order (no Plugins) and honours a ?section= deep link", async ({
     page,
   }) => {
     await page.goto('/salon');
@@ -77,9 +77,9 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     // A ?section= deep link force-opens its card: the Auto-Lock body appears.
     await page.goto('/settings?tab=system&section=auto-lock');
     await expect(
-      page.getByText('Automatically lock after idle period').or(
-        page.getByText('Auto-lock requires a passphrase'),
-      ),
+      page
+        .getByText('Automatically lock after idle period')
+        .or(page.getByText('Auto-lock requires a passphrase')),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -100,14 +100,18 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await next.fill(TEMP_PASSPHRASE);
     await confirm.fill(TEMP_PASSPHRASE);
     await page.getByRole('button', { name: 'Change Passphrase' }).click();
-    await expect(page.getByText('Passphrase changed successfully.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Passphrase changed successfully.')).toBeVisible({
+      timeout: 15_000,
+    });
 
     // TEMP_PASSPHRASE → E2E_PASSPHRASE (restore so later specs' unlock still works).
     await current.fill(TEMP_PASSPHRASE);
     await next.fill(E2E_PASSPHRASE);
     await confirm.fill(E2E_PASSPHRASE);
     await page.getByRole('button', { name: 'Change Passphrase' }).click();
-    await expect(page.getByText('Passphrase changed successfully.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Passphrase changed successfully.')).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test('auto-lock: the provider warns after the idle threshold (fake clock)', async ({ page }) => {
@@ -185,8 +189,13 @@ test.describe('P4.9G2 — the Data & System tab', () => {
    * live `?action=import-preview` leg answered — the reader (format sniff →
    * line parse → reassembly) and `previewImport` both ran on the server.
    *
-   * Import EXECUTE is this lane's named deferral; the beat deliberately stops at
-   * the preview and does not press Import.
+   * ACTIVATE-AT-UNIFY (P4.9G4-resumed): the walk now goes all the way through
+   * Import. The execute half below has **never been executed** — this lane
+   * touched no other `apps/web` file and owed no Playwright run, so P4.9E2B's
+   * run is its first. Two gesture traps this dialog has already sprung, both
+   * already accounted for above: the header X also carries `aria-label="Close"`
+   * (target `[qt-modal-footer]`), and step 1 only STAGES the file — `Next` is
+   * what fires the request.
    */
   test('export → import round-trip', async ({ page }) => {
     await page.goto('/salon');
@@ -256,6 +265,25 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await expect(page.getByText('Export Type', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('tags', { exact: true })).toBeVisible();
     await expect(page.getByText('Exists', { exact: true }).first()).toBeVisible();
+
+    // ── Import (execute) ─────────────────────────────────────────────────────
+    // The options step, then the write. `skip` is the default strategy and the
+    // safe one to walk here: every tag in this file already exists (the export
+    // came from this same instance moments ago), so a successful import must
+    // report them SKIPPED and create nothing — which is also what makes the
+    // beat re-runnable without accumulating rows.
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('When an item already exists:')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+
+    // `Import Complete` renders only under `@case ('complete')` with a `result()`
+    // present, so it can only appear once the live `?action=import-execute` leg
+    // answered — the whole `executeImport` pipeline ran on the server. The
+    // skipped row is the proof it ran the CONFLICT path rather than importing
+    // duplicates.
+    await expect(page.getByText('Import Complete')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('tags (skipped)', { exact: true })).toBeVisible();
   });
 
   /**

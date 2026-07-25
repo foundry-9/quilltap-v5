@@ -34607,3 +34607,20 @@ written — extending it to press Import is left to E2B's run.
 - The blob `originalFileName` type widening (above) — a cross-lane escalation,
   not a behavior gap: the stored state already matches v4.
 - The oracle's `QUILLTAP_JOB_CHILD` convention question (§2's closing note).
+
+### e2e (P4.9G4-resumed)
+
+The `export → import round-trip` beat (this lane's §3-owned test body) now walks
+**through Import**: options step → `skip` → press Import → assert `Import
+Complete` and the `tags (skipped)` row, which can only render once the live
+`?action=import-execute` leg answered and ran the conflict path. `skip` is the
+deliberate choice — every tag in the file already exists (the export came from
+the same instance seconds earlier), so a correct import creates nothing and the
+beat stays re-runnable.
+
+**Marked `ACTIVATE-AT-UNIFY`: the execute half has never been executed.** This
+lane touched no other `apps/web` file and owed no Playwright run, so P4.9E2B's
+run is its first. The two gesture traps this dialog has already sprung are
+already handled in the surrounding code and named in the comment (the header X
+also carries `aria-label="Close"`; step 1 only STAGES the file). Prettier-clean;
+no other spec file, and no SPA source file, was touched.
