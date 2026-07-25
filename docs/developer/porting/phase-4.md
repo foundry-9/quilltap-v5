@@ -3001,27 +3001,54 @@ E2A's fired on the first merged run, which is the discipline working. Full round
 record, including the gate numbers and the one escalation deliberately not taken,
 in `status-log.md`.
 
-**⚠ v4 DRIFTED immediately after this round's gate — a catch-up is OWED and it
-comes FIRST.** v4 moved `e646f58b` → **`e3a9654f`** ("fix(timestamps): fictional
-story clocks were frozen and read in the wrong timezone") **and the checkout is
-DIRTY** (in-flight custom-tools edits). This one is NOT lib-free: it rewrites
-`lib/chat/timestamp-utils.ts` (+98 lines), which v5 has ported as
-`crates/quilltap-core/src/chat_timestamp.rs`, and it adds a **migration**
-(`migrations/scripts/anchor-fictional-clock-base.ts`) plus changes to
-`app/api/v1/chats/route.ts` and `TimestampConfigCard.tsx`. It lands squarely on
-**the Story's Clock**, P4.9H1's headline feature. Until the catch-up runs,
-regenerate oracles from a PINNED detached worktree at the baseline (recipe:
-`oracle-regen-pinned-v4-worktree`) — the tree being dirty means a plain regen is
-not reproducible. **This round's own gate is unaffected**: every oracle was
-regenerated at `e646f58b` with v4 verified clean, before the drift landed.
+## The `231be14c` drift catch-up round — PLANNED 2026-07-25 (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21)
+
+**⚠ v4 DRIFTED immediately after the Post Office round's gate — the catch-up
+comes FIRST, and it is now planned.** v4 moved `e646f58b` → **`231be14c`**, four
+commits in a single day; the checkout was DIRTY mid-drift and is **now clean at
+`231be14c`**. **None of the four is lib-free**, and together they land on two
+already-ported surfaces — the Story's Clock (P4.9H1) and the whole Pascal /
+custom-tools family (P4.6ay / P4.6bb / P4.d8).
+
+| v4 commit | what it is | lane |
+| --- | --- | --- |
+| `e3a9654f` | fictional story clocks frozen + base read in the wrong timezone. Rewrites `lib/chat/timestamp-utils.ts` (+98), adds migration `anchor-fictional-clock-base-v1`, changes the chats route + `TimestampConfigCard` | **P4.d18** |
+| `faab6881` | the custom-tools popup becomes a two-phase dialog; new `lib/pascal/tool-vocabulary.ts`; `references` on the chat custom-tools listing; `CustomToolParamsForm` gains a stacked layout | **P4.d19** (server) ∥ **P4.d21** (SPA) |
+| `6864bf0e` | `availableWhen`/`withheldWhen` availability gates; new `lib/pascal/{tool-gate,metadata-match}.ts`; roster enforcement; the run-custom handler's fact-sheet read reordered; `gate` on both Workbench surfaces; the whole Workbench gate editor | **P4.d19** (server) ∥ **P4.d20** (SPA) |
+| `231be14c` | the Salon roll announcement wears the outcome's own state | **P4.d21** |
+
+**Two findings the planning survey turned up, both pre-existing v5 gaps the
+round closes in passing:**
+
+1. **v5's fictional clock is worse than v4's pre-fix bug.**
+   `chat_timestamp::parse_date_ms` delegates to `clock::iso_to_ms`, which
+   requires a trailing `Z` and full `HH:MM:SS` — so a real `datetime-local`
+   fictional base (`"1550-07-25T10:15"`) parses to **0**. The differential never
+   caught it because the corpus keeps every base in the `…Z` shape; the port's
+   own comment says exactly that. **Widening that corpus is a P4.d18 tier-1
+   deliverable**, and it is the same blind-spot class as P4.11's one-mode
+   request corpus.
+2. **v5 has no `.qt-pascal-result` CSS at all.** The Workbench's proving bench
+   and outcomes section already apply the class; nothing styles it. v4's new
+   compound selectors "only restate an accent declared earlier in this file" —
+   false in v5, so **P4.d21 ports the base block first**, giving the Workbench
+   its accent for the first time.
+
+Orders: `work-orders/p4.d18-fictional-story-clock-drift.md`,
+`p4.d19-pascal-gate-vocabulary-server.md`, `p4.d20-workbench-gate-spa.md`,
+`p4.d21-inchat-pascal-spa.md`. **P4.d19 is the critical path** — both SPA lanes
+consume contracts it emits (§1 `references`, §2 `gate`, §3 the definition
+corpus, all pinned verbatim in all four orders). `api/types.rs` is FROZEN for
+the round; both new response fields ride inside `serde_json::Value` bodies. All
+four lanes regenerate oracles from a **pinned detached worktree at `231be14c`**
+(recipe: `oracle-regen-pinned-v4-worktree`), and **the committed baseline moves
+to `231be14c` at unification**.
 
 **Next candidates, in rough value order:**
 
-0. **The `e3a9654f` timestamps drift catch-up** (see the warning above) — the
-   re-port of `chat_timestamp.rs`, the chats-route change, the SPA card, and a
-   ruling on the migration (v5's migration runner is still deferred, so an
-   instance v4 has anchored may need handling).
-1. **A dogfood pass** over everything this round made reachable — `.qtap` import
+0. **The `231be14c` drift catch-up round** — the four orders above. Everything
+   below waits on it.
+1. **A dogfood pass** over everything the Post Office round made reachable — `.qtap` import
    execute on real data, the three Post Office dialogs (the announcement rewrite
    costs real money), and search over a freshly created character's vault. The
    standing walk list also still owes **Part D** (the retrospective downstream

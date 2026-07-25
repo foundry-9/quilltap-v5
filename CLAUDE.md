@@ -1388,17 +1388,35 @@ records THERE. Update this summary only when a phase or round completes.
   candidates: a dogfood pass over this round's live surfaces (+ the owed walk
   Part D and Part F items 15/16), the `chatRng` verb, M6 rows 8/10 — see
   phase-4.md.
-- **⚠ v4 DRIFT DEBT (2026-07-25): v4 is at `e3a9654f`, one commit past the
-  baseline, WITH A DIRTY TREE.** "fix(timestamps): fictional story clocks were
-  frozen and read in the wrong timezone" — **NOT lib-free**: it rewrites
-  `lib/chat/timestamp-utils.ts` (ported as `chat_timestamp.rs`), adds a
-  migration (`anchor-fictional-clock-base.ts`), and touches the chats route +
-  `TimestampConfigCard`. It lands on the **Story's Clock** (P4.9H1). A catch-up
-  round is OWED and is the next round's first item. **Regenerate oracles from a
-  PINNED detached worktree until it runs** (`oracle-regen-pinned-v4-worktree`) —
-  the dirty tree makes a plain regen non-reproducible. The committed baseline
-  stays `e646f58b`; the 2026-07-25 round's 22 families were all regenerated
-  there, with v4 verified clean, before this landed.
+- **⚠ v4 DRIFT DEBT (2026-07-25): v4 is at `231be14c`, FOUR commits past the
+  baseline; the tree is now CLEAN. The catch-up round is PLANNED — four orders
+  written and committed (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21).** None of the four
+  commits is lib-free:
+  - `e3a9654f` "fix(timestamps): fictional story clocks were frozen and read in
+    the wrong timezone" — rewrites `lib/chat/timestamp-utils.ts` (ported as
+    `chat_timestamp.rs`), adds a migration (`anchor-fictional-clock-base.ts`),
+    touches the chats route + `TimestampConfigCard`. Lands on the **Story's
+    Clock** (P4.9H1). **v5 reproduces both bugs, and the timezone one in a worse
+    form:** `chat_timestamp::parse_date_ms` → `clock::iso_to_ms` requires a
+    trailing `Z`, so a real `datetime-local` fictional base parses to **0**. The
+    corpus kept bases in the `…Z` shape, so the differential never saw it →
+    **P4.d18**.
+  - `faab6881` — the custom-tools popup becomes a two-phase dialog; adds
+    `lib/pascal/tool-vocabulary.ts` and `references` on the chat custom-tools
+    listing → **P4.d19** (server) ∥ **P4.d21** (SPA).
+  - `6864bf0e` — `availableWhen`/`withheldWhen` availability gates; new
+    `lib/pascal/{tool-gate,metadata-match}.ts`, roster enforcement, the
+    run-custom handler's fact-sheet read reordered, `gate` on both Workbench
+    surfaces → **P4.d19** (server) ∥ **P4.d20** (SPA).
+  - `231be14c` — the Salon roll announcement wears the outcome's own state
+    (SPA-only; **v5 has no `.qt-pascal-result` CSS at all**, so the base accent
+    block ports too) → **P4.d21**.
+
+  **Regenerate oracles from a PINNED detached worktree at `231be14c` until the
+  round lands** (`oracle-regen-pinned-v4-worktree`) — v4 moved four commits in a
+  single day and was dirty as recently as the last round's planning. The
+  committed baseline stays `e646f58b` and MOVES to `231be14c` at this round's
+  unification.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

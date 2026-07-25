@@ -2,9 +2,25 @@
 
 ## Recent Changes
 
-Recorded that the old app has changed since this round's checks were run — a fix
-to how fictional story clocks are frozen and read across timezones. The new app
-does not carry it yet; catching up is the next piece of work.
+Planned the next round of work: catching the new app up to four changes the old
+app made in a single day. Two of them rework custom tools — a tool can now be
+withheld from characters whose fact sheet does not qualify, the run dialog
+becomes a full two-phase window that also names what a tool quotes, and a roll's
+result now colors the announcement above it by its own outcome rather than by a
+generic importance dot. The third fixes fictional story clocks, which never
+advanced and read their starting hour in the server's timezone instead of the
+story's. The fourth is the migration that repairs existing chats.
+
+Two problems in the new app turned up while surveying, both older than this
+round. Its fictional story clock is broken worse than the old app's was: a
+starting timestamp entered through the date-and-time picker fails to parse at
+all, and the test corpus only ever used a format that hid it. And the accent
+color that marks a tool roll's outcome was never given any styling, so the
+Workbench has been asking for a look that does not exist. Both are folded into
+the round.
+
+Recorded that the old app has changed since the last round's checks were run.
+The new app does not carry any of it yet; catching up is the next piece of work.
 
 The in-chat Post Office is open. Three composer dialogs arrive together: Insert
 Announcement posts a bubble signed by a member of staff, a character, or a name
