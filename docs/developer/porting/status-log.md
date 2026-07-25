@@ -14,7 +14,9 @@
 Both lanes reconciled on `unify/p4.9g5-g6-restore` and fast-forwarded to main.
 **P4.9G6 CLOSED** (tier 1 + tier 2 in full, nothing deferred). **P4.9G5 still
 OPEN at units 4–5, and BLOCKED ON A HUMAN RULING** rather than merely unfinished
-— see below and the two lane records. v4 re-verified at **`e646f58b`**, clean
+— see below and the two lane records. **(That ruling was given the same day: see
+"Ruling — the two v4 restore bugs (2026-07-25)". Units 4–5 are UNBLOCKED; this
+paragraph records the state at the moment of unification.)** v4 re-verified at **`e646f58b`**, clean
 tree, before and after; the oracle baseline does not move.
 
 **Ownership held almost perfectly.** The only cherry-pick conflicts were
@@ -261,6 +263,72 @@ discharged** — its status header is updated. The import EXECUTE half remains i
 open remainder, unaffected by this ruling (the divergence is in the reader that
 feeds both preview and execute, so execute inherits the corrected behavior when
 it lands).
+
+## Ruling — the two v4 restore bugs (2026-07-25)
+
+**Ruled by the human, 2026-07-25, in one line: "I want this work, not just fail
+the same way v4 fails."** v5 **diverges from v4 on both findings** — restore
+actually restores. P4.9G5 units 4–5 are **UNBLOCKED**; the ruling was the only
+missing input, and this section is the authority for it.
+
+**The two bugs** (evidence: the `system-restore` oracle's Part 2, committed and
+reproducible; both demonstrated by running v4's REAL `restore` against a backup
+v4 itself produced — full detail in "Lane record — P4.9G5-resumed, unit 4"):
+
+1. **v4 rejects every `doc_mount_points` and `doc_mount_file_links` row from a
+   modern archive.** `dumpMountIndexTable` (`backup-service.ts:72`) is a raw
+   `SELECT *`, so the archive carries the array columns as JSON *text* and the
+   booleans as INTEGER `0`/`1`; `restore.ts` feeds those to Zod-validating
+   `create`s. Folders, file rows, documents and chunks restore fine, so the
+   result has all the content and **none of the stores or links that reach it —
+   every character vault, project store and group store comes back unreachable.**
+2. **v4 restores no user file at all.** `getFileFromExtractedBackup`
+   (`restore/archive.ts:334`) gates the `files/<storageKey>` lookup on
+   `backupFormat === 2`; a modern manifest declares `4`.
+
+**The ruling lands differently on each, and that is the substance of it:**
+
+- **Finding 1 needs NO v5 code change.** v5 already diverges, for free, because
+  its types are correct: `DmpCreate.include_patterns` is `Vec<String>` and the
+  reader yields `[]` for a JSON-text column, so the mount point is created (with
+  empty patterns) where v4 rejects the row outright;
+  `enabled`/`allowEmbed` fall to their defaults. The ruling here is purely
+  permission for the differential to **accept** a divergence that already exists.
+- **Finding 2 requires v5 to CHANGE, deliberately.** v5's
+  `get_file_from_extracted_backup` currently reproduces v4's `=== 2` gate exactly
+  — so today v5 restores no user file either, and its `files` counter matches
+  v4's zero *only by accident of sharing the bug*. Faithfulness here means
+  "restore nothing", which is precisely what the ruling rejects. **Change the gate
+  to `backupFormat >= 2`**, and expect the `files` counter to become a second
+  asserted divergence.
+
+**Reader-side only — the writer stays byte-identical.** Carried over from the
+sparse-array ruling, and load-bearing for two reasons: v5's backup output is
+proven byte-identical to v4's across all 38 data files
+(`system_backup_equivalence`), and fixing finding 1 on the BACKUP side (coercing
+in the mount-index dump) would both turn that differential red and make v5's
+archives diverge from v4's on disk. Fixing it on the read side instead keeps v5's
+archives interchangeable with v4's and lets v5 read a strict superset — v4's
+archives and its own. **Do not "fix" the writer.**
+
+**How it stays honest.** `EXPECTED_DIVERGENCES` in the unit-4 state differential
+names each case and asserts **both** directions — v4 must restore ZERO mount
+points / file links / user files, v5 must restore more than zero — so if v4 ever
+starts succeeding (or v5 ever stops), the differential fails loudly instead of
+tolerating it. That scaffolding is already in the banked WIP.
+
+**⚠ A real-world consequence, not a port issue.** Finding 1 means **v4 cannot
+correctly restore its own backup today** — including Friday. Anyone restoring a
+current v4 backup into v4 gets a library whose characters, projects and groups all
+come back with unreachable stores, i.e. every vault reads as empty, with no error.
+Making a backup is unaffected; only restoring is. Both fixes are small and
+v4-side (finding 1: parse the JSON columns / coerce the booleans, in
+`dumpMountIndexTable` or before the `create`; finding 2: `>= 2`), and both are
+**queued on the "post-5.0 v4-side FIXES" list in `dogfood-findings.md`** rather
+than made during the port, for the standing reason: a v4 change moves the oracle
+baseline mid-flight. **Finding 1 is more urgent than the sparse-array entry above
+it** — that one needs a >3 MB blob to bite, this one bites every modern restore —
+so if a v4 restore is ever actually needed before 5.0, fix it first.
 
 ## Ruling — the sparse-array blob divergence (2026-07-24)
 

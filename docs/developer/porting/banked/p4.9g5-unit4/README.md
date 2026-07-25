@@ -10,9 +10,17 @@
 
 P4.9G5 unit 4 — the port of v4's `lib/backup/restore/restore.ts` — was **written
 and compiling** but deliberately **not landed**, because the tier-2 differential
-it is required to ship cannot be made green without a human ruling. Two real v4
-bugs are in the way; the full evidence, the ruling that is needed, and the resume
-list are in:
+it is required to ship could not be made green without a human ruling on two real
+v4 bugs.
+
+**✅ THAT RULING HAS BEEN GIVEN (2026-07-25): "I want this work, not just fail the
+same way v4 fails" — v5 diverges on both. Unit 4 is UNBLOCKED.** Read
+`status-log.md` → "Ruling — the two v4 restore bugs (2026-07-25)" first; note that
+finding 2 requires a deliberate change to `get_file_from_extracted_backup`
+(`=== 2` → `>= 2`), and that the divergence is reader-side only — **the backup
+writer must stay byte-identical to v4's.**
+
+The full evidence, the ruling, and the resume list are in:
 
 - `docs/developer/porting/work-orders/p4.9g5-backup-restore.md` (status header)
 - `docs/developer/porting/status-log.md` — "Lane record — P4.9G5-resumed, unit 4

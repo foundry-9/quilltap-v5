@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Ruled on the two bugs found in the old app's restore: the new app fixes them
+rather than reproducing them. Restoring a current backup into the old app quietly
+loses every document store — the characters, projects and groups come back, and so
+does all their written content, but nothing links the two, so every character's
+vault reads as empty — and it restores no uploaded file at all. The new app will do
+both correctly. One of the two it already did, simply because its types are right;
+the other needs a one-line change, since it currently copies the old app's mistake
+faithfully. The fix is confined to reading a backup: what the new app *writes*
+stays byte-identical to the old app's, so archives remain interchangeable in both
+directions.
+
+Worth knowing if you still use the old app: those are its bugs, and they are not
+fixed there. Making a backup is fine; restoring one is not. Both corrections are
+scheduled for after 5.0 ships, and the document-store one is the more pressing of
+the two already on that list — it affects every current backup, not just unusually
+large ones.
+
 Unified the two restore lanes. Restoring from a backup now works as far as the
 preview: you can upload an archive and see exactly what it holds before deciding
 anything, including archives old enough to store their outfits in a shape that no

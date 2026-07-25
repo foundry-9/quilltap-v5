@@ -2678,8 +2678,8 @@ the other standing seams (unchanged).
 
 ## The "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6) — UNIFIED on main 2026-07-25
 
-**P4.9G6 CLOSED. P4.9G5 still OPEN — and now BLOCKED ON A HUMAN RULING, not
-merely unfinished.** Round record at the top of `status-log.md`; the two lane
+**P4.9G6 CLOSED. P4.9G5 still OPEN at units 4–5 — blocked on a human ruling at
+unification, ✅ RULED 2026-07-25 and now UNBLOCKED (see below).** Round record at the top of `status-log.md`; the two lane
 records sit beside it.
 
 **Landed and live:** restore now works **as far as the preview**. Upload an
@@ -2710,7 +2710,23 @@ file was touched by either lane, so no `ng` or Playwright run was owed** — and
 none was run. Versions: core 0.0.355, harness 0.0.303, host 0.0.35, web 0.0.44;
 SPA unchanged at 0.5.271.
 
-### ⚠ THE BLOCKER — a human ruling is the next input, and nothing else unblocks it
+### ✅ THE BLOCKER IS CLEARED — RULED 2026-07-25
+
+**The ruling (human): "I want this work, not just fail the same way v4 fails."
+v5 DIVERGES on both findings — restore actually restores.** Full ruling, with the
+reasoning and the both-directions assertion discipline: `status-log.md` →
+**"Ruling — the two v4 restore bugs (2026-07-25)"**. It decides three things:
+finding 1 needs **no** v5 code change (v5 already diverges for free, because its
+types are correct — the ruling just permits the differential to accept it);
+finding 2 **does** require a deliberate v5 change (`get_file_from_extracted_backup`
+still reproduces v4's `backupFormat === 2` gate, so v5 restores no files either —
+move it to `>= 2`); and the divergence is **reader-side only**, because fixing
+finding 1 on the backup side would turn `system_backup_equivalence` red and make
+v5's archives diverge from v4's on disk. **P4.9G5 units 4–5 are UNBLOCKED.**
+
+Both v4-side fixes are queued post-5.0 in `dogfood-findings.md`, with finding 1
+flagged as **more urgent than the sparse-array entry** — that one needs a >3 MB
+blob to bite, this one bites every modern v4 restore, Friday included.
 
 Bringing up unit 4's tier-2 state differential surfaced **two real bugs in v4's
 restore**, both demonstrated by running v4's REAL `restore` against a backup v4
@@ -2737,7 +2753,7 @@ orchestrator is written and compiles; it is banked on the lane branch's record,
 not on main.**
 
 **Resume list for P4.9G5 unit 4** (also in that order's status header):
-1. Get the ruling on the two v4 bugs.
+1. ~~Get the ruling on the two v4 bugs.~~ **DONE 2026-07-25.**
 2. Rework the state differential to diff the pre/post **delta** rather than the
    absolute post-state (the lane's third finding) — which also fixes minted-id
    labelling.
@@ -2748,9 +2764,11 @@ not on main.**
 
 **Next candidates, in rough value order:**
 
-1. **Rule on the two v4 restore bugs, then finish P4.9G5 units 4–5.** The ruling
-   is a five-minute human decision that unblocks the last piece of Backup &
-   Restore; everything else about the unit is ready.
+1. **Finish P4.9G5 units 4–5 — now UNBLOCKED (ruled 2026-07-25).** The
+   orchestrator is written and compiles (banked at
+   `docs/developer/porting/banked/p4.9g5-unit4/`), the ruling is recorded, and
+   `remap_backup_data` is on main waiting for its only caller. This is the last
+   piece of Backup & Restore.
 2. **`work-orders/p4.9g4-qtap-export-import.md` — resume at import EXECUTE.**
    Fully unblocked, fully disjoint, and the other half of the Data & System
    surface a user can still reach a refusal on.
