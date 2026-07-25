@@ -11,9 +11,9 @@
  * QUILLTAP_JOB_CHILD (it reroutes `getRepositories()` through the forked-child
  * write proxy). So v4's post-write `reindexSingleFile` chunk pass DOES run — but
  * for database-backed stores it calls no model (deterministic text chunking),
- * and its only persisted divergence from the Rust storage primitive is the link
- * `chunkCount` (0 → N) + the `doc_mount_chunks` rows. The differential pins
- * `chunkCount` and excludes `doc_mount_chunks`; every other field matches.
+ * and its only persisted effect is the link `chunkCount` (0 → N) + the
+ * `doc_mount_chunks` rows. Since P4.6BK v5 chunks on write too, so the
+ * differential diffs `chunkCount` exactly AND dumps `doc_mount_chunks`.
  *
  * A store-backed entity spans two DBs, so we dump BOTH:
  *   - the MAIN slim `groups` row (via `rawQuery`);
@@ -26,7 +26,7 @@
  * first-seen tokens in natural-key order ACROSS all tables (so the cross-table
  * FKs — `groups.officialMountPointId` → `doc_mount_points.id`, `link.fileId` →
  * `file.id`, `link.mountPointId` → the store, etc. — verify by relationship) and
- * placeholders timestamps. `chunkCount` is pinned (reindex artifact).
+ * placeholders timestamps. `chunkCount` diffs exactly (P4.6BK).
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -145,6 +145,27 @@ async function main(): Promise<void> {
   const folders = dumpTable('doc_mount_folders', 'path');
   const groupLinks = dumpTable('group_doc_mount_links', 'createdAt');
 
+  // Chunk rows have no natural key of their own; append a derived `sortKey`
+  // (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`) and order by
+  // it — the Rust harness dumps the same shape (P4.6BK chunk-dump convention).
+  const chunkColumns = (
+    midb.pragma('table_info(doc_mount_chunks)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const chunkRows = midb
+    .prepare(
+      "SELECT c.*, COALESCE(p.name, '') || '#' || COALESCE(l.relativePath, '') || '#' || printf('%05d', CAST(c.chunkIndex AS INTEGER)) AS sortKey \
+       FROM doc_mount_chunks c \
+       LEFT JOIN doc_mount_file_links l ON l.id = c.linkId \
+       LEFT JOIN doc_mount_points p ON p.id = c.mountPointId"
+    )
+    .all() as Array<Record<string, unknown>>;
+  const chunks = canonicalizeRows({
+    table: 'doc_mount_chunks',
+    columns: [...chunkColumns, 'sortKey'],
+    rawRows: chunkRows,
+    orderBy: 'sortKey',
+  });
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
@@ -158,6 +179,7 @@ async function main(): Promise<void> {
       links,
       folders,
       groupLinks,
+      chunks,
     }) + '\n'
   );
   process.exit(0);

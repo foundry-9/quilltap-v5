@@ -14,8 +14,8 @@
 //! right before the op — the id is path-derived, so both sides agree.
 //!
 //! Minted-values remap with ONE shared id-map across all six tables (FKs verify by
-//! relationship); timestamps → `<ts>`; the link `chunkCount` → `<cc>` (reindex
-//! artifact); `doc_mount_chunks` excluded.
+//! relationship); timestamps → `<ts>`; the link `chunkCount` diffs EXACTLY since
+//! P4.6BK (v5 chunks on write); `doc_mount_chunks` excluded.
 //!
 //! Banks: addSystemPrompt (default-demote + non-default), updateSystemPrompt
 //! (rename → sweep + content), setDefaultSystemPrompt, deleteSystemPrompt (deletes
@@ -145,7 +145,7 @@ const TABLES: &[TableSpec] = &[
             "updatedAt",
         ],
         from_mount: true,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
 ];
 

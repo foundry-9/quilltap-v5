@@ -7,8 +7,9 @@
  * no linked vault + managed fields present, provisions a FRESH vault via
  * ensureCharacterVault (mint mount point, scaffold, project, link), re-reads the
  * FK, then routes the patch's managed fields onto the new vault. We do NOT set
- * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; the differential pins chunkCount
- * and excludes doc_mount_chunks.
+ * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; since P4.6BK v5 chunks on
+ * write too, so the differential diffs chunkCount exactly AND dumps
+ * doc_mount_chunks.
  *
  * The character id is read back from the fixture so both sides target the same
  * minted id. A character spans two DBs, so we dump BOTH the main slim `characters`
@@ -114,6 +115,27 @@ async function main(): Promise<void> {
   const documents = dumpTable('doc_mount_documents', 'contentSha256');
   const links = dumpTable('doc_mount_file_links', 'relativePath');
 
+  // Chunk rows have no natural key of their own; append a derived `sortKey`
+  // (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`) and order by
+  // it — the Rust harness dumps the same shape (P4.6BK chunk-dump convention).
+  const chunkColumns = (
+    midb.pragma('table_info(doc_mount_chunks)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const chunkRows = midb
+    .prepare(
+      "SELECT c.*, COALESCE(p.name, '') || '#' || COALESCE(l.relativePath, '') || '#' || printf('%05d', CAST(c.chunkIndex AS INTEGER)) AS sortKey \
+       FROM doc_mount_chunks c \
+       LEFT JOIN doc_mount_file_links l ON l.id = c.linkId \
+       LEFT JOIN doc_mount_points p ON p.id = c.mountPointId"
+    )
+    .all() as Array<Record<string, unknown>>;
+  const chunks = canonicalizeRows({
+    table: 'doc_mount_chunks',
+    columns: [...chunkColumns, 'sortKey'],
+    rawRows: chunkRows,
+    orderBy: 'sortKey',
+  });
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
@@ -126,6 +148,7 @@ async function main(): Promise<void> {
       files,
       documents,
       links,
+      chunks,
     }) + '\n'
   );
   process.exit(0);

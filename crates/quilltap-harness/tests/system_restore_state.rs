@@ -87,28 +87,18 @@ const EXPECTED_DIVERGENCES: &[(&str, &str)] = &[
     ("main", "files"),
 ];
 
-/// ⚠ NOT a ruled divergence — an unfixed v5 GAP, recorded so the diff is honest.
-///
-/// v4 writes one `doc_mount_chunks` row per vault document as character
-/// provisioning creates it (8 documents → 8 chunks in `restore_minimal`, whose
-/// archive carries no mount data at all, so every one of them is provisioning's
-/// work). v5 writes none: it creates chunks only through the explicit
-/// reindex/embed paths, so a freshly provisioned vault is not semantically
-/// searchable until something reindexes it.
-///
-/// That is **not restore's doing** — it is `create_character`'s vault write path,
-/// which every character creation goes through, and it is invisible to the
-/// characters family's own differentials because none of them dump this table. It
-/// is therefore out of this unit's scope to fix, and wrong to normalize away
-/// silently. The count is asserted as a KNOWN gap: v4 > 0 and v5 == 0. **When the
-/// gap is closed this assertion fails**, which is the point — it is a tripwire,
-/// not an excuse. Follow-up recorded in the lane record.
-const KNOWN_V5_GAPS: &[(&str, &str)] = &[("mountIndex", "doc_mount_chunks")];
+// (The former `KNOWN_V5_GAPS` tripwire — `("mountIndex", "doc_mount_chunks")`,
+// asserting "v4 > 0 and v5 == 0" — fired as designed and was REMOVED by P4.6BK
+// (2026-07-25): v5 now chunks each vault document as `write_database_document`
+// lands it, exactly as v4 does, so `doc_mount_chunks` is diffed row for row
+// with every other table.)
 
-/// Tables the divergence above makes incomparable downstream: v5's file phase
-/// writes real blobs and links through the mount-store bridge, v4's writes
-/// nothing, so the blob/file rows those create differ in COUNT for the same
-/// reason. Diffed for the divergence, not row by row.
+/// Tables the RULED file-phase divergence makes incomparable downstream: v5's
+/// file phase writes real blobs and links through the mount-store bridge, v4's
+/// writes nothing, so the blob/file rows those create differ in COUNT for the
+/// same reason. Diffed for the divergence, not row by row. (P4.6BK re-examined
+/// these when it removed the chunk tripwire: they hinge on the file-phase
+/// divergence, NOT the closed provisioning-chunk gap, so they stay.)
 const DIVERGENCE_DEPENDENTS: &[(&str, &str)] = &[
     ("mountIndex", "doc_mount_blobs"),
     ("mountIndex", "doc_mount_files"),
@@ -842,42 +832,9 @@ fn assert_divergences(
         }
     }
 
-    // The chunk gap, asserted precisely rather than as "v5 has fewer".
-    //
-    // v5 restores the archive's chunk rows and nothing more; v4 restores those AND
-    // writes one per vault document as provisioning creates it. So v5's table must
-    // equal exactly what the restore reported restoring, and v4's must be that plus
-    // its provisioning extras. Pinning both halves means the assertion fails if v5
-    // ever starts chunking (the gap closed — good) OR if v5 stops restoring the
-    // archive's chunks (a real regression the loose form would have hidden).
-    for (partition, table) in KNOWN_V5_GAPS {
-        let restored = archive
-            .get("docMountChunks")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize;
-        let v4 = n(partition, table, want);
-        let v5 = n_got(partition, table);
-        if v5 != restored {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v5 has {v5} rows but reported restoring \
-                 {restored} — the archive's own chunks are no longer landing, which is a \
-                 REGRESSION, not the recorded provisioning gap"
-            ));
-        }
-        if v4 < v5 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v4 {v4} < v5 {v5} — v4 is meant to write these \
-                 rows AND more; re-examine the recorded gap"
-            ));
-        }
-        if v4 == v5 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v4 and v5 now agree at {v4} — the recorded v5 \
-                 provisioning gap appears CLOSED. Remove the KNOWN_V5_GAPS entry and diff \
-                 this table row for row."
-            ));
-        }
-    }
+    // (P4.6BK removed the former chunk-gap tripwire here: v5 now writes the
+    // same provisioning chunks v4 does, so `doc_mount_chunks` is diffed row for
+    // row in the main table walk below.)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -910,7 +867,6 @@ fn compare_case(
     let skip: HashSet<(&str, &str)> = EXPECTED_DIVERGENCES
         .iter()
         .chain(DIVERGENCE_DEPENDENTS.iter())
-        .chain(KNOWN_V5_GAPS.iter())
         .copied()
         .collect();
 

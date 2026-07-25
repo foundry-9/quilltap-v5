@@ -16,9 +16,9 @@
 //! `folder.mountPointId`/`link.mountPointId` → the store, `link.fileId` →
 //! `file.id`, `document.fileId` → `file.id` — verifies by RELATIONSHIP. The seeded
 //! `mountPointId` is pinned, so it maps to the same token on both sides.
-//! Timestamps → `<ts>`; the link `chunkCount` → `<cc>` (a v4-only
-//! `reindexSingleFile` artifact the Rust storage primitive does not rebuild);
-//! `doc_mount_chunks` is excluded entirely.
+//! Timestamps → `<ts>`; the link `chunkCount` diffs EXACTLY since P4.6BK (v5
+//! chunks on write, matching v4's post-write `reindexSingleFile`);
+//! `doc_mount_chunks` is excluded (covered by the create/provision families).
 //!
 //! Banks: the seven folders, the six blank `.md` files deduped to ONE
 //! file/document row (six distinct links), and the three seeded JSON files with
@@ -110,7 +110,7 @@ const TABLES: &[TableSpec] = &[
             "createdAt",
             "updatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
 ];
 

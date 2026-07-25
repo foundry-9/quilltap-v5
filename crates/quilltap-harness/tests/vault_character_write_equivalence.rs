@@ -100,7 +100,7 @@ const TABLES: &[TableSpec] = &[
             "createdAt",
             "updatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
     TableSpec {
         table: "doc_mount_folders",

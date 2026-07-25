@@ -343,7 +343,13 @@ pub fn save_to_character_gallery(
         extraction_status: Some("converted".to_string()),
     })?;
 
-    chunk_and_insert_extracted_text(mount, &result.link_id, &markdown, kept_at)?;
+    chunk_and_insert_extracted_text(
+        mount,
+        &result.link_id,
+        &vault.mount_point_id,
+        &markdown,
+        kept_at,
+    )?;
     // invalidateMountPoint / emitDocumentWritten / refreshStats / enqueueEmbedding
     // are host-side recorded seams (no-op in the core).
 

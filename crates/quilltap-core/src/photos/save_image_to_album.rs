@@ -10,9 +10,10 @@
 //!   - builds the kept-image Markdown sidecar,
 //!   - hard-links the binary into `<mount>/photos/<ts>-<slug>.<ext>` via
 //!     `link_blob_content`,
-//!   - runs the chunk-rollup pass ([`crate::db::doc_mount_file_links`] — the Rust
-//!     port pins `chunkCount` / excludes `doc_mount_chunks`, the groups/projects
-//!     precedent) and the (recorded-seam) mount invalidation + embedding enqueue.
+//!   - runs the chunk pass (v4 `chunkAndInsertExtractedText` — chunks the
+//!     Markdown sidecar into `doc_mount_chunks` and rolls up the link's
+//!     `chunkCount`; live since P4.6BK) and the (recorded-seam) mount
+//!     invalidation + embedding enqueue.
 //!
 //! Character-vault saves (`keep_image`) and ad-hoc UI saves all flow through this
 //! one codepath so the on-disk artifact is identical regardless of origin.
@@ -413,11 +414,18 @@ pub fn save_image_to_album(
         })
         .map_err(db_err)?;
 
-    // v4 `chunkAndInsertExtractedText`: delete prior chunks, (chunk +) roll up the
-    // link's chunkCount + plainTextLength. The Rust port does not carry the
-    // chunker; chunkCount is a pinned `<cc>` seam (groups/projects precedent), so we
-    // roll up `chunkCount = 0` + the exact `plainTextLength` (UTF-16 length).
-    chunk_and_insert_extracted_text(mount, &result.link_id, &markdown, kept_at).map_err(db_err)?;
+    // v4 `chunkAndInsertExtractedText`: delete prior chunks, chunk the markdown
+    // extractedText, roll up the link's chunkCount + plainTextLength (P4.6BK —
+    // the kept image is a .webp/.png link the extension-dispatched reindex
+    // never picks up, so this direct chunk pass is what makes it searchable).
+    chunk_and_insert_extracted_text(
+        mount,
+        &result.link_id,
+        input.mount_point_id,
+        &markdown,
+        kept_at,
+    )
+    .map_err(db_err)?;
 
     // Recorded side effects (mount invalidation + embedding enqueue).
     side_effects.invalidate_mount_point(input.mount_point_id);
@@ -433,13 +441,18 @@ pub fn save_image_to_album(
     })
 }
 
-/// v4 `chunkAndInsertExtractedText`, minus the chunker (a pinned `<cc>` seam in the
-/// differential). Clears prior chunks for the link, then rolls up `chunkCount`
-/// (`0` — no chunker) + `plainTextLength` (UTF-16 length of the extractedText).
-/// A whitespace-only extractedText zeroes both.
+/// v4 `chunkAndInsertExtractedText` (`lib/photos/chunk-extracted-text.ts`) —
+/// the direct chunk pass for links whose text lives in `extractedText` (kept
+/// images: a `.webp`/`.png` link carrying a Markdown context document, which
+/// the extension-dispatched `reindexSingleFile` won't touch). Clears prior
+/// chunks for the link, chunks the extractedText, inserts the chunk rows, and
+/// rolls up `chunkCount` + `plainTextLength` (UTF-16 length). A
+/// whitespace-only extractedText zeroes both. (P4.6BK: previously ported
+/// without the chunker under the pinned-`<cc>` seam — the chunker now runs.)
 pub(crate) fn chunk_and_insert_extracted_text(
     mount: &Connection,
     link_id: &str,
+    mount_point_id: &str,
     extracted_text: &str,
     updated_at: &str,
 ) -> Result<(), DbError> {
@@ -450,11 +463,22 @@ pub(crate) fn chunk_and_insert_extracted_text(
         links.set_chunk_rollups(link_id, 0, 0, updated_at)?;
         return Ok(());
     }
+    let chunks = crate::services::mount_index::chunker::chunk_document(
+        extracted_text,
+        crate::services::mount_index::chunker::ChunkOptions::default(),
+    );
     links.delete_chunks_by_link_id(link_id)?;
-    // No chunker → no chunk rows written; chunkCount pinned in the differential.
+    if !chunks.is_empty() {
+        crate::services::mount_index::reindex_file::insert_chunks(
+            mount,
+            link_id,
+            mount_point_id,
+            &chunks,
+        )?;
+    }
     let plain_text_length =
         crate::photos::keep_image_markdown::extracted_text_utf16_len(extracted_text);
-    links.set_chunk_rollups(link_id, 0, plain_text_length, updated_at)?;
+    links.set_chunk_rollups(link_id, chunks.len() as i64, plain_text_length, updated_at)?;
     Ok(())
 }
 

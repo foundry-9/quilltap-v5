@@ -8,8 +8,8 @@
  * `addPartnerLink` / `removePartnerLink`, and the `setFavorite` /
  * `setControlledBy` / `setCanBeCarina` setters. Each sub-array op internally does
  * findById (read overlay) -> mutate -> update (write overlay). We do NOT set
- * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; the differential pins chunkCount
- * and excludes doc_mount_chunks.
+ * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; since P4.6BK v5 chunks on
+ * write too, so the differential diffs chunkCount exactly.
  *
  * The id-taking prompt/scenario ops carry a targetName / targetTitle in the spec;
  * we resolve it to the current item's id via `findById` right before the op (the

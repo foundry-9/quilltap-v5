@@ -7,8 +7,9 @@
  * Drives v4's REAL `repos.projects.create()` / `.update()` / `.addToRoster()` /
  * `.removeFromRoster()` / `.setAllowAnyCharacter()` end-to-end — no mocked storage
  * boundary, no QUILLTAP_JOB_CHILD; v4's post-write reindex runs (database-backed
- * stores chunk with no model) and its only divergence (link `chunkCount` +
- * `doc_mount_chunks`) is pinned/excluded by the Rust harness.
+ * stores chunk with no model). Since P4.6BK v5 chunks on write too, so the Rust
+ * harness diffs the link `chunkCount` exactly (`doc_mount_chunks` excluded —
+ * chunk rows are dumped in the groups family).
  *
  * Dumps the slim `projects` row (MAIN) + the store tables (`doc_mount_points`,
  * `_files`, `_documents`, `_file_links`, `_folders`) + `project_doc_mount_links`

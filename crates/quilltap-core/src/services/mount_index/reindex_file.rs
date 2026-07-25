@@ -68,6 +68,36 @@ pub(crate) fn insert_chunks(
     Ok(())
 }
 
+/// v4 `writeDatabaseDocument`'s post-write chunk pass (P4.6BK) — the call
+/// `reindexSingleFile(mountPointId, rel, '')` at `database-store.ts:148`,
+/// wrapped so the two `db` write sites need no extractor: a database-backed
+/// store chunks from `doc_mount_documents.content` (or a blob's already-
+/// extracted text), so the pdf/docx extractor seam is never consulted. Should
+/// the mount somehow not be database-backed, the fs branch fails on the empty
+/// `absolute_path` and warns — the same outcome as v4's `fs.stat('')` throw
+/// landing in its catch-all.
+///
+/// Best-effort like v4: chunk failure never fails the write, only warns.
+///
+/// v4 guards this pass with `process.env.QUILLTAP_JOB_CHILD !== '1'` because
+/// its forked job child buffers writes (read-your-writes does not hold, so the
+/// content this would read back isn't committed yet). v5's job runner is
+/// in-process by locked decision (no fork, no buffered writes), so the guard's
+/// precondition cannot occur and v5 always chunks. Deliberate divergence: where
+/// v4 runs `doc_write_file` inside a forked child (autonomous turns) it defers
+/// chunking to the next database rescan; v5 chunks immediately — the same rows
+/// the rescan would build, just sooner. This matches the enclave-step oracle,
+/// which runs v4 UNFORKED.
+pub fn reindex_after_database_write(conn: &Connection, mount_point_id: &str, relative_path: &str) {
+    reindex_single_file(
+        conn,
+        mount_point_id,
+        relative_path,
+        "",
+        &super::converters::RefusingTextExtractor,
+    );
+}
+
 /// v4 `reindexSingleFile(mountPointId, relativePath, absolutePath)` — re-read,
 /// re-chunk, and re-persist one file's chunks + link rollups. `absolute_path`
 /// is `""` for database-backed stores (bytes come from the mount-index DB).

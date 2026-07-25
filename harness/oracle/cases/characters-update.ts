@@ -7,8 +7,8 @@
  * vault (markdown writes, the properties.json read-modify-write, prompt/scenario
  * reprojection), the unmanaged remainder goes to the slim `_update` (skipped when
  * empty), and the overlay re-reads. We do NOT set QUILLTAP_JOB_CHILD, so
- * reindexSingleFile runs; the differential pins chunkCount and excludes
- * doc_mount_chunks.
+ * reindexSingleFile runs; since P4.6BK v5 chunks on write too, so the
+ * differential diffs chunkCount exactly.
  *
  * The character id is read back from the fixture so both sides target the same
  * minted id. A character spans two DBs, so we dump BOTH the main slim `characters`

@@ -25,8 +25,8 @@
 //!   4. recomputes `contentSha256` (documents) from the fully-normalized content
 //!      and propagates it to the owning file's `sha256` via `fileId` — so the
 //!      content-addressed shas agree once the minted bytes are normalized;
-//!   5. pins the link `chunkCount` to `<cc>` (a v4-only reindex artifact the Rust
-//!      storage primitive does not rebuild) and EXCLUDES `doc_mount_chunks`.
+//!   5. diffs the link `chunkCount` EXACTLY since P4.6BK (v5 chunks on write)
+//!      and EXCLUDES `doc_mount_chunks`.
 //!
 //! FROZEN_NOW is arbitrary: copy timestamps are minted, so they placeholder either
 //! way (proving the diff is insensitive to `now`).
@@ -157,7 +157,7 @@ const TABLES: &[TableSpec] = &[
         ],
         content_column: None,
         sha_column: None,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
     TableSpec {
         table: "doc_mount_files",
@@ -290,15 +290,14 @@ fn norm_sort_key(row: &Value, spec: &TableSpec, id_map: &HashMap<String, String>
 ///   2. sort each table's rows by its `order_by` (post-ts key);
 ///   3. walk tables in order, remap UUIDs in id columns AND `content`;
 ///   4. recompute `contentSha256` from normalized content, propagate to files;
-///   5. pin `chunkCount`.
+///   5. (chunkCount diffs exactly since P4.6BK — the pin is retired).
 fn normalize_all(dumps: &mut [Value]) {
     // Phase 1: placeholder every ISO timestamp everywhere; blank embedded UUIDs
     // inside content columns to a CONSTANT `<uuid>` (so a copy's frontmatter is
     // byte-identical across sides regardless of the minted id / raw-sha order).
-    // Pin `chunkCount` HERE (not last): v4's reindex sets a real count while the
-    // Rust port leaves the DDL default 0, and `chunkCount` sorts before `fileName`
-    // in the id-stripped sort key — so a live value would perturb which of two
-    // same-store files claims the lower `fileId` token.
+    // (chunkCount used to be pinned HERE, pre-sort, because a v4-only live value
+    // would have perturbed the id-stripped sort key; since P4.6BK both sides
+    // carry the same live count, so it participates in the sort and the diff.)
     for (i, spec) in TABLES.iter().enumerate() {
         if let Some(rows) = dumps[i].get_mut("rows").and_then(Value::as_array_mut) {
             for row in rows.iter_mut() {
@@ -393,7 +392,7 @@ fn normalize_all(dumps: &mut [Value]) {
     }
 
     // Phase 5: placeholder dedicated ts columns (belt-and-braces — already
-    // covered by Phase 1) + pin chunkCount.
+    // covered by Phase 1).
     for (i, spec) in TABLES.iter().enumerate() {
         let rows = dumps[i]
             .get_mut("rows")

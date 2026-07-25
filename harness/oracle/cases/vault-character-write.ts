@@ -5,10 +5,10 @@
  * `writeCharacterVaultManagedFields`
  * (lib/database/repositories/vault-overlay/managed-fields) over each op's full
  * character, then dumps the doc-store tables. v4's post-write `reindexSingleFile`
- * runs (database-backed stores chunk with no model, deterministically); its only
- * divergence — the link `chunkCount` and the derived `doc_mount_chunks` rows — is
- * pinned/excluded by the Rust harness (exactly as the groups/projects/wardrobe
- * store-backed tests do).
+ * runs (database-backed stores chunk with no model, deterministically). Since
+ * P4.6BK v5 chunks on write too, so the Rust harness diffs the link `chunkCount`
+ * exactly (`doc_mount_chunks` excluded — chunk rows are dumped in the
+ * create/provision/groups families).
  *
  * Dumps `doc_mount_points` / `_files` / `_documents` / `_file_links` / `_folders`
  * in the minted-values remap form; the Rust harness applies the shared cross-table

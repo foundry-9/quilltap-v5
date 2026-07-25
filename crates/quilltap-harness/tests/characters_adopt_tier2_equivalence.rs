@@ -13,7 +13,8 @@
 //! created by v4's real `repos.characters.create`, then its FK nulled — the vault
 //! stays intact/enabled), apply the SAME managed-field update, then SIX tables are
 //! structural-diffed. Minted-values remap with ONE shared id-map; timestamps →
-//! `<ts>`; the link `chunkCount` → `<cc>`; `doc_mount_chunks` excluded. The
+//! `<ts>`; the link `chunkCount` diffs EXACTLY since P4.6BK (v5 chunks on
+//! write); `doc_mount_chunks` excluded. The
 //! single-mount-point result (the adopted store, no duplicate) is the key adopt
 //! assertion.
 //!
@@ -120,7 +121,7 @@ const TABLES: &[TableSpec] = &[
             "updatedAt",
         ],
         from_mount: true,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
 ];
 

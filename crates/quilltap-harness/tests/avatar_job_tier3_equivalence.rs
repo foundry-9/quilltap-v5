@@ -321,7 +321,7 @@ const AVATAR_TABLES: &[TableSpec] = &[
             "lastModified",
             "descriptionUpdatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
         pin_columns: &[],
         norm_string_columns: &[],
     },

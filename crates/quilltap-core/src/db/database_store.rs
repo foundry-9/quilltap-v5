@@ -17,10 +17,11 @@
 //! ## Seams deliberately NOT ported (no-ops in v4's port surface)
 //!
 //! - The **`emitDocument*` events** (`emitDocumentWritten` / `Deleted` / `Moved`)
-//!   trigger the embedding re-index watcher; they are no-op seams here.
-//! - The post-write **`reindexSingleFile`** chunk pass (v4 skips it under
-//!   `QUILLTAP_JOB_CHILD=1`) is a standing no-op seam — the differential pins it
-//!   off, so [`write_database_document`] does NOT re-chunk.
+//!   trigger the embedding re-index watcher; they are no-op seams here. (The
+//!   post-write **chunk pass IS ported** — see [`write_database_document`] —
+//!   but the embedding *scheduling* that `emitDocumentWritten` triggers remains
+//!   a standing loud refusal, so a chunked document still awaits an explicit
+//!   embed pass before semantic search sees it.)
 //! - The **`expectedMtime`** mtime-conflict guard is out of scope (not ported).
 //! - `backfillFolderRowsForMountPoint` / `rescanDatabaseMountPoint` are out of
 //!   scope (they drive the chunk/embed pipeline).
@@ -161,12 +162,12 @@ pub fn read_database_document(
 // ============================================================================
 
 /// v4 `writeDatabaseDocument` (`database-store.ts:102`): normalise the path,
-/// reject non-text extensions, then land the bytes via `linkDocumentContent`.
-/// Returns the freshly-minted `mtime` (`new Date(now).getTime()`).
+/// reject non-text extensions, land the bytes via `linkDocumentContent`, then
+/// run the post-write chunk pass (P4.6BK). Returns the freshly-minted `mtime`
+/// (`new Date(now).getTime()`).
 ///
-/// The `expectedMtime` mtime-conflict guard and the post-write `reindexSingleFile`
-/// chunk pass are OUT OF SCOPE (reindex is a standing no-op seam; the differential
-/// pins it off), so neither is ported here.
+/// The `expectedMtime` mtime-conflict guard remains OUT OF SCOPE (a standing
+/// deferral of its own — do not fold it into the chunk pass).
 ///
 /// NB: this reproduces **v4's `writeDatabaseDocument` unsupported-extension
 /// message** — which differs from the repo method
@@ -209,6 +210,22 @@ pub fn write_database_document(
         allow_character_read: None,
         allow_character_write: None,
     })?;
+
+    // Chunk the just-written content so it is immediately searchable (v4
+    // `database-store.ts:133-155`). The write above only records the document +
+    // link row (chunkCount 0); without this the embedding scheduler would find
+    // no chunks, and the document would stay unsearchable until a manual
+    // rescan. reindexSingleFile reads the content back from doc_mount_documents
+    // and (re)builds the link's chunks, so an overwrite re-chunks too.
+    // Best-effort: a chunk failure never fails the write, only warns. v4's
+    // `QUILLTAP_JOB_CHILD` skip does not port — v5's job runner is in-process,
+    // so the buffered-write condition it dodges cannot occur (see
+    // `reindex_after_database_write`).
+    crate::services::mount_index::reindex_file::reindex_after_database_write(
+        conn,
+        mount_point_id,
+        &rel,
+    );
 
     // v4 returns `new Date(now).getTime()` for a `now` minted in the same JS
     // millisecond the repo stamps `lastModified` with (single-threaded, both
@@ -709,11 +726,18 @@ mod tests {
     /// Minimal mount-index DDL covering the columns these ops touch (a faithful
     /// subset of v4's generateDDL output; the full byte-exact proof is a later
     /// differential). `foreign_keys` stays off — the primitives don't rely on FK
-    /// cascade here (deleteWithGC deletes explicitly).
+    /// cascade here (deleteWithGC deletes explicitly). Carries doc_mount_points
+    /// (a seeded `database` mount row) + doc_mount_chunks so the post-write
+    /// chunk pass (P4.6BK) runs for real in these tests.
     fn open_store_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE doc_mount_files (
+            "CREATE TABLE doc_mount_points (
+               id TEXT PRIMARY KEY, name TEXT, mountType TEXT, basePath TEXT DEFAULT '',
+               excludePatterns TEXT DEFAULT '[]', includePatterns TEXT DEFAULT '[]',
+               enabled INTEGER DEFAULT 1, conversionStatus TEXT DEFAULT 'idle',
+               createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_files (
                id TEXT PRIMARY KEY, sha256 TEXT, fileSizeBytes INTEGER,
                fileType TEXT, source TEXT, createdAt TEXT, updatedAt TEXT);
              CREATE TABLE doc_mount_documents (
@@ -722,6 +746,14 @@ mod tests {
              CREATE TABLE doc_mount_folders (
                id TEXT PRIMARY KEY, mountPointId TEXT, parentId TEXT, name TEXT,
                path TEXT, createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_blobs (
+               id TEXT PRIMARY KEY, fileId TEXT, mountPointId TEXT, relativePath TEXT,
+               sha256 TEXT, sizeBytes INTEGER, extractedText TEXT,
+               createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_chunks (
+               id TEXT PRIMARY KEY, linkId TEXT, mountPointId TEXT, chunkIndex REAL,
+               content TEXT, tokenCount REAL, headingContext TEXT, embedding BLOB,
+               createdAt TEXT, updatedAt TEXT);
              CREATE TABLE doc_mount_file_links (
                id TEXT PRIMARY KEY, fileId TEXT, mountPointId TEXT, relativePath TEXT,
                fileName TEXT, folderId TEXT, originalFileName TEXT, originalMimeType TEXT,
@@ -730,7 +762,10 @@ mod tests {
                extractedText TEXT, extractedTextSha256 TEXT, extractionStatus TEXT,
                extractionError TEXT, chunkCount INTEGER DEFAULT 0,
                allowEmbed INTEGER, allowCharacterRead INTEGER, allowCharacterWrite INTEGER,
-               lastModified TEXT, createdAt TEXT, updatedAt TEXT);",
+               lastModified TEXT, createdAt TEXT, updatedAt TEXT);
+             INSERT INTO doc_mount_points (id, name, mountType, createdAt, updatedAt)
+               VALUES ('mount-1', 'Test Store', 'database',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');",
         )
         .unwrap();
         conn
@@ -765,6 +800,57 @@ mod tests {
             .unwrap()
             .mtime_ms;
         assert_eq!(returned, stored);
+    }
+
+    /// The post-write chunk pass (P4.6BK): a write chunks the document
+    /// immediately (nonzero doc_mount_chunks rows + the link's chunkCount
+    /// rollup), and an overwrite re-chunks rather than accumulating.
+    #[test]
+    fn write_chunks_immediately_and_rechunks_on_overwrite() {
+        let conn = open_store_db();
+        seed(
+            &conn,
+            "lore.md",
+            "# Heading\n\nSome body text worth chunking.",
+        );
+        let (chunks, rollup): (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM doc_mount_chunks),
+                        (SELECT chunkCount FROM doc_mount_file_links WHERE relativePath = 'lore.md')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(chunks > 0, "write must chunk immediately");
+        assert_eq!(chunks, rollup, "link chunkCount must match the chunk rows");
+
+        // Overwrite: the old chunk set is deleted and rebuilt, not appended.
+        seed(&conn, "lore.md", "Replacement body.");
+        let (chunks2, rollup2): (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM doc_mount_chunks),
+                        (SELECT chunkCount FROM doc_mount_file_links WHERE relativePath = 'lore.md')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(chunks2, rollup2);
+        assert!(chunks2 > 0);
+        let contents: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT content FROM doc_mount_chunks ORDER BY chunkIndex")
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            rows
+        };
+        assert!(
+            contents.iter().all(|c| c.contains("Replacement")),
+            "overwrite must replace the chunk set, got: {contents:?}"
+        );
     }
 
     #[test]

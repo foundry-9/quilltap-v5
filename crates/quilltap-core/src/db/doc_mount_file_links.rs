@@ -582,11 +582,14 @@ impl<'c> DocMountFileLinksRepository<'c> {
     }
 
     /// v4 `writeDatabaseDocument` (`database-store.ts:102`): normalize the path,
-    /// detect the (text-only) file type, compute the content sha + lengths, and
-    /// land the bytes via [`Self::link_document_content`]. The mtime-conflict
-    /// guard (`expectedMtime`) and the post-write `reindexSingleFile` chunk pass
-    /// (skipped in v4 when `QUILLTAP_JOB_CHILD=1`) are out of scope — the
-    /// differential pins `QUILLTAP_JOB_CHILD=1` so neither runs.
+    /// detect the (text-only) file type, compute the content sha + lengths,
+    /// land the bytes via [`Self::link_document_content`], then run v4's
+    /// post-write chunk pass (P4.6BK) so the document is immediately
+    /// searchable — best-effort, an overwrite re-chunks. The mtime-conflict
+    /// guard (`expectedMtime`) remains out of scope (a standing deferral of its
+    /// own). v4's `QUILLTAP_JOB_CHILD` skip does not port — v5's job runner is
+    /// in-process, so the buffered-write condition it dodges cannot occur (see
+    /// `reindex_after_database_write`).
     pub fn write_database_document(
         &self,
         mount_point_id: &str,
@@ -602,7 +605,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
         let content_sha256 = sha256_of_string(content);
         let file_name = basename(&rel).to_string();
 
-        self.link_document_content(&LinkDocumentInput {
+        let result = self.link_document_content(&LinkDocumentInput {
             mount_point_id: mount_point_id.to_string(),
             relative_path: rel.clone(),
             file_name,
@@ -615,7 +618,18 @@ impl<'c> DocMountFileLinksRepository<'c> {
             allow_embed: None,
             allow_character_read: None,
             allow_character_write: None,
-        })
+        })?;
+
+        // Chunk the just-written content (v4 `database-store.ts:133-155`) — the
+        // link lands with chunkCount 0 and stays semantically unsearchable
+        // until chunked. Best-effort: a failure warns, never fails the write.
+        crate::services::mount_index::reindex_file::reindex_after_database_write(
+            self.conn,
+            mount_point_id,
+            &rel,
+        );
+
+        Ok(result)
     }
 
     /// v4 `linkDocumentContent` (`doc-mount-file-links.repository.ts:738`). The

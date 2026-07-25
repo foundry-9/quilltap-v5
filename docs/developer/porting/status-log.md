@@ -34624,3 +34624,182 @@ run is its first. The two gesture traps this dialog has already sprung are
 already handled in the surrounding code and named in the comment (the header X
 also carries `aria-label="Close"`; step 1 only STAGES the file). Prettier-clean;
 no other spec file, and no SPA source file, was touched.
+
+## P4.6BK — chunk-on-write for database-backed stores (lane record, 2026-07-25)
+
+**Branch `claude/p4-6bk-chunk-on-write-edab96`. v4 baseline `e646f58b`
+(drift-checked at lane start: `git log e646f58b..HEAD` empty, tree clean).
+CLOSED — all tier-1 and tier-2 deliverables landed; tier-3 deferrals below.**
+
+### What landed
+
+1. **The chunk pass at both v5 write sites.** `services::mount_index::
+   reindex_file::reindex_after_database_write(conn, mount_point_id, rel)` — a
+   thin wrapper over `reindex_single_file(…, "", &RefusingTextExtractor)`
+   (database-backed stores never consult the pdf/docx extractor; a
+   non-database mount would fail on the empty path and warn, matching v4's
+   `fs.stat('')` throw→catch). Called after `link_document_content` in BOTH
+   `db::database_store::write_database_document` (v4's exact sequence:
+   link → chunk → emit(no-op) → mtime) and
+   `DocMountFileLinksRepository::write_database_document`. Best-effort:
+   chunk failure warns, never fails the write; overwrite re-chunks (delete +
+   rebuild). Unit test `write_chunks_immediately_and_rechunks_on_overwrite`
+   (the module test DDL grew doc_mount_points/chunks/blobs + a seeded
+   `database` mount row).
+
+2. **Port judgment 1 — layering.** The chunker/reindex stays in
+   `services::mount_index`; the two `db` write sites call it via the wrapper
+   (a first real `db` → `services` code call). v4's dynamic `import()` at the
+   call site is a Node module-cycle breaker with no Rust analogue — intra-crate
+   module references cannot cycle-deadlock — and the call mirrors v4's actual
+   runtime call graph (`lib/mount-index/database-store` →
+   `lib/doc-edit/reindex-file`). Relocating the chunker into `db` was rejected:
+   it would ripple through scanner/store-file/file-ops for zero behavioral
+   gain.
+
+3. **Port judgment 2 — `QUILLTAP_JOB_CHILD`.** No v5 analogue; v5 ALWAYS
+   chunks. The guard exists only because v4's forked job child buffers writes
+   (read-your-writes fails); v5's job runner is in-process by locked decision
+   (`job-runner-fork-ipc-non-port`), so the hazard cannot occur. **Named
+   divergence:** where v4 runs `doc_write_file` inside a forked child
+   (autonomous turns) it defers chunking to the next database rescan; v5
+   chunks immediately — the same rows the rescan would build, sooner. This
+   MATCHES the enclave-step oracle (which runs v4 UNFORKED), so the tier-3
+   family pins the v5 behavior. Documented at the wrapper.
+
+4. **THE REAL STORY — the pin was on the Rust side, not the oracle side.**
+   The order's survey expected oracle-side un-pinning; in fact 17 of the
+   affected oracle cases already ran v4's chunk pass (JOB_CHILD unset) and the
+   Rust differentials normalized the divergence away (`chunkCount` → `<cc>`,
+   `doc_mount_chunks` excluded). Un-pinning therefore meant deleting the
+   `<cc>` normalization in **18 Rust test files** (every `pin_chunk_count:
+   true` flipped to false; the flag machinery kept — a legitimate spec knob):
+   avatar_job_tier3, characters_{adopt,arrays,create,physical,provision,
+   scaffold,update}_tier2, groups_tier2, image_generation_tier3, photo_tools,
+   projects_tier2, qtap_import, story_background_job_tier3,
+   vault_character_write, vault_summary_mirror_tier2, vault_wardrobe_write,
+   wardrobe_transfers_tier2. All 18 + the upgraded dmfl family re-ran GREEN
+   against oracles regenerated fresh at `e646f58b` (one clean invocation per
+   family; NDJSON sanity-checked). The mount-point AGGREGATE pins
+   (`fileCount`/`chunkCount`/`totalSizeBytes` on `doc_mount_points` in
+   story/image families) are a DIFFERENT seam (the refresh/rollup layer) and
+   deliberately stay.
+
+5. **The keystone differential upgraded.** `doc-mount-file-links-tier2` now
+   drives v4's REAL `writeDatabaseDocument` (was: `linkDocumentContent`
+   directly with JOB_CHILD=1) and dumps `doc_mount_chunks` as a fifth table —
+   chunk `content`/`tokenCount`/`headingContext` diff EXACTLY, the chunker
+   parity proof at the write site. Its fixture builder
+   (`build-doc-mount-file-links-fixture.ts`) now creates the
+   `doc_mount_chunks` table via v4's own `generateDDL` (the fixture is
+   /tmp-transient, rebuilt every regen; no committed .db moved anywhere in
+   this lane).
+
+6. **New chunk-table coverage (the P4.6BK chunk-dump convention).**
+   `characters-create`, `characters-provision`, `groups-tier2`, and the dmfl
+   family dump `doc_mount_chunks` with a derived `sortKey` column —
+   `<mount name>#<link relativePath>#<%05d chunkIndex>` (mount NAME, not the
+   minted id, so the key is cross-side stable in multi-store families) — via a
+   temp view routed through `dump_table_json_conn` (canonical JS-number/BLOB
+   rendering). Chunk ids/linkId join each family's shared first-seen remap,
+   walked LAST so linkId resolves to the link's token.
+
+7. **A SECOND hidden chunk site, found and closed.** Un-pinning photo_tools
+   went red on ONE row: the kept image's `.jpg` link (`chunkCount` 1 vs 0).
+   v4's `chunkAndInsertExtractedText` (`lib/photos/chunk-extracted-text.ts`)
+   chunks a kept image's Markdown sidecar directly — the extension-dispatched
+   reindex never touches a `.webp`/`.png`/`.jpg` link, so P4.6BK's two write
+   sites could never cover it. v5's port of that helper
+   (`photos::save_image_to_album::chunk_and_insert_extracted_text`) had been
+   landed WITHOUT the chunker (rollup 0 under the pin). It now runs the real
+   `chunk_document` + `insert_chunks` and takes a `mount_point_id` param;
+   all three callers (save_image_to_album, user_gallery_service,
+   character_gallery_service) updated. photo_tools then went green.
+
+8. **A THIRD find — a restore phase-order infidelity, fixed.** With the
+   restore tripwire removed, `restore_legacy_archive` diffed one
+   `doc_mount_chunks` row out of place: v4 runs 22f-bis (legacy wardrobe
+   items) BETWEEN 22f (blobs) and 22g (archive chunk rows) — `restore.ts:543`
+   vs `:562` — while v5's orchestrator ran it after the whole doc-store
+   family. Invisible pre-lane (the wardrobe write chunked nothing); now
+   observable in chunk rowid order. The 22f-bis block moved INSIDE
+   `restore_mount_family` at v4's exact position (`main` threaded as a param).
+   All four restore cases then diffed green, 43 tables row-for-row.
+
+9. **Tripwires removed.** `KNOWN_V5_GAPS` (`system_restore_state.rs`) deleted
+   with its precise three-way assertion block; `doc_mount_chunks` now flows
+   through the main row-for-row walk. `DIVERGENCE_DEPENDENTS`
+   (doc_mount_blobs/doc_mount_files) RE-EXAMINED and KEPT — they hinge on the
+   RULED file-phase divergence, not the closed chunk gap; the comment says so.
+
+### Tier-2 audit — every `write_database_document` caller, post-lane
+
+All now chunk (none relied on no-chunk behavior; chunking is additive):
+vault_character_write / vault_character_update / character_vault (scaffold) /
+vault_wardrobe_write / document_store_overlay (groups+projects) /
+conversation_summary_vault_bridge — via the repo method, proven by their
+families; scenarios (db + api, incl. the best-effort arm) / api/characters /
+post_office/mailbox / documents/mod (operator doc actions) /
+tools/doc_edit/shared (doc_write_file) / services/aesthetics /
+general_state / store_file (ingest — now double-chunks exactly as v4's
+storeMountFile does: writeDatabaseDocument chunks, then the explicit
+fire-and-forget reindex re-chunks) — via the free function.
+⚠ Sibling note: `post_office/mailbox.rs` writes now chunk — P4.9E2A's new
+differentials will see nonzero chunkCount; per §2 they tripwire, P4.6BK
+removes at unification.
+
+### The P4.9G5 arithmetic — reconciled exactly
+
+`restore_minimal`: v4 8 chunks = v5 8 (provisioning's work, now both sides).
+`restore_replace`/`restore_new_account`/`restore_legacy_archive`: v5 = v4 =
+archive chunks + provisioning chunks, row for row (not just counts) — the
+KNOWN_V5_GAPS "v4 = v5 means remove me" arm fired exactly as designed. No
+residual.
+
+### The 38-site classification (order §survey; verified per site)
+
+- **Oracle cases (14 hits):** characters-{arrays,update,scaffold,provision,
+  create,physical,adopt}, groups-tier2, projects-tier2, qtap-import,
+  photo-tools, courier-images-routes, enclave-step-tier3, help-sync-ensure —
+  ALL already ran v4's chunk pass (JOB_CHILD unset/absent); none needed an
+  oracle-side un-pin. doc-mount-file-links-tier2 was the ONE case that set
+  JOB_CHILD=1 — upgraded (item 5). Stale "pins chunkCount" prose updated in
+  every affected case header (+ vault-character-write, vault-wardrobe-write).
+- **Fixture builders (7 hits):** build-vault-folder-read (JOB_CHILD=1 —
+  STAYS; its committed fixture is a deliberate chunk-free baseline),
+  build-participant-resolver, build-wardrobe-public-read,
+  build-memory-processor, build-knowledge-injector, build-vault-wardrobe-read,
+  build-vault-read-overlay — ALL unchanged (governing rule holds; no committed
+  .db moved). build-doc-mount-file-links gained the chunks TABLE (DDL only,
+  /tmp-transient fixture).
+- **Committed JSON prose (7 hits):** the characters-*-tier2.json "REINDEX:"
+  note strings updated (prose only; ops untouched, all specs still valid
+  JSON). vault-folder-read-tier2.json's note stays (still accurate).
+- **Rust comments (6 hits):** database_store.rs + doc_mount_file_links.rs
+  updated (the chunk pass is ported; `expectedMtime` stands alone);
+  enclave/step.rs, conversation_summary_vault_bridge.rs, queue_service.rs
+  verified still accurate (the bridge's "no forked write-buffer hazard" note
+  IS judgment 2).
+
+### Oracle regen recipes (all fresh at `e646f58b`, one invocation per family)
+
+Driver script preserved in the lane record only (scratchpad `regen.sh`); the
+canonical per-family recipes live in each test header, unchanged except dmfl
+(now: builder → case → test with the SAME env vars as before; the case now
+also emits `chunks`). Env-var map used for the workspace gate: the 19 families
+above + `QT_ORACLE_SYSTEM_RESTORE` (system-restore jest oracle over the
+committed `restore-archives/`, `--testTimeout=300000`).
+
+### Deferred loud (tier 3 — named, unchanged by this lane)
+
+- **The embedding half.** `emitDocumentWritten`'s embedding SCHEDULING (the
+  fs-watcher / db-store-event chain) remains the standing loud refusal —
+  chunks now exist at write time, but semantic search still awaits an explicit
+  embed pass. Stated in the database_store module header.
+- **`expectedMtime`** stays a separate deferral at both write sites (comments
+  updated so they no longer bundle it with the chunk pass).
+- **Mount-point aggregate rollups** (`fileCount`/`chunkCount`/
+  `totalSizeBytes` on doc_mount_points) remain pinned in the story/image
+  families — the refresh layer, not this lane's surface.
+
+Versions: core 0.0.356 → 0.0.357, harness 0.0.305 → 0.0.306.

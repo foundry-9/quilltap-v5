@@ -12,8 +12,8 @@
 //! v4's real `repos.characters.create` with NO physicalDescription), apply the
 //! SAME physicalDescription update, then SIX tables are structural-diffed (the main
 //! slim `characters` row + the mount-index store tables). Minted-values remap with
-//! ONE shared id-map; timestamps → `<ts>`; the link `chunkCount` → `<cc>`;
-//! `doc_mount_chunks` excluded.
+//! ONE shared id-map; timestamps → `<ts>`; the link `chunkCount` diffs EXACTLY
+//! since P4.6BK (v5 chunks on write); `doc_mount_chunks` excluded.
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -118,7 +118,7 @@ const TABLES: &[TableSpec] = &[
             "updatedAt",
         ],
         from_mount: true,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
 ];
 

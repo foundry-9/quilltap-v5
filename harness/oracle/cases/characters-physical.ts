@@ -8,7 +8,8 @@
  * physical-prompts.json (renderPhysicalPromptsJson), strips the key from the
  * DB-bound patch, and — because no slim column remains — skips the slim _update
  * (updatedAt NOT bumped). We do NOT set QUILLTAP_JOB_CHILD, so reindexSingleFile
- * runs; the differential pins chunkCount and excludes doc_mount_chunks.
+ * runs; since P4.6BK v5 chunks on write too, so the differential diffs
+ * chunkCount exactly.
  *
  * The character id is read back from the fixture so both sides target the same
  * minted id. A character spans two DBs, so we dump BOTH the main slim `characters`

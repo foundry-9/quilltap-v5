@@ -556,7 +556,13 @@ pub fn save_to_user_gallery(
         extraction_status: Some("converted".to_string()),
     })?;
 
-    chunk_and_insert_extracted_text(mount, &result.link_id, &markdown, kept_at)?;
+    chunk_and_insert_extracted_text(
+        mount,
+        &result.link_id,
+        &target_mount_point_id,
+        &markdown,
+        kept_at,
+    )?;
     // invalidateMountPoint / emitDocumentWritten / refreshStats /
     // enqueueEmbeddingJobsForMountPoint are host-side recorded seams (no-ops in
     // the core), exactly as in `save_image_to_album`.

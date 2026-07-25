@@ -7,8 +7,8 @@
  * exactly the call `seedFromImports`/`handleResetBuiltins` make — reading the
  * SAME committed `.qtap` asset the Rust port embeds. We do NOT mock the storage
  * boundary and do NOT set QUILLTAP_JOB_CHILD, so reindexSingleFile runs (no model
- * for a database-backed store); the differential pins the resulting link
- * chunkCount and excludes doc_mount_chunks.
+ * for a database-backed store); since P4.6BK v5 chunks on write too, so the
+ * differential diffs the resulting link chunkCount exactly.
  *
  * The import spans two DBs, so we dump BOTH:
  *   - MAIN: the slim `characters` rows + `wardrobe_items` + `memories`;

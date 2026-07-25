@@ -16,8 +16,8 @@
 //! Minted-values remap with ONE shared id-map across the five tables (points ->
 //! folders -> files -> documents -> links, rows in natural-key order). Every
 //! mount-index row id is minted (vault provisioning + the summary writes), so every
-//! FK verifies by RELATIONSHIP. Timestamps -> `<ts>`; the link `chunkCount` -> `<cc>`
-//! (a v4-only `reindexSingleFile` artifact); `doc_mount_chunks` is excluded.
+//! FK verifies by RELATIONSHIP. Timestamps -> `<ts>`; the link `chunkCount` diffs
+//! EXACTLY since P4.6BK (v5 chunks on write); `doc_mount_chunks` is excluded.
 //! Character/chat ids are PINNED in the spec, so they appear literally (identical
 //! both sides) inside the `doc_mount_documents.content` frontmatter and are NOT
 //! remapped — `content` is diffed byte-for-byte.
@@ -157,7 +157,7 @@ const TABLES: &[TableSpec] = &[
             "createdAt",
             "updatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
 ];
 

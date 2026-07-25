@@ -10,8 +10,8 @@
 //! generation WRITES `files` + the store tables; the avatar trigger writes
 //! `background_jobs`). Each image-gen case's result object + `files` + the five
 //! mount-index store tables are diffed in the shared-cross-db-id-map remap form
-//! (minted ids/timestamps remapped/placeholdered, `chunkCount` pinned — the
-//! reindex chunker is not ported, per the groups/projects precedent); each avatar
+//! (minted ids/timestamps remapped/placeholdered; the link `chunkCount` diffs
+//! exactly since P4.6BK — v5 chunks on write); each avatar
 //! case diffs `background_jobs`.
 //!
 //! MODEL SEAMS (pinned identically both sides):
@@ -422,8 +422,8 @@ struct TableSpec {
     ts_columns: &'static [&'static str],
     pin_chunk_count: bool,
     /// Columns pinned to a placeholder (v4-storeMountFile bookkeeping the Rust
-    /// storage primitive legitimately does not maintain — the reindex/aggregate
-    /// layer is a documented deferral, the groups/projects `chunkCount` precedent).
+    /// storage primitive legitimately does not maintain — the mount-point
+    /// aggregate rollups are a documented deferral of the refresh layer).
     pin_columns: &'static [&'static str],
     /// Columns whose value is a STRING embedding a minted UUID (e.g.
     /// `files.storageKey = "mount-blob:<lantern>:<blobId>"` — the `blobId` is minted
@@ -480,7 +480,7 @@ const IMG_TABLES: &[TableSpec] = &[
             "lastModified",
             "descriptionUpdatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
         pin_columns: &[],
         norm_string_columns: &[],
     },

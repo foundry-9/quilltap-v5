@@ -22,6 +22,20 @@ fixed: plugin data was being re-wrapped in a second layer of JSON quoting on eve
 round-trip, and imported images were storing an empty original filename where the
 old app stores none at all.
 
+Documents written into database-backed stores are now indexed for search the
+moment they land. Every write — character sheets as a character is created or
+edited, group and project store files, scenarios, wardrobe items, kept images'
+captions, Document Mode saves — immediately gets its search chunks, matching the
+old app's behavior instead of leaving the document invisible to semantic search
+until a manual rescan. The fix was proven by turning the comparison harness's
+blind spot into coverage: nineteen test families that used to look away from
+chunk data now compare it exactly, four of them dump the chunk table row for
+row, and the restore test's tripwire that had flagged the gap was retired
+because the gap is closed. Fixing it also surfaced and fixed a restore-ordering
+mismatch (legacy wardrobe items now restore at the old app's exact phase
+position) and completed the kept-image caption chunking that had been stubbed
+out.
+
 Planned the next round of porting work: finishing the `.qtap` import so the
 Import wizard stops refusing, building the in-chat Post Office (Insert
 Announcement, Compose Mail, Whisper, and the composer gutter buttons they hang

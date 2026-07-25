@@ -13,7 +13,8 @@
  * materialize them by triggering each repo's lazy getCollection via a harmless
  * read; the join-y reads are wrapped (getCollection — which creates the repo's own
  * table — runs before the join query that might reference a not-yet-created
- * sibling table). One pinned doc_mount_points store row is also seeded so every
+ * sibling table, + doc_mount_chunks for the P4.6BK chunk-on-write pass). One
+ * pinned doc_mount_points store row is also seeded so every
  * write's mountPointId is a real, pinned store id.
  *
  * Run (Node 24, from the v4 checkout):
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
     DocMountDocumentSchema,
     DocMountFolderSchema,
     DocMountFileLinkSchema,
+    DocMountChunkSchema,
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
@@ -89,6 +91,9 @@ async function main(): Promise<void> {
     ['doc_mount_documents', DocMountDocumentSchema],
     ['doc_mount_folders', DocMountFolderSchema],
     ['doc_mount_file_links', DocMountFileLinkSchema],
+    // P4.6BK: writeDatabaseDocument chunks on write (both sides), so the chunk
+    // table must exist in the fixture — v5 has no migration runner to create it.
+    ['doc_mount_chunks', DocMountChunkSchema],
   ];
   for (const [name, schema] of ddl) {
     for (const sql of generateDDL(name, schema as never)) {

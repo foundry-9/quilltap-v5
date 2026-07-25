@@ -1,30 +1,36 @@
 //! Tier-2 differential test: the document-store STORAGE PRIMITIVE
-//! (`writeDatabaseDocument` / `linkDocumentContent` / `ensureLinkFolderId`).
+//! (`writeDatabaseDocument` = `linkDocumentContent` / `ensureLinkFolderId` +
+//! the post-write `reindexSingleFile` chunk pass — P4.6BK: v5 chunks on write).
 //!
 //! Both sides run the SAME write sequence (from the committed spec) against the
-//! SAME mount-index fixture, then the resulting FOUR tables — `doc_mount_files`,
-//! `doc_mount_documents`, `doc_mount_file_links`, `doc_mount_folders` — are
-//! structural-diffed. `linkDocumentContent` mints every id and a single internal
-//! `now`, so this is the **minted-values remap form**, but extended across four
+//! SAME mount-index fixture, then the resulting FIVE tables — `doc_mount_files`,
+//! `doc_mount_documents`, `doc_mount_file_links`, `doc_mount_folders`,
+//! `doc_mount_chunks` — are structural-diffed. Every id and timestamp is minted
+//! internally, so this is the **minted-values remap form**, extended across five
 //! tables:
 //!
 //!   - **shared id remap.** A SINGLE first-seen-token map is built by walking all
-//!     four dumps in a fixed order (files → documents → links → folders, rows in
-//!     natural-key order). So a cross-table FK (e.g. `doc_mount_documents.fileId`
-//!     → `doc_mount_files.id`, `doc_mount_file_links.folderId` →
-//!     `doc_mount_folders.id`) verifies the RELATIONSHIP without pinning the id.
-//!     `mountPointId` is the seeded store id — pinned, identical both sides — so
-//!     it is NOT remapped and matches outright.
+//!     five dumps in a fixed order (files → documents → links → folders →
+//!     chunks, rows in natural-key order). So a cross-table FK (e.g.
+//!     `doc_mount_documents.fileId` → `doc_mount_files.id`,
+//!     `doc_mount_chunks.linkId` → `doc_mount_file_links.id`) verifies the
+//!     RELATIONSHIP without pinning the id. `mountPointId` is the seeded store
+//!     id — pinned, identical both sides — so it is NOT remapped.
 //!   - **timestamps** → `<ts>` placeholder. The `createdAt == updatedAt` create
 //!     invariant is intentionally NOT asserted: an op that rewrites a path
 //!     upsert-updates its link (refreshing `updatedAt`/`lastModified` while
 //!     preserving `createdAt`), so the two legitimately differ.
+//!   - **chunk rows** carry no natural key, so both dumps append a derived
+//!     `sortKey` column (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`) and
+//!     order by it (the P4.6BK chunk-dump convention). Chunk `content` /
+//!     `tokenCount` / `headingContext` diff EXACTLY — the chunker parity proof
+//!     at the write site.
 //!
 //! The corpus exercises: a fresh JSON + markdown write, subfolder creation,
 //! dedup-by-sha (a second path with byte-identical content reuses one file + one
-//! document row), link upsert-in-place (rewriting a path), and the markdown
-//! frontmatter policy cascade (`character_read: false` → all `allow*` = 0),
-//! verified against v4's real yaml-based `policyFromContent`.
+//! document row), link upsert-in-place (rewriting a path — which RE-chunks), and
+//! the markdown frontmatter policy cascade (`character_read: false` → all
+//! `allow*` = 0), verified against v4's real yaml-based `policyFromContent`.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -106,7 +112,36 @@ const TABLES: &[TableSpec] = &[
         id_columns: &["id", "parentId"],
         ts_columns: &["createdAt", "updatedAt"],
     },
+    TableSpec {
+        // Dumped via the custom JOIN (see `dump_chunks_json`) — `order_by` here
+        // names the derived sort column both sides append.
+        table: "doc_mount_chunks",
+        order_by: "sortKey",
+        id_columns: &["id", "linkId"],
+        ts_columns: &["createdAt", "updatedAt"],
+    },
 ];
+
+/// The P4.6BK chunk-dump convention: `doc_mount_chunks` plus a derived `sortKey`
+/// column (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`), rows ordered by it —
+/// chunk rows have no natural key of their own. Mirrors the oracle case's dump.
+/// Routed through a temp view so `dump_table_json_conn`'s canonical cell
+/// rendering (JS-number collapse, hex BLOBs) applies unchanged.
+fn dump_chunks_json(conn: &rusqlite::Connection) -> Value {
+    conn.execute_batch(
+        "CREATE TEMP VIEW IF NOT EXISTS qt_chunk_dump AS \
+         SELECT c.*, COALESCE(p.name, '') || '#' || COALESCE(l.relativePath, '') || '#' || \
+                printf('%05d', CAST(c.chunkIndex AS INTEGER)) AS sortKey \
+         FROM doc_mount_chunks c \
+         LEFT JOIN doc_mount_file_links l ON l.id = c.linkId \
+         LEFT JOIN doc_mount_points p ON p.id = c.mountPointId",
+    )
+    .expect("create chunk dump view");
+    let mut dump = quilltap_core::db::dump_table_json_conn(conn, "qt_chunk_dump", "sortKey")
+        .expect("dump doc_mount_chunks");
+    dump["table"] = Value::from("doc_mount_chunks");
+    dump
+}
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -144,9 +179,10 @@ fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<Stri
     }
 }
 
-/// Normalize all four dumps with one shared id-map, walking tables in `TABLES`
-/// order so the first-seen token assignment is identical on both sides.
-fn normalize_all(dumps: &mut [Value; 4]) {
+/// Normalize all five dumps with one shared id-map, walking tables in `TABLES`
+/// order so the first-seen token assignment is identical on both sides (links
+/// before chunks, so `chunk.linkId` resolves to the link's token).
+fn normalize_all(dumps: &mut [Value; 5]) {
     let mut id_map: HashMap<String, String> = HashMap::new();
     for (i, spec) in TABLES.iter().enumerate() {
         normalize_table(&mut dumps[i], spec, &mut id_map);
@@ -198,14 +234,18 @@ fn doc_mount_file_links_tier2_matches_oracle() {
         }
     }
 
-    let mut got: [Value; 4] = std::array::from_fn(|i| {
-        writer
-            .dump_table_json(TABLES[i].table, TABLES[i].order_by)
-            .unwrap_or_else(|e| panic!("dump {}: {e}", TABLES[i].table))
+    let mut got: [Value; 5] = std::array::from_fn(|i| {
+        if TABLES[i].table == "doc_mount_chunks" {
+            dump_chunks_json(writer.connection())
+        } else {
+            writer
+                .dump_table_json(TABLES[i].table, TABLES[i].order_by)
+                .unwrap_or_else(|e| panic!("dump {}: {e}", TABLES[i].table))
+        }
     });
     let _ = std::fs::remove_file(&work);
 
-    let mut want: [Value; 4] = std::array::from_fn(|i| {
+    let mut want: [Value; 5] = std::array::from_fn(|i| {
         oracle
             .get(oracle_key(TABLES[i].table))
             .cloned()
@@ -216,7 +256,7 @@ fn doc_mount_file_links_tier2_matches_oracle() {
     normalize_all(&mut got);
     normalize_all(&mut want);
 
-    for i in 0..4 {
+    for i in 0..5 {
         let table = TABLES[i].table;
         assert_eq!(got[i]["table"], want[i]["table"], "{table}: table name");
         assert_eq!(
@@ -305,7 +345,30 @@ fn doc_mount_file_links_tier2_matches_oracle() {
         .expect("properties.json link");
     assert_eq!(props["allowEmbed"], Value::from(1), "properties allowEmbed");
 
-    eprintln!("OK: doc_mount_file_links storage-primitive tier-2 matched oracle (4 tables).");
+    // The chunk pass (P4.6BK): every write chunked, and each link's chunkCount
+    // rollup equals its actual chunk-row count (keyed by the derived sortKey
+    // prefix, which embeds the link's relativePath).
+    let chunks = got[4]["rows"].as_array().expect("chunk rows");
+    assert!(!chunks.is_empty(), "expected chunk rows after writes");
+    for link in links {
+        let rel = link["relativePath"].as_str().expect("link relativePath");
+        let rollup = link["chunkCount"].as_i64().expect("link chunkCount");
+        let actual = chunks
+            .iter()
+            .filter(|c| {
+                c["sortKey"]
+                    .as_str()
+                    .map(|k| k.contains(&format!("#{rel}#")))
+                    .unwrap_or(false)
+            })
+            .count() as i64;
+        assert_eq!(
+            rollup, actual,
+            "{rel}: link chunkCount rollup diverges from its chunk rows"
+        );
+    }
+
+    eprintln!("OK: doc_mount_file_links storage-primitive tier-2 matched oracle (5 tables).");
 }
 
 /// Map a table name to the JSON key the oracle emits it under.
@@ -315,6 +378,7 @@ fn oracle_key(table: &str) -> &'static str {
         "doc_mount_documents" => "documents",
         "doc_mount_file_links" => "links",
         "doc_mount_folders" => "folders",
+        "doc_mount_chunks" => "chunks",
         other => panic!("unknown table {other}"),
     }
 }

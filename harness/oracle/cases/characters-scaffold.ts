@@ -7,10 +7,9 @@
  * seven top-level folders, writeDatabaseDocument for the six blank markdown files
  * + two seeded JSON files (each through linkDocumentContent, deduping the six
  * blanks by sha). We do NOT set QUILLTAP_JOB_CHILD, so v4's post-write
- * reindexSingleFile chunk pass runs — but for a database-backed store it calls no
- * model (deterministic), and its only persisted divergence from the Rust storage
- * primitive is the link chunkCount + the doc_mount_chunks rows. The differential
- * pins chunkCount and excludes doc_mount_chunks.
+ * reindexSingleFile chunk pass runs — deterministic for a database-backed store
+ * (no model). Since P4.6BK v5 chunks on write too, so the differential diffs
+ * chunkCount exactly.
  *
  * Dumps the MOUNT-INDEX store tables (via the raw handle): doc_mount_points (the
  * unchanged seed), doc_mount_folders (7), doc_mount_files (3, deduped),

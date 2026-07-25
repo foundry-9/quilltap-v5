@@ -797,7 +797,15 @@ fn restore_on_writer(
 
     // ── 22a-22h. The format-3 doc-store family (mount-index partition) ───────
     if let Some(mount) = mount {
-        restore_mount_family(mount, data, &extracted.data, &root_path, &mut c, &mut w);
+        restore_mount_family(
+            main,
+            mount,
+            data,
+            &extracted.data,
+            &root_path,
+            &mut c,
+            &mut w,
+        );
     } else {
         w.push(
             "Document stores were not restored — mount-index database is unavailable".to_string(),
@@ -834,38 +842,11 @@ fn restore_on_writer(
         w.push("Files were not restored — mount-index database is unavailable".to_string());
     }
 
-    // ── 22f-bis. LEGACY wardrobe items (post-cutover backups carry none) ─────
-    if let Some(mount) = mount {
-        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
-        let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
-        for item in &data.wardrobe_items {
-            let title = s(item, "title");
-            let stored = crate::vault_overlay::WardrobeItem {
-                id: id_of(item),
-                character_id: Some(os(item, "characterId")),
-                title: title.clone(),
-                description: Some(os(item, "description")),
-                image_prompt: Some(os(item, "imagePrompt")),
-                types: sa(item, "types"),
-                component_item_ids: sa(item, "componentItemIds"),
-                appropriateness: Some(os(item, "appropriateness")),
-                is_default: b(item, "isDefault", false),
-                replace: b(item, "replace", false),
-                migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
-                archived_at: Some(os(item, "archivedAt")),
-                created_at: now(),
-                updated_at: now(),
-            };
-            match crate::db::vault_wardrobe_public::create_vault_wardrobe_item(
-                main, &links, &docs, &stored,
-            ) {
-                Ok(_) => c.wardrobe_items += 1,
-                Err(e) => w.push(format!(
-                    "Failed to restore wardrobe item \"{title}\": {e:?}"
-                )),
-            }
-        }
-    }
+    // ── 22f-bis — MOVED (P4.6BK). v4 runs the legacy-wardrobe-item restore
+    // BETWEEN 22f (blobs) and 22g (archive chunk rows) — `restore.ts:543` vs
+    // `:562` — and now that `wardrobe.create` chunks on write (chunk-on-write),
+    // the insertion order is observable in `doc_mount_chunks` rowids. The block
+    // lives inside `restore_mount_family` at v4's exact position.
 
     // ── 22i. Chat documents (Document Mode pane state per chat) ──────────────
     {
@@ -1088,6 +1069,7 @@ fn restore_on_writer(
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn restore_mount_family(
+    main: &Connection,
     mount: &Connection,
     data: &crate::services::backup::BackupData,
     original: &crate::services::backup::BackupData,
@@ -1265,6 +1247,43 @@ fn restore_mount_family(
                     }
                 }
                 Err(e) => w.push(format!("Failed to restore doc-store blob {id}: {e}")),
+            }
+        }
+    }
+
+    // 22f-bis. LEGACY wardrobe items (deferred from step 19; post-cutover
+    // backups carry none). v4 `restore.ts:543` — runs BETWEEN the blobs (22f)
+    // and the archive chunk rows (22g); `wardrobe.create` writes the item into
+    // the character's vault and (since P4.6BK) chunks it on write, so this
+    // position is observable in `doc_mount_chunks` insertion order.
+    {
+        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+        let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+        for item in &data.wardrobe_items {
+            let title = s(item, "title");
+            let stored = crate::vault_overlay::WardrobeItem {
+                id: id_of(item),
+                character_id: Some(os(item, "characterId")),
+                title: title.clone(),
+                description: Some(os(item, "description")),
+                image_prompt: Some(os(item, "imagePrompt")),
+                types: sa(item, "types"),
+                component_item_ids: sa(item, "componentItemIds"),
+                appropriateness: Some(os(item, "appropriateness")),
+                is_default: b(item, "isDefault", false),
+                replace: b(item, "replace", false),
+                migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
+                archived_at: Some(os(item, "archivedAt")),
+                created_at: now(),
+                updated_at: now(),
+            };
+            match crate::db::vault_wardrobe_public::create_vault_wardrobe_item(
+                main, &links, &docs, &stored,
+            ) {
+                Ok(_) => c.wardrobe_items += 1,
+                Err(e) => w.push(format!(
+                    "Failed to restore wardrobe item \"{title}\": {e:?}"
+                )),
             }
         }
     }

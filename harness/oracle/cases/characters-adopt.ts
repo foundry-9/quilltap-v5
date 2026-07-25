@@ -8,8 +8,8 @@
  * ensureCharacterVault → the ADOPT branch (linkCharacterToVault the existing
  * populated store, no duplicate mint), then the patch's managed fields route onto
  * the adopted vault (a properties.json read-modify-write). We do NOT set
- * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; the differential pins chunkCount
- * and excludes doc_mount_chunks.
+ * QUILLTAP_JOB_CHILD, so reindexSingleFile runs; since P4.6BK v5 chunks on
+ * write too, so the differential diffs chunkCount exactly.
  *
  * The character id is read back from the fixture. A character spans two DBs, so we
  * dump BOTH the main slim `characters` row and the mount-index store tables. The

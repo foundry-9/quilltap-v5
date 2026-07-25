@@ -22,7 +22,7 @@
 //! The minted `keptAt` is PINNED to the per-op spec value both sides (it lands in the
 //! filename + attribution footer + frontmatter — one mint, three sinks, identical),
 //! so the keep dumps need remap only for the minted UUIDs + `createdAt`/`updatedAt`
-//! + `<cc>` (the chunker is not ported; groups/projects precedent).
+//! (chunkCount diffs exactly since P4.6BK — v5 chunks on write).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). The oracle case
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
@@ -323,7 +323,7 @@ const KEEP_TABLES: &[TableSpec] = &[
             "lastModified",
             "descriptionUpdatedAt",
         ],
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
     TableSpec {
         table: "doc_mount_folders",

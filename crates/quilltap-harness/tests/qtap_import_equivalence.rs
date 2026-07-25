@@ -17,8 +17,8 @@
 //! `characters.id`, `characters.characterDocumentMountPointId` → the mount point,
 //! `link.fileId` → the file, etc. Minted timestamps (`createdAt`/`updatedAt`, +
 //! the vault ts columns) → `<ts>`; passthrough seed timestamps
-//! (`lastReinforcedAt`) are diffed exactly. The link `chunkCount` → `<cc>` (a
-//! v4-only reindex artifact); `doc_mount_chunks` is excluded.
+//! (`lastReinforcedAt`) are diffed exactly. The link `chunkCount` diffs EXACTLY
+//! since P4.6BK (v5 chunks on write); `doc_mount_chunks` is excluded.
 //!
 //! The `doc_mount_files` / `doc_mount_documents` content is NOT row-diffed here:
 //! each wardrobe `.md` embeds its item's MINTED id + timestamps in the
@@ -126,7 +126,7 @@ const TABLES: &[TableSpec] = &[
             "updatedAt",
         ],
         from_mount: true,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
     // `memories` is walked LAST so the (doubled, on the 2nd import) memory-id token
     // stream can't offset the shared token counter for the vault tables above.

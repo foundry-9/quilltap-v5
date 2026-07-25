@@ -16,9 +16,9 @@
 //! `groups.officialMountPointId` → `doc_mount_points.id`, `link.fileId` →
 //! `file.id`, `link.mountPointId` → the store, `groupLink.groupId` → the group —
 //! verifies by RELATIONSHIP without pinning a literal id. Timestamps →
-//! `<ts>`; the link `chunkCount` → `<cc>` (a v4-only `reindexSingleFile`
-//! artifact the Rust storage primitive does not rebuild — see the oracle header);
-//! `doc_mount_chunks` is excluded entirely.
+//! `<ts>`; the link `chunkCount` diffs EXACTLY since P4.6BK (v5 chunks on
+//! write, matching v4's post-write `reindexSingleFile`); the
+//! `doc_mount_chunks` rows are dumped and diffed too (shared remap).
 //!
 //! The corpus banks: the 5-step create (slim row + provision + four files +
 //! overlay re-read), `properties.json` byte-exact (both keys + the empty bag),
@@ -147,7 +147,7 @@ const TABLES: &[TableSpec] = &[
             "updatedAt",
         ],
         from_mount: true,
-        pin_chunk_count: true,
+        pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
     },
     TableSpec {
         table: "doc_mount_folders",
@@ -167,7 +167,38 @@ const TABLES: &[TableSpec] = &[
         from_mount: true,
         pin_chunk_count: false,
     },
+    TableSpec {
+        // Dumped via `dump_chunks_json` (custom JOIN adds the derived sortKey).
+        // Walked LAST so `linkId` resolves to the link's already-assigned token.
+        table: "doc_mount_chunks",
+        oracle_key: "chunks",
+        order_by: "sortKey",
+        id_columns: &["id", "linkId", "mountPointId"],
+        ts_columns: &["createdAt", "updatedAt"],
+        from_mount: true,
+        pin_chunk_count: false,
+    },
 ];
+
+/// The P4.6BK chunk-dump convention: `doc_mount_chunks` plus a derived `sortKey`
+/// column (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`), rows
+/// ordered by it — chunk rows have no natural key of their own. Routed through a
+/// temp view so `dump_table_json_conn`'s canonical cell rendering applies.
+fn dump_chunks_json(conn: &rusqlite::Connection) -> Value {
+    conn.execute_batch(
+        "CREATE TEMP VIEW IF NOT EXISTS qt_chunk_dump AS \
+         SELECT c.*, COALESCE(p.name, '') || '#' || COALESCE(l.relativePath, '') || '#' || \
+                printf('%05d', CAST(c.chunkIndex AS INTEGER)) AS sortKey \
+         FROM doc_mount_chunks c \
+         LEFT JOIN doc_mount_file_links l ON l.id = c.linkId \
+         LEFT JOIN doc_mount_points p ON p.id = c.mountPointId",
+    )
+    .expect("create chunk dump view");
+    let mut dump = quilltap_core::db::dump_table_json_conn(conn, "qt_chunk_dump", "sortKey")
+        .expect("dump doc_mount_chunks");
+    dump["table"] = Value::from("doc_mount_chunks");
+    dump
+}
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/groups-tier2.json")
@@ -302,8 +333,12 @@ fn groups_tier2_matches_oracle() {
         .iter()
         .map(|s| {
             let w = if s.from_mount { &mount } else { &main };
-            w.dump_table_json(s.table, s.order_by)
-                .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
+            if s.table == "doc_mount_chunks" {
+                dump_chunks_json(w.connection())
+            } else {
+                w.dump_table_json(s.table, s.order_by)
+                    .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
+            }
         })
         .collect();
     let _ = std::fs::remove_file(&main_work);
@@ -370,7 +405,7 @@ fn groups_tier2_matches_oracle() {
         "empty markdown file `\"\"` not found"
     );
 
-    eprintln!("OK: groups store-backed tier-2 matched oracle (7 tables, 2 DBs).");
+    eprintln!("OK: groups store-backed tier-2 matched oracle (8 tables, 2 DBs).");
 }
 
 /// The keystone asymmetry (v4 `applyOverlayOne` THROWS, `applyOverlay` DROPS): a
