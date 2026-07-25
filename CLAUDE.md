@@ -1270,6 +1270,44 @@ records THERE. Update this summary only when a phase or round completes.
   sparse-array ruling + the `qtap_import` corpus-shape fix, and the SPA
   bundle-warnings lane): core **0.0.353**, harness **0.0.301**, SPA
   **0.5.271**; host/web/cli/tauri unchanged.
+- **The "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6): UNIFIED on
+  main (2026-07-25) — P4.9G6 CLOSED; P4.9G5 still OPEN at units 4–5 and
+  BLOCKED ON A HUMAN RULING.** Restore now works **as far as the preview**: the
+  octet-stream `?action=upload` leg (back-pressured, behind the 1-hour upload
+  store on `BackupHost`), `json_stream` + `legacy_migrations` + `parseBackupZip`
+  (both parse-time legacy folds; the streaming scanner's thrown messages carried
+  verbatim because the preview route leaks `error.message`), and
+  `systemRestorePreview` over v4's **41-key** `RestoreSummary`. The extract dir
+  is owned state (`ExtractedBackup: Drop`), and the differential asserts an empty
+  scratch root after every case. **The shared "recognized but not yet available"
+  arm in `engine.rs` is GONE.** New committed `restore-archives/` family — five
+  archives built by v4's REAL `createBackup`, read byte-for-byte by BOTH sides, so
+  the restore claim never depends on v5's zip writer; no existing fixture moved.
+  P4.9G6 landed the whole `new-account` UUID remap (pure; 19-case tier-1 EXACT
+  family with **zero** normalization, all 38 collections byte-compared, corpus
+  sha256-pinned per NDJSON line, first-run-green so sensitivity was proven by
+  three deliberate mutations) — **complete and differential-proven but with no
+  caller**, since the orchestrator is its only consumer. **⚠ THE BLOCKER: unit 4
+  found two real v4 restore bugs** — v4 rejects every `doc_mount_points` /
+  `doc_mount_file_links` row from a modern archive (raw `SELECT *` dump vs
+  Zod-validating creates, so **every character vault, project store and group
+  store comes back unreachable**) and restores **no user file at all**
+  (`backupFormat === 2` vs a manifest that says `4`). v5 reproduces neither, so
+  the tier-2 state diff is not an equality — the same shape as the sparse-array
+  blob divergence, and it needs the same human ruling. The lane refused to land a
+  live-but-unproven restore or a dead one, per its own tier-3 rule; the
+  orchestrator is written and banked in the lane record, not on main. Because
+  there was no `ACTIVATE-AT-UNIFY` marker to flip, the §2 wire became
+  `p4_9g6_seam_contract.rs`: compile-time signature pins plus an end-to-end
+  `parse_backup_zip` → `remap_backup_data` composition proof (bijective relabel,
+  disjoint id sets, manifest-is-the-caller's-job). Gate: 380 binaries / 1,616 /
+  0; the round's four families by name with `--nocapture` zero SKIP; clippy both
+  feature sets; release build; **no SPA run owed — neither lane touched
+  `apps/web`.** Versions: core 0.0.355, harness 0.0.303, host 0.0.35, web
+  0.0.44; cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.271 unchanged. Next: **rule
+  on the two v4 bugs, then finish P4.9G5 units 4–5**; or P4.9G4's import execute
+  (unblocked, disjoint); or a dogfood pass (+ the owed walk Part D and Part F
+  items 15/16) — see phase-4.md.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

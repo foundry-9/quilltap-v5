@@ -4,8 +4,14 @@
 //! [`create_manifest`], [`stage_backup`]), the archive ([`archive`]), and the
 //! `createBackup` orchestration over the [`BackupHost`] seam.
 //!
-//! The restore direction lives in [`restore`] — the upload store, the archive
-//! parse, `previewRestore`, and the phase-ordered orchestrator.
+//! The restore direction lives in [`restore`] — the archive parse and
+//! `previewRestore`. Its orchestrator (unit 4) is NOT landed: it is blocked on a
+//! human ruling about two v4 restore bugs, so `systemRestoreExecute` refuses by
+//! name. See the order's status header.
+//!
+//! [`uuid_remap`] holds the `new-account` id rewrite (P4.9G6). It is complete and
+//! differential-proven, but nothing calls it yet — the orchestrator is its only
+//! consumer.
 
 pub mod archive;
 pub mod collect;

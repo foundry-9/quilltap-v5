@@ -9,6 +9,121 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6): UNIFIED on main (2026-07-25)
+
+Both lanes reconciled on `unify/p4.9g5-g6-restore` and fast-forwarded to main.
+**P4.9G6 CLOSED** (tier 1 + tier 2 in full, nothing deferred). **P4.9G5 still
+OPEN at units 4–5, and BLOCKED ON A HUMAN RULING** rather than merely unfinished
+— see below and the two lane records. v4 re-verified at **`e646f58b`**, clean
+tree, before and after; the oracle baseline does not move.
+
+**Ownership held almost perfectly.** The only cherry-pick conflicts were
+`docs/CHANGELOG.md` and `docs/developer/porting/status-log.md`. Zero source
+conflicts: `services/backup/mod.rs` — the round's single shared source file —
+auto-merged, both §3 labelled regions intact, because each lane confined itself
+to its own region and only G5 touched the doc comment. `api/types.rs` stayed
+FROZEN (verified: empty diff).
+
+**⚠ The silent-version-merge trap fired again, exactly as the playbook predicts.**
+Both lanes bumped `quilltap-core` 0.0.353 → 0.0.354 and `quilltap-harness`
+0.0.301 → 0.0.302 off the same base, so the identical bumps auto-merged into ONE
+and the cherry-pick reported **no conflict at all** on either file. RECOUNTED as
+base + total bumps: core **0.0.355** (353 +2), harness **0.0.303** (301 +2), host
+**0.0.35** (+1, G5 only), web **0.0.44** (+1, G5 only). SPA unchanged at 0.5.271.
+Do not trust a clean merge on a version file — count.
+
+**One status-log resolution trap worth recording.** Both lanes appended to the
+END of `status-log.md`, and git's conflict region happened to open *inside* G5's
+fenced regen-recipe code block. A mechanical both-sides union therefore wedged
+G6's entire record into the middle of G5's recipe, splitting a code fence in two
+— and it looked fine at the seam. The fix: both diffs were pure appends past
+main's line count, so the file was rebuilt as `main + G5's tail + G6's tail`
+(verified by diffing each lane's first 33,394 lines against main's). **When two
+lanes both append to the same doc, resolve by reconstructing from the append
+boundary, not by accepting git's hunk split.** G5's two lane records were also
+promoted `###` → `##` at unification: they had landed nested under an unrelated
+`## Lane record — P4.9G3 FINAL GATE`.
+
+### The unification wire — a contract pin, because there was no call site to flip
+
+The round's §2 seam made `remap_backup_data` a cross-lane dependency: G6 delivers,
+G5 consumes at restore's `new-account` pre-step, and the unifier flips an
+`ACTIVATE-AT-UNIFY` marker. **G5 landed unit 3 but not units 4–5, so no marker
+exists** — and the seam would otherwise have gone into main entirely unexercised,
+at exactly the moment the two lanes stop being able to check each other.
+
+New file `crates/quilltap-harness/tests/p4_9g6_seam_contract.rs` discharges the
+two obligations that remain dischargeable:
+
+1. **The §2 signatures are pinned at COMPILE time** via function-item coercions
+   written out exactly as the order states them — `remap_backup_data` plus all ten
+   `UuidRemapper` methods. A drifted signature stops the build, which is louder
+   than a failing assertion, so the unit-4 call site cannot be written against a
+   shape that has since moved. Verified name-for-name against the order first:
+   G6's delivered API matches the contract exactly, with one purely additive extra
+   (`mapping_object`).
+2. **The composition is proven end to end** — G5's `parse_backup_zip` reads the
+   committed `restore-archive.zip` off disk and G6's `remap_backup_data` consumes
+   the `BackupData` it produces. Asserted: row counts preserved (the remap rewrites
+   ids, never adds or drops rows), the new id set **disjoint** from the old one and
+   the same size (a bijection — the property unit 4 depends on, since restoring into
+   a live instance must not collide with a single existing row), the memo consulted
+   at least once per id, and ownership moved to the target user where v4 reassigns
+   it. A second case pins that the **manifest is deliberately outside the §2
+   transform** (v5's `BackupData` carries no manifest field), so the orchestrator is
+   the one that must carry it forward — recorded now so the split cannot be
+   forgotten when unit 4 is written.
+
+It takes no oracle and no env var, so it can never silently skip. **Keep it when
+unit 4 lands**: the pins stay useful and the composition case becomes the cheap
+smoke test under the real orchestrator.
+
+One other wire: `services/backup/mod.rs`'s doc comment claimed `restore` holds
+"the phase-ordered orchestrator." It does not — corrected to say the orchestrator
+is blocked and that `uuid_remap` is complete but has no caller yet, so the module
+header stops overstating what is on main.
+
+### The blocker — the next input is a human ruling, and nothing else unblocks it
+
+Unit 4's tier-2 state differential surfaced **two real v4 restore bugs**, both
+demonstrated against a backup v4 itself produced (evidence: the `system-restore`
+oracle's Part 2, committed; queue entry in `dogfood-findings.md`):
+
+1. Every `doc_mount_points` and `doc_mount_file_links` row is rejected — the
+   backup's raw `SELECT *` dump vs the restore's Zod-validating creates. All the
+   content restores and none of the stores that reach it do, so **every character
+   vault, project store and group store comes back unreachable.**
+2. No user file is restored — `backupFormat === 2` against a manifest that says
+   `4`.
+
+v5's faithful port reproduces neither, so the state diff is not an equality. Same
+shape as the sparse-array blob divergence, which a human ruled; this needs the
+same ruling. The lane refused to land a live-but-unproven restore OR a dead one,
+per its own tier-3 rule — the right call. The orchestrator is written and compiles
+but is banked in the lane record, not on main. Resume list: the order's status
+header and the phase plan.
+
+### Gate (on the unify branch, before the fast-forward)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean **plain AND** with `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- Oracles regenerated **fresh** from `~/source/quilltap-server` at `e646f58b`,
+  each in its own clean invocation via a `/tmp` mirror (Node 24):
+  `system-restore` (8 NDJSON lines — 5 preview + the 3 Part-2 evidence cases),
+  `backup-uuid-remap` (19 lines; **the corpus regenerated byte-identical**, sha256
+  `c62aa987…`), and `system-backup` (2 lines, re-run because G5 mechanically added
+  the three new `BackupHost` upload methods to its `TestBackupHost`).
+- `TZ=UTC cargo test --workspace --no-fail-fast` with both differential env vars:
+  **380 test binaries / 1,616 tests / 0 failed.**
+- The round's families **by name** with `--nocapture`, zero SKIP, per-case OK
+  lines visible: `system_restore_equivalence` 5/5,
+  `backup_uuid_remap_equivalence` 19/19, `system_backup_equivalence` 3 OK lines,
+  `p4_9g6_seam_contract` 2/2.
+- **No `apps/web` file was touched by either lane**, so no `ng test`, `ng build`
+  or Playwright run was owed — and none was run. Stated explicitly rather than
+  left ambiguous.
+
 ## Round planned — the "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6), 2026-07-24
 
 **Scope:** P4.9G5 units 3–5 — the whole restore side. **Baseline: v4

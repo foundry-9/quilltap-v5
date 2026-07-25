@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Unified the two restore lanes. Restoring from a backup now works as far as the
+preview: you can upload an archive and see exactly what it holds before deciding
+anything, including archives old enough to store their outfits in a shape that no
+longer exists. Writing a backup back into the database is still unavailable, and
+it says so by name — it is waiting on a decision about two bugs found in the old
+app's own restore, not on more work. Also landed, finished but not yet connected
+to anything, is the piece that rewrites internal identifiers so a backup can be
+restored alongside existing data rather than over it; its only caller is the step
+that is waiting.
+
+Because that connection could not be made yet, it was replaced with a check that
+the two halves actually fit: the archive reader hands its result straight to the
+identifier rewriter, and the result is verified to be a clean relabeling — same
+records, all-new identifiers, none of them colliding with what was there before.
+That check is written so it cannot be quietly skipped, and it stops compiling if
+either half changes shape.
+
+Verified: 380 test binaries, 1,616 tests, nothing failing; every affected
+comparison against the old app regenerated from scratch and re-run by name; both
+lint configurations and the release build clean. No part of the app's interface
+changed, so no interface tests were owed. quilltap-core 0.0.355,
+quilltap-harness 0.0.303, quilltap-host 0.0.35, quilltap-web 0.0.44.
+
 Found two bugs in v4's restore while building v5's, both by running v4's own code
 against a backup v4 itself produced. Restoring a current backup into v4 silently
 loses every document store: the characters, projects and groups come back, and so

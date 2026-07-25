@@ -2676,6 +2676,92 @@ fresh dogfood walk that follows this round; the proactive-path port
 (conditional on P4.16's bench); the chokidar-equivalent fs watcher and
 the other standing seams (unchanged).
 
+## The "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6) — UNIFIED on main 2026-07-25
+
+**P4.9G6 CLOSED. P4.9G5 still OPEN — and now BLOCKED ON A HUMAN RULING, not
+merely unfinished.** Round record at the top of `status-log.md`; the two lane
+records sit beside it.
+
+**Landed and live:** restore now works **as far as the preview**. Upload an
+archive (`POST /api/v1/system/restore?action=upload`, octet-stream, back-pressured
+to a temp zip behind the 1-hour upload store on `BackupHost`) and
+`systemRestorePreview` answers v4's 41-key `RestoreSummary`. `parseBackupZip` +
+`json_stream` + `legacy_migrations` are ported faithfully, including both
+parse-time legacy folds (outfit presets → composite wardrobe items; the
+per-character `equippedOutfit` single-UUID-or-null upgrade) and the streaming
+array scanner's verbatim thrown messages, which reach the client because the
+preview route leaks `error.message`. The extract directory is owned state
+(`ExtractedBackup: Drop`) rather than v4's two `finally` sites, and the
+differential asserts the scratch root is empty after every case — success or
+failure. **The shared "recognized but not yet available" arm in `engine.rs` is
+GONE**; `SystemRestoreExecute` refuses by naming the module it waits on.
+
+Also landed, complete and unused: the whole `new-account` UUID remap (P4.9G6).
+
+**New fixture family:** `crates/quilltap-web/tests/fixtures/restore-archives/` —
+five archives built by v4's REAL `createBackup`, read byte-for-byte by BOTH sides,
+so the restore claim never depends on v5's zip writer. No existing fixture moved.
+
+**Gate:** 380 binaries / 1,616 / 0; `system_restore_equivalence` (5 preview
+cases), `backup_uuid_remap_equivalence` (19 cases), `system_backup_equivalence`
+(re-run over a fresh oracle) and the new `p4_9g6_seam_contract` all by name with
+`--nocapture`, zero SKIP; clippy both feature sets; release build. **No `apps/web`
+file was touched by either lane, so no `ng` or Playwright run was owed** — and
+none was run. Versions: core 0.0.355, harness 0.0.303, host 0.0.35, web 0.0.44;
+SPA unchanged at 0.5.271.
+
+### ⚠ THE BLOCKER — a human ruling is the next input, and nothing else unblocks it
+
+Bringing up unit 4's tier-2 state differential surfaced **two real bugs in v4's
+restore**, both demonstrated by running v4's REAL `restore` against a backup v4
+itself produced (the evidence is the `system-restore` oracle's Part 2, committed
+and reproducible; the queue entry is in `dogfood-findings.md`):
+
+1. **v4 rejects every `doc_mount_points` and `doc_mount_file_links` row from a
+   modern archive.** `dumpMountIndexTable` is a raw `SELECT *`, so the archive
+   carries the array columns as JSON *text* and the booleans as `0`/`1` — and
+   `restore.ts` feeds those to Zod-validating `create`s. Folders, file rows,
+   documents and chunks restore fine, so the result is a graph with all the
+   content and **none of the stores or links that reach it: every character vault,
+   project store and group store comes back unreachable.**
+2. **v4 restores no user file at all.** `getFileFromExtractedBackup` gates the
+   `files/<storageKey>` lookup on `backupFormat === 2`; a modern manifest declares
+   `4`. One-line fix: `>= 2`.
+
+A faithful v5 port reproduces **neither** (its typed readers coerce), so the
+tier-2 state diff is not an equality. That is the same shape as the sparse-array
+blob divergence, which a human ruled — and this needs the same ruling. The lane
+correctly refused to land either a live-but-unproven restore or a dead one (the
+order's own tier-3 rule: "refuse the whole verb or land the whole mode"). **The
+orchestrator is written and compiles; it is banked on the lane branch's record,
+not on main.**
+
+**Resume list for P4.9G5 unit 4** (also in that order's status header):
+1. Get the ruling on the two v4 bugs.
+2. Rework the state differential to diff the pre/post **delta** rather than the
+   absolute post-state (the lane's third finding) — which also fixes minted-id
+   labelling.
+3. Chase two open leads: the 8-vs-0 `doc_mount_chunks` baseline gap, and whether
+   `delete_user_data` removes the Quilltap Uploads mount and so makes `replace`
+   unable to land any project-less file.
+4. Then land units 4 and 5 together.
+
+**Next candidates, in rough value order:**
+
+1. **Rule on the two v4 restore bugs, then finish P4.9G5 units 4–5.** The ruling
+   is a five-minute human decision that unblocks the last piece of Backup &
+   Restore; everything else about the unit is ready.
+2. **`work-orders/p4.9g4-qtap-export-import.md` — resume at import EXECUTE.**
+   Fully unblocked, fully disjoint, and the other half of the Data & System
+   surface a user can still reach a refusal on.
+3. **A dogfood pass** over the now-live restore preview plus the previous round's
+   Data & System surfaces, and the standing walk debt (**Part D**, **Part F items
+   15/16**).
+4. **M6 backlog rows 6+**, then the standing pools (`p4.9i2`, `p4.9e3`, `p4.9h2`,
+   the sidebar tier-3 deferrals, `browserUserAgent`, D21).
+
+---
+
 ## The pre-compute + Data & System round (P4.19 ∥ P4.9G1 ∥ P4.9G2) — UNIFIED on main 2026-07-24
 
 **P4.19 CLOSED. P4.9G2 CLOSED. P4.9G1 PARTIAL — resume there.** Full round
