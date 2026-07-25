@@ -4,7 +4,7 @@
  * `inWorkspace ? openTab('brahma') : openConsole()`.
  */
 
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, DeferBlockBehavior, TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { Router } from '@angular/router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,8 +57,16 @@ async function render(
       { provide: WorkspaceService, useValue: { openTab } },
       { provide: Router, useValue: { url: routerUrl } },
     ],
+    // The console dialog rides an `@defer (when isConsoleOpen())` block (it
+    // carries the markdown render stack, kept out of the initial bundle).
+    // Playthrough lets the trigger resolve for real instead of stopping at the
+    // placeholder, so the beats below exercise the live gate.
+    deferBlockBehavior: DeferBlockBehavior.Playthrough,
   });
   const service = TestBed.inject(BrahmaConsoleService);
+  // Required once a component hosts a `@defer` block: its deferred deps
+  // resolve asynchronously, so the metadata is unresolved until compiled.
+  await TestBed.compileComponents();
   const fixture = TestBed.createComponent(BrahmaEntry);
   fixture.detectChanges();
   await settle(fixture);
@@ -106,8 +114,17 @@ describe('BrahmaEntry (v4 sidebar-footer.tsx)', () => {
     expect(service.isOpen()).toBe(false);
   });
 
-  it('hosts the floating console dialog', async () => {
-    const { fixture } = await render(PROFILES, '/salon/1');
+  it('hosts the floating console dialog, deferred until the console opens', async () => {
+    const { fixture, service } = await render(PROFILES, '/salon/1');
+    // Closed: the dialog — and with it the markdown render stack — is not
+    // mounted. This is what keeps it out of the initial bundle.
+    expect(fixture.nativeElement.querySelector('qt-brahma-console-dialog')).toBeNull();
+
+    service.openConsole();
+    await settle(fixture);
+
+    // Open: this entry hosts the dialog itself (the shell mounts ONE
+    // component — §W.2), so it appears here rather than beside the shell.
     expect(fixture.nativeElement.querySelector('qt-brahma-console-dialog')).not.toBeNull();
   });
 });

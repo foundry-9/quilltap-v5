@@ -40,8 +40,16 @@ import { BrahmaConsoleService } from './brahma-console.service';
       <qt-icon name="brahma-console" class="w-7 h-7" />
     </button>
 
-    <!-- The floating console dialog (renders nothing while closed). -->
-    <qt-brahma-console-dialog />
+    <!-- The floating console dialog (renders nothing while closed). Deferred:
+         the dialog's message list pulls in the whole markdown render stack
+         (unified + remark/rehype + katex + highlight.js, ~646 kB), and this
+         entry is mounted eagerly by the shell — so a static reference put all
+         of it in the INITIAL bundle. The console's own effects are already
+         no-ops until isOpen flips, so gating the mount on the same signal
+         costs nothing and defers the chunk to first open. -->
+    @defer (when isConsoleOpen()) {
+      <qt-brahma-console-dialog />
+    }
   `,
 })
 export class BrahmaEntry {
@@ -50,6 +58,8 @@ export class BrahmaEntry {
   private readonly router = inject(Router);
 
   protected readonly isEligible = this.service.isEligible;
+  /** The `@defer` trigger for the floating dialog (see the template). */
+  protected readonly isConsoleOpen = this.service.isOpen;
 
   protected open(): void {
     if (isWorkspaceTabsEnabled() && this.router.url.split('?')[0] === '/workspace') {

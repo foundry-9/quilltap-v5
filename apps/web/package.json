@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.270",
+  "version": "0.5.271",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -34,8 +34,8 @@
     "@tanstack/angular-query-experimental": "^5.101.2",
     "@tanstack/angular-virtual": "5.0.7",
     "@tauri-apps/api": "^2.11.1",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "croner": "^10.0.1",
     "katex": "0.18.1",
     "markdown-it": "^14.3.0",

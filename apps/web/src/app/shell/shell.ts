@@ -185,8 +185,15 @@ const NAV_ITEMS: NavItem[] = [
       </div>
 
       <!-- The global wardrobe dialog, mounted once at the layout level
-           (v4 app-layout.tsx:126-138). Renders nothing while closed. -->
-      <qt-wardrobe-control-dialog />
+           (v4 app-layout.tsx:126-138). Renders nothing while closed — the
+           WardrobeControlDialog wrapper's whole template is already an
+           isOpen() @if, so deferring on the same signal is behaviour-
+           identical. It is deferred because the item editor reaches
+           markdown-field → rich-editor, dragging ProseMirror + markdown-it
+           (~389 kB) into the INITIAL bundle from this one static reference. -->
+      @defer (when wardrobeDialogOpen()) {
+        <qt-wardrobe-control-dialog />
+      }
 
       <!-- The app-wide auto-lock idle provider (v4 app/layout.tsx mounts
            AutoLockProvider). Headless — renders only its warning banner. It
@@ -205,6 +212,8 @@ export class Shell implements OnInit {
 
   protected readonly navItems = NAV_ITEMS;
   protected readonly showNavThemeSelector = this.theme.showNavThemeSelector;
+  /** The `@defer` trigger for the global wardrobe dialog (see the template). */
+  protected readonly wardrobeDialogOpen = this.wardrobeDialog.isOpen;
 
   /**
    * v4 `sidebar-footer.tsx:239-244`: a plain `open()` off a salon chat; on a

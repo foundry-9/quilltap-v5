@@ -31,7 +31,8 @@
             ],
             "loader": {
               ".ndjson": "text"
-            }
+            },
+            "allowedCommonJsDependencies": ["extend"]
           },
           "configurations": {
             "production": {
