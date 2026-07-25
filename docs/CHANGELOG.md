@@ -68,6 +68,13 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Built the Insert Announcement dialog. You can drop a line into a scene as one of
+the Salon's staff, as a character who isn't in the room, or under a name you make
+up on the spot. Pick an off-scene character and the dialog will offer to have
+them say it in their own voice: it shows you the proposal, you can edit it,
+regenerate it, or go back and rewrite what you asked for, and only what you
+approve is posted. It needs its server half, which is being built alongside it.
+
 Laid the groundwork for the in-chat Post Office: the wire shapes the announcement
 and mail dialogs talk over, and the small helpers they need. Nothing is visible
 yet — the dialogs come next, and the server half is being built in parallel.
