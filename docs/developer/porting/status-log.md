@@ -33810,12 +33810,21 @@ took the work.
 
 #### Banked WIP
 
-`/tmp/qt-p4.9g5-unit4-wip/` (this machine only, not committed):
-`restore.rs` (the orchestrator, ~1 400 lines, all 35 phases), `rows.rs` (the
-JSON-row accessors), `system_restore_state.rs` (the tier-2 state differential
-with the divergence scaffolding), and `unit4-tracked-edits.diff` (the additive
-repo methods + the seam + the engine arm). Regenerate from this record if it is
-gone — every non-obvious decision above is written down.
+**MOVED INTO THE REPO AT UNIFICATION (2026-07-25):**
+**`docs/developer/porting/banked/p4.9g5-unit4/`** — `restore.rs` (the
+orchestrator, ~1 400 lines, all 35 phases), `rows.rs` (the JSON-row accessors),
+`system_restore_state.rs` (the tier-2 state differential with the divergence
+scaffolding), and `unit4-tracked-edits.diff` (the additive repo methods + the
+seam + the engine arm), plus a `README.md` explaining what they are.
+
+The lane banked them in `/tmp/qt-p4.9g5-unit4-wip/` and said so honestly ("this
+machine only, not committed… regenerate from this record if it is gone"). The
+unifier copied them in unedited, because macOS clears `/tmp` and re-deriving
+~1 400 lines of already-compiling work from prose is a bad trade. They are under
+`docs/`, so **cargo never sees them and `cargo fmt` never touches them** — no
+`mod` refers to them and no build depends on the directory. **Delete it once unit
+4 lands.** This record remains the authority on intent; those files are the draft
+it describes.
 
 #### Regen recipe — the restore oracle (Parts 1 AND 2)
 

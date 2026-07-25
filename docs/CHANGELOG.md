@@ -19,6 +19,11 @@ records, all-new identifiers, none of them colliding with what was there before.
 That check is written so it cannot be quietly skipped, and it stops compiling if
 either half changes shape.
 
+The unfinished restore step was also moved out of a temporary folder and into
+the project itself, under documentation, so the decision it is waiting on does
+not cost the work already done if the machine restarts. Those files are archived
+text, not part of the build.
+
 Verified: 380 test binaries, 1,616 tests, nothing failing; every affected
 comparison against the old app regenerated from scratch and re-run by name; both
 lint configurations and the release build clean. No part of the app's interface
