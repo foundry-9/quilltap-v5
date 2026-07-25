@@ -9,6 +9,144 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥ P4.9E2A ∥ P4.9E2B ∥ P4.6BK): UNIFIED on main (2026-07-25)
+
+**All four orders CLOSED.** Four lanes, cherry-picked in dependency order (G4 →
+6BK → E2A → E2B). v4 re-verified at **`e646f58b`**, clean tree, before and after;
+the oracle baseline does not move. Source-level conflicts: **none** — the only
+overlaps were the version files, `api/engine.rs` (labelled regions),
+`services/mod.rs`, and the two append-only docs, exactly as §3 predicted. One
+file was touched by two lanes and still auto-merged:
+`services/backup/restore/orchestrator.rs` (G4 lifted two profile-name helpers out
+into `services/profile_names.rs`; 6BK moved phase 22f-bis to v4's exact
+position).
+
+### What each lane delivered (verified against its tier list, not taken on trust)
+
+- **P4.9G4-resumed — CLOSED, and with it every tier-1 item in the order.** The
+  whole `executeImport` pipeline: the ten id maps, the numbered dependency order
+  with its three inline chat-sidecar phases, every per-entity importer, all four
+  conflict strategies, the legacy folds, the seven-loop reconcile pass, and the
+  `'replace'` → `'overwrite'` route remap. New tier-2 `system_import_state`
+  differential (11 cases, every table in all three partitions). **`.qtap` import
+  now works end to end at both entrances** — the SPA's Import wizard, built back
+  in P4.9G2, stops refusing. Two real v5 bugs found by its own differential and
+  fixed: character plugin data was being double-JSON-quoted on every round-trip,
+  and imported blobs stored `''` where v4 stores SQL NULL.
+- **P4.9E2A — COMPLETE (tiers 1 and 2).** All four dispatch verbs + §1 verbatim,
+  `services/announcer/` (`writer.rs` + `character_voiced.rs`),
+  `api/chat_post_office.rs`, the new committed `post-office-{main,mount}.db`
+  family, `post_office_routes_equivalence` (32 cases) and
+  `announcer_tier3_equivalence` (7 cases). The banked `979aec66` drift folded in
+  (enum-only at this baseline, absorbed and asserted). One file outside its
+  §Ownership: `quilltap-host/src/host.rs` gained one line, because
+  `EngineAssembly` is a struct literal there.
+- **P4.9E2B — CLOSED.** The three dialogs, the two gutter entry points in v4's
+  grid fill order, the Salon wiring, seven Playwright beats, and **P4.9G5's owed
+  restore beat** (`e2e/zzz-restore-destructive.spec.ts`, upload → preview →
+  restore, ordered after the delete-all describe — three consecutive lanes had
+  deferred it for want of exactly this Playwright gate). Two evidence-backed
+  scope corrections, both accepted: composer drag-and-drop **is a phantom** (v4
+  has no such feature at `e646f58b`; the claim originated in v5's own P4.6ac
+  record and propagated through `m6-screen-parity.md` into the order), and the
+  **RNG dropdown is deferred** because the order's premise was wrong — P4.d5
+  ported the rng TOOL, not v4's `?action=rng` route, and v5 has no `chatRng`
+  verb. It also fixed a pre-existing KaTeX beat race, proven pre-existing on
+  main.
+- **P4.6BK — CLOSED (tiers 1 and 2).** The chunk pass at both write sites plus a
+  third the pin concealed (v4's `chunkAndInsertExtractedText` kept-image pass).
+  Both port judgments made and recorded: the layering inversion resolved with a
+  services-side `reindex_after_database_write` called from `db`, and **ALWAYS
+  chunk** — the `QUILLTAP_JOB_CHILD` guard has no v5 analogue, and the named
+  divergence matches the UNFORKED enclave oracle. **The order's central premise
+  was WRONG and the lane corrected it: the pin was Rust-side, not oracle-side.**
+  It came out across 18 families. The dmfl family was upgraded to v4's real
+  `writeDatabaseDocument` + a `doc_mount_chunks` dump, chunk dumps were added to
+  characters-create/provision + groups, `KNOWN_V5_GAPS` was removed from
+  `system_restore_state`, and a restore phase-order infidelity was fixed on the
+  way past. The P4.9G5 arithmetic now reconciles exactly.
+
+### The unification wires
+
+1. **`EngineAssembly.announcement_preview` is WIRED LIVE.** E2A shipped the
+   runner and the seam but owned neither `spine.rs` nor the host's assembly, so
+   it left the seam `None` and refused by name (the P4.9f1 `avatar_preview`
+   precedent). The wire is `HostAnnouncementPreviewRunner` in `spine.rs`, over the
+   spine's own completion + embedding Arcs — **with one deliberate difference
+   from the shipped runner**: it rebuilds the LOGGING `CheapLlmTaskExecutor` per
+   call from the request's own `user_id`/`chat_id`. v4 passes
+   `userId`/`chatId`/`character.id` straight into `executeCheapLLMTask`
+   (`character-voiced.ts:159-170`), so the call must land on an `llm_logs` row,
+   and the shipped runner's single assembly-time executor cannot carry
+   per-request identity. The differential's ROUTE cases use the shipped runner
+   with a non-logging executor because that fixture family has no llm-logs
+   partition. **⚠ The Insert Announcement dialog's Generate button now costs real
+   money** — one cheap-LLM call per press.
+2. **BOTH §2 chunk tripwires removed — and both fired first, as designed.** G4's
+   `system_import_state` carried one (`KNOWN_V5_GAPS`) and E2A's
+   `post_office_routes_equivalence` carried another (`CHUNK_ON_WRITE_GAP`, `v4 ==
+   v5 + 1` over the two send-mail cases). 6BK closed the gap in the same round,
+   so E2A's assertion failed on the first merged run — the tripwire doing exactly
+   its job. `doc_mount_chunks` is now diffed row for row in the import family and
+   `chunkCount` is an ordinary column in both; no skip set, no plucking.
+3. **The §1 wire surface diffed name-for-name** between `api/types.rs` and
+   `core-contract.ts`: four verbs, every field, the `kind`-tagged sender union,
+   all ten staff ids. Clean — §1 never moved.
+4. **Both `ACTIVATE-AT-UNIFY` beats went live**, plus G4's import beat which now
+   presses Import and asserts `Import Complete`. The letter beat passed on the
+   first merged run; the announcement beat did not, and **the fault was the
+   gesture, not the port**: a Staff announcement lands COLLAPSED as a chip (v4
+   collapses it identically — `qt-announcement-group`'s header says so), so the
+   posted line is not in the DOM until the chip is clicked, and the beat was
+   reading the chip's own label. It now expands the chip.
+
+### Gate (on the unify branch, before the fast-forward)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean **plain AND** with `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- Oracles regenerated **fresh** at `e646f58b`, one clean invocation per family —
+  22 families in all: the 14 tsx tier-2 families 6BK un-pinned (characters
+  create/adopt/arrays/physical/provision/scaffold/update, dmfl, groups, projects,
+  qtap-import, vault-character-write, vault-wardrobe-write,
+  vault-summary-mirror), the 6 jest families (wardrobe-transfers, photo-tools,
+  avatar-job, image-generation, story-background-job, system-restore), and the
+  round's 3 new ones (system-import-execute 12 lines, post-office 32,
+  announcer-tier3 7). Every NDJSON line-counted before it was trusted
+  (`oracle-regen-silent-stale-pass`).
+- `TZ=UTC cargo test --workspace --no-fail-fast` with all 22 families' env vars:
+  **385 test binaries / 1,633 tests / 0 failed, zero SKIP.**
+- The round's three new families **by name** with `--nocapture`: 11 named cases
+  in `system_import_state`, `post_office_routes_equivalence` and
+  `announcer_tier3_equivalence` all green.
+- `ng test` **227 files / 2,669 tests**; `ng build` clean; full Playwright over a
+  fresh dist and rebuilt debug binaries — see the count in the CHANGELOG entry.
+
+### Deferred at unification — one escalation, deliberately NOT taken
+
+**The blob `originalFileName` / `originalMimeType` type widening** (G4's
+cross-lane escalation) is **recorded, not done.** G4 reproduced v4's exact net
+state with a targeted corrective UPDATE in `services/quilltap_import/
+document_stores.rs` because `db/doc_mount_file_links.rs` was 6BK's file that
+round. Widening `LinkBlobInput` / `CreateBlobInput`'s two `String` fields to
+`Option<String>` would collapse that block — but it touches roughly a dozen
+construction sites across photo saving, image generation, doc-edit blob writes,
+file ops and store-file, **none of which has a differential that would catch a
+mistake**, for **no behavior change at all**: the stored state already matches v4
+byte for byte. Taking that on unilaterally at unification is the wrong trade. The
+recipe is here and in G4's order header; it belongs to a round that owns
+`db/doc_mount_file_links.rs` outright.
+
+### Versions
+
+Four lanes bumped `core` and `harness` off the same base, so the identical bumps
+merged **silently** — the standing `parallel-round-playbook` gotcha. Recounted as
+base + total: core **0.0.360** (G4 +1, E2A +2, 6BK +1), harness **0.0.310**
+(+1 for the wire), host **0.0.38**, web **0.0.46**, SPA **0.5.279**; cli 0.0.3
+and quilltap-tauri 0.0.5 unchanged.
+
+---
+
 ## Round record — P4.9G5 restore-execute (single lane): UNIFIED on main (2026-07-25)
 
 **P4.9G5 is CLOSED. Restore is LIVE in both modes** — the Backup & Restore family

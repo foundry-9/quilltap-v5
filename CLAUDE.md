@@ -1353,6 +1353,41 @@ records THERE. Update this summary only when a phase or round completes.
   last unported Data & System half), a restore/Data-&-System dogfood pass (+ the
   owed walk Part D and Part F items 15/16), the two recorded gaps, or M6 rows 6+
   — see phase-4.md.
+- **The import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥
+  P4.9E2A ∥ P4.9E2B ∥ P4.6BK): UNIFIED on main (2026-07-25) — ALL FOUR
+  CLOSED.** `.qtap` import EXECUTE (the ten-map orchestrator, four per-entity
+  importers, legacy folds, the seven-loop reconcile, all four conflict
+  strategies; new 11-case `system_import_state`) — **the Data & System family
+  is COMPLETE, every card that once refused now works** ∥ the in-chat Post
+  Office server surface (the unported `lib/services/announcer/**` + four
+  dispatch verbs, new committed `post-office-{main,mount}.db`, 32-case routes +
+  7-case tier-3 differentials; the banked `979aec66` drift folded in) ∥ the
+  Post Office SPA (Insert Announcement with its preview→approve/edit/regenerate
+  loop, Compose Mail, Whisper, the megaphone + envelope gutter buttons in v4's
+  grid order, seven beats) **plus P4.9G5's owed restore e2e beat — three lanes
+  had deferred it; it runs green** ∥ **chunk-on-write** (v5 never chunked a
+  database-store document as it was written where v4 always does, so every
+  fresh character vault / project store / group store was unsearchable until
+  reindexed; both write sites + a third the pin concealed, ALWAYS-chunk ruled
+  and named as a divergence, `KNOWN_V5_GAPS` retired, a restore phase-order
+  infidelity fixed on the way past). ⚠ The order's premise that the
+  `QUILLTAP_JOB_CHILD` pin was oracle-side was **wrong** — it was Rust-side,
+  across 18 families. Wires: `EngineAssembly.announcement_preview` **LIVE**
+  over a host runner that rebuilds the LOGGING cheap executor per call
+  (**⚠ real spend — one cheap-LLM call per Generate**); BOTH §2 chunk
+  tripwires removed, E2A's having **fired on the first merged run** as
+  designed; the §1 wire diffed name-for-name, clean. Gate: 385 binaries /
+  1,633 / 0 with 22 families regenerated fresh at `e646f58b` zero SKIP, clippy
+  both feature sets, release build, ng 227 files / 2,669, full Playwright
+  **134/134 zero skips**. Two E2B scope corrections stand: composer
+  drag-and-drop **is a phantom** (v4 never had it — the claim came from v5's
+  own P4.6ac record), and the **RNG dropdown is deferred** because v5 has no
+  `chatRng` verb (P4.d5 ported the rng TOOL, not v4's `?action=rng` route).
+  Deferred loud: the blob `originalFileName` type widening (recorded, not
+  taken — no behavior change, ~a dozen differential-free sites). Next
+  candidates: a dogfood pass over this round's live surfaces (+ the owed walk
+  Part D and Part F items 15/16), the `chatRng` verb, M6 rows 8/10 — see
+  phase-4.md.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

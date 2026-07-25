@@ -2988,7 +2988,47 @@ response-bodies real-capture upgrades, and the other standing seams
 
 ---
 
-## The import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥ P4.9E2A ∥ P4.9E2B ∥ P4.6BK) — PLANNED 2026-07-25
+## The import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥ P4.9E2A ∥ P4.9E2B ∥ P4.6BK) — UNIFIED on main 2026-07-25
+
+**ALL FOUR ORDERS CLOSED.** `.qtap` import works end to end (the Data & System
+family is now complete — every card that once refused now works); the in-chat
+Post Office is live in the Salon; database-store documents chunk on write, so a
+freshly provisioned character vault / project store / group store is searchable
+immediately; and **P4.9G5's owed restore e2e beat finally landed and runs
+green**. The unification wired `EngineAssembly.announcement_preview` LIVE (⚠ real
+spend, one cheap-LLM call per Generate) and removed BOTH §2 chunk tripwires —
+E2A's fired on the first merged run, which is the discipline working. Full round
+record, including the gate numbers and the one escalation deliberately not taken,
+in `status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **A dogfood pass** over everything this round made reachable — `.qtap` import
+   execute on real data, the three Post Office dialogs (the announcement rewrite
+   costs real money), and search over a freshly created character's vault. The
+   standing walk list also still owes **Part D** (the retrospective downstream
+   look) and **Part F items 15/16** (Story's Clock jump; per-chat Core-whisper
+   override) from the 2026-07-24 walk.
+2. **The `chatRng` server verb + the RNG gutter dropdown.** P4.9E2B found the
+   gap: P4.d5 ported the rng TOOL, not v4's `POST /chats/{id}?action=rng` route,
+   so v5's dispatch surface has no `chatRng` and the gutter's dice button cannot
+   be built. Small server lane + a rider; it closes the last of v4's gutter row.
+3. **M6 backlog rows 8 and 10** (`m6-screen-parity.md` §4) — `p4.9e1` (the chat
+   cast dialogs: AddCharacter + CreateNPC + SummonFromLore, needs tier-3 LLM
+   services for Summon) and `p4.9e3` (the `ChatModals` barrel remainder, a round
+   in itself, needs `?action=update-tool-settings`). Row 9 is now DONE.
+4. **The blob `originalFileName` type widening** — recorded at this round's
+   unification, deliberately not taken: no behavior change, ~a dozen
+   differential-free construction sites. Wants a round that owns
+   `db/doc_mount_file_links.rs`.
+5. The standing pools: `p4.9i2` (help/HelpChat, which also holds the banked
+   `math-notation.md`), `p4.9h2`, the sidebar tier-3 deferrals, the
+   `chat_settings` explicit-`null` gap (still tripwired), `browserUserAgent`
+   threading, and D21 (release/signing, never yet started).
+
+---
+
+### The round as planned (2026-07-25), for the record
 
 v4 drift-checked clean at `e646f58b` at planning (HEAD exactly the baseline,
 tree clean — `git log e646f58b..HEAD --oneline` empty). Four lanes, ownership

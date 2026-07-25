@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+The in-chat Post Office is open. Three composer dialogs arrive together: Insert
+Announcement posts a bubble signed by a member of staff, a character, or a name
+you make up — and can have an off-scene character rewrite your line in their own
+voice before you approve it; Compose Mail posts a letter as one of the characters
+you play, optionally in reply to something already in their postbox; and Whisper
+sends a private line to a single character. The megaphone and envelope buttons
+join the composer's gutter in the old app's order.
+
+Importing a `.qtap` file, posting an announcement, and indexing store documents
+all landed in one round, and the pieces met correctly: the announcement rewriter
+is wired to the real model providers and logs its call the way the old app does,
+and the two test tripwires that had been holding the document-indexing gap open
+both fired and were retired.
+
+One correction worth recording: drag-and-drop file upload onto the composer was
+listed as missing from the new app. It is not missing — the old app never had it.
+The claim came from our own notes and propagated into two planning documents,
+both now fixed.
+
 Importing a `.qtap` file now actually imports it. The Import wizard's last step
 used to answer "not yet available"; it now writes. Every kind of thing an export
 can carry comes across — characters with their wardrobes and plugin data, chats
