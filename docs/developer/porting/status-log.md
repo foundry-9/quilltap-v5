@@ -34960,3 +34960,147 @@ locale-shifted fixture.
 - **No existing fixture moved**, so **no other oracle is invalidated**.
 - No stray `.db-journal` (the standing P4.15 rule) — the builder deletes them and
   `git status` was verified clean of them.
+
+---
+
+## P4.9E2A — the in-chat Post Office server surface (lane record, part 2 of 2)
+
+### What landed in this commit (units 4–5)
+
+6. **`services/announcer/character_voiced.rs`** — v4
+   `lib/services/announcer/character-voiced.ts`
+   (`generateCharacterVoicedAnnouncement`). Pure composition over already-ported
+   pieces: `build_system_prompt` (identity stack only — v4 passes ONLY
+   `{character, selectedSystemPromptId}`, so no roleplay template, no tools, no
+   scenario), `search_memories_semantic` (limit 20, minImportance 0.3) →
+   `format_dynamic_memory_head` (maxEntries 12) → `build_commonplace_llm_context`,
+   `buildRoster` (active|silent CHARACTER participants minus the speaker; the
+   `character?.name?.trim() || 'Someone'` fallback), and
+   `CheapLlmTaskExecutor::execute` at `maxTokens 2048`, task type
+   `announcement-rewrite`.
+7. **`AnnouncementPreviewRunner`** — a ready-made [`AnnouncementPreviewDriver`]
+   over that service in `api/chat_post_office.rs`, so the host's remaining job is
+   constructing one from its spine (see "the deferred wire" below).
+8. **`announcer_tier3_equivalence`** — 7 cases, green: five service-level
+   (recall / no recall hits / unknown chat → no roster / speaker-is-a-participant
+   / empty completion) and two ROUTE-level arms driven through
+   `chat_announcement_preview` + the runner against v4's real
+   `handleAnnouncementPreview`.
+
+### What the tier-3 family actually pins
+
+The canned completion is registered from the oracle's **recorded** call
+(`provider|model|temperature|messages`), so **the assembled system prompt and
+user message are the diffed evidence** — a drift of one character in v4's rewrite
+instruction, or a missing `(status)` in a roster line, fails the family. A
+recording wrapper in front of the canned provider turns a mismatch into a
+readable diff instead of a bare lookup miss.
+
+It also runs the order's required **tier-2 diff on the writes**: this
+"persists nothing" service DOES write — `searchMemoriesSemantic` bumps
+`lastAccessedAt` on whatever it returned. The dump is clock-free (`bumped` =
+`lastAccessedAt` past the fixture's seed timestamp), so it diffs with zero
+normalization, and the two "no recall hits" cases prove the bump is selective.
+
+**Both differentials were first-run green, so sensitivity was proven by
+deliberate mutation** (the P4.9G6 discipline): changing one em-dash to a hyphen
+in the rewrite instruction → RED; dropping the `({status})` suffix from a roster
+line → RED; reverting → GREEN. (The tier-2 family had already earned its
+sensitivity the hard way — see the TZ finding in part 1.)
+
+### v4 details reproduced (each commented at its site)
+
+- `buildSelection` reads the OPERATOR'S CHOSEN profile — `baseUrl || undefined`,
+  `isLocal: provider === 'OLLAMA'`, and `parameters` forwarded when it is an
+  object (JS `typeof [] === 'object'`, so an array qualifies too).
+- **No uncensored fallback, no `cheapLLMSettings`.** v4 passes `undefined` for
+  the fallback options here, so the P4.15 all-profiles/danger threading
+  deliberately does NOT apply — the profile came from the dialog.
+- `if (!llmResult.success || !llmResult.result)` — an empty-string result is
+  falsy in JS, so a whitespace-only completion takes the failure arm and reports
+  `'The LLM returned no content.'`.
+- The route's `badRequest(result.error || 'Failed to generate in-character
+  announcement.')` — an empty-string error is falsy and takes the default.
+- Memory-recall failure never blocks the rewrite (v4 warns and proceeds).
+
+### ⚠ The one deferral — LOUD and named
+
+**`EngineAssembly.announcement_preview` is `None` in `quilltap-host`**, so
+`ChatAnnouncementPreview` runs v4's validation / character / connection-profile
+arms and then answers, by name:
+
+> `chatAnnouncementPreview is not available: the host has not assembled an
+> AnnouncementPreviewDriver (the in-character rewrite needs the completion +
+> embedding providers).`
+
+This is the P4.9f1 `avatar_preview` precedent: the lane owns neither `spine.rs`
+nor `quilltap-host`'s composition, and the seam field + the `None` are already in
+place. **The wire is one construction**, in `quilltap-host`'s assembly:
+
+```rust
+announcement_preview: Some(std::sync::Arc::new(
+    quilltap_core::api::chat_post_office::AnnouncementPreviewRunner {
+        db: db.clone(),
+        completion: <the spine's completion provider>,
+        embedding: <the spine's embedding provider>,
+        executor: <the spine's CheapLlmTaskExecutor, Arc'd>,
+        now_ms: None,           // production clock
+    },
+)),
+```
+
+The two ROUTE cases in `announcer_tier3_equivalence` already drive exactly that
+composition (with `now_ms` pinned), so the wire is proven before it is made.
+**Once wired, the rewrite costs real money** — one cheap-LLM call per click of
+Generate in the Insert Announcement dialog.
+
+### Regen recipe — `QT_ORACLE_ANNOUNCER_TIER3` (⚠ TZ=UTC)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-ann-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/announcer-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/post-office-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_PO_MAIN=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db \
+QT_FIXTURE_PO_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/post-office-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-announcer-tier3.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- announcer-tier3
+wc -l /tmp/oracle-announcer-tier3.ndjson   # must be 7
+```
+
+The oracle freezes `Date` to `NOW_MS = 1_777_939_200_000`
+(2026-05-05T00:00:00.000Z) because `formatDynamicMemoryHead` renders a RELATIVE
+age ("4 days ago") and `calculateEffectiveWeight` decays by time — without the
+freeze the assembled user message could never match.
+
+### Fixture change in this commit
+
+`post-office-{main,mount}.db` was **rebuilt** to add three of Dorian's memories
+(`repos.memories.create`, pinned ids, NO embeddings — both sides then fall
+through the empty vector pool to the deterministic text path). Rebuilding
+re-mints every character-vault id, so **`QT_ORACLE_POST_OFFICE` was regenerated
+too** and re-run green (32 cases). No OTHER fixture moved and no other oracle
+family is invalidated.
+
+### The audit the order asked for (tier-2 item 9)
+
+v4's other `postAdhocAnnouncement`-adjacent announcement writers are the Staff
+personas already ported in Phase 3 (`services/{host,librarian,lantern,ariel,
+concierge,commonplace,suparna,aurora,prospero}_notifications.rs`, plus
+`services/pascal_writer.rs` and `enclave/announce.rs`). **`lib/services/announcer/`
+was the only unported announcer module, and both of its files are now ported** —
+a later lane has nothing left to re-port here. The banked drift `979aec66`
+("Pascal in Insert Announcement") is fully absorbed: `git show --stat` confirms it
+touched only the `StaffSender` type, the `STAFF_SENDER_ENUM`, the client staff
+list (E2B's) and the help doc — **no behavior beyond the enum entry**, and the
+enum ships complete with `pascal` in it (asserted by a unit test in
+`writer.rs` and exercised by the `announcement_staff_pascal` differential case).
+
+### No SPA work is owed by this lane
+
+**No file under `apps/web` was touched**, so no `ng test`, no `ng build` and no
+Playwright run is owed — stated explicitly per the order's gate item 7. P4.9E2B
+owns every SPA file and builds against §1.

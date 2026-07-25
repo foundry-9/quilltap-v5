@@ -1163,7 +1163,7 @@ fn injector_result_from_search(
     }
 }
 
-fn injector_memory_from_json(v: &Value) -> crate::memory_injector::InjectorMemory {
+pub(crate) fn injector_memory_from_json(v: &Value) -> crate::memory_injector::InjectorMemory {
     let ms = |key: &str| {
         v.get(key)
             .and_then(Value::as_str)

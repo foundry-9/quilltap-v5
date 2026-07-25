@@ -36,6 +36,20 @@ mismatch (legacy wardrobe items now restore at the old app's exact phase
 position) and completed the kept-image caption chunking that had been stubbed
 out.
 
+The Insert Announcement dialog's in-character rewrite is ported. Ask an
+off-scene character to say something and they will now redraft it in their own
+voice, with their normal sense of who they are, the entries their Commonplace
+Book brings up against what you typed, and a list of who is actually in the room
+to hear it. Nothing is saved — you get the draft back to approve, edit, or throw
+away. It is checked against the old app by feeding both sides the same canned
+model reply and comparing the exact prompt each one built, down to the byte,
+across five shapes: with and without recalled memories, with and without an
+audience, a speaker who is also in the scene, and an empty reply from the model.
+
+The rewrite is wired end to end inside the app but still has no model attached
+in the running server; that last connection is a one-line hookup left for the
+merge, and until then the dialog answers a refusal that names what is missing.
+
 The Post Office is open on the server side. Three in-chat actions now work
 through the new app's own boundary: posting an announcement bubble signed by a
 Staff member, by a character who is not in the scene, or by a free-text name;

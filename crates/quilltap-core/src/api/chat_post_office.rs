@@ -305,6 +305,60 @@ pub struct CharacterVoicedOutcome {
     pub error: Option<String>,
 }
 
+/// A ready-made [`AnnouncementPreviewDriver`] over the ported service: hold a
+/// `Db`, a completion provider, an embedding provider and a cheap-LLM executor,
+/// and the rewrite runs. The composing host constructs one of these from its
+/// spine — that construction is the only piece this lane defers.
+pub struct AnnouncementPreviewRunner<C, E> {
+    pub db: Db,
+    pub completion: C,
+    pub embedding: E,
+    pub executor: std::sync::Arc<crate::services::cheap_llm_exec::CheapLlmTaskExecutor>,
+    /// The injected `Date.now()` (ms) the Commonplace recall's time-decay and
+    /// relative-age labels read. `None` = the process clock (production); the
+    /// differential pins it.
+    pub now_ms: Option<f64>,
+}
+
+impl<C, E> AnnouncementPreviewDriver for AnnouncementPreviewRunner<C, E>
+where
+    C: crate::model::completion::CompletionProvider + Send + Sync,
+    E: crate::model::embedding::EmbeddingProvider + Send + Sync,
+{
+    fn run(
+        &self,
+        input: CharacterVoicedRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CharacterVoicedOutcome, String>> + Send + '_>> {
+        Box::pin(async move {
+            let result = crate::services::announcer::character_voiced::
+                generate_character_voiced_announcement(
+                    &self.db,
+                    &self.completion,
+                    &self.embedding,
+                    &self.executor,
+                    &crate::services::announcer::character_voiced::
+                        CharacterVoicedAnnouncementParams {
+                        chat_id: &input.chat_id,
+                        character: &input.character,
+                        profile: &input.profile,
+                        seed_markdown: &input.seed_markdown,
+                        system_prompt_id: input.system_prompt_id.as_deref(),
+                        user_id: &input.user_id,
+                        now_ms: self
+                            .now_ms
+                            .unwrap_or_else(|| crate::clock::now_unix_ms() as f64),
+                    },
+                )
+                .await;
+            Ok(CharacterVoicedOutcome {
+                success: result.success,
+                proposed_markdown: result.proposed_markdown,
+                error: result.error,
+            })
+        })
+    }
+}
+
 /// v4 `POST /api/v1/chats/[id]?action=announcement-preview`.
 #[allow(clippy::too_many_arguments)] // mirrors the route's parameter surface
 pub async fn chat_announcement_preview(

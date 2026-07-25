@@ -37,6 +37,9 @@
  *   4. One delivered letter BEA → ARIA at the pinned `seededLetterSentAt`, via
  *      v4's REAL `deliverLetter` (pinned `sentAt` rather than a frozen clock, so
  *      the filename's epoch prefix is deterministic).
+ *   5. Three of DORIAN's memories (`repos.memories.create`, pinned ids, NO
+ *      embeddings) — the tier-3 rewrite's Commonplace recall block. With an empty
+ *      vector store both sides fall through to the deterministic text path.
  *
  * ## Why ELISE is unlinked with a real repo call
  *
@@ -100,6 +103,30 @@ const P_GONE = 'e1000000-0000-4000-8000-000000000005';
 const P_GHOST = 'e1000000-0000-4000-8000-000000000006';
 const GHOST_CHARACTER = '99999999-9999-4999-8999-999999999999';
 const MSG_SEED = 'd1000000-0000-4000-8000-000000000001';
+
+// Dorian's Commonplace Book entries — the tier-3 rewrite's recall block. Two
+// mention the lamps (the seed's subject, so the text fallback matches them) and
+// one does not, so the recall selection is a real filter rather than "everything".
+const MEMORIES: Array<{ id: string; content: string; summary: string; importance: number }> = [
+  {
+    id: 'f0000000-0000-4000-8000-000000000001',
+    content: 'The eastern quay lamps run on whale oil and are always short by winter.',
+    summary: 'Eastern quay lamps run short of oil each winter.',
+    importance: 0.8,
+  },
+  {
+    id: 'f0000000-0000-4000-8000-000000000002',
+    content: 'Bea asked about the lamps once before, and I was short with her about it.',
+    summary: 'Was curt with Bea about the lamps once.',
+    importance: 0.6,
+  },
+  {
+    id: 'f0000000-0000-4000-8000-000000000003',
+    content: 'The ferryman keeps a ledger of every crossing after midnight.',
+    summary: 'The ferryman logs every midnight crossing.',
+    importance: 0.5,
+  },
+];
 
 async function main(): Promise<void> {
   // Kept in step with the oracle case (which formats dates): build under TZ=UTC.
@@ -313,6 +340,35 @@ async function main(): Promise<void> {
   const eliseAfter = await repos.characters.findByIdRaw(ELISE);
   if (eliseAfter?.characterDocumentMountPointId) {
     throw new Error('Elise vault FK was not cleared');
+  }
+
+  // 6. Dorian's memories (the tier-3 rewrite's Commonplace recall). No
+  //    embeddings are seeded, so `searchMemoriesSemantic` falls through its empty
+  //    vector pool to the deterministic text path on BOTH sides.
+  for (const m of MEMORIES) {
+    await repos.memories.create(
+      {
+        characterId: DORIAN,
+        aboutCharacterId: null,
+        chatId: null,
+        projectId: null,
+        content: m.content,
+        summary: m.summary,
+        keywords: [],
+        tags: [],
+        importance: m.importance,
+        embedding: null,
+        source: 'MANUAL',
+        witnessedContext: null,
+        sourceMessageId: null,
+        lastAccessedAt: null,
+        reinforcementCount: 1,
+        lastReinforcedAt: null,
+        relatedMemoryIds: [],
+        reinforcedImportance: m.importance,
+      } as never,
+      { id: m.id, createdAt: TS, updatedAt: TS } as never,
+    );
   }
 
   // Materialize the empty background-jobs table so both sides' fresh copies read
