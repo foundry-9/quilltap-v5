@@ -48,6 +48,13 @@ pub trait BackupHost: Send + Sync {
     /// The disk backend user-file bytes are staged from (v4
     /// `fileStorageManager` over `<base>/files`).
     fn storage(&self) -> Arc<dyn StorageBackend>;
+    /// The image seam restore's file phase needs: both mount-store bridges
+    /// (`writeUserUploadToMountStore` / `writeProjectFileToMountStore`) transcode
+    /// bitmaps on the way in, exactly as they do for a live upload, so a restored
+    /// file lands byte-identical to one uploaded today. A host without a codec
+    /// hands back the not-configured one, and the transcode falls through to the
+    /// original bytes — which is also what v4 does when sharp fails.
+    fn pixel_codec(&self) -> Arc<dyn crate::services::file_storage::PixelCodec>;
     /// The scratch root new staging directories are made under (v4
     /// `os.tmpdir()`).
     fn temp_dir(&self) -> PathBuf;

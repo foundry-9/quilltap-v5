@@ -414,20 +414,43 @@ pub fn create_character(
     vault: &CharacterVaultWriteInput,
 ) -> Result<String, DbError> {
     let now = crate::clock::now_iso();
-    let id = uuid::Uuid::new_v4().to_string();
+    create_character_with_options(
+        main,
+        mount,
+        slim,
+        vault,
+        &SlimCreateOptions {
+            id: uuid::Uuid::new_v4().to_string(),
+            created_at: now.clone(),
+            updated_at: now,
+        },
+    )
+}
 
+/// [`create_character`] with a PINNED id + timestamps — v4's `create(data,
+/// options)` with a `CreateOptions` argument. Restore (P4.9G5) is the caller
+/// that needs it: every entity keeps its backup id so the graph's
+/// cross-references stay valid without a fix-up pass.
+pub fn create_character_with_options(
+    main: &Connection,
+    mount: &Connection,
+    slim: &CharacterCreate,
+    vault: &CharacterVaultWriteInput,
+    opts: &SlimCreateOptions,
+) -> Result<String, DbError> {
     // The slim row always lands with a NULL vault FK (create provisions fresh and
     // sets the FK in step 3); drop any incoming pointer.
     let mut slim_row = slim.clone();
     slim_row.character_document_mount_point_id = None;
     let name = slim_row.name.clone();
+    let id = opts.id.clone();
 
     CharactersRepository::new(main).create(
         &slim_row,
         &SlimCreateOptions {
             id: id.clone(),
-            created_at: now.clone(),
-            updated_at: now,
+            created_at: opts.created_at.clone(),
+            updated_at: opts.updated_at.clone(),
         },
     )?;
 

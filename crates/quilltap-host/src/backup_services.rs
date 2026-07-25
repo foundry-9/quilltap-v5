@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use quilltap_core::services::backup::{BackupHost, HostDirs};
-use quilltap_core::services::file_storage::StorageBackend;
+use quilltap_core::services::file_storage::{PixelCodec, StorageBackend};
 
 use crate::files_store::LocalStorageBackend;
 
@@ -127,6 +127,12 @@ pub fn remove_zip_and_dir(zip_path: &Path) {
 impl BackupHost for HostBackupServices {
     fn storage(&self) -> Arc<dyn StorageBackend> {
         self.storage.clone()
+    }
+
+    fn pixel_codec(&self) -> Arc<dyn PixelCodec> {
+        // The same codec every other ingest path uses, so a restored bitmap
+        // lands byte-identical to one uploaded today.
+        Arc::new(crate::image_codec::HostImageCodec)
     }
 
     fn temp_dir(&self) -> PathBuf {

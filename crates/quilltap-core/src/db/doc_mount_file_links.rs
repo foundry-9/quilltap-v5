@@ -509,6 +509,78 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Self { conn }
     }
 
+    /// The plain base-repository `create(data, {id})` this table never needed
+    /// until restore (P4.9G5 phase 22d). Every other writer here goes through a
+    /// purpose-built `link_*` helper that MINTS the row from a file on disk; a
+    /// restore instead re-lays a row that already exists, column for column, with
+    /// its original id.
+    ///
+    /// `row` is the archive's projection, where a NULL column is omitted rather
+    /// than written as `null`; the defaults below are the schema's
+    /// (`description ''`, `conversionStatus 'pending'`, `extractionStatus
+    /// 'none'`, `chunkCount 0`, the three policy flags `true`).
+    pub fn create_from_row(
+        &self,
+        row: &serde_json::Value,
+        id: &str,
+        now: &str,
+    ) -> Result<(), DbError> {
+        let s = |k: &str| {
+            row.get(k)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+        };
+        let os = |k: &str| row.get(k).and_then(serde_json::Value::as_str);
+        let on = |k: &str| row.get(k).and_then(serde_json::Value::as_f64);
+        let ob = |k: &str, d: bool| {
+            i64::from(row.get(k).and_then(serde_json::Value::as_bool).unwrap_or(d))
+        };
+        self.conn.execute(
+            "INSERT INTO doc_mount_file_links (\
+               id, fileId, mountPointId, relativePath, fileName, folderId, \
+               originalFileName, originalMimeType, description, descriptionUpdatedAt, \
+               conversionStatus, conversionError, plainTextLength, \
+               extractedText, extractedTextSha256, extractionStatus, extractionError, \
+               chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, \
+               lastModified, createdAt, updatedAt\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, \
+                       ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+            rusqlite::params![
+                id,
+                s("fileId"),
+                s("mountPointId"),
+                s("relativePath"),
+                s("fileName"),
+                os("folderId"),
+                os("originalFileName"),
+                os("originalMimeType"),
+                row.get("description")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+                os("descriptionUpdatedAt"),
+                row.get("conversionStatus")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("pending"),
+                os("conversionError"),
+                on("plainTextLength"),
+                os("extractedText"),
+                os("extractedTextSha256"),
+                row.get("extractionStatus")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("none"),
+                os("extractionError"),
+                on("chunkCount").unwrap_or(0.0),
+                ob("allowEmbed", true),
+                ob("allowCharacterRead", true),
+                ob("allowCharacterWrite", true),
+                s("lastModified"),
+                now,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
     /// v4 `writeDatabaseDocument` (`database-store.ts:102`): normalize the path,
     /// detect the (text-only) file type, compute the content sha + lengths, and
     /// land the bytes via [`Self::link_document_content`]. The mtime-conflict

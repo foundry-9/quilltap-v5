@@ -335,18 +335,40 @@ fn fold_legacy_outfit_presets(root: &Path, wardrobe_items: &mut Vec<Value>) -> R
     Ok(())
 }
 
-/// v4 `getFileFromExtractedBackup` (`:328`) — `backupFormat === 2` **and** a
-/// `storageKey` tries `files/<storageKey>` first and **falls through** on a
-/// miss to the old `files/<category>/<id>_<originalFilename>`; both missing →
-/// warn and `null` (which the orchestrator turns into a `File not found in
-/// backup: …` warning, not a failure).
+/// v4 `getFileFromExtractedBackup` (`:328`) — a `storageKey` tries
+/// `files/<storageKey>` first and **falls through** on a miss to the old
+/// `files/<category>/<id>_<originalFilename>`; both missing → warn and `null`
+/// (which the orchestrator turns into a `File not found in backup: …` warning,
+/// not a failure).
+///
+/// ## ⚠ RULED DIVERGENCE (2026-07-25) — `>= 2`, not `=== 2`
+///
+/// v4 gates the storage-key lookup on `backupFormat === 2` (`:334`). The
+/// staging writer has been at **format 4** for two format revisions, and it
+/// stages user files at `files/<storageKey>` — so on every modern archive v4
+/// skips the only path the bytes are actually at, misses the legacy path, and
+/// restores **not one user file**, reporting each as `File not found in
+/// backup`. The bytes are in the archive the whole time; only the reader's gate
+/// is wrong.
+///
+/// Reproducing that faithfully would mean "restore nothing", so the ruling
+/// (`status-log.md` → "Ruling — the two v4 restore bugs") is that v5 diverges:
+/// **`backup_format >= 2`**. Every format v4 has ever written a `storageKey`
+/// for is covered, format 1 still takes the legacy path alone, and the
+/// fall-through is unchanged — so this reads a strict superset of what v4 reads
+/// and can never read *less*. Reader-side only: the backup writer is untouched
+/// and v5's archives stay byte-identical to v4's.
+///
+/// `system_restore_state` asserts the divergence in BOTH directions (v4 must
+/// restore zero files, v5 must restore them) so it can never drift into an
+/// unnoticed difference.
 pub fn get_file_from_extracted_backup(
     root_path: &Path,
     file: &Value,
     backup_format: Option<i64>,
 ) -> Option<Vec<u8>> {
     let s = |k: &str| file.get(k).and_then(Value::as_str).unwrap_or("");
-    if backup_format == Some(2) {
+    if backup_format.is_some_and(|f| f >= 2) {
         let key = s("storageKey");
         if !key.is_empty() {
             let mut p = root_path.join("files");

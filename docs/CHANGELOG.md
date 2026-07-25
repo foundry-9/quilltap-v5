@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Restoring from a backup works, in both modes. You can restore over what is there
+now, or restore a backup alongside your existing library — the second rewrites
+every internal identifier as it goes, so nothing collides with what you already
+have. Both were checked against the old app's real restore over four archives,
+comparing every row of every table in all three databases.
+
+Three bugs in the old app's restore are fixed here rather than reproduced. The
+first two were ruled on earlier: document stores coming back unreachable, and
+uploaded files not coming back at all. Implementing the fix surfaced a third and
+larger one — the old app restores your files before it restores the places files
+live, so on a fresh or wiped library every single one fails no matter what. The
+new app restores files after their destinations exist, which is what the old
+app's own code comments say the order is meant to be. No write changed; only when
+it happens.
+
+Two honest gaps recorded rather than papered over. A freshly created character's
+vault documents are not yet indexed for search in the new app, where the old app
+indexes them as it writes — unrelated to restore, and now pinned by a test that
+will fail when it is fixed. And settings stored with an unset optional field
+write an explicit empty value where the old app omits the field; harmless in
+practice, since both read as "not set", but it is a difference and it is written
+down.
+
 Ruled on the two bugs found in the old app's restore: the new app fixes them
 rather than reproducing them. Restoring a current backup into the old app quietly
 loses every document store — the characters, projects and groups come back, and so

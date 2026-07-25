@@ -78,7 +78,11 @@ pub fn embedding(v: &Value, k: &str) -> Option<Vec<f32>> {
     if arr.is_empty() {
         return None;
     }
-    Some(arr.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect())
+    Some(
+        arr.iter()
+            .map(|x| x.as_f64().unwrap_or(0.0) as f32)
+            .collect(),
+    )
 }
 
 /// Deserialize a nested typed value off the row, or the type's `Default`.

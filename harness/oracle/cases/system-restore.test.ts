@@ -50,23 +50,27 @@ const PREVIEW_CASES: PreviewCase[] = [
 ];
 
 /**
- * ── PART 2: restore, `mode: 'replace'` (`lib/backup/restore/restore.ts:35`) ──
+ * ── PART 2: restore, BOTH modes (`lib/backup/restore/restore.ts:35`) ────────
  *
- * ⚠ **This half has NO Rust consumer yet** — P4.9G5 unit 4 is OPEN. It lands
- * here ahead of the port for two reasons, both recorded in the lane record:
+ * Consumed by `system_restore_state`. This half is ALSO the standing evidence for
+ * three v4 restore bugs the lane found by running v4's own restore against v4's
+ * own backup of a modern instance — re-run it and read `summary.warnings`:
  *
- *  1. It is the **evidence** for two v4 bugs the lane found by running v4's own
- *     restore against v4's own backup of a modern instance. Re-run it and read
- *     `summary.warnings` — every `doc_mount_points` and `doc_mount_file_links`
- *     row is rejected by Zod (`dumpMountIndexTable`, `backup-service.ts:72`, is
- *     a RAW `SELECT *`, so the archive carries `includePatterns` as JSON *text*
- *     and `enabled`/`allowEmbed` as INTEGER 0/1, and `restore.ts` feeds those
- *     straight into schema-validating `create`s), and every user file is missed
- *     (`getFileFromExtractedBackup`, `archive.ts:334`, gates the storageKey
- *     lookup on `backupFormat === 2` while a modern manifest declares `4`).
- *  2. It is the **ready-made oracle** unit 4's tier-2 DB-state diff consumes, so
- *     the resumed lane starts from a working generator rather than re-deriving
- *     the fresh-instance recipe.
+ *  1. Every `doc_mount_points` and `doc_mount_file_links` row is rejected by Zod
+ *     (`dumpMountIndexTable`, `backup-service.ts:72`, is a RAW `SELECT *`, so the
+ *     archive carries `includePatterns` as JSON *text* and `enabled`/`allowEmbed`
+ *     as INTEGER 0/1, and `restore.ts` feeds those straight into
+ *     schema-validating `create`s).
+ *  2. Every user file is missed (`getFileFromExtractedBackup`, `archive.ts:334`,
+ *     gates the storageKey lookup on `backupFormat === 2` while a modern manifest
+ *     declares `4`).
+ *  3. Phase 5 runs before the stores it writes into exist at all, so both bridges
+ *     throw regardless of (2) — `user-uploads-bridge.ts:98` and
+ *     `project-store-bridge.ts:131`.
+ *
+ * v5 diverges from all three (human ruling, 2026-07-25 — `status-log.md` →
+ * "Ruling — the two v4 restore bugs"), and `system_restore_state` asserts each
+ * divergence in BOTH directions so neither side can drift unnoticed.
  *
  * A tier-2 DB-STATE differential, not a summary diff: the archive is restored
  * into a FRESHLY PROVISIONED, EMPTY instance and every table in all three
@@ -81,14 +85,25 @@ const PREVIEW_CASES: PreviewCase[] = [
  *   restore_legacy_archive   the pre-rework archive, so both parse-time folds
  *                            reach the WRITE path (phase 22f-bis)
  *   restore_minimal          every optional collection absent
+ *   restore_new_account      the full archive, `mode: 'new-account'` — no wipe,
+ *                            every id remapped first
  */
 const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
-const RESTORE_CASES = [
+const RESTORE_CASES: Array<{
+  name: string;
+  archive: string;
+  mode?: 'replace' | 'new-account';
+}> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
   { name: 'restore_minimal', archive: 'restore-archive-minimal.zip' },
+  // `new-account` restores ALONGSIDE what is already there: no wipe, and every
+  // id in the archive is rewritten first (`remapBackupData`). The fresh instance
+  // is the "already there", so this also proves the restore does not collide with
+  // the seeded user / chat settings / embedding profile / built-in mounts.
+  { name: 'restore_new_account', archive: 'restore-archive.zip', mode: 'new-account' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -237,12 +252,6 @@ async function runRestoreCase(
     await provisionUserUploadsMountMigration.run();
     await provisionGeneralMountMigration.run();
 
-    const { restore } = await import('@/lib/backup/restore/restore');
-    const summary = await restore(join(archives, c.archive), {
-      mode: 'replace',
-      targetUserId: SINGLE_USER_ID,
-    });
-
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     const { getRawMountIndexDatabase } = await import(
       '@/lib/database/backends/sqlite/mount-index-client'
@@ -250,14 +259,35 @@ async function runRestoreCase(
     const { getRawLLMLogsDatabase } = await import(
       '@/lib/database/backends/sqlite/llm-logs-client'
     );
+    const dumpAll = () => ({
+      main: dumpPartition(getRawDatabase()),
+      mountIndex: dumpPartition(getRawMountIndexDatabase()),
+      llmLogs: dumpPartition(getRawLLMLogsDatabase()),
+    });
+
+    // The PRE-restore baseline, dumped before anything is written. The two sides'
+    // fresh instances are proven identical only as far as
+    // `provisioning_equivalence` goes (schema + the seed user / chat settings /
+    // embedding profile / roleplay templates / the three built-in mounts and
+    // their folders) — NOT beyond it. Diffing the absolute post-state therefore
+    // reports baseline differences as restore differences, which is what cost the
+    // previous lane its time: v4's fresh instance carries 8 `doc_mount_chunks`
+    // that no archive put there. The Rust side subtracts this from the post-state
+    // and diffs only the DELTA, so the claim is "the two restores WRITE the same
+    // rows" rather than "the two instances end up identical".
+    const preState = dumpAll();
+
+    const { restore } = await import('@/lib/backup/restore/restore');
+    const summary = await restore(join(archives, c.archive), {
+      mode: c.mode ?? 'replace',
+      targetUserId: SINGLE_USER_ID,
+    });
+
     return {
       name: c.name,
       summary,
-      state: {
-        main: dumpPartition(getRawDatabase()),
-        mountIndex: dumpPartition(getRawMountIndexDatabase()),
-        llmLogs: dumpPartition(getRawLLMLogsDatabase()),
-      },
+      preState,
+      state: dumpAll(),
     };
   } finally {
     await closeDatabase();

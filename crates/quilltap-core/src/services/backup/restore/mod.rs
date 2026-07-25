@@ -5,21 +5,26 @@
 //! - [`legacy_migrations`] — the pure pre-rework folds (v4 `legacy-migrations.ts`).
 //! - [`archive`] — extract + `parseBackupZip` + the extracted-tree readers.
 //! - [`preview`] — `previewRestore`, the write-free count pass.
+//! - [`orchestrator`] — the phase-ordered orchestrator (v4 `restore/restore.ts`;
+//!   named for its role rather than mirroring v4's filename, which would put a
+//!   `restore` module inside a `restore` module — `clippy::module_inception`. The
+//!   public path stays `services::backup::restore::restore`).
+//! - [`rows`] — the JSON-row accessors every phase's input mapping goes through.
 //!
 //! v4's `delete-service.ts` is NOT here: it landed as
 //! [`crate::services::delete_all`] in P4.9G3 and the orchestrator calls it.
-//!
-//! The orchestrator itself (v4 `restore/restore.ts`) is unit 4; until it lands
-//! `systemRestoreExecute` answers a loud typed refusal naming this module.
 
 pub mod archive;
 pub mod json_stream;
 pub mod legacy_migrations;
+pub mod orchestrator;
 pub mod preview;
+pub mod rows;
 
 use serde::Serialize;
 
 pub use archive::{cleanup_dir, parse_backup_zip, ExtractedBackup};
+pub use orchestrator::{restore, RestoreMode};
 pub use preview::preview_restore;
 
 /// v4 `RestoreSummary` (`lib/backup/types.ts`) — the **41-key** shape both

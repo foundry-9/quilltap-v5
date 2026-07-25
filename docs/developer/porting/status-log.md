@@ -9,6 +9,170 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.9G5 units 4+5 (the restore orchestrator): LANDED, both modes
+
+**Branch `claude/p4-9g5-unit4-restore`.** v4 drift-checked at lane start: clean at
+**`e646f58b`**, `git log e646f58b..HEAD` empty. Unblocked by the 2026-07-25 human
+ruling. **P4.9G5 is COMPLETE — restore is LIVE in both modes**, and
+`docs/developer/porting/banked/p4.9g5-unit4/` is retired (deleted; its contents
+are now the real modules).
+
+### What landed
+
+`services/backup/restore/{orchestrator,rows}.rs` — v4 `restore/restore.ts`, all 35
+phases, plus the six additive edits the banked patch carried (`create_character_
+with_options`, `DocMountFileLinksRepository::create_from_row`, `Deserialize` on
+`ChatSettingsCreate`, `BackupHost::pixel_codec`, `restore_execute`, the engine
+arm). The orchestrator file is `orchestrator.rs`, not `restore.rs`: mirroring v4's
+filename puts a `restore` module inside a `restore` module and
+`clippy::module_inception` rejects it at the gate. `restore()` is re-exported, so
+the public path is unchanged.
+
+**`new-account` is LIVE** over P4.9G6's `remap_backup_data`, written against the
+compile-time pins in `p4_9g6_seam_contract` (kept, per that file's own note). The
+remapped collections drive every write while `extracted.data` keeps the originals,
+because the archive's on-disk file and blob names are keyed by the ORIGINAL ids —
+phase 5 and 22f pair the two by index, as v4 does (`:133-136`, `:505-508`).
+
+### The three divergences — two ruled, one found while implementing the ruling
+
+1. **`get_file_from_extracted_backup` gate `=== 2` → `>= 2`** (ruled). v5 had
+   faithfully reproduced v4's bug, so it restored no files either.
+2. **Mount points / file links restore** (ruled) — free, v5's types were already
+   right; the differential just had to stop calling it a failure.
+3. **⚠ NEW, and the broadest: phase 5 (files) now runs AFTER the doc-store
+   family.** v4 runs files fifth, where NEITHER bridge can resolve: a project-less
+   file needs the Quilltap Uploads mount, which `deleteUserData` has just
+   `DELETE`d (`delete-service.ts:72` truncates `doc_mount_points`; `instance_
+   settings` is deliberately NOT cleared, so the pointer survives and dangles),
+   and a project-bound file needs a project store that does not restore until
+   phase 13 — eight phases later, in EITHER mode. So **v4 cannot restore any user
+   file into a fresh or wiped target at all**, and fixing (1) alone would not have
+   changed that. v5 runs files after 22a, which is also after projects/groups;
+   **no write changed, only when it happens**, and v4's own comment calls the list
+   "dependency order" (`:65`). Queued for the v4-side fix list with the other two.
+
+### Both open leads from finding 3 — ANSWERED, and one was diagnosed backwards
+
+- **The Quilltap Uploads lead: CONFIRMED**, and it is divergence 3 above.
+- **The 8-vs-0 `doc_mount_chunks` lead: the previous diagnosis was WRONG.** It was
+  recorded as "a baseline or `delete_user_data` difference". Adding a pre-restore
+  dump to the oracle settles it: **both baselines carry 0 chunks**. Those 8 rows
+  are written BY the restore — v4 writes one `doc_mount_chunks` row per vault
+  document as character provisioning creates it, and v5 writes none. Precisely:
+  v5's count equals the archive's chunk count exactly (17/17 on the full archive,
+  0/0 on minimal), and v4's is that plus its provisioning extras (31, 8). So v5
+  restores the archive's chunks correctly and does not chunk on vault write.
+
+  **That is a v5 GAP, not a divergence, and NOT restore's** — it is
+  `create_character`'s vault write path, which every character creation uses, and
+  it is invisible to the characters family's differentials because none of them
+  dump that table. Recorded in `KNOWN_V5_GAPS` with a both-halves assertion that
+  **fails when the gap closes**, so it is a tripwire rather than an excuse.
+  **Follow-up owed** in the characters family.
+
+### The differential — `system_restore_state`, 4 cases, tier-2 DB-state
+
+Both sides restore the SAME committed archive into a freshly provisioned instance;
+every table in all three partitions is dumped and diffed row for row (43 tables
+per case). `restore_new_account` was added on both sides, so the mode that went
+live is the mode that is proven. Normalization is by ORIGIN, never by column name:
+a UUID or ISO timestamp absent from the archive is minted/write-clock and is
+labelled; anything the archive carries is data and is compared.
+
+Four things the first runs caught, all fixed here:
+
+- **Integral REAL columns** dump as `2` in JS and `2.0` via rusqlite. Canonicalized
+  (a genuinely fractional REAL still differs).
+- **Global `<minted-N>` labels cannot work here.** v4 mints ~30 more ids than v5
+  over the same walk (it rejects the archive's mount points and mints vault ids
+  instead), so every global label after the first divergent table shifted —
+  reporting one difference as fifty. Labels are now **per table**. Cost stated in
+  the file: a minted id is no longer proven to be the same id ACROSS two tables.
+- **The divergence assertions had to become conditional.** "v4 restored 0" is only
+  meaningful for an archive that CARRIES the rows; `restore_minimal` strips them,
+  so its mount points are all v4's own provisioning. `main.files` additionally
+  needs somewhere to put the bytes — with no mount points in the archive and the
+  built-ins wiped, both engines legitimately restore zero.
+- **Derived content hashes.** A vault document whose text had to be normalized
+  (a folded legacy wardrobe item's YAML front matter carries write-clock stamps; a
+  project store document's JSON carries remapped ids) has a `contentSha256` that
+  cannot be reproduced across engines. Invalidated ONLY in that case — a document
+  restored verbatim from the archive keeps its hash under diff.
+
+**Sensitivity proven by mutation, not assumed** (it also failed 5 real things on
+the way up): preserving the memory id, which v4 deliberately does not, is caught
+in all four cases. One mutation was **inert** and says something useful — removing
+the `nameLower` fallback changes nothing because every tag in the corpus already
+carries `nameLower`, so that fallback is uncovered. A third mutation confirmed the
+obvious-but-worth-knowing: a SYMMETRIC normalizer is invisible by construction, so
+each one is kept as tight as it can be.
+
+### Recorded, not fixed — the second v5 gap
+
+**`chat_settings.cheapLLMSettings` writes explicit `null`s where v4 omits the
+key.** All three of its UUID fields are `.nullable().optional()`
+(`settings.types.ts:53,55,61`), which Zod OMITS when absent; v5's `Option<String>`
+serializes `None` as `null`. Pre-existing in the chat-settings WRITE path, not
+restore's — and invisible until now because this is the first byte-level diff of
+that column (`settings_routes_equivalence` compares parsed API bodies, where both
+sides materialize the same defaults). Correct modelling is
+`Option<Option<String>>`, the shape `chat_settings.rs` already documents for
+`ThemePreference.custom_overrides`; doing it across the settings bags ripples
+through every consumer, so it is a follow-up. Handled here by canonicalizing JSON
+-text columns on BOTH sides (null-valued keys dropped), with the cost written into
+the file: **this diff cannot see absent-vs-null inside a JSON column.** Every
+value difference and every non-null key change still fails.
+
+### The `if_table` obligation
+
+Already satisfied by the banked draft at the one read the order names
+(`restore.ts:84`'s taken-profile-names seed, guarded by `table_exists`). The WRITE
+side needs no equivalent: v4's repositories lazily `ensureCollection` before each
+insert, but v5 provisions the whole schema at instance creation, so every table a
+restore writes exists before it starts — and `restore_*` runs against a freshly
+provisioned instance, which exercises exactly that.
+
+### Gate
+
+fmt; clippy `-D warnings` on BOTH feature sets; `cargo build --release`;
+`TZ=UTC cargo test --workspace --no-fail-fast` **381 binaries / 1,620 / 0 failed**;
+the five families by name with `--nocapture`, zero SKIP — `system_restore_state`
+4/4, `system_restore_equivalence` 5/5, `system_backup_equivalence` 3 OK lines,
+`backup_uuid_remap_equivalence` 19/19, `p4_9g6_seam_contract` 2/2 — over oracles
+regenerated fresh at `e646f58b` (the uuid-remap corpus came back byte-identical).
+No fixture changed, so no other family is invalidated. **No `apps/web` file
+touched**, so no `ng`/Playwright run is owed by this lane.
+
+### DEFERRED, loud: the tier-2 e2e beat
+
+Still not landed, and now the only open item under this order. It must run AFTER
+the delete-all describe (a real restore wipes the shared e2e instance), and
+landing it obliges a full Playwright run over a fresh `ng build` dist plus rebuilt
+debug binaries. This lane spent its budget on the orchestrator and its
+differential and did not have that run in it, so the beat is unwritten rather than
+written and unverified — the same call the two previous lanes made, for the same
+reason. **The server half is now fully proven, so the beat is a small write** and
+the walk can finally go upload → preview → restore end to end.
+
+### Regen recipe — the restore oracle (9 cases: 5 preview + 4 restore)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-sysrestore-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson   $N/npx jest --silent --watchman=false --testTimeout=300000     --roots "$PWD" --roots "$TMPO/cases" -- system-restore
+# then BOTH consumers:
+QT_ORACLE_SYSTEM_RESTORE=/tmp/oracle-system-restore.ndjson TZ=UTC cargo test   -p quilltap-harness --test system_restore_equivalence --test system_restore_state   -- --nocapture
+```
+
+The oracle now dumps `preState` as well as `state`; `system_restore_state` asserts
+the two baselines match BEFORE diffing, so a provisioning drift is reported as a
+provisioning drift instead of surfacing as a restore difference in every
+downstream table.
+
 ## Round record — the "finish the restore side" round (P4.9G5-resumed ∥ P4.9G6): UNIFIED on main (2026-07-25)
 
 Both lanes reconciled on `unify/p4.9g5-g6-restore` and fast-forwarded to main.

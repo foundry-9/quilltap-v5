@@ -1,5 +1,9 @@
 //! v4 `lib/backup/restore/restore.ts:35` — the restore orchestrator.
 //!
+//! (The file is `orchestrator.rs` rather than `restore.rs` so a `restore` module
+//! does not nest inside a `restore` module; `restore()` is re-exported from the
+//! parent, so the call path is unchanged.)
+//!
 //! Extract once, optionally wipe (`replace`) or remap (`new-account`), then
 //! re-insert every entity in dependency order **with its backup id preserved**
 //! (v4's `CreateOptions.id`), so cross-references need no fixing up. Per-row
@@ -73,7 +77,7 @@ pub async fn restore(
     mode: RestoreMode,
     target_user_id: &str,
 ) -> Result<RestoreSummary, String> {
-    let extracted = parse_backup_zip(zip_path, &host.temp_dir())?;
+    let mut extracted = parse_backup_zip(zip_path, &host.temp_dir())?;
 
     if mode == RestoreMode::Replace {
         crate::services::delete_all::delete_user_data(db, target_user_id)
@@ -81,29 +85,41 @@ pub async fn restore(
             .map_err(|e| e.to_string())?;
     }
 
-    if mode == RestoreMode::NewAccount {
-        // ACTIVATE-AT-UNIFY (P4.9G5 ← P4.9G6 §2): new-account mode calls
-        // let mut remapper = UuidRemapper::new();
-        // let data = services::backup::uuid_remap::remap_backup_data(&parsed.data, user_id, &mut remapper);
-        //
-        // Until that lands, refuse the WHOLE verb rather than restore an
-        // un-remapped graph over the user's existing data — which is what
-        // running `replace`'s body under a `new-account` request would do.
-        return Err(
-            "Restoring alongside existing data is recognized but not yet available \
-             (P4.9G6: services::backup::uuid_remap::remap_backup_data). Restoring \
-             OVER existing data works. Refusing rather than restoring a backup \
-             whose identifiers would collide with what is already here."
-                .to_string(),
-        );
-    }
+    // v4 `:57-61`. P4.9G6's `remap_backup_data` is the whole of it: fresh ids for
+    // every entity, every cross-reference rewritten to match, ownership moved to
+    // the target user. It is differential-proven byte-for-byte over 19 cases, and
+    // `p4_9g6_seam_contract` pins this call's signature at compile time.
+    //
+    // The REMAPPED collections drive every write; `extracted.data` keeps the
+    // ORIGINAL rows, because the archive's on-disk file and blob names are keyed
+    // by the original ids and do not move. Phase 5 and 22f pair the two by index,
+    // exactly as v4 does (`:133-136`, `:505-508`).
+    let remapped = if mode == RestoreMode::NewAccount {
+        let mut remapper = crate::services::backup::uuid_remapper::UuidRemapper::new();
+        Some(crate::services::backup::uuid_remap::remap_backup_data(
+            &extracted.data,
+            target_user_id,
+            &mut remapper,
+        ))
+    } else {
+        None
+    };
 
     let codec = host.pixel_codec();
     let dirs = host.host_dirs();
     let user_id = target_user_id.to_string();
-    db.write(move |ws| Ok(restore_on_writer(ws, extracted, &user_id, codec, dirs)))
-        .await
-        .map_err(|e: DbError| e.to_string())
+    db.write(move |ws| {
+        Ok(restore_on_writer(
+            ws,
+            &mut extracted,
+            remapped,
+            &user_id,
+            codec,
+            dirs,
+        ))
+    })
+    .await
+    .map_err(|e: DbError| e.to_string())
 }
 
 /// Every phase's `{id: row.id}`. v4 passes NO timestamps, so each restored row
@@ -148,14 +164,18 @@ macro_rules! warn_row {
 /// same pass v4 runs them in.
 fn restore_on_writer(
     ws: &mut WriterSet,
-    extracted: ExtractedBackup,
+    extracted: &mut ExtractedBackup,
+    remapped: Option<crate::services::backup::BackupData>,
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
 ) -> RestoreSummary {
     let backup_format = extracted.backup_format();
     let root_path = extracted.root_path.clone();
-    let data = &extracted.data;
+    // v4's `data` (what gets written) vs `parsedData` (what the on-disk names are
+    // keyed by). They are the same object in `replace` mode and diverge in
+    // `new-account`, where only the former is remapped.
+    let data: &crate::services::backup::BackupData = remapped.as_ref().unwrap_or(&extracted.data);
 
     let main = ws.main().connection();
     let mount = ws.mount_index().map(|w| w.connection());
@@ -243,7 +263,10 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore connection profile \"{original}\""),
-                repo.create(&create, &copts!(id_of(p), crate::db::connection_profiles::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(id_of(p), crate::db::connection_profiles::CreateOptions)
+                )
             );
         }
     }
@@ -267,7 +290,10 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore image profile \"{}\"", s(p, "name")),
-                repo.create(&create, &copts!(id_of(p), crate::db::image_profiles::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(id_of(p), crate::db::image_profiles::CreateOptions)
+                )
             );
         }
     }
@@ -292,33 +318,50 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore embedding profile \"{}\"", s(p, "name")),
-                repo.create(&create, &copts!(id_of(p), crate::db::embedding_profiles::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(id_of(p), crate::db::embedding_profiles::CreateOptions)
+                )
             );
         }
     }
 
-    // ── 5. Files — bytes from the extracted tree into the mount stores ───────
+    // ── 5. Files — MOVED. See "phase 5 runs late" below. ─────────────────────
     //
-    // v4 reads the bytes with `parsedData.files` (ORIGINAL ids, which is what the
-    // on-disk names use) and writes the row from `data.files` (remapped in
-    // new-account mode). `replace` mode makes the two identical; the pairing is
-    // kept explicit so the new-account activation is a one-line change.
-    if let Some(mount) = mount {
-        for file in &data.files {
-            let name = s(file, "originalFilename");
-            match get_file_from_extracted_backup(&root_path, file, backup_format) {
-                Some(bytes) => warn_row!(
-                    w,
-                    c.files,
-                    format!("Failed to restore file \"{name}\""),
-                    restore_one_file(main, mount, codec.as_ref(), target_user_id, file, &bytes)
-                ),
-                None => w.push(format!("File not found in backup: {name}")),
-            }
-        }
-    } else if !data.files.is_empty() {
-        w.push("Files were not restored — mount-index database is unavailable".to_string());
-    }
+    // ## ⚠ RULED DIVERGENCE (2026-07-25) — phase 5 runs AFTER the doc-store family
+    //
+    // v4 runs files fifth, and it cannot work there. Both bridges the phase
+    // writes through resolve a document store that does not exist yet:
+    //
+    // - A project-less file goes to `writeUserUploadToMountStore`, which calls
+    //   `getUserUploadsStore()` → `docMountPoints.findById(...)` and **throws
+    //   `Quilltap Uploads mount has not been provisioned`** when it misses
+    //   (`user-uploads-bridge.ts:98`). In `replace` mode `deleteUserData` has
+    //   just run `DELETE FROM doc_mount_points` (`delete-service.ts:72`), so it
+    //   always misses. (`instance_settings` is deliberately NOT cleared, so the
+    //   pointer survives and dangles.)
+    // - A project-bound file goes to `writeProjectFileToMountStore`, which
+    //   throws `Project <id> has no linked database-backed document store`
+    //   (`project-store-bridge.ts:131`) — and projects do not restore until
+    //   phase 13, eight phases later, in EITHER mode.
+    //
+    // So on any fresh or wiped target v4 restores **no user file at all**, in
+    // either mode, and reports each one as a per-file warning. That is the same
+    // family as the two findings the 2026-07-25 ruling covers, found while
+    // implementing it, and the ruling's principle decides it: restore should
+    // restore.
+    //
+    // The fix is the smallest one that satisfies the real dependency: files run
+    // after the doc-store family (22a restores the mount points, including the
+    // built-ins, with their archive ids — which is exactly what the surviving
+    // `instance_settings` pointer expects) and therefore also after projects and
+    // groups (13/13a). **No write changed, only when it happens** — and v4's own
+    // comment calls this list "dependency order" (`restore.ts:65`), so this is
+    // v4's stated intent, applied.
+    //
+    // Everything else keeps v4's order exactly. `system_restore_state` asserts
+    // the divergence in both directions (v4 restores zero files, v5 restores
+    // them).
 
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
     if let Some(mount) = mount {
@@ -351,24 +394,33 @@ fn restore_on_writer(
                 };
             // The user-scoped `create` re-owns the chat (see phase 1).
             create.user_id = target_user_id.to_string();
-            if let Err(e) = chats.create(&create, &copts!(id.clone(), crate::db::chats::CreateOptions)) {
+            if let Err(e) = chats.create(
+                &create,
+                &copts!(id.clone(), crate::db::chats::CreateOptions),
+            ) {
                 w.push(format!("Failed to restore chat \"{title}\": {e}"));
                 continue;
             }
-            for message in chat.get("messages").and_then(Value::as_array).unwrap_or(&vec![]) {
+            for message in chat
+                .get("messages")
+                .and_then(Value::as_array)
+                .unwrap_or(&vec![])
+            {
                 let event: crate::db::chats_messages::ChatEventInput =
                     match serde_json::from_value(message.clone()) {
                         Ok(v) => v,
                         Err(e) => {
-                            w.push(format!("Failed to restore message in chat \"{title}\": {e}"));
+                            w.push(format!(
+                                "Failed to restore message in chat \"{title}\": {e}"
+                            ));
                             continue;
                         }
                     };
                 match messages.add_message(&id, &event) {
                     Ok(()) => c.messages += 1,
-                    Err(e) => {
-                        w.push(format!("Failed to restore message in chat \"{title}\": {e}"))
-                    }
+                    Err(e) => w.push(format!(
+                        "Failed to restore message in chat \"{title}\": {e}"
+                    )),
                 }
             }
         }
@@ -407,7 +459,10 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 "Failed to restore memory".to_string(),
-                repo.create(&create, &copts!(new_id(), crate::db::memories::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(new_id(), crate::db::memories::CreateOptions)
+                )
             );
         }
     }
@@ -430,7 +485,10 @@ fn restore_on_writer(
                 w,
                 c.prompt_templates,
                 format!("Failed to restore prompt template \"{}\"", s(t, "name")),
-                repo.create(&create, &copts!(new_id(), crate::db::prompt_templates::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(new_id(), crate::db::prompt_templates::CreateOptions)
+                )
             );
         }
     }
@@ -459,7 +517,10 @@ fn restore_on_writer(
                 w,
                 c.roleplay_templates,
                 format!("Failed to restore roleplay template \"{}\"", s(t, "name")),
-                repo.create(&create, &copts!(new_id(), crate::db::roleplay_templates::CreateOptions))
+                repo.create(
+                    &create,
+                    &copts!(new_id(), crate::db::roleplay_templates::CreateOptions)
+                )
             );
         }
     }
@@ -707,7 +768,8 @@ fn restore_on_writer(
 
     // ── 22. Conversation annotations ─────────────────────────────────────────
     {
-        let repo = crate::db::conversation_annotations::ConversationAnnotationsRepository::new(main);
+        let repo =
+            crate::db::conversation_annotations::ConversationAnnotationsRepository::new(main);
         for a in &data.conversation_annotations {
             let create = crate::db::conversation_annotations::CaCreate {
                 chat_id: s(a, "chatId"),
@@ -734,11 +796,41 @@ fn restore_on_writer(
 
     // ── 22a-22h. The format-3 doc-store family (mount-index partition) ───────
     if let Some(mount) = mount {
-        restore_mount_family(mount, &extracted, &root_path, &mut c, &mut w);
+        restore_mount_family(mount, data, &extracted.data, &root_path, &mut c, &mut w);
     } else {
         w.push(
             "Document stores were not restored — mount-index database is unavailable".to_string(),
         );
+    }
+
+    // ── 5 (moved). Files — bytes from the extracted tree into the mount stores ─
+    //
+    // Runs here rather than fifth; the reasoning is at the phase-5 marker above.
+    // The mount points (22a), projects and groups now all exist, so both bridges
+    // resolve.
+    //
+    // v4 reads the bytes with `parsedData.files` (ORIGINAL ids, which is what the
+    // on-disk names use) and writes the row from `data.files` (remapped in
+    // new-account mode). `replace` mode makes the two identical; the pairing is
+    // explicit because new-account needs it.
+    if let Some(mount) = mount {
+        for (i, file) in data.files.iter().enumerate() {
+            let name = s(file, "originalFilename");
+            // The on-disk lookup MUST use the original row: new-account remaps
+            // the id, the archive's file names do not move (v4 `:133-136`).
+            let on_disk = extracted.data.files.get(i).unwrap_or(file);
+            match get_file_from_extracted_backup(&root_path, on_disk, backup_format) {
+                Some(bytes) => warn_row!(
+                    w,
+                    c.files,
+                    format!("Failed to restore file \"{name}\""),
+                    restore_one_file(main, mount, codec.as_ref(), target_user_id, file, &bytes)
+                ),
+                None => w.push(format!("File not found in backup: {name}")),
+            }
+        }
+    } else if !data.files.is_empty() {
+        w.push("Files were not restored — mount-index database is unavailable".to_string());
     }
 
     // ── 22f-bis. LEGACY wardrobe items (post-cutover backups carry none) ─────
@@ -758,10 +850,7 @@ fn restore_on_writer(
                 appropriateness: Some(os(item, "appropriateness")),
                 is_default: b(item, "isDefault", false),
                 replace: b(item, "replace", false),
-                migrated_from_clothing_record_id: Some(os(
-                    item,
-                    "migratedFromClothingRecordId",
-                )),
+                migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
                 archived_at: Some(os(item, "archivedAt")),
                 created_at: now(),
                 updated_at: now(),
@@ -770,7 +859,9 @@ fn restore_on_writer(
                 main, &links, &docs, &stored,
             ) {
                 Ok(_) => c.wardrobe_items += 1,
-                Err(e) => w.push(format!("Failed to restore wardrobe item \"{title}\": {e:?}")),
+                Err(e) => w.push(format!(
+                    "Failed to restore wardrobe item \"{title}\": {e:?}"
+                )),
             }
         }
     }
@@ -956,9 +1047,20 @@ fn restore_on_writer(
     }
 
     // ── 23 / 24. npm plugins and theme bundles ───────────────────────────────
-    c.npm_plugins = copy_host_subdirs(&root_path.join("plugins").join("npm"), &dirs.npm_plugins, &[], &mut w, "npm plugin");
-    c.user_installed_themes =
-        copy_host_subdirs(&root_path.join("themes"), &dirs.themes, &[".cache"], &mut w, "theme bundle");
+    c.npm_plugins = copy_host_subdirs(
+        &root_path.join("plugins").join("npm"),
+        &dirs.npm_plugins,
+        &[],
+        &mut w,
+        "npm plugin",
+    );
+    c.user_installed_themes = copy_host_subdirs(
+        &root_path.join("themes"),
+        &dirs.themes,
+        &[".cache"],
+        &mut w,
+        "theme bundle",
+    );
     // v4 `:817-825` — `themes-index.json` rides along with the bundles.
     if let Some(themes_dir) = dirs.themes.as_ref() {
         let src = root_path.join("themes").join("themes-index.json");
@@ -971,10 +1073,13 @@ fn restore_on_writer(
         }
     }
 
-    let summary = c.into_summary(data, w);
-    // `extracted` drops here — v4's `finally cleanupDir(extractDir)` (`:899`).
-    drop(extracted);
-    summary
+    // v4's `finally cleanupDir(extractDir)` (`:899`) is `Drop` on
+    // [`ExtractedBackup`]. It is borrowed here rather than owned (the caller keeps
+    // it so the remap can read the ORIGINAL rows alongside the remapped ones), so
+    // the cleanup fires when `restore` returns — one stack frame later, on every
+    // path including a panic. `system_restore_state` asserts the scratch root is
+    // empty after every case, which is what actually proves it.
+    c.into_summary(data, w)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -983,13 +1088,12 @@ fn restore_on_writer(
 
 fn restore_mount_family(
     mount: &Connection,
-    extracted: &ExtractedBackup,
+    data: &crate::services::backup::BackupData,
+    original: &crate::services::backup::BackupData,
     root_path: &Path,
     c: &mut Counters,
     w: &mut Vec<String>,
 ) {
-    let data = &extracted.data;
-
     // 22a. Mount points.
     {
         let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
@@ -1127,9 +1231,17 @@ fn restore_mount_family(
     // id survives (it is a UNIQUE column on fileId). v4 `:514`.
     if !data.doc_mount_blobs.is_empty() {
         let blobs_dir = root_path.join("mount-blobs");
-        for blob in &data.doc_mount_blobs {
+        for (i, blob) in data.doc_mount_blobs.iter().enumerate() {
             let id = id_of(blob);
-            match std::fs::read(blobs_dir.join(&id)) {
+            // v4 `:505-508`: in new-account mode the metadata id is remapped but
+            // the bytes on disk are still keyed by the ORIGINAL id, so the two are
+            // paired by index — the same trick phase 5 uses for user files.
+            let disk_id = original
+                .doc_mount_blobs
+                .get(i)
+                .map(id_of)
+                .unwrap_or_else(|| id.clone());
+            match std::fs::read(blobs_dir.join(&disk_id)) {
                 Ok(bytes) => {
                     let res = mount.execute(
                         "INSERT INTO \"doc_mount_blobs\" \

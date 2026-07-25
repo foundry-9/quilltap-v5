@@ -7,15 +7,16 @@
 //! /api/v1/system/backup/{id}`), because it streams bytes rather than JSON —
 //! `quilltap-web::backup_routes`.
 //!
-//! Also landed: `systemRestorePreview` — v4 `POST
-//! /api/v1/system/restore?action=preview` (`system/restore/route.ts:145`) over
-//! the host's pending-upload store. The UPLOAD that fills that store is a
+//! Also landed: `systemRestorePreview` / `systemRestoreExecute` — v4 `POST
+//! /api/v1/system/restore` (`system/restore/route.ts:145` / `:186`) over the
+//! host's pending-upload store. The UPLOAD that fills that store is a
 //! web-edge-only leg (octet-stream body → temp zip), like the download.
 
 use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
-use crate::services::backup::{create_backup, restore::preview_restore, BackupHost};
+use crate::services::backup::restore::{preview_restore, restore, RestoreMode};
+use crate::services::backup::{create_backup, BackupHost};
 
 use super::types::{ErrorKind, Response};
 
@@ -90,6 +91,55 @@ pub fn restore_preview(host: &dyn BackupHost, upload_id: &str) -> Response {
         }
         Err(e) => {
             tracing::error!(error = %e, "Error generating restore preview");
+            Response::error(ErrorKind::Internal, &e)
+        }
+    }
+}
+
+/// v4 `POST /api/v1/system/restore` with no action (`route.ts:186`).
+///
+/// `{uploadId, mode}` → `{success:true, summary}`. v4's three `badRequest`s are
+/// reproduced (including the mode guard, which the REST edge also applies before
+/// it ever reaches here), and — v4 has **no `catch`** around the restore itself,
+/// only a `finally` that removes the pending upload, so a throw propagates to
+/// the generic handler wrapper. The `finally` moves HERE rather than staying at
+/// the route, because the SPA reaches this verb through dispatch, not the REST
+/// edge: leaving the removal at the edge would leak every upload the app's own
+/// client makes.
+pub async fn restore_execute(
+    db: &Db,
+    host: &dyn BackupHost,
+    upload_id: &str,
+    mode: &str,
+) -> Response {
+    let Some(mode) = RestoreMode::parse(mode) else {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "mode must be \"replace\" or \"new-account\"",
+        );
+    };
+    if !is_uuid(upload_id) {
+        return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
+    }
+    let Some(zip_path) = host.get_upload(upload_id) else {
+        return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
+    };
+
+    let result = restore(db, host, &zip_path, mode, super::engine::SINGLE_USER_ID).await;
+    host.remove_upload(upload_id); // v4's `finally removePendingUpload` (`:238`).
+
+    match result {
+        Ok(summary) => {
+            let mut body = Map::new();
+            body.insert("success".into(), Value::Bool(true));
+            body.insert(
+                "summary".into(),
+                serde_json::to_value(summary).unwrap_or(Value::Null),
+            );
+            Response::System(Value::Object(body))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Restore failed");
             Response::error(ErrorKind::Internal, &e)
         }
     }

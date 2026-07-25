@@ -333,6 +333,16 @@ pub struct AutoLockSettings {
 /// Fields for creating chat settings (the `Omit<ChatSettings,'id'|timestamps>`
 /// shape) — every persisted column in schema (on-disk) order. The corpus
 /// supplies every field explicitly (no reliance on Zod create-time defaults).
+///
+/// `Deserialize` was added for restore (P4.9G5 unit 4), whose input is a whole
+/// settings row read back out of a backup archive. The four NULLABLE columns
+/// carry `#[serde(default)]` because the backup projection omits a NULL column
+/// entirely; the rest are required, which is the one place this deserialize is
+/// stricter than v4's Zod parse — v4 would default a field an OLD archive
+/// predates, v5 turns it into that phase's warn-and-continue. Recorded in the
+/// P4.9G5 lane record.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatSettingsCreate {
     pub user_id: String,
     /// Enum TEXT (`AvatarDisplayModeEnum`).
@@ -342,12 +352,18 @@ pub struct ChatSettingsCreate {
     /// Record/map JSON-object column → compact JSON text. CONSTRAINED to `{}`
     /// (multi-key open-JSON key-order seam).
     pub tag_styles: serde_json::Value,
+    /// v4's key is `cheapLLMSettings` (three capitals), not the camelCase
+    /// derivation `cheapLlmSettings` — renamed explicitly.
+    #[serde(rename = "cheapLLMSettings")]
     pub cheap_llm_settings: CheapLlmSettings,
     /// Nullable UUID TEXT; `None` => SQL NULL.
+    #[serde(default)]
     pub image_description_profile_id: Option<String>,
     /// Nullable UUID TEXT; `None` => SQL NULL.
+    #[serde(default)]
     pub uncensored_image_description_profile_id: Option<String>,
     /// Nullable UUID TEXT; `None` => SQL NULL.
+    #[serde(default)]
     pub default_roleplay_template_id: Option<String>,
     pub theme_preference: ThemePreference,
     /// FIRST INTEGER-affinity number column (`.min(256).max(512)`, both int).
@@ -376,6 +392,7 @@ pub struct ChatSettingsCreate {
     pub dangerous_content_settings: DangerousContentSettings,
     pub auto_lock_settings: AutoLockSettings,
     /// Nullable string TEXT; `None` => SQL NULL.
+    #[serde(default)]
     pub timezone: Option<String>,
 }
 

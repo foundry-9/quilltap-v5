@@ -821,16 +821,13 @@ impl CoreEngine {
                 Ok((_db, host)) => super::system_backup::restore_preview(host.as_ref(), &upload_id),
                 Err(r) => r,
             },
-            // The EXECUTE half is P4.9G5 unit 4/5; until it lands the verb
-            // answers a loud typed refusal naming the module it is waiting on
-            // (never a silent stub, and never a partial restore).
-            Request::SystemRestoreExecute { .. } => Response::error(
-                ErrorKind::Internal,
-                "Restoring a backup is recognized but not yet available \
-                 (P4.9G5 unit 4: services::backup::restore::restore). Upload and \
-                 preview work; the execute step is deliberately refused whole \
-                 rather than restoring part of the graph.",
-            ),
+            Request::SystemRestoreExecute { upload_id, mode } => match self.ready_backup_host() {
+                Ok((db, host)) => {
+                    super::system_backup::restore_execute(&db, host.as_ref(), &upload_id, &mode)
+                        .await
+                }
+                Err(r) => r,
+            },
             // ── end P4.9G5 ──
             // === end P4.9G1 ===
             Request::MessageEdit {

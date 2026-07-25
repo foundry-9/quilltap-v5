@@ -119,6 +119,11 @@ impl BackupHost for TestBackupHost {
             root: self.files_root.clone(),
         })
     }
+    fn pixel_codec(&self) -> std::sync::Arc<dyn quilltap_core::services::file_storage::PixelCodec> {
+        // Backup never transcodes — it stages the bytes it finds. (The RESTORE
+        // side is where the codec matters; see `system_restore_state`.)
+        std::sync::Arc::new(quilltap_core::services::file_storage::NotConfiguredPixelCodec)
+    }
     fn temp_dir(&self) -> PathBuf {
         self.root.join("tmp")
     }
