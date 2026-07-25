@@ -36,6 +36,8 @@ mismatch (legacy wardrobe items now restore at the old app's exact phase
 position) and completed the kept-image caption chunking that had been stubbed
 out.
 
+Marked the in-chat Post Office server work order complete. Docs only.
+
 The Insert Announcement dialog's in-character rewrite is ported. Ask an
 off-scene character to say something and they will now redraft it in their own
 voice, with their normal sense of who they are, the entries their Commonplace
