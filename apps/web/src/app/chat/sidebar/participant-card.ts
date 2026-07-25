@@ -18,17 +18,22 @@ import { ProviderModelBadge } from './provider-model-badge';
  * gates on an optional prop is simply not fed here, because the server verbs
  * behind them are unported (P4.9H1 tier-3 deferrals, enumerated in the lane
  * record): the connection-profile select, the system-prompt select + rebuild
- * button, the talkativeness slider, the four-state status select, Remove, and
- * Whisper all ride participant-mutation verbs v5's dispatch surface does not
- * carry (`api/salon.rs:1215` names `updateParticipant` / `addParticipant` /
+ * button, the talkativeness slider, the four-state status select, and Remove all
+ * ride participant-mutation verbs v5's dispatch surface does not carry
+ * (`api/salon.rs:1215` names `updateParticipant` / `addParticipant` /
  * `removeParticipantId` as chat-PUT deferrals). v4 renders exactly this shape
  * when those props are absent, so the card is a faithful subset, not a redesign
  * — when the verbs land, the controls slot back in without moving anything.
  *
+ * (P4.9H1's note listed Whisper among those deferrals. It does not belong there:
+ * v4's whisper posts the ORDINARY chat send with `targetParticipantIds`, which
+ * v5 has always had. P4.9E2B wired it.)
+ *
  * Wired here: nudge / queue / dequeue (`chatTurnAction`), the user seat's Skip,
  * Stop-generating, impersonate / stop-impersonate (`chatImpersonate` /
- * `chatStopImpersonate`), regenerate avatar (`chatRegenerateAvatar`), and the
- * wardrobe dialog (the global `WardrobeDialogService`).
+ * `chatStopImpersonate`), regenerate avatar (`chatRegenerateAvatar`), Whisper
+ * (the chat-send spine, via {@link WhisperDialog}), and the wardrobe dialog (the
+ * global `WardrobeDialogService`).
  */
 @Component({
   selector: 'qt-participant-card',
@@ -205,6 +210,21 @@ import { ProviderModelBadge } from './provider-model-badge';
             <qt-icon [name]="isImpersonating() ? 'log-out' : 'user'" class="w-3.5 h-3.5" />
           </button>
         }
+
+        <!-- Whisper — non-user participants only, and only when the section
+             feeds the callback (v4 gates it on three or more active
+             participants: with two in the room, everything is already private). -->
+        @if (canWhisper() && !isUserParticipant()) {
+          <button
+            type="button"
+            class="qt-button qt-button-sm py-1.5 px-2 qt-button-secondary"
+            [title]="'Whisper to ' + name()"
+            [attr.aria-label]="'Whisper to ' + name()"
+            (click)="whisper.emit(participant().id)"
+          >
+            <qt-icon name="chat" class="w-3.5 h-3.5" />
+          </button>
+        }
       </div>
     </div>
   `,
@@ -228,6 +248,13 @@ export class ParticipantCard {
   readonly isDangerousChat = input(false);
   /** The chat id, passed to the wardrobe dialog so it can show "wearing now". */
   readonly chatId = input<string | null>(null);
+  /**
+   * Whether the Whisper affordance is offered at all. v4 threads `onWhisper`
+   * only when the chat has three or more ACTIVE participants
+   * (`ChatSidebar.tsx:823`) and renders the button only when the callback is
+   * present — a signal input is v5's way of saying the same thing.
+   */
+  readonly canWhisper = input(false);
 
   readonly nudge = output<string>();
   readonly queue = output<string>();
@@ -237,6 +264,8 @@ export class ParticipantCard {
   readonly impersonate = output<string>();
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();
+  /** Open the Whisper dialog against this participant (v4 `onWhisper`). */
+  readonly whisper = output<string>();
 
   protected readonly name = computed(() => this.participant().character?.name ?? 'Unknown');
   protected readonly title = computed(() => this.participant().character?.title ?? null);

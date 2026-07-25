@@ -86,6 +86,7 @@ import { ParticipantCard } from './participant-card';
             [isActiveTyping]="activeTypingParticipantId() === participant.id"
             [isDangerousChat]="isDangerousChat()"
             [chatId]="chatId()"
+            [canWhisper]="canWhisper()"
             (nudge)="nudge.emit($event)"
             (queue)="queue.emit($event)"
             (dequeue)="dequeue.emit($event)"
@@ -94,6 +95,7 @@ import { ParticipantCard } from './participant-card';
             (impersonate)="impersonate.emit($event)"
             (stopImpersonate)="stopImpersonate.emit($event)"
             (regenerateAvatar)="regenerateAvatar.emit($event)"
+            (whisper)="whisper.emit($event)"
           />
         }
       </div>
@@ -124,6 +126,16 @@ export class ParticipantsSection {
   readonly impersonate = output<string>();
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();
+  readonly whisper = output<string>();
+
+  /**
+   * v4 `ChatSidebar.tsx:722-724,823` — the Whisper button is threaded to the
+   * cards only when THREE OR MORE participants are active. Below that there is
+   * no one to keep a message from, so v4 withholds the affordance entirely.
+   */
+  protected readonly canWhisper = computed(
+    () => this.sortedParticipants().filter((p) => p.isActive).length >= 3,
+  );
 
   /** v4 `canSkip`: nobody is up next and nothing is generating. */
   protected readonly canSkip = computed(

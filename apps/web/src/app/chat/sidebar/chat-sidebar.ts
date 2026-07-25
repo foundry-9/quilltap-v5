@@ -255,6 +255,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (impersonate)="impersonate.emit($event)"
             (stopImpersonate)="stopImpersonate.emit($event)"
             (regenerateAvatar)="regenerateAvatar.emit($event)"
+            (whisper)="whisper.emit($event)"
           />
         </qt-collapsible-card>
 
@@ -368,6 +369,8 @@ export class ChatSidebar implements OnInit {
   readonly impersonate = output<string>();
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();
+  /** A cast member's Whisper button (v4 `onWhisper` → `SalonView.handleWhisper`). */
+  readonly whisper = output<string>();
 
   protected readonly minWidth = MIN_WIDTH;
   protected readonly maxWidth = MAX_WIDTH;

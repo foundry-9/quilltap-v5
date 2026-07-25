@@ -62,6 +62,7 @@ function participant(
         [userParticipantId]="'user'"
         (togglePause)="paused.push(true)"
         (nudge)="nudged.push($event)"
+        (whisper)="whispered.push($event)"
       />
     </div>
   `,
@@ -95,6 +96,7 @@ class Host {
   };
   readonly paused: boolean[] = [];
   readonly nudged: string[] = [];
+  readonly whispered: string[] = [];
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
@@ -212,5 +214,51 @@ describe('ChatSidebar', () => {
     const fixture = await render();
     button(fixture, 'Pause auto-responses').click();
     expect(fixture.componentInstance.paused).toEqual([true]);
+  });
+
+  // --- P4.9E2B: the Whisper opener (v4 ChatSidebar.tsx:823) -----------------
+
+  it('offers Whisper on the LLM cast — never on the user’s own seat — and reports it', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    const buttons = Array.from(sidebarEl(fixture).querySelectorAll('button')).filter((b) =>
+      b.getAttribute('aria-label')?.startsWith('Whisper to'),
+    );
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Whisper to Bob',
+      'Whisper to Alice',
+    ]);
+    (buttons[0] as HTMLButtonElement).click();
+    expect(fixture.componentInstance.whispered).toEqual(['bob']);
+  });
+
+  it('withholds Whisper below three active participants (v4’s gate)', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    // Two in the room: everything said is already private, so v4 hides it.
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice'),
+    ]);
+    fixture.detectChanges();
+    const buttons = Array.from(sidebarEl(fixture).querySelectorAll('button')).filter((b) =>
+      b.getAttribute('aria-label')?.startsWith('Whisper to'),
+    );
+    expect(buttons).toEqual([]);
+  });
+
+  it('counts only ACTIVE participants toward the gate', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice'),
+      participant('bob', 'Bob', { isActive: false }),
+    ]);
+    fixture.detectChanges();
+    const buttons = Array.from(sidebarEl(fixture).querySelectorAll('button')).filter((b) =>
+      b.getAttribute('aria-label')?.startsWith('Whisper to'),
+    );
+    expect(buttons).toEqual([]);
   });
 });

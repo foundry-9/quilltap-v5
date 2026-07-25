@@ -68,6 +68,12 @@ The in-character rewrite offered by the Insert Announcement dialog is defined bu
 not yet connected to a model, so it answers a clearly worded refusal naming what
 is missing rather than failing silently.
 
+Whispering works again. Each character in the cast list carries a whisper button
+— shown once there are three or more of you in the room, since with two there is
+nobody to keep a message from — and it opens a small dialog for a private line
+only you and they can see. It closes the moment you send, so you are not left
+watching a modal while they think of a reply.
+
 Built the Compose Mail dialog — the Post Office proper. Write a letter as one of
 the characters you are playing, address it to anyone in your library (they need
 not be in the scene), and optionally quote a letter already sitting in your own
