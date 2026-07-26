@@ -8237,6 +8237,22 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+Round re-planning — v4 shipped the restore/import fixes mid-planning, so the
+chat-action round gained a fourth lane rather than changing its other three.
+`67ffb444` and `c1507f47` fix all four defects this port found on the
+backup/restore/import path; the drift is bounded to `lib/backup/restore/*`,
+`lib/import/quilltap-import-stream.ts` and `lib/export/ndjson-writer.ts`
+(comments only), and no chat-family oracle imports any of them — verified by
+import, so the three chat lanes are unaffected and the survey below still
+stands. P4.d22 converges v5 onto the fixes, retires the two tripwires that will
+now fire by design, and owns the baseline move to `c1507f47`. Two things it must
+prove rather than accept from v4's own status table: whether v4's new
+`22a-bis` file phase and v5's after-the-doc-store-family phase produce identical
+state, and whether v5 reproduces the residual second-generation-archive defect
+v4 knowingly kept. The version-bump tables in all four orders were relaxed to
+match how unification actually works — each lane bumps what it touches and the
+unifier recounts.
+
 Round planning — the chat action remainder (P4.9E1A ∥ P4.9E3A ∥ P4.9E1B). Three
 work orders written; no code. The survey found a real hole: v5 can create a chat
 with a cast and then never change it — there is no add/update/remove-participant

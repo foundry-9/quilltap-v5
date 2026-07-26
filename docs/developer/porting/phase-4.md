@@ -3185,28 +3185,38 @@ higher-impact of the two v5 gaps P4.9G5 recorded with tripwires.
 
 ### The round as planned (2026-07-26) — the chat action remainder
 
-**Drift check at planning.** v4 HEAD is `41f34180`, two commits past the
-`231be14c` baseline. **Both are docs-only** — `docs/developer/found-bugs.md`
-(new, 344 lines), `docs/CHANGELOG.md`, `docs/releases/4.8.0.md`; zero `lib/`,
-`app/`, `components/` or `packages/`. The baseline **stays `231be14c`** and no
-drift debt is owed.
+**Drift check at planning — and the revision it forced.** Planning began with v4
+at `41f34180`, two commits past `231be14c`, both docs-only, tree DIRTY in
+`lib/backup/restore/`. **Mid-planning v4 shipped the fixes**, and the round was
+re-planned against them. v4 is now at **`c1507f47`, tree clean**, four commits
+past the old baseline:
 
-**⚠ But v4's working tree is DIRTY, and the dirt is in `lib/`.** At planning it
-carried a modified `lib/backup/restore/restore.ts` plus an untracked
-`lib/backup/restore/mount-index-coercion.ts`: v4 is mid-fix on the restore bugs
-this port found, which its own new `found-bugs.md` plans as bugs 1–3 (plus bug 4,
-the sparse-array blob truncation). Two standing consequences until it lands:
+| Commit | What | Debt |
+| --- | --- | --- |
+| `20430561` | release notes | docs-only, none |
+| `41f34180` | `docs/developer/found-bugs.md` (new) | docs-only, none |
+| **`67ffb444`** | `fix(backup): restore brings back the stores, the links, and the files` — bugs 1–3 | **real `lib/` drift** |
+| **`c1507f47`** | `fix(import): the blob reader waits for every chunk before it signs` — bug 4 | **real `lib/` drift** |
 
-1. **Regenerate every oracle from a pinned detached worktree at `231be14c`** —
-   never from `~/source/quilltap-server` directly. Recipe:
-   `oracle-regen-pinned-v4-worktree`.
-2. **When v4's fix lands, v5 owes a drift round on restore/import.** v4's own
-   file names the two tripwires that will fire — `system_restore_state.rs`'s
-   `assert_divergences` and `system_import_equivalence.rs`'s
-   `EXPECTED_DIVERGENCES` — and says a red differential there is the tripwire
-   working, not a regression. The v5 work is to retire the divergence entries and
-   let the cases become plain equalities. **Nothing in this round may touch that
-   surface.**
+**The drift is tightly bounded and none of it reaches the chat surface.** It
+touches `lib/backup/restore/{archive,restore,mount-index-coercion}.ts`,
+`lib/import/quilltap-import-stream.ts`, and `lib/export/ndjson-writer.ts`
+(**comments only** — the backup writer is untouched by design, so committed
+archive fixtures do not move). Verified by import at planning: **six** oracle
+case files reference those paths and **three** import a file whose behavior
+changed (`system-restore`, `system-import`, `system-import-execute`);
+**zero chat families** import any of them. The `4.8.0-dev.103 → .107` version
+bump is inert — `appVersion` is normalized in both manifest-bearing
+differentials.
+
+So the round gained a **fourth lane** rather than changing the other three:
+**P4.d22** converges v5 onto v4's fixes, retires the two tripwires, and **owns
+the baseline move `231be14c` → `c1507f47`**. The three chat lanes regenerate
+their own families straight from the clean checkout at `c1507f47` (the P4.6bj
+precedent) and touch no baseline paragraph.
+
+This is also the moment v4 asked for: its `found-bugs.md` says to land the fixes
+"at a point where the v5 side is between rounds, so the baseline moves once."
 
 **Why this scope.** Every work order on main is CLOSED, so the round is new
 scope. The survey found a hole rather than a refinement: **v5 can create a chat
@@ -3238,7 +3248,22 @@ labelled region. `apps/web/**` belongs to one lane outright.
   Character, Create NPC, participant edit/remove/rebuild, the RNG gutter tool
   (into the empty slot `chat-composer.ts:192` already documents), the chat
   tool-settings modal, and the avatar overrides at tier 2. Owns all of
-  `apps/web/**`. Bumps the SPA.
+  `apps/web/**`.
+- **P4.d22** (`work-orders/p4.d22-restore-import-convergence.md`) — the
+  restore/import convergence. Retires `system_restore_state.rs`'s three
+  `EXPECTED_DIVERGENCES` and `system_import_equivalence.rs`'s
+  `throw_ndjson_truncated_blob`, **proving convergence rather than assuming it**:
+  v4's own status table claims "files run after 22a on both sides", but v4 runs
+  its files block at `22a-bis` (before file links at 22d) where v5 runs it after
+  the whole doc-store family, and only the diff can settle whether that produces
+  identical state. It also checks v5 against the **residual** second-generation
+  archive defect v4 knowingly kept (`found-bugs.md:385-397`) — if v5 does not
+  reproduce it, that is a NEW divergence needing a ruling, not a silent
+  convergence. Regenerates eight families; owns the baseline move.
+
+**Version bumps:** each lane bumps what it touches; the unifier recounts as
+`base + total bumps` (concurrent bumps to one crate are normal and a clean
+cherry-pick is not evidence they survived).
 
 **Three survey findings the orders carry so no lane re-derives them.**
 
@@ -3267,8 +3292,8 @@ labelled region. `apps/web/**` belongs to one lane outright.
   RunTool, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker,
   ChatRename, ChatProject. Their **server** half lands in P4.9E3A; the screens
   are a round of their own (~3,000 LOC of v4 UI).
-- **The backup/restore/import surface** — v4 is actively rewriting it; see the
-  drift note above.
+- ~~The backup/restore/import surface~~ — **no longer left out**: v4's fixes
+  landed mid-planning and the round gained P4.d22 to converge onto them.
 - **The owed dogfood walk** — Part D (the retrospective downstream look) and
   Part F items 15/16 (Story's Clock jump; per-chat Core-whisper override), plus
   the Post Office dialogs, `.qtap` import execute and restore on real data.

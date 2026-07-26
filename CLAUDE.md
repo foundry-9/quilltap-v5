@@ -1447,20 +1447,30 @@ records THERE. Update this summary only when a phase or round completes.
   DISPOSITIONED: docs-only** (v4's own `docs/CHANGELOG.md` +
   `docs/releases/4.8.0.md`, zero `lib/`, `app/`, `components/` or `packages/`
   code), so the baseline stays `231be14c` and **no drift debt is owed**.
-  **v4 moved again to `41f34180` (2026-07-26) — also docs-only**
-  (`docs/developer/found-bugs.md`, new): baseline still `231be14c`, still no
-  debt. ⚠ **But v4's working tree is now DIRTY in `lib/`** — a modified
-  `lib/backup/restore/restore.ts` + an untracked
-  `lib/backup/restore/mount-index-coercion.ts`: v4 is mid-fix on the restore
-  bugs this port found (bugs 1–3 in its `found-bugs.md`, plus bug 4, the
-  sparse-array blob truncation). Two standing consequences: **(a) regenerate
-  every oracle from a pinned detached worktree at `231be14c`**, never from
-  `~/source/quilltap-server` directly; **(b) when that fix lands, v5 owes a
-  restore/import drift round** — v4's file names the two tripwires that will
-  fire (`system_restore_state.rs`'s `assert_divergences`,
-  `system_import_equivalence.rs`'s `EXPECTED_DIVERGENCES`) and both agree a red
-  there is the tripwire working, not a regression; the v5 work is to retire the
-  divergence entries and let the cases become plain equalities.
+  **v4 then moved twice more on 2026-07-26 and the second pair IS drift.**
+  `41f34180` is docs-only (`found-bugs.md`, new), but **`67ffb444`
+  (restore bugs 1–3) and `c1507f47` (import bug 4) change `lib/`** — v4 fixed
+  the four defects this port found, and its tree is **clean at `c1507f47`**.
+  The drift is bounded to `lib/backup/restore/{archive,restore,
+  mount-index-coercion}.ts`, `lib/import/quilltap-import-stream.ts` and
+  `lib/export/ndjson-writer.ts` (**comments only**; the backup WRITER is
+  untouched, so committed archive fixtures do not move). Verified by import:
+  three oracle families are affected (`system-restore`, `system-import`,
+  `system-import-execute`), five more are neutrality proofs, and **no chat
+  family imports any drifted file**. The `.103 → .107` version bump is inert
+  (`appVersion` is normalized in both manifest differentials).
+  **The catch-up is ORDERED as `P4.d22`** (`work-orders/
+  p4.d22-restore-import-convergence.md`), the fourth lane of the chat-action
+  round: it retires `system_restore_state.rs`'s three `EXPECTED_DIVERGENCES`
+  and `system_import_equivalence.rs`'s `throw_ndjson_truncated_blob`, and
+  **owns the baseline move to `c1507f47`**. ⚠ Two things it must PROVE rather
+  than assume: v4 runs its files block at `22a-bis` (before file links at 22d)
+  where v5 runs it after the whole doc-store family — v4's status table claims
+  both sides now match, but only the diff settles it; and v4 knowingly kept a
+  **residual** second-generation-archive defect (`found-bugs.md:385-397`) that
+  v5 may not reproduce, which would be a NEW divergence needing a ruling.
+  Until P4.d22 lands, **the committed baseline stays `231be14c`** and those
+  two differentials are expected RED — that is the tripwire working.
   The previous baseline paragraph follows for history:
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
