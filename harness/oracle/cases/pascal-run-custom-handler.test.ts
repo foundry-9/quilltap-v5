@@ -37,18 +37,21 @@ interface Meta {
   vaultA: string;
   vaultB: string;
   vaultC: string;
+  vaultD: string;
 }
 
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
+/** P4.d19: the character whose vault is broken (no `properties.json`). */
+const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
 const P_A = 'e1000000-0000-4000-8000-00000000000a';
 
 interface CaseSpec {
   name: string;
   characterId: string | null;
-  vaultKey: 'vaultA' | 'vaultB' | 'vaultC' | null;
+  vaultKey: 'vaultA' | 'vaultB' | 'vaultC' | 'vaultD' | null;
   characterIds: string[];
   input: unknown;
   /**
@@ -356,6 +359,34 @@ async function main(): Promise<void> {
     // falls back to 99 → failure — the scoping made visible in the outcome.
     { name: 'state-cascade-hit', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'stateful' } },
     { name: 'state-no-group-falls-back', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'stateful' } },
+
+    // ---- P4.d19: the availability gate, end-to-end through the handler ----
+    // The two gated definitions live in the GENERAL store, so the only thing
+    // that differs between these rows is the invoker's own fact sheet. A
+    // withheld tool is not merely un-run: it is ABSENT from the roster, so the
+    // handler answers with the same "No custom tool named …" it gives an
+    // invented name — which is exactly what the gate is for.
+    { name: 'gate-available-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'secure_line' } },
+    { name: 'gate-available-missing-key-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'secure_line' } },
+    { name: 'gate-available-empty-sheet-unrunnable', characterId: CHAR_C, vaultKey: 'vaultC', characterIds: ALL, input: { tool: 'secure_line' } },
+    { name: 'gate-withheld-when-holds-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'novice_aid' } },
+    // The same empty sheet that fails `availableWhen` above satisfies no
+    // `withheldWhen`, so CHAR_C IS dealt this one. The asymmetry, at the door.
+    { name: 'gate-withheld-when-empty-sheet-runs', characterId: CHAR_C, vaultKey: 'vaultC', characterIds: ALL, input: { tool: 'novice_aid' } },
+
+    // ---- P4.d19: the fact-sheet read MOVED ahead of the roster -----------
+    // A broken vault now fails before a definition is in hand, so the whisper
+    // decision can no longer consult `defaultVisibility`. `private: true` is the
+    // only thing that whispers one of these.
+    { name: 'vault-broken-private-true', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'coin', private: true } },
+    { name: 'vault-broken-private-false', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'whispered', private: false } },
+    // THE arm whose behavior CHANGED: `whispered` declares
+    // defaultVisibility:'whisper', and before 6864bf0e that made this failure a
+    // whisper. It is public now.
+    { name: 'vault-broken-private-absent-whisper-default', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'whispered' } },
+    // A name no roster carries, through a broken vault: the vault failure wins,
+    // because it is answered first.
+    { name: 'vault-broken-unknown-tool', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'nonexistent' } },
   ];
 
   const out = fs.createWriteStream(outPath);

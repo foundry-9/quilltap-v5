@@ -49,6 +49,8 @@ const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
+/// P4.d19: the character whose vault is broken (no `properties.json`).
+const CHAR_D: &str = "a1000000-0000-4000-8000-00000000000d";
 const P_A: &str = "e1000000-0000-4000-8000-00000000000a";
 
 #[derive(serde::Deserialize)]
@@ -67,6 +69,8 @@ struct Meta {
     vault_b: String,
     #[serde(rename = "vaultC")]
     vault_c: String,
+    #[serde(rename = "vaultD")]
+    vault_d: String,
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -421,6 +425,80 @@ fn run_custom_handler_matches_oracle() {
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "stateful" }),
+            profile: false,
+        },
+        // ---- P4.d19: the availability gate, end-to-end through the handler --
+        // The gated definitions live in the GENERAL store, so only the invoker's
+        // own fact sheet differs between these rows. A withheld tool is ABSENT
+        // from the roster, so the handler answers exactly as it does for a name
+        // the model invented.
+        Case {
+            name: "gate-available-runs",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "secure_line" }),
+            profile: false,
+        },
+        Case {
+            name: "gate-available-missing-key-unrunnable",
+            character_id: Some(CHAR_B),
+            vault: Some(meta.vault_b.clone()),
+            input: json!({ "tool": "secure_line" }),
+            profile: false,
+        },
+        Case {
+            name: "gate-available-empty-sheet-unrunnable",
+            character_id: Some(CHAR_C),
+            vault: Some(meta.vault_c.clone()),
+            input: json!({ "tool": "secure_line" }),
+            profile: false,
+        },
+        Case {
+            name: "gate-withheld-when-holds-unrunnable",
+            character_id: Some(CHAR_B),
+            vault: Some(meta.vault_b.clone()),
+            input: json!({ "tool": "novice_aid" }),
+            profile: false,
+        },
+        // The same empty sheet that fails `availableWhen` above satisfies no
+        // `withheldWhen`, so CHAR_C IS dealt this one.
+        Case {
+            name: "gate-withheld-when-empty-sheet-runs",
+            character_id: Some(CHAR_C),
+            vault: Some(meta.vault_c.clone()),
+            input: json!({ "tool": "novice_aid" }),
+            profile: false,
+        },
+        // ---- P4.d19: the fact-sheet read MOVED ahead of the roster ---------
+        // With no definition in hand, only an explicit `private: true` whispers.
+        Case {
+            name: "vault-broken-private-true",
+            character_id: Some(CHAR_D),
+            vault: Some(meta.vault_d.clone()),
+            input: json!({ "tool": "coin", "private": true }),
+            profile: false,
+        },
+        Case {
+            name: "vault-broken-private-false",
+            character_id: Some(CHAR_D),
+            vault: Some(meta.vault_d.clone()),
+            input: json!({ "tool": "whispered", "private": false }),
+            profile: false,
+        },
+        // THE arm whose behavior CHANGED: `whispered` declares
+        // defaultVisibility:'whisper', and this failure is PUBLIC now.
+        Case {
+            name: "vault-broken-private-absent-whisper-default",
+            character_id: Some(CHAR_D),
+            vault: Some(meta.vault_d.clone()),
+            input: json!({ "tool": "whispered" }),
+            profile: false,
+        },
+        Case {
+            name: "vault-broken-unknown-tool",
+            character_id: Some(CHAR_D),
+            vault: Some(meta.vault_d.clone()),
+            input: json!({ "tool": "nonexistent" }),
             profile: false,
         },
         Case {

@@ -11,6 +11,14 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+A character rolling a custom tool now has their fact sheet read before the
+roster is dealt, so a tool they do not qualify for is unreachable by name as
+well as absent from the list. One consequence worth knowing: when a character's
+vault cannot be read at all, the refusal is now public unless the caller asked
+for privacy outright — there is no definition in hand to ask about it. That
+refusal also names the vault the way the rest of the app does; it had been
+answering with an internal phrasing no other screen uses.
+
 Each tool the composer's custom-tools list offers now names what it can quote:
 the placeholders its own messages actually use, the fact-sheet keys it reads,
 and the state paths it consults. Every entry is an occurrence in the

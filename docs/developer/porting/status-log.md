@@ -36095,3 +36095,42 @@ can be removed from one vault alone.
 string the model reads — not merely from a listing — while the ungated tools
 still appear. Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0
 failed. `quilltap-core` 0.0.364 → 0.0.365, `quilltap-harness` 0.0.311 → 0.0.312.
+
+### Unit 6 — `run_custom.rs`: the fact-sheet read moves ahead of the roster (v4 `6864bf0e`)
+
+v4 moved the rolling character's `findById` from after the roster resolve to
+before it, because the gate needs the sheet. Three consequences, all ported:
+
+1. A tool the sheet disqualifies is **never even listed**, so `run_custom`
+   answers with the same `No custom tool named "…"` it gives an invented name —
+   and the `Available: …` list itself now differs per character.
+2. The sheet is threaded into `RosterContext.metadata`, so this entrance pays
+   for no second read.
+3. **The whisper decision on a vault-read failure CHANGED.** With no definition
+   in hand, `defaultVisibility` is unknowable, so
+   `isPrivate ?? entry.definition.defaultVisibility === 'whisper'` becomes
+   `isPrivate === true`.
+
+**A pre-existing divergence this unit had to fix to reach the arm at all.**
+v5's `characters_read::find_by_id` erases the vault-unavailable case into a
+generic `DbError::Key("applyDocumentStoreOverlayOne: vault unavailable …")`,
+so the Prospero error bubble would have read a sentence v4 never writes. The
+read now goes through `find_by_id_raw` + `apply_document_store_overlay_one` and
+formats v4's own `CharacterVaultUnavailableError` message — the pair
+`api::custom_tools::resolve_metadata` already reaches for, for the same reason.
+(`db/**` is another lane's this round; the fix is entirely inside
+`tools/run_custom.rs`.) No differential had ever reached this arm, which is why
+it survived.
+
+**Differential:** `pascal_run_custom_handler_equivalence`, 15 → **24 cases**
+over v4's REAL `executeRunCustomTool`. Five gate cases (available holds / misses
+on a missing key / misses on an empty sheet / withheld-when holds /
+withheld-when offers the SAME empty sheet — the asymmetry, at the door) and
+four vault-broken cases (`private: true`, `private: false`, `private` absent
+against a `defaultVisibility: 'whisper'` tool — the changed arm — and an unknown
+tool name, proving the vault failure is answered FIRST).
+
+**Mutation-checked:** restoring the old `is_private.unwrap_or(default_whisper)`
+shape → red at `vault-broken-private-absent-whisper-default`. Gate: fmt, clippy,
+`cargo test --workspace --no-fail-fast` 0 failed. `quilltap-core`
+0.0.365 → 0.0.366, `quilltap-harness` 0.0.312 → 0.0.313.

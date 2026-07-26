@@ -542,6 +542,66 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         private: is_private,
     } = parsed;
 
+    // The rolling character's fact sheet, read BEFORE the roster: availability
+    // gates are answered against it, so a tool the sheet disqualifies is never
+    // even listed. The read hydrates the vault, and fails with the
+    // vault-unavailable error when that vault is broken — which lands on the
+    // same Prospero error bubble as any other refused run, since neither a gate
+    // nor a table that consults metadata can honestly be dealt without it.
+    //
+    // The read goes through `find_by_id_raw` + the overlay rather than
+    // `characters_read::find_by_id` so the sentence in the bubble is v4's own
+    // `CharacterVaultUnavailableError` message (`find_by_id` erases it into a
+    // generic `DbError::Key`); `api::custom_tools::resolve_metadata` reaches for
+    // the same pair, for the same reason.
+    let mut metadata: Map<String, Value> = Map::new();
+    if let Some(character_id) = &ctx.character_id {
+        let cid = character_id.clone();
+        let read = db.read_main(|main| {
+            db.read_mount_index(|mount| {
+                let raw = characters_read::find_by_id_raw(main, &cid)?;
+                let repo = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                Ok(crate::db::vault_read_overlay::apply_document_store_overlay_one(&repo, raw))
+            })
+        });
+        let read = match read {
+            Ok(inner) => inner,
+            Err(e) => Err(crate::db::vault_read_overlay::OverlayOneError::Db(e)),
+        };
+        match read {
+            Ok(Some(character)) => {
+                if let Some(map) = character.get("metadata").and_then(Value::as_object) {
+                    metadata = map.clone();
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let reason = match error {
+                    crate::db::vault_read_overlay::OverlayOneError::Db(e) => e.to_string(),
+                    crate::db::vault_read_overlay::OverlayOneError::Unavailable(u) => format!(
+                        "Character {} has no usable vault (characterDocumentMountPointId={}): \
+                         properties.json missing",
+                        u.character_id, u.mount_id
+                    ),
+                };
+                return (
+                    report_failure(
+                        db,
+                        ctx,
+                        &tool_name,
+                        format!("the rolling character's vault could not be read: {reason}"),
+                        // No definition in hand yet, so its `defaultVisibility` is
+                        // unknowable: only an explicit `private: true` can whisper
+                        // this one.
+                        is_private == Some(true),
+                    )
+                    .await,
+                    None,
+                );
+            }
+        }
+    }
+
     // Resolved fresh: a definition added or edited mid-chat is live on this call.
     let roster_ctx = RosterContext {
         user_id: ctx.user_id.clone(),
@@ -550,7 +610,8 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         character_mount_point_id: ctx.character_mount_point_id.clone(),
         character_ids: ctx.character_ids.clone(),
         project_id: ctx.project_id.clone(),
-        metadata: None,
+        // The sheet the gates are answered against, already in hand.
+        metadata: Some(metadata.clone()),
     };
     let roster = match db.read_main(|main| {
         db.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&roster_ctx, main, mount)))
@@ -560,8 +621,9 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     };
 
     let Some(entry) = roster.get(&tool_name).cloned() else {
-        // A name the model invented, or a file the user just deleted. Either way
-        // this is not worth an error bubble in the transcript — tell the model.
+        // A name the model invented, a file the user just deleted, or a
+        // definition this character's fact sheet is not offered. Either way this
+        // is not worth an error bubble in the transcript — tell the model.
         let available: Vec<&str> = roster.tools.iter().map(|(k, _)| k.as_str()).collect();
         let msg = if available.is_empty() {
             format!("No custom tool named \"{tool_name}\". This scene has none.")
@@ -575,41 +637,6 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     };
 
     let default_whisper = entry.definition.default_visibility == Some(Visibility::Whisper);
-
-    // The rolling character's fact sheet, so outcome tables can branch on what
-    // THIS character carries. `find_by_id` hydrates the vault and errors when
-    // that vault is broken — which lands on the same Prospero error bubble as any
-    // other refused run, since a table that consults metadata cannot honestly be
-    // dealt without it.
-    let mut metadata: Map<String, Value> = Map::new();
-    if let Some(character_id) = &ctx.character_id {
-        let cid = character_id.clone();
-        let read = db.read_main(|main| {
-            db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &cid))
-        });
-        match read {
-            Ok(Some(character)) => {
-                if let Some(map) = character.get("metadata").and_then(Value::as_object) {
-                    metadata = map.clone();
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                let whisper = is_private.unwrap_or(default_whisper);
-                return (
-                    report_failure(
-                        db,
-                        ctx,
-                        &tool_name,
-                        format!("the rolling character's vault could not be read: {error}"),
-                        whisper,
-                    )
-                    .await,
-                    None,
-                );
-            }
-        }
-    }
 
     let metadata_arg = if metadata.is_empty() {
         None
