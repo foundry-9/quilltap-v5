@@ -82,6 +82,10 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+A tool roll's outcome now has a name the app can read off the record: success,
+partial, failure, or info. Nothing looks different yet — this is the piece the
+announcement bar and its dot will use. A roll from an older build, or one
+carrying a state this build has never heard of, is left alone.
 
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be

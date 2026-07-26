@@ -103,6 +103,50 @@ export function getSystemKindDisplayLabel(message: StaffFields): string {
   return KIND_DISPLAY_OVERRIDES[raw] ?? raw.replace(/-/g, ' ');
 }
 
+/** The semantic states an author may assign to a custom tool's outcome row. */
+export type PascalOutcomeState = 'success' | 'partial' | 'failure' | 'info';
+
+const PASCAL_OUTCOME_STATES: ReadonlySet<string> = new Set<PascalOutcomeState>([
+  'success',
+  'partial',
+  'failure',
+  'info',
+]);
+
+/**
+ * The outcome state a Pascal roll landed on, or null for every other Staff
+ * message. Keys off the roll record rather than the kind, so any future Pascal
+ * announcement that carries a `pascalMeta` accents itself the same way; a row
+ * with no record (or a state this build doesn't know) falls back to the
+ * importance colouring.
+ *
+ * `state` is READ AS A STRING on purpose: the DTO types it as the four-way
+ * union, but the value arrives off the wire from a row a later build wrote, so
+ * the membership test has to be a genuine runtime guard rather than a
+ * type-level tautology.
+ */
+export function getAnnouncementOutcomeState(
+  message: Pick<StaffFields, 'systemSender' | 'pascalMeta'>,
+): PascalOutcomeState | null {
+  if (message.systemSender !== 'pascal') return null;
+  const state: string | undefined = message.pascalMeta?.state;
+  if (!state || !PASCAL_OUTCOME_STATES.has(state)) return null;
+  return state as PascalOutcomeState;
+}
+
+/**
+ * Accent classes for the announcement bar/chip wrapper of a Pascal roll — the
+ * same `qt-pascal-result` family the Workbench's outcome rows and the Proving
+ * Bench's miniature wear, so a success reads as a success wherever it appears.
+ * Empty for every other Staff message, which keeps its plain bar.
+ */
+export function getAnnouncementAccentClasses(
+  message: Pick<StaffFields, 'systemSender' | 'pascalMeta'>,
+): string {
+  const state = getAnnouncementOutcomeState(message);
+  return state ? `qt-pascal-result qt-pascal-result--${state}` : '';
+}
+
 export type AnnouncementImportance = 'high' | 'medium' | 'low';
 
 const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, AnnouncementImportance>> = {
@@ -183,7 +227,10 @@ const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, Announc
   suparna: { 'mail-delivery': 'high', '*': 'high' },
   // A roll outcome is binding on the scene — the table dealt it, and nobody may
   // argue. Pascal's results render as their own full row (never a collapsed
-  // chip), so this tier is largely a defensive fallback (v4 `:284-287`).
+  // chip), so this tier is largely a defensive fallback (v4 `:284-287`) — and
+  // doubly so for the dot, which a roll record overrides with the outcome's own
+  // state (see getAnnouncementOutcomeState): a success has no business wearing
+  // the red dot that "high" would give it.
   pascal: { 'custom-tool-result': 'high', 'custom-tool-error': 'high', '*': 'high' },
 };
 

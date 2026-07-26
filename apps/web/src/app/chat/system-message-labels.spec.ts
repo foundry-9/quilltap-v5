@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { MessageDto, PascalMeta } from '../core/core-contract';
 import {
+  getAnnouncementAccentClasses,
   getAnnouncementImportance,
+  getAnnouncementOutcomeState,
   getSystemKindDisplayLabel,
   getSystemSenderDisplayName,
 } from './system-message-labels';
@@ -61,5 +63,38 @@ describe('system-message-labels — Pascal (P4.6ba)', () => {
     expect(getAnnouncementImportance(staff())).toBe('high');
     expect(getAnnouncementImportance(staff({ systemKind: 'custom-tool-error' }))).toBe('high');
     expect(getAnnouncementImportance(staff({ systemKind: 'anything-else' }))).toBe('high');
+  });
+});
+
+/** v4 `system-message-labels.test.ts` (231be14c), case for case. */
+describe('getAnnouncementOutcomeState / getAnnouncementAccentClasses (P4.d21)', () => {
+  const roll = (meta: Partial<PascalMeta> | null) =>
+    ({
+      systemSender: 'pascal',
+      pascalMeta: meta as PascalMeta | null,
+    }) as Pick<StaffFields, 'systemSender' | 'pascalMeta'>;
+
+  it('reports the state the roll landed on', () => {
+    for (const state of ['success', 'partial', 'failure', 'info'] as const) {
+      expect(getAnnouncementOutcomeState(roll({ state }))).toBe(state);
+      expect(getAnnouncementAccentClasses(roll({ state }))).toBe(
+        `qt-pascal-result qt-pascal-result--${state}`,
+      );
+    }
+  });
+
+  it('leaves every other Staff sender unaccented', () => {
+    expect(getAnnouncementOutcomeState({ systemSender: 'librarian', pascalMeta: null })).toBeNull();
+    expect(getAnnouncementAccentClasses({ systemSender: 'host', pascalMeta: null })).toBe('');
+    // Prospero authors the custom-tool ERROR chip, and it carries no roll record.
+    expect(getAnnouncementAccentClasses({ systemSender: 'prospero', pascalMeta: null })).toBe('');
+  });
+
+  it('falls back to the importance dot on a roll record with no usable state', () => {
+    expect(getAnnouncementOutcomeState(roll(null))).toBeNull();
+    expect(getAnnouncementOutcomeState(roll({}))).toBeNull();
+    // A state from a future build this one doesn't know how to colour.
+    expect(getAnnouncementOutcomeState(roll({ state: 'triumph' as 'success' }))).toBeNull();
+    expect(getAnnouncementAccentClasses(roll({ state: 'triumph' as 'success' }))).toBe('');
   });
 });

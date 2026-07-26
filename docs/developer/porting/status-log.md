@@ -36540,3 +36540,37 @@ full run after; the beat cannot be A/B'd in isolation because its own
 
 SPA `0.5.279` → `0.5.282`. No fixture changed; no oracle invalidated. The only
 committed non-source artifact the lane moves is the byte-copied JSON schema.
+## P4.d21 — the in-chat Pascal SPA: the two-phase run dialog + the roll
+## announcement's own outcome state (lane record)
+
+Drift-catch-up round, lane D of four (siblings P4.d18 / P4.d19 / P4.d20).
+**SPA-only — zero Rust.** v4 pinned at `231be14c`, verified clean at lane start
+(`git log 231be14c..HEAD` empty). Two v4 commits land here: `faab6881` (the
+custom-tools popup becomes a cancellable two-phase dialog) and `231be14c` (the
+Salon's roll announcement wears the outcome's own state).
+
+### Unit 1 — `system-message-labels.ts`: the outcome state and its accent
+
+Ported v4 `231be14c`'s addition to `app/salon/[id]/components/
+system-message-labels.ts` verbatim: `PascalOutcomeState`, the four-member
+`ReadonlySet`, `getAnnouncementOutcomeState` (null unless `systemSender ===
+'pascal'` AND `pascalMeta.state` is one of the four) and
+`getAnnouncementAccentClasses` (`qt-pascal-result qt-pascal-result--<state>`
+or `''`), plus the extended `IMPORTANCE_TABLE` `pascal` comment (behavior
+unchanged).
+
+**One port note.** v5's `PascalMeta.state` is typed as the four-way union, so
+`PASCAL_OUTCOME_STATES.has(state)` would be a type-level tautology and TS would
+narrow the "unknown state" guard away. The value arrives off the wire from a row
+a LATER build may have written, so v5 reads `state` through a `string |
+undefined` binding first — the membership test stays a genuine runtime guard,
+which is the whole point of v4's fallback ("a state a future build introduces
+falls back to the importance colouring"). The spec's `'triumph' as 'success'`
+case pins it.
+
+v4's `system-message-labels.test.ts` (231be14c) additions ported case for case:
+all four states, every other Staff sender (librarian / host / **Prospero's
+`custom-tool-error`, which carries no roll record and is untouched**), a null
+record, an empty record, and the unknown state.
+
+`ng test` 227 files / 2,672 (was 2,669). SPA `0.5.279` → `0.5.280`.
