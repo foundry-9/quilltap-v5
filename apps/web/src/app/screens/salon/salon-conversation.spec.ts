@@ -926,4 +926,68 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
       vi.useRealTimers();
     }
   });
+  it('a pending roll rides the next send, then the list is cleared (v4 :606-666)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as {
+      onPendingToolResult(r: Record<string, unknown>): void;
+      pendingToolResults(): unknown[];
+      send(p: { content: string; fileIds: string[] }): void;
+    };
+
+    inst.onPendingToolResult({
+      tool: 'rng',
+      displayName: 'Random Number Generator',
+      icon: '🎲',
+      summary: 'd20: 17',
+      formattedResult: '🎲 Rolled 1d20: **17**',
+      requestPrompt: 'Roll a d20',
+      arguments: { type: 20, rolls: 1 },
+      success: true,
+    });
+    expect(inst.pendingToolResults()).toHaveLength(1);
+
+    inst.send({ content: 'and so it was decided', fileIds: [] });
+    // Cleared BEFORE the request resolves — a second send cannot carry it twice.
+    expect(inst.pendingToolResults()).toHaveLength(0);
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const dispatch = client.dispatch as unknown as { mock: { calls: [CoreRequest][] } };
+    const sent = dispatch.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r['type'] === 'chatSend')!;
+    // v4 maps to SIX fields; the chip's id/displayName/icon never travel.
+    expect(sent['pendingToolResults']).toEqual([
+      {
+        tool: 'rng',
+        success: true,
+        result: '🎲 Rolled 1d20: **17**',
+        prompt: 'Roll a d20',
+        arguments: { type: 20, rolls: 1 },
+        createdAt: expect.any(String),
+      },
+    ]);
+  });
+
+  it('an ordinary send carries no pendingToolResults key at all', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    (
+      fixture.componentInstance as unknown as { send(p: { content: string; fileIds: string[] }): void }
+    ).send({ content: 'hello', fileIds: [] });
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const dispatch = client.dispatch as unknown as { mock: { calls: [CoreRequest][] } };
+    const sent = dispatch.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r['type'] === 'chatSend')!;
+    expect(sent['pendingToolResults']).toBeUndefined();
+  });
 });

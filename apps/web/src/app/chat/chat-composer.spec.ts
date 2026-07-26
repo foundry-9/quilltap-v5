@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
-import { ChatComposer, type ComposerSend } from './chat-composer';
+import { ChatComposer, type ComposerSend, type PendingToolResultChip } from './chat-composer';
 
 // Draft persistence keys off chatId in localStorage; keep every test isolated.
 beforeEach(() => localStorage.clear());
@@ -330,5 +330,66 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
       (fixture.nativeElement.querySelector('button[aria-label="Post a letter"]') as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+  /**
+   * The pending tool-result chips (P4.9E1B — v4 `ChatComposer.tsx:284-302`). The
+   * list is the Salon's; the composer only renders it, reports removals, and
+   * counts it as sendable content.
+   */
+  const chip = (over: Partial<PendingToolResultChip> = {}): PendingToolResultChip => ({
+    id: 'chip-1',
+    tool: 'rng',
+    displayName: 'Random Number Generator',
+    icon: '🎲',
+    summary: 'd20: 17',
+    formattedResult: '🎲 Rolled 1d20: **17**',
+    requestPrompt: 'Roll a d20',
+    arguments: { type: 20, rolls: 1 },
+    success: true,
+    createdAt: '2026-07-26T00:00:00.000Z',
+    ...over,
+  });
+
+  it('renders a pending roll as a chip, summary visible and the roll in its tooltip', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('pendingToolResults', [chip()]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip') as HTMLElement;
+    expect(el.textContent).toContain('d20: 17');
+    expect(el.textContent).toContain('🎲');
+    expect(el.getAttribute('title')).toBe('Roll a d20\n\n🎲 Rolled 1d20: **17**');
+  });
+
+  it('reports the chip’s ✕ by id and leaves the removal to the Salon', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('pendingToolResults', [chip({ id: 'chip-9' })]);
+    fixture.detectChanges();
+    const seen: string[] = [];
+    fixture.componentInstance.removePendingToolResult.subscribe((id: string) => seen.push(id));
+    (
+      fixture.nativeElement.querySelector('[aria-label="Remove tool result"]') as HTMLButtonElement
+    ).click();
+    expect(seen).toEqual(['chip-9']);
+    // Still rendered: the composer does not own the list.
+    expect(fixture.nativeElement.querySelector('.qt-chat-tool-result-chip')).toBeTruthy();
+  });
+
+  it('a pending roll is enough to send on its own, with no text (v4 :456)', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.detectChanges();
+    const sendButton = () =>
+      fixture.nativeElement.querySelector('button[type="submit"]') as HTMLButtonElement;
+    expect(sendButton().disabled).toBe(true);
+    fixture.componentRef.setInput('pendingToolResults', [chip()]);
+    fixture.detectChanges();
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it('mounts the RNG tool in the gutter', () => {
+    const fixture = render();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Random number generator"]'),
+    ).toBeTruthy();
   });
 });

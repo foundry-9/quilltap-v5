@@ -68,6 +68,17 @@ app simply left them out. Both apps now leave them out. The test that caught it
 is new: the existing tests only ever fed the reader a file cut short, never a
 complete one written in pieces, so the very thing the old app's fix restores had
 nothing watching it.
+The dice are back in the composer. The gutter's empty slot now holds the old
+app's RNG menu: quick d6 and d20 with a count you can nudge up and down, Flip
+Coin, Spin the Bottle, and a custom roll of any size from 2 to 1000 sides, up to
+a hundred at a time. Out-of-range numbers are refused before anything is sent.
+
+A roll does not barge into the conversation. It arrives as a small chip above the
+message box showing the result, with the full roll in its tooltip — you can
+discard it, or type something alongside it and send. A roll on its own is enough
+to send. Only then does it become part of the transcript, filed ahead of your
+message the way the old app files it.
+
 The cast cards in the sidebar have their controls back. Each character now
 carries the dropdown that decides who speaks for them — any of your LLM backends,
 or you — a picker for which of their named system prompts to use, a button that

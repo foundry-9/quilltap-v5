@@ -14,7 +14,8 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
-import { ChatComposer } from '../../chat/chat-composer';
+import { ChatComposer, type PendingToolResultChip } from '../../chat/chat-composer';
+import type { RngPendingResult } from '../../chat/rng-dropdown';
 import { customToolsKeys } from '../../chat/custom-tools.api';
 import { ConversationHeader } from '../../chat/conversation-header';
 import { LLMInspectorPanel } from '../../chat/llm-inspector-panel';
@@ -353,7 +354,10 @@ interface CascadePrompt {
         [textReplacementRules]="textReplacementRules()"
         [textReplacementsEnabled]="textReplacementsEnabled()"
         [composerSpellcheck]="composerSpellcheck()"
+        [pendingToolResults]="pendingToolResults()"
         (compositionModeChange)="onCompositionModeChange($event)"
+        (pendingToolResult)="onPendingToolResult($event)"
+        (removePendingToolResult)="onRemovePendingToolResult($event)"
         (send)="send($event)"
         (stop)="stop()"
         (continue)="continueTurn()"
@@ -1672,6 +1676,28 @@ export class SalonConversation {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Pending tool results (P4.9E1B) — the composer gutter's RNG rolls in preview
+  // mode, so a roll waits here as a chip until the next send carries it. v4 owns
+  // the list at `SalonView.tsx:148` for the same reason: it must outlive the
+  // composer's own post-send reset.
+  // -------------------------------------------------------------------------
+
+  protected readonly pendingToolResults = signal<PendingToolResultChip[]>([]);
+
+  /** v4 `handleAddPendingToolResult` (`SalonView.tsx:605-612`). */
+  protected onPendingToolResult(result: RngPendingResult): void {
+    this.pendingToolResults.update((prev) => [
+      ...prev,
+      { ...result, id: crypto.randomUUID(), createdAt: new Date().toISOString() },
+    ]);
+  }
+
+  /** v4 `handleRemovePendingToolResult` (`:614-616`). */
+  protected onRemovePendingToolResult(id: string): void {
+    this.pendingToolResults.update((prev) => prev.filter((r) => r.id !== id));
+  }
+
   /** The shared write: patch, report, refetch (v4's four handlers all do this). */
   private async writeParticipant(
     participantId: string,
@@ -1805,7 +1831,11 @@ export class SalonConversation {
   // -------------------------------------------------------------------------
 
   protected send(payload: { content: string; fileIds: string[] }): void {
-    void this.runTurn({ content: payload.content, fileIds: payload.fileIds });
+    // v4 `useSSEStreaming:606-612` snapshots the pending results and clears them
+    // BEFORE the request, so a second send cannot carry the same roll twice.
+    const pending = this.pendingToolResults();
+    this.pendingToolResults.set([]);
+    void this.runTurn({ content: payload.content, fileIds: payload.fileIds, pending });
   }
 
   protected continueTurn(): void {
@@ -1818,6 +1848,8 @@ export class SalonConversation {
     continueMode?: boolean;
     respondingParticipantId?: string;
     nudge?: boolean;
+    /** Rolled-but-unsent tool results riding this send (v4 `pendingToolResults`). */
+    pending?: PendingToolResultChip[];
   }): Promise<void> {
     const chatId = this.chatId();
     if (!chatId || this.busy()) {
@@ -1825,7 +1857,8 @@ export class SalonConversation {
     }
 
     const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
-    if (opts.content || hasAttachments) {
+    const pending = opts.pending ?? [];
+    if (opts.content || hasAttachments || pending.length > 0) {
       this.optimisticUser.set(this.makeTempUserMessage(opts.content ?? ''));
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
@@ -1851,11 +1884,26 @@ export class SalonConversation {
           continueMode: opts.continueMode,
           respondingParticipantId: opts.respondingParticipantId,
           nudge: opts.nudge,
+          // v4 `:658-666` maps each chip to the SIX fields the server's schema
+          // takes — the chip's own id, displayName and icon are client-side
+          // presentation and never travel.
+          pendingToolResults: pending.length
+            ? pending.map((r) => ({
+                tool: r.tool,
+                success: r.success,
+                result: r.formattedResult,
+                prompt: r.requestPrompt,
+                arguments: r.arguments,
+                createdAt: r.createdAt,
+              }))
+            : undefined,
           // Thread the Speaking-As choice onto a user-authored send (v4 does the
           // same); irrelevant to a continue/nudge, so only sent with content or
           // an attachment-only message.
           speakingAsParticipantId:
-            opts.content || hasAttachments ? (this.activeSpeakerId() ?? undefined) : undefined,
+            opts.content || hasAttachments || pending.length > 0
+              ? (this.activeSpeakerId() ?? undefined)
+              : undefined,
         },
         'chatSend',
       );

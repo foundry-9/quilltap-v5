@@ -22,12 +22,23 @@ import {
   type UploadedChatFile,
 } from './chat-files.api';
 import { CustomToolsPopup } from './custom-tools-popup';
+import { RngDropdown, type RngPendingResult } from './rng-dropdown';
 import { FileConflictDialog } from './file-conflict-dialog';
 
 /** What the composer emits on send — the text plus any attached file ids. */
 export interface ComposerSend {
   content: string;
   fileIds: string[];
+}
+
+/**
+ * One rolled-but-unsent tool result as the composer renders it (v4
+ * `types.ts:340-360` `PendingToolResult` — the salon-side record, which adds the
+ * `id` and `createdAt` the raw roll has no need of).
+ */
+export interface PendingToolResultChip extends RngPendingResult {
+  id: string;
+  createdAt: string;
 }
 
 /**
@@ -46,21 +57,22 @@ export interface ComposerSend {
  *
  * **The gutter group follows v4's grid fill order** (`ComposerGutterTools.tsx
  * :36-46`: announcement, mail / library-file, camera / paperclip, RNG / wand),
- * flattened into v5's single action row. Two of v4's six are absent and both are
- * named deferrals, not omissions:
+ * flattened into v5's single action row. One of v4's six is still absent and is
+ * a named deferral, not an omission:
  *
  *  - **Library file** belongs to `p4.9e3` (`LibraryFilePickerModal`).
- *  - **RNG** has no v5 server verb. v4's dropdown posts
- *    `POST /chats/{id}?action=rng` (`app/api/v1/chats/[id]/actions/rng.ts`),
- *    which v5's dispatch surface does not carry — P4.d5 ported the rng *tool*
- *    (`quilltap-core::tools::rng`), not that route. Adding it is a server change
- *    outside this lane's ownership, so the dropdown is deferred whole rather
- *    than built against a verb that answers an error. (P4.9E2B tier 2, item 8.)
+ *
+ * **RNG** filled its slot in P4.9E1B, over P4.9E3A's `chatRng`. It rolls in
+ * PREVIEW mode, so the result arrives as a chip above the box rather than as a
+ * message: the operator can discard it, and it only becomes a TOOL row when the
+ * next send carries it as a `pendingToolResults` entry. The list itself belongs
+ * to the Salon (as it does in v4), because it must outlive this component's own
+ * post-send reset.
  *
  * The composition-mode toggle leads the row: it is v4's own composer-level
  * control (`ChatComposer.tsx`), not one of the gutter tools.
  *
- * ⚠ The row is now NINE wide, where v4's grid spends only two columns on six
+ * ⚠ The row is now TEN wide, where v4's grid spends only two columns on six
  * tools. That difference is load-bearing in a narrow pane: `_chat.css` gives the
  * message box a `min-width` floor and lets both the inner wrapper and this row
  * wrap, or the tools crowd the box to zero width and it stops being clickable at
@@ -75,10 +87,10 @@ export interface ComposerSend {
 @Component({
   selector: 'qt-chat-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup],
+  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup, RngDropdown],
   template: `
     <div class="qt-chat-composer">
-      @if (attachedFiles().length > 0) {
+      @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
         <div class="qt-chat-attachment-list mb-2">
           @for (file of attachedFiles(); track file.id) {
             <div class="qt-chat-attachment-chip">
@@ -100,6 +112,27 @@ export interface ComposerSend {
                 title="Remove attachment"
                 aria-label="Remove attachment"
                 (click)="removeAttachedFile(file.id)"
+              >
+                <qt-icon name="close" class="w-4 h-4" />
+              </button>
+            </div>
+          }
+
+          <!-- Pending tool results — a rolled-but-unsent RNG chip, tooltipped
+               with v4's prompt + formatted result (v4 ChatComposer :284-302). -->
+          @for (result of pendingToolResults(); track result.id) {
+            <div
+              class="qt-chat-tool-result-chip group relative"
+              [title]="result.requestPrompt + '\n\n' + result.formattedResult"
+            >
+              <span class="text-base leading-none">{{ result.icon }}</span>
+              <span class="text-foreground max-w-[200px] truncate">{{ result.summary }}</span>
+              <button
+                type="button"
+                class="qt-chat-attachment-chip-remove"
+                title="Remove tool result"
+                aria-label="Remove tool result"
+                (click)="removePendingToolResult.emit(result.id)"
               >
                 <qt-icon name="close" class="w-4 h-4" />
               </button>
@@ -189,8 +222,7 @@ export interface ComposerSend {
             <qt-icon name="camera" class="w-5 h-5" />
           </button>
 
-          <!-- v4 gutter row 3, col 1: Attach File (:114-130). (Col 2, RNG, has no
-               v5 server verb — see the class comment.) -->
+          <!-- v4 gutter row 3, col 1: Attach File (:114-130). -->
           <button
             type="button"
             class="qt-chat-toolbar-button"
@@ -201,6 +233,14 @@ export interface ComposerSend {
           >
             <qt-icon name="paperclip" class="w-5 h-5" />
           </button>
+
+          <!-- v4 gutter row 3, col 2: RNG (ComposerGutterTools :132-139). Its
+               rolls land as pending chips above the box, not as messages. -->
+          <qt-rng-dropdown
+            [chatId]="chatId()"
+            [disabled]="disabled()"
+            (pendingResult)="pendingToolResult.emit($event)"
+          />
 
           <!-- v4 gutter row 4, col 1: Pascal's custom tools — opens a dialog
                (bespoke here: the button gates its own visibility on the roster
@@ -313,6 +353,13 @@ export class ChatComposer implements OnInit {
    * true; the salon passes the setting.
    */
   readonly composerSpellcheck = input(true);
+  /**
+   * Rolled-but-unsent tool results, shown as chips above the box (v4
+   * `SalonView.pendingToolResults` → `ChatComposer`). The Salon owns the list —
+   * v4 does too — because the results outlive the composer's own reset and ride
+   * the next send as `pendingToolResults`.
+   */
+  readonly pendingToolResults = input<PendingToolResultChip[]>([]);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -328,6 +375,10 @@ export class ChatComposer implements OnInit {
   readonly customToolRan = output<void>();
   /** The user flipped the mode via the toolbar toggle; the salon persists it. */
   readonly compositionModeChange = output<boolean>();
+  /** The gutter's RNG rolled something (preview mode) — the Salon holds it. */
+  readonly pendingToolResult = output<RngPendingResult>();
+  /** The chip's ✕ (v4 `onRemovePendingToolResult`). */
+  readonly removePendingToolResult = output<string>();
 
   private readonly editor = viewChild.required(RichEditor);
 
@@ -352,7 +403,11 @@ export class ChatComposer implements OnInit {
     () =>
       !this.disabled() &&
       !this.busy() &&
-      (this.text().trim().length > 0 || this.attachedFiles().length > 0) &&
+      // v4 `:456`: a pending tool result is enough to send on its own — the
+      // roll IS the message, and the text is optional commentary.
+      (this.text().trim().length > 0 ||
+        this.attachedFiles().length > 0 ||
+        this.pendingToolResults().length > 0) &&
       this.hasActiveCharacters(),
   );
 
