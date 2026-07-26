@@ -38072,3 +38072,46 @@ and item 9 is the unifier's to schedule alongside P4.9E1B's. Flagging it as
 worth actually running rather than nodding through: **this lane changed the live
 restore path** (the mount-index coercion at 22a/22d), so the upload → preview →
 restore beat is now exercising different code than when it last ran.
+
+### P4.d22 verification gate (2026-07-26)
+
+```
+cargo fmt --all --check                                   clean
+cargo clippy --workspace --all-targets -D warnings        clean
+  …and --features quilltap-core/native-transport          clean
+cargo build --release                                     clean (3m46s)
+cargo test --workspace --no-fail-fast (all env vars set)  387 binaries / 1,645 tests / 0 failed
+                                                          ZERO SKIP lines in the whole run
+```
+
+The nine families re-run BY NAME with `--nocapture --test-threads=1`, all green,
+zero SKIPs — the eight in the order's blast-radius table plus the new tier-1
+coercion family. Kinds and counts are in the item-7 table above.
+
+**No SPA run owed** — this lane touched no `apps/web` file. Tier-2 item 9 (the
+e2e restore beat) is the unifier's per the order's gate, and is worth actually
+running: this lane changed the live restore path.
+
+**Versions after the lane:** `quilltap-core` **0.0.372**, `quilltap-harness`
+**0.0.318**. `quilltap-host` 0.0.39, `quilltap-web` 0.0.46, `quilltap-cli` 0.0.3,
+`quilltap-tauri` 0.0.5, SPA 0.5.290 — untouched.
+
+**Two things for the v4 side** (report to the human; do not edit the v4 repo).
+v4's `found-bugs.md` "Owed to the v5 side" table predicted this lane's outcome,
+and reality differed in two places:
+
+1. **"Converged — files run after 22a on both sides" is true about ordering but
+   does not settle the case it was written for.** Over the committed archives,
+   `replace` mode still restores ZERO user files on BOTH sides, because those
+   archives carry no Quilltap Uploads mount and no `userUploadsMountPointId`, so
+   the `instance_settings` pointer dangles. That is a property of the fixtures,
+   not of v4 — a real archive's raw `SELECT *` dump does carry the built-in
+   mounts — but it means **v4's own regression coverage for the disaster-recovery
+   case may be thinner than the status table implies**, and v4 may want an
+   archive-without-built-ins case of its own.
+2. **The second-generation residual is unverified on the v5 side**, and by
+   inspection v5 does not reproduce it — v5's later phase makes the replay
+   unique-suffix rather than collide, so no archived link id is lost, but a
+   duplicate file appears instead. If v5 adopts `22a-bis` it inherits v4's
+   residual exactly; if it does not, the two engines differ there. Either way
+   the ruling on the phase order decides it.
