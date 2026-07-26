@@ -745,6 +745,28 @@ so if a v4 restore is ever actually needed before 5.0, fix it first.
 
 ## Ruling — the sparse-array blob divergence (2026-07-24)
 
+> ### ✅ DISCHARGED BY UPSTREAM CONVERGENCE — v4 `c1507f47` (2026-07-26)
+>
+> **This ruling is history, not live guidance. The divergence no longer exists,
+> and nothing in v5 should be changed on the strength of what follows.**
+>
+> v4 fixed the bug itself in `c1507f47`
+> (`fix(import): the blob reader waits for every chunk before it signs`) — its
+> `assembleExportFromStream` now counts arrivals against `chunkCount` instead of
+> asking `every` over the sparse array, which is the same rule v5 already used.
+> The "how it stays honest" scaffolding below **fired as designed**: P4.d22
+> regenerated the oracle at `c1507f47` and `throw_ndjson_truncated_blob` came
+> back with a thrown message where it used to come back `null`.
+>
+> `EXPECTED_DIVERGENCES` is **gone** from `system_import_equivalence.rs`, and
+> both arms are now plain equalities — the short stream compared byte for byte,
+> and a NEW complete-two-chunk case (`read_ndjson_multi_chunk_blob`) covering the
+> arm the fix actually unblocked, which nothing had been watching. See "Lane
+> record — P4.d22, unit 1".
+>
+> The corresponding entry on the **post-5.0 v4-side fixes** list in
+> `dogfood-findings.md` is closed: v4 made the fix.
+
 **The bug (v4 `lib/import/quilltap-import-stream.ts:283`).** The blob
 reassembler allocates `received = new Array(chunkCount)` — a SPARSE array — and
 finalizes on `received.every(v => typeof v === 'string')`.
@@ -37696,3 +37718,107 @@ freshly regenerated oracle. No SPA run is owed — `apps/web/**` was never touch
 `quilltap-core` **0.0.376**, `quilltap-harness` **0.0.322**, `quilltap-host`
 **0.0.41**, `quilltap-web` **0.0.47**. `quilltap-cli` 0.0.3,
 `quilltap-tauri` 0.0.5, SPA 0.5.290 — untouched.
+## Lane record — P4.d22 unit 1: bug 4, the sparse-array blob divergence, CONVERGED
+
+**Order:** `work-orders/p4.d22-restore-import-convergence.md`, tier-1 item 1.
+**Branch:** `claude/p4-import-convergence-restore-ac1772`.
+**v4 at:** `c1507f47`, tree clean (drift-checked at lane start —
+`git log c1507f47..HEAD` empty, `git status --short` empty).
+
+### What v4 changed
+
+One expression, `lib/import/quilltap-import-stream.ts:284`:
+
+```js
+-const allReceived = accum.received.every((v) => typeof v === 'string');
++const allReceived =
++  accum.received.filter((v) => typeof v === 'string').length === accum.chunkCount;
+```
+
+plus a comment-only edit to `lib/export/ndjson-writer.ts` recording that
+`BLOB_CHUNK_BYTES` must stay a multiple of 3 — a constraint v5 already asserts in
+`qtap_export::tests::blob_chunk_size_matches_v4`. **No writer bytes moved.**
+
+### The tripwire fired exactly as designed
+
+`system_import_equivalence`'s `EXPECTED_DIVERGENCES` asserted BOTH directions:
+v4 must NOT throw on `throw_ndjson_truncated_blob`, v5 must throw. Regenerating
+the oracle at `c1507f47` produced an `error` where the previous baseline produced
+`null`, so the divergence entry became unsatisfiable. That is the convergence
+signal — not a regression.
+
+### The convergence is byte-exact, and proven on BOTH arms
+
+- `throw_ndjson_truncated_blob` (a genuinely short stream) is now a plain
+  equality through the ordinary `Some(expected)` branch. `mask_parser_text` is a
+  no-op on this message, so the comparison is byte for byte:
+  `NDJSON export truncated: 1 blob(s) missing chunks — [{"sha256":"s","received":1,"expected":2}]`.
+  That string is user-visible — the preview route leaks `error.message`.
+- **`read_ndjson_multi_chunk_blob` — NEW, and the reason this unit is not just a
+  deletion.** The corpus had no case for a *complete* multi-chunk blob, which is
+  the arm v4's fix actually restores. The short-stream case only ever proved
+  where the error landed; it could not have noticed whether the round trip
+  worked. Both sides now assemble `dataBase64: "AAAABBBB"` from two chunks.
+  Case count 19 → 20.
+
+### ⚠ The new case found a real pre-existing v5 port bug
+
+Its first run failed — not on the chunk logic, on the blob's metadata shape.
+v4 rebuilds the meta subset with **eight plain reads and five `?? null`
+defaults**:
+
+```js
+originalFileName: blobRec.data.originalFileName,   // no ?? null
+descriptionUpdatedAt: blobRec.data.descriptionUpdatedAt ?? null,
+```
+
+In JS an absent source key reads `undefined` and `JSON.stringify` **drops** it,
+so v4's assembled blob simply has no `originalFileName` / `originalMimeType` /
+`storedMimeType` / `sizeBytes` / `description` key when the record omitted them.
+v5's `assemble_export_from_stream` used `.unwrap_or(Value::Null)` for all eight,
+**fabricating five explicit nulls**. Fixed in
+`services/quilltap_import/ndjson.rs`: those eight are copied only when present;
+an EXPLICIT `null` in the source is still carried, on both sides.
+
+Why no earlier case saw it: every prior blob in the corpus came from v4's own
+writer, which always emits all thirteen keys. Only a hand-built partial record
+distinguishes absent from null — and the only hand-built blob record before this
+one was the truncated case, which never reaches the assembled comparison because
+it throws.
+
+### Regen recipe (unit 1's oracle)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+FIX=$V5W/crates/quilltap-web/tests/fixtures
+TMPO=/tmp/qt-sysimport-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/system-import.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json"   "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$FIX/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$FIX/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$FIX/system-data-llmlogs.db \
+QT_ORACLE_OUT=/tmp/oracle-system-import.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-import
+```
+
+**Staleness check before trusting a pass** (`oracle-regen-silent-stale-pass`):
+the regenerated NDJSON must show `throw_ndjson_truncated_blob` carrying a
+non-null `error`, and `read_ndjson_multi_chunk_blob` carrying
+`assembled.data.blobs[0].dataBase64 == "AAAABBBB"`. An oracle still at
+`231be14c` shows `error: null` and has no such case at all.
+
+### Result
+
+```
+QT_ORACLE_SYSTEM_IMPORT=… cargo test -p quilltap-harness \
+  --test system_import_equivalence -- --nocapture
+→ 20/20 OK, 0 failed        (CONVERGENCE proof)
+```
+
+The ruling section "Ruling — the sparse-array blob divergence (2026-07-24)" is
+marked **DISCHARGED** in place, so a future round cannot read it as live
+guidance and "fix" v5 back to the bug.
+

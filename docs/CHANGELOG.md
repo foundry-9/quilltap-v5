@@ -30,6 +30,19 @@ explicit "nothing" where the new app simply stops storing the field. Nothing
 reads the two differently, but the bytes differ, and the fix belongs to a file
 another strand of this round owns. The test asserts the difference in both
 directions and fails the moment it closes, so it cannot be forgotten.
+The old app has fixed the import bug this port found: a backup file large enough
+to be written in more than one piece can now be read back by both apps, not just
+the new one. The new app had been reading those files correctly for two days
+while the old app could not, and that difference was recorded as deliberate. It
+is no longer a difference, and the record now says so.
+
+Checking that turned up a smaller problem of our own. Reading a backup file that
+leaves optional details about a stored file blank — no original name, no size —
+the new app was filling those blanks in with an explicit "nothing" where the old
+app simply left them out. Both apps now leave them out. The test that caught it
+is new: the existing tests only ever fed the reader a file cut short, never a
+complete one written in pieces, so the very thing the old app's fix restores had
+nothing watching it.
 
 Checked the old app once more after this round landed and found one further
 change: its own release notes, catching up with work already done. Nothing to

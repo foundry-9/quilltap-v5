@@ -8,7 +8,35 @@
 //!   - the reader's throwing arms — v4's error strings, verbatim
 //!
 //! Nothing here writes: the preview is v4's count-only pass. The import EXECUTE
-//! half is this lane's named deferral (see the order's status header).
+//! half lives in `system_import_state`.
+//!
+//! ## The sparse-array blob divergence — DISCHARGED (P4.d22, 2026-07-26)
+//!
+//! This family used to carry one ruled divergence. v4's
+//! `assembleExportFromStream` asked `accum.received.every(...)` over a pre-sized
+//! SPARSE array, and `Array.prototype.every` skips holes — so a blob finalized on
+//! its FIRST chunk however many were outstanding, was truncated by `join('')`,
+//! and every later chunk hit "received without preceding doc_mount_blob". v4
+//! could not re-import a document-store blob larger than its own 3 MB
+//! `BLOB_CHUNK_BYTES`. v5's reader waited for every slot instead (reader-only —
+//! the writer stays byte-identical), which was **ruled** a deliberate divergence
+//! on 2026-07-24 and asserted in both directions so an upstream fix could not
+//! pass unnoticed.
+//!
+//! **v4 fixed it in `c1507f47`** (`lib/import/quilltap-import-stream.ts:284` now
+//! counts arrivals against `chunkCount`). The tripwire fired, the divergence list
+//! is gone, and both arms are plain equalities:
+//!
+//! - `throw_ndjson_truncated_blob` — a genuinely short stream. Both engines now
+//!   reach v4's own end-of-stream check, and the message is compared **byte for
+//!   byte** (`mask_parser_text` is a no-op on it): `NDJSON export truncated:
+//!   1 blob(s) missing chunks — [{"sha256":"s","received":1,"expected":2}]`.
+//!   That string matters beyond the diff — the preview route leaks
+//!   `error.message` to the client.
+//! - `read_ndjson_multi_chunk_blob` — a COMPLETE two-chunk blob, added by this
+//!   lane. The corpus had no case for the arm the fix actually unblocked: the
+//!   short-stream case only ever proved where the error landed, never that the
+//!   round trip works. Both sides now assemble `dataBase64: "AAAABBBB"`.
 //!
 //! Generate the oracle (see the .test.ts header), then run:
 //!   QT_ORACLE_SYSTEM_IMPORT=/tmp/oracle-system-import.ndjson \
@@ -24,14 +52,6 @@ use quilltap_core::services::quilltap_import::QuilltapExport;
 use serde_json::{Map, Value};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-
-/// Oracle cases where v5 deliberately does NOT match v4, each one ruled and
-/// recorded. Exactly one entry: v4's sparse-array `every` finalizes a
-/// multi-chunk blob on its first chunk, so v4 cannot re-import a document-store
-/// blob larger than its own 3 MB `BLOB_CHUNK_BYTES`. v5 requires every chunk
-/// (reader-only; the writer stays byte-identical). Ruled 2026-07-24 — the
-/// rationale is in `ndjson.rs` and the status log.
-const EXPECTED_DIVERGENCES: &[&str] = &["throw_ndjson_truncated_blob"];
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
@@ -174,34 +194,20 @@ fn system_import_read_matches_oracle() {
             "throw" => {
                 let got = load_qtap_from_upload(&decode(&exp["qtapBase64"]));
                 match exp["error"].as_str() {
-                    // A `null` error means v4 did NOT throw. The ONLY such case is
-                    // the short multi-chunk blob, where v4's sparse-array `every`
-                    // finalizes on the first chunk and silently truncates the blob
-                    // — the RULED divergence (see the note in `ndjson.rs`). v5 must
-                    // throw here, with v4's own end-of-stream truncation message,
-                    // so the divergence stays asserted in both directions rather
-                    // than merely tolerated.
+                    // A `null` error means v4 did NOT throw where the case says it
+                    // should. There is no longer any such case: the one that used
+                    // to land here — the short multi-chunk blob — converged when v4
+                    // fixed the sparse-array `every` in `c1507f47` (see the header).
+                    // Kept as a live tripwire in the other direction: if v4 ever
+                    // stops throwing on a malformed input again, this says so
+                    // instead of quietly tolerating it.
                     None => {
-                        if !EXPECTED_DIVERGENCES.contains(&name) {
-                            failed.push(format!(
-                                "{name}: oracle did not throw and the case is not a \
-                                 recorded divergence — add it to EXPECTED_DIVERGENCES \
-                                 with a ruling, or fix the reader"
-                            ));
-                            continue;
-                        }
-                        match got {
-                            Err(msg)
-                                if msg.starts_with(
-                                    "NDJSON export truncated: 1 blob(s) missing chunks — ",
-                                ) => {}
-                            other => {
-                                failed.push(format!(
-                                    "{name}: expected the ruled truncation divergence, got {other:?}"
-                                ));
-                                continue;
-                            }
-                        }
+                        failed.push(format!(
+                            "{name}: the oracle did NOT throw on a `throw` case — v4 has \
+                             regressed to accepting malformed input, or the case needs \
+                             re-classifying. There is no recorded divergence here any more."
+                        ));
+                        continue;
                     }
                     Some(expected) => match got {
                         Err(msg) if mask_parser_text(&msg) == mask_parser_text(expected) => {}
@@ -229,5 +235,6 @@ fn system_import_read_matches_oracle() {
         failed.len(),
         failed.join("\n\n")
     );
-    assert_eq!(ran, 19, "expected 19 cases to run, ran {ran}");
+    // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob`, added by P4.d22.
+    assert_eq!(ran, 20, "expected 20 cases to run, ran {ran}");
 }

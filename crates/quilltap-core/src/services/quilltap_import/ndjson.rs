@@ -330,6 +330,15 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     .and_then(Value::as_u64)
                     .unwrap_or_default() as usize;
                 // The meta subset v4 rebuilds, in its literal key order.
+                //
+                // These eight are plain reads — `originalFileName:
+                // blobRec.data.originalFileName` — with NO `?? null`, unlike the
+                // five below. In JS an absent source key reads `undefined`, and
+                // `JSON.stringify` DROPS an `undefined` value, so v4's assembled
+                // blob simply has no such key. Defaulting to `Value::Null` here
+                // (as this did until P4.d22) fabricated five explicit nulls on
+                // any hand-built or partial blob record. An EXPLICIT `null` in
+                // the source is different and is carried, on both sides.
                 let mut meta = Map::new();
                 for key in [
                     "mountPointId",
@@ -341,7 +350,9 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     "sha256",
                     "description",
                 ] {
-                    meta.insert(key.into(), obj.get(key).cloned().unwrap_or(Value::Null));
+                    if let Some(v) = obj.get(key) {
+                        meta.insert(key.into(), v.clone());
+                    }
                 }
                 meta.insert(
                     "descriptionUpdatedAt".into(),
@@ -407,27 +418,32 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                         .unwrap_or_default()
                         .to_string(),
                 );
-                // ⚠ DELIBERATE DIVERGENCE FROM v4 (ruled 2026-07-24) — the ONE
-                // place this reader does not reproduce v4.
+                // Wait for EVERY slot before finalizing. This was a ruled v5
+                // divergence (2026-07-24) and is now plain agreement: **v4
+                // converged on it in `c1507f47`** (2026-07-26), which counts
+                // arrivals against `chunkCount` for exactly this reason.
                 //
-                // v4's `accum.received.every(v => typeof v === 'string')` runs over
-                // a SPARSE array (`new Array(chunkCount)`), and
-                // `Array.prototype.every` SKIPS HOLES — so it is true as soon as the
-                // FIRST chunk lands, whatever `chunkCount` says. v4 then finalizes
-                // the blob with `received.join('')` (holes render as the empty
-                // string) and DELETES the accumulator, so chunk 1 of a 2-chunk blob
-                // hits the "received without preceding doc_mount_blob" throw. In
-                // other words v4 silently truncates, then hard-fails, on any
-                // document-store blob larger than the 3 MB `BLOB_CHUNK_BYTES` — it
-                // cannot re-import its own export.
+                // The history is worth keeping, because it is what the shape of
+                // this code is defending against. v4 used to ask
+                // `accum.received.every(v => typeof v === 'string')` over a SPARSE
+                // array (`new Array(chunkCount)`), and `Array.prototype.every`
+                // SKIPS HOLES — so it was true as soon as the FIRST chunk landed,
+                // whatever `chunkCount` said. v4 then finalized the blob with
+                // `received.join('')` (holes render as the empty string) and
+                // DELETED the accumulator, so chunk 1 of a 2-chunk blob hit the
+                // "received without preceding doc_mount_blob" throw. v4 could not
+                // re-import its own export of any document-store blob larger than
+                // the 3 MB `BLOB_CHUNK_BYTES`.
                 //
-                // v5 requires every slot. The divergence is reader-only and confined
-                // to `chunkCount >= 2`: the writer is untouched (v5 emits v4's exact
-                // bytes), and 0-/1-chunk blobs behave identically, so no file changes
-                // meaning — v5 just reads a strict superset of what v4 can read. The
-                // truncated case now reaches v4's OWN end-of-stream check below,
-                // which the sparse `every` had made unreachable; that error string is
-                // v4's, unedited. See the rationale in `status-log.md`.
+                // The v5 divergence was always reader-only and confined to
+                // `chunkCount >= 2` — the writer emitted v4's exact bytes
+                // throughout, which is why archives stayed compatible in both
+                // directions across the whole divergent period.
+                //
+                // `system_import_equivalence` now proves the agreement on both
+                // arms: a complete two-chunk blob assembles identically, and a
+                // genuinely short stream reaches the same end-of-stream error
+                // below, byte for byte.
                 if blob_accumulators[pos]
                     .1
                     .received
@@ -461,10 +477,12 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
         );
     };
 
-    // v4's truncation check, verbatim. In v4 this is only reachable for a blob
-    // that received NO chunk at all (its sparse `every` finalized on the first
-    // one); in v5 it also catches the genuinely-short stream the check was
-    // written for — see the divergence note in the `doc_mount_blob_chunk` arm.
+    // v4's truncation check, verbatim, and reachable on both sides for the same
+    // inputs since v4's `c1507f47`: any blob still short a chunk at end of
+    // stream. (Before that commit v4 could only reach it for a blob that
+    // received NO chunk at all — see the note in the `doc_mount_blob_chunk`
+    // arm.) The message is user-visible: the preview route leaks
+    // `error.message` to the client.
     if !blob_accumulators.is_empty() {
         let pending: Vec<Value> = blob_accumulators
             .iter()
@@ -773,12 +791,12 @@ mod tests {
         );
     }
 
-    /// The RULED divergence (see the `doc_mount_blob_chunk` arm): where v4's
-    /// sparse-array `every` finalizes a multi-chunk blob on its FIRST chunk —
-    /// silently truncating it, then throwing "received without preceding
-    /// doc_mount_blob" on chunk 1 — v5 waits for every slot and rejoins them.
+    /// A multi-chunk blob waits for every slot and rejoins them in index order.
+    /// This was the ruled divergence (see the `doc_mount_blob_chunk` arm) until
+    /// v4 converged on it in `c1507f47`; both behaviours below are now v4's too,
+    /// and `system_import_equivalence` proves it against v4's real reader.
     #[test]
-    fn a_multi_chunk_blob_rejoins_every_chunk_unlike_v4() {
+    fn a_multi_chunk_blob_rejoins_every_chunk() {
         let head = vec![
             json!({"kind":"__envelope__","format":"qtap-ndjson","version":1,
                    "manifest":{"exportType":"document-stores","counts":{}}}),
@@ -786,9 +804,9 @@ mod tests {
             json!({"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"YWFh"}),
         ];
 
-        // Chunk 0 alone no longer finalizes the blob — it stays pending and the
-        // stream is reported as truncated (v4's own end-of-stream message, which
-        // its sparse `every` had made unreachable).
+        // Chunk 0 alone does not finalize the blob — it stays pending and the
+        // stream is reported as truncated, with v4's own end-of-stream message
+        // (which v4's sparse `every` had made unreachable until `c1507f47`).
         let err = assemble_export_from_stream(&head).unwrap_err();
         assert_eq!(
             err,

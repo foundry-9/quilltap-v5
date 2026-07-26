@@ -446,6 +446,8 @@ mod tests {
         // may carry padding — otherwise a multi-chunk blob decodes to garbage.
         // Load-bearing since the reader stopped reproducing v4's sparse-array
         // `every` and multi-chunk blobs actually reassemble (see `ndjson.rs`).
+        // v4 states the same constraint in its own source as of `c1507f47`
+        // (`ndjson-writer.ts` — a comment-only change; the bytes do not move).
         assert_eq!(BLOB_CHUNK_BYTES % 3, 0);
     }
 

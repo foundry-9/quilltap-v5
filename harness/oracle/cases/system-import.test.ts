@@ -239,6 +239,32 @@ function buildCases(): CaseSpec[] {
     },
   });
 
+  // A COMPLETE two-chunk blob — the arm v4's `c1507f47` fix actually unblocked,
+  // and the one this corpus had no case for.
+  //
+  // Before that commit, `assembleExportFromStream` asked `received.every(...)`
+  // over a pre-sized SPARSE array; `every` skips holes, so the blob finalized on
+  // chunk 0 and the accumulator was deleted — chunk 1 then hit "received without
+  // preceding doc_mount_blob". v4 therefore could not re-import ANY blob larger
+  // than its own `BLOB_CHUNK_BYTES`, and the only case here that noticed
+  // (`throw_ndjson_truncated_blob`) exercised the SHORT stream, not the complete
+  // one. A whole-stream case is what proves the fix restores the round trip
+  // rather than merely relocating an error.
+  cases.push({
+    name: 'read_ndjson_multi_chunk_blob',
+    run: async () => {
+      const bytes = Buffer.from(
+        '{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"document-stores"}}\n' +
+          '{"kind":"doc_mount_blob","data":{"mountPointId":"m","relativePath":"a","sha256":"s","chunkCount":2}}\n' +
+          '{"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":0,"total":2,"dataBase64":"AAAA"}\n' +
+          '{"kind":"doc_mount_blob_chunk","mountPointId":"m","sha256":"s","index":1,"total":2,"dataBase64":"BBBB"}\n',
+        'utf8',
+      );
+      const assembled = await loadQtap(bytes);
+      return { kind: 'read', qtapBase64: bytes.toString('base64'), assembled };
+    },
+  });
+
   // Malformed inputs — the reader's throwing arms (v4's exact messages).
   const throwCase = (name: string, bytes: Buffer): CaseSpec => ({
     name,
