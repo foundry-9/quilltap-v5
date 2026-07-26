@@ -36337,3 +36337,97 @@ Versions at lane close: `quilltap-core` **0.0.367**, `quilltap-harness`
 **0.0.314**; `quilltap-host`, `quilltap-web`, `quilltap-cli`, `quilltap-tauri`
 and the SPA untouched (the lane's only `apps/web` file is a test fixture, and
 no SPA run is owed).
+---
+
+## P4.d20 — the Workbench availability-gate SPA (`6864bf0e`, client half)
+
+Lane C of the `231be14c` drift catch-up round. **SPA-only; zero Rust.** v4
+verified CLEAN at `231be14c` at lane start (`git log 231be14c..HEAD` empty).
+
+### Unit 1 — the schema layer + the corpus spec's magic numbers
+
+`app/pascal/custom-tool-types.ts` gained v4's `GateComparatorSchema` and
+`ToolGateSchema` as `parseGateComparator` / `parseToolGate`, the two optional
+top-level keys **between `disabled` and `revealOdds`** (parse order AND emitted
+key order), `validateGates` as the superRefine's third rule, and the two
+`KNOWN_TOP_LEVEL_KEYS` additions.
+
+**The differential is `custom-tool-types.gate.spec.ts` — 28 rows captured from
+v4's REAL `QtapCustomToolSchema.safeParse` + `formatDefinitionIssues` at
+`231be14c`**, byte-compared on verdict, parsed data (`JSON.stringify`, so key
+order is pinned) and the full rejection sentence. Same shape and same teeth as
+the established `custom-tool-types.state.spec.ts`. Regen recipe is in the file's
+header; the capture script is scratch, the ROWS are the artifact. Rows cover all
+eight comparators, a spaces-and-caps metadata key, the both-clauses rejection
+(exact sentence, `withheldWhen` path), `$param`/`$state` operands, empty
+`metadata`, an empty comparator, `params` as a subject, an empty containment
+string, an empty metadata key, and every wrong-typed operand.
+
+**Two things the capture caught that inspection would not have:**
+
+1. **v4 says `expected record`, not `expected object`, for a non-object
+   `z.record`.** The gate's own `metadata` now follows v4. **The three
+   PRE-EXISTING `z.record` sites in this module — `when.params`,
+   `when.metadata`, and top-level `parameters` — say `expected object`, and so
+   does the Rust port at the same three sites** (`custom_tool_types.rs`
+   `:1594`, `:1609`, `:1799`). So the two v5 halves agree with each other and
+   BOTH differ from v4, and no corpus row covers it (`grep 'expected record'`
+   over the committed oracle: zero hits). **Recorded, deliberately NOT fixed:**
+   a one-sided fix would put the browser at odds with the server, and the Rust
+   half is off-limits to this lane. Probed and confirmed against v4 directly.
+2. The order names `docs/developer/CUSTOM_TOOL_SPEC.json` as the byte-copy
+   source for the schema asset. **That is the wrong file** — it is a specimen
+   tool, not a schema. v5's `apps/web/public/schemas/qtap-custom-tool.schema.json`
+   is a copy of v4's `public/schemas/qtap-custom-tool.schema.json` (the file
+   `6864bf0e` grew by 53 lines). See unit 5.
+
+`custom-tool-types.corpus.spec.ts`'s three hard-coded counts (175 / 10 / 165)
+are GONE, per the `harness-corpus-shape-constants-rot` rule. In their place:
+the partition is total and both halves non-empty, ids are unique, and every row
+carries the half the replay reads (an accepted row its `data`, a rejected one
+its `reason`) — a row missing its own half used to compare against `null` and
+pass.
+
+**ACTIVATE-AT-UNIFY marker: `custom-tool-types.corpus.spec.ts` →
+`describe('availability gates')`.** It selects rows whose INPUT bytes carry
+`availableWhen`/`withheldWhen` and, for each, replays the verdict and proves the
+DRAFT layer's flatten/reassemble pair is a bijection over a gate v4 itself
+accepted. **Vacuous until P4.d19 regenerates the corpus at `231be14c`, and
+load-bearing the moment its gate rows land — the unifier need only run the
+suite.**
+
+### Unit 2 — the client-safe pair
+
+`app/pascal/metadata-match.ts` and `app/pascal/tool-gate.ts`, ported whole from
+v4's modules of the same names, decline strings byte-identical.
+
+- `tool-gate.spec.ts` is a case-for-case port of the `evaluateToolGate` describe
+  in v4's `__tests__/unit/lib/pascal/custom-tools-gate.test.ts`, plus two v5
+  additions: `withheldBy` is proven ABSENT (not null) when available, and the
+  non-complementarity of the two clauses on an empty sheet is pinned in both
+  directions.
+- `metadata-match.spec.ts` pins what the gate itself cannot observe: every
+  decline REASON. v4 has no dedicated suite for that module — the strings are
+  what a caller logs, so a paraphrase would be a silent divergence rather than a
+  failing test. Includes the ordering-operand branch reachable only through the
+  outcome table's resolver, and the rule that an ordinary miss produces NO
+  decline.
+
+### Unit 3 — the draft layer
+
+`gateMode` / `gateConditions` on `ToolDraft` (positioned after `disabled`,
+before `revealOdds`), `gateConditionsFromGate` / `gateFromConditions`,
+`draftFromDefinition`'s clause→mode derivation, `definitionFromDraft`'s emit,
+`KNOWN_KEY_ORDER`, `DraftIssue['where']`'s `gate` arm, and `validateGate` called
+from `validateDraft` after identity and before parameters. Conditions are KEPT
+while the mode is `'none'`, like the roll fields.
+
+v4's +140 test lines ported case for case into `tool-draft.spec.ts`, with **one
+case rewritten and its divergence pinned instead**: v4 writes
+`{ ...GATED_TOOL, availableWhen: undefined }` and relies on Zod's `.optional()`
+reading a present-but-`undefined` key as absent. Neither v5 parser can do that
+— both key off own-property presence, and the Rust half cannot represent
+`undefined` at all — so the case is expressed as what it MEANS (an ungated
+document) and a second test pins the divergence explicitly. It is module-wide
+(every optional key has behaved this way since the port landed) and unreachable
+from a file, since `JSON.parse` never yields `undefined`.

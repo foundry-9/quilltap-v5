@@ -62,6 +62,13 @@ key holding a list cannot be compared — now lives in one place instead of two.
 Nothing about a roll changes; the new availability gate needs the same rule, and
 one copy of it cannot drift from the other. Declining a test also says why again,
 in the debug log, as the old app does.
+The Workbench now understands an availability gate. A tool definition can carry
+"only show if" or "do not show if" tests against the invoking character's fact
+sheet, and the browser validates them with the same rules the server does —
+including the refusal to accept a file that declares both clauses, and the
+refusal to accept a test that points at a parameter or at stored state, neither
+of which exists before a tool is offered. A key the character lacks never
+matches, which is why both clauses exist rather than one plus a negation.
 
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be

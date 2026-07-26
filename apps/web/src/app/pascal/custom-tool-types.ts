@@ -289,6 +289,45 @@ export interface ParamComparator {
 export type MetadataComparator = ParamComparator;
 
 /**
+ * A comparator in an availability gate. The same eight keys as everywhere else,
+ * but every operand is a LITERAL.
+ *
+ * A gate is evaluated before a run exists: there are no resolved parameters to
+ * point a `$param` at, and no run whose state cascade a `$state` reference could
+ * be resolved against. Rejecting those forms at load time is the honest move —
+ * silently tolerating one would leave an author with a gate that reads as though
+ * it consults the caller's input when nothing of the sort can have happened yet.
+ */
+export interface GateComparator {
+  gt?: number;
+  gte?: number;
+  lt?: number;
+  lte?: number;
+  eq?: number | string | boolean;
+  neq?: number | string | boolean;
+  contains?: string;
+  ncontains?: string;
+}
+
+/**
+ * An availability gate: whether this invoker is offered the tool at all.
+ *
+ * Keyed by metadata key, AND-composed, and fail-soft in exactly the way an
+ * outcome's `metadata` test is — a key the character lacks does not match. The
+ * subject is `metadata` and only `metadata` because a gate is answered BEFORE
+ * the deal: there is no roll to test, no parameters (nobody has called
+ * anything), and no consult. `metadata` is what a character carries into the
+ * room, so it is the one thing that can be asked about before they sit down.
+ *
+ * The subject lives under its own key rather than at the top of the object so a
+ * later build can add a second one without re-shaping every file already
+ * written.
+ */
+export interface ToolGate {
+  metadata: Record<string, GateComparator>;
+}
+
+/**
  * A comparator against the LLM consult's result. The comparator keys test the
  * answer string; `ok` is an extra, non-comparator key testing whether the
  * consult succeeded at all.
@@ -391,6 +430,10 @@ export interface QtapCustomTool {
   title?: string;
   description: string;
   disabled?: boolean;
+  /** Offer this tool ONLY to an invoker whose metadata satisfies every test. */
+  availableWhen?: ToolGate;
+  /** Withhold this tool from an invoker whose metadata satisfies every test. */
+  withheldWhen?: ToolGate;
   revealOdds?: boolean;
   defaultVisibility?: Visibility;
   parameters?: Record<string, CustomToolParameter>;
@@ -763,6 +806,99 @@ function parseLlmComparator(input: unknown): Res<LlmComparator> {
 }
 
 /**
+ * v4's gate eq/neq operand — `z.union([z.number().finite(), z.string(),
+ * z.boolean()])`. Structurally the same three literal arms, in the same order,
+ * that a `$state` fallback takes; named apart because the REASON differs (a
+ * gate admits no reference form at all, rather than being the fallback FOR one).
+ */
+function parseGateLiteral(input: unknown): Res<number | string | boolean> {
+  return parseStateFallback(input);
+}
+
+/**
+ * v4 `GateComparatorSchema` — the eight comparator keys with LITERAL operands
+ * only: ordering takes a bare finite number (no `$param`, no `$state`), eq/neq
+ * take one of the three literal types, and containment takes a non-empty string
+ * carrying the author's own `min` sentence.
+ */
+function parseGateComparator(input: unknown): Res<GateComparator> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: GateComparator = {};
+
+  for (const key of ['gt', 'gte', 'lt', 'lte'] as const) {
+    if (!hasKey(input, key)) continue;
+    const r = parseFiniteNumber(input[key]);
+    issues.push(...prefix(key, r.issues));
+    if (r.value !== undefined) out[key] = r.value;
+  }
+  for (const key of ['eq', 'neq'] as const) {
+    if (!hasKey(input, key)) continue;
+    const r = parseGateLiteral(input[key]);
+    issues.push(...prefix(key, r.issues));
+    if (r.value !== undefined) out[key] = r.value;
+  }
+  for (const key of ['contains', 'ncontains'] as const) {
+    if (!hasKey(input, key)) continue;
+    // `z.string().min(1, EMPTY_SUBSTRING)`: the min is a CHECK carrying the
+    // authored sentence, not Zod's built-in "Too small" one.
+    const raw = input[key];
+    if (typeof raw !== 'string') {
+      issues.push(...prefix(key, [hardIssue(invalidType('string', raw))]));
+    } else {
+      if (raw.length < 1) issues.push(...prefix(key, [checkIssue(EMPTY_SUBSTRING)]));
+      out[key] = raw;
+    }
+  }
+
+  issues.push(...unrecognizedKeys(input, COMPARATOR_KEYS));
+
+  if (aborted(issues)) return { value: undefined, issues };
+  if (!COMPARATOR_KEYS.some((k) => hasKey(input, k))) issues.push(checkIssue(AT_LEAST_ONE_WIDE));
+  return { value: out, issues };
+}
+
+/**
+ * v4 `ToolGateSchema` — `z.strictObject({ metadata: z.record(…).refine(…) })`.
+ * The "must test at least one metadata key" refine sits on the RECORD, so it is
+ * skipped once an entry has aborted, and its issue path is `metadata`.
+ */
+function parseToolGate(input: unknown): Res<ToolGate> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  let metadata: Record<string, GateComparator> | undefined;
+
+  const raw = input['metadata'];
+  if (isPlainObject(raw)) {
+    // Gate keys take `z.string().min(1)`, the same non-empty grammar a `when`'s
+    // `metadata` keys take — the user hand-authors `metadata.json`.
+    const r = parseRecord(raw, (k) => k.length > 0, parseGateComparator);
+    const metaIssues = [...r.issues];
+    if (!aborted(metaIssues) && Object.keys(r.value ?? {}).length === 0) {
+      metaIssues.push(checkIssue('must test at least one metadata key'));
+    }
+    issues.push(...prefix('metadata', metaIssues));
+    metadata = r.value;
+  } else {
+    // "record", not "object": Zod names a `z.record` by its own type, and the
+    // captured rows pin it. (The three PRE-EXISTING `z.record` sites in this
+    // file — `when.params`, `when.metadata`, top-level `parameters` — say
+    // "object" instead; the Rust port says "object" at the same three, so the
+    // two v5 halves agree with each other while both diverge from v4. No corpus
+    // row covers them. Recorded, deliberately not fixed here: a one-sided fix
+    // would put the browser at odds with the server. See the lane record.)
+    issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
+  }
+
+  issues.push(...unrecognizedKeys(input, ['metadata']));
+
+  const value = metadata !== undefined && !aborted(issues) ? { metadata } : undefined;
+  return { value, issues };
+}
+
+/**
  * v4 `z.record(keySchema, …)`: a key failing `keyValid` is an `invalid_key`
  * issue — aborting, unlike the same regex used as a field check. `params` keys
  * take the identifier grammar; `metadata` keys take `z.string().min(1)`
@@ -1123,6 +1259,18 @@ export function safeParse(raw: unknown): SafeParseResult {
     return r.value;
   };
   const disabled = optBool('disabled');
+
+  // Both clauses sit between `disabled` and `revealOdds` in the schema's
+  // declaration order, so they parse — and serialize — there.
+  const optGate = (key: 'availableWhen' | 'withheldWhen'): ToolGate | undefined => {
+    if (!hasKey(obj, key)) return undefined;
+    const r = parseToolGate(obj[key]);
+    issues.push(...prefix(key, r.issues));
+    return r.value;
+  };
+  const availableWhen = optGate('availableWhen');
+  const withheldWhen = optGate('withheldWhen');
+
   const revealOdds = optBool('revealOdds');
 
   let defaultVisibility: Visibility | undefined;
@@ -1205,6 +1353,8 @@ export function safeParse(raw: unknown): SafeParseResult {
   if (title !== undefined) tool.title = title;
   tool.description = description.value;
   if (disabled !== undefined) tool.disabled = disabled;
+  if (availableWhen !== undefined) tool.availableWhen = availableWhen;
+  if (withheldWhen !== undefined) tool.withheldWhen = withheldWhen;
   if (revealOdds !== undefined) tool.revealOdds = revealOdds;
   if (defaultVisibility !== undefined) tool.defaultVisibility = defaultVisibility;
   if (parameters !== undefined) tool.parameters = parameters;
@@ -1215,6 +1365,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   // ---- superRefine (v4 `:374-377`), in source order -----------------------
   validateOutcomeOrdering(tool.outcomes, issues);
   validateReferences(tool, issues);
+  validateGates(tool, issues);
 
   if (issues.length === 0) return { success: true, data: tool };
   return { success: false, issues };
@@ -1274,6 +1425,32 @@ function validateOutcomeOrdering(outcomes: CustomToolOutcome[], issues: Issue[])
       );
     }
   });
+}
+
+/**
+ * Rule: a definition gates one way or the other, never both.
+ *
+ * The two clauses are not complements — `withheldWhen` and a negated
+ * `availableWhen` differ precisely on the character who lacks the key, which is
+ * the whole reason both exist — so a file carrying both is asking two questions
+ * whose interaction its author almost certainly has not thought through. It is
+ * also the shape the Workbench's single "who may reach for it" control cannot
+ * represent, and a form that silently drops half a file is worse than a
+ * rejection that says which half.
+ */
+function validateGates(
+  tool: { availableWhen?: ToolGate; withheldWhen?: ToolGate },
+  issues: Issue[],
+): void {
+  if (tool.availableWhen && tool.withheldWhen) {
+    issues.push(
+      checkIssue(
+        'declares both availableWhen and withheldWhen — a definition gates one way or the other. ' +
+          'Fold the second test into the first, remembering that a key the character lacks never matches.',
+        ['withheldWhen'],
+      ),
+    );
+  }
 }
 
 /** The value types a subject or an operand can carry, with `integer` folded in. */
@@ -1560,6 +1737,8 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
   'title',
   'description',
   'disabled',
+  'availableWhen',
+  'withheldWhen',
   'revealOdds',
   'defaultVisibility',
   'parameters',
