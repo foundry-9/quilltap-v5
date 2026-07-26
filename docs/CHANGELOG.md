@@ -70,6 +70,13 @@ refusal to accept a test that points at a parameter or at stored state, neither
 of which exists before a tool is offered. A key the character lacks never
 matches, which is why both clauses exist rather than one plus a negation.
 
+The Workbench's recipe opens with a new "Who may reach for it" card, the library
+marks a gated tool with its own badge, and the proving bench says whether the
+loaded fact sheet would have been dealt the tool at all — worked out on the spot
+for a hand-typed sheet, and reported by the server for a real character's. The
+bench still deals either way: a gate decides who is offered a tool, not whether
+its author may test one they are holding.
+
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be
 withheld from characters whose fact sheet does not qualify, the run dialog

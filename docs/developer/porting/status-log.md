@@ -36431,3 +36431,45 @@ reading a present-but-`undefined` key as absent. Neither v5 parser can do that
 document) and a second test pins the divergence explicitly. It is module-wide
 (every optional key has behaved this way since the port landed) and unreachable
 from a file, since `JSON.parse` never yields `undefined`.
+
+### Unit 4 — the schema asset
+
+`apps/web/public/schemas/qtap-custom-tool.schema.json` re-copied whole from the
+pinned worktree. **The order names the wrong source file**: the byte-copy is v4's
+`public/schemas/qtap-custom-tool.schema.json`, not
+`docs/developer/CUSTOM_TOOL_SPEC.json` (a specimen tool, whose one-line change in
+`6864bf0e` is a `withheldWhen` example on the specimen — v5 carries no copy of
+it). Proof: `diff` against the pinned worktree is empty, the diffstat is exactly
+`+53` (matching v4's commit stat for that file), and
+`sha256 8a07fdca863af0487b8a0ca5befc40626aba841f53c0bfbac3b073dc942ee04a`. It is
+the only copy in the tree.
+
+### Unit 5 — the Workbench surfaces
+
+- **`comparator-labels.ts`** extracted (v4's own extraction), adopted by
+  `outcomes-section.ts`, which re-exports the name its existing callers learned
+  it under.
+- **`gate-section.ts`** — the "Who may reach for it" card and its chip, with v4's
+  exact mode labels/titles, all eight comparators always on offer, the
+  literal-type picker for eq/neq only, the fail-soft ⓘ, and the
+  `duplicateNotice` affordance (tier-2 item 10 LANDED, not deferred).
+  15-case `gate-section.spec.ts`.
+- **`builder-form.ts`** mounts it between identity and Parameters.
+  `builder-form.spec.ts`'s `parametersSection()` helper found the card by
+  `sections[1]` — the gate's arrival shifted it, so it now finds the section by
+  its `Parameters` heading. That is the fix, not a workaround: an index would
+  break again at the next insertion.
+- **`workbench-library.ts`** — the `gated` badge, rendered BETWEEN `disabled` and
+  `whisper` (asserted by badge index, not merely by presence) with the
+  per-clause title.
+- **`proving-bench.ts`** — `draftGate` and `gateVerdict` computeds and the
+  verdict line, with v4's three strings verbatim and the live/server split: a
+  hand-typed sheet is read live by `evaluateToolGate`, a character's real sheet
+  waits for `rolls[0].gate` — the bench never guesses at a vault. **The bench
+  still deals either way**, pinned by a case that asserts the roll renders
+  beside a withheld verdict.
+- **`workbench.api.ts`** — §2's wire types (`LibraryGateMode`,
+  `GatedLibraryEntry`, `GatedLibraryResponse`, `BenchRoll`), declared HERE rather
+  than in `core-contract.ts`: they ride existing verbs whose bodies are already
+  read structurally (the `PreviewOracle` precedent), `api/types.rs` is frozen
+  this round, and it keeps the lane out of a file three siblings also touch.

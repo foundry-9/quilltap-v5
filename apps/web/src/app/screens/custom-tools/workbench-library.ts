@@ -11,11 +11,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
-import type {
-  CustomToolLibraryEntry,
-  CustomToolLibraryError,
-  MountAttachment,
-} from '../../core/core-contract';
+import type { CustomToolLibraryError, MountAttachment } from '../../core/core-contract';
 import { MAX_ROSTER_SIZE } from '../../pascal/custom-tool-types';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
@@ -278,6 +274,9 @@ interface OverCapStore {
               >disabled</span
             >
           }
+          @if (tool.gate) {
+            <span class="qt-badge qt-badge-warning" [title]="gateTitle(tool.gate)">gated</span>
+          }
           @if (tool.defaultVisibility === 'whisper') {
             <span class="qt-badge qt-badge-secondary" title="Results whisper by default"
               >whisper</span
@@ -335,7 +334,7 @@ export class WorkbenchLibrary {
   readonly deleting = signal(false);
   readonly flash = signal<string | null>(null);
 
-  private readonly _tools = signal<CustomToolLibraryEntry[]>([]);
+  private readonly _tools = signal<api.GatedLibraryEntry[]>([]);
   private readonly _errors = signal<CustomToolLibraryError[]>([]);
 
   readonly tools = this._tools.asReadonly();
@@ -343,6 +342,13 @@ export class WorkbenchLibrary {
 
   protected readonly MAX_ROSTER_SIZE = MAX_ROSTER_SIZE;
   protected readonly TIER_ADVISORY = TIER_ADVISORY;
+  /** The `gated` badge's tooltip — one sentence per clause (v4 `:218-226`). */
+  protected gateTitle(gate: api.LibraryGateMode): string {
+    return gate === 'available'
+      ? 'Only offered to a character whose metadata passes this tool’s “only show if” test'
+      : 'Withheld from a character whose metadata passes this tool’s “do not show if” test';
+  }
+
   protected readonly badgeClass = attachmentBadgeClass;
   protected readonly label = attachmentLabel;
 
@@ -406,7 +412,7 @@ export class WorkbenchLibrary {
 
   readonly groups = computed(() => {
     if (!this.groupByStore()) return null;
-    const byStore = new Map<string, { mountName: string; tools: CustomToolLibraryEntry[] }>();
+    const byStore = new Map<string, { mountName: string; tools: api.GatedLibraryEntry[] }>();
     for (const tool of this.filteredTools()) {
       const entry = byStore.get(tool.mountPointId) ?? { mountName: tool.mountName, tools: [] };
       entry.tools.push(tool);
@@ -427,7 +433,7 @@ export class WorkbenchLibrary {
    * entry: the entry is a summary (counts, not the outcome table), so only the
    * bytes on disk can seed a faithful copy. v4 does the same.
    */
-  async duplicate(tool: CustomToolLibraryEntry): Promise<void> {
+  async duplicate(tool: api.GatedLibraryEntry): Promise<void> {
     try {
       const file = await api.readDefinitionFile(this.core, tool.mountPointId, tool.definitionPath);
       this.duplicateTemplate.emit(file.content);

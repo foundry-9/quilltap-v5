@@ -3,8 +3,9 @@ import { provideRouter } from '@angular/router';
 import { describe, expect, it, afterEach } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import type { CustomToolLibraryEntry, CustomToolLibraryError } from '../../core/core-contract';
+import type { CustomToolLibraryError } from '../../core/core-contract';
 import { MAX_ROSTER_SIZE } from '../../pascal/custom-tool-types';
+import type * as api from './workbench.api';
 import { WorkbenchLibrary } from './workbench-library';
 
 /**
@@ -15,7 +16,7 @@ import { WorkbenchLibrary } from './workbench-library';
  * file rather than reconstructing it from the summary entry.
  */
 
-function tool(over: Partial<CustomToolLibraryEntry> = {}): CustomToolLibraryEntry {
+function tool(over: Partial<api.GatedLibraryEntry> = {}): api.GatedLibraryEntry {
   return {
     valid: true,
     name: 'unlock',
@@ -53,7 +54,7 @@ interface Req {
 }
 
 function stubClient(
-  tools: CustomToolLibraryEntry[],
+  tools: api.GatedLibraryEntry[],
   errors: CustomToolLibraryError[] = [],
   hooks: { onDispatch?: (req: Req) => void; fileContent?: string } = {},
 ): Partial<CoreClient> {
@@ -189,6 +190,41 @@ describe('WorkbenchLibrary (v4 WorkbenchLibrary.tsx)', () => {
     expect(body).toContain('disabled');
     expect(body).toContain('whisper');
     expect(body).toContain('dice');
+  });
+
+  it('badges a gated definition, between disabled and whisper, with the clause’s own title', async () => {
+    const fixture = await render(
+      stubClient([tool({ disabled: true, defaultVisibility: 'whisper', gate: 'available' })]),
+    );
+    const badges = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('.qt-badge'),
+    ].map((b) => b.textContent?.trim());
+    // v4 renders it between the `disabled` tombstone and the `whisper` default.
+    expect(badges.indexOf('gated')).toBe(badges.indexOf('disabled') + 1);
+    expect(badges.indexOf('whisper')).toBe(badges.indexOf('gated') + 1);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-badge-warning')?.getAttribute(
+        'title',
+      ),
+    ).toBe(
+      'Only offered to a character whose metadata passes this tool’s “only show if” test',
+    );
+  });
+
+  it('gives the withheld clause its own badge title', async () => {
+    const fixture = await render(stubClient([tool({ gate: 'withheld' })]));
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-badge-warning')?.getAttribute(
+        'title',
+      ),
+    ).toBe(
+      'Withheld from a character whose metadata passes this tool’s “do not show if” test',
+    );
+  });
+
+  it('omits the gated badge for an ungated tool, and for a server that omits the key', async () => {
+    expect(text(await render(stubClient([tool({ gate: null })])))).not.toContain('gated');
+    expect(text(await render(stubClient([tool()])))).not.toContain('gated');
   });
 
   it('singularizes the parameter and outcome counts the way v4 does', async () => {

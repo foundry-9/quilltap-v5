@@ -1,9 +1,11 @@
 import type { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
+import type { ToolGateVerdict } from '../../pascal/tool-gate';
 import type {
   CoreRequest,
   CustomToolAuditResult,
   CustomToolDestinations,
+  CustomToolLibraryEntry,
   CustomToolLibraryResponse,
   CustomToolMetadataInput,
   CustomToolRunResult,
@@ -30,6 +32,34 @@ import type {
  * @module screens/custom-tools/workbench.api
  */
 
+/**
+ * §2 of the `231be14c` round — the availability gate on both Workbench
+ * surfaces, emitted by P4.d19.
+ *
+ * Typed HERE rather than in `core-contract.ts` for the same reason
+ * {@link PreviewOracle} is: these ride EXISTING verbs whose bodies are already
+ * read structurally, and `api/types.rs` is frozen this round. The library's
+ * `gate` is a bare mode (all a badge needs); the preview's is the full verdict,
+ * present only when the definition declares a gate.
+ */
+export type LibraryGateMode = 'available' | 'withheld';
+
+/** A library entry, plus the gate mode its definition declares (null if none). */
+export type GatedLibraryEntry = CustomToolLibraryEntry & { gate?: LibraryGateMode | null };
+
+/** The library body, with the gate carried on each valid entry. */
+export interface GatedLibraryResponse extends CustomToolLibraryResponse {
+  tools: GatedLibraryEntry[];
+}
+
+/**
+ * A bench roll, plus the gate verdict the server computed alongside it. The
+ * bench always deals — a gate decides whether a character is OFFERED a tool,
+ * not whether its author may test one they are holding — so the verdict rides
+ * beside the roll rather than replacing it.
+ */
+export type BenchRoll = CustomToolRunResult & { gate?: ToolGateVerdict };
+
 export const workbenchKeys = {
   /** The library — invalidated after every save and delete. */
   library: () => ['customTools', 'library'] as const,
@@ -38,9 +68,9 @@ export const workbenchKeys = {
 };
 
 /** v4 `GET /api/v1/custom-tools` — every definition in every enabled store. */
-export async function fetchLibrary(core: CoreClient): Promise<CustomToolLibraryResponse> {
+export async function fetchLibrary(core: CoreClient): Promise<GatedLibraryResponse> {
   const data = await core.dispatchData({ type: 'customToolsLibrary' });
-  return data as unknown as CustomToolLibraryResponse;
+  return data as unknown as GatedLibraryResponse;
 }
 
 /** v4 `GET /api/v1/custom-tools?action=destinations` — the save-target tree. */
@@ -91,7 +121,7 @@ export async function previewCustomTool(
      */
     state?: Record<string, unknown> | undefined;
   },
-): Promise<CustomToolRunResult> {
+): Promise<BenchRoll> {
   const data = await core.dispatchData({
     type: 'customToolPreview',
     definition: args.definition,
@@ -101,7 +131,7 @@ export async function previewCustomTool(
     state: args.state,
     llm: args.llm,
   });
-  return data as unknown as CustomToolRunResult;
+  return data as unknown as BenchRoll;
 }
 
 /**

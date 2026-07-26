@@ -14,7 +14,8 @@ import type {
   CustomToolRunResult,
 } from '../../core/core-contract';
 import { displayTitle, isStateRef } from '../../pascal/custom-tool-types';
-import { definitionFromDraft, type ToolDraft } from '../../pascal/tool-draft';
+import { definitionFromDraft, gateFromConditions, type ToolDraft } from '../../pascal/tool-draft';
+import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
 
@@ -220,6 +221,28 @@ export function extractErrorMessage(err: unknown): string {
             manual roll.
           </p>
         }
+
+        @if (draftGate()) {
+          @if (gateVerdict(); as verdict) {
+            @if (verdict.available) {
+              <p class="text-xs qt-text-secondary">✓ This sheet would be offered the tool.</p>
+            } @else {
+              <p class="text-xs qt-text-destructive">
+                ✕ This sheet would never be offered the tool —
+                {{
+                  verdict.withheldBy === 'availableWhen'
+                    ? 'it does not pass every “only show if” test.'
+                    : 'it passes the “do not show if” test.'
+                }}
+                The roll below is the bench indulging you.
+              </p>
+            }
+          } @else {
+            <p class="text-xs qt-text-secondary">
+              This tool is gated. Roll once to learn whether this character would be offered it.
+            </p>
+          }
+        }
       </section>
 
       <!-- Card 2¾ — Mock state, for $state references -->
@@ -414,7 +437,7 @@ export class ProvingBench {
   readonly sheet = signal<FactSheet>({ mode: 'manual', text: '{}' });
   readonly mockStateText = signal('{}');
   readonly oracle = signal<BenchOracle>({ mode: 'scripted', answer: '' });
-  readonly rolls = signal<CustomToolRunResult[]>([]);
+  readonly rolls = signal<api.BenchRoll[]>([]);
   readonly audit = signal<CustomToolAuditResult | null>(null);
 
   readonly rolling = signal(false);
@@ -532,6 +555,36 @@ export class ProvingBench {
     return displayTitle({ name: d.name || 'contrivance', title: d.title || undefined });
   });
 
+  /**
+   * The draft's availability gate, in the shape {@link evaluateToolGate} takes.
+   * Null while the tool is ungated or the gate is still half-typed — the form
+   * is already complaining about the latter, and the bench need not join in.
+   */
+  readonly draftGate = computed(() => {
+    const d = this.draft();
+    if (d.gateMode === 'none') return null;
+    const gate = gateFromConditions(d.gateConditions);
+    if (!gate) return null;
+    return d.gateMode === 'available' ? { availableWhen: gate } : { withheldWhen: gate };
+  });
+
+  /**
+   * Whether this sheet would be dealt the tool at all — the one thing a roll can
+   * never show, since the bench deals to whoever asks.
+   *
+   * A hand-typed sheet is right here, so the verdict is live. A character's real
+   * sheet lives on the server, so that one comes back with a roll — the bench
+   * never guesses at a vault.
+   */
+  readonly gateVerdict = computed<ToolGateVerdict | null>(() => {
+    const gate = this.draftGate();
+    if (!gate) return null;
+    if (this.sheet().mode === 'manual' && this.manualSheetError() === null) {
+      return evaluateToolGate(gate, this.benchMetadata() as Record<string, unknown>);
+    }
+    return this.rolls()[0]?.gate ?? null;
+  });
+
   /** The hint that fires when a tool tests metadata but no sheet was lent. */
   readonly noSheetHint = computed(() => {
     if (!this.testsMetadata()) return false;
@@ -581,7 +634,7 @@ export class ProvingBench {
    * (§W1): a plain object passes through verbatim, `{characterId}` hydrates
    * server-side.
    */
-  private benchMetadata(): CustomToolMetadataInput | undefined {
+  benchMetadata(): CustomToolMetadataInput | undefined {
     const s = this.sheet();
     if (s.mode === 'character') return s.characterId ? { characterId: s.characterId } : undefined;
     try {

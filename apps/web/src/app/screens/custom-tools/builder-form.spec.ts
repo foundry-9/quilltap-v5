@@ -46,10 +46,18 @@ function text(fixture: ComponentFixture<unknown>): string {
   return (fixture.nativeElement as HTMLElement).textContent ?? '';
 }
 
-/** The Parameters <section> only — sections run identity, parameters, roll. */
+/**
+ * The Parameters `<section>` only.
+ *
+ * Found by its heading rather than by index: the sections now run identity,
+ * availability gate, parameters, roll, consult, and an index would silently
+ * follow the wrong card the next time one is inserted (which is exactly what
+ * the gate's arrival did to `sections[1]`).
+ */
 function parametersSection(fixture: ComponentFixture<unknown>): string {
-  const sections = (fixture.nativeElement as HTMLElement).querySelectorAll('section');
-  return sections[1]?.textContent ?? '';
+  const sections = [...(fixture.nativeElement as HTMLElement).querySelectorAll('section')];
+  const parameters = sections.find((s) => s.querySelector('h2')?.textContent === 'Parameters');
+  return parameters?.textContent ?? '';
 }
 
 describe('coerceIdentifier (v4 BuilderForm:49-55)', () => {

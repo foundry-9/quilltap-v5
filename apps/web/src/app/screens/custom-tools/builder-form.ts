@@ -30,6 +30,7 @@ import {
   type ToolDraft,
 } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
+import { GateSection } from './gate-section';
 import { NumberOrParamField } from './number-or-param-field';
 
 /**
@@ -95,7 +96,7 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
 @Component({
   selector: 'qt-builder-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, NumberOrParamField],
+  imports: [GateSection, Icon, NumberOrParamField],
   template: `
     <div class="space-y-4">
       <!-- Identity -->
@@ -203,6 +204,14 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
           </label>
         </div>
       </section>
+
+      <!-- Availability gate -->
+      <qt-gate-section
+        [draft]="draft()"
+        [issues]="issues()"
+        [disabled]="disabled()"
+        (draftChange)="draftChange.emit($event)"
+      />
 
       <!-- Parameters -->
       <section class="qt-card p-4 space-y-3">

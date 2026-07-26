@@ -24,6 +24,7 @@ import {
   type ToolDraft,
 } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
+import { COMPARATOR_LABELS } from './comparator-labels';
 
 /**
  * OutcomesSection — the cascading outcome table (v4
@@ -37,16 +38,12 @@ import { Icon } from '../../ui/icon';
  * door because one comparator object can carry each key once.
  */
 
-export const COMPARATOR_LABELS: Record<ComparatorKey, string> = {
-  gt: '>',
-  gte: '≥',
-  lt: '<',
-  lte: '≤',
-  eq: '=',
-  neq: '≠',
-  contains: 'contains',
-  ncontains: "doesn't contain",
-};
+/**
+ * Re-exported for the callers that learned this name here, before the gate
+ * needed the same vocabulary and it moved to its own file (v4 does the same
+ * extraction in `6864bf0e`).
+ */
+export { COMPARATOR_LABELS };
 
 const STATE_OPTIONS: Array<{ state: OutcomeState; label: string; badge: string }> = [
   { state: 'success', label: 'success', badge: 'qt-badge qt-badge-success' },

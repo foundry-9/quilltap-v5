@@ -433,7 +433,106 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
       max: 9,
     });
   });
+
+  // -- The availability gate's verdict line (v4 `GateVerdictLine`) -----------
+
+  it('says nothing about a gate an ungated draft does not have', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    expect(fixture.componentInstance.draftGate()).toBeNull();
+    expect(text(fixture)).not.toContain('This tool is gated');
+  });
+
+  it('stays silent while the gate is still half-typed — the form already complains', async () => {
+    const draft = gatedDraft();
+    draft.gateConditions = [
+      { id: 'g1', key: '', comparator: 'eq', operand: { kind: 'boolean', value: true } },
+    ];
+    const fixture = await render(draft, stubClient());
+    expect(fixture.componentInstance.draftGate()).toBeNull();
+    expect(text(fixture)).not.toContain('This tool is gated');
+  });
+
+  it('reads a HAND-TYPED sheet live, both ways, without a roll', async () => {
+    const fixture = await render(gatedDraft(), stubClient());
+    const bench = fixture.componentInstance;
+
+    bench.sheet.set({ mode: 'manual', text: '{"rank":4}' });
+    fixture.detectChanges();
+    expect(bench.gateVerdict()).toEqual({ available: true });
+    expect(text(fixture)).toContain('✓ This sheet would be offered the tool.');
+
+    bench.sheet.set({ mode: 'manual', text: '{"rank":1}' });
+    fixture.detectChanges();
+    expect(bench.gateVerdict()).toEqual({ available: false, withheldBy: 'availableWhen' });
+    expect(text(fixture)).toContain(
+      '✕ This sheet would never be offered the tool — it does not pass every “only show if” test.',
+    );
+    expect(text(fixture)).toContain('The roll below is the bench indulging you.');
+  });
+
+  it('names the other clause when withheldWhen is what withheld it', async () => {
+    const draft = gatedDraft();
+    draft.gateMode = 'withheld';
+    const fixture = await render(draft, stubClient());
+    fixture.componentInstance.sheet.set({ mode: 'manual', text: '{"rank":9}' });
+    fixture.detectChanges();
+    expect(text(fixture)).toContain('it passes the “do not show if” test.');
+  });
+
+  it('NEVER guesses at a vault: a character sheet waits for the server’s verdict', async () => {
+    const fixture = await render(gatedDraft(), stubClient({ preview: previewResult() }));
+    const bench = fixture.componentInstance;
+
+    bench.sheet.set({ mode: 'character', characterId: 'char1' });
+    fixture.detectChanges();
+    expect(bench.gateVerdict()).toBeNull();
+    expect(text(fixture)).toContain(
+      'This tool is gated. Roll once to learn whether this character would be offered it.',
+    );
+  });
+
+  it('shows the server’s verdict once a character roll comes back', async () => {
+    const fixture = await render(
+      gatedDraft(),
+      stubClient({
+        preview: previewResult({ gate: { available: false, withheldBy: 'availableWhen' } }),
+      }),
+    );
+    const bench = fixture.componentInstance;
+    bench.sheet.set({ mode: 'character', characterId: 'char1' });
+
+    await bench.roll();
+    fixture.detectChanges();
+
+    expect(bench.gateVerdict()).toEqual({ available: false, withheldBy: 'availableWhen' });
+    expect(text(fixture)).toContain('✕ This sheet would never be offered the tool');
+    // The bench still deals — the roll is rendered either way.
+    expect(text(fixture)).toContain('Open.');
+  });
+
+  it('falls back to the roll’s verdict when the hand-typed sheet is unparseable', async () => {
+    const fixture = await render(
+      gatedDraft(),
+      stubClient({ preview: previewResult({ gate: { available: true } }) }),
+    );
+    const bench = fixture.componentInstance;
+    bench.sheet.set({ mode: 'manual', text: '{oops' });
+    fixture.detectChanges();
+    // No live read of a sheet that does not parse, and no roll yet.
+    expect(bench.gateVerdict()).toBeNull();
+    expect(text(fixture)).toContain('This tool is gated. Roll once');
+  });
 });
+
+/** A valid draft carrying an `availableWhen` gate on `rank >= 3`. */
+function gatedDraft(): ToolDraft {
+  const draft = validDraft();
+  draft.gateMode = 'available';
+  draft.gateConditions = [
+    { id: 'g1', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '3' } },
+  ];
+  return draft;
+}
 
 function previewResult(over: Record<string, unknown> = {}) {
   return {
