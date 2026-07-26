@@ -52,6 +52,52 @@ catch, since every fixture is built fresh.
 
 | 30 | Running a **global** custom tool (`lambda`, in the "Quilltap General" store) from the composer's Custom Tools button rolls against the wrong character's fact sheet: the operator expected it to use their own played character's `metadata` (Charlie — `toolAbilities` includes `programmable`, so the tool should succeed), but it resolved outcome #3 "API Listening Agent not installed" — the branch for `toolAbilities ncontains programmable`, which matches the OTHER (LLM) character Friday's sheet (`analyze, display, architect`, no `programmable`) | **Faithfully ported v4 behavior** — a tool that every participant resolves identically (a shared/global store) dedups to ONE **unlabelled** roster listing whose `asCharacterId` is `sightings[0]`, the **first chat participant** (v4 `route.ts:209-210` / v5 `custom_tools.rs:279-281`). The run then rolls against THAT character's `metadata` (v4 `handleRun` `metadata = asCharacterId ? perspective.metadata : {}`, byte-identical to v5 `custom_tools.rs:418-422`). In this chat Friday (controlledBy `llm`) is participant[0] and Charlie (controlledBy `user`, the operator's own character) is participant[1], so the run resolved as Friday. v4's `CustomToolsDropdown.handleRun` passes the listing's `asCharacterId` with NO "run as me" override — identical to v5's `custom-tools-popup.ts:380`. **Empirically proven from the run's stored `pascalMeta`:** `metadataTested: {toolAbilities: "analyze, display, architect"}` (Friday's sheet, NOT Charlie's), `outcomeIndex: 2`, `invokedBy: "user"`, roll `value: 1.9958` — a roll that PASSED `gte:1`, so it would have hit outcome #1 (success) had it tested Charlie's `programmable` sheet. The rule is "resolve as participant[0]", which is USUALLY the operator's own character (matching the human's prior experience) — this chat is the outlier because it was created leading with the LLM character (Friday at [0], Charlie at [1]) | **NOT A BUG** (2026-07-24) — v5 reproduces v4 exactly. That a user-initiated composer run resolves as the arbitrary-first participant (here the LLM character) rather than the operator's OWN character is a genuine UX papercut, but it is v4's behavior → a **v4-first product change** (added to the post-5.0 list below) |
 
+- **The 2026-07-26 `231be14c` drift-round dogfood walk — CLEAN, zero
+  findings.** The round: P4.d18 (the fictional story clock) ∥ P4.d19 (the
+  Pascal availability gate + tool vocabulary) ∥ P4.d20 (the Workbench gate SPA)
+  ∥ P4.d21 (the in-chat two-phase dialog + the roll's outcome accent).
+  VERIFIED on the Friday copy:
+  - **Part A, the story clock, all seven steps.** The two rewritten card
+    strings; a zone-less `datetime-local` base of `1550-07-25T10:15` rendering
+    in **1550** rather than a 1970-adjacent instant (the port bug the round was
+    planned around); `Europe/Istanbul` printing **+01:56**, which is the live
+    confirmation of the *unpredicted* sub-minute-LMT fix that only the widened
+    corpus had caught; the clock **advancing ~1:1 with the wall clock** between
+    two sends; both `EVERY_MESSAGE` and `START_ONLY` read off the LLM
+    Inspector; **and the boot-repair backfill proven on real migrated data** —
+    the oldest existing fictional chat came back anchored and moving instead of
+    frozen. P4.d18's tier-3 contingency therefore never had to fire.
+  - **Part B, the availability gate, steps 8–12.** The `gated` badge (ordered
+    between `disabled` and `whisper`), the proving-bench verdict against a
+    mock fact sheet, both clause directions — **and step 11, the live half:**
+    a withheld tool absent from the in-chat roster and unrunnable by name
+    against a real character's `metadata.json`, then appearing once the sheet
+    matched. That is the only end-to-end proof of the gate outside the
+    Workbench's client-side evaluator.
+  - **Part C, the in-chat Pascal SPA, steps 15/16 + 18–22.** The wand opening
+    a **modal** (Escape / backdrop / Cancel all dismissing), the
+    "Choose another tool" round trip with no state leakage, the
+    "What this tool can quote" reference panel (P4.d21's ACTIVATE-AT-UNIFY
+    surface, live on real definitions), the stacked params layout with the
+    Workbench's `inline` consumer unchanged, and **the roll announcement
+    wearing its own outcome accent + state dot** for both a success and a
+    failure outcome, under two theme packs — the `.qt-pascal-result` base
+    block v5 had never had at all.
+
+  **NOT walked — three named steps, the next pass may pick them up
+  cheaply:** step 13 (the gate runs BEFORE the `disabled` tombstone, so a
+  gated-out definition leaves its name claimable by a farther tier — needs two
+  same-named tools in different tiers, which is why it was skipped); step 14
+  (a `"parameters": []` paste should read **`expected record`**, not
+  `expected object` — the only live check on the third pre-existing bug this
+  round fixed, and that sentence is user-visible payload returned verbatim by
+  two routes); step 17 (the roster search box past six tools).
+
+  **The recorded `TimestampConfigSchema` divergence did not bite at the SPA
+  level** — step 7 saved partial configs without incident. It remains
+  invisible without querying the stored JSON, so it stays recorded (see the
+  round record and the P4.d18 unit-2 lane record) rather than promoted.
+
 - **The 2026-07-24 post-rewrite dogfood walk — coverage summary.** WALKED CLEAN
   on the Friday copy: **Part A** tool use across OpenAI/Anthropic/DeepSeek (#25
   + #22 CLOSED; the embedded P4.17 card; #29/#30 surfaced as v4-faithful),
