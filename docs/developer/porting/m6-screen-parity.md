@@ -853,3 +853,36 @@ silently returned zero matches on a file that verifiably contained the
 pattern during this lane. Every absence proof here was re-derived with
 `git grep` against a control query that hits. An absence proof from an
 unvalidated tool is worthless — validate the tool, then prove the absence.
+
+---
+
+## 7. Wire-shape divergences on the chat cast surface (P4.9E1A, 2026-07-26)
+
+Appended by the chat cast + avatar-override server lane. These are
+DIVERGENCE-DOCUMENTED in the §5.1 point-3 sense: deliberate, recorded, and
+not blocking retirement.
+
+1. **`type: z.literal('CHARACTER')` is carried by the verb name, not a
+   field.** v4's `addParticipantSchema` (`schemas.ts:53`) requires a
+   literal `type: 'CHARACTER'` on the request body, which exists only so
+   the one participant type v4 has can be widened later. v5's
+   `chatAddParticipant` verb IS that narrowing, so the field is omitted
+   from §1 rather than shipped as a constant nobody may vary — no dead
+   field on the wire. The chat-PUT bag entrance still enforces the literal,
+   because there the payload arrives as a raw object
+   (`ParticipantAddData::from_value`). If v4 ever adds a second participant
+   type, this becomes a second verb, not a re-added field.
+2. **A fresh `add-participant` answers 200, not v4's 201.** The dispatch
+   boundary carries no per-verb success status (the standing `ChatCreate`
+   precedent); `chat_cast_routes_equivalence` asserts the difference in
+   both directions on seven cases and compares the bodies byte-for-byte.
+   A reactivation is 200 on both sides, as in v4.
+3. **A validation rejection carries no `details` array** — the standing
+   P4.6bb error-envelope deferral, asserted in both directions rather than
+   normalized away.
+
+**Not a divergence — an escalated port gap.** `db::chats::ChatParticipant`
+collapses an explicit `null` on `joinScenario` / `talkativeness` /
+`roleplayTemplateId` where v4 keeps it. It is stored bytes only, it is
+tripwired in the differential, and the fix belongs to `db/chats.rs` — see
+the P4.9E1A lane record in `status-log.md`.

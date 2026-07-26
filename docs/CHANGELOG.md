@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The porting record now carries the chat cast surface: its work order is closed,
+the screen-parity notes name the three deliberate wire-shape differences on it,
+and the unit journal records the fixture recipe and the one gap handed to
+another strand.
+
 A conversation's cast can be changed after it starts. Until now a chat was
 stuck with whoever it was created with: there was no way to add a character to
 an existing conversation, take one out, hand one over to the human to play, or
