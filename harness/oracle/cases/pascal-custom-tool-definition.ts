@@ -67,6 +67,7 @@ import {
   MAX_OUTCOMES,
   MAX_TITLE_LENGTH,
 } from '@/lib/pascal/custom-tool.types';
+import { evaluateToolGate, hasToolGate } from '@/lib/pascal/tool-gate';
 
 const rows: unknown[] = [];
 
@@ -501,5 +502,70 @@ function emitDefinition(id: string, text: string): void {
 
 for (const [id, doc] of corpus) emitDefinition(id, JSON.stringify(doc));
 for (const [id, text] of rawCorpus) emitDefinition(id, text);
+
+// ------------------------------------------------------ the availability gate
+// `evaluateToolGate` / `hasToolGate` (P4.d19, v4 `6864bf0e`) driven directly,
+// because the roster only ever shows the VERDICT's consequence and the
+// asymmetry that matters — an empty sheet fails every `availableWhen` and
+// satisfies no `withheldWhen` — is invisible from there.
+const AVAILABLE = (metadata: Record<string, unknown>) => ({ ...BASE, availableWhen: { metadata } });
+const WITHHELD = (metadata: Record<string, unknown>) => ({ ...BASE, withheldWhen: { metadata } });
+
+const gateCases: Array<[string, unknown, Record<string, unknown> | null]> = [
+  // ---- ungated: every file written before the keys existed --------------
+  ['ungated-empty-sheet', BASE, {}],
+  ['ungated-null-sheet', BASE, null],
+  ['ungated-populated-sheet', BASE, { rank: 3 }],
+
+  // ---- availableWhen: satisfied, unsatisfied, and the fail-CLOSED arms ----
+  ['available-contains-holds', AVAILABLE({ toolAbilities: { contains: 'programmable' } }), { toolAbilities: 'programmable, ambulatory' }],
+  ['available-contains-misses', AVAILABLE({ toolAbilities: { contains: 'programmable' } }), { toolAbilities: 'ambulatory' }],
+  ['available-absent-key-fails-closed', AVAILABLE({ toolAbilities: { contains: 'programmable' } }), {}],
+  ['available-null-sheet-fails-closed', AVAILABLE({ toolAbilities: { contains: 'programmable' } }), null],
+  ['available-gte-holds', AVAILABLE({ clearance: { gte: 3 } }), { clearance: 3 }],
+  ['available-gte-misses', AVAILABLE({ clearance: { gte: 3 } }), { clearance: 2 }],
+  ['available-eq-boolean', AVAILABLE({ trusted: { eq: true } }), { trusted: true }],
+  ['available-eq-boolean-strict', AVAILABLE({ trusted: { eq: true } }), { trusted: 'true' }],
+  ['available-neq-holds', AVAILABLE({ house: { neq: 'Ferro' } }), { house: 'Aurum' }],
+  ['available-ncontains-holds', AVAILABLE({ house: { ncontains: 'Ferro' } }), { house: 'Aurum' }],
+  ['available-multi-key-all-hold', AVAILABLE({ clearance: { gte: 3 }, house: { eq: 'Aurum' } }), { clearance: 4, house: 'Aurum' }],
+  ['available-multi-key-one-misses', AVAILABLE({ clearance: { gte: 3 }, house: { eq: 'Aurum' } }), { clearance: 4, house: 'Ferro' }],
+  ['available-multi-key-one-absent', AVAILABLE({ clearance: { gte: 3 }, house: { eq: 'Aurum' } }), { clearance: 4 }],
+  ['available-anded-range', AVAILABLE({ clearance: { gte: 3, lt: 9 } }), { clearance: 5 }],
+  ['available-anded-range-out', AVAILABLE({ clearance: { gte: 3, lt: 9 } }), { clearance: 9 }],
+
+  // ---- the fail-soft type rules, read through the gate --------------------
+  ['available-key-holds-null', AVAILABLE({ clearance: { gte: 3 } }), { clearance: null }],
+  ['available-key-holds-array', AVAILABLE({ clearance: { gte: 3 } }), { clearance: [3, 4] }],
+  ['available-key-holds-object', AVAILABLE({ clearance: { gte: 3 } }), { clearance: { level: 3 } }],
+  ['available-orders-a-string', AVAILABLE({ clearance: { gte: 3 } }), { clearance: '5' }],
+  ['available-searches-a-number', AVAILABLE({ house: { contains: 'Aur' } }), { house: 7 }],
+  ['available-ncontains-a-number', AVAILABLE({ house: { ncontains: 'Ferro' } }), { house: 7 }],
+
+  // ---- withheldWhen: the OTHER half of the asymmetry ---------------------
+  ['withheld-holds', WITHHELD({ novice: { eq: true } }), { novice: true }],
+  ['withheld-misses', WITHHELD({ novice: { eq: true } }), { novice: false }],
+  ['withheld-absent-key-offers', WITHHELD({ novice: { eq: true } }), {}],
+  ['withheld-null-sheet-offers', WITHHELD({ novice: { eq: true } }), null],
+  ['withheld-key-holds-array-offers', WITHHELD({ novice: { eq: true } }), { novice: [true] }],
+  ['withheld-multi-key-one-misses-offers', WITHHELD({ novice: { eq: true }, probation: { eq: true } }), { novice: true, probation: false }],
+  ['withheld-ncontains-holds', WITHHELD({ house: { ncontains: 'Aurum' } }), { house: 'Ferro' }],
+];
+
+for (const [id, definition, metadata] of gateCases) {
+  const parsed = QtapCustomToolSchema.safeParse(definition);
+  if (!parsed.success) throw new Error(`gate case '${id}': definition does not load`);
+  rows.push({
+    kind: 'gate',
+    id,
+    // The bytes both sides parse, exactly as the definition rows travel.
+    inputJson: JSON.stringify(definition),
+    metadata,
+    hasGate: hasToolGate(parsed.data),
+    // The VERDICT object as it is serialized — `withheldBy` must be ABSENT, not
+    // null, whenever the tool is available.
+    verdict: JSON.stringify(evaluateToolGate(parsed.data, metadata)),
+  });
+}
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

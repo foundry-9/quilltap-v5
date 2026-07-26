@@ -35933,3 +35933,46 @@ copies regenerated from the pinned worktree: the harness NDJSON
 §3 delivery — this lane's one `apps/web` touch). Gate: fmt, clippy
 `--workspace --all-targets -D warnings`, `cargo test --workspace --no-fail-fast`
 384 binaries / 0 failed. `quilltap-core` 0.0.361 → 0.0.362.
+
+### Unit 3 — `tool_gate.rs`: the evaluator (v4 `6864bf0e`)
+
+`pascal/tool_gate.rs`: `ToolGateVerdict`, `WithheldBy`, `has_tool_gate`,
+`evaluate_tool_gate`, `gate_holds`.
+
+- **`withheldBy` is ABSENT, not null, on an available verdict** — v4's is an
+  optional key, and the wire shape is §2 of the round's shared contract, so
+  `skip_serializing_if = "Option::is_none"` is load-bearing rather than tidy.
+  A mutation removing it turns the differential red on the first ungated row.
+- **The resolver is `Infallible`.** `metadata_comparator_holds` is generic over
+  its error type; the gate's operands are literals by construction, so the gate
+  instantiates it at `Infallible` and the `Err` arm is `match never {}` — the
+  type system carries v4's "resolution is the identity" comment.
+- **`literal_operand`** narrows the shared `ParamComparator` operand enums back
+  to their literal arms. Its `unreachable!`s are the parse's guarantee restated;
+  `parse_gate_comparator` admits nothing else at any of the eight keys.
+
+**Differential:** the `gate` row kind, added to
+`pascal_custom_tool_definition_equivalence` and the §C case file, driving v4's
+REAL `evaluateToolGate`/`hasToolGate` over 31 (definition, fact sheet) pairs and
+comparing the SERIALIZED verdict. Driven directly rather than through the roster
+because the roster only shows a verdict's consequence, and the asymmetry that
+matters is invisible from there: `available-absent-key-fails-closed` and
+`withheld-absent-key-offers` are the same sheet against the two clauses, and
+they disagree. Also covered: null sheets, multi-key ANDs, and every fail-soft
+type rule read through the gate (key holds null / an array / an object, ordering
+a string, searching a number, and `ncontains` against a non-string).
+
+**Coverage is asserted, not counted.** Per the order's
+`harness-corpus-shape-constants-rot` warning, the test asserts that the gate
+rows withheld by BOTH clauses and covered available AND withheld, gated AND
+ungated — so a corpus that silently lost its `withheldWhen` rows fails rather
+than passing on a smaller set.
+
+**Mutation-checked** (the run was green first time, which the memory notes warn
+about): serializing `withheldBy` as null → red at `ungated-empty-sheet`; making
+an absent metadata key MATCH instead of decline → red at
+`available-absent-key-fails-closed`.
+
+Family totals now **10 titles + 195 definitions + 31 gate verdicts**. Gate: fmt,
+clippy, `cargo test --workspace --no-fail-fast` 384 binaries / 0 failed.
+`quilltap-core` 0.0.362 → 0.0.363.

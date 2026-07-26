@@ -21,6 +21,11 @@ A wrong-typed `parameters`, `params` or `metadata` block now reports the same
 sentence the old app reports. Three places said "expected object" where the old
 app says "expected record"; nothing had ever tested one.
 
+A tool the invoking character does not qualify for is now evaluated as such: an
+empty fact sheet fails every "available when" test and satisfies no "withheld
+when" test, which is the safe reading of "we could not establish that this
+character qualifies" in both directions.
+
 The rule for testing a character's fact sheet — a key they lack never matches, a
 key holding a list cannot be compared — now lives in one place instead of two.
 Nothing about a roll changes; the new availability gate needs the same rule, and
