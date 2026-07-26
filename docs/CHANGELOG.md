@@ -8266,6 +8266,15 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 1 — the `chat-admin-{main,mount}.db` fixture family. A new committed
+test-pepper substrate for the chat-admin + tools server surface, baked entirely
+through v4's real repositories: one user with a default and a second connection
+profile, six characters (two of them merge candidates, one present in both chats,
+one dismissed from the source), four tags, a merge target and a merge source, an
+empty chat and a help chat, seven crossed role/participant messages plus a system
+event, three memories (two hanging off messages the bulk re-attribution deletes),
+wardrobe defaults, and the user's cheap-LLM settings. No code yet.
+
 Round re-planning — v4 shipped the restore/import fixes mid-planning, so the
 chat-action round gained a fourth lane rather than changing its other three.
 `67ffb444` and `c1507f47` fix all four defects this port found on the

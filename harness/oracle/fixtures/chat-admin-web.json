@@ -1,0 +1,23 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "f0000000-0000-4000-8000-00000000000f",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "frozenNowMs": 1777939200000,
+  "cannedTitles": {
+    "literary": {
+      "content": "The Lamplighter's Ledger",
+      "promptTokens": 220,
+      "completionTokens": 7
+    },
+    "help": {
+      "content": "Setting up connection profiles",
+      "promptTokens": 90,
+      "completionTokens": 5
+    },
+    "long": {
+      "content": "\"A Considerably Overlong Title That The Cleaner Must Truncate At Fifty\"",
+      "promptTokens": 100,
+      "completionTokens": 20
+    }
+  }
+}
