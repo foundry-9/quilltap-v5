@@ -39,6 +39,14 @@ import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
+import {
+  removeParticipant,
+  rebuildSystemPrompt,
+  updateParticipant,
+  type UpdateParticipantPatch,
+} from '../../chat/chat-cast.api';
+import type { ConnectionProfileOption } from '../../chat/sidebar/participant-card';
+import { Modal } from '../../ui/modal';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
@@ -67,8 +75,10 @@ import { CoreClient } from '../../core/core-client';
 import type {
   ChatDetail,
   ChatSettingsDto,
+  ConnectionProfileDto,
   MessageDto,
   ParticipantDetail,
+  ParticipantStatusWire,
 } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
@@ -112,6 +122,13 @@ const DOC_RELOAD_TOOLS = new Set<string>([
   'doc_delete_file',
   'doc_delete_folder',
 ]);
+
+/**
+ * v4 debounces the per-chat talkativeness write by 400 ms PER PARTICIPANT
+ * (`useChatControls:613-635`), so dragging the slider fires one request on
+ * release rather than one per step.
+ */
+const TALKATIVENESS_DEBOUNCE_MS = 400;
 
 /** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
 interface TurnInfo {
@@ -167,6 +184,7 @@ interface CascadePrompt {
     ComposeMailDialog,
     WhisperDialog,
     AddCharacterDialog,
+    Modal,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
@@ -243,6 +261,13 @@ interface CascadePrompt {
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
           (addCharacter)="showAddCharacter.set(true)"
+          [connectionProfiles]="connectionProfiles()"
+          (connectionProfileChange)="onParticipantProfileChange($event)"
+          (systemPromptChange)="onParticipantSystemPromptChange($event)"
+          (rebuildSystemPrompt)="onParticipantRebuildSystemPrompt($event)"
+          (talkativenessChange)="onParticipantTalkativenessChange($event)"
+          (statusChange)="onParticipantStatusChange($event)"
+          (removeParticipant)="onParticipantRemoveRequested($event)"
         />
       }
     </div>
@@ -457,6 +482,37 @@ interface CascadePrompt {
         (added)="onCharacterAdded($event)"
         (close)="showAddCharacter.set(false)"
       />
+    }
+
+    <!-- v4 answers Remove with showConfirmation() (useChatControls:458-464);
+         v5 has no confirm service, so the sentence lives in a qt-modal — the
+         characters-vertical idiom. The copy is v4's, word for word. -->
+    @if (removeTarget(); as target) {
+      <qt-modal title="Remove Character" maxWidth="md" (close)="removeTarget.set(null)">
+        <p class="qt-text-small">
+          Remove <strong class="text-foreground">{{ target.name }}</strong> from this chat? Their
+          past messages will remain visible, but they will no longer participate in the
+          conversation.
+        </p>
+        <div qt-modal-footer class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="qt-button qt-button-secondary"
+            [disabled]="removing()"
+            (click)="removeTarget.set(null)"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="qt-button qt-button-destructive"
+            [disabled]="removing()"
+            (click)="confirmRemoveParticipant()"
+          >
+            {{ removing() ? 'Removing...' : 'Remove' }}
+          </button>
+        </div>
+      </qt-modal>
     }
 
     @if (whisperTarget(); as target) {
@@ -1436,6 +1492,202 @@ export class SalonConversation {
   protected async onCharacterAdded(joined: { characterId: string; name: string }): Promise<void> {
     this.chatFlash.set({ kind: 'success', message: `${joined.name} has joined the chat` });
     await this.onChatUpdated();
+  }
+
+  /**
+   * The connection profiles the cast cards' Controlled-By selects offer (v4
+   * threads `connectionProfiles` from `SalonView` into `ChatSidebar`).
+   */
+  protected readonly profilesQuery = injectQuery(() => ({
+    queryKey: ['connection-profiles'] as const,
+    queryFn: async () => {
+      const data = await this.core.dispatchData({ type: 'connectionProfileList' });
+      return (data['profiles'] as ConnectionProfileDto[]) ?? [];
+    },
+  }));
+
+  protected readonly connectionProfiles = computed<ConnectionProfileOption[]>(() =>
+    (this.profilesQuery.data() ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      provider: p.provider,
+      modelName: p.modelName,
+    })),
+  );
+
+  /**
+   * v4 `handleConnectionProfileChange` (`useChatControls:500-526`). The subtle
+   * part is on the wire, not here: user control sends `connectionProfileId:
+   * undefined`, which `JSON.stringify` DROPS — so the key is absent, never null.
+   * {@link updateParticipant} reproduces that by not passing the key at all.
+   */
+  protected async onParticipantProfileChange(change: {
+    participantId: string;
+    profileId: string | null;
+    controlledBy: 'llm' | 'user';
+  }): Promise<void> {
+    await this.writeParticipant(
+      change.participantId,
+      change.controlledBy === 'user'
+        ? { controlledBy: 'user' }
+        : { controlledBy: 'llm', ...(change.profileId ? { connectionProfileId: change.profileId } : {}) },
+      'Connection profile updated',
+      'Failed to update connection profile',
+    );
+  }
+
+  /**
+   * v4 `handleSystemPromptChange` (`:531-556`) — and here the explicit `null`
+   * matters: "Use default prompt" CLEARS the override, which the server only
+   * hears if the key is present and null.
+   */
+  protected async onParticipantSystemPromptChange(change: {
+    participantId: string;
+    promptId: string | null;
+  }): Promise<void> {
+    await this.writeParticipant(
+      change.participantId,
+      { selectedSystemPromptId: change.promptId },
+      'System prompt updated',
+      'Failed to update system prompt',
+    );
+  }
+
+  /** v4 `handleRebuildSystemPrompt` (`:562-580`). */
+  protected async onParticipantRebuildSystemPrompt(participantId: string): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    try {
+      await rebuildSystemPrompt(this.core, chatId, participantId);
+      this.chatFlash.set({ kind: 'success', message: 'System prompt rebuilt' });
+      await this.onChatUpdated();
+    } catch (err) {
+      this.chatFlash.set({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to rebuild system prompt',
+      });
+    }
+  }
+
+  /**
+   * v4 `handleParticipantSettingsChange` (`:583-611`) — the status select sends
+   * `status` AND v4's derived `isActive` (`ChatSidebar.tsx:818`: active or silent
+   * counts as active), so a client that sent only `status` would leave the legacy
+   * column stale.
+   */
+  protected async onParticipantStatusChange(change: {
+    participantId: string;
+    status: ParticipantStatusWire;
+  }): Promise<void> {
+    await this.writeParticipant(
+      change.participantId,
+      {
+        status: change.status,
+        isActive: change.status === 'active' || change.status === 'silent',
+      },
+      null,
+      'Failed to update participant settings',
+    );
+  }
+
+  /**
+   * v4 `handleTalkativenessChange` (`:613-635`): DEBOUNCED per participant, so a
+   * slider drag fires one request when the user lets go rather than one per
+   * step. The timers are keyed by participant id, exactly as v4's ref map is.
+   */
+  private readonly talkativenessTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  protected onParticipantTalkativenessChange(change: {
+    participantId: string;
+    value: number;
+  }): void {
+    const pending = this.talkativenessTimers.get(change.participantId);
+    if (pending) clearTimeout(pending);
+    this.talkativenessTimers.set(
+      change.participantId,
+      setTimeout(() => {
+        this.talkativenessTimers.delete(change.participantId);
+        void this.writeParticipant(
+          change.participantId,
+          { talkativeness: change.value },
+          null,
+          'Failed to update talkativeness',
+        );
+      }, TALKATIVENESS_DEBOUNCE_MS),
+    );
+  }
+
+  /**
+   * v4 `handleRemoveCharacter` (`:449-497`): refuse while that character is
+   * mid-generation, confirm, remove, drop them from the local queue, refetch —
+   * and warn if the cast is now empty of characters.
+   */
+  protected readonly removeTarget = signal<{ participantId: string; name: string } | null>(null);
+  protected readonly removing = signal(false);
+
+  protected onParticipantRemoveRequested(participantId: string): void {
+    const participant = (this.chat()?.participants ?? []).find((p) => p.id === participantId);
+    const name = participant?.character?.name ?? 'This character';
+    if (this.busy() && this.turnState().lastSpeakerId === participantId) {
+      this.chatFlash.set({
+        kind: 'error',
+        message: `Cannot remove ${name} while they are generating a response. Please wait for them to finish.`,
+      });
+      return;
+    }
+    this.removeTarget.set({ participantId, name });
+  }
+
+  protected async confirmRemoveParticipant(): Promise<void> {
+    const target = this.removeTarget();
+    const chatId = this.chatId();
+    if (!target || !chatId) return;
+    this.removing.set(true);
+    try {
+      await removeParticipant(this.core, chatId, target.participantId);
+      this.chatFlash.set({
+        kind: 'success',
+        message: `${target.name} has been removed from the chat`,
+      });
+      this.turnState.update((prev) => removeFromQueue(prev, target.participantId));
+      this.removeTarget.set(null);
+      await this.onChatUpdated();
+      const remaining = (this.chat()?.participants ?? []).filter(
+        (p) =>
+          p.type === 'CHARACTER' && p.isActive && p.id !== target.participantId,
+      );
+      if (remaining.length === 0) {
+        this.chatFlash.set({
+          kind: 'error',
+          message: 'All characters have been removed. Add a character to continue the conversation.',
+        });
+      }
+    } catch (err) {
+      this.chatFlash.set({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to remove character',
+      });
+    } finally {
+      this.removing.set(false);
+    }
+  }
+
+  /** The shared write: patch, report, refetch (v4's four handlers all do this). */
+  private async writeParticipant(
+    participantId: string,
+    patch: UpdateParticipantPatch,
+    success: string | null,
+    failure: string,
+  ): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    try {
+      await updateParticipant(this.core, chatId, participantId, patch);
+      if (success) this.chatFlash.set({ kind: 'success', message: success });
+      await this.onChatUpdated();
+    } catch (err) {
+      this.chatFlash.set({ kind: 'error', message: err instanceof Error ? err.message : failure });
+    }
   }
 
   /**

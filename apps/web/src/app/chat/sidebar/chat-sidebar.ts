@@ -12,7 +12,7 @@ import {
   signal,
 } from '@angular/core';
 
-import type { ParticipantDetail } from '../../core/core-contract';
+import type { ParticipantDetail, ParticipantStatusWire } from '../../core/core-contract';
 import { Avatar } from '../../ui/avatar';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { CollapsibleCard } from '../../ui/collapsible-card';
@@ -26,6 +26,7 @@ import {
 } from '../turn-order';
 import { ChatSection, type ChatSectionState } from './chat-section';
 import { OrganizeSection } from './organize-section';
+import type { ConnectionProfileOption } from './participant-card';
 import { ParticipantsSection } from './participants-section';
 import { VisibilitySection, type VisibilityState } from './visibility-section';
 
@@ -246,6 +247,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [activeTypingParticipantId]="activeTypingParticipantId()"
             [isDangerousChat]="isDangerousChat()"
             [chatId]="chatId()"
+            [connectionProfiles]="connectionProfiles()"
             (togglePause)="togglePause.emit()"
             (nudge)="nudge.emit($event)"
             (queue)="queue.emit($event)"
@@ -257,6 +259,12 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (regenerateAvatar)="regenerateAvatar.emit($event)"
             (whisper)="whisper.emit($event)"
             (addCharacter)="addCharacter.emit()"
+            (connectionProfileChange)="connectionProfileChange.emit($event)"
+            (systemPromptChange)="systemPromptChange.emit($event)"
+            (rebuildSystemPrompt)="rebuildSystemPrompt.emit($event)"
+            (talkativenessChange)="talkativenessChange.emit($event)"
+            (statusChange)="statusChange.emit($event)"
+            (remove)="removeParticipant.emit($event)"
           />
         </qt-collapsible-card>
 
@@ -339,6 +347,8 @@ export class ChatSidebar implements OnInit {
   readonly activeTypingParticipantId = input<string | null>(null);
   readonly isDangerousChat = input(false);
   readonly chatId = input<string | null>(null);
+  /** The user's connection profiles, threaded to each participant card. */
+  readonly connectionProfiles = input<ConnectionProfileOption[]>([]);
 
   // --- Chat section ---
   readonly chatSectionState = input.required<ChatSectionState>();
@@ -374,6 +384,17 @@ export class ChatSidebar implements OnInit {
   readonly whisper = output<string>();
   /** The cast footer's Add Character (v4 `onAddCharacter` → `AddCharacterDialog`). */
   readonly addCharacter = output<void>();
+  /** The per-card participant controls (v4 `SalonView`'s `useChatControls` handlers). */
+  readonly connectionProfileChange = output<{
+    participantId: string;
+    profileId: string | null;
+    controlledBy: 'llm' | 'user';
+  }>();
+  readonly systemPromptChange = output<{ participantId: string; promptId: string | null }>();
+  readonly rebuildSystemPrompt = output<string>();
+  readonly talkativenessChange = output<{ participantId: string; value: number }>();
+  readonly statusChange = output<{ participantId: string; status: ParticipantStatusWire }>();
+  readonly removeParticipant = output<string>();
 
   protected readonly minWidth = MIN_WIDTH;
   protected readonly maxWidth = MAX_WIDTH;

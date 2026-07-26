@@ -836,4 +836,94 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
       ],
     });
   });
+  /**
+   * The cast controls (P4.9E1B). The wire shapes themselves are pinned in
+   * `chat/chat-cast.api.spec.ts`; what these cases prove is what the SALON
+   * decides before calling it — which key is omitted, which pair travels
+   * together, and how many requests a slider drag becomes.
+   */
+  it('flipping a participant to the human OMITS connectionProfileId (v4 `? undefined`)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as {
+      onParticipantProfileChange(e: {
+        participantId: string;
+        profileId: string | null;
+        controlledBy: 'llm' | 'user';
+      }): Promise<void>;
+    };
+    await inst.onParticipantProfileChange({
+      participantId: 'p1',
+      profileId: null,
+      controlledBy: 'user',
+    });
+    const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+    const call = dispatchData.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r?.['type'] === 'chatUpdateParticipant')!;
+    expect(call).toEqual({
+      type: 'chatUpdateParticipant',
+      chatId: 'chat-1',
+      participantId: 'p1',
+      controlledBy: 'user',
+    });
+  });
+
+  it('the status select sends v4’s derived isActive alongside status (ChatSidebar :818)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as {
+      onParticipantStatusChange(e: { participantId: string; status: string }): Promise<void>;
+    };
+    const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+    const updates = () =>
+      dispatchData.mock.calls
+        .map((c) => c[0] as Record<string, unknown>)
+        .filter((r) => r?.['type'] === 'chatUpdateParticipant');
+
+    await inst.onParticipantStatusChange({ participantId: 'p1', status: 'silent' });
+    // Silent still counts as present, so the legacy column stays true.
+    expect(updates().at(-1)).toMatchObject({ status: 'silent', isActive: true });
+
+    await inst.onParticipantStatusChange({ participantId: 'p1', status: 'absent' });
+    expect(updates().at(-1)).toMatchObject({ status: 'absent', isActive: false });
+  });
+
+  it('a talkativeness drag becomes ONE request, carrying the last value (v4 400 ms)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    // Render on REAL timers — `render()` drains the queries with setTimeout(0) —
+    // then freeze the clock to watch the debounce.
+    const fixture = await render(client);
+    vi.useFakeTimers();
+    try {
+      const inst = fixture.componentInstance as unknown as {
+        onParticipantTalkativenessChange(e: { participantId: string; value: number }): void;
+      };
+      const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+      const updates = () =>
+        dispatchData.mock.calls
+          .map((c) => c[0] as Record<string, unknown>)
+          .filter((r) => r?.['type'] === 'chatUpdateParticipant');
+
+      inst.onParticipantTalkativenessChange({ participantId: 'p1', value: 0.6 });
+      inst.onParticipantTalkativenessChange({ participantId: 'p1', value: 0.8 });
+      inst.onParticipantTalkativenessChange({ participantId: 'p1', value: 0.9 });
+      await vi.advanceTimersByTimeAsync(399);
+      expect(updates()).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(updates()).toEqual([
+        {
+          type: 'chatUpdateParticipant',
+          chatId: 'chat-1',
+          participantId: 'p1',
+          talkativeness: 0.9,
+        },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

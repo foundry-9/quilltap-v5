@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
-import type { ParticipantDetail } from '../../core/core-contract';
+import type { ParticipantDetail, ParticipantStatusWire } from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
 import {
   getQueuePosition,
@@ -8,7 +8,7 @@ import {
   type TurnSelectionResult,
   type TurnState,
 } from '../turn-order';
-import { ParticipantCard } from './participant-card';
+import { ParticipantCard, type ConnectionProfileOption } from './participant-card';
 
 /**
  * The chat sidebar's default-open section (v4 `ChatSidebar.tsx:721-845`
@@ -87,6 +87,8 @@ import { ParticipantCard } from './participant-card';
             [isDangerousChat]="isDangerousChat()"
             [chatId]="chatId()"
             [canWhisper]="canWhisper()"
+            [connectionProfiles]="connectionProfiles()"
+            [canRemove]="canRemove()"
             (nudge)="nudge.emit($event)"
             (queue)="queue.emit($event)"
             (dequeue)="dequeue.emit($event)"
@@ -96,6 +98,12 @@ import { ParticipantCard } from './participant-card';
             (stopImpersonate)="stopImpersonate.emit($event)"
             (regenerateAvatar)="regenerateAvatar.emit($event)"
             (whisper)="whisper.emit($event)"
+            (connectionProfileChange)="connectionProfileChange.emit($event)"
+            (systemPromptChange)="systemPromptChange.emit($event)"
+            (rebuildSystemPrompt)="rebuildSystemPrompt.emit($event)"
+            (talkativenessChange)="talkativenessChange.emit($event)"
+            (statusChange)="statusChange.emit($event)"
+            (remove)="remove.emit($event)"
           />
         }
       </div>
@@ -128,6 +136,8 @@ export class ParticipantsSection {
   readonly activeTypingParticipantId = input<string | null>(null);
   readonly isDangerousChat = input(false);
   readonly chatId = input<string | null>(null);
+  /** The user's connection profiles, for each card's Controlled-By select. */
+  readonly connectionProfiles = input<ConnectionProfileOption[]>([]);
 
   readonly togglePause = output<void>();
   readonly nudge = output<string>();
@@ -141,6 +151,24 @@ export class ParticipantsSection {
   readonly whisper = output<string>();
   /** The footer button — v4 `onAddCharacter` (`ChatSidebar.tsx:823`). */
   readonly addCharacter = output<void>();
+  readonly connectionProfileChange = output<{
+    participantId: string;
+    profileId: string | null;
+    controlledBy: 'llm' | 'user';
+  }>();
+  readonly systemPromptChange = output<{ participantId: string; promptId: string | null }>();
+  readonly rebuildSystemPrompt = output<string>();
+  readonly talkativenessChange = output<{ participantId: string; value: number }>();
+  readonly statusChange = output<{ participantId: string; status: ParticipantStatusWire }>();
+  readonly remove = output<string>();
+
+  /**
+   * v4 `ChatSidebar.tsx:786` — `canRemove = activeCharacterCount > 1`. The last
+   * character standing cannot be removed, and the server enforces the same rule
+   * ("Cannot remove the last character from the chat", `participants.ts:500`);
+   * withholding the button keeps the operator from meeting that refusal.
+   */
+  protected readonly canRemove = computed(() => this.activeCharacterCount() > 1);
 
   /**
    * v4 `ChatSidebar.tsx:722-724,823` — the Whisper button is threaded to the

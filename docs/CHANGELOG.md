@@ -68,6 +68,18 @@ app simply left them out. Both apps now leave them out. The test that caught it
 is new: the existing tests only ever fed the reader a file cut short, never a
 complete one written in pieces, so the very thing the old app's fix restores had
 nothing watching it.
+The cast cards in the sidebar have their controls back. Each character now
+carries the dropdown that decides who speaks for them — any of your LLM backends,
+or you — a picker for which of their named system prompts to use, a button that
+rebuilds their assembled prompt from the character as it stands now, a
+talkativeness slider, a status dropdown (active, silent, absent), and a Remove
+button. Dragging the slider makes one save when you let go, not one per notch.
+
+Removing a character asks first, in the old app's own words, and refuses outright
+while that character is mid-sentence. The last character in a room has no Remove
+button at all, since the server would refuse it anyway. Their past messages stay
+where they are; they simply stop taking part.
+
 You can add a character to a conversation again. The cast list in the sidebar has
 its "Add Character" button back, and it opens the old app's picker: your whole
 roster minus whoever is already in the room, searchable by name or title, with
