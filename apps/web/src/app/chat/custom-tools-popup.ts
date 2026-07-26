@@ -87,18 +87,26 @@ interface ReferenceRow {
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (available()) {
-      <button
-        type="button"
-        class="qt-chat-toolbar-button"
-        title="Custom tools"
-        aria-label="Custom tools"
-        aria-haspopup="dialog"
-        [attr.aria-expanded]="isOpen()"
-        [disabled]="disabled()"
-        (click)="openDialog()"
-      >
-        <qt-icon name="wand" class="w-5 h-5" />
-      </button>
+      <!-- v4 drops the popover's positioning wrapper here (.qt-composer-gutter-dropdown,
+           which v5 never had). The plain block wrapper stays: an Angular host element
+           is the flex item either way, and keeping the button a BLOCK child of it is
+           exactly the box the toolbar has been laying out all along. Removing the
+           "relative" class — which had no positioned descendant left — is the whole
+           delta. -->
+      <div>
+        <button
+          type="button"
+          class="qt-chat-toolbar-button"
+          title="Custom tools"
+          aria-label="Custom tools"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="isOpen()"
+          [disabled]="disabled()"
+          (click)="openDialog()"
+        >
+          <qt-icon name="wand" class="w-5 h-5" />
+        </button>
+      </div>
     }
 
     @if (isOpen()) {

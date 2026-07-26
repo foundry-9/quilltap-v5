@@ -4,10 +4,13 @@ import { E2E_PASSPHRASE } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 
 /**
- * P4.6ba — the Pascal in-chat surface (the composer custom-tools popup + run
- * flow + the All-Whispers toggle).
+ * P4.6ba — the Pascal in-chat surface (the composer custom-tools dialog + run
+ * flow + the All-Whispers toggle). **P4.d21** turned the popup into v4's
+ * two-phase modal and gave the roll announcement the outcome's own state, so the
+ * gestures below drive a `role="dialog"` and the run assertion now checks the
+ * accent and its visually-hidden state name.
  *
- * The custom-tools FLOW is ACTIVATE-AT-UNIFY: the popup button appears only when
+ * The custom-tools FLOW is ACTIVATE-AT-UNIFY: the dialog's button appears only when
  * lane P4.6ay's `/custom-tools` server surface is on main AND the fixture carries
  * a Tools/-bearing mount tree (lane AY's route-fixture family is the natural
  * instance to reuse). Until both land, the roster resolves empty and the button
@@ -58,7 +61,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
   });
 
-  test('open the popup, run a tool, and see the Pascal bubble with its header chip', async ({
+  test('open the dialog, go back, run a tool, and see the roll wear its own outcome', async ({
     page,
   }, testInfo) => {
     await page.goto('/salon');
@@ -70,7 +73,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
       testInfo.annotations.push({
         type: 'activate-at-unification',
         description:
-          'The custom-tools popup activates when lane P4.6ay’s /custom-tools server surface and a Tools/-bearing fixture are on main.',
+          'The custom-tools dialog activates when lane P4.6ay’s /custom-tools server surface and a Tools/-bearing fixture are on main.',
       });
       // The composer still mounted — the chat opened cleanly.
       await expect(page.locator('.qt-chat-composer')).toBeVisible();
@@ -78,33 +81,53 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     }
 
     // --- The activated flow (lane AY live + Tools fixture) ---
+    // P4.d21: the wand opens a two-phase MODAL, not a 288px popover.
     await toolsButton.click();
-    const menu = page.getByRole('menu');
-    await expect(menu).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Pascal's Table")).toBeVisible();
 
-    // The roster lists a runnable tool (title only — never its odds/outcome table).
-    const firstTool = menu.getByRole('menuitem').first();
-    await expect(firstTool).toBeVisible();
-    const toolTitle = (await firstTool.innerText()).split('\n')[0].trim();
-    await firstTool.click();
+    // Phase one lists the roster — title, description, and the store/path line;
+    // never its odds or its outcome table. (The search box's six-tool threshold
+    // is pinned by the component spec, not here: the roster's size depends on
+    // what every tier contributes to this instance.)
+    const coin = dialog.getByRole('button').filter({ hasText: 'Flip A Coin' }).first();
+    await expect(coin).toBeVisible();
+    await expect(coin).toContainText('Flip a coin.');
 
-    // Run it — Pascal's outcome posts and the popup closes.
-    await page.getByRole('button', { name: /^Run / }).click();
-    await expect(menu).toBeHidden();
+    // Phase two, then back again: the picker returns and the title with it.
+    await coin.click();
+    await expect(dialog.getByRole('button', { name: 'Run Flip A Coin' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Choose another tool' }).click();
+    await expect(dialog.getByText("Pascal's Table")).toBeVisible();
 
-    // The Pascal roll outcome renders as its own full row with the header bar:
-    // "Pascal" + the tool title. It is operator machinery, so it stays visible
-    // even with All Whispers off (the operator-facing carve-out).
-    const bar = page.locator('.qt-chat-system-bar', { hasText: 'Pascal' });
-    await expect(bar.first()).toBeVisible({ timeout: 15_000 });
-    // ignoreCase: the menu title is read via innerText (CSS-rendered, which can
-    // uppercase it) while the bar carries DOM text — the assertion is "the bar
-    // names the tool that ran", not its letter case.
-    await expect(bar.first()).toContainText(toolTitle, { ignoreCase: true });
+    // Choose it again and run — Pascal's outcome posts and the dialog closes.
+    await dialog.getByRole('button').filter({ hasText: 'Flip A Coin' }).first().click();
+    await dialog.getByRole('button', { name: 'Run Flip A Coin' }).click();
+    await expect(dialog).toBeHidden();
+
+    // The roll renders as its own full row with the header bar: "Pascal" + the
+    // tool title. It is operator machinery, so it stays visible even with All
+    // Whispers off (the operator-facing carve-out).
+    const bar = page.locator('.qt-chat-system-bar', { hasText: 'Flip A Coin' }).last();
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar).toContainText('Pascal');
+
+    // P4.d21 / v4 231be14c: the bar wears the OUTCOME's state, not the generic
+    // importance dot. `coin`'s only outcome is a success (its roll is min===max,
+    // so this is deterministic), and the state is named for screen readers too.
+    // Two separate matches: Angular merges the static and bound class lists, so
+    // the two accent classes are not guaranteed to end up adjacent.
+    await expect(bar).toHaveClass(/qt-pascal-result\b/);
+    await expect(bar).toHaveClass(/qt-pascal-result--success/);
+    await expect(bar.locator('.qt-chat-announcement-dot')).toHaveClass(
+      /qt-chat-announcement-dot-outcome-success/,
+    );
+    await expect(bar.locator('.sr-only')).toHaveText('success');
 
     await openSidebarSection(page, 'Visibility');
     const whispers = page.getByRole('switch', { name: 'All Whispers' });
     await expect(whispers).toHaveAttribute('aria-checked', 'false');
-    await expect(bar.first()).toBeVisible(); // still shown with the toggle off
+    await expect(bar).toBeVisible(); // still shown with the toggle off
   });
 });

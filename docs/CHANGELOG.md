@@ -82,6 +82,10 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+The walk-through test for custom tools now drives the new window end to end —
+open it, look at a tool, go back, run one — and checks that the announcement it
+posts is colored by its own outcome and names that outcome for screen readers.
+
 The wand in the composer now opens a proper window instead of a cramped little
 popover. It lists your tools first — each with its description and the store and
 file it came from, plus a wrench that opens it on Pascal's Workbench, and a search

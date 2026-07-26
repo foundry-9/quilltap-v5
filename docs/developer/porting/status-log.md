@@ -36719,3 +36719,35 @@ element nested inside an `@if` lands in the DEFAULT slot. Both slots are
 therefore static children of `<qt-modal>`, each switching phase inside itself.
 
 `ng test` 228 files / 2,699; `ng build` clean. SPA `0.5.283` → `0.5.284`.
+
+### Unit 6 — the live e2e beat (tier 2 item 9)
+
+`e2e/salon-custom-tools-flow.spec.ts`'s run beat rewritten for the modal, as the
+order requires (its old gestures drove `getByRole('menu')` → `menuitem`, both of
+which are gone). It now: opens the dialog, asserts the picker phase by its
+"Pascal's Table" title and the coin's description, **goes to the form and back**,
+then runs `Flip A Coin` and asserts the posted announcement bar carries
+`qt-pascal-result--success`, the `qt-chat-announcement-dot-outcome-success` dot,
+and the `sr-only` text `success`.
+
+`coin` is the right subject for the accent assertion: `seedPascalToolsFixture`
+puts it on Aria's vault, its roll is `min === max` and its ONE outcome is a
+`success`, so the state is deterministic without touching a provider. **No
+fixture or seed change was needed** — the order's "extend the seed rather than
+mint a fixture family" escape hatch went unused.
+
+Two assertions were deliberately NOT made in the e2e and are pinned by the
+component spec instead: the six-tool search threshold (the roster's size depends
+on what every tier contributes to this instance, so an e2e count is brittle),
+and the two accent classes as one string (Angular merges the static and bound
+class lists, so they are not guaranteed adjacent — the beat matches each
+separately).
+
+One rider in the same commit: the wand keeps a plain block wrapper `<div>` where
+v4 drops its popover-positioning wrapper. v5 never had
+`.qt-composer-gutter-dropdown`, and an Angular host element is the flex item
+either way, so keeping the button a BLOCK child is exactly the box
+`.qt-chat-composer-actions` has been laying out all along — dropping the
+`relative` class, which had no positioned descendant left, is the entire delta.
+The order's flex-toolbar warning is satisfied by construction: the button count
+did not change.
