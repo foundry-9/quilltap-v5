@@ -68,6 +68,25 @@ app simply left them out. Both apps now leave them out. The test that caught it
 is new: the existing tests only ever fed the reader a file cut short, never a
 complete one written in pieces, so the very thing the old app's fix restores had
 nothing watching it.
+You can add a character to a conversation again. The cast list in the sidebar has
+its "Add Character" button back, and it opens the old app's picker: your whole
+roster minus whoever is already in the room, searchable by name or title, with
+ad-hoc NPCs listed after their own divider. Choose who controls the newcomer — an
+LLM backend, or yourself — say whether they may read what was said before they
+arrived, write a line about how they turned up, and pick what they are wearing.
+The connection profile is filled in for you: the character's own default if it
+still exists, otherwise yours, otherwise the first one you have.
+
+"Create New NPC" makes a walk-on character without leaving the conversation: a
+name and a description are all that is required, with room for looks, a scenario,
+a system prompt, and an avatar. The new NPC lands back in the picker already
+selected, waiting for you to finish adding them. If the avatar fails to upload
+the NPC is still created — as in the old app, a missing portrait does not lose
+the character.
+
+"Summon from Lore" is still in the picker, but says plainly that it has not made
+the crossing yet: it depends on Aurora's import wizard, which has not been
+ported.
 
 Checked the old app once more after this round landed and found one further
 change: its own release notes, catching up with work already done. Nothing to

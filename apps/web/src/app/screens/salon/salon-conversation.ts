@@ -38,6 +38,7 @@ import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
+import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
@@ -165,6 +166,7 @@ interface CascadePrompt {
     InsertAnnouncementDialog,
     ComposeMailDialog,
     WhisperDialog,
+    AddCharacterDialog,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
@@ -240,6 +242,7 @@ interface CascadePrompt {
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
+          (addCharacter)="showAddCharacter.set(true)"
         />
       }
     </div>
@@ -444,6 +447,15 @@ interface CascadePrompt {
         [participants]="mailParticipants()"
         (posted)="onMailPosted()"
         (close)="showComposeMail.set(false)"
+      />
+    }
+
+    @if (showAddCharacter() && chatId(); as id) {
+      <qt-add-character-dialog
+        [chatId]="id"
+        [existingCharacterIds]="castCharacterIds()"
+        (added)="onCharacterAdded($event)"
+        (close)="showAddCharacter.set(false)"
       />
     }
 
@@ -1404,6 +1416,26 @@ export class SalonConversation {
   /** Any sidebar write landed → refetch the chat record (v4 `onChatUpdated`). */
   protected async onChatUpdated(): Promise<void> {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  // -------------------------------------------------------------------------
+  // The cast (P4.9E1B) — v4's `AddCharacterDialog`, opened from the sidebar's
+  // participants footer exactly as `SalonView` opens it (`ChatModals.tsx:305`).
+  // -------------------------------------------------------------------------
+
+  protected readonly showAddCharacter = signal(false);
+
+  /** The character ids already in the cast — v4's `existingCharacterIds`. */
+  protected readonly castCharacterIds = computed(() =>
+    (this.chat()?.participants ?? [])
+      .map((p) => p.character?.id)
+      .filter((id): id is string => !!id),
+  );
+
+  /** v4 `onCharacterAdded` — refetch the chat, and say who joined. */
+  protected async onCharacterAdded(joined: { characterId: string; name: string }): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message: `${joined.name} has joined the chat` });
+    await this.onChatUpdated();
   }
 
   /**

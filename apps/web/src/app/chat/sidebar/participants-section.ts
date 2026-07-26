@@ -14,13 +14,13 @@ import { ParticipantCard } from './participant-card';
  * The chat sidebar's default-open section (v4 `ChatSidebar.tsx:721-845`
  * `ParticipantsSection`): the turn meta line, the queue depth, the Pause /
  * Resume button, the cast of {@link ParticipantCard}s in predicted turn order,
- * and — in v4 — the "Add Character" footer.
+ * and the "Add Character" footer.
  *
- * **Add Character is a tier-3 deferral (loud):** v4 gates it on `onAddCharacter`
- * and opens `AddCharacterDialog`, which posts the chat-PUT `addParticipant` bag
- * — a participant-family verb v5's dispatch surface does not carry
- * (`api/salon.rs:1215`). With the prop absent v4 renders exactly what this does:
- * no footer. Nothing is stubbed.
+ * The footer is no longer withheld. It was a tier-3 deferral for as long as v5
+ * carried no participant-mutation verb at all; P4.9E1A lands
+ * `chatAddParticipant`, so the button is here and raises {@link addCharacter},
+ * which the Salon answers with the ported `AddCharacterDialog` — the same shape
+ * as v4's `onAddCharacter` prop (`ChatSidebar.tsx:823`).
  */
 @Component({
   selector: 'qt-participants-section',
@@ -99,6 +99,18 @@ import { ParticipantCard } from './participant-card';
           />
         }
       </div>
+
+      <!-- v4 ChatSidebar.tsx:823-836 — the dashed Add Character footer. -->
+      <div class="qt-chat-sidebar-add mt-3">
+        <button
+          type="button"
+          class="w-full py-2 px-4 text-sm font-medium rounded-lg border border-dashed qt-border-default qt-text-secondary hover:qt-bg-surface-alt hover:qt-text transition-colors flex items-center justify-center gap-2"
+          (click)="addCharacter.emit()"
+        >
+          <qt-icon name="plus" class="w-4 h-4" />
+          Add Character
+        </button>
+      </div>
     </div>
   `,
 })
@@ -127,6 +139,8 @@ export class ParticipantsSection {
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();
   readonly whisper = output<string>();
+  /** The footer button — v4 `onAddCharacter` (`ChatSidebar.tsx:823`). */
+  readonly addCharacter = output<void>();
 
   /**
    * v4 `ChatSidebar.tsx:722-724,823` — the Whisper button is threaded to the
