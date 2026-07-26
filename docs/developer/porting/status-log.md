@@ -36473,3 +36473,70 @@ the only copy in the tree.
   than in `core-contract.ts`: they ride existing verbs whose bodies are already
   read structurally (the `PreviewOracle` precedent), `api/types.rs` is frozen
   this round, and it keeps the lane out of a file three siblings also touch.
+
+### Unit 6 — the e2e walk
+
+New spec `apps/web/e2e/workbench-gate-flow.spec.ts` (its own file, per the
+order's "name it distinctly"; `workbench-flow.spec.ts` is untouched):
+
+- **Beat 1 — LIVE in-lane, no server half needed.** New contrivance → the gate
+  card opens on "Anyone" → flip to "Only show if…" (the section-level "must test
+  something" error appears) → add a chip and type `rank ≥` → **the bench holds
+  its tongue while the operand is blank** → type `3` → the sheet is `{}`, so the
+  verdict reads WITHHELD with v4's three-part sentence → lend it `{"rank":4}` and
+  it flips to offered, live, with no round trip → `{"rank":1}` flips it back →
+  switch to "Do not show if…" and the same qualifying sheet now reads the
+  opposite way. That last pair is the fail-soft asymmetry, walked.
+- **Beat 2 — ACTIVATE-AT-UNIFY.** Author and save a gated definition, then see
+  the `gated` badge (and its clause-specific title) on the library row. Skips
+  LOUDLY on a `gateBackendReady` probe that previews a gated definition against a
+  non-qualifying sheet and looks for `gate.withheldBy` — the tell only a server
+  that HONOURED the clause can produce. (A server without §2 accepts the file and
+  ignores the clause, because v4's top level tolerates unknown keys, so "no
+  error" would have proved nothing — the same trap the §B scripted-oracle probe
+  documents.)
+
+Every gate locator is scoped to `qt-gate-section`: the outcome table's chips
+carry the SAME aria-labels (`Metadata key`, `Comparator`, `Operand number`), so
+an unscoped `.first()` would follow whichever card the DOM happened to put first.
+
+Two gestures the first live run corrected, both worth carrying:
+
+- **The mode controls are `<button>`s carrying `role="radio"`, and an explicit
+  role WINS for `getByRole`** — `getByRole('button', {name: 'Only show if…'})`
+  matches nothing. (The fact-sheet mode switch in `proving-bench` has the same
+  shape, which is why its own spec reaches for `radio`.)
+- **Stale dist, twice, exactly as `e2e-playwright-traps` warns.** A run whose
+  page snapshot showed the recipe going straight from identity to Parameters was
+  not a wiring bug: `rm -rf dist && ng build` and the same beat passed. Grep the
+  built chunk for the new markup before believing a "the component did not
+  render" failure.
+
+The first full-suite attempt also died wholesale on `ERR_CONNECTION_REFUSED`
+with `Address already in use (os error 48)` in `e2e/.artifacts/server.log` — a
+SIBLING lane's e2e server still holding 4319. Port contention looks exactly like
+a broken build until you read that log; read it first.
+
+### Gate
+
+`ng test` **231 files / 2,763** (the lane adds 68: 28 captured schema rows + 1
+shape guard, 11 evaluator, 12 comparison-table, 15 draft, 15 gate-section, and
+the corpus census); `ng build` clean; **full Playwright 135 passed / 0 failed /
+1 skipped** over a FRESH dist (`rm -rf dist && ng build`) and freshly built
+debug binaries (`cargo build -p quilltap-web -p quilltap-cli` — BUILT, never
+modified). The one skip is this lane's own ACTIVATE-AT-UNIFY badge beat. No
+`cargo test` is owed: the lane changes zero Rust.
+
+**A sibling flake seen once, diagnosed, NOT fixed (not this lane's file).**
+`workbench-flow.spec.ts:367` (`P4.6bb`, the `$state` + mock-state beat) failed
+one full run with a strict-mode violation: `getByText('Cleared the gate.')`
+matches BOTH the roll bubble and the "exact bytes" JSON preview, which carries
+the same outcome message. The next line, `:373`, already carries `.first()` for
+exactly this ambiguity — so `:367` is a latent bug in that spec, and the
+one-word fix is the same `.first()`. It passed in the full run before and the
+full run after; the beat cannot be A/B'd in isolation because its own
+`mockStateReady` probe skips it when the file runs alone. Reported, untouched:
+`workbench-flow.spec.ts` is not in this lane's Ownership.
+
+SPA `0.5.279` → `0.5.282`. No fixture changed; no oracle invalidated. The only
+committed non-source artifact the lane moves is the byte-copied JSON schema.
