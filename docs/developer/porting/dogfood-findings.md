@@ -235,6 +235,23 @@ catch, since every fixture is built fresh.
   papercut list below: these ARE bugs, and v5 does NOT reproduce them. What is
   queued is the change to v4 itself, so instances still running v4 before
   retirement get the fix too.
+  > ### ✅ THE WHOLE LIST BELOW IS CLOSED — v4 fixed all four itself (2026-07-26)
+  >
+  > `67ffb444` (`fix(backup): restore brings back the stores, the links, and the
+  > files`) and `c1507f47` (`fix(import): the blob reader waits for every chunk
+  > before it signs`) landed both entries' fixes upstream: the mount-index
+  > coercion, the `>= 2` gate, the files-phase move, and the sparse-array blob
+  > reader. **v4 instances no longer carry any of these bugs, so nothing here is
+  > owed to the v4 side any more.** The entries stay as written for history.
+  >
+  > Both v5 tripwires fired on the first regenerated oracle and were retired by
+  > **P4.d22** (2026-07-26), which also moved the oracle baseline to `c1507f47`.
+  > Two things came OUT of that convergence rather than into it, and neither is
+  > v4's: a v5 gap the count-level pin had hidden (restored stores came back with
+  > empty pattern arrays, and an INTEGER `0` policy flag read as `true` — fixed),
+  > and an **open ordering question** about where the files phase sits, which is
+  > awaiting a human ruling. See `status-log.md` → "Lane record — P4.d22 units
+  > 2–3".
   - **v4 cannot re-import its own export of a document-store blob over 3 MB**
     (the sparse-array blob divergence, ruled 2026-07-24 — see
     `status-log.md`). `assembleExportFromStream`'s

@@ -1077,10 +1077,15 @@ fn restore_mount_family(
     c: &mut Counters,
     w: &mut Vec<String>,
 ) {
-    // 22a. Mount points.
+    // 22a. Mount points. The archive carries these rows as the raw `SELECT *`
+    // gave them up — pattern arrays as JSON text, `enabled` as INTEGER 0/1 — so
+    // coerce back to domain shape (v4 `mount-index-coercion.ts`, applied at v4's
+    // own call site). Without it the patterns read as `[]` and a disabled store
+    // comes back enabled; see that module's header.
     {
         let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
-        for mp in &data.doc_mount_points {
+        for raw in &data.doc_mount_points {
+            let mp = &super::mount_index_coercion::coerce_doc_mount_point_row(raw);
             let create = crate::db::doc_mount_points::DmpCreate {
                 name: s(mp, "name"),
                 base_path: s(mp, "basePath"),
@@ -1168,10 +1173,12 @@ fn restore_mount_family(
         }
     }
 
-    // 22d. File links.
+    // 22d. File links. Same storage-type coercion as 22a — the three policy
+    // flags arrive as INTEGER 0/1 and the reader wants booleans.
     {
         let repo = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
         for link in &data.doc_mount_file_links {
+            let coerced = super::mount_index_coercion::coerce_doc_mount_file_link_row(link);
             warn_row!(
                 w,
                 c.doc_mount_file_links,
@@ -1179,7 +1186,7 @@ fn restore_mount_family(
                     "Failed to restore doc-store file link \"{}\"",
                     s(link, "relativePath")
                 ),
-                repo.create_from_row(link, &id_of(link), &now())
+                repo.create_from_row(&coerced, &id_of(link), &now())
             );
         }
     }

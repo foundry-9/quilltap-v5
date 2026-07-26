@@ -2,6 +2,7 @@
 
 ## Recent Changes
 
+<<<<<<< HEAD
 The porting record now carries the chat cast surface: its work order is closed,
 the screen-parity notes name the three deliberate wire-shape differences on it,
 and the unit journal records the fixture recipe and the one gap handed to
@@ -30,6 +31,28 @@ explicit "nothing" where the new app simply stops storing the field. Nothing
 reads the two differently, but the bytes differ, and the fix belongs to a file
 another strand of this round owns. The test asserts the difference in both
 directions and fails the moment it closes, so it cannot be forgotten.
+=======
+Restoring a backup now brings the document stores back with the settings they
+were saved with. The old app used to throw those rows away entirely; it has
+fixed that, and checking the fix against the new app found that the new app had
+been keeping the rows but losing what was in them — a store came back with its
+file-matching patterns blanked, and a store or a document the user had switched
+OFF came back switched on. Both apps now read those columns the same way, and a
+new test drives the old app's own routine over every shape the columns can take,
+including the switched-off ones no saved backup in the test set contains.
+
+Restoring also brings the user's files back on both sides now, and where it
+cannot, both apps say the same thing about why. The comparison that proves all
+this had never looked at those warning messages at all; it does now.
+
+One thing is deliberately left open for a decision rather than settled quietly:
+the two apps write the restored file's rows at slightly different moments during
+a restore. The rows end up identical — same values, nothing missing — but they
+are written in a different order, and which app is right is a judgement call
+about a latent hazard rather than a bug either way. The comparison states the
+difference precisely and will fail the moment it goes away.
+
+>>>>>>> f42f02e4 (Converge the restore side on v4 67ffb444, and say what did not)
 The old app has fixed the import bug this port found: a backup file large enough
 to be written in more than one piece can now be read back by both apps, not just
 the new one. The new app had been reading those files correctly for two days

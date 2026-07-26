@@ -4,6 +4,8 @@
 //! - [`json_stream`] — the disk-backed JSON readers (v4 `json-stream.ts`).
 //! - [`legacy_migrations`] — the pure pre-rework folds (v4 `legacy-migrations.ts`).
 //! - [`archive`] — extract + `parseBackupZip` + the extracted-tree readers.
+//! - [`mount_index_coercion`] — the storage-type coercion the mount-index rows
+//!   need on the way back out of an archive (v4 `mount-index-coercion.ts`).
 //! - [`preview`] — `previewRestore`, the write-free count pass.
 //! - [`orchestrator`] — the phase-ordered orchestrator (v4 `restore/restore.ts`;
 //!   named for its role rather than mirroring v4's filename, which would put a
@@ -17,6 +19,7 @@
 pub mod archive;
 pub mod json_stream;
 pub mod legacy_migrations;
+pub mod mount_index_coercion;
 pub mod orchestrator;
 pub mod preview;
 pub mod rows;

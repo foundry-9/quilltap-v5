@@ -679,6 +679,33 @@ it lands).
 
 ## Ruling — the two v4 restore bugs (2026-07-25)
 
+> ### ✅ DISCHARGED BY UPSTREAM CONVERGENCE — v4 `67ffb444` (2026-07-26)
+>
+> **This ruling is history, not live guidance.** v4 fixed all three findings
+> itself in `67ffb444` (`fix(backup): restore brings back the stores, the links,
+> and the files`) — the two below plus the third that was found while
+> implementing the ruling (the files-phase position). Nothing in v5 should be
+> changed on the strength of what follows, and in particular **`>= 2` and the
+> mount-index coercion are now v4's behaviour too, not a v5 divergence**.
+>
+> Discharged by P4.d22 (2026-07-26). What each became:
+>
+> - **Finding 1** (mount points / file links rejected) — v4 coerces on the read
+>   side. CONVERGED byte-identically. Retiring the count-level pin and diffing
+>   the ROWS immediately found a matching v5 gap the pin had hidden: v5 created
+>   the rows but with empty pattern arrays, and would have read an INTEGER `0`
+>   policy flag as `true`. Ported as
+>   `services::backup::restore::mount_index_coercion` with its own tier-1 family.
+> - **Finding 2** (`backupFormat === 2`) — CONVERGED, no v5 change.
+> - **Finding 3** (the files phase runs too early) — v4 moved it to `22a-bis`;
+>   v5 runs it after the whole doc-store family. Both write the same rows with
+>   the same values; only the INSERTION ORDER differs. **That residual is still
+>   open and wants a ruling** — see `PHASE_ORDER_RESIDUAL` in
+>   `system_restore_state.rs` and "Lane record — P4.d22 units 2–3".
+>
+> The three entries on the **post-5.0 v4-side fixes** list in
+> `dogfood-findings.md` are closed: v4 made the fixes.
+
 **Ruled by the human, 2026-07-25, in one line: "I want this work, not just fail
 the same way v4 fails."** v5 **diverges from v4 on both findings** — restore
 actually restores. P4.9G5 units 4–5 are **UNBLOCKED**; the ruling was the only
@@ -37822,3 +37849,168 @@ The ruling section "Ruling — the sparse-array blob divergence (2026-07-24)" is
 marked **DISCHARGED** in place, so a future round cannot read it as live
 guidance and "fix" v5 back to the bug.
 
+## Lane record — P4.d22 units 2–3: bugs 1–3, the restore convergence
+
+**Order:** `work-orders/p4.d22-restore-import-convergence.md`, tier-1 items 2, 3, 5, 6.
+**v4 at:** `c1507f47`, tree clean.
+
+### The tripwires fired on the first regenerated oracle
+
+All three `EXPECTED_DIVERGENCES` came back unsatisfiable at once — v4 restored 8
+mount points and 54 file links where the pin demanded zero, and 1 user file in
+`new-account`. Exactly what the both-directions assertion was written to catch.
+
+### Bug 1 — CONVERGED, and it exposed a matching v5 gap
+
+Retiring the pin means diffing the rows, and **equal counts were not equal
+rows**. v4's new `coerceStringArray` parses the JSON-text pattern columns; v5's
+`rows::sa` reads a JSON *array* and got `[]`. So every restored character vault,
+project store and group store came back with **empty include/exclude patterns**
+where the archive said `["*.md","*.txt","*.pdf","*.docx"]`.
+
+The same shape hides a second, worse arm. v4's `coerceBoolean` maps INTEGER `0`
+→ `false`; v5's `rows::b` and `create_from_row`'s `ob` read a JSON *bool* and
+fell through to the column DEFAULT, which is `true`. **A store the user
+disabled, or a document whose `allowEmbed` / `allowCharacterRead` /
+`allowCharacterWrite` was `0`, would have come back permissive** — a silently
+loosened policy, no error, no warning. Every committed archive carries `1` in all
+four columns, so no fixture could ever have shown it.
+
+Ported as `services::backup::restore::mount_index_coercion` — v4's module,
+whole-row like v4's (so its spread-then-overwrite key order is reproduced;
+`serde_json`'s `preserve_order` `insert` behaves like a JS object literal) — and
+applied at v4's own two call sites, 22a and 22d.
+
+**New tier-1 family `backup_mount_index_coercion_equivalence`** (20 cases,
+whole-row exact including key order) drives v4's REAL exported functions over one
+row per storage shape: JSON text, empty-JSON text `"[]"` (the project/group
+stores' real value — it must NOT pick up the four-extension default), real
+arrays, a mixed array, empty string, unparseable text, text parsing to a
+non-array, null, absent; and for the flags, INTEGER `0`, `false`, absent, null,
+and the string `"0"` (not a number, so the default — the one place a naive port
+inverts). `MUST_COVER` names the five arms no committed archive can reach so a
+future corpus edit cannot quietly drop them. First run green; **sensitivity
+mutation-checked** — forcing the number arm to `true` fails
+`mp_enabled_integer_zero` and `link_flags_all_zero`.
+
+### Bug 2 — CONVERGED, no v5 change
+
+`>= 2` on both sides. v5 took the ruled `>= 2` at P4.9G5; v4 has now joined it,
+and `usesStorageKeyLayout` also drives its `triedPaths` warning.
+
+### Bug 3 — the files phase: PARTIALLY converged, ⚠ ONE ITEM OPEN FOR A RULING
+
+Three separate findings, and only the diff could have separated them.
+
+**(a) In `replace` mode neither engine restores a user file — and they now fail
+identically.** v4's fix moves the phase after 22a on the theory that the archive
+restores the Quilltap Uploads mount under the id the surviving `instance_settings`
+pointer names. **The committed archives carry no Uploads mount and no
+`userUploadsMountPointId`** (their `instance_settings` holds only
+`generalMountPointId` and `lanternBackgroundsMountPointId`), so in `replace` mode
+`deleteUserData` kills the fresh instance's Uploads mount, nothing restores one,
+the pointer dangles, and both engines warn
+`Failed to restore file "portrait.png": Quilltap Uploads mount has not been
+provisioned`. This is a **fixture characteristic, not a v4 or v5 bug** — a real
+archive's raw `SELECT *` dump does carry the built-in mounts. But it means the
+committed family **cannot exercise the disaster-recovery case v4's bug-3 fix
+targets**, in either engine. Named here rather than papered over.
+
+**(b) `summary.warnings` is now under diff.** It never had been. It is the
+strongest single statement this differential makes about bug 3: "both restored
+zero files" only means something beside "…and said the same thing about why".
+One documented mask, and a v5 bug behind it — see below.
+
+**(c) ⚠ THE ORDERING RESIDUAL — `PHASE_ORDER_RESIDUAL`, awaiting a human
+ruling.** v4 now runs files at `22a-bis` (after 22a, before 22b/22d); v5 runs
+them after the whole doc-store family. In `new-account` — the only case that
+restores a file — both write **the same rows with the same values into the same
+mount at the same path**; what differs is where those rows land in *insertion
+order* in `doc_mount_files`, `doc_mount_file_links` and `doc_mount_blobs`.
+
+The order forbids moving v5's phase order without a ruling and forbids absorbing
+a residual by widening the divergence list, so the residual is **named, narrowed
+to the one case that exercises it, and asserted in both directions**: the rows
+must match under a canonical order AND the raw orders must still differ. Aligning
+the placements fails the test — mutation-checked by declaring a table whose
+orders already match, which reports "the insertion orders now MATCH".
+
+**The case for adopting v4's slot, for whoever rules.** v4 documents why 22a is
+right and later slots are worse (`found-bugs.md:361-370`): after 22c the replay's
+`findOrCreateByContent` matches an archived content row by sha and hard-links to
+it, so 22f's `INSERT INTO doc_mount_blobs` then violates `UNIQUE(fileId)` and the
+**archived** blob row is refused. **v5 sits in exactly that later slot.** No
+committed archive triggers it (no restored user file shares a sha with an
+archived doc-store file), so nothing is red — but it is a latent hazard, not a
+matter of taste. Recommendation: adopt `22a-bis`.
+
+### Tier-1 item 4 — the second-generation residual: NOT EXERCISED, gap named
+
+v4 records a known remaining defect: restoring an archive taken from an
+already-restored instance replays project-less files into `restored/<name>` at
+22a-bis, where the archived link rows already live, so 22b's folder row and 22d's
+links collide and the **archived link ids are lost**.
+
+**The committed family has no second-generation archive**, so v5's behaviour here
+is analysis, not measurement. By inspection v5 does NOT reproduce it and cannot:
+its file phase runs *after* 22b/22d, so the archived folder and links are already
+present and `resolve_unique_relative_path` bumps the replay to
+`restored/portrait (2).png` — a duplicate file rather than a lost link id. A
+different residual, arguably milder, but **unverified**.
+
+Deliberately not built now: the residual's shape is a direct consequence of the
+placement under ruling in (c), so an archive built against today's v5 placement
+would test something that may not survive the ruling. **Build it as the ruling's
+follow-up** — the recipe is one oracle case that restores, then runs v4's real
+`createBackup` over the result.
+
+### Two normalization rules the retirement forced, both pure nondeterminism
+
+Neither is behaviour; both were invisible while the tables were skipped.
+
+- **`Normalizer::substitute_embedded_uuids`.** The old rule split on `'/'`, which
+  covered a path-shaped storage key and nothing else. Every restored file's
+  `storageKey` is `mount-blob:<mountPointId>:<blobId>` — **colon**-separated, two
+  minted ids — so `main.files` could never have matched. Scanning for the UUID
+  shape itself is punctuation-agnostic.
+- **`derived_shas`.** `doc_mount_documents` masks its own `contentSha256` when
+  the body carries write-clock stamps (a folded legacy wardrobe item's YAML front
+  matter) or remapped ids (a project store document's `characterRoster`). The
+  identical hash also sits in `doc_mount_files.sha256`, one table over, with no
+  content column beside it to trigger the rule. Collected once per side by origin
+  and masked by value; a hash over content that normalizes to itself — nearly all
+  of them — stays under diff.
+
+### ⚠ Two v5 findings recorded, NOT fixed — neither is this lane's
+
+1. **`refreshStats` is unported (`V5_STATS_GAP`).** v4's `storeMountFile` ends
+   its database-blob branch with a best-effort
+   `repos.docMountPoints.refreshStats(mp.id)`; v5 deliberately does not port it
+   (`services/file_storage.rs:31-34`, a standing precedent shared with the
+   groups / projects / image-generation paths). So after a restore writes a user
+   file, v4's Quilltap Uploads mount reads `fileCount: 1, totalSizeBytes: 32` and
+   v5's still reads `0, 0`. The rows the counters summarize are byte-identical;
+   only the cached rollup is stale. **User-visible** — the Scriptorium's store
+   cards read these columns. One call to fix, with v4's values now in hand as the
+   oracle, but a fix at this ONE call site would leave v5's other bridge writes
+   inconsistent, so it wants its own pass. Asserted in both directions;
+   mutation-checked (emptying the carve-out fails on `doc_mount_points`).
+2. **`DbError::Key`'s Display prefix leaks into user-visible text.** v5's restore
+   warning reads `…: key derivation failed: Quilltap Uploads mount has not been
+   provisioned`. `DbError::Key`'s doc comment says it means pepper key
+   derivation, but ~20 sites across the crate use it as a general message carrier
+   (`tools/state.rs`, `tools/help.rs`, `enclave/lifecycle.rs`, both file-storage
+   bridges, …), so each prints a cipher-flavoured lie in front of its real
+   message. Crate-wide, not restore's; fixing it means a new additive variant or
+   a Display change that moves strings other differentials pin. `compare_warnings`
+   strips the prefix and compares the rest verbatim; once fixed the strip is a
+   no-op, so no future change is owed here.
+
+### Results
+
+```
+system_restore_state          4/4 cases, 43 tables × 3 partitions row-for-row   CONVERGENCE
+                              + 3 residual tables asserted both ways
+system_restore_equivalence    5/5 preview cases (41-key summary + both throws)  CONVERGENCE
+backup_mount_index_coercion   20/20 whole-row exact, key order included         NEW (bug-1 proof)
+```

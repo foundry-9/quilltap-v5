@@ -6,7 +6,10 @@
 //! row and compared. A row-COUNT map would pass on a graph whose foreign keys
 //! all point at nothing; the row dump would not.
 //!
-//! ## Normalization — mechanical, and exactly two rules
+//! ## Normalization — mechanical, and origin-based throughout
+//!
+//! Two rules govern it; P4.d22 added two mechanical extensions of them, both
+//! described at the end of this header.
 //!
 //! v4 stamps every restored row with the write clock and mints a fresh id
 //! wherever `create` provisions something (the project's and group's official
@@ -27,33 +30,55 @@
 //! Nothing else is touched. In particular no column is normalized by name, so a
 //! port that dropped a timestamp or minted an id where v4 preserved one fails.
 //!
-//! ## ⚠ EXPECTED DIVERGENCES — two v4 bugs this differential found
+//! ## The three ruled divergences — RETIRED (P4.d22, 2026-07-26)
 //!
-//! Running v4's REAL restore against v4's REAL backup of a modern instance shows
-//! that **v4 cannot restore a format-3/4 archive's document stores or user
-//! files**. Both are pinned in [`EXPECTED_DIVERGENCES`] so neither side can drift
-//! unnoticed, exactly as the sparse-array blob divergence is pinned in
-//! `system_import_equivalence`.
+//! This file used to carry three. Running v4's REAL restore against v4's REAL
+//! backup of a modern instance had shown that v4 could restore neither a
+//! format-3/4 archive's document stores nor its user files, and a 2026-07-25
+//! human ruling put v5 deliberately ahead of it. All three were pinned in BOTH
+//! directions so an upstream fix could not pass unnoticed.
 //!
-//! 1. **Every `doc_mount_points` and `doc_mount_file_links` row fails to
-//!    restore.** `dumpMountIndexTable` (`backup-service.ts:72`) is a RAW
-//!    `SELECT *`, so the archive carries `includePatterns` as JSON *text* and
-//!    `enabled` / `allowEmbed` as INTEGER 0/1 — and `restore.ts` feeds those
-//!    straight into repository `create`s whose Zod schemas demand `string[]` and
-//!    `boolean`. Every row is rejected. The folders, file rows, documents and
-//!    chunks DO restore (their schemas have no array/boolean columns), so v4
-//!    produces a document-store graph with content but no stores and no links —
-//!    every character vault, project store and group store is unreachable.
-//! 2. **No user file is restored.** `getFileFromExtractedBackup`
-//!    (`archive.ts:334`) gates the `files/<storageKey>` lookup on
-//!    `backupFormat === 2`, but a modern manifest declares `backupFormat: 4`, so
-//!    the lookup is skipped, the legacy `files/<category>/<id>_<name>` path
-//!    misses, and every file becomes a `File not found in backup:` warning.
+//! **v4 fixed all three in `c1507f47`** (`fix(backup): restore brings back the
+//! stores, the links, and the files`). The tripwires fired on the first
+//! regenerated oracle, exactly as designed. What each one turned into:
 //!
-//! v5 restores all three families. That divergence is **not a lane decision** —
-//! it is flagged for the same human ruling the sparse-array one got, and queued
-//! for a v4-side fix. Until then this file asserts it in both directions: v4
-//! must restore ZERO of each, and v5 must restore the archive's full count.
+//! 1. **Mount points and file links** — v4 now coerces on the read side
+//!    (`mount-index-coercion.ts`: JSON text → `string[]`, INTEGER 0/1 →
+//!    `boolean`). CONVERGED, and byte-identically: the rows are diffed value for
+//!    value here, not merely counted. Porting that coercion found a matching v5
+//!    gap the count-level pin had hidden — v5 created the rows but with EMPTY
+//!    pattern arrays, and would have read an INTEGER `0` policy flag as `true`.
+//!    See `services::backup::restore::mount_index_coercion` and its own tier-1
+//!    family, `backup_mount_index_coercion_equivalence`.
+//! 2. **The `backupFormat === 2` gate** — now `>= 2` on both sides. CONVERGED.
+//! 3. **The files phase's position** — v4 moved it from step 5 to `22a-bis`,
+//!    after mount points and before folders/links. v5 runs it after the WHOLE
+//!    doc-store family. **Not fully settled — see [`PHASE_ORDER_RESIDUAL`].**
+//!
+//! ## ⚠ What is left, and why each is not simply "fixed here"
+//!
+//! - [`PHASE_ORDER_RESIDUAL`] — the two orderings write the SAME ROWS with the
+//!   SAME VALUES but in a different insertion order. Awaiting a human ruling;
+//!   the residual is asserted in both directions rather than absorbed.
+//! - [`V5_STATS_GAP`] — a pre-existing, separately-documented v5 deferral
+//!   (`file_storage.rs`'s module header: v4's best-effort `refreshStats` is not
+//!   ported) that only became visible once `main.files` came out of the
+//!   divergence list. Not this lane's, and asserted in both directions.
+//!
+//! ## Two normalization rules this lane had to add
+//!
+//! Both were invisible while the divergent tables were skipped, and both are
+//! pure nondeterminism rather than behaviour:
+//!
+//! - **Minted ids embedded anywhere in a string**, not just in a `/`-separated
+//!   path. The live case is `mount-blob:<mountPointId>:<blobId>`, every restored
+//!   file's `storageKey`. See `Normalizer::substitute_embedded_uuids`.
+//! - **A content hash whose content had to be normalized, in a table with no
+//!   content column beside it.** `doc_mount_documents` masks its own
+//!   `contentSha256` when the document body carries write-clock stamps or
+//!   remapped ids; the identical hash also sits in `doc_mount_files.sha256`,
+//!   one table over, with nothing local to trigger the mask. See
+//!   [`derived_shas`].
 //!
 //! Generate the oracle (see `harness/oracle/cases/system-restore.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_RESTORE=/tmp/oracle-system-restore.ndjson \
@@ -78,31 +103,85 @@ use sha2::{Digest, Sha256};
 /// The same pepper `build-provision-oracle.ts` keys its fresh instance with.
 const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
 
-/// The families v4 cannot restore from a format-3/4 archive (see the header).
-/// Each entry is `(partition, table)`; those tables are excluded from the row
-/// diff and checked by [`assert_divergences`] instead.
-const EXPECTED_DIVERGENCES: &[(&str, &str)] = &[
-    ("mountIndex", "doc_mount_points"),
-    ("mountIndex", "doc_mount_file_links"),
-    ("main", "files"),
+// The three v4-bug divergences this file used to carry
+// (`("mountIndex","doc_mount_points")`, `("mountIndex","doc_mount_file_links")`,
+// `("main","files")`) and the two tables their file phase made incomparable
+// downstream (`doc_mount_blobs`, `doc_mount_files`) are **GONE** — v4 converged
+// in `c1507f47` and every one of those tables is now diffed row for row. The
+// earlier `KNOWN_V5_GAPS` chunk tripwire went the same way at P4.6BK. See the
+// header. What remains is the two named residuals below.
+
+/// ## ⚠ AWAITING A HUMAN RULING — v4's `22a-bis` vs v5's after-the-family
+///
+/// v4's `c1507f47` moved the files phase from step 5 to **`22a-bis`**: after
+/// mount points (22a), before folders (22b) and links (22d). v5 runs it after
+/// the WHOLE doc-store family (22a–22g). Both placements satisfy the real
+/// dependency — the stores must exist before a bridge can resolve one — so both
+/// restore the same file, into the same mount, at the same path.
+///
+/// **What the diff proves:** for these two tables the two sides hold the same
+/// rows with the same values — an order-insensitive comparison passes, and every
+/// other table (including `main.files` and `doc_mount_points`) matches row for
+/// row in ORDER. What differs is only where the file phase's rows land in
+/// **insertion order**: v4's restored blob and link sit at the 22a-bis position,
+/// v5's at the end. No value differs. No row is missing.
+///
+/// **Why this is not settled here.** The order that produced this lane
+/// (`p4.d22`) is explicit: do not move v5's phase order to match v4's without a
+/// ruling, and do not paper over a residual by widening the divergence list. So
+/// the residual is named, narrowed to the one case that exercises it, and
+/// asserted in BOTH directions — the multisets must match AND the raw orders
+/// must differ. **Align the two placements and this test fails**, which is the
+/// point: the carve-out cannot outlive the thing it describes.
+///
+/// **The case for adopting v4's slot, for whoever rules.** v4 documents why
+/// 22a is right and later slots are worse (`found-bugs.md:361-370`): after 22c
+/// the replay's `findOrCreateByContent` matches an archived content row by sha
+/// and hard-links to it, so 22f's `INSERT INTO doc_mount_blobs` then violates
+/// `UNIQUE(fileId)` and the ARCHIVED blob row is refused. v5 sits in exactly
+/// that later slot. No committed archive triggers it (no restored user file
+/// shares a sha with an archived doc-store file), so nothing here is red — but
+/// it is a latent hazard, not a stylistic difference.
+///
+/// Each entry is `(case, partition, table)`.
+/// The three tables the file phase writes into: a content row, a link row and
+/// the blob bytes. `main.files` is NOT among them — the file phase is its only
+/// writer, so there is nothing for its one row to be ordered against, and it is
+/// diffed in order like everything else.
+const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
+    ("restore_new_account", "mountIndex", "doc_mount_blobs"),
+    ("restore_new_account", "mountIndex", "doc_mount_file_links"),
+    ("restore_new_account", "mountIndex", "doc_mount_files"),
 ];
 
-// (The former `KNOWN_V5_GAPS` tripwire — `("mountIndex", "doc_mount_chunks")`,
-// asserting "v4 > 0 and v5 == 0" — fired as designed and was REMOVED by P4.6BK
-// (2026-07-25): v5 now chunks each vault document as `write_database_document`
-// lands it, exactly as v4 does, so `doc_mount_chunks` is diffed row for row
-// with every other table.)
+/// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
+///
+/// v4's `storeMountFile` ends its database-blob branch with a best-effort
+/// `repos.docMountPoints.refreshStats(mp.id)` (`store-file.ts:369`), which
+/// recomputes the mount's cached `fileCount` / `chunkCount` / `totalSizeBytes`.
+/// **v5 does not port it** — a deliberate, documented deferral with a standing
+/// precedent across the groups / projects / image-generation paths
+/// (`services/file_storage.rs` module header, `:31-34`).
+///
+/// So after a restore writes a user file through the uploads bridge, v4's
+/// Quilltap Uploads mount reports `fileCount: 1, totalSizeBytes: 32` and v5's
+/// still reports `0, 0`. The rows the counters summarize are identical on both
+/// sides — the link, the content row and the blob all match byte for byte; only
+/// the cached rollup is stale. It is user-visible (the Scriptorium's store cards
+/// read these columns) and it is one call to fix, with v4's own values now in
+/// hand as the oracle.
+///
+/// It is recorded rather than fixed because it belongs to `file_storage.rs`, not
+/// to restore, and because a fix at this ONE call site would leave v5's other
+/// bridge writes inconsistent with it. Asserted in both directions below, so
+/// closing the deferral fails this test and forces the carve-out out.
+///
+/// Each entry is `(case, mount-point name)`; the three stat columns on that row
+/// are masked and checked separately.
+const V5_STATS_GAP: &[(&str, &str)] = &[("restore_new_account", "Quilltap Uploads")];
 
-/// Tables the RULED file-phase divergence makes incomparable downstream: v5's
-/// file phase writes real blobs and links through the mount-store bridge, v4's
-/// writes nothing, so the blob/file rows those create differ in COUNT for the
-/// same reason. Diffed for the divergence, not row by row. (P4.6BK re-examined
-/// these when it removed the chunk tripwire: they hinge on the file-phase
-/// divergence, NOT the closed provisioning-chunk gap, so they stay.)
-const DIVERGENCE_DEPENDENTS: &[(&str, &str)] = &[
-    ("mountIndex", "doc_mount_blobs"),
-    ("mountIndex", "doc_mount_files"),
-];
+/// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
+const STATS_COLUMNS: &[&str] = &["fileCount", "chunkCount", "totalSizeBytes"];
 
 fn archives_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -358,18 +437,119 @@ fn canonical_json_text(s: &str) -> Option<String> {
     serde_json::to_string(&strip(&parsed)).ok()
 }
 
-/// The two normalization rules, applied over the whole dump in walk order.
+/// Every content hash, on ONE side, whose text is not reproducible across the
+/// two engines — because that text carries a write-clock stamp or a minted id.
+///
+/// The `composite_normalized` rule inside [`Normalizer`] already masks such a
+/// hash when the text sits in the same row: `doc_mount_documents` holds
+/// `content` and `contentSha256` together, so a folded legacy wardrobe item
+/// (write-clock stamps in its YAML front matter) or a project store document
+/// (remapped ids in its `characterRoster`) masks its own hash.
+///
+/// **`doc_mount_files.sha256` is the same hash, one table over, with nothing
+/// local to trigger the rule** — the row is just `{id, sha256, fileSizeBytes,
+/// fileType, source}`. It was invisible while that table sat in the divergence
+/// list; the moment it came out, two rows differed for pure nondeterminism.
+///
+/// So collect the hashes by ORIGIN, once per side, before the per-table walk,
+/// and mask any `*sha256` VALUE that appears in the set. A hash over content
+/// that normalizes to itself — every document restored verbatim from the
+/// archive, which is nearly all of them — is untouched and stays under diff.
+fn derived_shas(
+    dump: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    literals: &HashSet<String>,
+) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for tables in dump.values() {
+        for rows in tables.values() {
+            for row in rows {
+                let (Some(content), Some(Value::String(sha))) = (
+                    row.get("content").and_then(Value::as_str),
+                    row.get("contentSha256"),
+                ) else {
+                    continue;
+                };
+                if contains_nonliteral(content, literals) {
+                    out.insert(sha.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Does `s` contain a UUID or ISO timestamp the archive does not vouch for?
+fn contains_nonliteral(s: &str, literals: &HashSet<String>) -> bool {
+    let b = s.as_bytes();
+    for i in 0..b.len() {
+        for len in [24usize, 36] {
+            if i + len > b.len() {
+                continue;
+            }
+            let Ok(w) = std::str::from_utf8(&b[i..i + len]) else {
+                continue;
+            };
+            let shaped = if len == 24 { is_iso(w) } else { is_uuid(w) };
+            if shaped && !literals.contains(w) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The normalization rules, applied over the whole dump in walk order.
 struct Normalizer {
     literals: HashSet<String>,
+    derived_shas: HashSet<String>,
     minted: BTreeMap<String, String>,
 }
 
 impl Normalizer {
-    fn new(literals: HashSet<String>) -> Self {
+    fn new(literals: HashSet<String>, derived_shas: HashSet<String>) -> Self {
         Normalizer {
             literals,
+            derived_shas,
             minted: BTreeMap::new(),
         }
+    }
+
+    /// Replace every minted UUID appearing anywhere inside `s`, whatever the
+    /// surrounding punctuation.
+    ///
+    /// This used to be a `'/'`-split, which covered a filesystem-shaped storage
+    /// key and nothing else. The live counter-example is the mount-blob storage
+    /// key `mount-blob:<mountPointId>:<blobId>` — **colon**-separated, two
+    /// minted ids, and therefore never comparable across the two engines. It was
+    /// invisible while `main.files` sat in `EXPECTED_DIVERGENCES`; the moment
+    /// that came out, every restored file's `storageKey` differed for a reason
+    /// that is pure nondeterminism. Scanning for the UUID shape itself is
+    /// punctuation-agnostic and cannot go stale the next time a key format
+    /// changes.
+    fn substitute_embedded_uuids(&mut self, s: &str) -> String {
+        let b = s.as_bytes();
+        let mut out = String::with_capacity(s.len());
+        let mut i = 0usize;
+        while i < b.len() {
+            if i + 36 <= b.len() {
+                if let Ok(window) = std::str::from_utf8(&b[i..i + 36]) {
+                    if is_uuid(window) && !self.literals.contains(window) {
+                        let next = self.minted.len();
+                        let label = self
+                            .minted
+                            .entry(window.to_string())
+                            .or_insert_with(|| format!("<minted-{next}>"));
+                        out.push_str(label);
+                        i += 36;
+                        continue;
+                    }
+                }
+            }
+            let ch = s[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
     }
 
     /// Replace every non-literal ISO timestamp appearing anywhere inside `s`.
@@ -434,16 +614,14 @@ impl Normalizer {
                         return Value::String(sub);
                     }
                 }
-                // A storage key embeds a minted blob id; normalize its parts.
-                if s.contains('/') && s.split('/').any(is_uuid) {
-                    let parts: Vec<String> = s
-                        .split('/')
-                        .map(|p| match self.value(&Value::String(p.to_string())) {
-                            Value::String(x) => x,
-                            _ => p.to_string(),
-                        })
-                        .collect();
-                    return Value::String(parts.join("/"));
+                // A storage key embeds one or two minted ids (`mount-blob:<mp>:
+                // <blob>`, or a slash-shaped path). Normalize them wherever they
+                // sit — see `substitute_embedded_uuids`.
+                if s.len() > 36 {
+                    let sub = self.substitute_embedded_uuids(s);
+                    if sub != *s {
+                        return Value::String(sub);
+                    }
                 }
                 v.clone()
             }
@@ -474,11 +652,21 @@ impl Normalizer {
                 // verbatim from the archive, whose content is all archive literals
                 // and so never changes here) stays under diff. The content itself
                 // is still compared, normalized, immediately above.
-                if composite_normalized {
-                    for (k, val) in out.iter_mut() {
-                        if k.to_ascii_lowercase().ends_with("sha256") && val.is_string() {
-                            *val = Value::String("<sha:derived-from-normalized>".to_string());
-                        }
+                for (k, val) in out.iter_mut() {
+                    if !k.to_ascii_lowercase().ends_with("sha256") || !val.is_string() {
+                        continue;
+                    }
+                    // …either because the text it hashes is right here and had to
+                    // be normalized…
+                    if composite_normalized
+                        // …or because it is the SAME hash, one table over, with
+                        // no content column beside it to trigger the rule. See
+                        // `derived_shas`.
+                        || val
+                            .as_str()
+                            .is_some_and(|s| self.derived_shas.contains(s))
+                    {
+                        *val = Value::String("<sha:derived-from-normalized>".to_string());
                     }
                 }
                 Value::Object(out)
@@ -532,9 +720,9 @@ fn fresh_instance(dir: &Path) -> Db {
     .expect("open fresh instance")
 }
 
-/// The summary keys whose values the divergence moves. Compared by the
-/// divergence assertion, not by equality.
-const DIVERGENT_SUMMARY_KEYS: &[&str] = &["files", "docMountPoints", "docMountFileLinks"];
+// (`DIVERGENT_SUMMARY_KEYS` is gone with the divergences: `files`,
+// `docMountPoints` and `docMountFileLinks` are now compared like every other
+// summary counter.)
 
 #[test]
 fn system_restore_state_equivalence() {
@@ -768,73 +956,212 @@ fn read_state(dir: &Path) -> BTreeMap<String, BTreeMap<String, Vec<Value>>> {
     out
 }
 
-/// The ruled divergences, asserted in both directions — but only where the
-/// ARCHIVE actually contains the thing.
+/// `summary.warnings` — put under diff by P4.d22, having never been compared.
 ///
-/// The divergence is "v4 rejects rows it was given"; it says nothing about an
-/// archive that carries no such rows. `restore_minimal` strips every optional
-/// collection, so its post-restore mount points and file links are entirely
-/// v4's freshly provisioned vaults, and asserting "v4 restored 0" there would
-/// fail for a reason that has nothing to do with the bug.
+/// It matters most on exactly the phase this round converged: a per-file failure
+/// leaves a warning and nothing else, so "both engines restored zero files" is
+/// only meaningful alongside "…and said the same thing about why". On the three
+/// `replace`-mode archives both engines now emit, for the same file, the same
+/// sentence — that is the strongest single statement this differential makes
+/// about bug 3.
 ///
-/// `main.files` additionally needs somewhere to PUT the bytes: with no
-/// `doc_mount_points` in the archive and the built-ins wiped, there is no store
-/// to receive a project-less file in either engine, and both legitimately
-/// restore zero. So the file divergence is asserted only when the archive
-/// carries both the file rows and at least one mount point.
-fn assert_divergences(
+/// ## The one masked substring, and the v5 bug behind it
+///
+/// v5's warning reads `Failed to restore file "portrait.png": key derivation
+/// failed: Quilltap Uploads mount has not been provisioned` where v4's reads
+/// `…: Quilltap Uploads mount has not been provisioned`. The extra clause is not
+/// a different failure — it is `DbError::Key`'s Display prefix leaking into
+/// user-visible text. `DbError::Key`'s doc comment says "Deriving the raw-hex key
+/// from the pepper failed", but roughly twenty call sites across the crate use it
+/// as a general-purpose message carrier (`tools/state.rs`, `tools/help.rs`,
+/// `enclave/lifecycle.rs`, the two file-storage bridges, …), so every one of them
+/// prints a cipher-flavoured lie in front of its real message.
+///
+/// That is a pre-existing, crate-wide naming problem, **not restore's and not
+/// this lane's** — fixing it means either a new additive variant or a Display
+/// change that moves strings other differentials pin. Recorded in the lane
+/// record; the prefix is stripped here so the rest of the sentence is compared
+/// verbatim. Once the prefix is gone the strip is simply a no-op, so a future fix
+/// needs no change here.
+fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<String>) {
+    const LEAKED_PREFIX: &str = "key derivation failed: ";
+    let strip = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(|s| s.replace(LEAKED_PREFIX, ""))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let (g, w) = (strip(got), strip(want));
+    if g != w {
+        failures.push(format!(
+            "[{name}] summary.warnings differ\n  rust:   {g:?}\n  oracle: {w:?}"
+        ));
+    }
+}
+
+/// [`V5_STATS_GAP`], asserted in BOTH directions: on the named mount-point row
+/// v4's `refreshStats` must have produced a non-zero `fileCount` and v5's
+/// unported one must still read zero. **Close the deferral and this fails**, at
+/// which point the mask below comes out and the columns go back under diff.
+fn assert_stats_gap(
     name: &str,
-    case: &Value,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want: &Value,
     failures: &mut Vec<String>,
 ) {
-    let archive = case["summary"].clone(); // preview/summary counts mirror the archive's input lengths
-    let has = |k: &str| archive.get(k).and_then(Value::as_u64).unwrap_or(0) > 0;
-    let n = |partition: &str, table: &str, side: &Value| {
-        side.get(partition)
-            .and_then(|p| p.get(table))
-            .and_then(Value::as_array)
-            .map(Vec::len)
-            .unwrap_or(0)
+    let count_for = |rows: &[Value], mount: &str| -> Option<f64> {
+        rows.iter()
+            .find(|r| r.get("name").and_then(Value::as_str) == Some(mount))
+            .and_then(|r| r.get("fileCount"))
+            .and_then(Value::as_f64)
     };
-    let n_got = |partition: &str, table: &str| {
-        got.get(partition)
-            .and_then(|p| p.get(table))
-            .map(Vec::len)
-            .unwrap_or(0)
-    };
-
-    for (partition, table) in EXPECTED_DIVERGENCES {
-        let applies = match *table {
-            "doc_mount_points" => has("docMountPoints"),
-            "doc_mount_file_links" => has("docMountFileLinks"),
-            "files" => has("files") && has("docMountPoints"),
-            other => panic!("unclassified divergence table {other}"),
-        };
-        if !applies {
+    for (case, mount) in V5_STATS_GAP {
+        if *case != name {
             continue;
         }
-        let v4 = n(partition, table, want);
-        let v5 = n_got(partition, table);
-        if v4 != 0 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v4 restored {v4} rows from an archive that \
-                 carries them — the v4 bug this differential pins has been FIXED upstream; \
-                 re-rule the divergence"
-            ));
-        }
-        if v5 == 0 {
-            failures.push(format!(
-                "[{name}] {partition}.{table}: v5 restored NOTHING from an archive that \
-                 carries rows — the ruled divergence (v5 restores what v4 cannot) has regressed"
-            ));
+        let v5 = got
+            .get("mountIndex")
+            .and_then(|p| p.get("doc_mount_points"))
+            .and_then(|rows| count_for(rows, mount));
+        let v4 = want
+            .get("mountIndex")
+            .and_then(|p| p.get("doc_mount_points"))
+            .and_then(Value::as_array)
+            .and_then(|rows| count_for(rows, mount));
+        match (v5, v4) {
+            (Some(v5), Some(v4)) => {
+                if v4 == 0.0 {
+                    failures.push(format!(
+                        "[{name}] {mount}.fileCount: v4 reports 0 — it is supposed to \
+                         refreshStats after the bridge write; the gap this masks may have \
+                         moved, so re-check it rather than widening the mask"
+                    ));
+                }
+                if v5 != 0.0 {
+                    failures.push(format!(
+                        "[{name}] {mount}.fileCount: v5 reports {v5}, so the unported \
+                         `refreshStats` deferral (file_storage.rs module header) has been \
+                         CLOSED — delete this row from V5_STATS_GAP and let the three stat \
+                         columns go back under diff"
+                    ));
+                }
+            }
+            _ => failures.push(format!(
+                "[{name}] V5_STATS_GAP names a mount point `{mount}` that one side does not \
+                 have — the carve-out has gone stale"
+            )),
         }
     }
+}
 
-    // (P4.6BK removed the former chunk-gap tripwire here: v5 now writes the
-    // same provisioning chunks v4 does, so `doc_mount_chunks` is diffed row for
-    // row in the main table walk below.)
+/// Normalize `rows` under a CANONICAL row order rather than the insertion one.
+///
+/// The insertion-order normalizer cannot be reused directly for an
+/// order-insensitive comparison, and the reason is the labelling: `<minted-N>`
+/// is assigned in first-encounter order, so moving one row renumbers every label
+/// after it. Sorting the already-labelled rows would compare two different
+/// labellings of the same data.
+///
+/// So: label once to get a stable, engine-independent sort key (with the label
+/// NUMBERS collapsed, since those are what the reordering perturbs), sort the
+/// RAW rows by it, then label again from scratch over the canonical order. The
+/// result is a full-fidelity normalization — minted-id identity WITHIN the table
+/// is still proven — under an order both engines agree on.
+fn normalize_canonically(
+    rows: &[Value],
+    literals: &HashSet<String>,
+    shas: &HashSet<String>,
+) -> Vec<Value> {
+    let mut keyed: Vec<(String, Value)> = rows
+        .iter()
+        .map(|row| {
+            let mut n = Normalizer::new(literals.clone(), shas.clone());
+            let labelled = n.value(row).to_string();
+            let key = collapse_labels(&labelled);
+            (key, row.clone())
+        })
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut n = Normalizer::new(literals.clone(), shas.clone());
+    keyed.into_iter().map(|(_, row)| n.value(&row)).collect()
+}
+
+/// `<minted-7>` → `<minted>`; the label's NUMBER is exactly what a reordering
+/// perturbs, so it cannot be part of a canonical sort key.
+fn collapse_labels(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find("<minted-") {
+        out.push_str(&rest[..i]);
+        out.push_str("<minted>");
+        rest = match rest[i..].find('>') {
+            Some(j) => &rest[i + j + 1..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
+/// [`PHASE_ORDER_RESIDUAL`], asserted in BOTH directions: the two sides must
+/// hold the same rows (under a canonical order) AND their raw insertion orders
+/// must differ. **Align the two phase orders and this fails**, forcing the
+/// carve-out out.
+fn assert_phase_order_residual(
+    name: &str,
+    table: &str,
+    got: &[Value],
+    want: &[Value],
+    literals: &HashSet<String>,
+    shas_got: &HashSet<String>,
+    shas_want: &HashSet<String>,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    let cg = normalize_canonically(got, literals, shas_got);
+    let cw = normalize_canonically(want, literals, shas_want);
+    if cg != cw {
+        let detail = if cg.len() != cw.len() {
+            format!("row count: rust {} vs oracle {}", cg.len(), cw.len())
+        } else {
+            cg.iter()
+                .zip(cw.iter())
+                .enumerate()
+                .find(|(_, (a, b))| a != b)
+                .map(|(i, (a, b))| format!("canonical row {i}:\n    rust:   {a}\n    oracle: {b}"))
+                .unwrap_or_default()
+        };
+        failures.push(format!(
+            "[{name}] mountIndex.{table}: the ROWS differ, not just their order — this is NOT \
+             the documented phase-order residual, and the residual must not be used to absorb \
+             it\n  {detail}"
+        ));
+        return failures;
+    }
+    // Same rows. Now prove the residual is still real: the insertion orders must
+    // still differ, or this carve-out is describing something that no longer
+    // exists.
+    let mut n_got = Normalizer::new(literals.clone(), shas_got.clone());
+    let mut n_want = Normalizer::new(literals.clone(), shas_want.clone());
+    let ordered_got = collapse_labels(&n_got.value(&Value::Array(got.to_vec())).to_string());
+    let ordered_want = collapse_labels(&n_want.value(&Value::Array(want.to_vec())).to_string());
+    if ordered_got == ordered_want {
+        failures.push(format!(
+            "[{name}] mountIndex.{table}: the insertion orders now MATCH — the phase-order \
+             residual is gone (v5's file phase moved, or v4's did). Remove this entry from \
+             PHASE_ORDER_RESIDUAL so the table goes back under an ordered diff, and close the \
+             ruling request in the order and the status log."
+        ));
+    } else {
+        println!(
+            "  residual {name}/{table}: same rows, different insertion order \
+             (awaiting the phase-order ruling)"
+        );
+    }
+    failures
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -847,28 +1174,57 @@ fn compare_case(
     literals: HashSet<String>,
     failures: &mut Vec<String>,
 ) {
-    // ── 1. The summary counters, minus the divergent keys and `warnings`. ────
+    // ── 1. Every summary counter except `warnings`. ──────────────────────────
+    //
+    // `files`, `docMountPoints` and `docMountFileLinks` used to be excluded here
+    // as divergent. They are compared like the rest now.
     let got_summary = serde_json::to_value(summary).expect("summary serializes");
     let want_summary = &case["summary"];
     for (k, gv) in got_summary.as_object().unwrap() {
-        if k == "warnings" || DIVERGENT_SUMMARY_KEYS.contains(&k.as_str()) {
+        let wv = &want_summary[k];
+        if k == "warnings" {
+            compare_warnings(name, gv, wv, failures);
             continue;
         }
-        let wv = &want_summary[k];
         if gv != wv {
             failures.push(format!("[{name}] summary.{k}: rust {gv} vs oracle {wv}"));
         }
     }
 
-    // ── 2. The pinned divergences, asserted in BOTH directions. ──────────────
-    assert_divergences(name, case, got, want, failures);
+    // ── 2. The two named residuals, asserted in BOTH directions. ─────────────
+    assert_stats_gap(name, got, want, failures);
 
-    // ── 3. Every other table, row by row, after normalization. ───────────────
-    let skip: HashSet<(&str, &str)> = EXPECTED_DIVERGENCES
+    // ── 3. Every table, row by row, after normalization. ─────────────────────
+    let residual: HashSet<&str> = PHASE_ORDER_RESIDUAL
         .iter()
-        .chain(DIVERGENCE_DEPENDENTS.iter())
-        .copied()
+        .filter(|(c, _, _)| *c == name)
+        .map(|(_, _, t)| *t)
         .collect();
+    let stats_masked: HashSet<&str> = V5_STATS_GAP
+        .iter()
+        .filter(|(c, _)| *c == name)
+        .map(|(_, m)| *m)
+        .collect();
+    // Blank the three rollup columns on exactly the named mount-point rows —
+    // nothing else in the table, and nothing in any other case.
+    let mask_stats = |rows: &mut Vec<Value>| {
+        for row in rows.iter_mut() {
+            let named = row
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| stats_masked.contains(n));
+            if !named {
+                continue;
+            }
+            if let Some(m) = row.as_object_mut() {
+                for col in STATS_COLUMNS {
+                    if m.contains_key(*col) {
+                        m.insert((*col).to_string(), Value::String("<v5-stats-gap>".into()));
+                    }
+                }
+            }
+        }
+    };
 
     // A normalizer PER TABLE, per side.
     //
@@ -887,19 +1243,49 @@ fn compare_case(
     // proves its target exists; only cross-table identity of minted ids is out of
     // scope. Regaining it needs a graph-level check, which is a bigger build than
     // this differential's claim requires.
+    let shas_got = derived_shas(got, &literals);
+    let shas_want = want
+        .as_object()
+        .map(|_| {
+            let as_map: BTreeMap<String, BTreeMap<String, Vec<Value>>> =
+                serde_json::from_value(want.clone()).unwrap_or_default();
+            derived_shas(&as_map, &literals)
+        })
+        .unwrap_or_default();
+
     for (partition, tables) in got {
         for (table, rows) in tables {
-            if skip.contains(&(partition.as_str(), table.as_str())) {
-                continue;
-            }
-            let mut n_got = Normalizer::new(literals.clone());
-            let mut n_want = Normalizer::new(literals.clone());
+            let mut n_got = Normalizer::new(literals.clone(), shas_got.clone());
+            let mut n_want = Normalizer::new(literals.clone(), shas_want.clone());
             let want_rows = want[partition][table]
                 .as_array()
                 .cloned()
                 .unwrap_or_default();
-            let g = n_got.value(&Value::Array(rows.clone()));
-            let wnt = n_want.value(&Value::Array(want_rows));
+            let mut g_rows = rows.clone();
+            let mut w_rows = want_rows;
+            if table == "doc_mount_points" && !stats_masked.is_empty() {
+                mask_stats(&mut g_rows);
+                mask_stats(&mut w_rows);
+            }
+            let g = n_got.value(&Value::Array(g_rows));
+            let wnt = n_want.value(&Value::Array(w_rows));
+            // The documented phase-order residual: same rows, different
+            // insertion order. Asserted in both directions instead of diffed.
+            if partition == "mountIndex" && residual.contains(table.as_str()) {
+                failures.extend(assert_phase_order_residual(
+                    name,
+                    table,
+                    rows,
+                    &want[partition][table]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default(),
+                    &literals,
+                    &shas_got,
+                    &shas_want,
+                ));
+                continue;
+            }
             if g != wnt {
                 let ga = g.as_array().unwrap();
                 let wa = wnt.as_array().unwrap();
