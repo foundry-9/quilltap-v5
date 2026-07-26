@@ -53,13 +53,17 @@
 //! 2. **The `backupFormat === 2` gate** — now `>= 2` on both sides. CONVERGED.
 //! 3. **The files phase's position** — v4 moved it from step 5 to `22a-bis`,
 //!    after mount points and before folders/links. v5 runs it after the WHOLE
-//!    doc-store family. **Not fully settled — see [`PHASE_ORDER_RESIDUAL`].**
+//!    doc-store family, and **RULED 2026-07-26 (human): v5 KEEPS its placement**
+//!    — see [`PHASE_ORDER_RESIDUAL`]. A deliberate divergence, not a pending
+//!    question.
 //!
 //! ## ⚠ What is left, and why each is not simply "fixed here"
 //!
 //! - [`PHASE_ORDER_RESIDUAL`] — the two orderings write the SAME ROWS with the
-//!   SAME VALUES but in a different insertion order. Awaiting a human ruling;
-//!   the residual is asserted in both directions rather than absorbed.
+//!   SAME VALUES but in a different insertion order. **RULED: v5 keeps its
+//!   placement** (2026-07-26). The residual stays asserted in both directions
+//!   because the placements still differ — it now pins a DECISION, not an open
+//!   question. **Do not "fix" v5 to v4's `22a-bis`.**
 //! - [`V5_STATS_GAP`] — a pre-existing, separately-documented v5 deferral
 //!   (`file_storage.rs`'s module header: v4's best-effort `refreshStats` is not
 //!   ported) that only became visible once `main.files` came out of the
@@ -126,22 +130,36 @@ const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
 /// **insertion order**: v4's restored blob and link sit at the 22a-bis position,
 /// v5's at the end. No value differs. No row is missing.
 ///
-/// **Why this is not settled here.** The order that produced this lane
-/// (`p4.d22`) is explicit: do not move v5's phase order to match v4's without a
-/// ruling, and do not paper over a residual by widening the divergence list. So
-/// the residual is named, narrowed to the one case that exercises it, and
-/// asserted in BOTH directions — the multisets must match AND the raw orders
-/// must differ. **Align the two placements and this test fails**, which is the
-/// point: the carve-out cannot outlive the thing it describes.
+/// **✅ RULED 2026-07-26 (human): v5 KEEPS its later placement. Do NOT adopt
+/// v4's `22a-bis`.** The residual stays asserted in BOTH directions — the
+/// multisets must match AND the raw orders must differ — so **aligning the two
+/// placements fails this test**. That is now deliberate: the assertion pins a
+/// decision rather than holding a question open.
 ///
-/// **The case for adopting v4's slot, for whoever rules.** v4 documents why
-/// 22a is right and later slots are worse (`found-bugs.md:361-370`): after 22c
-/// the replay's `findOrCreateByContent` matches an archived content row by sha
-/// and hard-links to it, so 22f's `INSERT INTO doc_mount_blobs` then violates
-/// `UNIQUE(fileId)` and the ARCHIVED blob row is refused. v5 sits in exactly
-/// that later slot. No committed archive triggers it (no restored user file
-/// shares a sha with an archived doc-store file), so nothing here is red — but
-/// it is a latent hazard, not a stylistic difference.
+/// **Why the later slot won, against the lane's own recommendation.** Both
+/// placements carry a hazard, and neither is exercised by any committed
+/// archive:
+///
+/// - v5's slot: after 22c the replay's `findOrCreateByContent` matches an
+///   archived content row by sha and hard-links to it, so 22f's
+///   `INSERT INTO doc_mount_blobs` violates `UNIQUE(fileId)` and the ARCHIVED
+///   blob row is refused (v4 `found-bugs.md:361-370`).
+/// - v4's slot: the replay wins the race into `restored/<name>`, so a
+///   SECOND-GENERATION archive's own link rows collide with it and **the
+///   archived link ids are lost** (v4 `found-bugs.md:385-397`, a residual v4
+///   knowingly kept).
+///
+/// The ruling turns on what each slot makes POSSIBLE, not on which hazard is
+/// milder. v4 names the proper repair itself and puts it out of scope: *"teach
+/// the replay to recognise that the archive already carries the store rows for
+/// a file and skip re-ingesting it, rather than reshuffling phase order"*
+/// (`found-bugs.md:400-402`). That check can only be written from v5's slot —
+/// at `22a-bis` the archived link and blob rows have not been restored yet, so
+/// there is nothing to consult. v4 avoids the collision by arranging for
+/// nothing to be there; v5's placement is the one where the file's identity can
+/// actually be tested. **The skip check is ordered as its own round**
+/// (`work-orders/p4.d23-restore-file-replay-dedupe.md`); when it lands, BOTH
+/// hazards go away and this residual can be re-examined.
 ///
 /// Each entry is `(case, partition, table)`.
 /// The three tables the file phase writes into: a content row, a link row and

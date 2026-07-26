@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+A decision was made about how a restore puts the user's files back, and it went
+against the recommendation on the table. The old app writes those files at an
+earlier moment than this one does. Each moment has its own way of going wrong,
+and neither is reached by any of the saved backups the tests use, so the choice
+was never about which fault is milder. It was about which moment leaves room for
+the real repair: recognising that the backup already describes a file and not
+putting it back a second time. That check can only be written where this app
+already puts the files, because at the old app's earlier moment there is nothing
+yet to check against. So this app keeps its own placement, and the check is
+planned as its own piece of work — with the two saved backups that would
+actually exercise the fault built first, since today neither can be reached.
+
 The four strands of this round met on main. A conversation's cast can now be
 changed after it starts — added to, taken from, handed to the human to play,
 answered for by a different model — through both of the old app's doors, sharing

@@ -1462,9 +1462,9 @@ records THERE. Update this summary only when a phase or round completes.
   differentials by name over fresh `c1507f47` oracles, zero SKIP**; clippy both
   feature sets; release build; ng 238 files / 2,974; full Playwright **139
   passed, zero skips**. Versions: core 0.0.380, harness 0.0.326, host 0.0.41,
-  web 0.0.47, SPA 0.5.297. **⚠ One item OPEN on a human ruling** — the restore
-  files-phase placement (`PHASE_ORDER_RESIDUAL`; the lane recommends adopting
-  v4's `22a-bis`). Deferred loud: `ChatToolSettingsModal` (needs the unported
+  web 0.0.47, SPA 0.5.297. **✅ The round's one open item is RULED**
+  (2026-07-26, human): v5 keeps its restore files-phase placement and gains a
+  skip check — `p4.d23`; v4's `22a-bis` is NOT adopted. Deferred loud: `ChatToolSettingsModal` (needs the unported
   727-LOC `GET /api/v1/tools` inventory — refuses by name), `llm_choose` on both
   the add-participant and merge outfit paths, the `TimestampConfigSchema`
   normalization. Round record: `status-log.md`.
@@ -1485,7 +1485,8 @@ records THERE. Update this summary only when a phase or round completes.
   `~/source/quilltap-server`; pin a detached worktree only on drift/dirty
   (`oracle-regen-pinned-v4-worktree`). ⚠ v4 is mid-4.8/4.9 dev and has shipped
   four commits in a single day before now — drift-check before every round.
-  **⚠ ONE ITEM IS OPEN FROM THAT ROUND AND WANTS A HUMAN RULING:** v4 moved its
+  **✅ THAT ROUND'S ONE OPEN ITEM IS RULED (2026-07-26, human): v5 KEEPS its
+  placement and gains a skip check — `p4.d23`. Do NOT adopt `22a-bis`.** v4 moved its
   files phase to `22a-bis` where v5 runs it after the whole doc-store family.
   Both write the SAME ROWS with the SAME VALUES into the same mount at the same
   path — only the INSERTION ORDER differs — so it is `PHASE_ORDER_RESIDUAL` in
@@ -1493,8 +1494,15 @@ records THERE. Update this summary only when a phase or round completes.
   and the test fails). v4 documents why its slot is right and later slots are
   worse: after 22c the replay hard-links to an archived content row and 22f's
   blob insert then violates `UNIQUE(fileId)`, refusing the ARCHIVED blob. v5 sits
-  in that later slot — a latent hazard no committed archive triggers. The lane
-  recommends adopting `22a-bis`; it did not, because the order forbade moving the
+  in that later slot — a latent hazard no committed archive triggers. **The lane
+  recommended adopting `22a-bis` and was OVERRULED**: v4's own `found-bugs.md`
+  names the proper repair (teach the replay to skip re-ingesting a file the
+  archive already carries store rows for) and that check is only writable from
+  v5's slot — at `22a-bis` the archived rows do not exist yet, so there is
+  nothing to consult. It removes BOTH hazards instead of trading one for the
+  other. Ordered as `work-orders/p4.d23-restore-file-replay-dedupe.md`; the
+  ruling is in `status-log.md` → "Ruling — the restore file-replay dedupe" and
+  inline in `system_restore_state.rs`. The lane did not act because the order forbade moving the
   phase order without a ruling. Details: `status-log.md` → "Lane record — P4.d22
   units 2–3".
   The previous baseline paragraphs follow for history:

@@ -1,3 +1,16 @@
+1. **`p4.d23` — the restore file-replay dedupe.** ✅ The ruling that used to head
+   this list is MADE (2026-07-26, human): **v5 KEEPS its files-phase placement
+   and v4's `22a-bis` is NOT adopted**; instead the replay learns to skip
+   re-ingesting a file the archive already carries store rows for. That is v4's
+   own named "proper fix" (`found-bugs.md:400-402`), and it is only writable
+   from v5's slot — at `22a-bis` the archived rows do not exist yet. It removes
+   BOTH latent hazards rather than trading one for the other. Order:
+   `work-orders/p4.d23-restore-file-replay-dedupe.md`. **Tier 1 includes
+   building the two archives the family lacks** (a second-generation one, and
+   one carrying a Quilltap Uploads mount) — without them neither hazard is
+   reachable and the claim is analysis, not measurement. Expect the divergence
+   list to GROW by one named entry: v4 re-ingests unconditionally, v5 will not.
+
 # Phase 4 kickoff — transports, hosts, and the Angular SPA
 
 > The Phase-4 plan and its **locked decisions**. Read alongside

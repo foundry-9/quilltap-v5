@@ -38441,3 +38441,71 @@ SPA **0.5.297**; cli 0.0.3, quilltap-tauri 0.0.5 unchanged.
   "key derivation failed:" into ~20 user-visible messages.
 - The `TimestampConfigSchema` write-path normalization stays deferred (it
   straddles the two server lanes' file seam — see the round plan).
+
+
+## Ruling — the restore file-replay dedupe (2026-07-26, human)
+
+**The decision.** v5 **KEEPS** its later files-phase placement. v4's `22a-bis`
+is **NOT** adopted. The replay instead learns to recognise that the archive
+already carries the document-store rows for a file and to **skip re-ingesting
+it**. Ordered as `work-orders/p4.d23-restore-file-replay-dedupe.md`.
+
+**What was being decided.** P4.d22 proved v5 converged on three of v4's four
+restore/import fixes and stopped at the fourth: v4 runs its files phase at
+`22a-bis` (after mount points, before links), v5 after the whole doc-store
+family. Both write the same rows with the same values into the same mount at the
+same path — only the INSERTION ORDER differs — so it was named
+`PHASE_ORDER_RESIDUAL` and asserted in both directions rather than absorbed. The
+lane recommended adopting `22a-bis`. **That recommendation was overruled**, and
+the reasoning is worth keeping because it is not "which hazard is milder".
+
+**Both placements carry a hazard, neither reachable by any committed archive:**
+
+- v5's slot — after 22c the replay's `findOrCreateByContent` matches an archived
+  content row **by sha** and hard-links to it, so 22f's
+  `INSERT INTO doc_mount_blobs` violates `UNIQUE(fileId)` and the **ARCHIVED
+  blob row is refused** (v4 `found-bugs.md:361-370`).
+- v4's slot — the replay wins the race into `restored/<name>`, so a
+  **second-generation** archive's own folder and link rows collide with it and
+  **the archived link ids are lost** (v4 `found-bugs.md:385-397`) — a residual
+  v4 knowingly kept.
+
+**What settled it: what each slot makes POSSIBLE.** v4 names the proper repair
+itself and puts it out of scope (`found-bugs.md:400-402`) — *"teach the replay
+to recognise that the archive already carries the store rows for a file and skip
+re-ingesting it, rather than reshuffling phase order."* **That check can only be
+written from v5's slot.** At `22a-bis` the archived link and blob rows have not
+been restored yet, so there is nothing to consult: v4 avoids the collision by
+arranging for nothing to be there. v5's placement is the one where the file's
+identity can actually be tested, and the check removes BOTH hazards at once
+rather than trading one for the other. Adopting `22a-bis` would have been the
+single move that forecloses the better answer.
+
+**The identity test is exact, not heuristic.** `restore_one_file` preserves the
+archived file's own id (`id: id_of(file)`), and the archived doc-store rows key
+on that same id — which is why the failure mode is a `UNIQUE(fileId)` violation
+rather than a silent duplicate. ⚠ P4.d22 reasoned this from the code and did NOT
+run it; `p4.d23` must confirm the rows are queryable at that moment and record
+the predicate deliberately.
+
+**Consequences, all binding:**
+
+1. **Do not "fix" v5's phase order to match v4's.** `PHASE_ORDER_RESIDUAL` stays
+   asserted in both directions and now pins a DECISION, not an open question —
+   aligning the placements fails the test, deliberately. The ruling is recorded
+   inline in `system_restore_state.rs` as well as here.
+2. **The skip check is a NEW deliberate divergence from v4**, which re-ingests
+   unconditionally. `system_restore_state`'s divergence list will **grow by one
+   well-named entry**, not shrink. That is correct and is not a regression of
+   P4.d22's convergence work.
+3. **Two archives must be built before the claim means anything.** The family
+   has no second-generation archive, and in `replace` mode the committed five
+   restore no user file at all (no Uploads mount, no `userUploadsMountPointId`),
+   so **the disaster-recovery case v4's own fix targets is unexercised**. Until
+   they exist, v5's behaviour against both hazards is analysis, not measurement.
+
+**Precedent.** This joins the port's standing list of ruled reader-side
+divergences — the sparse-array blob truncation (2026-07-24) and the three v4
+restore bugs (2026-07-25). Same shape each time: v5 declines to reproduce a
+data-loss behaviour, the divergence is asserted in both directions, and the
+rationale is written down so a later round cannot mistake it for a port gap.
