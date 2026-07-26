@@ -5,5 +5,6 @@ pub mod custom_tools;
 pub mod dice;
 pub mod js_value;
 pub mod llm_consult;
+pub mod metadata_match;
 pub mod roster;
 pub mod workbench;

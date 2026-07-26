@@ -35831,3 +35831,52 @@ the lane's differentials by name and zero `SKIP:` lines. core 0.0.363, harness
   re-parses `timestampConfig` through Zod at the chats-repository write
   (schema key order, materialized defaults, unknown keys stripped, bad values
   400'd); v5 stores the request JSON verbatim. See the unit-2 record.
+## P4.d19 — the Pascal server drift: the availability gate + the tool vocabulary (lane record)
+
+Lane branch `claude/pascal-gate-vocab-porting-6f4287`. v4 drift-checked CLEAN at
+**`231be14c`** at lane start (`git log 231be14c..HEAD` empty); every oracle in
+this lane regenerates from the pinned detached worktree
+`/tmp/qt-v4-pin-231be14c` with `TZ=UTC`.
+
+### Unit 1 — `metadata_match.rs`: the shared fail-soft table (v4 `6864bf0e`)
+
+v4 lifted `matchesMetadataComparator`'s semantics out of `custom-tools.ts` into
+a new client-safe `lib/pascal/metadata-match.ts` with two hooks
+(`resolveOperand`, `onDecline?`), so the outcome table and the new availability
+gate cannot drift apart. v5's port is
+`crates/quilltap-core/src/pascal/metadata_match.rs`.
+
+- **`ResolvedValue` MOVED.** v4 declares `Primitive` in the new module and the
+  execution core imports it; v5's equivalent predates the extraction and lived
+  in `custom_tools.rs`. It moved with the table (along with `js_primitive`,
+  v4's `isPrimitive` folded with the JSON coercion) so the dependency runs the
+  same direction v4's does. `custom_tools.rs` re-exports it
+  (`pub use super::metadata_match::ResolvedValue;`), so every existing
+  `pascal::custom_tools::ResolvedValue` path still resolves — no consumer
+  changed.
+- **The hooks, in Rust.** `metadata_comparator_holds<E>` takes
+  `&mut dyn FnMut(&str) -> Result<ResolvedValue, E>` for the operand resolver
+  (the outcome table's may fail on an unresolvable `$param`; the gate's, whose
+  operands are literals by construction, cannot) and `&mut dyn FnMut(String)`
+  for the decline reason. Generic over `E` so the shared module depends on
+  nothing from the run.
+- **The decline reasons are now LIVE, not dead strings.** v5's port of
+  `matchesMetadataComparator` had silently dropped v4's four reason sentences
+  (it returned `Ok(false)` with no message). They are restored byte-identical
+  and logged at the wrapper as `tracing::debug!` — v4's
+  `logger.debug('Custom tool metadata test did not match', { tool, key, reason })`
+  at the same point, following the `llm_consult` precedent where v4's `context`
+  becomes the tracing target (`quilltap::pascal`). Log output stays outside the
+  differential contract (P4.18's rule), so this is fidelity, not a diffable
+  claim.
+- **`ParamComparator::has(key)`** added to `custom_tool_types.rs` — v4's
+  `comparator[key] !== undefined`. The shared table walks the eight keys by
+  name, so it needs presence without knowing an operand's shape.
+
+**Differential:** no new family. The extraction is behavior-preserving, and
+`pascal_custom_tools_execution_equivalence` is its equivalence test — 110
+`matchesWhen` cases (plus 43 `executeCustomTool`, 33 `resolveParams`, 44
+`renderTemplate`, 29 `formatValue`) green against an oracle regenerated fresh at
+`231be14c`. Gate at this commit: `cargo fmt --all --check`, `cargo clippy
+--workspace --all-targets -D warnings`, `cargo test --workspace --no-fail-fast`
+384 binaries / 0 failed. `quilltap-core` 0.0.360 → 0.0.361.

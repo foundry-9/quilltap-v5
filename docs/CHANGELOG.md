@@ -11,6 +11,11 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+The rule for testing a character's fact sheet — a key they lack never matches, a
+key holding a list cannot be compared — now lives in one place instead of two.
+Nothing about a roll changes; the new availability gate needs the same rule, and
+one copy of it cannot drift from the other. Declining a test also says why again,
+in the debug log, as the old app does.
 
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be

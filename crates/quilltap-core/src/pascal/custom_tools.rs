@@ -22,6 +22,7 @@ use super::custom_tool_types::{
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number, to_precision};
+use super::metadata_match::{js_primitive, metadata_comparator_holds};
 use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
@@ -85,44 +86,11 @@ fn state_ref_from_default(v: &Value) -> Option<StateRef> {
 }
 
 /// One resolved parameter value: v4's `number | string | boolean`.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ResolvedValue {
-    Number(f64),
-    String(String),
-    Bool(bool),
-}
-
-impl ResolvedValue {
-    /// JS `===` across the three types a parameter can hold.
-    fn strict_eq(&self, other: &ResolvedValue) -> bool {
-        match (self, other) {
-            (ResolvedValue::Number(a), ResolvedValue::Number(b)) => a == b,
-            (ResolvedValue::String(a), ResolvedValue::String(b)) => a == b,
-            (ResolvedValue::Bool(a), ResolvedValue::Bool(b)) => a == b,
-            _ => false,
-        }
-    }
-
-    /// As a JSON [`Value`], the way v4 stores a resolved param / tested-metadata
-    /// value: a number is stored JS-bare (an integer without a fractional part),
-    /// a string as a string, a boolean as a boolean.
-    pub fn to_value(&self) -> Value {
-        match self {
-            ResolvedValue::Number(n) => crate::db::js_number_to_json(*n),
-            ResolvedValue::String(s) => Value::String(s.clone()),
-            ResolvedValue::Bool(b) => Value::Bool(*b),
-        }
-    }
-
-    /// The `JSON.stringify(value)` several error sentences interpolate.
-    fn stringify(&self) -> String {
-        match self {
-            ResolvedValue::Number(n) => json_stringify(&crate::db::js_number_to_json(*n)),
-            ResolvedValue::String(s) => json_stringify(&Value::String(s.clone())),
-            ResolvedValue::Bool(b) => json_stringify(&Value::Bool(*b)),
-        }
-    }
-}
+///
+/// Declared in [`super::metadata_match`] with the shared fail-soft table (v4's
+/// `Primitive`, `6864bf0e`) and re-exported here, which is where every existing
+/// consumer names it.
+pub use super::metadata_match::ResolvedValue;
 
 /// Resolved parameter values, post-default and post-clamp. Ordered, mirroring
 /// the declaration order v4's `Object.entries` walks.
@@ -132,17 +100,6 @@ pub type ResolvedParams = Vec<(String, ResolvedValue)>;
 /// v4's `MetadataTested = Record<string, number | string | boolean>`. Ordered,
 /// mirroring the winning `when.metadata` key order v4's `Object.keys` walks.
 pub type MetadataTested = Vec<(String, ResolvedValue)>;
-
-/// v4 `isPrimitive` folded with the JSON-value coercion: the value types a
-/// comparator can compare, as a [`ResolvedValue`]. `None` for null/array/object.
-fn js_primitive(v: &Value) -> Option<ResolvedValue> {
-    match v {
-        Value::Number(n) => Some(ResolvedValue::Number(n.as_f64().unwrap_or(f64::NAN))),
-        Value::String(s) => Some(ResolvedValue::String(s.clone())),
-        Value::Bool(b) => Some(ResolvedValue::Bool(*b)),
-        _ => None,
-    }
-}
 
 fn lookup<'a>(params: &'a ResolvedParams, name: &str) -> Option<&'a ResolvedValue> {
     params.iter().find(|(k, _)| k == name).map(|(_, v)| v)
@@ -791,12 +748,10 @@ fn llm_operands(c: &LlmComparator) -> [(&'static str, Option<OperandSpec<'_>>); 
 /// Evaluate one comparator against one metadata key — the fail-soft twin of
 /// [`matches_comparator`].
 ///
-/// Everything `matches_comparator` treats as a regression worth throwing over
-/// is, here, an ordinary fact about a character: the key may not exist, or may
-/// hold a list, or may hold a string where the table wanted a number. Metadata
-/// keys are undeclared by nature — no load-time check could have caught any of
-/// it — so each of those simply fails to match, the row is passed over, and the
-/// table's mandatory catch-all does what the author wrote it to do.
+/// The semantics live in [`metadata_comparator_holds`], shared verbatim with the
+/// availability gate so the two can never drift; what this wrapper adds is the
+/// two things the shared table cannot know about — how to resolve a
+/// `$param`/`$state` operand, and where to log a declined row.
 ///
 /// `$param` operands still throw if they don't resolve: those ARE load-validated,
 /// so a failure there is a regression rather than a fact about the character.
@@ -808,73 +763,38 @@ fn matches_metadata_comparator(
     params: &ResolvedParams,
     state: Option<&Value>,
 ) -> Result<bool, CustomToolRunError> {
-    // The character has no such metadata key — decline before touching operands,
-    // so a `$param` operand is never even resolved (let alone thrown over).
-    let Some(raw) = metadata.get(key) else {
-        return Ok(false);
-    };
-    // The key holds null/array/object — cannot be compared.
-    let Some(subject) = js_primitive(raw) else {
-        return Ok(false);
-    };
-
-    let label = format!("metadata \"{key}\"");
-    for (ck, operand) in param_operands(comparator) {
-        let Some(operand) = operand else { continue };
-        let op_label = format!("{label} {ck}");
-
-        if matches!(ck, "gt" | "gte" | "lt" | "lte") {
-            // v4 resolves the operand FIRST (so a `$param` still throws), THEN
-            // declines when either side is not a number.
-            let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
-            let (ResolvedValue::Number(s), ResolvedValue::Number(o)) = (&subject, &resolved) else {
-                return Ok(false);
-            };
-            let held = match ck {
-                "gt" => s > o,
-                "gte" => s >= o,
-                "lt" => s < o,
-                _ => s <= o,
-            };
-            if !held {
-                return Ok(false);
-            }
-            continue;
-        }
-
-        if matches!(ck, "contains" | "ncontains") {
-            // Containment follows the same fail-soft rule as ordering: a key
-            // holding anything but a string cannot be searched, so the row
-            // declines — including under ncontains, where (as with neq)
-            // absence-of-a-string is not a miss.
-            let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
-            let (ResolvedValue::String(hay), ResolvedValue::String(needle)) = (&subject, &resolved)
-            else {
-                return Ok(false);
-            };
-            let held = hay.contains(needle.as_str());
-            if ck == "contains" {
-                if !held {
-                    return Ok(false);
-                }
-            } else if held {
-                return Ok(false);
-            }
-            continue;
-        }
-
-        let resolved = resolve_operand(tool_name, &operand, params, &op_label, state)?;
-        let held = if ck == "eq" {
-            subject.strict_eq(&resolved)
-        } else {
-            !subject.strict_eq(&resolved)
-        };
-        if !held {
-            return Ok(false);
-        }
-    }
-
-    Ok(true)
+    let operands = param_operands(comparator);
+    metadata_comparator_holds(
+        comparator,
+        key,
+        metadata,
+        &mut |comparator_key| {
+            let operand = operands
+                .iter()
+                .find(|(k, _)| *k == comparator_key)
+                .and_then(|(_, o)| o.as_ref())
+                .expect("the shared table only resolves operands it found present");
+            resolve_operand(
+                tool_name,
+                operand,
+                params,
+                &format!("metadata \"{key}\" {comparator_key}"),
+                state,
+            )
+        },
+        // v4's `logger.debug('Custom tool metadata test did not match', {…})`,
+        // at the same point with the same fields (the P4.18 tracing surface, per
+        // the `llm_consult` precedent: v4's `context` becomes the target).
+        &mut |reason| {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                tool = tool_name,
+                key,
+                reason,
+                "Custom tool metadata test did not match",
+            );
+        },
+    )
 }
 
 /// Evaluate one comparator against the LLM consult — the second fail-soft

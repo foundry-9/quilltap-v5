@@ -524,6 +524,25 @@ pub struct ParamComparator {
     pub ncontains: Option<StringOperand>,
 }
 
+impl ParamComparator {
+    /// v4's `comparator[key] !== undefined` — whether this comparator declares
+    /// the named test. The shared fail-soft table walks the eight keys by name,
+    /// so it needs presence without knowing the operand's shape.
+    pub fn has(&self, key: &str) -> bool {
+        match key {
+            "gt" => self.gt.is_some(),
+            "gte" => self.gte.is_some(),
+            "lt" => self.lt.is_some(),
+            "lte" => self.lte.is_some(),
+            "eq" => self.eq.is_some(),
+            "neq" => self.neq.is_some(),
+            "contains" => self.contains.is_some(),
+            "ncontains" => self.ncontains.is_some(),
+            _ => false,
+        }
+    }
+}
+
 /// A comparator against the LLM consult's result. The comparator keys test the
 /// answer string (reconciliation happens at run time, in `matches_llm_comparator`);
 /// `ok` is an extra, non-comparator key testing whether the consult succeeded at
