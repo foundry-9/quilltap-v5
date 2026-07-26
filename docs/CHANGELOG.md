@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Checked the old app once more after this round landed and found one further
+change: its own release notes, catching up with work already done. Nothing to
+port.
+
 The four strands of this round met correctly. The browser and the server now
 phrase a broken tool file's rejection identically again — the browser had been
 saying "object" where the old app says "record" at three places, and it was left

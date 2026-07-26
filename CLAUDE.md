@@ -1443,7 +1443,10 @@ records THERE. Update this summary only when a phase or round completes.
   Regenerate from a **pinned detached worktree** (`oracle-regen-pinned-v4-worktree`)
   — v4 shipped four commits in one day during the last round and cannot be
   assumed still at HEAD. ⚠ v4 is mid-4.8/4.9 dev — drift-check before every
-  round.
+  round. **v4 moved to `20430561` during this unification and it is
+  DISPOSITIONED: docs-only** (v4's own `docs/CHANGELOG.md` +
+  `docs/releases/4.8.0.md`, zero `lib/`, `app/`, `components/` or `packages/`
+  code), so the baseline stays `231be14c` and **no drift debt is owed**.
   The previous baseline paragraph follows for history:
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
