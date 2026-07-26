@@ -425,8 +425,10 @@ v5 verdict.
 | NewChatModal | `components/new-chat/NewChatModal.tsx`, 3 callers | **replaced by route** `/salon/new` (`app.routes.ts:23-26`) | **DIVERGENCE-DOCUMENTED** |
 
 `StateEditorModal` is dual-host in v4 — project (`SettingsCard.tsx:102`)
-**and** chat (`ChatModals.tsx:414`); v5 ports the project host only, so the
-chat entry point is a MISSING row under §2.3. `PhotoGalleryModal` ports
+**and** chat (`ChatModals.tsx:414`). **Both hosts are now ported** (this note
+used to say the project host only; the chat host landed with `p4.9h1` on
+2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`, and
+the state-cascade deferral closed with it). `PhotoGalleryModal` ports
 chat mode and names its own deferrals at `images/photo-gallery-modal.ts:31`
 (ChatGalleryImageViewModal, tag editing, prev/next navigation). The
 generate dialog carries a recorded narrowing to four params
@@ -459,7 +461,7 @@ records the full path; the table's shorthand reads as the wrong one.)
 | RunToolModal | `ChatModals.tsx:403` | `p4.9e3` |
 | ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` |
 | ChatProjectModal | `ChatModals.tsx:187` | `p4.9e3` |
-| StateEditorModal (chat host) | `ChatModals.tsx:414` | `p4.9e3` |
+| StateEditorModal (chat host) | `ChatModals.tsx:414` | ~~`p4.9e3`~~ **DONE** (`p4.9h1`, 2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`) |
 | SearchReplaceModal | `ChatModals.tsx:361` | `p4.9e3` |
 | AllLLMPauseModal | `ChatModals.tsx:423` | `p4.9e3` |
 | SelectLLMProfileDialog | `ChatModals.tsx:443` | `p4.9e3` |

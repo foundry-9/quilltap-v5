@@ -8237,6 +8237,23 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+Round planning — the chat action remainder (P4.9E1A ∥ P4.9E3A ∥ P4.9E1B). Three
+work orders written; no code. The survey found a real hole: v5 can create a chat
+with a cast and then never change it — there is no add/update/remove-participant
+verb anywhere on the boundary, and v4 has two entrances to that mutation (the
+`?action=` verbs and the chat-PUT bag), both unported. Nineteen v4 chat actions
+are missing in total. P4.9E1A takes the cast and avatar-override half plus the
+chat-PUT bag's participant families; P4.9E3A takes the chat-admin and tools half
+(eleven verbs, including the unported `applyChatMerge`); P4.9E1B builds the Add
+Character / Create NPC dialogs, participant editing, the RNG gutter tool and the
+chat tool-settings modal. Two stale handoff records corrected on the way past:
+the chat-host StateEditorModal was routed to a future order in
+`m6-screen-parity.md` although `p4.9h1` landed it, and P4.9G4's round-1 status
+line read as OPEN under its own CLOSED header. Deliberately left out and recorded
+with reasons: the `TimestampConfigSchema` write-path normalization (it straddles
+the two server lanes' file seam), the `p4.9e3` dialog family's UI, and the
+backup/restore surface — v4 is mid-fix there and that is a drift round of its own.
+
 P4.d18 unit 4 — the fictional-clock anchor backfill, as a boot repair. v4's
 migration `anchor-fictional-clock-base-v1` is ported to
 `db::fictional_clock_anchor_repair` and invoked once per startup from the host's
