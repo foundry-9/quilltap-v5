@@ -1,9 +1,17 @@
 //! Tier-1 differential test: chat timestamp utilities (chat-orchestration wave 1.2, Part A).
 //!
-//! Covers resolveTimezone, calculateCurrentTimestamp, shouldInjectTimestamp,
-//! formatTimestampForSystemPrompt, and initializeFictionalTime. The injected
-//! clock (`now_ms`) and host local offset (`localOffsetMin`) are pinned by the
-//! oracle so every row is fully deterministic; exact equality on every field.
+//! Covers resolveTimezone, parseTimestampInTimezone, calculateCurrentTimestamp,
+//! shouldInjectTimestamp, formatTimestampForSystemPrompt, and
+//! ensureFictionalBaseRealTime. The injected clock (`now_ms`) and host local
+//! offset (`localOffsetMin`) are pinned by the oracle so every row is fully
+//! deterministic; exact equality on every field.
+//!
+//! P4.d18 (the `e3a9654f` fictional-story-clock drift) widened this family with
+//! the parse-in-timezone rows, the ZONE-LESS `datetime-local` fictional bases in
+//! the calc family, and the ensure-anchor rows. The zone-less calc rows are the
+//! load-bearing addition: their absence is what let the port's
+//! `parse_date_ms → 0` bug (every real fictional clock reading 1970-adjacent
+//! nonsense) survive a green differential.
 //!
 //! Generate the oracle output (TZ=UTC is REQUIRED — the undefined-timezone path
 //! reads the host TZ):
@@ -14,11 +22,12 @@
 //!   QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson cargo test -p quilltap-harness
 
 use quilltap_core::chat_timestamp::{
-    calculate_current_timestamp, format_timestamp_for_system_prompt, initialize_fictional_time,
-    resolve_timezone, should_inject_timestamp, CalculatedTimestamp, TimestampConfig,
-    TimestampFormat, TimestampMode,
+    calculate_current_timestamp, ensure_fictional_base_real_time,
+    format_timestamp_for_system_prompt, parse_timestamp_in_timezone, resolve_timezone,
+    should_inject_timestamp, CalculatedTimestamp, TimestampConfig, TimestampFormat, TimestampMode,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Deserialize)]
 struct WireConfig {
@@ -132,14 +141,24 @@ enum Row {
         auto_prepend: bool,
         out: String,
     },
-    #[serde(rename = "init")]
-    Init {
+    #[serde(rename = "parseTz")]
+    ParseTz {
         id: String,
-        base: WireConfig,
-        fictional: String,
+        value: String,
+        timezone: Option<String>,
+        #[serde(rename = "localOffsetMin")]
+        local_offset_min: i64,
+        out: i64,
+    },
+    #[serde(rename = "ensure")]
+    Ensure {
+        id: String,
+        config: Value,
+        #[serde(rename = "anchorMs", default)]
+        anchor_ms: Option<i64>,
         #[serde(rename = "nowMs")]
         now_ms: i64,
-        out: WireConfig,
+        out: Value,
     },
 }
 
@@ -155,7 +174,18 @@ fn chat_timestamp_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
+    let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut naive_calc_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        {
+            let raw: Value = serde_json::from_str(line).unwrap();
+            *kinds
+                .entry(raw["kind"].as_str().unwrap().to_string())
+                .or_default() += 1;
+            if raw["kind"] == "calc" && raw["id"].as_str().unwrap().starts_with("naive-") {
+                naive_calc_rows += 1;
+            }
+        }
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Resolve {
                 id,
@@ -225,22 +255,58 @@ fn chat_timestamp_matches_oracle() {
                 let got = format_timestamp_for_system_prompt(&ts, auto_prepend);
                 assert_eq!(got, out, "format '{id}'");
             }
-            Row::Init {
+            Row::ParseTz {
                 id,
-                base,
-                fictional,
+                value,
+                timezone,
+                local_offset_min,
+                out,
+            } => {
+                let got =
+                    parse_timestamp_in_timezone(&value, timezone.as_deref(), local_offset_min)
+                        .unwrap_or_else(|e| panic!("parseTz '{id}' unexpected error: {e}"));
+                assert_eq!(got, out, "parseTz '{id}' (value {value:?})");
+            }
+            Row::Ensure {
+                id,
+                config,
+                anchor_ms,
                 now_ms,
                 out,
             } => {
-                let base_cfg: TimestampConfig = base.into();
-                let want: TimestampConfig = out.into();
-                let got = initialize_fictional_time(&base_cfg, &fictional, now_ms);
-                assert_eq!(got, want, "init '{id}'");
+                // v4's `anchor ?? new Date()` — the Rust signature takes the
+                // already-resolved instant, so the default is applied here.
+                let got = ensure_fictional_base_real_time(&config, anchor_ms.unwrap_or(now_ms));
+                // Compare the SERIALIZED forms: `Value`'s own PartialEq is
+                // order-independent, and key order is load-bearing (this object
+                // is written straight into the `chats.timestampConfig` column).
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(&out).unwrap(),
+                    "ensure '{id}'"
+                );
             }
         }
         count += 1;
     }
 
     assert!(count > 0, "oracle file looks empty: {count}");
-    eprintln!("OK: chat-timestamp matched oracle ({count} rows).");
+
+    // Shape assertions, not row-count constants: a regenerated oracle that
+    // silently dropped a family would otherwise still pass. The `naive-` calc
+    // floor is the one that matters — those zone-less `datetime-local` bases
+    // are the case class P4.d18 added, and losing them re-opens the blind spot
+    // that hid `parse_date_ms → 0`.
+    for family in ["resolve", "calc", "inject", "format", "parseTz", "ensure"] {
+        assert!(
+            kinds.get(family).copied().unwrap_or(0) > 0,
+            "oracle carries no '{family}' rows — regeneration lost a family (kinds: {kinds:?})"
+        );
+    }
+    assert!(
+        naive_calc_rows >= 20,
+        "expected the zone-less datetime-local fictional-base calc rows (>= 20), got {naive_calc_rows}"
+    );
+
+    eprintln!("OK: chat-timestamp matched oracle ({count} rows, kinds: {kinds:?}).");
 }

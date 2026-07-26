@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Fictional story clocks now keep time. A clock started at a fictional moment
+advances one minute for every minute that passes, instead of reporting the same
+instant on every turn, and its starting hour is read as a clock in the story's
+own timezone rather than the server's. In the new app the second bug was worse
+than a wrong hour: a starting time entered through the date-and-time picker did
+not parse at all, and the clock reported a date near 1970. The test corpus only
+ever used a format that hid it, and now carries the picker's own format across
+ten timezones, including one from 1550 whose offset is not a whole number of
+minutes.
+
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be
 withheld from characters whose fact sheet does not qualify, the run dialog
@@ -8077,6 +8087,28 @@ delete/gallery/import flows, the ST-export action). The parent P4.6f/P4.6g
 status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
+
+P4.d18 unit 1 — the `e3a9654f` fictional-story-clock re-port (pure half).
+`parse_timestamp_in_timezone` is new: v4's `NAIVE_TIMESTAMP_PATTERN` (the
+`datetime-local` shape, `[T ]` separator, optional seconds, `trim()`), the
+absolute/`no-timezone` fall-throughs, and the three-attempt convergence loop
+reproduced as a bound, not a fixpoint. `calculate_current_timestamp` adopts it
+for `fictionalBaseTimestamp`; `fictionalBaseRealTime` keeps `parse_date_ms`,
+which now covers the whole `Date.parse` ISO subset (`…Z`, `…±HH:MM`, and the
+zone-less form JS reads against the host zone) instead of returning 0 for
+everything but `…Z`. Both fictional guards became JS-truthiness tests, so an
+empty-string base or anchor behaves as v4's does.
+`ensure_fictional_base_real_time` replaces the deleted `initialize_fictional_time`
+and operates on the raw `serde_json::Value` so unknown keys ride through as v4's
+spread does. **Two v5 bugs fixed, both found by the widened corpus:** a
+`datetime-local` fictional base parsed to `0` (every fictional clock read
+1970-adjacent nonsense), and the `+HH:MM` offset string truncated a sub-minute
+LMT offset where v4 floors both sides to the minute (`Europe/Istanbul` in 1550
+prints `+01:56`, not `+01:55`). The differential grew from 68 to 140 rows: a
+20-case `parseTz` family, a 12-case `ensure` family, and 43 calc rows carrying
+zone-less bases across ten zones — the case class whose absence let a total
+production breakage survive a green diff. Coverage is asserted by shape, not by
+a row-count constant. core 0.0.361, harness 0.0.311.
 
 P4.6x (lane C, in progress) — the Document Mode SPA state store + the
 core-contract document block. The `useDocumentMode` port lands as an

@@ -35507,3 +35507,116 @@ fresh dist and freshly built debug binaries (`cargo build -p quilltap-web -p
 quilltap-cli` — those crates were BUILT, never modified). SPA `0.5.271` →
 `0.5.278` (this lane is the round's only SPA bumper, so the version line merges
 cleanly).
+
+## P4.d18 — the `e3a9654f` fictional-story-clock drift re-port (lane record)
+
+Lane A of the `231be14c` drift-catch-up round. Branch
+`lane/p4.d18-fictional-clock`. v4 verified CLEAN at `231be14c` at lane start
+(`git log 231be14c..HEAD` empty); every oracle in this lane regenerated from
+the pinned detached worktree `/tmp/qt-v4-pin-231be14c`.
+
+### Unit 1 — the pure half: `parse_timestamp_in_timezone`, the calc adoption, `ensure_fictional_base_real_time`, and the widened corpus
+
+`crates/quilltap-core/src/chat_timestamp.rs`, `harness/oracle/cases/
+chat-timestamp.ts`, `crates/quilltap-harness/tests/
+chat_timestamp_equivalence.rs`.
+
+**What landed.**
+
+- `parse_timestamp_in_timezone(value, timezone, local_offset_minutes) -> Result<i64, InvalidTimezone>`
+  — v4's new export. The `NAIVE_TIMESTAMP_PATTERN` is hand-rolled rather than
+  pulled through a regex crate (`match_naive_timestamp`): four-digit year,
+  two-digit month/day, `[T ]`, `HH:MM`, optional `:SS`, anchored both ends, so a
+  trailing `Z` or `+05:30` fails the match exactly as the regex does. `trim()`
+  applies to the MATCH only — the fall-through gets the raw `value`, as v4's
+  `new Date(value)` does. The convergence loop is a **bound of three attempts,
+  not a fixpoint solver**: a pathological zone lands where v4 lands.
+- `date_utc_ms` reproduces `Date.UTC`'s two reachable quirks: the legacy
+  two-digit-year window (`Date.UTC(50, …)` is 1950 — the pattern's `\d{4}` can
+  still deliver `0050`) and roll-over rather than validation for out-of-range
+  month/day. Both fall out of arithmetic.
+- `calculate_current_timestamp` routes `fictionalBaseTimestamp` through it and
+  carries v4's two new why-comments. `fictionalBaseRealTime` keeps
+  `parse_date_ms` — it is written by us as `toISOString()`.
+- `ensure_fictional_base_real_time(&Value, anchor_ms) -> Value` replaces
+  `initialize_fictional_time` (deleted, with its unit test and the module
+  doc-comment mention). It takes the **raw `serde_json::Value`**, per the
+  order's preference: v4's `{...config}` spread carries unknown keys through and
+  the persisted blob is the thing being stamped. The three guards are JS
+  truthiness tests (`js_truthy`), in v4's order; `serde_json`'s `preserve_order`
+  `insert` keeps an already-present-but-falsy `fictionalBaseRealTime` in its
+  original slot, exactly as the spread does, and a fresh key lands last. A
+  non-object (including `null`) passes straight through — v4's `if (!config)`.
+  `anchor_ms` is v4's `anchor ?? new Date()` already resolved by the caller.
+
+**TWO v5 bugs fixed, both surfaced by the widened corpus, neither in the
+order's scope list:**
+
+1. **The one the order predicted** — a `datetime-local` base parsed to `0`.
+   `parse_date_ms` delegated to `clock::iso_to_ms`, which requires a trailing
+   `Z`, so every real fictional clock reported a 1970-adjacent instant, not
+   merely the wrong hour. `parse_date_ms` now goes through a new
+   `js_new_date_ms`, which is `episodic::js_date_parse_ms` (the existing,
+   already-differential-proven `Date.parse` ISO-subset port) plus the host-zone
+   shift JS applies to a zone-less date-time. **This required one out-of-lane
+   token:** `episodic::js_date_parse_ms` went from private to `pub(crate)`. No
+   behavior change, no signature change; the alternative was duplicating ~100
+   lines of V8-quirk-faithful parsing.
+2. **The one nothing predicted** — `timezone_offset_string` computed the
+   `+HH:MM` offset as `zone_offset_seconds / 60`, truncating. v4 never reads the
+   raw offset: it diffs the *displayed minute fields* of the instant in the zone
+   against UTC, so a sub-minute LMT offset is dropped by two independent
+   truncations and the printed offset **depends on the instant**.
+   `Europe/Istanbul` in 1550 is +01:55:52; at `:45:00` local, UTC reads `:49:08`
+   of the previous hour and v4 prints `+01:56`. v5 printed `+01:55`. Fixed by
+   flooring both sides to the minute. Every minute-aligned modern zone is
+   unaffected — this only ever shows on pre-standardisation instants, which is
+   precisely why no prior corpus row caught it. The differential caught it on
+   the first run of the new rows.
+
+**The corpus: 68 → 140 rows.** Three additions:
+
+- `parseTz`, 20 cases: zone-less across five zones, optional seconds, the space
+  separator, leading/trailing whitespace, four DST-boundary instants (incl. the
+  spring hour that does not exist and the fall hour that happens twice — the
+  two-iteration cases), `Z` and both signs of `±HH:MM` pass-through, the
+  no-timezone fall-through, and two shapes the naive pattern rejects.
+- `calc`, +43 rows: **the load-bearing addition.** Ten zone-less
+  `datetime-local` bases (Istanbul 1550, four modern zones incl. the half-hour
+  and 45-minute offsets, no-zone, with-seconds, space-separator, and both DST
+  edges), each ANCHORED 90 minutes back (so the clock is proven to *advance* —
+  base + 1h30m) and UNANCHORED (v4's `new Date()` fallback → elapsed 0), plus
+  absolute-base-with-story-zone rows and the two empty-string truthiness arms.
+- `ensure`, 12 cases: all three guards, the explicit-anchor retro-fit arm,
+  unknown keys riding along, the falsy-anchor re-stamp-in-place ordering case,
+  and the `null` passthrough. Diffed on the **serialized** form, because
+  `Value`'s own `PartialEq` is order-independent and key order is load-bearing
+  (this object is written straight into `chats.timestampConfig`).
+
+The test now asserts coverage **by shape** — every family non-empty, and
+`naive_calc_rows >= 20` — rather than by a row-count constant, so a regenerated
+oracle that silently dropped the zone-less family fails instead of passing.
+
+**Regen recipe (this lane owns the file entirely; no sibling reads it):**
+
+```bash
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-231be14c 231be14c
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-pin-231be14c/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-pin-231be14c/packages/quilltap/node_modules
+cd /tmp/qt-v4-pin-231be14c
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH \
+  TZ=UTC npx tsx ~/source/quilltap-v5/harness/oracle/cases/chat-timestamp.ts \
+  > /tmp/oracle-chat-timestamp.ndjson
+# then, from the v5 checkout:
+QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson \
+  cargo test -p quilltap-harness --test chat_timestamp_equivalence -- --nocapture
+```
+
+`TZ=UTC` is load-bearing (the oracle throws if `getTimezoneOffset() != 0`) —
+the `timezone === undefined` path reads the host zone on both sides.
+
+**Gate.** `cargo fmt --all --check`; clippy clean on both feature sets; 384 test
+binaries, 0 failed; `chat_timestamp_equivalence` green BY NAME with
+`--nocapture`, zero SKIP, `140 rows, kinds: {calc: 89, ensure: 12, format: 2,
+inject: 12, parseTz: 20, resolve: 5}`. core 0.0.361, harness 0.0.311.

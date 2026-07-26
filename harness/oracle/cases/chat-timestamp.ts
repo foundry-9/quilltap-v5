@@ -2,8 +2,15 @@
  * Oracle case: chat timestamp utilities (chat-orchestration wave 1.2, Part A).
  *
  * Drives the REAL exported functions from v4's lib/chat/timestamp-utils.ts:
- *   resolveTimezone, calculateCurrentTimestamp, shouldInjectTimestamp,
- *   formatTimestampForSystemPrompt, initializeFictionalTime.
+ *   resolveTimezone, parseTimestampInTimezone, calculateCurrentTimestamp,
+ *   shouldInjectTimestamp, formatTimestampForSystemPrompt,
+ *   ensureFictionalBaseRealTime.
+ *
+ * Widened by P4.d18 (the `e3a9654f` fictional-story-clock drift): the parse-in-
+ * timezone family, zone-less `datetime-local` fictional bases in the calc
+ * family (the case class whose absence let `parse_date_ms → 0` survive a green
+ * differential), and the ensure-anchor family replacing the deleted
+ * initializeFictionalTime.
  *
  * The impure clock is pinned: `Date.now()` is overridden to a fixed epoch-ms per
  * row and the value recorded in the NDJSON so the Rust port injects the identical
@@ -21,10 +28,11 @@
 
 import {
   resolveTimezone,
+  parseTimestampInTimezone,
   calculateCurrentTimestamp,
   shouldInjectTimestamp,
   formatTimestampForSystemPrompt,
-  initializeFictionalTime,
+  ensureFictionalBaseRealTime,
   type CalculatedTimestamp,
 } from '@/lib/chat/timestamp-utils'
 import type { TimestampConfig } from '@/lib/schemas/types'
@@ -80,7 +88,22 @@ type Row =
       out: boolean
     }
   | { kind: 'format'; id: string; formatted: string; isoValue: string; isFictional: boolean; autoPrepend: boolean; out: string }
-  | { kind: 'init'; id: string; base: TimestampConfig; fictional: string; nowMs: number; out: TimestampConfig }
+  | {
+      kind: 'parseTz'
+      id: string
+      value: string
+      timezone: string | null
+      localOffsetMin: number
+      out: number
+    }
+  | {
+      kind: 'ensure'
+      id: string
+      config: unknown
+      anchorMs: number | null
+      nowMs: number
+      out: unknown
+    }
 
 const rows: Row[] = []
 
@@ -226,6 +249,103 @@ pushCalc(
   T_MAIN,
 )
 
+// ---- fictional bases in the shape the UI actually produces (P4.d18) --------
+// `<input type="datetime-local">` emits a ZONE-LESS wall-clock string. This is
+// the case class the corpus lacked, and its absence is why the port's
+// `parse_date_ms → 0` bug (every fictional clock reading 1970-adjacent
+// nonsense) survived a green differential. Each zone gets an ANCHORED row (a
+// real elapsed span, so the clock is proven to advance) and an UNANCHORED one
+// (v4's `new Date()` fallback → elapsed 0 → the base itself).
+const NAIVE_BASES: Array<[string, string, string | null]> = [
+  // id-suffix, fictionalBaseTimestamp, timezone
+  ['istanbul-1550', '1550-07-25T10:15', 'Europe/Istanbul'], // pre-standardisation LMT (+01:55:52)
+  ['ny-modern', '2026-07-25T10:15', 'America/New_York'],
+  ['kolkata-halfhour', '2026-07-25T10:15', 'Asia/Kolkata'],
+  ['chatham-45', '2026-07-25T10:15', 'Pacific/Chatham'],
+  ['utc', '2026-07-25T10:15', 'UTC'],
+  ['no-zone', '2026-07-25T10:15', null], // system-local fall-through (TZ=UTC here)
+  ['with-seconds', '1885-11-05T01:20:59', 'America/Chicago'],
+  ['space-separator', '1885-11-05 01:20', 'America/Chicago'],
+  ['dst-spring-gap', '2026-03-08T02:30', 'America/New_York'], // the hour that does not exist
+  ['dst-fall-overlap', '2026-11-01T01:30', 'America/New_York'], // the hour that happens twice
+]
+for (const [suffix, fictionalBaseTimestamp, z] of NAIVE_BASES) {
+  for (const fmt of ['ISO8601', 'FRIENDLY'] as const) {
+    // Anchored 90 minutes back → the story clock must read base + 1h30m.
+    pushCalc(
+      `naive-${suffix}-anchored-${fmt}`,
+      base({
+        format: fmt,
+        timezone: z,
+        useFictionalTime: true,
+        fictionalBaseTimestamp,
+        fictionalBaseRealTime: new Date(T_MAIN - 90 * 60_000).toISOString(),
+      }),
+      z,
+      T_MAIN,
+    )
+  }
+  pushCalc(
+    `naive-${suffix}-unanchored`,
+    base({
+      format: 'ISO8601',
+      timezone: z,
+      useFictionalTime: true,
+      fictionalBaseTimestamp,
+      fictionalBaseRealTime: null,
+    }),
+    z,
+    T_MAIN,
+  )
+}
+
+// Absolute bases still pass through parseTimestampInTimezone untouched, even
+// with a story timezone set.
+pushCalc(
+  'fictional-absolute-z-with-zone',
+  base({
+    format: 'ISO8601',
+    timezone: 'Europe/Istanbul',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1776-07-04T16:30:00.000Z',
+    fictionalBaseRealTime: '2026-07-02T11:34:56.789Z',
+  }),
+  'Europe/Istanbul',
+  T_MAIN,
+)
+pushCalc(
+  'fictional-absolute-offset-with-zone',
+  base({
+    format: 'ISO8601',
+    timezone: 'America/Chicago',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '2026-01-15T12:00:00+05:00',
+    fictionalBaseRealTime: '2026-07-02T12:34:56.789Z',
+  }),
+  'America/Chicago',
+  T_MAIN,
+)
+// JS truthiness on both fictional guards: '' is falsy, so an empty base means
+// "not fictional" and an empty anchor falls back to `new Date()`.
+pushCalc(
+  'fictional-empty-base-is-realtime',
+  base({ format: 'ISO8601', timezone: 'UTC', useFictionalTime: true, fictionalBaseTimestamp: '' }),
+  'UTC',
+  T_MAIN,
+)
+pushCalc(
+  'fictional-empty-realbase-falls-back',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '2026-07-25T10:15',
+    fictionalBaseRealTime: '',
+  }),
+  'UTC',
+  T_MAIN,
+)
+
 // ---- shouldInjectTimestamp -----------------------------------------------
 const injectCases: Array<[string, TimestampConfig | null, boolean, number | null | undefined]> = [
   ['null-config', null, true, null],
@@ -260,12 +380,132 @@ for (const ap of [true, false]) {
   })
 }
 
-// ---- initializeFictionalTime ---------------------------------------------
-PINNED_NOW = T_MAIN
-{
-  const b = base({ mode: 'START_ONLY', format: 'ISO8601', autoPrepend: false })
-  const out = initializeFictionalTime(b, '1885-11-05T00:00:00.000Z')
-  rows.push({ kind: 'init', id: 'init-basic', base: b, fictional: '1885-11-05T00:00:00.000Z', nowMs: T_MAIN, out })
+// ---- parseTimestampInTimezone (P4.d18) ------------------------------------
+// The returned Date is compared as epoch-ms. Every input here is well-formed:
+// v4's unparseable fall-through is `NaN`, which has no i64 counterpart in the
+// Rust port (it yields 0), so the differential deliberately does not table it.
+const parseTzCases: Array<[string, string, string | null]> = [
+  // Zone-less, read as a clock in the target zone.
+  ['naive-istanbul-1550', '1550-07-25T10:15', 'Europe/Istanbul'],
+  ['naive-istanbul-modern', '2026-07-25T10:15', 'Europe/Istanbul'],
+  ['naive-ny', '2026-07-25T10:15', 'America/New_York'],
+  ['naive-kolkata', '2026-07-25T10:15', 'Asia/Kolkata'],
+  ['naive-chatham', '2026-07-25T10:15', 'Pacific/Chatham'],
+  ['naive-utc', '2026-07-25T10:15', 'UTC'],
+  // Optional seconds, and the `[T ]` space separator.
+  ['naive-with-seconds', '1885-11-05T01:20:59', 'America/Chicago'],
+  ['naive-space-separator', '1885-11-05 01:20', 'America/Chicago'],
+  // Leading/trailing whitespace: trimmed before the match.
+  ['naive-whitespace', '  2026-07-25T10:15  ', 'Europe/Paris'],
+  // DST boundaries — the two-iteration cases.
+  ['naive-dst-spring-gap', '2026-03-08T02:30', 'America/New_York'],
+  ['naive-dst-spring-edge', '2026-03-08T03:00', 'America/New_York'],
+  ['naive-dst-fall-overlap', '2026-11-01T01:30', 'America/New_York'],
+  ['naive-dst-paris-spring', '2026-03-29T02:30', 'Europe/Paris'],
+  // Absolute strings pass through untouched.
+  ['absolute-z', '1776-07-04T16:30:00.000Z', 'Europe/Istanbul'],
+  ['absolute-offset', '2026-01-15T12:00:00+05:00', 'America/Chicago'],
+  ['absolute-negative-offset', '2026-01-15T12:00:00-08:00', 'Asia/Kolkata'],
+  // No timezone → system-local parsing (TZ=UTC on this oracle run).
+  ['no-timezone-naive', '2026-07-25T10:15', null],
+  ['no-timezone-absolute', '2026-07-25T10:15:00.000Z', null],
+  // Shapes the naive pattern rejects, so they fall through to new Date():
+  ['fallthrough-millis', '2026-07-25T10:15:30.500Z', 'Europe/Istanbul'],
+  ['fallthrough-date-only', '2026-07-25', 'Europe/Istanbul'],
+]
+for (const [id, value, timezone] of parseTzCases) {
+  PINNED_NOW = T_MAIN
+  const out = parseTimestampInTimezone(value, timezone ?? undefined).getTime()
+  rows.push({ kind: 'parseTz', id, value, timezone, localOffsetMin: LOCAL_OFFSET_MIN, out })
+}
+
+// ---- ensureFictionalBaseRealTime (P4.d18) ---------------------------------
+// Raw objects, not typed configs: v4's `{...config}` spread carries unknown
+// keys through and the Rust port operates on the same serde_json::Value, so the
+// diff is whole-object (key order included).
+const ANCHOR_MS = new Date('2026-01-02T03:04:05.000Z').getTime()
+const ensureCases: Array<[string, unknown, number | null]> = [
+  // Guard 1+2+3 all pass → stamped with `new Date()` (the pinned now).
+  [
+    'stamps-unanchored',
+    {
+      mode: 'EVERY_MESSAGE',
+      format: 'FRIENDLY',
+      useFictionalTime: true,
+      fictionalBaseTimestamp: '1776-07-04T16:30',
+      autoPrepend: true,
+    },
+    null,
+  ],
+  // Unknown keys ride along; the new key lands last.
+  [
+    'unknown-keys-ride-along',
+    {
+      useFictionalTime: true,
+      fictionalBaseTimestamp: '1776-07-04T16:30',
+      somethingWeDoNotModel: { nested: [1, 2, 3] },
+      intervalMinutes: 15,
+    },
+    null,
+  ],
+  // Explicit anchor (the retro-fit arm).
+  [
+    'explicit-anchor',
+    { useFictionalTime: true, fictionalBaseTimestamp: '1776-07-04T16:30' },
+    ANCHOR_MS,
+  ],
+  // Guard 3: an existing anchor is never re-stamped.
+  [
+    'already-anchored',
+    {
+      useFictionalTime: true,
+      fictionalBaseTimestamp: '1776-07-04T16:30',
+      fictionalBaseRealTime: '2020-05-05T05:05:05.000Z',
+    },
+    null,
+  ],
+  // Guard 1: real-time clock.
+  [
+    'real-time-untouched',
+    { useFictionalTime: false, fictionalBaseTimestamp: '1776-07-04T16:30' },
+    null,
+  ],
+  ['fictional-flag-absent', { fictionalBaseTimestamp: '1776-07-04T16:30' }, null],
+  // Guard 2: no base to count from (null, absent, and the falsy empty string).
+  ['base-null', { useFictionalTime: true, fictionalBaseTimestamp: null }, null],
+  ['base-absent', { useFictionalTime: true }, null],
+  ['base-empty-string', { useFictionalTime: true, fictionalBaseTimestamp: '' }, null],
+  // Guard 3 is a truthiness test too: a falsy anchor is re-stamped IN PLACE,
+  // so the key keeps its original slot rather than moving to the end.
+  [
+    'anchor-explicit-null-restamped-in-place',
+    {
+      useFictionalTime: true,
+      fictionalBaseTimestamp: '1776-07-04T16:30',
+      fictionalBaseRealTime: null,
+      trailingKey: 'kept',
+    },
+    null,
+  ],
+  [
+    'anchor-empty-string-restamped',
+    {
+      useFictionalTime: true,
+      fictionalBaseTimestamp: '1776-07-04T16:30',
+      fictionalBaseRealTime: '',
+    },
+    null,
+  ],
+  // null / undefined pass straight through.
+  ['null-config', null, null],
+]
+for (const [id, config, anchorMs] of ensureCases) {
+  PINNED_NOW = T_MAIN
+  const out =
+    anchorMs === null
+      ? ensureFictionalBaseRealTime(config as TimestampConfig)
+      : ensureFictionalBaseRealTime(config as TimestampConfig, new Date(anchorMs))
+  rows.push({ kind: 'ensure', id, config, anchorMs, nowMs: T_MAIN, out })
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n')

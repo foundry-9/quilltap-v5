@@ -2,9 +2,11 @@
 //!
 //! Calculates and formats the "current time" string injected into system
 //! prompts, with IANA-timezone-aware output and optional fictional (auto-
-//! incrementing) time. Mirrors v4's five exported functions:
-//! [`resolve_timezone`], [`calculate_current_timestamp`], [`should_inject_timestamp`],
-//! [`format_timestamp_for_system_prompt`], and [`initialize_fictional_time`].
+//! incrementing) time. Mirrors v4's six exported functions:
+//! [`resolve_timezone`], [`parse_timestamp_in_timezone`],
+//! [`calculate_current_timestamp`], [`should_inject_timestamp`],
+//! [`format_timestamp_for_system_prompt`], and
+//! [`ensure_fictional_base_real_time`].
 //!
 //! # Timezone mechanics (the CLDR/TZDB seam)
 //!
@@ -32,6 +34,8 @@
 //! offset) — inherently host-coupled. That host offset is likewise injected as
 //! `local_offset_minutes` (JS `getTimezoneOffset()` convention: positive = west
 //! of UTC), so no formatting path silently reads an ambient clock.
+
+use serde_json::Value;
 
 use crate::clock::iso_from_unix_ms;
 
@@ -209,6 +213,161 @@ fn get_date_parts_in_timezone(
     Ok(parts_from_local_ms(utc_ms + offset_ms))
 }
 
+/// JS `Date.UTC(year, month0, day, hours, minutes, seconds)` → Unix ms.
+///
+/// Reproduces the two behaviours the fixed-width `NAIVE_TIMESTAMP_PATTERN` can
+/// still reach: a two-digit year is read as 19xx (`Date.UTC(50, …)` is 1950),
+/// and every other field simply *rolls over* rather than erroring — a month of
+/// `13` lands in the next year, a day of `32` in the next month. Both fall out
+/// of arithmetic, so nothing here validates.
+fn date_utc_ms(year: i64, month0: i64, day: i64, hours: i64, minutes: i64, seconds: i64) -> i64 {
+    // Date.UTC's legacy two-digit-year window.
+    let year = if (0..=99).contains(&year) {
+        year + 1900
+    } else {
+        year
+    };
+    let y = year + month0.div_euclid(12);
+    let m = month0.rem_euclid(12) + 1;
+    let days = crate::clock::days_from_civil(y, m, 1) + (day - 1);
+    (days * 86_400 + hours * 3_600 + minutes * 60 + seconds) * 1000
+}
+
+/// v4's `NAIVE_TIMESTAMP_PATTERN`, hand-rolled:
+/// `^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$` — the shape an
+/// `<input type="datetime-local">` produces. Returns
+/// `(year, month, day, hours, minutes, seconds)` with `month` still 1-based
+/// (v4 subtracts one at the `Date.UTC` call). A trailing `Z` or `+05:30` makes
+/// the string absolute and fails the match, exactly as the regex does.
+fn match_naive_timestamp(value: &str) -> Option<(i64, i64, i64, i64, i64, i64)> {
+    let b = value.as_bytes();
+    if !value.is_ascii() {
+        return None;
+    }
+    fn digits(b: &[u8], at: usize, n: usize) -> Option<i64> {
+        let slice = b.get(at..at + n)?;
+        if !slice.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        std::str::from_utf8(slice).ok()?.parse().ok()
+    }
+    let year = digits(b, 0, 4)?;
+    if b.get(4) != Some(&b'-') {
+        return None;
+    }
+    let month = digits(b, 5, 2)?;
+    if b.get(7) != Some(&b'-') {
+        return None;
+    }
+    let day = digits(b, 8, 2)?;
+    if !matches!(b.get(10), Some(b'T') | Some(b' ')) {
+        return None;
+    }
+    let hours = digits(b, 11, 2)?;
+    if b.get(13) != Some(&b':') {
+        return None;
+    }
+    let minutes = digits(b, 14, 2)?;
+    let seconds = match b.len() {
+        16 => 0,
+        19 => {
+            if b.get(16) != Some(&b':') {
+                return None;
+            }
+            digits(b, 17, 2)?
+        }
+        _ => return None,
+    };
+    Some((year, month, day, hours, minutes, seconds))
+}
+
+/// Whether an ISO-ish string is a *date-time* carrying no zone designator — the
+/// one shape JS `new Date(...)` resolves against the HOST zone rather than UTC.
+/// (A date-only form like `"2026-07-25"` is UTC in JS, so it is excluded here.)
+fn is_zoneless_datetime(s: &str) -> bool {
+    match s.bytes().position(|c| c == b'T' || c == b't') {
+        Some(t) => !s
+            .bytes()
+            .skip(t + 1)
+            .any(|c| matches!(c, b'Z' | b'z' | b'+' | b'-')),
+        None => false,
+    }
+}
+
+/// JS `new Date(string).getTime()` over the ISO-8601 subset — the `Date.parse`
+/// port in [`crate::episodic`], plus the host-zone shift JS applies to a
+/// zone-less date-time (that parser resolves zone-less as UTC). `None` is JS's
+/// `NaN` date.
+fn js_new_date_ms(s: &str, local_offset_minutes: i64) -> Option<i64> {
+    let ms = crate::episodic::js_date_parse_ms(s)?;
+    if is_zoneless_datetime(s) {
+        // getTimezoneOffset() is positive west of UTC, so local wall-clock →
+        // UTC instant adds it back.
+        Some(ms + local_offset_minutes * 60_000)
+    } else {
+        Some(ms)
+    }
+}
+
+/// Interpret a timestamp string as a wall-clock reading in a target timezone —
+/// v4 `parseTimestampInTimezone` (`e3a9654f`). Returns Unix ms.
+///
+/// `new Date("1550-07-25T10:15")` resolves a zone-less string against the
+/// *server's* timezone, which then gets re-rendered in the story's — so a base
+/// of 10:15 set for `Europe/Istanbul` surfaced as 6:01 PM on an
+/// `America/Chicago` host (the two LMT offsets of 1550 differing by ~7h46m).
+/// The fictional base is a clock reading in the story's own timezone, so that is
+/// where it must be anchored.
+///
+/// Strings carrying an explicit zone (`…Z`, `…+05:30`) are already absolute and
+/// pass through untouched, as does any input when `timezone` is `None`
+/// (system-local parsing).
+///
+/// Resolution is iterative because the offset depends on the very instant being
+/// solved for (DST, and pre-standardisation LMT offsets that carry seconds). It
+/// converges in one step for fixed offsets and two across a DST boundary; three
+/// is slack. The **bound is three attempts, not a fixpoint** — a pathological
+/// zone that never converges lands wherever v4 lands.
+///
+/// An unparseable fall-through string is JS `NaN`; v5 has no NaN instant, so it
+/// becomes `0` (as [`parse_date_ms`] has always done). The differential keeps
+/// every base well-formed.
+pub fn parse_timestamp_in_timezone(
+    value: &str,
+    timezone: Option<&str>,
+    local_offset_minutes: i64,
+) -> Result<i64, InvalidTimezone> {
+    // v4 trims only for the match; the fall-through gets the raw `value`.
+    let matched = match_naive_timestamp(value.trim());
+    let (year, month, day, hours, minutes, seconds) = match (matched, timezone) {
+        (Some(m), Some(_)) => m,
+        _ => return Ok(js_new_date_ms(value, local_offset_minutes).unwrap_or(0)),
+    };
+
+    let target = date_utc_ms(year, month - 1, day, hours, minutes, seconds);
+
+    let mut instant = target;
+    for _ in 0..3 {
+        let shown = get_date_parts_in_timezone(instant, timezone, local_offset_minutes)?;
+        // `shown.month` is already 0-based, feeding Date.UTC's 0-based slot.
+        let shown_ms = date_utc_ms(
+            shown.year,
+            shown.month,
+            shown.day,
+            shown.hours,
+            shown.minutes,
+            shown.seconds,
+        );
+        let drift = target - shown_ms;
+        if drift == 0 {
+            break;
+        }
+        instant += drift;
+    }
+
+    Ok(instant)
+}
+
 /// Format a `+HH:MM` / `-HH:MM` offset from a total minute count (east-positive),
 /// matching v4's `getTimezoneOffset` output. `0` renders `+00:00` (the
 /// named-zone UTC path, distinct from `toISOString()`'s trailing `Z`).
@@ -218,17 +377,29 @@ fn format_offset(total_minutes: i64) -> String {
     format!("{sign}{:02}:{:02}", abs / 60, abs % 60)
 }
 
-/// v4 `getTimezoneOffset`: the `+HH:MM` string for the instant. For a named
-/// zone, jiff's second offset divided by 60 (all corpus/modern zones are
-/// minute-aligned, matching v4's minute-granular date-part diff). For `None`,
-/// the injected host offset (JS convention negated to east-positive).
+/// v4 `getTimezoneOffset`: the `+HH:MM` string for the instant.
+///
+/// For a named zone v4 diffs the *displayed minute fields* of the instant in
+/// that zone against UTC — never the raw offset — so the seconds of a
+/// pre-standardisation LMT offset are dropped by two independent truncations,
+/// and the printed offset therefore depends on the instant. `Europe/Istanbul`'s
+/// 1550 LMT is +01:55:52: at :45:00 local the UTC clock reads :49:08 of the
+/// previous hour, and v4 prints `+01:56`, not `+01:55`. Reproduced by taking the
+/// same floor-to-the-minute on both sides. (Every minute-aligned modern zone is
+/// unaffected — the two forms agree exactly there.)
+///
+/// For `None`, the injected host offset (JS convention negated to east-positive);
+/// v4 reads `date.getTimezoneOffset()`, which is already whole minutes.
 fn timezone_offset_string(
     utc_ms: i64,
     timezone: Option<&str>,
     local_offset_minutes: i64,
 ) -> Result<String, InvalidTimezone> {
     let minutes = match timezone {
-        Some(tz) => zone_offset_seconds(utc_ms, tz)? / 60,
+        Some(tz) => {
+            let offset_ms = zone_offset_seconds(utc_ms, tz)? * 1000;
+            (utc_ms + offset_ms).div_euclid(60_000) - utc_ms.div_euclid(60_000)
+        }
         None => -local_offset_minutes,
     };
     Ok(format_offset(minutes))
@@ -387,18 +558,35 @@ pub fn calculate_current_timestamp(
     now_ms: i64,
     local_offset_minutes: i64,
 ) -> Result<CalculatedTimestamp, InvalidTimezone> {
-    let (timestamp_ms, is_fictional) =
-        if config.use_fictional_time && config.fictional_base_timestamp.is_some() {
-            let fictional_base = parse_date_ms(config.fictional_base_timestamp.as_deref().unwrap());
-            let real_base = match config.fictional_base_real_time.as_deref() {
-                Some(s) => parse_date_ms(s),
+    // v4 guards on JS truthiness, so an empty-string base is "no base".
+    let fictional_base_timestamp = config
+        .fictional_base_timestamp
+        .as_deref()
+        .filter(|s| !s.is_empty());
+    let fictional_base_timestamp = fictional_base_timestamp.filter(|_| config.use_fictional_time);
+    let (timestamp_ms, is_fictional) = match fictional_base_timestamp {
+        Some(base) => {
+            // The base is a clock reading in the story's own timezone, not the
+            // server's — see `parse_timestamp_in_timezone`.
+            let fictional_base = parse_timestamp_in_timezone(base, timezone, local_offset_minutes)?;
+            // Without an anchor there is nothing to measure elapsed time
+            // against, so the clock would report the base instant forever.
+            // Writers stamp `fictionalBaseRealTime` (see
+            // `ensure_fictional_base_real_time`); this fallback only covers rows
+            // that predate that.
+            let real_base = match config
+                .fictional_base_real_time
+                .as_deref()
+                .filter(|s| !s.is_empty())
+            {
+                Some(s) => parse_date_ms(s, local_offset_minutes),
                 None => now_ms,
             };
             let elapsed = now_ms - real_base;
             (fictional_base + elapsed, true)
-        } else {
-            (now_ms, false)
-        };
+        }
+        None => (now_ms, false),
+    };
 
     // Format with timezone support.
     let formatted = match config.format {
@@ -445,12 +633,16 @@ pub fn calculate_current_timestamp(
 }
 
 /// Parse an ISO-ish date string to Unix ms, matching JS `new Date(s).getTime()`
-/// for the well-formed shapes the corpus uses. Reuses [`crate::clock::iso_to_ms`]
-/// (the `…Z` shape); for an offset-bearing or otherwise-unparseable string this
-/// returns 0 — but the corpus keeps fictional bases in the plain-`Z` shape, so
-/// the fallback is never exercised in the differential.
-fn parse_date_ms(s: &str) -> i64 {
-    crate::clock::iso_to_ms(s).unwrap_or(0)
+/// over the whole `Date.parse` ISO subset (`…Z`, `…±HH:MM`, and the zone-less
+/// form JS reads against the host zone). An unparseable string is JS `NaN`,
+/// which has no i64 counterpart, so it becomes `0`.
+///
+/// This is the `fictionalBaseRealTime` reader only. The *fictional base* goes
+/// through [`parse_timestamp_in_timezone`] instead — it is a zone-less
+/// `datetime-local` wall-clock reading, not an instant, and reading it here
+/// would resolve it against the wrong zone (v4 `e3a9654f`).
+fn parse_date_ms(s: &str, local_offset_minutes: i64) -> i64 {
+    js_new_date_ms(s, local_offset_minutes).unwrap_or(0)
 }
 
 /// Determine whether a timestamp should be injected — v4 `shouldInjectTimestamp`.
@@ -502,20 +694,64 @@ pub fn format_timestamp_for_system_prompt(
     }
 }
 
-/// Create a new config with fictional time set — v4 `initializeFictionalTime`.
-/// Records `now_ms` (injected) as the real-base ISO string, matching v4's
-/// `new Date().toISOString()`.
-pub fn initialize_fictional_time(
-    base_config: &TimestampConfig,
-    fictional_timestamp: &str,
-    now_ms: i64,
-) -> TimestampConfig {
-    TimestampConfig {
-        use_fictional_time: true,
-        fictional_base_timestamp: Some(fictional_timestamp.to_string()),
-        fictional_base_real_time: Some(iso_from_unix_ms(now_ms)),
-        ..base_config.clone()
+/// JS truthiness of an optional JSON value — v4's guards are bare `!x` tests, so
+/// `null`, `false`, `""` and `0` all read as "absent".
+fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+        Some(_) => true, // arrays and objects are truthy
     }
+}
+
+/// Anchor a fictional clock to real time, so it can actually advance — v4
+/// `ensureFictionalBaseRealTime` (`e3a9654f`).
+///
+/// Story time runs 1:1 with the wall clock, measured from
+/// `fictionalBaseRealTime`. Nothing populated that field for a long stretch, so
+/// [`calculate_current_timestamp`] fell back to "now", measured zero elapsed
+/// time, and re-reported the configured base on every single turn — the clock
+/// read the same instant forever.
+///
+/// Every path that persists a fictional-time config must run it through here
+/// first. Existing anchors are left alone: re-stamping a live chat would reset
+/// its clock back to the base.
+///
+/// Salon- and character-level *defaults* are deliberately not anchored — a
+/// default saved months ago carries no meaningful anchor. Chat creation is where
+/// a config becomes a running clock, so that is where the stamp is applied
+/// (inherited defaults included).
+///
+/// Operates on the raw `serde_json::Value` rather than the typed
+/// [`TimestampConfig`], because v4's `{...config}` spread carries unknown keys
+/// through untouched and the persisted blob is the thing being stamped. A
+/// non-object (including `null`) passes straight through, as v4's `if (!config)`
+/// guard does.
+///
+/// `anchor_ms` is v4's `anchor ?? new Date()` already resolved by the caller:
+/// now for a fresh chat, the chat's `createdAt` when retro-fitting an existing
+/// one.
+pub fn ensure_fictional_base_real_time(config: &Value, anchor_ms: i64) -> Value {
+    let Some(obj) = config.as_object() else {
+        return config.clone();
+    };
+    if !js_truthy(obj.get("useFictionalTime")) || !js_truthy(obj.get("fictionalBaseTimestamp")) {
+        return config.clone();
+    }
+    if js_truthy(obj.get("fictionalBaseRealTime")) {
+        return config.clone();
+    }
+
+    let mut out = obj.clone();
+    // Insert keeps an already-present (but falsy) key in its original slot, as
+    // the JS spread does; a fresh key lands last.
+    out.insert(
+        "fictionalBaseRealTime".to_string(),
+        Value::String(iso_from_unix_ms(anchor_ms)),
+    );
+    Value::Object(out)
 }
 
 #[cfg(test)]
@@ -662,17 +898,79 @@ mod tests {
     }
 
     #[test]
-    fn init_fictional() {
-        let base = cfg(TimestampFormat::Friendly);
-        let out = initialize_fictional_time(&base, "2000-01-01T00:00:00.000Z", NOW);
-        assert!(out.use_fictional_time);
+    fn ensure_anchor_stamps_only_unanchored_fictional_clocks() {
+        let fictional = serde_json::json!({
+            "mode": "EVERY_MESSAGE",
+            "useFictionalTime": true,
+            "fictionalBaseTimestamp": "1776-07-04T16:30",
+            "unknownKey": [1, 2],
+        });
+        let out = ensure_fictional_base_real_time(&fictional, NOW);
+        assert_eq!(out["fictionalBaseRealTime"], "2026-07-02T12:34:56.789Z");
+        // Unknown keys ride along, and the new key lands last.
+        assert_eq!(out["unknownKey"], serde_json::json!([1, 2]));
         assert_eq!(
-            out.fictional_base_timestamp.as_deref(),
-            Some("2000-01-01T00:00:00.000Z")
+            out.as_object().unwrap().keys().next_back().unwrap(),
+            "fictionalBaseRealTime"
+        );
+
+        // An existing anchor is never re-stamped — that would reset the clock.
+        let anchored = serde_json::json!({
+            "useFictionalTime": true,
+            "fictionalBaseTimestamp": "1776-07-04T16:30",
+            "fictionalBaseRealTime": "2020-05-05T05:05:05.000Z",
+        });
+        assert_eq!(ensure_fictional_base_real_time(&anchored, NOW), anchored);
+
+        // Real-time and baseless configs are left alone; so is null.
+        let real_time = serde_json::json!({ "useFictionalTime": false, "fictionalBaseTimestamp": "1776-07-04T16:30" });
+        assert_eq!(ensure_fictional_base_real_time(&real_time, NOW), real_time);
+        let baseless =
+            serde_json::json!({ "useFictionalTime": true, "fictionalBaseTimestamp": null });
+        assert_eq!(ensure_fictional_base_real_time(&baseless, NOW), baseless);
+        assert_eq!(
+            ensure_fictional_base_real_time(&Value::Null, NOW),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn zoneless_base_reads_as_a_clock_in_the_story_zone() {
+        // v4's worked example: 10:15 in 1550 Istanbul (LMT +01:55:52) is NOT
+        // 10:15Z. Before `e3a9654f` this parsed against the server's zone; in v5
+        // it parsed to 0 outright (`iso_to_ms` requires a trailing Z).
+        let ms =
+            parse_timestamp_in_timezone("1550-07-25T10:15", Some("Europe/Istanbul"), 0).unwrap();
+        let p = get_date_parts_in_timezone(ms, Some("Europe/Istanbul"), 0).unwrap();
+        assert_eq!(
+            (p.year, p.month + 1, p.day, p.hours, p.minutes),
+            (1550, 7, 25, 10, 15)
+        );
+        assert_ne!(ms, 0);
+
+        // Absolute strings pass through untouched.
+        assert_eq!(
+            parse_timestamp_in_timezone("1776-07-04T16:30:00.000Z", Some("Europe/Istanbul"), 0)
+                .unwrap(),
+            crate::clock::iso_to_ms("1776-07-04T16:30:00.000Z").unwrap()
         );
         assert_eq!(
-            out.fictional_base_real_time.as_deref(),
-            Some("2026-07-02T12:34:56.789Z")
+            parse_timestamp_in_timezone("2026-01-15T12:00:00+05:00", Some("America/Chicago"), 0)
+                .unwrap(),
+            crate::clock::iso_to_ms("2026-01-15T07:00:00.000Z").unwrap()
         );
+    }
+
+    #[test]
+    fn fictional_clock_advances_from_its_anchor() {
+        // The frozen-clock bug: 45 real minutes since the anchor must read as
+        // 45 story minutes past the base.
+        let mut c = cfg(TimestampFormat::Friendly);
+        c.use_fictional_time = true;
+        c.fictional_base_timestamp = Some("1550-07-25T10:15".to_string());
+        c.fictional_base_real_time = Some(iso_from_unix_ms(NOW - 45 * 60_000));
+        let r = calculate_current_timestamp(&c, Some("Europe/Istanbul"), NOW, 0).unwrap();
+        assert!(r.is_fictional);
+        assert_eq!(r.formatted, "July 25, 1550 at 11:00 AM");
     }
 }

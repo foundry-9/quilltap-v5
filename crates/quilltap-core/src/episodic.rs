@@ -399,7 +399,7 @@ pub(crate) fn utc_day_of_week(ms: i64) -> i64 {
 /// lowercase `t`/`z` accepted; a bare `HH` after `T` is invalid. Date-only
 /// forms are UTC; zone-less datetimes are treated as UTC here (JS: local —
 /// the oracle pins `TZ=UTC`).
-fn js_date_parse_ms(s: &str) -> Option<i64> {
+pub(crate) fn js_date_parse_ms(s: &str) -> Option<i64> {
     let bytes = s.as_bytes();
     if !s.is_ascii() {
         return None;
