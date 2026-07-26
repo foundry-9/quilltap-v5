@@ -733,7 +733,7 @@ where
 
     /// A tool runner for the carina / ask_carina / Brahma engines (each engine
     /// owns its own — the type-level cycle note from W4.11a).
-    fn tool_runner(&self) -> BuiltInToolRunner {
+    pub(crate) fn tool_runner(&self) -> BuiltInToolRunner {
         let mut runner = BuiltInToolRunner::new(self.db.clone(), self.env.clone());
         if let Some(sb) = &self.scrollback {
             runner = runner.with_scrollback(Arc::clone(sb) as _);
@@ -2557,6 +2557,13 @@ pub struct SpineBundle {
     /// `ChatAnnouncementPreview` arm answers the loud not-assembled refusal).
     pub announcement_preview:
         Option<Arc<dyn quilltap_core::api::chat_post_office::AnnouncementPreviewDriver>>,
+    /// The operator run-tool runner (P4.9E3A) — the same `BuiltInToolRunner` the
+    /// carina / ask_carina / Brahma engines get, so a tool invoked from the Run
+    /// Tool modal behaves exactly as it does mid-turn. `None` for canned test
+    /// factories — the `ChatRunTool` arm then answers the loud not-assembled
+    /// refusal AFTER v4's deny-list and chat arms.
+    pub operator_tool_runner:
+        Option<Arc<dyn quilltap_core::services::chat_run_tool::OperatorToolRunner>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2768,6 +2775,13 @@ impl SpineFactory for ProductionSpineFactory {
                 completion: announcement_completion,
                 embedding: announcement_embedding,
             })),
+            // P4.9E3A: the operator run-tool seam, LIVE — the same built-in tool
+            // runner the in-turn engines use, so a tool run from the Run Tool
+            // modal behaves exactly as it does mid-turn (scrollback + consult
+            // included).
+            operator_tool_runner: Some(Arc::new(
+                quilltap_core::services::chat_run_tool::ErasedToolRunner(spine.tool_runner()),
+            )),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),

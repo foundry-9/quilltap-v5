@@ -2544,6 +2544,18 @@ pub enum Request {
         disabled_tools: Vec<String>,
         disabled_tool_groups: Vec<String>,
     },
+    /// Operator-initiated tool execution (v4 `POST …?action=run-tool`).
+    #[serde(rename_all = "camelCase")]
+    ChatRunTool {
+        chat_id: String,
+        tool_name: String,
+        #[serde(default)]
+        arguments: Option<serde_json::Value>,
+        #[serde(default)]
+        character_id: Option<String>,
+        #[serde(default)]
+        private: Option<bool>,
+    },
     /// Manual RNG from the composer gutter (v4 `POST …?action=rng`). `kind` is
     /// either a die size (integer 2..=1000) or `"flip_coin"` / `"spin_the_bottle"`;
     /// `rolls` defaults to 1 (1..=100); `preview` returns without writing a message.

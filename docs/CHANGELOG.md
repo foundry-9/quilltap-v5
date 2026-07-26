@@ -8266,6 +8266,16 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 5 — running a tool by hand. The Run Tool surface lands on the
+boundary: the two tools a person may not invoke, the whispered run that hides
+itself from every character while staying visible to the operator, and the
+execution context derived from the chat rather than trusted from the client. The
+tool runner itself comes from the host, over the same runner the in-chat engines
+use, so a tool run by hand behaves exactly as it does mid-turn. Ten new cases;
+the fixture gained two wardrobe items so that which character the run speaks as
+is actually visible in the result — without them all three arms produced
+identical bytes.
+
 P4.9E3A unit 4 — the manual dice roll. The composer's gutter roll lands on the
 boundary: the request schema, the two human-readable lines it builds, the preview
 that returns a roll without committing it, and the tool message it writes

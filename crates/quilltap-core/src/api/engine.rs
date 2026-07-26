@@ -197,6 +197,18 @@ pub struct EngineAssembly {
     /// the recipe is in the lane record).
     pub announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
     // === end P4.9E2A ===
+    // === P4.9E3A: the operator run-tool seam ===
+    /// The tool runner the `run-tool` action executes through — the host's
+    /// `BuiltInToolRunner`, which carries the `SelfInventoryEnv`, the terminal
+    /// scrollback source and the consult runner. `None` (read-only embedders,
+    /// canned assemblies) → the `ChatRunTool` arm answers the loud not-assembled
+    /// refusal AFTER running v4's deny-list and chat arms, so the Run Tool modal
+    /// can render the reason. **The host wire is DEFERRED to unification** (the
+    /// P4.9f1 `avatar_preview` / P4.9E2A `announcement_preview` precedent — this
+    /// lane owns neither `quilltap-host` nor its version bump; the recipe is in
+    /// the lane record).
+    pub operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
+    // === end P4.9E3A ===
 }
 
 impl EngineAssembly {
@@ -234,6 +246,9 @@ impl EngineAssembly {
             // === P4.9E2A ===
             announcement_preview: None,
             // === end P4.9E2A ===
+            // === P4.9E3A ===
+            operator_tool_runner: None,
+            // === end P4.9E3A ===
         }
     }
 }
@@ -398,6 +413,7 @@ struct ReadyEngine {
     /// deferred host wire — the `ChatAnnouncementPreview` arm then answers the
     /// loud not-assembled refusal after v4's own validation arms).
     announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
+    operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
     // === end P4.9E2A ===
 }
 
@@ -1064,6 +1080,33 @@ impl CoreEngine {
             // §1 carries no `enabled` field, so only v4's ABSENT arm is
             // reachable from the wire (the service takes the full tri-state and
             // the differential covers all four — see `services/chat_admin.rs`).
+            Request::ChatRunTool {
+                chat_id,
+                tool_name,
+                arguments,
+                character_id,
+                private,
+            } => match self.ready_db_and_operator_tool_runner() {
+                Ok((db, runner)) => {
+                    let operator_name =
+                        crate::services::chat_run_tool::operator_display_name(&db, SINGLE_USER_ID);
+                    crate::services::chat_run_tool::chat_run_tool(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &tool_name,
+                        arguments.as_ref(),
+                        character_id.as_deref(),
+                        private,
+                        runner.as_deref(),
+                        operator_name,
+                        uuid::Uuid::new_v4().to_string(),
+                        crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ChatRng {
                 chat_id,
                 kind,
@@ -3899,6 +3942,24 @@ impl CoreEngine {
     /// validation / character / connection-profile arms and only refuses at the
     /// rewrite step (mirrors v4, where those checks precede the generation).
     #[allow(clippy::type_complexity)]
+    /// The DB plus the (possibly unassembled) operator tool runner — the
+    /// `run-tool` arm answers its own loud refusal when the runner is `None`, so
+    /// this helper hands the `Option` through rather than erroring here.
+    fn ready_db_and_operator_tool_runner(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.operator_tool_runner.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     fn ready_db_and_announcement_preview(
         &self,
     ) -> Result<
@@ -4532,6 +4593,7 @@ fn open_ready(
         backup_host: assembly.backup_host,
         // === P4.9E2A ===
         announcement_preview: assembly.announcement_preview,
+        operator_tool_runner: assembly.operator_tool_runner,
         // === end P4.9E2A ===
     })
 }

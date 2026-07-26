@@ -37380,3 +37380,73 @@ Zod 400s join `VALIDATION_DETAILS_GAP`; the seven writing/preview cases join
 `MINTED_MESSAGE_CASES`, where `id` + `createdAt` are blanked in both the body and
 the message dump while the content JSON's bytes, role, ordering and the
 preview-writes-nothing fact still diff.
+
+### Unit 5 — the run-tool verb
+
+v4 `actions/run-tool.ts:41` ported as `services/chat_run_tool.rs`, plus §1's
+`ChatRunTool`, its engine arm, and a new host seam.
+
+**The seam, and why it is LIVE rather than deferred.** v4 calls
+`executeToolCallWithContext` directly; v5's equivalent (`ToolRunner`) is
+assembled by the HOST — it needs the host's `SelfInventoryEnv`, terminal
+scrollback and consult runner. So the runner arrives through a new erased
+`OperatorToolRunner` seam on `EngineAssembly`. The `avatar_preview` /
+`announcement_preview` precedent would have left the host wire to unification,
+but the wire turned out to be six lines over the spine's OWN `tool_runner()`
+(the one the carina / ask_carina / Brahma engines already share), so it is wired
+here: `SpineBundle.operator_tool_runner` → the assembly. A tool run from the Run
+Tool modal therefore behaves exactly as it does mid-turn, scrollback and consult
+included. Canned test factories keep `None`, which answers the loud
+not-assembled refusal AFTER the deny-list and chat arms so the modal can render
+the reason. (`spine.rs::tool_runner` went `pub(crate)`; the two canned
+`SpineBundle` literals in `quilltap-web/tests` gained `None`.)
+
+**Arm ORDER is the route's, not the handler's.** v4's dispatcher 404s on a
+missing chat before the body is parsed, so the real sequence is
+**404 → Zod 400 → deny-list 400**. The handler's own
+`badRequest('Chat not found')` at :62 sits behind a SECOND read and is
+unreachable in practice — one read stands in for both. The differential caught
+this: the first draft ran the deny-list first and answered 400 where v4 answers
+404.
+
+Other quirks reproduced:
+
+- **The deny-list** (`submit_final_response`, `request_full_context`) with v4's
+  exact message, both members driven.
+- **A private run targets the OPERATOR's userId** — a UUID that is NOT a
+  participant id. That is deliberate (v4's comment): the salon filter and
+  `filterWhisperMessages` therefore exclude it from every character's context
+  while "show all whispers" still reveals it. The port writes the USER id, and
+  the case pins it.
+- **A `characterId` matching nobody yields NO participant, and the tool still
+  runs** with an empty context. v4's behavior, not an oversight.
+- `error` is dropped from the content JSON when empty/absent, and from the
+  result object when absent, matching `JSON.stringify` / `NextResponse.json`.
+- The structured result is kept UNFLATTENED in the message content (v4's comment:
+  ToolMessage renders rich fields).
+
+**Choosing tools the differential can actually diff.** The driven tools are
+DB-only and deterministic: an unknown name lands on v4's `Unknown tool: …`,
+`read_conversation` on its un-rendered-conversation failure, and `wardrobe_list`
+on the CALLING character's own wardrobe. The last is the discriminator for
+participant-picking — the fixture gained one distinctly-titled wardrobe item for
+EVE and one for CLIO, so the three arms produce three different bodies:
+
+- default pick → **EVE** ("Operator's travelling coat"). Note v4 takes the first
+  active CHARACTER participant *regardless of `controlledBy`*, so the operator's
+  own played character wins over the LLM ones — the fixture's participant order
+  makes that visible rather than assumed.
+- named `characterId: CLIO` → "Archivist's sleeve-guards".
+- unmatched `characterId` → "No items found".
+
+Without those two items all three arms produced identical bytes and the
+participant-picking code would have been untested. (A first attempt used
+`upsert_annotation` for the discriminator; it gates on the conversation being
+rendered, so it failed identically in every arm — recorded because the same trap
+waits for anyone reaching for a "cheap DB-only tool" here.)
+
+**Fixture change:** two wardrobe items added (EVE, CLIO). The
+`chat-admin-{main,mount}.db` family is this lane's own and nothing else reads
+it, so no other oracle is invalidated.
+
+**Differential:** 10 new cases (49 total).

@@ -133,6 +133,14 @@ const MEM_FREE = 'f0000000-0000-4000-8000-000000000003'; // no source message
 const W_BEA_DEFAULT = '00000000-0000-4000-8000-0000000000b1';
 const W_BEA_SPARE = '00000000-0000-4000-8000-0000000000b2';
 const W_DORIAN_DEFAULT = '00000000-0000-4000-8000-0000000000d1';
+// EVE + CLIO each carry ONE distinctly-titled item so `run-tool`'s
+// participant-picking is observable through `wardrobe_list` (which lists the
+// CALLING character's own wardrobe). EVE is the DEFAULT pick — v4 takes the
+// first active CHARACTER participant regardless of `controlledBy`, and EVE is
+// the operator's played character sitting at displayOrder 0 — so the default
+// pick, a named pick (CLIO) and an unmatched pick all produce different bytes.
+const W_EVE_ONLY = '00000000-0000-4000-8000-0000000000e1';
+const W_CLIO_ONLY = '00000000-0000-4000-8000-0000000000c1';
 
 async function main(): Promise<void> {
   // Kept in step with the oracle case (which formats dates): build under TZ=UTC.
@@ -331,6 +339,8 @@ async function main(): Promise<void> {
   await seedItem(BEA, W_BEA_DEFAULT, 'Signal-keeper’s coat', ['top'], true);
   await seedItem(BEA, W_BEA_SPARE, 'Deck boots', ['footwear'], false);
   await seedItem(DORIAN, W_DORIAN_DEFAULT, 'Lamplighter’s greatcoat', ['top'], true);
+  await seedItem(EVE, W_EVE_ONLY, 'Operator’s travelling coat', ['top'], false);
+  await seedItem(CLIO, W_CLIO_ONLY, 'Archivist’s sleeve-guards', ['accessories'], false);
 
   // 5. The chats.
   const mkParticipant = (

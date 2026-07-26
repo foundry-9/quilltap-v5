@@ -179,6 +179,9 @@ impl SpineFactory for CreateSpineFactory {
             brahma_console_send: None,
             recall_replay: None,
             announcement_preview: None,
+            // P4.9E3A: canned test factory — no tool runner, so `run-tool`
+            // answers the loud not-assembled refusal.
+            operator_tool_runner: None,
             job_handlers: Vec::new(),
         }
     }

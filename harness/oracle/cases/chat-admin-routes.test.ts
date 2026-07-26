@@ -62,6 +62,7 @@ const P_CLIO = 'e1000000-0000-4000-8000-000000000003';
 // A participant id belonging to the SOURCE chat, so "not found in THIS chat" is
 // reachable with a well-formed uuid.
 const P_STRANGER = 'e1000000-0000-4000-8000-000000000011';
+const CLIO = 'a1000000-0000-4000-8000-000000000003';
 
 const RealDate = Date;
 
@@ -693,6 +694,109 @@ async function main(): Promise<void> {
     {
       name: 'rng_chat_missing',
       run: async () => respond(await post(MISSING_ID, 'rng', { type: 20 })),
+    },
+    // ── ?action=run-tool ────────────────────────────────────────────────────
+    // The tools driven here are DB-only and deterministic on purpose:
+    // `read_conversation` reads the fixture's own transcript, and an unknown
+    // name lands on v4's `Unknown tool: …` failure result. Neither needs a
+    // model, a network call, or the host environment.
+    {
+      name: 'run_tool_denied_submit_final_response',
+      run: async () =>
+        respond(await post(CHAT, 'run-tool', { toolName: 'submit_final_response' })),
+    },
+    {
+      name: 'run_tool_denied_request_full_context',
+      run: async () =>
+        respond(await post(CHAT, 'run-tool', { toolName: 'request_full_context' })),
+    },
+    {
+      name: 'run_tool_unknown_tool',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', { toolName: 'no_such_tool', arguments: { a: 1 } }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'run_tool_read_conversation',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', {
+            toolName: 'read_conversation',
+            arguments: { interchanges: 2 },
+          }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // `private: true` targets the OPERATOR's userId — a uuid that is not a
+      // participant id, which is exactly how the whisper filters exclude it.
+      name: 'run_tool_private',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', {
+            toolName: 'read_conversation',
+            arguments: { interchanges: 1 },
+            private: true,
+          }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // A named character selects THAT participant's context. `wardrobe_list` is
+      // the discriminator: it lists the CALLING character's own wardrobe, and
+      // ARIA and CLIO carry distinctly-titled items, so a participant-picking
+      // bug is visible in the bytes.
+      name: 'run_tool_named_character',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', {
+            toolName: 'wardrobe_list',
+            arguments: {},
+            characterId: CLIO,
+          }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // A characterId matching nobody yields NO participant — v4 still runs the
+      // tool, with an empty context.
+      name: 'run_tool_unmatched_character',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', {
+            toolName: 'wardrobe_list',
+            arguments: {},
+            characterId: MISSING_ID,
+          }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // No `characterId` → the FIRST active CHARACTER participant (ARIA), whose
+      // wardrobe differs from CLIO's.
+      name: 'run_tool_default_character',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', { toolName: 'wardrobe_list', arguments: {} }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'run_tool_empty_name',
+      run: async () => respond(await post(CHAT, 'run-tool', { toolName: '' })),
+    },
+    {
+      name: 'run_tool_chat_missing',
+      run: async () =>
+        respond(await post(MISSING_ID, 'run-tool', { toolName: 'read_conversation' })),
     },
   ];
 

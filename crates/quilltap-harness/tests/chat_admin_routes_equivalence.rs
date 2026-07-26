@@ -35,8 +35,11 @@ use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::{chat_admin, chat_rng};
+use quilltap_core::services::chat_run_tool::ErasedToolRunner;
+use quilltap_core::services::{chat_admin, chat_rng, chat_run_tool};
+use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::rng::FixedBytes;
+use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -51,6 +54,7 @@ const P_CLIO: &str = "e1000000-0000-4000-8000-000000000003";
 /// A participant of the SOURCE chat — "not found in THIS chat" with a
 /// well-formed uuid.
 const P_STRANGER: &str = "e1000000-0000-4000-8000-000000000011";
+const CLIO: &str = "a1000000-0000-4000-8000-000000000003";
 /// The instant the oracle freezes its clock to (`chat-admin-web.json`).
 const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
 /// The fixture's seed timestamp — what an untouched `updatedAt` still reads.
@@ -66,6 +70,7 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "bulk_reattribute_bad_role_filter",
     "rng_bad_kind",
     "rng_bad_rolls",
+    "run_tool_empty_name",
 ];
 
 /// Cases that persist a freshly MINTED message: both sides mint a UUID and a
@@ -81,6 +86,12 @@ const MINTED_MESSAGE_CASES: &[&str] = &[
     "rng_spin_the_bottle",
     "rng_preview_d20",
     "rng_preview_coin_multi",
+    "run_tool_unknown_tool",
+    "run_tool_read_conversation",
+    "run_tool_private",
+    "run_tool_named_character",
+    "run_tool_unmatched_character",
+    "run_tool_default_character",
 ];
 
 /// Cases whose chat row carries a timestamp MINTED from the wall clock —
@@ -103,6 +114,22 @@ struct Spec {
     user_id: String,
     frozen_now_ms: i64,
     rng_byte_stream: Vec<u8>,
+}
+
+/// A fixed `SelfInventoryEnv`: no tool driven by the run-tool cases reads it,
+/// so its values only need to be stable.
+fn fixture_env() -> SelfInventoryEnv {
+    SelfInventoryEnv {
+        version: "0.0.0-fixture".to_string(),
+        runtime_mode: "desktop".to_string(),
+        client_shell: ClientShell::Unknown,
+        mount_index_degraded: false,
+        release_notes: None,
+        changelog: None,
+        model_info: Vec::new(),
+        fallback_pricing: Vec::new(),
+        registry_default_context: 8192,
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -757,6 +784,118 @@ fn chat_admin_routes_match_oracle() {
             frozen_iso.clone(),
         ));
         check("rng_chat_missing", &r, None);
+    }
+
+    // ── ?action=run-tool ────────────────────────────────────────────────────
+    // The runner is the REAL `BuiltInToolRunner` over the fixture DB, with a
+    // fixed `SelfInventoryEnv` no driven tool reads. Every tool here is DB-only
+    // and deterministic: an unknown name lands on v4's `Unknown tool: …`,
+    // `read_conversation` on its un-rendered-conversation failure, and
+    // `wardrobe_list` on the CALLING character's own wardrobe — which is what
+    // makes the three participant-picking arms distinguishable.
+    let operator_name = Some("Friday".to_string());
+    for (name, tool, args, character, private, dump) in [
+        (
+            "run_tool_denied_submit_final_response",
+            "submit_final_response",
+            json!({}),
+            None,
+            None,
+            false,
+        ),
+        (
+            "run_tool_denied_request_full_context",
+            "request_full_context",
+            json!({}),
+            None,
+            None,
+            false,
+        ),
+        (
+            "run_tool_unknown_tool",
+            "no_such_tool",
+            json!({ "a": 1 }),
+            None,
+            None,
+            true,
+        ),
+        (
+            "run_tool_read_conversation",
+            "read_conversation",
+            json!({ "interchanges": 2 }),
+            None,
+            None,
+            true,
+        ),
+        (
+            "run_tool_private",
+            "read_conversation",
+            json!({ "interchanges": 1 }),
+            None,
+            Some(true),
+            true,
+        ),
+        (
+            "run_tool_named_character",
+            "wardrobe_list",
+            json!({}),
+            Some(CLIO),
+            None,
+            true,
+        ),
+        (
+            "run_tool_unmatched_character",
+            "wardrobe_list",
+            json!({}),
+            Some(MISSING_ID),
+            None,
+            true,
+        ),
+        (
+            "run_tool_default_character",
+            "wardrobe_list",
+            json!({}),
+            None,
+            None,
+            true,
+        ),
+        ("run_tool_empty_name", "", json!({}), None, None, false),
+    ] {
+        let db = fresh_db(&spec, name);
+        let runner = ErasedToolRunner(BuiltInToolRunner::new(db.clone(), fixture_env()));
+        let r = rt.block_on(chat_run_tool::chat_run_tool(
+            &db,
+            &spec.user_id,
+            CHAT,
+            tool,
+            Some(&args),
+            character,
+            private,
+            Some(&runner),
+            operator_name.clone(),
+            "00000000-0000-4000-8000-0000000000ff".to_string(),
+            frozen_iso.clone(),
+        ));
+        let tables = dump.then(|| json!({ "messages": dump_messages(&db, CHAT) }));
+        check(name, &r, tables);
+    }
+    {
+        let db = fresh_db(&spec, "run_tool_chat_missing");
+        let runner = ErasedToolRunner(BuiltInToolRunner::new(db.clone(), fixture_env()));
+        let r = rt.block_on(chat_run_tool::chat_run_tool(
+            &db,
+            &spec.user_id,
+            MISSING_ID,
+            "read_conversation",
+            Some(&json!({})),
+            None,
+            None,
+            Some(&runner),
+            operator_name.clone(),
+            "00000000-0000-4000-8000-0000000000ff".to_string(),
+            frozen_iso.clone(),
+        ));
+        check("run_tool_chat_missing", &r, None);
     }
 
     // Shape, not a hand-written count: the two case sets must agree exactly.

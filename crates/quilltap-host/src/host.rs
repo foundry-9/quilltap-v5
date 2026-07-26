@@ -486,6 +486,7 @@ impl EngineAssembler for HostAssembler {
             brahma_console_send,
             recall_replay,
             announcement_preview,
+            operator_tool_runner,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -504,10 +505,11 @@ impl EngineAssembler for HostAssembler {
                     bundle.brahma_console_send,
                     bundle.recall_replay,
                     bundle.announcement_preview,
+                    bundle.operator_tool_runner,
                 )
             }
             None => (
-                None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None,
             ),
         };
 
@@ -679,6 +681,13 @@ impl EngineAssembler for HostAssembler {
             // dialog renders the reason rather than breaking.
             // ⚠ LIVE means real money: one cheap-LLM call per Generate. ===
             announcement_preview,
+            // === P4.9E3A: the operator run-tool seam, wired LIVE from the spine's
+            // own `BuiltInToolRunner` — a tool run from the Run Tool modal behaves
+            // exactly as it does mid-turn (scrollback + consult included).
+            // Spine-less assemblies keep `None` → the `ChatRunTool` arm answers the
+            // loud not-assembled refusal AFTER v4's deny-list and chat arms. ===
+            operator_tool_runner,
+            // === end P4.9E3A ===
             // === end P4.9E2A ===
         })
     }
