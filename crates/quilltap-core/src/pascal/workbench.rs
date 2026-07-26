@@ -54,6 +54,10 @@ pub struct CustomToolLibraryEntry {
     pub title: String,
     pub description: String,
     pub disabled: bool,
+    /// Which availability clause this tool declares, if any (v4 `6864bf0e`).
+    /// Declared after `disabled` and before `defaultVisibility`, which is v4's
+    /// own order.
+    pub gate: Option<LibraryGate>,
     pub default_visibility: Visibility,
     pub roll_form: RollForm,
     /// Whether the tool consults an LLM mid-run (v4 `616930db`). Declared
@@ -72,6 +76,16 @@ pub struct CustomToolLibraryEntry {
 pub enum RollForm {
     Range,
     Dice,
+}
+
+/// Which clause a library entry's definition declares. `None` serializes as
+/// `null` (v4's `… : null`), NOT as an absent key — the library is a discriminated
+/// listing and the SPA branches on the value being present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LibraryGate {
+    Available,
+    Withheld,
 }
 
 /// A broken definition file, listed rather than hidden.
@@ -358,6 +372,13 @@ pub fn build_custom_tool_library(
             title: display_title(&entry.definition.name, entry.definition.title.as_deref()),
             description: entry.definition.description.clone(),
             disabled: entry.definition.disabled.unwrap_or(false),
+            gate: if entry.definition.available_when.is_some() {
+                Some(LibraryGate::Available)
+            } else if entry.definition.withheld_when.is_some() {
+                Some(LibraryGate::Withheld)
+            } else {
+                None
+            },
             default_visibility: entry
                 .definition
                 .default_visibility

@@ -9,6 +9,9 @@
  * with the most ways to be subtly wrong:
  *
  *   - **General store** (its id persisted into MAIN `instance_settings`), holding
+ *     `Tools/gated_open.tool.json` / `Tools/gated_shut.tool.json` (P4.d19: one
+ *     per availability clause, so the library's `gate` field takes all three of
+ *     its values),
  *     `Tools/alpha.tool.json` (valid, range roll, no `title` → `displayTitle`
  *     derivation), `Tools/broken.tool.json` (not JSON → a library ERROR entry
  *     exercising `formatDefinitionIssues`), and `Tools/sub/nested.tool.json`
@@ -41,8 +44,8 @@
  * ever previewed through a fixed-byte source), so preview/audit rows diff
  * exactly across languages without a shared draw stream.
  *
- * Regenerate (v4 @ d68638b4, Node 24):
- *   cd ~/source/quilltap-server
+ * Regenerate (v4 @ 231be14c, Node 24; the pinned detached worktree):
+ *   cd /tmp/qt-v4-pin-231be14c
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/workbench-main.db \
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/workbench-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-workbench-fixture.ts
@@ -138,6 +141,28 @@ const DELTA = {
   description: 'The delta tool.',
   roll: { min: 0.4, max: 0.4 },
   outcomes: [{ when: true, message: 'Delta, from a cracked vault.', state: 'info' }],
+};
+
+/**
+ * P4.d19 (v4 `6864bf0e`): one definition per availability clause, so the
+ * library's new `gate` field is exercised at all three of its values — the two
+ * below plus every ungated entry's `null`.
+ */
+const GATED_OPEN = {
+  name: 'gated_open',
+  title: 'Offered To The Keyed',
+  description: 'Only a keyed character is dealt this one.',
+  availableWhen: { metadata: { hasKey: { eq: true } } },
+  roll: { min: 0.4, max: 0.4 },
+  outcomes: [{ when: true, message: 'The line hums.', state: 'success' }],
+};
+
+const GATED_SHUT = {
+  name: 'gated_shut',
+  description: 'A keyed character is kept from this one.',
+  withheldWhen: { metadata: { hasKey: { eq: true } } },
+  roll: { min: 0.4, max: 0.4 },
+  outcomes: [{ when: true, message: 'The house obliges.', state: 'info' }],
 };
 
 /** Lives in the DISABLED store — neither view may see it. */
@@ -287,6 +312,8 @@ async function main(): Promise<void> {
   await writeFile(spec.generalMountPointId, 'Tools/broken.tool.json', '{ not json');
   await writeFile(spec.generalMountPointId, 'Tools/sub/nested.tool.json', ALPHA);
   await writeFile(spec.generalMountPointId, 'Tools/zeta.tool.json', ZETA);
+  await writeFile(spec.generalMountPointId, 'Tools/gated_open.tool.json', GATED_OPEN);
+  await writeFile(spec.generalMountPointId, 'Tools/gated_shut.tool.json', GATED_SHUT);
 
   // 2. The unattached + disabled stores.
   await provisionStore(spec.looseMountPointId, 'Loose Papers');

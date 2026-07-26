@@ -1532,7 +1532,16 @@ where
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                     .map(str::to_string),
-                metadata: None,
+                // The responding character's fact sheet, which availability
+                // gates are answered against. Already hydrated by the
+                // participant resolver, so this costs nothing.
+                metadata: Some(
+                    character
+                        .get("metadata")
+                        .and_then(Value::as_object)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
             })
         } else {
             None

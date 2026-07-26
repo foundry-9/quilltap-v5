@@ -11,6 +11,10 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+Pascal's Workbench library now says which tools carry an availability clause and
+which way it points, and a character taking a turn is offered exactly the tools
+their own fact sheet qualifies for.
+
 A character rolling a custom tool now has their fact sheet read before the
 roster is dealt, so a tool they do not qualify for is unreachable by name as
 well as absent from the list. One consequence worth knowing: when a character's

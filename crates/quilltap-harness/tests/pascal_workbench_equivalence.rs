@@ -150,7 +150,7 @@ fn workbench_matches_oracle() {
     // branch fails loudly rather than passing on a thinner world.
     let library = &oracle["library"]["value"];
     let tools = library["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 6, "library tool count");
+    assert_eq!(tools.len(), 8, "library tool count");
     assert_eq!(
         library["errors"].as_array().map(Vec::len),
         Some(1),
@@ -180,6 +180,18 @@ fn workbench_matches_oracle() {
             .any(|t| t["attachments"].as_array().map(Vec::len) == Some(2)),
         "a mount carrying two badges (group before project)"
     );
+    // P4.d19 §2(a): the `gate` field must be seen at ALL THREE of its values, or
+    // a port that hardcoded `null` would pass on an ungated world.
+    for want in [
+        Value::Null,
+        Value::String("available".into()),
+        Value::String("withheld".into()),
+    ] {
+        assert!(
+            tools.iter().any(|t| t["gate"] == want),
+            "no library entry carries gate {want:?}"
+        );
+    }
     let destinations = &oracle["destinations"]["value"];
     assert!(destinations["general"].is_object(), "a General store");
     assert_eq!(

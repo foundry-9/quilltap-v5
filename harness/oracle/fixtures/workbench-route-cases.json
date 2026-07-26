@@ -195,6 +195,52 @@
           "state": "failure"
         }
       ]
+    },
+    "availableGate": {
+      "name": "available_gate",
+      "title": "Offered To The Keyed",
+      "description": "A table only a keyed character is dealt.",
+      "availableWhen": {
+        "metadata": {
+          "hasKey": {
+            "eq": true
+          }
+        }
+      },
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "The line hums for {{value}}.",
+          "state": "success"
+        }
+      ]
+    },
+    "withheldGate": {
+      "name": "withheld_gate",
+      "title": "Kept From The Keyed",
+      "description": "A table a keyed character is kept from.",
+      "withheldWhen": {
+        "metadata": {
+          "hasKey": {
+            "eq": true
+          }
+        }
+      },
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "The house obliges for {{value}}.",
+          "state": "info"
+        }
+      ]
     }
   },
   "cases": [
@@ -586,6 +632,68 @@
       "method": "POST",
       "action": "audit",
       "definition": "stateGate"
+    },
+    {
+      "name": "preview-available-gate-holds",
+      "method": "POST",
+      "action": "preview",
+      "definition": "availableGate",
+      "metadata": {
+        "hasKey": true
+      }
+    },
+    {
+      "name": "preview-available-gate-misses",
+      "method": "POST",
+      "action": "preview",
+      "definition": "availableGate",
+      "metadata": {
+        "hasKey": false
+      }
+    },
+    {
+      "name": "preview-available-gate-empty-sheet",
+      "method": "POST",
+      "action": "preview",
+      "definition": "availableGate"
+    },
+    {
+      "name": "preview-withheld-gate-empty-sheet",
+      "method": "POST",
+      "action": "preview",
+      "definition": "withheldGate"
+    },
+    {
+      "name": "preview-withheld-gate-holds",
+      "method": "POST",
+      "action": "preview",
+      "definition": "withheldGate",
+      "metadata": {
+        "hasKey": true
+      }
+    },
+    {
+      "name": "preview-available-gate-as-imogen",
+      "method": "POST",
+      "action": "preview",
+      "definition": "availableGate",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "preview-withheld-gate-as-imogen",
+      "method": "POST",
+      "action": "preview",
+      "definition": "withheldGate",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "audit-available-gate",
+      "method": "POST",
+      "action": "audit",
+      "definition": "availableGate",
+      "metadata": {
+        "hasKey": false
+      }
     }
   ]
 }

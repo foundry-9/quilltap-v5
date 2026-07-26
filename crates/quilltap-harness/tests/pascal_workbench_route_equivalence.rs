@@ -336,6 +336,7 @@ fn workbench_route_matches_oracle() {
     let cases = corpus["cases"].as_array().expect("cases array");
 
     let mut checked = 0usize;
+    let mut gate_verdicts: Vec<serde_json::Value> = Vec::new();
     let mut statuses: Vec<u16> = Vec::new();
 
     for case in cases {
@@ -411,6 +412,11 @@ fn workbench_route_matches_oracle() {
             "case '{name}' status"
         );
         assert_eq!(canon(&body), canon(&want["body"]), "case '{name}' body");
+        // P4.d19 §2(b): the preview's `gate` key — present ONLY when the
+        // definition gates, and `withheldBy` ABSENT (not null) when available.
+        if let Some(gate) = body.get("data").unwrap_or(&body).get("gate") {
+            gate_verdicts.push(gate.clone());
+        }
         statuses.push(status);
         checked += 1;
     }
@@ -425,5 +431,23 @@ fn workbench_route_matches_oracle() {
         statuses.contains(&422),
         "a run-refusal / broken-vault arm (v5's first 422)"
     );
+    // §2(b) again, as coverage: both clauses must be seen withholding, and an
+    // available verdict must be seen carrying NO `withheldBy` key at all. An
+    // ungated preview contributes nothing here, which is the other half of the
+    // claim — the key is absent, so it never reaches this vector.
+    assert!(
+        gate_verdicts
+            .iter()
+            .any(|v| v["available"] == true && v.get("withheldBy").is_none()),
+        "an available verdict with withheldBy absent"
+    );
+    for clause in ["availableWhen", "withheldWhen"] {
+        assert!(
+            gate_verdicts
+                .iter()
+                .any(|v| v["available"] == false && v["withheldBy"] == clause),
+            "a verdict withheld by {clause}"
+        );
+    }
     eprintln!("OK: workbench route matched oracle ({checked} cases).");
 }

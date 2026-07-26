@@ -36134,3 +36134,43 @@ tool name, proving the vault failure is answered FIRST).
 shape → red at `vault-broken-private-absent-whisper-default`. Gate: fmt, clippy,
 `cargo test --workspace --no-fail-fast` 0 failed. `quilltap-core`
 0.0.365 → 0.0.366, `quilltap-harness` 0.0.312 → 0.0.313.
+
+### Unit 7 — the orchestrator's roster context + the Workbench `gate` (v4 `6864bf0e`)
+
+- **`orchestrator.rs`**: `metadata: character.metadata ?? null` into the roster
+  context. The responding character is already hydrated by the participant
+  resolver, so the turn path pays for no read — and this is the ONLY edit this
+  lane makes to that file.
+- **`workbench.rs`**: `CustomToolLibraryEntry.gate`, a new `LibraryGate` enum
+  after `disabled` and before `defaultVisibility` (v4's own position).
+  **`None` serializes as `null`, not as an absent key** — v4's expression ends
+  `: null`, and the library is a discriminated listing the SPA branches on. That
+  is §2(a) of the round's shared contract.
+- **`api/custom_tools.rs`**: §2(b), the preview's conditional `gate` (landed
+  with unit 5).
+
+**Fixtures re-cut.** `workbench-{main,mount}.db` gained `gated_open` /
+`gated_shut` in the General store — one per clause, so the library's `gate`
+takes all three of its values — and `workbench-route-cases.json` (shared
+verbatim by BOTH sides) gained two gated definitions and eight cases. Both
+`pascal_workbench_equivalence` and `pascal_workbench_route_equivalence` were
+re-cut with them.
+
+**Differentials:** `pascal_workbench_equivalence` (library 6 → 8 tools; the
+count assertion updated, plus a new assertion that all THREE `gate` values
+appear, so a port that hardcoded `null` cannot pass on an ungated world) and
+`pascal_workbench_route_equivalence` 50 → **58 cases**. The eight new route
+cases table §2(b) exactly: available-holds, available-misses,
+available-empty-sheet and withheld-empty-sheet (**the same absent key, opposite
+verdicts**), withheld-holds, both clauses against a real character's sheet, and
+an AUDIT of a gated definition — which carries no verdict, because v4 gates the
+preview and not the audit. The differential also asserts the coverage
+directly: both clauses seen withholding, and an available verdict seen with
+`withheldBy` ABSENT.
+
+**Mutation-checked:** making the preview's `gate` unconditional → red at
+`preview-plain` (an ungated preview must carry no such key); hardcoding the
+library's `gate` to `None` → red at `library`.
+
+Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0 failed.
+`quilltap-core` 0.0.366 → 0.0.367, `quilltap-harness` 0.0.313 → 0.0.314.
