@@ -38,8 +38,8 @@ import {
 import type { TimestampConfig } from '@/lib/schemas/types'
 
 // Pin the wall clock. v4 reads the clock two ways: `Date.now()` (calculate) and
-// `new Date()` (the fictionalBaseRealTime fallback + initializeFictionalTime's
-// `new Date().toISOString()`). BOTH must be pinned so every row is
+// `new Date()` (the fictionalBaseRealTime fallback + ensureFictionalBaseRealTime's
+// default anchor). BOTH must be pinned so every row is
 // deterministic, so we override the whole Date constructor: a no-arg `new Date()`
 // returns the pinned instant while all argument forms keep native behavior.
 let PINNED_NOW = 0
