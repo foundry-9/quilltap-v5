@@ -36633,3 +36633,28 @@ Staff chip unchanged, a roll chip accented, and Prospero's `custom-tool-error`
 left alone.
 
 `ng test` 228 files / 2,678. SPA `0.5.281` → `0.5.282`.
+
+### Unit 4 — `custom-tool-params-form` gains `layout`
+
+v4 `faab6881`'s `CustomToolParamsForm.tsx` change, ported whole: `layout?:
+'inline' | 'stacked'` with **default `inline`**, both stacked branches (the
+checkbox with its description on its own line; the label + `type · bounds` line,
+the description paragraph, and the auto-growing textarea for a string), plus
+`boundsHint` (exported here so the spec can pin all four arms directly — v4
+keeps it module-private and covers it through the DOM).
+
+**The auto-grow textarea is its own component**, `qt-auto-grow-textarea`, mirroring
+v4's `AutoGrowTextarea`: `TEXTAREA_MIN_HEIGHT = 40` / `TEXTAREA_MAX_HEIGHT = 224`,
+and v4's collapse-first measure (`height = 'auto'` before reading `scrollHeight`,
+"or scrollHeight reports the height it already has"). v5's analog of v4's
+`useEffect(…, [value])` is **`afterRenderEffect` reading `value()`** — the
+established v5 idiom for post-render DOM measurement
+(`brahma-console-message-list.ts:254`) — which fires on mount and on every value
+change, after the binding has been applied.
+
+**The `inline` arm is untouched, deliberately**: P4.d20 owns the Workbench's
+proving-bench caller and was told not to pass a layout. The spec's first stacked
+case asserts `render()` and `render('inline')` produce **identical innerHTML**,
+so a future edit to the stacked branch cannot silently move the bench.
+
+`ng test` 228 files / 2,683. SPA `0.5.282` → `0.5.283`.

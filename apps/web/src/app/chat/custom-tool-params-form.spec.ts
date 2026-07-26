@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CustomToolParameterSpec } from '../core/core-contract';
 import {
   CustomToolParamsForm,
+  boundsHint,
   coerceParamValues,
   initialParamValues,
   type ParameterFormValues,
@@ -53,12 +54,13 @@ describe('custom-tool-params-form — coercion (v4 CustomToolParamsForm)', () =>
 describe('CustomToolParamsForm — rendering', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  function render(): ComponentFixture<CustomToolParamsForm> {
+  function render(layout?: 'inline' | 'stacked'): ComponentFixture<CustomToolParamsForm> {
     TestBed.configureTestingModule({ imports: [CustomToolParamsForm] });
     const fixture = TestBed.createComponent(CustomToolParamsForm);
     fixture.componentRef.setInput('parameters', PARAMS);
     fixture.componentRef.setInput('values', initialParamValues(PARAMS));
     fixture.componentRef.setInput('idPrefix', 'pfx');
+    if (layout) fixture.componentRef.setInput('layout', layout);
     fixture.detectChanges();
     return fixture;
   }
@@ -85,5 +87,62 @@ describe('CustomToolParamsForm — rendering', () => {
     label.value = 'vault';
     label.dispatchEvent(new Event('input'));
     expect(seen).toEqual([{ param: 'label', value: 'vault' }]);
+  });
+
+  // --- P4.d21 (v4 faab6881): the stacked dialog layout ----------------------
+
+  it('defaults to inline, so the Workbench proving bench is untouched', () => {
+    const implicit = (render().nativeElement as HTMLElement).innerHTML;
+    TestBed.resetTestingModule();
+    const el = render('inline').nativeElement as HTMLElement;
+    // Explicit default and no-arg render must agree, element for element.
+    expect(implicit).toBe(el.innerHTML);
+    // A string parameter is a one-line text input in this layout, never a textarea.
+    expect((el.querySelector('#pfx-label') as HTMLInputElement).tagName).toBe('INPUT');
+    expect(el.querySelector('qt-auto-grow-textarea')).toBeNull();
+    // The description stays hidden in a tooltip.
+    expect(el.querySelector('label[for="pfx-scale"]')?.getAttribute('title')).toBe('how hard');
+  });
+
+  it('gives a stacked string parameter an auto-growing textarea, numbers a number input', () => {
+    const el = render('stacked').nativeElement as HTMLElement;
+    const label = el.querySelector('#pfx-label') as HTMLTextAreaElement;
+    expect(label.tagName).toBe('TEXTAREA');
+    expect(label.style.minHeight).toBe('40px');
+    expect(label.style.maxHeight).toBe('224px');
+    const scale = el.querySelector('#pfx-scale') as HTMLInputElement;
+    expect(scale.tagName).toBe('INPUT');
+    expect(scale.type).toBe('number');
+    expect(scale.getAttribute('min')).toBe('1');
+  });
+
+  it('puts the label, the declared bounds, and the description on their own lines', () => {
+    const el = render('stacked').nativeElement as HTMLElement;
+    const label = el.querySelector('label[for="pfx-scale"]') as HTMLLabelElement;
+    // The type and the bounds ride the label; the description gets its own line.
+    expect(label.textContent?.replace(/\s+/g, ' ').trim()).toBe('scale integer · 1–6');
+    expect(label.getAttribute('title')).toBeNull();
+    expect(el.textContent).toContain('how hard');
+  });
+
+  it('emits from a stacked textarea the same way the inline input does', () => {
+    const fixture = render('stacked');
+    const seen: { param: string; value: string | boolean }[] = [];
+    fixture.componentInstance.change.subscribe((c) => seen.push(c));
+    const label = fixture.nativeElement.querySelector('#pfx-label') as HTMLTextAreaElement;
+    label.value = 'vault';
+    label.dispatchEvent(new Event('input'));
+    expect(seen).toEqual([{ param: 'label', value: 'vault' }]);
+  });
+});
+
+describe('boundsHint (v4 faab6881)', () => {
+  it('describes each declared shape, and nothing for a string or a boolean', () => {
+    expect(boundsHint({ type: 'integer', default: 1, min: 1, max: 6 })).toBe('1–6');
+    expect(boundsHint({ type: 'number', default: 1, min: 1 })).toBe('1 or more');
+    expect(boundsHint({ type: 'number', default: 1, max: 6 })).toBe('6 or less');
+    expect(boundsHint({ type: 'number', default: 1 })).toBeNull();
+    expect(boundsHint({ type: 'string', default: 'x', min: 1, max: 6 })).toBeNull();
+    expect(boundsHint({ type: 'boolean', default: true })).toBeNull();
   });
 });

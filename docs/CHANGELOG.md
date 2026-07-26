@@ -82,6 +82,12 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+The generated form for a custom tool's parameters gained a roomier layout, for
+use in a full dialog: the name, its type, and any declared range sit on one line,
+the author's description gets its own, and a text parameter is a box that grows
+to fit what you put in it rather than a single cramped line. The old compact row
+is still the default, so Pascal's Workbench looks exactly as it did.
+
 A tool roll's announcement bar now wears the roll's own outcome. Pascal's
 announcements are rated as important as a deleted file, so a successful roll used
 to show the same red dot as one; now the dot and the bar's edge take the
