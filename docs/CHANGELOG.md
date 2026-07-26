@@ -82,6 +82,11 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+Recorded that two branches of work running their browser tests at the same time
+share one fixed port, so each one's tests can end up driving the other's server.
+Failures from that look like ordinary bugs, so the note says to run them one at a
+time before believing one.
+
 The walk-through test for custom tools now drives the new window end to end —
 open it, look at a tool, go back, run one — and checks that the announcement it
 posts is colored by its own outcome and names that outcome for screen readers.

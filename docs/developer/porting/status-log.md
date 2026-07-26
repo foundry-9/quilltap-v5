@@ -36751,3 +36751,59 @@ either way, so keeping the button a BLOCK child is exactly the box
 `relative` class, which had no positioned descendant left, is the entire delta.
 The order's flex-toolbar warning is satisfied by construction: the button count
 did not change.
+
+### Deferrals (loud, named — the order's tier 3, plus one finding)
+
+- **`packages/theme-storybook` 1.0.49 → 1.0.50: NO-PORT, recorded.** v4's
+  storybook filled a pre-existing hole in its own `qt-components.css` (the whole
+  Staff-announcement block) and added two `Chat.tsx` sections. **v5 has no
+  storybook**, and per the order `apps/web/public/themes/**` was NOT touched —
+  the bundled theme packs are a different mechanism, and this round's rules need
+  no new token from them.
+- **`help/custom-tools.md` + `docs/developer/features/pascal-custom-tools.md`:
+  BANKED for `p4.9i2`** (v5 has no help surface yet). User-visible consequence:
+  the help text a user reads about custom tools still describes the OLD popover
+  and says nothing about the reference panel.
+- **`docs/developer/API.md`: NO-PORT** — v4's own API doc.
+- **Tier 2 item 10 (the "explicit padded cards" fix) needed no separate work.**
+  v4's defect was `border-t qt-border` on section panels — `.qt-border` sets all
+  four sides, so it rendered as an unpadded box. v5's `.qt-border`
+  (`_utilities.css:229`) is all-four-sides too, but the OLD v5 popup used plain
+  Tailwind `border-t`, never `qt-border`, so v5 never had the defect; the new
+  markup ports v4's FIXED form (`rounded-lg qt-border p-5` cards) directly.
+
+### Fixtures
+
+**None delivered, none changed.** No `.db` file, no oracle NDJSON, no corpus —
+this lane invalidates nothing. The e2e beat rides the existing Salon fixtures
+and the `seedPascalToolsFixture` roster unchanged. **No Rust source was touched**
+(`cargo build -p quilltap-web -p quilltap-cli` BUILT the e2e binaries, never
+modified them).
+
+### Gate
+
+- `ng test` **228 files / 2,699 tests** (from 227 / 2,669 at lane start).
+- `ng build` clean.
+- **Full Playwright: 133 passed / 1 failed**, over a fresh dist and freshly built
+  debug binaries. The one failure — `foundation.spec.ts`'s locked → unlock walk —
+  **re-ran GREEN in isolation** (8.5 s) and is NOT this lane's: it failed on two
+  DIFFERENT assertions across two runs (first the lock heading, then the
+  "Invalid passphrase" line), both on the passphrase gate, a screen no file in
+  this lane's diff can reach.
+- Both custom-tools beats passed in the full run, including the new
+  picker → form → back → run → outcome-accent walk.
+
+> ⚠ **Cross-lane port contention, worth a memory note.** `e2e/support/env.ts`
+> hard-codes `PORT = 4319` and `BASE_URL` off it, so **two lanes running
+> Playwright at once drive ONE server**: whichever binds first owns the port, and
+> the other lane's beats silently exercise the first lane's instance. It happened
+> three times tonight with P4.d20's worktree. Symptoms are state-shaped and
+> plausible (an instance already unlocked, a passphrase gate that accepts
+> anything) rather than obviously environmental. **Serialize before believing a
+> failure**, and note that a `pgrep`-based waiter must use the `[.]bin` bracket
+> trick or it matches its own command line and waits forever.
+
+### SPA version
+
+`0.5.279` → `0.5.285` (this lane is the round's primary SPA bumper; the unifier
+re-counts).
