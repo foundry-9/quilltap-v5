@@ -36174,3 +36174,166 @@ library's `gate` to `None` → red at `library`.
 
 Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0 failed.
 `quilltap-core` 0.0.366 → 0.0.367, `quilltap-harness` 0.0.313 → 0.0.314.
+
+### P4.d19 — lane close-out: the verification gate, the shared contracts, and what the unifier needs
+
+**Every tier-1 and tier-2 item in the order LANDED. Nothing is deferred, and
+nothing in this lane refuses** — which the order made a condition, since a
+refusal arm here would mean a gated definition silently *not* gated.
+
+#### The gate, run in full
+
+```
+cargo fmt --all -- --check                                        clean
+cargo clippy --workspace --all-targets -- -D warnings             clean
+cargo clippy --workspace --all-targets --all-features -D warnings clean
+cargo test --workspace --no-fail-fast   385 binaries / 1,634 tests / 0 failed
+cargo build --release                                             clean
+```
+
+Zero `SKIP:` lines in the whole run. Every differential the order names, run BY
+NAME with `--nocapture` and every env var exported, over oracles regenerated
+from the pinned detached worktree `/tmp/qt-v4-pin-231be14c` with `TZ=UTC`:
+
+| family | result |
+| --- | --- |
+| `pascal_custom_tool_definition_equivalence` | 10 titles, **195** definitions, **31** gate verdicts |
+| `pascal_tool_vocabulary_equivalence` (NEW) | **37** definitions |
+| `pascal_roster_equivalence` | **38** scenarios |
+| `pascal_custom_tools_execution_equivalence` | 43 / 29 / 110 / 44 / 33 |
+| `pascal_run_custom_equivalence` | 13 rows |
+| `pascal_run_custom_handler_equivalence` | **24** cases |
+| `pascal_custom_tools_route_equivalence` | 13 cases |
+| `pascal_workbench_equivalence` | 2 cases (library **8** tools) |
+| `pascal_workbench_route_equivalence` | **58** cases |
+| `pascal_simulate_equivalence` | 12 rows |
+| `pascal_build_tools_roster` | green (+ the withheld-description arm) |
+| `pascal_llm_consult_equivalence` | 3 constants, 28 budgets |
+| `pascal_writers_equivalence` | 8 + 10 bodies |
+| `tool_build_equivalence` | 27 rows |
+| `tool_definitions_equivalence` | 57 tools + the canonical spot-check |
+
+#### The shared contracts, as delivered
+
+- **§1 `references`** — emitted on every chat custom-tools listing, positioned
+  after `parameters` and before `defaultVisibility`, all seven keys always
+  present, arrays en-US collated. Verified on the wire by
+  `pascal_custom_tools_route_equivalence`.
+- **§2(a) library `gate`** — `"available" | "withheld" | null` after `disabled`
+  and before `defaultVisibility`; `null` is emitted, never an absent key.
+- **§2(b) preview `gate`** — present ONLY when the definition gates;
+  `withheldBy` ABSENT (not null) when available; the run result is unchanged
+  and always present.
+- **§3 corpus** — `harness/oracle/cases/pascal-custom-tool-definition.ts` is the
+  one source; BOTH committed copies were regenerated from it and are
+  byte-identical (`diff -q` clean). **Counts P4.d20 needs: 10 title rows, 195
+  definition rows (68 accept / 127 reject), 31 gate rows.**
+- **§4 key names/order** — `availableWhen`/`withheldWhen`, optional, at most one
+  per file, between `disabled` and `revealOdds`, `{ metadata: { key:
+  <comparator> } }` with literal operands only.
+- **`api/types.rs` was never opened.** Both new response fields ride inside
+  `serde_json::Value` bodies, as the round required.
+
+#### Fixtures changed, and what that invalidates
+
+| fixture | change | differentials re-cut with it |
+| --- | --- | --- |
+| `pascal-run-custom-{main,mount}.db` (+ `.meta.json`) | two gated definitions in the General store; CHAR_D with a deleted `properties.json` keystone | `pascal_run_custom_handler_equivalence`, `pascal_custom_tools_route_equivalence`, `pascal_build_tools_roster` |
+| `workbench-{main,mount}.db` (+ `.meta.json`) | `gated_open` / `gated_shut` in the General store | `pascal_workbench_equivalence`, `pascal_workbench_route_equivalence` |
+| `workbench-route-cases.json` (read by BOTH sides) | 2 definitions + 8 cases | the same two |
+| `apps/web/.../pascal-custom-tool-definition.oracle.ndjson` | regenerated (the §3 delivery) | P4.d20's spec |
+
+Both `.meta.json` sidecars carry NEW minted vault ids, so anything reading them
+must be rebuilt, not patched.
+
+#### Two pre-existing v5 divergences found and FIXED on the way past
+
+Neither is drift; both are port bugs that no corpus row had ever reached, and
+both are user-visible payload:
+
+1. **`z.record` reports `expected record`, not `expected object`** — v5 said
+   `object` at all four record sites (`parameters`, `when.params`,
+   `when.metadata`, and the gate's new `metadata`). That string is
+   `CustomToolLoadError.reason`, which the custom-tools GET route returns
+   verbatim. Three corpus rows now cover the three pre-existing sites.
+2. **The `run_custom` vault-failure sentence** — `characters_read::find_by_id`
+   erases the vault-unavailable case into a generic `DbError::Key`, so the
+   Prospero bubble read a sentence v4 never writes. Fixed inside
+   `tools/run_custom.rs` (via `find_by_id_raw` + the overlay, as
+   `api::custom_tools::resolve_metadata` already does), because reaching the
+   changed whisper arm required it.
+
+#### One corpus substitution, recorded
+
+The order asks for a "non-finite number" gate rejection. JSON has no
+`Infinity`/`NaN` literal and the only route (`1e999`) is the overflow-literal
+divergence documented since P4.6ay — v4 rejects at `.finite()`, serde_json at
+the parse, and no row can assert that as equality. Four wrong-typed-literal rows
+cover the reachable half instead (`gate-ordering-string-operand`,
+`gate-ordering-boolean-operand`, `gate-contains-number-operand`,
+`gate-eq-object-operand`).
+
+#### Regen recipe (every family, from the pinned worktree)
+
+```bash
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-231be14c 231be14c
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-pin-231be14c/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-pin-231be14c/packages/quilltap/node_modules
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree> ; export TZ=UTC
+FIX=$V5W/crates/quilltap-web/tests/fixtures
+M=/tmp/qt-p4d19-mirror; rm -rf $M; mkdir -p $M/cases $M/fixtures   # jest ignores /.claude/
+cp $V5W/harness/oracle/cases/pascal-*.test.ts $V5W/harness/oracle/cases/tool-build.test.ts $M/cases/
+cp $V5W/harness/oracle/fixtures/{pascal-run-custom,workbench,workbench-route-cases,tool-build}.json $M/fixtures/
+cd /tmp/qt-v4-pin-231be14c
+
+# tsx families
+$N/npx tsx $V5W/harness/oracle/cases/pascal-custom-tool-definition.ts > /tmp/oracle-pascal-definition.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/pascal-tool-vocabulary.ts        > /tmp/oracle-pascal-vocabulary.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/pascal-simulate.ts               > /tmp/oracle-pascal-simulate.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/pascal-run-custom.ts             > /tmp/oracle-pascal-run-custom.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/pascal-llm-consult.ts            > /tmp/oracle-pascal-llm-consult.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/pascal-writers.ts                > /tmp/oracle-pascal-writers.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/tool-definitions.ts              > /tmp/oracle-tool-definitions.ndjson
+$N/npx tsx $V5W/harness/oracle/cases/tool-definitions-canonical.ts    > /tmp/oracle-tool-definitions-canonical.ndjson
+cp /tmp/oracle-pascal-definition.ndjson \
+   $V5W/apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson   # the §3 delivery
+
+# jest families — ANCHOR the filter (`pascal-workbench` also matches the route case)
+QT_ORACLE_OUT=/tmp/oracle-pascal-discovery.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- 'pascal-custom-tools-discovery\.test\.ts$'
+QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- 'pascal-custom-tools-execution\.test\.ts$'
+QT_FIXTURE_PASCAL_MAIN=$FIX/pascal-run-custom-main.db QT_FIXTURE_PASCAL_MOUNT=$FIX/pascal-run-custom-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-pascal-custom-tools-route.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=300000 --roots "$PWD" --roots "$M/cases" -- 'pascal-custom-tools-route\.test\.ts$'
+QT_FIXTURE_PASCAL_MAIN=$FIX/pascal-run-custom-main.db QT_FIXTURE_PASCAL_MOUNT=$FIX/pascal-run-custom-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=300000 --roots "$PWD" --roots "$M/cases" -- 'pascal-run-custom-handler\.test\.ts$'
+QT_FIXTURE_WORKBENCH_MAIN=$FIX/workbench-main.db QT_FIXTURE_WORKBENCH_MOUNT=$FIX/workbench-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-pascal-workbench.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=120000 --roots "$PWD" --roots "$M/cases" -- 'pascal-workbench\.test\.ts$'
+QT_FIXTURE_WORKBENCH_MAIN=$FIX/workbench-main.db QT_FIXTURE_WORKBENCH_MOUNT=$FIX/workbench-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-pascal-workbench-route.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=300000 --roots "$PWD" --roots "$M/cases" -- 'pascal-workbench-route\.test\.ts$'
+QT_FIXTURE_OUT=/tmp/qt-tool-build.db $N/npx tsx $V5W/harness/oracle/fixtures/build-tool-build-fixture.ts
+QT_ORACLE_OUT=/tmp/oracle-tool-build.ndjson $N/npx jest --silent --watchman=false \
+  --testTimeout=300000 --roots "$PWD" --roots "$M/cases" -- 'tool-build\.test\.ts$'
+```
+
+Rebuilding the two committed DB families (only if a fixture source changed):
+
+```bash
+cd /tmp/qt-v4-pin-231be14c    # NOTE: the builders rm their outputs FIRST — a failed
+                              # run leaves the committed fixture DELETED. git checkout it.
+TZ=UTC QT_FIXTURE_CI_MAIN=$FIX/pascal-run-custom-main.db QT_FIXTURE_CI_MOUNT=$FIX/pascal-run-custom-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
+TZ=UTC QT_FIXTURE_CI_MAIN=$FIX/workbench-main.db QT_FIXTURE_CI_MOUNT=$FIX/workbench-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-workbench-fixture.ts
+rm -f $FIX/*.db-journal      # the builders leave 0-byte journals behind
+```
+
+Versions at lane close: `quilltap-core` **0.0.367**, `quilltap-harness`
+**0.0.314**; `quilltap-host`, `quilltap-web`, `quilltap-cli`, `quilltap-tauri`
+and the SPA untouched (the lane's only `apps/web` file is a test fixture, and
+no SPA run is owed).
