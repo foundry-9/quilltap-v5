@@ -3327,3 +3327,55 @@ cherry-pick is not evidence they survived).
   Phase-4's own candidate list has ranked this **first** for two rounds running.
   It does not conflict with any lane here and **can be run by the human in
   parallel with this round.**
+
+
+---
+
+### Round outcome (2026-07-26) — the chat action remainder, UNIFIED
+
+**All four lanes CLOSED.** The oracle baseline is now **`c1507f47`** and there is
+no v4 drift debt. Full record in `status-log.md` under "Round record — the chat
+action remainder"; gate numbers and deferrals in CLAUDE.md's Status bullet.
+
+The round's headline: **v5 can change a conversation's cast**, which it had never
+been able to do. Both of v4's entrances (the `?action=` verbs and the chat-PUT
+bag) are closed and share one implementation.
+
+**Next candidates, in rough value order:**
+
+1. **⚠ THE RESTORE FILES-PHASE RULING — a human decision, and it blocks nothing
+   else but wants answering while it is fresh.** v4 runs its restore files phase
+   at `22a-bis`; v5 runs it after the whole doc-store family. Both write the same
+   rows with the same values into the same mount at the same path — only the
+   INSERTION ORDER differs — so it is `PHASE_ORDER_RESIDUAL` in
+   `system_restore_state.rs`, asserted in both directions. v4 documents why a
+   later slot is worse (the replay hard-links an archived content row, so 22f's
+   blob insert violates `UNIQUE(fileId)` and refuses the ARCHIVED blob); **v5
+   sits in exactly that slot**, a latent hazard no committed archive triggers.
+   **P4.d22 recommends adopting `22a-bis`.** Its follow-up is building the
+   second-generation archive the family lacks, so item 4 stops being analysis and
+   becomes measurement.
+2. **A dogfood pass — now badly overdue, and this round adds a lot to it.** The
+   cast surface end to end on real data (add / remove / hand a character to the
+   human / change who answers for one / rebuild a system prompt), Regenerate
+   Title (**⚠ real spend**), the RNG gutter, merge-conversation,
+   bulk-reattribute, and restore. **Still owed from earlier walks:** Part D (the
+   retrospective downstream look) and Part F items 15/16 (Story's Clock jump;
+   per-chat Core-whisper override).
+3. **`p4.9e3` — the ChatModals dialog family.** Its SERVER half landed this
+   round (eleven verbs, all differential-proven), so the remaining work is UI
+   over a frozen surface: Merge, Reattribute, BulkReplace, RunTool,
+   SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename,
+   ChatProject. **It must carry `GET /api/v1/tools` with it** — 727 LOC + the
+   plugin registry, the reason `ChatToolSettingsModal` refuses by name today.
+4. **The two `llm_choose` refusals** — add-participant and merge-conversation
+   both need a cheap-LLM host seam the single-writer closure cannot host. One
+   driver on the `ChatCreateDriver` pattern closes both.
+5. **The `TimestampConfigSchema` write-path normalization** — deferred twice
+   now because it straddles `db/chats.rs` and `api/salon.rs`'s `chat_update`.
+   It wants a round that owns both files. Probe-verified spec in P4.d18's unit-2
+   lane record.
+6. The standing pools: the two v5 findings P4.d22 recorded (`V5_STATS_GAP`; the
+   `DbError::Key` message-prefix leak into ~20 user-visible strings), `p4.9i2`
+   (help/HelpChat), `p4.9h2`, the `chat_settings` explicit-`null` gap (still
+   tripwired), `browserUserAgent`, and D21 (release/signing, never started).

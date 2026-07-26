@@ -1433,6 +1433,41 @@ records THERE. Update this summary only when a phase or round completes.
   popover), theme-storybook NO-PORT, the migration pretty-label NO-PORT.
   Versions: core 0.0.370, harness 0.0.316, host 0.0.39, SPA 0.5.290. Round
   record: `status-log.md`.
+- **The chat-action-remainder round (P4.9E1A ∥ P4.9E3A ∥ P4.9E1B ∥ P4.d22):
+  UNIFIED on main (2026-07-26) — ALL FOUR CLOSED; the oracle baseline MOVES to
+  `c1507f47` and the drift debt is CLEARED.** The hole the survey found is shut:
+  **v5 can change a conversation's cast**, which it had never been able to do —
+  the four participant verbs + the avatar-override family + the chat-PUT bag's
+  three participant families, two entrances sharing ONE implementation
+  (`chat_cast_routes_equivalence`, 72 cases over the new committed
+  `chat-cast-{main,mount}.db`, three (`?action=`, PUT-bag) pairs asserted to land
+  identical state) ∥ the eleven chat-admin + tools verbs incl. the newly ported
+  `apply_chat_merge` (57 + 8 cases over `chat-admin-{main,mount}.db`; two host
+  seams LIVE, **⚠ `RegenerateTitleDriver` costs one cheap-LLM call per press**)
+  ∥ the SPA (Add Character + Create NPC, participant edit/remove/rebuild with the
+  tri-state honoured at every call site, the RNG gutter tool, the
+  avatar-generation switch) ∥ the restore/import convergence (all five carve-outs
+  retired, eight families regenerated at `c1507f47`). The wire closed both lanes'
+  escalations: the explicit-null collapse in `db::chats::ChatParticipant`
+  (**E1A's both-directions tripwire FIRED on the first run after the fix, exactly
+  as designed**) and the `ChatToggleAgentMode` tri-state the frozen §1 could not
+  express, plus the duplicate agent-mode cascade E3A found on E1A's file. **Two
+  real bugs surfaced on the cast walk's first live run**, both shipping before
+  this round: `qt-collapsible-card` had no host `display` rule, so an inline box
+  swallowed every click at the sidebar's Add Character footer once the cast
+  overflowed (unclickable since P4.9H1); and the announcement picker dropped
+  BOTH of v4's participant filters, so a soft-removed character stayed hidden
+  from the off-scene picker forever — invisible until now because no beat had
+  ever soft-removed a participant. Gate: 390 binaries / 1,649 / 0; **16
+  differentials by name over fresh `c1507f47` oracles, zero SKIP**; clippy both
+  feature sets; release build; ng 238 files / 2,974; full Playwright **139
+  passed, zero skips**. Versions: core 0.0.380, harness 0.0.326, host 0.0.41,
+  web 0.0.47, SPA 0.5.297. **⚠ One item OPEN on a human ruling** — the restore
+  files-phase placement (`PHASE_ORDER_RESIDUAL`; the lane recommends adopting
+  v4's `22a-bis`). Deferred loud: `ChatToolSettingsModal` (needs the unported
+  727-LOC `GET /api/v1/tools` inventory — refuses by name), `llm_choose` on both
+  the add-participant and merge outfit paths, the `TimestampConfigSchema`
+  normalization. Round record: `status-log.md`.
 - **Oracle baseline: `c1507f47` (v4 HEAD, 2026-07-26), adopted at the
   P4.d22 restore/import-convergence unification — NO v4 drift debt remains.**
   v4's `67ffb444` (restore bugs 1–3) + `c1507f47` (import bug 4) fixed the four

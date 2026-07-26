@@ -38300,3 +38300,144 @@ No Rust run owed — `crates/**` and `harness/**` untouched.
 ### Versions
 
 SPA **0.5.295** (0.5.290 → five commits). No crate touched.
+
+
+## Round record — the chat action remainder (P4.9E1A ∥ P4.9E3A ∥ P4.9E1B ∥ P4.d22), UNIFIED on main 2026-07-26
+
+Four lanes; all four CLOSED. The oracle baseline MOVES `231be14c` → **`c1507f47`**
+and the v4 drift debt is CLEARED.
+
+### What landed
+
+- **P4.9E1A** — the cast + avatar-override server surface. Eight §1 verbs over
+  `services/chat_participants.rs` + `chat_avatars.rs`, plus the chat-PUT bag's
+  three participant families in `api/salon.rs` sharing ONE implementation with
+  the verbs. `chat_cast_routes_equivalence`: 72 cases over the new committed
+  `chat-cast-{main,mount}.db` family, including the tri-state proof and three
+  (`?action=`, PUT-bag) pairs asserted to land identical DB state.
+  **v5 can change a conversation's cast for the first time.**
+- **P4.9E3A** — the chat-admin + tools server surface. All eleven §1 verbs;
+  `apply_chat_merge` ported (the round's one new subsystem);
+  `chat_admin_routes_equivalence` 57 cases + `chat_regenerate_title_tier3` 8,
+  over the new `chat-admin-{main,mount}.db` family. Two host seams LIVE, one
+  with real spend (`RegenerateTitleDriver` — one cheap-LLM call per press).
+- **P4.9E1B** — the SPA. Add Character + the nested Create NPC, participant
+  edit/remove/rebuild with the tri-state honoured at every call site, the RNG
+  gutter dropdown, the avatar-generation switch, the `core-contract.ts` mirror.
+- **P4.d22** — the restore/import convergence. All five carve-outs in
+  `system_restore_state.rs` and `system_import_equivalence.rs`'s
+  `throw_ndjson_truncated_blob` retired; eight families regenerated at
+  `c1507f47`. Insisting on the diff over v4's "Converged" claim paid three
+  times — see its lane record.
+
+### The unification wire
+
+1. **The explicit-null collapse — E1A's escalation, CLOSED.**
+   `db::chats::ChatParticipant` modelled `talkativeness` and
+   `roleplayTemplateId` as plain `Option<T>`, dropping an explicit `null` that
+   v4's `.nullable().optional()` keeps. E1A could not fix it (`db/chats.rs` was
+   E3A's file); E3A had already closed `joinScenario` in passing, as a merge
+   side effect. Both remaining fields are now double-`Option`s.
+   **The tripwire proved it**: E1A's `reconcile_null_collapse` asserted the gap
+   in both directions and failed if it reached zero. On the first run after the
+   fix all 72 cases matched with no reconciliation and the ONLY failure was that
+   assertion. Retired; the module header records the closure.
+2. **The agent-mode tri-state — E3A's escalation, CLOSED.** The service already
+   took `Option<Option<bool>>` but the frozen variant carried no `enabled`, so
+   the engine hardcoded `None` and only v4's absent-key arm was reachable.
+   Widening was a round-level call because §1 was verbatim in three orders.
+3. **The duplicate agent-mode cascade — E3A's finding on E1A's file, CLOSED.**
+   `api/salon.rs` re-derived the cascade by hand because the shared resolver
+   dropped `enabledSource`; E3A added it. Duplicate deleted, and
+   `global_agent_mode_settings` moved from `chat_admin.rs` to its natural home
+   in `services/agent_mode.rs` so both callers share one.
+4. **The §1 contract diff, name for name:** all ten verbs the SPA mirrors match
+   field for field, tri-states included. The other nine are E3A's, with no
+   browser consumer this round by design.
+
+### Two real bugs the first live cast walk exposed
+
+Both found by running the round's new walk against the merged tree.
+
+- **`qt-collapsible-card` had no host display rule.** v4 renders the card as a
+  plain `<div>`; v5's component wraps it in a custom element, and an unknown
+  element with no display rule is `display: inline`. An inline box around block
+  children does not enclose its own content, breaking `scrollIntoView` and
+  hit-testing: in the sidebar's scroller the Participants card swallowed every
+  click aimed at the Add Character footer below the fold. **The button was
+  unclickable for any cast long enough to overflow, and the sidebar has been
+  shipping that way since P4.9H1.**
+- **The announcement picker dropped both of v4's participant filters.** v4
+  excludes `type === 'CHARACTER' && !p.removedAt`
+  (`ChatModals.tsx:321-323`); v5 excluded every participant with a character id.
+  The `removedAt` half is load-bearing — v4's remove is soft, so a character who
+  has left the scene should become announceable from off-scene again.
+  **Invisible until this round**: no beat had ever soft-removed a participant,
+  because no verb existed to do it. The cast walk created the first one and the
+  Post Office beat two files later read the roster and failed. Specs are
+  alphabetical, so cast runs before post-office; both passed in isolation, which
+  is what a cross-spec state bug looks like before you go and read v4.
+
+### One process note worth keeping
+
+Regenerating the two import oracles with `npx jest -- system-import` silently
+ran **both** `system-import.test.ts` and `system-import-execute.test.ts` — the
+`--` pattern is an unanchored substring — and the second clobbered the first's
+output, producing a 12-row file where 20 were expected. It surfaced as
+"unknown oracle kind execute". **Anchor the pattern**
+(`'system-import\.test\.ts$'`) whenever one case-file name is a prefix of
+another.
+
+### Gate (run at unification, on the merged tree)
+
+- `cargo fmt --all --check`; clippy `--workspace --all-targets` clean **both**
+  plain and with `--features quilltap-core/native-transport`; release build.
+- `cargo test --workspace --no-fail-fast`: **390 binaries / 1,649 tests / 0
+  failed.**
+- **16 differential families re-run BY NAME** with `--nocapture` over oracles
+  regenerated FRESH at `c1507f47`: 18 tests, 0 failed, **zero SKIPs** (the two
+  `skip` greps are case names — `execute_skip_all`, `execute_cross_instance_skip`).
+  The families: chat_cast, chat_admin, chat_regenerate_title_tier3,
+  chats_participants_tier2, chats_tier2, chat_settings_tier2, salon_mutations,
+  salon_reads, system_restore_state, system_restore, system_import,
+  system_import_state, system_export, system_backup, system_delete_data,
+  backup_uuid_remap. The `uuid-remap` corpus regenerated **byte-identical**.
+- SPA: `ng test` **238 files / 2,974**; `ng build` clean; **full Playwright 139
+  passed, 0 failed, 0 skips** over a fresh dist — including P4.d22's owed
+  restore beat and all three cast beats, which self-activated over the live verbs.
+
+### Versions after the round
+
+core **0.0.380**, harness **0.0.326**, host **0.0.41**, web **0.0.47**,
+SPA **0.5.297**; cli 0.0.3, quilltap-tauri 0.0.5 unchanged.
+
+### Open, loud, and named
+
+- **P4.d22 item 3 — the restore files-phase placement needs a HUMAN RULING.**
+  v4 runs its files phase at `22a-bis`; v5 runs it after the whole doc-store
+  family. Both write the same rows with the same values into the same mount at
+  the same path — only the INSERTION ORDER differs. The lane did not move v5;
+  the residual is named `PHASE_ORDER_RESIDUAL` and asserted in both directions,
+  so aligning the placements FAILS the test. **The lane recommends adopting
+  v4's `22a-bis`** (a later slot lets the replay hard-link to an archived
+  content row so 22f's blob insert violates `UNIQUE(fileId)`; v5 sits in exactly
+  that slot; no committed archive triggers it).
+- **P4.d22 item 4 — not exercised.** The archive family has no
+  second-generation archive, so v5's behaviour against v4's known residual is
+  analysis, not measurement. Build one as the ruling's follow-up.
+- **`ChatToolSettingsModal` is not built** (E1B tier-1 item 5, escalated). It
+  renders a tool INVENTORY that comes from `GET /api/v1/tools` (727 LOC + the
+  plugin registry), unported by any lane. v4's `Tools…` entry is present and
+  **refuses by name**. Whoever takes `p4.9e3` must carry the inventory route.
+- **`llm_choose` refuses by name** on both the add-participant outfit path
+  (E1A) and `merge-conversation` (E3A) — each needs a cheap-LLM host seam the
+  single-writer closure cannot host; the fix is a driver on the
+  `ChatCreateDriver` pattern. No UI can reach either this round.
+- **`ChatGetAvatars` / `ChatSetAvatar` / `ChatRemoveAvatar` have no screen** —
+  because v4 has none either (verified: nothing in v4 calls those routes).
+- Two v5 findings D22 recorded and did NOT fix: the unported `refreshStats`
+  leaves a restored mount's cached `fileCount` stale (`V5_STATS_GAP`,
+  both-directions tripwire), and `DbError::Key`'s Display prefix leaks
+  "key derivation failed:" into ~20 user-visible messages.
+- The `TimestampConfigSchema` write-path normalization stays deferred (it
+  straddles the two server lanes' file seam — see the round plan).

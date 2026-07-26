@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+The four strands of this round met on main. A conversation's cast can now be
+changed after it starts — added to, taken from, handed to the human to play,
+answered for by a different model — through both of the old app's doors, sharing
+one implementation so they cannot drift. The chat's administrative actions came
+with it: tags, re-attribution, merging another conversation in, running a tool by
+hand, the dice, agent mode, and regenerating a title. And the old app's four
+backup-and-restore fixes are now matched here, so the deliberate differences this
+port had recorded are gone and those comparisons are plain equalities again.
+
+Two escalations the strands could not reach were closed where they met. Clearing
+a character's talkativeness or arrival note now stores the same "nothing" the old
+app stores, rather than dropping the field; the test that had been holding that
+difference open failed the moment it closed, which is what it was for. And agent
+mode can be set from the wire again, not just read.
+
+Running the new cast walk against the merged tree found two faults that had been
+shipping. The sidebar's Add Character button could not be clicked at all once the
+cast grew long enough to need scrolling — a wrapper element with no display rule
+was swallowing the click. And a character who had left a scene stayed hidden from
+the announcement picker forever, because the picker was ignoring the fact that
+they had left. Neither could have been seen before this round: there was no way
+to remove a character, so nothing had ever produced the state that reveals them.
+
 The porting record now carries the chat cast surface: its work order is closed,
 the screen-parity notes name the three deliberate wire-shape differences on it,
 and the unit journal records the fixture recipe and the one gap handed to
