@@ -36029,3 +36029,69 @@ each to the sheet its caller already holds. `services/tool_build.rs` did NOT
 need an edit: the field defaults through the struct literal its caller builds.
 Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0 failed.
 `quilltap-core` 0.0.363 → 0.0.364, `quilltap-harness` 0.0.310 → 0.0.311.
+
+### Unit 5 — `tool_vocabulary.rs` + `references` on every listing (v4 `faab6881`)
+
+The pure module `pascal/tool_vocabulary.rs` (`collect_tool_vocabulary`,
+`is_empty_vocabulary`, `ToolVocabulary`) plus its three consumers in
+`api/custom_tools.rs`.
+
+- **The `$state` walk goes over the SERIALIZATION.** v4 walks the parsed
+  definition object depth-first for `{ "$state": … }`; v5's parsed definition is
+  a struct, so it walks `serde_json::to_value(definition)` — which is the same
+  object, byte-for-byte, and the definition differential's `data` field is what
+  proves that. Walking rather than enumerating the sites is v4's own choice and
+  the reason it survives a schema that grows new ones.
+- **Sorted with the ICU collator** (`collation::locale_compare`), not byte
+  order. Two corpus rows make that a real claim rather than an untested
+  preference: `_a`/`a`/`Ä`/`b`/`Z` collates as written but byte-sorts
+  `Z,_a,a,b,Ä`, and `a_b` sorts BEFORE `a-b` under ICU and after it by code
+  unit.
+- **All seven keys always present**, in v4's declaration order — this is §1 of
+  the round's shared contract, which P4.d21 consumes, so the whole serialized
+  object is compared rather than field by field.
+- `references` sits after `parameters` and before `defaultVisibility` on each
+  listing; `resolve_for_perspective` now passes `perspective.metadata` (already
+  hydrated by `load_perspectives`, so the gate costs no read at this entrance);
+  `custom_tool_preview` adds §2's conditional `gate` key, present ONLY when the
+  definition gates — **the bench still deals either way**; and `handleList`'s new
+  `logger.debug` lands as `tracing::debug!`.
+
+**NEW differential family** `pascal_tool_vocabulary_equivalence`
+(`QT_ORACLE_PASCAL_VOCABULARY`, case
+`harness/oracle/cases/pascal-tool-vocabulary.ts`): 37 definitions against v4's
+real `collectToolVocabulary`, comparing the SERIALIZED object. Sources covered:
+outcome messages, `when.metadata` (including a catch-all's message, which tests
+nothing but still quotes), BOTH gate clauses, the llm prompt, and `$state` refs
+nested in a roll field / a parameter default / a comparator operand / a string
+operand — plus the declared-params filter, both empty-suffix guards
+(`{{params.}}`, `{{metadata.}}`, `{{state.}}`), the placeholder-matching corners
+(`{{}}`, inner whitespace, single braces, adjacent placeholders, an unknown
+family), dedup between a gate and a table, and `isEmptyVocabulary`.
+
+Coverage is asserted rather than counted: every boolean must be seen BOTH set
+and unset, every list non-empty somewhere, at least one row must quote nothing,
+and at least one list must have more than one entry (or the ordering claim is
+vacuous). **Mutation-checked:** a byte-order sort → red at
+`sort-collation-vs-byte-order`; dropping the declared-params filter → red at
+`params-quoted-but-undeclared`.
+
+**Fixtures re-cut, and what that invalidates.** `pascal-run-custom-{main,mount}.db`
+gained (a) the two gated definitions `secure_line`/`novice_aid` in the GENERAL
+store — one gating positively and one negatively over the SAME three fact
+sheets, so the two clauses land opposite ways on CHAR_C's empty sheet — and (b)
+**CHAR_D, whose provisioned vault has its `properties.json` keystone deleted**,
+so `findById` raises the vault-unavailable error unit 6 needs. Three
+differentials read that family and were re-cut with it:
+`pascal_run_custom_handler_equivalence`, `pascal_custom_tools_route_equivalence`,
+and `pascal_build_tools_roster`. The delete is scoped through
+`doc_mount_file_links` — content is shared by sha256, and a fresh vault's
+`properties.json` is byte-identical everywhere, so the LINK is the only row that
+can be removed from one vault alone.
+
+**Tier-2 item 12 landed here** (it needed the same fixture):
+`pascal_build_tools_roster` now resolves CHAR_B as well and asserts that
+`secure_line` and `novice_aid` are absent from the `run_custom` DESCRIPTION
+string the model reads — not merely from a listing — while the ungated tools
+still appear. Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0
+failed. `quilltap-core` 0.0.364 → 0.0.365, `quilltap-harness` 0.0.311 → 0.0.312.

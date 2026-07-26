@@ -39,6 +39,8 @@ use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamCo
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
+use crate::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
+use crate::pascal::tool_vocabulary::collect_tool_vocabulary;
 use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams,
 };
@@ -135,7 +137,10 @@ fn resolve_for_perspective(
             character_mount_point_id: perspective.character_mount_point_id.clone(),
             character_ids: Some(all_character_ids.to_vec()),
             project_id: project_id.map(str::to_string),
-            metadata: None,
+            // Availability gates are answered against this character's own sheet
+            // — the same sheet the roster already resolves their vault tier
+            // through, and already in hand from `load_perspectives`.
+            metadata: Some(perspective.metadata.clone()),
         },
         main,
         mount,
@@ -178,6 +183,13 @@ fn build_listing(
     );
     m.insert("description".into(), json!(entry.definition.description));
     m.insert("parameters".into(), params);
+    // What this tool quotes beyond its parameters — vocabulary, never odds
+    // (v4 `faab6881`). Positioned after `parameters` and before
+    // `defaultVisibility`, which is v4's own declaration order.
+    m.insert(
+        "references".into(),
+        serde_json::to_value(collect_tool_vocabulary(&entry.definition)).unwrap_or(Value::Null),
+    );
     m.insert(
         "defaultVisibility".into(),
         json!(match entry.definition.default_visibility {
@@ -319,6 +331,17 @@ pub fn chat_custom_tools_list(db: &Db, user_id: &str, chat_id: &str) -> Response
             });
 
             let errors: Vec<Value> = errors_by_key.into_iter().map(|(_, v)| v).collect();
+            // v4 `faab6881`'s `logger.debug('Custom-tool roster resolved for the
+            // operator', {…})`, same point and same counts.
+            tracing::debug!(
+                target: "quilltap::pascal",
+                chat_id = %chat_id_owned,
+                perspectives = perspectives.len(),
+                tools = tools.len(),
+                errors = errors.len(),
+                dropped_for_cap = dropped_for_cap.len(),
+                "Custom-tool roster resolved for the operator",
+            );
             let mut data = Map::new();
             data.insert("tools".into(), Value::Array(tools));
             data.insert("errors".into(), Value::Array(errors));
@@ -1028,7 +1051,25 @@ pub async fn custom_tool_preview(
     )
     .await
     {
-        Ok(result) => Response::CustomToolPreview(run_result_to_value(&result)),
+        Ok(result) => {
+            let mut body = run_result_to_value(&result);
+            // The bench always deals — a gate decides whether a character is
+            // OFFERED a tool, not whether the author may test one they are
+            // holding. The verdict rides along so the bench can say "and this
+            // character would never have been dealt it", which a roll alone
+            // could never reveal. Present ONLY when the definition gates
+            // (v4 `6864bf0e`'s `...(hasToolGate(...) ? {gate} : {})`).
+            if has_tool_gate(&definition) {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert(
+                        "gate".into(),
+                        serde_json::to_value(evaluate_tool_gate(&definition, Some(&metadata)))
+                            .unwrap_or(Value::Null),
+                    );
+                }
+            }
+            Response::CustomToolPreview(body)
+        }
         Err(CustomToolRunError(reason)) => unprocessable(reason),
     }
 }

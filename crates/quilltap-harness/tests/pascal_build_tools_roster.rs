@@ -25,6 +25,8 @@ use quilltap_core::tools::run_custom::build_run_custom_description;
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
+/// P4.d19: the sheet that is withheld BOTH gated definitions.
+const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -36,6 +38,8 @@ fn fixtures_dir() -> PathBuf {
 struct Meta {
     #[serde(rename = "vaultA")]
     vault_a: String,
+    #[serde(rename = "vaultB")]
+    vault_b: String,
 }
 
 fn tool_name(t: &serde_json::Value) -> Option<&str> {
@@ -129,20 +133,76 @@ fn build_tools_resolves_and_offers_run_custom() {
         .unwrap();
     let expected_roster: Vec<_> = roster.tools.iter().map(|(_, t)| t.clone()).collect();
     // The handler oracle's `unknown-tool` case pins this order to v4:
-    // ansible, coin, whispered, oracle, stateful (`oracle` is the 616930db
-    // consult tool; `stateful` is the P4.d10 `$state` tool the fixture rebuild
-    // added; v4's "Available: …" list reads exactly this, so the order is
-    // v4's, not a guess).
+    // ansible, coin, whispered, oracle, stateful, then the two GENERAL-store
+    // gated definitions (`oracle` is the 616930db consult tool; `stateful` is
+    // the P4.d10 `$state` tool; `secure_line`/`novice_aid` are P4.d19's gated
+    // pair). v4's "Available: …" list reads exactly this, so the order is v4's,
+    // not a guess — and CHAR_A's fact sheet qualifies for BOTH gates.
     assert_eq!(
         expected_roster
             .iter()
             .map(|t| t.definition.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["ansible", "coin", "whispered", "oracle", "stateful"]
+        vec![
+            "ansible",
+            "coin",
+            "whispered",
+            "oracle",
+            "stateful",
+            "secure_line",
+            "novice_aid"
+        ]
     );
     assert_eq!(
         run_custom["function"]["description"].as_str().unwrap(),
         build_run_custom_description(&expected_roster)
+    );
+
+    // P4.d19 tier-2 item 12: a WITHHELD tool must be absent from the built
+    // `run_custom` DESCRIPTION, not merely from a listing. CHAR_B's sheet
+    // (`{ faction: "Ordo Ferrum" }`) lacks `clearanceLevel` — so `secure_line`
+    // fails its `availableWhen` closed — and matches `novice_aid`'s
+    // `withheldWhen`. Both names must be gone from the string the model reads.
+    let ctx_b = RosterContext {
+        user_id: USER.into(),
+        chat_id: CHAT.into(),
+        character_id: Some(CHAR_B.into()),
+        character_mount_point_id: Some(meta.vault_b.clone()),
+        character_ids: Some(vec![CHAR_B.into()]),
+        project_id: None,
+        metadata: None,
+    };
+    let db_b = open();
+    let built_b = build_tools(&db_b, USER, &base_input(Some(ctx_b.clone()))).unwrap();
+    let run_custom_b = built_b
+        .tools
+        .iter()
+        .find(|t| tool_name(t) == Some("run_custom"))
+        .expect("run_custom offered for a non-empty roster");
+    let roster_b = db_b
+        .read_main(|main| {
+            db_b.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&ctx_b, main, mount)))
+        })
+        .unwrap();
+    assert_eq!(
+        roster_b
+            .tools
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ansible", "stateful"],
+        "CHAR_B's sheet must be withheld BOTH gated definitions"
+    );
+    let description_b = run_custom_b["function"]["description"].as_str().unwrap();
+    for withheld in ["secure_line", "novice_aid"] {
+        assert!(
+            !description_b.contains(withheld),
+            "a gated-out tool ({withheld}) reached the run_custom description the model reads"
+        );
+    }
+    assert!(
+        description_b.contains("ansible"),
+        "the ungated tools must still be described"
     );
 
     // A None context → run_custom is never built (the setting off).

@@ -10,6 +10,9 @@
  *             metadata { hasAnsibleAccess: true, clearanceLevel: 3 }.
  *   - CHAR_B: ansible; metadata { faction: "Ordo Ferrum" } (lacks the key).
  *   - CHAR_C: ansible; metadata {} (empty sheet).
+ *   - CHAR_D (P4.d19): a provisioned vault with its `properties.json` keystone
+ *             DELETED, so `findById` raises the vault-unavailable error.
+ * The General store carries the two AVAILABILITY-GATED definitions (P4.d19).
  * One salon chat CH with all three characters + a user participant, so
  * `postPascalResult`/`postProsperoCustomToolError` find the chat.
  *
@@ -18,8 +21,8 @@
  * to the `.meta.json` sidecar (the Rust side reads them to pass
  * `character_mount_point_id`).
  *
- * Regenerate (v4 @ d68638b4, Node 24):
- *   cd ~/source/quilltap-server
+ * Regenerate (v4 @ 231be14c, Node 24; the pinned detached worktree):
+ *   cd /tmp/qt-v4-pin-231be14c
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
@@ -39,6 +42,10 @@ interface Spec {
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
+/// P4.d19: a character whose vault is BROKEN (its `properties.json` keystone is
+/// deleted after provisioning), so `findById` raises the vault-unavailable
+/// error the run_custom handler now meets BEFORE it resolves a roster.
+const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
 
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
@@ -129,6 +136,34 @@ const ORACLE = {
     { when: { llm: { ok: false } }, message: 'Silence: {{llm}}', state: 'failure' },
     { when: true, message: 'The oracle demurs.', state: 'info' },
   ],
+};
+
+/**
+ * P4.d19 (v4 `6864bf0e`): the two AVAILABILITY-GATED tools, in the GENERAL store
+ * so every character sees the same file and only their fact sheet decides.
+ *
+ * `secure_line` gates POSITIVELY: only CHAR_A's `clearanceLevel: 3` qualifies —
+ * CHAR_B lacks the key and CHAR_C's sheet is empty, and both fail CLOSED.
+ * `novice_aid` gates NEGATIVELY over the same three sheets, and lands the other
+ * way: only CHAR_B's `faction` matches, so A and C (neither of whom has the key)
+ * are OFFERED it. One sheet, two clauses, opposite answers — the asymmetry that
+ * is the whole reason both keys exist.
+ */
+const SECURE_LINE = {
+  name: 'secure_line',
+  description: 'Open the secure line.',
+  availableWhen: { metadata: { clearanceLevel: { gte: 3 } } },
+  roll: { min: 0.7, max: 0.7 },
+  outcomes: [{ when: true, message: 'The line hums, scrambled.', state: 'success' }],
+};
+
+const NOVICE_AID = {
+  name: 'novice_aid',
+  description: 'Ask the house for a hint.',
+  defaultVisibility: 'whisper',
+  withheldWhen: { metadata: { faction: { contains: 'Ferrum' } } },
+  roll: { min: 0.5, max: 0.5 },
+  outcomes: [{ when: true, message: 'The house obliges, quietly.', state: 'info' }],
 };
 
 async function main(): Promise<void> {
@@ -235,6 +270,7 @@ async function main(): Promise<void> {
   const vaultA = await mkChar(CHAR_A, 'Bertie');
   const vaultB = await mkChar(CHAR_B, 'Jeeves');
   const vaultC = await mkChar(CHAR_C, 'Aunt Agatha');
+  const vaultD = await mkChar(CHAR_D, 'Spode');
 
   const { storeMountFile } = await import('@/lib/mount-index/store-file');
   const writeVaultFile = async (
@@ -268,6 +304,18 @@ async function main(): Promise<void> {
 
   await writeVaultFile(vaultC, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultC, 'metadata.json', {});
+
+  // P4.d19: break CHAR_D's vault by removing the `properties.json` keystone the
+  // overlay demands, so `findById` raises the vault-unavailable error. A
+  // provisioned-then-broken vault is the honest shape — a character that never
+  // had one takes the `hasLinkedVault` early return and never throws.
+  // The path lives on `doc_mount_file_links` (content is shared by sha256
+  // through `doc_mount_files`/`doc_mount_documents`, and the scaffold's
+  // properties.json is byte-identical across every fresh vault — so deleting
+  // the LINK is the only delete that can be scoped to one vault).
+  midb
+    .prepare('DELETE FROM "doc_mount_file_links" WHERE "mountPointId" = ? AND "relativePath" = ?')
+    .run(vaultD, 'properties.json');
 
   // P4.d10: the state-cascade seeds. A group for CHAR_A (store-backed state via
   // the overlay), the singleton "Quilltap General" mount with its root
@@ -314,6 +362,10 @@ async function main(): Promise<void> {
     'state.json',
     JSON.stringify({ gen_tier: true, difficulty: 9 }, null, 2),
   );
+  // P4.d19: the two gated definitions live in the GENERAL store (the farthest
+  // tier), so every character reaches the same file and only the gate decides.
+  await writeVaultFile(GENERAL_MP, 'Tools/secure_line.tool.json', SECURE_LINE);
+  await writeVaultFile(GENERAL_MP, 'Tools/novice_aid.tool.json', NOVICE_AID);
 
   const mkParticipant = (id: string, characterId: string, controlledBy: string) => ({
     id,
@@ -364,11 +416,11 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
-  const meta = { vaultA, vaultB, vaultC };
+  const meta = { vaultA, vaultB, vaultC, vaultD };
   writeFileSync(mainOut + '.meta.json', JSON.stringify(meta));
   process.stderr.write(
     `built pascal-run-custom fixture: main=${mainOut} mount=${mountOut} ` +
-      `vaultA=${vaultA} vaultB=${vaultB} vaultC=${vaultC}\n`,
+      `vaultA=${vaultA} vaultB=${vaultB} vaultC=${vaultC} vaultD=${vaultD}\n`,
   );
   process.exit(0);
 }

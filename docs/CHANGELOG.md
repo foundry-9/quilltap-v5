@@ -11,6 +11,18 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+Each tool the composer's custom-tools list offers now names what it can quote:
+the placeholders its own messages actually use, the fact-sheet keys it reads,
+and the state paths it consults. Every entry is an occurrence in the
+definition's own text, not something the format merely permits — a dice tool
+that never writes the dice is not offered them, and a tool that quotes nothing
+gets no panel. This is vocabulary, never odds: it says what a tool reads, never
+what it concludes.
+
+Pascal's proving bench now reports whether a gated tool would have been dealt to
+the loaded fact sheet at all. The bench still deals either way — a gate decides
+whether a character is offered a tool, not whether its author may test one.
+
 Availability gates are now enforced where the roster is dealt, so a tool a
 character does not qualify for is absent everywhere at once. The test is asked
 before the deal, and a gated-out definition makes no claim on its name at all —
