@@ -36658,3 +36658,64 @@ case asserts `render()` and `render('inline')` produce **identical innerHTML**,
 so a future edit to the stacked branch cannot silently move the bench.
 
 `ng test` 228 files / 2,683. SPA `0.5.282` → `0.5.283`.
+
+### Unit 5 — the two-phase run dialog (v4 `faab6881`)
+
+`custom-tools-popup.ts` **reworked in place** (the order's explicit choice):
+the 288 px upward popover with its accordion is gone, replaced by v4's modal.
+The file and class keep their names — a rename would have churned
+`chat-composer.ts`, the spec and the e2e for no gain — but the header now maps
+the v4 names.
+
+**v5 folds v4's two components into one.** v4 splits `CustomToolsButton` from
+`CustomToolRunDialog` because the dialog is rendered unconditionally (closed) so
+that it keeps its memory. In Angular the memory can simply live on the component
+that stays mounted, and — more decisively — **v5's roster query is what decides
+whether the button exists at all** (`available()`: a runnable tool OR a broken
+file), so it cannot live behind the open flag the way v4's `enabled: isOpen`
+does. v4 reads its `customToolsAvailable` off the chat payload instead. That is
+a standing v5 divergence, unchanged by this unit; the fresh-on-open refetch is
+kept.
+
+Ported: both phases, the search box past `SEARCH_THRESHOLD = 6` and its
+`searchHaystack`, all four picker states (loading / error / nothing-at-all /
+nothing-runnable-but-errors / no-match), the tool rows with their wrench, the
+"Would not read" card, the cap notice, the form phase's header + "What you are
+setting" / "Nothing to set" + privacy card + reference panel, and both footers
+(New contrivance… / Cancel; Choose another tool / Cancel / Run <title>). Escape,
+the backdrop, the ✕ and Cancel all dismiss.
+
+**The selection is DERIVED, never stored** — v4's own hard requirement. Proven by
+mutation: storing the chosen entry and falling back to it makes three cases fail,
+including "drops back to the picker when the remembered tool leaves the roster".
+That case had to be written carefully: clicking "Choose another tool" clears the
+selection by itself, so it proves nothing. It Cancels (which preserves the
+selection), swaps the roster, and reopens.
+
+**The reference panel** renders §1's `references` and NOTHING is recomputed
+client-side — v4 does not reimplement `collectToolVocabulary` in the browser and
+neither does v5 (a second implementation would drift; the content is proven
+server-side by P4.d19's tool-vocabulary differential). **`references` is declared
+in `custom-tools.api.ts`**, per the order's mapping table, as
+`CustomToolReferences` + `CustomToolRosterEntry` + `CustomToolsRoster` — NOT on
+`core-contract.ts`'s `CustomToolListing`, since §1 is P4.d19's to emit and no
+lane this round edits the wire mirror.
+
+> **ACTIVATE-AT-UNIFY marker.** The panel is live but empty until P4.d19 lands:
+> until then the key is absent from the wire, which the consumer reads as
+> "quotes nothing" (no panel) rather than as an error. **The unifier only has to
+> run the suite** — a spec case pins the absent-`references` arm, and the panel
+> self-activates the moment the field arrives. Nothing to edit.
+
+Two v5 class-vocabulary substitutions, both because the v4 class does not exist
+here and `_utilities.css` is not this lane's file: `hover:qt-bg-surface-hover` →
+**`hover:qt-bg-surface-alt`** (v5's real hover utility; v5 hand-writes its
+`.hover\:X:hover` rules rather than generating them, so v4's name — and the
+`hover:qt-bg-muted` the OLD popup carried — are both dead classes here).
+
+**A projection trap worth the note:** Angular matches `<ng-content select>`
+against the COMPILE-TIME children of the component tag, so a `[qt-modal-footer]`
+element nested inside an `@if` lands in the DEFAULT slot. Both slots are
+therefore static children of `<qt-modal>`, each switching phase inside itself.
+
+`ng test` 228 files / 2,699; `ng build` clean. SPA `0.5.283` → `0.5.284`.

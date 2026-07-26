@@ -82,6 +82,22 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+The wand in the composer now opens a proper window instead of a cramped little
+popover. It lists your tools first — each with its description and the store and
+file it came from, plus a wrench that opens it on Pascal's Workbench, and a search
+box once there are more than six — and choosing one replaces the list with that
+tool's form. "Choose another tool" goes back; Escape, the backdrop, and Cancel all
+close it. It remembers what you last filled in, whether you meant to roll
+privately, and which tool you were on, so reopening picks up where you left off;
+if that tool has since been renamed or withheld, you simply land back on the list.
+
+A new panel, "What this tool can quote", names the placeholders the chosen tool
+actually uses — its own value, the dice, a parameter, a key from your character's
+fact sheet, a path in the story's state — and says plainly that these belong to
+the tool's own messages, not to what you type, which is sent exactly as written.
+A tool that quotes nothing gets no panel. The panel fills in once the server side
+of this round lands.
+
 The generated form for a custom tool's parameters gained a roomier layout, for
 use in a full dialog: the name, its type, and any declared range sit on one line,
 the author's description gets its own, and a text parameter is a box that grows

@@ -202,8 +202,9 @@ export interface ComposerSend {
             <qt-icon name="paperclip" class="w-5 h-5" />
           </button>
 
-          <!-- v4 gutter row 4, col 1: Pascal's custom tools (bespoke here — the
-               popup gates its own visibility on the roster). -->
+          <!-- v4 gutter row 4, col 1: Pascal's custom tools — opens a dialog
+               (bespoke here: the button gates its own visibility on the roster
+               rather than on a chat-payload flag). -->
           <qt-custom-tools-popup
             [chatId]="chatId()"
             [disabled]="disabled()"
