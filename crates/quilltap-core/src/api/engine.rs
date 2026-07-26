@@ -1027,6 +1027,24 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::ChatBulkReattribute {
+                chat_id,
+                source_participant_id,
+                target_participant_id,
+                role_filter,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_bulk_reattribute(
+                        &db,
+                        &chat_id,
+                        source_participant_id.as_deref(),
+                        &target_participant_id,
+                        role_filter.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ChatUpdateToolSettings {
                 chat_id,
                 disabled_tools,

@@ -2524,6 +2524,17 @@ pub enum Request {
         chat_id: String,
         tag_id: String,
     },
+    /// Re-attribute many messages at once (v4 `POST …?action=bulk-reattribute`).
+    /// `source_participant_id` is v4-`nullable` (explicit null = unattributed);
+    /// `role_filter` defaults to `"both"`.
+    #[serde(rename_all = "camelCase")]
+    ChatBulkReattribute {
+        chat_id: String,
+        source_participant_id: Option<String>,
+        target_participant_id: String,
+        #[serde(default)]
+        role_filter: Option<String>,
+    },
     /// Replace the chat's disabled-tool sets (v4 `POST …?action=update-tool-settings`).
     /// The service ALSO sets `forceToolsOnNextMessage = true`; the response echoes
     /// only the two arrays.

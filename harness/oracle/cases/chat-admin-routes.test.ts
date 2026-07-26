@@ -54,6 +54,12 @@ const TAG_B = 'b1000000-0000-4000-8000-000000000002';
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const EMPTY_CHAT = 'c1000000-0000-4000-8000-000000000003';
 const MISSING_ID = '99999999-9999-4999-8999-999999999999';
+const P_EVE = 'e1000000-0000-4000-8000-000000000001';
+const P_ARIA = 'e1000000-0000-4000-8000-000000000002';
+const P_CLIO = 'e1000000-0000-4000-8000-000000000003';
+// A participant id belonging to the SOURCE chat, so "not found in THIS chat" is
+// reachable with a well-formed uuid.
+const P_STRANGER = 'e1000000-0000-4000-8000-000000000011';
 
 const RealDate = Date;
 
@@ -129,6 +135,21 @@ function applyMocks(spec: Spec): void {
 async function readChat(chatId: string): Promise<unknown> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   return ((await getRepositories().chats.findById(chatId)) ?? null) as unknown;
+}
+
+/** Every chat event, in order — the bulk rewrite's evidence. */
+async function readMessages(chatId: string): Promise<unknown> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  return (await getRepositories().chats.getMessages(chatId)) as unknown;
+}
+
+/** Every memory row, id-sorted — bulk re-attribution deletes some of them. */
+async function readMemories(): Promise<unknown> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const rows = (await getRepositories().memories.findAll()) as Array<Record<string, unknown>>;
+  return rows
+    .map((m) => ({ id: m.id, characterId: m.characterId, sourceMessageId: m.sourceMessageId ?? null }))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
 /** The user's background jobs, oldest first (the two enqueueing verbs). */
@@ -255,6 +276,11 @@ async function main(): Promise<void> {
     );
 
   const chatTables = async (chatId = CHAT) => ({ chat: await readChat(chatId) });
+  const bulkTables = async () => ({
+    chat: await readChat(CHAT),
+    messages: await readMessages(CHAT),
+    memories: await readMemories(),
+  });
   const jobTables = async (chatId = CHAT) => ({
     chat: await readChat(chatId),
     jobs: await readJobs(spec.userId),
@@ -437,6 +463,117 @@ async function main(): Promise<void> {
     {
       name: 'render_conversation_chat_missing',
       run: async () => respond(await post(MISSING_ID, 'render-conversation', {})),
+    },
+    // ── ?action=bulk-reattribute ────────────────────────────────────────────
+    // ARIA's rows are crossed by role on purpose: ASSISTANT selects M2+M3
+    // (both of which carry a memory), USER selects M4, `both` selects all three.
+    {
+      name: 'bulk_reattribute_both',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_EVE,
+          }),
+        );
+        return { status, body, tables: await bulkTables() };
+      },
+    },
+    {
+      name: 'bulk_reattribute_assistant_only',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_EVE,
+            roleFilter: 'ASSISTANT',
+          }),
+        );
+        return { status, body, tables: await bulkTables() };
+      },
+    },
+    {
+      name: 'bulk_reattribute_user_only',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_EVE,
+            roleFilter: 'USER',
+          }),
+        );
+        return { status, body, tables: await bulkTables() };
+      },
+    },
+    {
+      // The nullable source: an explicit null selects the UNATTRIBUTED rows
+      // (M6 + M7), which carry no memories.
+      name: 'bulk_reattribute_null_source',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: null,
+            targetParticipantId: P_CLIO,
+          }),
+        );
+        return { status, body, tables: await bulkTables() };
+      },
+    },
+    {
+      // Nothing matches (CLIO has no USER-role rows) → the early return, with no
+      // clear-and-replay at all, so `updatedAt` and `messageCount` stand.
+      name: 'bulk_reattribute_no_matches',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_CLIO,
+            targetParticipantId: P_EVE,
+            roleFilter: 'USER',
+          }),
+        );
+        return { status, body, tables: await bulkTables() };
+      },
+    },
+    {
+      name: 'bulk_reattribute_same_participant',
+      run: async () =>
+        respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_ARIA,
+          }),
+        ),
+    },
+    {
+      name: 'bulk_reattribute_source_not_in_chat',
+      run: async () =>
+        respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_STRANGER,
+            targetParticipantId: P_EVE,
+          }),
+        ),
+    },
+    {
+      name: 'bulk_reattribute_target_not_in_chat',
+      run: async () =>
+        respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_STRANGER,
+          }),
+        ),
+    },
+    {
+      name: 'bulk_reattribute_bad_role_filter',
+      run: async () =>
+        respond(
+          await post(CHAT, 'bulk-reattribute', {
+            sourceParticipantId: P_ARIA,
+            targetParticipantId: P_EVE,
+            roleFilter: 'TOOL',
+          }),
+        ),
     },
   ];
 

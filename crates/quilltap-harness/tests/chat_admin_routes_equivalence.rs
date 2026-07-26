@@ -44,9 +44,37 @@ const TAG_B: &str = "b1000000-0000-4000-8000-000000000002";
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const EMPTY_CHAT: &str = "c1000000-0000-4000-8000-000000000003";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
+const P_EVE: &str = "e1000000-0000-4000-8000-000000000001";
+const P_ARIA: &str = "e1000000-0000-4000-8000-000000000002";
+const P_CLIO: &str = "e1000000-0000-4000-8000-000000000003";
+/// A participant of the SOURCE chat — "not found in THIS chat" with a
+/// well-formed uuid.
+const P_STRANGER: &str = "e1000000-0000-4000-8000-000000000011";
+/// The instant the oracle freezes its clock to (`chat-admin-web.json`).
+const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
+/// The fixture's seed timestamp — what an untouched `updatedAt` still reads.
+const SEED_ISO: &str = "2026-05-01T00:00:00.000Z";
 
 /// Cases where v4 answers 201 and the dispatch boundary answers 200.
 const V4_CREATED_CASES: &[&str] = &["add_tag_new", "add_tag_already_present"];
+
+/// Cases whose 400 body carries v4's Zod `details` array, which v5's error
+/// envelope does not model (the standing, named P4.6bb deferral). Asserted in
+/// both directions, then dropped before the body compare.
+const VALIDATION_DETAILS_GAP: &[&str] = &["bulk_reattribute_bad_role_filter"];
+
+/// Cases whose chat row carries a timestamp MINTED from the wall clock —
+/// `addMessage` stamps `updatedAt` + `lastMessageAt` with `now` on every
+/// message-typed event, and v5's clock is the real one while v4's is frozen.
+/// The two keys are asserted (v4 == the frozen instant, v5 != the fixture seed —
+/// i.e. BOTH sides did write) and only then dropped from the compare, so the
+/// difference is proven rather than normalized away.
+const CLOCK_MINTED_CASES: &[&str] = &[
+    "bulk_reattribute_both",
+    "bulk_reattribute_assistant_only",
+    "bulk_reattribute_user_only",
+    "bulk_reattribute_null_source",
+];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,6 +223,40 @@ fn dump_chat(db: &Db, chat_id: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
+/// Every chat event, in order (the oracle's `readMessages`).
+fn dump_messages(db: &Db, chat_id: &str) -> Value {
+    let cid = chat_id.to_string();
+    Value::Array(
+        db.read_main(move |c| quilltap_core::db::chats_messages_read::get_messages(c, &cid))
+            .unwrap(),
+    )
+}
+
+/// Every memory row, id-sorted, reduced to the three columns the bulk delete
+/// moves (the oracle's `readMemories`).
+fn dump_memories(db: &Db) -> Value {
+    let rows = db
+        .read_main(quilltap_core::db::memories_read::find_all)
+        .unwrap();
+    let mut out: Vec<Value> = rows
+        .into_iter()
+        .map(|m| {
+            json!({
+                "id": m.get("id").cloned().unwrap_or(Value::Null),
+                "characterId": m.get("characterId").cloned().unwrap_or(Value::Null),
+                "sourceMessageId": m.get("sourceMessageId").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect();
+    out.sort_by_key(|v| {
+        v.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    });
+    Value::Array(out)
+}
+
 /// The user's PENDING + PROCESSING jobs, minus the minted id/timestamps, sorted
 /// by their own JSON text (the oracle sorts identically).
 fn dump_jobs(db: &Db, user_id: &str) -> Value {
@@ -253,52 +315,107 @@ fn chat_admin_routes_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
-    let mut check = |name: &str, resp: &Response, tables: Option<Value>| {
-        driven.insert(name.to_string());
-        let Some(want) = oracle.get(name) else {
-            failed.push(format!("{name}_MISSING_FROM_ORACLE"));
-            return;
-        };
-        let (status, body) = status_body(resp);
-        let want_status = want["status"].as_u64().unwrap() as u16;
-        let want_body = want["body"].clone();
+    let mut check =
+        |name: &str, resp: &Response, tables: Option<Value>| {
+            driven.insert(name.to_string());
+            let Some(want) = oracle.get(name) else {
+                failed.push(format!("{name}_MISSING_FROM_ORACLE"));
+                return;
+            };
+            let (status, body) = status_body(resp);
+            let want_status = want["status"].as_u64().unwrap() as u16;
+            let mut want_body = want["body"].clone();
 
-        if V4_CREATED_CASES.contains(&name) {
-            if want_status != 201 || status != 200 {
-                eprintln!(
-                    "[{name}] the recorded 201-vs-200 difference no longer holds \
+            if V4_CREATED_CASES.contains(&name) {
+                if want_status != 201 || status != 200 {
+                    eprintln!(
+                        "[{name}] the recorded 201-vs-200 difference no longer holds \
                      (v4={want_status}, v5={status}) — re-rule it or drop the entry"
-                );
+                    );
+                    failed.push(format!("{name}_status"));
+                }
+            } else if status != want_status {
+                eprintln!("[{name}] STATUS {status} != {want_status}");
                 failed.push(format!("{name}_status"));
             }
-        } else if status != want_status {
-            eprintln!("[{name}] STATUS {status} != {want_status}");
-            failed.push(format!("{name}_status"));
-        }
 
-        if norm(&body) != norm(&want_body) {
-            eprintln!(
-                "[{name}] BODY MISMATCH:\n{}",
-                first_diff(&norm(&body), &norm(&want_body))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] body OK.");
-        }
-
-        if let Some(got_tables) = tables {
-            let want_tables = want["tables"].clone();
-            if norm(&got_tables) != norm(&want_tables) {
-                eprintln!(
-                    "[{name} tables] MISMATCH:\n{}",
-                    first_diff(&norm(&got_tables), &norm(&want_tables))
-                );
-                failed.push(format!("{name}_tables"));
-            } else {
-                eprintln!("[{name} tables] OK.");
+            // The Zod `details` gap, asserted in both directions.
+            if VALIDATION_DETAILS_GAP.contains(&name) {
+                let v4_details_ok = want_body
+                    .get("details")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty());
+                let v5_has_details = body.get("details").is_some();
+                if !v4_details_ok || v5_has_details {
+                    eprintln!(
+                        "[{name}] the recorded validation-details gap no longer holds \
+                     (v4 details present={v4_details_ok}, v5 details present={v5_has_details}) \
+                     — re-rule it or drop the entry"
+                    );
+                    failed.push(format!("{name}_details_gap"));
+                }
+                if let Some(o) = want_body.as_object_mut() {
+                    o.remove("details");
+                }
             }
-        }
-    };
+
+            if norm(&body) != norm(&want_body) {
+                eprintln!(
+                    "[{name}] BODY MISMATCH:\n{}",
+                    first_diff(&norm(&body), &norm(&want_body))
+                );
+                failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] body OK.");
+            }
+
+            if let Some(mut got_tables) = tables {
+                let mut want_tables = want["tables"].clone();
+                // Wall-clock-minted chat timestamps: prove BOTH sides wrote, then
+                // drop the two keys (see CLOCK_MINTED_CASES).
+                if CLOCK_MINTED_CASES.contains(&name) {
+                    for (label, tbl, expect_frozen) in [
+                        ("v4", &mut want_tables, true),
+                        ("v5", &mut got_tables, false),
+                    ] {
+                        let Some(chat) = tbl.get_mut("chat").and_then(Value::as_object_mut) else {
+                            failed.push(format!("{name}_clock_shape"));
+                            continue;
+                        };
+                        for key in ["updatedAt", "lastMessageAt"] {
+                            let got = chat
+                                .get(key)
+                                .and_then(Value::as_str)
+                                .unwrap_or("")
+                                .to_string();
+                            let ok = if expect_frozen {
+                                got == FROZEN_NOW_ISO
+                            } else {
+                                got != SEED_ISO && !got.is_empty()
+                            };
+                            if !ok {
+                                eprintln!(
+                                "[{name}] {label} {key} = {got:?} — the clear-and-replay did not \
+                                 stamp it (expected {})",
+                                if expect_frozen { FROZEN_NOW_ISO } else { "anything but the seed" }
+                            );
+                                failed.push(format!("{name}_{label}_{key}"));
+                            }
+                            chat.remove(key);
+                        }
+                    }
+                }
+                if norm(&got_tables) != norm(&want_tables) {
+                    eprintln!(
+                        "[{name} tables] MISMATCH:\n{}",
+                        first_diff(&norm(&got_tables), &norm(&want_tables))
+                    );
+                    failed.push(format!("{name}_tables"));
+                } else {
+                    eprintln!("[{name} tables] OK.");
+                }
+            }
+        };
 
     // ── ?action=add-tag ─────────────────────────────────────────────────────
     for (name, chat, tag, dump) in [
@@ -454,6 +571,74 @@ fn chat_admin_routes_match_oracle() {
             MISSING_ID,
         ));
         check("render_conversation_chat_missing", &r, None);
+    }
+
+    // ── ?action=bulk-reattribute ────────────────────────────────────────────
+    for (name, src, target, role, dump) in [
+        ("bulk_reattribute_both", Some(P_ARIA), P_EVE, None, true),
+        (
+            "bulk_reattribute_assistant_only",
+            Some(P_ARIA),
+            P_EVE,
+            Some("ASSISTANT"),
+            true,
+        ),
+        (
+            "bulk_reattribute_user_only",
+            Some(P_ARIA),
+            P_EVE,
+            Some("USER"),
+            true,
+        ),
+        ("bulk_reattribute_null_source", None, P_CLIO, None, true),
+        (
+            "bulk_reattribute_no_matches",
+            Some(P_CLIO),
+            P_EVE,
+            Some("USER"),
+            true,
+        ),
+        (
+            "bulk_reattribute_same_participant",
+            Some(P_ARIA),
+            P_ARIA,
+            None,
+            false,
+        ),
+        (
+            "bulk_reattribute_source_not_in_chat",
+            Some(P_STRANGER),
+            P_EVE,
+            None,
+            false,
+        ),
+        (
+            "bulk_reattribute_target_not_in_chat",
+            Some(P_ARIA),
+            P_STRANGER,
+            None,
+            false,
+        ),
+        (
+            "bulk_reattribute_bad_role_filter",
+            Some(P_ARIA),
+            P_EVE,
+            Some("TOOL"),
+            false,
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        let r = rt.block_on(chat_admin::chat_bulk_reattribute(
+            &db, CHAT, src, target, role,
+        ));
+        let tables = dump.then(|| {
+            json!({
+                "chat": dump_chat(&db, CHAT),
+                "messages": dump_messages(&db, CHAT),
+                "memories": dump_memories(&db),
+            })
+        });
+        check(name, &r, tables);
     }
 
     // Shape, not a hand-written count: the two case sets must agree exactly.

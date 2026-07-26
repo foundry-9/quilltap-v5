@@ -37287,3 +37287,48 @@ must be equal), never by a hand-written count.
 First-run-green, so sensitivity was proven by mutation: flipping
 `force_tools_on_next_message` to `false` failed both `update_tool_settings`
 cases on exactly that line.
+
+### Unit 3 — bulk-reattribute
+
+v4 `actions/bulk.ts:18` ported into `services/chat_admin.rs`, plus §1's
+`ChatBulkReattribute` and its engine arm.
+
+The rewrite is a **clear-and-replay, not an UPDATE**, and that is load-bearing:
+v4 calls `clearMessages` then `addMessage` for every event in order, and each
+`addMessage` runs the chat-metadata side effect (recount `messageCount`, stamp
+`lastMessageAt`/`updatedAt` for message-typed events, fold
+`spokenThisCycleParticipantIds`). The final chat row is the product of N
+sequential writes, so the port replays one event at a time rather than reaching
+for `add_messages`. The mutation test proved this is not theoretical: a wrong
+`participantId` shows up in `spokenThisCycleParticipantIds` as well as in the
+message rows.
+
+v4's trailing `repos.chats.update(chatId, {})` is a genuine no-op — the chats
+repository PRESERVES `updatedAt` when the patch omits it, so despite its own
+comment ("Update chat's updatedAt timestamp") that call changes nothing.
+Reproduced anyway.
+
+Memory deletion goes through `delete_memory_with_vector`, which re-checks
+ownership against the memory's own `characterId`, so `memoriesDeleted` counts
+what was actually deleted rather than what was found; a failure is logged and
+skipped (v4's best-effort cleanup).
+
+**Differential:** 9 new cases (29 total). The fixture's crossed role ×
+participant grid means the three `roleFilter` values each select a DIFFERENT
+subset of ARIA's rows — `both` → 3 messages / 2 memories, `ASSISTANT` → 2 / 2,
+`USER` → 1 / 0 — so a filter that silently ignored `roleFilter` could not pass.
+Also driven: the `sourceParticipantId: null` arm (the two unattributed rows), the
+no-matches early return (which must NOT clear-and-replay, proven by `updatedAt`
+still reading the fixture seed), all three 400 arms, and an invalid `roleFilter`.
+
+Two normalizations, both asserted rather than applied blind:
+
+- `bulk_reattribute_bad_role_filter` joins `VALIDATION_DETAILS_GAP` — v4's Zod
+  400 carries a `details` array v5's envelope does not model (the standing
+  P4.6bb deferral). The test asserts v4 HAS a non-empty `details` and v5 has
+  none, then compares the rest.
+- The four replaying cases join `CLOCK_MINTED_CASES`: `addMessage` stamps
+  `updatedAt` + `lastMessageAt` from the wall clock, which v4 freezes and v5
+  does not. The test asserts v4's two keys equal the frozen instant AND v5's
+  differ from the fixture seed — i.e. both sides really wrote — and only then
+  drops them from the compare.

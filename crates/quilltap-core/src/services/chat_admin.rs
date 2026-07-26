@@ -52,11 +52,15 @@ use serde_json::{json, Value};
 
 use crate::api::types::{ErrorKind, Response};
 use crate::db::chats::ChatUpdate;
+use crate::db::chats_messages::ChatEventInput;
 use crate::db::runtime::Db;
-use crate::db::{chat_settings, chats_read, projects, tags, DbError};
+use crate::db::{
+    chat_settings, chats_messages_read, chats_read, memories_read, projects, tags, DbError,
+};
 use crate::services::agent_mode::{
     resolve_agent_mode_setting, AgentModeSettings, DEFAULT_AGENT_MODE_SETTINGS,
 };
+use crate::services::memory_service::delete_memory_with_vector;
 use crate::services::queue_service::{
     enqueue_chat_danger_classification, enqueue_conversation_render,
 };
@@ -67,6 +71,9 @@ use crate::services::queue_service::{
 
 fn ok(body: Value) -> Response {
     Response::ChatAdmin(body)
+}
+fn bad_request(msg: impl Into<String>) -> Response {
+    Response::error(ErrorKind::BadRequest, msg)
 }
 /// v4 `notFound(resource)` → `` `${resource} not found` `` at 404.
 fn not_found(resource: &str) -> Response {
@@ -458,4 +465,213 @@ pub(crate) fn require_chat(db: &Db, chat_id: &str) -> Result<(), Response> {
         Ok(None) => Err(not_found("Chat")),
         Err(e) => Err(internal(e)),
     }
+}
+
+// ===========================================================================
+// bulk-reattribute (v4 `actions/bulk.ts:18`)
+// ===========================================================================
+
+/// v4 `?action=bulk-reattribute` — move every matching message from one
+/// participant to another, deleting the memories those messages produced.
+///
+/// `source_participant_id` is v4-`nullable`: an explicit `null` selects the
+/// UNATTRIBUTED messages (`participantId` null or absent). `role_filter` is v4's
+/// `z.enum(['ASSISTANT','USER','both']).prefault('both')` — an absent value
+/// defaults to `both`, and an unrecognized one is a 400 the same way Zod's is.
+///
+/// ## The rewrite is a clear-and-replay, not an UPDATE
+///
+/// v4 rebuilds the whole transcript: `clearMessages` then `addMessage` for every
+/// event in order (`bulk.ts:103-106`). That is not incidental — each `addMessage`
+/// runs the chat-metadata side effect (recount `messageCount`, bump
+/// `lastMessageAt`/`updatedAt` for message-typed events, fold
+/// `spokenThisCycleParticipantIds`), so the final chat row is the product of N
+/// sequential writes, not one. The port replays the same way, one event at a
+/// time, so the metadata lands identically.
+///
+/// The trailing `repos.chats.update(chatId, {})` is a genuine no-op: v4's chats
+/// repository PRESERVES `updatedAt` when the patch omits it, so despite its own
+/// comment ("Update chat's updatedAt timestamp") that call changes nothing. It is
+/// reproduced anyway — an empty patch still rewrites `updatedAt` to its existing
+/// value.
+///
+/// ## Memory deletion is best-effort and counted
+///
+/// For every affected message, each memory whose `sourceMessageId` matches is
+/// deleted through [`delete_memory_with_vector`] (which re-checks ownership
+/// against the memory's own `characterId`, so the count is "actually deleted",
+/// not "found"). A single failure is logged and skipped — one bad memory must not
+/// abort the re-attribution.
+pub async fn chat_bulk_reattribute(
+    db: &Db,
+    chat_id: &str,
+    source_participant_id: Option<&str>,
+    target_participant_id: &str,
+    role_filter: Option<&str>,
+) -> Response {
+    let chat = match load_chat(db, chat_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+
+    // v4's Zod `.enum([...]).prefault('both')`: absent → 'both', unknown → 400.
+    let role_filter = role_filter.unwrap_or("both");
+    if !matches!(role_filter, "ASSISTANT" | "USER" | "both") {
+        return bad_request("Validation error");
+    }
+
+    if source_participant_id == Some(target_participant_id) {
+        return bad_request("Source and target participants must be different");
+    }
+
+    let participant_exists = |id: &str| -> bool {
+        chat.get("participants")
+            .and_then(Value::as_array)
+            .is_some_and(|ps| {
+                ps.iter()
+                    .any(|p| p.get("id").and_then(Value::as_str) == Some(id))
+            })
+    };
+    if let Some(src) = source_participant_id {
+        if !participant_exists(src) {
+            return bad_request("Source participant not found in chat");
+        }
+    }
+    if !participant_exists(target_participant_id) {
+        return bad_request("Target participant not found in chat");
+    }
+
+    let cid = chat_id.to_string();
+    let all_messages = match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
+        Ok(m) => m,
+        Err(e) => return internal(e),
+    };
+
+    // v4's filter, predicate for predicate.
+    let affected: Vec<&Value> = all_messages
+        .iter()
+        .filter(|msg| {
+            if msg.get("type").and_then(Value::as_str) != Some("message") {
+                return false;
+            }
+            let pid = msg.get("participantId").and_then(Value::as_str);
+            match source_participant_id {
+                // Explicit null selects the unattributed (null OR absent).
+                None => {
+                    if pid.is_some() {
+                        return false;
+                    }
+                }
+                Some(src) => {
+                    if pid != Some(src) {
+                        return false;
+                    }
+                }
+            }
+            if role_filter == "both" {
+                return true;
+            }
+            msg.get("role").and_then(Value::as_str) == Some(role_filter)
+        })
+        .collect();
+
+    if affected.is_empty() {
+        return ok(json!({
+            "success": true,
+            "messagesUpdated": 0,
+            "memoriesDeleted": 0,
+        }));
+    }
+
+    let affected_ids: std::collections::HashSet<String> = affected
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+
+    // Delete the memories those messages produced (best effort, counted).
+    let mut memories_deleted = 0usize;
+    for msg_id in affected
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str))
+    {
+        let mid = msg_id.to_string();
+        let from_message = match db
+            .read_main(move |c| memories_read::find_by_source_message_id(c, &mid))
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::error!(error = %e, "[Chats v1] Failed to read memories during bulk re-attribution");
+                continue;
+            }
+        };
+        for memory in from_message {
+            let (Some(memory_id), Some(character_id)) = (
+                memory.get("id").and_then(Value::as_str),
+                memory.get("characterId").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            match delete_memory_with_vector(db, character_id, memory_id).await {
+                Ok(true) => memories_deleted += 1,
+                Ok(false) => {}
+                Err(e) => {
+                    // v4 logs and continues — best-effort cleanup.
+                    tracing::error!(
+                        memory_id,
+                        error = %e,
+                        "[Chats v1] Failed to delete memory during bulk re-attribution"
+                    );
+                }
+            }
+        }
+    }
+
+    // Rewrite the whole transcript with the affected rows re-attributed.
+    let mut rewritten: Vec<ChatEventInput> = Vec::with_capacity(all_messages.len());
+    for msg in &all_messages {
+        let mut event = msg.clone();
+        if msg.get("type").and_then(Value::as_str) == Some("message") {
+            if let Some(id) = msg.get("id").and_then(Value::as_str) {
+                if affected_ids.contains(id) {
+                    if let Some(o) = event.as_object_mut() {
+                        o.insert(
+                            "participantId".into(),
+                            Value::String(target_participant_id.to_string()),
+                        );
+                    }
+                }
+            }
+        }
+        match serde_json::from_value::<ChatEventInput>(event) {
+            Ok(e) => rewritten.push(e),
+            Err(e) => return internal(DbError::Key(format!("bulk re-attribute marshal: {e}"))),
+        }
+    }
+
+    let cid = chat_id.to_string();
+    let write = db
+        .write(move |w| {
+            let msgs = w.main().chat_messages();
+            msgs.clear_messages(&cid)?;
+            // One `add_message` per event, exactly like v4 — the per-message
+            // chat-metadata side effect is part of the observable result.
+            for e in &rewritten {
+                msgs.add_message(&cid, e)?;
+            }
+            // v4's trailing `repos.chats.update(chatId, {})` — a no-op that
+            // rewrites `updatedAt` to its existing value.
+            w.main().chats().update(&cid, &ChatUpdate::default())?;
+            Ok(())
+        })
+        .await;
+    if let Err(e) = write {
+        return internal(e);
+    }
+
+    ok(json!({
+        "success": true,
+        "messagesUpdated": affected.len(),
+        "memoriesDeleted": memories_deleted,
+    }))
 }

@@ -8266,6 +8266,15 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 3 — bulk re-attribution. Moving every matching message from one
+participant to another, with the memories those messages produced deleted along
+the way. The old app rebuilds the whole transcript rather than updating rows, and
+that turns out to matter: each re-added message re-runs the chat's own
+bookkeeping, so the port replays one message at a time. Nine new differential
+cases; the fixture crosses roles against participants so that each of the three
+role filters selects a different set, and a filter that quietly ignored its
+argument could not pass.
+
 P4.9E3A unit 2 — the five simple chat-admin verbs. `add-tag`, `remove-tag`,
 `update-tool-settings`, `toggle-agent-mode`, `reclassify-danger` and
 `render-conversation` land on the boundary over a new `services/chat_admin.rs`,
