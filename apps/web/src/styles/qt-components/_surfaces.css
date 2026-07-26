@@ -994,6 +994,23 @@
      ========================================================================== */
 
   /**
+   * Collapsible card HOST element.
+   *
+   * v4 renders this card as a plain `<div>`; v5's Angular component introduces a
+   * `qt-collapsible-card` custom element around it, and an unknown element with
+   * no display rule defaults to `display: inline`. An inline box wrapping block
+   * children produces a layout box that does not enclose its own content, which
+   * breaks both `scrollIntoView` and hit-testing: in the chat sidebar's scroller
+   * the Participants card's inline box swallowed clicks aimed at the "Add
+   * Character" footer below the fold, so the button could not be pressed at all
+   * once the cast was long enough to overflow. (Found at the P4.9E1B unification
+   * by the cast walk's first live run; the sidebar has been shipping with it.)
+   */
+  qt-collapsible-card {
+    display: block;
+  }
+
+  /**
    * Collapsible card container
    */
   .qt-collapsible-card {

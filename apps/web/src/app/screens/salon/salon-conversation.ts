@@ -1040,9 +1040,20 @@ export class SalonConversation {
   /** The whisper target (v4 `SalonView.tsx:150` `whisperTarget`). */
   protected readonly whisperTarget = signal<{ participantId: string; name: string } | null>(null);
 
-  /** The character ids already in the scene — the announcement picker excludes them. */
+  /**
+   * The character ids already in the scene — the announcement picker excludes
+   * them (v4 `ChatModals.tsx:321-323`).
+   *
+   * Both filters are v4's and both matter. `type === 'CHARACTER'` skips the
+   * non-character rows, and **`!removedAt`** keeps a SOFT-REMOVED participant
+   * out of the exclusion set, so a character who has left the scene becomes
+   * available to announce from off-scene again. v5 had neither filter; the gap
+   * was invisible until P4.9E1B's cast walk performed the first soft remove any
+   * e2e beat had ever produced, and the sibling Post Office beat caught it.
+   */
   protected readonly participantCharacterIds = computed<string[]>(() =>
     (this.chat()?.participants ?? [])
+      .filter((p) => p.type === 'CHARACTER' && !p.removedAt)
       .map((p) => p.character?.id)
       .filter((id): id is string => !!id),
   );
