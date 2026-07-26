@@ -31,24 +31,15 @@
 //!    'Validation error', details: […]}`; v5's error envelope has no `details`
 //!    array (the standing, named P4.6bb deferral). Asserted in both directions,
 //!    then dropped before the body diff.
-//! 3. **`PARTICIPANT_NULL_COLLAPSE`** — ⚠ **a cross-lane escalation, not a
-//!    ruling.** v4's `ChatParticipantBaseSchema` marks `joinScenario` and
-//!    `talkativeness` `.nullable().optional()`, so an explicit `null` survives
-//!    its parse and `JSON.stringify`; v5's `db::chats::ChatParticipant` models
-//!    both as plain `Option<T>`, collapsing `null` and absent to the same `None`
-//!    and DROPPING the key. `handleAddParticipant` writes `joinScenario:
-//!    data.joinScenario || null`, so every v4-added participant carries
-//!    `"joinScenario":null` where v5 omits it; the tri-state `…_null` update
-//!    cases reach the same gap deliberately.
-//!
-//!    The fix is two field types in `db/chats.rs`, which belongs to **P4.9E3A**
-//!    this round, so this lane does not make it (order §2: escalate, never
-//!    resolve unilaterally). [`reconcile_null_collapse`] strips the key from the
-//!    v4 side ONLY where v4 has exactly `null` and v5 has nothing, counts every
-//!    such site, and the test FAILS if the count reaches zero — so closing the
-//!    gap trips this wire rather than passing silently. It is a stored-bytes
-//!    fidelity gap, not a behavior change: every consumer treats an absent key
-//!    and a `null` identically.
+//! 3. ~~`PARTICIPANT_NULL_COLLAPSE`~~ — **CLOSED at this round's unification.**
+//!    v4's `ChatParticipantBaseSchema` marks `joinScenario`, `talkativeness` and
+//!    `roleplayTemplateId` `.nullable().optional()`, so an explicit `null`
+//!    survives its parse and `JSON.stringify`; v5's `db::chats::ChatParticipant`
+//!    modelled them as plain `Option<T>` and dropped the key. The lane escalated
+//!    it rather than reaching into `db/chats.rs` (P4.9E3A's file that round);
+//!    the unifier made all three double-`Option`s, and the both-directions
+//!    tripwire that guarded the gap FIRED on the first run, exactly as designed.
+//!    Every body and table now matches without reconciliation.
 //!
 //! ## The two entrances land the same state
 //!
@@ -232,36 +223,6 @@ fn sorted(v: &Value) -> Value {
             Value::Object(m)
         }
         _ => v.clone(),
-    }
-}
-
-/// ⚠ The escalated `joinScenario` / `talkativeness` explicit-null collapse (see
-/// the module header). Walks both trees in lockstep; wherever v4 carries one of
-/// those keys as exactly `null` and v5 carries nothing, the key is removed from
-/// the v4 side and a hit is counted. Any OTHER shape is left alone so the
-/// ordinary diff still speaks.
-fn reconcile_null_collapse(v4: &mut Value, v5: &Value, hits: &mut usize) {
-    const KEYS: [&str; 3] = ["joinScenario", "talkativeness", "roleplayTemplateId"];
-    match (v4, v5) {
-        (Value::Object(a), Value::Object(b)) => {
-            for k in KEYS {
-                if a.get(k) == Some(&Value::Null) && !b.contains_key(k) {
-                    a.remove(k);
-                    *hits += 1;
-                }
-            }
-            for (k, av) in a.iter_mut() {
-                if let Some(bv) = b.get(k) {
-                    reconcile_null_collapse(av, bv, hits);
-                }
-            }
-        }
-        (Value::Array(a), Value::Array(b)) => {
-            for (av, bv) in a.iter_mut().zip(b.iter()) {
-                reconcile_null_collapse(av, bv, hits);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -497,7 +458,6 @@ fn chat_cast_routes_match_oracle() {
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
-    let mut null_collapse_hits: usize = 0;
     // The `chats` dumps of each case, for the two-entrances assertion.
     let mut chat_dumps: HashMap<String, Value> = HashMap::new();
 
@@ -506,7 +466,6 @@ fn chat_cast_routes_match_oracle() {
         let oracle = &oracle;
         let failed = &mut failed;
         let driven = &mut driven;
-        let hits = &mut null_collapse_hits;
         let chat_dumps = &mut chat_dumps;
 
         let mut check = |name: &str, resp: &Response, tables: Option<Value>| {
@@ -550,7 +509,6 @@ fn chat_cast_routes_match_oracle() {
                 }
             }
 
-            reconcile_null_collapse(&mut want_body, &body, hits);
             if norm(&body, pinned) != norm(&want_body, pinned) {
                 eprintln!(
                     "[{name}] BODY MISMATCH:\n{}",
@@ -562,8 +520,7 @@ fn chat_cast_routes_match_oracle() {
             }
 
             if let Some(mut got_tables) = tables {
-                let mut want_tables = want["tables"].clone();
-                reconcile_null_collapse(&mut want_tables, &got_tables, hits);
+                let want_tables = want["tables"].clone();
                 if let Some(chat) = got_tables.get("chat") {
                     chat_dumps.insert(name.to_string(), chat.clone());
                 }
@@ -1190,17 +1147,6 @@ fn chat_cast_routes_match_oracle() {
             eprintln!("[entrances {action_case} vs {bag_case}] identical.");
         }
     }
-
-    // The escalated explicit-null collapse must still be real (see the header).
-    assert!(
-        null_collapse_hits > 0,
-        "PARTICIPANT_NULL_COLLAPSE produced ZERO hits — the joinScenario/talkativeness \
-         explicit-null gap in db::chats::ChatParticipant appears to be CLOSED. \
-         Delete `reconcile_null_collapse` and this assertion, then re-run."
-    );
-    eprintln!(
-        "PARTICIPANT_NULL_COLLAPSE: {null_collapse_hits} reconciled sites (escalated to P4.9E3A)."
-    );
 
     // Shape assertion: the driven set and the oracle's set must be identical.
     let recorded: BTreeSet<String> = oracle.keys().cloned().collect();

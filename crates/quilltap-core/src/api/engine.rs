@@ -1161,13 +1161,13 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::ChatToggleAgentMode { chat_id } => match self.ready_db() {
+            Request::ChatToggleAgentMode { chat_id, enabled } => match self.ready_db() {
                 Ok(db) => {
                     crate::services::chat_admin::chat_toggle_agent_mode(
                         &db,
                         SINGLE_USER_ID,
                         &chat_id,
-                        None,
+                        enabled,
                     )
                     .await
                 }

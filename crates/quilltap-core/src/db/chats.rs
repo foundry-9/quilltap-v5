@@ -92,12 +92,18 @@ pub struct ChatParticipant {
         skip_serializing_if = "Option::is_none"
     )]
     pub image_profile_id: Option<Option<String>>,
+    /// Double-`Option` — v4's `roleplayTemplateId` is `.nullable().optional()`,
+    /// so Zod KEEPS an explicit stored `null` while dropping an absent key. See
+    /// [`ChatParticipant::connection_profile_id`] for the full rationale.
+    /// (Closed at the P4.9E1A ∥ P4.9E3A unification — the escalation E1A's
+    /// `reconcile_null_collapse` tripwire was holding open.)
     #[serde(
         rename = "roleplayTemplateId",
         default,
+        deserialize_with = "de_double_opt_string",
         skip_serializing_if = "Option::is_none"
     )]
-    pub roleplay_template_id: Option<String>,
+    pub roleplay_template_id: Option<Option<String>>,
     /// Double-`Option` — v4 writes `data.selectedSystemPromptId || null` (always
     /// present, `null` when falsy). See [`ChatParticipant::connection_profile_id`].
     #[serde(
@@ -147,13 +153,20 @@ pub struct ChatParticipant {
         skip_serializing_if = "Option::is_none"
     )]
     pub join_scenario: Option<Option<String>>,
+    /// Double-`Option` — v4's `talkativeness` is `.nullable().optional()`, so an
+    /// explicit `null` (the operator clearing a per-chat override) survives
+    /// Zod's parse and `JSON.stringify` where an absent key does not. See
+    /// [`ChatParticipant::connection_profile_id`] for the full rationale.
+    /// (Closed at the P4.9E1A ∥ P4.9E3A unification — the escalation E1A's
+    /// `reconcile_null_collapse` tripwire was holding open.)
     #[serde(
         rename = "talkativeness",
         default,
+        deserialize_with = "de_double_opt_f64",
         skip_serializing_if = "Option::is_none",
-        serialize_with = "ser_opt_js_number"
+        serialize_with = "ser_double_opt_js_number"
     )]
-    pub talkativeness: Option<f64>,
+    pub talkativeness: Option<Option<f64>>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -171,6 +184,27 @@ where
     Ok(Some(Option::<String>::deserialize(de)?))
 }
 
+/// The `f64` twin of [`de_double_opt_string`], for `talkativeness`.
+fn de_double_opt_f64<'de, D>(de: D) -> Result<Option<Option<f64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<f64>::deserialize(de)?))
+}
+
+/// Serialize a double-`Option` number through v4's JS-number formatting:
+/// `Some(Some(n))` → the number, `Some(None)` → `null`, `None` → skipped by
+/// `skip_serializing_if`.
+fn ser_double_opt_js_number<S: serde::Serializer>(
+    v: &Option<Option<f64>>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match v {
+        Some(Some(n)) => super::js_number_to_json(*n).serialize(s),
+        _ => s.serialize_none(),
+    }
+}
+
 fn default_llm() -> String {
     "llm".to_string()
 }
@@ -179,16 +213,6 @@ fn default_true() -> bool {
 }
 fn default_active() -> String {
     "active".to_string()
-}
-
-/// Serialize an `Option<f64>` the JS way for the participant JSON: an
-/// integer-valued double renders bare (`1.0` → `1`), matching `JSON.stringify`.
-/// Only called when `Some` (the field is `skip_serializing_if` on `None`).
-fn ser_opt_js_number<S: serde::Serializer>(v: &Option<f64>, s: S) -> Result<S::Ok, S::Error> {
-    match v {
-        Some(n) => super::js_number_to_json(*n).serialize(s),
-        None => s.serialize_none(),
-    }
 }
 
 /// Create fields — the post-default `Omit<ChatMetadata,'id'|'createdAt'|

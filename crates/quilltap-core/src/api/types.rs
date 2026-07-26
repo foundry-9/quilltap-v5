@@ -2588,6 +2588,14 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     ChatToggleAgentMode {
         chat_id: String,
+        /// v4's `toggleAgentModeSchema` body is `{ enabled: boolean | null }`
+        /// and the column is tri-state: absent leaves it alone, `null` clears
+        /// the per-chat override back to the cascade, `true`/`false` pins it.
+        /// (Widened at this round's unification — P4.9E3A shipped the SERVICE
+        /// taking the full tri-state but §1 was frozen across three orders, so
+        /// the variant could only express the absent arm.)
+        #[serde(default)]
+        enabled: Option<Option<bool>>,
     },
     /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).
     #[serde(rename_all = "camelCase")]

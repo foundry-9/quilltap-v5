@@ -302,11 +302,23 @@ fn assemble_chat_get(
                 .flatten()
         });
     let settings = chat_settings::find_by_user_id(main, user_id)?;
-    let (agent_enabled, agent_source) = resolve_agent_mode(
-        chat,
-        project.as_ref(),
-        primary_character.as_ref(),
-        settings.as_ref(),
+    // v4 `resolveAgentModeSetting`'s (enabled, enabledSource) cascade
+    // (Global → Character → Project → Chat). This GET handler used to re-derive
+    // it because the shared resolver dropped `enabledSource`; P4.9E3A added it,
+    // so the duplicate was deleted at this round's unification and both callers
+    // now share `services::agent_mode` (single source of truth).
+    let bool_at = |v: Option<&Value>, k: &str| -> Option<bool> {
+        v.and_then(|o| o.get(k)).and_then(Value::as_bool)
+    };
+    let resolved_agent = crate::services::agent_mode::resolve_agent_mode_setting(
+        chat.get("agentModeEnabled").and_then(Value::as_bool),
+        bool_at(project.as_ref(), "defaultAgentModeEnabled"),
+        bool_at(primary_character.as_ref(), "defaultAgentModeEnabled"),
+        crate::services::agent_mode::global_agent_mode_settings(settings.as_ref()),
+    );
+    let (agent_enabled, agent_source) = (
+        resolved_agent.enabled,
+        resolved_agent.enabled_source.as_str(),
     );
 
     // user block ({ id, name?, image? } — nullable name/image dropped when NULL).
@@ -541,41 +553,6 @@ fn project_message(e: &Value, attachments: Value) -> Value {
         coalesce_null("confirmationOriginalContent"),
     );
     Value::Object(m)
-}
-
-/// v4 `resolveAgentModeSetting`'s `(enabled, enabledSource)` cascade
-/// (Global → Character → Project → Chat). The ported
-/// [`resolve_agent_mode_setting`](crate::services::agent_mode) drops
-/// `enabledSource` (host diagnostics), so the GET handler re-derives both here.
-fn resolve_agent_mode(
-    chat: &Value,
-    project: Option<&Value>,
-    character: Option<&Value>,
-    settings: Option<&Value>,
-) -> (bool, &'static str) {
-    let opt_bool = |v: Option<&Value>, k: &str| -> Option<bool> {
-        v.and_then(|o| o.get(k)).and_then(Value::as_bool)
-    };
-    let global_default = settings
-        .and_then(|s| s.get("agentModeSettings"))
-        .and_then(|a| a.get("defaultEnabled"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let mut enabled = global_default;
-    let mut source = "global";
-    if let Some(c) = opt_bool(character, "defaultAgentModeEnabled") {
-        enabled = c;
-        source = "character";
-    }
-    if let Some(p) = opt_bool(project, "defaultAgentModeEnabled") {
-        enabled = p;
-        source = "project";
-    }
-    if let Some(ch) = chat.get("agentModeEnabled").and_then(Value::as_bool) {
-        enabled = ch;
-        source = "chat";
-    }
-    (enabled, source)
 }
 
 /// JS truthiness for a JSON value (`|| null` semantics): null/false/0/"" are

@@ -59,9 +59,7 @@ use crate::db::runtime::Db;
 use crate::db::{
     chat_settings, chats_messages_read, chats_read, memories_read, projects, tags, DbError,
 };
-use crate::services::agent_mode::{
-    resolve_agent_mode_setting, AgentModeSettings, DEFAULT_AGENT_MODE_SETTINGS,
-};
+use crate::services::agent_mode::{global_agent_mode_settings, resolve_agent_mode_setting};
 use crate::services::context_summary::tasks::{title_chat, title_help_chat};
 use crate::services::image_job_common::{
     cheap_llm_config_from_settings, cheap_llm_profile_from_value,
@@ -360,26 +358,6 @@ fn first_character_id(chat: &Value) -> Option<String> {
         })
         .and_then(|p| p.get("characterId").and_then(Value::as_str))
         .map(str::to_string)
-}
-
-/// v4 `globalSettings?.agentModeSettings ?? DEFAULT_AGENT_MODE_SETTINGS`. The
-/// stored block is Zod-defaulted by v4's read, so a present block always carries
-/// both keys; a missing key falls back per-field to the same defaults.
-fn global_agent_mode_settings(settings: Option<&Value>) -> AgentModeSettings {
-    let block = settings.and_then(|s| s.get("agentModeSettings"));
-    match block {
-        Some(b) if !b.is_null() => AgentModeSettings {
-            max_turns: b
-                .get("maxTurns")
-                .and_then(Value::as_i64)
-                .unwrap_or(DEFAULT_AGENT_MODE_SETTINGS.max_turns),
-            default_enabled: b
-                .get("defaultEnabled")
-                .and_then(Value::as_bool)
-                .unwrap_or(DEFAULT_AGENT_MODE_SETTINGS.default_enabled),
-        },
-        _ => DEFAULT_AGENT_MODE_SETTINGS,
-    }
 }
 
 // ===========================================================================

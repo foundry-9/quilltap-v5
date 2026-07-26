@@ -26,6 +26,8 @@
 //!     the orchestrator injects into `formattedMessages` when agent mode is on
 //!     (v4 `buildAgentModeInstructions`).
 
+use serde_json::Value;
+
 /// Which cascade level supplied `enabled` (v4 `ResolvedAgentMode.enabledSource`).
 /// v4 only logs it from the orchestrator, but the `toggle-agent-mode` action
 /// returns it to the client as `agentModeSource` — so it is a real output, not
@@ -91,6 +93,26 @@ pub const DEFAULT_AGENT_MODE_SETTINGS: AgentModeSettings = AgentModeSettings {
 /// DEFAULT_AGENT_MODE_SETTINGS`. The three overrides are the nullable-boolean
 /// fields `character.defaultAgentModeEnabled` / `project.defaultAgentModeEnabled`
 /// / `chat.agentModeEnabled` (each `None` when JSON-null or absent).
+/// v4 `globalSettings?.agentModeSettings ?? DEFAULT_AGENT_MODE_SETTINGS`. The
+/// stored block is Zod-defaulted by v4's read, so a present block always carries
+/// both keys; a missing key falls back per-field to the same defaults.
+pub fn global_agent_mode_settings(settings: Option<&Value>) -> AgentModeSettings {
+    let block = settings.and_then(|s| s.get("agentModeSettings"));
+    match block {
+        Some(b) if !b.is_null() => AgentModeSettings {
+            max_turns: b
+                .get("maxTurns")
+                .and_then(Value::as_i64)
+                .unwrap_or(DEFAULT_AGENT_MODE_SETTINGS.max_turns),
+            default_enabled: b
+                .get("defaultEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(DEFAULT_AGENT_MODE_SETTINGS.default_enabled),
+        },
+        _ => DEFAULT_AGENT_MODE_SETTINGS,
+    }
+}
+
 pub fn resolve_agent_mode_setting(
     chat_agent_mode_enabled: Option<bool>,
     project_default: Option<bool>,

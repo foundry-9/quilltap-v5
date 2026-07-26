@@ -179,10 +179,10 @@ pub(super) fn reconcile_relationships(
                                 }
                             }
                         }
-                        if let Some(tpl) = &p.roleplay_template_id {
+                        if let Some(Some(tpl)) = &p.roleplay_template_id {
                             if !tpl.is_empty() {
                                 if let Some(new_tpl) = id_maps.roleplay_templates.get(tpl) {
-                                    p.roleplay_template_id = Some(new_tpl.to_string());
+                                    p.roleplay_template_id = Some(Some(new_tpl.to_string()));
                                 }
                             }
                         }
