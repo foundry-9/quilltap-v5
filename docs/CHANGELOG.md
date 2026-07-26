@@ -8088,6 +8088,23 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.d18 unit 4 — the fictional-clock anchor backfill, as a boot repair. v4's
+migration `anchor-fictional-clock-base-v1` is ported to
+`db::fictional_clock_anchor_repair` and invoked once per startup from the host's
+main-partition boot seed, following the P4.d7 mount-index case-repair precedent
+(v5's migration runner is still deferred). It stamps
+`timestampConfig.fictionalBaseRealTime` from each chat's own `createdAt`, so a
+story clock created before unit 2's fix resumes where 1:1 tracking would have
+put it rather than lurching. Only rows that need it are touched — fictional
+clock, a base to count from, no anchor — which makes the pass idempotent with no
+marker row, and unknown keys survive because the blob is re-serialized rather
+than rebuilt. Even v4's quirks are reproduced: the `LIKE` pre-filter only matches
+the compact `"useFictionalTime":true` spelling, so a blob serialized with spaces
+is invisible to the backfill on both sides. A new tier-2 DB-state differential
+runs v4's real migration and the port over the same 13-row spec in a freshly
+provisioned instance, diffing the raw `timestampConfig` text byte for byte;
+mutation-checked in two directions. core 0.0.363, harness 0.0.312, host 0.0.39.
+
 P4.d18 unit 3 — the Timestamp card's two fictional-clock strings. The "Use
 fictional time" description no longer promises a clock that "advances with each
 message" (it never did); it now says the clock starts at a fictional moment and

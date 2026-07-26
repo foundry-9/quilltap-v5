@@ -58,6 +58,7 @@ pub mod document_store_overlay;
 pub mod embedding_profiles;
 pub mod embedding_status;
 pub mod ensure_official_store;
+pub mod fictional_clock_anchor_repair;
 pub mod files;
 pub mod folders;
 pub mod group_character_members;

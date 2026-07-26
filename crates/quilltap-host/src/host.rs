@@ -685,10 +685,11 @@ impl EngineAssembler for HostAssembler {
 }
 
 /// Seed the built-in roleplay templates + provision-or-adopt the three built-in
-/// mount stores (P4.4u3, families 1 & 2) through the writer thread. Spawned on a
-/// fresh OS thread and joined so `write_blocking` is legal from either the sync
-/// boot path or an async `Unlock` dispatch. The mount families are skipped on a
-/// main-only instance (no mount-index partition).
+/// mount stores (P4.4u3, families 1 & 2) through the writer thread, and run the
+/// main partition's boot repairs. Spawned on a fresh OS thread and joined so
+/// `write_blocking` is legal from either the sync boot path or an async
+/// `Unlock` dispatch. The mount families are skipped on a main-only instance
+/// (no mount-index partition).
 fn seed_built_ins(db: &Db) -> Result<(), String> {
     use quilltap_core::db::DbError;
     use quilltap_core::services::mount_index::general_state;
@@ -699,6 +700,18 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
         db.write_blocking(|ws| {
             let main = ws.main().connection();
             builtin_templates::seed_built_in_templates(main)?;
+            // v4 `e3a9654f`'s migration `anchor-fictional-clock-base-v1`,
+            // re-homed as a boot repair because v5's migration runner is
+            // deferred — the same shape as the mount-index case repair below.
+            // Backfills `timestampConfig.fictionalBaseRealTime` from each
+            // chat's own `createdAt`, so a story clock created before the
+            // write-path fix resumes where 1:1 tracking would have put it
+            // instead of staying frozen. Idempotent; a no-op on an instance
+            // with no unanchored fictional clocks.
+            quilltap_core::db::fictional_clock_anchor_repair::anchor_fictional_clock_bases(
+                main,
+                quilltap_core::clock::now_unix_ms(),
+            )?;
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;

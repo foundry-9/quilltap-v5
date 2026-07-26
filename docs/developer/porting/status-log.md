@@ -35732,3 +35732,102 @@ throws once the TestBed is instantiated, so a spec that renders the same
 component twice (fictional off, then on) must `resetTestingModule()` first.
 
 **Gate.** `ng test` 228 files / 2,671 passed; `ng build` clean. SPA 0.5.280.
+
+### P4.d18 unit 4 (tier 2) — the anchor backfill as a boot repair
+
+`crates/quilltap-core/src/db/fictional_clock_anchor_repair.rs` (new),
+`crates/quilltap-core/src/db/mod.rs` (one `pub mod` line),
+`crates/quilltap-host/src/host.rs` (the boot call site only),
+`harness/oracle/cases/fictional-clock-anchor.ts` (new),
+`harness/oracle/fixtures/fictional-clock-anchor-spec.json` (new),
+`crates/quilltap-harness/tests/fictional_clock_anchor_equivalence.rs` (new).
+
+v5's migration runner is deferred, so v4's `anchor-fictional-clock-base-v1` has
+no home. The order names the P4.d7 precedent and it fits exactly: a `db::`
+repair module invoked once per startup from the boot seed. This one runs on the
+**main** partition, from `seed_built_ins` in `host.rs`, beside (not inside)
+`ensure_builtin_mounts` — that one is the mount-index pass.
+
+The port is v4's `run()` line for line: the candidate pre-filter SQL verbatim,
+`parseConfig`'s four rejections (NULL / empty / whitespace / unparseable, plus
+non-objects), the `createdAt`-or-now anchor with the NaN re-check, and a
+re-serialize of the parsed object so unknown keys ride along. The stamp itself
+goes through `chat_timestamp::ensure_fictional_base_real_time` rather than
+re-implementing v4's inline `needsAnchor` — the guards are identical, and
+sharing them means the backfill and the create path cannot drift.
+
+**v4 quirks reproduced, not smoothed:**
+
+- The `LIKE '%"useFictionalTime":true%'` pre-filter matches only the COMPACT
+  spelling. A blob serialized with a space after the colon is invisible to the
+  backfill — on both sides. The spec tables that row explicitly.
+- v4 counts, logs and reports; v5 returns the count and emits one
+  `tracing::info!` when it is non-zero. No `MigrationResult` — there is no
+  migration surface to report into (see the tier-3 deferrals).
+
+**Differential — tier-2 DB state, and it drove v4's REAL migration.** Both sides
+provision a fresh instance (v4 `initializeDatabase()` +
+`ensureCollection('chats', ChatMetadataBaseSchema)`; v5 `provision_fresh_instance`
+over the D23 re-dump of that same `generateDDL` output), plant the shared spec's
+13 rows, run the pass TWICE, and dump `(id, createdAt, timestampConfig)` ordered
+by id. The raw column TEXT is compared byte for byte — key order included, which
+is what proves the explicit-null-anchor row is re-stamped **in place** (its
+`fictionalBaseRealTime` keeps its slot ahead of `trailingKey`) while a fresh key
+lands last. The clock is pinned on both sides (the oracle overrides the whole
+`Date` constructor), so even the two fall-back-to-now rows are diffed on their
+exact value, and the oracle also records `shouldRun` before/after — asserted
+true-then-false, so an oracle whose gate never opened could not pass silently.
+
+Green on the first run, so it was **mutation-checked**: loosening the `LIKE` to
+`'%useFictionalTime%'` (4 → 5 anchored) and anchoring from now instead of
+`createdAt` both fail, on the count and on the row text respectively.
+
+Two arms the real schema cannot reach: `chats.createdAt` is `NOT NULL`, so v4's
+null-`createdAt` fallback is unplantable here (the unparseable-`createdAt` row
+exercises the same code), and the missing-table guard has no fixture. Both are
+covered by the module's own unit tests over a minimal in-memory table.
+
+**Regen recipe:**
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd /tmp/qt-v4-pin-231be14c
+TZ=UTC $N/node --import tsx \
+  ~/source/quilltap-v5/harness/oracle/cases/fictional-clock-anchor.ts \
+  > /tmp/oracle-fictional-clock-anchor.ndjson
+# then, from the v5 checkout:
+QT_ORACLE_FICTIONAL_CLOCK_ANCHOR=/tmp/oracle-fictional-clock-anchor.ndjson \
+  cargo test -p quilltap-harness --test fictional_clock_anchor_equivalence -- --nocapture
+```
+
+Gotcha for the next lane: `initializeDatabase()` does **not** create tables —
+v4 builds collections lazily, so an oracle that plants rows must
+`ensureCollection(name, Schema)` first or die on `no such table`.
+
+**Gate.** fmt; clippy both feature sets; `cargo build --release`; full workspace
+`--no-fail-fast`: **385 binaries / 1,638 tests / 0 failed**, with all three of
+the lane's differentials by name and zero `SKIP:` lines. core 0.0.363, harness
+0.0.312, host 0.0.39.
+
+### P4.d18 — tier-3 deferrals (loud, named)
+
+- **`lib/startup/prettify.ts`'s pretty label** — NO-PORT. v5 has no
+  migration-progress surface to label.
+- **`help/chat-settings.md` (+4 lines)** — banked for `p4.9i2` alongside the two
+  help docs already waiting there (v5 syncs help docs from disk and has no help
+  surface of its own).
+- **`README.md` / `docs/TEMPLATES.md` / package-version bumps** — v4 release
+  furniture, NO-PORT.
+- **v4's `MigrationResult` reporting** (`success` / `itemsAffected` / `message`
+  / `durationMs`, and the try/catch that turns a failure into a result rather
+  than a throw) — NO-PORT: there is no migration runner to report into. The
+  repair returns a count and propagates `DbError`, which the boot seed already
+  handles. The oracle still records and diffs `itemsAffected`.
+- **NOT deferred, contrary to the order's tier-3 contingency:** deliverable 7
+  landed WITH its differential, so v5 does **not** carry the divergence "a chat
+  created before this lane keeps a frozen clock until v4 runs the migration."
+  Any instance v5 boots is backfilled.
+- **A pre-existing gap this lane found and recorded but did not fix:** v4
+  re-parses `timestampConfig` through Zod at the chats-repository write
+  (schema key order, materialized defaults, unknown keys stripped, bad values
+  400'd); v5 stores the request JSON verbatim. See the unit-2 record.

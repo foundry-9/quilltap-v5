@@ -1,0 +1,84 @@
+{
+  "_comment": "Shared spec for the fictional-clock anchor backfill differential (P4.d18, v4 migration anchor-fictional-clock-base-v1). BOTH sides plant these chats rows into a freshly provisioned MAIN partition, run the backfill, and dump (id, createdAt, timestampConfig). timestampConfig is the RAW column text \u2014 a string here goes in verbatim, null means a NULL column, so malformed JSON can be planted. NOTE: chats.createdAt is NOT NULL in the real schema, so v4's null-createdAt fallback arm cannot be planted here; the unparseable-createdAt row exercises the same fallback, and the null arm is covered by the module's own unit test over a minimal table.",
+  "nowMs": 1782995696789,
+  "chats": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "label": "unanchored \u2014 the whole point: stamped from the chat's own createdAt",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"mode\":\"EVERY_MESSAGE\",\"format\":\"FRIENDLY\",\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\",\"autoPrepend\":true,\"timezone\":\"Europe/Istanbul\",\"intervalMinutes\":15}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "label": "already anchored \u2014 never re-stamped (that would reset the clock to the base)",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\",\"fictionalBaseRealTime\":\"2020-05-05T05:05:05.000Z\"}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000003",
+      "label": "real-time clock \u2014 outside the LIKE pre-filter entirely",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"mode\":\"EVERY_MESSAGE\",\"useFictionalTime\":false,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\"}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000004",
+      "label": "timestampConfig NULL",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": null
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000005",
+      "label": "malformed JSON \u2014 a config we cannot read is a chat we must not rewrite",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\","
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000006",
+      "label": "empty string \u2014 parseConfig's !raw guard",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": ""
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000007",
+      "label": "whitespace only \u2014 parseConfig's trim() guard",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "   "
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000008",
+      "label": "a JSON array \u2014 passes JSON.parse but is not an object",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "[{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"x\"}]"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000009",
+      "label": "fictional but baseless \u2014 guard 2, nothing to count from",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":null}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000a",
+      "label": "explicit null anchor \u2014 re-stamped IN PLACE, so the key keeps its slot",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\",\"fictionalBaseRealTime\":null,\"trailingKey\":\"kept\"}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000b",
+      "label": "unknown keys ride along \u2014 the blob is re-serialized, not rebuilt",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\",\"somethingWeDoNotModel\":{\"nested\":[1,2,3]}}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000d",
+      "label": "unparseable createdAt \u2014 NaN re-check, also falls back to now",
+      "createdAt": "not-a-date",
+      "timestampConfig": "{\"useFictionalTime\":true,\"fictionalBaseTimestamp\":\"1550-07-25T10:15\"}"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000e",
+      "label": "spaced JSON \u2014 invisible to the LIKE pre-filter, so NOT anchored (v4 quirk, reproduced)",
+      "createdAt": "2024-03-04T05:06:07.000Z",
+      "timestampConfig": "{\"useFictionalTime\": true, \"fictionalBaseTimestamp\": \"1550-07-25T10:15\"}"
+    }
+  ]
+}
