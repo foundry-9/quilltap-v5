@@ -1433,45 +1433,42 @@ records THERE. Update this summary only when a phase or round completes.
   popover), theme-storybook NO-PORT, the migration pretty-label NO-PORT.
   Versions: core 0.0.370, harness 0.0.316, host 0.0.39, SPA 0.5.290. Round
   record: `status-log.md`.
+- **Oracle baseline: `c1507f47` (v4 HEAD, 2026-07-26), adopted at the
+  P4.d22 restore/import-convergence unification — NO v4 drift debt remains.**
+  v4's `67ffb444` (restore bugs 1–3) + `c1507f47` (import bug 4) fixed the four
+  defects this port found; `20430561` and `41f34180` between them are docs-only.
+  **All EIGHT families in the drift's blast radius were regenerated at
+  `c1507f47` and re-run by name** — three convergence proofs
+  (`system_restore_state`, `system_restore_equivalence`, `system_import_equivalence`)
+  and five neutrality proofs (`system_import_state`, `system_export_equivalence`,
+  `system_backup_equivalence`, `backup_uuid_remap_equivalence`,
+  `system_delete_data_equivalence`; the uuid-remap corpus regenerated
+  **byte-identical**, and `system_backup_equivalence` re-proved the archive bytes
+  unmoved, which is what makes the committed `restore-archives/` fixtures still
+  valid). Families the round did not touch keep their prior regen vintage. v4's
+  tree is **clean at `c1507f47`**, so oracles regenerate straight from
+  `~/source/quilltap-server`; pin a detached worktree only on drift/dirty
+  (`oracle-regen-pinned-v4-worktree`). ⚠ v4 is mid-4.8/4.9 dev and has shipped
+  four commits in a single day before now — drift-check before every round.
+  **⚠ ONE ITEM IS OPEN FROM THAT ROUND AND WANTS A HUMAN RULING:** v4 moved its
+  files phase to `22a-bis` where v5 runs it after the whole doc-store family.
+  Both write the SAME ROWS with the SAME VALUES into the same mount at the same
+  path — only the INSERTION ORDER differs — so it is `PHASE_ORDER_RESIDUAL` in
+  `system_restore_state.rs`, asserted in both directions (align the placements
+  and the test fails). v4 documents why its slot is right and later slots are
+  worse: after 22c the replay hard-links to an archived content row and 22f's
+  blob insert then violates `UNIQUE(fileId)`, refusing the ARCHIVED blob. v5 sits
+  in that later slot — a latent hazard no committed archive triggers. The lane
+  recommends adopting `22a-bis`; it did not, because the order forbade moving the
+  phase order without a ruling. Details: `status-log.md` → "Lane record — P4.d22
+  units 2–3".
+  The previous baseline paragraphs follow for history:
 - **Oracle baseline: `231be14c` (v4 HEAD, 2026-07-25), adopted at the
-  P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21 drift-round unification — NO v4 drift debt
-  remains.** Eighteen families regenerated there at unification (the whole
-  pascal/tool family plus chat-timestamp, the new fictional-clock-anchor, and
-  the chat-create capstone); families the round did not touch keep their prior
-  regen vintage. The §3 corpus has ONE source case file and TWO committed
-  copies (harness + SPA), verified `diff -q` identical at unification.
-  Regenerate from a **pinned detached worktree** (`oracle-regen-pinned-v4-worktree`)
-  — v4 shipped four commits in one day during the last round and cannot be
-  assumed still at HEAD. ⚠ v4 is mid-4.8/4.9 dev — drift-check before every
-  round. **v4 moved to `20430561` during this unification and it is
-  DISPOSITIONED: docs-only** (v4's own `docs/CHANGELOG.md` +
-  `docs/releases/4.8.0.md`, zero `lib/`, `app/`, `components/` or `packages/`
-  code), so the baseline stays `231be14c` and **no drift debt is owed**.
-  **v4 then moved twice more on 2026-07-26 and the second pair IS drift.**
-  `41f34180` is docs-only (`found-bugs.md`, new), but **`67ffb444`
-  (restore bugs 1–3) and `c1507f47` (import bug 4) change `lib/`** — v4 fixed
-  the four defects this port found, and its tree is **clean at `c1507f47`**.
-  The drift is bounded to `lib/backup/restore/{archive,restore,
-  mount-index-coercion}.ts`, `lib/import/quilltap-import-stream.ts` and
-  `lib/export/ndjson-writer.ts` (**comments only**; the backup WRITER is
-  untouched, so committed archive fixtures do not move). Verified by import:
-  three oracle families are affected (`system-restore`, `system-import`,
-  `system-import-execute`), five more are neutrality proofs, and **no chat
-  family imports any drifted file**. The `.103 → .107` version bump is inert
-  (`appVersion` is normalized in both manifest differentials).
-  **The catch-up is ORDERED as `P4.d22`** (`work-orders/
-  p4.d22-restore-import-convergence.md`), the fourth lane of the chat-action
-  round: it retires `system_restore_state.rs`'s three `EXPECTED_DIVERGENCES`
-  and `system_import_equivalence.rs`'s `throw_ndjson_truncated_blob`, and
-  **owns the baseline move to `c1507f47`**. ⚠ Two things it must PROVE rather
-  than assume: v4 runs its files block at `22a-bis` (before file links at 22d)
-  where v5 runs it after the whole doc-store family — v4's status table claims
-  both sides now match, but only the diff settles it; and v4 knowingly kept a
-  **residual** second-generation-archive defect (`found-bugs.md:385-397`) that
-  v5 may not reproduce, which would be a NEW divergence needing a ruling.
-  Until P4.d22 lands, **the committed baseline stays `231be14c`** and those
-  two differentials are expected RED — that is the tripwire working.
-  The previous baseline paragraph follows for history:
+  P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21 drift-round unification.** Eighteen families
+  regenerated there (the whole pascal/tool family plus chat-timestamp, the new
+  fictional-clock-anchor, and the chat-create capstone). The §3 corpus has ONE
+  source case file and TWO committed copies (harness + SPA), verified `diff -q`
+  identical at unification. Superseded by `c1507f47` above.
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus

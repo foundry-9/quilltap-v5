@@ -2,7 +2,6 @@
 
 ## Recent Changes
 
-<<<<<<< HEAD
 The porting record now carries the chat cast surface: its work order is closed,
 the screen-parity notes name the three deliberate wire-shape differences on it,
 and the unit journal records the fixture recipe and the one gap handed to
@@ -31,7 +30,11 @@ explicit "nothing" where the new app simply stops storing the field. Nothing
 reads the two differently, but the bytes differ, and the fix belongs to a file
 another strand of this round owns. The test asserts the difference in both
 directions and fails the moment it closes, so it cannot be forgotten.
-=======
+The new app is now checked against the old app's newest build, and the reference
+copy of the old app's backup-and-restore guide has been brought up to date with
+it — it had been missing the section telling users the restore defect is fixed
+and how to check that a restore actually landed.
+
 Restoring a backup now brings the document stores back with the settings they
 were saved with. The old app used to throw those rows away entirely; it has
 fixed that, and checking the fix against the new app found that the new app had
@@ -52,7 +55,6 @@ are written in a different order, and which app is right is a judgement call
 about a latent hazard rather than a bug either way. The comparison states the
 difference precisely and will fail the moment it goes away.
 
->>>>>>> f42f02e4 (Converge the restore side on v4 67ffb444, and say what did not)
 The old app has fixed the import bug this port found: a backup file large enough
 to be written in more than one piece can now be read back by both apps, not just
 the new one. The new app had been reading those files correctly for two days

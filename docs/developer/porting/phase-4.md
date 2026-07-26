@@ -3250,16 +3250,43 @@ labelled region. `apps/web/**` belongs to one lane outright.
   tool-settings modal, and the avatar overrides at tier 2. Owns all of
   `apps/web/**`.
 - **P4.d22** (`work-orders/p4.d22-restore-import-convergence.md`) — the
-  restore/import convergence. Retires `system_restore_state.rs`'s three
-  `EXPECTED_DIVERGENCES` and `system_import_equivalence.rs`'s
-  `throw_ndjson_truncated_blob`, **proving convergence rather than assuming it**:
-  v4's own status table claims "files run after 22a on both sides", but v4 runs
-  its files block at `22a-bis` (before file links at 22d) where v5 runs it after
-  the whole doc-store family, and only the diff can settle whether that produces
-  identical state. It also checks v5 against the **residual** second-generation
-  archive defect v4 knowingly kept (`found-bugs.md:385-397`) — if v5 does not
-  reproduce it, that is a NEW divergence needing a ruling, not a silent
-  convergence. Regenerates eight families; owns the baseline move.
+  restore/import convergence. **LANE COMPLETE; tier-1 item 3 OPEN on a human
+  ruling and tier-1 item 4 named as an unexercised gap.** Both tripwires fired on
+  the first oracle regenerated at `c1507f47`, and all five carve-out entries
+  (three `EXPECTED_DIVERGENCES`, two `DIVERGENCE_DEPENDENTS`) plus
+  `throw_ndjson_truncated_blob` are retired. Insisting on proof rather than v4's
+  claim paid three times over:
+  - **Bug 1 converged, and diffing the ROWS instead of counting them found a
+    matching v5 gap the count-level pin had hidden** — restored stores came back
+    with EMPTY pattern arrays, and an INTEGER `0` policy flag would have read as
+    `true` (a store the user disabled, or a read-only document, coming back
+    permissive). Ported v4's new coercion module with its own 20-case tier-1
+    family covering the five arms no committed archive can reach.
+  - **v4's status-table claim "files run after 22a on both sides" is true about
+    ordering but does not settle the case it was written for.** In `replace` mode
+    NEITHER engine restores a user file over the committed archives — they carry
+    no Quilltap Uploads mount, so the `instance_settings` pointer dangles on both
+    sides. That is a fixture characteristic, not a bug, but it means the family
+    **cannot exercise the disaster-recovery case the fix targets**. Only
+    `new-account` restores a file, and there the two placements write the SAME
+    ROWS with the SAME VALUES in a DIFFERENT INSERTION ORDER →
+    `PHASE_ORDER_RESIDUAL`, asserted in both directions, **awaiting a ruling**
+    (the lane recommends adopting v4's `22a-bis`, which also closes a latent
+    `UNIQUE(fileId)` hazard v4 documents).
+  - **The second-generation residual is NOT exercised** — the family has no
+    such archive, so v5's behaviour there is analysis, not measurement. By
+    inspection v5 cannot reproduce it (its later phase makes the replay
+    unique-suffix instead of collide), but that is deliberately left unbuilt:
+    the residual's shape follows from the placement under ruling. Build it as
+    the ruling's follow-up.
+
+  Also landed: `summary.warnings` under diff for the first time; two
+  normalization rules the retirement forced (colon-separated minted ids in every
+  `storageKey`; a content hash living one table from its content). Two v5
+  findings recorded and NOT fixed, neither restore's: the unported `refreshStats`
+  (`V5_STATS_GAP`) and `DbError::Key`'s Display prefix leaking "key derivation
+  failed:" into ~20 user-visible messages. Regenerated eight families; moved the
+  baseline.
 
 **Version bumps:** each lane bumps what it touches; the unifier recounts as
 `base + total bumps` (concurrent bumps to one crate are normal and a clean
