@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
+import { toggleAvatarGeneration } from '../chat-cast.api';
 import { CoreClient } from '../../core/core-client';
 import type { ApiKeyDto, ImageProfileDto, RoleplayTemplateDto } from '../../core/core-contract';
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
@@ -11,6 +12,8 @@ import { Icon } from '../../ui/icon';
 /** The chat-record fields this section edits. `null` ⇒ not set / inherit. */
 export interface ChatSectionState {
   roleplayTemplateId: string | null;
+  /** v4 `chats.avatarGenerationEnabled` — projected by the route (get.ts:558). */
+  avatarGenerationEnabled: boolean | null;
   timelineMode: 'realtime' | 'narrative' | null;
   imageProfileId: string | null;
   alertCharactersOfLanternImages: boolean | null;
@@ -66,9 +69,13 @@ export interface ChatSectionState {
  * - **The Concierge tri-state** (v4 :1100): the chat PUT's `conciergeState` key
  *   is a named v5 deferral (`api/salon.rs:1216`).
  * - **Agent Mode** (v4 :1116): rides `POST ?action=toggle-agent-mode`, unported.
- * - **Auto-generate character avatars** (v4 :1218): rides
- *   `POST ?action=toggle-avatar-generation`, unported.
- * - **Tools…** (v4 :1230) — `ChatToolSettingsModal` is unported.
+ * - **Tools…** (v4 :1230) — the entry is here and REFUSES BY NAME. v4's
+ *   `ChatToolSettingsModal` needs the tool inventory (`GET /api/v1/tools`,
+ *   `app/api/v1/tools/route.ts`, 727 LOC: names, groups, per-chat availability),
+ *   which no lane in this round ports — P4.9E3A lands only the WRITE verb
+ *   (`chatUpdateToolSettings`). A modal with nothing to list would be a stub, so
+ *   the entry stays and says what it is waiting for. (P4.9E1B cross-lane
+ *   escalation; the write verb is mirrored in `core-contract.ts` and unused.)
  * - **Run Tool…** (v4 :1243) — `RunToolModal` is unported. (v5's composer
  *   custom-tools popup is Pascal's surface, a different thing.)
  *
@@ -175,6 +182,37 @@ export interface ChatSectionState {
         </select>
       </label>
 
+      <!-- Auto-generate Character Avatars (v4 :1218-1228) -->
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          class="qt-checkbox"
+          aria-label="Auto-generate character avatars"
+          [checked]="avatarGenerationEnabled()"
+          [disabled]="avatarGenSaving()"
+          (change)="onAvatarGenToggle()"
+        />
+        <span class="qt-label">Auto-generate character avatars</span>
+      </label>
+
+      <!-- Tools… (v4 :1230-1241) — the modal is not ported; see the class note. -->
+      <button
+        type="button"
+        class="qt-tool-palette-button"
+        title="Configure LLM tools"
+        (click)="toolSettingsRefused.set(true)"
+      >
+        <qt-icon name="settings" class="w-4 h-4" />
+        <span>Tools…</span>
+      </button>
+      @if (toolSettingsRefused()) {
+        <p class="text-xs qt-text-secondary" role="status">
+          The tool cabinet stays locked for now: choosing which tools a
+          conversation may reach for needs the instrument inventory, which has
+          not been ported (v4 <code>GET /api/v1/tools</code>).
+        </p>
+      }
+
       <!-- Regenerate Story Background -->
       @if (storyBackgroundsEnabled()) {
         <button
@@ -217,6 +255,39 @@ export class ChatSection {
   /** Fired after any chat-record field is mutated (v4 `onChatUpdated` → fetchChat). */
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();
+
+  /**
+   * v4 `handleAvatarGenToggle` (`ChatSidebar.tsx:1065-1083`): POST the toggle,
+   * read `avatarGenerationEnabled` off the reply for the toast, and tell the
+   * parent to refetch. The checkbox reads the chat's own projected value, so
+   * the refetch is what makes it stick.
+   */
+  protected readonly avatarGenerationEnabled = computed(
+    () => this.state().avatarGenerationEnabled === true,
+  );
+  protected readonly avatarGenSaving = signal(false);
+  /** The Tools… entry's loud refusal (see the class note). */
+  protected readonly toolSettingsRefused = signal(false);
+
+  protected async onAvatarGenToggle(): Promise<void> {
+    this.avatarGenSaving.set(true);
+    try {
+      const enabled = await toggleAvatarGeneration(this.core, this.chatId());
+      this.status.set({
+        kind: 'success',
+        message:
+          enabled === false ? 'Avatar generation disabled' : 'Avatar generation enabled',
+      });
+      this.chatUpdated.emit();
+    } catch (err) {
+      this.status.set({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to toggle avatar generation',
+      });
+    } finally {
+      this.avatarGenSaving.set(false);
+    }
+  }
 
   protected readonly templateSaving = signal(false);
   protected readonly imageProfileSaving = signal(false);

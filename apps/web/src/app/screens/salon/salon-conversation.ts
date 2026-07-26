@@ -1439,6 +1439,8 @@ export class SalonConversation {
     const c = this.chat();
     return {
       roleplayTemplateId: c?.roleplayTemplateId ?? null,
+      // Projected by the route (v4 `get.ts:558`), so this one IS authoritative.
+      avatarGenerationEnabled: c?.avatarGenerationEnabled ?? null,
       // v4's chat GET never returns `timelineMode` (see `chat-section.ts`), so
       // this seeds the control once and the section keeps the operator's choice.
       timelineMode: c?.timelineMode ?? null,

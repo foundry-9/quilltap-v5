@@ -82,6 +82,7 @@ class Host {
   readonly isPaused = signal(false);
   readonly chatSectionState: ChatSectionState = {
     roleplayTemplateId: null,
+    avatarGenerationEnabled: null,
     timelineMode: null,
     imageProfileId: null,
     alertCharactersOfLanternImages: null,

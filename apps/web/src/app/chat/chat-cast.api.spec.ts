@@ -198,8 +198,8 @@ describe('chat-cast.api — the avatar overrides', () => {
     });
   });
 
-  it('chatToggleAvatarGeneration returns the echoed flag, else null', async () => {
-    const echoed = coreStub({ autoGenerateAvatars: true });
+  it('chatToggleAvatarGeneration returns v4’s echoed flag, else null', async () => {
+    const echoed = coreStub({ avatarGenerationEnabled: true });
     await expect(toggleAvatarGeneration(echoed.core, 'chat-1')).resolves.toBe(true);
     const quiet = coreStub({ success: true });
     await expect(toggleAvatarGeneration(quiet.core, 'chat-1')).resolves.toBeNull();

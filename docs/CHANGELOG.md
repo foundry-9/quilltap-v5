@@ -68,6 +68,14 @@ app simply left them out. Both apps now leave them out. The test that caught it
 is new: the existing tests only ever fed the reader a file cut short, never a
 complete one written in pieces, so the very thing the old app's fix restores had
 nothing watching it.
+The Chat drawer in the sidebar gained the "Auto-generate character avatars"
+switch it had been missing, reading the conversation's own saved setting and
+saying which way it went.
+
+Next to it, "Tools…" is now present but honest: choosing which tools a
+conversation may reach for needs the instrument inventory, which has not been
+ported yet, and the entry says so rather than being left off the panel.
+
 The dice are back in the composer. The gutter's empty slot now holds the old
 app's RNG menu: quick d6 and d20 with a count you can nudge up and down, Flip
 Coin, Spin the Bottle, and a custom roll of any size from 2 to 1000 sides, up to

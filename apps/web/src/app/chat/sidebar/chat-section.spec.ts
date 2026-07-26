@@ -19,7 +19,10 @@ interface Req {
 }
 
 const sent: Req[] = [];
+/** `dispatchData` calls, kept apart so the chat-bag assertions stay exact. */
+const sentData: Req[] = [];
 let failNext = false;
+let toggleAnswer: Record<string, unknown> | Error = { avatarGenerationEnabled: true };
 
 function stubClient(): Partial<CoreClient> {
   return {
@@ -31,7 +34,14 @@ function stubClient(): Partial<CoreClient> {
       }
       return { type: 'chat', data: { chat: {} } };
     }) as CoreClient['dispatch'],
-    dispatchData: (async () => ({})) as CoreClient['dispatchData'],
+    dispatchData: (async (req: Req) => {
+      sentData.push(req);
+      if (req['type'] === 'chatToggleAvatarGeneration') {
+        if (toggleAnswer instanceof Error) throw toggleAnswer;
+        return toggleAnswer;
+      }
+      return {};
+    }) as unknown as CoreClient['dispatchData'],
     dispatchExpect: (async () => ({
       type: 'apiKeys',
       data: { apiKeys: [], count: 0 },
@@ -42,6 +52,7 @@ function stubClient(): Partial<CoreClient> {
 function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
   return {
     roleplayTemplateId: null,
+    avatarGenerationEnabled: null,
     timelineMode: null,
     imageProfileId: null,
     alertCharactersOfLanternImages: null,
@@ -182,7 +193,9 @@ describe('ChatSection — the Story’s Clock', () => {
 describe('ChatSection — the other per-chat controls', () => {
   beforeEach(() => {
     sent.length = 0;
+    sentData.length = 0;
     failNext = false;
+    toggleAnswer = { avatarGenerationEnabled: true };
   });
 
   it('writes the roleplay template, the image profile and the announce tri-state through the chat bag', async () => {
@@ -218,5 +231,60 @@ describe('ChatSection — the other per-chat controls', () => {
     const link = fixture.nativeElement.querySelector('a.qt-tool-palette-button') as HTMLAnchorElement;
     expect(link.textContent).toContain('Project: The Long Voyage');
     expect(link.getAttribute('href')).toBe('/prospero/p1');
+  });
+  /** The avatar-generation checkbox (v4 ChatSidebar :1218-1228). */
+  function avatarBox(fixture: ComponentFixture<Host>): HTMLInputElement {
+    return fixture.nativeElement.querySelector(
+      '[aria-label="Auto-generate character avatars"]',
+    ) as HTMLInputElement;
+  }
+
+  it('reads the avatar-generation switch off the chat’s own projected value', async () => {
+    const fixture = await render();
+    expect(avatarBox(fixture).checked).toBe(false);
+    fixture.componentInstance.chatState.set(state({ avatarGenerationEnabled: true }));
+    fixture.detectChanges();
+    expect(avatarBox(fixture).checked).toBe(true);
+  });
+
+  it('toggles avatar generation, reports v4’s wording, and asks for a refetch', async () => {
+    const fixture = await render();
+    avatarBox(fixture).dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(sentData.filter((r) => r['type'] === 'chatToggleAvatarGeneration')).toEqual([
+      { type: 'chatToggleAvatarGeneration', chatId: 'chat-1' },
+    ]);
+    expect(fixture.nativeElement.textContent).toContain('Avatar generation enabled');
+    expect(fixture.componentInstance.refetched).toBe(1);
+
+    toggleAnswer = { avatarGenerationEnabled: false };
+    avatarBox(fixture).dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Avatar generation disabled');
+  });
+
+  it('reports a failed toggle and does not ask for a refetch', async () => {
+    toggleAnswer = new Error('unknown variant');
+    const fixture = await render();
+    avatarBox(fixture).dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('unknown variant');
+    expect(fixture.componentInstance.refetched).toBe(0);
+  });
+
+  it('Tools… is present and refuses BY NAME rather than being hidden', async () => {
+    const fixture = await render();
+    const entry = Array.from(
+      fixture.nativeElement.querySelectorAll('button.qt-tool-palette-button'),
+    ).find((b) => ((b as HTMLElement).textContent ?? '').includes('Tools…')) as HTMLButtonElement;
+    expect(entry).toBeTruthy();
+    entry.click();
+    fixture.detectChanges();
+    const body = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
+    expect(body).toContain('has not been ported');
+    expect(body).toContain('/api/v1/tools');
   });
 });

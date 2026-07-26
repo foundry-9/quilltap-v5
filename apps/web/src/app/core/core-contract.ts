@@ -2234,6 +2234,8 @@ export interface ChatDetail {
   coreWhisperInterval?: number | null;
   timelineMode?: 'realtime' | 'narrative' | null;
   alertCharactersOfLanternImages?: boolean | null;
+  /** The per-chat avatar-generation switch (v4 `get.ts:558` DOES project it). */
+  avatarGenerationEnabled?: boolean | null;
   offSceneCharacters: OffSceneCharacter[];
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;

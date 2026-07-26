@@ -187,15 +187,19 @@ export async function removeChatAvatar(
 
 /**
  * §1 `ChatToggleAvatarGeneration` — flip the per-chat generation switch.
- * Returns the server's new value when it reports one (v4's handler echoes the
- * chat), else `null` so the caller refetches rather than guessing.
+ *
+ * v4's handler answers `{ avatarGenerationEnabled }`
+ * (`actions/toggle-avatar-generation.ts:105`) and its caller uses that only for
+ * the toast; the checkbox itself reads the refetched chat. A body without the
+ * key yields `null`, which the caller reports neutrally rather than guessing a
+ * direction.
  */
 export async function toggleAvatarGeneration(
   core: CoreClient,
   chatId: string,
 ): Promise<boolean | null> {
   const data = await core.dispatchData({ type: 'chatToggleAvatarGeneration', chatId });
-  const enabled = data['autoGenerateAvatars'] ?? data['enabled'];
+  const enabled = data['avatarGenerationEnabled'];
   return typeof enabled === 'boolean' ? enabled : null;
 }
 
