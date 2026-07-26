@@ -2512,6 +2512,11 @@ pub enum Request {
     },
     // === end P4.9E1A ===
     // === P4.9E3A: the chat-admin + tools verbs (§1, frozen) ===
+    /// Regenerate a chat's title from its transcript (v4 `POST …?action=regenerate-title`).
+    #[serde(rename_all = "camelCase")]
+    ChatRegenerateTitle {
+        chat_id: String,
+    },
     /// Attach a tag (v4 `POST …?action=add-tag`).
     #[serde(rename_all = "camelCase")]
     ChatAddTag {

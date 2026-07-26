@@ -182,6 +182,7 @@ impl SpineFactory for CreateSpineFactory {
             // P4.9E3A: canned test factory — no tool runner, so `run-tool`
             // answers the loud not-assembled refusal.
             operator_tool_runner: None,
+            regenerate_title: None,
             job_handlers: Vec::new(),
         }
     }

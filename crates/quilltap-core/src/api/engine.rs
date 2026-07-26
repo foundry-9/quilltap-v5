@@ -208,6 +208,12 @@ pub struct EngineAssembly {
     /// lane owns neither `quilltap-host` nor its version bump; the recipe is in
     /// the lane record).
     pub operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
+    /// The manual title-regeneration driver — the host holds the completion
+    /// provider + the logging cheap executor the call rides (the
+    /// `announcement_preview` precedent). `None` → the `ChatRegenerateTitle` arm
+    /// answers the loud not-assembled refusal.
+    /// ⚠ LIVE means real money: one cheap-LLM call per regeneration.
+    pub regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E3A ===
 }
 
@@ -248,6 +254,7 @@ impl EngineAssembly {
             // === end P4.9E2A ===
             // === P4.9E3A ===
             operator_tool_runner: None,
+            regenerate_title: None,
             // === end P4.9E3A ===
         }
     }
@@ -414,6 +421,7 @@ struct ReadyEngine {
     /// loud not-assembled refusal after v4's own validation arms).
     announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
     operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
+    regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E2A ===
 }
 
@@ -1033,6 +1041,10 @@ impl CoreEngine {
             },
             // ── end P4.9E1A ──
             // === P4.9E3A: the chat-admin + tools verbs ===
+            Request::ChatRegenerateTitle { chat_id } => match self.ready_regenerate_title() {
+                Ok(driver) => driver.run(chat_id).await,
+                Err(r) => r,
+            },
             Request::ChatAddTag { chat_id, tag_id } => match self.ready_db() {
                 Ok(db) => crate::services::chat_admin::chat_add_tag(&db, &chat_id, &tag_id).await,
                 Err(r) => r,
@@ -3964,6 +3976,23 @@ impl CoreEngine {
     /// The DB plus the (possibly unassembled) operator tool runner — the
     /// `run-tool` arm answers its own loud refusal when the runner is `None`, so
     /// this helper hands the `Option` through rather than erroring here.
+    /// The manual title-regeneration driver under the readiness gate. A ready
+    /// engine without it answers the loud not-assembled refusal.
+    fn ready_regenerate_title(
+        &self,
+    ) -> Result<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.regenerate_title {
+                Some(d) => Ok(Arc::clone(d)),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "regenerate-title is not available in this build: no title driver is assembled",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     fn ready_db_and_operator_tool_runner(
         &self,
     ) -> Result<
@@ -4613,6 +4642,7 @@ fn open_ready(
         // === P4.9E2A ===
         announcement_preview: assembly.announcement_preview,
         operator_tool_runner: assembly.operator_tool_runner,
+        regenerate_title: assembly.regenerate_title,
         // === end P4.9E2A ===
     })
 }

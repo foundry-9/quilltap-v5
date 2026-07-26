@@ -8266,6 +8266,16 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 7 — regenerating a chat's title by hand. This is not the background
+title job, and the audit the order asked for has its answer: the old app has two
+title paths on purpose — the job asks whether a new title is warranted, this asks
+for one outright, with a different prompt, a different slice of the transcript
+and a shorter limit. The two prompts it needs had never been ported. A new
+mocked-model test compares the entire conversation handed to the model, not just
+the instructions: the first draft compared only the instructions, and a
+deliberate error in how the transcript is trimmed slipped straight past it. The
+fixture gained six messages so that both trimming rules are actually reached.
+
 P4.9E3A unit 6 — folding one conversation into another. The merge is the lane's
 one genuinely new subsystem: the source chat's missing characters join as
 LLM-driven participants, each with a welcome from the Host, their own identity

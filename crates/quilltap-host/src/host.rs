@@ -487,6 +487,7 @@ impl EngineAssembler for HostAssembler {
             recall_replay,
             announcement_preview,
             operator_tool_runner,
+            regenerate_title,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -506,10 +507,11 @@ impl EngineAssembler for HostAssembler {
                     bundle.recall_replay,
                     bundle.announcement_preview,
                     bundle.operator_tool_runner,
+                    bundle.regenerate_title,
                 )
             }
             None => (
-                None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             ),
         };
 
@@ -687,6 +689,10 @@ impl EngineAssembler for HostAssembler {
             // Spine-less assemblies keep `None` → the `ChatRunTool` arm answers the
             // loud not-assembled refusal AFTER v4's deny-list and chat arms. ===
             operator_tool_runner,
+            // The manual title regeneration, wired LIVE from the spine's
+            // completion provider + a per-call logging cheap executor.
+            // ⚠ one cheap-LLM call per Regenerate Title.
+            regenerate_title,
             // === end P4.9E3A ===
             // === end P4.9E2A ===
         })

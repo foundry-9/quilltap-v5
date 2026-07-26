@@ -16,8 +16,9 @@ use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
 
 use super::prompt_text::{
-    CHAT_TITLE_CONSIDERATION_PROMPT, CHAT_TITLE_FROM_SUMMARY_PROMPT, FOLD_SUMMARY_PROMPT,
-    HELP_CHAT_TITLE_CONSIDERATION_PROMPT, HELP_CHAT_TITLE_FROM_SUMMARY_PROMPT,
+    CHAT_TITLE_CONSIDERATION_PROMPT, CHAT_TITLE_FROM_SUMMARY_PROMPT, CHAT_TITLE_PROMPT,
+    FOLD_SUMMARY_PROMPT, HELP_CHAT_TITLE_CONSIDERATION_PROMPT, HELP_CHAT_TITLE_FROM_SUMMARY_PROMPT,
+    HELP_CHAT_TITLE_PROMPT,
 };
 use crate::memory_tasks::strip_code_fences;
 
@@ -321,6 +322,155 @@ pub async fn consider_help_chat_title_update<C: CompletionProvider>(
             None,
             None,
             Some("consider-title-update"),
+        )
+        .await
+}
+
+// ===========================================================================
+// The MANUAL title generators (v4 `titleChat` / `titleHelpChat`)
+// ===========================================================================
+//
+// These are NOT the JOB's evaluators. v4 has two distinct title paths and this
+// port keeps both, because v4 does:
+//
+//   - the `TITLE_UPDATE` job asks "does this need a new title?" through
+//     `considerTitleUpdate` (a verdict + a suggestion, `CHAT_TITLE_CONSIDERATION_PROMPT`);
+//   - the MANUAL `?action=regenerate-title` asks "title this" outright through
+//     `titleChat` (`CHAT_TITLE_PROMPT`), with a different weighting of the
+//     transcript and a different clamp.
+//
+// The order's tier-2 item 7 asked for an audit that the two share ONE
+// implementation; the answer is that v4 itself has two, by design, and v5
+// mirrors that. (P4.9E3A)
+
+/// v4 `titleChat`'s transcript rendering: the last 100 messages, with the last
+/// TEN in full to 500 chars and everything earlier truncated to 150, joined by a
+/// blank line and labelled with the upper-cased role.
+fn title_conversation_text(messages: &[ChatMessage]) -> String {
+    let capped: &[ChatMessage] = if messages.len() > 100 {
+        &messages[messages.len() - 100..]
+    } else {
+        messages
+    };
+    let recent_threshold = capped.len().saturating_sub(10);
+    capped
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let limit = if i >= recent_threshold { 500 } else { 150 };
+            let text = if utf16_len(&m.content) > limit {
+                format!("{}...", utf16_truncate(&m.content, limit))
+            } else {
+                m.content.clone()
+            };
+            format!("{}: {}", m.role.to_uppercase(), text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// v4 `titleHelpChat`'s rendering: the last 20 messages, each to 500 chars.
+fn help_title_conversation_text(messages: &[ChatMessage]) -> String {
+    let capped: &[ChatMessage] = if messages.len() > 20 {
+        &messages[messages.len() - 20..]
+    } else {
+        messages
+    };
+    capped
+        .iter()
+        .map(|m| {
+            let text = if utf16_len(&m.content) > 500 {
+                format!("{}...", utf16_truncate(&m.content, 500))
+            } else {
+                m.content.clone()
+            };
+            format!("{}: {}", m.role.to_uppercase(), text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// The MANUAL generators' cleaner: the same trim + [`strip_edge_quotes`] the
+/// evaluators use, but with the caller's clamp — `titleChat` caps at **50**
+/// (57/60 belongs to the evaluator and to `titleHelpChat`).
+fn clean_generated_title(content: &str, max: usize) -> String {
+    let title = strip_edge_quotes(js_trim(content));
+    if utf16_len(&title) > max {
+        format!("{}...", utf16_truncate(&title, max - 3))
+    } else {
+        title
+    }
+}
+
+/// v4 `titleChat`: generate a literary title outright (the MANUAL entrance).
+/// `existing_title`, when non-empty, appends v4's "Current title / Update only
+/// if…" rider to the system prompt.
+pub async fn title_chat<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    messages: &[ChatMessage],
+    existing_title: Option<&str>,
+    selection: &CheapLlmSelection,
+    chat_id: Option<&str>,
+) -> CheapLlmTaskResult<String> {
+    let mut prompt = CHAT_TITLE_PROMPT.to_string();
+    if let Some(t) = existing_title.filter(|t| !t.is_empty()) {
+        prompt.push_str(&format!(
+            "\n\nCurrent title: \"{t}\"\nUpdate only if the conversation has evolved significantly."
+        ));
+    }
+    let llm_messages = vec![
+        CompletionMessage::system(prompt),
+        CompletionMessage::user(title_conversation_text(messages)),
+    ];
+    let _ = chat_id;
+    executor
+        .execute(
+            completion,
+            selection,
+            llm_messages,
+            |content| clean_generated_title(content, 50),
+            None,
+            None,
+            None,
+            Some("title-chat"),
+        )
+        .await
+}
+
+/// v4 `titleHelpChat`: the practical counterpart. The rider is appended only
+/// when the existing title does NOT already start with `Help:` (v4's own gate),
+/// and the clamp is 60 rather than 50. v4 passes the SAME `'title-chat'` task
+/// type as the literary arm.
+pub async fn title_help_chat<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    messages: &[ChatMessage],
+    existing_title: Option<&str>,
+    selection: &CheapLlmSelection,
+    chat_id: Option<&str>,
+) -> CheapLlmTaskResult<String> {
+    let mut prompt = HELP_CHAT_TITLE_PROMPT.to_string();
+    if let Some(t) = existing_title.filter(|t| !t.is_empty() && !t.starts_with("Help:")) {
+        prompt.push_str(&format!(
+            "\n\nCurrent title: \"{t}\"\nUpdate only if the conversation topic has shifted significantly."
+        ));
+    }
+    let llm_messages = vec![
+        CompletionMessage::system(prompt),
+        CompletionMessage::user(help_title_conversation_text(messages)),
+    ];
+    let _ = chat_id;
+    executor
+        .execute(
+            completion,
+            selection,
+            llm_messages,
+            |content| clean_generated_title(content, 60),
+            None,
+            None,
+            None,
+            Some("title-chat"),
         )
         .await
 }

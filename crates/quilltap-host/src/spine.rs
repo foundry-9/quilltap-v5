@@ -597,6 +597,49 @@ where
     }
 }
 
+/// P4.9E3A: the manual title-regeneration driver — the host's completion
+/// provider plus a per-call LOGGING cheap executor, so the regeneration's
+/// `llm_logs` row carries the request's own user + chat (the announcement-preview
+/// arrangement).
+///
+/// ⚠ LIVE means real money: one cheap-LLM call per Regenerate Title.
+struct HostRegenerateTitleRunner<C> {
+    db: Db,
+    user_id: String,
+    completion: Arc<C>,
+}
+
+impl<C> quilltap_core::services::chat_admin::RegenerateTitleDriver for HostRegenerateTitleRunner<C>
+where
+    C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
+{
+    fn run<'a>(
+        &'a self,
+        chat_id: String,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = quilltap_core::api::types::Response> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: self.db.clone(),
+                user_id: self.user_id.clone(),
+                chat_id: Some(chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            quilltap_core::services::chat_admin::chat_regenerate_title(
+                &self.db,
+                &self.user_id,
+                &chat_id,
+                &*self.completion,
+                &executor,
+                &quilltap_core::clock::now_iso(),
+            )
+            .await
+        })
+    }
+}
+
 /// The pricing-backed [`CostTracker`] (v4 `estimateMessageCost` — the W4.7e
 /// cascade over the held fetcher + a per-call [`PricingContext`]).
 pub struct PricingCostTracker<'a, PF: PricingFetch> {
@@ -2564,6 +2607,11 @@ pub struct SpineBundle {
     /// refusal AFTER v4's deny-list and chat arms.
     pub operator_tool_runner:
         Option<Arc<dyn quilltap_core::services::chat_run_tool::OperatorToolRunner>>,
+    /// The manual title-regeneration driver (P4.9E3A). `None` for canned test
+    /// factories — the arm answers the loud not-assembled refusal.
+    /// ⚠ LIVE: one cheap-LLM call per Regenerate Title.
+    pub regenerate_title:
+        Option<Arc<dyn quilltap_core::services::chat_admin::RegenerateTitleDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2648,6 +2696,7 @@ impl SpineFactory for ProductionSpineFactory {
         // send/create drivers' provider Arcs; cloned here because `completion`
         // and `embedding` move into `chat_create` below.
         let announcement_completion = Arc::clone(&completion);
+        let title_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
@@ -2782,6 +2831,13 @@ impl SpineFactory for ProductionSpineFactory {
             operator_tool_runner: Some(Arc::new(
                 quilltap_core::services::chat_run_tool::ErasedToolRunner(spine.tool_runner()),
             )),
+            // P4.9E3A: the manual title regeneration, LIVE — ⚠ one cheap-LLM
+            // call per Regenerate Title.
+            regenerate_title: Some(Arc::new(HostRegenerateTitleRunner {
+                db: db.clone(),
+                user_id: SINGLE_USER_ID.to_string(),
+                completion: title_completion,
+            })),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),

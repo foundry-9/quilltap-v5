@@ -82,3 +82,31 @@ Respond with a JSON object:
 }
 
 Keep suggested titles 3-10 words, under 60 characters, plain and descriptive."#;
+
+/// v4 `CHAT_TITLE_PROMPT` — the literary title generator's system prompt (the
+/// MANUAL `regenerate-title` entrance's, distinct from the JOB's
+/// [`CHAT_TITLE_CONSIDERATION_PROMPT`] evaluator).
+pub(crate) const CHAT_TITLE_PROMPT: &str = r#"Generate a literary title for this conversation, like titling a short story.
+The title should:
+- Be 3-8 words maximum
+- Reflect where the conversation ultimately went, not just how it started — weight the later messages more heavily
+- Focus on the unique narrative flair, quirky elements, or evocative mood
+- Be poetic and distinctive — unless the conversation is really about technical details, in which case mention the kind of technical work being discussed
+- Avoid moralistic, ethical, or sterile phrasing — no mentions of consent, boundaries, or lessons
+- Unless the conversation is really about one specific character, avoid titling it by character name
+
+The conversation is shown with early messages truncated and recent messages in full. Title based on the overall arc, especially the recent discussion.
+
+Respond with only the title, no quotes or additional text."#;
+
+/// v4 `HELP_CHAT_TITLE_PROMPT` — the practical (non-literary) counterpart.
+pub(crate) const HELP_CHAT_TITLE_PROMPT: &str = r#"Generate a short, practical title for this help/support conversation.
+The title should:
+- Be 3-10 words maximum
+- Clearly describe what question was asked or what topic was discussed
+- Be specific enough that someone scanning a list can find it later (e.g., "Setting up Anthropic API connection" not "Getting started")
+- Focus on the user's actual question or problem, not the assistant's personality or style
+- Use plain, descriptive language — no literary flair, no metaphors, no poetic phrasing
+- If technical, mention the specific feature, setting, or area involved
+
+Respond with only the title, no quotes or additional text."#;

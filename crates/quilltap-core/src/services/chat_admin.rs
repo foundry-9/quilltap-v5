@@ -51,14 +51,20 @@
 use serde_json::{json, Value};
 
 use crate::api::types::{ErrorKind, Response};
+use crate::cheap_llm::{get_cheap_llm_provider, CheapLlmProfile};
 use crate::db::chats::ChatUpdate;
 use crate::db::chats_messages::ChatEventInput;
+use crate::db::connection_profiles;
 use crate::db::runtime::Db;
 use crate::db::{
     chat_settings, chats_messages_read, chats_read, memories_read, projects, tags, DbError,
 };
 use crate::services::agent_mode::{
     resolve_agent_mode_setting, AgentModeSettings, DEFAULT_AGENT_MODE_SETTINGS,
+};
+use crate::services::context_summary::tasks::{title_chat, title_help_chat};
+use crate::services::image_job_common::{
+    cheap_llm_config_from_settings, cheap_llm_profile_from_value,
 };
 use crate::services::memory_service::delete_memory_with_vector;
 use crate::services::queue_service::{
@@ -680,4 +686,208 @@ pub async fn chat_bulk_reattribute(
         "messagesUpdated": affected.len(),
         "memoriesDeleted": memories_deleted,
     }))
+}
+
+// ===========================================================================
+// regenerate-title (v4 `actions/title.ts:18`) — the MANUAL entrance
+// ===========================================================================
+
+/// The host seam for one manual title regeneration: only the composing host
+/// holds the completion provider + the LOGGING cheap executor the call rides
+/// (the `announcement_preview` / `recall_replay` precedent). `Err(message)` is
+/// the not-assembled refusal.
+pub trait RegenerateTitleDriver: Send + Sync {
+    fn run<'a>(
+        &'a self,
+        chat_id: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send + 'a>>;
+}
+
+/// v4 `?action=regenerate-title` — generate a fresh title from the visible
+/// transcript and store it, clearing `isManuallyRenamed`.
+///
+/// ## This is NOT the `TITLE_UPDATE` job
+///
+/// The order's tier-2 item 7 asked whether this and
+/// [`title_update_job`](super::title_update_job) share one implementation. **They
+/// do not — and neither do they in v4.** The job asks "does this need a new
+/// title?" through `considerTitleUpdate` (a verdict + suggestion over
+/// `CHAT_TITLE_CONSIDERATION_PROMPT`, gated on a checkpoint cursor); this manual
+/// entrance asks "title this" outright through
+/// [`title_chat`](super::context_summary::tasks::title_chat) (`CHAT_TITLE_PROMPT`,
+/// a different transcript weighting and a different clamp) and always writes.
+/// The port keeps both, matching v4.
+///
+/// ## Two details worth naming
+///
+/// - v4 passes `undefined` for `existingTitle`, so the "Current title / update
+///   only if…" rider is NEVER appended from this entrance even though
+///   `titleChat` supports it. Reproduced (`None`).
+/// - The connection profile is the FIRST of the user's profiles unless the
+///   chat's first CHARACTER participant carries one that still resolves —
+///   `getCheapLLMProvider`'s own priority order then runs on top of that.
+/// - Unlike the job, this path does NOT route dangerous chats to the uncensored
+///   provider; v4's handler has no such step.
+///
+/// `completion`/`executor` are the cheap-LLM boundary (the tier-3 differential
+/// injects the same canned reply both sides); `now_iso` is the stamped
+/// `updatedAt` — this is one of the few chat writes that DOES bump it.
+pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvider>(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    completion: &C,
+    executor: &crate::services::cheap_llm_exec::CheapLlmTaskExecutor,
+    now_iso: &str,
+) -> Response {
+    let chat = match load_chat(db, chat_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+
+    let uid = user_id.to_string();
+    let chat_settings = match db.read_main(move |c| chat_settings::find_by_user_id(c, &uid)) {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    let cheap_settings = chat_settings
+        .as_ref()
+        .and_then(|s| s.get("cheapLLMSettings"))
+        .filter(|v| !v.is_null());
+    if cheap_settings.is_none() {
+        return bad_request("Cheap LLM settings not configured");
+    }
+
+    let uid = user_id.to_string();
+    let profiles = match db.read_main(move |c| connection_profiles::find_by_user_id(c, &uid)) {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    if profiles.is_empty() {
+        return bad_request("No connection profiles available");
+    }
+
+    // v4: the first CHARACTER participant's profile when it resolves, else the
+    // user's first profile.
+    let participant_profile_id =
+        chat.get("participants")
+            .and_then(Value::as_array)
+            .and_then(|ps| {
+                ps.iter()
+                    .find(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+                    .and_then(|p| p.get("connectionProfileId").and_then(Value::as_str))
+            });
+    let connection_profile = participant_profile_id
+        .and_then(|id| {
+            profiles
+                .iter()
+                .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
+        })
+        .unwrap_or(&profiles[0]);
+
+    let available: Vec<CheapLlmProfile> =
+        profiles.iter().map(cheap_llm_profile_from_value).collect();
+    // `ollama_available: false` + `registry_cheapest_for_current: None` follow the
+    // job precedent; both feed only the priority-4/5 fallbacks. v4's
+    // `if (!cheapLLM) return badRequest(…)` arm is DEAD for the same reason it is
+    // dead in the job — priority 5 always yields the current profile — so the
+    // port has no arm to carry and no way to exercise one on either side.
+    let selection = get_cheap_llm_provider(
+        &cheap_llm_profile_from_value(connection_profile),
+        &cheap_llm_config_from_settings(cheap_settings),
+        &available,
+        false,
+        None,
+    );
+
+    let cid = chat_id.to_string();
+    let raw = match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    let visible = crate::chat_tasks::extract_visible_conversation(&raw_messages(&raw));
+    if visible.is_empty() {
+        return bad_request("No messages in chat to generate title from");
+    }
+    // The two `ChatMessage` shapes are the same pair of fields; the title tasks
+    // live in `context_summary`, whose type carries the optional `createdAt` the
+    // fold task renders.
+    let conversation: Vec<crate::services::context_summary::tasks::ChatMessage> = visible
+        .into_iter()
+        .map(|m| crate::services::context_summary::tasks::ChatMessage {
+            role: m.role,
+            content: m.content,
+            created_at: None,
+        })
+        .collect();
+
+    let is_help = crate::chat_predicates::is_help_like_chat_type(
+        chat.get("chatType").and_then(Value::as_str),
+    );
+    // v4 passes `undefined` for `existingTitle` on BOTH arms.
+    let result = if is_help {
+        title_help_chat(
+            executor,
+            completion,
+            &conversation,
+            None,
+            &selection,
+            Some(chat_id),
+        )
+        .await
+    } else {
+        title_chat(
+            executor,
+            completion,
+            &conversation,
+            None,
+            &selection,
+            Some(chat_id),
+        )
+        .await
+    };
+
+    let new_title = match (result.success, result.result) {
+        (true, Some(t)) if !t.is_empty() => t,
+        // v4: `!result.success || !result.result` → serverError(result.error ||
+        // 'Failed to generate title'). An empty string is falsy in JS, so it
+        // lands here too.
+        (_, _) => {
+            return server_error(
+                result
+                    .error
+                    .unwrap_or_else(|| "Failed to generate title".to_string()),
+            )
+        }
+    };
+
+    let cid = chat_id.to_string();
+    let patch = ChatUpdate {
+        title: Some(new_title.clone()),
+        is_manually_renamed: Some(false),
+        updated_at: Some(now_iso.to_string()),
+        ..Default::default()
+    };
+    if let Err(_e) = db
+        .write(move |w| w.main().chats().update(&cid, &patch).map(|_| ()))
+        .await
+    {
+        // v4's outer try/catch.
+        return server_error("Failed to regenerate title");
+    }
+
+    ok(json!({ "success": true, "title": new_title }))
+}
+
+/// The `RawMessage` view `extract_visible_conversation` consumes.
+fn raw_messages(events: &[Value]) -> Vec<crate::chat_tasks::RawMessage> {
+    events
+        .iter()
+        .map(|e| crate::chat_tasks::RawMessage {
+            type_: e.get("type").and_then(Value::as_str).map(str::to_string),
+            role: e.get("role").and_then(Value::as_str).map(str::to_string),
+            content: e.get("content").and_then(Value::as_str).map(str::to_string),
+        })
+        .collect()
 }

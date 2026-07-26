@@ -443,7 +443,13 @@ async function main(): Promise<void> {
     type: 'message',
     id: M1,
     role: 'USER',
-    content: 'The evening post is late again.',
+    // >150 characters on purpose: with thirteen visible messages this row falls
+    // OUTSIDE `titleChat`'s last-ten window, so it exercises the 150-char
+    // truncation branch that the shorter corpus left unreachable.
+    content:
+      'The evening post is late again, and the porter says the eastern road is out entirely — ' +
+      'washed through at the ford, with the mail-coach turned back at the second milestone and ' +
+      'no word since of the sacks it was carrying.',
     participantId: P_EVE,
     createdAt: '2026-05-01T10:00:00.000Z',
     attachments: [],
@@ -502,13 +508,64 @@ async function main(): Promise<void> {
     createdAt: '2026-05-01T10:06:00.000Z',
     attachments: [],
   });
+  // Six more rows so the visible conversation exceeds ten — which is what puts
+  // `titleChat`'s TWO truncation branches (last-ten to 500, earlier to 150) both
+  // in play. All are attributed to EVE or CLIO so ARIA's bulk-reattribution
+  // counts are untouched.
+  const filler: Array<[string, string, string, string]> = [
+    ['d1000000-0000-4000-8000-000000000011', 'USER', P_EVE, 'Has anyone lit the stair lamp?'],
+    [
+      'd1000000-0000-4000-8000-000000000012',
+      'ASSISTANT',
+      P_CLIO,
+      'Clio: "Not since Tuesday, and nobody has asked until now."',
+    ],
+    ['d1000000-0000-4000-8000-000000000013', 'USER', P_EVE, 'Then we shall ask the quay.'],
+    [
+      'd1000000-0000-4000-8000-000000000014',
+      'ASSISTANT',
+      P_CLIO,
+      // >500 characters: inside the last-ten window, so it exercises the
+      // 500-char truncation branch.
+      'Clio turns a page and reads aloud, in the flat voice of someone who has ' +
+        'read the same paragraph too often: the eastern quay was chartered in the ' +
+        'ninth year, rebuilt twice after the flood, and its lamps have been the ' +
+        'responsibility of the harbour office ever since — except in winter, when ' +
+        'the harbour office maintains, with a straight face and a long paper trail, ' +
+        'that the responsibility passes to the lamplighters\u2019 guild, which in ' +
+        'turn maintains, with an equally straight face, that it does no such thing; ' +
+        'the ledger records eleven separate winters in which nobody at all was ' +
+        'responsible, and in every one of them the lamps went dark by the second ' +
+        'week and stayed dark until somebody paid for oil out of their own pocket.',
+    ],
+    ['d1000000-0000-4000-8000-000000000015', 'USER', P_EVE, 'Eleven winters.'],
+    [
+      'd1000000-0000-4000-8000-000000000016',
+      'ASSISTANT',
+      P_CLIO,
+      'Clio: "Twelve, if you count the one nobody wrote down."',
+    ],
+  ];
+  let fillerMinute = 8;
+  for (const [id, role, participantId, content] of filler) {
+    await add(CHAT, {
+      type: 'message',
+      id,
+      role,
+      content,
+      participantId,
+      createdAt: `2026-05-01T10:${String(fillerMinute++).padStart(2, '0')}:00.000Z`,
+      attachments: [],
+    });
+  }
+
   // A non-`message` row the bulk rewrite must carry through untouched.
   await add(CHAT, {
     type: 'system',
     id: M_SYS,
     systemEventType: 'CONTEXT_SUMMARY',
     description: 'The Librarian folded the thread.',
-    createdAt: '2026-05-01T10:07:00.000Z',
+    createdAt: '2026-05-01T10:20:00.000Z',
   });
 
   await add(SOURCE_CHAT, {

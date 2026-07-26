@@ -37526,3 +37526,64 @@ CLIO is skipped as already-present, FLINT is `removed` in the source and does no
 travel), the operator's allowlist, explicit `default` + `none` outfit selections,
 the everyone-already-present refusal (which must post NO bubbles), merge-into-
 itself, an empty allowlist, a missing source chat and a missing target chat.
+
+### Unit 7 — regenerate-title, and the tier-2 item-7 audit
+
+`services/chat_admin::chat_regenerate_title` ports v4 `actions/title.ts:18`, plus
+§1's `ChatRegenerateTitle`, a `RegenerateTitleDriver` host seam, and the two
+generators it needs.
+
+**The order's tier-2 item 7 asked whether `regenerate-title` and
+`services/title_update_job.rs` share ONE implementation rather than two that can
+drift. The audit's answer: v4 itself has TWO, deliberately, and v5 now mirrors
+that.** They are not variants of one thing:
+
+| | the `TITLE_UPDATE` job | `?action=regenerate-title` |
+| --- | --- | --- |
+| question asked | "does this need a new title?" | "title this" |
+| prompt | `CHAT_TITLE_CONSIDERATION_PROMPT` (an evaluator) | `CHAT_TITLE_PROMPT` (a generator) |
+| reply shape | a JSON verdict + suggestion | the bare title |
+| transcript | the evaluator's own window | last 100, last ten to 500, earlier to 150 |
+| clamp | 60 | **50** |
+| gating | a checkpoint cursor + `isManuallyRenamed` | none — it always writes |
+
+So `titleChat` / `titleHelpChat` (which v5 had never ported — only the
+evaluators) are new here, with their two prompts transcribed and
+**byte-compared against v4's source** at porting time. `clean_generated_title`
+reuses the existing `strip_edge_quotes` rather than duplicating it; only the
+clamp differs.
+
+Two v4 details reproduced and named:
+
+- v4 passes `undefined` for `existingTitle` on BOTH arms, so the "Current title
+  / update only if…" rider `titleChat` supports is NEVER appended from this
+  entrance. The differential pins it by comparing the system prompt verbatim.
+- Unlike the job, this path does NOT route dangerous chats to the uncensored
+  provider — v4's handler has no such step.
+
+**The host seam is wired LIVE.** `RegenerateTitleDriver` follows the
+`announcement_preview` precedent: the host holds the completion provider and
+builds a per-call LOGGING cheap executor, so the regeneration's `llm_logs` row
+carries the request's own user + chat. ⚠ **Real money: one cheap-LLM call per
+Regenerate Title.** Canned test factories keep `None` and answer the loud
+not-assembled refusal.
+
+**Differential:** `chat_regenerate_title_tier3_equivalence` — a NEW tier-3
+family, 8 cases: the literary arm, the help arm (a different system prompt,
+which the canned key proves), the 50-char clamp, quote stripping, an empty reply
+(falsy in JS → the serverError arm with NO write), a provider throw, the
+no-visible-conversation 400 (before the provider is ever called), and a missing
+chat.
+
+**It compares the whole message list the provider saw, not just the system
+prompt** — the transcript is the USER entry, and a system-only comparison would
+have left the entire 100/10/500/150 weighting unchecked. That was not
+hypothetical: the first draft recorded only the system prompt, and a mutation
+changing 500 → 400 passed.
+
+**The fixture grew six messages for this.** With only seven visible messages
+`recentThreshold` is 0, so every message takes the 500 branch and the 150 branch
+is unreachable. The target chat now carries thirteen visible messages including
+one over 150 characters positioned OUTSIDE the last-ten window and one over 500
+inside it — after which both mutations (500 → 400 and 150 → 120) fail, as they
+must.
