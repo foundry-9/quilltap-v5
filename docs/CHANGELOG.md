@@ -82,6 +82,12 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+Pascal's outcome accent — the colored edge that marks a roll as a success or a
+failure — finally exists. The Workbench and the proving bench had been asking
+for it since they were built, and it had never been written, so their outcome
+rows showed nothing at all. Writing it also gives the announcement bar and its
+dot the four colors they are about to use.
+
 A tool roll's outcome now has a name the app can read off the record: success,
 partial, failure, or info. Nothing looks different yet — this is the piece the
 announcement bar and its dot will use. A roll from an older build, or one

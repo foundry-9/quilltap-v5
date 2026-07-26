@@ -36574,3 +36574,33 @@ all four states, every other Staff sender (librarian / host / **Prospero's
 record, an empty record, and the unknown state.
 
 `ng test` 227 files / 2,672 (was 2,669). SPA `0.5.279` → `0.5.280`.
+
+### Unit 2 — the CSS: a pre-existing gap closed, then the drift's own rules
+
+**The survey's finding held.** `grep -rn "qt-pascal-result" apps/web/src/styles`
+returned NOTHING, while `screens/custom-tools/proving-bench.ts:122-123` and
+`outcomes-section.ts:1040` have been applying the class since P4.6bb. So v4's
+"these compound selectors only restate an accent declared earlier in this file"
+was FALSE in v5 — there was nothing to restate.
+
+Landed in two parts, in v4's own file positions:
+
+1. **The base block** (v4 `_chat.css:92-111`), inserted after
+   `.qt-chat-message-whisper-overheard` and before the silent-message block —
+   byte-for-byte v4's position and declarations. **This is a real user-visible
+   change outside the drift's scope**: Pascal's Workbench and the proving bench
+   now show their outcome accent for the first time. Recorded rather than
+   smuggled.
+2. **The drift's own rules** (v4 `231be14c`): the four
+   `.qt-chat-announcement-dot-outcome-*` (solid `--qt-alert-*-fg` — the
+   alpha-thin `-border` tints vanish at 8 px) and the eight compound
+   `.qt-chat-system-bar.qt-pascal-result*` /
+   `.qt-chat-announcement-chip.qt-pascal-result*` selectors, with v4's
+   why-comments carried verbatim.
+
+All eight `--qt-alert-*-{fg,border}` tokens already exist in v5
+(`_variables.css:106+`, light and dark). No new token; the bundled theme packs
+need no change — and per the order's tier-3 deferral, `apps/web/public/themes/**`
+was NOT touched.
+
+`ng build` clean; `ng test` 227 / 2,672. SPA `0.5.280` → `0.5.281`.
