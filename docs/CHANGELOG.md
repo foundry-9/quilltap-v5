@@ -81,6 +81,8 @@ A browser walk covers the whole gate: setting a condition, watching the bench's
 verdict change as the fact sheet changes, and — once the server half lands — the
 badge on the library row.
 
+Recorded the lane's completion in its work order.
+
 Planned the next round of work: catching the new app up to four changes the old
 app made in a single day. Two of them rework custom tools — a tool can now be
 withheld from characters whose fact sheet does not qualify, the run dialog
