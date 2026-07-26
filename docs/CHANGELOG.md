@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+A conversation's cast can be changed after it starts. Until now a chat was
+stuck with whoever it was created with: there was no way to add a character to
+an existing conversation, take one out, hand one over to the human to play, or
+change which model answers for one. All four now work, along with the button
+that rebuilds a character's cached system prompt after you edit them.
+
+The old app has two doors onto the same room — the participant buttons and the
+chat's own save call — and both were closed. Both are open now, and they share
+one implementation, so they cannot drift apart. The test proves it directly: it
+performs the same three changes through each door and checks that the database
+ends up in exactly the same state.
+
+Per-chat avatar overrides work too: pinning a particular picture as a
+character's face in one conversation, clearing it again, listing what is
+pinned, and the switch that turns on automatic avatar generation for everyone
+the model is playing.
+
+One difference from the old app is recorded rather than fixed: when you clear a
+character's per-chat talkativeness or arrival note, the old app stores an
+explicit "nothing" where the new app simply stops storing the field. Nothing
+reads the two differently, but the bytes differ, and the fix belongs to a file
+another strand of this round owns. The test asserts the difference in both
+directions and fails the moment it closes, so it cannot be forgotten.
+
 Checked the old app once more after this round landed and found one further
 change: its own release notes, catching up with work already done. Nothing to
 port.

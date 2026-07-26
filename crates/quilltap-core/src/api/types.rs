@@ -255,6 +255,20 @@ pub enum Request {
     ChatUpdate {
         chat_id: String,
         chat: serde_json::Value,
+        // ── P4.9E1A: the bag's participant families (additive, all defaulted) ──
+        // v4's `chatUpdateRequestSchema` carries these as SIBLINGS of `chat`, and
+        // `processChatUpdates` runs them in this order after the `chat` bag. They
+        // are `serde_json::Value` because they are the SAME field bags the
+        // `chatUpdateParticipant` / `chatAddParticipant` verbs carry — the handler
+        // coerces them through the one shared parser so the two entrances cannot
+        // drift (v4 calls the identical `helpers.ts` functions from both).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        update_participant: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        add_participant: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remove_participant_id: Option<String>,
+        // ── end P4.9E1A ──
     },
     /// Start impersonating a participant (v4 `POST …?action=impersonate`).
     #[serde(rename_all = "camelCase")]
@@ -2412,6 +2426,91 @@ pub enum Request {
         character_id: String,
     },
     // === end P4.9E2A ===
+    // === P4.9E1A: the chat cast + avatar-override verbs ===
+    /// Add a character to a chat as a participant (v4 `POST …?action=add-participant`).
+    /// v4's `type: z.literal('CHARACTER')` is carried by the variant name, not a field.
+    #[serde(rename_all = "camelCase")]
+    ChatAddParticipant {
+        chat_id: String,
+        character_id: String,
+        #[serde(default)]
+        connection_profile_id: Option<String>,
+        #[serde(default)]
+        image_profile_id: Option<Option<String>>,
+        #[serde(default)]
+        display_order: Option<i64>,
+        #[serde(default)]
+        has_history_access: Option<bool>,
+        #[serde(default)]
+        join_scenario: Option<Option<String>>,
+        #[serde(default)]
+        controlled_by: Option<String>,
+        #[serde(default)]
+        outfit_selection: Option<serde_json::Value>,
+    },
+    /// Patch one participant (v4 `POST …?action=update-participant`). Every
+    /// `Option<Option<T>>` field is v4-`nullish`: absent ≠ explicit null.
+    #[serde(rename_all = "camelCase")]
+    ChatUpdateParticipant {
+        chat_id: String,
+        participant_id: String,
+        #[serde(default)]
+        connection_profile_id: Option<String>,
+        #[serde(default)]
+        image_profile_id: Option<Option<String>>,
+        #[serde(default)]
+        selected_system_prompt_id: Option<Option<String>>,
+        #[serde(default)]
+        display_order: Option<i64>,
+        #[serde(default)]
+        is_active: Option<bool>,
+        #[serde(default)]
+        status: Option<String>,
+        #[serde(default)]
+        controlled_by: Option<String>,
+        #[serde(default)]
+        has_history_access: Option<bool>,
+        #[serde(default)]
+        join_scenario: Option<Option<String>>,
+        #[serde(default)]
+        talkativeness: Option<Option<f64>>,
+    },
+    /// Soft-remove a participant (v4 `POST …?action=remove-participant`).
+    #[serde(rename_all = "camelCase")]
+    ChatRemoveParticipant {
+        chat_id: String,
+        participant_id: String,
+    },
+    /// Recompile a participant's identity stack (v4 `POST …?action=rebuild-system-prompt`).
+    #[serde(rename_all = "camelCase")]
+    ChatRebuildSystemPrompt {
+        chat_id: String,
+        participant_id: String,
+    },
+    /// Read the per-chat avatar overrides (v4 `GET …?action=get-avatars`).
+    #[serde(rename_all = "camelCase")]
+    ChatGetAvatars {
+        chat_id: String,
+    },
+    /// Pin an image as a character's avatar in this chat (v4 `POST …?action=set-avatar`).
+    #[serde(rename_all = "camelCase")]
+    ChatSetAvatar {
+        chat_id: String,
+        character_id: String,
+        image_id: String,
+    },
+    /// Clear a character's avatar override (v4 `POST …?action=remove-avatar`).
+    #[serde(rename_all = "camelCase")]
+    ChatRemoveAvatar {
+        chat_id: String,
+        character_id: String,
+    },
+    /// Toggle per-chat avatar generation (v4 `POST …?action=toggle-avatar-generation`).
+    #[serde(rename_all = "camelCase")]
+    ChatToggleAvatarGeneration {
+        chat_id: String,
+    },
+    // === end P4.9E1A ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -2713,6 +2812,13 @@ pub enum Response {
     /// §1 freezes.
     ChatPostOffice(serde_json::Value),
     // === end P4.9E2A ===
+    // === P4.9E1A: the chat cast + avatar-override verbs ===
+    /// The raw body of every P4.9E1A verb (v4's action handlers each return a
+    /// differently-shaped literal — `{participant, chat}`, `{success, chat}`,
+    /// `{ok, chat}`, `{data}`, `{avatarGenerationEnabled}` — so the boundary
+    /// carries them as-is rather than inventing a union).
+    ChatCast(serde_json::Value),
+    // === end P4.9E1A ===
     Error(CoreError),
 }
 

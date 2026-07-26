@@ -155,3 +155,7 @@ pub mod wardrobe_transfers;
 // ── P4.9E2A ──
 pub mod announcer;
 // ── end P4.9E2A ──
+// ── P4.9E1A: the chat cast + avatar-override service layer ──
+pub mod chat_avatars;
+pub mod chat_participants;
+// ── end P4.9E1A ──

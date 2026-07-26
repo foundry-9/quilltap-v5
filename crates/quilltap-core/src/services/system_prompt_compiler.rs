@@ -228,3 +228,62 @@ pub fn compile_all_identity_stacks(
     write_stacks(main, chat_id, stacks);
     Ok(())
 }
+
+// ===========================================================================
+// P4.9E1A: the single-participant hook
+// ===========================================================================
+
+/// v4 `compileIdentityStackForParticipant(chat, participantId)`
+/// (`compiler.ts:169`): recompile ONE participant's stack and merge it into the
+/// persisted map — or, when the participant is no longer eligible
+/// (user-controlled, removed, no character), DROP its stale entry. A participant
+/// id that isn't in the chat is a no-op.
+///
+/// The invalidation hooks v4 wires this to: a participant added or reactivated,
+/// and a `selectedSystemPromptId` change. Every call site wraps it in a
+/// try/catch that only warns, so callers here discard the result.
+pub fn compile_identity_stack_for_participant(
+    main: &Connection,
+    mount: &Connection,
+    chat: &Value,
+    participant_id: &str,
+) -> Result<(), DbError> {
+    let chat_id = chat
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| DbError::Key("chat has no id".to_string()))?;
+
+    let Some(participant) = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .and_then(|ps| {
+            ps.iter()
+                .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))
+        })
+    else {
+        return Ok(());
+    };
+
+    let existing = chat
+        .get("compiledIdentityStacks")
+        .and_then(Value::as_object)
+        .cloned();
+
+    match build_stack_for(main, mount, chat, participant)? {
+        None => {
+            // v4 drops a stale entry only when there IS one; otherwise it writes
+            // nothing at all (no `compiledIdentityStacks` update).
+            if let Some(mut map) = existing {
+                if map.remove(participant_id).is_some() {
+                    write_stacks(main, chat_id, map);
+                }
+            }
+        }
+        Some(stack) => {
+            let mut map = existing.unwrap_or_default();
+            map.insert(participant_id.to_string(), Value::String(stack));
+            write_stacks(main, chat_id, map);
+        }
+    }
+    Ok(())
+}

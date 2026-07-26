@@ -36932,3 +36932,240 @@ cases), `pascal_custom_tool_definition` (10 + 195 + 31),
   round-trips wrong.
 - **`workbench-flow.spec.ts:367`'s latent strict-mode ambiguity** — a one-word
   `.first()` fix in a file no lane owned; did not reproduce at unification.
+
+---
+
+## Lane record — P4.9E1A, the chat cast + avatar-override server surface (2026-07-26)
+
+**Branch:** `claude/chat-cast-avatars-server-port-3372d9`.
+**v4 baseline:** `c1507f47` (v4 HEAD, tree clean — drift-checked at lane start,
+`git log c1507f47..HEAD` empty). Oracles regenerated straight from
+`~/source/quilltap-server`; no pinned worktree needed (the P4.6bj precedent —
+none of this lane's families import the restore/import files the two drift
+commits touched).
+**Status: CLOSED.** All of tier 1 landed. Versions: `quilltap-core`
+0.0.370 → **0.0.371**, `quilltap-harness` 0.0.316 → **0.0.317**. No other crate
+touched; `apps/web/**` never opened (no SPA run owed).
+
+### What landed
+
+**The hole this closes.** Before this lane v5 could create a chat with a cast
+and never change it — no `ChatAddParticipant` / `ChatUpdateParticipant` /
+`ChatRemoveParticipant` variant existed anywhere, so a character could not be
+added to or removed from an existing conversation at all.
+
+1. **`services/chat_participants.rs`** — v4's `helpers.ts` participant family:
+   `resolveParticipantCharacterName` (:38), `getEnrichedCharacter` (:52),
+   `getEnrichedConnectionProfile` (:72), `enrichParticipant` (:90),
+   `handleParticipantUpdate` (:124), `handleAddParticipant` (:329),
+   `handleRemoveParticipant` (:420), `recordStatusChangeEvent` (:614), plus the
+   two Zod field bags and the chat-PUT bag's coercion of the same shapes.
+2. **`services/chat_avatars.rs`** — `actions/avatars.ts` (get / set / remove)
+   and `actions/toggle-avatar-generation.ts`.
+3. **`services/system_prompt_compiler.rs`** grew
+   `compile_identity_stack_for_participant` (v4 `compiler.ts:169`), the
+   single-participant hook the whole participant family invalidates through. It
+   composes the existing private `build_stack_for` / `write_stacks`; appended at
+   the end of the file, no existing line touched.
+4. **`api/chat_cast.rs`** — the eight §1 dispatch verbs, including v4's
+   reactivation branch (a soft-removed participant is patched back to `active`
+   rather than duplicated).
+5. **`api/salon.rs`'s `chat_update`** — the bag's `updateParticipant` /
+   `addParticipant` / `removeParticipantId` families, in v4's
+   `processChatUpdates` order, over the SAME service functions. The deferral
+   sentence in its doc comment is retired.
+6. **`chat_cast_routes_equivalence`** — a tier-2 differential, **72 cases**,
+   over the new committed `chat-cast-{main,mount}.db` family.
+
+### v4 quirks reproduced deliberately (not "fixed")
+
+- **The `controlledBy` early return.** `handleParticipantUpdate` re-reads the
+  chat and returns inside the `controlledBy !== undefined` block
+  (`helpers.ts:196-199`), so a patch carrying `controlledBy` never reaches the
+  status-sync block, the `isActive` back-compat block, or the identity-stack
+  recompiles below it. That makes v4's own
+  `compileAllIdentityStacks(finalChat)` call **dead code**. Pinned by
+  `update_controlled_by_with_status_early_return`, which sends `controlledBy`
+  and `status` together and proves the status half is skipped on both sides.
+- **`remove-participant` returns a stale chat.** The impersonation clean-up
+  `repos.chats.update` runs AFTER `result.chat` is captured, so the response
+  body still carries the pre-cleanup `impersonatingParticipantIds` while the DB
+  does not. Both are diffed (`remove_impersonating_promotes`).
+- **The bag's arms are thinner than the verbs'.** `processChatUpdates`'s add arm
+  does no already-in-chat / reactivation check and applies no outfit; its remove
+  arm has no last-CHARACTER guard and no impersonation clean-up. Kept exactly.
+- **`toggle-avatar-generation` ignores participant status** — it filters on
+  `type`/`characterId`/`controlledBy !== 'user'` only, so a soft-REMOVED LLM
+  participant still gets an avatar job. `toggle_avatar_generation_on` enqueues
+  three jobs, one of them for the removed ERIS, on both sides.
+- **The `chats.avatarGenerationEnabled` flip is a raw single-column `UPDATE`** —
+  v5's `ChatUpdate` has no such field and `db/chats.rs` is P4.9E3A's file this
+  round, so the `[[standalone-write-avoids-frozen-chatupdate]]` pattern the
+  order blesses is used. Byte-identical to v4's write: one column, no
+  `updatedAt` mint.
+
+### ⚠ CROSS-LANE ESCALATION (order §2) — the explicit-null collapse
+
+v4's `ChatParticipantBaseSchema` marks `joinScenario`, `talkativeness` and
+`roleplayTemplateId` `.nullable().optional()`, so a stored explicit `null`
+survives its parse and `JSON.stringify`. v5's `db::chats::ChatParticipant`
+models all three as plain `Option<T>` with `skip_serializing_if`, which
+collapses `null` and absent to the same `None` and DROPS the key — on READ
+(`chats_read::marshal_participants` re-parses through the same type) as well as
+on write. `handleAddParticipant` writes `joinScenario: data.joinScenario ||
+null`, so **every v4-added participant carries `"joinScenario":null` where v5
+omits the key**, and the tri-state `…_null` update cases reach the same gap.
+
+The fix is three field types in `db/chats.rs` (double-`Option` +
+`de_double_opt_string`, exactly as `connectionProfileId` / `imageProfileId` /
+`selectedSystemPromptId` / `removedAt` already are) — **P4.9E3A's file this
+round**, so this lane did NOT make it. `reconcile_null_collapse` in the
+differential strips the key from the v4 side ONLY where v4 has exactly `null`
+and v5 has nothing, counts every site (**21** on the current corpus), and the
+test FAILS if the count reaches zero — so closing the gap trips the wire rather
+than passing silently.
+
+It is a stored-bytes fidelity gap, **not** a behavior change: every consumer
+treats an absent key and a `null` identically (`p.joinScenario` is falsy either
+way; `talkativeness ?? character.talkativeness` triggers on both). The existing
+`chats_participants_tier2_equivalence` never reached it because no op in its
+corpus passes an explicit `null` for those three fields.
+
+**Also outside §1, recorded for the unifier:** `Request::ChatUpdate` gained
+three additive `#[serde(default)]` fields (`updateParticipant`,
+`addParticipant`, `removeParticipantId`) — v4 carries them as SIBLINGS of `chat`
+in `chatUpdateRequestSchema`, and there is no other way to reach the bag
+entrance the mandate requires. No existing field changed; every existing caller
+is unaffected. `api::salon::chat_update` also gained a leading `user_id: &str`
+(the module's own stated convention — the hard-coded `SINGLE_USER_ID` made the
+bag's add arm 400 against the fixture's user, which the differential caught).
+
+### Deferrals (loud, named)
+
+- **`llm_choose` on add-participant's outfit application** (v4
+  `actions/participants.ts:186` → `lib/wardrobe/apply-outfit-selections.ts`
+  `chooseLLMOutfit`). `apply_outfit_selections` is `async` over a
+  `CompletionProvider` + `CheapLlmTaskExecutor` that only the chat-CREATE host
+  driver carries; this handler runs on the single-writer queue, where that
+  boundary is unavailable. The other four modes (`default` / `manual` / `none` /
+  `previous_chat`, which degenerates to `default` here exactly as v4 does with
+  no `sourceChatId`) run over the SAME ported leaves. `llm_choose` REFUSES by
+  name with a `tracing::warn!` naming the v4 file and writes nothing — it is
+  never silently treated as `default`. Closing it is a host-seam item.
+- **The Zod `details` array** on a validation rejection — the standing P4.6bb
+  envelope deferral; asserted in both directions on two cases.
+- **v4's 201 on a fresh add** — the dispatch boundary has no per-verb success
+  status (the standing `ChatCreate` precedent); asserted in both directions on
+  seven cases, with the body compared byte-for-byte.
+- **`resolveFallbackConnectionProfile`'s second leg** (`findByUserId()[0]`) is
+  fixture-uncovered: CONN_A is `isDefault: true`, so `findDefault` always hits
+  first. Covering both legs needs two fixtures of the same shape; the first leg
+  is the production-common one.
+
+### The fixture
+
+`crates/quilltap-web/tests/fixtures/chat-cast-{main,mount}.db` (+ a
+`.meta.json` sidecar carrying the six minted character-vault ids), built by
+`harness/oracle/fixtures/build-chat-cast-fixture.ts` through v4's REAL
+repositories. One user, an api key, two connection profiles (CONN_A default),
+one default image profile, one tag; six characters (ARIA/GAIL user-controlled,
+BRAM with `systemPrompts` + a per-chat talkativeness override and an
+avatarOverride, CLEO, DORA the add-subject with a tag and two default wardrobe
+items, ERIS the soft-removed reactivation subject); two legacy `files` rows;
+three chats — CHAT_MAIN (two impersonators, ARIA the active typist, ERIS
+removed), CHAT_QUIET (nobody typing, one silent participant,
+`avatarGenerationEnabled: true`), CHAT_SOLO (one present character + one absent).
+
+Two materialization notes learned the hard way: `chat_messages` and
+`instance_settings` are LAZILY created by v4 and must be touched at build time,
+or the Rust side (which has no lazy `CREATE TABLE`) fails where v4 shrugs. And
+`joinScenario` is seeded ABSENT rather than as an explicit `null`, so the
+escalated gap's tripwire fires only on rows this lane's own writes produce.
+
+**No existing fixture was widened**, so no other oracle is invalidated.
+
+### Regen recipe
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<worktree>
+# 1. the fixture (committed in place)
+cd ~/source/quilltap-server
+TZ=UTC \
+QT_FIXTURE_CAST_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-cast-main.db \
+QT_FIXTURE_CAST_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-cast-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-chat-cast-fixture.ts
+
+# 2. the oracle (jest ignores .claude/ — mirror the case to /tmp)
+TMPO=/tmp/qt-cast-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/chat-cast-routes.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/chat-cast.json" "$TMPO/fixtures/"
+QT_FIXTURE_CAST_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-cast-main.db \
+QT_FIXTURE_CAST_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-cast-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-chat-cast.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- chat-cast-routes
+
+# 3. the diff
+cd $W && QT_ORACLE_CHAT_CAST=/tmp/oracle-chat-cast.ndjson \
+  cargo test -p quilltap-harness --test chat_cast_routes_equivalence -- --nocapture
+```
+
+### The differential's 72 cases
+
+13 `add-participant` (fresh with fallbacks / every explicit field /
+history-access suppressing the join whisper / three outfit modes /
+user-controlled / a stale profile falling back / both reactivation arms / three
+rejection arms), 30 `update-participant` (**the tri-state proof: set vs
+explicit-null vs absent for `talkativeness`, `imageProfileId`, `joinScenario`
+and `selectedSystemPromptId`**; both connection-profile arms incl. the Prospero
+announcement; all four `controlledBy` flips incl. both
+`activeTypingParticipantId` branches and the early return; five status
+transitions incl. both silent-mode whispers; the `isActive` back-compat derive;
+four rejection arms), 6 `remove-participant` (incl. both impersonation-cleanup
+branches and the last-CHARACTER guard), 5 `rebuild-system-prompt`, 12 avatar
+(get / set-new / set-replace / remove / toggle both directions / five
+not-found arms), and **6 chat-PUT bag** cases — three of which are asserted to
+land byte-identical `chats` state to their `?action=` twins (`ENTRANCE_PAIRS`;
+the add pair drops `equippedOutfit`, since the verb dresses the newcomer and
+`processChatUpdates` deliberately does not).
+
+Coverage is asserted by SHAPE (driven set == oracle set), not a hand-written
+count. A second always-on test pins the enriched-participant key order against
+v4's `enrichParticipant` object literal.
+
+### Two normalization decisions worth carrying forward
+
+- **Messages are re-sorted by `(type, systemKind, body)` on BOTH sides**, not
+  compared in `getMessages` order. The two sides' `createdAt` values are not
+  comparable: the oracle freezes its clock (one timestamp for every announcement
+  of a case, so SQLite's tie-break picks the order) while the Rust side's real
+  clock advances and orders by insertion — and both are normalized to `<ts>`
+  anyway. Sorting makes the diff compare the SET of announcements, which is the
+  actual claim.
+- **Background jobs are ordered by `json_extract(payload,'$.characterId')`, not
+  by `id`** — the row id is a fresh uuid on both sides, so `ORDER BY id` is
+  ordering by randomness. (v4's in-process processor also had to be mocked off
+  per the `cost-background-routes` precedent, or it claims the rows mid-case and
+  the dump diffs v4's scheduler against nothing.)
+
+### Bugs the differential caught in this lane's own port
+
+- `salon::chat_update` hard-coded `SINGLE_USER_ID`, so the bag's add arm could
+  not resolve a fallback connection profile against the fixture's user → a live
+  400 on a path with no other coverage.
+- `getEnrichedCharacter` emitted `defaultImageId` / `defaultConnectionProfileId`
+  as `null` where v4 leaves them `undefined` and `JSON.stringify` drops the key.
+- The harness tokenizer walked object VALUES only; `compiledIdentityStacks` is
+  KEYED by participant id, and a freshly-added participant's is minted.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+warnings` clean on both feature sets (plain and
+`--features quilltap-core/native-transport`); `cargo test --workspace
+--no-fail-fast` → **388 test binaries / 1,641 tests / 0 failed**;
+`chat_cast_routes_equivalence` by name with `--nocapture` → 72 cases driven,
+zero SKIP; `chats_tier2_equivalence` and `salon_mutations_equivalence` re-run by
+name over oracles regenerated at `c1507f47`, both green, zero SKIP;
+`cargo build --release` clean. No `apps/web/**` change, so no SPA run owed.

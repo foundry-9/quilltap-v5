@@ -23,6 +23,29 @@ use crate::services::{
 
 use super::types::{ChatWrapDto, ErrorKind, Response};
 
+// ── P4.9E1A: the chat-PUT bag's participant families ──
+use crate::db::characters_read;
+use crate::services::chat_participants::{
+    compile_stack_best_effort, handle_add_participant, handle_participant_update,
+    handle_remove_participant, ParticipantAddData, ParticipantError, ParticipantUpdateData,
+};
+use crate::services::host_notifications::{
+    post_host_add_announcement, post_host_join_scenario_announcement,
+    post_host_remove_announcement, HostAddAnnouncement, HostCharacter,
+    HostJoinScenarioAnnouncement, HostRemoveAnnouncement,
+};
+
+/// Map the participant service layer's `{status, message}` onto the envelope
+/// (v4's `errorResponse(msg, 404)` / `badRequest(msg)` / `serverError(msg)`).
+fn participant_error(e: ParticipantError) -> Response {
+    match e.status {
+        400 => Response::error(ErrorKind::BadRequest, e.message),
+        404 => Response::error(ErrorKind::NotFound, e.message),
+        _ => Response::error(ErrorKind::Internal, e.message),
+    }
+}
+// ── end P4.9E1A ──
+
 /// Read helper: run `f` with BOTH a main and a mount-index connection (the vault
 /// overlay needs both). Errors [`DbError::PartitionUnavailable`] if the instance
 /// has no mount-index DB (never the case for a provisioned Salon instance).
@@ -1212,12 +1235,32 @@ pub fn message_swipe_switch(
 /// is another lane's file this round). The response is v4's
 /// `{ chat: {...chat, participants: enrichParticipantDetail[]} }`.
 ///
-/// Deferrals (named in the report): the participant families
-/// (`updateParticipant`/`addParticipant`/`removeParticipantId`), `conciergeState`,
-/// the top-level `roleplayTemplateId`/`imageProfileId` shortcuts (not in the v5
-/// `chatUpdate` contract — it carries only `chat`), and the `projectId`
-/// `characterRoster` auto-add (a store-backed properties.json RMW).
-pub async fn chat_update(db: &Db, chat_id: &str, chat_bag: &Value) -> Response {
+/// **P4.9E1A — the participant families are now LIVE here.** v4's
+/// `processChatUpdates` (`helpers.ts:442`) runs `updateParticipant`,
+/// `addParticipant` and `removeParticipantId` after the `chat` bag, in that
+/// order, through the SAME `helpers.ts` functions the `?action=*-participant`
+/// verbs call. v5 mirrors that exactly: this handler and
+/// [`crate::api::chat_cast`] share one implementation
+/// ([`crate::services::chat_participants`]), so the two entrances cannot drift.
+/// Note the bag's arms are DELIBERATELY thinner than the action verbs': the add
+/// arm does no already-in-chat / reactivation checks and applies no outfit, and
+/// the remove arm has no last-CHARACTER guard and no impersonation clean-up —
+/// those live in `actions/participants.ts`, not in `processChatUpdates`.
+///
+/// Deferrals (named in the report): `conciergeState`, the top-level
+/// `roleplayTemplateId`/`imageProfileId` shortcuts (not in the v5 `chatUpdate`
+/// contract — it carries the `chat` bag plus the three participant families),
+/// and the `projectId` `characterRoster` auto-add (a store-backed
+/// properties.json RMW).
+pub async fn chat_update(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    chat_bag: &Value,
+    update_participant: Option<&Value>,
+    add_participant: Option<&Value>,
+    remove_participant_id: Option<&str>,
+) -> Response {
     let chat_id_owned = chat_id.to_string();
     let existing = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
         Ok(Some(c)) => c,
@@ -1293,6 +1336,137 @@ pub async fn chat_update(db: &Db, chat_id: &str, chat_bag: &Value) -> Response {
             }
         }
     }
+
+    // ── P4.9E1A: the three participant families, in v4's `processChatUpdates`
+    //    order (update → add → remove). Each replaces `updatedChat` wholesale.
+    if let Some(raw) = update_participant {
+        let data = match ParticipantUpdateData::from_value(raw) {
+            Ok(d) => d,
+            Err(e) => return participant_error(e),
+        };
+        match handle_participant_update(db, chat_id, &data).await {
+            Ok(c) => chat = c,
+            Err(e) => return participant_error(e),
+        }
+    }
+    if let Some(raw) = add_participant {
+        let data = match ParticipantAddData::from_value(raw) {
+            Ok(d) => d,
+            Err(e) => return participant_error(e),
+        };
+        let count = chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .map(|a| a.len() as i64)
+            .unwrap_or(0);
+        match handle_add_participant(db, chat_id, &data, count, user_id).await {
+            Ok(c) => chat = c,
+            Err(e) => return participant_error(e),
+        }
+
+        // v4's post-add block. Unlike the action verb this one applies NO outfit.
+        let cid = data.character_id.clone();
+        let added = match read_main_mount(db, |main, mount| {
+            characters_read::find_by_id(main, mount, &cid)
+        }) {
+            Ok(c) => c,
+            Err(e) => return internal(e),
+        };
+        if let Some(character) = added {
+            // v4 matches on `p.status !== 'removed'` here (the bag arm never
+            // reactivates, so a removed same-character row must not be picked).
+            let new_participant =
+                chat.get("participants")
+                    .and_then(Value::as_array)
+                    .and_then(|ps| {
+                        ps.iter()
+                            .find(|p| {
+                                s(p, "type").as_deref() == Some("CHARACTER")
+                                    && s(p, "characterId").as_deref()
+                                        == Some(data.character_id.as_str())
+                                    && s(p, "status").as_deref() != Some("removed")
+                            })
+                            .cloned()
+                    });
+            if let Some(participant) = new_participant {
+                let participant_id = s(&participant, "id").unwrap_or_default();
+                post_host_add_announcement(
+                    db,
+                    HostAddAnnouncement {
+                        chat_id: chat_id.to_string(),
+                        character: HostCharacter {
+                            name: s(&character, "name").unwrap_or_default(),
+                            description: s(&character, "description"),
+                            character_document_mount_point_id: s(
+                                &character,
+                                "characterDocumentMountPointId",
+                            ),
+                        },
+                        participant_id: participant_id.clone(),
+                        initial_status: s(&participant, "status"),
+                    },
+                )
+                .await;
+                compile_stack_best_effort(db, chat.clone(), &participant_id).await;
+
+                let join_scenario = data
+                    .join_scenario
+                    .clone()
+                    .flatten()
+                    .filter(|v| !v.is_empty());
+                if let Some(join_scenario) = join_scenario {
+                    if !data.has_history_access.unwrap_or(false) {
+                        post_host_join_scenario_announcement(
+                            db,
+                            HostJoinScenarioAnnouncement {
+                                chat_id: chat_id.to_string(),
+                                character_name: s(&character, "name").unwrap_or_default(),
+                                target_participant_id: participant_id,
+                                join_scenario,
+                            },
+                        )
+                        .await;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(participant_id) = remove_participant_id {
+        // v4 resolves the character name BEFORE the removal (the participant is
+        // still readable then) and announces only when it resolved.
+        let removed_character_name = match chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .and_then(|ps| {
+                ps.iter()
+                    .find(|p| s(p, "id").as_deref() == Some(participant_id))
+                    .and_then(|p| s(p, "characterId"))
+            }) {
+            Some(cid) => match read_main_mount(db, |main, mount| {
+                characters_read::find_by_id(main, mount, &cid)
+            }) {
+                Ok(c) => c.as_ref().and_then(|c| s(c, "name")),
+                Err(e) => return internal(e),
+            },
+            None => None,
+        };
+        match handle_remove_participant(db, chat_id, participant_id).await {
+            Ok(c) => chat = c,
+            Err(e) => return participant_error(e),
+        }
+        if let Some(character_name) = removed_character_name {
+            post_host_remove_announcement(
+                db,
+                HostRemoveAnnouncement {
+                    chat_id: chat_id.to_string(),
+                    character_name,
+                    participant_id: participant_id.to_string(),
+                },
+            )
+            .await;
+        }
+    }
+
     let chat_id_s = chat_id.to_string();
     let out = read_main_mount(db, move |main, mount| {
         let participants = chat

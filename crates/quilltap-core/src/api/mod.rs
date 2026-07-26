@@ -80,6 +80,9 @@ pub mod text_replacements;
 // === P4.9E2A: the in-chat Post Office / Announcer surface (append-only) ===
 pub mod chat_post_office;
 // === end P4.9E2A ===
+// === P4.9E1A: the chat cast + avatar-override surface (append-only) ===
+pub mod chat_cast;
+// === end P4.9E1A ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

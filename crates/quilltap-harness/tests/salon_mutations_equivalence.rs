@@ -238,8 +238,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "isPaused": true, "title": "Paused Expedition" }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -248,6 +253,7 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({
                         "title": "Broadly Reconfigured",
@@ -268,6 +274,10 @@ fn salon_mutations_match_oracle() {
                         "alertCharactersOfLanternImages": true,
                         "imageProfileId": null,
                     }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -276,8 +286,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "roleplayTemplateId": "99999999-9999-4999-8999-999999999999" }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -286,8 +301,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "projectId": "99999999-9999-4999-8999-999999999999" }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -296,8 +316,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "timelineMode": "narrative" }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -306,8 +331,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "timelineMode": null }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),
@@ -316,8 +346,13 @@ fn salon_mutations_match_oracle() {
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
+                    &uid,
                     GROUP,
                     &serde_json::json!({ "timelineMode": "dreamtime" }),
+                    // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
                 ))
             }),
         ),

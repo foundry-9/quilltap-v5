@@ -908,6 +908,114 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // ── end P4.9E2A ──
+            // ── P4.9E1A: the chat cast + avatar-override verbs ──
+            Request::ChatAddParticipant {
+                chat_id,
+                character_id,
+                connection_profile_id,
+                image_profile_id,
+                display_order,
+                has_history_access,
+                join_scenario,
+                controlled_by,
+                outfit_selection,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    let data = crate::services::chat_participants::ParticipantAddData {
+                        character_id,
+                        connection_profile_id,
+                        image_profile_id,
+                        display_order,
+                        has_history_access,
+                        join_scenario,
+                        controlled_by,
+                        outfit_selection,
+                    };
+                    super::chat_cast::chat_add_participant(&db, SINGLE_USER_ID, &chat_id, &data)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatUpdateParticipant {
+                chat_id,
+                participant_id,
+                connection_profile_id,
+                image_profile_id,
+                selected_system_prompt_id,
+                display_order,
+                is_active,
+                status,
+                controlled_by,
+                has_history_access,
+                join_scenario,
+                talkativeness,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    let data = crate::services::chat_participants::ParticipantUpdateData {
+                        participant_id,
+                        connection_profile_id,
+                        image_profile_id,
+                        selected_system_prompt_id,
+                        display_order,
+                        is_active,
+                        status,
+                        controlled_by,
+                        has_history_access,
+                        join_scenario,
+                        talkativeness,
+                    };
+                    super::chat_cast::chat_update_participant(&db, &chat_id, &data).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRemoveParticipant {
+                chat_id,
+                participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_cast::chat_remove_participant(&db, &chat_id, &participant_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRebuildSystemPrompt {
+                chat_id,
+                participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_cast::chat_rebuild_system_prompt(&db, &chat_id, &participant_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatGetAvatars { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_cast::chat_get_avatars(&db, SINGLE_USER_ID, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatSetAvatar {
+                chat_id,
+                character_id,
+                image_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_cast::chat_set_avatar(&db, &chat_id, &character_id, &image_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRemoveAvatar {
+                chat_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => super::chat_cast::chat_remove_avatar(&db, &chat_id, &character_id).await,
+                Err(r) => r,
+            },
+            Request::ChatToggleAvatarGeneration { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_cast::chat_toggle_avatar_generation(&db, SINGLE_USER_ID, &chat_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            // ── end P4.9E1A ──
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate => match self.ready_backup_host() {
                 Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),
@@ -977,8 +1085,26 @@ impl CoreEngine {
                 },
                 Err(r) => r,
             },
-            Request::ChatUpdate { chat_id, chat } => match self.ready_db() {
-                Ok(db) => super::salon::chat_update(&db, &chat_id, &chat).await,
+            Request::ChatUpdate {
+                chat_id,
+                chat,
+                // ── P4.9E1A: the bag's participant families ──
+                update_participant,
+                add_participant,
+                remove_participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::chat_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &chat,
+                        update_participant.as_ref(),
+                        add_participant.as_ref(),
+                        remove_participant_id.as_deref(),
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ChatImpersonate {
