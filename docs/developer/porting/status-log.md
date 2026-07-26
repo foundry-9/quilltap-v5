@@ -35708,3 +35708,27 @@ value; the tier-1 `ensure` family does that instead.
 **Gate.** fmt; clippy both feature sets; full workspace `--no-fail-fast`, 0
 failed; `chat_create_capstone_equivalence` green by name over the fresh
 `231be14c` oracle (all 9 cases, every section). core 0.0.362.
+
+### P4.d18 unit 3 — the Timestamp card's two corrected strings
+
+`apps/web/src/app/screens/new-chat/timestamp-config-card.ts` + a NEW
+`timestamp-config-card.spec.ts`.
+
+v4 `e3a9654f` rewrote both strings in `TimestampConfigCard.tsx` because both
+promised the clock "advances with each message" — something it had never done.
+v5 carried **only the first**; the helper `<p>` under the Fictional Base
+Timestamp input did not exist at all (a pre-existing gap the survey flagged), so
+adding it with v4's new text closes the gap and lands the drift in one move.
+Both strings are byte-for-byte v4's, modulo template line wrapping (the spec
+collapses whitespace before asserting).
+
+The card had **no spec of its own**, and a grep over `apps/web/src` and `e2e`
+confirmed nothing else asserts either string — so the order's "verify that claim
+with a grep before relying on it" holds and **no Playwright run is owed**. A
+minimal spec was added rather than leaving re-ported copy unguarded: it renders
+the card, asserts both strings, and asserts the retired "advances with each
+message" wording is gone. Gotcha met on the way: `TestBed.configureTestingModule`
+throws once the TestBed is instantiated, so a spec that renders the same
+component twice (fictional off, then on) must `resetTestingModule()` first.
+
+**Gate.** `ng test` 228 files / 2,671 passed; `ng build` clean. SPA 0.5.280.

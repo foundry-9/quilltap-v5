@@ -230,7 +230,8 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
             <div class="flex-1">
               <div class="font-medium qt-text-primary">Use fictional time</div>
               <div class="qt-text-secondary text-xs">
-                Instead of real-time, use a fictional base timestamp that advances with each message
+                Instead of real-time, start the clock at a fictional moment. It then keeps pace with
+                the real one, hour for hour
               </div>
             </div>
           </label>
@@ -246,6 +247,11 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
               [disabled]="disabled()"
               class="w-full px-3 py-2 border qt-border-default rounded bg-background qt-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
             />
+            <p class="qt-text-secondary mt-1 text-xs">
+              The hour at which the tale begins, read as a clock in the timezone set above. From
+              there it advances one minute for every minute that passes in the waking world; the
+              clock starts when the chat is created.
+            </p>
           </div>
         }
       }

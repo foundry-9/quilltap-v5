@@ -8088,6 +8088,16 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.d18 unit 3 — the Timestamp card's two fictional-clock strings. The "Use
+fictional time" description no longer promises a clock that "advances with each
+message" (it never did); it now says the clock starts at a fictional moment and
+keeps pace with the real one, hour for hour. The helper paragraph under the
+Fictional Base Timestamp input — which v5 never had at all, a pre-existing gap —
+lands with v4's new text, naming the timezone it is read in and the moment the
+clock starts. A new `timestamp-config-card.spec.ts` pins both strings and asserts
+the retired one is gone; nothing else in the SPA or e2e reads this card.
+SPA 0.5.280.
+
 P4.d18 unit 2 — chat creation anchors the fictional clock. `chat_create`'s
 `resolved_timestamp_config` fallback chain is now wrapped in
 `ensure_fictional_base_real_time(…, deps.now_ms)`, matching v4's `handleCreate`:
