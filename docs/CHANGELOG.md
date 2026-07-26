@@ -8387,6 +8387,17 @@ one dismissed from the source), four tags, a merge target and a merge source, an
 empty chat and a help chat, seven crossed role/participant messages plus a system
 event, three memories (two hanging off messages the bulk re-attribution deletes),
 wardrobe defaults, and the user's cheap-LLM settings. No code yet.
+The browser's copy of the chat-cast wire contract (P4.9E1B unit 1). Ten request
+shapes mirrored name for name from the round's §1 — the eight cast and
+avatar-override verbs plus `chatRng` and `chatUpdateToolSettings` — with each
+of v4's `.nullish()` fields spelled `field?: T | null`, because absent and
+explicit-null take different paths on the server and a client that always sends
+the key defeats the distinction. The dispatch helpers build their bodies by
+conditional spread for that reason, and their spec asserts absent-vs-null field
+by field: it is this lane's stand-in for a Rust differential, and it is the
+class of bug a green Rust suite cannot see. `chatRng` sends `kind`, not `type`.
+The participant projection also gained the character's named system prompts —
+the server has always sent them, nothing had ever read them.
 
 Round re-planning — v4 shipped the restore/import fixes mid-planning, so the
 chat-action round gained a fourth lane rather than changing its other three.

@@ -204,6 +204,163 @@ export interface ChatMailboxListRequest {
 }
 
 // ---------------------------------------------------------------------------
+// The chat cast + avatar overrides (§1, OWNER: lane P4.9E1A) and the two
+// chat-admin verbs this lane consumes (§1, OWNER: lane P4.9E3A). Mirrored here
+// NAME FOR NAME from those orders' §1 blocks; neither shape may be changed
+// unilaterally — a change is a cross-lane escalation.
+//
+// **The three-valued fields are the load-bearing part.** Where the Rust side
+// declares `Option<Option<T>>` (v4's Zod `.nullish()`), the wire has THREE
+// states and the client must be deliberate at every call site:
+//
+//   - key ABSENT       → leave the stored value alone
+//   - key present, null → clear the override
+//   - key present, value → set it
+//
+// TypeScript spells that `field?: T | null`, and a client that always sends the
+// key defeats the distinction the server went to the trouble of modelling (v4
+// `helpers.ts:159-160,180` branch on `!== undefined`). The api layer in
+// `chat/chat-cast.api.ts` builds these bodies by conditional spread for exactly
+// that reason, and its spec asserts absent-vs-null field by field.
+//
+// Response bodies are NOT pinned by §1 — each server lane defines its own — so
+// these ops read through `CoreClient.dispatchData` (raw `data`) rather than a
+// narrowed response variant, the settings/characters-lane precedent.
+// ---------------------------------------------------------------------------
+
+/**
+ * Add a character to a chat as a participant (v4 `POST …?action=add-participant`,
+ * `AddCharacterDialog.tsx:212`).
+ *
+ * v4's `type: z.literal('CHARACTER')` is carried by the verb NAME, not a field —
+ * a deliberate, recorded divergence (E1A tier-2 item 6): the wire has no dead
+ * `type` key, so the client must not send one.
+ */
+export interface ChatAddParticipantRequest {
+  type: 'chatAddParticipant';
+  chatId: string;
+  characterId: string;
+  connectionProfileId?: string;
+  /** Three-valued (`Option<Option<String>>`). */
+  imageProfileId?: string | null;
+  displayOrder?: number;
+  hasHistoryAccess?: boolean;
+  /** Three-valued (`Option<Option<String>>`). */
+  joinScenario?: string | null;
+  controlledBy?: 'llm' | 'user';
+  /** Shaped by the ported `OutfitSelectionSchema` analog (the new-chat form's). */
+  outfitSelection?: ChatCreateOutfitSelectionInput;
+}
+
+/**
+ * Patch one participant (v4 `POST …?action=update-participant`). Four fields are
+ * v4-`nullish` and therefore three-valued: `imageProfileId`,
+ * `selectedSystemPromptId`, `joinScenario`, `talkativeness`.
+ */
+export interface ChatUpdateParticipantRequest {
+  type: 'chatUpdateParticipant';
+  chatId: string;
+  participantId: string;
+  connectionProfileId?: string;
+  /** Three-valued. */
+  imageProfileId?: string | null;
+  /** Three-valued — an explicit `null` means "use the default prompt". */
+  selectedSystemPromptId?: string | null;
+  displayOrder?: number;
+  isActive?: boolean;
+  status?: ParticipantStatusWire;
+  controlledBy?: 'llm' | 'user';
+  hasHistoryAccess?: boolean;
+  /** Three-valued. */
+  joinScenario?: string | null;
+  /** Three-valued — an explicit `null` clears the per-chat override (v4
+   *  `schemas.ts:44-50`), and the value range is 0.1–1.0. */
+  talkativeness?: number | null;
+}
+
+/** v4's four-state participation status (`schemas.ts:41`). */
+export type ParticipantStatusWire = 'active' | 'silent' | 'absent' | 'removed';
+
+/** Soft-remove a participant (v4 `POST …?action=remove-participant`). */
+export interface ChatRemoveParticipantRequest {
+  type: 'chatRemoveParticipant';
+  chatId: string;
+  participantId: string;
+}
+
+/** Recompile a participant's identity stack (v4 `POST …?action=rebuild-system-prompt`). */
+export interface ChatRebuildSystemPromptRequest {
+  type: 'chatRebuildSystemPrompt';
+  chatId: string;
+  participantId: string;
+}
+
+/** Read the per-chat avatar overrides (v4 `GET …?action=get-avatars`). */
+export interface ChatGetAvatarsRequest {
+  type: 'chatGetAvatars';
+  chatId: string;
+}
+
+/** Pin an image as a character's avatar in this chat (v4 `POST …?action=set-avatar`). */
+export interface ChatSetAvatarRequest {
+  type: 'chatSetAvatar';
+  chatId: string;
+  characterId: string;
+  imageId: string;
+}
+
+/** Clear a character's avatar override (v4 `POST …?action=remove-avatar`). */
+export interface ChatRemoveAvatarRequest {
+  type: 'chatRemoveAvatar';
+  chatId: string;
+  characterId: string;
+}
+
+/** Toggle per-chat avatar generation (v4 `POST …?action=toggle-avatar-generation`). */
+export interface ChatToggleAvatarGenerationRequest {
+  type: 'chatToggleAvatarGeneration';
+  chatId: string;
+}
+
+/**
+ * Manual RNG from the composer gutter (v4 `POST …?action=rng`).
+ *
+ * ⚠ **The request field is `kind`, not `type`.** v4's schema key is `type`, but
+ * `type` is the v5 request union's own serde tag, so P4.9E3A's §1 renames it.
+ * This rename is the contract (E3A §1 binding note), and it is only the REQUEST
+ * key: the `arguments` bag the server echoes back into the persisted TOOL row
+ * still carries v4's own `{type, rolls}`, which the client passes through opaque.
+ */
+export interface ChatRngRequest {
+  type: 'chatRng';
+  chatId: string;
+  /** A die size (integer 2..=1000) or `'flip_coin'` / `'spin_the_bottle'`. */
+  kind: number | 'flip_coin' | 'spin_the_bottle';
+  /** 1..=100, server-defaulted to 1. */
+  rolls?: number;
+  /** Preview returns the roll WITHOUT writing a TOOL message. */
+  preview?: boolean;
+}
+
+/**
+ * Replace the chat's disabled-tool sets (v4 `POST …?action=update-tool-settings`).
+ * Both arrays are whole-set replacements, not deltas.
+ *
+ * **No v5 consumer yet, deliberately.** Rendering v4's `ChatToolSettingsModal`
+ * needs the tool INVENTORY (`GET /api/v1/tools`, `app/api/v1/tools/route.ts`,
+ * 727 LOC — names, groups, per-chat availability), which no lane in this round
+ * ports; the modal is deferred loudly at its entry point (`chat/sidebar/
+ * chat-section.ts`). The shape is mirrored here so the contract diff stays
+ * complete and the modal is a UI-only step once the inventory verb lands.
+ */
+export interface ChatUpdateToolSettingsRequest {
+  type: 'chatUpdateToolSettings';
+  chatId: string;
+  disabledTools: string[];
+  disabledToolGroups: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Pascal custom tools — the composer popup's wire contract (§4, OWNER: lane
 // P4.6ay). The two verbs are the SPA's path to `GET`/`POST
 // /api/v1/chats/{id}/custom-tools`; the response `type` string is lane-AY-owned,
@@ -1519,6 +1676,18 @@ export type CoreRequest =
   | ChatSetActiveSpeakerRequest
   // --- The Post Office, the in-chat announcement + mail surface (§1; P4.9E2A
   //     implements the server side) ---
+  // --- The chat cast + avatar overrides (§1; P4.9E1A owns the server half) ---
+  | ChatAddParticipantRequest
+  | ChatUpdateParticipantRequest
+  | ChatRemoveParticipantRequest
+  | ChatRebuildSystemPromptRequest
+  | ChatGetAvatarsRequest
+  | ChatSetAvatarRequest
+  | ChatRemoveAvatarRequest
+  | ChatToggleAvatarGenerationRequest
+  // --- The two chat-admin verbs this lane consumes (§1; P4.9E3A's) ---
+  | ChatRngRequest
+  | ChatUpdateToolSettingsRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest
@@ -1985,7 +2154,7 @@ export interface ParticipantDetail {
   displayOrder: number;
   isActive: boolean;
   controlledBy: 'llm' | 'user';
-  status: 'active' | 'silent' | 'absent' | 'removed';
+  status: ParticipantStatusWire;
   removedAt?: string | null;
   character: DetailCharacter | null;
   connectionProfile: { id: string; name: string; provider: string; modelName: string } | null;
@@ -2004,6 +2173,15 @@ export interface DetailCharacter {
   defaultImageId: string | null;
   defaultImage: EnrichedImage | null;
   talkativeness?: number;
+  /**
+   * The character's NAMED system prompts (v4 `EnrichedCharacterSystemPrompt`,
+   * `chat-enrichment.service.ts:296-300`). The server has always projected these
+   * (`services/chat_enrichment.rs:246`); the type simply never declared them
+   * because nothing consumed them until the participant card grew v4's
+   * system-prompt select (P4.9E1B). Absent, not empty, on characters that have
+   * none — v4's select renders only when the list is non-empty.
+   */
+  systemPrompts?: Array<{ id: string; name: string; isDefault?: boolean }>;
 }
 
 export interface OffSceneCharacter {
