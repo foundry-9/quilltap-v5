@@ -6,6 +6,11 @@ import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Icon } from '../ui/icon';
 import type { AnnouncementChip } from './chat-view-model';
 import { MessageContent } from './message-content';
+import {
+  getAnnouncementAccentClasses,
+  getAnnouncementOutcomeState,
+  type PascalOutcomeState,
+} from './system-message-labels';
 import { ToolMessage } from './tool-message';
 
 /**
@@ -30,11 +35,18 @@ import { ToolMessage } from './tool-message';
         <button
           type="button"
           class="qt-chat-announcement-chip"
+          [class]="accentClasses(chip)"
           [title]="chip.sender + ' · ' + chip.kind"
           (click)="toggle(chip.id)"
         >
           <span class="qt-chat-announcement-dot" [class]="dotClass(chip)"></span>
           <span class="qt-chat-system-bar-sender">{{ chip.sender }}</span>
+          <!-- The state is carried by colour alone in the bar; name it for readers
+               who can't see the accent (and for anyone skimming with a screen
+               reader). -->
+          @if (outcomeState(chip); as state) {
+            <span class="sr-only">{{ state }}</span>
+          }
           <span class="qt-chat-system-bar-kind">{{ chip.kind }}</span>
           <span class="qt-chat-system-bar-time">{{ time(chip.createdAt) }}</span>
           <qt-icon name="chevron-down" class="qt-chat-system-bar-chevron" />
@@ -99,8 +111,27 @@ export class AnnouncementGroup {
     this.expanded.set(next);
   }
 
+  /**
+   * A Pascal roll outcome swaps the importance dot for the outcome's own state —
+   * the reader wants to know whether the table dealt a success or a failure, not
+   * that Pascal is generically important (v4 `AnnouncementBarContents`,
+   * `231be14c`). Defensive here: v5 renders Pascal's results as their own full
+   * row, never a collapsed chip.
+   */
+  protected outcomeState(chip: AnnouncementChip): PascalOutcomeState | null {
+    return getAnnouncementOutcomeState(chip.message);
+  }
+
   protected dotClass(chip: AnnouncementChip): string {
-    return `qt-chat-announcement-dot-${chip.importance}`;
+    const state = this.outcomeState(chip);
+    return state
+      ? `qt-chat-announcement-dot-outcome-${state}`
+      : `qt-chat-announcement-dot-${chip.importance}`;
+  }
+
+  /** The `qt-pascal-result` accent for a roll's chip wrapper, else `''`. */
+  protected accentClasses(chip: AnnouncementChip): string {
+    return getAnnouncementAccentClasses(chip.message);
   }
 
   protected time(iso: string): string {

@@ -16,7 +16,9 @@ import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import {
+  getAnnouncementAccentClasses,
   getAnnouncementImportance,
+  getAnnouncementOutcomeState,
   getSystemKindDisplayLabel,
   getSystemSenderDisplayName,
 } from './system-message-labels';
@@ -84,9 +86,17 @@ export interface ImageClickEvent {
           <!-- Pascal's roll outcome: the full-row header bar (v4's expanded
                systemSender header — a static, non-collapsing bar here since the
                row is always shown). -->
-          <div class="qt-chat-system-bar qt-chat-system-bar-expanded qt-chat-system-bar-static">
+          <div
+            class="qt-chat-system-bar qt-chat-system-bar-expanded qt-chat-system-bar-static"
+            [class]="pascalAccentClasses()"
+          >
             <span class="qt-chat-announcement-dot" [class]="pascalDotClass()"></span>
             <span class="qt-chat-system-bar-sender">{{ pascalSender() }}</span>
+            <!-- The state is carried by colour alone in the bar; name it for
+                 readers who can't see the accent. -->
+            @if (pascalOutcomeState(); as state) {
+              <span class="sr-only">{{ state }}</span>
+            }
             @if (pascalKind()) {
               <span class="qt-chat-system-bar-kind">{{ pascalKind() }}</span>
             }
@@ -364,9 +374,28 @@ export class MessageRow {
   );
   /** The tool title (`toolTitle ?? tool`) — v4's header chip subject. */
   protected readonly pascalKind = computed(() => getSystemKindDisplayLabel(this.message()));
-  /** The importance dot class (always `high` for Pascal — the table's word is binding). */
-  protected readonly pascalDotClass = computed(
-    () => `qt-chat-announcement-dot-${getAnnouncementImportance(this.message())}`,
+  /**
+   * The outcome the roll landed on (v4 `getAnnouncementOutcomeState`,
+   * `231be14c`), or null for a record that predates the field / carries a state
+   * this build doesn't know.
+   */
+  protected readonly pascalOutcomeState = computed(() =>
+    getAnnouncementOutcomeState(this.message()),
+  );
+  /**
+   * The dot class. A roll wears the outcome's OWN state; without a usable one it
+   * falls back to the importance tier — which for Pascal is always `high`, i.e.
+   * the same red a deleted file gets. That mismatch is what `231be14c` fixed.
+   */
+  protected readonly pascalDotClass = computed(() => {
+    const state = this.pascalOutcomeState();
+    return state
+      ? `qt-chat-announcement-dot-outcome-${state}`
+      : `qt-chat-announcement-dot-${getAnnouncementImportance(this.message())}`;
+  });
+  /** The `qt-pascal-result` accent on the bar's leading edge, else `''`. */
+  protected readonly pascalAccentClasses = computed(() =>
+    getAnnouncementAccentClasses(this.message()),
   );
 
   /**

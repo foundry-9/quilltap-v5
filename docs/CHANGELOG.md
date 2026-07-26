@@ -82,6 +82,14 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+A tool roll's announcement bar now wears the roll's own outcome. Pascal's
+announcements are rated as important as a deleted file, so a successful roll used
+to show the same red dot as one; now the dot and the bar's edge take the
+outcome's own color — green for a success, amber for a partial, red for a
+failure, blue for information — and the state is also written out for screen
+readers, so it is not carried by color alone. A roll from an older build keeps
+the old dot. Prospero's "the table couldn't deal" notice is untouched.
+
 Pascal's outcome accent — the colored edge that marks a roll as a success or a
 failure — finally exists. The Workbench and the proving bench had been asking
 for it since they were built, and it had never been written, so their outcome

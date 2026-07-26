@@ -36604,3 +36604,32 @@ need no change — and per the order's tier-3 deferral, `apps/web/public/themes/
 was NOT touched.
 
 `ng build` clean; `ng test` 227 / 2,672. SPA `0.5.280` → `0.5.281`.
+
+### Unit 3 — the chip / bar / row adoption
+
+v4 splits this across `AnnouncementBarContents` (the dot + `sr-only` state),
+`AnnouncementChip` (the wrapper accent) and `MessageRow` (the expanded bar's
+accent). v5 has no shared bar-contents component — the chip contents are inline
+in `announcement-group.ts` and Pascal's full-row header is inline in
+`message-row.ts` — so the same two-line change lands in both places:
+
+- `announcement-group.ts` — `dotClass()` returns
+  `qt-chat-announcement-dot-outcome-<state>` when the chip's message carries a
+  usable roll state, else the importance dot unchanged; the chip button takes
+  `accentClasses()`; a `sr-only` span follows the sender span. **Defensive**, as
+  in v4: `chat-view-model`'s `isAnnouncementChip` carves Pascal out, so a roll
+  never actually collapses to a chip in v5 either.
+- `message-row.ts` — the same three on the static Pascal header bar
+  (`qt-chat-system-bar qt-chat-system-bar-expanded qt-chat-system-bar-static`),
+  which is v5's analog of v4's expanded `MessageRow` system bar.
+
+Both use the existing `class="…" [class]="…"` merge idiom already in the file
+(Angular keeps static classes and adds the bound string).
+
+Specs: `message-row.spec.ts` gains three cases (the accent + outcome dot with
+the importance dot GONE, the `sr-only` text, and the unknown-state fallback);
+`announcement-group.spec.ts` is NEW (the file had none) with three — an ordinary
+Staff chip unchanged, a roll chip accented, and Prospero's `custom-tool-error`
+left alone.
+
+`ng test` 228 files / 2,678. SPA `0.5.281` → `0.5.282`.

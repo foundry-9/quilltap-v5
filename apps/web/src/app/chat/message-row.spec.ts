@@ -180,6 +180,54 @@ describe('MessageRow — Pascal roll outcome (P4.6ba)', () => {
     const fixture = render(pascalMsg());
     expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).toBeNull();
   });
+
+  // --- P4.d21 (v4 231be14c): the bar wears the outcome's own state -----------
+
+  it('accents the bar and its dot with the outcome the roll landed on', () => {
+    const fixture = render(pascalMsg());
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar.classList.contains('qt-pascal-result')).toBe(true);
+    expect(bar.classList.contains('qt-pascal-result--success')).toBe(true);
+    const dot = bar.querySelector('.qt-chat-announcement-dot');
+    expect(dot.classList.contains('qt-chat-announcement-dot-outcome-success')).toBe(true);
+    // The importance dot ("high", i.e. the same red a deleted file gets) is gone.
+    expect(dot.classList.contains('qt-chat-announcement-dot-high')).toBe(false);
+  });
+
+  it('names the state in visually-hidden text, so it is not carried by colour alone', () => {
+    const fixture = render(pascalMsg());
+    const sr = fixture.nativeElement.querySelector('.qt-chat-system-bar .sr-only');
+    expect(sr).not.toBeNull();
+    expect(sr.textContent.trim()).toBe('success');
+  });
+
+  it('falls back to the importance dot when the record carries no usable state', () => {
+    const fixture = render(
+      pascalMsg({
+        pascalMeta: {
+          tool: 'pick_lock',
+          definitionTier: 'global',
+          definitionMountId: 'm1',
+          params: {},
+          rollForm: 'range',
+          raw: 1,
+          value: 1,
+          // A state a future build introduces, which this one can't colour.
+          state: 'triumph' as 'success',
+          outcomeIndex: 0,
+          invokedBy: 'user',
+        },
+      }),
+    );
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar.classList.contains('qt-pascal-result')).toBe(false);
+    expect(
+      bar.querySelector('.qt-chat-announcement-dot').classList.contains(
+        'qt-chat-announcement-dot-high',
+      ),
+    ).toBe(true);
+    expect(bar.querySelector('.sr-only')).toBeNull();
+  });
 });
 
 describe('MessageRow — image thumbnails', () => {
