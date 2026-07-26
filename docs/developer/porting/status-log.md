@@ -38115,3 +38115,188 @@ and reality differed in two places:
    duplicate file appears instead. If v5 adopts `22a-bis` it inherits v4's
    residual exactly; if it does not, the two engines differ there. Either way
    the ruling on the phase order decides it.
+## P4.9E1B — the in-chat cast dialogs SPA (+ the RNG gutter tool) — CLOSED, lane record (2026-07-26)
+
+Lane 3 of 4 in the "chat action remainder" round. **SPA-only: not one file
+outside `apps/web/**` changed** (plus the three shared documents every lane
+appends to). No Rust run is owed.
+
+**Drift check at lane start:** v4 `git log c1507f47..HEAD` empty, tree clean —
+the baseline the order pins is v4 HEAD. Nothing to report.
+
+### What landed, unit by unit
+
+**Unit 1 — the §1 mirror + `chat/chat-cast.api.ts` (commit `8c768a0d`).** Ten
+request shapes mirrored name for name from P4.9E1A's and P4.9E3A's §1 blocks.
+The three-valued fields are the whole reason the module exists: `updateParticipant`
+takes a patch whose keys are optional and spreads only the keys actually present,
+so "leave it alone" is expressed by not passing the key, and `null` reaches the
+wire only when a caller deliberately clears. `chat-cast.api.spec.ts` asserts that
+for all four `.nullish()` fields in turn (absent / null / value), plus v4's
+conditional shapes on the add path. `ChatAddParticipant` carries no `type` field
+(E1A tier-2 item 6) and a spec pins the dead key off the wire. `DetailCharacter`
+gained `systemPrompts`, which the server has projected since the enrichment port
+(`services/chat_enrichment.rs:246`) but no client had ever read.
+
+**Unit 2 — Add Character + Create NPC (commit `b8fbaaa6`).** v4's 631-line
+picker and its nested 482-line NPC form. Ported deliberately rather than
+approximated: the default-profile chain checks that the character's own default
+still EXISTS before selecting it (a character pointing at a deleted profile falls
+through, specced by mutation); the roster excludes the current cast, searches name
+OR title, and sorts each group by `localeCompare` with NPCs after their divider;
+the body's keys are conditional; and a backdrop click cannot close the picker
+while the NPC dialog is open. CreateNPC carries v4's three schema-shaped bodies
+verbatim (`personality` copied from `description`, the one-element `scenarios[]`,
+the SINGULAR `physicalDescription` object), each with a spec asserting the WRONG
+shape is absent — Zod strips unknown keys silently, so a "tidier" port would drop
+fields with no error anywhere.
+
+**Unit 3 — the cast card's controls (commit `dbba0e8d`).** P4.9H1 shipped
+`ParticipantCard` in v4's no-callback shape; this restores the connection-profile
+select, the system-prompt select + rebuild button, the talkativeness slider, the
+four-state status select and Remove, in v4's own positions. v4's gates are
+reproduced: the system-prompt ROW is LLM-characters-only and its SELECT appears
+only when the character has named prompts; Remove is withheld (not disabled) when
+one character is left, matching the server's own refusal. Three decisions live in
+the Salon and each has a spec — the user-control flip OMITS `connectionProfileId`,
+"Use default prompt" sends an EXPLICIT null, and the status select sends v4's
+derived `isActive` alongside `status`. Talkativeness is debounced 400 ms per
+participant (fake-timer spec at 399 ms and 400 ms). Remove keeps v4's whole
+sequence including the mid-generation refusal and the empty-cast warning; v4's
+confirmation sentence lives in a `qt-modal` because v5 has no confirm service.
+
+**Unit 4 — the RNG gutter tool (commit `e539f5e8`).** v4's `RngDropdown` in the
+composer's row-3 col-2 slot, which v5's own composer has carried an explicit "no
+v5 server verb" hole in since P4.9E2B — that comment is retired. The request says
+`kind` (the E3A §1 rename); the `arguments` bag the server echoes back is v4's own
+`{type, rolls}` and rides through untouched, because it is what the persisted TOOL
+row records. Preview mode is ported whole: the roll becomes a chip above the
+message box, the Salon owns the list (as v4 does), the send snapshots and CLEARS
+it before dispatching so a second send cannot carry the same roll twice, and each
+chip maps to the SIX fields the server's schema takes.
+
+**Unit 5 — the avatar switch + the Tools… refusal (commit `f792e591`).** The
+per-chat "Auto-generate character avatars" checkbox over
+`chatToggleAvatarGeneration`, reading the chat's own projected
+`avatarGenerationEnabled` — which v4's route DOES return (`get.ts:558`), unlike
+the `timelineMode` and announce flags beside it, so this control is authoritative
+rather than seeded-and-remembered. Wiring it corrected a guess from unit 1: the
+toggle answers `{ avatarGenerationEnabled }`
+(`toggle-avatar-generation.ts:105`), not the key the helper had been reading for.
+
+**Unit 6 — the beats and the records (this commit).** `e2e/salon-cast-flow.spec.ts`,
+three beats, described below.
+
+### CROSS-LANE ESCALATION — tier-1 item 5 (`ChatToolSettingsModal`)
+
+**The order's tier-1 item 5 cannot be built from the verbs this round lands, and
+the gap is a planning gap, not SPA work.** v4's modal renders an INVENTORY:
+every tool's name, display name, description and group, plus per-chat
+availability computed from the chat's image profile, its project membership and
+the connection profile's web-search configuration. That comes from
+`GET /api/v1/tools` (`app/api/v1/tools/route.ts`, 727 LOC, over
+`lib/plugins/tool-registry` and `isWebSearchConfigured`). **No lane in this round
+ports it** — P4.9E3A's §1 carries only the WRITE verb,
+`ChatUpdateToolSettings` — and v5 has no tool-listing verb anywhere
+(`api/types.rs` has `ChatCustomToolsList`, which is Pascal's, and the Rust
+`tools::definitions` catalog is not exposed on the boundary and carries no group
+or availability metadata).
+
+Two things were considered and rejected. A modal over an empty list is a stub
+(hard stop, `CLAUDE.md`). Porting v4's static `BUILT_IN_TOOLS` table into
+TypeScript would put a second, unverifiable copy of server data in the browser,
+would still be missing the plugin tools and every availability check, and would
+be a "fix" of v4 in v5 without a ruling.
+
+**What shipped instead:** v4's `Tools…` entry is PRESENT in the sidebar's Chat
+drawer (v4 `ChatSidebar.tsx:1230`) and refuses BY NAME, pointing at
+`GET /api/v1/tools`; `ChatUpdateToolSettingsRequest` is mirrored in
+`core-contract.ts` with a comment saying why it has no consumer, so the
+name-for-name contract diff stays complete; and `m6-screen-parity.md`'s row now
+records that whoever takes `p4.9e3` must carry the inventory route or the modal
+cannot exist. **P4.9E3A's `ChatUpdateToolSettings` therefore lands with no
+consumer this round** — the unifier and the round record should expect that.
+
+### Recorded, and NOT a deferral: the three avatar-override verbs
+
+`ChatGetAvatars` / `ChatSetAvatar` / `ChatRemoveAvatar` have typed helpers and
+specs but no screen — because **v4 has no screen for them either.** Grepping v4's
+`app/`, `components/` and `lib/` for `get-avatars` / `set-avatar` /
+`remove-avatar` finds only the route files themselves and the dispatch table; the
+only `set-avatar` caller in the tree is the unrelated user-profile route. The
+override table is written server-side by avatar generation and read back through
+`getCharacterDetail`'s `avatarOverrides` branch, which v5 already ports. Building
+a UI for them would be inventing product, not porting it.
+
+### Deferrals carried out of the lane (loud, named)
+
+- **SummonFromLore** (v4 `components/chat/SummonFromLoreModal.tsx`, nested at
+  `AddCharacterDialog.tsx:624`) — its 84 lines wrap
+  `components/settings/ai-import/AIImportWizard` (703 LOC, unported), and its own
+  header says it "deliberately reuses AIImportWizard and the import-execute path
+  rather than forking either". The entry point is KEPT in the picker and refuses
+  by name when pressed. Recorded in `m6-screen-parity.md`.
+- **`ChatToolSettingsModal`** — the escalation above.
+- **The generic images-upload route.** v4's CreateNPC uploads the avatar to
+  `POST /api/v1/images` with `referenceId: 'pending'` BEFORE creating the
+  character. v5 has no such route; the ported leg is the character's own photo
+  gallery, which needs the character to exist. So v5 creates → uploads into the
+  gallery → pins the returned `linkId` with `characterAvatar`. **A deliberate
+  sequence divergence, same end state**, and v4's tolerance is kept exactly: an
+  avatar failure does not fail the creation.
+
+### e2e beats — `e2e/salon-cast-flow.spec.ts`, by name for the unifier
+
+1. **`add a character to the cast, then remove it again`** — ACTIVATE-AT-UNIFY,
+   probes `chatRemoveParticipant`.
+2. **`roll dice from the composer gutter — the result waits as a chip`** —
+   ACTIVATE-AT-UNIFY, probes `chatRng` (P4.9E3A's).
+3. **`the avatar-generation switch flips, and Tools… says what it is waiting
+   for`** — PARTLY LIVE in-lane: the Tools… refusal needs no verb and runs today;
+   the switch half probes `chatToggleAvatarGeneration` and annotates-and-returns
+   until E1A lands.
+
+⚠ **The cast walk restores what it changes, and that is load-bearing rather than
+tidy.** It adds to "Group Expedition" and then removes again, so the chat ends at
+the three active participants it started with — `salon-post-office-flow` asserts
+v4's whisper gate on the SAME shared server (Group Expedition qualifies at three
+or more active; Solo Voyage does not at two), so a beat that left a fourth
+participant behind, or that added one to Solo Voyage, would break a sibling spec
+through the fixture rather than through the code. The RNG beat discards its chip
+for the same reason: nothing is written.
+
+### Fixtures
+
+None changed. No Rust-side fixture was touched, so no oracle is invalidated by
+this lane. The beats consume the e2e instance's committed set as it stands.
+
+### The contract diff (`core-contract.ts` ↔ §1) — CLEAN
+
+Checked field by field against P4.9E1A's §1 (the eight cast + avatar verbs) and
+P4.9E3A's §1 (`ChatRng`, `ChatUpdateToolSettings`): every variant name, every
+field name and casing, and every `Option<Option<T>>` expressed as
+`field?: T | null`. `ChatRng.kind` sends `kind`. `ChatAddParticipant` carries no
+`type` field. `ChatUpdateToolSettings` carries both arrays as whole-set
+replacements. No shape was changed unilaterally.
+
+### v4 behaviour reproduced deliberately
+
+- The outfit selector EMITS its computed initial mode as soon as a character is
+  picked, so `outfitSelection` normally rides the add body even when the operator
+  touched nothing. v4's does the same; the spec records it rather than "fixing"
+  it.
+- The status select offers three of the four states; `removed` is a server-side
+  state, not an operator choice (v4 `:568-582`).
+- v4's `handleConnectionProfileChange` sets `connectionProfileId: undefined` for
+  user control, which `JSON.stringify` drops. v5 reproduces the ABSENCE, not a
+  null — the server's `Option<Option<T>>` reads them differently.
+
+### Gate
+
+`ng test` **238 files / 2974 tests, 0 failed**; `ng build` clean, no new bundle
+warnings; full Playwright (see the round record for the run at unification).
+No Rust run owed — `crates/**` and `harness/**` untouched.
+
+### Versions
+
+SPA **0.5.295** (0.5.290 → five commits). No crate touched.

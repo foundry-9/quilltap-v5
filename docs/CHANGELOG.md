@@ -8437,6 +8437,21 @@ one dismissed from the source), four tags, a merge target and a merge source, an
 empty chat and a help chat, seven crossed role/participant messages plus a system
 event, three memories (two hanging off messages the bulk re-attribution deletes),
 wardrobe defaults, and the user's cheap-LLM settings. No code yet.
+Browser walks for the in-chat cast (P4.9E1B unit 6): adding a character and
+removing it again, rolling from the gutter and discarding the chip, and the
+avatar switch alongside the Tools… refusal. Two of the three wait on the round's
+server lanes and probe the dispatch surface once before annotating, so they
+self-activate at unification; the Tools… half runs live today, since a refusal
+that names an unported route needs no server.
+
+The cast walk restores what it changes, and that is load-bearing rather than
+tidy: a sibling spec asserts the old app's whisper gate on the same shared
+server, so a beat that left a fourth participant behind would break it through
+the fixture rather than through the code. It also carries no card-count
+assertion, because removal is a SOFT remove and neither app filters removed
+participants out of the cast list — asserting the card vanished would assert
+behavior neither app has.
+
 The browser's copy of the chat-cast wire contract (P4.9E1B unit 1). Ten request
 shapes mirrored name for name from the round's §1 — the eight cast and
 avatar-override verbs plus `chatRng` and `chatUpdateToolSettings` — with each

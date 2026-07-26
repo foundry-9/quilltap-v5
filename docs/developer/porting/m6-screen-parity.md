@@ -456,9 +456,9 @@ records the full path; the table's shorthand reads as the wrong one.)
 
 | Dialog | v4 | Proposed order |
 | --- | --- | --- |
-| CreateNPCDialog | `components/chat/CreateNPCDialog.tsx`, nested in `AddCharacterDialog.tsx:616` | `p4.9e1` |
-| AddCharacterDialog | `components/chat/AddCharacterDialog.tsx`, `ChatModals.tsx:305` | `p4.9e1` |
-| SummonFromLoreModal | `components/chat/SummonFromLoreModal.tsx`, nested `AddCharacterDialog.tsx:624` | `p4.9e1` |
+| CreateNPCDialog | `components/chat/CreateNPCDialog.tsx`, nested in `AddCharacterDialog.tsx:616` | ~~`p4.9e1`~~ **DONE** (P4.9E1B — `chat/cast/create-npc-dialog.ts`) |
+| AddCharacterDialog | `components/chat/AddCharacterDialog.tsx`, `ChatModals.tsx:305` | ~~`p4.9e1`~~ **DONE** (P4.9E1B — `chat/cast/add-character-dialog.ts`, opener at the sidebar cast footer) |
+| SummonFromLoreModal | `components/chat/SummonFromLoreModal.tsx`, nested `AddCharacterDialog.tsx:624` | **DEFERRED, refuses by name in the picker** (P4.9E1B) — blocked on `components/settings/ai-import/AIImportWizard` (703 LOC, unported); porting Summon means porting Aurora's AI-import wizard |
 | ComposeMailDialog | `components/chat/ComposeMailDialog.tsx`, `ChatModals.tsx:332` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
 | InsertAnnouncementDialog | `ChatModals.tsx:317` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
 | WhisperDialog | `components/chat/WhisperDialog.tsx`, `SalonView.tsx:1806` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
@@ -467,6 +467,11 @@ records the full path; the table's shorthand reads as the wrong one.)
 | BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatBulkReattribute`) |
 | RunToolModal | `ChatModals.tsx:403` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatRunTool`) |
 | ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatUpdateToolSettings`) |
+| MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` |
+| ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` |
+| BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` |
+| RunToolModal | `ChatModals.tsx:403` | `p4.9e3` |
+| ChatToolSettingsModal | `ChatModals.tsx:386` | `p4.9e3` — **P4.9E1B could not land it and the reason is not SPA work.** The modal renders an INVENTORY (names, groups, descriptions, per-chat availability) from `GET /api/v1/tools` (`app/api/v1/tools/route.ts`, 727 LOC + the plugin registry), which no lane ports; P4.9E3A lands only the write verb `chatUpdateToolSettings` (mirrored, unused). v4's `Tools…` entry is PRESENT in the sidebar's Chat drawer and refuses by name. Whoever takes `p4.9e3` must carry the inventory route, or the modal cannot exist. |
 | ChatProjectModal | `ChatModals.tsx:187` | `p4.9e3` |
 | StateEditorModal (chat host) | `ChatModals.tsx:414` | ~~`p4.9e3`~~ **DONE** (`p4.9h1`, 2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`) |
 | SearchReplaceModal | `ChatModals.tsx:361` | `p4.9e3` |
@@ -487,10 +492,10 @@ dialog.
 Also standing in this family: the announcement/mail/RNG **gutter tools** —
 the entry points these dialogs hang off. `p4.9e2` must carry them or the
 dialogs have no opener. **P4.9E2B landed the announcement + mail buttons** in
-v4's grid fill order; the RNG dropdown is DEFERRED, and not for want of SPA
-work: v4's dropdown posts `POST /chats/{id}?action=rng`
-(`app/api/v1/chats/[id]/actions/rng.ts`) and v5's dispatch surface carries no
-such verb. P4.d5 ported the rng TOOL, not that route. It needs a server lane.
+v4's grid fill order; **P4.9E1B landed the RNG dropdown** in row 3 col 2 over
+P4.9E3A's `chatRng` (the server lane the old note asked for), including v4's
+preview mode and the pending-tool-result chips it feeds. Library file remains
+`p4.9e3`.
 
 ⚠ **The "drag-and-drop upload" in this row was a phantom** — struck by P4.9E2B
 after a v4 survey at `e646f58b`: there is NO drag handler in
