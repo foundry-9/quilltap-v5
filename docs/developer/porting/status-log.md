@@ -37587,3 +37587,112 @@ is unreachable. The target chat now carries thirteen visible messages including
 one over 150 characters positioned OUTSIDE the last-ten window and one over 500
 inside it — after which both mutations (500 → 400 and 150 → 120) fail, as they
 must.
+
+### Fixtures
+
+**Delivers:** the new committed `chat-admin-{main,mount}.db` family (+ its
+`.meta.json` sidecar of minted vault ids) and the shared spec
+`harness/oracle/fixtures/chat-admin-web.json`. Built by
+`harness/oracle/fixtures/build-chat-admin-fixture.ts` through v4's REAL repos.
+
+**Consumes:** nothing another lane owns. **Invalidates:** nothing — the family
+is new, and no other oracle reads it. It was rebuilt three times during the lane
+(the EVE/CLIO wardrobe items for run-tool's participant-picking, then six
+messages for regenerate-title's truncation branches); each rebuild changes the
+minted vault ids, which is why the sidecar exists.
+
+Regenerate the fixture (Node 24, from the v4 checkout — lands in place):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd ~/source/quilltap-server
+TZ=UTC \
+QT_FIXTURE_CA_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-admin-main.db \
+QT_FIXTURE_CA_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-admin-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-chat-admin-fixture.ts
+```
+
+Regenerate the two oracles (jest ignores `.claude/`, so mirror to `/tmp`):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+for CASE in chat-admin-routes chat-regenerate-title-tier3; do
+  TMPO=/tmp/qt-$CASE; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp "$V5W/harness/oracle/cases/$CASE.test.ts" "$TMPO/cases/"
+  cp "$V5W/harness/oracle/fixtures/chat-admin-web.json" "$TMPO/fixtures/"
+  (cd ~/source/quilltap-server && \
+   QT_FIXTURE_CA_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-admin-main.db \
+   QT_FIXTURE_CA_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-admin-mount.db \
+   QT_ORACLE_OUT=/tmp/oracle-$CASE.ndjson TZ=UTC \
+     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+       --roots "$PWD" --roots "$TMPO/cases" -- "$CASE")
+done
+```
+
+Run:
+
+```
+QT_ORACLE_CHAT_ADMIN=/tmp/oracle-chat-admin-routes.ndjson \
+QT_ORACLE_REGENERATE_TITLE=/tmp/oracle-chat-regenerate-title-tier3.ndjson \
+  cargo test -p quilltap-harness \
+    --test chat_admin_routes_equivalence \
+    --test chat_regenerate_title_tier3_equivalence -- --nocapture
+```
+
+### Deferrals carried out of the lane (loud, named)
+
+- **`merge-conversation` + `llm_choose`** — `services/chat_merge.rs` refuses an
+  `llm_choose` starting-outfit selection BY NAME and by character id
+  (`chat_merge.rs`'s "The one deferral" header). It needs a cheap-LLM call and
+  `apply_outfit_selections` holds writable connections across that await, which
+  the single-writer closure the verb runs inside cannot host. Fix: a host-side
+  merge driver on the `ChatCreateDriver` pattern (which opens its own writable
+  partitions per request). The other four modes are exact, and the merge dialog
+  is not in this round, so nothing can reach the refusal yet.
+- **`ChatToggleAgentMode` carries no `enabled`** — a §1 narrowing, not a port
+  gap: the SERVICE takes v4's full tri-state and the differential drives all four
+  arms. A cross-lane escalation, recorded rather than resolved (§1 is written
+  verbatim in three orders).
+- **The `TimestampConfigSchema` write-path normalization** — explicitly OUT of
+  this lane per the order's ⚠ section; it straddles this lane's `db/chats.rs` and
+  P4.9E1A's `api/salon.rs`. Untouched.
+
+### Cross-lane notes for the unifier
+
+- **`api/salon.rs:527`'s `resolve_agent_mode` is now a duplicate.** It exists
+  only because the shared resolver dropped `enabledSource`; this lane put it
+  back on `ResolvedAgentMode`. Deleting the duplicate is a one-function change,
+  but `api/salon.rs` is P4.9E1A's file this round, so it was left alone.
+- **Shared-file discipline held.** `api/types.rs` and `api/engine.rs` gained one
+  labelled `P4.9E3A` region each, appended after P4.9E2A's; `services/mod.rs`
+  gained a labelled block. `db/chats.rs`, `db/chats_participants.rs` and
+  `services/queue_service.rs` were appended to. The two files P4.9E1A owns
+  exclusively (`services/chat_participants.rs`, `services/chat_avatars.rs`,
+  `api/salon.rs`) were never opened, and nothing under `services/backup/`,
+  `services/quilltap_import/` or `services/restore*` was touched.
+- **`quilltap-host` gained two live wires** (`spine.rs` + `host.rs` +
+  the two canned `SpineBundle` literals in `quilltap-web/tests`): the operator
+  tool runner and the regenerate-title driver. ⚠ The latter spends real money —
+  one cheap-LLM call per Regenerate Title.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean on BOTH feature sets (plain and
+`--features quilltap-core/native-transport`); `cargo test --workspace
+--no-fail-fast` **388 binaries / 1,641 tests / 0 failed** with every differential
+env var set and **zero `SKIP` lines**; `cargo build --release` clean. The seven
+families this lane can reach were re-run BY NAME with `--nocapture`, all green:
+`chat_admin_routes_equivalence` (NEW, 57 cases),
+`chat_regenerate_title_tier3_equivalence` (NEW, 8 cases), and — because the lane
+owns the chat-column write path and `bulk-reattribute` rewrites every message —
+`chats_tier2_equivalence`, `chats_participants_tier2_equivalence` (the one the
+`joinScenario` change could have broken), `chats_messages_ops_tier2_equivalence`,
+`chat_settings_tier2_equivalence` and `salon_mutations_equivalence`, each over a
+freshly regenerated oracle. No SPA run is owed — `apps/web/**` was never touched.
+
+### Versions after the lane
+
+`quilltap-core` **0.0.376**, `quilltap-harness` **0.0.322**, `quilltap-host`
+**0.0.41**, `quilltap-web` **0.0.47**. `quilltap-cli` 0.0.3,
+`quilltap-tauri` 0.0.5, SPA 0.5.290 — untouched.

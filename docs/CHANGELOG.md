@@ -8266,6 +8266,22 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A closes — the chat-admin and tools half of the old app's remaining chat
+actions is on the boundary. Eleven verbs: regenerate-title, add-tag, remove-tag,
+bulk re-attribution, merge-conversation, tool settings, run-tool, the dice roll,
+agent mode, danger reclassification and the Scriptorium render. Sixty-five
+differential cases across two new families, over a new fixture. Most of these
+verbs have no screen yet — the dialogs are a later round — but the screen-parity
+checklist has been updated to say exactly that rather than to claim progress it
+hasn't made.
+
+Three things left for the round to decide or a later round to finish, all
+recorded rather than quietly worked around: the frozen wire for the agent-mode
+toggle carries no value to set, so the verb can only express the old app's
+"no value sent" case; the merge refuses, by name, a starting-outfit mode that
+asks a model to choose; and a duplicate copy of the agent-mode cascade in a
+sibling lane's file can now be deleted.
+
 P4.9E3A unit 7 — regenerating a chat's title by hand. This is not the background
 title job, and the audit the order asked for has its answer: the old app has two
 title paths on purpose — the job asks whether a new title is warranted, this asks

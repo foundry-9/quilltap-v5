@@ -447,6 +447,13 @@ family (`status-log.md:14681-14683`), widened by the order
 barrel lives beside `SalonView`, NOT under `components/chat/`. (§4's own entry
 records the full path; the table's shorthand reads as the wrong one.)
 
+> **Server-half note (P4.9E3A, 2026-07-26).** Five rows below now have a working
+> boundary verb behind them (merge-conversation, bulk-reattribute ×2, run-tool,
+> update-tool-settings) plus the `rng` verb the §9 row wanted. **The rows stay
+> MISSING** — this section tracks SCREENS, and none of these dialogs exists in
+> `apps/web` yet. Landing a verb with no UI is the port's normal order of
+> operations, not progress on this table.
+
 | Dialog | v4 | Proposed order |
 | --- | --- | --- |
 | CreateNPCDialog | `components/chat/CreateNPCDialog.tsx`, nested in `AddCharacterDialog.tsx:616` | `p4.9e1` |
@@ -455,11 +462,11 @@ records the full path; the table's shorthand reads as the wrong one.)
 | ComposeMailDialog | `components/chat/ComposeMailDialog.tsx`, `ChatModals.tsx:332` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
 | InsertAnnouncementDialog | `ChatModals.tsx:317` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
 | WhisperDialog | `components/chat/WhisperDialog.tsx`, `SalonView.tsx:1806` | ~~`p4.9e2`~~ **DONE** (P4.9E2B) |
-| MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` |
-| ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` |
-| BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` |
-| RunToolModal | `ChatModals.tsx:403` | `p4.9e3` |
-| ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` |
+| MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatMergeConversation`) |
+| ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatBulkReattribute`) |
+| BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatBulkReattribute`) |
+| RunToolModal | `ChatModals.tsx:403` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatRunTool`) |
+| ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatUpdateToolSettings`) |
 | ChatProjectModal | `ChatModals.tsx:187` | `p4.9e3` |
 | StateEditorModal (chat host) | `ChatModals.tsx:414` | ~~`p4.9e3`~~ **DONE** (`p4.9h1`, 2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`) |
 | SearchReplaceModal | `ChatModals.tsx:361` | `p4.9e3` |
@@ -688,8 +695,8 @@ lanes). These are liftable straight into `/setupphase`.
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
 | 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |
-| 9 | ~~`p4.9e2-chat-post-office-dialogs`~~ **DONE 2026-07-25** (P4.9E2A server ∥ P4.9E2B SPA) | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points**. Deferred: the RNG dropdown — v5 has no `?action=rng` verb, so it needs a server lane. The row's "DnD upload" was a PHANTOM (see §2.2) | lane | post-office writers (landed) |
-| 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | `?action=update-tool-settings` (`core-contract.ts:858`) |
+| 9 | ~~`p4.9e2-chat-post-office-dialogs`~~ **DONE 2026-07-25** (P4.9E2A server ∥ P4.9E2B SPA) | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points**. ~~Deferred: the RNG dropdown — v5 has no `?action=rng` verb, so it needs a server lane.~~ **The `ChatRng` verb landed 2026-07-26 (P4.9E3A); the dropdown itself is still owed.** The row's "DnD upload" was a PHANTOM (see §2.2) | lane | post-office writers (landed) |
+| 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | **UNBLOCKED on the server side 2026-07-26** — P4.9E3A landed all eleven chat-admin/tools verbs, incl. `ChatMergeConversation`, `ChatBulkReattribute`, `ChatRunTool`, `ChatUpdateToolSettings` and `ChatRng`. What remains for this row is purely SPA |
 | 11 | `p4.9i` → **`p4.9i1` + `p4.9i2`** | BrahmaConsoleDialog (+ its `asTab` re-skin) ∥ HelpChatDialog. **SPLIT 2026-07-18** — two surfaces, two backends, ~2,500 LOC (see the §1.6 correction). `p4.9i1` = the unported multi-turn `orchestrator.service.ts` + chat-CRUD dispatch + the dialog (and it must carry `HelpChatComposer` + the `qt-help-*` styles, which Brahma depends on). `p4.9i2` = the 9-component help family + read verbs for the help docs `help_doc_sync.rs` already writes. ⚠ P4.d11 bank note (2026-07-20): v4 REWROTE `help/math-notation.md` at `5915b04e` (the "discreet doorman" copy, alongside the single-dollar promotion) — the eventual help port copies the NEW text, not the b8b12695-era file already banked at P4.d9 | lane each | `p4.9i1`: W4.5b one-shot engine (landed). `p4.9i2`: nothing above `help_doc_sync.rs` |
 | 12 | `p4.9k-character-ai-dialogs` | AIWizard, Optimizer, system-prompts import/preview, ExternalPrompt/ReverseUser | round | tier-3 LLM services |
 | 13 | `p4.9n-files-fidelity` | rich text/pdf preview, rich FolderPicker, cross-mount move/copy UI, drag relocation | lane | pdf/docx extractor (refusing seam) |
