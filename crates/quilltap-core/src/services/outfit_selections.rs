@@ -346,58 +346,78 @@ pub async fn apply_outfit_selections<C: CompletionProvider>(
     let outfits = ChatOutfitsRepository::new(main);
     for selection in selections {
         let character_id = selection.character_id.as_str();
-        match selection.mode.as_str() {
-            "default" => {
+        if apply_outfit_selection_sync(main, mount, &outfits, chat_id, selection, ctx)? {
+            continue;
+        }
+        if selection.mode == "llm_choose" {
+            apply_llm_choose(
+                main,
+                mount,
+                completion,
+                executor,
+                &outfits,
+                chat_id,
+                character_id,
+                ctx,
+                emitter,
+            )
+            .await?;
+        }
+        // Any other mode is unknown — v4 logs and skips (no write).
+    }
+    Ok(())
+}
+
+/// The four modes that need no model call (`default` / `manual` / `none` /
+/// `previous_chat`), split out of [`apply_outfit_selections`] so a SYNC caller —
+/// the chat merge, which runs inside the single-writer closure and cannot hold
+/// connections across an await — reaches the same one implementation
+/// (P4.9E3A). Returns `true` when the selection was handled here; `false` for
+/// `llm_choose` and for an unknown mode, which the async wrapper dispatches.
+pub fn apply_outfit_selection_sync(
+    main: &Connection,
+    mount: &Connection,
+    outfits: &ChatOutfitsRepository<'_>,
+    chat_id: &str,
+    selection: &OutfitSelection,
+    ctx: &OutfitContext<'_>,
+) -> Result<bool, DbError> {
+    let character_id = selection.character_id.as_str();
+    match selection.mode.as_str() {
+        "default" => {
+            let slots = resolve_default_outfit(main, mount, character_id)?;
+            outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
+        }
+        "manual" => {
+            let slots = selection.slots.clone().unwrap_or_default();
+            outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
+        }
+        "none" => {
+            outfits.set_equipped_outfit(
+                chat_id,
+                character_id,
+                &slots_to_value(&Slots::default()),
+            )?;
+        }
+        "previous_chat" => {
+            let mut applied = false;
+            if let Some(source) = ctx.source_chat_id {
+                // v4 wraps the read in try/catch → fall back to default.
+                if let Ok(Some(prev)) =
+                    outfits.get_equipped_outfit_for_character(source, character_id)
+                {
+                    outfits.set_equipped_outfit(chat_id, character_id, &prev)?;
+                    applied = true;
+                }
+            }
+            if !applied {
                 let slots = resolve_default_outfit(main, mount, character_id)?;
                 outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
             }
-            "manual" => {
-                let slots = selection.slots.clone().unwrap_or_default();
-                outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-            }
-            "none" => {
-                outfits.set_equipped_outfit(
-                    chat_id,
-                    character_id,
-                    &slots_to_value(&Slots::default()),
-                )?;
-            }
-            "previous_chat" => {
-                let mut applied = false;
-                if let Some(source) = ctx.source_chat_id {
-                    // v4 wraps the read in try/catch → fall back to default.
-                    if let Ok(Some(prev)) =
-                        outfits.get_equipped_outfit_for_character(source, character_id)
-                    {
-                        outfits.set_equipped_outfit(chat_id, character_id, &prev)?;
-                        applied = true;
-                    }
-                }
-                if !applied {
-                    let slots = resolve_default_outfit(main, mount, character_id)?;
-                    outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-                }
-            }
-            "llm_choose" => {
-                apply_llm_choose(
-                    main,
-                    mount,
-                    completion,
-                    executor,
-                    &outfits,
-                    chat_id,
-                    character_id,
-                    ctx,
-                    emitter,
-                )
-                .await?;
-            }
-            _ => {
-                // Unknown mode — v4 logs and skips (no write).
-            }
         }
+        _ => return Ok(false),
     }
-    Ok(())
+    Ok(true)
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -231,6 +231,8 @@ pub fn compile_all_identity_stacks(
 
 // ===========================================================================
 // P4.9E1A: the single-participant hook
+// (P4.9E3A independently ported the same v4 function for the merge; the two
+//  bodies were proven equivalent at unification and reconciled to this one.)
 // ===========================================================================
 
 /// v4 `compileIdentityStackForParticipant(chat, participantId)`
@@ -242,6 +244,10 @@ pub fn compile_all_identity_stacks(
 /// The invalidation hooks v4 wires this to: a participant added or reactivated,
 /// and a `selectedSystemPromptId` change. Every call site wraps it in a
 /// try/catch that only warns, so callers here discard the result.
+///
+/// **Two consumers.** P4.9E1A's add/update-participant paths, and P4.9E3A's
+/// `apply_chat_merge`, which calls it per newly-joined participant rather than
+/// recompiling the whole chat — exactly as v4's `applyChatMerge` does.
 pub fn compile_identity_stack_for_participant(
     main: &Connection,
     mount: &Connection,

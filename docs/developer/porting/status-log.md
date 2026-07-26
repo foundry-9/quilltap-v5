@@ -37450,3 +37450,79 @@ waits for anyone reaching for a "cheap DB-only tool" here.)
 it, so no other oracle is invalidated.
 
 **Differential:** 10 new cases (49 total).
+
+### Unit 6 — `apply_chat_merge` + merge-conversation
+
+The lane's one genuinely NEW subsystem: nothing in v5 had an `applyChatMerge`.
+`services/chat_merge.rs` ports v4 `lib/chat/apply-chat-merge.ts` and its handler
+`actions/merge.ts:20`, plus §1's `ChatMergeConversation` and its engine arm.
+
+It is the inverse of "Continue Elsewhere" (`chat_continuation`): rather than
+forking forward into a fresh chat, it pulls a source chat's company IN at the
+latest point — each missing source character joins as an LLM-controlled
+participant (Host welcome bubble, per-participant identity stack, starting
+outfit), then a Host recap lands at the target's tail carrying the source's
+rolling summary, and a reciprocal back-link lands in the source. No turns are
+replayed and the target's turn state is untouched.
+
+Two supporting ports:
+
+- **`compile_identity_stack_for_participant`** (v4 `compiler.ts:169`) — v5 had
+  only the whole-chat `compile_all_identity_stacks`. It merges ONE participant's
+  stack into the persisted map, or drops a stale entry when the participant no
+  longer qualifies.
+- **`apply_outfit_selection_sync`** — the four modes that need no model call
+  (`default` / `manual` / `none` / `previous_chat`) split OUT of
+  `apply_outfit_selections`, which now delegates to it. One implementation, two
+  callers: the async wrapper (chat-create) and the merge, which runs inside the
+  single-writer closure and cannot hold connections across an await.
+
+**THREE real bugs the differential caught, none of them guessable by reading:**
+
+1. `outfitSelections` is `.optional()` in v4, and the first draft treated an
+   absent array as a validation failure — every merge without explicit outfit
+   choices 400'd.
+2. `displayOrder` was built as an `f64`, and `ChatParticipant.display_order` is
+   an `i64`, so `addParticipant` failed to parse **every** joining participant
+   and the whole merge silently became a no-op ("None of the chosen characters
+   could be merged in"). The failure was invisible because v4's own
+   per-character try/catch, faithfully ported, swallows it.
+3. **A pre-existing v5 marshaling gap, not the merge's own:**
+   `ChatParticipant.join_scenario` was a single `Option<String>`, so an EXPLICIT
+   `joinScenario: null` — which `applyChatMerge` writes on every joining
+   participant — was DROPPED on serialization where v4's Zod
+   `.nullable().optional()` keeps it. Fixed to `Option<Option<String>>` with the
+   file's own `de_double_opt_string`, joining the four sibling fields that
+   already model the distinction. Any future writer of an explicit null benefits.
+
+**Two oracle-side lessons worth carrying:**
+
+- **The frozen clock had to start TICKING.** With a hard freeze all three Host
+  bubbles written in one merge share a `createdAt`, and v4's ordered read then
+  returns them in an order that is an artifact of its tie-break (it came back
+  exactly reversed) while v5's real clock separates them by insertion. The
+  oracle's `Date` now advances 1 ms per construction
+  (`chain-depth-frozen-clock-artifact`), both sides order by insertion, and the
+  Rust assertion relaxed from `== base` to `>= base`.
+- **`compiledIdentityStacks` is KEYED by the minted participant id**, so the map
+  cannot be compared key-for-key. It is normalized to a sorted array of its
+  VALUES — each of which names its character, so a stack that failed to compile,
+  or compiled for the wrong character, still shows. `hostEvent.participantId` is
+  blanked at that exact path rather than by key name anywhere, so ordinary
+  messages' `participantId` (which the bulk-reattribution cases live on) stays
+  fully diffed.
+
+**The one deferral (loud, named): the `llm_choose` starting-outfit mode.** It
+needs a cheap-LLM call, and `apply_outfit_selections` holds writable connections
+across that await — which the single-writer closure this verb runs inside cannot
+host (the `ChatCreateSpine` note). A request carrying `llm_choose` is REFUSED by
+name and by character id rather than silently downgraded to the default outfit.
+Closing it means a host-side merge driver on the `ChatCreateDriver` pattern
+(which opens its own writable partitions per request). The merge dialog is not in
+this round, so nothing can reach the refusal yet.
+
+**Differential:** 8 new cases (57 total) — a full merge (BEA + DORIAN travel,
+CLIO is skipped as already-present, FLINT is `removed` in the source and does not
+travel), the operator's allowlist, explicit `default` + `none` outfit selections,
+the everyone-already-present refusal (which must post NO bubbles), merge-into-
+itself, an empty allowlist, a missing source chat and a missing target chat.

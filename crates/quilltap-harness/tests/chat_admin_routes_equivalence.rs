@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::chat_run_tool::ErasedToolRunner;
-use quilltap_core::services::{chat_admin, chat_rng, chat_run_tool};
+use quilltap_core::services::{chat_admin, chat_merge, chat_rng, chat_run_tool};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::rng::FixedBytes;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
@@ -55,7 +55,11 @@ const P_CLIO: &str = "e1000000-0000-4000-8000-000000000003";
 /// well-formed uuid.
 const P_STRANGER: &str = "e1000000-0000-4000-8000-000000000011";
 const CLIO: &str = "a1000000-0000-4000-8000-000000000003";
-/// The instant the oracle freezes its clock to (`chat-admin-web.json`).
+const BEA: &str = "a1000000-0000-4000-8000-000000000002";
+const DORIAN: &str = "a1000000-0000-4000-8000-000000000004";
+const SOURCE_CHAT: &str = "c1000000-0000-4000-8000-000000000002";
+/// The instant the oracle's TICKING clock starts from (`chat-admin-web.json`).
+/// Each `new Date()` there advances 1 ms, so a v4 stamp is at-or-after this.
 const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
 /// The fixture's seed timestamp — what an untouched `updatedAt` still reads.
 const SEED_ISO: &str = "2026-05-01T00:00:00.000Z";
@@ -92,6 +96,12 @@ const MINTED_MESSAGE_CASES: &[&str] = &[
     "run_tool_named_character",
     "run_tool_unmatched_character",
     "run_tool_default_character",
+    // The merge mints participant ids, Host bubble ids and their `createdAt`s
+    // on both sides.
+    "merge_all",
+    "merge_allowlist",
+    "merge_outfit_selections",
+    "merge_all_already_present",
 ];
 
 /// Cases whose chat row carries a timestamp MINTED from the wall clock —
@@ -105,6 +115,11 @@ const CLOCK_MINTED_CASES: &[&str] = &[
     "bulk_reattribute_assistant_only",
     "bulk_reattribute_user_only",
     "bulk_reattribute_null_source",
+    // The merge's Host bubbles are messages, so the target chat's `updatedAt` /
+    // `lastMessageAt` are stamped from the wall clock too.
+    "merge_all",
+    "merge_allowlist",
+    "merge_outfit_selections",
 ];
 
 #[derive(Deserialize)]
@@ -221,10 +236,34 @@ fn blank_job_id(v: &mut Value) {
 fn blank_minted(v: &mut Value) {
     match v {
         Value::Object(o) => {
-            for k in ["id", "createdAt"] {
+            // `updatedAt` joins the minted set here because `addParticipant`
+            // stamps a fresh one on every participant it inserts.
+            for k in ["id", "createdAt", "updatedAt"] {
                 if o.contains_key(k) {
                     o.insert(k.to_string(), Value::String(format!("<{k}>")));
                 }
+            }
+            // `compiledIdentityStacks` is KEYED by the minted participant id, so
+            // the keys cannot be compared. The VALUES are the whole point (each
+            // names its character), so the map becomes a sorted array of them —
+            // a stack that failed to compile, or compiled for the wrong
+            // character, still shows.
+            // A Host bubble's `hostEvent.participantId` is the minted id of the
+            // participant that just joined. Blanked HERE (rather than by key
+            // name anywhere) so ordinary messages' `participantId` — which the
+            // bulk-reattribution cases live on — stays fully diffed.
+            if let Some(he) = o.get_mut("hostEvent").and_then(Value::as_object_mut) {
+                if he.contains_key("participantId") {
+                    he.insert(
+                        "participantId".to_string(),
+                        Value::String("<participantId>".into()),
+                    );
+                }
+            }
+            if let Some(stacks) = o.get("compiledIdentityStacks").and_then(Value::as_object) {
+                let mut vals: Vec<Value> = stacks.values().cloned().collect();
+                vals.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
+                o.insert("compiledIdentityStacks".to_string(), Value::Array(vals));
             }
             o.iter_mut().for_each(|(_, x)| blank_minted(x));
         }
@@ -260,6 +299,46 @@ fn first_diff(got: &str, want: &str) -> String {
         }
     }
     "(identical line-by-line)".to_string()
+}
+
+/// Assert-then-strip the two wall-clock-minted chat timestamps on ONE chat
+/// object: v4's must equal the frozen instant and v5's must differ from the
+/// fixture seed — i.e. both sides really wrote — before the keys are dropped
+/// from the compare. Returns the failure labels (empty when both held).
+fn assert_and_strip_clock(
+    name: &str,
+    chat: &mut serde_json::Map<String, Value>,
+    v4: bool,
+) -> Vec<String> {
+    let mut failed = Vec::new();
+    let label = if v4 { "v4" } else { "v5" };
+    for key in ["updatedAt", "lastMessageAt"] {
+        let got = chat
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let ok = if v4 {
+            // The oracle's clock ticks, so a v4 stamp is at-or-after the base
+            // (ISO-8601 compares lexicographically).
+            got.as_str() >= FROZEN_NOW_ISO
+        } else {
+            got != SEED_ISO && !got.is_empty()
+        };
+        if !ok {
+            eprintln!(
+                "[{name}] {label} {key} = {got:?} — the write did not stamp it (expected {})",
+                if v4 {
+                    FROZEN_NOW_ISO
+                } else {
+                    "anything but the seed"
+                }
+            );
+            failed.push(format!("{name}_{label}_{key}"));
+        }
+        chat.remove(key);
+    }
+    failed
 }
 
 /// The web-edge (status, body) for a Response (the HTTP transport mapping).
@@ -386,112 +465,98 @@ fn chat_admin_routes_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
-    let mut check =
-        |name: &str, resp: &Response, tables: Option<Value>| {
-            driven.insert(name.to_string());
-            let Some(want) = oracle.get(name) else {
-                failed.push(format!("{name}_MISSING_FROM_ORACLE"));
-                return;
-            };
-            let (status, body) = status_body(resp);
-            let want_status = want["status"].as_u64().unwrap() as u16;
-            let mut want_body = want["body"].clone();
+    let mut check = |name: &str, resp: &Response, tables: Option<Value>| {
+        driven.insert(name.to_string());
+        let Some(want) = oracle.get(name) else {
+            failed.push(format!("{name}_MISSING_FROM_ORACLE"));
+            return;
+        };
+        let (status, body) = status_body(resp);
+        let want_status = want["status"].as_u64().unwrap() as u16;
+        let mut want_body = want["body"].clone();
 
-            if V4_CREATED_CASES.contains(&name) {
-                if want_status != 201 || status != 200 {
-                    eprintln!(
-                        "[{name}] the recorded 201-vs-200 difference no longer holds \
+        if V4_CREATED_CASES.contains(&name) {
+            if want_status != 201 || status != 200 {
+                eprintln!(
+                    "[{name}] the recorded 201-vs-200 difference no longer holds \
                      (v4={want_status}, v5={status}) — re-rule it or drop the entry"
-                    );
-                    failed.push(format!("{name}_status"));
-                }
-            } else if status != want_status {
-                eprintln!("[{name}] STATUS {status} != {want_status}");
+                );
                 failed.push(format!("{name}_status"));
             }
+        } else if status != want_status {
+            eprintln!("[{name}] STATUS {status} != {want_status}");
+            failed.push(format!("{name}_status"));
+        }
 
-            // The Zod `details` gap, asserted in both directions.
-            if VALIDATION_DETAILS_GAP.contains(&name) {
-                let v4_details_ok = want_body
-                    .get("details")
-                    .and_then(Value::as_array)
-                    .is_some_and(|a| !a.is_empty());
-                let v5_has_details = body.get("details").is_some();
-                if !v4_details_ok || v5_has_details {
-                    eprintln!(
-                        "[{name}] the recorded validation-details gap no longer holds \
+        // The Zod `details` gap, asserted in both directions.
+        if VALIDATION_DETAILS_GAP.contains(&name) {
+            let v4_details_ok = want_body
+                .get("details")
+                .and_then(Value::as_array)
+                .is_some_and(|a| !a.is_empty());
+            let v5_has_details = body.get("details").is_some();
+            if !v4_details_ok || v5_has_details {
+                eprintln!(
+                    "[{name}] the recorded validation-details gap no longer holds \
                      (v4 details present={v4_details_ok}, v5 details present={v5_has_details}) \
                      — re-rule it or drop the entry"
-                    );
-                    failed.push(format!("{name}_details_gap"));
-                }
-                if let Some(o) = want_body.as_object_mut() {
-                    o.remove("details");
-                }
-            }
-
-            let n: fn(&Value) -> String = if MINTED_MESSAGE_CASES.contains(&name) {
-                norm_minted
-            } else {
-                norm
-            };
-            if n(&body) != n(&want_body) {
-                eprintln!(
-                    "[{name}] BODY MISMATCH:\n{}",
-                    first_diff(&n(&body), &n(&want_body))
                 );
-                failed.push(name.to_string());
-            } else {
-                eprintln!("[{name}] body OK.");
+                failed.push(format!("{name}_details_gap"));
             }
+            if let Some(o) = want_body.as_object_mut() {
+                o.remove("details");
+            }
+        }
 
-            if let Some(mut got_tables) = tables {
-                let mut want_tables = want["tables"].clone();
-                // Wall-clock-minted chat timestamps: prove BOTH sides wrote, then
-                // drop the two keys (see CLOCK_MINTED_CASES).
-                if CLOCK_MINTED_CASES.contains(&name) {
-                    for (label, tbl, expect_frozen) in [
-                        ("v4", &mut want_tables, true),
-                        ("v5", &mut got_tables, false),
-                    ] {
-                        let Some(chat) = tbl.get_mut("chat").and_then(Value::as_object_mut) else {
-                            failed.push(format!("{name}_clock_shape"));
-                            continue;
-                        };
-                        for key in ["updatedAt", "lastMessageAt"] {
-                            let got = chat
-                                .get(key)
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string();
-                            let ok = if expect_frozen {
-                                got == FROZEN_NOW_ISO
-                            } else {
-                                got != SEED_ISO && !got.is_empty()
-                            };
-                            if !ok {
-                                eprintln!(
-                                "[{name}] {label} {key} = {got:?} — the clear-and-replay did not \
-                                 stamp it (expected {})",
-                                if expect_frozen { FROZEN_NOW_ISO } else { "anything but the seed" }
-                            );
-                                failed.push(format!("{name}_{label}_{key}"));
-                            }
-                            chat.remove(key);
-                        }
+        // The merge's body carries the refreshed chat, whose `updatedAt` /
+        // `lastMessageAt` the Host bubbles stamped from the wall clock.
+        let mut body = body;
+        if CLOCK_MINTED_CASES.contains(&name) {
+            for (is_v4, v) in [(true, &mut want_body), (false, &mut body)] {
+                if let Some(chat) = v.get_mut("chat").and_then(Value::as_object_mut) {
+                    failed.extend(assert_and_strip_clock(name, chat, is_v4));
+                }
+            }
+        }
+
+        let n: fn(&Value) -> String = if MINTED_MESSAGE_CASES.contains(&name) {
+            norm_minted
+        } else {
+            norm
+        };
+        if n(&body) != n(&want_body) {
+            eprintln!(
+                "[{name}] BODY MISMATCH:\n{}",
+                first_diff(&n(&body), &n(&want_body))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] body OK.");
+        }
+
+        if let Some(mut got_tables) = tables {
+            let mut want_tables = want["tables"].clone();
+            // Wall-clock-minted chat timestamps: prove BOTH sides wrote, then
+            // drop the two keys (see CLOCK_MINTED_CASES).
+            if CLOCK_MINTED_CASES.contains(&name) {
+                for (is_v4, tbl) in [(true, &mut want_tables), (false, &mut got_tables)] {
+                    match tbl.get_mut("chat").and_then(Value::as_object_mut) {
+                        Some(chat) => failed.extend(assert_and_strip_clock(name, chat, is_v4)),
+                        None => failed.push(format!("{name}_clock_shape")),
                     }
                 }
-                if n(&got_tables) != n(&want_tables) {
-                    eprintln!(
-                        "[{name} tables] MISMATCH:\n{}",
-                        first_diff(&n(&got_tables), &n(&want_tables))
-                    );
-                    failed.push(format!("{name}_tables"));
-                } else {
-                    eprintln!("[{name} tables] OK.");
-                }
             }
-        };
+            if n(&got_tables) != n(&want_tables) {
+                eprintln!(
+                    "[{name} tables] MISMATCH:\n{}",
+                    first_diff(&n(&got_tables), &n(&want_tables))
+                );
+                failed.push(format!("{name}_tables"));
+            } else {
+                eprintln!("[{name} tables] OK.");
+            }
+        }
+    };
 
     // ── ?action=add-tag ─────────────────────────────────────────────────────
     for (name, chat, tag, dump) in [
@@ -896,6 +961,75 @@ fn chat_admin_routes_match_oracle() {
             frozen_iso.clone(),
         ));
         check("run_tool_chat_missing", &r, None);
+    }
+
+    // ── ?action=merge-conversation ──────────────────────────────────────────
+    let all_ids: Vec<String> = vec![];
+    for (name, chat, source, include, selections, dump) in [
+        ("merge_all", CHAT, SOURCE_CHAT, None, None, true),
+        (
+            "merge_allowlist",
+            CHAT,
+            SOURCE_CHAT,
+            Some(vec![DORIAN.to_string()]),
+            None,
+            true,
+        ),
+        (
+            "merge_outfit_selections",
+            CHAT,
+            SOURCE_CHAT,
+            None,
+            Some(vec![
+                json!({ "characterId": BEA, "mode": "default" }),
+                json!({ "characterId": DORIAN, "mode": "none" }),
+            ]),
+            true,
+        ),
+        (
+            "merge_all_already_present",
+            CHAT,
+            SOURCE_CHAT,
+            Some(vec![CLIO.to_string()]),
+            None,
+            true,
+        ),
+        ("merge_into_itself", CHAT, CHAT, None, None, false),
+        (
+            "merge_empty_allowlist",
+            CHAT,
+            SOURCE_CHAT,
+            Some(all_ids.clone()),
+            None,
+            false,
+        ),
+        ("merge_source_missing", CHAT, MISSING_ID, None, None, false),
+        (
+            "merge_chat_missing",
+            MISSING_ID,
+            SOURCE_CHAT,
+            None,
+            None,
+            false,
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        let r = rt.block_on(chat_merge::chat_merge_conversation(
+            &db,
+            &spec.user_id,
+            chat,
+            source,
+            include.as_deref(),
+            selections.as_deref(),
+        ));
+        let tables = dump.then(|| {
+            json!({
+                "chat": dump_chat(&db, CHAT),
+                "messages": dump_messages(&db, CHAT),
+                "sourceMessages": dump_messages(&db, SOURCE_CHAT),
+            })
+        });
+        check(name, &r, tables);
     }
 
     // Shape, not a hand-written count: the two case sets must agree exactly.

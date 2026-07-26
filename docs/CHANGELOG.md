@@ -8266,6 +8266,16 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 6 — folding one conversation into another. The merge is the lane's
+one genuinely new subsystem: the source chat's missing characters join as
+LLM-driven participants, each with a welcome from the Host, their own identity
+stack and a starting outfit, and both chats gain a bubble linking to the other.
+Three real bugs surfaced only because the test drove it — an optional field
+treated as required, a number type that made every join fail silently behind the
+old app's own swallowed error, and a null that the port had been dropping on
+every participant it wrote. The starting-outfit mode that asks a model to choose
+is refused by name for now, rather than quietly falling back.
+
 P4.9E3A unit 5 — running a tool by hand. The Run Tool surface lands on the
 boundary: the two tools a person may not invoke, the whispered run that hides
 itself from every character while staying visible to the operator, and the

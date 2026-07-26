@@ -161,6 +161,7 @@ pub mod chat_participants;
 // ── end P4.9E1A ──
 // ── P4.9E3A ──
 pub mod chat_admin;
+pub mod chat_merge;
 pub mod chat_rng;
 pub mod chat_run_tool;
 // ── end P4.9E3A ──

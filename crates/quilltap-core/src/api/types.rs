@@ -2535,6 +2535,17 @@ pub enum Request {
         #[serde(default)]
         role_filter: Option<String>,
     },
+    /// Fold another conversation's cast + summary into this chat (v4
+    /// `POST …?action=merge-conversation`). `chat_id` is the merge TARGET.
+    #[serde(rename_all = "camelCase")]
+    ChatMergeConversation {
+        chat_id: String,
+        source_chat_id: String,
+        #[serde(default)]
+        character_ids: Option<Vec<String>>,
+        #[serde(default)]
+        outfit_selections: Option<Vec<serde_json::Value>>,
+    },
     /// Replace the chat's disabled-tool sets (v4 `POST …?action=update-tool-settings`).
     /// The service ALSO sets `forceToolsOnNextMessage = true`; the response echoes
     /// only the two arrays.

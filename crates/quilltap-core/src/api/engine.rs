@@ -1061,6 +1061,25 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::ChatMergeConversation {
+                chat_id,
+                source_chat_id,
+                character_ids,
+                outfit_selections,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_merge::chat_merge_conversation(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &source_chat_id,
+                        character_ids.as_deref(),
+                        outfit_selections.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ChatUpdateToolSettings {
                 chat_id,
                 disabled_tools,

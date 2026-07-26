@@ -63,6 +63,9 @@ const P_CLIO = 'e1000000-0000-4000-8000-000000000003';
 // reachable with a well-formed uuid.
 const P_STRANGER = 'e1000000-0000-4000-8000-000000000011';
 const CLIO = 'a1000000-0000-4000-8000-000000000003';
+const BEA = 'a1000000-0000-4000-8000-000000000002';
+const DORIAN = 'a1000000-0000-4000-8000-000000000004';
+const SOURCE_CHAT = 'c1000000-0000-4000-8000-000000000002';
 
 const RealDate = Date;
 
@@ -247,16 +250,23 @@ async function runCase(
   );
   await initializeDatabase();
 
-  const iso = new RealDate(spec.frozenNowMs).toISOString();
+  // A TICKING frozen clock: each argless `new Date()` / `Date.now()` advances
+  // 1 ms from `frozenNowMs`. A hard freeze would give every message written in
+  // one case the SAME `createdAt`, and v4's ordered read then returns them in an
+  // order that is an artifact of its tie-break rather than of insertion — while
+  // v5's real clock separates them. Ticking makes both sides order by insertion
+  // (`chain-depth-frozen-clock-artifact`). The Rust side asserts v4's stamps are
+  // at-or-after the base rather than equal to it.
+  let tick = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   global.Date = class extends RealDate {
     constructor(...a: unknown[]) {
-      if (a.length === 0) super(iso);
+      if (a.length === 0) super(spec.frozenNowMs + tick++);
       // @ts-expect-error forward variadic args
       else super(...a);
     }
     static now(): number {
-      return spec.frozenNowMs;
+      return spec.frozenNowMs + tick++;
     }
   } as unknown as DateConstructor;
 
@@ -317,6 +327,13 @@ async function main(): Promise<void> {
     memories: await readMemories(),
   });
   const rngTables = async () => ({ messages: await readMessages(CHAT) });
+  // The merge touches BOTH chats plus the target's participants, tags,
+  // identity-stack cache and equipped outfits.
+  const mergeTables = async () => ({
+    chat: await readChat(CHAT),
+    messages: await readMessages(CHAT),
+    sourceMessages: await readMessages(SOURCE_CHAT),
+  });
   const jobTables = async (chatId = CHAT) => ({
     chat: await readChat(chatId),
     jobs: await readJobs(spec.userId),
@@ -797,6 +814,88 @@ async function main(): Promise<void> {
       name: 'run_tool_chat_missing',
       run: async () =>
         respond(await post(MISSING_ID, 'run-tool', { toolName: 'read_conversation' })),
+    },
+    // ── ?action=merge-conversation ──────────────────────────────────────────
+    {
+      // No allowlist: BEA + DORIAN travel (CLIO is already here → skipped;
+      // FLINT is `removed` in the source → does not travel). Each join posts a
+      // Host welcome, compiles that participant's identity stack, and applies
+      // the default `previous_chat` outfit — BEA has one in the source, DORIAN
+      // does not and falls back to their default item.
+      name: 'merge_all',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'merge-conversation', { sourceChatId: SOURCE_CHAT }),
+        );
+        return { status, body, tables: await mergeTables() };
+      },
+    },
+    {
+      // The operator's gate: only DORIAN comes across.
+      name: 'merge_allowlist',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'merge-conversation', {
+            sourceChatId: SOURCE_CHAT,
+            characterIds: [DORIAN],
+          }),
+        );
+        return { status, body, tables: await mergeTables() };
+      },
+    },
+    {
+      // Explicit outfit selections: BEA gets `default`, DORIAN gets `none`.
+      name: 'merge_outfit_selections',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'merge-conversation', {
+            sourceChatId: SOURCE_CHAT,
+            outfitSelections: [
+              { characterId: BEA, mode: 'default' },
+              { characterId: DORIAN, mode: 'none' },
+            ],
+          }),
+        );
+        return { status, body, tables: await mergeTables() };
+      },
+    },
+    {
+      // Everyone chosen is already present → the no-op refusal, and NO bubbles.
+      name: 'merge_all_already_present',
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'merge-conversation', {
+            sourceChatId: SOURCE_CHAT,
+            characterIds: [CLIO],
+          }),
+        );
+        return { status, body, tables: await mergeTables() };
+      },
+    },
+    {
+      name: 'merge_into_itself',
+      run: async () =>
+        respond(await post(CHAT, 'merge-conversation', { sourceChatId: CHAT })),
+    },
+    {
+      name: 'merge_empty_allowlist',
+      run: async () =>
+        respond(
+          await post(CHAT, 'merge-conversation', {
+            sourceChatId: SOURCE_CHAT,
+            characterIds: [],
+          }),
+        ),
+    },
+    {
+      name: 'merge_source_missing',
+      run: async () =>
+        respond(await post(CHAT, 'merge-conversation', { sourceChatId: MISSING_ID })),
+    },
+    {
+      name: 'merge_chat_missing',
+      run: async () =>
+        respond(await post(MISSING_ID, 'merge-conversation', { sourceChatId: SOURCE_CHAT })),
     },
   ];
 

@@ -134,12 +134,19 @@ pub struct ChatParticipant {
     pub removed_at: Option<Option<String>>,
     #[serde(rename = "hasHistoryAccess", default)]
     pub has_history_access: bool,
+    /// Double-`Option` — v4's `joinScenario` is `.nullable().optional()`, so Zod
+    /// KEEPS an explicit stored `null` while dropping an absent key. See
+    /// [`ChatParticipant::connection_profile_id`] for the full rationale.
+    /// (P4.9E3A: `applyChatMerge` writes an explicit `joinScenario: null` on
+    /// every joining participant, which the previous single `Option` silently
+    /// dropped — the merge differential is what surfaced it.)
     #[serde(
         rename = "joinScenario",
         default,
+        deserialize_with = "de_double_opt_string",
         skip_serializing_if = "Option::is_none"
     )]
-    pub join_scenario: Option<String>,
+    pub join_scenario: Option<Option<String>>,
     #[serde(
         rename = "talkativeness",
         default,
