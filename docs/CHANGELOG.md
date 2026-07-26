@@ -8088,6 +8088,22 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.d18 unit 2 — chat creation anchors the fictional clock. `chat_create`'s
+`resolved_timestamp_config` fallback chain is now wrapped in
+`ensure_fictional_base_real_time(…, deps.now_ms)`, matching v4's `handleCreate`:
+the stamp is applied whether the config was requested outright or inherited from
+a character or Salon default, while the defaults themselves stay unanchored.
+Three cases join the chat-create capstone corpus (6 → 9) and diff green against
+v4's real `handleCreate`: unanchored (stamped), already-anchored (never
+re-stamped — the pre-anchored value is millis-free so it survives the
+differential's timestamp normalizer and the guard is genuinely diffed), and a
+real-time clock (left alone). **Finding, not fixed here:** v4's chats repository
+re-parses `timestampConfig` through Zod at the write, so the stored blob carries
+schema key order, materialized defaults and no unknown keys; v5 stores the
+request's JSON verbatim. That is a pre-existing divergence in `db/chats.rs`,
+outside this lane. The three new cases deliberately send schema-shaped configs so
+they measure the anchor rather than the unported normalization. core 0.0.362.
+
 P4.d18 unit 1 — the `e3a9654f` fictional-story-clock re-port (pure half).
 `parse_timestamp_in_timezone` is new: v4's `NAIVE_TIMESTAMP_PATTERN` (the
 `datetime-local` shape, `[T ]` separator, optional seconds, `trim()`), the

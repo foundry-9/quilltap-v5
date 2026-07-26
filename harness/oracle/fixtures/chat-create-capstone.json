@@ -24,7 +24,9 @@
       "provider": "ANTHROPIC",
       "apiKeyId": "d1000000-0000-4000-8000-000000000001",
       "modelName": "claude-sonnet-4-5",
-      "parameters": { "temperature": 0.7 }
+      "parameters": {
+        "temperature": 0.7
+      }
     }
   ],
   "apiKeys": [
@@ -49,7 +51,11 @@
       "title": "",
       "firstMessage": "Well met, traveler! I am Aria.",
       "talkativeness": 1.0,
-      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
       "aliases": [],
       "physicalDescription": null,
       "systemPrompts": [
@@ -103,7 +109,11 @@
       "title": "",
       "firstMessage": "Greetings. I am Cleo, keeper of records.",
       "talkativeness": 0.1,
-      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
       "aliases": [],
       "physicalDescription": null,
       "systemPrompts": [
@@ -149,7 +159,11 @@
       "title": "",
       "firstMessage": "",
       "talkativeness": 1.0,
-      "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      },
       "aliases": [],
       "physicalDescription": null,
       "systemPrompts": [
@@ -271,7 +285,11 @@
       "nowMs": 1793664000000,
       "random01": 0.0,
       "greetingContent": "Greetings from the deep wood. I am Bram.",
-      "greetingUsage": { "promptTokens": 40, "completionTokens": 9, "totalTokens": 49 },
+      "greetingUsage": {
+        "promptTokens": 40,
+        "completionTokens": 9,
+        "totalTokens": 49
+      },
       "request": {
         "progressId": "e0000000-0000-4000-8000-000000000006",
         "participants": [
@@ -306,6 +324,90 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ]
+      }
+    },
+    {
+      "name": "fictional_clock_unanchored",
+      "progressId": "e0000000-0000-4000-8000-000000000007",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000007",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": true,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": null,
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
+      }
+    },
+    {
+      "name": "fictional_clock_already_anchored",
+      "progressId": "e0000000-0000-4000-8000-000000000008",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000008",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": true,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": "2020-05-05T05:05:05Z",
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
+      }
+    },
+    {
+      "name": "real_time_clock_unstamped",
+      "progressId": "e0000000-0000-4000-8000-000000000009",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000009",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "FRIENDLY",
+          "customFormat": null,
+          "useFictionalTime": false,
+          "fictionalBaseTimestamp": "1550-07-25T10:15",
+          "fictionalBaseRealTime": null,
+          "autoPrepend": true,
+          "timezone": "Europe/Istanbul",
+          "intervalMinutes": 15
+        }
       }
     }
   ]

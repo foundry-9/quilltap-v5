@@ -27,6 +27,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::api::engine::SINGLE_USER_ID;
+use crate::chat_timestamp;
 use crate::clock::{iso_from_unix_ms, now_iso};
 use crate::db::chats::{ChatCreate, ChatsRepository, CreateOptions};
 use crate::db::chats_messages::{ChatEventInput, ChatMessagesRepository};
@@ -462,22 +463,30 @@ where
     }
 
     // 7. Resolve the fallback chains.
-    let resolved_timestamp_config: Value = req
-        .timestamp_config
-        .clone()
-        .or_else(|| {
-            primary_character
-                .as_ref()
-                .and_then(|c| c.get("defaultTimestampConfig").cloned())
-                .filter(|v| !v.is_null())
-        })
-        .or_else(|| {
-            chat_settings
-                .as_ref()
-                .and_then(|s| s.get("defaultTimestampConfig").cloned())
-                .filter(|v| !v.is_null())
-        })
-        .unwrap_or(Value::Null);
+    // Anchor a fictional clock to now as it lands on the chat — this is the
+    // moment the config stops being a default and starts being a running clock,
+    // and without the anchor it never advances (v4 `e3a9654f`). Salon- and
+    // character-level DEFAULTS stay unanchored: a default saved months ago
+    // carries no meaningful anchor, and the stamp is applied here whether the
+    // config was requested outright or inherited.
+    let resolved_timestamp_config: Value = chat_timestamp::ensure_fictional_base_real_time(
+        &req.timestamp_config
+            .clone()
+            .or_else(|| {
+                primary_character
+                    .as_ref()
+                    .and_then(|c| c.get("defaultTimestampConfig").cloned())
+                    .filter(|v| !v.is_null())
+            })
+            .or_else(|| {
+                chat_settings
+                    .as_ref()
+                    .and_then(|s| s.get("defaultTimestampConfig").cloned())
+                    .filter(|v| !v.is_null())
+            })
+            .unwrap_or(Value::Null),
+        deps.now_ms,
+    );
 
     let chat_image_profile_id: Option<String> = req
         .image_profile_id

@@ -35620,3 +35620,91 @@ the `timezone === undefined` path reads the host zone on both sides.
 binaries, 0 failed; `chat_timestamp_equivalence` green BY NAME with
 `--nocapture`, zero SKIP, `140 rows, kinds: {calc: 89, ensure: 12, format: 2,
 inject: 12, parseTz: 20, resolve: 5}`. core 0.0.361, harness 0.0.311.
+
+### P4.d18 unit 2 — chat creation anchors the clock
+
+`crates/quilltap-core/src/services/chat_create.rs`,
+`harness/oracle/fixtures/chat-create-capstone.json`.
+
+v4's `handleCreate` wraps its whole `validatedData.timestampConfig ||
+primaryCharacter?.defaultTimestampConfig || chatSettings?.defaultTimestampConfig
+|| null` chain in `ensureFictionalBaseRealTime`. v5 does the same around its
+`resolved_timestamp_config` chain, with `deps.now_ms` as the resolved anchor.
+Character- and Salon-level defaults are NOT stamped where they are saved — only
+where a config becomes a running clock, exactly as v4 comments.
+
+**Differential: the chat-create capstone, 6 → 9 cases** (tier-3, driving v4's
+REAL `POST /api/v1/chats`). Not required by the order — item 4 is the one
+deliverable it assigns no tier — but running it was worth it (see the finding
+below):
+
+- `fictional_clock_unanchored` — the anchor is stamped. Non-vacuous: without the
+  wrapper v5 writes `fictionalBaseRealTime: null` against v4's timestamp string,
+  and `null` is not touched by the `<ts>` normalizer.
+- `fictional_clock_already_anchored` — the no-restamp guard. ⚠ The pre-anchored
+  value is deliberately **`2020-05-05T05:05:05Z`, millis-free**: the capstone
+  normalizer collapses `\d{4}-…\.\d{3}Z` to `<ts>`, so a conventional
+  `…05.000Z` would have normalized to the same token as a fresh stamp and the
+  guard would have been asserted vacuously.
+- `real_time_clock_unstamped` — guard 1; `fictionalBaseRealTime` stays `null`.
+
+**Finding — a PRE-EXISTING v5 divergence this lane did NOT fix (loud, named).**
+The first run of the new cases went red on key ORDER: v4 stored
+`fictionalBaseRealTime` in slot 5 (right after `fictionalBaseTimestamp`) where
+v5 appended it last. Traced with a probe against v4's real
+`TimestampConfigSchema` (`lib/schemas/settings.types.ts:76`):
+
+```
+scrambled input  -> {"mode":"NONE","format":"FRIENDLY","useFictionalTime":true,
+                     "fictionalBaseTimestamp":…,"autoPrepend":true,"timezone":null,
+                     "intervalMinutes":20}      # schema order, bogusKey STRIPPED
+{}               -> {"mode":"NONE","format":"FRIENDLY","useFictionalTime":false,
+                     "autoPrepend":true,"intervalMinutes":15}   # defaults materialized
+{customFormat:null} keeps the explicit null; an ABSENT .nullable().optional() is omitted
+{mode: 5}        -> THROWS (invalid_value) — v4 400s
+```
+
+The parsed object has **no** `fictionalBaseRealTime` slot, so the spread in
+`ensureFictionalBaseRealTime` genuinely appends — meaning the slot-5 placement
+comes from a **second** Zod parse, at v4's chats-repository write. So: **v4
+persists `chats.timestampConfig` Zod-normalized (schema key order, defaults
+materialized, unknown keys stripped, bad values rejected with a 400); v5
+persists the request's JSON verbatim.** That is a divergence in `db/chats.rs`
+(and the chat-UPDATE path shares it — `chat.types.ts:1004` runs the same
+schema), predates this lane, and is outside both its mandate and its ownership,
+so it is recorded rather than fixed. The three new cases send
+**schema-shaped** configs (all nine keys, in declaration order, explicit nulls)
+so that they measure the anchor and not the unported normalization — v4's
+re-parse is then the identity, verified by probe.
+
+Follow-up owed: port `TimestampConfigSchema`'s normalization at the
+`chats` write (and update), with its 400 arm. Until then a partial config saved
+from the SPA lands in the DB missing v4's defaults.
+
+**Regen recipe** (the corpus JSON is the only committed artifact; the fixture
+`.db`s and the NDJSON are built to `/tmp`):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+cd /tmp/qt-v4-pin-231be14c
+QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-chat-create-capstone.ts
+TMPO=/tmp/qt-cc-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/chat-create-capstone.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/chat-create-capstone.json  "$TMPO/fixtures/"
+TZ=UTC QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db QT_ORACLE_OUT=/tmp/oracle-chat-create.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- chat-create-capstone
+```
+
+⚠ The oracle's `fictionalBaseRealTime` for the unanchored case is the REAL wall
+clock, not the corpus's pinned `nowMs` — v4's oracle mocks `Date.now()` but
+`ensureFictionalBaseRealTime`'s default anchor is `new Date()`. Harmless: the
+normalizer collapses it. It does mean the committed corpus cannot pin that exact
+value; the tier-1 `ensure` family does that instead.
+
+**Gate.** fmt; clippy both feature sets; full workspace `--no-fail-fast`, 0
+failed; `chat_create_capstone_equivalence` green by name over the fresh
+`231be14c` oracle (all 9 cases, every section). core 0.0.362.
