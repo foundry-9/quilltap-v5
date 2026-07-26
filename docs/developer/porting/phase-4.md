@@ -3180,3 +3180,98 @@ higher-impact of the two v5 gaps P4.9G5 recorded with tripwires.
   Row 8 depends on tier-3 LLM services for Summon; row 10 is a round in itself
   and needs `?action=update-tool-settings`. Row 9 was chosen because every
   dependency is already landed.
+
+---
+
+### The round as planned (2026-07-26) — the chat action remainder
+
+**Drift check at planning.** v4 HEAD is `41f34180`, two commits past the
+`231be14c` baseline. **Both are docs-only** — `docs/developer/found-bugs.md`
+(new, 344 lines), `docs/CHANGELOG.md`, `docs/releases/4.8.0.md`; zero `lib/`,
+`app/`, `components/` or `packages/`. The baseline **stays `231be14c`** and no
+drift debt is owed.
+
+**⚠ But v4's working tree is DIRTY, and the dirt is in `lib/`.** At planning it
+carried a modified `lib/backup/restore/restore.ts` plus an untracked
+`lib/backup/restore/mount-index-coercion.ts`: v4 is mid-fix on the restore bugs
+this port found, which its own new `found-bugs.md` plans as bugs 1–3 (plus bug 4,
+the sparse-array blob truncation). Two standing consequences until it lands:
+
+1. **Regenerate every oracle from a pinned detached worktree at `231be14c`** —
+   never from `~/source/quilltap-server` directly. Recipe:
+   `oracle-regen-pinned-v4-worktree`.
+2. **When v4's fix lands, v5 owes a drift round on restore/import.** v4's own
+   file names the two tripwires that will fire — `system_restore_state.rs`'s
+   `assert_divergences` and `system_import_equivalence.rs`'s
+   `EXPECTED_DIVERGENCES` — and says a red differential there is the tripwire
+   working, not a regression. The v5 work is to retire the divergence entries and
+   let the cases become plain equalities. **Nothing in this round may touch that
+   surface.**
+
+**Why this scope.** Every work order on main is CLOSED, so the round is new
+scope. The survey found a hole rather than a refinement: **v5 can create a chat
+with a cast and then never change it.** There is no `ChatAddParticipant`,
+`ChatUpdateParticipant` or `ChatRemoveParticipant` variant anywhere in
+`api/types.rs`, and **nineteen** of v4's chat POST actions have no v5 verb.
+This is also the server dependency under M6 rows 8 and 10.
+
+Three lanes; ownership disjoint. `api/types.rs`, `api/engine.rs` and
+`services/mod.rs` are the only shared source files and are append-only per
+labelled region. `apps/web/**` belongs to one lane outright.
+
+- **P4.9E1A** (`work-orders/p4.9e1a-chat-cast-avatars-server.md`) — the cast +
+  avatar-override server surface: `add`/`update`/`remove-participant`,
+  `rebuild-system-prompt`, `get`/`set`/`remove-avatar`,
+  `toggle-avatar-generation`, **and the chat-PUT bag's participant families**,
+  which `api/salon.rs`'s `chat_update` names as a deferral in so many words —
+  v4 has two entrances and one implementation must serve both. New
+  `chat-cast-{main,mount}.db` fixture family. Bumps harness.
+- **P4.9E3A** (`work-orders/p4.9e3a-chat-admin-tools-server.md`) — the
+  chat-admin + tools server surface: eleven verbs (`regenerate-title`, tags,
+  `bulk-reattribute`, `merge-conversation`, `update-tool-settings`, `run-tool`,
+  `rng`, `toggle-agent-mode`, `reclassify-danger`, `render-conversation`).
+  `applyChatMerge` is the one genuinely unported subsystem; `rng` and the tool
+  executor are already ported, so most of the rest is wiring over proven parts.
+  New `chat-admin-{main,mount}.db` fixture family. **Bumps core** (the single
+  bumper for both server lanes).
+- **P4.9E1B** (`work-orders/p4.9e1b-chat-cast-dialogs-spa.md`) — the SPA: Add
+  Character, Create NPC, participant edit/remove/rebuild, the RNG gutter tool
+  (into the empty slot `chat-composer.ts:192` already documents), the chat
+  tool-settings modal, and the avatar overrides at tier 2. Owns all of
+  `apps/web/**`. Bumps the SPA.
+
+**Three survey findings the orders carry so no lane re-derives them.**
+
+1. **`updateParticipantSchema` is three-valued on four fields.**
+   `imageProfileId`, `selectedSystemPromptId`, `joinScenario` and
+   `talkativeness` are `.nullish()`, and `helpers.ts:159-160,180` branches on
+   `!== undefined` — absent and explicit `null` take different paths. The wire
+   needs **`Option<Option<T>>`**. Getting it wrong would repeat the
+   `chat_settings` explicit-`null` gap that is still tripwired.
+2. **SummonFromLore is a tier-3 deferral with a concrete reason.**
+   `SummonFromLoreModal.tsx` is 84 lines wrapping
+   `components/settings/ai-import/AIImportWizard` — **703 lines, unported**.
+   Porting Summon means porting Aurora's AI-import wizard, a round of its own.
+3. **`ChatRng` renames v4's `type` key to `kind`**, because `type` is the
+   `Request` enum's own serde tag. Pinned in §1 as the contract.
+
+**Left out of this round deliberately:**
+
+- **The `TimestampConfigSchema` write-path normalization** (P4.d18's recorded
+  divergence, probe-verified spec in its unit-2 lane record). It straddles the
+  two server lanes' file seam — the repository half is in `db/chats.rs` (E3A's),
+  the UPDATE half in `api/salon.rs`'s `chat_update` (E1A's, which deliberately
+  bypasses `db/chats.rs`). Forcing it into one lane would land two
+  implementations that drift. It wants a round owning both files.
+- **The `p4.9e3` dialog family's UI** — Merge, Reattribute, BulkReplace,
+  RunTool, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker,
+  ChatRename, ChatProject. Their **server** half lands in P4.9E3A; the screens
+  are a round of their own (~3,000 LOC of v4 UI).
+- **The backup/restore/import surface** — v4 is actively rewriting it; see the
+  drift note above.
+- **The owed dogfood walk** — Part D (the retrospective downstream look) and
+  Part F items 15/16 (Story's Clock jump; per-chat Core-whisper override), plus
+  the Post Office dialogs, `.qtap` import execute and restore on real data.
+  Phase-4's own candidate list has ranked this **first** for two rounds running.
+  It does not conflict with any lane here and **can be run by the human in
+  parallel with this round.**

@@ -1447,6 +1447,20 @@ records THERE. Update this summary only when a phase or round completes.
   DISPOSITIONED: docs-only** (v4's own `docs/CHANGELOG.md` +
   `docs/releases/4.8.0.md`, zero `lib/`, `app/`, `components/` or `packages/`
   code), so the baseline stays `231be14c` and **no drift debt is owed**.
+  **v4 moved again to `41f34180` (2026-07-26) — also docs-only**
+  (`docs/developer/found-bugs.md`, new): baseline still `231be14c`, still no
+  debt. ⚠ **But v4's working tree is now DIRTY in `lib/`** — a modified
+  `lib/backup/restore/restore.ts` + an untracked
+  `lib/backup/restore/mount-index-coercion.ts`: v4 is mid-fix on the restore
+  bugs this port found (bugs 1–3 in its `found-bugs.md`, plus bug 4, the
+  sparse-array blob truncation). Two standing consequences: **(a) regenerate
+  every oracle from a pinned detached worktree at `231be14c`**, never from
+  `~/source/quilltap-server` directly; **(b) when that fix lands, v5 owes a
+  restore/import drift round** — v4's file names the two tripwires that will
+  fire (`system_restore_state.rs`'s `assert_divergences`,
+  `system_import_equivalence.rs`'s `EXPECTED_DIVERGENCES`) and both agree a red
+  there is the tripwire working, not a regression; the v5 work is to retire the
+  divergence entries and let the cases become plain equalities.
   The previous baseline paragraph follows for history:
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
