@@ -602,6 +602,44 @@ pub struct CustomToolLlm {
 /// closes the gap.
 pub type MetadataComparator = ParamComparator;
 
+/// A comparator in an availability gate (v4 `GateComparatorSchema`, `6864bf0e`).
+/// The same eight keys as everywhere else, but every operand is a LITERAL.
+///
+/// A gate is evaluated before a run exists: there are no resolved parameters to
+/// point a `$param` at, and no run whose state cascade a `$state` reference
+/// could be resolved against. Rejecting those forms at load time is the honest
+/// move — silently tolerating one would leave an author with a gate that reads
+/// as though it consults the caller's input when nothing of the sort can have
+/// happened yet.
+///
+/// Shape-identical to [`ParamComparator`], and deliberately the same Rust type:
+/// its operand enums each carry the literal arm the gate admits, so a gate's
+/// comparator serializes to exactly the bytes v4's separate schema produces, and
+/// the shared fail-soft table takes one type rather than two. The narrowing is
+/// enforced at the parse ([`parse_gate_comparator`]), which is where v4 enforces
+/// it too.
+pub type GateComparator = ParamComparator;
+
+/// An availability gate: whether this invoker is offered the tool at all (v4
+/// `ToolGateSchema`, `6864bf0e`).
+///
+/// Keyed by metadata key, AND-composed, and fail-soft in exactly the way an
+/// outcome's `metadata` test is — a key the character lacks does not match. The
+/// subject is `metadata` and only `metadata` because a gate is answered BEFORE
+/// the deal: there is no roll to test, no parameters (nobody has called
+/// anything), and no consult. `metadata` is what a character carries into the
+/// room, so it is the one thing that can be asked about before they sit down.
+///
+/// The subject lives under its own key rather than at the top of the object so a
+/// later build can add a second one without re-shaping every file already
+/// written.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolGate {
+    /// Ordered, mirroring the authored key order `Object.keys` walks.
+    #[serde(serialize_with = "ser_param_comparators")]
+    pub metadata: Vec<(String, GateComparator)>,
+}
+
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
 ///
 /// Bare comparator keys test the final value, so the common case stays as short
@@ -692,6 +730,14 @@ pub struct QtapCustomTool {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disabled: Option<bool>,
+    /// Offer this tool ONLY to an invoker whose metadata satisfies every test
+    /// here. At most one of `availableWhen`/`withheldWhen` (v4 `6864bf0e`).
+    #[serde(rename = "availableWhen", skip_serializing_if = "Option::is_none")]
+    pub available_when: Option<ToolGate>,
+    /// Withhold this tool from an invoker whose metadata satisfies every test
+    /// here.
+    #[serde(rename = "withheldWhen", skip_serializing_if = "Option::is_none")]
+    pub withheld_when: Option<ToolGate>,
     #[serde(rename = "revealOdds", skip_serializing_if = "Option::is_none")]
     pub reveal_odds: Option<bool>,
     #[serde(rename = "defaultVisibility", skip_serializing_if = "Option::is_none")]
@@ -755,18 +801,23 @@ fn ser_opt_parameters<S: Serializer>(
     }
 }
 
+fn ser_param_comparators<S: Serializer>(
+    entries: &[(String, ParamComparator)],
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    let mut m = s.serialize_map(Some(entries.len()))?;
+    for (k, val) in entries {
+        m.serialize_entry(k, val)?;
+    }
+    m.end()
+}
+
 fn ser_opt_param_comparators<S: Serializer>(
     v: &Option<Vec<(String, ParamComparator)>>,
     s: S,
 ) -> Result<S::Ok, S::Error> {
     match v {
-        Some(entries) => {
-            let mut m = s.serialize_map(Some(entries.len()))?;
-            for (k, val) in entries {
-                m.serialize_entry(k, val)?;
-            }
-            m.end()
-        }
+        Some(entries) => ser_param_comparators(entries, s),
         None => s.serialize_none(),
     }
 }
@@ -1171,6 +1222,140 @@ fn parse_param_comparator(input: Option<&Value>) -> Res<ParamComparator> {
         value: Some(out),
         issues,
     }
+}
+
+/// v4 `GateComparatorSchema` (`6864bf0e`) — the eight comparator keys with
+/// LITERAL operands only: `gt/gte/lt/lte` take `z.number().finite()`, `eq/neq`
+/// the number|string|boolean union, `contains/ncontains` a non-empty string.
+/// `$param` and `$state` have nothing to refer to before a run exists, so they
+/// are rejected here rather than tolerated.
+fn parse_gate_comparator(input: Option<&Value>) -> Res<GateComparator> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut out = GateComparator::default();
+    let mut ordering: [&mut Option<NumberOrParamRef>; 4] =
+        [&mut out.gt, &mut out.gte, &mut out.lt, &mut out.lte];
+    for (key, slot) in ORDERING_KEYS.iter().zip(ordering.iter_mut()) {
+        if let Some(v) = obj.get(*key) {
+            let r = parse_finite_number(Some(v));
+            issues.extend(prefix(key, r.issues));
+            **slot = r.value.map(NumberOrParamRef::Number);
+        }
+    }
+    for (key, slot) in [("eq", &mut out.eq), ("neq", &mut out.neq)] {
+        if let Some(v) = obj.get(key) {
+            // `z.union([number().finite(), string(), boolean()])`, in that order.
+            let n = parse_finite_number(Some(v));
+            let n = Res {
+                value: n.value.map(AnyOperand::Number),
+                issues: n.issues,
+            };
+            let s = parse_string(Some(v), None, None, false);
+            let s = Res {
+                value: s.value.map(AnyOperand::String),
+                issues: s.issues,
+            };
+            let b = parse_bool(Some(v));
+            let b = Res {
+                value: b.value.map(AnyOperand::Bool),
+                issues: b.issues,
+            };
+            let r = union(vec![n, s, b]);
+            issues.extend(prefix(key, r.issues));
+            *slot = r.value;
+        }
+    }
+    for (key, slot) in [
+        ("contains", &mut out.contains),
+        ("ncontains", &mut out.ncontains),
+    ] {
+        if let Some(v) = obj.get(key) {
+            // `z.string().min(1, '…')` — the author's own message, not a union,
+            // so a non-string is the plain shape rejection.
+            let r = parse_string(Some(v), None, None, false);
+            let mut r_issues = r.issues;
+            if let Some(text) = r.value.as_ref() {
+                if text.is_empty() {
+                    r_issues.push(Issue::check("the substring to look for must not be empty"));
+                }
+            }
+            issues.extend(prefix(key, r_issues));
+            *slot = r.value.map(StringOperand::String);
+        }
+    }
+    issues.extend(unrecognized_keys(obj, &COMPARATOR_KEYS));
+
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    // `.refine(hasComparator, AT_LEAST_ONE_WIDE)` — runs only when nothing
+    // aborted.
+    if !COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
+        issues.push(Issue::check(AT_LEAST_ONE_WIDE));
+    }
+    Res {
+        value: Some(out),
+        issues,
+    }
+}
+
+/// v4 `ToolGateSchema` (`6864bf0e`) — `strictObject({ metadata: record(…) })`
+/// with a refine demanding at least one key.
+fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut metadata = None;
+    match obj.get("metadata") {
+        Some(Value::Object(m)) => {
+            // Metadata keys are `z.string().min(1)`, as they are in a `when`.
+            let r = parse_record(m, |k| !k.is_empty(), |v| parse_gate_comparator(Some(v)));
+            let mut record_issues = r.issues;
+            // `.refine(keys.length > 0, 'must test at least one metadata key')`
+            // — a check on the record itself, so it is skipped once an entry
+            // aborted.
+            if !aborted(&record_issues) && m.is_empty() {
+                record_issues.push(Issue::check("must test at least one metadata key"));
+            }
+            issues.extend(prefix("metadata", record_issues));
+            metadata = r.value;
+        }
+        other => {
+            // A `z.record` reports `record`, not `object` — Zod's own
+            // `parsedType` for the schema kind.
+            issues.extend(prefix(
+                "metadata",
+                vec![Issue::hard(invalid_type("record", other))],
+            ));
+        }
+    }
+    issues.extend(unrecognized_keys(obj, &["metadata"]));
+
+    let value = match metadata {
+        Some(metadata) if !aborted(&issues) => Some(ToolGate { metadata }),
+        _ => None,
+    };
+    Res { value, issues }
 }
 
 /// v4 `LlmComparatorSchema` — the param-comparator shape plus the non-comparator
@@ -1610,7 +1795,7 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
         params_present = true;
         issues.extend(prefix(
             "params",
-            vec![Issue::hard(invalid_type("object", Some(v)))],
+            vec![Issue::hard(invalid_type("record", Some(v)))],
         ));
     }
     let mut metadata_present = false;
@@ -1625,7 +1810,7 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
         metadata_present = true;
         issues.extend(prefix(
             "metadata",
-            vec![Issue::hard(invalid_type("object", Some(v)))],
+            vec![Issue::hard(invalid_type("record", Some(v)))],
         ));
     }
 
@@ -1779,6 +1964,21 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
     let disabled = opt_bool("disabled", &mut issues);
+
+    // Positioned between `disabled` and `revealOdds`, which is where v4's
+    // shape declares them — Zod walks a shape in declaration order, so this is
+    // the issue ORDER contract as much as the key order.
+    let opt_gate = |key: &str, issues: &mut Vec<Issue>| match obj.get(key) {
+        Some(v) => {
+            let r = parse_tool_gate(Some(v));
+            issues.extend(prefix(key, r.issues));
+            r.value
+        }
+        None => None,
+    };
+    let available_when = opt_gate("availableWhen", &mut issues);
+    let withheld_when = opt_gate("withheldWhen", &mut issues);
+
     let reveal_odds = opt_bool("revealOdds", &mut issues);
 
     let default_visibility = match obj.get("defaultVisibility") {
@@ -1815,7 +2015,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         Some(v) => {
             issues.extend(prefix(
                 "parameters",
-                vec![Issue::hard(invalid_type("object", Some(v)))],
+                vec![Issue::hard(invalid_type("record", Some(v)))],
             ));
             None
         }
@@ -1893,6 +2093,8 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         title,
         description,
         disabled,
+        available_when,
+        withheld_when,
         reveal_odds,
         default_visibility,
         parameters,
@@ -1904,6 +2106,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     // ---- superRefine (v4 `:335-338`), in source order -----------------------
     validate_outcome_ordering(&tool.outcomes, &mut issues);
     validate_references(&tool, &mut issues);
+    validate_gates(&tool, &mut issues);
 
     if issues.is_empty() {
         Ok(tool)
@@ -1944,6 +2147,29 @@ pub fn display_title(name: &str, title: Option<&str>) -> String {
 /// The trailing catch-all makes a coverage gap structurally impossible — there
 /// is always exactly one outcome to land on. An earlier catch-all would make
 /// everything below it dead, which is a typo rather than an intent.
+/// Rule: a definition gates one way or the other, never both (v4
+/// `validateGates`, `6864bf0e`).
+///
+/// The two clauses are not complements — `withheldWhen` and a negated
+/// `availableWhen` differ precisely on the character who lacks the key, which is
+/// the whole reason both exist — so a file carrying both is asking two questions
+/// whose interaction its author almost certainly has not thought through. It is
+/// also the shape the Workbench's single "who may reach for it" control cannot
+/// represent, and a form that silently drops half a file is worse than a
+/// rejection that says which half.
+fn validate_gates(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
+    if tool.available_when.is_some() && tool.withheld_when.is_some() {
+        issues.push(
+            Issue::check(
+                "declares both availableWhen and withheldWhen — a definition gates one way or \
+                 the other. Fold the second test into the first, remembering that a key the \
+                 character lacks never matches.",
+            )
+            .at("withheldWhen"),
+        );
+    }
+}
+
 fn validate_outcome_ordering(outcomes: &[CustomToolOutcome], issues: &mut Vec<Issue>) {
     if outcomes.is_empty() {
         return;
@@ -2435,12 +2661,14 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 }
 
 /// Top-level keys the v1 format knows about. Anything else is reserved for v2.
-const KNOWN_TOP_LEVEL_KEYS: [&str; 11] = [
+const KNOWN_TOP_LEVEL_KEYS: [&str; 13] = [
     "$schema",
     "name",
     "title",
     "description",
     "disabled",
+    "availableWhen",
+    "withheldWhen",
     "revealOdds",
     "defaultVisibility",
     "parameters",

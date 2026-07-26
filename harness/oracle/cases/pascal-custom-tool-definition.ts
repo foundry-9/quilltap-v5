@@ -41,11 +41,20 @@
  * the port's note on `finite`. Every other route to `.finite()` is closed:
  * JSON has no `Infinity` or `NaN` literal.
  *
- * Run from inside the server checkout (v4 @ d68638b4, Node 24):
- *   cd ~/source/quilltap-server
- *   npx tsx \
- *     ~/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-243efb/harness/oracle/cases/pascal-custom-tool-definition.ts \
+ * Run from inside the server checkout (v4 @ 231be14c, Node 24):
+ *   cd /tmp/qt-v4-pin-231be14c          # the pinned detached worktree
+ *   TZ=UTC npx tsx \
+ *     <V5W>/harness/oracle/cases/pascal-custom-tool-definition.ts \
  *     > /tmp/oracle-pascal-definition.ndjson
+ *
+ * ## The `gate` rows (P4.d19, v4 `6864bf0e`)
+ *
+ * Two kinds ride in this one file because both are pure and both are the
+ * definition format's business: the `definition` rows below cover the two new
+ * top-level keys through the same schema path as everything else, and the
+ * `gate` rows at the end drive `evaluateToolGate`/`hasToolGate` directly over
+ * (definition, fact sheet) pairs — the evaluator has no other differential, and
+ * it is where the fail-soft-is-fail-CLOSED asymmetry lives.
  */
 
 import {
@@ -181,6 +190,12 @@ const corpus: Array<[string, unknown]> = [
   ['metadata-empty-string-key', withWhen({ metadata: { '': { eq: 1 } } })],
   ['metadata-misspelled-comparator', withWhen({ metadata: { faction: { eq: 'Aurum', nonsense: 1 } } })],
   ['metadata-param-operand-undeclared', withWhen({ metadata: { clearanceLevel: { gte: { $param: 'nope' } } } }, NUM_PARAM)],
+  // A `z.record` reports its own parsed type, not `object` — the three
+  // pre-existing record sites, alongside the gate's new fourth. (P4.d19 found
+  // v5 answering `expected object` at all four; no prior row reached one.)
+  ['when-params-not-an-object', withWhen({ params: 42 })],
+  ['when-metadata-not-an-object', withWhen({ metadata: 'HOUSE' })],
+  ['parameters-not-an-object', { ...BASE, parameters: [] }],
   ['too-many-parameters', {
     ...BASE,
     parameters: Object.fromEntries(
@@ -389,6 +404,52 @@ const corpus: Array<[string, unknown]> = [
     STR_PARAM
   )],
   ['state-not-quite-a-ref', withWhen({ gt: { $state: 'a', fallbak: 1 } })],
+
+  // ---- the 6864bf0e AVAILABILITY GATES ------------------------------------
+  // accepted: one clause, literal operands, every comparator family.
+  ['gate-available-when', { ...BASE, availableWhen: { metadata: { toolAbilities: { contains: 'programmable' } } } }],
+  ['gate-withheld-when', { ...BASE, withheldWhen: { metadata: { novice: { eq: true } } } }],
+  ['gate-ordering-operands', { ...BASE, availableWhen: { metadata: { clearance: { gte: 3, lt: 9 } } } }],
+  ['gate-eq-string', { ...BASE, availableWhen: { metadata: { HOUSE: { eq: 'Aurum' } } } }],
+  ['gate-eq-number', { ...BASE, availableWhen: { metadata: { rank: { eq: 2 } } } }],
+  ['gate-neq-boolean', { ...BASE, withheldWhen: { metadata: { retired: { neq: false } } } }],
+  ['gate-ncontains', { ...BASE, withheldWhen: { metadata: { faction: { ncontains: 'Ferro' } } } }],
+  ['gate-multi-key', { ...BASE, availableWhen: { metadata: { clearance: { gte: 3 }, HOUSE: { eq: 'Aurum' } } } }],
+  ['gate-key-non-identifier', { ...BASE, availableWhen: { metadata: { 'Clearance Level': { gte: 3 } } } }],
+  // The gate sits between `disabled` and `revealOdds`: this row pins that the
+  // parsed key ORDER lands where v4 declares it, not where the file wrote it.
+  ['gate-with-neighbours-out-of-order', {
+    ...BASE, revealOdds: true, availableWhen: { metadata: { rank: { gte: 1 } } }, disabled: false,
+  }],
+
+  // rejected: the two clauses are not complements, so a file declares one.
+  ['gate-both-clauses', {
+    ...BASE,
+    availableWhen: { metadata: { toolAbilities: { contains: 'programmable' } } },
+    withheldWhen: { metadata: { novice: { eq: true } } },
+  }],
+  // rejected: a gate is answered BEFORE the deal, so its operands are literals.
+  ['gate-param-operand', { ...BASE, ...NUM_PARAM, availableWhen: { metadata: { clearance: { gte: { $param: 'scale' } } } } }],
+  ['gate-state-operand', { ...BASE, availableWhen: { metadata: { clearance: { gte: { $state: 'game.bar', fallback: 3 } } } } }],
+  ['gate-contains-param-operand', { ...BASE, ...STR_PARAM, withheldWhen: { metadata: { faction: { contains: { $param: 'material' } } } } }],
+  // rejected: the record's own rules.
+  ['gate-empty-metadata', { ...BASE, availableWhen: { metadata: {} } }],
+  ['gate-empty-string-key', { ...BASE, availableWhen: { metadata: { '': { eq: 1 } } } }],
+  ['gate-empty-comparator', { ...BASE, availableWhen: { metadata: { rank: {} } } }],
+  ['gate-empty-contains', { ...BASE, availableWhen: { metadata: { faction: { contains: '' } } } }],
+  // rejected: the strictObjects, at both levels.
+  ['gate-unknown-comparator-key', { ...BASE, availableWhen: { metadata: { rank: { gte: 1, nonsense: 2 } } } }],
+  ['gate-unknown-subject-key', { ...BASE, availableWhen: { metadata: { rank: { gte: 1 } }, roll: { gte: 1 } } }],
+  ['gate-missing-metadata', { ...BASE, availableWhen: {} }],
+  ['gate-not-an-object', { ...BASE, availableWhen: 'everyone' }],
+  ['gate-null', { ...BASE, withheldWhen: null }],
+  // rejected: literal operands are TYPED. `.finite()` itself is unreachable
+  // from a JSON parse (see the overflow-literal note above), so the reachable
+  // half of that rule is what a wrong-typed literal does at each key.
+  ['gate-ordering-string-operand', { ...BASE, availableWhen: { metadata: { clearance: { gte: '3' } } } }],
+  ['gate-ordering-boolean-operand', { ...BASE, availableWhen: { metadata: { clearance: { lt: true } } } }],
+  ['gate-contains-number-operand', { ...BASE, availableWhen: { metadata: { faction: { contains: 42 } } } }],
+  ['gate-eq-object-operand', { ...BASE, availableWhen: { metadata: { rank: { eq: { a: 1 } } } } }],
 
   // ---- shape / non-object -------------------------------------------------
   ['not-an-object', 'nope'],

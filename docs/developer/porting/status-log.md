@@ -35880,3 +35880,56 @@ gate cannot drift apart. v5's port is
 `231be14c`. Gate at this commit: `cargo fmt --all --check`, `cargo clippy
 --workspace --all-targets -D warnings`, `cargo test --workspace --no-fail-fast`
 384 binaries / 0 failed. `quilltap-core` 0.0.360 → 0.0.361.
+
+### Unit 2 — the gate SCHEMA (v4 `6864bf0e`, `custom-tool.types.ts`)
+
+`GateComparator` / `ToolGate` / the two optional top-level keys / `validate_gates`
+/ the known-top-level-keys additions, in `pascal/custom_tool_types.rs`.
+
+- **`GateComparator` is `ParamComparator`.** v4 declares a separate
+  `GateComparatorSchema` whose operands are literals; v5 reuses the existing
+  struct because each of its operand enums already carries the literal arm the
+  gate admits, so a gate serializes to exactly v4's bytes and the shared
+  fail-soft table takes ONE type rather than two. The narrowing is enforced at
+  the parse (`parse_gate_comparator`) — which is where v4 enforces it too, since
+  a Zod schema is a parser.
+- **Position is contract twice over.** `availableWhen`/`withheldWhen` sit
+  between `disabled` and `revealOdds` in the struct (the serialized key order the
+  `data` field of every accept row pins) AND in `safe_parse`'s walk (Zod parses a
+  shape in declaration order, so this is the ISSUE order too). The corpus row
+  `gate-with-neighbours-out-of-order` writes the three keys in a scrambled order
+  in the file and pins that the parse re-orders them.
+- **`validate_gates` is third** in the refine chain, after
+  `validate_outcome_ordering` and `validate_references`, with v4's exact sentence
+  at path `['withheldWhen']`.
+- **`parse_tool_gate`** is a strictObject over `{ metadata: record(string.min(1),
+  GateComparator) }` with the `must test at least one metadata key` refine,
+  skipped (as Zod skips it) once an entry aborted.
+
+**A pre-existing divergence this lane found and fixed.** Zod's `z.record`
+reports `Invalid input: expected record, received X` — not `expected object`.
+v5 answered `expected object` at ALL FOUR record sites (`parameters`,
+`when.params`, `when.metadata`, and the gate's new `metadata`), and no corpus
+row had ever reached one, so the §C corpus grew three rows for the three
+PRE-EXISTING sites alongside the gate's. This is user-visible payload: the
+sentence is `CustomToolLoadError.reason`, which the custom-tools GET route
+returns verbatim.
+
+**One corpus substitution, recorded rather than hidden.** The order asks for a
+"non-finite number" reject row in a gate. There is no way to write one: JSON has
+no `Infinity`/`NaN` literal, and the one route (`1e999`) is the overflow-literal
+divergence this case file's header has documented since P4.6ay — v4 rejects it
+at `.finite()`, serde_json rejects it at the parse, and no row can assert that
+as equality. The reachable half of the literal-operand rule is covered instead:
+`gate-ordering-string-operand`, `gate-ordering-boolean-operand`,
+`gate-contains-number-operand`, `gate-eq-object-operand`.
+
+**Differential:** `pascal_custom_tool_definition_equivalence`, the §C corpus,
+**10 titles + 195 definitions** (was 10 + 165; **+30 definition rows** — 27
+`gate-*` and 3 record-type rows). **P4.d20 needs those counts.** Both committed
+copies regenerated from the pinned worktree: the harness NDJSON
+(`QT_ORACLE_PASCAL_DEFINITION`) and
+`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson` (the
+§3 delivery — this lane's one `apps/web` touch). Gate: fmt, clippy
+`--workspace --all-targets -D warnings`, `cargo test --workspace --no-fail-fast`
+384 binaries / 0 failed. `quilltap-core` 0.0.361 → 0.0.362.

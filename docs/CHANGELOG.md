@@ -11,6 +11,16 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+A custom tool definition can now declare who may reach for it. Two new optional
+keys, `availableWhen` and `withheldWhen`, test the invoking character's fact
+sheet; a file declares one or the other, never both, and every operand must be a
+literal, because the question is answered before anyone has called anything.
+Loading a definition that breaks either rule says which rule and where.
+
+A wrong-typed `parameters`, `params` or `metadata` block now reports the same
+sentence the old app reports. Three places said "expected object" where the old
+app says "expected record"; nothing had ever tested one.
+
 The rule for testing a character's fact sheet — a key they lack never matches, a
 key holding a list cannot be compared — now lives in one place instead of two.
 Nothing about a roll changes; the new availability gate needs the same rule, and
