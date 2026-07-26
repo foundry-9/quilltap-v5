@@ -1,10 +1,6 @@
 [package]
 name = "quilltap-core"
-<<<<<<< HEAD
-version = "0.0.376"
-=======
-version = "0.0.372"
->>>>>>> f42f02e4 (Converge the restore side on v4 67ffb444, and say what did not)
+version = "0.0.379"
 edition = "2021"
 publish = false
 
