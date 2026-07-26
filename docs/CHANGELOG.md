@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+The four strands of this round met correctly. The browser and the server now
+phrase a broken tool file's rejection identically again — the browser had been
+saying "object" where the old app says "record" at three places, and it was left
+that way on purpose until the server half was fixed in the same round. The
+shared test corpus grew a third kind of row, which the corpus's own shape check
+caught rather than letting thirty-one unread rows sit in the file; the browser
+now replays those rows through its own copy of the gate, which is what proves
+the two copies agree with the old app and with each other.
+
+Two walk-through tests that were waiting on another strand came alive on their
+own: the one that authors a gated tool and looks for its badge, and the one that
+runs a tool from the composer's new window and reads the roll's colour back.
+
 Fictional story clocks now keep time. A clock started at a fictional moment
 advances one minute for every minute that passes, instead of reporting the same
 instant on every turn, and its starting hour is read as a clock in the story's
@@ -11,6 +24,16 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+
+Two things about the story clock are worth spelling out. Existing chats are
+repaired on startup: a clock that had been standing still is wound from the
+moment its chat was created, so story time resumes where it would have been
+rather than lurching forward. And the card that sets it no longer promises a
+clock that "advances with each message" — something it never did — while the
+note under the starting-time field, which the new app had been missing
+entirely, now says which timezone that hour is read in and when the clock
+starts counting.
+
 Pascal's Workbench library now says which tools carry an availability clause and
 which way it points, and a character taking a turn is offered exactly the tools
 their own fact sheet qualifies for.
@@ -62,6 +85,7 @@ key holding a list cannot be compared — now lives in one place instead of two.
 Nothing about a roll changes; the new availability gate needs the same rule, and
 one copy of it cannot drift from the other. Declining a test also says why again,
 in the debug log, as the old app does.
+
 The Workbench now understands an availability gate. A tool definition can carry
 "only show if" or "do not show if" tests against the invoking character's fact
 sheet, and the browser validates them with the same rules the server does —
@@ -82,6 +106,7 @@ verdict change as the fact sheet changes, and — once the server half lands —
 badge on the library row.
 
 Recorded the lane's completion in its work order.
+
 Recorded that two branches of work running their browser tests at the same time
 share one fixed port, so each one's tests can end up driving the other's server.
 Failures from that look like ordinary bugs, so the note says to run them one at a

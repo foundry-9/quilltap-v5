@@ -36807,3 +36807,128 @@ modified them).
 
 `0.5.279` → `0.5.285` (this lane is the round's primary SPA bumper; the unifier
 re-counts).
+
+---
+
+## Round record — the `231be14c` drift catch-up (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21), UNIFIED on main 2026-07-26
+
+Four lanes, four v4 commits, **all four orders CLOSED**. The oracle baseline
+**MOVES `e646f58b` → `231be14c`** and the v4 drift debt is CLEARED.
+
+| lane | v4 commit(s) | what landed |
+| --- | --- | --- |
+| **P4.d18** | `e3a9654f` | `parse_timestamp_in_timezone`, the calc adoption, `ensure_fictional_base_real_time`, the creation anchor, the boot-repair backfill, the SPA card's two strings |
+| **P4.d19** | `6864bf0e` + `faab6881` (server) | the availability gate end-to-end, the shared fail-soft metadata table, the tool vocabulary + `references`, `gate` on both Workbench surfaces |
+| **P4.d20** | `6864bf0e` (client) | the client-safe gate pair, the draft layer, "Who may reach for it", the `gated` badge, the bench verdict, the schema asset |
+| **P4.d21** | `faab6881` (client) + `231be14c` | the two-phase run dialog, the reference panel, the stacked params layout, the roll announcement's outcome state, the `.qt-pascal-result` base block |
+
+### Ownership held exactly
+
+**Zero source conflicts across 24 cherry-picked commits.** The only files two
+lanes both touched were the two append-only docs and the version manifests. The
+§3 exception worked as designed: P4.d19 alone wrote
+`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`, and
+a fresh regen at unification confirmed it `diff -q` clean against the committed
+copy. `api/types.rs` was never opened by any lane, as the round required.
+
+### The unification wire
+
+**§1/§2/§3 diffed name-for-name across the seam, all clean:** the seven
+`references` keys in the same order on both sides; `Option<LibraryGate>` with
+`rename_all = "lowercase"` and **no** skip attribute, so an ungated tool emits
+`null` (which is what the SPA branches on); `withheldBy` carrying
+`skip_serializing_if`, so it is absent rather than null on an available verdict.
+
+**Two seams the wire had to close, both predicted by the lanes themselves:**
+
+1. **The `expected record` wording.** P4.d20 found the SPA's three older
+   `z.record` sites say `expected object` and deliberately did NOT fix them — its
+   own comment says a one-sided fix "would put the browser at odds with the
+   server". P4.d19 then fixed the Rust half and added the three corpus rows that
+   had never reached those sites. The hold-off ended here; all four sites now
+   agree on both halves and with v4. That sentence is user-visible payload (a
+   load error's `reason`, returned verbatim by two routes).
+2. **The corpus grew a third row kind.** P4.d20's census covered `title` and
+   `definition`; P4.d19 shipped 31 `gate` rows, and the partition assertion
+   caught it — **205 counted against 236 present** — which is exactly what "a
+   truncated fixture must not pass silently" promises. Rather than merely
+   widening the census, the SPA now **replays** those rows through its own
+   `tool-gate.ts`, compared as serialized JSON so `withheldBy`'s absence is part
+   of the comparison. That is the proof the two client-safe ports agree with v4
+   AND with each other, which is the whole reason v4 marks the module
+   CLIENT-SAFE. Stale provenance in the spec header and
+   `src/testing/fixtures/README.md` (175 rows at `7e6d13e5`) was re-dated.
+
+**Both ACTIVATE-AT-UNIFY markers self-activated with no edit.** P4.d20's badge
+beat, SKIPPED in-lane on its `gateBackendReady` probe, now runs; P4.d21's
+reference panel began rendering the moment §1's field arrived.
+
+### Three pre-existing v5 bugs fixed on the way past
+
+None is drift. All three are port bugs no corpus row had ever reached, and all
+three are user-visible:
+
+1. **The fictional clock parsed a `datetime-local` base to `0`** (P4.d18) — the
+   one the round was planned around.
+2. **`timezone_offset_string` truncated a sub-minute LMT offset** (P4.d18) —
+   unpredicted, caught on the first run of the widened corpus.
+3. **`z.record` said `expected object`** at four sites, and the `run_custom`
+   vault-failure sentence was erased into a generic `DbError::Key` (P4.d19).
+
+### One pre-existing divergence found and deliberately NOT fixed
+
+**v4 re-parses `chats.timestampConfig` through `TimestampConfigSchema` at the
+repository write** — schema key order, materialized defaults, unknown keys
+stripped, bad values 400'd — where v5 persists the request's JSON verbatim. The
+chat-UPDATE path shares it. Outside P4.d18's mandate and ownership, so recorded
+with the probe output that proved it. **Until ported, a partial timestamp config
+saved from the SPA lands in the DB missing v4's defaults.** See the P4.d18
+unit-2 lane record.
+
+### Gate (run at unification, on the merged tree)
+
+```
+cargo fmt --all -- --check                                         clean
+cargo clippy --workspace --all-targets -- -D warnings              clean
+cargo clippy --workspace --all-targets --all-features -D warnings  clean
+cargo build --release                                              clean
+cargo test --workspace --no-fail-fast    386 binaries / 1,639 tests / 0 failed
+                                         0 SKIP lines in the whole run
+ng test                                  233 files / 2,883 tests
+ng build                                 clean
+Playwright (fresh dist + rebuilt debug binaries)   136 passed / 0 failed / 0 skipped
+```
+
+**18 differentials re-run BY NAME with `--nocapture`** over oracles regenerated
+from the pinned detached worktree `/tmp/qt-v4-pin-231be14c` with `TZ=UTC`, every
+count matching the lane records: `chat_timestamp` (140 rows),
+`fictional_clock_anchor` (13 rows / 4 anchored), `chat_create_capstone` (9
+cases), `pascal_custom_tool_definition` (10 + 195 + 31),
+`pascal_tool_vocabulary` (37), `pascal_roster` (38), `pascal_custom_tools_execution`
+(43/29/110/44/33), `pascal_run_custom` (13), `pascal_run_custom_handler` (24),
+`pascal_custom_tools_route` (13), `pascal_workbench` (2),
+`pascal_workbench_route` (58), `pascal_simulate` (12), `pascal_build_tools_roster`,
+`pascal_llm_consult` (3 + 28), `pascal_writers` (8 + 10), `tool_build` (27),
+`tool_definitions` (57 + canonical).
+
+### Versions after the round
+
+`quilltap-core` **0.0.370**, `quilltap-harness` **0.0.316**, `quilltap-host`
+**0.0.39**, SPA **0.5.290**. `quilltap-web` 0.0.46, `quilltap-cli` 0.0.3,
+`quilltap-tauri` 0.0.5 — untouched, as the round required.
+
+### Deferrals carried out of the round (loud, named)
+
+- **`help/chat-settings.md`, `help/custom-tools.md`,
+  `docs/developer/features/pascal-custom-tools.md`** — banked for `p4.9i2`,
+  joining the docs already waiting there. User-visible consequence: v5's help
+  text describes the OLD custom-tools popover and says nothing about the
+  reference panel or the availability gate.
+- **`packages/theme-storybook` 1.0.49 → 1.0.50** — NO-PORT; v5 has no storybook.
+- **`lib/startup/prettify.ts`'s migration label** and v4's `MigrationResult`
+  reporting — NO-PORT; v5 has no migration-progress surface.
+- **The `TimestampConfigSchema` write-path normalization** — the divergence
+  above. The natural next Rust item if a dogfood pass surfaces a config that
+  round-trips wrong.
+- **`workbench-flow.spec.ts:367`'s latent strict-mode ambiguity** — a one-word
+  `.first()` fix in a file no lane owned; did not reproduce at unification.

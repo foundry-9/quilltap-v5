@@ -3001,14 +3001,44 @@ E2A's fired on the first merged run, which is the discipline working. Full round
 record, including the gate numbers and the one escalation deliberately not taken,
 in `status-log.md`.
 
-## The `231be14c` drift catch-up round — PLANNED 2026-07-25 (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21)
+## The `231be14c` drift catch-up round — UNIFIED on main 2026-07-26 (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21)
 
-**⚠ v4 DRIFTED immediately after the Post Office round's gate — the catch-up
-comes FIRST, and it is now planned.** v4 moved `e646f58b` → **`231be14c`**, four
-commits in a single day; the checkout was DIRTY mid-drift and is **now clean at
-`231be14c`**. **None of the four is lib-free**, and together they land on two
-already-ported surfaces — the Story's Clock (P4.9H1) and the whole Pascal /
+**ALL FOUR ORDERS CLOSED. The oracle baseline MOVES to `231be14c` and the v4
+drift debt is CLEARED.** v4 had moved `e646f58b` → **`231be14c`**, four commits
+in a single day; **none of the four was lib-free**, and together they landed on
+two already-ported surfaces — the Story's Clock (P4.9H1) and the whole Pascal /
 custom-tools family (P4.6ay / P4.6bb / P4.d8).
+
+**Gate:** 386 binaries / 1,639 tests / 0 failed with zero SKIP lines; 18
+differentials re-run by name over oracles regenerated fresh from the pinned
+`/tmp/qt-v4-pin-231be14c` worktree; clippy both feature sets; release build;
+`ng test` 233 files / 2,883; full Playwright **136 passed / 0 failed / 0
+skipped**. Versions: core 0.0.370, harness 0.0.316, host 0.0.39, SPA 0.5.290.
+Full round record in `status-log.md`.
+
+**Zero source conflicts across 24 cherry-picked commits** — Ownership held
+exactly, and `api/types.rs` was never opened. Both ACTIVATE-AT-UNIFY markers
+self-activated. The wire closed two seams the lanes had predicted: the SPA's
+three older `z.record` sites followed the server to `expected record` (P4.d20
+had deliberately held off so as not to put the browser at odds with it), and the
+corpus census — which caught P4.d19's new third row kind at 205-vs-236 — grew
+into a full **replay** of those 31 gate verdicts through the browser's own
+`tool-gate.ts`.
+
+**Three pre-existing v5 bugs fixed on the way past** (none is drift; all three
+user-visible): the `datetime-local` fictional base parsing to `0`; a sub-minute
+LMT offset truncated in `timezone_offset_string` — unpredicted, caught by the
+widened corpus; and `z.record` reporting `expected object` at four sites plus an
+erased `run_custom` vault-failure sentence.
+
+**⚠ One pre-existing divergence found and deliberately NOT fixed:** v4 re-parses
+`chats.timestampConfig` through `TimestampConfigSchema` at the repository write
+(schema key order, materialized defaults, unknown keys stripped, bad values
+400'd) where v5 persists the request JSON verbatim; the chat-UPDATE path shares
+it. Until ported, a partial timestamp config saved from the SPA lands in the DB
+missing v4's defaults.
+
+The original planning notes follow.
 
 | v4 commit | what it is | lane |
 | --- | --- | --- |
@@ -3044,16 +3074,28 @@ four lanes regenerate oracles from a **pinned detached worktree at `231be14c`**
 (recipe: `oracle-regen-pinned-v4-worktree`), and **the committed baseline moves
 to `231be14c` at unification**.
 
-**Next candidates, in rough value order:**
+**Next candidates, in rough value order** (the drift catch-up that used to head
+this list is DONE — no v4 drift debt remains as of 2026-07-26):
 
-0. **The `231be14c` drift catch-up round** — the four orders above. Everything
-   below waits on it.
-1. **A dogfood pass** over everything the Post Office round made reachable — `.qtap` import
-   execute on real data, the three Post Office dialogs (the announcement rewrite
-   costs real money), and search over a freshly created character's vault. The
-   standing walk list also still owes **Part D** (the retrospective downstream
-   look) and **Part F items 15/16** (Story's Clock jump; per-chat Core-whisper
-   override) from the 2026-07-24 walk.
+1. **A dogfood pass — now the clear top item**, because two rounds' worth of
+   live surfaces have piled up behind it:
+   - **From this round:** the Story's Clock actually advancing (walk item F15
+     was already owed and is now finally testable — a fictional-time chat whose
+     base was entered through the date-and-time picker), the boot-repair
+     backfill on a real instance that has unanchored chats, a gated custom tool
+     withheld from one character and dealt to another, and the two-phase run
+     dialog with its reference panel.
+   - **Still owed from the Post Office round:** `.qtap` import execute on real
+     data, the three Post Office dialogs (**the announcement rewrite costs real
+     money**), and search over a freshly created character's vault.
+   - **Still owed from the 2026-07-24 walk:** **Part D** (the retrospective
+     downstream look) and **Part F item 16** (per-chat Core-whisper override).
+2. **The `TimestampConfigSchema` write-path normalization** — the divergence
+   P4.d18 found and recorded: v4 re-parses `chats.timestampConfig` through Zod
+   at the repository write (and at chat UPDATE); v5 stores the request JSON
+   verbatim, so a partial config saved from the SPA lands missing v4's defaults
+   and a bad value is persisted where v4 would 400. Small, well-scoped, and it
+   has a probe-verified spec in the P4.d18 unit-2 lane record.
 2. **The `chatRng` server verb + the RNG gutter dropdown.** P4.9E2B found the
    gap: P4.d5 ported the rng TOOL, not v4's `POST /chats/{id}?action=rng` route,
    so v5's dispatch surface has no `chatRng` and the gutter's dice button cannot

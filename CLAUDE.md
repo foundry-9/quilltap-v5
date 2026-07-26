@@ -1388,35 +1388,63 @@ records THERE. Update this summary only when a phase or round completes.
   candidates: a dogfood pass over this round's live surfaces (+ the owed walk
   Part D and Part F items 15/16), the `chatRng` verb, M6 rows 8/10 — see
   phase-4.md.
-- **⚠ v4 DRIFT DEBT (2026-07-25): v4 is at `231be14c`, FOUR commits past the
-  baseline; the tree is now CLEAN. The catch-up round is PLANNED — four orders
-  written and committed (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21).** None of the four
-  commits is lib-free:
-  - `e3a9654f` "fix(timestamps): fictional story clocks were frozen and read in
-    the wrong timezone" — rewrites `lib/chat/timestamp-utils.ts` (ported as
-    `chat_timestamp.rs`), adds a migration (`anchor-fictional-clock-base.ts`),
-    touches the chats route + `TimestampConfigCard`. Lands on the **Story's
-    Clock** (P4.9H1). **v5 reproduces both bugs, and the timezone one in a worse
-    form:** `chat_timestamp::parse_date_ms` → `clock::iso_to_ms` requires a
-    trailing `Z`, so a real `datetime-local` fictional base parses to **0**. The
-    corpus kept bases in the `…Z` shape, so the differential never saw it →
-    **P4.d18**.
-  - `faab6881` — the custom-tools popup becomes a two-phase dialog; adds
-    `lib/pascal/tool-vocabulary.ts` and `references` on the chat custom-tools
-    listing → **P4.d19** (server) ∥ **P4.d21** (SPA).
-  - `6864bf0e` — `availableWhen`/`withheldWhen` availability gates; new
-    `lib/pascal/{tool-gate,metadata-match}.ts`, roster enforcement, the
-    run-custom handler's fact-sheet read reordered, `gate` on both Workbench
-    surfaces → **P4.d19** (server) ∥ **P4.d20** (SPA).
-  - `231be14c` — the Salon roll announcement wears the outcome's own state
-    (SPA-only; **v5 has no `.qt-pascal-result` CSS at all**, so the base accent
-    block ports too) → **P4.d21**.
-
-  **Regenerate oracles from a PINNED detached worktree at `231be14c` until the
-  round lands** (`oracle-regen-pinned-v4-worktree`) — v4 moved four commits in a
-  single day and was dirty as recently as the last round's planning. The
-  committed baseline stays `e646f58b` and MOVES to `231be14c` at this round's
-  unification.
+- **The `231be14c` v4-drift catch-up round (P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21):
+  UNIFIED on main (2026-07-26) — ALL FOUR CLOSED; the drift debt is CLEARED and
+  the oracle baseline MOVES to `231be14c`.** v4 had moved four commits in a
+  single day, none of them lib-free, landing on two already-ported surfaces.
+  The fictional story clock re-port (`parse_timestamp_in_timezone`,
+  `ensure_fictional_base_real_time`, the creation anchor, and v4's migration as
+  a **boot-repair pass** over the main partition — the P4.d7 precedent — so any
+  instance v5 boots is backfilled; the corpus went 68 → 140 rows, 43 of them in
+  the `calc` family) ∥ the Pascal **availability gate** end-to-end
+  (`availableWhen`/`withheldWhen`, the shared fail-soft metadata table, gate
+  BEFORE the `disabled` tombstone so a gated-out name stays claimable by a
+  farther tier, `gate` on both Workbench surfaces) + the **tool vocabulary**
+  (`references` on every roster listing — vocabulary, never odds) ∥ the
+  Workbench gate SPA (client-safe `tool-gate`/`metadata-match`, the draft layer,
+  "Who may reach for it", the `gated` badge, the bench verdict) ∥ the in-chat
+  Pascal SPA (the two-phase run dialog + reference panel, the stacked params
+  layout, the roll announcement wearing its own outcome state, and the
+  `.qt-pascal-result` base block **v5 had never had at all**, which also gives
+  the Workbench the accent it had been asking for since P4.6bb).
+  **Zero source conflicts across 24 cherry-picked commits**; `api/types.rs`
+  never opened; both ACTIVATE-AT-UNIFY markers self-activated. The wire closed
+  two predicted seams: the SPA's three older `z.record` sites followed the
+  server to `expected record` (P4.d20 had deliberately held off rather than put
+  the browser at odds with it), and the corpus census — which caught P4.d19's
+  new third row kind at **205-vs-236**, exactly as "a truncated fixture must not
+  pass silently" promises — grew into a full **replay** of those 31 gate
+  verdicts through the browser's own evaluator. **THREE pre-existing v5 bugs
+  fixed on the way past, none of them drift, all user-visible:** a
+  `datetime-local` fictional base parsing to **0**; a sub-minute LMT offset
+  truncated in `timezone_offset_string` (unpredicted — caught on the first run
+  of the widened corpus); and `z.record` reporting `expected object` at four
+  sites plus an erased `run_custom` vault-failure sentence. Gate: 386 binaries /
+  1,639 tests / 0 failed with **zero SKIP lines**, 18 differentials by name over
+  oracles regenerated fresh at `231be14c`, clippy both feature sets, release
+  build, ng 233 files / 2,883, full Playwright **136/136 zero skips**.
+  **⚠ One pre-existing divergence found and deliberately NOT fixed:** v4
+  re-parses `chats.timestampConfig` through `TimestampConfigSchema` at the
+  repository write (schema key order, materialized defaults, unknown keys
+  stripped, bad values 400'd) where v5 stores the request JSON verbatim; the
+  chat-UPDATE path shares it, and until it is ported a partial config saved from
+  the SPA lands in the DB missing v4's defaults. Deferred loud: three help docs
+  banked for `p4.9i2` (v5's help text still describes the OLD custom-tools
+  popover), theme-storybook NO-PORT, the migration pretty-label NO-PORT.
+  Versions: core 0.0.370, harness 0.0.316, host 0.0.39, SPA 0.5.290. Round
+  record: `status-log.md`.
+- **Oracle baseline: `231be14c` (v4 HEAD, 2026-07-25), adopted at the
+  P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21 drift-round unification — NO v4 drift debt
+  remains.** Eighteen families regenerated there at unification (the whole
+  pascal/tool family plus chat-timestamp, the new fictional-clock-anchor, and
+  the chat-create capstone); families the round did not touch keep their prior
+  regen vintage. The §3 corpus has ONE source case file and TWO committed
+  copies (harness + SPA), verified `diff -q` identical at unification.
+  Regenerate from a **pinned detached worktree** (`oracle-regen-pinned-v4-worktree`)
+  — v4 shipped four commits in one day during the last round and cannot be
+  assumed still at HEAD. ⚠ v4 is mid-4.8/4.9 dev — drift-check before every
+  round.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `e646f58b` (v4 HEAD, 2026-07-22), adopted at the
   P4.d16 ∥ P4.d17 drift-round unification — NO v4 drift debt remains.**
   The only fixture the round moved is the workspace corpus
