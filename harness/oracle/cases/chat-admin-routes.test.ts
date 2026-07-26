@@ -46,6 +46,8 @@ interface Spec {
   testPepperBase64: string;
   userId: string;
   frozenNowMs: number;
+  /** The committed `crypto.randomBytes` stream every rng case replays. */
+  rngByteStream: number[];
 }
 
 // Pinned entity ids (shared verbatim with the builder + the Rust differential).
@@ -62,6 +64,12 @@ const P_CLIO = 'e1000000-0000-4000-8000-000000000003';
 const P_STRANGER = 'e1000000-0000-4000-8000-000000000011';
 
 const RealDate = Date;
+
+// The per-case injected byte stream for `crypto.randomBytes` (mirrors the Rust
+// `FixedBytes`). The rng cases set it; every other case leaves it empty and
+// never draws. Exhaustion throws, so an unexpected consumer is loud.
+let currentBytes: number[] = [];
+let byteCursor = 0;
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -108,6 +116,28 @@ function applyMocks(spec: Spec): void {
     startProcessor: () => {},
     stopProcessor: () => {},
   }));
+  // Pin ONLY `crypto.randomBytes` (the rng handler's `import { randomBytes }
+  // from 'crypto'`). `randomUUID` + `createHash` stay REAL — the TOOL message's
+  // id is minted and the vault overlay hashes. No `__esModule: true` and no
+  // explicit `default`, so esModuleInterop still synthesizes a working default
+  // (`jest-crypto-randombytes-mock`).
+  jest.doMock('crypto', () => {
+    const actual = jest.requireActual('crypto');
+    return {
+      ...actual,
+      randomBytes: (n: number) => {
+        const end = byteCursor + n;
+        if (end > currentBytes.length) {
+          throw new Error(
+            `randomBytes mock exhausted: needed ${n} at cursor ${byteCursor} of ${currentBytes.length}`,
+          );
+        }
+        const slice = currentBytes.slice(byteCursor, end);
+        byteCursor = end;
+        return Buffer.from(slice);
+      },
+    };
+  });
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -175,6 +205,8 @@ async function readJobs(userId: string): Promise<unknown> {
 
 interface CaseSpec {
   name: string;
+  /** Replay the committed byte stream for this case (the rng cases). */
+  rng?: boolean;
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
 }
 
@@ -196,6 +228,8 @@ async function runCase(
   fixtures: { main: string; mount: string },
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
+  currentBytes = c.rng ? spec.rngByteStream : [];
+  byteCursor = 0;
   applyMocks(spec);
 
   const work = mkdtempSync(join(scratch, 'ca-'));
@@ -281,6 +315,7 @@ async function main(): Promise<void> {
     messages: await readMessages(CHAT),
     memories: await readMemories(),
   });
+  const rngTables = async () => ({ messages: await readMessages(CHAT) });
   const jobTables = async (chatId = CHAT) => ({
     chat: await readChat(chatId),
     jobs: await readJobs(spec.userId),
@@ -574,6 +609,90 @@ async function main(): Promise<void> {
             roleFilter: 'TOOL',
           }),
         ),
+    },
+    // ── ?action=rng ─────────────────────────────────────────────────────────
+    // Every rng case replays the SAME committed byte stream from cursor 0, so
+    // each is independently reproducible; the dice algorithm's byte consumption
+    // is already pinned by `rng_executor_equivalence` and is not re-proven here.
+    {
+      name: 'rng_d20_single',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rng', { type: 20 }));
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'rng_d6_three',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rng', { type: 6, rolls: 3 }));
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'rng_flip_coin',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rng', { type: 'flip_coin' }));
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'rng_flip_coin_multi',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'rng', { type: 'flip_coin', rolls: 3 }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'rng_spin_the_bottle',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'rng', { type: 'spin_the_bottle' }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // Preview writes nothing — the message dump is the proof — and it is the
+      // ONLY body carrying `summary` / `requestPrompt` / `arguments`.
+      name: 'rng_preview_d20',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'rng', { type: 20, preview: true }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      // A coin carries no `sum`, and `NextResponse.json` drops `undefined`, so
+      // the key must be ABSENT rather than null.
+      name: 'rng_preview_coin_multi',
+      rng: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'rng', { type: 'flip_coin', rolls: 4, preview: true }),
+        );
+        return { status, body, tables: await rngTables() };
+      },
+    },
+    {
+      name: 'rng_bad_kind',
+      run: async () => respond(await post(CHAT, 'rng', { type: 1 })),
+    },
+    {
+      name: 'rng_bad_rolls',
+      run: async () => respond(await post(CHAT, 'rng', { type: 20, rolls: 0 })),
+    },
+    {
+      name: 'rng_chat_missing',
+      run: async () => respond(await post(MISSING_ID, 'rng', { type: 20 })),
     },
   ];
 

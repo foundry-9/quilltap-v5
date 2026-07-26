@@ -8266,6 +8266,14 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 4 — the manual dice roll. The composer's gutter roll lands on the
+boundary: the request schema, the two human-readable lines it builds, the preview
+that returns a roll without committing it, and the tool message it writes
+otherwise. The dice themselves were already ported and already have their own
+byte-exact test, so this is the route half only — which also settles an open
+question in the order: nothing further is owed for the result formatter. Ten new
+cases, with the same fixed stream of random bytes replayed on both sides.
+
 P4.9E3A unit 3 — bulk re-attribution. Moving every matching message from one
 participant to another, with the memories those messages produced deleted along
 the way. The old app rebuilds the whole transcript rather than updating rows, and

@@ -37332,3 +37332,51 @@ Two normalizations, both asserted rather than applied blind:
   does not. The test asserts v4's two keys equal the frozen instant AND v5's
   differ from the fixture seed — i.e. both sides really wrote — and only then
   drops them from the compare.
+
+### Unit 4 — the rng verb
+
+v4 `actions/rng.ts:32` ported as `services/chat_rng.rs`, plus §1's `ChatRng` and
+its engine arm. This is the ROUTE half only: the dice themselves were ported long
+ago (`tools/rng.rs`), and `rng_executor_equivalence` already pins
+`execute_rng_tool` + `format_rng_results` byte-for-byte **including the
+rejection-sampling loop's byte consumption**.
+
+**That answers the order's tier-2 item 6:** `format_rng_results` is NOT
+uncovered — it has a dedicated tier-1 EXACT differential over a committed corpus
+— so no new tier-1 family is owed, and this unit deliberately does not re-prove
+byte consumption.
+
+What the route half adds, and what the new cases pin:
+
+- v4's request schema (`type` union, `rolls` int 1–100 default 1, `preview`
+  default false), with both out-of-range arms driven.
+- `requestPrompt` and the chip `summary`, each with three shapes × singular/plural
+  wording. `summary` is built for every shape but returned ONLY in the preview
+  body — reproduced, including that a die's summary never reaches the client on
+  the writing path.
+- `sum` is dice-only. `NextResponse.json` drops `undefined`, so a coin's body has
+  NO `sum` key rather than `null`; the port omits it the same way and
+  `rng_preview_coin_multi` is the case that would catch a `null`.
+- The persisted TOOL message, whose `content` is a JSON STRING (v4's own note:
+  the ToolMessage component needs `result` as text, so what is stored is the
+  FORMATTED line, not the structured output). The message's key order is
+  `ChatEventSchema`'s — v4 returns the VALIDATED object and Zod re-emits in
+  schema order, putting `attachments` before `createdAt` — which the oracle's
+  bytes showed and the port now matches.
+- Preview writes NOTHING, proven by the message dump rather than asserted.
+
+`chat_rng` takes the minted `message_id` and `now_iso` as parameters rather than
+reading the clock and a UUID internally, so the differential pins them; the engine
+arm passes `Uuid::new_v4()` + `clock::now_iso()`. Randomness rides the existing
+`RandomBytes` seam: the oracle mocks `crypto.randomBytes` (keeping `randomUUID`
+and `createHash` real, per `jest-crypto-randombytes-mock`) and the Rust side
+replays the SAME committed 32-byte stream through `FixedBytes` from cursor 0 for
+every case, so each case is independently reproducible.
+
+**Differential:** 10 new cases (39 total) — d20 single, 3d6, a coin, three coins,
+spin-the-bottle (which reads the chat's participants through the real repos and
+lands on "Aria" on both sides), two previews, and three rejection arms. The two
+Zod 400s join `VALIDATION_DETAILS_GAP`; the seven writing/preview cases join
+`MINTED_MESSAGE_CASES`, where `id` + `createdAt` are blanked in both the body and
+the message dump while the content JSON's bytes, role, ordering and the
+preview-writes-nothing fact still diff.

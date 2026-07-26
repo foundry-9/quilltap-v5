@@ -35,7 +35,8 @@ use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::chat_admin;
+use quilltap_core::services::{chat_admin, chat_rng};
+use quilltap_core::tools::rng::FixedBytes;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -61,7 +62,26 @@ const V4_CREATED_CASES: &[&str] = &["add_tag_new", "add_tag_already_present"];
 /// Cases whose 400 body carries v4's Zod `details` array, which v5's error
 /// envelope does not model (the standing, named P4.6bb deferral). Asserted in
 /// both directions, then dropped before the body compare.
-const VALIDATION_DETAILS_GAP: &[&str] = &["bulk_reattribute_bad_role_filter"];
+const VALIDATION_DETAILS_GAP: &[&str] = &[
+    "bulk_reattribute_bad_role_filter",
+    "rng_bad_kind",
+    "rng_bad_rolls",
+];
+
+/// Cases that persist a freshly MINTED message: both sides mint a UUID and a
+/// `createdAt`, so `id` / `createdAt` are blanked inside `body.message` and
+/// throughout the message dump. Everything that matters — the content JSON's
+/// bytes, the role, the ordering, and the fact that PREVIEW writes nothing at
+/// all — still diffs.
+const MINTED_MESSAGE_CASES: &[&str] = &[
+    "rng_d20_single",
+    "rng_d6_three",
+    "rng_flip_coin",
+    "rng_flip_coin_multi",
+    "rng_spin_the_bottle",
+    "rng_preview_d20",
+    "rng_preview_coin_multi",
+];
 
 /// Cases whose chat row carries a timestamp MINTED from the wall clock —
 /// `addMessage` stamps `updatedAt` + `lastMessageAt` with `now` on every
@@ -81,6 +101,8 @@ const CLOCK_MINTED_CASES: &[&str] = &[
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
+    frozen_now_ms: i64,
+    rng_byte_stream: Vec<u8>,
 }
 
 fn spec_path() -> PathBuf {
@@ -167,11 +189,33 @@ fn blank_job_id(v: &mut Value) {
         _ => {}
     }
 }
+/// Blank the minted message keys (`id` / `createdAt`) everywhere — used only
+/// for [`MINTED_MESSAGE_CASES`].
+fn blank_minted(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            for k in ["id", "createdAt"] {
+                if o.contains_key(k) {
+                    o.insert(k.to_string(), Value::String(format!("<{k}>")));
+                }
+            }
+            o.iter_mut().for_each(|(_, x)| blank_minted(x));
+        }
+        Value::Array(a) => a.iter_mut().for_each(blank_minted),
+        _ => {}
+    }
+}
 fn norm(v: &Value) -> String {
     let mut v = v.clone();
     canon_numbers(&mut v);
     blank_job_id(&mut v);
     serde_json::to_string_pretty(&sorted(&v)).unwrap()
+}
+/// [`norm`] plus the minted-message blanking.
+fn norm_minted(v: &Value) -> String {
+    let mut v = v.clone();
+    blank_minted(&mut v);
+    norm(&v)
 }
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();
@@ -359,10 +403,15 @@ fn chat_admin_routes_match_oracle() {
                 }
             }
 
-            if norm(&body) != norm(&want_body) {
+            let n: fn(&Value) -> String = if MINTED_MESSAGE_CASES.contains(&name) {
+                norm_minted
+            } else {
+                norm
+            };
+            if n(&body) != n(&want_body) {
                 eprintln!(
                     "[{name}] BODY MISMATCH:\n{}",
-                    first_diff(&norm(&body), &norm(&want_body))
+                    first_diff(&n(&body), &n(&want_body))
                 );
                 failed.push(name.to_string());
             } else {
@@ -405,10 +454,10 @@ fn chat_admin_routes_match_oracle() {
                         }
                     }
                 }
-                if norm(&got_tables) != norm(&want_tables) {
+                if n(&got_tables) != n(&want_tables) {
                     eprintln!(
                         "[{name} tables] MISMATCH:\n{}",
-                        first_diff(&norm(&got_tables), &norm(&want_tables))
+                        first_diff(&n(&got_tables), &n(&want_tables))
                     );
                     failed.push(format!("{name}_tables"));
                 } else {
@@ -639,6 +688,75 @@ fn chat_admin_routes_match_oracle() {
             })
         });
         check(name, &r, tables);
+    }
+
+    // ── ?action=rng ─────────────────────────────────────────────────────────
+    // Every case replays the SAME committed byte stream from cursor 0, exactly
+    // as the oracle's mocked `crypto.randomBytes` does. Byte CONSUMPTION is not
+    // re-asserted here — `rng_executor_equivalence` already pins it.
+    let frozen_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
+    for (name, kind, rolls, preview, dump) in [
+        ("rng_d20_single", json!(20), None, None, true),
+        ("rng_d6_three", json!(6), Some(3u32), None, true),
+        ("rng_flip_coin", json!("flip_coin"), None, None, true),
+        (
+            "rng_flip_coin_multi",
+            json!("flip_coin"),
+            Some(3),
+            None,
+            true,
+        ),
+        (
+            "rng_spin_the_bottle",
+            json!("spin_the_bottle"),
+            None,
+            None,
+            true,
+        ),
+        ("rng_preview_d20", json!(20), None, Some(true), true),
+        (
+            "rng_preview_coin_multi",
+            json!("flip_coin"),
+            Some(4),
+            Some(true),
+            true,
+        ),
+        ("rng_bad_kind", json!(1), None, None, false),
+        ("rng_bad_rolls", json!(20), Some(0), None, false),
+    ] {
+        let db = fresh_db(&spec, name);
+        let mut rng = FixedBytes::new(spec.rng_byte_stream.clone());
+        let r = rt.block_on(chat_rng::chat_rng(
+            &db,
+            &spec.user_id,
+            CHAT,
+            &kind,
+            rolls,
+            preview,
+            &mut rng,
+            // The two minted values, injected: the differential blanks them, but
+            // injecting keeps the service free of a hidden clock/uuid call.
+            "00000000-0000-4000-8000-0000000000ff".to_string(),
+            frozen_iso.clone(),
+        ));
+        let tables = dump.then(|| json!({ "messages": dump_messages(&db, CHAT) }));
+        check(name, &r, tables);
+    }
+    {
+        let db = fresh_db(&spec, "rng_chat_missing");
+        let mut rng = FixedBytes::new(spec.rng_byte_stream.clone());
+        let r = rt.block_on(chat_rng::chat_rng(
+            &db,
+            &spec.user_id,
+            MISSING_ID,
+            &json!(20),
+            None,
+            None,
+            &mut rng,
+            "00000000-0000-4000-8000-0000000000ff".to_string(),
+            frozen_iso.clone(),
+        ));
+        check("rng_chat_missing", &r, None);
     }
 
     // Shape, not a hand-written count: the two case sets must agree exactly.

@@ -1064,6 +1064,29 @@ impl CoreEngine {
             // §1 carries no `enabled` field, so only v4's ABSENT arm is
             // reachable from the wire (the service takes the full tri-state and
             // the differential covers all four — see `services/chat_admin.rs`).
+            Request::ChatRng {
+                chat_id,
+                kind,
+                rolls,
+                preview,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    let mut rng = crate::tools::rng::OsRandomBytes;
+                    crate::services::chat_rng::chat_rng(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &kind,
+                        rolls,
+                        preview,
+                        &mut rng,
+                        uuid::Uuid::new_v4().to_string(),
+                        crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ChatToggleAgentMode { chat_id } => match self.ready_db() {
                 Ok(db) => {
                     crate::services::chat_admin::chat_toggle_agent_mode(

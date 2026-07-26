@@ -69,14 +69,20 @@ use crate::services::queue_service::{
 // Response helpers (v4 `lib/api/responses.ts` semantics)
 // ===========================================================================
 
-fn ok(body: Value) -> Response {
+pub(crate) fn ok(body: Value) -> Response {
     Response::ChatAdmin(body)
 }
-fn bad_request(msg: impl Into<String>) -> Response {
+pub(crate) fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
 }
+/// The shape v4's middleware turns a thrown `ZodError` into. v5's error envelope
+/// carries no `details` array — the standing, named P4.6bb deferral, asserted in
+/// both directions by `chat_admin_routes_equivalence`.
+pub(crate) fn validation_error() -> Response {
+    Response::error(ErrorKind::BadRequest, "Validation error")
+}
 /// v4 `notFound(resource)` → `` `${resource} not found` `` at 404.
-fn not_found(resource: &str) -> Response {
+pub(crate) fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
 }
 fn server_error(msg: impl Into<String>) -> Response {
@@ -518,7 +524,7 @@ pub async fn chat_bulk_reattribute(
     // v4's Zod `.enum([...]).prefault('both')`: absent → 'both', unknown → 400.
     let role_filter = role_filter.unwrap_or("both");
     if !matches!(role_filter, "ASSISTANT" | "USER" | "both") {
-        return bad_request("Validation error");
+        return validation_error();
     }
 
     if source_participant_id == Some(target_participant_id) {

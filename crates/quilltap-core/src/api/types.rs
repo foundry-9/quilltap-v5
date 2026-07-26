@@ -2544,6 +2544,18 @@ pub enum Request {
         disabled_tools: Vec<String>,
         disabled_tool_groups: Vec<String>,
     },
+    /// Manual RNG from the composer gutter (v4 `POST …?action=rng`). `kind` is
+    /// either a die size (integer 2..=1000) or `"flip_coin"` / `"spin_the_bottle"`;
+    /// `rolls` defaults to 1 (1..=100); `preview` returns without writing a message.
+    #[serde(rename_all = "camelCase")]
+    ChatRng {
+        chat_id: String,
+        kind: serde_json::Value,
+        #[serde(default)]
+        rolls: Option<u32>,
+        #[serde(default)]
+        preview: Option<bool>,
+    },
     /// Toggle agent mode for this chat (v4 `POST …?action=toggle-agent-mode`).
     #[serde(rename_all = "camelCase")]
     ChatToggleAgentMode {
