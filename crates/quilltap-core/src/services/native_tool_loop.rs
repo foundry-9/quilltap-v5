@@ -730,6 +730,7 @@ mod tests {
                 agent_mode: ResolvedAgentMode {
                     enabled: false,
                     max_turns: 10,
+                    enabled_source: crate::services::agent_mode::AgentModeSource::Global,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,
@@ -844,6 +845,7 @@ mod tests {
                 agent_mode: ResolvedAgentMode {
                     enabled: false,
                     max_turns: 10,
+                    enabled_source: crate::services::agent_mode::AgentModeSource::Global,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,

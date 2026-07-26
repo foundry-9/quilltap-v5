@@ -649,6 +649,33 @@ pub struct ChatUpdate {
     /// per-chat toggle (v4 b90cd1f5). `Some(Some(b))` sets it; `Some(None)`
     /// clears to SQL NULL (= enabled, the default); `None` leaves it unset.
     pub turn_skipping_enabled: Option<Option<bool>>,
+    // === P4.9E3A: the chat-admin + tools column setters ===
+    /// `disabledTools` (JSON array) — v4 `handleUpdateToolSettings`
+    /// (`actions/tools.ts:81-85`). Replaces the whole set.
+    pub disabled_tools: Option<Vec<String>>,
+    /// `disabledToolGroups` (JSON array) — the same write.
+    pub disabled_tool_groups: Option<Vec<String>>,
+    /// `forceToolsOnNextMessage` (INTEGER 0/1) — set alongside the two arrays so
+    /// the next message announces the tool change (`actions/tools.ts:84`). The
+    /// response echoes only the arrays, but this half is load-bearing.
+    pub force_tools_on_next_message: Option<bool>,
+    /// Nullable `agentModeEnabled` (INTEGER 0/1) — v4 `handleToggleAgentMode`
+    /// (`actions/agent-mode.ts:44-46`) writes the request's tri-state through
+    /// verbatim: `Some(Some(b))` sets, `Some(None)` clears to SQL NULL (=
+    /// "inherit the cascade"), `None` leaves the column alone (v4's
+    /// `enabled === undefined`, which its `_update` skips).
+    pub agent_mode_enabled: Option<Option<bool>>,
+    /// Nullable `isDangerousChat` (INTEGER 0/1) — cleared by
+    /// `handleReclassifyDanger` (`actions/danger-classification.ts:26-32`).
+    pub is_dangerous_chat: Option<Option<bool>>,
+    /// `dangerCategories` (JSON array) — reset to `[]` by the same handler.
+    pub danger_categories: Option<Vec<String>>,
+    /// Nullable `dangerClassifiedAt` (TEXT) — cleared by the same handler.
+    pub danger_classified_at: Option<Option<String>>,
+    /// Nullable `dangerClassifiedAtMessageCount` (REAL) — cleared by the same
+    /// handler.
+    pub danger_classified_at_message_count: Option<Option<f64>>,
+    // === end P4.9E3A ===
     pub updated_at: Option<String>,
 }
 
@@ -1107,6 +1134,32 @@ impl<'c> ChatsRepository<'c> {
         if let Some(v) = patch.turn_skipping_enabled {
             set_col!("turnSkippingEnabled", Box::new(v));
         }
+        // === P4.9E3A: the chat-admin + tools column setters ===
+        if let Some(v) = &patch.disabled_tools {
+            set_col!("disabledTools", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.disabled_tool_groups {
+            set_col!("disabledToolGroups", Box::new(json_text(v)?));
+        }
+        if let Some(v) = patch.force_tools_on_next_message {
+            set_col!("forceToolsOnNextMessage", Box::new(v));
+        }
+        if let Some(v) = patch.agent_mode_enabled {
+            set_col!("agentModeEnabled", Box::new(v));
+        }
+        if let Some(v) = patch.is_dangerous_chat {
+            set_col!("isDangerousChat", Box::new(v));
+        }
+        if let Some(v) = &patch.danger_categories {
+            set_col!("dangerCategories", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.danger_classified_at {
+            set_col!("dangerClassifiedAt", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.danger_classified_at_message_count {
+            set_col!("dangerClassifiedAtMessageCount", Box::new(v));
+        }
+        // === end P4.9E3A ===
         set_col!("updatedAt", Box::new(resolved_updated_at));
 
         let id_idx = values.len() + 1;

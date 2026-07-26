@@ -965,3 +965,36 @@ pub async fn enqueue_chat_danger_classification_with_priority(
     )
     .await
 }
+
+/// v4 `enqueueConversationRender` (`lib/background-jobs/queue-service.ts:399`):
+/// enqueue a `CONVERSATION_RENDER` job, deduping via `findPendingForChat` (any
+/// PENDING/PROCESSING render job for the SAME chat → no-op returning the existing
+/// id with `is_new = false`). Priority is v4's `options?.priority ?? -1` — "lower
+/// priority than interactive tasks"; `max_attempts` is `enqueueJob`'s default 3.
+///
+/// The payload is `{ chatId, fullReembed }` (v4's `ConversationRenderPayload`
+/// object literal — the manual `render-conversation` entrance always passes
+/// `fullReembed: true`). Returns `(job_id, is_new)`, v4's
+/// `ConversationRenderEnqueueResult`.
+pub async fn enqueue_conversation_render(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    full_reembed: bool,
+) -> Result<(String, bool), DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })?;
+    if let Some(existing) = pending.iter().find(|j| j.job_type == "CONVERSATION_RENDER") {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "fullReembed": full_reembed,
+    });
+    let id =
+        enqueue_job_with_priority(db, user_id, "CONVERSATION_RENDER", payload, -1.0, 3.0).await?;
+    Ok((id, true))
+}

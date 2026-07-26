@@ -8266,6 +8266,18 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.9E3A unit 2 — the five simple chat-admin verbs. `add-tag`, `remove-tag`,
+`update-tool-settings`, `toggle-agent-mode`, `reclassify-danger` and
+`render-conversation` land on the boundary over a new `services/chat_admin.rs`,
+with a 20-case tier-2 differential against v4's real handlers. Three supporting
+ports came with them: eight `ChatUpdate` column setters the chat write path had
+never needed, `enqueue_conversation_render`, and `enabledSource` on the shared
+agent-mode resolver — v4 returns it to the client as `agentModeSource`, so the
+port's earlier "host diagnostics, omit it" note was wrong. Recorded and not
+resolved here: the round's frozen wire for `toggle-agent-mode` carries no
+`enabled` field, so only v4's absent-key arm is reachable from a client; the
+service takes the full tri-state and the differential drives all four arms.
+
 P4.9E3A unit 1 — the `chat-admin-{main,mount}.db` fixture family. A new committed
 test-pepper substrate for the chat-admin + tools server surface, baked entirely
 through v4's real repositories: one user with a default and a second connection

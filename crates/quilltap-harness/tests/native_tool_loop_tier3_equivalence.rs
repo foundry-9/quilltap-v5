@@ -51,7 +51,7 @@ use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
     StreamingCompletionProvider,
 };
-use quilltap_core::services::agent_mode::ResolvedAgentMode;
+use quilltap_core::services::agent_mode::{AgentModeSource, ResolvedAgentMode};
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::native_tool_loop::{
     run_native_tool_loop, RegistryToolCallDetector, RunNativeToolLoopOptions,
@@ -438,6 +438,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                 agent_mode: ResolvedAgentMode {
                     enabled: c.agent_mode.enabled,
                     max_turns: c.agent_mode.max_turns,
+                    enabled_source: AgentModeSource::Global,
                 },
                 provider: c.provider.clone(),
                 base_url: None,

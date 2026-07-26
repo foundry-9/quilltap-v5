@@ -2511,6 +2511,44 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.9E1A ===
+    // === P4.9E3A: the chat-admin + tools verbs (§1, frozen) ===
+    /// Attach a tag (v4 `POST …?action=add-tag`).
+    #[serde(rename_all = "camelCase")]
+    ChatAddTag {
+        chat_id: String,
+        tag_id: String,
+    },
+    /// Detach a tag (v4 `POST …?action=remove-tag`).
+    #[serde(rename_all = "camelCase")]
+    ChatRemoveTag {
+        chat_id: String,
+        tag_id: String,
+    },
+    /// Replace the chat's disabled-tool sets (v4 `POST …?action=update-tool-settings`).
+    /// The service ALSO sets `forceToolsOnNextMessage = true`; the response echoes
+    /// only the two arrays.
+    #[serde(rename_all = "camelCase")]
+    ChatUpdateToolSettings {
+        chat_id: String,
+        disabled_tools: Vec<String>,
+        disabled_tool_groups: Vec<String>,
+    },
+    /// Toggle agent mode for this chat (v4 `POST …?action=toggle-agent-mode`).
+    #[serde(rename_all = "camelCase")]
+    ChatToggleAgentMode {
+        chat_id: String,
+    },
+    /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).
+    #[serde(rename_all = "camelCase")]
+    ChatReclassifyDanger {
+        chat_id: String,
+    },
+    /// Queue a Scriptorium render with full re-embed (v4 `POST …?action=render-conversation`).
+    #[serde(rename_all = "camelCase")]
+    ChatRenderConversation {
+        chat_id: String,
+    },
+    // === end P4.9E3A ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -2819,6 +2857,20 @@ pub enum Response {
     /// carries them as-is rather than inventing a union).
     ChatCast(serde_json::Value),
     // === end P4.9E1A ===
+    // === P4.9E3A: the chat-admin + tools verbs ===
+    /// A chat-admin / tools body — the tag pair's `{success, tag}` / `{success}`,
+    /// bulk re-attribution's `{success, messagesUpdated, memoriesDeleted}`, the
+    /// merge's `{success, merge, chat}`, tool settings' `{success, data}`,
+    /// run-tool's and rng's `{success, message, result}` (and rng's preview
+    /// `{success, preview, result}`), agent mode's and the two enqueueing verbs'
+    /// `{success, data}`, and regenerate-title's `{success, title}`. The exact
+    /// bytes are pinned by `chat_admin_routes_equivalence`.
+    ///
+    /// v4 answers **201** on `add-tag`; the dispatch boundary carries no per-verb
+    /// success status (every success is 200 at the HTTP edge — the standing
+    /// `ChatCreate` precedent), so the BODY is what §1 freezes.
+    ChatAdmin(serde_json::Value),
+    // === end P4.9E3A ===
     Error(CoreError),
 }
 

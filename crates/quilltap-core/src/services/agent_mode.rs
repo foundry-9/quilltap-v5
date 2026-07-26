@@ -26,15 +26,40 @@
 //!     the orchestrator injects into `formattedMessages` when agent mode is on
 //!     (v4 `buildAgentModeInstructions`).
 
-/// The resolved agent-mode state the tool loop reads (v4 `ResolvedAgentMode`
-/// subset — the two fields the loop consumes). `enabledSource` is host-side
-/// diagnostics (v4 logs it only), so it is omitted at this layer.
+/// Which cascade level supplied `enabled` (v4 `ResolvedAgentMode.enabledSource`).
+/// v4 only logs it from the orchestrator, but the `toggle-agent-mode` action
+/// returns it to the client as `agentModeSource` — so it is a real output, not
+/// diagnostics (P4.9E3A).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentModeSource {
+    Global,
+    Character,
+    Project,
+    Chat,
+}
+
+impl AgentModeSource {
+    /// v4's wire spelling (`'global' | 'character' | 'project' | 'chat'`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentModeSource::Global => "global",
+            AgentModeSource::Character => "character",
+            AgentModeSource::Project => "project",
+            AgentModeSource::Chat => "chat",
+        }
+    }
+}
+
+/// The resolved agent-mode state (v4 `ResolvedAgentMode`). The tool loop reads
+/// `enabled` / `max_turns`; `enabled_source` is what `toggle-agent-mode` echoes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResolvedAgentMode {
     /// Whether agent mode is enabled (v4 `enabled`).
     pub enabled: bool,
     /// The maximum tool iterations before the force-final pass (v4 `maxTurns`).
     pub max_turns: i64,
+    /// Which cascade level supplied `enabled` (v4 `enabledSource`).
+    pub enabled_source: AgentModeSource,
 }
 
 /// v4 `AgentModeSettings` — the global agent-mode config
@@ -74,22 +99,30 @@ pub fn resolve_agent_mode_setting(
 ) -> ResolvedAgentMode {
     // Start with global settings.
     let mut enabled = global.default_enabled;
+    let mut enabled_source = AgentModeSource::Global;
     let max_turns = global.max_turns;
 
     // Character level override (if explicitly set).
     if let Some(c) = character_default {
         enabled = c;
+        enabled_source = AgentModeSource::Character;
     }
     // Project level override (if explicitly set).
     if let Some(p) = project_default {
         enabled = p;
+        enabled_source = AgentModeSource::Project;
     }
     // Chat level override (if explicitly set).
     if let Some(ch) = chat_agent_mode_enabled {
         enabled = ch;
+        enabled_source = AgentModeSource::Chat;
     }
 
-    ResolvedAgentMode { enabled, max_turns }
+    ResolvedAgentMode {
+        enabled,
+        max_turns,
+        enabled_source,
+    }
 }
 
 /// v4 `buildAgentModeInstructions` — the agent-mode system-prompt block the

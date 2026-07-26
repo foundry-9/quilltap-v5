@@ -37169,3 +37169,121 @@ warnings` clean on both feature sets (plain and
 zero SKIP; `chats_tier2_equivalence` and `salon_mutations_equivalence` re-run by
 name over oracles regenerated at `c1507f47`, both green, zero SKIP;
 `cargo build --release` clean. No `apps/web/**` change, so no SPA run owed.
+## P4.9E3A — the chat-admin + tools server surface (lane record)
+
+Lane 2 of 4 in the "chat action remainder" round. Server-only; `apps/web/**` is
+not this lane's. v4 baseline **`c1507f47`** (verified clean at lane start —
+`git log c1507f47..HEAD` empty, `git status --short` empty).
+
+### Unit 1 — the `chat-admin-{main,mount}.db` fixture family
+
+A new committed test-pepper substrate, baked entirely through v4's REAL
+repositories. What each row exists for is documented at length in
+`harness/oracle/fixtures/build-chat-admin-fixture.ts`; the short version:
+
+- one user, an api key, and TWO connection profiles — `CONN` is the user's
+  DEFAULT (`resolveMergedProfileId`'s middle tier), `CONN_B` is the profile BEA
+  carries in the source chat (its first tier), so the merge's preference order
+  is distinguishable;
+- six characters: ARIA (target cast, the run-tool context and the
+  bulk-reattribute source), BEA + DORIAN (source-only, the two merge
+  candidates), CLIO (in BOTH chats — the already-present skip), EVE (the
+  operator's played character, the bulk-reattribute target), FLINT (source-only,
+  participant `status: 'removed'`);
+- four tags: TAG_A already on the target chat, TAG_B free, TAG_C on BEA+DORIAN
+  and TAG_D on DORIAN (the merge's tag fold);
+- the merge TARGET chat with seven messages whose `role` × `participantId` are
+  deliberately crossed, so `roleFilter` ASSISTANT / USER / both each select a
+  DIFFERENT subset of ARIA's rows, plus two unattributed messages (the
+  `sourceParticipantId: null` arm) and one `system` event the bulk rewrite must
+  carry through untouched;
+- the merge SOURCE chat with a rolling `contextSummary` (the recap bubble's
+  body) and BEA's equipped outfit (the `previous_chat` mode's source);
+- an empty chat (`regenerate-title`'s "no messages" 400) and a `help` chat (the
+  `titleHelpChat` arm);
+- three memories — two hanging off ARIA's messages (bulk-reattribute deletes
+  exactly those) and one with no source message, proving the delete is scoped;
+- wardrobe defaults for BEA and DORIAN; the user's `cheapLLMSettings`.
+
+The minted character-vault ids are `randomUUID()` and therefore move on every
+regeneration, so they go to a `.meta.json` sidecar both differential sides read
+(the post-office precedent).
+
+**Recorded:** the fixture asks v4's `chats.create` for a PARTIAL
+`timestampConfig` (`{enabled, intervalMinutes}`) and v4 stores its
+`TimestampConfigSchema`-materialized form
+(`{mode, format, useFictionalTime, autoPrepend, intervalMinutes}`) — the write
+normalization P4.d18 recorded and this round deliberately does not port. Both
+sides read the same stored bytes, so it is substrate here, not a subject.
+
+### Unit 2 — the five simple admin verbs
+
+`services/chat_admin.rs` — `add-tag`, `remove-tag`, `update-tool-settings`,
+`toggle-agent-mode`, `reclassify-danger`, `render-conversation`; §1's first six
+variants in `api/types.rs` plus the `Response::ChatAdmin` body carrier, and the
+labelled arm region in `api/engine.rs`.
+
+Supporting ports, all append-only:
+
+- **`db/chats.rs` gained eight `ChatUpdate` setters** the chat-column write path
+  had never needed: `disabledTools`, `disabledToolGroups`,
+  `forceToolsOnNextMessage`, `agentModeEnabled`, `isDangerousChat`,
+  `dangerCategories`, `dangerClassifiedAt`,
+  `dangerClassifiedAtMessageCount`. `ChatCreate` already carried all eight;
+  nothing had ever written them through `update`.
+- **`services/queue_service.rs` gained `enqueue_conversation_render`** (v4
+  `enqueueConversationRender`) — priority `-1`, `maxAttempts` 3, deduped on the
+  chat via `findPendingForChat`, returning `(job_id, is_new)`.
+- **`ResolvedAgentMode` gained `enabled_source`.** v4's resolver returns
+  `enabledSource` and the port had dropped it as "host diagnostics" — but
+  `toggle-agent-mode` returns it to the client as `agentModeSource`, so it is a
+  real output. Adding it to the shared resolver is the faithful fix and it
+  closes a documented simplification. Four struct-literal sites updated.
+
+Quirks reproduced deliberately (each has a case):
+
+- **`add-tag` verifies the tag row; `remove-tag` does not** (`tags.ts:44-47`),
+  so removing an unknown id is a successful no-op, not a 404.
+- **Both tag writes are conditional** — `TaggableBaseRepository` only calls
+  `update` when the array actually changed, so a no-op leaves `updatedAt`
+  untouched. The chat dump is the proof.
+- **`update-tool-settings` writes `forceToolsOnNextMessage = true`**, a column
+  the client never sends and the response never echoes.
+- **`toggle-agent-mode` answers over `{...existing, ...data}` validated by Zod,
+  NOT a re-read.** When the request carries `enabled` its value is echoed
+  verbatim (including `null`); when it does not, the existing value shows
+  through — and a NULL column is dropped by `.nullable().optional()`, so the
+  key is **absent** from the JSON. Both shapes are reproduced (v5's read omits a
+  NULL column the same way). v4's message ternary also branches on the REQUEST
+  value, so an absent key produces "Agent mode disabled" although nothing
+  changed.
+- **`reclassify-danger` clears five columns before looking for a profile**, so
+  a chat with no LLM participant still gets the reset and a different message.
+- Both enqueueing verbs dedupe on the chat.
+
+**Cross-lane escalation (recorded, not resolved):** §1's
+`ChatToggleAgentMode { chat_id }` carries no `enabled` field, so the dispatch
+verb can only express v4's ABSENT arm — the operator cannot actually set the
+tri-state from the wire. The SERVICE function takes the full
+`Option<Option<bool>>` and the differential drives all four arms, so the port is
+proven; widening the variant is a round-level decision because §1 is written
+verbatim in all three orders.
+
+**Second finding, not fixed here:** `api/salon.rs`'s `resolve_agent_mode`
+(:527) is a duplicate of the cascade, written precisely because the shared
+resolver dropped `enabledSource`. With `enabled_source` now on
+`ResolvedAgentMode` that duplicate can be deleted — but `api/salon.rs` is
+P4.9E1A's file this round, so it is left alone and flagged for the unifier.
+
+**Differential:** `chat_admin_routes_equivalence` — 20 cases, every one green,
+diffing the response body AND the post-mutation chat row (and, for the two
+enqueueing verbs, the `background_jobs` rows). Job ids and timestamps are minted
+on both sides, so the job dump carries only the stable columns and the body's
+`jobId` is blanked; the two DEDUPE cases prove job identity IN-BAND instead —
+each side computes `sameJobId` from its own two calls and that boolean is
+compared. Coverage is asserted by SHAPE (the driven set and the oracle's set
+must be equal), never by a hand-written count.
+
+First-run-green, so sensitivity was proven by mutation: flipping
+`force_tools_on_next_message` to `false` failed both `update_tool_settings`
+cases on exactly that line.

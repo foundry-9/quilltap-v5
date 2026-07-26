@@ -1016,6 +1016,71 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // ── end P4.9E1A ──
+            // === P4.9E3A: the chat-admin + tools verbs ===
+            Request::ChatAddTag { chat_id, tag_id } => match self.ready_db() {
+                Ok(db) => crate::services::chat_admin::chat_add_tag(&db, &chat_id, &tag_id).await,
+                Err(r) => r,
+            },
+            Request::ChatRemoveTag { chat_id, tag_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_remove_tag(&db, &chat_id, &tag_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatUpdateToolSettings {
+                chat_id,
+                disabled_tools,
+                disabled_tool_groups,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_update_tool_settings(
+                        &db,
+                        &chat_id,
+                        disabled_tools,
+                        disabled_tool_groups,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // §1 carries no `enabled` field, so only v4's ABSENT arm is
+            // reachable from the wire (the service takes the full tri-state and
+            // the differential covers all four — see `services/chat_admin.rs`).
+            Request::ChatToggleAgentMode { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_toggle_agent_mode(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        None,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatReclassifyDanger { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_reclassify_danger(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatRenderConversation { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_render_conversation(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.9E3A ===
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate => match self.ready_backup_host() {
                 Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),

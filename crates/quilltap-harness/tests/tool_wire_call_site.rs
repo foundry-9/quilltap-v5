@@ -42,7 +42,7 @@ use quilltap_core::model::transport::{
     BoxFuture, ProviderTransport, StreamBytes, TransportError, TransportPolicy, TransportRequest,
     TransportResponse,
 };
-use quilltap_core::services::agent_mode::ResolvedAgentMode;
+use quilltap_core::services::agent_mode::{AgentModeSource, ResolvedAgentMode};
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::native_tool_loop::{
     run_native_tool_loop, RunNativeToolLoopOptions, ToolCallDetector,
@@ -244,6 +244,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             agent_mode: ResolvedAgentMode {
                 enabled: false,
                 max_turns: 5,
+                enabled_source: AgentModeSource::Global,
             },
             provider: provider.to_string(),
             base_url: None,

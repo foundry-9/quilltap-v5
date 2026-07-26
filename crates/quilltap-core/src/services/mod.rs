@@ -159,3 +159,6 @@ pub mod announcer;
 pub mod chat_avatars;
 pub mod chat_participants;
 // ── end P4.9E1A ──
+// ── P4.9E3A ──
+pub mod chat_admin;
+// ── end P4.9E3A ──
