@@ -883,12 +883,11 @@ function parseToolGate(input: unknown): Res<ToolGate> {
     metadata = r.value;
   } else {
     // "record", not "object": Zod names a `z.record` by its own type, and the
-    // captured rows pin it. (The three PRE-EXISTING `z.record` sites in this
-    // file — `when.params`, `when.metadata`, top-level `parameters` — say
-    // "object" instead; the Rust port says "object" at the same three, so the
-    // two v5 halves agree with each other while both diverge from v4. No corpus
-    // row covers them. Recorded, deliberately not fixed here: a one-sided fix
-    // would put the browser at odds with the server. See the lane record.)
+    // captured rows pin it. The three PRE-EXISTING `z.record` sites in this file
+    // — `when.params`, `when.metadata`, top-level `parameters` — said "object"
+    // until the `231be14c` unification: P4.d19 fixed the Rust half and added the
+    // three corpus rows that had never covered them, so P4.d20's deliberate
+    // hold-off ended and all four sites now say "record" on both v5 halves.
     issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
   }
 
@@ -1136,7 +1135,7 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
       issues.push(...prefix('params', r.issues));
       if (r.value !== undefined) out.params = r.value;
     } else {
-      issues.push(...prefix('params', [hardIssue(invalidType('object', raw))]));
+      issues.push(...prefix('params', [hardIssue(invalidType('record', raw))]));
     }
   }
   let metadataPresent = false;
@@ -1150,7 +1149,7 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
       issues.push(...prefix('metadata', r.issues));
       if (r.value !== undefined) out.metadata = r.value;
     } else {
-      issues.push(...prefix('metadata', [hardIssue(invalidType('object', raw))]));
+      issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
     }
   }
 
@@ -1294,7 +1293,7 @@ export function safeParse(raw: unknown): SafeParseResult {
       issues.push(...prefix('parameters', paramIssues));
       parameters = r.value;
     } else {
-      issues.push(...prefix('parameters', [hardIssue(invalidType('object', raw2))]));
+      issues.push(...prefix('parameters', [hardIssue(invalidType('record', raw2))]));
     }
   }
 

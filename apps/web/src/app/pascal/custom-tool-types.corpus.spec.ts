@@ -7,8 +7,8 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 175 rows generated from v4's REAL
- * `QtapCustomToolSchema` at `7e6d13e5` (see
+ * This replays the COMMITTED oracle corpus — 236 rows generated from v4's REAL
+ * `QtapCustomToolSchema` at `231be14c` (see
  * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
  * byte-compares four things per row:
  *
@@ -37,7 +37,7 @@ import {
   formatDefinitionIssues,
   safeParse,
 } from './custom-tool-types';
-import { hasToolGate } from './tool-gate';
+import { evaluateToolGate, hasToolGate } from './tool-gate';
 import { gateConditionsFromGate, gateFromConditions } from './tool-draft';
 
 interface TitleRow {
@@ -63,7 +63,22 @@ interface DefinitionRow {
   unknownKeys: string[];
 }
 
-type Row = TitleRow | DefinitionRow;
+/**
+ * One `evaluateToolGate` verdict, against one fact sheet — P4.d19's third row
+ * kind, added to the shared corpus at the `231be14c` round. The verdict is the
+ * SERIALIZED object, so `withheldBy`'s ABSENCE on an available verdict is part
+ * of what is compared, exactly as the Rust side reads it.
+ */
+interface GateRow {
+  kind: 'gate';
+  id: string;
+  inputJson: string;
+  metadata: Record<string, unknown> | null;
+  hasGate: boolean;
+  verdict: string;
+}
+
+type Row = TitleRow | DefinitionRow | GateRow;
 
 const rows: Row[] = corpusText
   .split('\n')
@@ -72,19 +87,20 @@ const rows: Row[] = corpusText
 
 const titleRows = rows.filter((r): r is TitleRow => r.kind === 'title');
 const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'definition');
+const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 
 /**
- * The corpus is generated at v4 `7e6d13e5` (lane D10's §C regen, 175 rows —
- * the `$state` schema families joined at the state-cascade round). The map is
+ * The corpus is generated at v4 `231be14c` (P4.d19's §3 regen, 236 rows — the
+ * availability-gate families joined at the `231be14c` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with
  * replay-verified sentences, and empty it again when the corpus regenerates).
  */
-const REGENERATED_AT_7E6D13E5: Record<string, string> = {};
+const REGENERATED_AT_BASELINE: Record<string, string> = {};
 
-/** The sentence v4 `7e6d13e5` renders for a row — the fixture's, unless drifted. */
+/** The sentence v4 `231be14c` renders for a row — the fixture's, unless drifted. */
 function expectedReason(row: DefinitionRow): string | null {
-  return REGENERATED_AT_7E6D13E5[row.id] ?? row.reason;
+  return REGENERATED_AT_BASELINE[row.id] ?? row.reason;
 }
 
 /** Rows whose INPUT declares a gate clause — the §4 keys, read off the bytes. */
@@ -102,9 +118,14 @@ describe('custom-tool schema — the committed v4 corpus', () => {
     // rule). What is pinned instead is composition — the partition is total and
     // both halves are non-empty — and that every row carries what the replay
     // below reads. P4.d19 records the round's actual counts in its lane record.
-    expect(titleRows.length + definitionRows.length).toBe(rows.length);
+    expect(titleRows.length + definitionRows.length + gateVerdictRows.length).toBe(rows.length);
     expect(titleRows.length).toBeGreaterThan(0);
     expect(definitionRows.length).toBeGreaterThan(0);
+    // The third kind arrived at the `231be14c` unification. This partition
+    // assertion is what caught it — P4.d20 wrote the census over two kinds and
+    // P4.d19 shipped a third, so the guard fired exactly as its name promises
+    // rather than letting 31 unread rows sit in the fixture.
+    expect(gateVerdictRows.length).toBeGreaterThan(0);
 
     const accepted = definitionRows.filter((r) => r.success);
     const rejected = definitionRows.filter((r) => !r.success);
@@ -133,7 +154,7 @@ describe('custom-tool schema — the committed v4 corpus', () => {
     // Guards the map against outliving its rows: a regenerated corpus empties
     // the map, and a stale key here would pass unnoticed.
     const ids = new Set(definitionRows.map((r) => r.id));
-    for (const id of Object.keys(REGENERATED_AT_7E6D13E5)) {
+    for (const id of Object.keys(REGENERATED_AT_BASELINE)) {
       expect(ids.has(id), `drift map names "${id}", which the corpus does not`).toBe(true);
     }
   });
@@ -202,6 +223,28 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         expect(JSON.stringify(gateFromConditions(gateConditionsFromGate(gate)))).toBe(
           JSON.stringify(gate),
         );
+      });
+    }
+  });
+
+  /**
+   * P4.d19's `gate` rows, replayed against the browser's own evaluator — the
+   * unification wire. The Rust half already diffs these; running the SAME rows
+   * through `evaluateToolGate` here is what proves the two client-safe ports
+   * agree with v4 AND with each other, which is the whole reason v4 marks
+   * `tool-gate.ts` CLIENT-SAFE. Compared as SERIALIZED JSON so `withheldBy`'s
+   * absence on an available verdict is part of the comparison, not erased by a
+   * structural equality that treats absent and undefined alike.
+   */
+  describe('gate verdicts (P4.d19 rows, replayed in the browser)', () => {
+    for (const row of gateVerdictRows) {
+      it(`matches v4 — ${row.id}`, () => {
+        const parsed = safeParse(JSON.parse(row.inputJson));
+        expect(parsed.success, `${row.id} should parse`).toBe(true);
+        if (!parsed.success) return;
+
+        expect(hasToolGate(parsed.data)).toBe(row.hasGate);
+        expect(JSON.stringify(evaluateToolGate(parsed.data, row.metadata))).toBe(row.verdict);
       });
     }
   });
