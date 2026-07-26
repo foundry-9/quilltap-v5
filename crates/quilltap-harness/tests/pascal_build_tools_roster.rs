@@ -107,6 +107,9 @@ fn build_tools_resolves_and_offers_run_custom() {
         character_mount_point_id: Some(meta.vault_a.clone()),
         character_ids: Some(vec![CHAR_A.into()]),
         project_id: None,
+        // No sheet in hand — the roster reads the invoker's vault lazily, and
+        // only if a gated definition turns up (P4.d19).
+        metadata: None,
     };
 
     // A Some(context) → run_custom is offered, its description built from exactly

@@ -141,6 +141,7 @@ fn pascal_roster_matches_oracle() {
 
     let mut count = 0usize;
     let mut saw_is_root_reject = false;
+    let mut saw_lazy_read = false;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -150,41 +151,90 @@ fn pascal_roster_matches_oracle() {
         let pool = pool_of(input);
         let mounts = input["mounts"].as_object().cloned().unwrap_or_default();
 
-        let roster = resolve_roster_from_pool(&pool, |mount_point_id, tier| {
-            let Some(spec) = mounts.get(mount_point_id) else {
-                return (Vec::new(), Vec::new());
-            };
-            if !spec["enabled"].as_bool().unwrap_or(false) {
-                return (Vec::new(), Vec::new());
+        // The invoker's fact sheet, replaying the oracle's `SheetSpec` through
+        // the same two doors v5 has: the context (v4's truthy short-circuit) or
+        // a lazy read. `sheet_reads` counts the lazy door only, which is what
+        // the oracle counted on its `characters.findById` mock.
+        let spec = &input["sheet"];
+        // Present-and-non-null is v4's truthy `ctx.metadata`; an explicit `null`
+        // is falsy there and must fall through to the read, exactly as absent does.
+        let ctx_metadata = spec
+            .get("ctxMetadata")
+            .filter(|v| !v.is_null())
+            .map(|v| v.as_object().cloned().unwrap_or_default());
+        let no_character = spec["noCharacter"].as_bool().unwrap_or(false);
+        let vault_throws = spec["vaultThrows"].as_bool().unwrap_or(false);
+        let vault_metadata = spec.get("vaultMetadata").cloned();
+        let mut sheet_reads = 0usize;
+
+        let load_sheet = || -> Map<String, Value> {
+            // v4 `loadInvokerMetadata`, in the same order.
+            if let Some(sheet) = ctx_metadata.clone() {
+                return sheet;
             }
-            let mount_name = format!("store-{mount_point_id}");
-            // Mirror `list_tool_files_from_database`: drop folders + non-root
-            // files, so `is_root_tool_file` is exercised over the raw listing.
-            let files: Vec<(String, ToolFileContent)> = spec["files"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter(|f| {
-                    let rel = f["relativePath"].as_str().unwrap();
-                    let is_folder = f["kind"].as_str() == Some("folder");
-                    let ok = !is_folder && is_root_tool_file(rel);
-                    if !ok {
-                        saw_is_root_reject = true;
-                    }
-                    ok
-                })
-                .map(|f| {
-                    (
-                        f["relativePath"].as_str().unwrap().to_string(),
-                        ToolFileContent::Content(f["content"].as_str().unwrap().to_string()),
-                    )
-                })
-                .collect();
-            load_definitions(&files, mount_point_id, &mount_name, tier)
-        });
+            if no_character {
+                return Map::new();
+            }
+            sheet_reads += 1;
+            if vault_throws {
+                // The vault read failed — fail-soft to an empty sheet.
+                return Map::new();
+            }
+            match &vault_metadata {
+                // `findById` → null (no such character): `character?.metadata ?? {}`.
+                None => Map::new(),
+                Some(v) => v.as_object().cloned().unwrap_or_default(),
+            }
+        };
+
+        let roster = resolve_roster_from_pool(
+            &pool,
+            |mount_point_id, tier| {
+                let Some(spec) = mounts.get(mount_point_id) else {
+                    return (Vec::new(), Vec::new());
+                };
+                if !spec["enabled"].as_bool().unwrap_or(false) {
+                    return (Vec::new(), Vec::new());
+                }
+                let mount_name = format!("store-{mount_point_id}");
+                // Mirror `list_tool_files_from_database`: drop folders + non-root
+                // files, so `is_root_tool_file` is exercised over the raw listing.
+                let files: Vec<(String, ToolFileContent)> = spec["files"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|f| {
+                        let rel = f["relativePath"].as_str().unwrap();
+                        let is_folder = f["kind"].as_str() == Some("folder");
+                        let ok = !is_folder && is_root_tool_file(rel);
+                        if !ok {
+                            saw_is_root_reject = true;
+                        }
+                        ok
+                    })
+                    .map(|f| {
+                        (
+                            f["relativePath"].as_str().unwrap().to_string(),
+                            ToolFileContent::Content(f["content"].as_str().unwrap().to_string()),
+                        )
+                    })
+                    .collect();
+                load_definitions(&files, mount_point_id, &mount_name, tier)
+            },
+            load_sheet,
+        );
 
         let got = serialize(&roster);
         assert_roster_eq(&got, &row["output"], &id);
+        assert_eq!(
+            sheet_reads as u64,
+            row["sheetReads"].as_u64().unwrap(),
+            "case '{id}': invoker fact-sheet reads (the LAZY claim: none unless a gated \
+             definition turns up, and never more than one across every tier)"
+        );
+        if sheet_reads > 0 {
+            saw_lazy_read = true;
+        }
         count += 1;
     }
 
@@ -192,6 +242,10 @@ fn pascal_roster_matches_oracle() {
     assert!(
         saw_is_root_reject,
         "no case exercised is_root_tool_file rejection"
+    );
+    assert!(
+        saw_lazy_read,
+        "no case exercised the LAZY invoker fact-sheet read (P4.d19)"
     );
     // Spot-check the predicate directly.
     assert!(is_root_tool_file("Tools/x.tool.json"));

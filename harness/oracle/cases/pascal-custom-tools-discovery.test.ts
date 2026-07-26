@@ -86,7 +86,22 @@ function file(relativePath: string, doc: unknown, kind: 'file' | 'folder' = 'fil
   return { relativePath, kind, content: typeof doc === 'string' ? doc : JSON.stringify(doc) };
 }
 
-function prime(pool: Pool, mounts: Mounts) {
+/** The sheet `characters.findById` hands back on a lazy read, and how often. */
+interface SheetSpec {
+  /** Passed on the RosterContext — v4's truthy short-circuit. */
+  ctxMetadata?: Record<string, unknown> | null;
+  /** What the vault read returns when the roster has to go looking. */
+  vaultMetadata?: Record<string, unknown> | null;
+  /** `findById` rejects — the gate treats the sheet as empty. */
+  vaultThrows?: boolean;
+  /** No `characterId` on the context at all. */
+  noCharacter?: boolean;
+}
+
+/** Counts `characters.findById` calls, so laziness is a claim and not a hope. */
+let sheetReads = 0;
+
+function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
   mockResolvePool.mockResolvedValue({
     characterMountPointId: pool.characterMountPointId ?? null,
     participantMountPointIds: pool.participantMountPointIds ?? [],
@@ -94,11 +109,21 @@ function prime(pool: Pool, mounts: Mounts) {
     projectMountPointIds: pool.projectMountPointIds ?? [],
     globalMountPointId: pool.globalMountPointId ?? null,
   });
+  sheetReads = 0;
   mockGetRepositories.mockReturnValue({
     docMountPoints: {
       findById: jest.fn(async (id: string) =>
         mounts[id] ? { id, name: `store-${id}`, enabled: mounts[id].enabled, mountType: 'database', basePath: '' } : null
       ),
+    },
+    // The lazy invoker-sheet read. `loadInvokerMetadata` reaches for this ONLY
+    // when a gated definition turns up and the context carried no sheet.
+    characters: {
+      findById: jest.fn(async () => {
+        sheetReads += 1;
+        if (sheet.vaultThrows) throw new Error('that vault is unreachable');
+        return sheet.vaultMetadata === undefined ? null : { id: 'char1', metadata: sheet.vaultMetadata };
+      }),
     },
   });
   mockListDatabaseFiles.mockImplementation(async (mountId: string) =>
@@ -117,6 +142,11 @@ function prime(pool: Pool, mounts: Mounts) {
 
 const ctx = { userId: 'u1', chatId: 'c1', characterId: 'char1' };
 
+/** A gated definition, for the P4.d19 scenarios. */
+function gated(name: string, clause: 'availableWhen' | 'withheldWhen', metadata: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return tool(name, { [clause]: { metadata }, ...extra });
+}
+
 // -------------------------------------------------------------- the corpus
 const gappy = {
   name: 'gappy',
@@ -129,7 +159,7 @@ for (let i = 0; i < MAX_ROSTER_SIZE + 3; i++) {
   capFiles.push(file(`Tools/${n}.tool.json`, tool(n)));
 }
 
-const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts }> = [
+const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSpec }> = [
   {
     id: 'finds-in-database-store',
     pool: { projectMountPointIds: ['m1'] },
@@ -262,6 +292,146 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts }> = [
     },
   },
   { id: 'roster-cap', pool: { projectMountPointIds: ['m1'] }, mounts: { m1: { enabled: true, files: capFiles } } },
+
+  // ---- the P4.d19 availability gates (v4 6864bf0e) -----------------------
+  {
+    id: 'gate-available-holds-deals',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { toolAbilities: { contains: 'programmable' } }))] } },
+    sheet: { ctxMetadata: { toolAbilities: 'programmable, ambulatory' } },
+  },
+  {
+    id: 'gate-available-misses-withholds',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { toolAbilities: { contains: 'programmable' } }))] } },
+    sheet: { ctxMetadata: { toolAbilities: 'ambulatory' } },
+  },
+  {
+    id: 'gate-empty-sheet-fails-closed',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { toolAbilities: { contains: 'programmable' } }))] } },
+    sheet: { ctxMetadata: {} },
+  },
+  {
+    id: 'gate-empty-sheet-withheld-when-offers',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { novice: { eq: true } }))] } },
+    sheet: { ctxMetadata: {} },
+  },
+  {
+    id: 'gate-withheld-when-holds',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { novice: { eq: true } }))] } },
+    sheet: { ctxMetadata: { novice: true } },
+  },
+  {
+    id: 'gate-key-holds-an-array',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))] } },
+    sheet: { ctxMetadata: { clearance: [3, 4] } },
+  },
+  {
+    id: 'gate-key-holds-null',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { clearance: { gte: 3 } }))] } },
+    sheet: { ctxMetadata: { clearance: null } },
+  },
+  // THE ordering claim: the gate runs BEFORE `disabled`, so a gated-out
+  // definition makes no claim on its name and a farther tier still deals one.
+  {
+    id: 'gate-before-disabled-farther-tier-still-deals',
+    pool: { characterMountPointId: 'charMount', globalMountPointId: 'gl' },
+    mounts: {
+      charMount: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { toolAbilities: { contains: 'programmable' } }, { description: "The android's own." }))] },
+      gl: { enabled: true, files: [file('Tools/hack.tool.json', tool('hack', { description: 'The plain one everybody else gets.' }))] },
+    },
+    sheet: { ctxMetadata: { toolAbilities: 'ambulatory' } },
+  },
+  {
+    id: 'gate-before-disabled-nearer-variant-wins-when-it-holds',
+    pool: { characterMountPointId: 'charMount', globalMountPointId: 'gl' },
+    mounts: {
+      charMount: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { toolAbilities: { contains: 'programmable' } }, { description: "The android's own." }))] },
+      gl: { enabled: true, files: [file('Tools/hack.tool.json', tool('hack', { description: 'The plain one everybody else gets.' }))] },
+    },
+    sheet: { ctxMetadata: { toolAbilities: 'programmable' } },
+  },
+  // A gated TOMBSTONE is both keys at once: the gate answers first, so a sheet
+  // that fails the gate never reaches `disabled` and the farther tier survives.
+  {
+    id: 'gate-tombstone-gated-out-does-not-suppress',
+    pool: { characterMountPointId: 'charMount', globalMountPointId: 'gl' },
+    mounts: {
+      charMount: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { novice: { eq: true } }, { disabled: true }))] },
+      gl: { enabled: true, files: [file('Tools/hack.tool.json', tool('hack'))] },
+    },
+    sheet: { ctxMetadata: { novice: true } },
+  },
+  {
+    id: 'gate-tombstone-gate-passes-then-suppresses',
+    pool: { characterMountPointId: 'charMount', globalMountPointId: 'gl' },
+    mounts: {
+      charMount: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { novice: { eq: true } }, { disabled: true }))] },
+      gl: { enabled: true, files: [file('Tools/hack.tool.json', tool('hack'))] },
+    },
+    sheet: { ctxMetadata: { novice: false } },
+  },
+  // ---- the LAZY sheet read: only when a gated definition turns up --------
+  {
+    id: 'gate-lazy-read-when-context-has-no-sheet',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))] } },
+    sheet: { vaultMetadata: { clearance: 5 } },
+  },
+  {
+    id: 'gate-lazy-read-happens-once-across-tiers',
+    pool: { characterMountPointId: 'charMount', globalMountPointId: 'gl' },
+    mounts: {
+      charMount: { enabled: true, files: [file('Tools/a.tool.json', gated('a', 'availableWhen', { clearance: { gte: 3 } }))] },
+      gl: { enabled: true, files: [file('Tools/b.tool.json', gated('b', 'availableWhen', { clearance: { gte: 9 } }))] },
+    },
+    sheet: { vaultMetadata: { clearance: 5 } },
+  },
+  {
+    id: 'no-gate-means-no-sheet-read',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/plain.tool.json', tool('plain'))] } },
+    sheet: { vaultMetadata: { clearance: 5 } },
+  },
+  {
+    id: 'gate-vault-read-fails-treated-as-empty',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: { enabled: true, files: [
+        file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } })),
+        file('Tools/listen.tool.json', gated('listen', 'withheldWhen', { novice: { eq: true } })),
+      ] },
+    },
+    sheet: { vaultThrows: true },
+  },
+  {
+    id: 'gate-character-absent-from-vault-treated-as-empty',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))] } },
+    sheet: {},
+  },
+  {
+    id: 'gate-no-character-id-treated-as-empty',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: { enabled: true, files: [
+        file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } })),
+        file('Tools/listen.tool.json', gated('listen', 'withheldWhen', { novice: { eq: true } })),
+      ] },
+    },
+    sheet: { noCharacter: true },
+  },
+  {
+    id: 'gate-context-sheet-beats-the-vault',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))] } },
+    sheet: { ctxMetadata: { clearance: 5 }, vaultMetadata: { clearance: 0 } },
+  },
 ];
 
 function serializeRoster(roster: Awaited<ReturnType<typeof resolveCustomToolRoster>>) {
@@ -287,9 +457,23 @@ describe('discovery oracle', () => {
   it('emits', async () => {
     for (const scenario of scenarios) {
       jest.clearAllMocks();
-      prime(scenario.pool, scenario.mounts);
-      const roster = await resolveCustomToolRoster(ctx);
-      rows.push({ kind: 'roster', id: scenario.id, input: { pool: scenario.pool, mounts: scenario.mounts }, output: serializeRoster(roster) });
+      const sheet = scenario.sheet ?? {};
+      prime(scenario.pool, scenario.mounts, sheet);
+      const scenarioCtx = {
+        ...ctx,
+        ...(sheet.noCharacter ? { characterId: undefined } : {}),
+        ...('ctxMetadata' in sheet ? { metadata: sheet.ctxMetadata } : {}),
+      };
+      const roster = await resolveCustomToolRoster(scenarioCtx);
+      rows.push({
+        kind: 'roster',
+        id: scenario.id,
+        input: { pool: scenario.pool, mounts: scenario.mounts, sheet },
+        output: serializeRoster(roster),
+        // The lazy-read claim: no vault read unless a gated definition turns up,
+        // and never more than one across every tier.
+        sheetReads,
+      });
     }
   });
 });

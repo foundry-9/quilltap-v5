@@ -27,6 +27,7 @@
 use std::collections::HashSet;
 
 use rusqlite::Connection;
+use serde_json::{Map, Value};
 
 use crate::db::database_store::{
     list_database_files, read_database_document, DbStoreErrorCode, StoreError,
@@ -40,6 +41,7 @@ use super::custom_tool_types::{
     collect_unknown_keys, format_definition_issues, safe_parse, QtapCustomTool, MAX_ROSTER_SIZE,
     TOOLS_FOLDER, TOOL_FILE_SUFFIX,
 };
+use super::tool_gate::{evaluate_tool_gate, has_tool_gate};
 
 /// Tier precedence, nearest first. A nearer tier shadows a farther one.
 const TIER_ORDER: [MountTier; 5] = [
@@ -106,6 +108,16 @@ pub struct RosterContext {
     /// Every character in the chat — their vaults form the `participant` tier.
     pub character_ids: Option<Vec<String>>,
     pub project_id: Option<String>,
+    /// The invoking character's hydrated fact sheet, which availability gates
+    /// are answered against (v4 `6864bf0e`). Optional: a caller that already
+    /// holds it (every one of them does — the popup hydrates perspectives, the
+    /// turn resolves a responding character) passes it to spare a read, and one
+    /// that doesn't leaves the roster to fetch it, but only if some definition
+    /// turns out to be gated.
+    ///
+    /// `Some(map)` — including `Some({})` — is v4's truthy `ctx.metadata` and
+    /// short-circuits the read; `None` is v4's `null`/`undefined` and does not.
+    pub metadata: Option<Map<String, Value>>,
 }
 
 /// The content of one candidate tool file, whichever kind of store held it.
@@ -239,6 +251,44 @@ fn ordered_mounts(pool: &TieredMountPool) -> Vec<(MountTier, String)> {
     ordered
 }
 
+/// The invoking character's fact sheet, for the availability gates (v4
+/// `loadInvokerMetadata`).
+///
+/// Fail-soft to `{}`: a vault that cannot be read is not a reason to abandon the
+/// whole roster, and an empty sheet has a defined meaning at the gate (nothing
+/// qualifies, nothing is disqualified — see [`super::tool_gate`]).
+fn load_invoker_metadata(
+    ctx: &RosterContext,
+    main: &Connection,
+    mount: &Connection,
+) -> Map<String, Value> {
+    if let Some(sheet) = ctx.metadata.as_ref() {
+        return sheet.clone();
+    }
+    let Some(character_id) = ctx.character_id.as_deref() else {
+        return Map::new();
+    };
+
+    match crate::db::characters_read::find_by_id(main, mount, character_id) {
+        Ok(Some(character)) => character
+            .get("metadata")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default(),
+        Ok(None) => Map::new(),
+        Err(error) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                chat_id = %ctx.chat_id,
+                character_id,
+                error = %error,
+                "Custom-tool gates: the invoker's fact sheet could not be read, treating it as empty",
+            );
+            Map::new()
+        }
+    }
+}
+
 /// Resolve the roster from an already-resolved pool, given a per-mount loader.
 ///
 /// The tier-shadowing + cap core, separated from the DB so the differential can
@@ -247,10 +297,16 @@ fn ordered_mounts(pool: &TieredMountPool) -> Vec<(MountTier, String)> {
 pub fn resolve_roster_from_pool(
     pool: &TieredMountPool,
     mut load: impl FnMut(&str, MountTier) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>),
+    mut invoker_metadata: impl FnMut() -> Map<String, Value>,
 ) -> CustomToolRoster {
     let mut roster = CustomToolRoster::default();
     // Names switched off by a nearer tier. They must stay off further out.
     let mut suppressed: HashSet<String> = HashSet::new();
+
+    // Fetched at most once, and only if a gated definition actually turns up:
+    // most rosters carry none, and none of them should pay for a vault read.
+    // (v4 memoises a promise; synchronous Rust memoises the value.)
+    let mut sheet: Option<Map<String, Value>> = None;
 
     for (tier, mount_point_id) in ordered_mounts(pool) {
         let (found, mount_errors) = load(&mount_point_id, tier);
@@ -263,6 +319,34 @@ pub fn resolve_roster_from_pool(
             // by a `disabled` tombstone — farther tiers cannot revive it.
             if roster.has(&name) || suppressed.contains(&name) {
                 continue;
+            }
+
+            // The availability gate, and it runs BEFORE `disabled` on purpose. A
+            // gated-out definition makes no claim on the name at all — not even a
+            // tombstone — so a farther tier may still deal one. That is the useful
+            // arrangement: a character's own vault holds the variant written for
+            // characters like them, and the General store holds the plain one
+            // everybody else gets. `disabled`, by contrast, stays absolute; a
+            // gated tombstone ("suppress this name for novices") is simply both
+            // keys at once, and reads exactly as it says.
+            if has_tool_gate(&entry.definition) {
+                let verdict = evaluate_tool_gate(
+                    &entry.definition,
+                    Some(sheet.get_or_insert_with(&mut invoker_metadata)),
+                );
+                if !verdict.available {
+                    // v4's `logger.debug('Custom tool withheld by its
+                    // availability gate', {…})`, same point, same fields.
+                    tracing::debug!(
+                        target: "quilltap::pascal",
+                        name = %name,
+                        tier = ?tier,
+                        mount_point_id = %mount_point_id,
+                        withheld_by = verdict.withheld_by.map(|c| c.as_str()).unwrap_or("null"),
+                        "Custom tool withheld by its availability gate",
+                    );
+                    continue;
+                }
             }
 
             if entry.definition.disabled == Some(true) {
@@ -431,7 +515,9 @@ pub fn resolve_custom_tool_roster(
         },
     );
 
-    resolve_roster_from_pool(&pool, |mount_point_id, tier| {
-        load_tools_from_mount(mount, mount_point_id, tier)
-    })
+    resolve_roster_from_pool(
+        &pool,
+        |mount_point_id, tier| load_tools_from_mount(mount, mount_point_id, tier),
+        || load_invoker_metadata(ctx, main, mount),
+    )
 }

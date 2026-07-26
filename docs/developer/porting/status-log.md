@@ -35976,3 +35976,56 @@ an absent metadata key MATCH instead of decline → red at
 Family totals now **10 titles + 195 definitions + 31 gate verdicts**. Gate: fmt,
 clippy, `cargo test --workspace --no-fail-fast` 384 binaries / 0 failed.
 `quilltap-core` 0.0.362 → 0.0.363.
+
+### Unit 4 — roster ENFORCEMENT (v4 `6864bf0e`, `custom-tools.ts`)
+
+`RosterContext.metadata`, the lazy invoker-sheet read, and the gate check inside
+the mount loop.
+
+- **The gate runs BEFORE the `disabled` tombstone**, which is v4's deliberate
+  ordering and the whole reason the feature composes: a gated-out definition
+  makes no claim on its name at all, so a farther tier may still deal one — a
+  character-vault variant plus a General-store fallback.
+- **The lazy read is a SEAM PARAMETER, not a DB call.** v5's mount loop lives in
+  `resolve_roster_from_pool`, which the differential drives with the DB mocked
+  out (as v4's own discovery test does), so the sheet arrives as a third
+  argument: `impl FnMut() -> Map<String, Value>`, called at most once and only
+  when a gated definition turns up. v4 memoises a promise; synchronous Rust
+  memoises the value (`sheet.get_or_insert_with(&mut invoker_metadata)`). The
+  real `resolve_custom_tool_roster` passes `load_invoker_metadata`, which is
+  v4's function name for name: context sheet → `{}` when there is no
+  `characterId` → `characters.findById(...).metadata ?? {}` → fail-soft `{}` with
+  a debug log.
+- **`Some({})` vs `None` is v4's truthiness, exactly.** `ctx.metadata = {}` is
+  truthy in JS and short-circuits the read; `null`/`undefined` does not. `Option`
+  models that with no cleverness, and the corpus has a row on each side.
+- The withheld-tool `logger.debug` is carried as `tracing::debug!` (tier-2
+  item 13).
+
+**Differential:** `pascal_roster_equivalence`, 20 → **38 scenarios**, over v4's
+REAL `resolveCustomToolRoster`. The oracle case gained a `characters.findById`
+mock and a `SheetSpec` per scenario, and — the part worth copying — it **counts
+the mock's calls and emits `sheetReads`**, so "no vault read unless a gated
+definition turns up, and never more than one across every tier" is a compared
+number rather than a claim in a comment. The Rust side replays
+`loadInvokerMetadata`'s four arms through that counter.
+
+The seventeen new scenarios cover: both clauses holding and missing; the empty
+sheet against both (the asymmetry, at roster level); a key holding an
+array/null; **the ordering claim in three shapes** — a gated-out character-tier
+variant leaving the General one dealable, the same pair when the gate holds, and
+a gated TOMBSTONE whose gate fails (so `disabled` is never reached and the
+farther tier survives) versus one whose gate passes (so it does suppress); and
+the five read arms (context sheet wins, lazy read once across tiers, no gated
+definition = no read, vault throw = empty, no `characterId` = empty).
+
+**Mutation-checked:** moving the gate AFTER the tombstone → red at
+`gate-tombstone-gated-out-does-not-suppress`; reading the sheet eagerly → red at
+`finds-in-database-store` on the `sheetReads` count.
+
+The three `RosterContext` call sites take `metadata: None` at this commit —
+correct but not yet optimal (they pay for a read v4 spares them). Units 5–7 set
+each to the sheet its caller already holds. `services/tool_build.rs` did NOT
+need an edit: the field defaults through the struct literal its caller builds.
+Gate: fmt, clippy, `cargo test --workspace --no-fail-fast` 0 failed.
+`quilltap-core` 0.0.363 → 0.0.364, `quilltap-harness` 0.0.310 → 0.0.311.

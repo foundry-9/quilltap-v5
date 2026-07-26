@@ -1532,6 +1532,7 @@ where
                     .and_then(Value::as_str)
                     .filter(|s| !s.is_empty())
                     .map(str::to_string),
+                metadata: None,
             })
         } else {
             None

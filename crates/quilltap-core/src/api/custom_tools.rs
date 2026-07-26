@@ -135,6 +135,7 @@ fn resolve_for_perspective(
             character_mount_point_id: perspective.character_mount_point_id.clone(),
             character_ids: Some(all_character_ids.to_vec()),
             project_id: project_id.map(str::to_string),
+            metadata: None,
         },
         main,
         mount,

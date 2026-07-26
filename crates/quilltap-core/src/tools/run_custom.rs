@@ -550,6 +550,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         character_mount_point_id: ctx.character_mount_point_id.clone(),
         character_ids: ctx.character_ids.clone(),
         project_id: ctx.project_id.clone(),
+        metadata: None,
     };
     let roster = match db.read_main(|main| {
         db.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&roster_ctx, main, mount)))

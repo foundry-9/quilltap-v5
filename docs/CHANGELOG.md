@@ -11,6 +11,13 @@ not parse at all, and the clock reported a date near 1970. The test corpus only
 ever used a format that hid it, and now carries the picker's own format across
 ten timezones, including one from 1550 whose offset is not a whole number of
 minutes.
+Availability gates are now enforced where the roster is dealt, so a tool a
+character does not qualify for is absent everywhere at once. The test is asked
+before the deal, and a gated-out definition makes no claim on its name at all —
+which means a character's own store can hold the version written for characters
+like them while the General store holds the plain one everybody else gets.
+Reading the fact sheet costs nothing on a roster that carries no gates.
+
 A custom tool definition can now declare who may reach for it. Two new optional
 keys, `availableWhen` and `withheldWhen`, test the invoking character's fact
 sheet; a file declares one or the other, never both, and every operand must be a
