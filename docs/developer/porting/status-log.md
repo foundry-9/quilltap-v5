@@ -41109,3 +41109,52 @@ that family's committed oracle is stale by design and must be regenerated.
 differentials run BY NAME with `--nocapture`, **zero SKIP**. `apps/web` untouched
 (`git diff main --name-only` matches nothing under it), so **no SPA gate is
 owed** — stated here as the order requires.
+
+---
+
+## Lane P4.9E4B — unit 1: the picker's pure model + data layer
+
+**Branch** `claude/library-picker-spa-porting-8725e2`. SPA-only lane; no crate
+touched. v4 drift-checked at lane start: HEAD is exactly `e8a49597`, tree clean.
+
+`apps/web/src/app/chat/library-picker/library-picker.model.ts` transcribes every
+decision v4's `LibraryFilePickerModal.tsx` (+ the pieces of `FileBrowser.tsx` its
+browse step depends on) makes over already-fetched rows:
+
+- `pickableDocStores` — v4 `:133-135`, carrying the why-comment: enabled,
+  `mountType === 'database'`, `storeType !== 'character'`. Character vaults are
+  managed via the character optimizer / Aurora tab and are conceptually
+  off-limits for the human composer.
+- `resolveUserPersonaAlbum` — v4 `:156-159`, the two-step fallback (default
+  user-character album → first user-character album → null). Albums are fetched
+  ONLY to name the gallery and target its read; they are never pickable scopes.
+- `pickPrimaryProjectStore` / `isProjectOwnStoreName` — transcribed from v4's
+  **client-safe** `lib/mount-index/project-store-naming.ts`. v4 keeps that module
+  free of anything needing `getRepositories()` or the FileBrowser bundle picks up
+  `child_process`; the v5 module holds the same line (it imports only types).
+- `deriveMimeTypeFromName` / `mimeTypeForDocumentStoreFile` /
+  `folderPathFromRelativePath` / `documentStoreFileToPickerFile` — v4
+  `FileBrowser.tsx:74-163`, the mount-mode row translation, so a store row can
+  ride the same folder model as a legacy file.
+- `isMountFile` / `pickedFileName` — v4 `:237-238`. The discriminator needs BOTH
+  `mountPointId` and `relativePath` to be **truthy** (v4 tests `!!`, not
+  presence), which the spec pins with an empty-string case.
+
+`library-picker.api.ts` holds the four scope reads, the project-store
+auto-resolve, the two browse reads and both write legs. The writes are **raw
+REST** through `apiUrl()` exactly as v4 issues them (`?action=link`,
+`?action=attach-mount-file`) — including v4's error-message extraction
+(`errorData.error`, else `HTTP {status}: {statusText}`) and its per-leg fallback
+strings.
+
+**§1 mirror:** `ChatAttachMountFileRequest` added to `core-contract.ts`
+name-for-name per the Shared contract (`chatAttachMountFile`, `chatId`,
+`mountPointId`, `relativePath`) and folded into the request union. It is
+**deliberately unconsumed** — the modal calls the REST leg, which is the surface
+v4 exercises; the mirror keeps the §1 diff clean. The `ChatGroupStoresRequest`
+doc block's "no client consumer yet" note is retired: this lane is its consumer.
+
+`ui/modal.ts` gained the `4xl` width token (56rem = Tailwind `max-w-4xl`), the
+picker being v5's first dialog wider than 3xl (v4 `:364`).
+
+**Gate:** `npx ng test` 249 files / 3,088 passed (the new spec's 18 cases run).

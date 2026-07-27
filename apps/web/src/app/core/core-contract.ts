@@ -558,13 +558,29 @@ export interface MessageReattributeRequest {
  *
  * ⚠ **Not part of the §1 freeze** — P4.9E3B added it in its tier-2 audit (item 9)
  * after this contract was written, on finding the picker's read missing. Mirrored
- * here at the round's unification so both sides agree. **It has no client consumer
- * yet:** its only caller would be `LibraryFilePickerModal`, DEFERRED BY NAME by
- * P4.9E3C (see `salon-conversation.ts` and the `m6` row).
+ * here at the round's unification so both sides agree. Its consumer arrived with
+ * P4.9E4B: `qt-library-file-picker-modal` reads it for the Group Files section.
  */
 export interface ChatGroupStoresRequest {
   type: 'chatGroupStores';
   chatId: string;
+}
+
+/**
+ * Pin a document-store file to a chat via a Librarian attachment announcement
+ * (v4 `POST …/chats/{id}/files?action=attach-mount-file`). §1 of the P4.9E4A /
+ * P4.9E4B Shared contract; P4.9E4A owns the server side.
+ *
+ * ⚠ **Mirrored, deliberately unconsumed.** The Library file picker calls the REST
+ * leg directly through `apiUrl()` — that is the surface v4 exercises
+ * (`LibraryFilePickerModal:175-182`), so it is the surface the port exercises. The
+ * mirror exists so the §1 name-for-name diff against `api/types.rs` stays clean.
+ */
+export interface ChatAttachMountFileRequest {
+  type: 'chatAttachMountFile';
+  chatId: string;
+  mountPointId: string;
+  relativePath: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1920,6 +1936,8 @@ export type CoreRequest =
   | SearchReplaceExecuteRequest
   | MessageReattributeRequest
   | ChatGroupStoresRequest
+  // --- The library picker's mount-attach leg (§1; P4.9E4A's server half) ---
+  | ChatAttachMountFileRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest

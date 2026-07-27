@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Laid the groundwork for the library file picker: the rules that decide which
+places a file can be picked from, which of your photo albums counts as "yours",
+which of a project's linked stores is the project's own, and how a document-store
+row is read as a browsable file. All of it is pure and unit-tested, so the picker
+itself has nothing left to decide.
+
 Conversations are now re-rendered as they grow: every turn that produces
 content queues the render that keeps the archive copy and its searchable pieces
 current. Until now that only happened when the button was pressed by hand or the

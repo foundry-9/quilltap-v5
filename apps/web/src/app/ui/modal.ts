@@ -8,6 +8,9 @@ const MAX_WIDTHS: Record<string, string> = {
   xl: '36rem',
   '2xl': '42rem',
   '3xl': '48rem',
+  // v4's `max-w-4xl` — the Library file picker's width (`LibraryFilePickerModal
+  // :364`), the first consumer of a token wider than 3xl.
+  '4xl': '56rem',
 };
 
 /**
@@ -52,7 +55,7 @@ const MAX_WIDTHS: Record<string, string> = {
 })
 export class Modal {
   readonly title = input.required<string>();
-  /** Width token (v4 `maxWidth`: `md` | `lg` | `xl` | `2xl` | `3xl`). */
+  /** Width token (v4 `maxWidth`: `md` | `lg` | `xl` | `2xl` | `3xl` | `4xl`). */
   readonly maxWidth = input<string>('lg');
   /** Whether a backdrop click dismisses (v4 `closeOnClickOutside`, default true). */
   readonly closeOnBackdrop = input(true);
