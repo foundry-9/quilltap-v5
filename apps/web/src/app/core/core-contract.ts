@@ -552,6 +552,21 @@ export interface MessageReattributeRequest {
   newParticipantId: string;
 }
 
+/**
+ * Group document stores reachable from this chat's user-controlled cast
+ * (v4 `GET …/chats/{id}?action=group-stores`, `actions/group-stores.ts:16`).
+ *
+ * ⚠ **Not part of the §1 freeze** — P4.9E3B added it in its tier-2 audit (item 9)
+ * after this contract was written, on finding the picker's read missing. Mirrored
+ * here at the round's unification so both sides agree. **It has no client consumer
+ * yet:** its only caller would be `LibraryFilePickerModal`, DEFERRED BY NAME by
+ * P4.9E3C (see `salon-conversation.ts` and the `m6` row).
+ */
+export interface ChatGroupStoresRequest {
+  type: 'chatGroupStores';
+  chatId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pascal custom tools — the composer popup's wire contract (§4, OWNER: lane
 // P4.6ay). The two verbs are the SPA's path to `GET`/`POST
@@ -594,7 +609,15 @@ export interface CustomToolListing {
   parameters: Record<string, CustomToolParameterSpec>;
   defaultVisibility: 'public' | 'whisper';
   sourceTier: string;
-  /** Present on per-character variants that shadow a broader definition. */
+  /**
+   * Whose fact sheet the run will consult, when that is worth saying out loud.
+   *
+   * Set on a per-character variant that shadows a broader definition — and, since
+   * v4 `e8a49597` (mirrored by P4.D24), also on a single-variant row where the
+   * server had to fall back to someone other than you: an all-LLM room, or a
+   * gate your own character did not pass. **Absent means "runs as you"** — or
+   * that there is only one character in the room and nothing to tell apart.
+   */
   characterLabel?: string;
   /** Disambiguates a character-labeled variant on the run call. */
   asCharacterId: string;
@@ -1896,6 +1919,7 @@ export type CoreRequest =
   | SearchReplacePreviewRequest
   | SearchReplaceExecuteRequest
   | MessageReattributeRequest
+  | ChatGroupStoresRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest

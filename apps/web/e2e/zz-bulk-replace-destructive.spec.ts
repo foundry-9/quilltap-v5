@@ -98,7 +98,7 @@ test.describe('P4.9E3C — Bulk Character Replace (destructive)', () => {
  * P4.9E3B's verb; on this lane's branch it does not exist. The unifier flips
  * this to `true` when the branches meet.
  */
-const MESSAGE_REATTRIBUTE_LANDED = false;
+const MESSAGE_REATTRIBUTE_LANDED = true;
 
 test.describe('P4.9E3C — Re-attribute one message (destructive)', () => {
   // The same irreversibility as the bulk form, which is why it lives here.

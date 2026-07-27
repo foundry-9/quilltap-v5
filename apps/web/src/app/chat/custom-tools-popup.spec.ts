@@ -571,3 +571,51 @@ describe('CustomToolRunDialog — the reference panel', () => {
     expect(text(fixture)).toContain('sent exactly as written, braces and all');
   });
 });
+
+/**
+ * Whose sheet the roll will consult, said out loud.
+ *
+ * Since v4 `e8a49597` (mirrored into v5 by P4.D24) the server sets
+ * `characterLabel` on a SINGLE-variant row too, whenever it had to fall back to
+ * someone other than the operator — an all-LLM room, or a gate the operator's own
+ * character did not pass. The rendering was already unconditional on presence, but
+ * no case in this file exercised it; these two are the coverage that lane recorded
+ * as owed. Absence still means "runs as you".
+ */
+describe('CustomToolsPopup — the borrowed sheet', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const BORROWED: CustomToolRosterEntry = {
+    ...UNLOCK,
+    asCharacterId: 'char-9',
+    characterLabel: 'Lorian',
+  };
+
+  it('names whose sheet a single-variant row will borrow, in both phases', async () => {
+    const fixture = await mount(stub({ tools: [BORROWED], errors: [] }));
+    await open(fixture);
+    expect(text(fixture)).toContain('as Lorian');
+
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+    expect(text(fixture)).toContain('· as Lorian');
+  });
+
+  it('says nothing about a sheet when the run is the operator’s own', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK], errors: [] }));
+    await open(fixture);
+    expect(text(fixture)).not.toContain('as Lorian');
+    expect(text(fixture)).not.toContain(' · as ');
+  });
+
+  it('finds a tool by the character it will borrow from', async () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({ ...UNLOCK, name: `tool_${i}` }));
+    const fixture = await mount(stub({ tools: [...many, BORROWED], errors: [] }));
+    await open(fixture);
+    const box = fixture.nativeElement.querySelector('input[aria-label="Search the table"]');
+    box.value = 'lorian';
+    box.dispatchEvent(new Event('input'));
+    await settle(fixture);
+    expect(text(fixture)).toContain('as Lorian');
+    expect(text(fixture)).not.toContain('Nothing on the table answers to that.');
+  });
+});

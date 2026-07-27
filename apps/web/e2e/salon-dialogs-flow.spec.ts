@@ -62,22 +62,22 @@ async function readTitle(
 
 /**
  * ACTIVATE-AT-UNIFY. `GET /api/v1/chats/{id}?action=export` is P4.9E3B's byte
- * route; on this lane's branch it does not exist yet. The unifier flips this to
- * `true` when the branches meet.
+ * route; on this lane's branch it does not exist yet. FLIPPED at the round's unification
+ * (2026-07-27).
  */
-const CHAT_EXPORT_LANDED = false;
+const CHAT_EXPORT_LANDED = true;
 
 /**
  * ACTIVATE-AT-UNIFY. `GET /api/v1/tools` is P4.9E3B's inventory; without it the
- * tool tree has nothing to list. The unifier flips this to `true`.
+ * tool tree has nothing to list. FLIPPED at the round's unification (2026-07-27).
  */
-const TOOLS_INVENTORY_LANDED = false;
+const TOOLS_INVENTORY_LANDED = true;
 
 /**
  * ACTIVATE-AT-UNIFY. `POST /api/v1/search-replace?action=preview|execute` is
- * P4.9E3B's pair. The unifier flips this to `true`.
+ * P4.9E3B's pair. FLIPPED at the round's unification (2026-07-27).
  */
-const SEARCH_REPLACE_LANDED = false;
+const SEARCH_REPLACE_LANDED = true;
 
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
