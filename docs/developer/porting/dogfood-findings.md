@@ -58,6 +58,44 @@ catch, since every fixture is built fresh.
 | 33 | A user-initiated RNG roll rendered its standalone tool card under **Amy**, the last participant to speak, though the card's own line read "You ran rng" and the following characters correctly treated the roll as the operator's | **Faithfully ported v4 bug — v5 reproduces v4 exactly, in both halves.** The persisted row is identical on both sides: v4's orchestrator writes a pending tool result with `initiatedBy:'user'` and **no `participantId`** (`orchestrator.service.ts:611-630`), and so does v5 — confirmed on the dogfood copy (`participantId` NULL, `{"tool":"rng","initiatedBy":"user",…}`). Both renderers then run the same positional borrow: a TOOL row with no participant takes the nearest preceding assistant's, stopping at a USER boundary (v4 `VirtualizedMessageList.tsx:228-247`, v5 `chat-view-model.ts::resolveToolAvatar` — a verbatim port). Because the row is written BEFORE the user's message, the nearest preceding assistant is the last character who spoke. The header markup is byte-faithful too: when a header avatar resolves, BOTH render that character's name bold and the attribution line beneath it, and v4's own conditional (`actorName !== headerAvatar.name ? "${actorName} ran " : "ran "`, `ToolMessage.tsx:438-443`) is what produces the "Amy" / "You ran rng" pair the screenshot shows. v5's `actorName` (`operatorName \|\| 'You'`) and `attributionPrefix` match line for line | **NOT A BUG (v5)** (2026-07-27) — recorded so it is not re-reported, and NOT fixed: the borrow is v4 behavior and changing it unilaterally would break the oracle comparison. The right repair is v4-first (give a user-initiated tool row the operator's identity, or suppress the borrow when `initiatedBy === 'user'`) → added to the post-5.0 v4-side list. The card is not *wrong* about who rolled — it says "You ran rng" — it is wrong about whose face to put on it |
 | 34 | Four Part-B walk items have no UI at all: **regenerate title**, **bulk reattribute**, **toggle agent mode**, **merge conversations** | **Not a defect — a known unwritten SPA lane (`p4.9e3`), plus one genuinely untracked item.** All four DO have v4 UI (surveyed 2026-07-27): regenerate-title has no button of its own and fires only from `ChatRenameModal`'s "Use automatic naming" checkbox (`ChatRenameModal.tsx:52,184-192`), reached from sidebar → Organize → **Rename**; bulk reattribute is `BulkCharacterReplaceModal` behind sidebar → **Edit Content** → "Bulk Replace" (`ChatSidebar.tsx:1636-1647`) — a whole sidebar section v5 has never had; agent mode is the "Agent On/Off" badge in the Chat section (`ChatSidebar.tsx:1116-1127`); merge is "Merge In…" in Organize (`ChatSidebar.tsx:1566-1576`). P4.9E3A landed all eleven SERVER verbs on 2026-07-26 and said so ("No UI can reach it this round"); P4.9E1B, the round's SPA lane, scoped to the cast dialogs + RNG. **The one real gap in the trail: the agent-mode toggle was tracked NOWHERE** — being a badge rather than a modal it fell between `m6-screen-parity.md`'s two tables | **NOT A BUG; TRAIL CORRECTED** `25dc4823` — the agent-mode row added to m6's sidebar-controls table; the stale "unported" claims in `chat-section.ts:71` and `organize-section.ts:17-21` corrected (they blamed missing server halves that have since landed, which materially understates how cheap `p4.9e3` now is — it is UI over a live boundary for everything except **Export**, whose verb really is still missing). The walk script's error, not the app's |
 
+- **The 2026-07-27 chat-action-round dogfood walk — Parts A–E, two fixes and two
+  non-bugs.** The first pass over the chat-action-remainder round (P4.9E1A ∥
+  P4.9E3A ∥ P4.9E1B ∥ P4.d22) plus the surfaces landed since 2026-07-24.
+  **Part A (chat cast)** — add / create-NPC / edit / remove / rebuild all work;
+  produced findings **#31** (off-scene announcement misattributed — FIXED, then
+  confirmed live) and **#32** (the Speaking-As latch — FIXED). Item 7, the
+  soft-removed participant reappearing in the off-scene picker, passes.
+  **Part B (chat admin)** — the RNG gutter works end to end (chip → send →
+  the character uses the number); **#33** (the tool card wears the last
+  speaker's face) is v4-faithful and queued v4-first; **#34** — regenerate
+  title / bulk reattribute / agent mode / merge have no UI at all, which is
+  `p4.9e3` and was the walk script's error, not the app's.
+  **Part C (Post Office)** — CLEAN. Insert Announcement with the
+  generate→regenerate→edit→approve loop, Compose Mail (delivered and whispered
+  correctly), and Whisper all render right.
+  **Part D (the Pascal availability gate)** — **CLEAN, every item**, on real
+  character sheets. This is the reassuring result of the walk: the surface was
+  nine days old and a leaking gate fails silently — a withheld tool simply
+  appears, and nothing announces it.
+  **Part E (the Story's Clock)** — PASS, items 22–25. **This closes the two
+  carry-overs owed since the 2026-07-24 walk** (Part F items 15 and 16): the
+  fictional clock advances and reads its base in the story's timezone (the
+  P4.d18 live proof), and the per-chat Core-whisper override persists through a
+  reload and works.
+  **One parity question raised and settled, recorded so it is not re-reported as
+  a gap:** the fictional clock's base cannot be edited from the sidebar after a
+  chat is created. That is v4's behavior — v4 renders `TimestampConfigCard` in
+  exactly two places, `NewChatForm.tsx:672` and the character's Defaults tab
+  (`ProfilesTab.tsx:385`), and nowhere in the chat settings tab or the sidebar.
+  v5 has both of those consumers (`new-chat-form.ts`, characters
+  `defaults-tab.ts`). Parity, not an omission.
+  **NOT walked — the next pass starts here:** Part F (Data & System: export /
+  import execute / backup / restore both modes / delete-all / tasks queue /
+  auto-lock / LLM log viewer — destructive, needs the scratch copy), Part G
+  (chunk-on-write: a fresh character's vault searchable without a reindex), and
+  Part H (retrospective-recall live behavior — finding #28's downstream look,
+  itself owed since 2026-07-24).
+
 - **The 2026-07-26 `231be14c` drift-round dogfood walk — CLEAN, zero
   findings.** The round: P4.d18 (the fictional story clock) ∥ P4.d19 (the
   Pascal availability gate + tool vocabulary) ∥ P4.d20 (the Workbench gate SPA)
