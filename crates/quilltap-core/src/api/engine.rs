@@ -2656,16 +2656,32 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            // Deferred (unported services / cheap-profile resolution) — the loud
-            // enumerated refusals (P4.6s tier-3).
-            Request::MemoryGenerateEmbeddings { .. } => match self.ready_db() {
-                Ok(_) => super::memories::not_available("generate-embeddings"),
+            // === P4.6BL tier 2: the two repair arms, un-refused over the live
+            // memory_embedding seam (the P4.6s refusals retire here). ===
+            Request::MemoryGenerateEmbeddings {
+                character_id,
+                batch_size,
+            } => match self.ready_memory_embedding() {
+                Ok((db, provider)) => {
+                    super::memories::memory_generate_embeddings(
+                        &db,
+                        &provider,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        batch_size,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
-            Request::MemoryRebuildIndex { .. } => match self.ready_db() {
-                Ok(_) => super::memories::not_available("rebuild-index"),
+            Request::MemoryRebuildIndex {
+                character_id,
+                confirm,
+            } => match self.ready_db() {
+                Ok(db) => super::memories::memory_rebuild_index(&db, &character_id, confirm).await,
                 Err(r) => r,
             },
+            // === end P4.6BL tier 2 ===
             Request::ChatQueueMemories { .. } => match self.ready_db() {
                 Ok(_) => super::memories::not_available("queue-memories"),
                 Err(r) => r,

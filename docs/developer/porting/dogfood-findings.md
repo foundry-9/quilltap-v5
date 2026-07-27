@@ -407,6 +407,22 @@ catch, since every fixture is built fresh.
   **Also owed with it:** a decision about the DEAD backlog on instances that ran
   v5 before the handler landed. Those chunks are not re-enqueued by anything;
   something has to sweep them, or they stay unsearchable forever.
+  **UPDATE (2026-07-27, lane P4.6BL): FIXED ON THE LANE BRANCH — the finding
+  CLOSES at the next dogfood walk's live proof, not before.** The handler is
+  ported over all four entity types (`services/embedding_generate_job.rs`,
+  incl. `isPermanentEmbeddingError` + the empty/oversize guards) and registered
+  live in the spine bundle; a tier-3 differential drives v4's REAL handler +
+  REAL queue claim/retry/DEAD machinery (18 processed steps, 8 tables). The
+  backlog heals three ways: a **boot repair pass** re-enqueues every
+  recoverable un-embedded conversation chunk on startup (a deliberate v5-only
+  repair — v4's own reconcile enqueues CONVERSATION_RENDER, whose handler v5
+  still lacks); mount chunks re-enqueue on the existing mount-refresh sweep;
+  memories via the backfill route plus the newly un-refused
+  `memoryGenerateEmbeddings` / `memoryRebuildIndex` repair verbs (tier 2 of
+  the same lane). The DEAD rows themselves stay (dedup ignores them; they are
+  visible and deletable in the Tasks Queue) — v4's mass-cancel shape lives in
+  the still-deferred EMBEDDING_REINDEX_ALL. The e2e instance has no API keys
+  by design, so the live proof (real embeds on the Friday copy) is the walk's.
 
 - **A dogfood re-check after an SPA fix needs a HARD RELOAD, not a server
   restart (2026-07-27 — it cost a full round trip).** Finding #31's fix was

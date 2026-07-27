@@ -1188,6 +1188,246 @@ async fn bump_access_times(db: &Db, character_id: &str, memory_ids: &[String]) {
         .await;
 }
 
+// ============================================================================
+// P4.6BL tier 2 — the two repair services behind the memories route arms
+// (v4 `generateMissingEmbeddings` / `rebuildVectorIndex`,
+// lib/memory/memory-service.ts:1325 / :1392).
+// ============================================================================
+
+/// v4 `generateMissingEmbeddings`'s `{ processed, failed, skipped }`.
+#[derive(Debug, Default, PartialEq)]
+pub struct GenerateMissingEmbeddingsResult {
+    pub processed: usize,
+    pub failed: usize,
+    /// Always 0 in v4 (the counter exists but nothing increments it) —
+    /// carried for response-shape fidelity.
+    pub skipped: usize,
+}
+
+/// v4 `rebuildVectorIndex`'s `{ indexed, failed }`.
+#[derive(Debug, Default, PartialEq)]
+pub struct RebuildVectorIndexResult {
+    pub indexed: usize,
+    pub failed: usize,
+}
+
+/// The anchors view a hydrated memory row satisfies in v4 (the `memory` object
+/// IS the `EpisodicAnchorView` there — `buildMemoryEmbeddingText(summary,
+/// content, memory)`).
+fn anchor_view_of(memory: &Value) -> crate::episodic::EpisodicAnchorView {
+    let entities = match memory.get("entities") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        Some(Value::String(raw)) => serde_json::from_str::<Vec<String>>(raw).unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    crate::episodic::EpisodicAnchorView {
+        occurred_at: memory
+            .get("occurredAt")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        narrative_time: memory
+            .get("narrativeTime")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        entities,
+    }
+}
+
+/// Decode the `Float32Array`-object shape `memories_read` emits for a stored
+/// embedding (`{"0": x, "1": y, …}`) back to a vector. `None` for anything
+/// else (null / absent / malformed).
+fn embedding_vec_of(memory: &Value) -> Option<Vec<f32>> {
+    let obj = memory.get("embedding")?.as_object()?;
+    let mut out = vec![0f32; obj.len()];
+    for (k, v) in obj {
+        let i: usize = k.parse().ok()?;
+        if i >= out.len() {
+            return None;
+        }
+        out[i] = v.as_f64()? as f32;
+    }
+    Some(out)
+}
+
+/// True when the row's stored embedding is absent or empty (v4's
+/// `!m.embedding || m.embedding.length === 0` filter).
+fn embedding_missing(memory: &Value) -> bool {
+    match embedding_vec_of(memory) {
+        Some(v) => v.is_empty(),
+        None => true,
+    }
+}
+
+/// v4 `generateMissingEmbeddings(characterId, { userId, batchSize })` — embed
+/// every memory that lacks an embedding, updating the row AND the in-memory
+/// vector store (flushed every `batch_size` successes and once at the end).
+/// A per-memory failure (embed OR write) is counted and the sweep continues
+/// (v4's catch → `failed++`). Uses the anchor-aware
+/// [`crate::episodic::build_memory_embedding_text`] — unlike the
+/// EMBEDDING_GENERATE handler's plain concat, and exactly like v4.
+pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    character_id: &str,
+    embedding_profile_id: Option<&str>,
+    batch_size: usize,
+) -> Result<GenerateMissingEmbeddingsResult, DbError> {
+    let cid = character_id.to_string();
+    let memories = db.read_main(move |c| memories_read::find_by_character_id(c, &cid))?;
+    let missing: Vec<&Value> = memories.iter().filter(|m| embedding_missing(m)).collect();
+
+    let cid = character_id.to_string();
+    let mut store = db.read_main(move |c| CharacterVectorStore::load(c, &cid))?;
+
+    let mut result = GenerateMissingEmbeddingsResult::default();
+    for memory in missing {
+        let id = memory
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let summary = memory
+            .get("summary")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let content = memory
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let anchors = anchor_view_of(memory);
+        let text = crate::episodic::build_memory_embedding_text(summary, content, Some(&anchors));
+
+        // v4's try block: embed → updateForCharacter → store.addVector. Any
+        // failure counts and the loop continues.
+        let step: Result<(), String> = async {
+            let embedded = provider
+                .generate_embedding_for_user(
+                    &text,
+                    user_id,
+                    embedding_profile_id,
+                    EmbeddingPriority::Background,
+                )
+                .await
+                .map_err(|e| e.message)?;
+            let (cid, mid, vec) = (
+                character_id.to_string(),
+                id.clone(),
+                embedded.embedding.clone(),
+            );
+            db.write(move |ws| {
+                let patch = crate::db::memories::MemUpdate {
+                    embedding: Some(Some(vec.clone())),
+                    ..Default::default()
+                };
+                ws.main()
+                    .memories()
+                    .update_for_character(&cid, &mid, &patch)
+            })
+            .await
+            .map_err(|e| format!("{e}"))?;
+            store
+                .add_vector(&id, embedded.embedding)
+                .map_err(|e| format!("{e}"))?;
+            Ok(())
+        }
+        .await;
+
+        match step {
+            Ok(()) => {
+                result.processed += 1;
+                // v4: save periodically every `batchSize` successes.
+                if batch_size > 0 && result.processed % batch_size == 0 {
+                    store = flush_store(db, store).await?;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::memories",
+                    memory_id = %id,
+                    character_id,
+                    error = %e,
+                    "[Memory] Failed to generate embedding for memory",
+                );
+                result.failed += 1;
+            }
+        }
+    }
+
+    // v4's final save.
+    flush_store(db, store).await?;
+    Ok(result)
+}
+
+/// v4 `rebuildVectorIndex(characterId, { userId })` — delete the character's
+/// vector index outright, then re-add every memory that HAS an embedding and
+/// persist. A per-memory add failure counts and the loop continues.
+pub async fn rebuild_vector_index(
+    db: &Db,
+    character_id: &str,
+) -> Result<RebuildVectorIndexResult, DbError> {
+    // v4 `manager.deleteStore(characterId)` → `repo.deleteByCharacterId`.
+    let cid = character_id.to_string();
+    db.write(move |ws| {
+        crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection())
+            .delete_by_character_id(&cid)
+            .map(|_| ())
+    })
+    .await?;
+
+    // v4 `manager.getStore` — a fresh (now empty) store.
+    let cid = character_id.to_string();
+    let mut store = db.read_main(move |c| CharacterVectorStore::load(c, &cid))?;
+
+    let cid = character_id.to_string();
+    let memories = db.read_main(move |c| memories_read::find_by_character_id(c, &cid))?;
+
+    let mut result = RebuildVectorIndexResult::default();
+    for memory in &memories {
+        let Some(vec) = embedding_vec_of(memory).filter(|v| !v.is_empty()) else {
+            continue;
+        };
+        let id = memory
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        match store.add_vector(&id, vec) {
+            Ok(()) => result.indexed += 1,
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::memories",
+                    memory_id = %id,
+                    character_id,
+                    error = %e,
+                    "[Memory] Failed to index memory",
+                );
+                result.failed += 1;
+            }
+        }
+    }
+
+    flush_store(db, store).await?;
+    Ok(result)
+}
+
+/// Run `store.flush` through the writer, handing the store back (the loop keeps
+/// mutating it between flushes).
+async fn flush_store(
+    db: &Db,
+    mut store: CharacterVectorStore,
+) -> Result<CharacterVectorStore, DbError> {
+    db.write(move |ws| {
+        let repo = crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection());
+        store.flush(&repo)?;
+        Ok(store)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,147 @@
+{
+  "_comment": "Corpus for the EMBEDDING_GENERATE tier-3 family (P4.6BL). Consumed by build-embedding-generate-fixture.ts (the seed builder), embedding-generate-jobs.test.ts (the v4 oracle), and embedding_generate_jobs_equivalence.rs (the Rust diff). The oversize entity's content is materialized by the builder as 'x'.repeat(oversizeChars) — the guard cap is EMBEDDING_MAX_CHARS = 131072.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "00000000-0000-4000-8000-0000000000aa",
+  "profileId": "00000000-0000-4000-8000-00000000e0f1",
+  "seedTimestamp": "2026-07-01T12:00:00.000Z",
+  "embedVector": [1, 0, 0, 0, 0, 0, 0, 0],
+  "oversizeChars": 131073,
+  "character": {
+    "id": "c0000000-0000-4000-8000-000000000001",
+    "name": "Ada",
+    "controlledBy": "llm"
+  },
+  "secondCharacter": {
+    "id": "c0000000-0000-4000-8000-000000000002",
+    "name": "Blank",
+    "controlledBy": "llm"
+  },
+  "embeddingProfile": {
+    "id": "00000000-0000-4000-8000-00000000e0f1",
+    "name": "Default TF-IDF",
+    "provider": "BUILTIN",
+    "modelName": "builtin-tfidf"
+  },
+  "chatId": "aa000000-0000-4000-8000-000000000001",
+  "memories": [
+    {
+      "id": "ae000000-0000-4000-8000-000000000001",
+      "summary": "Ada's first embedding",
+      "content": "Ada catalogued the aether coils."
+    },
+    {
+      "id": "ae000000-0000-4000-8000-000000000002",
+      "summary": "Ada's second embedding",
+      "content": "Ada rewired the persistometer."
+    },
+    {
+      "id": "ae000000-0000-4000-8000-000000000003",
+      "summary": "perm failure memory",
+      "content": "This memory is deterministically unembeddable.",
+      "occurredAt": "2026-06-15T09:30:00.000Z"
+    }
+  ],
+  "_occurredAtNote": "mem3's occurredAt makes the anchor-aware embed text of the tier-2 sweep DIFFER from the handler's plain concat: the handler phase embeds the plain text (registered as a permanent failure), the route sweep embeds the anchored text (which succeeds) — a port that used the wrong builder on either side lands on the other text and diverges loudly.",
+  "orphanVectorEntryId": "fe000000-0000-4000-8000-0000000000fe",
+  "seedVectorEntryForMemoryId": "ae000000-0000-4000-8000-000000000002",
+  "conversationChunks": [
+    {
+      "id": "cc000000-0000-4000-8000-000000000001",
+      "interchangeIndex": 0,
+      "content": "USER: Hello there.\nADA: Splendid to see you.",
+      "participantNames": ["User", "Ada"]
+    },
+    {
+      "id": "cc000000-0000-4000-8000-000000000002",
+      "interchangeIndex": 1,
+      "content": "   ",
+      "participantNames": []
+    },
+    {
+      "id": "cc000000-0000-4000-8000-000000000003",
+      "interchangeIndex": 2,
+      "content": "A chunk whose embedding call flakes.",
+      "participantNames": ["User"]
+    }
+  ],
+  "helpDocs": [
+    {
+      "id": "bd000000-0000-4000-8000-000000000001",
+      "title": "Aurora",
+      "path": "help/aurora.md",
+      "url": "/help/aurora",
+      "content": "Aurora is the memory subsystem.",
+      "contentHash": "hash-aurora-1"
+    }
+  ],
+  "mountChunks": [
+    {
+      "id": "dc000000-0000-4000-8000-000000000001",
+      "linkId": "d1000000-0000-4000-8000-0000000000bb",
+      "mountPointId": "d0000000-0000-4000-8000-0000000000aa",
+      "chunkIndex": 0,
+      "content": "The mount chunk about gears.",
+      "tokenCount": 6,
+      "headingContext": "Gears"
+    },
+    {
+      "id": "dc000000-0000-4000-8000-000000000002",
+      "linkId": "d1000000-0000-4000-8000-0000000000bb",
+      "mountPointId": "d0000000-0000-4000-8000-0000000000aa",
+      "chunkIndex": 1,
+      "content": "OVERSIZE_PLACEHOLDER",
+      "tokenCount": 32768,
+      "headingContext": null
+    }
+  ],
+  "oversizeMountChunkId": "dc000000-0000-4000-8000-000000000002",
+  "failingTexts": [
+    {
+      "text": "perm failure memory\n\nThis memory is deterministically unembeddable.",
+      "message": "This model's maximum context length is 8192 tokens"
+    },
+    {
+      "text": "A chunk whose embedding call flakes.",
+      "message": "fetch failed"
+    }
+  ],
+  "statusRows": [
+    { "id": "e5000000-0000-4000-8000-000000000001", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000001" },
+    { "id": "e5000000-0000-4000-8000-000000000002", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000002" },
+    { "id": "e5000000-0000-4000-8000-000000000003", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000003" },
+    { "id": "e5000000-0000-4000-8000-000000000004", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-00000000dead" },
+    { "id": "e5000000-0000-4000-8000-000000000005", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000001" },
+    { "id": "e5000000-0000-4000-8000-000000000006", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000002" },
+    { "id": "e5000000-0000-4000-8000-000000000007", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000003" },
+    { "id": "e5000000-0000-4000-8000-000000000008", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-00000000dead" },
+    { "id": "e5000000-0000-4000-8000-000000000009", "entityType": "HELP_DOC", "entityId": "bd000000-0000-4000-8000-000000000001" },
+    { "id": "e5000000-0000-4000-8000-00000000000a", "entityType": "HELP_DOC", "entityId": "bd000000-0000-4000-8000-00000000dead" },
+    { "id": "e5000000-0000-4000-8000-00000000000b", "entityType": "MOUNT_CHUNK", "entityId": "dc000000-0000-4000-8000-000000000002" },
+    { "id": "e5000000-0000-4000-8000-00000000000c", "entityType": "MOUNT_CHUNK", "entityId": "dc000000-0000-4000-8000-00000000dead" }
+  ],
+  "routeCases": [
+    { "name": "gen-happy", "kind": "generate", "body": { "characterId": "c0000000-0000-4000-8000-000000000001" } },
+    { "name": "gen-all-embedded", "kind": "generate", "body": { "characterId": "c0000000-0000-4000-8000-000000000002" } },
+    { "name": "gen-missing-character", "kind": "generate", "body": { "characterId": "00000000-0000-4000-8000-0000000000ff" } },
+    { "name": "gen-invalid-batch", "kind": "generate", "body": { "characterId": "c0000000-0000-4000-8000-000000000001", "batchSize": 0 } },
+    { "name": "rebuild-happy", "kind": "rebuild", "body": { "characterId": "c0000000-0000-4000-8000-000000000001", "confirm": true } },
+    { "name": "rebuild-unconfirmed", "kind": "rebuild", "body": { "characterId": "c0000000-0000-4000-8000-000000000001", "confirm": false } },
+    { "name": "rebuild-missing-character", "kind": "rebuild", "body": { "characterId": "00000000-0000-4000-8000-0000000000ff", "confirm": true } }
+  ],
+  "jobs": [
+    { "id": "0b000000-0000-4000-8000-000000000001", "name": "mem-happy", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000001", "characterId": "c0000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:01.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000002", "name": "mem-existing-entry", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000002", "characterId": "c0000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:02.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000003", "name": "mem-permanent-failure", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-000000000003", "characterId": "c0000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:03.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000004", "name": "mem-missing", "entityType": "MEMORY", "entityId": "ae000000-0000-4000-8000-00000000dead", "characterId": "c0000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:04.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000005", "name": "cc-happy", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000001", "chatId": "aa000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:05.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000006", "name": "cc-empty-input", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000002", "chatId": "aa000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:06.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000007", "name": "cc-transient-failure", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-000000000003", "chatId": "aa000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:07.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000008", "name": "cc-missing", "entityType": "CONVERSATION_CHUNK", "entityId": "cc000000-0000-4000-8000-00000000dead", "chatId": "aa000000-0000-4000-8000-000000000001", "priority": 10, "createdAt": "2026-07-01T12:00:08.000Z" },
+    { "id": "0b000000-0000-4000-8000-000000000009", "name": "hd-happy", "entityType": "HELP_DOC", "entityId": "bd000000-0000-4000-8000-000000000001", "priority": 0, "createdAt": "2026-07-01T12:00:09.000Z" },
+    { "id": "0b000000-0000-4000-8000-00000000000a", "name": "hd-missing", "entityType": "HELP_DOC", "entityId": "bd000000-0000-4000-8000-00000000dead", "priority": 0, "createdAt": "2026-07-01T12:00:10.000Z" },
+    { "id": "0b000000-0000-4000-8000-00000000000b", "name": "mc-happy-no-status-row", "entityType": "MOUNT_CHUNK", "entityId": "dc000000-0000-4000-8000-000000000001", "priority": 0, "createdAt": "2026-07-01T12:00:11.000Z" },
+    { "id": "0b000000-0000-4000-8000-00000000000c", "name": "mc-oversize", "entityType": "MOUNT_CHUNK", "entityId": "dc000000-0000-4000-8000-000000000002", "priority": 0, "createdAt": "2026-07-01T12:00:12.000Z" },
+    { "id": "0b000000-0000-4000-8000-00000000000d", "name": "mc-missing", "entityType": "MOUNT_CHUNK", "entityId": "dc000000-0000-4000-8000-00000000dead", "priority": 0, "createdAt": "2026-07-01T12:00:13.000Z" },
+    { "id": "0b000000-0000-4000-8000-00000000000e", "name": "bogus-entity-type", "entityType": "BOGUS", "entityId": "ba000000-0000-4000-8000-000000000001", "priority": 0, "createdAt": "2026-07-01T12:00:14.000Z" }
+  ]
+}

@@ -108,6 +108,10 @@ pub struct CannedEmbeddingProvider {
     responses: HashMap<String, EmbeddingResult>,
     failures: HashSet<String>,
     failure_message: String,
+    /// Per-text failure messages (P4.6BL) — for corpora whose failure arms
+    /// carry DIFFERENT pinned messages (the EMBEDDING_GENERATE permanent vs
+    /// transient classifier split). Checked before the global `failures` set.
+    per_text_failures: HashMap<String, String>,
 }
 
 impl CannedEmbeddingProvider {
@@ -117,6 +121,7 @@ impl CannedEmbeddingProvider {
             responses: HashMap::new(),
             failures: HashSet::new(),
             failure_message: "canned embedding failure".to_string(),
+            per_text_failures: HashMap::new(),
         }
     }
 
@@ -155,6 +160,13 @@ impl CannedEmbeddingProvider {
         self.failure_message = message.into();
         self
     }
+
+    /// Mark `text` as always failing with ITS OWN message (P4.6BL) — takes
+    /// precedence over the global failure set/message.
+    pub fn with_failure_for(mut self, text: impl Into<String>, message: impl Into<String>) -> Self {
+        self.per_text_failures.insert(text.into(), message.into());
+        self
+    }
 }
 
 impl EmbeddingProvider for CannedEmbeddingProvider {
@@ -167,7 +179,9 @@ impl EmbeddingProvider for CannedEmbeddingProvider {
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         // Resolve synchronously so the returned future owns its result and is
         // `'static` + `Send` (no borrow of `&self` escapes into the future).
-        let result = if self.failures.contains(text) {
+        let result = if let Some(message) = self.per_text_failures.get(text) {
+            Err(EmbeddingError::new(message.clone()))
+        } else if self.failures.contains(text) {
             Err(EmbeddingError::new(self.failure_message.clone()))
         } else {
             match self.responses.get(text) {

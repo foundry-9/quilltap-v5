@@ -1,11 +1,12 @@
 //! The embedding-status repository — a Phase-2 repo port. Ports v4's
 //! `lib/database/repositories/embedding-status.repository.ts`.
 //!
-//! Scope: `create`, `update`, and `delete`. The custom helpers —
-//! `upsertByEntity`/`markAsEmbedded`/`markAsFailed`/`markAllPendingByProfileId`/
-//! the by-entity / by-profile finders and deletes / `getStatsByProfileId` — are
-//! out of scope. `embedding_status` tracks the embedding status of entities
-//! (memories, files, etc.) per embedding profile.
+//! Scope: `create`, `update`, `delete`, and (P4.6BL) the mark helpers
+//! `markAsEmbedded`/`markAsFailed` the EMBEDDING_GENERATE handler writes through.
+//! The remaining custom helpers — `upsertByEntity`/`markAllPendingByProfileId`/
+//! the by-profile finders and deletes / `getStatsByProfileId` — stay out of
+//! scope. `embedding_status` tracks the embedding status of entities (memories,
+//! files, etc.) per embedding profile.
 //!
 //! ## ⚠️ This repo OVERRIDES the base `create`/`update` — `updatedAt` is minted,
 //! not pinnable
@@ -187,6 +188,83 @@ impl<'c> EmbeddingStatusRepository<'c> {
 
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `findByEntity` reduced to the id — the status row for one
+    /// (entityType, entityId, profileId) triple. v4's `findOne` takes the first
+    /// match in collection (rowid) order; the triple is unique in practice (one
+    /// row per entity per profile), so `LIMIT 1` without an ORDER BY mirrors it.
+    fn find_id_by_entity(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+        profile_id: &str,
+    ) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id FROM embedding_status \
+                 WHERE entityType = ?1 AND entityId = ?2 AND profileId = ?3 LIMIT 1",
+                params![entity_type, entity_id, profile_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `markAsEmbedded` — flip the entity's status row to `EMBEDDED`, stamp
+    /// `embeddedAt`, and CLEAR `error` (v4 sets `error: null` explicitly).
+    /// Returns `Ok(false)` when no status row exists for the triple: v4 returns
+    /// `null` **without creating one** — the row is minted at enqueue time by the
+    /// callers that track status, and a marker never invents it.
+    ///
+    /// Two clock reads, in v4's order: `embeddedAt` is read when the patch is
+    /// built (`this.getCurrentTimestamp()` in `markAsEmbedded`), then `update`
+    /// mints its own `now` for `updatedAt`.
+    pub fn mark_as_embedded(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+        profile_id: &str,
+    ) -> Result<bool, DbError> {
+        let Some(id) = self.find_id_by_entity(entity_type, entity_id, profile_id)? else {
+            return Ok(false);
+        };
+        let embedded_at = clock::now_iso();
+        let updated_at = clock::now_iso();
+        let affected = self.conn.execute(
+            "UPDATE embedding_status \
+             SET status = 'EMBEDDED', embeddedAt = ?1, error = NULL, updatedAt = ?2 \
+             WHERE id = ?3",
+            params![embedded_at, updated_at, id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `markAsFailed` — flip the entity's status row to `FAILED` and record
+    /// the error message. `embeddedAt` is deliberately untouched (v4's patch
+    /// names only `status` + `error`). Returns `Ok(false)` when no status row
+    /// exists for the triple (v4 returns `null` without creating one).
+    pub fn mark_as_failed(
+        &self,
+        entity_type: &str,
+        entity_id: &str,
+        profile_id: &str,
+        error: &str,
+    ) -> Result<bool, DbError> {
+        let Some(id) = self.find_id_by_entity(entity_type, entity_id, profile_id)? else {
+            return Ok(false);
+        };
+        let updated_at = clock::now_iso();
+        let affected = self.conn.execute(
+            "UPDATE embedding_status \
+             SET status = 'FAILED', error = ?1, updatedAt = ?2 \
+             WHERE id = ?3",
+            params![error, updated_at, id],
+        )?;
         Ok(affected > 0)
     }
 

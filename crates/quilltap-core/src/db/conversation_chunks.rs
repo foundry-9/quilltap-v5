@@ -121,6 +121,18 @@ pub struct EmbeddedChunk {
     pub embedding: Vec<f32>,
 }
 
+/// A chunk row as the EMBEDDING_GENERATE handler reads it (P4.6BL) — v4
+/// `findById` narrowed to the fields the handler consumes (`content` to embed,
+/// `interchangeIndex` for its log line).
+#[derive(Debug, Clone)]
+pub struct CcChunkRow {
+    pub id: String,
+    pub chat_id: String,
+    /// `interchangeIndex` — a JS number (REAL affinity); carried as `f64`.
+    pub interchange_index: f64,
+    pub content: String,
+}
+
 impl<'c> ConversationChunksRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
@@ -275,6 +287,55 @@ impl<'c> ConversationChunksRepository<'c> {
 
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `findById` (P4.6BL), narrowed to the handler-read fields (see
+    /// [`CcChunkRow`]). `None` when no row matches.
+    pub fn find_row_by_id(&self, id: &str) -> Result<Option<CcChunkRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, chatId, interchangeIndex, content \
+                 FROM conversation_chunks WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(CcChunkRow {
+                        id: row.get(0)?,
+                        chat_id: row.get(1)?,
+                        interchange_index: row.get(2)?,
+                        content: row.get(3)?,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `updateEmbedding` (P4.6BL) — set just the `embedding` BLOB on a chunk
+    /// (+ the minted `updatedAt`, injected here as `now_iso` per this repo's
+    /// convention). The vector serializes exactly as `create` does (`empty →
+    /// SQL NULL`, else Float32 LE bytes). Returns `Ok(false)` when no row
+    /// matched — v4 THROWS `` `Chunk not found for embedding update: ${id}` ``
+    /// there; the EMBEDDING_GENERATE handler (its only caller) formats that
+    /// exact string so the persisted error text matches byte-for-byte.
+    pub fn update_embedding(
+        &self,
+        id: &str,
+        embedding: &[f32],
+        now_iso: &str,
+    ) -> Result<bool, DbError> {
+        let embedding_blob: Option<Vec<u8>> = if embedding.is_empty() {
+            None
+        } else {
+            Some(float32_to_blob(embedding))
+        };
+        let affected = self.conn.execute(
+            "UPDATE conversation_chunks SET embedding = ?1, updatedAt = ?2 WHERE id = ?3",
+            params![embedding_blob, now_iso, id],
+        )?;
         Ok(affected > 0)
     }
 

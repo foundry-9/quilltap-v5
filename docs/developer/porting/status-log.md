@@ -38985,3 +38985,213 @@ arms at :2661–2668, which it owns; D24 touches none of them.
   Prospero rider, noted in E3C.
 - `p4.9i2` (help/HelpChat), `p4.9h2`, the `chat_settings` explicit-`null`
   gap, `browserUserAgent`, D21 — the standing pools, unchanged.
+
+## Lane P4.6BL — the EMBEDDING_GENERATE job handler (dogfood finding #35)
+
+### Units 1–2 + 4 — the handler port + repo writes + the tier-3 differential (2026-07-27)
+
+**What landed.** `services/embedding_generate_job.rs`: the lenient payload
+decode (v4 does a bare cast — an absent `entityType` reaches v4's
+`Unsupported entity type: undefined` throw, reproduced), `EMBEDDING_MAX_CHARS`
+(128 × 1024 — previously unported anywhere in v5), the two pre-flight guards as
+`preflight_skip_reason` (JS-length semantics: `jsstr::utf16_len` +
+`jsstr::js_trim`; the boundary is `>`, not `>=`, and the unit test pins a
+surrogate-pair case), `is_permanent_embedding_error` (six substrings,
+lowercased), and `handle_embedding_generate<E: EmbeddingProvider>` over all
+four entity branches. `Ok(())` completes the job (guard-skip, permanent-error,
+and missing-entity arms included); `Err(msg)` fails it into the ported
+retry/backoff → DEAD. New repo writes (unit 1):
+`embedding_status::{mark_as_embedded, mark_as_failed}` (find-by-triple,
+null-when-missing — **never creates a row**, v4-faithful; `mark_as_embedded`
+clears `error` and stamps `embeddedAt` with v4's two-clock-read order),
+`conversation_chunks::update_embedding`, `doc_mount_chunks::update_embedding`,
+`help_docs::update_embedding` (each `Ok(false)` on a missing row — v4 THROWS
+there and the handler formats v4's exact message, e.g.
+`Chunk not found for embedding update: <id>`), plus the three `find_by_id`
+reads the branches need. `CannedEmbeddingProvider` grew `with_failure_for`
+(per-text failure messages — the permanent/transient split needs two).
+
+**v4 quirks reproduced deliberately** (the order flagged both): the
+missing-entity asymmetry — MEMORY / HELP_DOC / MOUNT_CHUNK mark the status row
+failed (`'<X> not found'`), CONVERSATION_CHUNK only logs and returns; and the
+MEMORY branch embeds the plain `` `${summary}\n\n${content}` `` concat, NOT the
+anchor-aware `build_memory_embedding_text` the gate's create path uses.
+
+**Reconciled semantics (order tier-1 item 3).** v4's
+`getVectorStoreManager().unloadStore(characterId)` (:182) and
+`invalidateMountPoint` (:446) both map to **documented no-ops**: v5 loads
+`CharacterVectorStore` fresh per operation (no cached manager — verified by
+call-site survey: memory_gate/memory_service/housekeeping all `load` per use)
+and has no in-memory mount-chunk cache (the search path reads the DB; the
+established no-op seam). The MEMORY branch's vector writes go direct to the
+tables (`entry_exists` → `update_entry_embedding`/`add_entry`, then
+`save_meta`), exactly as v4's comment prescribes.
+
+**The differential** (`embedding_generate_jobs_equivalence`, env
+`QT_ORACLE_EG`): a NEW committed fixture family
+`crates/quilltap-web/tests/fixtures/embedding-generate-{main,mount}.db` built
+by v4's REAL repo creates (`build-embedding-generate-fixture.ts` over
+`embedding-generate-jobs.json`): one fully-provisioned character, three
+memories (happy / existing-vector-entry / permanent-failure), three
+conversation chunks (happy / whitespace-only / transient-failure), one help
+doc, two mount chunks (happy — deliberately with NO embedding_status row,
+pinning that the markers never create one — and oversize,
+`'x'.repeat(131073)`), 12 PENDING status rows, and **14 pinned PENDING jobs**
+including four missing-entity ids and a BOGUS entity type. The seed
+`vector_indices` meta deliberately carries the WRONG dimensions (4 vs 8) so
+`save_meta` is a visible value change, not a normalized timestamp. The oracle
+(`embedding-generate-jobs.test.ts`) drives v4's REAL `handleEmbeddingGenerate`
+through v4's REAL `claimNextJob`/`markCompleted`/`markFailed` in a claim loop
+(when nothing is due, FAILED retry-eligible rows' `scheduledAt` is rewound by
+raw SQL — identical on both sides — so the backoff's wall wait never enters the
+differential), mocking ONLY `generateEmbeddingForUser` (record-and-replay;
+per-text failure messages recorded as `cannedEmbeddingFailure` rows). The Rust
+side replays the recorded provider through the ported handler + ported
+claim/mark, asserts the 18-step processed sequence element-for-element (claim
+order, the permanent-completes/transient-dies split, DEAD after exactly 3
+attempts for the transient and BOGUS jobs), then diffs EIGHT tables
+(`background_jobs`, `embedding_status`, `memories`, `vector_entries`,
+`vector_indices`, `conversation_chunks`, `help_docs` main +
+`doc_mount_chunks` mount) with minted timestamps placeholdered and everything
+else EXACT — this family mints no UUIDs. Corpus-shape assertions: processed id
+set == spec job set; failure recordings == spec `failingTexts`; table count ==
+the diffed list. **First run was green, so the diff was mutation-tested three
+ways** (the P4.9G6 rule): a broadened classifier → sequence-length divergence;
+the asymmetry broken → `embedding_status` row 7 FAILED-vs-PENDING; `save_meta`
+skipped → `vector_indices` dimensions 4-vs-8. All three caught; restored green.
+
+**Regen recipe** (Node 24, from `~/source/quilltap-server` at `e8a49597`;
+drift-checked clean at lane start):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5=<worktree>
+QT_FIXTURE_OUT=/tmp/qt-eg-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-eg-mount.db \
+  $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-generate-fixture.ts
+cp /tmp/qt-eg-main.db  $V5/crates/quilltap-web/tests/fixtures/embedding-generate-main.db
+cp /tmp/qt-eg-mount.db $V5/crates/quilltap-web/tests/fixtures/embedding-generate-mount.db
+mkdir -p /tmp/qt-eg-oracle/cases /tmp/qt-eg-oracle/fixtures
+cp $V5/harness/oracle/cases/embedding-generate-jobs.test.ts /tmp/qt-eg-oracle/cases/
+cp $V5/harness/oracle/fixtures/embedding-generate-jobs.json /tmp/qt-eg-oracle/fixtures/
+TZ=UTC QT_FIXTURE_EG_MAIN=/tmp/qt-eg-main.db QT_FIXTURE_EG_MOUNT=/tmp/qt-eg-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-embedding-generate.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots /tmp/qt-eg-oracle/cases -- embedding-generate-jobs
+TZ=UTC QT_ORACLE_EG=/tmp/oracle-embedding-generate.ndjson \
+  cargo test -p quilltap-harness --test embedding_generate_jobs_equivalence
+```
+Versions: core 0.0.382, harness 0.0.329.
+
+### Unit 3 — the spine registration (2026-07-27)
+
+`EmbeddingGenerateJobHandler` in `quilltap-host/src/spine.rs` (a labelled
+`// === P4.6BL ===` region): decode the payload, build the same
+`ApiEmbeddingProvider` the extraction handlers use, run the differential-
+verified core handler. Registered in the spine bundle's `job_handlers` vec —
+the loud "recognized but not yet available" fallback for EMBEDDING_GENERATE
+retires **by registration** (no `KNOWN_JOB_TYPES` edit), exactly as the order
+prescribes. ⚠ Production cost note: once a real embedding profile is
+configured, every claimed job makes one embedding-provider call (the BUILTIN
+TF-IDF path costs nothing; cloud profiles cost real money — the same cadence
+v4 has always had).
+
+### Unit 5 — the backlog heal (tier-1 item 6): decisions + the boot repair (2026-07-27)
+
+1. **Dedup verified in source AND under test**: `find_pending_for_entity`
+   counts only `PENDING`/`PROCESSING` (`db/background_jobs.rs:786`), so DEAD
+   rows never block re-enqueue; the repair's unit test pins it
+   (`dedups_in_flight_but_not_dead`).
+2. **Live healing paths per family** (call-site survey): MOUNT_CHUNK — the
+   mount-refresh sweep + scoped reindex enqueue only unembedded chunks
+   (`reindex.rs:280`, live via `api/mount_files.rs`); CONVERSATION_CHUNK —
+   cold-chunk re-embed on chat reopen (`cold_chunk_reembed.rs`, live via
+   `api/salon.rs:183`; its query is `embedding IS NULL AND trim(content) !=
+   ''`, so it catches never-embedded chunks too, per chat, on use); MEMORY —
+   the backfill route (`api/memories.rs:1385`, live) + this lane's tier-2
+   un-refusals; HELP_DOC — the sync enqueue exists but
+   `ensure_help_docs_synced` has no production caller (the PRE-EXISTING
+   named deferral in `services/help_doc_sync.rs`; nothing mints HELP_DOC
+   jobs in v5 today, so there is no HELP_DOC backlog to heal).
+3. **The startup reconcile is NOT ported, and porting it verbatim was
+   REJECTED — deferred loudly instead.** v4's
+   `lib/startup/reconcile-conversation-rendering.ts` heals by enqueuing
+   CONVERSATION_RENDER, whose handler v5 has not ported (it sits on the
+   runner's loud fallback; `chat_admin.rs:440`'s render action already mints
+   such jobs). A verbatim port would mint a fresh batch of DEAD render jobs
+   on every boot — re-creating finding #35's wound one job type over. The
+   reconcile port lands WITH the CONVERSATION_RENDER handler (a future
+   order; recorded here by name with its v4 path).
+4. **The boot repair pass** (`services/embedding_backlog_repair.rs`, wired in
+   `host.rs::seed_built_ins`'s P4.6BL region): a **deliberate v5-only
+   repair** (the P4.d7 precedent; the wound is v5-only) that takes v4's
+   reconcile arm (B) — the recoverable-chunk filter, `LENGTH(content)
+   BETWEEN 1 AND EMBEDDING_MAX_CHARS`, verbatim SQL semantics — and enqueues
+   EMBEDDING_GENERATE directly. Idempotent; no-op on a healthy instance;
+   skips quietly with no default profile / no user / missing tables (the
+   P4.9G3 lazily-created-tables lesson); per-entity dedup as v4's enqueue.
+   Four unit tests. It retires in favor of the full reconcile when
+   CONVERSATION_RENDER lands. ⚠ Boot-time spend note: on a backlogged
+   instance with a cloud embedding profile the repair's jobs cost one
+   embedding call per chunk — the same cost v4's own boot reconcile has
+   always incurred (its render jobs chain to the same embeds).
+5. **DEAD-row disposition: leave them.** They are inert (the dedup ignores
+   them), visible in the Data & System Tasks Queue, and deletable there via
+   the live per-job verbs. v4's only mass-cancel of stale EMBEDDING_GENERATE
+   jobs lives in EMBEDDING_REINDEX_ALL (`embedding-reindex.ts:111`), which
+   stays a named tier-3 deferral — mirroring that shape means NOT inventing
+   a bespoke sweep here.
+
+### Unit 6 (tier 2) — the two repair verbs un-refused + unit 8's audit (2026-07-27)
+
+`memoryGenerateEmbeddings` / `memoryRebuildIndex` are LIVE:
+`services/memory_service.rs` gains `generate_missing_embeddings` (the
+anchor-aware `build_memory_embedding_text` sweep — deliberately DIFFERENT
+from the handler's plain concat, exactly as in v4 — with the per-`batchSize`
+store flush and the count-and-continue failure arm) and
+`rebuild_vector_index` (deleteStore → fresh store → re-add every embedded
+memory → flush); `api/memories.rs` gains the two route arms (Zod-order
+parity: parse → character 404 → profile gate 400 → the all-embedded early
+return; the Zod `details` array remains the standing repo-wide deferral —
+the 400 pins `Validation error` alone and the differential drops `details`
+from oracle bodies, documented in-test); `engine.rs`'s two refusal arms
+retire (surgical, `ChatQueueMemories` stays refusal-armed — not this
+family). The differential grew a **route phase**: seven cases driven through
+v4's REAL route handlers (POST/PUT `?action=embeddings` via
+`createAuthenticatedHandler` with the memories-routes session/startup
+mocks) after the claim loop, compared status+body against the ported arms
+over the same state, with the table dumps capturing both phases. The corpus
+was hardened for sensitivity: mem3 carries `occurredAt` so the sweep's
+anchored text DIFFERS from the handler's plain text (a wrong-builder port on
+either side lands on the other text and diverges — mutation-verified), and
+an ORPHAN vector entry pins rebuild's deleteStore (skip it and the orphan
+survives — mutation-verified). Fixture additions: the users row (the route
+phase 500s without it — `createAuthenticatedHandler` resolves the session
+against `users`), the default BUILTIN embedding profile, the zero-memory
+second character. Uncovered arm (recorded): the generate-embeddings
+"No embedding profile configured" 400 — the fixture must carry the default
+profile for the happy paths, and the route session is single-user, so that
+arm has no reachable case; the v5 code path mirrors v4's line-for-line.
+**Unit 8 audit result:** the CLI's `docs status` / `docs embed` are
+THEMSELVES still refusal-armed ("recognized but not yet available",
+`quilltap-cli/src/docs_cmd.rs:219` — the pre-existing P4.6y `quilltap docs`
+deferral), so they never reach the queue; nothing to prove until that
+surface lands, at which point they enqueue through the now-handled verbs.
+
+### Lane P4.6BL — the verification gate (2026-07-27)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+warnings` clean on BOTH feature sets (default + `quilltap-core/
+native-transport`); `cargo test --workspace --no-fail-fast` with every family
+env var set: **391 test binaries / 1,657 tests / 0 failed** (cargo exit 0),
+the lane's `embedding_generate_jobs_equivalence` RUNNING (not SKIP) inside
+the sweep; `cargo build --release` clean. Ten reachable families re-run BY
+NAME over oracles regenerated FRESH from the clean v4 checkout at `e8a49597`
+(each regen its own invocation): embedding_generate_jobs (14 jobs / 18
+processed steps / 7 route cases / 8 tables), memory_pipeline_jobs_tier3 (10
+cases), background_jobs tier-2, embedding_status tier-2, conversation_chunks
+tier-2, doc_mount_chunks tier-2, help_docs_upsert tier-2, help_doc_sync,
+memories tier-2, memories_routes — all green, zero SKIP lines.
+`help_doc_ensure` was NOT regenerated: the lane's help_docs change is purely
+additive (two new methods; no existing query touched), so that family's
+committed behavior is out of the blast radius — recorded rather than assumed
+away. **No SPA run owed — `apps/web/**` untouched.** The live proof (real
+embeds on the Friday copy, the boot repair observed draining the backlog) is
+the next dogfood walk's — the e2e instance has no API keys by design.
+Versions: core 0.0.382, harness 0.0.329, host 0.0.42.

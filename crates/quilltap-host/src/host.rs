@@ -727,6 +727,31 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
                 quilltap_core::clock::now_unix_ms(),
             )?;
+            // === P4.6BL ===
+            // The unembedded-conversation-chunk boot repair — a deliberate
+            // v5-only repair for the finding-#35 backlog (jobs died on the
+            // missing EMBEDDING_GENERATE handler; the chunks they were minted
+            // for stayed unembedded with no automatic path back). Takes v4's
+            // startup-reconcile arm (B) and enqueues EMBEDDING_GENERATE
+            // directly; retires in favor of a full reconcile port when the
+            // CONVERSATION_RENDER handler lands. No-op on a healthy instance;
+            // skips quietly without a profile/user or on missing tables.
+            match quilltap_core::services::embedding_backlog_repair::repair_unembedded_conversation_chunks(main) {
+                Ok(r) if r.enqueued > 0 => tracing::info!(
+                    target: "quilltap::boot",
+                    scanned = r.scanned,
+                    enqueued = r.enqueued,
+                    reused = r.reused,
+                    "Embedding backlog repair enqueued re-embed jobs",
+                ),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(
+                    target: "quilltap::boot",
+                    error = %e,
+                    "Embedding backlog repair failed, continuing startup",
+                ),
+            }
+            // === end P4.6BL ===
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;

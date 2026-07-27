@@ -1464,3 +1464,117 @@ pub async fn memory_backfill_start(db: &Db, user_id: &str, bag: Value) -> Respon
         "message": message,
     }))
 }
+
+// ============================================================================
+// P4.6BL tier 2 — the two un-refused repair arms.
+// ============================================================================
+
+/// v4 POST `?action=embeddings` → `handleGenerateEmbeddings`
+/// (`app/api/v1/memories/route.ts:963`): Zod parse (uuid + batchSize 1–50,
+/// prefault 10), character ownership, default-profile gate, the all-embedded
+/// early return, else the synchronous `generateMissingEmbeddings` sweep.
+/// The Zod `details` array is the standing repo-wide deferral — the 400 body
+/// carries the middleware's `Validation error` message alone.
+pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    character_id: &str,
+    batch_size: Option<i64>,
+) -> Response {
+    if !super::chat_outfits::is_zod_uuid(character_id) {
+        return bad_request("Validation error");
+    }
+    // `z.number().min(1).max(50).prefault(10)`.
+    let batch = batch_size.unwrap_or(10);
+    if !(1..=50).contains(&batch) {
+        return bad_request("Validation error");
+    }
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    // v4: `repos.embeddingProfiles.findDefault(user.id)` — absent → 400.
+    let uid = user_id.to_string();
+    match db.read_main(move |conn| crate::db::embedding_profiles::find_default(conn, &uid)) {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return bad_request(
+                "No embedding profile configured. Please set up an embedding profile in settings.",
+            )
+        }
+        Err(e) => return internal(e),
+    }
+    // The stats read (v4 re-reads inside the service too — both reads kept).
+    let cid = character_id.to_string();
+    let memories = match db.read_main(move |conn| memories_read::find_by_character_id(conn, &cid)) {
+        Ok(m) => m,
+        Err(e) => return internal(e),
+    };
+    let missing = memories
+        .iter()
+        .filter(|m| {
+            // v4 `!m.embedding || m.embedding.length === 0`.
+            match m.get("embedding") {
+                Some(Value::Object(o)) => o.is_empty(),
+                _ => true,
+            }
+        })
+        .count();
+    if missing == 0 {
+        return Response::Memory(json!({
+            "message": "All memories already have embeddings",
+            "processed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "total": memories.len(),
+        }));
+    }
+    let result = match crate::services::memory_service::generate_missing_embeddings(
+        db,
+        provider,
+        user_id,
+        character_id,
+        None,
+        batch as usize,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => return internal(e),
+    };
+    Response::Memory(json!({
+        "message": "Embedding generation complete",
+        "processed": result.processed,
+        "failed": result.failed,
+        "skipped": result.skipped,
+        "total": memories.len(),
+        "remaining": missing - result.processed - result.failed,
+    }))
+}
+
+/// v4 PUT `?action=embeddings` → `handleRebuildIndex`
+/// (`app/api/v1/memories/route.ts:1047`): Zod parse (uuid + `confirm` literal
+/// true), character ownership, then the synchronous `rebuildVectorIndex`.
+pub async fn memory_rebuild_index(db: &Db, character_id: &str, confirm: bool) -> Response {
+    // `z.literal(true)` + `z.uuid` — either failure is the middleware 400.
+    if !confirm || !super::chat_outfits::is_zod_uuid(character_id) {
+        return bad_request("Validation error");
+    }
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let result = match crate::services::memory_service::rebuild_vector_index(db, character_id).await
+    {
+        Ok(r) => r,
+        Err(e) => return internal(e),
+    };
+    Response::Memory(json!({
+        "message": "Vector index rebuilt successfully",
+        "indexed": result.indexed,
+        "failed": result.failed,
+    }))
+}

@@ -211,6 +211,59 @@ impl<'c> HelpDocsRepository<'c> {
         Ok(out)
     }
 
+    /// v4 `findById` (P4.6BL), sans embedding (the handler embeds
+    /// `` `${title}\n\n${content}` `` and never reads the stored vector). `None`
+    /// when no row matches.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<HelpDocRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, title, path, url, content, contentHash \
+                 FROM help_docs WHERE id = ?1",
+                params![id],
+                |r| {
+                    Ok(HelpDocRow {
+                        id: r.get(0)?,
+                        title: r.get(1)?,
+                        path: r.get(2)?,
+                        url: r.get(3)?,
+                        content: r.get(4)?,
+                        content_hash: r.get(5)?,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `updateEmbedding` (P4.6BL) — set just the `embedding` BLOB on a help
+    /// doc (+ the minted `updatedAt`, injected as `now_iso`). This is the
+    /// dedicated method the module doc reserves the embedding write for —
+    /// `HdUpdate`/`HdUpsert` deliberately carry no embedding field. The vector
+    /// serializes as the create path does (`empty → SQL NULL`, else Float32 LE
+    /// bytes). Returns `Ok(false)` when no row matched — v4 THROWS
+    /// `` `Help doc not found for embedding update: ${id}` `` there; the
+    /// EMBEDDING_GENERATE handler (its only caller) formats that exact string.
+    pub fn update_embedding(
+        &self,
+        id: &str,
+        embedding: &[f32],
+        now_iso: &str,
+    ) -> Result<bool, DbError> {
+        let embedding_blob: Option<Vec<u8>> = if embedding.is_empty() {
+            None
+        } else {
+            Some(crate::embedding_blob::float32_to_blob(embedding))
+        };
+        let affected = self.conn.execute(
+            "UPDATE help_docs SET embedding = ?1, updatedAt = ?2 WHERE id = ?3",
+            params![embedding_blob, now_iso, id],
+        )?;
+        Ok(affected > 0)
+    }
+
     /// v4 `findAllNeedingEmbedding` — every help doc with no stored embedding
     /// (rowid/insertion order), the enqueue's work list. Read-only.
     ///

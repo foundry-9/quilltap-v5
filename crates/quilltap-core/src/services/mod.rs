@@ -79,6 +79,10 @@ pub mod data_dir;
 // === P4.9G3: the delete-all-data family (lane G3, append-only) ===
 pub mod delete_all;
 // === end P4.9G3 ===
+// === P4.6BL ===
+pub mod embedding_backlog_repair;
+pub mod embedding_generate_job;
+// === end P4.6BL ===
 pub mod embedding_provider;
 pub mod embedding_refit_job;
 pub mod file_fallback;

@@ -121,6 +121,11 @@ use quilltap_core::services::dangerous_content::moderation_wire::RealModerationP
 use quilltap_core::services::dangerous_content::provider_routing::{
     DangerContentRouter, DbApiKeys,
 };
+// === P4.6BL ===
+use quilltap_core::services::embedding_generate_job::{
+    handle_embedding_generate, EmbeddingGeneratePayload,
+};
+// === end P4.6BL ===
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use quilltap_core::services::file_storage::{
     ProductionFileBytes, RealProjectImageUpload, StorageBackend,
@@ -2422,6 +2427,31 @@ impl JobHandler for ContextSummaryJobHandler {
     }
 }
 
+// === P4.6BL ===
+/// `EMBEDDING_GENERATE` — a payload decode around the differential-verified
+/// [`handle_embedding_generate`](quilltap_core::services::embedding_generate_job::handle_embedding_generate),
+/// over the same API-path embedding provider the spine embeds with (the seam
+/// P4.6s wired live). Before this registration BOTH enqueue families were live
+/// with no handler — every job retried three times and died (dogfood finding
+/// #35: 2,088 DEAD rows on the Friday copy, and every chunk/memory written
+/// since v5 took over unembedded).
+pub struct EmbeddingGenerateJobHandler;
+
+impl JobHandler for EmbeddingGenerateJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            let decoded = EmbeddingGeneratePayload::from_json(&payload);
+            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            match handle_embedding_generate(db, &embedding, &job.user_id, &decoded).await {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+// === end P4.6BL ===
+
 /// `CHARACTER_AVATAR_GENERATION` — constructs the core 7-generic handler per
 /// job (the core handler pins `now_ms` at construction; production wants the
 /// wall clock at job time).
@@ -2770,6 +2800,12 @@ impl SpineFactory for ProductionSpineFactory {
                     pricing: Arc::clone(&self.pricing),
                 }),
             ),
+            // === P4.6BL ===
+            (
+                "EMBEDDING_GENERATE".to_string(),
+                Box::new(EmbeddingGenerateJobHandler),
+            ),
+            // === end P4.6BL ===
         ];
 
         // The provider wire-actions driver (the P4.6 unification wire): the

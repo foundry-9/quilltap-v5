@@ -275,6 +275,65 @@ impl<'c> DocMountChunksRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findById` (P4.6BL), narrowed to the reindex/handler-read fields (the
+    /// same [`ChunkRow`] shape `find_rows_by_mount_point_id` returns). `None`
+    /// when no row matches.
+    pub fn find_row_by_id(&self, id: &str) -> Result<Option<ChunkRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, linkId, mountPointId, chunkIndex, content, \
+                        (embedding IS NOT NULL AND length(embedding) > 0) \
+                 FROM doc_mount_chunks WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(ChunkRow {
+                        id: row.get(0)?,
+                        link_id: row.get(1)?,
+                        mount_point_id: row.get(2)?,
+                        chunk_index: match row.get_ref(3)? {
+                            rusqlite::types::ValueRef::Integer(i) => i,
+                            rusqlite::types::ValueRef::Real(f) => f as i64,
+                            _ => 0,
+                        },
+                        content: row.get(4)?,
+                        has_embedding: row.get::<_, i64>(5)? != 0,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `updateEmbedding` (P4.6BL) — set just the `embedding` BLOB on a chunk
+    /// (+ the minted `updatedAt`, injected here as `now_iso` per this repo's
+    /// convention). The vector serializes exactly as `create` does (`empty →
+    /// SQL NULL`, else Float32 LE bytes). Returns `Ok(false)` when no row
+    /// matched — v4 THROWS `` `Doc mount chunk not found for embedding update:
+    /// ${id}` `` there; the EMBEDDING_GENERATE handler (its only caller) formats
+    /// that exact string. v4's method also invalidates the in-memory mount-chunk
+    /// cache — v5 has no such cache (the search path reads the DB directly), so
+    /// that side-effect is a documented no-op here.
+    pub fn update_embedding(
+        &self,
+        id: &str,
+        embedding: &[f32],
+        now_iso: &str,
+    ) -> Result<bool, DbError> {
+        let embedding_blob: Option<Vec<u8>> = if embedding.is_empty() {
+            None
+        } else {
+            Some(float32_to_blob(embedding))
+        };
+        let affected = self.conn.execute(
+            "UPDATE doc_mount_chunks SET embedding = ?1, updatedAt = ?2 WHERE id = ?3",
+            params![embedding_blob, now_iso, id],
+        )?;
+        Ok(affected > 0)
+    }
+
     /// v4 `clearEmbeddingsByLinkId`: NULL (don't delete) every stored embedding
     /// under a link. Returns the number of cleared rows.
     pub fn clear_embeddings_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {

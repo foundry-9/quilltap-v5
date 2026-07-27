@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+Ported the EMBEDDING_GENERATE background-job handler — the worker that turns
+newly written memories, conversation chunks, help docs, and mounted-document
+chunks into search vectors. All four entity branches are ported, including the
+permanent-error classifier and the empty/oversize pre-flight guards that keep a
+deterministically unembeddable input from being retried forever (the failure
+mode that once minted tens of thousands of dead jobs), and v4's quirks are
+reproduced exactly (a missing conversation chunk only logs; the other three
+entity types mark their status row failed). New repo writes:
+embedding_status mark-as-embedded/mark-as-failed and the three
+update-embedding methods (conversation chunks, mount chunks, help docs). A new
+tier-3 differential drives v4's real handler and real queue claim/retry/DEAD
+machinery over a new committed two-database fixture (14 jobs, 18 processed
+steps, 8 tables diffed), with mutation-tested sensitivity. The handler is
+registered live in the production spine, so embedding jobs now run instead of
+dying. The backlog heals on startup: a boot repair pass re-enqueues every
+recoverable un-embedded conversation chunk (v4's own boot-time self-heal
+enqueues a render job whose worker this port does not have yet, so the repair
+targets the embed job directly; it retires when that worker lands). Mount
+chunks re-enqueue on the existing refresh sweep; memories via the backfill
+route. The two Commonplace Book repair actions that previously refused —
+generate missing embeddings and rebuild the vector index — now work, each
+route-verified against the old app (seven route cases in the same
+differential, including validation and not-found arms). Dead job rows from the
+outage stay visible in the Tasks Queue and no longer block anything.
+
 Planned the next round of work, in four side-by-side orders. First, the urgent
 one: nothing written since the port took over this app's data has been made
 searchable — the job that turns new text into search vectors was never given a
