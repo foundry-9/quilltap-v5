@@ -2,6 +2,37 @@
 
 ## Recent Changes
 
+Brought four strands of work together and made them one.
+
+The largest of them is a repair. Nothing written since this port took over the
+app's data had been made searchable: the job that turns new text into search
+vectors had no worker, so every one of those jobs died quietly after three
+attempts — more than two thousand of them on the real library — and nothing
+written in that time could be found by meaning. The worker now exists, handles
+all four kinds of material, refuses to retry work that can never succeed, and
+mends the accumulated backlog when the app starts.
+
+The conversation dialogs are back, all of them: renaming a chat (with automatic
+naming), folding one conversation into another, re-attributing messages in bulk
+or one at a time, running a tool by hand, choosing which tools a conversation may
+reach for, search and replace, exporting a transcript, filing a chat under a
+project, and choosing who should drive a character handed back to the app. Their
+server halves landed alongside them, including the tool inventory that had made
+two of these dialogs refuse by name.
+
+One dialog is deliberately absent: the all-pause control cannot be opened in the
+old app either — nothing anywhere asks for it — so shipping it would have meant
+inventing a control rather than porting one.
+
+A custom tool run from the composer now rolls against the sheet of the character
+you are actually playing, mirroring the fix the old app made while this round was
+being planned.
+
+The checks: every test in the workspace passes (396 suites, 1,663 tests), the
+twelve comparisons against the old app that this work touches were regenerated
+from scratch and run by name, the browser test suite passes 151 of 151 with
+nothing skipped, and the unit tests for the interface pass 3,070 of 3,070.
+
 Ported the EMBEDDING_GENERATE background-job handler — the worker that turns
 newly written memories, conversation chunks, help docs, and mounted-document
 chunks into search vectors. All four entity branches are ported, including the

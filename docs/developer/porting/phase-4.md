@@ -3395,3 +3395,67 @@ bag) are closed and share one implementation.
    `DbError::Key` message-prefix leak into ~20 user-visible strings), `p4.9i2`
    (help/HelpChat), `p4.9h2`, the `chat_settings` explicit-`null` gap (still
    tripwired), `browserUserAgent`, and D21 (release/signing, never started).
+
+---
+
+### Round outcome (2026-07-27) — the embedding repair + chat-dialog family, UNIFIED
+
+**All four lanes CLOSED** (P4.6BL ∥ P4.9E3B ∥ P4.9E3C ∥ P4.D24). The oracle
+baseline is now **`e8a49597`** (v4 HEAD, 4.8.0-dev.108) and there is no v4 drift
+debt. Full record in `status-log.md` under "Round record — the embedding repair +
+chat-dialog family round"; gate numbers and deferrals in CLAUDE.md's Status
+bullet.
+
+**The round's headline: newly written text is searchable again.** The
+EMBEDDING_GENERATE handler had never been ported, so every embed job v5 minted
+died after three retries — 2,088 DEAD rows on the Friday copy and every chunk
+written since v5 took over the instance unembedded. The worker is now live in the
+production spine and the backlog heals on boot.
+
+**Also closed by this round, from the list above:** item 3 (`p4.9e3` — the whole
+ChatModals dialog family, server *and* UI, including the 727-LOC
+`GET /api/v1/tools` inventory it had to carry), item 4 (both `llm_choose`
+refusals, closed by one host driver), and item 5 (the `TimestampConfigSchema`
+write normalization, deferred twice before this). Item 1's ruling was discharged
+by `p4.d23` a day earlier.
+
+**Next candidates, in rough value order:**
+
+1. **A dogfood pass — now the clear top item, and this round makes it urgent
+   rather than merely overdue.** Two things on main have never been exercised
+   against real data and one of them is a repair: the **embedding worker's live
+   proof** (the boot repair observed draining Friday's 2,088-row backlog; fresh
+   chunks embedding; semantic search over new material finding it) — the e2e
+   instance has no API keys by design, so a walk is the only way to see it — and
+   the **whole chat-dialog family** (Rename with automatic naming ⚠ real spend,
+   Merge, bulk and per-message reattribution, Run Tool, the tool cabinet, Search
+   & Replace, Export, Chat Project, Select LLM Profile). **Still owed from
+   earlier walks:** Part D (the retrospective downstream look) and Part F items
+   15/16 (Story's Clock jump; per-chat Core-whisper override), plus the Post
+   Office dialogs, `.qtap` import execute and restore on real data.
+2. **`LibraryFilePickerModal`** — the one dialog P4.9E3C deferred by name, and
+   the largest remaining hole in the chat surface: 616 LOC over six endpoints,
+   one of which (`files?action=attach-mount-file`) is P4.9E3B's own deferral and
+   needs the vision-LLM describe seam. Its `?action=group-stores` read is
+   ALREADY on main and unconsumed (`ChatGroupStores`, mirrored into
+   `core-contract.ts` at this round's wire) — so that much of its server half is
+   free. Its own round, server + SPA together.
+3. **The embedding remainder** — `EMBEDDING_REINDEX_ALL`, `chatQueueMemories`,
+   and the startup-reconcile port (blocked on the unported CONVERSATION_RENDER
+   handler; the boot repair pass is the sanctioned v5-only stand-in until then).
+4. **Two v4-side items this round surfaced, for the human to carry upstream**
+   (neither is v5 work): **stop-impersonate is unreachable from v4's own
+   client** — it sends `DELETE ?action=stop-impersonate`, the action is
+   registered only on the POST map, and DELETE hard-rejects unknown actions;
+   v5's single-verb model is already correct. And **`AllLLMPauseModal` is
+   unreachable in v4 itself** (`setAllLLMPauseModalOpen(true)` appears nowhere at
+   `e8a49597`) — it wants either an opener or deleting. v5 deferred the dialog
+   with the evidence rather than ship something nothing can open.
+5. **M6 rows 6+** — the screen-parity backlog beyond the dialog family;
+   `ProjectToolSettingsModal` (shares `ToolSettingsContent` with the modal that
+   landed this round) is a cheap Prospero rider.
+6. The standing pools: the two v5 findings P4.d22 recorded (`V5_STATS_GAP`; the
+   `DbError::Key` message-prefix leak into ~20 user-visible strings), `p4.9i2`
+   (help/HelpChat — the `help/custom-tools.md` drift from `e8a49597` joins this
+   bank), `p4.9h2`, the `chat_settings` explicit-`null` gap (still tripwired),
+   `browserUserAgent`, and D21 (release/signing, never started).

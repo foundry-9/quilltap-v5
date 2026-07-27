@@ -1468,8 +1468,71 @@ records THERE. Update this summary only when a phase or round completes.
   727-LOC `GET /api/v1/tools` inventory — refuses by name), `llm_choose` on both
   the add-participant and merge outfit paths, the `TimestampConfigSchema`
   normalization. Round record: `status-log.md`.
+- **The embedding repair + chat-dialog family round (P4.6BL ∥ P4.9E3B ∥
+  P4.9E3C ∥ P4.D24): UNIFIED on main (2026-07-27) — ALL FOUR CLOSED; the
+  oracle baseline MOVES to `e8a49597` and the drift debt is CLEARED.** The
+  EMBEDDING_GENERATE worker is **LIVE in the production spine** — dogfood
+  finding #35's 2,088 dead jobs and every unembedded v5-written chunk were the
+  steady state until now; the handler ports all four entity types with
+  `isPermanentEmbeddingError` and the oversize/empty guards (omitting the
+  classifier would have inherited v4's own tens-of-thousands-of-dead-rows
+  incident on day one), and the backlog heals on boot (the startup-reconcile
+  port stays DEFERRED LOUDLY on the unported CONVERSATION_RENDER handler) ∥ the
+  chat-dialog server remainder: the 727-LOC tools inventory, chat export, the
+  search-replace pair over both scopes, per-message reattribution, the
+  outfit-summary read, the two `llm_choose` refusals closed by a host driver
+  (**⚠ real spend per pick**), and the twice-deferred `TimestampConfigSchema`
+  write normalization ∥ eleven dialog surfaces + the agent-mode badge + the Edit
+  Content section, which closes the last "server is live, no UI can reach it"
+  gaps in the chat surface ∥ the `e8a49597` operator-perspective mirror. **Two
+  findings worth carrying:** `AllLLMPauseModal` is UNREACHABLE IN v4 ITSELF, so
+  it is deferred with the evidence rather than shipped as a dialog nothing can
+  open (a v4-side item); and P4.D24's tripwire ran **green** at the new baseline
+  because its corpus seated the operator's character first in stored order —
+  the old and new choices agreed on every row, so the fixture had to move, not
+  the port (the P4.11 one-mode-corpus shape again; 13 → 20 cases, the
+  red→green fingerprint produced by mutation). Wires: the §1 contract diffed
+  name-for-name (E3B's audit-added `ChatGroupStores` mirrored into the SPA —
+  **no client consumer yet**, its caller `LibraryFilePickerModal` being deferred
+  by name); all four ACTIVATE-AT-UNIFY beats flipped LIVE; D24's two `apps/web`
+  riders taken. Gate: 396 test binaries / 1,663 / 0 failed, the round's 12
+  differentials by name over fresh `e8a49597` oracles **zero SKIP**, clippy both
+  feature sets, release build, ng test 248 files / 3,070, ng build clean, full
+  Playwright **151/151 zero skips** (incl. the P4.d23-owed restore beat, re-run
+  unmodified). Versions: core 0.0.388, harness 0.0.335, host 0.0.43, web 0.0.50,
+  SPA 0.5.311. Deferred loud: `LibraryFilePickerModal` (its own round),
+  `attach-mount-file`, the tools-inventory plugin arm, EMBEDDING_REINDEX_ALL,
+  `chatQueueMemories`. **The embedding worker's live proof on real data is
+  owed** — the next dogfood walk's. A v4 bug for the human to carry upstream:
+  **stop-impersonate is unreachable from v4's own client** (client sends DELETE;
+  the action is registered only on POST) — v5 already models it correctly.
+  Round record: `status-log.md`.
+- **Oracle baseline: `e8a49597` (v4 HEAD, 2026-07-27, 4.8.0-dev.108), adopted
+  at the embedding-repair + chat-dialog round's unification — NO v4 drift debt
+  remains.** The one commit past the prior `c1507f47` baseline is v4's fix for
+  its own Bug 5 (a composer custom-tool run consulting the first participant's
+  fact sheet rather than the operator's character); its ONLY `lib`/route change
+  is `app/api/v1/chats/[id]/custom-tools/route.ts`, and lane **P4.D24** mirrored
+  it into `api/custom_tools.rs`. Everything else in the commit is docs/version
+  chores plus `help/custom-tools.md` (joins the `p4.9i2` bank). The pascal route
+  family regenerated there (13 → 20 cases, the fixture gaining five perspective
+  rooms) along with its fixture-invalidated sibling
+  `pascal_run_custom_handler` (24); this round's other ten families regenerated
+  there too. **No other oracle family imports the drifted file** (the pascal
+  families are its only importers, verified at planning), so every other
+  committed oracle keeps its prior regen vintage. v4's tree is **clean at
+  `e8a49597`**, so oracles regenerate straight from `~/source/quilltap-server`;
+  pin a detached worktree only on drift/dirty
+  (`oracle-regen-pinned-v4-worktree`). ⚠ v4 is mid-4.8/4.9 dev and has shipped
+  four commits in a single day before now — and shipped this one *mid-planning*
+  — so drift-check before every round. ⚠ **When regenerating a family whose
+  fixture is COMMITTED, point the oracle at the committed DBs**: the case
+  headers' recipes rebuild into `/tmp` and then copy over the committed files,
+  and a rebuild mints fresh UUIDs, so running the oracle against a fresh build
+  without the copy diverges on ids that were never the port's doing.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `c1507f47` (v4 HEAD, 2026-07-26), adopted at the
-  P4.d22 restore/import-convergence unification — NO v4 drift debt remains.**
+  P4.d22 restore/import-convergence unification — NO v4 drift debt remained.**
   v4's `67ffb444` (restore bugs 1–3) + `c1507f47` (import bug 4) fixed the four
   defects this port found; `20430561` and `41f34180` between them are docs-only.
   **All EIGHT families in the drift's blast radius were regenerated at

@@ -38885,6 +38885,146 @@ dialog exists.
 Docs + four comment lines; no behavior touched. `ng test` 238 files / 2,981,
 unchanged. No Rust, no e2e, no version bump owed (no shipped code changed).
 
+## Round record — the embedding repair + chat-dialog family round (P4.6BL ∥ P4.9E3B ∥ P4.9E3C ∥ P4.D24): UNIFIED on main (2026-07-27)
+
+**ALL FOUR ORDERS CLOSED.** Four lanes, 24 commits, cherry-picked in dependency
+order (BL → D24 → E3B → E3C — the two disjoint Rust lanes first, then the server
+lane, then the SPA lane that consumes its contract). v4 re-verified at
+**`e8a49597`**, clean tree, before and after; **the oracle baseline MOVES to
+`e8a49597`** (D24 owned the move and queued it for this unification).
+
+### What each lane delivered (verified against its tier list, not taken on trust)
+
+- **P4.6BL — CLOSED (tiers 1 AND 2).** The 490-LOC EMBEDDING_GENERATE handler
+  over all four entity types, `isPermanentEmbeddingError`, the oversize/empty
+  pre-flight guards, four new repo write methods, and **registration in the
+  production spine** — so dogfood finding #35's 2,088 dead jobs stop being the
+  steady state and newly written text becomes searchable again. The backlog
+  heals through a boot repair pass (v4's own boot self-heal enqueues a
+  CONVERSATION_RENDER job whose worker v5 does not have; the startup-reconcile
+  port is DEFERRED LOUDLY and the boot repair is the sanctioned v5-only
+  replacement). `memoryGenerateEmbeddings` / `memoryRebuildIndex` un-refused.
+  New tier-3 `embedding_generate_jobs` family (14 jobs / 18 steps / 7 route
+  cases / 8 tables, 41 oracle rows).
+- **P4.9E3B — CLOSED (all seven tier-1 units + both tier-2 items).** The tools
+  inventory (v4's 727-LOC `GET /api/v1/tools`), chat export, the search-replace
+  preview/execute pair over both scopes, per-message reattribution, the
+  outfit-summary read, the two `llm_choose` refusals closed by a host driver
+  (**⚠ real spend — one cheap-LLM call per pick**), and the twice-deferred
+  `TimestampConfigSchema` write normalization with its 400 arm. New committed
+  `chat-dialogs-{main,mount}.db` family carrying six differentials. Tier 2:
+  `group-stores` PORTED as a new `ChatGroupStores` verb **beyond the frozen
+  §1** (an audit-mandated addition — see the wire below); `attach-mount-file`
+  DEFERRED loudly by name (the vision-LLM describe seam).
+- **P4.9E3C — CLOSED (tiers 1 and 2; tier 3 deferred by name).** Eleven dialog
+  surfaces, the agent-mode badge, the new Edit Content sidebar section, and the
+  contract mirror. **One item was found unportable rather than unported:**
+  `AllLLMPauseModal` is UNREACHABLE IN v4 ITSELF at `e8a49597`
+  (`setAllLLMPauseModalOpen(true)` appears nowhere), so it is deferred with the
+  evidence rather than shipped as a dialog nothing can open — a v4-side item.
+  `LibraryFilePickerModal` deferred by name (616 LOC over six endpoints, one of
+  them E3B's own tier-2 deferral). It also carried the round's full-Playwright
+  obligation, including the P4.d23-owed `zzz-restore-destructive.spec.ts`
+  re-run — executed unmodified, green.
+- **P4.D24 — CLOSED (tier 1 landed, tier 2 recorded).** v4's `e8a49597`
+  operator-perspective fix mirrored: `operator_character_ids` +
+  `prefer_operator` at both `custom_tools.rs` call sites, v4's label semantics.
+  **The order's central prediction was DISPROVED and that is the lane's finding**
+  — regenerating the tripwire family at the new baseline over the unchanged
+  fixture ran GREEN on all 13 cases, because the fixture's one chat seats the
+  operator's participant on the character who is also first in stored order, so
+  the old and new choices agree on every row. The corpus was structurally blind;
+  the fixture gained five perspective rooms (13 → 20 cases) and the red→green
+  fingerprint had to be produced by mutation. This is the P4.11 one-mode-corpus
+  shape again: **a corpus whose single scenario makes two candidate
+  implementations agree cannot see the difference between them.**
+
+### The unification wires
+
+1. **The §1 contract diffed name-for-name** between `api/types.rs` and
+   `core-contract.ts`. The six frozen verbs are byte-identical field-for-field.
+   The seventh — E3B's audit-mandated `ChatGroupStores { chatId }` — was missing
+   from the SPA side, because E3B added it after E3C froze §1. Mirrored at the
+   wire, **documented as having no client consumer yet**: its only caller would
+   be `LibraryFilePickerModal`, which E3C deferred by name.
+2. **All four ACTIVATE-AT-UNIFY constants flipped live** (`CHAT_EXPORT_LANDED`,
+   `TOOLS_INVENTORY_LANDED`, `SEARCH_REPLACE_LANDED`,
+   `MESSAGE_REATTRIBUTE_LANDED`). Three passed on the first merged run. The
+   Search & Replace beat did not, and **the fault was the gesture, not the
+   port**: running for the first time against a real server, it asked for a
+   button named `Replace` and the Edit Content drawer also offers `Bulk
+   Replace`, so strict mode refused two matches. Now `exact: true`.
+3. **D24's two `apps/web` riders taken** (that lane is Rust-only; E3C owns
+   `apps/web`). `core-contract.ts`'s `characterLabel` comment widened to v4's new
+   contract — it is set on a single-variant row too, whenever the server had to
+   fall back to someone other than the operator, and **absent means "runs as
+   you"**. And the label had never been exercised by any of the 26 popup specs,
+   so three cases now cover the borrowed sheet, the operator's own run, and
+   finding a tool by the character it borrows from.
+4. **The versions recounted** across the four lanes rather than taken from the
+   last cherry-pick: core +7, harness +7, host +2, web +3, SPA +12.
+
+### A regen trap worth recording
+
+The embedding family's first regen **failed the differential**, diverging on
+`doc_mount_chunks` at index 0 with different ids AND different content. The cause
+was not the port: the case header's recipe builds a fresh fixture into `/tmp` and
+then copies it over the committed DBs, and skipping that copy (deliberately — a
+unification should not move a committed fixture) left the oracle running against
+freshly minted UUIDs while the Rust side read the committed ones. **The right
+regen for a unification points the oracle at the COMMITTED fixture**; re-run that
+way it is green at 41 rows and the committed fixture never moved. The same shape
+bit the pascal route regen a step earlier, in its documented form: a mirror
+missing its spec JSON left a STALE 20-line NDJSON in place and the jest run
+failed while the file still looked plausible (`oracle-regen-silent-stale-pass`).
+
+### Gate (on the unify branch, before the fast-forward)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean **plain AND** with `--features
+  quilltap-core/native-transport`; `cargo build --release` clean.
+- Oracles regenerated **fresh** at `e8a49597`, one clean invocation per family:
+  chat-export (9), search-replace (15), message-reattribute (5),
+  tools-inventory (8), llm-choose-tier3 (5), embedding-generate (41),
+  pascal-custom-tools-route (20), pascal-run-custom-handler (24),
+  chat-timestamp (140), chats-tier2, chat-create-capstone (12).
+- **`cargo test --workspace --no-fail-fast`: 396 test binaries, 1,663 passed,
+  0 failed.** The round's **12 differentials re-run BY NAME with `--nocapture`:
+  all green, `SKIP` count 0** (the skip guard was proven visible first by
+  running one family with its env var unset).
+- SPA: `ng test` **248 files / 3,070 passed**; `ng build` clean (one NG8102
+  warning this round introduced was fixed, not shipped — a `?? false` on a
+  non-nullable the server always projects); full Playwright against the fresh
+  dist **151 passed / 0 failed / 0 skips**.
+
+### Versions after the round
+
+core **0.0.388**, harness **0.0.335**, host **0.0.43**, web **0.0.50**, SPA
+**0.5.311**; cli 0.0.3, quilltap-tauri 0.0.5 unchanged.
+
+### Standing after the round (loud, named)
+
+- **The embedding worker's live proof is owed** — the e2e instance has no API
+  keys by design, so the handler running on real data (and the boot repair
+  observed draining Friday's 2,088-row backlog) is the next dogfood walk's.
+- **Deferred by name in the dialog family:** `LibraryFilePickerModal` (its own
+  round; its `ChatGroupStores` read is on main and unconsumed), `AllLLMPauseModal`
+  (unreachable in v4 — a v4-side item), Continue Elsewhere, `SummonFromLoreModal`,
+  `ProjectToolSettingsModal` (a Prospero rider).
+- **Deferred by name on the server:** `attach-mount-file` (vision-LLM describe
+  seam), the plugin arm of the tools inventory (no plugin runtime), the two v4
+  middleware action arms on search-replace, the Zod `details` array.
+- **Deferred in the embedding lane:** EMBEDDING_REINDEX_ALL, `chatQueueMemories`,
+  the startup-reconcile port (blocked on the unported CONVERSATION_RENDER
+  handler).
+- **A v4 bug for the human to carry upstream** (found by E3B's survey, not in
+  v4's `found-bugs.md`): **stop-impersonate is unreachable from v4's own
+  client** — the client sends `DELETE ?action=stop-impersonate`, the action is
+  registered only on the POST map, and the DELETE handler hard-rejects unknown
+  actions. v5's single-verb `ChatStopImpersonate` already models it correctly;
+  nothing to change in v5.
+- **`AllLLMPauseModal`** wants either an opener or deleting, v4-side.
+
 ## Round planned — the embedding repair + chat-dialog family round (P4.6BL ∥ P4.9E3B ∥ P4.9E3C ∥ P4.D24), 2026-07-27
 
 **Drift check — TWICE, because v4 moved mid-planning.** At planning start v4
