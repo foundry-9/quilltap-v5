@@ -49,3 +49,19 @@ export async function toggleAgentMode(
     resolved === true ? 'enabled' : resolved === false ? 'disabled' : 'set to inherit';
   return { enabled, status };
 }
+
+/**
+ * §1-adjacent — `ChatRegenerateTitle` (v4 `ChatRenameModal.tsx:52-67`).
+ *
+ * ⚠ **One cheap-LLM call per invocation, in production.** v4 exposes no button
+ * of this name: the route fires as a SIDE EFFECT of ticking "Use automatic
+ * naming", which is why v5's live verb had no reachable caller until the rename
+ * dialog landed (dogfood walk 2026-07-27).
+ *
+ * Returns the new title, which v4 writes straight into the field it is about to
+ * close (`setTitle(data.title)`).
+ */
+export async function regenerateChatTitle(core: CoreClient, chatId: string): Promise<string> {
+  const data = await core.dispatchData({ type: 'chatRegenerateTitle', chatId });
+  return String(data['title'] ?? '');
+}

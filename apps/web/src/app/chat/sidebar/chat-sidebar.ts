@@ -308,6 +308,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [chatId]="chatId() ?? ''"
             [isAutonomousRoom]="isAutonomousRoom()"
             (editEnclave)="editEnclave.emit()"
+            (rename)="rename.emit()"
             (openState)="openState.emit()"
             (openGallery)="openGallery.emit()"
           />
@@ -366,6 +367,7 @@ export class ChatSidebar implements OnInit {
   // --- Organize section ---
   readonly isAutonomousRoom = input(false);
   readonly editEnclave = output<void>();
+  readonly rename = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
 

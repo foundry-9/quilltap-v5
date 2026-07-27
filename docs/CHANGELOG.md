@@ -116,6 +116,14 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+Renaming a conversation is possible again. The sidebar has a Rename entry, and
+the dialog behind it carries the old app's arrangement exactly: while automatic
+naming is on the title field is dead and there is nothing to save; untick it and
+the field wakes up. Ticking it back on does not merely record a preference — it
+asks for a fresh title immediately, which is the only way either app has ever
+reached that feature. If the title cannot be generated, the tick puts itself back
+and says why.
+
 The Agent On / Agent Off switch is back in the chat sidebar. The setting has been
 stored and honoured all along, but nothing on the page could change it, so a
 conversation was stuck with whatever agent mode it inherited. The switch reads

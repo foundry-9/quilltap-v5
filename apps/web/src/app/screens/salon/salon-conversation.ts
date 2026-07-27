@@ -40,6 +40,7 @@ import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
+import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import {
   removeParticipant,
   rebuildSystemPrompt,
@@ -185,6 +186,7 @@ interface CascadePrompt {
     ComposeMailDialog,
     WhisperDialog,
     AddCharacterDialog,
+    ChatRenameModal,
     Modal,
   ],
   template: `
@@ -258,6 +260,7 @@ interface CascadePrompt {
           (regenerateBackground)="onRegenerateBackground()"
           (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
           (editEnclave)="showEditEnclave.set(true)"
+          (rename)="showRename.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -533,6 +536,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showRename() && chat(); as c) {
+      <qt-chat-rename-modal
+        [chatId]="c.id"
+        [currentTitle]="c.title || ''"
+        [isManuallyRenamed]="c.isManuallyRenamed ?? false"
+        (renamed)="onChatRenamed($event)"
+        (close)="showRename.set(false)"
       />
     }
 
@@ -1024,6 +1037,26 @@ export class SalonConversation {
 
   // --- the Edit-Enclave modal (v4 SalonView, autonomous rooms only) ---
   protected readonly showEditEnclave = signal(false);
+
+  // -------------------------------------------------------------------------
+  // The in-chat dialog family (P4.9E3C) — v4 mounts these from `ChatModals.tsx`
+  // off `useModalState`; v5 keeps its signal-per-dialog pattern (see the Post
+  // Office note below, which weighed the same choice).
+  // -------------------------------------------------------------------------
+
+  /** v4 `renameModalOpen` (`useModalState.ts`), opened from Organize. */
+  protected readonly showRename = signal(false);
+
+  /**
+   * v4 `onSuccess` patches its local chat object in place
+   * (`ChatModals.tsx:202-206`); v5 holds the chat in a query, so the equivalent
+   * is a refetch. The sentence is the dialog's own — v4's toast copy, raised
+   * here because the dialog closes before it could be read.
+   */
+  protected async onChatRenamed(result: { message: string }): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message: result.message });
+    await this.onChatUpdated();
+  }
 
   // -------------------------------------------------------------------------
   // The Post Office (P4.9E2B) — v4 mounts these from `ChatModals` /`SalonView`

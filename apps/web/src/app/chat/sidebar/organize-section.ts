@@ -18,17 +18,17 @@ import { Icon } from '../../ui/icon';
  * P4.9E3A (2026-07-26) landed the whole chat-admin verb family, so what is
  * missing here is UI over a live boundary, not a port.
  *
- * - **Rename** (v4 :1530) — `ChatRenameModal` is unported. (The chat-PUT `title`
- *   key exists; only the dialog is missing.) ⚠ This is also the ONLY path in v4
- *   to `regenerate-title` — v4 has no button of that name; the route fires as a
- *   side effect of ticking "Use automatic naming" in that modal
- *   (`ChatRenameModal.tsx:52,184-192`). So v5's live `ChatRegenerateTitle` verb
- *   is unreachable from the UI until this dialog lands. (Dogfood walk 2026-07-27.)
  * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported.
  * - **Merge In…** (v4 :1566) — `MergeConversationModal` is unported; its verb
  *   (`ChatMergeConversation`, over the ported `apply_chat_merge`) IS live.
  * - **Export** (v4 :1578) — `GET /chats/{id}?action=export` has no v5 verb. The
  *   one item here whose server half is genuinely still missing.
+ *
+ * **Rename is LIVE** (v4 :1530, P4.9E3C 2026-07-27) — and with it
+ * `regenerate-title`, which v4 exposes through no button of its own: the route
+ * fires as a side effect of ticking "Use automatic naming" inside that dialog
+ * (`ChatRenameModal.tsx:52,184-192`), so v5's live verb had no reachable caller
+ * until it landed (dogfood walk 2026-07-27).
  *
  * ## One reduction (recorded)
  *
@@ -60,6 +60,16 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
+        title="Rename chat"
+        (click)="rename.emit()"
+      >
+        <qt-icon name="pencil" class="w-4 h-4" />
+        <span>Rename</span>
+      </button>
+
+      <button
+        type="button"
+        class="qt-tool-palette-button"
         title="View/edit chat state"
         (click)="openState.emit()"
       >
@@ -85,6 +95,7 @@ export class OrganizeSection {
   readonly isAutonomousRoom = input(false);
 
   readonly editEnclave = output<void>();
+  readonly rename = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
 }

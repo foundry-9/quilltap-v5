@@ -13,6 +13,7 @@ import { OrganizeSection } from './organize-section';
       [chatId]="'chat-1'"
       [isAutonomousRoom]="isAutonomousRoom()"
       (editEnclave)="fired.push('enclave')"
+      (rename)="fired.push('rename')"
       (openState)="fired.push('state')"
       (openGallery)="fired.push('gallery')"
     />
@@ -42,11 +43,17 @@ function labels(fixture: ComponentFixture<Host>): string[] {
 describe('OrganizeSection', () => {
   it('shows Copy ID, State and Gallery — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
-    expect(labels(fixture)).toEqual(['Copy ID', 'State…', 'Gallery']);
+    expect(labels(fixture)).toEqual(['Copy ID', 'Rename', 'State…', 'Gallery']);
 
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
-    expect(labels(fixture)).toEqual(['Edit Enclave', 'Copy ID', 'State…', 'Gallery']);
+    expect(labels(fixture)).toEqual([
+      'Edit Enclave',
+      'Copy ID',
+      'Rename',
+      'State…',
+      'Gallery',
+    ]);
   });
 
   it('reports each entry to the Salon', async () => {
@@ -54,12 +61,12 @@ describe('OrganizeSection', () => {
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
 
-    for (const label of ['Edit Enclave', 'State…', 'Gallery']) {
+    for (const label of ['Edit Enclave', 'Rename', 'State…', 'Gallery']) {
       const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
         (b) => (b as HTMLButtonElement).textContent!.trim() === label,
       ) as HTMLButtonElement;
       button.click();
     }
-    expect(fixture.componentInstance.fired).toEqual(['enclave', 'state', 'gallery']);
+    expect(fixture.componentInstance.fired).toEqual(['enclave', 'rename', 'state', 'gallery']);
   });
 });

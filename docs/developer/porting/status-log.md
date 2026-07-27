@@ -39801,3 +39801,55 @@ Note for the harness: the lane's worktree has no `target/`, so
 work). `apps/web/node_modules` is likewise a symlink to the main checkout's.
 
 SPA 0.5.300.
+
+### Unit record — P4.9E3C unit 3: ChatRenameModal (2026-07-27)
+
+`chat/chat-rename-modal.ts` over `qt-modal` (v4 `maxWidth="md"`), opened from the
+Organize section's new Rename entry (v4 `ChatSidebar.tsx:1530`).
+
+Ported exactly, with v4 line refs in the class doc: the field/checkbox pair as
+ONE control (checking fires `regenerate-title` immediately and closes; unchecking
+fires nothing; Save is HIDDEN, not disabled, while the box is ticked); the
+revert-on-failure; Save's two early exits (empty title refuses, an unmoved title
+AND flag closes without writing); Enter-saves only while the field is live; the
+focus+select on open. The ✕ and the backdrop close even mid-request because v4
+hands `BaseModal` the bare `onClose` — only the Cancel BUTTON is disabled.
+
+**`regenerate-title` is finally reachable.** v4 has no button of that name: the
+route fires as a side effect of ticking "Use automatic naming"
+(`ChatRenameModal.tsx:52`), so v5's live verb had no caller at all. It spends one
+cheap-LLM call per tick, and the e2e beat pins the NO-KEY arm.
+
+**One Angular-only addition, and the reason.** The revert writes the checkbox
+ELEMENT as well as the signal. `[checked]` is a property binding: the memo still
+holds `false` from before the operator ticked the box, so setting the signal back
+to `false` is a no-op and the DOM stays ticked. React reconciles a controlled
+input unconditionally, so v4 needs no equivalent. This is the same trap
+`chat-section.ts`'s `write()` documents for its selects — it caught a REAL bug
+here, found by the component test rather than by inspection.
+
+The `renamed` output carries v4's own toast copy ("Chat renamed" / "Title
+regenerated") because the dialog closes in the same breath as raising it, and v5
+answers a toast with an inline line on the surface that outlives the dialog.
+
+Verification: 11 component tests in `chat-rename-modal.spec.ts` — including the
+guard that only-the-preference-moved still writes, which is the case v4's odd
+`!useAutoRename === initialIsManuallyRenamed` spelling exists to allow — plus a
+live e2e beat in the new `salon-dialogs-flow.spec.ts`: the disabled-field /
+no-Save opening state, the untick, a real rename (asserting the TRIM), and the
+no-API-key regenerate arm reverting the tick at zero spend.
+
+⚠ **The rename beat leaves `isManuallyRenamed` set on the fixture's Solo Voyage.**
+It restores the TITLE, but neither app has an affordance that clears the flag
+without regenerating (Save is hidden while automatic naming is on). No beat
+depends on auto-titling — the e2e instance has no API keys — so this is recorded
+rather than worked around.
+
+Gate: ng test 239 files / 2,997; `npx playwright test salon-dialogs-flow` 1/1.
+SPA 0.5.301.
+
+**Harness note (cost me a detour):** `npx playwright` MUST be run with the cwd at
+`apps/web`. From the repo root it finds no config, sweeps the whole tree, and
+fails with "Playwright Test did not expect test.describe() to be called here"
+pointing at a harness fixture builder — which reads exactly like a broken new
+spec and is not.
