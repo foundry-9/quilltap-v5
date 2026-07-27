@@ -189,7 +189,7 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await expect(page.locator('.qt-chat-tool-result-chip')).toHaveCount(0);
   });
 
-  test('the avatar-generation switch flips, and Tools… says what it is waiting for', async ({
+  test('the avatar-generation switch flips, and Tools… opens the tool tree', async ({
     page,
   }, testInfo) => {
     await page.goto('/salon');
@@ -197,10 +197,15 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await openChat(page, 'Solo Voyage');
     await openSidebarSection(page, 'Chat');
 
-    // The Tools… refusal is LIVE in-lane: it names the unported inventory route
-    // and needs no server verb at all.
+    // Tools… REFUSED BY NAME until P4.9E3C brought `ChatToolSettingsModal`
+    // across; the entry now opens the tool tree. The dialog's own behaviour is
+    // pinned by `salon-dialogs-flow.spec.ts` (gated on the inventory verb) — all
+    // this beat still owes is that the refusal is gone.
     await page.getByRole('button', { name: 'Tools…' }).click();
-    await expect(page.locator('qt-chat-sidebar')).toContainText('/api/v1/tools');
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('qt-chat-sidebar')).not.toContainText('/api/v1/tools');
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
 
     if (!(await castVerbsLive(page))) {
       testInfo.annotations.push({

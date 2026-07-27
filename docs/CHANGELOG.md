@@ -116,6 +116,12 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+The porting record now carries this round of conversation dialogs: the screen
+inventory is corrected — five rows were listed twice, and one named the wrong
+route behind it — and every dialog that landed is marked done. Two are recorded
+as not landing and why: the library file picker, which is a round of its own, and
+the all-AI pause notice, which turns out to be unreachable in the old app too.
+
 Search and Replace returns, in the Edit Content drawer. Choose whether to work in
 this conversation or across every conversation with one character, type what to
 find and what to put in its place, and see how many messages and memories would

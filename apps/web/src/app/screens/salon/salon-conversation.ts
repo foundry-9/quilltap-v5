@@ -1158,6 +1158,15 @@ export class SalonConversation {
   //
   // ## Tier-3 deferral (LOUD — rendered nowhere, nothing stubbed)
   //
+  // **`LibraryFilePickerModal`** (v4 `components/chat/LibraryFilePickerModal.tsx`,
+  // 616 LOC) is NOT ported. It is the composer gutter's "Library file" entry and
+  // reaches SIX endpoints — projects, mount points, `?action=photo-albums`,
+  // `?action=group-stores`, `files?action=attach-mount-file`, `files?action=link`
+  // — plus character and user photos, and delegates browsing to the file-browser
+  // family. One of those legs, `attach-mount-file`, is itself a named server
+  // deferral. It wants its own round; the gutter entry is ABSENT rather than
+  // refusing, because a picker that could list nothing is not a picker.
+  //
   // **`AllLLMPauseModal`** (v4 `components/chat/AllLLMPauseModal.tsx`, 148 LOC)
   // is NOT ported, because it is unreachable in v4 itself. `ChatModals.tsx:423`
   // mounts it and `SalonView` wires all three of its handlers, but

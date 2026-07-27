@@ -40223,3 +40223,95 @@ irreversible, and a beat that ran it would have to live in the `zz-` file.
 
 Gate: ng test 249 files / 3,067; `npx playwright test salon-dialogs-flow` 3
 passed / 4 gated skips. SPA 0.5.309.
+
+### Lane record — P4.9E3C (the ChatModals dialog family SPA): CLOSED 2026-07-27
+
+Branch `claude/chat-dialogs-spa-porting-fbe69b`, eleven commits. SPA-only —
+`apps/web/**` plus the docs the order assigned. No Rust touched, so no cargo gate
+is owed; v4 was verified clean at the baseline `e8a49597` at lane start.
+
+**Landed — every tier-1 and tier-2 item.** The contract mirror (fifteen verbs);
+the agent-mode badge; ChatRenameModal (with `regenerate-title` finally
+reachable); MergeConversationModal; BulkCharacterReplaceModal + the new Edit
+Content sidebar section; ChatProjectModal + the Export button;
+SelectLLMProfileDialog; ReattributeMessageDialog on the message action bar;
+ChatToolSettingsModal + the tool tree; RunToolModal + a ported JsonSchemaForm;
+SearchReplaceModal. Per-unit records above.
+
+**Three real v5 bugs were found by trying to reach the dialogs**, none of them
+predicted by the order:
+
+1. **Impersonation could not be entered.** The cast card bound
+   `impersonatingParticipantIds` to the chat record, which NEITHER app's chat GET
+   projects; the refetch the impersonate dispatch itself triggers erased it and
+   the button snapped back a moment after being pressed. Fixed by holding it
+   locally off the verb replies, as v4 does. (Unit 7.)
+2. **The Project picker opened blank for a filed chat** — a `<select>` whose
+   `[value]` binds before `@for` produces the options. Reproduced only in a real
+   browser; the component test passed. (Unit 5.)
+3. **The automatic-naming checkbox would not visually revert** after a failed
+   regeneration, for the same property-binding reason `chat-section.ts` records
+   for its selects. Caught by a component test. (Unit 3.)
+
+**Deferred BY NAME, with the evidence:**
+
+- **`LibraryFilePickerModal`** (616 LOC, six endpoints, one of them P4.9E3B's own
+  tier-2 deferral) — its own round. The composer-gutter entry is ABSENT rather
+  than refusing, because a picker that can list nothing is not a picker.
+- **`AllLLMPauseModal`** — **unreachable in v4 itself.** See the unit-7 record.
+  Both deferrals are written at the dialog block in `salon-conversation.ts` and
+  in `m6-screen-parity.md`.
+- The Edit Content drawer's **Re-extract Memories** and **Delete Memories (n)**
+  (Commonplace Book family, no v5 verb) — in `edit-section.ts`.
+- The Hand-Off dialog's e2e beat — the fixture has no profile-less participant
+  and no client verb can clear a profile.
+
+**Cross-lane escalation (server, not this lane's to fix):** v5's chat read does
+not project `allowToolUse` on a participant's connection profile, so
+`ChatToolSettingsModal`'s "tools disabled by connection profile" warning cannot
+be computed. The box is not rendered rather than rendered wrong; the input is
+kept so one binding turns it on.
+
+**Two order premises were wrong and are corrected in the code comments:** there
+was no JSON-Schema form family in the Workbench to reuse (`builder-form.ts` edits
+Pascal's own format), and the all-LLM-pause helpers the order asked for in
+TypeScript are already ported and differential-verified in Rust with no client
+consumer but the dead modal.
+
+**ACTIVATE-AT-UNIFY constants**, all `false` on the branch:
+`CHAT_EXPORT_LANDED`, `TOOLS_INVENTORY_LANDED`, `SEARCH_REPLACE_LANDED`
+(`e2e/salon-dialogs-flow.spec.ts`) and `MESSAGE_REATTRIBUTE_LANDED`
+(`e2e/zz-bulk-replace-destructive.spec.ts`).
+
+**Docs:** `m6-screen-parity.md` §2.2's five DUPLICATED rows are struck, the WRONG
+annotation on ReattributeMessageDialog (its server half is `MessageReattribute`,
+not `ChatBulkReattribute`) is fixed, every landed row is DONE, the §1.2
+agent-mode row is DONE, and the §5 backlog row 10 records what remains.
+
+**Gate:** `npx ng test` 249 files / 3,067 passed; `npx ng build` clean; **full
+Playwright 146 passed / 5 skipped / 0 failed**, and all five skips are this
+lane's own named ACTIVATE-AT-UNIFY gates.
+
+**The P4.d23-owed re-run: `zzz-restore-destructive.spec.ts` was executed
+UNMODIFIED and PASSED** (`git diff main` on that file is empty). Two beats had to
+be updated because this lane changed what they assert: `salon-cast-flow.spec.ts`'s
+Tools… refusal became "opens the tool tree", and `organize-section.spec.ts` /
+`chat-section.spec.ts` grew the new entries.
+
+⚠ **One observed-once flake, recorded rather than hidden:** the first full run
+also failed `workbench-flow.spec.ts:336` on a strict-mode violation (the tool's
+source-mode `<pre>` matched the same text as the outcome line). It passed in
+isolation and in the second full run, and the run that failed also had the
+stale cast-flow beat failing earlier in the same session.
+
+**Harness notes for the next lane** (both cost real time here):
+
+- `npx playwright` MUST run with the cwd at `apps/web`. From the repo root it
+  finds no config, sweeps the whole tree and fails with "Playwright Test did not
+  expect test.describe() to be called here" pointing at a harness fixture
+  builder — which reads exactly like a broken new spec and is not.
+- A dialog's component HOST element is zero-sized (its card is fixed-position
+  inside it), so `expect(page.locator('qt-my-dialog')).toBeVisible()` always
+  fails. Locate by `getByRole('dialog')`.
+- Backticks inside an Angular template literal terminate it. Every v4 file
+  reference inside an HTML comment in a template must be written bare.
