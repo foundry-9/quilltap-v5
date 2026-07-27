@@ -41204,3 +41204,40 @@ document-store thumbnail would have requested a legacy thumbnail route that can
 never resolve. The legacy Files page passes neither input and is unchanged.
 
 **Gate:** `npx ng test` 250 files / 3,096 passed; `npx ng build` clean.
+
+## Lane P4.9E4B — unit 3: the LibraryFilePickerModal itself
+
+`chat/library-picker/library-file-picker-modal.ts` — v4's 616-LOC dialog, both
+steps, in one signals component (the P4.9E3C convention).
+
+The scope step renders v4's order exactly: General + the gallery (always), then
+Group Files, then Projects, then Document Stores, each with v4's icon, title,
+subtitle and per-section loading line. **`chatGroupStores` gets its first
+consumer** — the verb has been on main since P4.9E3B's tier-2 audit with the doc
+comment "no client consumer yet".
+
+**The two completion callbacks do DIFFERENT things**, and the spec pins that both
+ways: a legacy file is LINKED and rides `fileLinked` into the composer's
+pending-attachment tray; a document-store file is PINNED via a Librarian
+announcement and rides `mountFileAttached`, which the Salon answers with a
+refetch and nothing else — the announcement is already a transcript message. The
+discriminator is the ROW (`isMountFile`), not the scope: a project scope can
+resolve to either mode. Gallery picks always attach (entries are mount files by
+construction), named by `caption || fileName`.
+
+**Two deliberate v5 divergences, both recorded in the component header:**
+
+1. **No toasts.** v5 has no toast system (the custom-tools-popup precedent), so
+   v4's two success sentences — `Linked "X" to chat` and
+   `Attached "X" — the Librarian has noted it` — ride the completion outputs and
+   the Salon shows them as its chat flash. A FAILURE renders inline in the dialog
+   instead of vanishing on a timer; the spec pins that the dialog stays open and
+   shows the server's own message.
+2. The browse panel is read-only (unit 2's record).
+
+v4 resets its state when `isOpen` goes false (`:161-171`); v5 mounts the dialog
+only while open (the merge-conversation precedent), which means the same thing
+without a reset effect. The seal is faithful: `closeOnBackdrop`, Escape, Back and
+Cancel are all inert while `linking`, and the spec drives that with a gated fetch.
+
+**Gate:** `npx ng test` 251 files / 3,108 passed; `npx ng build` clean.

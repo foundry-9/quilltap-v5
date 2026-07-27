@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The library file picker itself: choose General, your own photo gallery, a group's
+shelf, a project, or any document store, then pick a file. A file from the old
+library rides along with your next message; a document from a store is pinned to
+the conversation by the Librarian instead, who says so out loud. Picking a photo
+always does the latter, because that is what a photo in a vault is.
+
 The picker can now browse: a read-only panel that lists General files, a
 project's files, or any document store, walking folders exactly the way the
 Files page does — it shares that page's folder logic rather than copying it.
