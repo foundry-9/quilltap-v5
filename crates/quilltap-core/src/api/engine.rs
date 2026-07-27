@@ -1205,9 +1205,8 @@ impl CoreEngine {
                 Ok(db) => super::chat_outfits::chat_outfit_summary(&db, &chat_id),
                 Err(r) => r,
             },
-            // The three remaining §1 families land unit-by-unit within this
-            // lane; until each lands its arm answers the loud named refusal
-            // (the standing `not yet available` idiom).
+            // The tools inventory lands as this lane's next unit; until then
+            // the arm answers the loud named refusal.
             Request::ToolsList { .. } => match self.ready_db() {
                 Ok(_) => Response::error(
                     ErrorKind::BadRequest,
@@ -1216,22 +1215,63 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
-            Request::SearchReplacePreview { .. } | Request::SearchReplaceExecute { .. } => {
-                match self.ready_db() {
-                    Ok(_) => Response::error(
-                        ErrorKind::BadRequest,
-                        "Search & replace is recognized but not yet available \
-                         (P4.9E3B in flight — v4 app/api/v1/search-replace/route.ts).",
-                    ),
-                    Err(r) => r,
+            Request::SearchReplacePreview {
+                scope,
+                search_text,
+                replace_text,
+                include_messages,
+                include_memories,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::search_replace::search_replace(
+                        &db,
+                        SINGLE_USER_ID,
+                        crate::services::search_replace::Action::Preview,
+                        &scope,
+                        &search_text,
+                        &replace_text,
+                        include_messages,
+                        include_memories,
+                    )
+                    .await
                 }
-            }
-            Request::MessageReattribute { .. } => match self.ready_db() {
-                Ok(_) => Response::error(
-                    ErrorKind::BadRequest,
-                    "Message re-attribution is recognized but not yet available \
-                     (P4.9E3B in flight — v4 app/api/v1/messages/[id]/route.ts:336).",
-                ),
+                Err(r) => r,
+            },
+            Request::SearchReplaceExecute {
+                scope,
+                search_text,
+                replace_text,
+                include_messages,
+                include_memories,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::search_replace::search_replace(
+                        &db,
+                        SINGLE_USER_ID,
+                        crate::services::search_replace::Action::Execute,
+                        &scope,
+                        &search_text,
+                        &replace_text,
+                        include_messages,
+                        include_memories,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MessageReattribute {
+                message_id,
+                new_participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::message_reattribute::message_reattribute(
+                        &db,
+                        SINGLE_USER_ID,
+                        &message_id,
+                        &new_participant_id,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             // === end P4.9E3B ===

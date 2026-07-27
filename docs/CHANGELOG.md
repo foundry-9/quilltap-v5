@@ -40,6 +40,20 @@ The corpus that checks this behavior could not see the change at all. The
 conversation it tested happened to seat the character you play at the head of
 the cast, so the old choice and the new one agreed on every row; the test file
 now carries five more rooms, each built to disagree in exactly one way.
+Search & replace and per-message re-attribution work again. The standalone
+search-replace surface answers both halves — a dry-run preview (how many
+messages and memories match, and where) and the execute (rewriting message
+text and memory content/summaries/keywords in one sweep) — across a single
+conversation or every conversation a character appears in. One inherited
+subtlety is kept deliberately: the match count is case-insensitive while the
+rewrite is exact-case, so a capital-letter variant is counted but left
+untouched, exactly as the old app does. Re-attributing a single message to a
+different speaker now works too, deleting any memories that were extracted
+from the message under its old attribution. Both families are proven against
+the old app's real routes — nineteen cases over the chat-dialogs fixture,
+table dumps included — and the two middleware-only rejection arms the old app
+carries are recorded with their exact copy so upstream drift is caught.
+
 A conversation can be exported again, and a fitting can be read at a glance.
 The transcript download (`?action=export`) is back: the SillyTavern-JSONL
 format, byte-for-byte — every line attributed to its real speaker (including

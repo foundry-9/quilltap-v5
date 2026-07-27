@@ -171,5 +171,7 @@ pub mod chat_run_tool;
 
 // === P4.9E3B: the chat-dialog server remainder ===
 pub mod chat_export;
+pub mod message_reattribute;
+pub mod search_replace;
 // === end P4.9E3B ===
 // ── end P4.9E3A ──

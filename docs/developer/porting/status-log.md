@@ -39476,3 +39476,42 @@ before porting (no drift).
   shim exposes JSON bodies as parsed objects on `.body` and byte bodies as raw
   strings (no `.text()`); the case handles both shapes.
 - Versions: core 0.0.382, harness 0.0.329, web 0.0.48.
+
+## Lane record — P4.9E3B units 4–5 (search-replace + message reattribute), 2026-07-27
+
+- **`SearchReplacePreview` / `SearchReplaceExecute` LIVE**
+  (`services/search_replace.rs` over the already-ported `db/chats_search.rs` +
+  memories text leaves): v4's scope union (chat | character, Zod-uuid checks →
+  `Invalid request`), the prefault-true include flags, preview's
+  count-and-attribute pass, execute's per-chat rewrite (per-chat failures
+  pushed into `errors`, v4-faithful) and the memory sweep —
+  `replaceInMemories` + v4's post-replace `updateMemoryWithEmbedding` call
+  whose embed branch is STRUCTURALLY UNREACHABLE (the just-written values
+  compare equal, so `contentChanged` is always false; the module header
+  documents it; the only observable effect is the second content/summary write
+  and its `updatedAt` mint — reproduced).
+- **The search/replace case asymmetry pinned**: memory COUNT is
+  case-insensitive (v4 `$regex` `i` → LIKE) while REPLACE is exact-case
+  (`split/join`) — `execute_case_asymmetry` proves a capital-L memory is
+  counted by preview and skipped by execute on both sides.
+- **`MessageReattribute` LIVE** (`services/message_reattribute.rs`): the
+  indexed find-across-chats + ownership check, in-chat target validation
+  (`Target participant not found in chat`), the sourced-memory delete sweep
+  (failures logged and swallowed, successes counted), the single-row
+  `participantId` update, and the empty `chats.update` that PRESERVES
+  `updatedAt` (no clock mint — the dumps compare verbatim).
+- **Differentials** (both green first run; sensitivity mutation-tested by
+  tampering an oracle row — body AND table compare both fired):
+  `search_replace_equivalence` — 15 cases incl. the two RECORDED-ONLY v4
+  middleware arms (`Unknown action: …`+`availableActions` and
+  `Action parameter required: execute or preview`), which have NO v5
+  counterpart by design (v5 carries no action string; no REST edge — the
+  message-op precedent) but are shape-asserted so upstream copy drift is
+  caught; the minted memory `updatedAt`s are proven (touched-set equality +
+  v4-at-or-after-frozen + v5-not-seed) then stripped.
+  `message_reattribute_equivalence` — 5 cases, zero normalization; the
+  bad-uuid case asserts-then-strips v4's Zod `details` (the standing
+  error-envelope deferral). Oracle env vars: `QT_ORACLE_SEARCH_REPLACE`,
+  `QT_ORACLE_MESSAGE_REATTRIBUTE`.
+- The two engine in-flight refusals are GONE; `ToolsList` remains the last.
+- Versions: core 0.0.383, harness 0.0.330.
