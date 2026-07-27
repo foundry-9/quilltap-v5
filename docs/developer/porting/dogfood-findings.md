@@ -58,6 +58,8 @@ catch, since every fixture is built fresh.
 | 33 | A user-initiated RNG roll rendered its standalone tool card under **Amy**, the last participant to speak, though the card's own line read "You ran rng" and the following characters correctly treated the roll as the operator's | **Faithfully ported v4 bug — v5 reproduces v4 exactly, in both halves.** The persisted row is identical on both sides: v4's orchestrator writes a pending tool result with `initiatedBy:'user'` and **no `participantId`** (`orchestrator.service.ts:611-630`), and so does v5 — confirmed on the dogfood copy (`participantId` NULL, `{"tool":"rng","initiatedBy":"user",…}`). Both renderers then run the same positional borrow: a TOOL row with no participant takes the nearest preceding assistant's, stopping at a USER boundary (v4 `VirtualizedMessageList.tsx:228-247`, v5 `chat-view-model.ts::resolveToolAvatar` — a verbatim port). Because the row is written BEFORE the user's message, the nearest preceding assistant is the last character who spoke. The header markup is byte-faithful too: when a header avatar resolves, BOTH render that character's name bold and the attribution line beneath it, and v4's own conditional (`actorName !== headerAvatar.name ? "${actorName} ran " : "ran "`, `ToolMessage.tsx:438-443`) is what produces the "Amy" / "You ran rng" pair the screenshot shows. v5's `actorName` (`operatorName \|\| 'You'`) and `attributionPrefix` match line for line | **NOT A BUG (v5)** (2026-07-27) — recorded so it is not re-reported, and NOT fixed: the borrow is v4 behavior and changing it unilaterally would break the oracle comparison. The right repair is v4-first (give a user-initiated tool row the operator's identity, or suppress the borrow when `initiatedBy === 'user'`) → added to the post-5.0 v4-side list. The card is not *wrong* about who rolled — it says "You ran rng" — it is wrong about whose face to put on it |
 | 34 | Four Part-B walk items have no UI at all: **regenerate title**, **bulk reattribute**, **toggle agent mode**, **merge conversations** | **Not a defect — a known unwritten SPA lane (`p4.9e3`), plus one genuinely untracked item.** All four DO have v4 UI (surveyed 2026-07-27): regenerate-title has no button of its own and fires only from `ChatRenameModal`'s "Use automatic naming" checkbox (`ChatRenameModal.tsx:52,184-192`), reached from sidebar → Organize → **Rename**; bulk reattribute is `BulkCharacterReplaceModal` behind sidebar → **Edit Content** → "Bulk Replace" (`ChatSidebar.tsx:1636-1647`) — a whole sidebar section v5 has never had; agent mode is the "Agent On/Off" badge in the Chat section (`ChatSidebar.tsx:1116-1127`); merge is "Merge In…" in Organize (`ChatSidebar.tsx:1566-1576`). P4.9E3A landed all eleven SERVER verbs on 2026-07-26 and said so ("No UI can reach it this round"); P4.9E1B, the round's SPA lane, scoped to the cast dialogs + RNG. **The one real gap in the trail: the agent-mode toggle was tracked NOWHERE** — being a badge rather than a modal it fell between `m6-screen-parity.md`'s two tables | **NOT A BUG; TRAIL CORRECTED** `25dc4823` — the agent-mode row added to m6's sidebar-controls table; the stale "unported" claims in `chat-section.ts:71` and `organize-section.ts:17-21` corrected (they blamed missing server halves that have since landed, which materially understates how cheap `p4.9e3` now is — it is UI over a live boundary for everything except **Export**, whose verb really is still missing). The walk script's error, not the app's |
 
+| 35 | The server console warns continuously: `Job type "EMBEDDING_GENERATE" is recognized but its handler is not yet available in the native runner`. **2,088 such jobs are DEAD** on the dogfood copy, and every chunk written since v5 took over the instance is unembedded | **A KNOWN DEFERRAL whose real cost was invisible until now — no `EMBEDDING_GENERATE` handler is registered anywhere.** The runner's `KNOWN_JOB_TYPES` lists it (`job_runner.rs:143`) so it gets the loud "recognized but not available" fallback, and `tools/executor.rs:355` calls it "a tracked deferral". **Both enqueue paths are LIVE and neither can ever complete:** `services/queue_service.rs:192` (memory embeddings) and `services/mount_index/embedding_scheduler.rs:45` (mount chunks). Each job retries 3× and dies. **Measured blast radius on the Friday copy:** every established vault is 100% embedded (Friday 747/747, Charlie 572/572, Amy 467/467 — all v4-era work), while the two character vaults created during this walk have chunks and **zero** embeddings (Test2 8 chunks / 0 embedded, minutes old; Tanya 6 / 0, three hours old). So P4.6BK's chunk-on-write fix works — the chunks are written at creation, which is what Part G set out to check — but nothing embeds them, and semantic search over anything added under v5 silently finds nothing. There is no workaround: `quilltap docs embed` enqueues to the same dead handler, and `docs status` refuses. v4's handler is `lib/background-jobs/handlers/embedding-generate.ts`, 490 LOC over FOUR entity types (`MEMORY`, `CONVERSATION_CHUNK`, `HELP_DOC`, `MOUNT_CHUNK`), including a deterministic-failure classifier that exists precisely to stop this DEAD-row accumulation | **OPEN — needs an order, not a dogfood commit** (2026-07-27). Too big to fix in place: a 490-LOC handler across four entity types plus its differential. Recorded in the standing notes with the sizing; the embedding *provider* seam already exists and is wired live (`EngineAssembly.memory_embedding`), so this is a handler port over an available capability, not a from-scratch subsystem |
+
 - **The 2026-07-27 chat-action-round dogfood walk — Parts A–E, two fixes and two
   non-bugs.** The first pass over the chat-action-remainder round (P4.9E1A ∥
   P4.9E3A ∥ P4.9E1B ∥ P4.d22) plus the surfaces landed since 2026-07-24.
@@ -367,6 +369,38 @@ catch, since every fixture is built fresh.
   phase-order change, and it removes a data loss v4 currently logs as three
   warnings and carries on past. Not done during the port: editing v4 moves the
   oracle baseline mid-flight.
+- **⚠ THE `EMBEDDING_GENERATE` HANDLER IS UNPORTED, AND IT IS COSTING DATA NOW
+  (finding #35, 2026-07-27) — this is the strongest candidate for the next
+  round.** It was a known, recorded deferral; what the dogfood walk added is the
+  measurement, and the measurement changes its priority.
+  **What is broken:** both enqueue paths are live (`queue_service.rs:192` for
+  memories, `mount_index/embedding_scheduler.rs:45` for mount chunks); no
+  handler is registered; every job retries three times and dies. On the Friday
+  copy that is **2,088 DEAD rows and a console warning every few seconds.**
+  **Why it is worse than a missing feature:** the damage accrues silently and
+  does not heal. Every v4-era vault is 100% embedded; every chunk written since
+  v5 took over has zero embeddings, so semantic search over new content returns
+  nothing rather than erroring. A user adding a character today gets a vault
+  their characters cannot search, with no indication anything is wrong. And
+  there is no manual repair — `quilltap docs embed` enqueues to the same dead
+  handler, `docs status` refuses, and `EMBEDDING_REFIT` (which IS registered)
+  refits existing vectors rather than making absent ones.
+  **Sizing:** v4's `lib/background-jobs/handlers/embedding-generate.ts` is 490
+  LOC over four entity types — `MEMORY`, `CONVERSATION_CHUNK`, `HELP_DOC`,
+  `MOUNT_CHUNK` — plus a vector-store write and a mount-chunk cache
+  invalidation. **The embedding provider seam already exists and is wired live**
+  (`EngineAssembly.memory_embedding`, since the P4.6s round), so this is a
+  handler port over an available capability, in the shape P4.6bj already
+  established for `MEMORY_EXTRACTION` / `CONTEXT_SUMMARY`.
+  **Port v4's `isPermanentEmbeddingError` with it, deliberately.** v4's own
+  comment explains it was added because "tens of thousands of DEAD
+  EMBEDDING_GENERATE rows had accumulated" from deterministic failures being
+  retried forever. A port that omits it inherits that bug on day one — and v5
+  has already demonstrated it can produce 2,088 of them in a single day.
+  **Also owed with it:** a decision about the DEAD backlog on instances that ran
+  v5 before the handler landed. Those chunks are not re-enqueued by anything;
+  something has to sweep them, or they stay unsearchable forever.
+
 - **A dogfood re-check after an SPA fix needs a HARD RELOAD, not a server
   restart (2026-07-27 — it cost a full round trip).** Finding #31's fix was
   reported as still broken after the human rebuilt the bundle *and* restarted the
