@@ -41158,3 +41158,49 @@ doc block's "no client consumer yet" note is retired: this lane is its consumer.
 picker being v5's first dialog wider than 3xl (v4 `:364`).
 
 **Gate:** `npx ng test` 249 files / 3,088 passed (the new spec's 18 cases run).
+
+## Lane P4.9E4B — unit 2: the picker's browse step
+
+`chat/library-picker/library-browse-panel.ts` is v4's step-2
+`<FileBrowser … showUpload={false}>` (`:384-405`).
+
+**The reuse-vs-port decision, recorded** (the order sanctions either): **ported a
+narrower panel.** Reuse in place was not available —
+
+- v4 has ONE `FileBrowser` spanning legacy and mount modes. v5 split it in two:
+  `qt-files-browser` (the legacy `/files` PAGE) and the Scriptorium
+  `qt-file-manager` (mount mode, behind its own beta toggle). No single v5
+  component answers both, and the picker needs both in one step.
+- `qt-files-browser` takes **no inputs** and emits **no file-click**: it hardcodes
+  `filesList({filter:'general'})` and owns page chrome (an `<h2>`, the sync /
+  orphan-cleanup toolbar, the preview lightbox, and the create-folder / move /
+  delete dialogs).
+
+What IS reused is the part fidelity depends on: the **pure** folder model from
+`screens/files/file-model.ts` (`filesInFolder`, `deriveSubfolders`,
+`parentFolder`, `breadcrumbSegments`, `sortFiles`), so the picker's folder
+navigation and sort are the same tested code the Files page runs, which is
+v4's byte for byte.
+
+**Deliberate reduction, named:** inside v4's picker the FileBrowser still offers
+New Folder, Sync, orphan cleanup, the grid/list toggle, per-file Delete and
+Move-to-Project, and the preview lightbox. This panel offers **none** of them —
+it is read-only. Each is a mutation (or a second modal) on a dialog whose whole
+purpose is to pick one file and close, and the order names the target "a
+read-only no-upload mode". Upload is unreachable in v4 here as well
+(`showUpload={false}`) and stays a tier-3 deferral.
+
+**Mode resolution ported exactly** (v4 `FileBrowser.tsx:226-262`): an explicit
+store wins verbatim; a project scope with no store asks `projectMountPointList`
+once and narrows with `pickPrimaryProjectStore`; a **failure falls back to legacy
+mode silently**, carrying v4's reason (one missing link shouldn't take down the
+browser). Only `database` mounts switch modes — filesystem / obsidian mounts keep
+the legacy path because their files live on disk.
+
+**Rider taken:** `screens/files/file-thumbnail.ts` gained v4's optional
+`mountPointId`/`relativePath` inputs (v4 `FileThumbnail.tsx:29-30,81-86`). A
+store row's id is not a `files` row id, so without the mount-blob branch every
+document-store thumbnail would have requested a legacy thumbnail route that can
+never resolve. The legacy Files page passes neither input and is unchanged.
+
+**Gate:** `npx ng test` 250 files / 3,096 passed; `npx ng build` clean.

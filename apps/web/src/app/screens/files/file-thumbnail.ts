@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
 import { thumbnailUrl } from '../../images/image-urls';
+import { buildMountBlobUrl } from '../scriptorium/scriptorium.api';
 import { getFileIcon, supportsThumbnail } from './file-model';
 
 /**
@@ -56,10 +57,25 @@ export class FileThumbnail {
   readonly alt = input('');
   readonly size = input(150);
   readonly className = input('');
+  /**
+   * A document-store row's mount coordinates (v4 `FileThumbnail.tsx:29-30,81-86`).
+   * When BOTH are present the preview comes off the mount blob route instead of
+   * the legacy thumbnail route — a store row's id is not a `files` row id, so the
+   * legacy route could never resolve it. Added by P4.9E4B, whose Library file
+   * picker browses stores; the legacy Files page never passes them.
+   */
+  readonly mountPointId = input<string | undefined>(undefined);
+  readonly relativePath = input<string | undefined>(undefined);
 
   protected readonly status = signal<'loading' | 'loaded' | 'error'>('loading');
 
   protected readonly canShowThumbnail = computed(() => supportsThumbnail(this.mimeType()));
   protected readonly icon = computed(() => getFileIcon(this.mimeType()));
-  protected readonly url = computed(() => thumbnailUrl(this.fileId(), this.size()));
+  protected readonly url = computed(() => {
+    const mountPointId = this.mountPointId();
+    const relativePath = this.relativePath();
+    return mountPointId && relativePath
+      ? buildMountBlobUrl(mountPointId, relativePath)
+      : thumbnailUrl(this.fileId(), this.size());
+  });
 }

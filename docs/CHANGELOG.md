@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The picker can now browse: a read-only panel that lists General files, a
+project's files, or any document store, walking folders exactly the way the
+Files page does — it shares that page's folder logic rather than copying it.
+Document-store pictures get real thumbnails.
+
 Laid the groundwork for the library file picker: the rules that decide which
 places a file can be picked from, which of your photo albums counts as "yours",
 which of a project's linked stores is the project's own, and how a document-store
