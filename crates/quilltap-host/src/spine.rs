@@ -614,6 +614,52 @@ struct HostRegenerateTitleRunner<C> {
     completion: Arc<C>,
 }
 
+/// P4.9E3B: the out-of-create `llm_choose` outfit runner — the host's
+/// completion provider plus a per-call LOGGING cheap executor keyed to the
+/// request's own chat (the regenerate-title arrangement), delegating into the
+/// core's `run_llm_choose_via_db` so the differential drives the exact
+/// composition production uses.
+///
+/// ⚠ LIVE means real money: one cheap-LLM call per llm_choose pick
+/// (add-participant or merge).
+struct HostOutfitLlmChooseRunner<C> {
+    db: Db,
+    user_id: String,
+    completion: Arc<C>,
+}
+
+impl<C> quilltap_core::services::outfit_selections::OutfitLlmChooseRunner
+    for HostOutfitLlmChooseRunner<C>
+where
+    C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
+{
+    fn choose(
+        &self,
+        req: quilltap_core::services::outfit_selections::OutfitLlmChooseRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Option<quilltap_core::wardrobe::Slots>> + Send + '_>,
+    > {
+        Box::pin(async move {
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: self.db.clone(),
+                user_id: self.user_id.clone(),
+                chat_id: Some(req.chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            quilltap_core::services::outfit_selections::run_llm_choose_via_db(
+                &self.db,
+                &*self.completion,
+                &executor,
+                &req.character_id,
+                req.scenario_text.as_deref(),
+                req.cheap_settings.as_ref(),
+            )
+            .await
+        })
+    }
+}
+
 impl<C> quilltap_core::services::chat_admin::RegenerateTitleDriver for HostRegenerateTitleRunner<C>
 where
     C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
@@ -2642,6 +2688,11 @@ pub struct SpineBundle {
     /// ⚠ LIVE: one cheap-LLM call per Regenerate Title.
     pub regenerate_title:
         Option<Arc<dyn quilltap_core::services::chat_admin::RegenerateTitleDriver>>,
+    /// The out-of-create llm_choose outfit runner (P4.9E3B). `None` for canned
+    /// test factories — both call sites then fall back to the default outfit
+    /// (v4's own failure shape). ⚠ LIVE: one cheap-LLM call per pick.
+    pub outfit_llm_choose:
+        Option<Arc<dyn quilltap_core::services::outfit_selections::OutfitLlmChooseRunner>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2727,6 +2778,7 @@ impl SpineFactory for ProductionSpineFactory {
         // and `embedding` move into `chat_create` below.
         let announcement_completion = Arc::clone(&completion);
         let title_completion = Arc::clone(&completion);
+        let outfit_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
@@ -2873,6 +2925,13 @@ impl SpineFactory for ProductionSpineFactory {
                 db: db.clone(),
                 user_id: SINGLE_USER_ID.to_string(),
                 completion: title_completion,
+            })),
+            // P4.9E3B: the out-of-create llm_choose pick, LIVE — ⚠ one
+            // cheap-LLM call per pick (add-participant / merge).
+            outfit_llm_choose: Some(Arc::new(HostOutfitLlmChooseRunner {
+                db: db.clone(),
+                user_id: SINGLE_USER_ID.to_string(),
+                completion: outfit_completion,
             })),
             chat_create,
             provider_actions: Some(provider_actions),

@@ -39515,3 +39515,71 @@ before porting (no drift).
   `QT_ORACLE_MESSAGE_REATTRIBUTE`.
 - The two engine in-flight refusals are GONE; `ToolsList` remains the last.
 - Versions: core 0.0.383, harness 0.0.330.
+
+## Lane record — P4.9E3B unit 1 (the tools inventory), 2026-07-27
+
+- **`ToolsList` LIVE** (`services/tools_inventory.rs` — v4
+  app/api/v1/tools/route.ts, 727 LOC): the 40-entry `BUILT_IN_TOOLS` display
+  table transcribed byte-exact; the 37-entry schemas map resolved against the
+  byte-pinned `tools::definitions` catalog (a unit test pins every key
+  resolving; the three photo tools deliberately schema-less, v4's own map);
+  the per-chat availability context (image profile / project / linked stores /
+  connection-profile web search / multi-character / the two wardrobe flags,
+  every load failure caught → context degrades, never errors); the nine-arm
+  availability switch with **`doc_copy_file` absent from the `doc_*` case
+  list** (a v4 quirk carried faithfully — it stays available without a
+  project, and `chat_bare` pins it).
+- **The REST edge** `GET /api/v1/tools?chatId=…&includeSchemas=true`
+  (`quilltap-web/src/tools_routes.rs`, one of the two §1-contract edges;
+  `includeSchemas` string-compared to `"true"` exactly as v4).
+- **The `web_search_configured` seam**: a new `EngineAssembly` bool (P4.9E3B
+  region) mirroring v4 `isWebSearchConfigured()`; the host wires
+  `SERPER_API_KEY` presence (v5 has no plugin registry — the Serper-plugin
+  half of v4's OR is the standing no-plugin-runtime deferral, named in the
+  module header). Canned factories default `false` → the `search_web` row
+  reads v4's own "No search provider configured…" arm.
+- **Differential `tools_inventory_equivalence` (8 cases, green first run,
+  mutation-tested)**: the compare is the RAW serialization — table order,
+  every description byte, and per-tool key order (`parameters` BEFORE
+  `available`) all pinned; the two schema bodies are ~50 KB compared byte-wise.
+  A plugin row appearing on the v4 side fails loudly by design. The
+  `chat_proj_websearch_configured` case sets `SERPER_API_KEY` in the oracle's
+  run and passes `true` on the Rust side. Oracle env var:
+  `QT_ORACLE_TOOLS_INVENTORY`.
+- The last engine in-flight refusal is GONE — every §1 verb is live.
+- Versions: core 0.0.384, harness 0.0.331, web 0.0.49, host 0.0.42.
+
+## Lane record — P4.9E3B unit 6 (the llm_choose driver), 2026-07-27
+
+- **Both `llm_choose` refusals are GONE.** The out-of-create pick rides a new
+  host seam, `services::outfit_selections::OutfitLlmChooseRunner` (the
+  `RegenerateTitleDriver` arrangement): `EngineAssembly.outfit_llm_choose`,
+  `HostOutfitLlmChooseRunner` in the spine (⚠ LIVE — one cheap-LLM call per
+  pick, per-call logging executor keyed to the request's chat), delegating to
+  the new `run_llm_choose_via_db` — db reads into owned rows + the extracted
+  `choose_llm_outfit` attempt — so the differential drives the EXACT
+  production composition.
+- **v4's failure shape restored at both sites**: add-participant
+  (`apply_outfit_for_added_participant`, which grew `user_id` for the
+  chat-settings read and now builds v4's context — chat `scenarioText` +
+  `cheapLLMSettings`, NO `sourceChatId`) falls back to the DEFAULT outfit on
+  any failure including an unwired runner (the old warn-and-no-write refusal
+  is gone); the merge (`apply_chat_merge`) consults OUTSIDE the writer and
+  rewrites the selection to `manual` (decided slots) or `default` (failure),
+  so the sync path inside the writer stays the one implementation — the old
+  hard `Response::error` abort is gone. The two distinct default modes stand:
+  add defaults to `default` (no sourceChatId), merge to `previous_chat`.
+- **`apply_llm_choose` (chat-create) refactored over the same extracted
+  attempt** — narration (`wardrobe_start` inside the attempt, result frames at
+  the call site) and outcome arms unchanged; the only invisible difference is
+  `connections.findAll` now reading before the character/wardrobe guards.
+- **Tier-3 differential `outfit_llm_choose_tier3_equivalence` (5 cases, green
+  first run, mutation-tested)**: canned completion injected both sides
+  (`cannedOutfits` in the spec — a valid pick, an invalid-ids reply proving
+  the validator, and a provider failure) across BOTH call sites; compares the
+  LLM request MESSAGES byte-for-byte (the outfit prompt end-to-end), the
+  decided `equippedOutfit`, the reduced cast, and the reduced body; v4's 201
+  on add asserted directionally. Oracle env var: `QT_ORACLE_LLM_CHOOSE`.
+- **Blast radius re-proven**: `chat_admin_routes_equivalence` +
+  `chat_cast_routes_equivalence` re-run green over oracles regenerated fresh
+  at `e8a49597` (their call sites gained the runner parameter, passed `None`).

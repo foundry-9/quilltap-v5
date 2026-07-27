@@ -557,6 +557,7 @@ fn chat_cast_routes_match_oracle() {
                 &spec.user_id,
                 chat,
                 &data,
+                None,
             ));
             let tables = dump.then(|| cast_tables(&db, chat));
             check(name, &r, tables);

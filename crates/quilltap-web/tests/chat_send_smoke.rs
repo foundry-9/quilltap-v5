@@ -183,6 +183,7 @@ impl SpineFactory for SmokeSpineFactory {
             // answers the loud not-assembled refusal.
             operator_tool_runner: None,
             regenerate_title: None,
+            outfit_llm_choose: None,
             job_handlers: Vec::new(),
         }
     }

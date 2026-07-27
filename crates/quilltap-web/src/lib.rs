@@ -59,6 +59,7 @@ pub mod terminal_routes;
 pub mod text_replacements_routes;
 // === end P4.6ak ===
 // === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
+pub mod tools_routes;
 pub mod wardrobe_routes;
 // ── P4.9G4 ──
 pub mod qtap_routes;
@@ -283,6 +284,8 @@ pub fn build_router(state: SharedState) -> Router {
         )
         // === end P4.6ay ===
         // === P4.6ar: the LLM-Inspector reads + the default-aesthetics editors ===
+        // P4.9E3B: the tool inventory (a §1-contract REST edge).
+        .route("/api/v1/tools", get(tools_routes::tools_get))
         .route("/api/v1/llm-logs", get(llm_logs_routes::llm_logs_get))
         .route(
             "/api/v1/llm-logs/{id}",

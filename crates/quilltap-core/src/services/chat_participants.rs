@@ -74,6 +74,7 @@ use crate::services::host_notifications::{
     post_host_status_change_announcement, HostRemoveAnnouncement, HostSilentModeAnnouncement,
     HostStatusChangeAnnouncement,
 };
+use crate::services::outfit_selections::OutfitLlmChooseRunner;
 use crate::services::prospero_notifications::{
     post_prospero_connection_profile_change_announcement,
     ProsperoConnectionProfileChangeAnnouncement,
@@ -1219,22 +1220,23 @@ fn slots_from_value(v: &Value) -> crate::wardrobe::Slots {
 /// this call site passes no `sourceChatId` (v4 `participants.ts:187` builds the
 /// context without one), which is v4's own fallback.
 ///
-/// ## DEFERRED, loudly and by name: `llm_choose`
+/// ## `llm_choose` (P4.9E3B — the refusal is GONE)
 ///
-/// v4's `llm_choose` mode asks the cheap LLM to pick an outfit
-/// (`lib/wardrobe/apply-outfit-selections.ts` → `chooseLLMOutfit`). Reaching it
-/// needs a `CompletionProvider` + `CheapLlmTaskExecutor`, and this handler runs
-/// on the single-writer queue where the async provider boundary is not
-/// available — the chat-CREATE path gets them from its host driver
-/// ([`crate::api::chat_create::ChatCreateDriver`]), which the participant verbs
-/// have no analogue of. Closing it is a host-seam item, recorded in the lane
-/// record. The mode is REFUSED (a named warning, no write), never silently
-/// treated as `default`.
+/// The cheap-LLM pick rides the `runner` host seam
+/// ([`crate::services::outfit_selections::OutfitLlmChooseRunner`] — the
+/// `RegenerateTitleDriver` arrangement). v4's shape on ANY failure — no
+/// provider, task failure, thrown read — is fall back to the DEFAULT outfit
+/// and never block the join; an unwired runner takes the same path (with a
+/// named warning), exactly like v4's no-resolvable-profile arm. The context
+/// mirrors v4 `participants.ts:186–189`: `scenarioText` from the chat,
+/// `cheapLLMConfig` from the user's chat settings, NO `sourceChatId`.
 pub async fn apply_outfit_for_added_participant(
     db: &Db,
+    user_id: &str,
     chat_id: &str,
     character_id: &str,
     outfit_selection: Option<&Value>,
+    runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
 ) {
     let mode = outfit_selection
         .and_then(|s| s.get("mode"))
@@ -1267,15 +1269,68 @@ pub async fn apply_outfit_for_added_participant(
         "manual" => manual_slots.unwrap_or_default(),
         "none" => crate::wardrobe::Slots::default(),
         "llm_choose" => {
-            tracing::warn!(
-                chat_id,
-                character_id,
-                "[Chats v1] add-participant outfit mode `llm_choose` is not available: \
-                 it needs the cheap-LLM host seam the chat-create driver carries \
-                 (v4 lib/wardrobe/apply-outfit-selections.ts, chooseLLMOutfit). \
-                 No outfit was equipped."
-            );
-            return;
+            let chosen = match runner {
+                Some(runner) => {
+                    // v4's context: the chat's scenarioText + the user's
+                    // cheapLLMSettings (both best-effort reads).
+                    let cid = chat_id.to_string();
+                    let uid = user_id.to_string();
+                    let context = db.read_main(move |c| {
+                        let chat = crate::db::chats_read::find_by_id(c, &cid)?;
+                        let scenario = chat
+                            .as_ref()
+                            .and_then(|ch| ch.get("scenarioText"))
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        let settings = crate::db::chat_settings::find_by_user_id(c, &uid)?;
+                        let cheap = settings
+                            .as_ref()
+                            .and_then(|s| s.get("cheapLLMSettings"))
+                            .filter(|v| !v.is_null())
+                            .cloned();
+                        Ok((scenario, cheap))
+                    });
+                    let (scenario_text, cheap_settings) = context.unwrap_or((None, None));
+                    runner
+                        .choose(crate::services::outfit_selections::OutfitLlmChooseRequest {
+                            chat_id: chat_id.to_string(),
+                            character_id: character_id.to_string(),
+                            scenario_text,
+                            cheap_settings,
+                        })
+                        .await
+                }
+                None => {
+                    tracing::warn!(
+                        chat_id,
+                        character_id,
+                        "[Chats v1] llm_choose outfit runner is not assembled — \
+                         falling back to the default outfit (v4's own failure shape)"
+                    );
+                    None
+                }
+            };
+            match chosen {
+                Some(slots) => slots,
+                // v4: any failure → resolveDefaultOutfit.
+                None => {
+                    let cid = character_id.to_string();
+                    match read_main_mount(db, |main, mount| {
+                        crate::services::outfit_selections::resolve_default_outfit(
+                            main, mount, &cid,
+                        )
+                    }) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(
+                                chat_id, character_id, error = %e,
+                                "[Chats v1] Failed to apply outfit for added participant"
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
         }
         // v4 logs and skips an unknown mode (no write).
         _ => return,

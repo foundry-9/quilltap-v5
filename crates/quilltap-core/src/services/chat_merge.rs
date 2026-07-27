@@ -34,18 +34,14 @@
 //! recap and back-link are posted only when at least one character actually came
 //! across, so a no-op merge leaves no orphan bubbles in either chat.
 //!
-//! ## The one deferral (loud, named)
+//! ## `llm_choose` (P4.9E3B — the refusal is GONE)
 //!
-//! The `llm_choose` starting-outfit mode needs a cheap-LLM call, and
-//! [`apply_outfit_selections`](super::outfit_selections::apply_outfit_selections)
-//! holds writable connections across that await — which the single-writer
-//! closure this verb runs inside cannot host (the `ChatCreateSpine` note). The
-//! other four modes (`default` / `manual` / `none` / `previous_chat`, the merge's
-//! own default) run through the SAME implementation via
-//! [`apply_outfit_selection_sync`]. A request carrying `llm_choose` is REFUSED by
-//! name up front rather than silently downgraded. Closing it means a host-side
-//! merge driver on the `ChatCreateDriver` pattern; the merge dialog is not in
-//! this round, so nothing can reach the refusal yet.
+//! The cheap-LLM pick runs BEFORE the per-character write closure through the
+//! [`OutfitLlmChooseRunner`] host seam, and the selection is rewritten to
+//! `manual` (the decided slots) or `default` (v4's any-failure fallback —
+//! including an unwired runner) so the sync path inside the writer stays the
+//! one implementation. The four model-free modes are unchanged
+//! ([`apply_outfit_selection_sync`]).
 //!
 //! Pinned by `chat_admin_routes_equivalence`.
 
@@ -63,7 +59,8 @@ use crate::services::host_notifications::{
     HostAddAnnouncement, HostCharacter, HostMergeFromAnnouncement, HostMergeToAnnouncement,
 };
 use crate::services::outfit_selections::{
-    apply_outfit_selection_sync, OutfitContext, OutfitSelection,
+    apply_outfit_selection_sync, OutfitContext, OutfitLlmChooseRequest, OutfitLlmChooseRunner,
+    OutfitSelection,
 };
 use crate::services::system_prompt_compiler::compile_identity_stack_for_participant;
 use crate::wardrobe::Slots;
@@ -203,6 +200,7 @@ pub async fn apply_chat_merge(
     user_id: &str,
     include_character_ids: Option<&[String]>,
     outfit_selections: &[OutfitSelection],
+    outfit_runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
 ) -> Result<ApplyChatMergeResult, DbError> {
     let mut result = ApplyChatMergeResult::default();
 
@@ -379,6 +377,46 @@ pub async fn apply_chat_merge(
                 mode: "previous_chat".to_string(),
                 slots: None,
             });
+        // `llm_choose` consults the cheap LLM OUTSIDE the writer (P4.9E3B):
+        // the decided slots become a `manual` selection; any failure — task,
+        // read, or an unwired runner — becomes `default`, v4's own fallback.
+        let selection = if selection.mode == "llm_choose" {
+            let chosen = match outfit_runner {
+                Some(runner) => {
+                    runner
+                        .choose(OutfitLlmChooseRequest {
+                            chat_id: target_chat_id.to_string(),
+                            character_id: character_id.clone(),
+                            scenario_text: scenario_text.clone(),
+                            cheap_settings: cheap_settings.clone(),
+                        })
+                        .await
+                }
+                None => {
+                    tracing::warn!(
+                        target_chat_id,
+                        character_id,
+                        "[ChatMerge] llm_choose outfit runner is not assembled — \
+                         falling back to the default outfit (v4's own failure shape)"
+                    );
+                    None
+                }
+            };
+            match chosen {
+                Some(slots) => OutfitSelection {
+                    character_id: character_id.clone(),
+                    mode: "manual".to_string(),
+                    slots: Some(slots),
+                },
+                None => OutfitSelection {
+                    character_id: character_id.clone(),
+                    mode: "default".to_string(),
+                    slots: None,
+                },
+            }
+        } else {
+            selection
+        };
         let target = target_chat_id.to_string();
         let source = source_chat_id.to_string();
         let cheap = cheap_settings.clone();
@@ -531,6 +569,7 @@ pub async fn chat_merge_conversation(
     source_chat_id: &str,
     character_ids: Option<&[String]>,
     outfit_selections: Option<&[Value]>,
+    outfit_runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
 ) -> Response {
     let chat = match load_chat(db, chat_id) {
         Ok(Some(c)) => c,
@@ -549,21 +588,6 @@ pub async fn chat_merge_conversation(
     let Some(selections) = parse_outfit_selections(outfit_selections) else {
         return crate::services::chat_admin::validation_error();
     };
-    // The one named deferral (see the module header): `llm_choose` needs a
-    // cheap-LLM call this verb cannot host. Refuse by name rather than silently
-    // downgrade to the default outfit.
-    if let Some(s) = selections.iter().find(|s| s.mode == "llm_choose") {
-        return Response::error(
-            ErrorKind::Internal,
-            format!(
-                "The 'llm_choose' starting-outfit mode is recognized but not yet available for \
-                 merge-conversation (character {}); choose default, manual, none, or \
-                 previous_chat.",
-                s.character_id
-            ),
-        );
-    }
-
     let sid = source_chat_id.to_string();
     match db.read_main(move |c| chats_read::find_by_id(c, &sid)) {
         Ok(Some(_)) => {}
@@ -578,6 +602,7 @@ pub async fn chat_merge_conversation(
         user_id,
         character_ids,
         &selections,
+        outfit_runner,
     )
     .await
     {

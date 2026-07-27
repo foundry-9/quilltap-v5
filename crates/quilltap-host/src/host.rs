@@ -488,6 +488,7 @@ impl EngineAssembler for HostAssembler {
             announcement_preview,
             operator_tool_runner,
             regenerate_title,
+            outfit_llm_choose,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -508,10 +509,12 @@ impl EngineAssembler for HostAssembler {
                     bundle.announcement_preview,
                     bundle.operator_tool_runner,
                     bundle.regenerate_title,
+                    bundle.outfit_llm_choose,
                 )
             }
             None => (
                 None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None,
             ),
         };
 
@@ -695,6 +698,17 @@ impl EngineAssembler for HostAssembler {
             regenerate_title,
             // === end P4.9E3A ===
             // === end P4.9E2A ===
+            // === P4.9E3B: the tools inventory's `isWebSearchConfigured()` fact.
+            // v4 is `searchProviderRegistry.isSearchConfigured() || SERPER_API_KEY`;
+            // v5 has no plugin registry (the standing deferral), so the env-key
+            // half is the whole answer — matching the executor's own web-search
+            // fallback wiring. ===
+            web_search_configured: std::env::var("SERPER_API_KEY").is_ok(),
+            // The out-of-create llm_choose pick, LIVE from the spine's
+            // completion provider (⚠ one cheap-LLM call per pick); spine-less
+            // assemblies keep None → the default-outfit fallback.
+            outfit_llm_choose,
+            // === end P4.9E3B ===
         })
     }
 }

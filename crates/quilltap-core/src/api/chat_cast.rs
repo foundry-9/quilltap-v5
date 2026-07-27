@@ -49,6 +49,7 @@ use crate::services::host_notifications::{
     post_host_remove_announcement, HostAddAnnouncement, HostCharacter,
     HostJoinScenarioAnnouncement, HostRemoveAnnouncement,
 };
+use crate::services::outfit_selections::OutfitLlmChooseRunner;
 
 use super::types::{ErrorKind, Response};
 
@@ -136,6 +137,7 @@ pub async fn chat_add_participant(
     user_id: &str,
     chat_id: &str,
     data: &ParticipantAddData,
+    outfit_runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
 ) -> Response {
     let cid = chat_id.to_string();
     let chat = match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
@@ -173,7 +175,8 @@ pub async fn chat_add_participant(
         .find(|p| matches_character(p) && status_of(p) == "removed")
         .cloned()
     {
-        return reactivate_participant(db, user_id, chat_id, &chat, &removed, data).await;
+        return reactivate_participant(db, user_id, chat_id, &chat, &removed, data, outfit_runner)
+            .await;
     }
 
     // ── The fresh-add branch ──
@@ -252,9 +255,11 @@ pub async fn chat_add_participant(
     // The starting outfit — defaults to the character's wardrobe defaults.
     apply_outfit_for_added_participant(
         db,
+        user_id,
         chat_id,
         &data.character_id,
         data.outfit_selection.as_ref(),
+        outfit_runner,
     )
     .await;
 
@@ -265,11 +270,12 @@ pub async fn chat_add_participant(
 /// participant is patched back to `active` rather than duplicated.
 async fn reactivate_participant(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     chat_id: &str,
     chat: &Value,
     removed: &Value,
     data: &ParticipantAddData,
+    outfit_runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
 ) -> Response {
     let removed_id = s(removed, "id").unwrap_or_default();
     let controlled_by = data
@@ -364,9 +370,11 @@ async fn reactivate_participant(
         if let Some(character_id) = reactivated.as_ref().and_then(|p| s(p, "characterId")) {
             apply_outfit_for_added_participant(
                 db,
+                user_id,
                 chat_id,
                 &character_id,
                 data.outfit_selection.as_ref(),
+                outfit_runner,
             )
             .await;
         }

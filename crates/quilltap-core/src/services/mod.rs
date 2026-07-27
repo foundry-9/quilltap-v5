@@ -173,5 +173,6 @@ pub mod chat_run_tool;
 pub mod chat_export;
 pub mod message_reattribute;
 pub mod search_replace;
+pub mod tools_inventory;
 // === end P4.9E3B ===
 // ── end P4.9E3A ──

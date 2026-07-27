@@ -40,6 +40,34 @@ The corpus that checks this behavior could not see the change at all. The
 conversation it tested happened to seat the character you play at the head of
 the cast, so the old choice and the new one agreed on every row; the test file
 now carries five more rooms, each built to disagree in exactly one way.
+"Let the character choose" now works everywhere it is offered, not just when
+starting a new conversation. Adding a character to an existing conversation
+or merging one conversation into another with the outfit mode set to "let
+them decide" now actually consults the inexpensive model — the character's
+description, personality, manifesto, wardrobe listing, and the scene's
+scenario all ride the request, and the reply is validated item by item
+(unknown items and wrong-slot picks are quietly dropped). On any failure —
+the model unreachable, a malformed reply, or a build without the seam wired —
+the character falls back to their default wardrobe rather than blocking the
+join, which is exactly what the old app does. Note the consult costs a real
+(inexpensive) model call per pick. Proven with the same canned reply injected
+into both apps: the request bytes, the decided outfit, and both fallback arms
+all match.
+
+The tool inventory is back: `GET /api/v1/tools` lists all forty built-in
+tools with their display names, descriptions, and categories, optionally
+attaching each tool's parameter schema, and — when asked about a specific
+conversation — marking which tools are actually usable there and why not
+(image profile missing, no project, no linked document stores, web search
+not enabled or not configured, a single-character room, or a character whose
+wardrobe permissions are switched off). Two of the old app's quirks are kept
+on purpose: the document-copy tool escapes the availability check entirely,
+and the three photo tools never carry schemas. Proven byte-for-byte against
+the old app across eight arms, including the fifty-kilobyte
+schemas-plus-availability body. Plugins remain the standing deferral: this
+app has no plugin runtime, and the inventory says so honestly by listing
+built-ins only.
+
 Search & replace and per-message re-attribution work again. The standalone
 search-replace surface answers both halves — a dry-run preview (how many
 messages and memories match, and where) and the execute (rewriting message

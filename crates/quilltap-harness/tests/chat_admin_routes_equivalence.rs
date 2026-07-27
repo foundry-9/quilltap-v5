@@ -1021,6 +1021,7 @@ fn chat_admin_routes_match_oracle() {
             source,
             include.as_deref(),
             selections.as_deref(),
+            None,
         ));
         let tables = dump.then(|| {
             json!({

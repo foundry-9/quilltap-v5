@@ -215,6 +215,22 @@ pub struct EngineAssembly {
     /// ⚠ LIVE means real money: one cheap-LLM call per regeneration.
     pub regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E3A ===
+    // === P4.9E3B ===
+    /// The host's `isWebSearchConfigured()` fact for the tools inventory
+    /// (v4: Serper plugin registered OR `SERPER_API_KEY` set; v5 has no plugin
+    /// registry, so the host passes the env-key half). `false` for canned test
+    /// factories — the `search_web` row then reads "No search provider
+    /// configured…", v4's own unconfigured arm.
+    pub web_search_configured: bool,
+    /// The out-of-create `llm_choose` outfit runner (P4.9E3B) — the host holds
+    /// the completion provider + a per-call logging cheap executor (the
+    /// `RegenerateTitleDriver` arrangement). `None` → both call sites fall
+    /// back to the DEFAULT outfit with a named warning (v4's own any-failure
+    /// shape — never a refusal).
+    /// ⚠ LIVE means real money: one cheap-LLM call per llm_choose pick.
+    pub outfit_llm_choose:
+        Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
+    // === end P4.9E3B ===
 }
 
 impl EngineAssembly {
@@ -256,6 +272,10 @@ impl EngineAssembly {
             operator_tool_runner: None,
             regenerate_title: None,
             // === end P4.9E3A ===
+            // === P4.9E3B ===
+            web_search_configured: false,
+            outfit_llm_choose: None,
+            // === end P4.9E3B ===
         }
     }
 }
@@ -423,6 +443,10 @@ struct ReadyEngine {
     operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
     regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E2A ===
+    // === P4.9E3B ===
+    web_search_configured: bool,
+    outfit_llm_choose: Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
+    // === end P4.9E3B ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -955,8 +979,15 @@ impl CoreEngine {
                         controlled_by,
                         outfit_selection,
                     };
-                    super::chat_cast::chat_add_participant(&db, SINGLE_USER_ID, &chat_id, &data)
-                        .await
+                    let runner = self.outfit_llm_choose();
+                    super::chat_cast::chat_add_participant(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &data,
+                        runner.as_ref(),
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -1080,6 +1111,7 @@ impl CoreEngine {
                 outfit_selections,
             } => match self.ready_db() {
                 Ok(db) => {
+                    let runner = self.outfit_llm_choose();
                     crate::services::chat_merge::chat_merge_conversation(
                         &db,
                         SINGLE_USER_ID,
@@ -1087,6 +1119,7 @@ impl CoreEngine {
                         &source_chat_id,
                         character_ids.as_deref(),
                         outfit_selections.as_deref(),
+                        runner.as_ref(),
                     )
                     .await
                 }
@@ -1205,13 +1238,16 @@ impl CoreEngine {
                 Ok(db) => super::chat_outfits::chat_outfit_summary(&db, &chat_id),
                 Err(r) => r,
             },
-            // The tools inventory lands as this lane's next unit; until then
-            // the arm answers the loud named refusal.
-            Request::ToolsList { .. } => match self.ready_db() {
-                Ok(_) => Response::error(
-                    ErrorKind::BadRequest,
-                    "The tools inventory is recognized but not yet available \
-                     (P4.9E3B in flight — v4 app/api/v1/tools/route.ts:429).",
+            Request::ToolsList {
+                chat_id,
+                include_schemas,
+            } => match self.ready_db() {
+                Ok(db) => crate::services::tools_inventory::tools_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    chat_id.as_deref(),
+                    include_schemas.unwrap_or(false),
+                    self.web_search_configured(),
                 ),
                 Err(r) => r,
             },
@@ -4068,6 +4104,27 @@ impl CoreEngine {
     /// validation / character / connection-profile arms and only refuses at the
     /// rewrite step (mirrors v4, where those checks precede the generation).
     #[allow(clippy::type_complexity)]
+    /// The host's web-search-configured fact (P4.9E3B) — `false` when locked
+    /// or unassembled (the `ToolsList` arm gates on `ready_db` first).
+    fn web_search_configured(&self) -> bool {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.web_search_configured,
+            EngineState::Locked { .. } => false,
+        }
+    }
+
+    /// The out-of-create llm_choose outfit runner (P4.9E3B) — `None` when
+    /// locked or unassembled (both call sites then take v4's default-outfit
+    /// fallback with a named warning).
+    fn outfit_llm_choose(
+        &self,
+    ) -> Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.outfit_llm_choose.clone(),
+            EngineState::Locked { .. } => None,
+        }
+    }
+
     /// The DB plus the (possibly unassembled) operator tool runner — the
     /// `run-tool` arm answers its own loud refusal when the runner is `None`, so
     /// this helper hands the `Option` through rather than erroring here.
@@ -4739,6 +4796,10 @@ fn open_ready(
         operator_tool_runner: assembly.operator_tool_runner,
         regenerate_title: assembly.regenerate_title,
         // === end P4.9E2A ===
+        // === P4.9E3B ===
+        web_search_configured: assembly.web_search_configured,
+        outfit_llm_choose: assembly.outfit_llm_choose,
+        // === end P4.9E3B ===
     })
 }
 

@@ -420,6 +420,146 @@ pub fn apply_outfit_selection_sync(
     Ok(true)
 }
 
+/// The outcome of one `llm_choose` attempt (the v4 `applyOutfitSelections`
+/// arm's observable states).
+pub enum LlmChooseOutcome {
+    /// The consult never started (missing character / empty wardrobe / no
+    /// resolvable profile) — v4 announces nothing and falls to the default.
+    NotAttempted,
+    /// The consult ran; `slots` is `None` on a task failure (→ default).
+    Attempted {
+        character_name: String,
+        slots: Option<Slots>,
+    },
+}
+
+/// The LLM-attempt half of v4's `llm_choose` arm, over PRE-READ rows (so a
+/// connection never spans the await for callers without dedicated writers).
+/// `emitter` narrates `wardrobe-start` when present (chat-create's dialog);
+/// the RESULT frames stay at the call sites, which hold the connections the
+/// preview resolution needs.
+#[allow(clippy::too_many_arguments)]
+pub async fn choose_llm_outfit<C: CompletionProvider>(
+    completion: &C,
+    executor: &CheapLlmTaskExecutor,
+    character: Option<&Value>,
+    wardrobe_items: &[Value],
+    all_profiles: &[Value],
+    cheap_settings: Option<&Value>,
+    scenario_text: Option<&str>,
+    character_id: &str,
+    emitter: Option<&CreationProgressEmitter>,
+) -> LlmChooseOutcome {
+    let Some(character) = character else {
+        return LlmChooseOutcome::NotAttempted;
+    };
+    if wardrobe_items.is_empty() {
+        return LlmChooseOutcome::NotAttempted;
+    }
+    let selection: Option<CheapLlmSelection> =
+        build_cheap_llm_selection(all_profiles, cheap_settings);
+    let Some(selection) = selection else {
+        return LlmChooseOutcome::NotAttempted;
+    };
+
+    let character_name = s(character, "name").unwrap_or_default();
+    if let Some(emitter) = emitter {
+        emitter.wardrobe_start(character_id, &character_name);
+    }
+
+    let messages = build_outfit_messages(character, wardrobe_items, scenario_text);
+    let items_for_parse = wardrobe_items.to_vec();
+    let result = executor
+        .execute(
+            completion,
+            &selection,
+            messages,
+            move |content| parse_outfit_response(content, &items_for_parse),
+            None,
+            None,
+            Some(character_id),
+            Some("outfit-selection"),
+        )
+        .await;
+
+    let slots = if result.success { result.result } else { None };
+    LlmChooseOutcome::Attempted {
+        character_name,
+        slots,
+    }
+}
+
+/// The host-seam contract for one out-of-create `llm_choose` pick (P4.9E3B):
+/// the composing host holds the completion provider + a per-call LOGGING cheap
+/// executor (the `RegenerateTitleDriver` arrangement). `None` means the pick
+/// failed OR never started — v4 falls back to the default outfit either way,
+/// and so do both call sites (add-participant and the merge).
+#[derive(Clone, Debug)]
+pub struct OutfitLlmChooseRequest {
+    pub chat_id: String,
+    pub character_id: String,
+    pub scenario_text: Option<String>,
+    /// The chat settings' `cheapLLMSettings` sub-object.
+    pub cheap_settings: Option<Value>,
+}
+
+pub trait OutfitLlmChooseRunner: Send + Sync {
+    fn choose(
+        &self,
+        req: OutfitLlmChooseRequest,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Slots>> + Send + '_>>;
+}
+
+/// The runner's core: read the character + wardrobe + profiles through pooled
+/// read connections into owned rows, then run [`choose_llm_outfit`] with no
+/// emitter. Shared by the production `HostOutfitLlmChooseRunner` and the
+/// tier-3 differential's canned runner, so the differential drives the exact
+/// composition production uses.
+pub async fn run_llm_choose_via_db<C: CompletionProvider>(
+    db: &crate::db::runtime::Db,
+    completion: &C,
+    executor: &CheapLlmTaskExecutor,
+    character_id: &str,
+    scenario_text: Option<&str>,
+    cheap_settings: Option<&Value>,
+) -> Option<Slots> {
+    // v4 wraps the whole attempt in try/catch → fall to default (None).
+    let cid = character_id.to_string();
+    let read = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let docs = DocMountDocumentsRepository::new(mount);
+            let character = characters_read::find_by_id(main, mount, &cid)?;
+            let items = find_by_character_id(main, &docs, &cid, false)?;
+            let profiles = connection_profiles::find_all(main)?;
+            Ok((character, items, profiles))
+        })
+    });
+    let (character, items, profiles) = match read {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(character_id, error = %e,
+                "[applyOutfitSelections] Error during LLM outfit selection, falling back to defaults");
+            return None;
+        }
+    };
+    match choose_llm_outfit(
+        completion,
+        executor,
+        character.as_ref(),
+        &items,
+        &profiles,
+        cheap_settings,
+        scenario_text,
+        character_id,
+        None,
+    )
+    .await
+    {
+        LlmChooseOutcome::Attempted { slots, .. } => slots,
+        LlmChooseOutcome::NotAttempted => None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn apply_llm_choose<C: CompletionProvider>(
     main: &Connection,
@@ -441,49 +581,36 @@ async fn apply_llm_choose<C: CompletionProvider>(
     let docs = DocMountDocumentsRepository::new(mount);
     let character = characters_read::find_by_id(main, mount, character_id)?;
     let wardrobe_items = find_by_character_id(main, &docs, character_id, false)?;
+    let all_profiles = connection_profiles::find_all(main)?;
 
-    if let Some(character) = character.as_ref() {
-        if !wardrobe_items.is_empty() {
-            let all_profiles = connection_profiles::find_all(main)?;
-            let selection: Option<CheapLlmSelection> =
-                build_cheap_llm_selection(&all_profiles, ctx.cheap_settings);
-
-            if let Some(selection) = selection {
-                let character_name = s(character, "name").unwrap_or_default();
-                consulted = true;
-                consulted_name = character_name.clone();
-                emitter.wardrobe_start(character_id, &character_name);
-
-                let messages = build_outfit_messages(character, &wardrobe_items, ctx.scenario_text);
-                let items_for_parse = wardrobe_items.clone();
-                let result = executor
-                    .execute(
-                        completion,
-                        &selection,
-                        messages,
-                        move |content| parse_outfit_response(content, &items_for_parse),
-                        None,
-                        None,
-                        Some(character_id),
-                        Some("outfit-selection"),
-                    )
-                    .await;
-
-                if result.success {
-                    if let Some(slots) = result.result {
-                        outfits.set_equipped_outfit(
-                            chat_id,
-                            character_id,
-                            &slots_to_value(&slots),
-                        )?;
-                        applied = true;
-                        // Publish the decided outfit for the dialog.
-                        let preview = to_outfit_preview_slots(main, mount, character_id, &slots);
-                        emitter.wardrobe_result(character_id, &character_name, preview);
-                    }
-                }
+    match choose_llm_outfit(
+        completion,
+        executor,
+        character.as_ref(),
+        &wardrobe_items,
+        &all_profiles,
+        ctx.cheap_settings,
+        ctx.scenario_text,
+        character_id,
+        Some(emitter),
+    )
+    .await
+    {
+        LlmChooseOutcome::Attempted {
+            character_name,
+            slots,
+        } => {
+            consulted = true;
+            consulted_name = character_name.clone();
+            if let Some(slots) = slots {
+                outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
+                applied = true;
+                // Publish the decided outfit for the dialog.
+                let preview = to_outfit_preview_slots(main, mount, character_id, &slots);
+                emitter.wardrobe_result(character_id, &character_name, preview);
             }
         }
+        LlmChooseOutcome::NotAttempted => {}
     }
 
     if !applied {
