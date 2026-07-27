@@ -41375,3 +41375,40 @@ still owed" claim is struck as STALE; row 10 goes from nine-of-twelve to
 eleven-of-twelve.
 
 **Gate:** `npx ng test` 252 files / 3,120 passed; `npx ng build` clean.
+
+## Lane P4.9E4B — the gate, and what the first full Playwright run caught
+
+**Gate (final):** `npx ng test` **252 files / 3,120 passed**; `npx ng build`
+clean; **full Playwright** from `apps/web` — 154 passed, 1 skipped, 0 failed;
+the single skip is this lane's own named `ATTACH_MOUNT_FILE_LANDED` gate.
+
+**The live proof that mattered.** The composer tray hand-off goes through
+`viewChild(ChatComposer)`, and the composer is rendered from `#chatContentTpl`
+through the panes' outlet. If the view query had not matched across that
+boundary, `onLibraryFileLinked` would have silently done nothing and no unit
+test would have noticed. The **live legacy-link beat passed on the first full
+run** — the chip really lands in the tray, on the real binary — which is the
+evidence for the header note that view queries follow the declaration view.
+
+**The one failure was the beat's own locator**, not the port: the fixture chat
+has a user persona, so BOTH the gallery card's title ("Cleo's Photos") and its
+subtitle ("Photos saved to Cleo's vault") match `/Photos/`, and a strict-mode
+text locator saw two nodes. Fixed by locating the CARD
+(`getByRole('button', { name: /Photos/ })`) rather than the text — the same
+class of trap as the P4.9E3C harness notes. Worth carrying forward: **a
+persona-named scope makes any `/Photos/`-shaped text locator ambiguous by
+construction**, because v4's card always pairs a title and a subtitle built from
+the same name.
+
+**Prettier:** left alone deliberately. The repo is not prettier-clean at HEAD
+(`chat-project-modal.ts`, `chat-tool-settings-modal.ts`, `salon-conversation.ts`
+all report warnings before this lane touched anything), so formatting is not part
+of the gate and reformatting would have made a large diff against files other
+lanes own.
+
+**Nothing OPEN under this order.** All of tier 1 and tier 2 landed. The tier-3
+list is unchanged and still correct: the FileBrowser upload/delete/sync legs are
+unreachable in v4's picker (`showUpload={false}`), `AllLLMPauseModal` stays
+deferred (unreachable in v4 itself), and no files-family listing gap surfaced —
+the browse decision went to a bespoke panel over the shared pure folder model,
+so there was nothing to half-render.

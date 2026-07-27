@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+Ran the whole browser walk against the real server. The picker's live leg works
+end to end: pick a file from General and it is waiting above the message box.
+
 The dice dropdown now closes when you click away from it, and its die spins
 while a roll is on the wire. And a warning the tool settings dialog was said to
 be missing turns out never to have appeared in the old app either — its

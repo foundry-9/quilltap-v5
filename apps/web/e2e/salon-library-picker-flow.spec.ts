@@ -137,8 +137,10 @@ test.describe('P4.9E4B — the Library file picker', () => {
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByText('Choose File Source')).toBeVisible();
     await expect(dialog.getByText('Files not assigned to any project')).toBeVisible();
-    // The gallery scope is always offered, named for the persona when there is one.
-    await expect(dialog.getByText(/Photos/)).toBeVisible();
+    // The gallery scope is always offered, named for the persona when there is one
+    // (the fixture chat has one, so both the title and the subtitle say "Photos" —
+    // locate the CARD, not the text, or strict mode sees two nodes).
+    await expect(dialog.getByRole('button', { name: /Photos/ })).toBeVisible();
 
     await dialog.locator('[qt-modal-footer]').getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
