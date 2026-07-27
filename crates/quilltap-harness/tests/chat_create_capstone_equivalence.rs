@@ -439,20 +439,58 @@ fn chat_create_capstone_matches_oracle() {
             CreationProgressEmitter::from_id(request.progress_id.as_deref(), Arc::clone(&bus), tx);
         let replay_id = request.progress_id.clone().unwrap_or_default();
 
+        let create_result = rt.block_on(handle_create(
+            &db,
+            main_w.connection(),
+            mount_w.connection(),
+            Some(llm_w.connection()),
+            &deps,
+            &request,
+            &emitter,
+        ));
+
+        // P4.9E3B: the request-level rejection arms (a bad / explicit-null
+        // timestampConfig — v4's route-level Zod parse → 400 `Validation
+        // error`). The oracle row's status selects the branch; the Zod
+        // `details` array stays the standing error-envelope deferral.
+        let want_status = want["status"].as_u64().unwrap_or(201);
+        if want_status != 201 {
+            let err = match create_result {
+                Err(e) => e,
+                Ok(_) => panic!(
+                    "case {}: v4 answered {want_status} but the port succeeded",
+                    c.name
+                ),
+            };
+            let (got_status, got_msg) = match &err {
+                quilltap_core::services::chat_create::HandleCreateError::BadRequest(m) => {
+                    (400u64, m.clone())
+                }
+                other => (500u64, other.to_string()),
+            };
+            assert_eq!(
+                got_status, want_status,
+                "case {}: status {got_status} != {want_status}",
+                c.name
+            );
+            let want_error = want["body"]["error"].as_str().unwrap_or_default();
+            assert_eq!(got_msg, want_error, "case {}: error copy mismatch", c.name);
+            eprintln!(
+                "OK: chat-create case {} matched oracle (reject arm).",
+                c.name
+            );
+            drop(db);
+            drop(main_w);
+            drop(mount_w);
+            drop(llm_w);
+            let _ = std::fs::remove_dir_all(&scratch);
+            continue;
+        }
+
         let ChatCreateResult {
             mut chat,
             participants,
-        } = rt
-            .block_on(handle_create(
-                &db,
-                main_w.connection(),
-                mount_w.connection(),
-                Some(llm_w.connection()),
-                &deps,
-                &request,
-                &emitter,
-            ))
-            .unwrap_or_else(|e| panic!("case {}: handle_create failed: {e}", c.name));
+        } = create_result.unwrap_or_else(|e| panic!("case {}: handle_create failed: {e}", c.name));
 
         // Build the 201 DTO body: chat.participants := enriched summaries.
         if let Value::Object(map) = &mut chat {

@@ -40,6 +40,19 @@ The corpus that checks this behavior could not see the change at all. The
 conversation it tested happened to seat the character you play at the head of
 the cast, so the old choice and the new one agreed on every row; the test file
 now carries five more rooms, each built to disagree in exactly one way.
+A conversation's timestamp settings are now stored exactly the way the old
+app stores them. The old app re-checks the configuration at every database
+write — filling in the defaults for anything left unsaid, dropping keys it
+doesn't recognize, keeping the keys in one canonical order, and refusing
+outright when a value is out of bounds (a zero or fractional announcement
+interval, a made-up mode). This app used to store whatever it was handed,
+verbatim, so a partially-specified configuration could land missing its
+defaults. The same check now runs at the create and update writes and at the
+new-conversation request itself, which answers a plain 400 on a bad value —
+including the old app's rejection of an explicit null. Proven byte-for-byte
+at both levels: nine new repository-write cases (including three that must
+refuse) and three new end-to-end conversation-creation cases.
+
 "Let the character choose" now works everywhere it is offered, not just when
 starting a new conversation. Adding a character to an existing conversation
 or merging one conversation into another with the outfit mode set to "let

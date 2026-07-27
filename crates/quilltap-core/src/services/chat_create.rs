@@ -121,6 +121,14 @@ fn default_participant_type() -> String {
     "CHARACTER".to_string()
 }
 
+fn de_double_opt_value<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<Value>>, D::Error> {
+    use serde::Deserialize as _;
+    let v = Value::deserialize(de)?;
+    Ok(Some(if v.is_null() { None } else { Some(v) }))
+}
+
 /// The chat-creation request (v4 `createChatSchema`). Every field carries a
 /// serde default so a sparse dispatch payload deserializes.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -135,7 +143,12 @@ pub struct ChatCreateRequest {
     pub general_scenario_path: Option<String>,
     pub group_scenario_path: Option<String>,
     pub group_scenario_group_id: Option<String>,
-    pub timestamp_config: Option<Value>,
+    /// v4 `timestampConfig: TimestampConfigSchema.optional()` — `.optional()`
+    /// is NOT nullable: an explicit JSON `null` REJECTS (400). The double
+    /// `Option` keeps that arm expressible (absent → `None`, null →
+    /// `Some(None)`, object → `Some(Some(v))`).
+    #[serde(deserialize_with = "de_double_opt_value")]
+    pub timestamp_config: Option<Option<Value>>,
     pub project_id: Option<String>,
     /// Chat-level image profile (shared by all participants).
     pub image_profile_id: Option<String>,
@@ -469,8 +482,26 @@ where
     // character-level DEFAULTS stay unanchored: a default saved months ago
     // carries no meaningful anchor, and the stamp is applied here whether the
     // config was requested outright or inherited.
+    // v4 `createChatSchema`: `timestampConfig: TimestampConfigSchema.optional()`
+    // — the REQUEST config is Zod-parsed (defaults materialized, unknown keys
+    // stripped) before the fallback chain; a bad value is the middleware's 400
+    // (`Validation error`). The stored defaults in the chain re-normalize at
+    // the repository write (db/chats.rs), as v4's `_create` validate does.
+    let request_timestamp_config: Option<Value> = match &req.timestamp_config {
+        None => None,
+        // v4's `.optional()` (not nullable) — an explicit null REJECTS.
+        Some(None) => {
+            return Err(HandleCreateError::BadRequest(
+                "Validation error".to_string(),
+            ))
+        }
+        Some(Some(v)) => Some(
+            chat_timestamp::parse_timestamp_config(v)
+                .map_err(|_| HandleCreateError::BadRequest("Validation error".to_string()))?,
+        ),
+    };
     let resolved_timestamp_config: Value = chat_timestamp::ensure_fictional_base_real_time(
-        &req.timestamp_config
+        &request_timestamp_config
             .clone()
             .or_else(|| {
                 primary_character

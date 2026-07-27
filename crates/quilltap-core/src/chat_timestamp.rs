@@ -754,6 +754,115 @@ pub fn ensure_fictional_base_real_time(config: &Value, anchor_ms: i64) -> Value 
     Value::Object(out)
 }
 
+// ===========================================================================
+// The TimestampConfigSchema parse (P4.9E3B — the repository-write
+// normalization, v4 `lib/schemas/settings.types.ts:76–95`)
+// ===========================================================================
+
+/// v4 `TimestampConfigSchema.parse` over one JSON value. The Zod semantics the
+/// P4.d18 probe pinned (status-log.md, "the P4.d18 probe"): output keys in
+/// SCHEMA DECLARATION ORDER regardless of input order; unknown keys stripped;
+/// the five keyed defaults materialized when absent (`mode: "NONE"`,
+/// `format: "FRIENDLY"`, `useFictionalTime: false`, `autoPrepend: true`,
+/// `intervalMinutes: 15`); the four `.nullable().optional()` keys keep an
+/// explicit `null` and stay ABSENT when absent; a bad value REJECTS (`Err` —
+/// v4 throws a ZodError, which the create route answers as 400 and the
+/// repository write surfaces as its own thrown validation).
+///
+/// `intervalMinutes` is `z.number().int().min(1)` — `Number.isInteger`
+/// semantics (`1.0` passes and re-emits as `1`, the P4.6an precedent).
+pub fn parse_timestamp_config(v: &Value) -> Result<Value, String> {
+    let Some(obj) = v.as_object() else {
+        return Err("expected object".to_string());
+    };
+    let mut out = serde_json::Map::new();
+
+    // mode (enum, default 'NONE'). `.default()` applies to ABSENT only —
+    // an explicit null rejects.
+    let mode = match obj.get("mode") {
+        None => "NONE".to_string(),
+        Some(Value::String(s))
+            if ["NONE", "START_ONLY", "EVERY_MESSAGE", "EVERY_N_MINUTES"].contains(&s.as_str()) =>
+        {
+            s.clone()
+        }
+        Some(_) => return Err("invalid mode".to_string()),
+    };
+    out.insert("mode".into(), Value::String(mode));
+
+    let format = match obj.get("format") {
+        None => "FRIENDLY".to_string(),
+        Some(Value::String(s))
+            if ["ISO8601", "FRIENDLY", "DATE_ONLY", "TIME_ONLY", "CUSTOM"]
+                .contains(&s.as_str()) =>
+        {
+            s.clone()
+        }
+        Some(_) => return Err("invalid format".to_string()),
+    };
+    out.insert("format".into(), Value::String(format));
+
+    // The `.nullable().optional()` string keys: absent stays absent, explicit
+    // null survives, a non-string rejects.
+    let nullable_string = |key: &str| -> Result<Option<Value>, String> {
+        match obj.get(key) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(Value::Null)),
+            Some(Value::String(s)) => Ok(Some(Value::String(s.clone()))),
+            Some(_) => Err(format!("invalid {key}")),
+        }
+    };
+    if let Some(v) = nullable_string("customFormat")? {
+        out.insert("customFormat".into(), v);
+    }
+
+    let use_fictional = match obj.get("useFictionalTime") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err("invalid useFictionalTime".to_string()),
+    };
+    out.insert("useFictionalTime".into(), Value::Bool(use_fictional));
+
+    if let Some(v) = nullable_string("fictionalBaseTimestamp")? {
+        out.insert("fictionalBaseTimestamp".into(), v);
+    }
+    if let Some(v) = nullable_string("fictionalBaseRealTime")? {
+        out.insert("fictionalBaseRealTime".into(), v);
+    }
+
+    let auto_prepend = match obj.get("autoPrepend") {
+        None => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err("invalid autoPrepend".to_string()),
+    };
+    out.insert("autoPrepend".into(), Value::Bool(auto_prepend));
+
+    if let Some(v) = nullable_string("timezone")? {
+        out.insert("timezone".into(), v);
+    }
+
+    // intervalMinutes: int min 1, default 15. Number.isInteger over the f64
+    // (1.0 passes, 1.5 rejects); re-emitted as a JSON integer.
+    let interval = match obj.get("intervalMinutes") {
+        None => 15i64,
+        Some(Value::Number(n)) => {
+            let f = n.as_f64().unwrap_or(f64::NAN);
+            if !f.is_finite() || f.fract() != 0.0 || f.abs() >= 9.007_199_254_740_992e15 {
+                return Err("invalid intervalMinutes".to_string());
+            }
+            let i = f as i64;
+            if i < 1 {
+                return Err("invalid intervalMinutes".to_string());
+            }
+            i
+        }
+        Some(_) => return Err("invalid intervalMinutes".to_string()),
+    };
+    out.insert("intervalMinutes".into(), Value::Number(interval.into()));
+
+    Ok(Value::Object(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -39583,3 +39583,39 @@ before porting (no drift).
 - **Blast radius re-proven**: `chat_admin_routes_equivalence` +
   `chat_cast_routes_equivalence` re-run green over oracles regenerated fresh
   at `e8a49597` (their call sites gained the runner parameter, passed `None`).
+
+## Lane record — P4.9E3B unit 7 (the TimestampConfigSchema write normalization), 2026-07-27
+
+- **The twice-deferred P4.d18 follow-up lands.**
+  `chat_timestamp::parse_timestamp_config` ports v4's
+  `TimestampConfigSchema.parse` (settings.types.ts:76–95) with the
+  probe-pinned Zod semantics: schema-declaration key order, unknown keys
+  stripped, the five keyed defaults materialized, the four
+  `.nullable().optional()` keys three-state (explicit null kept, absent
+  stays absent), `intervalMinutes` as `Number.isInteger` min-1 (a `3.0`
+  re-emits as `3`), bad values REJECT.
+- **Applied at v4's exact seams**: the `db/chats.rs` CREATE write (every
+  source — request, character default, settings default — re-normalizes, as
+  v4's `_create` validate does); a new `ChatUpdate.timestamp_config`
+  double-`Option` arm on the repo UPDATE (set-normalized / clear-to-NULL /
+  error, and an erroring patch aborts the WHOLE update — title included —
+  exactly like v4's merged-row validate); and the chat-CREATE request parse
+  in `services/chat_create.rs` — the request config is normalized BEFORE the
+  fallback chain, a bad value answers the middleware's 400
+  `Validation error`, and an explicit `null` REJECTS (v4's `.optional()` is
+  not nullable — the field became `Option<Option<Value>>` to express it).
+- **Differentials**: `chats_tier2_equivalence` grew 10 ops (11 → 21; spec +
+  oracle case gained `expectError`, asserted on BOTH sides so a silently
+  succeeding bad op is loud): scrambled-partial-with-junk normalized,
+  explicit nulls kept in slot order, `3.0` → `3`, cleared-to-NULL by update,
+  a replace-not-merge update, and three refusals — the final table compared
+  raw-cell byte-wise as ever. `chat_create_capstone_equivalence` grew 3
+  cases (9 → 12; the harness gained a reject-arm branch): the request-parse
+  normalization landing in the stored row end-to-end, the bad-value 400,
+  and the explicit-null 400 (both pin the `Validation error` copy; the Zod
+  `details` array stays the standing error-envelope deferral).
+- The update entrance remains structurally unreachable from routes on both
+  sides (v4's PUT `updateChatSchema` carries no `timestampConfig`; only
+  chat-CREATE accepts one) — the repo-level arm exists for v4 parity and any
+  future internal caller, proven at the repo differential.
+- Versions: core 0.0.385, harness 0.0.332.

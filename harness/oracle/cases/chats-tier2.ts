@@ -38,6 +38,9 @@ interface Op {
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
+  /** P4.9E3B: the op must THROW (a bad timestampConfig fails the repo-write
+   * Zod parse); a silent success is loud. */
+  expectError?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -72,6 +75,17 @@ async function main(): Promise<void> {
   const repo = new ChatsRepository();
 
   for (const op of spec.ops) {
+    if (op.expectError) {
+      let threw = false;
+      try {
+        if (op.kind === 'create') await repo.create(op.data as never, op.options);
+        else if (op.kind === 'update') await repo.update(op.id as string, op.data as never);
+      } catch {
+        threw = true;
+      }
+      if (!threw) throw new Error(`op expected to throw but succeeded: ${JSON.stringify(op)}`);
+      continue;
+    }
     if (op.kind === 'create') {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {

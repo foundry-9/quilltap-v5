@@ -38,14 +38,24 @@ struct Spec {
 
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
+#[allow(clippy::large_enum_variant)]
 enum Op {
     #[serde(rename = "create")]
     Create {
         options: Opts,
         data: Box<ChatCreate>,
+        /// P4.9E3B: the op must ERROR (a bad timestampConfig fails the
+        /// repo-write parse); a silent success is loud on both sides.
+        #[serde(default, rename = "expectError")]
+        expect_error: bool,
     },
     #[serde(rename = "update")]
-    Update { id: String, data: PatchData },
+    Update {
+        id: String,
+        data: PatchData,
+        #[serde(default, rename = "expectError")]
+        expect_error: bool,
+    },
     #[serde(rename = "delete")]
     Delete { id: String },
 }
@@ -88,12 +98,23 @@ struct PatchData {
     /// (`Some(None)` → clear to SQL NULL, v4's `$set: null`).
     #[serde(default, deserialize_with = "de_double_opt_bool")]
     turn_skipping_enabled: Option<Option<bool>>,
+    /// P4.9E3B: the repository-write TimestampConfigSchema normalization —
+    /// `Some(Some(cfg))` re-parses; `Some(None)` (explicit null) clears.
+    #[serde(default, deserialize_with = "de_double_opt_value")]
+    timestamp_config: Option<Option<Value>>,
 }
 
 fn de_double_opt_bool<'de, D: serde::Deserializer<'de>>(
     de: D,
 ) -> Result<Option<Option<bool>>, D::Error> {
     Ok(Some(Option::<bool>::deserialize(de)?))
+}
+
+fn de_double_opt_value<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<Value>>, D::Error> {
+    let v = Value::deserialize(de)?;
+    Ok(Some(if v.is_null() { None } else { Some(v) }))
 }
 
 impl PatchData {
@@ -140,6 +161,7 @@ impl PatchData {
             story_background_image_id: None,
             last_background_generated_at: None,
             turn_skipping_enabled: self.turn_skipping_enabled,
+            timestamp_config: self.timestamp_config.clone(),
             updated_at: self.updated_at.clone(),
             // The U4.3 autonomous run-state / schedule / budget setters are
             // exercised by the enclave-lifecycle differential, not this corpus.
@@ -191,19 +213,40 @@ fn chats_tier2_matches_oracle() {
         let repo = writer.chats();
         for op in &spec.ops {
             match op {
-                Op::Create { options, data } => {
-                    repo.create(
+                Op::Create {
+                    options,
+                    data,
+                    expect_error,
+                } => {
+                    let r = repo.create(
                         data,
                         &CreateOptions {
                             id: options.id.clone(),
                             created_at: options.created_at.clone(),
                             updated_at: options.updated_at.clone(),
                         },
-                    )
-                    .expect("create");
+                    );
+                    if *expect_error {
+                        assert!(
+                            r.is_err(),
+                            "create op {} expected to error but succeeded",
+                            options.id
+                        );
+                    } else {
+                        r.expect("create");
+                    }
                 }
-                Op::Update { id, data } => {
-                    repo.update(id, &data.to_chat_update()).expect("update");
+                Op::Update {
+                    id,
+                    data,
+                    expect_error,
+                } => {
+                    let r = repo.update(id, &data.to_chat_update());
+                    if *expect_error {
+                        assert!(r.is_err(), "update op {id} expected to error but succeeded");
+                    } else {
+                        r.expect("update");
+                    }
                 }
                 Op::Delete { id } => {
                     repo.delete(id).expect("delete");

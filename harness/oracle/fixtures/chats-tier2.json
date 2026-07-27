@@ -238,6 +238,157 @@
         ],
         "chatType": "salon"
       }
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b1",
+        "createdAt": "2026-03-02T00:00:01.000Z",
+        "updatedAt": "2026-03-02T00:00:01.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC scrambled partial",
+        "participants": [],
+        "timestampConfig": {
+          "intervalMinutes": 45,
+          "zzz": true,
+          "mode": "EVERY_N_MINUTES"
+        }
+      }
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b2",
+        "createdAt": "2026-03-02T00:00:02.000Z",
+        "updatedAt": "2026-03-02T00:00:02.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC explicit nulls",
+        "participants": [],
+        "timestampConfig": {
+          "customFormat": null,
+          "timezone": null,
+          "mode": "START_ONLY",
+          "fictionalBaseTimestamp": null
+        }
+      }
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b3",
+        "createdAt": "2026-03-02T00:00:03.000Z",
+        "updatedAt": "2026-03-02T00:00:03.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC float integer",
+        "participants": [],
+        "timestampConfig": {
+          "intervalMinutes": 3.0,
+          "useFictionalTime": true,
+          "autoPrepend": false
+        }
+      }
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b4",
+        "createdAt": "2026-03-02T00:00:04.000Z",
+        "updatedAt": "2026-03-02T00:00:04.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC bad interval",
+        "participants": [],
+        "timestampConfig": {
+          "intervalMinutes": 0
+        }
+      },
+      "expectError": true
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b5",
+        "createdAt": "2026-03-02T00:00:05.000Z",
+        "updatedAt": "2026-03-02T00:00:05.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC bad mode",
+        "participants": [],
+        "timestampConfig": {
+          "mode": "SOMETIMES"
+        }
+      },
+      "expectError": true
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b6",
+        "createdAt": "2026-03-02T00:00:06.000Z",
+        "updatedAt": "2026-03-02T00:00:06.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC fractional interval",
+        "participants": [],
+        "timestampConfig": {
+          "intervalMinutes": 2.5
+        }
+      },
+      "expectError": true
+    },
+    {
+      "kind": "update",
+      "id": "aaaaaaaa-0000-4000-8000-0000000000b1",
+      "data": {
+        "timestampConfig": {
+          "junk": 1,
+          "autoPrepend": false,
+          "mode": "EVERY_MESSAGE"
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "id": "aaaaaaaa-0000-4000-8000-0000000000b2",
+      "data": {
+        "title": "Should not land",
+        "timestampConfig": {
+          "format": "WRONG"
+        }
+      },
+      "expectError": true
+    },
+    {
+      "kind": "create",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-0000000000b7",
+        "createdAt": "2026-03-02T00:00:07.000Z",
+        "updatedAt": "2026-03-02T00:00:07.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "TC cleared by update",
+        "participants": [],
+        "timestampConfig": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "id": "aaaaaaaa-0000-4000-8000-0000000000b7",
+      "data": {
+        "timestampConfig": null
+      }
     }
   ]
 }

@@ -409,6 +409,67 @@
           "intervalMinutes": 15
         }
       }
+    },
+    {
+      "name": "tc_partial_normalized",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "intervalMinutes": 45,
+          "junk": true,
+          "mode": "EVERY_N_MINUTES",
+          "customFormat": null
+        },
+        "progressId": "e0000000-0000-4000-8000-0000000000c1"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c1"
+    },
+    {
+      "name": "tc_bad_value_rejected",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": {
+          "intervalMinutes": 0
+        },
+        "progressId": "e0000000-0000-4000-8000-0000000000c2"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c2"
+    },
+    {
+      "name": "tc_explicit_null_rejected",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "timestampConfig": null,
+        "progressId": "e0000000-0000-4000-8000-0000000000c3"
+      },
+      "progressId": "e0000000-0000-4000-8000-0000000000c3"
     }
   ]
 }

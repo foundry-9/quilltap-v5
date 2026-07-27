@@ -468,6 +468,12 @@ pub struct ChatUpdate {
     pub danger_score: Option<Option<f64>>,
     pub chat_type: Option<String>,
     pub state: Option<Value>,
+    /// Nullable `timestampConfig` (JSON object). `Some(Some(cfg))` re-parses
+    /// through v4's `TimestampConfigSchema` (the repository-write
+    /// normalization — P4.9E3B) and sets the column; `Some(None)` clears to
+    /// SQL NULL; `None` leaves it unset. A bad value errors, as v4's Zod
+    /// parse throws.
+    pub timestamp_config: Option<Option<Value>>,
     pub tags: Option<Vec<String>>,
     /// The `participants` JSON-array column — set by the participant RMW ops
     /// ([`super::chats_participants`]). Re-serialized in [`ChatParticipant`]
@@ -734,7 +740,21 @@ impl<'c> ChatsRepository<'c> {
         let danger_categories_json = json_text(&data.danger_categories)?;
         let state_json = json_text(&data.state)?;
         let silly_json = opt_json_text(&data.silly_tavern_metadata)?;
-        let timestamp_config_json = opt_json_text(&data.timestamp_config)?;
+        // P4.9E3B: v4's repository-write TimestampConfigSchema re-parse
+        // (`base.repository.ts:119` via `ChatMetadataBaseSchema`) — the config
+        // is normalized (schema key order, defaults materialized, unknown keys
+        // stripped) at EVERY chats write, whatever its source (a request, a
+        // character default, a settings default). A bad value throws, as v4's
+        // Zod parse does.
+        let normalized_timestamp_config = match &data.timestamp_config {
+            Some(v) => Some(
+                crate::chat_timestamp::parse_timestamp_config(v).map_err(|e| {
+                    DbError::Key(format!("Data validation failed: timestampConfig: {e}"))
+                })?,
+            ),
+            None => None,
+        };
+        let timestamp_config_json = opt_json_text(&normalized_timestamp_config)?;
         let pending_outfit_json = opt_json_text(&data.pending_outfit_notifications)?;
         let compression_cache_json = opt_json_text(&data.compression_cache)?;
         let scene_state_json = opt_json_text(&data.scene_state)?;
@@ -938,6 +958,15 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.state {
             set_col!("state", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.timestamp_config {
+            let normalized = match v {
+                Some(cfg) => Some(crate::chat_timestamp::parse_timestamp_config(cfg).map_err(
+                    |e| DbError::Key(format!("Data validation failed: timestampConfig: {e}")),
+                )?),
+                None => None,
+            };
+            set_col!("timestampConfig", Box::new(opt_json_text(&normalized)?));
         }
         if let Some(v) = &patch.tags {
             set_col!("tags", Box::new(json_text(v)?));
