@@ -363,7 +363,7 @@ fn background_jobs_tier2_matches_oracle() {
                     expect_count,
                 } => {
                     let count = repo
-                        .cancel_by_type(job_type)
+                        .cancel_by_type(job_type, None)
                         .expect("background_jobs.cancel_by_type");
                     if let Some(expected) = expect_count {
                         assert_eq!(count, *expected, "cancelByType count diverged");

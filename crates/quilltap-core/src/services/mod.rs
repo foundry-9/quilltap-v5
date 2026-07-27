@@ -180,4 +180,5 @@ pub mod tools_inventory;
 pub mod conversation_markdown;
 pub mod conversation_render_job;
 pub mod conversation_render_reconcile;
+pub mod embedding_reindex_job;
 // === end P4.6BM ===

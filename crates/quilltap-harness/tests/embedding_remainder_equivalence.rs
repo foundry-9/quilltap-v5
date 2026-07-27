@@ -42,6 +42,7 @@
 //!   mkdir -p /tmp/qt-er-oracle/cases /tmp/qt-er-oracle/fixtures
 //!   cp $V5/harness/oracle/cases/embedding-remainder.test.ts /tmp/qt-er-oracle/cases/
 //!   cp $V5/harness/oracle/fixtures/embedding-remainder.json  /tmp/qt-er-oracle/fixtures/
+//!   cp -R $V5/harness/oracle/fixtures/help-sync              /tmp/qt-er-oracle/fixtures/
 //!   TZ=UTC \
 //!   QT_FIXTURE_ER_MAIN=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db \
 //!   QT_FIXTURE_ER_MOUNT=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db \
@@ -63,6 +64,9 @@ use quilltap_core::services::conversation_render_job::{
 use quilltap_core::services::conversation_render_reconcile::{
     reconcile_conversation_rendering, ReconcileResult,
 };
+use quilltap_core::services::embedding_reindex_job::{
+    handle_embedding_reindex_all, EmbeddingReindexAllPayload,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -76,11 +80,20 @@ struct RenderCase {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ReindexCase {
+    name: String,
+    profile_id: String,
+    scope: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
     render_now_iso: String,
     render_cases: Vec<RenderCase>,
+    reindex_cases: Vec<ReindexCase>,
 }
 
 /// (table, main?, natural sort columns, timestamps stay EXACT on minted rows).
@@ -151,9 +164,14 @@ fn cell(row: &Value, col: &str) -> String {
     }
 }
 
-/// Label every minted chunk id by its natural key, so the id can be rewritten
-/// wherever it appears (its own row, and inside a job payload).
-fn chunk_labels(
+/// Label every minted id by its row's natural key, so it can be rewritten
+/// wherever it appears — its own row AND inside a job payload's `entityId`.
+///
+/// Two tables mint ids in this family: `conversation_chunks` (the render's new
+/// interchanges) and `help_docs` (the reindex's disk sync, which re-creates every
+/// doc from the committed help tree). Both reappear in `background_jobs.payload`,
+/// so blanking the row id alone would leave the payloads incomparable.
+fn minted_labels(
     tables: &BTreeMap<String, Vec<Value>>,
     pinned: &BTreeSet<String>,
 ) -> Vec<(String, String)> {
@@ -172,13 +190,20 @@ fn chunk_labels(
             ),
         ));
     }
+    for row in tables.get("help_docs").into_iter().flatten() {
+        let id = cell(row, "id");
+        if pinned.contains(&id) {
+            continue;
+        }
+        out.push((id, format!("<helpdoc:{}>", cell(row, "path"))));
+    }
     out
 }
 
 /// Rewrite minted ids, placeholder minted rows' own ids (and, where the table
 /// says so, their timestamps), then sort by the natural key.
 fn normalize(tables: &mut BTreeMap<String, Vec<Value>>, pinned: &BTreeSet<String>) {
-    let labels = chunk_labels(tables, pinned);
+    let labels = minted_labels(tables, pinned);
     for (table, _, sort_cols, exact_ts) in TABLES {
         let Some(rows) = tables.get_mut(*table) else {
             continue;
@@ -207,7 +232,7 @@ fn normalize(tables: &mut BTreeMap<String, Vec<Value>>, pinned: &BTreeSet<String
                     let relabelled = obj
                         .get("id")
                         .and_then(Value::as_str)
-                        .is_some_and(|s| s.starts_with("<chunk:"));
+                        .is_some_and(|s| s.starts_with("<chunk:") || s.starts_with("<helpdoc:"));
                     if !relabelled {
                         obj.insert(col.clone(), Value::String("<minted>".to_string()));
                     }
@@ -219,12 +244,18 @@ fn normalize(tables: &mut BTreeMap<String, Vec<Value>>, pinned: &BTreeSet<String
                 }
             }
         }
+        // The natural key first, then the whole normalized row as a
+        // tie-breaker. The key alone is NOT total here: a seeded DEAD job and a
+        // minted one cancelled by the reindex share type/status/priority/payload
+        // exactly, and an arbitrary order between them made the diff report a
+        // divergence that was only a permutation.
         rows.sort_by_key(|r| {
-            sort_cols
+            let key = sort_cols
                 .iter()
                 .map(|c| cell(r, c))
                 .collect::<Vec<_>>()
-                .join(" ")
+                .join(" ");
+            (key, r.to_string())
         });
     }
 }
@@ -250,6 +281,7 @@ async fn embedding_remainder_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let mut oracle_reconcile: Option<ReconcileResult> = None;
     let mut oracle_renders: Vec<(String, String, Option<String>)> = Vec::new();
+    let mut oracle_reindexes: Vec<(String, String, Option<String>)> = Vec::new();
     let mut want_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut want_columns: BTreeMap<String, Value> = BTreeMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -264,6 +296,11 @@ async fn embedding_remainder_matches_oracle() {
                 })
             }
             Some("render") => oracle_renders.push((
+                v["name"].as_str().unwrap().to_string(),
+                v["outcome"].as_str().unwrap().to_string(),
+                v.get("error").and_then(Value::as_str).map(str::to_string),
+            )),
+            Some("reindex") => oracle_reindexes.push((
                 v["name"].as_str().unwrap().to_string(),
                 v["outcome"].as_str().unwrap().to_string(),
                 v.get("error").and_then(Value::as_str).map(str::to_string),
@@ -289,6 +326,27 @@ async fn embedding_remainder_matches_oracle() {
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>(),
         "oracle render-case set/order diverges from the corpus — regenerate"
+    );
+    assert_eq!(
+        oracle_reindexes
+            .iter()
+            .map(|(n, _, _)| n.as_str())
+            .collect::<Vec<_>>(),
+        spec.reindex_cases
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        "oracle reindex-case set/order diverges from the corpus — regenerate"
+    );
+    // Both throw arms must actually have thrown, or the corpus stopped covering
+    // them and a port that never throws would agree.
+    assert_eq!(
+        oracle_reindexes
+            .iter()
+            .filter(|(_, o, _)| o == "error")
+            .count(),
+        2,
+        "the corpus stopped exercising both reindex throw arms"
     );
     assert_eq!(
         want_tables.keys().cloned().collect::<BTreeSet<_>>(),
@@ -369,6 +427,41 @@ async fn embedding_remainder_matches_oracle() {
         "render outcome sequence diverges"
     );
 
+    // ── Phase 3: the reindex handler, corpus order. Both sides walk the SAME
+    // committed help tree — the oracle by chdir (v4 captures
+    // `HELP_DIR = join(process.cwd(), 'help')` at module load), this side
+    // through the production host walker.
+    let help_files = quilltap_host::files_store::load_help_source_files(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/help-sync"),
+    );
+    assert!(
+        !help_files.is_empty(),
+        "the committed help tree walked empty — both sides would sync nothing"
+    );
+    let mut got_reindexes: Vec<(String, String, Option<String>)> = Vec::new();
+    for rc in &spec.reindex_cases {
+        let payload = EmbeddingReindexAllPayload {
+            profile_id: rc.profile_id.clone(),
+            scope: rc.scope.clone(),
+        };
+        let outcome = handle_embedding_reindex_all(
+            &db,
+            &spec.user_id,
+            &payload,
+            &help_files,
+            &spec.render_now_iso,
+        )
+        .await;
+        got_reindexes.push(match outcome {
+            Ok(()) => (rc.name.clone(), "ok".to_string(), None),
+            Err(e) => (rc.name.clone(), "error".to_string(), Some(e)),
+        });
+    }
+    assert_eq!(
+        got_reindexes, oracle_reindexes,
+        "reindex outcome sequence diverges"
+    );
+
     // ── Dump + diff.
     let mut got_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut got_columns: BTreeMap<String, Value> = BTreeMap::new();
@@ -422,8 +515,9 @@ async fn embedding_remainder_matches_oracle() {
     }
 
     println!(
-        "embedding_remainder: {} render cases / {} tables OK",
+        "embedding_remainder: reconcile + {} render / {} reindex cases, {} tables OK",
         got_renders.len(),
+        got_reindexes.len(),
         TABLES.len()
     );
 }

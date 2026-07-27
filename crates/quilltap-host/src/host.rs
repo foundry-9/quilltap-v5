@@ -50,6 +50,7 @@ use quilltap_core::services::conversation_render_job::ConversationRenderHandler;
 use quilltap_core::services::creation_progress::CreationProgressBus;
 use quilltap_core::services::danger_scan;
 use quilltap_core::services::embedding_refit_job::EmbeddingRefitHandler;
+use quilltap_core::services::embedding_reindex_job::EmbeddingReindexAllHandler;
 use quilltap_core::services::job_runner::{
     HandlerRegistry, JobFuture, JobHandler, JobRunner, STUCK_JOB_TIMEOUT_MINUTES,
 };
@@ -472,6 +473,24 @@ impl EngineAssembler for HostAssembler {
             Box::new(EmbeddingRefitHandler { now_iso: None }),
         );
         // === P4.6BM ===
+        // EMBEDDING_REINDEX_ALL, likewise seam-free apart from the help-tree
+        // walk this crate owns. v5 has been MINTING these jobs since the
+        // EMBEDDING_REFIT handler shipped (a BUILTIN refit with triggerReindex
+        // enqueues one) with nothing to run them, so each retried three times
+        // and died. The walk is v4's own `join(process.cwd(), 'help')`,
+        // resolved once here — the tree ships with the binary and cannot change
+        // under a running process. This is also the production caller
+        // `help_doc_sync` has been documented as lacking.
+        let help_files = std::env::current_dir()
+            .map(|cwd| crate::files_store::load_help_source_files(&cwd))
+            .unwrap_or_default();
+        registry.register(
+            "EMBEDDING_REINDEX_ALL",
+            Box::new(EmbeddingReindexAllHandler {
+                help_files,
+                now_iso: None,
+            }),
+        );
         // CONVERSATION_RENDER needs no model/wire seam — only the DB — so it
         // joins the seam-free set beside EMBEDDING_REFIT rather than riding the
         // spine. Before this registration every job the manual

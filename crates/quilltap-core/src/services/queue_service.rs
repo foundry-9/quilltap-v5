@@ -51,6 +51,14 @@ pub(crate) fn ensure_processor_running() {
     }
 }
 
+/// v4 `ensureProcessorRunning()` as a handler-visible entry point — the
+/// `EMBEDDING_REINDEX_ALL` handler calls it directly after its batch insert
+/// (v4 `embedding-reindex.ts:258`), since `create_batch` bypasses the enqueue
+/// helpers that would otherwise fire it.
+pub fn wake_processor() {
+    ensure_processor_running();
+}
+
 /// v4 `enqueueJob`: mint and persist a PENDING background job. Returns the job
 /// id.
 pub async fn enqueue_job(
@@ -688,16 +696,24 @@ pub async fn enqueue_autonomous_room_schedule_tick(
 
 /// v4 `enqueueEmbeddingReindexAll`: enqueue an `EMBEDDING_REINDEX_ALL` job at
 /// `priority = -1` (below interactive), `maxAttempts` = the default 3. The
-/// `EMBEDDING_REFIT` handler fires this after a successful vocabulary refit. The
-/// payload is v4's `{ profileId }` (the `scope` field defaults to `'all'` and is
-/// omitted, matching the refit call site's object literal). The REINDEX handler
-/// itself is not ported (it stays on the runner's loud fallback).
+/// `EMBEDDING_REFIT` handler fires this after a successful vocabulary refit.
+///
+/// The payload is v4's object literal, and — as with the render enqueue — the
+/// KEY SET depends on the caller: v4's refit passes `{ profileId }` alone
+/// (`embedding-refit.ts:145`), so `scope: None` OMITS the key rather than
+/// writing `"all"`, and the handler's own `?? 'all'` default supplies it. A
+/// `Some(scope)` caller (the unported embedding-profiles management surface,
+/// `p4.9h`) writes both keys.
 pub async fn enqueue_embedding_reindex_all(
     db: &Db,
     user_id: &str,
     profile_id: &str,
+    scope: Option<&str>,
 ) -> Result<String, DbError> {
-    let payload = serde_json::json!({ "profileId": profile_id });
+    let payload = match scope {
+        Some(s) => serde_json::json!({ "profileId": profile_id, "scope": s }),
+        None => serde_json::json!({ "profileId": profile_id }),
+    };
     enqueue_job_with_priority(db, user_id, "EMBEDDING_REINDEX_ALL", payload, -1.0, 3.0).await
 }
 

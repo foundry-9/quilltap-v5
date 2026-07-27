@@ -79,7 +79,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
-use crate::clock::now_iso;
+use crate::clock::now_iso as now_iso_fn;
 
 /// The retry-eligible statuses a claim/scan considers, and the cancellable set,
 /// kept as `&str` consts so the enum strings match v4 byte-for-byte.
@@ -143,6 +143,7 @@ const SELECT_ALL_COLS: &str = "id, userId, type, status, payload, priority, atte
 /// `{}`/single-key, see the module header). The numeric fields are bound as
 /// `f64` (REAL affinity). `status` defaults to PENDING when `None`, mirroring the
 /// Zod `.default('PENDING')` the validator applies before insert.
+#[derive(Clone)]
 pub struct BjCreate {
     pub user_id: String,
     pub job_type: String,
@@ -233,6 +234,40 @@ impl<'c> BackgroundJobsRepository<'c> {
         )?;
         Ok(())
     }
+
+    // === P4.6BM ===
+
+    /// v4 `createBatch` — insert many jobs, minting each id and sharing ONE
+    /// `now` across the whole batch for `createdAt`/`updatedAt` (v4 reads
+    /// `getCurrentTimestamp()` once, before the loop). Returns the minted ids in
+    /// input order. An empty input inserts nothing and returns `[]`.
+    ///
+    /// The ids are the caller's to supply so a differential can pin them; v4
+    /// mints internally with `generateId()`. `EMBEDDING_REINDEX_ALL` and the
+    /// per-turn memory-extraction batch are the callers — both DELIBERATELY
+    /// bypass the per-entity dedupe `enqueue_embedding_generate` applies.
+    pub fn create_batch(
+        &self,
+        jobs: &[BjCreate],
+        ids: &[String],
+        now_iso: &str,
+    ) -> Result<Vec<String>, DbError> {
+        if jobs.is_empty() {
+            return Ok(Vec::new());
+        }
+        assert_eq!(jobs.len(), ids.len(), "create_batch: one id per job");
+        for (job, id) in jobs.iter().zip(ids.iter()) {
+            let opts = CreateOptions {
+                id: id.clone(),
+                created_at: now_iso.to_string(),
+                updated_at: now_iso.to_string(),
+            };
+            self.create(job, &opts)?;
+        }
+        Ok(ids.to_vec())
+    }
+
+    // === end P4.6BM ===
 
     /// Apply an update patch to job `id` (v4 `_update`). Returns `Ok(false)` when
     /// no row matched (v4's "not found -> null"). id and createdAt are never
@@ -377,7 +412,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// minted `now` is nondeterministic — the harness placeholders the timestamp
     /// columns (see the module header).
     pub fn claim_next_job(&self) -> Result<Option<BackgroundJob>, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
         let tx = self.conn.unchecked_transaction()?;
 
         // Pick the winner. attempts/maxAttempts are REAL → compare as numbers.
@@ -438,7 +473,7 @@ impl<'c> BackgroundJobsRepository<'c> {
         id: &str,
         result: Option<&serde_json::Value>,
     ) -> Result<Option<BackgroundJob>, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
 
         // Read the existing payload so we can merge `result` (if any).
         let existing_payload: Option<String> = self
@@ -519,7 +554,7 @@ impl<'c> BackgroundJobsRepository<'c> {
         let backoff_seconds = (30.0_f64 * 2.0_f64.powf(attempts)).min(300.0);
         let scheduled_ms = now_ms + (backoff_seconds * 1000.0) as i64;
         let scheduled_at = crate::clock::iso_from_unix_ms(scheduled_ms);
-        let now = now_iso();
+        let now = now_iso_fn();
 
         let new_status = if attempts >= max_attempts {
             STATUS_DEAD
@@ -542,7 +577,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// Pause a PENDING|FAILED job (v4 `pause`): → PAUSED, `updatedAt = now`.
     /// Returns the row, or `None` if not found / not pausable.
     pub fn pause(&self, id: &str) -> Result<Option<BackgroundJob>, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
         let affected = self.conn.execute(
             "UPDATE background_jobs SET status = 'PAUSED', updatedAt = ?1 \
              WHERE id = ?2 AND status IN ('PENDING', 'FAILED')",
@@ -557,7 +592,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// Resume a PAUSED job (v4 `resume`): → PENDING, `scheduledAt = updatedAt =
     /// now`. Returns the row, or `None` if not found / not resumable.
     pub fn resume(&self, id: &str) -> Result<Option<BackgroundJob>, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
         let affected = self.conn.execute(
             "UPDATE background_jobs SET status = 'PENDING', scheduledAt = ?1, updatedAt = ?1 \
              WHERE id = ?2 AND status = 'PAUSED'",
@@ -572,7 +607,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// Cancel a PENDING|FAILED job (v4 `cancel`): → DEAD, lastError "Cancelled by
     /// user", `updatedAt = now`. Returns `true` if a row was modified.
     pub fn cancel(&self, id: &str) -> Result<bool, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
         let affected = self.conn.execute(
             "UPDATE background_jobs \
              SET status = 'DEAD', lastError = 'Cancelled by user', updatedAt = ?1 \
@@ -585,8 +620,11 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// Cancel all non-completed jobs of a type (v4 `cancelByType`):
     /// PENDING|FAILED|PROCESSING of `job_type` → DEAD, lastError "Superseded by
     /// new reindex", `updatedAt = now`. Returns the count modified.
-    pub fn cancel_by_type(&self, job_type: &str) -> Result<usize, DbError> {
-        let now = now_iso();
+    /// `now_iso` is the injected `updatedAt` stamp: `None` reads the wall clock
+    /// (v4's `new Date()`), `Some(s)` pins it so a differential can compare the
+    /// touched rows' timestamps exactly rather than normalizing them away.
+    pub fn cancel_by_type(&self, job_type: &str, now_iso: Option<&str>) -> Result<usize, DbError> {
+        let now = now_iso.map(str::to_string).unwrap_or_else(now_iso_fn);
         let affected = self.conn.execute(
             "UPDATE background_jobs \
              SET status = 'DEAD', lastError = 'Superseded by new reindex', updatedAt = ?1 \
@@ -601,7 +639,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     /// now`. Returns the count modified. (Note the em-dash in the message —
     /// matched byte-for-byte with v4.)
     pub fn reset_all_processing_jobs(&self) -> Result<usize, DbError> {
-        let now = now_iso();
+        let now = now_iso_fn();
         let affected = self.conn.execute(
             "UPDATE background_jobs \
              SET status = 'DEAD', lastError = 'Orphaned on startup — killed', updatedAt = ?1 \
@@ -620,7 +658,7 @@ impl<'c> BackgroundJobsRepository<'c> {
     pub fn reset_stuck_jobs(&self, timeout_minutes: i64) -> Result<usize, DbError> {
         let cutoff_ms = current_unix_ms() - timeout_minutes * 60 * 1000;
         let cutoff = crate::clock::iso_from_unix_ms(cutoff_ms);
-        let now = now_iso();
+        let now = now_iso_fn();
         let message = format!("Timed out after {timeout_minutes} minutes");
         let affected = self.conn.execute(
             "UPDATE background_jobs \

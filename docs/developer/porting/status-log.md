@@ -40873,3 +40873,83 @@ boot pass runs through `spawn_blocking` in the test.
 **Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
 passed / 0 failed (the retired repair's four unit tests come off the count).
 No `apps/web` touch.
+
+---
+
+## Lane record — P4.6BM unit 4: the EMBEDDING_REINDEX_ALL job handler
+
+**Ported:** v4 `lib/background-jobs/handlers/embedding-reindex.ts`
+(`handleEmbeddingReindexAll`, 274 LOC) →
+`quilltap-core/src/services/embedding_reindex_job.rs`, with the three repo
+methods it needs (`help_docs.clear_all_embeddings`,
+`embedding_status.mark_all_pending_by_profile_id`,
+`background_jobs.create_batch`), a `scope` field on the ported enqueue helper,
+and registration in the host's seam-free set.
+
+**The second live bug this lane closes.** v5 has been MINTING these jobs since
+`EMBEDDING_REFIT` shipped — a BUILTIN refit with `triggerReindex` enqueues one —
+with no handler. Each retried three times and went DEAD.
+
+**The help-doc walk closes a standing deferral.** `services::help_doc_sync` has
+carried a "no production caller" note since P4.1b, because its `sync_help_docs`
+takes an already-walked file list (v4 walks `join(process.cwd(), 'help')` inside
+the function). The handler takes the list too, and the host registration supplies
+`quilltap_host::files_store::load_help_source_files(&current_dir())` — v4's own
+semantics. The walker already existed; only the caller was missing.
+
+**v4 behavior carried deliberately** (all pinned by the corpus): the phase-1/3
+try-catch vs phase-2 no-catch asymmetry; flat priority 0 (NOT
+`EMBEDDING_ENTITY_PRIORITIES`); `BATCH_SIZE` 200; no dedupe anywhere on the path;
+`MOUNT_CHUNK` uncovered; both throw strings byte-for-byte; and the payload's
+`?? 'all'` default. v4's `markedCount` local is dead — the CALL is the effect.
+
+**Order §6 correction:** it lists `db/vector_store.rs` as missing `delete_store`.
+v4's `VectorStoreManager.deleteStore` is an in-memory drop plus
+`VectorIndicesRepository.deleteByCharacterId`, and
+`db::vector_indices::delete_by_character_id` already existed; v5 has no store
+cache, so nothing was missing.
+
+**⚠ THE BUG THIS UNIT FOUND — `LENGTH(blob) / 4` is not the vector dimension.**
+The first cut derived `embeddingMatchesDim`'s length from the BLOB's byte size.
+Embedding blobs are **int8-quantized** (`11 + dim` bytes, see
+`embedding_blob.rs`'s format header), so an 8-component vector measures 19 bytes
+and `19 / 4` is **4** — a plausible number that never equals any real target dim,
+so `mismatched-dim` scope skipped NOTHING and re-embedded every row. The
+differential caught it (v4 skipped two chunks v5 enqueued). Both the chunk read
+and the new help-doc read now decode through
+`embedding_blob::blob_to_float32` — the module's own documented single source of
+truth — and both carry a ⚠ comment saying why byte arithmetic is wrong.
+
+Worth noting *why* it survived first inspection: the MEMORY path was correct by
+accident, because `memories_read` marshals the embedding to v4's
+`{"0":v,…}` object shape and the port counts its KEYS. Two of three entity paths
+agreeing is exactly the shape that reads as "the logic is right".
+
+**`cancel_by_type` gained an injected clock** (`Option<&str>`): it stamps
+`updatedAt` on rows the corpus PINS, so the real clock made a seeded row
+un-comparable. `None` keeps the wall clock for production.
+
+**Differential:** phase 3 of `embedding_remainder_equivalence` (4 cases:
+partial scope, both throw arms, full scope), with a shape assertion that BOTH
+throw arms actually threw. Both sides sync from the same committed help tree —
+the oracle by `process.chdir` (v4 captures `HELP_DIR` at module load), this side
+through the production host walker — which is the P4.1b family's own pattern.
+
+Six mutations, and again **one survived**: skipping `clear_all_embeddings`
+changed nothing, because the sync re-mints every help doc and minted rows'
+timestamps are normalized. Fixed in the corpus by seeding a doc whose
+`contentHash` MATCHES the committed tree file (`help/no-frontmatter.md`, the hash
+borrowed from the P4.1b spec), so the sync leaves it wholly untouched and its
+cleared embedding is visible. The other five — priority 10 instead of 0, no
+`cancel_by_type`, no `delete_store`, an always-false dim filter, no
+`mark_all_pending_by_profile_id` — were caught as written.
+
+**One harness fix worth carrying:** the natural sort key was not a TOTAL order.
+A seeded DEAD job and a reindex-cancelled minted one share
+type/status/priority/payload exactly, so an arbitrary tie order reported a
+divergence that was only a permutation. The sort now falls back to the whole
+normalized row.
+
+**Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
+passed / 0 failed. Fixture rebuilt twice this unit (the profile reorder and the
+surviving help doc); no other family reads it. No `apps/web` touch.

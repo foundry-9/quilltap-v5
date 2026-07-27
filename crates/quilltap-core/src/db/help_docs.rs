@@ -487,6 +487,49 @@ impl<'c> HelpDocsRepository<'c> {
         Ok(affected > 0)
     }
 
+    // === P4.6BM ===
+
+    /// Every help doc as `(id, embedding_dim)` — the projection
+    /// `EMBEDDING_REINDEX_ALL` needs for v4's `embeddingMatchesDim`, which only
+    /// ever reads `embedding.length`. A NULL or empty BLOB yields `0`, which can
+    /// never equal a positive target dim — matching v4's "treat null/empty as a
+    /// mismatch so they get re-embedded". Insertion order, like `find_all`.
+    ///
+    /// ⚠ The length is DECODED through [`crate::embedding_blob::blob_to_float32`],
+    /// never derived from `LENGTH(embedding)`. Current writes are int8-quantized
+    /// (`11 + dim` bytes), so byte arithmetic silently under-reports — an
+    /// 8-component vector is 19 bytes, and `19 / 4` is 4.
+    pub fn find_all_with_embedding_dims(&self) -> Result<Vec<(String, usize)>, DbError> {
+        let mut stmt = self.conn.prepare("SELECT id, embedding FROM help_docs")?;
+        let rows = stmt.query_map([], |r| {
+            let blob: Option<Vec<u8>> = r.get(1)?;
+            let dim = blob
+                .as_deref()
+                .map(|b| blob_to_float32(b).len())
+                .unwrap_or(0);
+            Ok((r.get::<_, String>(0)?, dim))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// v4 `clearAllEmbeddings` — NULL every help-doc `embedding` and stamp
+    /// `updatedAt`, returning the modified count. `EMBEDDING_REINDEX_ALL`'s full
+    /// scope calls it so the re-embedding pass writes into a known-empty column.
+    ///
+    /// v4's `updateMany({}, {$set: …})` touches EVERY row, so its `modifiedCount`
+    /// is the whole table — an unconditional `UPDATE` here, deliberately WITHOUT
+    /// an `embedding IS NOT NULL` guard (which would both under-count and skip
+    /// the `updatedAt` bump on already-empty rows).
+    pub fn clear_all_embeddings(&self, now_iso: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "UPDATE help_docs SET embedding = NULL, updatedAt = ?1",
+            params![now_iso],
+        )?;
+        Ok(affected)
+    }
+
+    // === end P4.6BM ===
+
     /// True iff a row with `id` exists — v4's `findById` non-null check, reading
     /// nothing but the key.
     fn exists(&self, id: &str) -> Result<bool, DbError> {

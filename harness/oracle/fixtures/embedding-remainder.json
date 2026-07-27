@@ -300,6 +300,15 @@
       "content": "This doc exists only in the database; the disk sync prunes it.",
       "contentHash": "0000000000000000000000000000000000000000000000000000000000000001",
       "embedded": true
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "title": "Survives The Sync Untouched",
+      "path": "help/no-frontmatter.md",
+      "url": "/survivor",
+      "content": "stale content untouched (hash matches so nothing is rewritten)",
+      "contentHash": "8b8c4225046a78d7b956cbc8c9cbb0ab04373b827135795badefd6ff6f08709f",
+      "embedded": true
     }
   ],
   "statusRows": [

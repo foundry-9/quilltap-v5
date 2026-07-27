@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Re-embedding everything now works. The job that rebuilds the whole search index
+— fired automatically after the built-in vectorizer refits its vocabulary — had
+no worker either, so it too died after three attempts. It now re-embeds help
+documents, character memories and conversation chunks, in either of the old
+app's two modes: a full swap, or a narrower pass that only touches rows whose
+stored vectors are the wrong size.
+
+Fixed while porting it: the check for "wrong size" was reading the stored
+vector's byte count rather than decoding it, and stored vectors are compressed —
+so the narrower pass would have re-embedded everything, at full cost.
+
 Conversations that were left half-finished now mend themselves at startup: a
 chat that was never rendered, or whose pieces were never made searchable
 because the embedder was down at the time, is queued for another pass. This

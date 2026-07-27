@@ -162,6 +162,8 @@ pub async fn handle_embedding_refit(
             db,
             user_id,
             &payload.profile_id,
+            // v4's refit sends no `scope` — the handler defaults it to 'all'.
+            None,
         )
         .await
         .map_err(|e| format!("{e}"))?;

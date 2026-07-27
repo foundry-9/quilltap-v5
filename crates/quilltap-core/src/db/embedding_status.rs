@@ -293,6 +293,26 @@ impl<'c> EmbeddingStatusRepository<'c> {
         Ok(affected)
     }
 
+    // === P4.6BM ===
+
+    /// v4 `markAllPendingByProfileId` — reset every status row for one profile to
+    /// PENDING, clearing `embeddedAt` and `error` and stamping `updatedAt`.
+    /// Returns the modified count. `EMBEDDING_REINDEX_ALL`'s full scope is the
+    /// only caller (v4's `markedCount` local is dead — the call is the effect).
+    pub fn mark_all_pending_by_profile_id(
+        &self,
+        profile_id: &str,
+        now_iso: &str,
+    ) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "UPDATE embedding_status              SET status = 'PENDING', embeddedAt = NULL, error = NULL, updatedAt = ?1              WHERE profileId = ?2",
+            params![now_iso, profile_id],
+        )?;
+        Ok(affected)
+    }
+
+    // === end P4.6BM ===
+
     /// True iff a row with this id exists — the `update` precondition (a missing
     /// target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {

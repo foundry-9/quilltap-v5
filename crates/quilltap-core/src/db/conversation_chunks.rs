@@ -159,16 +159,30 @@ pub struct CcRow {
     /// v4 `!chunk.embedding` — an absent or EMPTY vector is falsy. v5 stores an
     /// empty vector as SQL NULL, so `embedding IS NOT NULL` captures both.
     pub has_embedding: bool,
+    /// The stored vector's component count — all `embeddingMatchesDim`
+    /// (EMBEDDING_REINDEX_ALL's partial scope) reads. `0` for a NULL/empty BLOB,
+    /// which can never equal a positive target dim.
+    ///
+    /// ⚠ This is the DECODED length, never `LENGTH(embedding) / 4`. Current
+    /// writes are int8-quantized (`11 + dim` bytes, see
+    /// [`crate::embedding_blob`]), so byte arithmetic gives a plausible, wrong
+    /// answer — an 8-component vector measures 19 bytes, and `19 / 4` is 4.
+    pub embedding_dim: usize,
 }
 
 fn marshal_cc_row(row: &rusqlite::Row) -> rusqlite::Result<CcRow> {
     let blob: Option<Vec<u8>> = row.get(4)?;
+    let dim = blob
+        .as_deref()
+        .map(|b| blob_to_float32(b).len())
+        .unwrap_or(0);
     Ok(CcRow {
         id: row.get(0)?,
         chat_id: row.get(1)?,
         interchange_index: row.get(2)?,
         content: row.get(3)?,
-        has_embedding: blob.is_some_and(|b| !b.is_empty()),
+        has_embedding: dim > 0,
+        embedding_dim: dim,
     })
 }
 
