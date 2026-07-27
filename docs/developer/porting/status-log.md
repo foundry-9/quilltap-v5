@@ -39756,3 +39756,48 @@ The stale "no v5 consumer yet, deliberately" note on `chatUpdateToolSettings`
 a pointer to its consumer.
 
 Gate: `npx tsc --noEmit -p tsconfig.app.json` clean. SPA 0.5.299.
+
+### Unit record — P4.9E3C unit 2: the agent-mode badge (2026-07-27)
+
+Dogfood finding #34's hole is shut. v4's badge (`ChatSidebar.tsx:1116-1127` +
+`useChatControls.ts:367-395`) now renders in the sidebar's Chat section over the
+`ChatToggleAgentMode` verb P4.9E3A landed.
+
+Ported exactly: the two class names (`qt-tool-palette-badge-on`/`-off`), the
+`Agent On`/`Agent Off` copy, the `Enable`/`Disable agent mode` titles, the
+`monitor` icon, the next-value computation (`agentModeEnabled === null ||
+!agentModeEnabled`), the read-back (`resolvedAgentModeEnabled ??
+agentModeEnabled`), and the toast wording — which v4 derives from
+`resolvedAgentModeEnabled` **alone**, so a reply that carries only the stored
+value lights the badge and still says "set to inherit". A failure leaves the
+badge where it was; v4 does not flip optimistically here.
+
+**The tri-state, deliberately half-used.** `ChatToggleAgentMode.enabled` is
+`Option<Option<bool>>` (absent / null / boolean), widened at the chat-action
+round's unification. v4's badge sends only `true`/`false`, so `toggleAgentMode`
+(`chat/chat-admin.api.ts`, a new home for the chat-admin family) offers no
+`null` arm — a "back to inherit" control would be v5 inventing an affordance.
+The spec asserts the sent body field-for-field and pins `enabled` non-null.
+
+**Placement divergence (recorded):** v4 puts the badge between the Concierge
+tri-state and Roleplay Template. The Concierge control is a standing v5 deferral
+(`api/salon.rs:1216`), so the badge leads the section instead.
+
+`ChatSectionState` gained `agentModeEnabled`, seeded from
+`chat.resolvedAgentModeEnabled` (v4 `useChatControls.ts:76-82`), not the stored
+column.
+
+Verification: five component tests in `chat-section.spec.ts` (both display
+states, both wire arms, the `??` fallback, the failure arm) — the fallback
+assertion mutation-checked (removing `?? stored` fails exactly one test) — plus
+a live e2e beat in `salon-sidebar-flow.spec.ts` that toggles against the real
+server, reads the column back through `chatGet`, and proves persistence with a
+reload. Gate: ng test 238 files / 2,986; `npx playwright test salon-sidebar-flow`
+3/3.
+
+Note for the harness: the lane's worktree has no `target/`, so
+`target/release/{quilltap-web,quilltap}` are SYMLINKS to main's release binaries
+(the order touches no Rust, so no cargo gate is owed and no rebuild is honest
+work). `apps/web/node_modules` is likewise a symlink to the main checkout's.
+
+SPA 0.5.300.

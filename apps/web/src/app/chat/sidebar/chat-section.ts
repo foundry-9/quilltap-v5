@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
+import { toggleAgentMode } from '../chat-admin.api';
 import { toggleAvatarGeneration } from '../chat-cast.api';
 import { CoreClient } from '../../core/core-client';
 import type { ApiKeyDto, ImageProfileDto, RoleplayTemplateDto } from '../../core/core-contract';
@@ -19,6 +20,12 @@ export interface ChatSectionState {
   alertCharactersOfLanternImages: boolean | null;
   projectId: string | null;
   projectName: string | null;
+  /**
+   * The RESOLVED agent-mode value (v4 syncs its local `agentModeEnabled` from
+   * `chat.resolvedAgentModeEnabled`, `useChatControls.ts:76-82`), which is what
+   * the badge displays and what its next-value computation reads.
+   */
+  agentModeEnabled: boolean | null;
 }
 
 /**
@@ -68,12 +75,6 @@ export interface ChatSectionState {
  *
  * - **The Concierge tri-state** (v4 :1100): the chat PUT's `conciergeState` key
  *   is a named v5 deferral (`api/salon.rs:1216`).
- * - **Agent Mode** (v4 :1116, the "Agent On"/"Agent Off" badge): ⚠ this note
- *   read "unported" until 2026-07-27 and is now the reverse — P4.9E3A landed
- *   `ChatToggleAgentMode` (2026-07-26), so the toggle is UI over a live verb,
- *   the cheapest item left in `p4.9e3`. Surfaced by the dogfood walk, which went
- *   looking for it; being a badge rather than a modal, it had been tracked in
- *   NEITHER of `m6-screen-parity.md`'s two tables until then.
  * - **Tools…** (v4 :1230) — the entry is here and REFUSES BY NAME. v4's
  *   `ChatToolSettingsModal` needs the tool inventory (`GET /api/v1/tools`,
  *   `app/api/v1/tools/route.ts`, 727 LOC: names, groups, per-chat availability),
@@ -83,6 +84,11 @@ export interface ChatSectionState {
  *   escalation; the write verb is mirrored in `core-contract.ts` and unused.)
  * - **Run Tool…** (v4 :1243) — `RunToolModal` is unported. (v5's composer
  *   custom-tools popup is Pascal's surface, a different thing.)
+ *
+ * **Agent Mode is LIVE** (v4 :1116-1127) — {@link ChatSection.onAgentModeToggle}.
+ * It had been tracked in NEITHER of `m6-screen-parity.md`'s two tables, being a
+ * badge rather than a modal, until the 2026-07-27 dogfood walk went looking for
+ * it (finding #34).
  *
  * The **Project** entry is REDUCED: v4 opens `ChatProjectModal` to assign or
  * detach a project; that modal is unported, so the entry navigates to the ported
@@ -94,6 +100,23 @@ export interface ChatSectionState {
   imports: [Icon, RouterLink],
   template: `
     <div class="qt-chat-sidebar-section qt-chat-sidebar-section-chat flex flex-col gap-3">
+      <!-- Agent Mode (v4 :1116-1127). v4 puts this between the Concierge
+           tri-state and Roleplay Template; the Concierge control is a named
+           deferral, so the badge leads the section. -->
+      <button
+        type="button"
+        [class]="
+          'qt-tool-palette-badge ' +
+          (agentModeOn() ? 'qt-tool-palette-badge-on' : 'qt-tool-palette-badge-off')
+        "
+        [title]="agentModeOn() ? 'Disable agent mode' : 'Enable agent mode'"
+        [disabled]="agentModeSaving()"
+        (click)="onAgentModeToggle()"
+      >
+        <qt-icon name="monitor" class="w-3.5 h-3.5" />
+        <span>{{ agentModeOn() ? 'Agent On' : 'Agent Off' }}</span>
+      </button>
+
       <!-- Roleplay Template -->
       <label class="qt-label">
         <span class="block mb-1">Roleplay Template</span>
@@ -274,6 +297,39 @@ export class ChatSection {
   /** The Tools… entry's loud refusal (see the class note). */
   protected readonly toolSettingsRefused = signal(false);
 
+  /**
+   * The badge's displayed value. Seeded from the chat's RESOLVED agent mode and
+   * re-synced when it moves (v4 `useChatControls.ts:76-82`), then adopted
+   * optimistically from the reply — which is what makes the badge flip without
+   * waiting for the parent refetch.
+   */
+  private readonly localAgentMode = signal<boolean | null>(null);
+  protected readonly agentModeOn = computed(() => this.localAgentMode() === true);
+  protected readonly agentModeSaving = signal(false);
+
+  /**
+   * v4 `handleToggleAgentMode`: compute the next value from the CURRENT one,
+   * post it, adopt `resolvedAgentModeEnabled ?? agentModeEnabled` off the reply,
+   * and report the outcome. A failure leaves the badge where it was — v4 never
+   * flips optimistically here, so neither does this.
+   */
+  protected async onAgentModeToggle(): Promise<void> {
+    this.agentModeSaving.set(true);
+    this.status.set(null);
+    try {
+      const result = await toggleAgentMode(this.core, this.chatId(), this.localAgentMode());
+      this.localAgentMode.set(result.enabled);
+      this.status.set({ kind: 'success', message: `Agent mode ${result.status}` });
+    } catch (error) {
+      this.status.set({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to toggle agent mode',
+      });
+    } finally {
+      this.agentModeSaving.set(false);
+    }
+  }
+
   protected async onAvatarGenToggle(): Promise<void> {
     this.avatarGenSaving.set(true);
     try {
@@ -328,6 +384,7 @@ export class ChatSection {
       this.localImageProfileId.set(s.imageProfileId ?? null);
       this.localTimelineMode.set(s.timelineMode ?? null);
       this.localAlertImages.set(s.alertCharactersOfLanternImages);
+      this.localAgentMode.set(s.agentModeEnabled);
     });
   }
 

@@ -116,6 +116,12 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+The Agent On / Agent Off switch is back in the chat sidebar. The setting has been
+stored and honoured all along, but nothing on the page could change it, so a
+conversation was stuck with whatever agent mode it inherited. The switch reads
+the resolved value — what the chat actually gets after the global, character and
+project defaults are applied — and reports which way it went.
+
 The browser now knows how to ask for the rest of the conversation commands. Nine
 requests the server has answered since last week — regenerate a title, add and
 remove a tag, re-attribute messages in bulk, merge another conversation in, run a

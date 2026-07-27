@@ -1479,6 +1479,9 @@ export class SalonConversation {
       alertCharactersOfLanternImages: c?.alertCharactersOfLanternImages ?? null,
       projectId: c?.projectId ?? null,
       projectName: c?.projectName ?? null,
+      // v4 seeds its badge from the RESOLVED cascade value, not the stored
+      // column (`useChatControls.ts:76-82`).
+      agentModeEnabled: c?.resolvedAgentModeEnabled ?? null,
     };
   });
 

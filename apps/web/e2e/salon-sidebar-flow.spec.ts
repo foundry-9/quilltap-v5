@@ -61,6 +61,24 @@ async function readTimelineMode(page: Page, chatId: string): Promise<string | nu
   return body.data?.chat?.timelineMode ?? null;
 }
 
+/** The persisted + resolved agent mode, straight off the chat read's projection. */
+async function readAgentMode(
+  page: Page,
+  chatId: string,
+): Promise<{ stored: unknown; resolved: unknown }> {
+  const resp = await page.request.post('/api/dispatch', {
+    data: { type: 'chatGet', chatId },
+  });
+  expect(resp.ok(), `chatGet → ${resp.status()}`).toBe(true);
+  const body = (await resp.json()) as {
+    data?: { chat?: { agentModeEnabled?: unknown; resolvedAgentModeEnabled?: unknown } };
+  };
+  return {
+    stored: body.data?.chat?.agentModeEnabled,
+    resolved: body.data?.chat?.resolvedAgentModeEnabled,
+  };
+}
+
 test.describe('P4.9H1 — the Salon chat sidebar', () => {
   test('opens as the mini strip, expands and persists, and runs a single-open accordion', async ({
     page,
@@ -135,5 +153,39 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
       timeout: 15_000,
     });
     expect(await readTimelineMode(page, chatId)).toBe('realtime');
+  });
+
+  /**
+   * P4.9E3C — the agent-mode badge (v4 `ChatSidebar.tsx:1116-1127`), the hole
+   * dogfood finding #34 found: a live verb with nothing on screen to press.
+   * Unlike the Story's Clock, the chat GET DOES project this column, so the
+   * read-back is the plain chat read.
+   */
+  test('the agent-mode badge writes the column and survives a reload', async ({ page }) => {
+    const chatId = await openSoloVoyage(page);
+    await openSidebarSection(page, 'Chat');
+
+    const badge = page.locator('qt-chat-section button.qt-tool-palette-badge');
+    await expect(badge).toBeVisible({ timeout: 10_000 });
+    await expect(badge).toHaveText('Agent Off');
+    await expect(badge).toHaveClass(/qt-tool-palette-badge-off/);
+
+    await badge.click();
+    await expect(page.getByText('Agent mode enabled')).toBeVisible({ timeout: 15_000 });
+    await expect(badge).toHaveText('Agent On');
+    await expect(badge).toHaveClass(/qt-tool-palette-badge-on/);
+    expect(await readAgentMode(page, chatId)).toEqual({ stored: true, resolved: true });
+
+    // The badge reads the RESOLVED value off a fresh chat read, so a reload is
+    // what proves the write rather than the optimistic adoption.
+    await page.reload();
+    await openSidebarSection(page, 'Chat');
+    await expect(page.locator('qt-chat-section button.qt-tool-palette-badge')).toHaveText(
+      'Agent On',
+    );
+
+    await page.locator('qt-chat-section button.qt-tool-palette-badge').click();
+    await expect(page.getByText('Agent mode disabled')).toBeVisible({ timeout: 15_000 });
+    expect(await readAgentMode(page, chatId)).toEqual({ stored: false, resolved: false });
   });
 });

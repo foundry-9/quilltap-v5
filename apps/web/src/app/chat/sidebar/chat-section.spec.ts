@@ -23,6 +23,12 @@ const sent: Req[] = [];
 const sentData: Req[] = [];
 let failNext = false;
 let toggleAnswer: Record<string, unknown> | Error = { avatarGenerationEnabled: true };
+let agentAnswer: Record<string, unknown> | Error = {
+  agentModeEnabled: true,
+  resolvedAgentModeEnabled: true,
+  agentModeSource: 'chat',
+  message: 'Agent mode enabled',
+};
 
 function stubClient(): Partial<CoreClient> {
   return {
@@ -39,6 +45,10 @@ function stubClient(): Partial<CoreClient> {
       if (req['type'] === 'chatToggleAvatarGeneration') {
         if (toggleAnswer instanceof Error) throw toggleAnswer;
         return toggleAnswer;
+      }
+      if (req['type'] === 'chatToggleAgentMode') {
+        if (agentAnswer instanceof Error) throw agentAnswer;
+        return agentAnswer;
       }
       return {};
     }) as unknown as CoreClient['dispatchData'],
@@ -58,6 +68,7 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
     alertCharactersOfLanternImages: null,
     projectId: null,
     projectName: null,
+    agentModeEnabled: null,
     ...over,
   };
 }
@@ -275,7 +286,100 @@ describe('ChatSection — the other per-chat controls', () => {
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 
-  it('Tools… is present and refuses BY NAME rather than being hidden', async () => {
+});
+
+/**
+ * The agent-mode badge (v4 `ChatSidebar.tsx:1116-1127` +
+ * `useChatControls.ts:367-395`). The load-bearing claim is that a TWO-state
+ * badge drives a THREE-state verb without ever reaching for the third arm.
+ */
+describe('ChatSection — the agent-mode badge', () => {
+  beforeEach(() => {
+    sent.length = 0;
+    sentData.length = 0;
+    agentAnswer = {
+      agentModeEnabled: true,
+      resolvedAgentModeEnabled: true,
+      agentModeSource: 'chat',
+      message: 'Agent mode enabled',
+    };
+  });
+
+  function badge(fixture: ComponentFixture<Host>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('button.qt-tool-palette-badge');
+  }
+
+  it('carries v4’s classes, copy and title for both states', async () => {
+    const fixture = await render();
+    expect(badge(fixture).className).toContain('qt-tool-palette-badge-off');
+    expect(badge(fixture).textContent).toContain('Agent Off');
+    expect(badge(fixture).title).toBe('Enable agent mode');
+
+    fixture.componentInstance.chatState.set(state({ agentModeEnabled: true }));
+    fixture.detectChanges();
+    expect(badge(fixture).className).toContain('qt-tool-palette-badge-on');
+    expect(badge(fixture).textContent).toContain('Agent On');
+    expect(badge(fixture).title).toBe('Disable agent mode');
+  });
+
+  it('sends `true` from a CLEARED override — never the null arm', async () => {
+    const fixture = await render();
+    badge(fixture).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const req = sentData.find((r) => r.type === 'chatToggleAgentMode')!;
+    expect(req).toEqual({ type: 'chatToggleAgentMode', chatId: 'chat-1', enabled: true });
+    // The tri-state's third arm is reachable on the wire and NOT reachable here.
+    expect(req['enabled']).not.toBeNull();
+  });
+
+  it('sends `false` from an enabled chat', async () => {
+    const fixture = await render();
+    fixture.componentInstance.chatState.set(state({ agentModeEnabled: true }));
+    fixture.detectChanges();
+    agentAnswer = {
+      agentModeEnabled: false,
+      resolvedAgentModeEnabled: false,
+      agentModeSource: 'chat',
+      message: 'Agent mode disabled',
+    };
+    badge(fixture).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(sentData.find((r) => r.type === 'chatToggleAgentMode')!['enabled']).toBe(false);
+    expect(badge(fixture).textContent).toContain('Agent Off');
+    expect(fixture.nativeElement.textContent).toContain('Agent mode disabled');
+  });
+
+  it('adopts `agentModeEnabled` when the server drops the resolved key', async () => {
+    // The server omits `agentModeEnabled` for a NULL column and always sends
+    // `resolvedAgentModeEnabled`; v4's `??` fallback is what covers the reverse.
+    const fixture = await render();
+    agentAnswer = { agentModeEnabled: true, message: 'Agent mode enabled' };
+    badge(fixture).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(badge(fixture).textContent).toContain('Agent On');
+    // v4 computes the wording from `resolvedAgentModeEnabled` ALONE, so an
+    // absent resolved key reads as "set to inherit" even though the badge lit.
+    expect(fixture.nativeElement.textContent).toContain('Agent mode set to inherit');
+  });
+
+  it('leaves the badge where it was when the toggle fails', async () => {
+    const fixture = await render();
+    agentAnswer = new Error('the switchboard is out');
+    badge(fixture).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(badge(fixture).textContent).toContain('Agent Off');
+    expect(fixture.nativeElement.textContent).toContain('the switchboard is out');
+  });
+});
+
+describe('ChatSection — deferrals', () => {
+  it('Tools… still refuses BY NAME rather than being hidden', async () => {
     const fixture = await render();
     const entry = Array.from(
       fixture.nativeElement.querySelectorAll('button.qt-tool-palette-button'),
