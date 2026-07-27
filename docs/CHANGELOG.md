@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the next porting round and committed its three work orders: the
+library file picker's server remainder (the attach-from-store leg and its
+image-describe seam), the picker dialog itself plus three small UI riders,
+and the embedding family's remainder (the conversation renderer, the startup
+reconcile, the full reindex worker, and the queue-memories action). Planning
+surveys corrected three stale records along the way: the composer's dice
+dropdown already landed, the project tool-settings dialog's server half is
+already complete, and the "tools disabled by profile" warning box turns out
+to be dead code in the old app too — so it is recorded as an upstream item,
+not ported.
+
 Brought four strands of work together and made them one.
 
 The largest of them is a repair. Nothing written since this port took over the
