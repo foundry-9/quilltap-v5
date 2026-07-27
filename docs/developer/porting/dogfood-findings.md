@@ -515,6 +515,22 @@ catch, since every fixture is built fresh.
     `route.ts` `buildListing` perspective selection, then the v5 mirrors
     (`custom-tools-popup.ts`, `api/custom_tools.rs` dedup). Requested-adjacent
     by the human 2026-07-24 (they expected their own character to be used).
+    **✅ CLOSED on BOTH sides 2026-07-27 — the v4-faithful verdict is moot.**
+    v4 fixed it in `e8a49597` (`found-bugs.md` Bug 5: `operatorCharacterIds` +
+    `preferOperator` at the single-variant listing arm and the run's
+    `asCharacterId`-less fallback, plus a `characterLabel` when none of the
+    operator's characters is a candidate — an all-LLM room, or a gate their
+    character did not pass). v5 mirrored it the same day as lane **P4.D24**
+    (`api/custom_tools.rs`; `pascal_custom_tools_route_equivalence` 13 → 20
+    cases over five new perspective rooms in the pascal fixture). No SPA change
+    was needed on either side — the label already renders. ⚠ The v5 differential
+    could NOT see the change until the fixture moved: its one chat seated the
+    operator's character first in stored order, so old and new selection agreed
+    on every row. **The 2026-07-24 walk's items 10/11, blocked on #30, unblock
+    at the next dogfood pass** — and that pass should confirm the fix on real
+    data (a chat created leading with an LLM character, a metadata-gated tool
+    run from the composer, `pascalMeta.metadataTested` naming the operator's own
+    sheet).
 - **Carried out of finding #24 — the non-streaming response parsers have NO
   oracle differential.** `request_builder_equivalence` covers the request side
   (both modes, all eight providers, since P4.11); nothing covers

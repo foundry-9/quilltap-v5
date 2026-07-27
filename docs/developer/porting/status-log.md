@@ -39195,3 +39195,236 @@ away. **No SPA run owed — `apps/web/**` untouched.** The live proof (real
 embeds on the Friday copy, the boot repair observed draining the backlog) is
 the next dogfood walk's — the e2e instance has no API keys by design.
 Versions: core 0.0.382, harness 0.0.329, host 0.0.42.
+
+## Lane record — P4.D24 (the `e8a49597` operator-perspective drift re-port)
+
+**Branch** `claude/p4-operator-perspective-drift-654d21`. **Status: CLOSED** —
+tier 1 complete, tier 2 (the finding-#30 reconciliation) recorded below. Baseline
+move to `e8a49597` **queued for the unifier** (not made on the branch — see
+"The baseline-paragraph move" at the end).
+
+**Drift-check at lane start:** `git log e8a49597..HEAD --oneline` in
+`~/source/quilltap-server` was empty and `git status --short` clean. v4 HEAD IS
+`e8a49597`. The whole drift `c1507f47..e8a49597` is ten files, of which exactly
+one is `lib`/route source: `app/api/v1/chats/[id]/custom-tools/route.ts` (+103).
+
+### The order's central premise was wrong, and disproving it was the unit
+
+The order said: regenerate `pascal_custom_tools_route_equivalence` at
+`e8a49597` FIRST and **"the tripwire is expected to fire"**. It did not. The
+regenerated 13-case oracle over the UNCHANGED fixture and the UNCHANGED v5 port
+ran **green**:
+
+```
+OK: custom-tools route matched oracle (13 cases).
+```
+
+That is not a stale oracle (13 fresh lines, `list` body re-emitted) and not a
+port that had somehow anticipated the fix. It is the corpus being
+**structurally blind**: the fixture's only chat seats its user-controlled
+participant on CHAR_A, who is ALSO first in `participants` stored order, so
+`preferOperator` and the old `sightings[0]` select the same sighting on every
+single row, and `isOperator` is true so no label appears either. v4's own
+commit message said it plainly — *"no tripwire will fire for it"* — and the
+order read that as a claim about v5's pre-regen state rather than about the
+corpus. **The thing that had to move was the fixture, not the port.**
+
+This is the P4.11 one-mode-corpus shape again (a total behavior change invisible
+to a differential-verified family), and it is worth naming as a class: a corpus
+whose single scenario makes two candidate implementations agree cannot
+distinguish them, and no amount of regeneration will make it.
+
+### Unit 1 — the port (`api/custom_tools.rs`)
+
+- `operator_character_ids(chat)` (v4 `operatorCharacterIds`): CHARACTER +
+  `controlledBy === 'user'` + present, `activeTypingParticipantId` first, then
+  stored order, mapped to `characterId`s.
+- `participant_is_present(p)` — v4's `isParticipantPresent(p.status ?? 'active')`
+  over a raw participant. The `?? 'active'` coalesce is carried (missing/null →
+  present); a status v4's enum does not carry is present in neither, because
+  v4's predicate is a pair of `===` tests. Reached through the shared
+  `chat_predicates::is_participant_present` rather than re-deriving the set.
+  ⚠ Deliberately NOT the `skip_signal.rs` analog, which does not default —
+  the two v4 call sites genuinely differ.
+- `prefer_operator(candidates, character_id_of, operator_ids) -> (&T, bool)`
+  (v4 `preferOperator`), with v4's *why*-comment carried: "arbitrary must not
+  mean whoever happens to be first while one of the candidates is the person
+  actually pressing the button."
+- Applied at BOTH call sites — the `distinct.len() == 1` listing arm (with
+  v4's `is_operator || perspectives.len() == 1` label rule) and the run's
+  `asCharacterId`-less fallback — so "arbitrary" means the same in both.
+- Doc contracts widened to v4's new wording: the module header and
+  `build_listing`'s `character_label` ("set on a per-character variant, and on
+  a shared tool that had to fall back off the operator's own character; absent
+  means 'runs as you', or a room with nobody else in it").
+- Unchanged on purpose, per v4: `run_custom`'s mid-turn path
+  (`context.characterId`) and per-variant rows.
+
+### Unit 2 — the corpus that can see it (fixture + oracle + differential)
+
+`build-pascal-run-custom-fixture.ts` gained five rooms, each isolating one
+clause. No new tool definitions and no `chat_messages` rows were added — only
+`chats` rows — so the sibling handler family's whole-table dump is untouched by
+construction.
+
+| Room | Cast (stored order) | What it pins |
+| --- | --- | --- |
+| `…0002` LLM-led | A llm, **B user**, C llm | the bug's shape: shared rows run as B unlabelled; `secure_line` (only A's clearance passes) falls back to A **and says "Bertie"** |
+| `…0003` two own | **A user**, **B user** (activeTyping), C llm | active-typing beats stored order; `secure_line` still prefers the operator's SECOND character → no label |
+| `…0004` all-LLM | B llm, C llm | no candidates → stored order, labelled ("Jeeves" / "Aunt Agatha") |
+| `…0005` solo | A llm | fallback, but UNLABELLED (`perspectives.length === 1`) |
+| `…0006` removed | A llm, **B user `removed`**, **C user `silent`** | `removed` is not a candidate, `silent` is → C chosen |
+
+Oracle cases 13 → **20** (five `list-*`, two `run-no-character-*`). The oracle
+case file gained a per-case `chat` field; the Rust case list a chat column.
+
+**Corpus-SHAPE guard, not a hand-written count** (`assert_perspective_witnesses`):
+eight `(case, tool, expected asCharacterId, expected characterLabel)` witnesses
+asserted **against v4's own output** before any diffing. A future fixture
+rebuild that flattened a room — a lost user-controlled participant, a gate that
+stopped gating, `activeTypingParticipantId` not persisting — would otherwise
+leave every row agreeing with `sightings[0]` again and this family would go on
+passing. The `cases.len() == oracle.len()` both-sides declaration stays.
+
+### The red→green fingerprint (mutation-tested, both call sites separately)
+
+There was no natural red run to record, so the drift's fingerprint was produced
+by reverting each call site in turn against the NEW corpus:
+
+- listing arm → `(&sightings[0], /* is_operator */ true)`:
+  `case 'list-llm-led' body` FAILED — and **`case 'list' is still green`**,
+  which is the blindness itself, measured.
+- run arm → `perspectives.first().cloned()`:
+  `case 'run-no-character-llm-led' body` FAILED
+  (`pascalMeta.definitionMountId` = vault A instead of vault B —
+  `47e7c4ba-63fb-4bdb-bef3-6adf97d99c1f`).
+- A third, coarser mutation (`is_operator` hardcoded `false`) reddened the
+  ORIGINAL `list` case too, by labelling everything — confirming the label
+  clause is pinned independently of the choice clause.
+
+Restored, both green.
+
+### The regen set — what a fixture rebuild invalidated, and the neutrality proofs
+
+A rebuild MINTS FRESH character-vault mount ids, so every fixture reader was
+regenerated and re-run:
+
+- `pascal_custom_tools_route_equivalence` — 20 cases, green.
+- `pascal_run_custom_handler_equivalence` — oracle regenerated at `e8a49597`,
+  24 cases, green.
+- `pascal_build_tools_roster` — fixture-direct (no oracle), green.
+- `apps/web/e2e/support/seed-pascal-tools-fixture.ts` reads `vaultA` from the
+  `.meta.json` sidecar, so it follows the rebuild on its own — **no `apps/web`
+  edit, and none made** (E3C owns it).
+
+**Import verification (the order's item 3).** Only
+`pascal-custom-tools-route.test.ts` imports the drifted file.
+`pascal-workbench-route.test.ts` matches a grep for "custom-tools/route" but
+imports `@/app/api/v1/custom-tools/route` — the WORKBENCH collection resource,
+a different file the drift never touched.
+
+**The `help/custom-tools.md` content check (the order's item, expected neutral —
+proven).** `help-doc-slug.ts:28` references the PATH string only. The three
+`help-sync-*` families capture `HELP_DIR` from `process.cwd()` and `chdir` into
+a COMMITTED v5 fixture tree (`harness/oracle/fixtures/help-{sync,ensure}/`), so
+they never read v4's real `help/` at all. No family hashes its content. The
+help-text delta joins the standing `p4.9i2` bank.
+
+**One more neutrality check the order did not ask for:** the drift bumps v4's
+`package.json` (4.8.0-dev.107 → .108). No committed oracle or fixture pins a v4
+version string; `system-export` READS it from v4's `package.json` and emits it
+as `_meta.appVersion` for the Rust side to carry, and `system-backup`
+normalizes it. Neutral.
+
+**All twelve pascal families re-run by name over `e8a49597` oracles, zero SKIP:**
+build_tools_roster · custom_tool_definition (10 titles / 195 definitions / 31
+gate verdicts) · custom_tools_execution (43/29/110/44/33) · custom_tools_route
+(20) · llm_consult (3/28) · roster (38) · run_custom (13) ·
+run_custom_handler (24) · simulate (12) · tool_vocabulary (37) · workbench (2) ·
+workbench_route (58).
+
+### The SPA half — verified by reading; NO code handoff, TWO optional riders
+
+v4 changed no client file, and v5 needs none either. `custom-tools-popup.ts`
+renders `characterLabel` **unconditionally on presence in both phases** — the
+list rows (`:291`, "as {{ label }}" beside the title) and the chosen-tool
+detail line (`:129`, " · as " appended to mount/path) — neither gated on
+variant-ness, so a label on a single-variant row renders today. It also feeds
+the search haystack (`:477`).
+
+Two things a future `apps/web` lane may want, **recorded as handoffs to P4.9E3C,
+not made here** (neither is a correctness gap):
+
+1. `core-contract.ts:406`'s comment is now stale — "Present on per-character
+   variants that shadow a broader definition" should widen to v4's new
+   contract (also set on an operator fallback; absent means "runs as you", or a
+   one-character room).
+2. None of the 26 `custom-tools-popup.spec.ts` cases exercises `characterLabel`
+   at all, so the rendering above is verified by inspection rather than by a
+   spec. A single labelled-row case would fix that.
+
+### Tier 2 — the finding-#30 / Bug-5 reconciliation
+
+Dogfood finding **#30** was dispositioned NOT-A-BUG-v4-faithful at the
+2026-07-24 walk, and the 2026-07-27 walk sharpened it into v4's own
+`found-bugs.md` Bug 5. **That verdict is now moot in both directions: v4 fixed
+it in `e8a49597` and v5 mirrors the fix here.** The 2026-07-24 walk's items
+10/11, which were blocked on #30, unblock at the next dogfood pass.
+
+### The baseline-paragraph move (queued for the unifier)
+
+This lane owns the baseline paragraphs but did NOT edit `CLAUDE.md` /
+`phase-4.md`, so the unifier's own status edits cannot conflict. At unification,
+move the oracle-baseline paragraph from `c1507f47` to **`e8a49597`** (v4 HEAD,
+2026-07-27, 4.8.0-dev.108), noting: the ONLY `lib`/route change is the
+custom-tools chat route; twelve pascal families regenerated there; every other
+committed oracle keeps its prior vintage, proven neutral by the import check,
+the help-doc check and the version check above. v4's tree is clean at
+`e8a49597`, so oracles regenerate straight from `~/source/quilltap-server` — no
+pinned worktree.
+
+### Regen recipes (this lane's, verbatim)
+
+```bash
+# 0. the fixture (⚠ mints fresh vault ids — then redo steps 1 and 2)
+cd ~/source/quilltap-server
+TZ=UTC QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
+QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+  npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
+
+# 1. the route oracle (jest ignores `.claude/` — mirror the case + spec to /tmp)
+M=/tmp/qt-pascal-mirror-d24; rm -rf $M; mkdir -p $M/cases $M/fixtures
+cp <V5W>/harness/oracle/cases/pascal-custom-tools-route.test.ts $M/cases/
+cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
+cd ~/source/quilltap-server
+TZ=UTC QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
+QT_FIXTURE_PASCAL_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-pascal-custom-tools-route.ndjson \
+  npx jest --silent --roots "$PWD" --roots "$M/cases" -- pascal-custom-tools-route
+
+# 2. the sibling family the fixture rebuild invalidates (same mirror shape)
+cp <V5W>/harness/oracle/cases/pascal-run-custom-handler.test.ts $M/cases/
+TZ=UTC QT_FIXTURE_PASCAL_MAIN=… QT_FIXTURE_PASCAL_MOUNT=… \
+QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson \
+  npx jest --silent --roots "$PWD" --roots "$M/cases" -- pascal-run-custom-handler
+
+# 3. run
+QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE=/tmp/oracle-pascal-custom-tools-route.ndjson \
+QT_ORACLE_PASCAL_RUN_CUSTOM_HANDLER=/tmp/oracle-pascal-run-custom-handler.ndjson \
+  cargo test -p quilltap-harness --test pascal_custom_tools_route_equivalence \
+                                 --test pascal_run_custom_handler_equivalence \
+                                 --test pascal_build_tools_roster -- --nocapture
+```
+
+⚠ `pascal-workbench-route`'s regen needs TWO fixture JSONs (`workbench.json`
+**and** `workbench-route-cases.json`) plus `ln -sfn $PWD/node_modules
+$M/node_modules`; omitting either fails the builder outright, which — per
+`oracle-regen-silent-stale-pass` — would have left a stale NDJSON in place had
+one existed.
+
+### Deferred (loud, named)
+
+- The `help/custom-tools.md` text re-port stays in the **`p4.9i2`** bank; v5's
+  help text now lags v4 by one more delta (the popup's perspective wording).
+- The two `apps/web` riders above (stale `core-contract.ts` comment; no
+  `characterLabel` spec) — **P4.9E3C's**, recorded not taken.

@@ -9,11 +9,16 @@
 //!   FRESH per request. A roster is resolved *for an invoker* because a
 //!   character-tier store shadows the farther tiers, and the human has no vault;
 //!   so it resolves once per character participant and MERGES: a tool that
-//!   resolves identically for everyone is listed once, unlabelled; one that
-//!   differs is listed once per variant, tagged with the character whose
-//!   perspective produced it. `asCharacterId` carries that choice back to POST.
+//!   resolves identically for everyone is listed once; one that differs is
+//!   listed once per variant, tagged with the character whose perspective
+//!   produced it. `asCharacterId` carries that choice back to POST.
 //!   **The roll spec and the outcome table are NEVER in the payload** — the
 //!   house does not show the odds.
+//!
+//!   Even the single-variant row must name somebody, because POST consults that
+//!   character's fact sheet and groups. It names the operator's own played
+//!   character whenever one is a candidate — see [`prefer_operator`], and the
+//!   `characterLabel` it earns when none is.
 //! - **POST `?action=run`** (`chat_custom_tool_run`) — run one tool at the
 //!   operator's behest. Posts Pascal's outcome and nothing else: the
 //!   announcement is byte-identical to a character's roll, so the transcript
@@ -25,6 +30,7 @@
 use serde_json::{json, Map, Value};
 
 use super::types::{ErrorKind, Response};
+use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr::js_trim;
@@ -153,8 +159,128 @@ fn variant_key(entry: &DiscoveredCustomTool) -> String {
     format!("{}::{}", entry.mount_point_id, entry.definition_path)
 }
 
+/// v4's `isParticipantPresent(p.status ?? 'active')` over a raw participant
+/// object.
+///
+/// The `?? 'active'` is v4's, and this port keeps it: a missing or `null`
+/// `status` reads as present. (The persisted column always materializes
+/// `status` through Zod, so the coalesce is belt-and-braces on both sides — but
+/// a status v4 does not recognize is present in NEITHER, since its
+/// `isParticipantPresent` is a pair of `===` tests.)
+fn participant_is_present(p: &Value) -> bool {
+    let status = match p.get("status") {
+        None | Some(Value::Null) => "active",
+        Some(Value::String(s)) => s.as_str(),
+        // A non-string status fails both of v4's `===` comparisons.
+        Some(_) => return false,
+    };
+    // Answered by the shared predicate, never by re-deriving the present set.
+    // A status v4's enum does not carry fails both of its `===` tests.
+    [
+        ParticipantStatus::Active,
+        ParticipantStatus::Silent,
+        ParticipantStatus::Absent,
+        ParticipantStatus::Removed,
+    ]
+    .into_iter()
+    .find(|s| s.as_str() == status)
+    .is_some_and(is_participant_present)
+}
+
+/// The characters the operator is playing, in the order to prefer them: the one
+/// they are currently typing as first, then their remaining user-controlled
+/// participants in stored order (v4 `operatorCharacterIds`).
+///
+/// A removed participant is not a candidate — the operator is not playing them
+/// any more, whatever the roster still resolves through them.
+fn operator_character_ids(chat: &Value) -> Vec<String> {
+    let participants = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let active_typing = chat
+        .get("activeTypingParticipantId")
+        .and_then(Value::as_str);
+
+    let own: Vec<&Value> = participants
+        .iter()
+        .filter(|p| {
+            p.get("type").and_then(Value::as_str) == Some("CHARACTER")
+                && p.get("controlledBy").and_then(Value::as_str) == Some("user")
+                && participant_is_present(p)
+        })
+        .collect();
+
+    // `own.find(p => p.id === activeTypingParticipantId)` — a null/absent
+    // `activeTypingParticipantId` matches nobody (v4 compares against a string
+    // `p.id`), so the list stays in stored order.
+    let active = active_typing.and_then(|id| {
+        own.iter()
+            .position(|p| p.get("id").and_then(Value::as_str) == Some(id))
+    });
+
+    let ordered: Vec<&Value> = match active {
+        Some(i) => std::iter::once(own[i])
+            .chain(
+                own.iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, p)| *p),
+            )
+            .collect(),
+        None => own,
+    };
+
+    ordered
+        .into_iter()
+        .map(|p| {
+            p.get("characterId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
+}
+
+/// Choose whose perspective an otherwise-arbitrary choice is made from (v4
+/// `preferOperator`).
+///
+/// When every character resolves a tool to the same file the perspective decides
+/// nothing about *which* deal is dealt — but it still decides whose fact sheet
+/// the `when.metadata` tests read and whose groups a `$state` reference resolves
+/// through. "Arbitrary" must therefore not mean "whoever happens to be first"
+/// while one of the candidates is the person actually pressing the button.
+///
+/// Falls back to stored order, and says so, when none of the operator's own
+/// characters is a candidate: an all-LLM room, or a tool whose availability gate
+/// their character did not pass.
+///
+/// Both call sites hold a non-empty `candidates` (v4's `candidates[0]` fallback
+/// would be `undefined` otherwise, and both of its call sites guard first).
+fn prefer_operator<'a, T>(
+    candidates: &'a [T],
+    character_id_of: impl Fn(&T) -> &str,
+    operator_ids: &[String],
+) -> (&'a T, bool) {
+    for character_id in operator_ids {
+        if let Some(hit) = candidates
+            .iter()
+            .find(|candidate| character_id_of(candidate) == character_id)
+        {
+            return (hit, true);
+        }
+    }
+    (&candidates[0], false)
+}
+
 /// The listing DTO (v4 `buildListing`) — deliberately odds-free (never the roll
 /// spec or the outcome table).
+///
+/// `character_label` is v4's `characterLabel`: whose version this is, when that
+/// is not obvious. Set on a per-character variant, and on a shared tool that had
+/// to fall back off the operator's own character. Absent means "runs as you", or
+/// a room with nobody else in it.
 fn build_listing(
     entry: &DiscoveredCustomTool,
     perspective: &Perspective,
@@ -242,6 +368,7 @@ pub fn chat_custom_tools_list(db: &Db, user_id: &str, chat_id: &str) -> Response
                 .get("projectId")
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty());
+            let operator_ids = operator_character_ids(&chat);
 
             // One roster per character. Errors are unioned by (mount, path) so the
             // same broken file seen from four perspectives earns one badge.
@@ -289,9 +416,28 @@ pub fn chat_custom_tools_list(db: &Db, user_id: &str, chat_id: &str) -> Response
                     }
                 }
                 if distinct.len() == 1 {
-                    // Everyone resolves the same file: one unlabelled row.
-                    let (perspective, entry) = &sightings[0];
-                    tools.push(build_listing(entry, perspective, None));
+                    // Everyone resolves the same file: one row. The perspective
+                    // picks no variant here, but it is still whose sheet a run
+                    // consults, so it goes to the operator's own played
+                    // character rather than to whoever the participants array
+                    // happens to lead with.
+                    let (chosen, is_operator) = prefer_operator(
+                        sightings,
+                        |(p, _): &(Perspective, DiscoveredCustomTool)| p.character_id.as_str(),
+                        &operator_ids,
+                    );
+                    let (perspective, entry) = chosen;
+                    // Unlabelled when it runs as the operator themselves, or
+                    // when the room holds one character and there is nothing to
+                    // disambiguate. Otherwise the row names the character it
+                    // will run as: a run that borrows somebody else's secrets
+                    // should say whose before the operator commits to it.
+                    let label = if is_operator || perspectives.len() == 1 {
+                        None
+                    } else {
+                        Some(perspective.character_name.clone())
+                    };
+                    tools.push(build_listing(entry, perspective, label.as_deref()));
                     continue;
                 }
                 // The name means different things to different characters.
@@ -403,12 +549,24 @@ pub async fn chat_custom_tool_run(
             if perspectives.is_empty() {
                 return Ok(RunPrep::NoPerspectives);
             }
+            // A run that names nobody still has to resolve the roster through
+            // someone's vault tier, so it uses the same preference GET does. It
+            // consults no fact sheet either way (see the metadata note below) —
+            // this only decides which definition of a shadowed name gets dealt.
             let perspective = match &as_char {
                 Some(cid) => perspectives
                     .iter()
                     .find(|p| &p.character_id == cid)
                     .cloned(),
-                None => perspectives.first().cloned(),
+                None => Some(
+                    prefer_operator(
+                        &perspectives,
+                        |p: &Perspective| p.character_id.as_str(),
+                        &operator_character_ids(&chat),
+                    )
+                    .0
+                    .clone(),
+                ),
             };
             let Some(perspective) = perspective else {
                 return Ok(RunPrep::UnknownCharacter(

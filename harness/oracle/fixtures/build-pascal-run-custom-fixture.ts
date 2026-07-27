@@ -14,18 +14,26 @@
  *             DELETED, so `findById` raises the vault-unavailable error.
  * The General store carries the two AVAILABILITY-GATED definitions (P4.d19).
  * One salon chat CH with all three characters + a user participant, so
- * `postPascalResult`/`postProsperoCustomToolError` find the chat.
+ * `postPascalResult`/`postProsperoCustomToolError` find the chat — plus, since
+ * P4.d24, five perspective-only rooms (see the block comment on their ids).
  *
  * The rolls are all `min === max` (no draw) so the outcome is deterministic on
  * both sides without a shared byte source. The minted char-vault ids are written
  * to the `.meta.json` sidecar (the Rust side reads them to pass
  * `character_mount_point_id`).
  *
- * Regenerate (v4 @ 231be14c, Node 24; the pinned detached worktree):
- *   cd /tmp/qt-v4-pin-231be14c
+ * Regenerate (v4 @ e8a49597, Node 24; the checkout is clean at the baseline, so
+ * no pinned worktree is needed):
+ *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
+ *
+ * ⚠ A rebuild MINTS FRESH character-vault mount ids, so every family that reads
+ * this fixture must be regenerated and re-run afterwards:
+ * `pascal_custom_tools_route_equivalence`, `pascal_run_custom_handler_equivalence`
+ * (both oracle-backed) and `pascal_build_tools_roster` (fixture-direct). The e2e
+ * seed reads `vaultA` from the `.meta.json` sidecar, so it follows on its own.
  */
 
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdtempSync, mkdirSync } from 'node:fs';
@@ -54,6 +62,49 @@ const P_A = 'e1000000-0000-4000-8000-00000000000a';
 const P_B = 'e1000000-0000-4000-8000-00000000000b';
 const P_C = 'e1000000-0000-4000-8000-00000000000c';
 const P_USER = 'e1000000-0000-4000-8000-0000000000ff';
+
+/**
+ * P4.d24 (v4 `e8a49597`): five more rooms, whose ONLY purpose is to make the
+ * operator-perspective choice observable. The original CHAT cannot: its
+ * user-controlled participant plays CHAR_A, who is ALSO first in stored order,
+ * so `preferOperator` and the old `sightings[0]` agree on every row — which is
+ * exactly why a differential-verified port reproduced v4's bug in silence.
+ *
+ * Each room isolates one clause of `operatorCharacterIds`/`preferOperator`:
+ *
+ *  - CHAT_LLM_LED   — the bug's own shape: an LLM character leads, the operator
+ *                     plays CHAR_B further down. Shared rows must run as B
+ *                     (unlabelled); `secure_line` (which only A's clearance
+ *                     passes) must fall back to A and SAY so.
+ *  - CHAT_TWO_OWN   — two user-controlled characters, `activeTypingParticipantId`
+ *                     naming the SECOND: the active one wins, and the other is
+ *                     still preferred over the LLM cast for a gate B fails.
+ *  - CHAT_ALL_LLM   — nobody user-controlled: fall back to stored order, labelled.
+ *  - CHAT_SOLO      — one character, LLM-controlled: fall back, but UNLABELLED
+ *                     (the `perspectives.length === 1` clause; without it every
+ *                     row in a one-character room would wear a pointless name).
+ *  - CHAT_REMOVED   — the operator's first character is `removed` (not a
+ *                     candidate) and their second is `silent` (still present):
+ *                     the silent one must be chosen.
+ */
+const CHAT_LLM_LED = 'c1000000-0000-4000-8000-000000000002';
+const CHAT_TWO_OWN = 'c1000000-0000-4000-8000-000000000003';
+const CHAT_ALL_LLM = 'c1000000-0000-4000-8000-000000000004';
+const CHAT_SOLO = 'c1000000-0000-4000-8000-000000000005';
+const CHAT_REMOVED = 'c1000000-0000-4000-8000-000000000006';
+
+const P2_A = 'e2000000-0000-4000-8000-00000000000a';
+const P2_B = 'e2000000-0000-4000-8000-00000000000b';
+const P2_C = 'e2000000-0000-4000-8000-00000000000c';
+const P3_A = 'e3000000-0000-4000-8000-00000000000a';
+const P3_B = 'e3000000-0000-4000-8000-00000000000b';
+const P3_C = 'e3000000-0000-4000-8000-00000000000c';
+const P4_B = 'e4000000-0000-4000-8000-00000000000b';
+const P4_C = 'e4000000-0000-4000-8000-00000000000c';
+const P5_A = 'e5000000-0000-4000-8000-00000000000a';
+const P6_A = 'e6000000-0000-4000-8000-00000000000a';
+const P6_B = 'e6000000-0000-4000-8000-00000000000b';
+const P6_C = 'e6000000-0000-4000-8000-00000000000c';
 
 const ANSIBLE = {
   name: 'ansible',
@@ -367,12 +418,17 @@ async function main(): Promise<void> {
   await writeVaultFile(GENERAL_MP, 'Tools/secure_line.tool.json', SECURE_LINE);
   await writeVaultFile(GENERAL_MP, 'Tools/novice_aid.tool.json', NOVICE_AID);
 
-  const mkParticipant = (id: string, characterId: string, controlledBy: string) => ({
+  const mkParticipant = (
+    id: string,
+    characterId: string,
+    controlledBy: string,
+    status: string = 'active',
+  ) => ({
     id,
     type: 'CHARACTER',
     characterId,
     controlledBy,
-    status: 'active',
+    status,
     connectionProfileId: null,
     createdAt: TS,
     updatedAt: TS,
@@ -412,6 +468,63 @@ async function main(): Promise<void> {
     },
   ] as never);
   await repos.chats.update(CHAT, { updatedAt: TS } as never);
+
+  // P4.d24: the five operator-perspective rooms (see the block comment on their
+  // ids). They carry NO messages — `chat_messages` already exists from CHAT's
+  // seed row, and the handler differential dumps that table whole, so adding
+  // rows here would move an unrelated family's oracle for no reason.
+  const mkChat = async (
+    id: string,
+    title: string,
+    participants: unknown[],
+    extra: Record<string, unknown> = {},
+  ): Promise<void> => {
+    await repos.chats.create(
+      {
+        userId: spec.userId,
+        title,
+        chatType: 'salon',
+        contextSummary: null,
+        participants,
+        tags: [],
+        ...extra,
+      } as never,
+      { id, createdAt: TS, updatedAt: TS } as never,
+    );
+    await repos.chats.update(id, { updatedAt: TS } as never);
+  };
+
+  await mkChat(CHAT_LLM_LED, 'Pascal — LLM-led room', [
+    mkParticipant(P2_A, CHAR_A, 'llm'),
+    mkParticipant(P2_B, CHAR_B, 'user'),
+    mkParticipant(P2_C, CHAR_C, 'llm'),
+  ]);
+
+  await mkChat(
+    CHAT_TWO_OWN,
+    'Pascal — two of the operator’s own',
+    [
+      mkParticipant(P3_A, CHAR_A, 'user'),
+      mkParticipant(P3_B, CHAR_B, 'user'),
+      mkParticipant(P3_C, CHAR_C, 'llm'),
+    ],
+    // The operator is typing as their SECOND character, so preference must not
+    // be stored order.
+    { activeTypingParticipantId: P3_B, impersonatingParticipantIds: [P3_A, P3_B] },
+  );
+
+  await mkChat(CHAT_ALL_LLM, 'Pascal — nobody at the wheel', [
+    mkParticipant(P4_B, CHAR_B, 'llm'),
+    mkParticipant(P4_C, CHAR_C, 'llm'),
+  ]);
+
+  await mkChat(CHAT_SOLO, 'Pascal — a room of one', [mkParticipant(P5_A, CHAR_A, 'llm')]);
+
+  await mkChat(CHAT_REMOVED, 'Pascal — one left, one gone quiet', [
+    mkParticipant(P6_A, CHAR_A, 'llm'),
+    mkParticipant(P6_B, CHAR_B, 'user', 'removed'),
+    mkParticipant(P6_C, CHAR_C, 'user', 'silent'),
+  ]);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

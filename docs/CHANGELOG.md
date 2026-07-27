@@ -26,6 +26,20 @@ generate missing embeddings and rebuild the vector index — now work, each
 route-verified against the old app (seven route cases in the same
 differential, including validation and not-found arms). Dead job rows from the
 outage stay visible in the Tasks Queue and no longer block anything.
+A custom tool you reach for from the composer now rolls against the sheet of the
+character you are actually playing. It used to consult whoever happened to stand
+first in the cast list, so in a conversation started with someone else at the
+head of the room, a tool that reads a character's facts quietly dealt from the
+wrong file — plausibly, with no error, and with the truth recorded only where
+nothing shows it. When none of your own characters can be used — nobody in the
+room is yours, or the tool is one your character is not offered — the entry now
+says whose sheet it will borrow before you commit to it. A room holding a single
+character stays unadorned, as there is nothing to tell apart.
+
+The corpus that checks this behavior could not see the change at all. The
+conversation it tested happened to seat the character you play at the head of
+the cast, so the old choice and the new one agreed on every row; the test file
+now carries five more rooms, each built to disagree in exactly one way.
 
 Planned the next round of work, in four side-by-side orders. First, the urgent
 one: nothing written since the port took over this app's data has been made

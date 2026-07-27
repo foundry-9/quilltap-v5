@@ -14,6 +14,12 @@
  * `whispered` live only in char A's vault (seen by B/C via the participant tier
  * → one unlabelled row). All rolls are `min === max` (deterministic).
  *
+ * P4.d24 (v4 `e8a49597`): the five perspective rooms the fixture gained drive
+ * `operatorCharacterIds`/`preferOperator`. The original CHAT cannot see that
+ * change at all — its user-controlled participant plays CHAR_A, who is also
+ * first in stored order, so the new preference and the old `sightings[0]` agree
+ * on every row.
+ *
  * Run (Node 24, from the v4 checkout — mirror the case file to /tmp; jest
  * ignores `.claude/`):
  *   QT_FIXTURE_PASCAL_MAIN=<v5>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
@@ -34,12 +40,20 @@ interface Spec {
 }
 
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
+/** P4.d24 — the five operator-perspective rooms (see the fixture builder). */
+const CHAT_LLM_LED = 'c1000000-0000-4000-8000-000000000002';
+const CHAT_TWO_OWN = 'c1000000-0000-4000-8000-000000000003';
+const CHAT_ALL_LLM = 'c1000000-0000-4000-8000-000000000004';
+const CHAT_SOLO = 'c1000000-0000-4000-8000-000000000005';
+const CHAT_REMOVED = 'c1000000-0000-4000-8000-000000000006';
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 
 interface CaseSpec {
   name: string;
   method: 'GET' | 'POST';
+  /** Defaults to the original CHAT. */
+  chat?: string;
   body?: Record<string, unknown>;
   /**
    * P4.6bd: insert ONE cheap connection profile before the run, so the consult
@@ -234,8 +248,9 @@ async function runCase(
   }
 
   try {
-    const params = { params: Promise.resolve({ id: CHAT }) };
-    const base = `http://localhost/api/v1/chats/${CHAT}/custom-tools`;
+    const chatId = c.chat ?? CHAT;
+    const params = { params: Promise.resolve({ id: chatId }) };
+    const base = `http://localhost/api/v1/chats/${chatId}/custom-tools`;
     let response: { status: number; json: () => Promise<unknown> };
     if (c.method === 'GET') {
       const { GET } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
@@ -374,6 +389,31 @@ async function main(): Promise<void> {
     // CHAR_B) — the same asymmetry as metadata.
     { name: 'run-stateful-as-a', method: 'POST', body: { tool: 'stateful', asCharacterId: CHAR_A } },
     { name: 'run-stateful-as-b', method: 'POST', body: { tool: 'stateful', asCharacterId: CHAR_B } },
+    // ---------------------------------------------------------------------
+    // P4.d24 (v4 `e8a49597`) — the operator-perspective rooms.
+    // ---------------------------------------------------------------------
+    // The bug's own shape. CHAR_A leads the cast, but the operator plays
+    // CHAR_B: every shared row (coin/whispered/oracle) must carry
+    // `asCharacterId` = CHAR_B and NO label, while `secure_line` — which only
+    // CHAR_A's clearance passes — falls back to CHAR_A and says "Bertie".
+    { name: 'list-llm-led', method: 'GET', chat: CHAT_LLM_LED },
+    // The run action's `asCharacterId`-less fallback in the same room: the
+    // roster resolves through CHAR_B's vault, so `pascalMeta.definitionMountId`
+    // names vault B rather than vault A.
+    { name: 'run-no-character-llm-led', method: 'POST', chat: CHAT_LLM_LED, body: { tool: 'ansible' } },
+    // Two user-controlled characters with `activeTypingParticipantId` naming
+    // the SECOND: the active one wins over stored order, and `secure_line`
+    // (which CHAR_B fails) still prefers the operator's OTHER character rather
+    // than labelling a fallback.
+    { name: 'list-two-own', method: 'GET', chat: CHAT_TWO_OWN },
+    { name: 'run-no-character-two-own', method: 'POST', chat: CHAT_TWO_OWN, body: { tool: 'ansible' } },
+    // Nobody user-controlled: stored order, and every shared row labelled.
+    { name: 'list-all-llm', method: 'GET', chat: CHAT_ALL_LLM },
+    // One character, LLM-controlled: fall back, but UNLABELLED.
+    { name: 'list-solo', method: 'GET', chat: CHAT_SOLO },
+    // The operator's first character is `removed` (not a candidate), their
+    // second is `silent` (still present) — the silent one is chosen.
+    { name: 'list-removed-operator', method: 'GET', chat: CHAT_REMOVED },
   ];
 
   const out = fs.createWriteStream(outPath);

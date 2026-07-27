@@ -11,7 +11,15 @@
 //! `tier3-completion-oracle` keying), and the persisted `CUSTOM_TOOL_CONSULT`
 //! `llm_logs` row is diffed alongside the posted system rows.
 //!
-//! Generate the oracle (v4 @ 616930db, Node 24 — mirror to /tmp; jest ignores
+//! P4.d24 (v4 `e8a49597`): the five `list-*`/`run-no-character-*` cases on the
+//! fixture's perspective rooms drive `operator_character_ids`/`prefer_operator`.
+//! They exist because the original `CHAT` is STRUCTURALLY BLIND to that change —
+//! its user-controlled participant plays CHAR_A, who is also first in stored
+//! order, so the new preference and the old `sightings[0]` agree on every row.
+//! Regenerating this family at `e8a49597` over the old fixture stayed green; the
+//! corpus, not the port, was the thing that had to move.
+//!
+//! Generate the oracle (v4 @ e8a49597, Node 24 — mirror to /tmp; jest ignores
 //! `.claude/`):
 //!   cd ~/source/quilltap-server
 //!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
@@ -44,6 +52,15 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
+/// P4.d24 — the five operator-perspective rooms (see the fixture builder).
+const CHAT_LLM_LED: &str = "c1000000-0000-4000-8000-000000000002";
+const CHAT_TWO_OWN: &str = "c1000000-0000-4000-8000-000000000003";
+const CHAT_ALL_LLM: &str = "c1000000-0000-4000-8000-000000000004";
+const CHAT_SOLO: &str = "c1000000-0000-4000-8000-000000000005";
+const CHAT_REMOVED: &str = "c1000000-0000-4000-8000-000000000006";
+const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
+const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
+const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
 const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -312,6 +329,70 @@ fn oracle_system_rows(row: &Value) -> Vec<Value> {
         .collect()
 }
 
+/// P4.d24 — corpus-SHAPE assertions over the ORACLE, not over v5.
+///
+/// The point of the perspective rooms is that they discriminate; a fixture
+/// rebuild that quietly flattened one (a room losing its user-controlled
+/// participant, a gate stopping gating, `activeTypingParticipantId` not
+/// persisting) would leave every row agreeing with `sightings[0]` again and this
+/// family would go on passing — the exact silence that let v4's bug survive a
+/// differential-verified port. So the witnesses below assert what v4's OWN
+/// output must still contain before any diffing happens.
+///
+/// Each row is `(case, tool, expected asCharacterId, expected characterLabel)`.
+fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
+    const WITNESSES: &[(&str, &str, &str, Option<&str>)] = &[
+        // The bug's shape: the shared row runs as the OPERATOR's character even
+        // though an LLM character leads the cast, and wears no label.
+        ("list-llm-led", "coin", CHAR_B, None),
+        // …while the gate the operator's character fails falls back to whoever
+        // does pass, and NAMES them.
+        ("list-llm-led", "secure_line", CHAR_A, Some("Bertie")),
+        // `activeTypingParticipantId` beats stored order (CHAR_A is first).
+        ("list-two-own", "coin", CHAR_B, None),
+        // …and the operator's OTHER character is still preferred over the LLM
+        // cast for a gate the active one fails — so no label.
+        ("list-two-own", "secure_line", CHAR_A, None),
+        // Nobody user-controlled: stored order, and the row says so.
+        ("list-all-llm", "stateful", CHAR_B, Some("Jeeves")),
+        // One character in the room: fall back, but nothing to disambiguate.
+        ("list-solo", "coin", CHAR_A, None),
+        // `removed` is not a candidate, `silent` is.
+        ("list-removed-operator", "coin", CHAR_C, None),
+        (
+            "list-removed-operator",
+            "secure_line",
+            CHAR_A,
+            Some("Bertie"),
+        ),
+    ];
+
+    for (case, tool, as_character_id, label) in WITNESSES {
+        let row = oracle
+            .get(*case)
+            .unwrap_or_else(|| panic!("oracle missing case '{case}'"));
+        let tools = row["body"]["tools"]
+            .as_array()
+            .unwrap_or_else(|| panic!("case '{case}' body has no tools array"));
+        let listing = tools
+            .iter()
+            .find(|t| t.get("name").and_then(Value::as_str) == Some(*tool))
+            .unwrap_or_else(|| {
+                panic!("case '{case}': the oracle no longer lists '{tool}' — the room has drifted")
+            });
+        assert_eq!(
+            listing.get("asCharacterId").and_then(Value::as_str),
+            Some(*as_character_id),
+            "case '{case}' tool '{tool}': the oracle's perspective moved"
+        );
+        assert_eq!(
+            listing.get("characterLabel").and_then(Value::as_str),
+            *label,
+            "case '{case}' tool '{tool}': the oracle's characterLabel moved"
+        );
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn custom_tools_route_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE") else {
@@ -328,11 +409,12 @@ async fn custom_tools_route_matches_oracle() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
-    // (name, POST body or None for GET, profile-bearing)
-    let cases: Vec<(&str, Option<Value>, bool)> = vec![
-        ("list", None, false),
+    // (name, chat id, POST body or None for GET, profile-bearing)
+    let cases: Vec<(&str, &str, Option<Value>, bool)> = vec![
+        ("list", CHAT, None, false),
         (
             "run-coin-as-a",
+            CHAT,
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -340,6 +422,7 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-ansible-hit",
+            CHAT,
             Some(
                 json!({ "tool": "ansible", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -347,14 +430,21 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-ansible-miss",
+            CHAT,
             Some(
                 json!({ "tool": "ansible", "asCharacterId": "a1000000-0000-4000-8000-00000000000b" }),
             ),
             false,
         ),
-        ("run-no-character", Some(json!({ "tool": "coin" })), false),
+        (
+            "run-no-character",
+            CHAT,
+            Some(json!({ "tool": "coin" })),
+            false,
+        ),
         (
             "run-private",
+            CHAT,
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "private": true }),
             ),
@@ -362,6 +452,7 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-unknown-tool",
+            CHAT,
             Some(
                 json!({ "tool": "nope", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -369,6 +460,7 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-unknown-character",
+            CHAT,
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-0000000000ff" }),
             ),
@@ -376,6 +468,7 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-error",
+            CHAT,
             Some(
                 json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "parameters": { "bad": 1 } }),
             ),
@@ -385,6 +478,7 @@ async fn custom_tools_route_matches_oracle() {
         // three pascalMeta.llm writers.
         (
             "run-oracle-consult",
+            CHAT,
             Some(
                 json!({ "tool": "oracle", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -396,6 +490,7 @@ async fn custom_tools_route_matches_oracle() {
         // llm-log row is diffed.
         (
             "run-oracle-consult-resolved",
+            CHAT,
             Some(
                 json!({ "tool": "oracle", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -405,6 +500,7 @@ async fn custom_tools_route_matches_oracle() {
         // `asCharacterId`'s own groups.
         (
             "run-stateful-as-a",
+            CHAT,
             Some(
                 json!({ "tool": "stateful", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
             ),
@@ -412,11 +508,38 @@ async fn custom_tools_route_matches_oracle() {
         ),
         (
             "run-stateful-as-b",
+            CHAT,
             Some(
                 json!({ "tool": "stateful", "asCharacterId": "a1000000-0000-4000-8000-00000000000b" }),
             ),
             false,
         ),
+        // -------------------------------------------------------------------
+        // P4.d24 (v4 `e8a49597`) — the operator-perspective rooms.
+        // -------------------------------------------------------------------
+        // The bug's own shape: CHAR_A leads the cast, the operator plays CHAR_B.
+        ("list-llm-led", CHAT_LLM_LED, None, false),
+        // The run action's `asCharacterId`-less fallback in the same room.
+        (
+            "run-no-character-llm-led",
+            CHAT_LLM_LED,
+            Some(json!({ "tool": "ansible" })),
+            false,
+        ),
+        // `activeTypingParticipantId` names the operator's SECOND character.
+        ("list-two-own", CHAT_TWO_OWN, None, false),
+        (
+            "run-no-character-two-own",
+            CHAT_TWO_OWN,
+            Some(json!({ "tool": "ansible" })),
+            false,
+        ),
+        // Nobody user-controlled: stored order, and shared rows labelled.
+        ("list-all-llm", CHAT_ALL_LLM, None, false),
+        // One character, LLM-controlled: fall back, but UNLABELLED.
+        ("list-solo", CHAT_SOLO, None, false),
+        // `removed` is not a candidate; `silent` still is.
+        ("list-removed-operator", CHAT_REMOVED, None, false),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
@@ -429,8 +552,10 @@ async fn custom_tools_route_matches_oracle() {
         oracle.len()
     );
 
+    assert_perspective_witnesses(&oracle);
+
     let mut checked = 0usize;
-    for (name, body, profile) in &cases {
+    for (name, chat, body, profile) in &cases {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("oracle missing case '{name}'"));
@@ -438,7 +563,7 @@ async fn custom_tools_route_matches_oracle() {
 
         let (status, resp_body, sys) = match body {
             None => {
-                let (s, b) = status_body(chat_custom_tools_list(&db, USER, CHAT));
+                let (s, b) = status_body(chat_custom_tools_list(&db, USER, chat));
                 (s, b, Vec::new())
             }
             Some(b) => {
@@ -462,7 +587,7 @@ async fn custom_tools_route_matches_oracle() {
                     chat_custom_tool_run(
                         &db,
                         USER,
-                        CHAT,
+                        chat,
                         &tool,
                         parameters,
                         private,
