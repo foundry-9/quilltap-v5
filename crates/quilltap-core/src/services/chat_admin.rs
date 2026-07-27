@@ -437,7 +437,7 @@ pub async fn chat_render_conversation(db: &Db, user_id: &str, chat_id: &str) -> 
     if let Err(r) = require_chat(db, chat_id) {
         return r;
     }
-    match enqueue_conversation_render(db, user_id, chat_id, true).await {
+    match enqueue_conversation_render(db, user_id, chat_id, Some(true)).await {
         Ok((job_id, is_new)) => ok(json!({
             "message": "Conversation rendering queued",
             "jobId": job_id,

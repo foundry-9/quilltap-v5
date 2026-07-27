@@ -60,6 +60,9 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::conversation_render_job::{
     handle_conversation_render, ConversationRenderPayload,
 };
+use quilltap_core::services::conversation_render_reconcile::{
+    reconcile_conversation_rendering, ReconcileResult,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -245,12 +248,21 @@ async fn embedding_remainder_matches_oracle() {
 
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
+    let mut oracle_reconcile: Option<ReconcileResult> = None;
     let mut oracle_renders: Vec<(String, String, Option<String>)> = Vec::new();
     let mut want_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut want_columns: BTreeMap<String, Value> = BTreeMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
+            Some("reconcile") => {
+                oracle_reconcile = Some(ReconcileResult {
+                    incomplete_chats: v["incompleteChats"].as_u64().unwrap() as usize,
+                    enqueued: v["enqueued"].as_u64().unwrap() as usize,
+                    reused: v["reused"].as_u64().unwrap() as usize,
+                    failed: v["failed"].as_u64().unwrap() as usize,
+                })
+            }
             Some("render") => oracle_renders.push((
                 v["name"].as_str().unwrap().to_string(),
                 v["outcome"].as_str().unwrap().to_string(),
@@ -314,7 +326,31 @@ async fn embedding_remainder_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
-    // ── Phase 1: the render handler, corpus order, state accumulating.
+    // ── Phase 1: the startup reconcile, over the pristine fixture copy.
+    let want_reconcile = oracle_reconcile.expect("oracle emitted no reconcile row — regenerate");
+    // A reconcile that found nothing would agree with a port that did nothing,
+    // so pin the corpus's own shape: BOTH arms fire, and the dedupe reuses.
+    assert!(
+        want_reconcile.incomplete_chats >= 2
+            && want_reconcile.enqueued >= 1
+            && want_reconcile.reused >= 1,
+        "the corpus stopped exercising both reconcile arms + the dedupe: {want_reconcile:?}"
+    );
+    // The reconcile is a BOOT pass: synchronous, on the writer connection. Under
+    // the async test runtime that needs a blocking thread (`write_blocking`
+    // panics if called on a runtime thread).
+    let got_reconcile = {
+        let db = db.clone();
+        tokio::task::spawn_blocking(move || {
+            db.write_blocking(|ws| Ok(reconcile_conversation_rendering(ws.main().connection())))
+        })
+        .await
+        .expect("join reconcile")
+        .expect("reconcile")
+    };
+    assert_eq!(got_reconcile, want_reconcile, "reconcile counters diverge");
+
+    // ── Phase 2: the render handler, corpus order, state accumulating.
     let mut got_renders: Vec<(String, String, Option<String>)> = Vec::new();
     for rc in &spec.render_cases {
         let payload = ConversationRenderPayload {

@@ -80,7 +80,6 @@ pub mod data_dir;
 pub mod delete_all;
 // === end P4.9G3 ===
 // === P4.6BL ===
-pub mod embedding_backlog_repair;
 pub mod embedding_generate_job;
 // === end P4.6BL ===
 pub mod embedding_provider;
@@ -180,4 +179,5 @@ pub mod tools_inventory;
 // === P4.6BM: the embedding-family remainder ===
 pub mod conversation_markdown;
 pub mod conversation_render_job;
+pub mod conversation_render_reconcile;
 // === end P4.6BM ===

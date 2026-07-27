@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Conversations that were left half-finished now mend themselves at startup: a
+chat that was never rendered, or whose pieces were never made searchable
+because the embedder was down at the time, is queued for another pass. This
+replaces the narrower stopgap added last round, which could only repair the
+second of those two cases and existed only because the renderer had no worker.
+
 The "render conversation" button now does something. Pressing it has been
 minting a background job with nothing on the other end since the chat dialogs
 landed — the job retried three times and died, exactly the way the embedding

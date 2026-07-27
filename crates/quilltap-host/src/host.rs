@@ -763,31 +763,31 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
                 quilltap_core::clock::now_unix_ms(),
             )?;
-            // === P4.6BL ===
-            // The unembedded-conversation-chunk boot repair — a deliberate
-            // v5-only repair for the finding-#35 backlog (jobs died on the
-            // missing EMBEDDING_GENERATE handler; the chunks they were minted
-            // for stayed unembedded with no automatic path back). Takes v4's
-            // startup-reconcile arm (B) and enqueues EMBEDDING_GENERATE
-            // directly; retires in favor of a full reconcile port when the
-            // CONVERSATION_RENDER handler lands. No-op on a healthy instance;
-            // skips quietly without a profile/user or on missing tables.
-            match quilltap_core::services::embedding_backlog_repair::repair_unembedded_conversation_chunks(main) {
-                Ok(r) if r.enqueued > 0 => tracing::info!(
+            // === P4.6BM (replaces the P4.6BL stand-in) ===
+            // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
+            // chats the Scriptorium pipeline left half-finished — arm (A) real
+            // messages but no rendered Markdown, arm (B) recoverable
+            // un-embedded interchange chunks — and re-enqueue a
+            // CONVERSATION_RENDER for each. The handler re-chunks (preserving
+            // existing embeddings) and re-enqueues the missing embeds, so both
+            // arms heal. This REPLACES the P4.6BL v5-only direct-embed repair,
+            // which existed only because that handler was unported; the
+            // coverage argument is in the reconcile's module doc. No-op on a
+            // healthy instance; returns zeros (never fails the boot) when a
+            // lazily-created table is absent.
+            let reconcile =
+                quilltap_core::services::conversation_render_reconcile::reconcile_conversation_rendering(main);
+            if reconcile.enqueued > 0 || reconcile.failed > 0 {
+                tracing::info!(
                     target: "quilltap::boot",
-                    scanned = r.scanned,
-                    enqueued = r.enqueued,
-                    reused = r.reused,
-                    "Embedding backlog repair enqueued re-embed jobs",
-                ),
-                Ok(_) => {}
-                Err(e) => tracing::warn!(
-                    target: "quilltap::boot",
-                    error = %e,
-                    "Embedding backlog repair failed, continuing startup",
-                ),
+                    incomplete_chats = reconcile.incomplete_chats,
+                    enqueued = reconcile.enqueued,
+                    reused = reconcile.reused,
+                    failed = reconcile.failed,
+                    "Conversation render reconciliation complete",
+                );
             }
-            // === end P4.6BL ===
+            // === end P4.6BM ===
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;

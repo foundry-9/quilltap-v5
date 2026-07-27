@@ -972,15 +972,18 @@ pub async fn enqueue_chat_danger_classification_with_priority(
 /// id with `is_new = false`). Priority is v4's `options?.priority ?? -1` — "lower
 /// priority than interactive tasks"; `max_attempts` is `enqueueJob`'s default 3.
 ///
-/// The payload is `{ chatId, fullReembed }` (v4's `ConversationRenderPayload`
-/// object literal — the manual `render-conversation` entrance always passes
-/// `fullReembed: true`). Returns `(job_id, is_new)`, v4's
-/// `ConversationRenderEnqueueResult`.
+/// The payload is v4's `ConversationRenderPayload` object literal, and the KEY
+/// SET depends on the caller: the manual `render-conversation` entrance passes
+/// `{ chatId, fullReembed: true }`, while the startup reconcile passes
+/// `{ chatId }` alone. `full_reembed: None` reproduces the latter — the key is
+/// OMITTED, not written as `false`, so the stored payload bytes match v4's on
+/// both paths (the differential dumps `background_jobs.payload`). Returns
+/// `(job_id, is_new)`, v4's `ConversationRenderEnqueueResult`.
 pub async fn enqueue_conversation_render(
     db: &Db,
     user_id: &str,
     chat_id: &str,
-    full_reembed: bool,
+    full_reembed: Option<bool>,
 ) -> Result<(String, bool), DbError> {
     let cid = chat_id.to_string();
     let pending = db.read_main(|conn| {
@@ -990,11 +993,59 @@ pub async fn enqueue_conversation_render(
         return Ok((existing.id.clone(), false));
     }
 
-    let payload = serde_json::json!({
-        "chatId": chat_id,
-        "fullReembed": full_reembed,
-    });
+    let payload = conversation_render_payload(chat_id, full_reembed);
     let id =
         enqueue_job_with_priority(db, user_id, "CONVERSATION_RENDER", payload, -1.0, 3.0).await?;
+    Ok((id, true))
+}
+
+/// The `CONVERSATION_RENDER` payload literal (see
+/// [`enqueue_conversation_render`] for why the key set varies by caller).
+fn conversation_render_payload(chat_id: &str, full_reembed: Option<bool>) -> Value {
+    match full_reembed {
+        Some(v) => serde_json::json!({ "chatId": chat_id, "fullReembed": v }),
+        None => serde_json::json!({ "chatId": chat_id }),
+    }
+}
+
+/// [`enqueue_conversation_render`] on a borrowed writer connection — the shape a
+/// BOOT pass needs (the startup reconcile runs inside one `db.write_blocking`
+/// closure, so it cannot await the async form). Same dedupe, same priority, same
+/// payload rules; mints the id and timestamps exactly as
+/// [`enqueue_job_with_priority`] does.
+pub fn enqueue_conversation_render_blocking(
+    main: &rusqlite::Connection,
+    user_id: &str,
+    chat_id: &str,
+    full_reembed: Option<bool>,
+) -> Result<(String, bool), DbError> {
+    let repo = crate::db::background_jobs::BackgroundJobsRepository::new(main);
+    let pending = repo.find_pending_for_chat(chat_id)?;
+    if let Some(existing) = pending.iter().find(|j| j.job_type == "CONVERSATION_RENDER") {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let now = now_iso();
+    let id = uuid::Uuid::new_v4().to_string();
+    let create = BjCreate {
+        user_id: user_id.to_string(),
+        job_type: "CONVERSATION_RENDER".to_string(),
+        status: Some("PENDING".to_string()),
+        payload: conversation_render_payload(chat_id, full_reembed),
+        priority: -1.0,
+        attempts: 0.0,
+        max_attempts: 3.0,
+        last_error: None,
+        scheduled_at: now.clone(),
+        started_at: None,
+        completed_at: None,
+    };
+    let opts = CreateOptions {
+        id: id.clone(),
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    repo.create(&create, &opts)?;
+    ensure_processor_running();
     Ok((id, true))
 }

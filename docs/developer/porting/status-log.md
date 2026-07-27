@@ -40805,3 +40805,71 @@ pair is COMMITTED and no other family reads it, so nothing else is invalidated.
 **Gate:** fmt, clippy `-D warnings` both feature sets, full
 `cargo test --workspace` 1,669 passed / 0 failed with both new families by name.
 No `apps/web` touch.
+
+---
+
+## Lane record — P4.6BM unit 3: the startup render/embed reconcile
+
+**Ported:** v4 `lib/startup/reconcile-conversation-rendering.ts` (158 LOC) →
+`quilltap-core/src/services/conversation_render_reconcile.rs`, wired at the boot
+call site in `quilltap-host/src/host.rs` (v4's `instrumentation.ts` "PHASE 3.6"),
+plus a blocking `enqueue_conversation_render_blocking` in `queue_service` for the
+writer-connection shape a boot pass needs.
+
+**The repair-vs-reconcile decision: the P4.6BL stand-in is RETIRED.**
+`services/embedding_backlog_repair.rs` (294 LOC) existed only because
+`CONVERSATION_RENDER` had no handler — a verbatim reconcile would have minted a
+fresh batch of DEAD render jobs every boot. Its own module doc named the exit
+condition ("retires in favor of the reconcile when that handler lands"), and
+unit 2 landed it. The coverage argument, recorded in the new module's doc rather
+than left implicit: both use the identical recoverable-chunk predicate, and the
+render handler re-enqueues an embed for every chunk it upserts that still lacks
+one — so every chunk the repair reached is reached one hop later, PLUS arm (A),
+which the repair never healed. The one case the repair covered and this does not
+is an orphan chunk whose `chats` row is gone; v4's scan selects FROM `chats` and
+can never see one, those rows are unreachable from every read path, and matching
+v4 is the point.
+
+**A payload-bytes correction the differential would have caught anyway:**
+`enqueue_conversation_render` always materialized `fullReembed` into the payload.
+v4's two callers differ — the manual button sends `{chatId, fullReembed: true}`,
+the reconcile sends `{chatId}` alone — so the parameter is now
+`Option<bool>` and `None` OMITS the key. `background_jobs.payload` is diffed, so
+this is asserted, not asserted-by-comment.
+
+**⚠ THE FINDING OF THIS UNIT — a silently wrong oracle.** The first reconcile
+oracle reported `incompleteChats: 1, enqueued: 1, reused: 0`. The corpus was
+built for `2 / 1 / 1` (arm A enqueues, arm B reuses the seeded pending render
+job), so the number was investigated rather than accepted. Cause: **jest's global
+setup mocks `@/lib/embedding/embedding-service`**, so v4's reconcile imported
+`EMBEDDING_MAX_CHARS` as `undefined`, bound it into
+`LENGTH(content) BETWEEN 1 AND ?` as SQL NULL, and arm (B) therefore matched
+NOTHING. The fix is one more `jest.doMock(… requireActual)` (now carried with a
+⚠ comment in the case file).
+
+Two things make this worth remembering. First, it is `oracle-regen-silent-stale-
+pass` in a new costume: the oracle did not error, it produced a plausible,
+wrong answer. Second, it would have surfaced as a RED differential against a
+CORRECT port — the tempting repair being to "fix" v5 down to the oracle's
+answer. The lane rule (fix the port, not the diff) assumes the oracle is right;
+when a corpus was built to exercise an arm and the oracle says the arm did not
+fire, suspect the oracle first.
+
+Guarding against a repeat: the test now asserts the corpus's own shape
+(`incomplete_chats >= 2 && enqueued >= 1 && reused >= 1`) before comparing, so a
+reconcile that finds nothing can never agree with a port that does nothing.
+
+**Differential:** the reconcile is phase 1 of `embedding_remainder_equivalence`
+(it runs over the PRISTINE fixture, where boot runs it, and before both later
+phases mutate what its scan reads). Four mutations, all caught: dropping arm B,
+dropping the length cap (the oversize chunk then counts), writing
+`fullReembed: false` into the payload, and counting `reused` as `enqueued`.
+Three unit tests cover the arms/exclusions, the second-pass dedupe, and the
+missing-table zero return.
+
+**One harness note:** `write_blocking` panics on a tokio runtime thread, so the
+boot pass runs through `spawn_blocking` in the test.
+
+**Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
+passed / 0 failed (the retired repair's four unit tests come off the count).
+No `apps/web` touch.
