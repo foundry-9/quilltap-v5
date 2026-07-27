@@ -39619,3 +39619,28 @@ before porting (no drift).
   chat-CREATE accepts one) — the repo-level arm exists for v4 parity and any
   future internal caller, proven at the repo differential.
 - Versions: core 0.0.385, harness 0.0.332.
+
+## Lane record — P4.9E3B tier-2 audits (items 8–9), 2026-07-27
+
+- **`photo-albums`: EXISTS** (`ChatPhotoAlbums`, P4.6ab) — nothing to do.
+- **`group-stores`: WAS MISSING — ported.** `chat_media::chat_group_stores`
+  (v4 `actions/group-stores.ts:16`) over the existing
+  `resolve_group_mount_point_ids_for_character`: user-CONTROLLED, non-removed
+  character participants → their groups' stores, filtered to enabled +
+  `database` + not-`character`, insertion-ordered dedupe. New dispatch verb
+  `ChatGroupStores { chat_id }` in the P4.9E3B region — **NOT part of the
+  frozen §1** (added under the order's tier-2 item 9 mandate; recorded here
+  for the unifier and the E3C SPA lane, which consumes it via dispatch). The
+  fixture gained a group ('The Watch', Vera as member) so the differential
+  has a POPULATED arm; three new cases ride `chat_export_equivalence`
+  (9 cases now), and every chat-dialogs oracle was regenerated over the
+  rebuilt fixture and re-run green.
+- **`attach-mount-file`: AUDITED and DEFERRED loudly.** v4's
+  `handleAttachMountFile` (files/route.ts:250) rides
+  `ensureImageDescription` — a VISION-LLM describe with no v5 host seam —
+  plus the Librarian attach announcement. Oversized for this lane (a new
+  model seam); the chat-files POST edge now refuses `?action=attach-mount-file`
+  by name (previously it would FALL THROUGH to the multipart upload parser
+  and answer a confusing `No file provided`/multipart error). The E3C
+  picker's mount-file leg degrades loudly per its order.
+- Versions: core 0.0.386, harness 0.0.333, web 0.0.50.

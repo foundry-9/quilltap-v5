@@ -732,7 +732,26 @@ async function main(): Promise<void> {
     'An office, unhelpful.',
   );
 
-  // 8. Chat settings (the llm_choose cheap-LLM config source).
+  // 8. A group with VERA as member (the `group-stores` read: Vera is the
+  //    user-CONTROLLED participant in SR_CHAT and EXPORT_CHAT, so both chats
+  //    surface The Watch's official store; TOOLS_CHAT_BARE has no
+  //    user-controlled character and stays empty).
+  const watch = await repos.groups.create(
+    {
+      name: 'The Watch',
+      description: 'Vera’s standing watch.',
+      color: '#223344',
+      icon: 'lantern',
+      state: {},
+    } as never,
+    { id: 'dd000000-0000-4000-8000-000000000001', createdAt: TS, updatedAt: TS } as never,
+  );
+  if (watch.id !== 'dd000000-0000-4000-8000-000000000001') {
+    throw new Error(`Watch group id drift: ${watch.id}`);
+  }
+  await repos.groupCharacterMembers.addMember('dd000000-0000-4000-8000-000000000001', VERA);
+
+  // 9. Chat settings (the llm_choose cheap-LLM config source).
   await repos.chatSettings.create(
     {
       userId: spec.userId,

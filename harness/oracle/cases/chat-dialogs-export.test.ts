@@ -40,6 +40,8 @@ interface Spec {
 
 const EXPORT_CHAT = 'c2000000-0000-4000-8000-000000000001';
 const NOCHAR_CHAT = 'c2000000-0000-4000-8000-000000000002';
+const SR_CHAT = 'c2000000-0000-4000-8000-000000000003';
+const TOOLS_CHAT_BARE = 'c2000000-0000-4000-8000-000000000006';
 const MERGE_SOURCE = 'c2000000-0000-4000-8000-000000000008';
 const MISSING_ID = '99999999-9999-4999-8999-999999999999';
 
@@ -110,7 +112,7 @@ function applyMocks(spec: Spec): void {
 
 interface CaseSpec {
   name: string;
-  action: 'export' | 'outfit-summary';
+  action: 'export' | 'outfit-summary' | 'group-stores';
   chatId: string;
 }
 
@@ -247,6 +249,12 @@ async function main(): Promise<void> {
     { name: 'outfit_summary_rich', action: 'outfit-summary', chatId: MERGE_SOURCE },
     { name: 'outfit_summary_empty', action: 'outfit-summary', chatId: EXPORT_CHAT },
     { name: 'outfit_summary_chat_missing', action: 'outfit-summary', chatId: MISSING_ID },
+    // P4.9E3B tier-2 audit: the group-stores read. Vera (user-controlled in
+    // SR_CHAT) belongs to The Watch, whose official store surfaces; the bare
+    // room has no user-controlled character and stays empty.
+    { name: 'group_stores_watch', action: 'group-stores', chatId: SR_CHAT },
+    { name: 'group_stores_empty', action: 'group-stores', chatId: TOOLS_CHAT_BARE },
+    { name: 'group_stores_chat_missing', action: 'group-stores', chatId: MISSING_ID },
   ];
 
   const lines: string[] = [];

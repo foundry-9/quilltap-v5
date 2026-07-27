@@ -423,6 +423,86 @@ pub async fn message_save_image(
 }
 
 // ===========================================================================
+// Group stores (v4 handleGetGroupStores — P4.9E3B tier-2 audit port)
+// ===========================================================================
+
+/// v4 `GET /chats/[id]?action=group-stores` → `{ stores }`: the enabled
+/// database-backed stores (character vaults excluded) of every group a
+/// user-CONTROLLED, non-removed character participant belongs to
+/// (`actions/group-stores.ts:16`). The picker's "group stores" leg.
+pub fn chat_group_stores(db: &Db, chat_id: &str) -> Response {
+    let chat_id_owned = chat_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
+            return Ok(None);
+        };
+        // Insertion-ordered dedupe (v4's Set iterates insertion order).
+        let mut mount_ids: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(participants) = chat.get("participants").and_then(Value::as_array) {
+            for p in participants {
+                if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
+                    continue;
+                }
+                let Some(cid) = p
+                    .get("characterId")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                else {
+                    continue;
+                };
+                if p.get("controlledBy").and_then(Value::as_str) != Some("user") {
+                    continue;
+                }
+                if p.get("status").and_then(Value::as_str) == Some("removed") {
+                    continue;
+                }
+                for id in crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
+                    main, mount, cid,
+                ) {
+                    if seen.insert(id.clone()) {
+                        mount_ids.push(id);
+                    }
+                }
+            }
+        }
+
+        let points = DocMountPointsRepository::new(mount);
+        let mut stores: Vec<Value> = Vec::new();
+        for id in &mount_ids {
+            let Some(mp) = points.find_full_json_by_id(id)? else {
+                continue;
+            };
+            if mp.get("enabled").and_then(Value::as_bool) != Some(true) {
+                continue;
+            }
+            if mp.get("mountType").and_then(Value::as_str) != Some("database") {
+                continue;
+            }
+            if mp.get("storeType").and_then(Value::as_str) == Some("character") {
+                continue;
+            }
+            stores.push(json!({
+                "id": mp.get("id").cloned().unwrap_or(Value::Null),
+                "name": mp.get("name").cloned().unwrap_or(Value::Null),
+                "mountType": mp.get("mountType").cloned().unwrap_or(Value::Null),
+                "storeType": mp
+                    .get("storeType")
+                    .and_then(Value::as_str)
+                    .unwrap_or("documents"),
+                "enabled": mp.get("enabled").cloned().unwrap_or(Value::Null),
+            }));
+        }
+        Ok(Some(json!({ "stores": stores })))
+    });
+    match result {
+        Ok(Some(body)) => Response::ChatDialog(body),
+        Ok(None) => Response::error(ErrorKind::NotFound, "Chat not found"),
+        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+    }
+}
+
+// ===========================================================================
 // Photo albums (v4 handleGetPhotoAlbums)
 // ===========================================================================
 

@@ -29,6 +29,8 @@ use serde_json::{json, Value};
 
 const EXPORT_CHAT: &str = "c2000000-0000-4000-8000-000000000001";
 const NOCHAR_CHAT: &str = "c2000000-0000-4000-8000-000000000002";
+const SR_CHAT: &str = "c2000000-0000-4000-8000-000000000003";
+const TOOLS_CHAT_BARE: &str = "c2000000-0000-4000-8000-000000000006";
 const MERGE_SOURCE: &str = "c2000000-0000-4000-8000-000000000008";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
 
@@ -235,6 +237,17 @@ fn chat_export_matches_oracle() {
     ] {
         let db = fresh_db(&spec, name);
         let r = quilltap_core::api::chat_outfits::chat_outfit_summary(&db, chat);
+        check(name, &r);
+    }
+
+    // ── ?action=group-stores (the P4.9E3B tier-2 audit port) ───────────────
+    for (name, chat) in [
+        ("group_stores_watch", SR_CHAT),
+        ("group_stores_empty", TOOLS_CHAT_BARE),
+        ("group_stores_chat_missing", MISSING_ID),
+    ] {
+        let db = fresh_db(&spec, name);
+        let r = quilltap_core::api::chat_media::chat_group_stores(&db, chat);
         check(name, &r);
     }
 

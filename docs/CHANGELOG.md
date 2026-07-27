@@ -40,6 +40,15 @@ The corpus that checks this behavior could not see the change at all. The
 conversation it tested happened to seat the character you play at the head of
 the cast, so the old choice and the new one agreed on every row; the test file
 now carries five more rooms, each built to disagree in exactly one way.
+The file picker's "group stores" listing works again: a conversation now
+reports the document stores of every group that one of your played
+characters belongs to, exactly as the old app lists them (enabled,
+database-backed stores only, character vaults excluded). Attaching a
+library file to a conversation by path stays deferred for now — the old
+app's version runs an image-description model over the file, a seam this
+build does not carry yet — and the route says so plainly instead of
+misreading the request as an upload.
+
 A conversation's timestamp settings are now stored exactly the way the old
 app stores them. The old app re-checks the configuration at every database
 write — filling in the defaults for anything left unsaid, dropping keys it

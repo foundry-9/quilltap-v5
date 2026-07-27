@@ -2659,6 +2659,14 @@ pub enum Request {
         message_id: String,
         new_participant_id: String,
     },
+    /// Group document stores reachable from this chat's user-controlled cast
+    /// (v4 `GET …/chats/{id}?action=group-stores`, actions/group-stores.ts:16).
+    /// NOT part of the §1 freeze — added by the order's tier-2 audit (item 9),
+    /// which found the picker's read missing; recorded for the unifier + E3C.
+    #[serde(rename_all = "camelCase")]
+    ChatGroupStores {
+        chat_id: String,
+    },
     // === end P4.9E3B ===
 }
 

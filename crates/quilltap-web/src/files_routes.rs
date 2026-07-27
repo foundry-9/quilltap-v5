@@ -845,6 +845,18 @@ pub async fn chat_files_post(
     Query(params): Query<HashMap<String, String>>,
     req: axum::extract::Request,
 ) -> AxumResponse {
+    // P4.9E3B: v4's `?action=attach-mount-file` leg (files/route.ts:250) is a
+    // NAMED deferral — it rides a vision-LLM describe (`ensureImageDescription`)
+    // this build has no host seam for. Refuse loudly rather than fall through
+    // to the multipart upload parser.
+    if params.get("action").map(String::as_str) == Some("attach-mount-file") {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "The attach-mount-file action is not ported yet (a P4.9E3B named deferral — \
+             v4 handleAttachMountFile, app/api/v1/chats/[id]/files/route.ts:250; it needs \
+             the vision-LLM describe seam)",
+        );
+    }
     if params.get("action").map(String::as_str) == Some("link") {
         let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
             Ok(b) => b,

@@ -3308,6 +3308,11 @@ impl CoreEngine {
                 Ok(db) => super::chat_media::chat_photo_albums(&db, &chat_id),
                 Err(r) => r,
             },
+            // P4.9E3B (the tier-2 audit port — see types.rs).
+            Request::ChatGroupStores { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_group_stores(&db, &chat_id),
+                Err(r) => r,
+            },
             Request::ChatAddToolResult { chat_id, body } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_media::chat_add_tool_result(&db, SINGLE_USER_ID, &chat_id, &body)
