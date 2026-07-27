@@ -116,6 +116,13 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+Speaking as one of your characters now sticks. Choosing "Speak as" flipped the
+card for a moment and then quietly undid itself, because the app was reading that
+state back from a record that never carried it; it is now kept where the old app
+keeps it. And when you hand a character back to the AI who has no model of their
+own, you are asked which one should drive them instead of the hand-off failing
+silently.
+
 A single message can be handed to a different speaker again. The swap icon is back
 on the message toolbar, next to Delete, and appears whenever there is somebody
 else in the conversation to hand it to. The dialog says up front that memories

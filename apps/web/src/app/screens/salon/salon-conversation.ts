@@ -44,6 +44,7 @@ import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-mod
 import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
+import { SelectLlmProfileDialog } from '../../chat/select-llm-profile-dialog';
 import {
   removeParticipant,
   rebuildSystemPrompt,
@@ -110,6 +111,19 @@ import {
   WORKSPACE_BACKDROP_REGISTRY,
   WORKSPACE_TAB_ID,
 } from '../../workspace/workspace-contract';
+
+/**
+ * v4 `setImpersonatingParticipantIds(data.impersonatingParticipantIds || [])`
+ * (`useImpersonation.ts:62,105`) — read the list off an impersonate reply, with
+ * a caller-supplied fallback for a body that does not carry it.
+ */
+export function readImpersonatingIds(
+  data: Record<string, unknown>,
+  fallback: string[],
+): string[] {
+  const ids = data['impersonatingParticipantIds'];
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : fallback;
+}
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -193,6 +207,7 @@ interface CascadePrompt {
     BulkCharacterReplaceModal,
     ChatProjectModal,
     ReattributeMessageDialog,
+    SelectLlmProfileDialog,
     Modal,
   ],
   template: `
@@ -242,7 +257,7 @@ interface CascadePrompt {
           [isPaused]="c.isPaused"
           [userParticipantId]="userParticipantId()"
           [respondingParticipantId]="stream()?.respondingParticipantId ?? null"
-          [impersonatingParticipantIds]="c.impersonatingParticipantIds ?? []"
+          [impersonatingParticipantIds]="impersonatingIds()"
           [activeTypingParticipantId]="c.activeTypingParticipantId ?? null"
           [isDangerousChat]="c.isDangerousChat === true"
           [chatId]="c.id"
@@ -545,6 +560,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (handOffTarget(); as target) {
+      <qt-select-llm-profile-dialog
+        [characterName]="target.character?.name || 'Character'"
+        [characterAvatarUrl]="target.character?.avatarUrl ?? null"
+        [defaultConnectionProfileId]="null"
+        (confirm)="onConfirmHandOff($event)"
+        (cancel)="handOffTarget.set(null)"
       />
     }
 
@@ -1081,6 +1106,25 @@ export class SalonConversation {
   // The in-chat dialog family (P4.9E3C) — v4 mounts these from `ChatModals.tsx`
   // off `useModalState`; v5 keeps its signal-per-dialog pattern (see the Post
   // Office note below, which weighed the same choice).
+  //
+  // ## Tier-3 deferral (LOUD — rendered nowhere, nothing stubbed)
+  //
+  // **`AllLLMPauseModal`** (v4 `components/chat/AllLLMPauseModal.tsx`, 148 LOC)
+  // is NOT ported, because it is unreachable in v4 itself. `ChatModals.tsx:423`
+  // mounts it and `SalonView` wires all three of its handlers, but
+  // `setAllLLMPauseModalOpen(true)` appears NOWHERE in v4 at `e8a49597` — every
+  // occurrence passes `false`. The pause it describes is real and already
+  // ported: the chain driver stops the chat itself when the turn count hits a
+  // threshold (v4 `turn-orchestrator.service.ts:126` →
+  // `services/turn_orchestrator.rs:455`, over the differential-verified
+  // `quilltap-core::all_llm_pause`), writing `isPaused` and never telling the
+  // client. And `allLLMPauseTurnCount`, which the modal's copy is built from, is
+  // in neither app's chat-GET projection.
+  //
+  // So porting it would mean shipping a dialog with no opener, and adding an
+  // opener would be v5 inventing a control v4 does not have. The pure helpers
+  // are likewise NOT copied into TypeScript: their only v4 client consumer is
+  // `ChatModals.tsx:427`, computing this dead modal's `nextPauseAt`.
   // -------------------------------------------------------------------------
 
   /** v4 `renameModalOpen` (`useModalState.ts`), opened from Organize. */
@@ -1091,6 +1135,11 @@ export class SalonConversation {
   protected readonly showProject = signal(false);
   /** v4 `reattributeDialogState`, opened from a message's action bar. */
   protected readonly reattributeTarget = signal<MessageDto | null>(null);
+  /**
+   * v4 `selectLLMProfileDialogState` — the participant whose hand-off back to the
+   * AI is waiting on a profile choice. Set only by {@link onStopImpersonate}.
+   */
+  protected readonly handOffTarget = signal<ParticipantDetail | null>(null);
 
   /**
    * v4 `handleReattributed` (`SalonView.tsx:1206-1218`): close, refetch, then
@@ -1930,15 +1979,82 @@ export class SalonConversation {
   protected async onImpersonate(participantId: string): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
-    await this.core.dispatch({ type: 'chatImpersonate', chatId, participantId });
+    const data = await this.core.dispatchData({ type: 'chatImpersonate', chatId, participantId });
+    this.impersonatingLocal.set(readImpersonatingIds(data, [participantId]));
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
-  /** v4 `useImpersonation.handleStopImpersonation`. */
+  /**
+   * Who the operator is currently speaking for.
+   *
+   * ⚠ **This is LOCAL state on purpose, and fixing that is what made the
+   * hand-off dialog reachable at all.** Neither app's chat GET projects
+   * `impersonatingParticipantIds` — v4's `handlers/get.ts` has no such key, so
+   * v4's own `useEffect` on `chat?.impersonatingParticipantIds` never fires and
+   * the hook lives entirely off what the impersonate / stop-impersonate replies
+   * return (`useImpersonation.ts:26,44-47,62-63`). v5 had been binding the
+   * sidebar straight to the chat record, so every refetch — including the one
+   * the impersonate dispatch itself triggers — erased the state and the card
+   * snapped back to "Speak as". Impersonation could not be entered at all.
+   *
+   * v4's sync guard is kept: the chat record overrides only when it carries a
+   * NON-EMPTY list (`:39-42`), so a record that omits the key leaves this alone.
+   */
+  private readonly impersonatingLocal = signal<string[]>([]);
+  protected readonly impersonatingIds = computed(() => {
+    const fromChat = this.chat()?.impersonatingParticipantIds ?? [];
+    return fromChat.length > 0 ? fromChat : this.impersonatingLocal();
+  });
+
+  /**
+   * v4 `useImpersonation.handleStopImpersonation` (`:71-113`).
+   *
+   * **The early return is the whole point.** If the participant is a character
+   * with no connection profile of their own, v4 does NOT call the server: it
+   * opens `SelectLLMProfileDialog` and returns, because handing the character
+   * back to the AI needs somebody to drive them and nothing on the record says
+   * who. The dialog's confirm resumes the flow with `newConnectionProfileId`.
+   */
   protected async onStopImpersonate(participantId: string): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
-    await this.core.dispatch({ type: 'chatStopImpersonate', chatId, participantId });
+    const participant = this.chat()?.participants.find((p) => p.id === participantId);
+    if (participant?.character && !participant.connectionProfile) {
+      this.handOffTarget.set(participant);
+      return;
+    }
+    const data = await this.core.dispatchData({
+      type: 'chatStopImpersonate',
+      chatId,
+      participantId,
+    });
+    this.impersonatingLocal.set(readImpersonatingIds(data, []));
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /** v4 `handleConfirmStopImpersonation` (`useImpersonation.ts:115-142`). */
+  protected async onConfirmHandOff(connectionProfileId: string): Promise<void> {
+    const chatId = this.chatId();
+    const participant = this.handOffTarget();
+    this.handOffTarget.set(null);
+    if (!chatId || !participant) return;
+    const name = participant.character?.name || 'Character';
+    try {
+      const data = await this.core.dispatchData({
+        type: 'chatStopImpersonate',
+        chatId,
+        participantId: participant.id,
+        newConnectionProfileId: connectionProfileId,
+      });
+      this.impersonatingLocal.set(readImpersonatingIds(data, []));
+    } catch (err) {
+      this.chatFlash.set({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to assign LLM profile',
+      });
+      return;
+    }
+    this.chatFlash.set({ kind: 'success', message: `${name} is now controlled by AI` });
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 

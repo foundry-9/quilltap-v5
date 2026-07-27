@@ -118,6 +118,13 @@ export interface ChatStopImpersonateRequest {
   type: 'chatStopImpersonate';
   chatId: string;
   participantId: string;
+  /**
+   * The profile the character is handed back to when the operator stops
+   * speaking for them (v4 `useImpersonation.ts:115-142`). Present in
+   * `types.rs:286` but missing from this mirror until P4.9E3C, so
+   * `SelectLLMProfileDialog`'s whole reason for existing was unreachable.
+   */
+  newConnectionProfileId?: string;
 }
 export interface ChatSetActiveSpeakerRequest {
   type: 'chatSetActiveSpeaker';

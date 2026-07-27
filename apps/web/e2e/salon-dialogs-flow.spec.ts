@@ -200,3 +200,38 @@ test.describe('P4.9E3C — Export', () => {
     expect(() => JSON.parse(first) as unknown).not.toThrow();
   });
 });
+
+/**
+ * The impersonation round trip — the state the Hand Off dialog hangs off.
+ *
+ * ⚠ **The dialog itself has no beat, and cannot have one against this fixture.**
+ * It triggers only when the operator stops speaking for a character who has NO
+ * connection profile (`useImpersonation.ts:76-89`), every participant in the
+ * committed fixture has one, and no client verb can clear a profile
+ * (`chatUpdateParticipant.connectionProfileId` is non-nullable in v4's schema).
+ * Reaching it needs a seeded profile-less participant; the dialog is covered by
+ * five component tests instead, and this is recorded in the lane record.
+ */
+test.describe('P4.9E3C — speaking as a character', () => {
+  test('the cast card holds the impersonation across the refetch it triggers', async ({ page }) => {
+    await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Participants');
+
+    const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();
+    await expect(speakAs).toBeVisible({ timeout: 10_000 });
+    const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
+    await speakAs.click();
+
+    // Neither app's chat GET projects `impersonatingParticipantIds`, so this
+    // sticking at all is the assertion: v5 used to bind the card straight to the
+    // chat record, and the dispatch's own refetch wiped it a moment later.
+    const stop = page.locator(`qt-participant-card button[title="Stop speaking as ${name}"]`);
+    await expect(stop).toBeVisible({ timeout: 15_000 });
+    await expect(stop).toBeVisible({ timeout: 5_000 });
+
+    await stop.click();
+    await expect(
+      page.locator(`qt-participant-card button[title="Speak as ${name}"]`),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});

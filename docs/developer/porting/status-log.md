@@ -39980,3 +39980,64 @@ nothing-preselected disabled state, and moves the line. It shares the bulk beat'
 
 Gate: ng test 242 files / 3,018; `npx playwright test zz-bulk-replace` 1 passed /
 1 gated skip. SPA 0.5.304.
+
+### Unit record — P4.9E3C unit 7: SelectLLMProfileDialog — and the impersonation bug it uncovered (2026-07-27)
+
+`chat/select-llm-profile-dialog.ts` (v4 `SelectLLMProfileDialog.tsx`, 234 LOC).
+Not a menu item: it interrupts the stop-impersonation path when the character
+being handed back has no connection profile of their own
+(`useImpersonation.ts:76-89` RETURNS without calling the server), and its confirm
+is what completes the hand-off with `newConnectionProfileId` (`:115-142`).
+
+Ported: the preselection order (the character's own default, else the FIRST
+profile — not "nothing", `:74-79`); Cancel semantics on the close button and the
+backdrop alike (v4 wires `onClose` to `handleCancel`, `:131`); the empty state
+that names Settings → Connection Profiles rather than offering an inert confirm;
+the `sr-only` radios with the whole card as the label.
+
+`ChatStopImpersonateRequest` gained `newConnectionProfileId`. It exists in
+`types.rs:286` and had never been mirrored, so the dialog's entire reason for
+existing was unreachable from the browser.
+
+**⚠ A REAL v5 bug, found by trying to reach the dialog and fixed here.**
+Impersonation could not be entered at all. Neither app's chat GET projects
+`impersonatingParticipantIds` — v4's `handlers/get.ts` has no such key, so v4's
+`useImpersonation` holds the list in LOCAL state seeded from the impersonate /
+stop replies (`:26,44-47,62-63`) and its sync effect never fires. v5 had bound
+the cast card straight to the chat record, so the refetch that the impersonate
+dispatch itself triggers erased the state and the card snapped back to "Speak
+as" a moment after being pressed. Fixed with a local signal fed by both verb
+replies (`readImpersonatingIds`), keeping v4's guard that a chat record overrides
+only when it carries a NON-EMPTY list (`:39-42`). A live e2e beat pins it; the
+beat is exactly the assertion that failed before the fix.
+
+### Deferred BY NAME — `AllLLMPauseModal` (v4 `AllLLMPauseModal.tsx`, 148 LOC)
+
+**It is unreachable in v4 itself.** `ChatModals.tsx:423` mounts it and `SalonView`
+wires all three handlers, but `setAllLLMPauseModalOpen(true)` appears NOWHERE in
+v4 at `e8a49597` — every occurrence passes `false`. The pause it describes is real
+and already ported: the chain driver stops the chat when the turn count hits a
+threshold (`turn-orchestrator.service.ts:126` → `services/turn_orchestrator.rs:455`,
+over the differential-verified `quilltap-core::all_llm_pause`), writing `isPaused`
+and never telling the client. `allLLMPauseTurnCount` is in neither app's chat-GET
+projection.
+
+So porting it would ship a dialog with no opener, and adding an opener would be
+v5 inventing a control v4 does not have. **The order's "port the pure threshold
+helpers with unit tests either way" is answered by their already being ported and
+differential-verified in Rust**; a TypeScript copy would have no consumer either
+(v4's only client use is `ChatModals.tsx:427`, computing this dead modal's
+`nextPauseAt`). The refusal is written at the dialog block in
+`screens/salon/salon-conversation.ts` with these citations. **Worth a v4-side
+look:** either the modal wants an opener or it wants deleting.
+
+### Deferred — the Hand-Off dialog's e2e beat (recorded, not skipped-in-file)
+
+The dialog triggers only for a participant with NO connection profile; every
+participant in the committed e2e fixture has one, and no client verb can clear a
+profile (`chatUpdateParticipant.connectionProfileId` is non-nullable in v4's
+schema). Reaching it needs a seeded profile-less participant. Five component
+tests cover the dialog; the impersonation round trip it hangs off has a live beat.
+
+Gate: ng test 243 files / 3,023; `npx playwright test salon-dialogs-flow` 3 passed
+/ 1 gated skip. SPA 0.5.305.
