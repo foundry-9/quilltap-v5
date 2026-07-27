@@ -991,3 +991,53 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
     expect(sent['pendingToolResults']).toBeUndefined();
   });
 });
+
+/**
+ * The Speaking-As choice is an optimistic BRIDGE, never a latch. v4 only ever
+ * holds what a server response gave it (`useImpersonation.ts:63,107,134`), so a
+ * v5 override that outranks `chat.activeTypingParticipantId` indefinitely
+ * misattributes every optimistic bubble once the server drops that speaker —
+ * which it does the moment the participant stops being user-controlled.
+ */
+describe('SalonConversation — the Speaking-As override does not outlive its round trip', () => {
+  type SpeakerHost = {
+    onSelectSpeaker(participantId: string): void;
+    activeSpeakerId(): string | null;
+  };
+
+  async function settle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('shows the choice immediately, then hands authority to the refetched chat', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // The server does NOT persist this speaker (v4/v5 both refuse a participant
+    // who is not being impersonated), so the refetch answers with null.
+    const client = stubClient({ ...chatDetail(), activeTypingParticipantId: null }, events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as SpeakerHost;
+
+    inst.onSelectSpeaker('pu');
+    expect(inst.activeSpeakerId()).toBe('pu'); // the bridge
+
+    await settle(fixture);
+    // THE GUARD: the stale choice must not survive. Before the fix it did, and
+    // every later optimistic bubble wore that participant's name.
+    expect(inst.activeSpeakerId()).toBeNull();
+  });
+
+  it('keeps the speaker the server DID persist', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient({ ...chatDetail(), activeTypingParticipantId: 'pu' }, events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as SpeakerHost;
+
+    inst.onSelectSpeaker('pu');
+    await settle(fixture);
+    // Cleared the override, but the chat carries the choice — no flicker back.
+    expect(inst.activeSpeakerId()).toBe('pu');
+  });
+});

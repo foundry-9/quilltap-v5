@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+An announcement spoken by someone who is not in the room now arrives under their
+own name. It always was their announcement — the characters in the scene knew
+perfectly well who had spoken, and the record kept underneath said so plainly —
+but the page had no way to name a speaker who was not part of the cast, and so
+handed the words to whichever character stood first in line. A visitor's notice
+was appearing over a resident's face. If the speaker has since been deleted
+altogether, the notice now says so rather than borrowing anyone.
+
+Choosing which of your characters is speaking no longer outlasts the choice.
+Once a character stops being yours to play, the app lets that selection go
+instead of holding onto it privately; until now it kept the name, and the first
+draft of everything you typed afterward appeared under the wrong one until the
+page corrected itself a moment later. What was saved was always right — only the
+first glimpse of it was wrong.
+
 The porting record now carries this work: its order is closed, the decision it
 came from is marked as carried out, and the difference from the old app joins the
 standing list of things this app deliberately does otherwise — with a note that

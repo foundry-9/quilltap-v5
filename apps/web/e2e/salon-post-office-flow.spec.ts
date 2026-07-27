@@ -264,6 +264,56 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     await expect(page.locator('.qt-chat-messages-list')).toContainText(line, { timeout: 15_000 });
   });
 
+  /**
+   * Dogfood finding #31: an announcement posted AS AN OFF-SCENE CHARACTER was
+   * stored correctly but RENDERED as whichever cast member sorted first, because
+   * the view model had no `customAnnouncer.kind === 'character'` arm and the row
+   * (no `participantId`, no `systemSender`) fell through to the role fallback.
+   *
+   * The staff beat above cannot catch it: a staff announcement carries a
+   * `systemSender` and collapses to a chip, so it never reaches the author
+   * resolution this exercises. The gesture that was broken is the CHARACTER arm.
+   */
+  test('an off-scene character’s announcement is attributed to THEM', async ({ page }, testInfo) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    if (!(await postOfficeVerbsLive(page))) {
+      testInfo.annotations.push({
+        type: 'activate-at-unification',
+        description: 'Posting an announcement needs P4.9E2A’s chatAnnouncementPost verb on main.',
+      });
+      return;
+    }
+
+    await openChat(page, 'Group Expedition');
+    await page.getByRole('button', { name: 'Insert announcement' }).click();
+    const dialog = page.getByRole('dialog');
+
+    await page.getByRole('tab', { name: 'Off-scene character' }).click();
+    const picker = dialog.locator('.max-h-40');
+    await picker.getByText('Dax', { exact: true }).click({ timeout: 15_000 });
+
+    // "Use as-is" keeps this beat free: any other profile routes through the
+    // in-character rewrite, which is a real cheap-LLM call.
+    await page.locator('#announce-profile').selectOption('as-is');
+
+    const line = `A note slid under the door ${Date.now()}.`;
+    await page.locator('.qt-markdown-field .qt-rich-editor-content').click();
+    await page.keyboard.type(line);
+
+    await footerButton(page, 'Post Announcement').click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    // A character announcement is a FULL ROW, not a chip — so the author name is
+    // in the DOM without expanding anything.
+    const row = page.locator('.qt-chat-message-row').filter({ hasText: line }).last();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.locator('.qt-chat-message-author')).toHaveText('Dax');
+    // THE GUARD: not borrowed from the cast. Aria, Bram and Cleo are this
+    // scene's participants; before the fix the row wore one of their names.
+    await expect(row.locator('.qt-chat-message-author')).not.toHaveText(/Aria|Bram|Cleo/);
+  });
+
   test('post a letter as the operator’s character', async ({ page }, testInfo) => {
     // ACTIVATE-AT-UNIFY: needs P4.9E2A's `chatSendMail` (and `chatMailboxList`
     // for the postbox dropdown, which stays at its default here).

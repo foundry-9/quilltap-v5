@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MessageDto } from '../core/core-contract';
-import { buildRenderItems, splitSwipeGroups } from './chat-view-model';
+import type { ChatDetail, MessageDto, ParticipantDetail } from '../core/core-contract';
+import { buildRenderItems, resolveMessageAuthor, splitSwipeGroups } from './chat-view-model';
 
 function msg(over: Partial<MessageDto>): MessageDto {
   return {
@@ -195,5 +195,129 @@ describe('buildRenderItems — TOOL rows (P4.17)', () => {
     expect(tool.type).toBe('tool');
     // No borrow: the USER row broke the walk.
     expect(tool.type === 'tool' && tool.message.participantId).toBeNull();
+  });
+});
+
+describe('resolveMessageAuthor — the customAnnouncer character arm', () => {
+  function participant(over: Partial<ParticipantDetail> = {}): ParticipantDetail {
+    return {
+      id: 'p-cast',
+      type: 'CHARACTER',
+      displayOrder: 0,
+      isActive: true,
+      controlledBy: 'llm',
+      status: 'active',
+      character: {
+        id: 'char-cast',
+        name: 'Friday',
+        title: 'Companion Heart',
+        avatarUrl: null,
+        defaultImageId: null,
+        defaultImage: null,
+      },
+      connectionProfile: null,
+      imageProfile: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      ...over,
+    };
+  }
+
+  function chatDetail(over: Partial<ChatDetail> = {}): ChatDetail {
+    return {
+      id: 'chat-1',
+      title: 'Tea',
+      contextSummary: null,
+      roleplayTemplateId: null,
+      chatType: 'salon',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      isPaused: false,
+      isManuallyRenamed: false,
+      participants: [participant()],
+      user: { id: 'user1', name: 'Bertie', image: null },
+      messages: [],
+      projectId: null,
+      projectName: null,
+      turnSkippingEnabled: null,
+      agentModeEnabled: false,
+      resolvedAgentModeEnabled: false,
+      agentModeSource: 'global',
+      isDangerousChat: false,
+      dangerCategories: [],
+      conciergeOverride: null,
+      offSceneCharacters: [],
+      lastTurnParticipantId: null,
+      ...over,
+    };
+  }
+
+  /** The bubble as the writer stores it: no participantId, no systemSender. */
+  const announcement = (characterId: string) =>
+    msg({
+      id: 'ann',
+      role: 'ASSISTANT',
+      participantId: null,
+      systemSender: null,
+      systemKind: 'announcement',
+      customAnnouncer: { kind: 'character', characterId },
+    });
+
+  it('names an OFF-SCENE announcing character from offSceneCharacters', () => {
+    const author = resolveMessageAuthor(
+      announcement('char-revenant'),
+      chatDetail({
+        offSceneCharacters: [
+          { id: 'char-revenant', name: 'Revenant', title: 'Security Officer', avatarUrl: null },
+        ],
+      }),
+    );
+    expect(author.name).toBe('Revenant');
+    expect(author.title).toBe('Security Officer');
+    expect(author.isUser).toBe(false);
+  });
+
+  it('THE GUARD: does not fall through to the first cast member', () => {
+    // The shipped bug: with no character arm the row reached the role fallback
+    // and wore the name of whichever character sorted first — here, Friday.
+    const author = resolveMessageAuthor(
+      announcement('char-revenant'),
+      chatDetail({
+        offSceneCharacters: [
+          { id: 'char-revenant', name: 'Revenant', title: null, avatarUrl: null },
+        ],
+      }),
+    );
+    expect(author.name).not.toBe('Friday');
+  });
+
+  it('prefers a participant over the off-scene card when the announcer is in the cast', () => {
+    const author = resolveMessageAuthor(
+      announcement('char-cast'),
+      chatDetail({
+        offSceneCharacters: [
+          { id: 'char-cast', name: 'Stale Copy', title: null, avatarUrl: null },
+        ],
+      }),
+    );
+    expect(author.name).toBe('Friday');
+    expect(author.title).toBe('Companion Heart');
+  });
+
+  it('falls back to a legible placeholder when the character is gone', () => {
+    const author = resolveMessageAuthor(announcement('char-deleted'), chatDetail());
+    expect(author.name).toBe('Off-scene character');
+    expect(author.avatarUrl).toBeNull();
+  });
+
+  it('still labels a custom-kind announcer by its display name', () => {
+    const author = resolveMessageAuthor(
+      msg({
+        id: 'ann2',
+        customAnnouncer: { kind: 'custom', displayName: 'The Management' },
+      }),
+      chatDetail(),
+    );
+    expect(author.name).toBe('The Management');
   });
 });

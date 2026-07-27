@@ -1261,7 +1261,20 @@ export class SalonConversation {
   protected readonly turnState = signal<TurnState>(createInitialTurnState());
   /** The selection envelope the sidebar numbers its badges from (v4 same name). */
   protected readonly turnSelection = signal<TurnSelectionResult | null>(null);
-  /** The user's Speaking-As choice (immediate feedback ahead of the refetch). */
+  /**
+   * The user's Speaking-As choice, held ONLY for the moment between the click
+   * and the refetch that confirms it. It is cleared the instant the chat comes
+   * back, so `chat.activeTypingParticipantId` — the server's answer — governs
+   * from then on.
+   *
+   * v4 never holds an unconfirmed value at all: every one of its impersonation
+   * handlers assigns `data.activeTypingParticipantId` from the RESPONSE
+   * (`useImpersonation.ts:63,107,134`), and its sync effect re-reads the chat.
+   * A latch that outranks the server here is not a cosmetic difference — the
+   * server drops the active speaker when that participant stops being
+   * user-controlled, and a stale override then misattributes every optimistic
+   * bubble to a character the user is no longer playing.
+   */
   private readonly activeSpeakerOverride = signal<string | null>(null);
   /** A rejected-skip message (v4's all-others-skipped copy). */
   protected readonly skipError = signal<string | null>(null);
@@ -1398,10 +1411,17 @@ export class SalonConversation {
   protected onSelectSpeaker(participantId: string): void {
     this.activeSpeakerOverride.set(participantId);
     const chatId = this.chatId();
-    if (!chatId) return;
+    if (!chatId) {
+      this.activeSpeakerOverride.set(null);
+      return;
+    }
     void this.core
       .dispatch({ type: 'chatSetActiveSpeaker', chatId, participantId })
-      .then(() => this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }));
+      .then(() => this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }))
+      // Hand authority back to the refetched chat, whether the server took the
+      // choice or refused it (it rejects a participant who is not being
+      // impersonated). Either way the override must not survive the round trip.
+      .finally(() => this.activeSpeakerOverride.set(null));
   }
 
   protected async onSkipUserTurn(): Promise<void> {

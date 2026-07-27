@@ -73,6 +73,41 @@ export interface MessageAuthor {
  * key off the sender label rather than an avatar.
  */
 export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): MessageAuthor {
+  // An ad-hoc announcement bubble (Insert Announcement). `customAnnouncer` takes
+  // precedence over `systemSender` by construction — the writer sets one or the
+  // other, never both (v4 `SalonView.tsx:1064-1097`).
+  //
+  // The character arm matters even though the bubble carries no `participantId`:
+  // an announcement can be posted AS a character who is off-scene, and without
+  // it the row falls through to the role fallback below and is attributed to
+  // whichever character happens to sort first — the wrong speaker entirely.
+  if (message.customAnnouncer?.kind === 'character' && message.customAnnouncer.characterId) {
+    const charId = message.customAnnouncer.characterId;
+    const participant = chat.participants.find((cp) => cp.character?.id === charId);
+    if (participant?.character) {
+      return {
+        name: participant.character.name,
+        title: participant.character.title,
+        avatarUrl: normalizeAvatarSrc(participant.character.avatarUrl),
+        isUser: false,
+      };
+    }
+    // Not in the cast — the server ships these alongside the messages precisely
+    // so the bubble can name them (v4 `get.ts:452-465`).
+    const offScene = chat.offSceneCharacters?.find((c) => c.id === charId);
+    if (offScene) {
+      return {
+        name: offScene.name,
+        title: offScene.title,
+        avatarUrl: normalizeAvatarSrc(offScene.avatarUrl),
+        isUser: false,
+      };
+    }
+    // The character was deleted; keep the bubble legible rather than silently
+    // borrowing someone else's identity (v4 :1086).
+    return { name: 'Off-scene character', title: null, avatarUrl: null, isUser: false };
+  }
+
   // Announcement with a custom label.
   if (message.customAnnouncer?.kind === 'custom') {
     return {

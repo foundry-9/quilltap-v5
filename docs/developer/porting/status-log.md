@@ -38740,3 +38740,94 @@ oracles regenerated fresh at `c1507f47`, **zero SKIP lines**:
 `system_restore_state` (8 restore cases + `preview_writes_nothing`),
 `system_restore_equivalence` (5 preview cases), `system_backup_equivalence` (the
 archive bytes re-proved unmoved). No SPA run owed — `apps/web` untouched.
+
+---
+
+## Dogfood findings #31 + #32 — the chat-cast walk (2026-07-27)
+
+The first dogfood pass over the chat-action-remainder round (P4.9E1A ∥ P4.9E3A ∥
+P4.9E1B ∥ P4.d22). Part A of the walk produced two findings, **both SPA-only,
+both port divergences, both fixed in place**. The server was correct in each
+case — which is worth saying plainly, because in both the human's report
+described a *persistence* symptom ("it showed up and seems to have persisted as
+Friday") that the database immediately contradicted.
+
+### #31 — an off-scene character's announcement wore a cast member's name
+
+The row on the dogfood copy:
+
+```
+customAnnouncer  {"kind":"character","characterId":"a3833099…"}   (= Revenant)
+participantId    NULL
+systemSender     NULL
+systemKind       announcement
+```
+
+Exactly what v4's writer produces, and `api/salon.rs:240-284` ships Revenant in
+`offSceneCharacters` precisely so the bubble can name him — the same enrichment
+v4 does at `get.ts:452-465`. The break was one missing branch in
+`resolveMessageAuthor` (`chat-view-model.ts`), which handled `customAnnouncer`'s
+`custom` kind but not its `character` kind. With no `participantId` and no
+`systemSender`, the row fell through every remaining test to the ROLE FALLBACK —
+"the first participant that is a character" — and wore that character's name and
+face. v4's `getMessageAvatar` (`SalonView.tsx:1066-1090`) resolves it in three
+steps, all now ported: participant lookup by `character.id`, then
+`offSceneCharacters`, then the literal `'Off-scene character'` placeholder for a
+character since deleted.
+
+**Why the suite was blind to it.** Two independent gaps, and they lined up:
+`resolveMessageAuthor` had **no direct unit coverage at all**, and the one e2e
+announcement beat posts a *staff* announcement — which carries a `systemSender`,
+collapses into a chip, and therefore never reaches author resolution. The
+character arm was the single unexercised path through that function, and it is
+the one the dialog's own off-scene picker produces. The new beat posts as
+off-scene Dax into a three-character scene and asserts the author is Dax and not
+`/Aria|Bram|Cleo/`; mutated back to the pre-fix shape it fails with
+`Received: "Aria"` — the same shape as the reported "Friday".
+
+### #32 — the Speaking-As choice outlived the character being playable
+
+`activeSpeakerId()` reads `activeSpeakerOverride() ?? chat.activeTypingParticipantId ?? null`,
+and `onSelectSpeaker` set that override from the CLICK and never cleared it. The
+server, faithfully, drops the active speaker when a participant stops being
+user-controlled (v5 `chat_participants.rs`, v4 `helpers.ts:179-197`: flipping to
+`llm` removes the id from `impersonatingParticipantIds` and sets
+`activeTypingParticipantId` to `newImpersonating[0] || null`). The dogfood copy
+showed the aftermath exactly — `impersonatingParticipantIds: []`,
+`activeTypingParticipantId: null` — while the browser still claimed Tanya. That
+stale id fed `makeTempUserMessage`'s `participantId`, so every optimistic bubble
+wore her name.
+
+The self-correction the human saw was the server's, not a race: `chatSend`
+declines a `speakingAsParticipantId` that is not user-controlled and attributes
+the persisted row properly. The message history proves both halves — one user row
+from 12:53 correctly carries Tanya's participant id from when she WAS playable,
+and every row after the flip carries Charlie's.
+
+**The v4 comparison is the whole diagnosis.** v4 never holds an unconfirmed
+value: every impersonation handler assigns `data.activeTypingParticipantId` from
+the **response** (`useImpersonation.ts:63,107,134`), and a sync effect re-reads
+it from the chat. v5's override is now the same thing — an optimistic bridge for
+the round trip, cleared in a `.finally()` so authority returns to the refetched
+chat whether the server took the choice or refused it.
+
+### Two walk steps that were the script's error, not the app's
+
+Recorded so they are not re-investigated:
+
+- **`joinScenario` has no edit control, in v4 either.** It is set once, at add
+  time, in `AddCharacterDialog.tsx:551-562` (v5: `add-character-dialog.ts:336`).
+  There is nothing to edit and nothing to clear. The participant tri-state
+  P4.9E1A proved is an API-level property the differential exercises; no UI
+  gesture produces it.
+- **"Rebuild participants" is per-participant "Rebuild system prompt"** — the
+  button on each participant card (`participant-card.ts:212`), not a cast-wide
+  action. Talkativeness is the slider on the same card. Roleplay template is
+  per-chat, as the human observed.
+
+### Gate
+
+SPA-only; no Rust touched, so no workspace or differential run is owed. `ng test`
+238 files / **2,981** tests (7 new), `ng build` clean, full Playwright
+**140/140** zero skips (1 new beat). Both fixes mutation-checked at the unit
+level, and #31's additionally at the e2e level. SPA 0.5.298.
