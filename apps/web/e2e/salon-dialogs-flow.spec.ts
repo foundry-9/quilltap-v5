@@ -323,7 +323,9 @@ test.describe('P4.9E3C — Search & Replace', () => {
   test('previews a search in this chat and refuses to go on without matches', async ({ page }) => {
     await openChat(page, 'Solo Voyage');
     await openSidebarSection(page, 'Edit Content');
-    await page.getByRole('button', { name: 'Replace' }).click();
+    // `exact` matters: the Edit Content drawer also carries "Bulk Replace", and an
+    // unanchored name matches both.
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
     // v4 opens on step 2 when a scope was supplied, and the Salon always

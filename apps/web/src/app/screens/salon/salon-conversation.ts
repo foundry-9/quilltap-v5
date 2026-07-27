@@ -656,7 +656,7 @@ interface CascadePrompt {
       <qt-chat-rename-modal
         [chatId]="c.id"
         [currentTitle]="c.title || ''"
-        [isManuallyRenamed]="c.isManuallyRenamed ?? false"
+        [isManuallyRenamed]="c.isManuallyRenamed"
         (renamed)="onChatRenamed($event)"
         (close)="showRename.set(false)"
       />
