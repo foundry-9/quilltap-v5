@@ -38481,12 +38481,27 @@ identity can actually be tested, and the check removes BOTH hazards at once
 rather than trading one for the other. Adopting `22a-bis` would have been the
 single move that forecloses the better answer.
 
-**The identity test is exact, not heuristic.** `restore_one_file` preserves the
-archived file's own id (`id: id_of(file)`), and the archived doc-store rows key
-on that same id — which is why the failure mode is a `UNIQUE(fileId)` violation
-rather than a silent duplicate. ⚠ P4.d22 reasoned this from the code and did NOT
-run it; `p4.d23` must confirm the rows are queryable at that moment and record
-the predicate deliberately.
+**⚠ CORRECTED 2026-07-26 by `p4.d23`, which ran what this paragraph reasoned.**
+The original text claimed the identity test was "exact, not heuristic" because
+`restore_one_file` preserves the archived file id and the archived doc-store rows
+key on that same id — "which is why the failure mode is a `UNIQUE(fileId)`
+violation". **Both halves were wrong**, and the lane's caveat ("P4.d22 reasoned
+this from the code and did NOT run it") is what caught them:
+
+- `doc_mount_blobs.fileId` references `doc_mount_files.id` — a content row,
+  content-addressed by sha and shared across mounts — an id space **disjoint**
+  from `files.id`. The reasoning had the right constraint and the wrong id. The
+  predicate actually adopted keys on the archived **storage key**, the pointer
+  the `files` row itself uses to find its bytes.
+- **v5's slot never carried the `UNIQUE(fileId)` hazard at all.**
+  `link_blob_content` upserts by `fileId`, so a replay matching the archived
+  content row by sha REUSES the archived blob rather than colliding. v5's real
+  cost was quieter and, over generations, worse: one spurious **link** per
+  carried file, unique-suffixed, accumulating another copy on every restore.
+
+**The ruling itself stands** — it turned on which slot makes the check WRITABLE,
+and that is unchanged. Only the mechanism was misdescribed. Full detail:
+"Lane record — P4.d23, the restore file-replay dedupe".
 
 **Consequences, all binding:**
 
