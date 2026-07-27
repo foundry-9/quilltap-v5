@@ -39902,3 +39902,48 @@ onto a character and asserts the authors through `chatGet`.
 
 Gate: ng test 240 files / 3,007; `npx playwright test zz-bulk-replace` 1/1.
 SPA 0.5.302.
+
+### Unit record — P4.9E3C unit 5: ChatProjectModal + the Export button (2026-07-27)
+
+**`chat/chat-project-modal.ts`** (v4 `ChatProjectModal.tsx`, 180 LOC) retires the
+sidebar's REDUCED Project entry. The reduction was worse than it read: the old
+entry was a link to the Prospero screen rendered ONLY when the chat already had a
+project, so a loose chat could not be filed from the Salon at all. The entry is
+now unconditional and carries v4's two labels/titles (`Project` /
+`Project: <name>`; `Assign to project` / `In project: <name>`, `:1166-1177`).
+
+Ported: "No project" as a real choice sending an explicit `null` with its own
+copy ("Chat removed from project", `:94`); the close-without-writing guard
+comparing against the PROP (`:60-63`); the seal-while-saving arrangement
+(`closeOnClickOutside={!saving}`, `:141-142` — the opposite of the rename
+dialog's, and reproduced rather than harmonised); "Currently in: <name>" only
+when there is one.
+
+**`<select>` trap, caught by the e2e beat and not by the unit test.** The
+select's `[value]` binding is evaluated before `@for` has produced the options,
+so the browser snapped the value back to "No project" and the dialog opened
+showing no project even for a filed chat. jsdom does not reproduce it — the
+component test passed. Fixed with the per-option `[selected]` the sibling selects
+in `chat-section.ts` already carry, and the reason is now written at both sites.
+
+**Export** (v4 `ChatSidebar.tsx:1509-1511,1578-1586`) is the Organize section's
+new entry: a bare `window.location.href` at the byte route, through `apiUrl()` so
+the same line works on the Tauri `qtap://` origin. No dialog, no fetch.
+
+Verification: 6 component tests (`chat-project-modal.spec.ts`); the Chat-section
+spec's project test rewritten to the unconditional entry; a live e2e beat that
+unfiles and re-files the fixture chat (round-tripped, so it leaves the fixture
+where it found it) and asserts the dead-end state that used to exist.
+
+⚠ **ACTIVATE-AT-UNIFY: `CHAT_EXPORT_LANDED`** in `e2e/salon-dialogs-flow.spec.ts`
+— `false` on this branch, flipped by the unifier. The gated beat asserts the
+route's media type, the `attachment` disposition, the `.jsonl` filename, and that
+the first line parses as JSON. The BUTTON lands unconditionally; only its proof
+waits for P4.9E3B.
+
+Also: `injectQuery` needs macrotask turns to resolve in a component test —
+`await fixture.whenStable()` is not enough. The `settle()` loop from
+`add-character-dialog.spec.ts` is the house answer.
+
+Gate: ng test 241 files / 3,013; `npx playwright test salon-dialogs-flow` 2 passed
+/ 1 gated skip. SPA 0.5.303.

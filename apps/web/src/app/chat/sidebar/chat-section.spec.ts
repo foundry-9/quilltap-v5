@@ -81,12 +81,14 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
       [state]="chatState()"
       [sectionOpen]="true"
       (chatUpdated)="refetched = refetched + 1"
+      (openProject)="projectOpened = projectOpened + 1"
     />
   `,
 })
 class Host {
   readonly chatState = signal<ChatSectionState>(state());
   refetched = 0;
+  projectOpened = 0;
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
@@ -231,17 +233,30 @@ describe('ChatSection — the other per-chat controls', () => {
     );
   });
 
-  it('shows the project entry only when the chat has one', async () => {
+  /**
+   * The Project entry is UNCONDITIONAL (v4 :1166-1177) — it was the REDUCED
+   * Prospero link, shown only when the chat already had a project, until P4.9E3C
+   * brought `ChatProjectModal` across. An unfiled chat could not be filed at all.
+   */
+  it('always offers the project entry, naming the project when there is one', async () => {
     const fixture = await render();
-    expect(fixture.nativeElement.textContent).not.toContain('Project:');
+    const entry = (): HTMLButtonElement =>
+      Array.from(fixture.nativeElement.querySelectorAll('button.qt-tool-palette-button')).find(
+        (b) => ((b as HTMLElement).textContent ?? '').includes('Project'),
+      ) as HTMLButtonElement;
+    expect(entry().textContent!.trim()).toBe('Project');
+    expect(entry().title).toBe('Assign to project');
 
     fixture.componentInstance.chatState.set(
       state({ projectId: 'p1', projectName: 'The Long Voyage' }),
     );
     fixture.detectChanges();
-    const link = fixture.nativeElement.querySelector('a.qt-tool-palette-button') as HTMLAnchorElement;
-    expect(link.textContent).toContain('Project: The Long Voyage');
-    expect(link.getAttribute('href')).toBe('/prospero/p1');
+    expect(entry().textContent).toContain('Project: The Long Voyage');
+    expect(entry().title).toBe('In project: The Long Voyage');
+
+    entry().click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.projectOpened).toBe(1);
   });
   /** The avatar-generation checkbox (v4 ChatSidebar :1218-1228). */
   function avatarBox(fixture: ComponentFixture<Host>): HTMLInputElement {

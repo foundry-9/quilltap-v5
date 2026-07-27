@@ -41,6 +41,7 @@ import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announce
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
+import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import {
   removeParticipant,
@@ -189,6 +190,7 @@ interface CascadePrompt {
     AddCharacterDialog,
     ChatRenameModal,
     BulkCharacterReplaceModal,
+    ChatProjectModal,
     Modal,
   ],
   template: `
@@ -264,6 +266,7 @@ interface CascadePrompt {
           (editEnclave)="showEditEnclave.set(true)"
           (rename)="showRename.set(true)"
           (bulkReplace)="showBulkReplace.set(true)"
+          (openProject)="showProject.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -539,6 +542,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showProject() && chat(); as c) {
+      <qt-chat-project-modal
+        [chatId]="c.id"
+        [projectId]="c.projectId"
+        [projectName]="c.projectName"
+        (assigned)="onProjectAssigned($event)"
+        (close)="showProject.set(false)"
       />
     }
 
@@ -1061,6 +1074,14 @@ export class SalonConversation {
   protected readonly showRename = signal(false);
   /** v4 `bulkCharacterReplaceOpen`, opened from the Edit Content section. */
   protected readonly showBulkReplace = signal(false);
+  /** v4 `projectModalOpen`, opened from the Chat section's Project entry. */
+  protected readonly showProject = signal(false);
+
+  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:193`); the sentence is v4's. */
+  protected async onProjectAssigned(message: string): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message });
+    await this.onChatUpdated();
+  }
 
   /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:265`); the counts are v4's copy. */
   protected async onBulkReattributed(message: string): Promise<void> {

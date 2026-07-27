@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
+import { apiUrl } from '../../core/api-url';
 import { CopyChatIdButton } from '../../ui/copy-chat-id-button';
 import { Icon } from '../../ui/icon';
 
@@ -21,8 +22,11 @@ import { Icon } from '../../ui/icon';
  * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported.
  * - **Merge In…** (v4 :1566) — `MergeConversationModal` is unported; its verb
  *   (`ChatMergeConversation`, over the ported `apply_chat_merge`) IS live.
- * - **Export** (v4 :1578) — `GET /chats/{id}?action=export` has no v5 verb. The
- *   one item here whose server half is genuinely still missing.
+ *
+ * **Export is LIVE** (v4 :1509-1511,1578-1586, P4.9E3C): the entry navigates the
+ * window straight at the byte route, exactly as v4 does — there is no dialog and
+ * no fetch, the browser's own download machinery takes it from there. The route
+ * itself is P4.9E3B's (`GET /chats/{id}?action=export`).
  *
  * **Rename is LIVE** (v4 :1530, P4.9E3C 2026-07-27) — and with it
  * `regenerate-title`, which v4 exposes through no button of its own: the route
@@ -80,6 +84,16 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
+        title="Export chat"
+        (click)="onExport()"
+      >
+        <qt-icon name="download" class="w-4 h-4" />
+        <span>Export</span>
+      </button>
+
+      <button
+        type="button"
+        class="qt-tool-palette-button"
         title="View gallery"
         (click)="openGallery.emit()"
       >
@@ -98,4 +112,15 @@ export class OrganizeSection {
   readonly rename = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
+
+  /**
+   * v4 `handleExport` (`ChatSidebar.tsx:1509-1511`): a bare
+   * `window.location.href = …`. No dialog, no fetch — the route answers with
+   * `Content-Disposition: attachment`, so the navigation never actually leaves
+   * the page. `apiUrl()` is what makes the same line work on the Tauri
+   * `qtap://` origin as on an HTTP one.
+   */
+  protected onExport(): void {
+    window.location.href = apiUrl(`/api/v1/chats/${encodeURIComponent(this.chatId())}?action=export`);
+  }
 }

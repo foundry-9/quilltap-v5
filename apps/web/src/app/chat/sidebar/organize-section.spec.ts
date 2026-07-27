@@ -43,7 +43,7 @@ function labels(fixture: ComponentFixture<Host>): string[] {
 describe('OrganizeSection', () => {
   it('shows Copy ID, State and Gallery — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
-    expect(labels(fixture)).toEqual(['Copy ID', 'Rename', 'State…', 'Gallery']);
+    expect(labels(fixture)).toEqual(['Copy ID', 'Rename', 'State…', 'Export', 'Gallery']);
 
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
@@ -52,6 +52,7 @@ describe('OrganizeSection', () => {
       'Copy ID',
       'Rename',
       'State…',
+      'Export',
       'Gallery',
     ]);
   });

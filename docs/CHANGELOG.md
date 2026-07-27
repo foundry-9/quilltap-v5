@@ -116,6 +116,14 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+A conversation can be filed into a project, or taken out of one, from the chat
+sidebar again. The Project entry used to appear only for a chat that was already
+in a project, and only led away to the project's own page — so a loose chat had
+no way in at all. It now opens a chooser, and "No project" is a real option
+rather than a blank.
+
+Export is back in the Organize drawer: one button, and the transcript downloads.
+
 The chat sidebar has its Edit Content drawer, and in it Bulk Replace: move every
 message from one speaker to another in a single stroke, filtered to the AI's
 replies, your own, or all of them. A count of what will move is shown before you

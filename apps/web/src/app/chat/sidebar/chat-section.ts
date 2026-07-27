@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { toggleAgentMode } from '../chat-admin.api';
@@ -90,14 +89,16 @@ export interface ChatSectionState {
  * badge rather than a modal, until the 2026-07-27 dogfood walk went looking for
  * it (finding #34).
  *
- * The **Project** entry is REDUCED: v4 opens `ChatProjectModal` to assign or
- * detach a project; that modal is unported, so the entry navigates to the ported
- * Prospero screen and is shown only when the chat already has a project.
+ * **Project is LIVE** (v4 :1166-1177, P4.9E3C 2026-07-27): the entry opens
+ * `ChatProjectModal` and is shown unconditionally, so a chat can be filed as well
+ * as re-filed. It was REDUCED until then — a link to the Prospero screen, rendered
+ * only when the chat already HAD a project, which meant an unfiled chat could
+ * never be filed from the Salon at all.
  */
 @Component({
   selector: 'qt-chat-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, RouterLink],
+  imports: [Icon],
   template: `
     <div class="qt-chat-sidebar-section qt-chat-sidebar-section-chat flex flex-col gap-3">
       <!-- Agent Mode (v4 :1116-1127). v4 puts this between the Concierge
@@ -159,17 +160,18 @@ export interface ChatSectionState {
         </span>
       </label>
 
-      <!-- Project -->
-      @if (state().projectId && state().projectName) {
-        <a
-          class="qt-tool-palette-button"
-          [routerLink]="['/prospero', state().projectId]"
-          [title]="'In project: ' + state().projectName"
-        >
-          <qt-icon name="folder" class="w-4 h-4" />
-          <span>Project: {{ state().projectName }}</span>
-        </a>
-      }
+      <!-- Project (v4 :1166-1177) -->
+      <button
+        type="button"
+        class="qt-tool-palette-button"
+        [title]="
+          state().projectName ? 'In project: ' + state().projectName : 'Assign to project'
+        "
+        (click)="openProject.emit()"
+      >
+        <qt-icon name="folder" class="w-4 h-4" />
+        <span>{{ state().projectName ? 'Project: ' + state().projectName : 'Project' }}</span>
+      </button>
 
       <!-- Image Provider -->
       <label class="qt-label">
@@ -283,6 +285,8 @@ export class ChatSection {
   /** Fired after any chat-record field is mutated (v4 `onChatUpdated` → fetchChat). */
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();
+  /** v4 `onProjectClick` — opens `ChatProjectModal`. */
+  readonly openProject = output<void>();
 
   /**
    * v4 `handleAvatarGenToggle` (`ChatSidebar.tsx:1065-1083`): POST the toggle,

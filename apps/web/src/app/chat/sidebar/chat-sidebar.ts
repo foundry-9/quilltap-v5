@@ -283,6 +283,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [sectionOpen]="openSection() === 'chat'"
             (chatUpdated)="chatUpdated.emit()"
             (regenerateBackground)="regenerateBackground.emit()"
+            (openProject)="openProject.emit()"
           />
         </qt-collapsible-card>
 
@@ -366,6 +367,8 @@ export class ChatSidebar implements OnInit {
   /** v4 `chatControls.storyBackgroundsEnabled` — gates the regenerate entry. */
   readonly storyBackgroundsEnabled = input(false);
   readonly regeneratingBackground = input(false);
+  /** v4 `onProjectClick` — opens `ChatProjectModal`. */
+  readonly openProject = output<void>();
 
   // --- Visibility section ---
   readonly visibilityState = input.required<VisibilityState>();

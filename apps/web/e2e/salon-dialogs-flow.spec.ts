@@ -39,6 +39,14 @@ async function openChat(page: Page, title: string): Promise<string> {
   return id;
 }
 
+/** The chat's project, straight off the chat read. */
+async function readProjectId(page: Page, chatId: string): Promise<string | null> {
+  const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+  expect(resp.ok(), `chatGet → ${resp.status()}`).toBe(true);
+  const body = (await resp.json()) as { data?: { chat?: { projectId?: string | null } } };
+  return body.data?.chat?.projectId ?? null;
+}
+
 /** The stored title + manual-rename flag, straight off the chat read. */
 async function readTitle(
   page: Page,
@@ -51,6 +59,13 @@ async function readTitle(
   };
   return { title: body.data?.chat?.title, isManuallyRenamed: body.data?.chat?.isManuallyRenamed };
 }
+
+/**
+ * ACTIVATE-AT-UNIFY. `GET /api/v1/chats/{id}?action=export` is P4.9E3B's byte
+ * route; on this lane's branch it does not exist yet. The unifier flips this to
+ * `true` when the branches meet.
+ */
+const CHAT_EXPORT_LANDED = false;
 
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
@@ -115,5 +130,73 @@ test.describe('P4.9E3C — Rename Chat', () => {
     await save.click();
     await expect(page.getByText('Chat renamed')).toBeVisible({ timeout: 15_000 });
     expect((await readTitle(page, chatId)).title).toBe(before.title);
+  });
+});
+
+test.describe('P4.9E3C — Assign to Project', () => {
+  test('unfiles and re-files a chat, and the entry is offered either way', async ({ page }) => {
+    const chatId = await openChat(page, 'Solo Voyage');
+    const original = await readProjectId(page, chatId);
+    expect(original, 'the fixture chat must start in a project').toBeTruthy();
+
+    await openSidebarSection(page, 'Chat');
+    const entry = page.locator('qt-chat-section button.qt-tool-palette-button', {
+      hasText: 'Project',
+    });
+    await expect(entry).toBeVisible({ timeout: 10_000 });
+    await expect(entry).toContainText('Project:');
+    await entry.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Assign to Project')).toBeVisible({ timeout: 10_000 });
+    const picker = dialog.locator('#chat-project');
+    await expect(dialog.getByText('Currently in:')).toBeVisible();
+    await expect(picker).toHaveValue(original!);
+
+    // "No project" is a real choice, not an empty state: it sends an explicit
+    // null and detaches.
+    await picker.selectOption('');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Chat removed from project')).toBeVisible({ timeout: 15_000 });
+    expect(await readProjectId(page, chatId)).toBeNull();
+
+    // The entry is UNCONDITIONAL — the REDUCED version it replaces was rendered
+    // only for a chat that already HAD a project, so an unfiled chat could never
+    // be filed from the Salon at all. This is the state that used to be a
+    // dead end.
+    await openSidebarSection(page, 'Chat');
+    await expect(entry).toHaveText('Project');
+    await expect(entry).toHaveAttribute('title', 'Assign to project');
+    await entry.click();
+    await expect(dialog.getByText('Assign to Project')).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Currently in:')).toHaveCount(0);
+    await expect(picker).toHaveValue('');
+
+    await picker.selectOption(original!);
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText(/Chat moved to /)).toBeVisible({ timeout: 15_000 });
+    expect(await readProjectId(page, chatId)).toBe(original);
+  });
+});
+
+test.describe('P4.9E3C — Export', () => {
+  // ACTIVATE-AT-UNIFY over P4.9E3B's byte route.
+  test.skip(!CHAT_EXPORT_LANDED, 'GET /chats/{id}?action=export lands with P4.9E3B');
+
+  test('the Organize entry points at the transcript download', async ({ page }) => {
+    const chatId = await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Organize');
+    await expect(page.getByRole('button', { name: 'Export' })).toBeVisible({ timeout: 10_000 });
+
+    // v4 navigates the window straight at the route, so what the beat can assert
+    // is the response that navigation would get: the media type, the attachment
+    // disposition, and that the first line is a JSONL object.
+    const resp = await page.request.get(`/api/v1/chats/${chatId}?action=export`);
+    expect(resp.ok(), `export → ${resp.status()}`).toBe(true);
+    expect(resp.headers()['content-type']).toContain('application/x-ndjson');
+    expect(resp.headers()['content-disposition']).toContain('attachment');
+    expect(resp.headers()['content-disposition']).toContain('.jsonl');
+    const first = (await resp.text()).split('\n')[0];
+    expect(() => JSON.parse(first) as unknown).not.toThrow();
   });
 });
