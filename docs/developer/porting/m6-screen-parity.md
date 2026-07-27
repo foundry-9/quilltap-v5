@@ -185,6 +185,7 @@ PARITY the moment `p4.9b` lands. The card-Chat divergence is recorded at
 | Autonomous-include toggle | `components/dashboard/nav-user-menu-quick-hide.tsx:100-105` (user menu) | `screens/salon/autonomous-visibility.ts:13-14` (salon-list header) | **DIVERGENCE-DOCUMENTED** |
 | Tag-hide / hide-dangerous filtering | `components/providers/quick-hide-provider.tsx:183-209` | absent — `screens/salon/salon-list.ts:24-28` | **MISSING** → `p4.9d` |
 | Per-chat Core Whisper override | `SalonView.tsx:1760-1763` → `ChatSidebar` | absent (F3) | **MISSING** → `p4.9h` |
+| Agent-mode toggle (sidebar badge) | `components/chat/ChatSidebar.tsx:1116-1127` ("Agent On"/"Agent Off", Chat section), handler `hooks/useChatControls.ts:367-395` | absent — `chat/sidebar/chat-section.ts:71` records it | **MISSING** → `p4.9e3`; its SERVER half landed 2026-07-26 (P4.9E3A `ChatToggleAgentMode`). Surfaced by the 2026-07-27 dogfood walk — it is not a modal, so it fell between this table and the `ChatModals.tsx` one below and was tracked in NEITHER |
 | Boxed `ChatCostSummary` variant | `components/chat/ChatCostSummary.tsx:138-175` | n/a — v5 ports compact only | **WON'T-PORT** |
 | Client `detailed=true` cost breakdown | `app/api/v1/chats/[id]/handlers/get.ts:222-225` | n/a | **WON'T-PORT** |
 

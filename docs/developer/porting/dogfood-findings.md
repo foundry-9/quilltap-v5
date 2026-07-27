@@ -55,6 +55,9 @@ catch, since every fixture is built fresh.
 | 31 | An announcement posted **as an off-scene character** (Revenant) rendered — and stayed rendered — as **Friday**, the cast member whose turn was next. The characters themselves knew it was Revenant; only the UI did not | **Port divergence, SPA-only — the view model has no `customAnnouncer.kind === 'character'` arm.** The server is correct end to end: the row carries `customAnnouncer {"kind":"character","characterId":"a3833099…"}` with `participantId` NULL and `systemSender` NULL, and `api/salon.rs:240-284` ships the announcer in `offSceneCharacters` exactly as v4's `get.ts:452-465` does. But `resolveMessageAuthor` (`chat-view-model.ts`) handled only the `custom` kind, so the row fell past it to the ROLE FALLBACK — "the first participant that is a character" — and wore whoever sorted first. v4's `getMessageAvatar` (`SalonView.tsx:1066-1090`) has the missing branch in three steps: participant lookup by `character.id`, then `offSceneCharacters`, then the literal placeholder `'Off-scene character'` for a deleted character. **Why nothing caught it:** `resolveMessageAuthor` had NO direct unit coverage at all, and the one e2e announcement beat posts a STAFF announcement — which carries a `systemSender`, collapses to a chip, and never reaches author resolution. The character arm was the only unexercised path, and it is the one the dialog's off-scene picker produces | **FIXED** `fc70009a` — the three-step branch ported verbatim; 5 unit cases over `resolveMessageAuthor` (incl. the explicit guard "does not fall through to the first cast member" and the participant-beats-off-scene precedence); a new e2e beat posts as off-scene Dax into a three-character scene and asserts the author is Dax and NOT `/Aria\|Bram\|Cleo/`. Mutation-checked at both levels — with the arm disabled the beat fails `Received: "Aria"`, the same shape as the reported "Friday" |
 | 32 | After switching a new NPC (Tanya) to user-controlled and back again, the **first** render of every message sent as a different user-controlled character was attributed to **Tanya**; a moment later it re-rendered correctly | **Port divergence, SPA-only — the Speaking-As override is a permanent latch where v4 holds no unconfirmed value.** `activeSpeakerId()` is `activeSpeakerOverride() ?? chat.activeTypingParticipantId ?? null`, and `onSelectSpeaker` set the override from the CLICK and never cleared it. The server, faithfully, drops the active speaker when that participant stops being user-controlled (`chat_participants.rs`, v4 `helpers.ts:179-197`: flipping to `llm` removes the id from `impersonatingParticipantIds` and sets `activeTypingParticipantId` to `newImpersonating[0] \|\| null`) — confirmed on the dogfood copy, where the chat now reads `impersonatingParticipantIds: []`, `activeTypingParticipantId: null`. The stale override then fed `makeTempUserMessage`'s `participantId`, so the optimistic bubble wore Tanya. The correction the human saw is the server's: `chatSend` ignores a `speakingAsParticipantId` that is not user-controlled and attributes the persisted row properly (verified — every user row after the flip carries Charlie's participant id, one earlier row correctly carries Tanya's from when she WAS playable). v4 never diverges this way because every impersonation handler assigns `data.activeTypingParticipantId` from the **response** (`useImpersonation.ts:63,107,134`) and a sync effect re-reads it from the chat | **FIXED** `fc70009a` — the override is now an optimistic bridge only: `.finally()` clears it once the refetch settles, handing authority to `chat.activeTypingParticipantId` whether the server took the choice or refused it. 2 unit cases (the bridge still shows immediately; the guard that it does not survive the round trip; and that a speaker the server DID persist does not flicker away). Mutation-checked |
 
+| 33 | A user-initiated RNG roll rendered its standalone tool card under **Amy**, the last participant to speak, though the card's own line read "You ran rng" and the following characters correctly treated the roll as the operator's | **Faithfully ported v4 bug — v5 reproduces v4 exactly, in both halves.** The persisted row is identical on both sides: v4's orchestrator writes a pending tool result with `initiatedBy:'user'` and **no `participantId`** (`orchestrator.service.ts:611-630`), and so does v5 — confirmed on the dogfood copy (`participantId` NULL, `{"tool":"rng","initiatedBy":"user",…}`). Both renderers then run the same positional borrow: a TOOL row with no participant takes the nearest preceding assistant's, stopping at a USER boundary (v4 `VirtualizedMessageList.tsx:228-247`, v5 `chat-view-model.ts::resolveToolAvatar` — a verbatim port). Because the row is written BEFORE the user's message, the nearest preceding assistant is the last character who spoke. The header markup is byte-faithful too: when a header avatar resolves, BOTH render that character's name bold and the attribution line beneath it, and v4's own conditional (`actorName !== headerAvatar.name ? "${actorName} ran " : "ran "`, `ToolMessage.tsx:438-443`) is what produces the "Amy" / "You ran rng" pair the screenshot shows. v5's `actorName` (`operatorName \|\| 'You'`) and `attributionPrefix` match line for line | **NOT A BUG (v5)** (2026-07-27) — recorded so it is not re-reported, and NOT fixed: the borrow is v4 behavior and changing it unilaterally would break the oracle comparison. The right repair is v4-first (give a user-initiated tool row the operator's identity, or suppress the borrow when `initiatedBy === 'user'`) → added to the post-5.0 v4-side list. The card is not *wrong* about who rolled — it says "You ran rng" — it is wrong about whose face to put on it |
+| 34 | Four Part-B walk items have no UI at all: **regenerate title**, **bulk reattribute**, **toggle agent mode**, **merge conversations** | **Not a defect — a known unwritten SPA lane (`p4.9e3`), plus one genuinely untracked item.** All four DO have v4 UI (surveyed 2026-07-27): regenerate-title has no button of its own and fires only from `ChatRenameModal`'s "Use automatic naming" checkbox (`ChatRenameModal.tsx:52,184-192`), reached from sidebar → Organize → **Rename**; bulk reattribute is `BulkCharacterReplaceModal` behind sidebar → **Edit Content** → "Bulk Replace" (`ChatSidebar.tsx:1636-1647`) — a whole sidebar section v5 has never had; agent mode is the "Agent On/Off" badge in the Chat section (`ChatSidebar.tsx:1116-1127`); merge is "Merge In…" in Organize (`ChatSidebar.tsx:1566-1576`). P4.9E3A landed all eleven SERVER verbs on 2026-07-26 and said so ("No UI can reach it this round"); P4.9E1B, the round's SPA lane, scoped to the cast dialogs + RNG. **The one real gap in the trail: the agent-mode toggle was tracked NOWHERE** — being a badge rather than a modal it fell between `m6-screen-parity.md`'s two tables | **NOT A BUG; TRAIL CORRECTED** `<commit>` — the agent-mode row added to m6's sidebar-controls table; the stale "unported" claims in `chat-section.ts:71` and `organize-section.ts:17-21` corrected (they blamed missing server halves that have since landed, which materially understates how cheap `p4.9e3` now is — it is UI over a live boundary for everything except **Export**, whose verb really is still missing). The walk script's error, not the app's |
+
 - **The 2026-07-26 `231be14c` drift-round dogfood walk — CLEAN, zero
   findings.** The round: P4.d18 (the fictional story clock) ∥ P4.d19 (the
   Pascal availability gate + tool vocabulary) ∥ P4.d20 (the Workbench gate SPA)
@@ -326,6 +329,34 @@ catch, since every fixture is built fresh.
   phase-order change, and it removes a data loss v4 currently logs as three
   warnings and carries on past. Not done during the port: editing v4 moves the
   oracle baseline mid-flight.
+- **`p4.9e3` is now UI-ONLY, and cheaper than its m6 row suggests (dogfood walk
+  2026-07-27).** The 2026-07-27 walk went looking for four chat actions and found
+  no UI for any of them — regenerate title, bulk reattribute, agent mode, merge
+  conversations (finding #34). All four have v4 UI; none has v5 UI. **What
+  changed since the m6 row was written is that P4.9E3A (2026-07-26) landed every
+  server verb they need**, so the lane is now building dialogs over a live,
+  differential-proven boundary rather than porting a service. Three specifics
+  worth carrying into whoever scopes it:
+  - **The agent-mode toggle is the cheapest item in the whole lane** — a badge in
+    the Chat section over `ChatToggleAgentMode`, no dialog at all. It had been
+    tracked in NEITHER of `m6-screen-parity.md`'s tables (it is not a modal); a
+    row was added 2026-07-27.
+  - **`regenerate-title` is unreachable without `ChatRenameModal`.** v4 has no
+    button by that name: the route fires as a side effect of ticking "Use
+    automatic naming" in the Rename dialog (`ChatRenameModal.tsx:52,184-192`).
+    v5's `ChatRegenerateTitle` verb is live and has no way to be called from the
+    browser until that dialog lands — which also means the ⚠ real-spend warning
+    on that verb is currently unreachable, not merely unwarned.
+  - **Bulk Replace needs a sidebar SECTION v5 has never had.** v4 puts it in
+    **Edit Content** (`ChatSidebar.tsx:552,1615`), alongside Search & Replace,
+    Re-extract Memories and Delete Chat Memories. v5's sidebar has four sections
+    (Participants / Chat / Visibility / Organize) and no fifth, so the lane owes
+    the section, not just the modal.
+  **Only `Export` in the Organize section still lacks a server half** — every
+  other deferral recorded at `organize-section.ts:17-21` and `chat-section.ts:71`
+  was blaming a missing verb that has since landed. Those comments were corrected
+  in place 2026-07-27; do not re-derive the lane's size from an older reading.
+
 - **Post-5.0 product improvements (v4-first) — the running list of dogfood-surfaced
   UX papercuts that are v4-faithful today and therefore must change in v4 FIRST,
   then port.** These are NOT bugs (v5 reproduces v4 exactly) and NOT for the port
@@ -338,6 +369,20 @@ catch, since every fixture is built fresh.
     Touches v4 `MessageRow.tsx:323-324` + `participantNames` (SalonView), then the
     v5 mirror `message-row.ts:490` (`whisperTargets`). Requested by the human
     2026-07-24.
+  - **A user-initiated tool card wears the last speaker's face** (finding #33).
+    A pending tool result is persisted with no `participantId` (both sides), and
+    both renderers then borrow the nearest preceding assistant's participant by
+    POSITION — which, because the tool row is written before the user's message,
+    is whichever character spoke last. The card's own text is already correct
+    ("You ran rng"); only the avatar and the bold name above it are borrowed, so
+    a roll the operator made is headed by an unrelated character. The fix:
+    suppress the positional borrow when `initiatedBy === 'user'` and head the row
+    with the operator instead. Touches v4 `VirtualizedMessageList.tsx:228-247`
+    (the borrow) and `ToolMessage.tsx:428-443` (the name block), then the v5
+    mirrors `chat-view-model.ts::resolveToolAvatar` + `tool-message.ts`. Note the
+    two sides must move together: v5's borrow is a verbatim port, and changing it
+    alone would put the Salon out of step with the oracle. Surfaced by the human
+    2026-07-27.
   - **New-chat Play As revert doesn't restore a default profile** (finding #17) —
     if revert-should-restore-a-default is wanted, it's a v4-first change to
     `NewChatForm.handlePlayAsChange`.

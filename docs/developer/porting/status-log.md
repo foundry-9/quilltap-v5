@@ -38831,3 +38831,56 @@ SPA-only; no Rust touched, so no workspace or differential run is owed. `ng test
 238 files / **2,981** tests (7 new), `ng build` clean, full Playwright
 **140/140** zero skips (1 new beat). Both fixes mutation-checked at the unit
 level, and #31's additionally at the e2e level. SPA 0.5.298.
+
+## Dogfood findings #33 + #34 — the Part-B chat-admin walk (2026-07-27)
+
+Neither is a v5 defect, and recording *why* is the whole value: both were
+reported as breakage, and both turn out to be things the port got right.
+
+### #33 — the RNG card wore the last speaker's face: v4 does this too
+
+Checked on both sides, in both halves, before touching anything:
+
+| | v4 | v5 |
+|---|---|---|
+| persisted row | `initiatedBy:'user'`, **no `participantId`** (`orchestrator.service.ts:611-630`) | same — confirmed on the dogfood copy |
+| avatar resolution | positional borrow from the nearest preceding assistant, stopping at a USER boundary (`VirtualizedMessageList.tsx:228-247`) | `resolveToolAvatar` — a verbatim port |
+| header markup | `headerAvatar.name` bold + `actorName !== headerAvatar.name ? "${actorName} ran " : "ran "` (`ToolMessage.tsx:428-443`) | `attributionPrefix` — line for line |
+
+The tool row is written **before** the user's message, so the nearest preceding
+assistant is always whoever spoke last. That is what produces the reported
+"Amy" over "You ran rng": the card is not confused about who rolled — it says so
+— it is borrowing a face for a row that has none.
+
+**Not fixed, deliberately.** The borrow is v4 behavior; changing v5's copy alone
+would put the Salon out of step with the oracle. Queued on the v4-first post-5.0
+list with the shape of the repair (suppress the borrow when
+`initiatedBy === 'user'`), and noting that both sides must move together.
+
+### #34 — four missing actions, one genuinely untracked
+
+Regenerate title / bulk reattribute / agent mode / merge conversations have **no
+v5 UI**. All four have v4 UI; the walk script was wrong to list them as
+walkable. P4.9E3A landed the eleven server verbs on 2026-07-26 and said plainly
+that no UI could reach the merge; P4.9E1B, the round's SPA lane, scoped to the
+cast dialogs and the RNG gutter. So this is `p4.9e3`, an unwritten lane — except
+for one real hole in the trail:
+
+- **The agent-mode toggle was tracked nowhere.** It is a badge in v4's Chat
+  section, not a modal, so it fell between `m6-screen-parity.md`'s
+  sidebar-controls table and its `ChatModals.tsx` table. A row was added.
+
+Two corrections landed with it, both to source comments that had gone stale in a
+direction that *understates* how cheap the remaining work is: `chat-section.ts:71`
+called `toggle-agent-mode` "unported" and `organize-section.ts:17-21` blamed
+missing server halves for Rename and Merge In…. Those verbs are live. **Export is
+the only item in that section whose server half is genuinely still missing** — and
+`regenerate-title` is worth flagging for whoever takes the lane, because v4 has no
+button for it at all: it fires only from `ChatRenameModal`'s "Use automatic
+naming" checkbox, so v5's live verb is unreachable from the browser until that
+dialog exists.
+
+### Gate
+
+Docs + four comment lines; no behavior touched. `ng test` 238 files / 2,981,
+unchanged. No Rust, no e2e, no version bump owed (no shipped code changed).

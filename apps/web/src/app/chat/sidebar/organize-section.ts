@@ -14,11 +14,21 @@ import { Icon } from '../../ui/icon';
  *
  * ## Tier-3 deferrals (LOUD — rendered nowhere, nothing stubbed)
  *
+ * These belong to `p4.9e3`. **Their server halves are no longer the blocker:**
+ * P4.9E3A (2026-07-26) landed the whole chat-admin verb family, so what is
+ * missing here is UI over a live boundary, not a port.
+ *
  * - **Rename** (v4 :1530) — `ChatRenameModal` is unported. (The chat-PUT `title`
- *   key exists; only the dialog is missing.)
+ *   key exists; only the dialog is missing.) ⚠ This is also the ONLY path in v4
+ *   to `regenerate-title` — v4 has no button of that name; the route fires as a
+ *   side effect of ticking "Use automatic naming" in that modal
+ *   (`ChatRenameModal.tsx:52,184-192`). So v5's live `ChatRegenerateTitle` verb
+ *   is unreachable from the UI until this dialog lands. (Dogfood walk 2026-07-27.)
  * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported.
- * - **Merge In…** (v4 :1566) — `MergeConversationModal` is unported.
- * - **Export** (v4 :1578) — `GET /chats/{id}?action=export` has no v5 verb.
+ * - **Merge In…** (v4 :1566) — `MergeConversationModal` is unported; its verb
+ *   (`ChatMergeConversation`, over the ported `apply_chat_merge`) IS live.
+ * - **Export** (v4 :1578) — `GET /chats/{id}?action=export` has no v5 verb. The
+ *   one item here whose server half is genuinely still missing.
  *
  * ## One reduction (recorded)
  *

@@ -68,7 +68,12 @@ export interface ChatSectionState {
  *
  * - **The Concierge tri-state** (v4 :1100): the chat PUT's `conciergeState` key
  *   is a named v5 deferral (`api/salon.rs:1216`).
- * - **Agent Mode** (v4 :1116): rides `POST ?action=toggle-agent-mode`, unported.
+ * - **Agent Mode** (v4 :1116, the "Agent On"/"Agent Off" badge): ⚠ this note
+ *   read "unported" until 2026-07-27 and is now the reverse — P4.9E3A landed
+ *   `ChatToggleAgentMode` (2026-07-26), so the toggle is UI over a live verb,
+ *   the cheapest item left in `p4.9e3`. Surfaced by the dogfood walk, which went
+ *   looking for it; being a badge rather than a modal, it had been tracked in
+ *   NEITHER of `m6-screen-parity.md`'s two tables until then.
  * - **Tools…** (v4 :1230) — the entry is here and REFUSES BY NAME. v4's
  *   `ChatToolSettingsModal` needs the tool inventory (`GET /api/v1/tools`,
  *   `app/api/v1/tools/route.ts`, 727 LOC: names, groups, per-chat availability),
