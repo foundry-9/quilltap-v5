@@ -296,6 +296,33 @@ catch, since every fixture is built fresh.
     must move to `>= 2`. Reader-side only: v5's writer stays byte-identical to v4's.
     **v4 itself is still unfixed**, so a real v4 restore today still loses every
     store — that is what makes this entry the more urgent of the two.
+- **⚠ OPEN, added 2026-07-26 (P4.d23) — v4 loses archived link rows on every
+  second-generation restore; v5 no longer does.** The four entries above are all
+  closed; this one is not, and it is a NEW ruled divergence rather than a
+  leftover. v4 re-ingests every user file in an archive unconditionally, so its
+  replay writes into `restored/<name>` — which, for a backup taken from an
+  instance that was itself restored, is exactly where the ARCHIVED link rows for
+  those files already live. v4's replay gets there first (`22a-bis`) and the
+  archived rows are then refused. **Measured, not reasoned** (`system_restore_state`
+  → `restore_gen2_replace`, over the committed `restore-archive-gen2.zip`):
+
+  ```text
+  Failed to restore doc-store folder "restored": UNIQUE constraint failed: …
+  Failed to restore doc-store file link "restored/portrait.png": UNIQUE constraint failed: …
+  Failed to restore doc-store file link "restored/ledger.txt": UNIQUE constraint failed: …
+  ```
+
+  The bytes survive (the replay wrote its own copy) but the archived link IDS are
+  lost, and the store rows duplicate again on every restore generation. **v5
+  restores that same archive with zero warnings**, because it now recognises that
+  the archive already carries the store rows for a file and skips re-ingesting it
+  (`orchestrator.rs` → `carried_store_rows`; ruled 2026-07-26, `status-log.md` →
+  "Ruling — the restore file-replay dedupe"). v4 names this repair itself and
+  puts it out of scope (`found-bugs.md:400-402`) — **the v5 implementation is the
+  evidence that it is worth taking there**: it is a small check, it needs no
+  phase-order change, and it removes a data loss v4 currently logs as three
+  warnings and carries on past. Not done during the port: editing v4 moves the
+  oracle baseline mid-flight.
 - **Post-5.0 product improvements (v4-first) — the running list of dogfood-surfaced
   UX papercuts that are v4-faithful today and therefore must change in v4 FIRST,
   then port.** These are NOT bugs (v5 reproduces v4 exactly) and NOT for the port

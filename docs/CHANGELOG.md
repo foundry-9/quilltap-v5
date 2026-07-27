@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The porting record now carries this work: its order is closed, the decision it
+came from is marked as carried out, and the difference from the old app joins the
+standing list of things this app deliberately does otherwise — with a note that
+the old app's own half is worth taking, since it is a small check and it ends a
+loss the old app currently just writes down and walks past.
+
 A restore no longer puts a file back twice. When the backup already describes
 where a file lives inside the app's own document store, the bytes are left
 exactly where they are and only the file's own record is written. Before this,
