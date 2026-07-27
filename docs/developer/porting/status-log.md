@@ -39644,3 +39644,81 @@ before porting (no drift).
   and answer a confusing `No file provided`/multipart error). The E3C
   picker's mount-file leg degrades loudly per its order.
 - Versions: core 0.0.386, harness 0.0.333, web 0.0.50.
+
+## Lane record — P4.9E3B CLOSED (the chat-dialog server remainder), 2026-07-27
+
+**All seven tier-1 units + both tier-2 items landed; the order is CLOSED.**
+Branch `claude/chat-dialog-server-porting-d64442`, five commits. v4 verified
+clean at `e8a49597` at lane start AND at the final gate (no drift). Every §1
+verb is live; the two §1 REST edges (`GET /api/v1/tools`, the
+`?action=export` byte download) serve; `apps/web/**` untouched.
+
+### The differential families this lane delivers (regen recipes)
+
+All oracles regenerate from the clean v4 checkout at `e8a49597` with the
+committed `chat-dialogs-{main,mount}.db` fixture (rebuilt by
+`build-chat-dialogs-fixture.ts` — the builder now seeds The Watch group).
+Every jest case runs from a /tmp mirror (`jest ignores .claude/`), TZ=UTC,
+Node 24; exact command lines live in each case's header. Env var → case:
+
+- `QT_ORACLE_CHAT_EXPORT` ← `chat-dialogs-export.test.ts` (9 cases: export
+  bytes verbatim + outfit-summary + group-stores).
+- `QT_ORACLE_SEARCH_REPLACE` ← `chat-dialogs-search-replace.test.ts`
+  (15 cases incl. the two RECORDED-ONLY middleware arms).
+- `QT_ORACLE_MESSAGE_REATTRIBUTE` ← `chat-dialogs-reattribute.test.ts` (5).
+- `QT_ORACLE_TOOLS_INVENTORY` ← `chat-dialogs-tools.test.ts` (8, raw-byte
+  compare; one case sets `SERPER_API_KEY`).
+- `QT_ORACLE_LLM_CHOOSE` ← `chat-dialogs-llm-choose-tier3.test.ts` (5,
+  canned completion both sides).
+- Extended pre-existing families: `chats-tier2.json`/`chats-tier2.ts`
+  (11 → 21 ops, `expectError` added on BOTH sides) and
+  `chat-create-capstone.json` (9 → 12 cases; the Rust harness gained a
+  reject-arm branch).
+
+### Fixture invalidation
+
+- **`chat-dialogs-{main,mount}.db` is NEW and was rebuilt once mid-lane**
+  (the group seed): every `QT_ORACLE_{CHAT_EXPORT,SEARCH_REPLACE,
+  MESSAGE_REATTRIBUTE,TOOLS_INVENTORY,LLM_CHOOSE}` oracle must regenerate
+  against the CURRENT committed fixture (all five were, and re-ran green).
+- `chat-create-capstone.json` and `chats-tier2.json` changed (cases added)
+  — their oracles regenerate from the updated specs (both did).
+- No other committed fixture moved.
+
+### A v4 bug for the human to carry upstream (do NOT fix v4 from here)
+
+**stop-impersonate is unreachable from v4's own client.** The client sends
+`DELETE ?action=stop-impersonate` (`useImpersonation.ts:94, :121`) but the
+action is registered only on the POST map (`handlers/post.ts:129`) and the
+DELETE handler hard-rejects unknown actions (`handlers/delete.ts:32–35`).
+Not in v4's `found-bugs.md`. v5's single-verb `ChatStopImpersonate` already
+models it correctly — nothing to change in v5.
+
+### Standing deferrals from this lane (loud, named)
+
+- **`attach-mount-file`** (v4 files/route.ts:250) — needs the vision-LLM
+  describe seam (`ensureImageDescription`); the web edge refuses by name.
+- **The plugin arm of the tools inventory** — v5 has no plugin runtime; the
+  inventory returns built-ins only (the differential fails loudly if v4's
+  side ever grows plugin rows).
+- **The two v4 middleware action arms** on search-replace (unknown/missing
+  `?action=`) — no v5 counterpart by design (no REST edge; the §1 verbs ARE
+  the action selection); shape-asserted in the differential so copy drift
+  is caught.
+- The Zod `details` array on validation errors — the standing error-envelope
+  deferral, asserted-then-stripped where it appears.
+
+### Notes for the unifier
+
+- `§1 grew by ONE verb beyond the frozen six`: `ChatGroupStores { chat_id }`
+  (the tier-2 audit's mandate — the picker's read was missing). E3C consumes
+  it via dispatch; the §1-frozen six are byte-identical to the order.
+- `EngineAssembly` gained TWO P4.9E3B fields: `web_search_configured: bool`
+  and `outfit_llm_choose: Option<Arc<dyn OutfitLlmChooseRunner>>`; the host
+  wires both (env-key presence; the spine runner — ⚠ real spend, one
+  cheap-LLM call per llm_choose pick). P4.6BL also appends to `engine.rs` /
+  `services/mod.rs` / `spine.rs` — the §2 regions are labelled and
+  append-only as ordered.
+- `apply_outfit_for_added_participant` gained `user_id` + the runner param;
+  `chat_add_participant` / `chat_merge_conversation` / `apply_chat_merge`
+  gained the runner param (harness call sites updated with `None`).

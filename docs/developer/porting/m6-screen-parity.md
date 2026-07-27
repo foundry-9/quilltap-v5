@@ -466,13 +466,13 @@ records the full path; the table's shorthand reads as the wrong one.)
 | MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatMergeConversation`) |
 | ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatBulkReattribute`) |
 | BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatBulkReattribute`) |
-| RunToolModal | `ChatModals.tsx:403` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatRunTool`) |
-| ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` — **still MISSING**; its SERVER half landed 2026-07-26 (P4.9E3A `ChatUpdateToolSettings`) |
+| RunToolModal | `ChatModals.tsx:403` | `p4.9e3` — **still MISSING (UI)**; its SERVER halves are COMPLETE — `ChatRunTool` (P4.9E3A) + the tool INVENTORY `GET /api/v1/tools` (P4.9E3B, 2026-07-27) |
+| ChatToolSettingsModal | `ChatModals.tsx:386` — v5 records it at `core-contract.ts:858` | `p4.9e3` — **still MISSING (UI)**; its SERVER halves are COMPLETE — `ChatUpdateToolSettings` (P4.9E3A) + the tool INVENTORY `GET /api/v1/tools` (P4.9E3B, 2026-07-27) |
 | MergeConversationModal | `components/chat/MergeConversationModal.tsx`, `SalonView.tsx:1599` | `p4.9e3` |
 | ReattributeMessageDialog | `ChatModals.tsx:351` | `p4.9e3` |
 | BulkCharacterReplaceModal | `ChatModals.tsx:375` | `p4.9e3` |
 | RunToolModal | `ChatModals.tsx:403` | `p4.9e3` |
-| ChatToolSettingsModal | `ChatModals.tsx:386` | `p4.9e3` — **P4.9E1B could not land it and the reason is not SPA work.** The modal renders an INVENTORY (names, groups, descriptions, per-chat availability) from `GET /api/v1/tools` (`app/api/v1/tools/route.ts`, 727 LOC + the plugin registry), which no lane ports; P4.9E3A lands only the write verb `chatUpdateToolSettings` (mirrored, unused). v4's `Tools…` entry is PRESENT in the sidebar's Chat drawer and refuses by name. Whoever takes `p4.9e3` must carry the inventory route, or the modal cannot exist. |
+| ChatToolSettingsModal | `ChatModals.tsx:386` | `p4.9e3` — **the server blocker is GONE**: P4.9E3B (2026-07-27) landed the inventory route `GET /api/v1/tools` (built-ins only — the plugin arm stays the standing no-runtime deferral). The modal remains MISSING until the E3C UI lands. |
 | ChatProjectModal | `ChatModals.tsx:187` | `p4.9e3` |
 | StateEditorModal (chat host) | `ChatModals.tsx:414` | ~~`p4.9e3`~~ **DONE** (`p4.9h1`, 2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`) |
 | SearchReplaceModal | `ChatModals.tsx:361` | `p4.9e3` |
@@ -578,7 +578,7 @@ real directories.
 | Backup / Restore | `components/tools/backup-dialog.tsx`, `components/tools/restore/RestoreDialog.tsx` | `settings/system/{backup,restore}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
 | Export / Import | `components/tools/{export,import}-dialog.tsx` | `settings/system/{export,import}-dialog.ts` | **SPA DONE** (`p4.9g2`) — **server OPEN** under `p4.9g1` (refuses) |
 | Capabilities report | `components/tools/capabilities-report-dialog.tsx` | absent | **MISSING** → Providers tab (re-binned 2026-07-24, §2.6) |
-| SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | absent | **MISSING** → `p4.9e3` (re-binned 2026-07-24, §2.6) |
+| SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | absent | **MISSING (UI)** → `p4.9e3`; its SERVER half landed 2026-07-27 (P4.9E3B `SearchReplacePreview`/`Execute`) |
 | Housekeeping dialog | `components/memory/housekeeping-dialog.tsx` | `memory/housekeeping-dialog.ts:21` | **PARITY** (P4.6t) |
 | Memory-creation dialog | `components/import/memory-creation-dialog.tsx` | absent | **MISSING** → `p4.9h` |
 | Search dialog | `components/search/search-dialog.tsx` | absent | **MISSING** → toolbar (re-binned 2026-07-24, §2.6) |
