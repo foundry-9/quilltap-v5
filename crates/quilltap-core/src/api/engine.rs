@@ -231,6 +231,17 @@ pub struct EngineAssembly {
     pub outfit_llm_choose:
         Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
     // === end P4.9E3B ===
+    // === P4.9E4A: the vision-describe seam ===
+    /// The vision describe runner the `attach-mount-file` ladder rides — the
+    /// host holds the completion provider + the image transcoder (the
+    /// `RegenerateTitleDriver` / `announcement_preview` arrangement). `None`
+    /// (read-only embedders, canned assemblies) → the describe resolves to `''`
+    /// with a warn and the attach STILL SUCCEEDS, which is v4's own posture for
+    /// every describe failure on this path — never a refusal.
+    /// ⚠ LIVE means real money: one vision-LLM call per attach of an
+    /// undescribed image (cached / kept-image / non-image arms never reach it).
+    pub image_describe: Option<Arc<dyn super::chat_media::ImageDescribeDriver>>,
+    // === end P4.9E4A ===
 }
 
 impl EngineAssembly {
@@ -276,6 +287,9 @@ impl EngineAssembly {
             web_search_configured: false,
             outfit_llm_choose: None,
             // === end P4.9E3B ===
+            // === P4.9E4A ===
+            image_describe: None,
+            // === end P4.9E4A ===
         }
     }
 }
@@ -447,6 +461,11 @@ struct ReadyEngine {
     web_search_configured: bool,
     outfit_llm_choose: Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
     // === end P4.9E3B ===
+    // === P4.9E4A ===
+    /// The vision describe runner (P4.9E4A; `None` → the attach's describe
+    /// ladder resolves to `''` and the attach still succeeds).
+    image_describe: Option<Arc<dyn super::chat_media::ImageDescribeDriver>>,
+    // === end P4.9E4A ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -3313,6 +3332,25 @@ impl CoreEngine {
                 Ok(db) => super::chat_media::chat_group_stores(&db, &chat_id),
                 Err(r) => r,
             },
+            // === P4.9E4A ===
+            Request::ChatAttachMountFile {
+                chat_id,
+                mount_point_id,
+                relative_path,
+            } => match self.ready_db_and_image_describe() {
+                Ok((db, describe)) => {
+                    super::chat_media::chat_attach_mount_file(
+                        &db,
+                        describe.as_ref(),
+                        &chat_id,
+                        &mount_point_id,
+                        &relative_path,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.9E4A ===
             Request::ChatAddToolResult { chat_id, body } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_media::chat_add_tool_result(&db, SINGLE_USER_ID, &chat_id, &body)
@@ -4181,6 +4219,21 @@ impl CoreEngine {
     }
     // ── end P4.9E2A ──
 
+    // ── P4.9E4A ──
+    /// The Db + optional vision-describe driver under the readiness gate. A
+    /// ready engine without the driver still attaches — the describe ladder
+    /// resolves to `''` (v4's own any-failure arm), never a refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_image_describe(
+        &self,
+    ) -> Result<(Db, Option<Arc<dyn super::chat_media::ImageDescribeDriver>>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.image_describe.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // ── end P4.9E4A ──
+
     /// The Db + optional recall-replay driver under the readiness gate (P4.d13).
     /// A ready engine without the driver still answers — the handler runs the
     /// body-coercion / settings / anchor arms and only refuses at the run step
@@ -4805,6 +4858,9 @@ fn open_ready(
         web_search_configured: assembly.web_search_configured,
         outfit_llm_choose: assembly.outfit_llm_choose,
         // === end P4.9E3B ===
+        // === P4.9E4A ===
+        image_describe: assembly.image_describe,
+        // === end P4.9E4A ===
     })
 }
 

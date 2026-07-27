@@ -40455,3 +40455,177 @@ stale cast-flow beat failing earlier in the same session.
   fails. Locate by `getByRole('dialog')`.
 - Backticks inside an Angular template literal terminate it. Every v4 file
   reference inside an HTML comment in a template must be written bare.
+
+---
+
+## Lane record — P4.9E4A: the library-picker server remainder (attach-mount-file)
+
+**Branch** `claude/library-picker-server-porting-f1b375`. **v4 baseline
+`e8a49597`, drift-checked clean at lane start** (`git log e8a49597..HEAD` empty,
+tree clean), so every oracle in this record regenerates straight from
+`~/source/quilltap-server` — no pinned worktree.
+
+### What landed
+
+v4's `handleAttachMountFile` (`app/api/v1/chats/[id]/files/route.ts:250-346`) is
+ported whole, and the loud refusal at `files_routes.rs:848` is gone. The whole
+tiered deliverable list landed — tier 1 items 1–3 and tier 2 item 4 — in one
+unit, because the handler, its read-back and its differential are inseparable:
+the read-back IS the write's proof, and the commit checklist forbids landing a
+port ahead of its diff.
+
+- **`api::chat_media::chat_attach_mount_file`** — the reads in v4's order
+  (link → blob → tolerant mount-point name), the three-rung description ladder
+  (kept-image markdown / cached blob description / vision), the Librarian
+  announcement as the ONLY durable new row, and the response envelope with
+  `type: "mountFile"` and the `encodeURI`'d blob URL. Every describe failure is
+  warn-and-continue; the announcement failure is the path's only 5xx.
+- **`ImageDescribeDriver`** — a new erased host seam on `EngineAssembly`
+  (`image_describe`), modelled on `RegenerateTitleDriver`: the host's
+  `HostImageDescribeRunner` builds `FallbackDeps` over the spine's completion
+  provider + `HostImageCodec` and calls the core's existing
+  `generate_image_description`. **Wired LIVE in `ProductionSpineFactory`** —
+  ⚠ one vision-LLM call per attach of an image with neither a cached
+  description nor kept-image markdown.
+- **`Request::ChatAttachMountFile`** + the engine arm (over a new
+  `ready_db_and_image_describe`) + the `quilltap-web` edge, which coerces a
+  missing OR non-string field to `""` because v4's validation is hand-rolled
+  rather than Zod — one empty check then covers both of v4's arms byte-for-byte,
+  and the chat-404 still precedes it (v4 resolves the chat before dispatching on
+  `action`).
+
+### ⚠ The order's tier-1 item 3 premise was WRONG — and closing it was real work
+
+The order says "`GET /chats/{id}/files` **already** synthesizes `type:'mountFile'`
+entries — add a differential case proving the attached file appears exactly
+once". It does not. `chat_files_list` carried an explicit P4.6ab deferral
+comment for exactly that walk (v4 `route.ts:386-424`), so a lane that trusted
+the premise would have written a case asserting a behavior no code implements.
+The walk is now ported: messages → attachments → link-id-then-file-id
+resolution → blob → the `seenIds` set. Two v4 asymmetries are reproduced, not
+repaired, and are commented as such:
+
+1. `seenIds` is tested against the **attachment id** but grown with the
+   **link id**. On the modern path they are the same value, which is what makes
+   the double-attach dedupe work at all; on the legacy file-id fallback they are
+   not, so that path can re-emit.
+2. `originalFileName ?? fileName` uses `??`, so a stored EMPTY string wins over
+   the basename — unlike the attach handler's own `||` a few lines away.
+
+### The differential — `attach_mount_file_equivalence` (12 cases + 1 v5-only arm)
+
+New committed fixture family `attach-file-{main,mount,llmlogs}.db` (built by
+`harness/oracle/fixtures/build-attach-file-fixture.ts` through v4's REAL
+repositories + `linkBlobContent`), one staged file per rung plus a raw-inserted
+blob-less "ghost" link — the only way to reach `notFound('Mount-point file
+blob')`, since `linkBlobContent` always writes a blob.
+
+Cases: `attach_cached`, `attach_kept_image`, `attach_vision` (tier 3),
+`attach_refusal_retry` (tier 3, two calls), `attach_reasoning` (tier 3, the
+max-tokens bump), `attach_non_image`, `attach_missing_file`,
+`attach_missing_blob`, `attach_no_chat`, `attach_missing_mount_point_id`,
+`attach_missing_relative_path`, `attach_twice`. Diffed per case: the response
+body, the chat's message events (content + `opaqueContent` + `attachments`), the
+link-side `description` the cache writes, and the `llm_logs` rows over the
+committed EMPTY partition. `attach_twice` also diffs the `GET files` read-back.
+
+**Three fixture decisions worth carrying:**
+
+- **A second user, not a mid-case UPDATE.** The reasoning-model max-tokens bump
+  needs a different `chat_settings.imageDescriptionProfileId`, and chat settings
+  are per-user. Adding a second user with its own settings row reaches the arm
+  with no mutation and no clock games — the oracle just mocks the session to
+  that user, and the Rust side builds its describe runner with that id.
+- **A cheap vision profile nobody picks.** The main user owns three
+  vision-capable profiles including a `isCheap: true` one. Without it, "the
+  CONFIGURED profile wins over v4's cheap-preferring auto-pick" is unmeasurable
+  — a one-profile corpus agrees with both implementations.
+- **`originalFileName` deliberately unlike the basename.** The first fixture
+  build set `originalFileName` to the basename everywhere, so `originalFileName
+  || fileName` was untested in both directions — a mutation that swapped the
+  fallback passed. The corpus now carries `orrery-plate.png` (original wins) and
+  an EMPTY one on `ledger.txt` (basename wins), and the same mutation fails.
+
+**Mutation-tested, because the family ran green on its first run.** Four
+deliberate breaks, each caught by name: killing the kept-image rung
+(`attach_kept_image_tables`), removing the read-back `seenIds.insert`
+(`attach_twice_tables`), skipping the blob-description cache write (all three
+vision tables), and inverting the display-title fallback (four bodies).
+
+The v5-only arm `attach_without_describe_driver_still_succeeds` has no v4
+counterpart and never SKIPs: with `image_describe: None` the attach must still
+succeed with an empty description, nothing cached, and no `llm_logs` row — v4's
+own posture for every describe failure, and the reason this seam is not a
+refusal.
+
+### Neutrality
+
+`chat_files_list` is read by exactly one other family. `courier_images_routes_
+equivalence` was regenerated fresh at `e8a49597` and re-run: green, unchanged —
+its fixture carries no Librarian mount-file announcements, so the new walk finds
+nothing. No other committed oracle reads the changed files, and no existing
+fixture moved.
+
+### Regen recipes
+
+```bash
+# 1. the fixture (writes the committed .db files in place)
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd ~/source/quilltap-server
+TZ=UTC \
+QT_FIXTURE_ATTACH_MAIN=$W/crates/quilltap-web/tests/fixtures/attach-file-main.db \
+QT_FIXTURE_ATTACH_MOUNT=$W/crates/quilltap-web/tests/fixtures/attach-file-mount.db \
+QT_FIXTURE_ATTACH_LLMLOGS=$W/crates/quilltap-web/tests/fixtures/attach-file-llmlogs.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-attach-file-fixture.ts
+
+# 2. the oracle (jest ignores .claude/ — stage the case in /tmp)
+TMPO=/tmp/qt-attach-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/attach-mount-file.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/attach-file.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+TZ=UTC \
+QT_FIXTURE_ATTACH_MAIN=$W/crates/quilltap-web/tests/fixtures/attach-file-main.db \
+QT_FIXTURE_ATTACH_MOUNT=$W/crates/quilltap-web/tests/fixtures/attach-file-mount.db \
+QT_FIXTURE_ATTACH_LLMLOGS=$W/crates/quilltap-web/tests/fixtures/attach-file-llmlogs.db \
+QT_FIXTURE_ATTACH_META=$W/crates/quilltap-web/tests/fixtures/attach-file-main.db.meta.json \
+QT_ORACLE_OUT=/tmp/oracle-attach-mount-file.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- attach-mount-file
+
+# 3. the diff
+QT_ORACLE_ATTACH_MOUNT_FILE=/tmp/oracle-attach-mount-file.ndjson \
+  cargo test -p quilltap-harness --test attach_mount_file_equivalence -- --nocapture
+```
+
+⚠ Rebuilding the fixture MINTS FRESH LINK/BLOB IDS, and those ids appear in the
+diffed announcement bodies. Always regenerate the fixture and the oracle
+together, in that order — a stale oracle against a rebuilt fixture diverges on
+ids that were never the port's doing.
+
+### The `allowToolUse` question — no change, as the order specified
+
+The survey's disposition stands: v4's `getConnectionProfile` projects
+`{id, name, provider, modelName, apiKey}` and nothing else, so v4's own
+`allowToolUse === false` warning condition is dead code. v5's enrichment is
+byte-faithful. This lane made no change for it; the record belongs to P4.9E4B
+and the v4-side list.
+
+### Deferrals
+
+None. Nothing was banked; the tier-3 section anticipated a possible vision
+decoder gap and none appeared (the vision call rides the already-ported
+`generate_image_description`, whose provider dialects were proven by
+`file_attachment_tier3_equivalence`).
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean on BOTH feature sets (plain and
+`--features quilltap-core/native-transport`); `cargo test --workspace
+--no-fail-fast` **1,665 passed / 0 failed** with the lane's env vars set (the
+two named families ran, zero SKIP); release build clean. **No `apps/web` file
+was touched, so no SPA gate is owed** — the picker dialog is P4.9E4B's.
+
+Versions: quilltap-core 0.0.389, quilltap-harness 0.0.336, quilltap-web 0.0.51,
+quilltap-host 0.0.44.

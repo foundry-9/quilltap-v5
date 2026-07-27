@@ -1,0 +1,40 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "reasoningUserId": "f0000000-0000-4000-8000-0000000000a1",
+  "seedTimestamp": "2026-06-01T00:00:00.000Z",
+  "vision": [
+    {
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-vision",
+      "filename": "undescribed.png",
+      "content": "A brass diving bell suspended over a harbour at dusk, its rivets catching the last of the light while three figures in oilskins pay out the cable from a stone quay.",
+      "finishReason": "stop",
+      "usage": { "promptTokens": 812, "completionTokens": 41, "totalTokens": 853 }
+    },
+    {
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-vision",
+      "filename": "refuses.png",
+      "content": "I cannot describe this image, as it appears to depict an identifiable person.",
+      "finishReason": "stop",
+      "usage": { "promptTokens": 790, "completionTokens": 15, "totalTokens": 805 }
+    },
+    {
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-uncensored",
+      "filename": "refuses.png",
+      "content": "A daguerreotype portrait of a woman in a high collar, one gloved hand resting on a barometer, the plate scratched along its lower edge.",
+      "finishReason": "stop",
+      "usage": { "promptTokens": 771, "completionTokens": 33, "totalTokens": 804 }
+    },
+    {
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "gpt-5-vision-mock",
+      "filename": "reasoning.png",
+      "content": "An orrery of hammered copper, its planets frozen mid-orbit above a lacquered case whose drawers stand a hand's width open.",
+      "finishReason": "stop",
+      "usage": { "promptTokens": 733, "completionTokens": 30, "totalTokens": 763 }
+    }
+  ]
+}

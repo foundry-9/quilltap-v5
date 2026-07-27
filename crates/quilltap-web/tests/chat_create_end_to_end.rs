@@ -184,6 +184,9 @@ impl SpineFactory for CreateSpineFactory {
             operator_tool_runner: None,
             regenerate_title: None,
             outfit_llm_choose: None,
+            // P4.9E4A: no vision-describe runner in the smoke assembly — the
+            // attach ladder then resolves to '' (v4's own any-failure arm).
+            image_describe: None,
             job_handlers: Vec::new(),
         }
     }

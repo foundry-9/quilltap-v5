@@ -845,17 +845,33 @@ pub async fn chat_files_post(
     Query(params): Query<HashMap<String, String>>,
     req: axum::extract::Request,
 ) -> AxumResponse {
-    // P4.9E3B: v4's `?action=attach-mount-file` leg (files/route.ts:250) is a
-    // NAMED deferral — it rides a vision-LLM describe (`ensureImageDescription`)
-    // this build has no host seam for. Refuse loudly rather than fall through
-    // to the multipart upload parser.
+    // P4.9E4A: v4's `?action=attach-mount-file` leg (files/route.ts:250). The
+    // two fields are read as raw JSON and coerced to `""` when absent or
+    // non-string, because v4's validation is hand-rolled (`!v || typeof v !==
+    // 'string'`), not Zod — so both arms answer the same `badRequest`, produced
+    // by the core handler AFTER its chat-404 (v4 resolves the chat first).
     if params.get("action").map(String::as_str) == Some("attach-mount-file") {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "The attach-mount-file action is not ported yet (a P4.9E3B named deferral — \
-             v4 handleAttachMountFile, app/api/v1/chats/[id]/files/route.ts:250; it needs \
-             the vision-LLM describe seam)",
-        );
+        let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
+        };
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        let str_field = |k: &str| {
+            body.get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        let core_req = CoreRequest::ChatAttachMountFile {
+            chat_id,
+            mount_point_id: str_field("mountPointId"),
+            relative_path: str_field("relativePath"),
+        };
+        return match dispatch_core(&state, core_req).await {
+            Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+            Err(r) => r,
+        };
     }
     if params.get("action").map(String::as_str) == Some("link") {
         let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {

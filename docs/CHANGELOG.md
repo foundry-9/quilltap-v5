@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Files kept in a document store can now be handed to a conversation. Pick one
+from the library and the Librarian sets it before the cast, announcing what it
+is and where it came from, and describing it so that a model without eyes still
+knows what it is looking at. The description comes from whichever source is
+best: an image the app itself generated carries the prompt that made it, an
+image described once is never re-described, and only a genuinely unknown image
+costs a call to a vision model. A file with no description attaches anyway.
+Attached files now also appear in the conversation's file list, once each, no
+matter how many times they were attached.
+
 Made code review an explicit, blocking step of the unify skill
 (.claude/commands/unify.md). The unifier now reads the whole combined diff
 before landing it and judges it on two axes: whether the lane built what its

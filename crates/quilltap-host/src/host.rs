@@ -489,6 +489,7 @@ impl EngineAssembler for HostAssembler {
             operator_tool_runner,
             regenerate_title,
             outfit_llm_choose,
+            image_describe,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -510,11 +511,12 @@ impl EngineAssembler for HostAssembler {
                     bundle.operator_tool_runner,
                     bundle.regenerate_title,
                     bundle.outfit_llm_choose,
+                    bundle.image_describe,
                 )
             }
             None => (
                 None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None,
+                None, None,
             ),
         };
 
@@ -709,6 +711,15 @@ impl EngineAssembler for HostAssembler {
             // assemblies keep None → the default-outfit fallback.
             outfit_llm_choose,
             // === end P4.9E3B ===
+            // === P4.9E4A: the attach-mount-file vision describe, wired LIVE from
+            // the spine's completion provider + the host image codec
+            // (`HostImageDescribeRunner`). Spine-less assemblies keep `None` →
+            // the describe ladder resolves to `''` and the attach STILL
+            // SUCCEEDS, which is v4's own posture for every describe failure.
+            // ⚠ LIVE means real money: one vision-LLM call per attach of an
+            // image with neither a cached description nor kept-image markdown. ===
+            image_describe,
+            // === end P4.9E4A ===
         })
     }
 }

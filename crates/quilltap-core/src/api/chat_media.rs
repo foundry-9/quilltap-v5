@@ -761,9 +761,17 @@ pub async fn chat_add_tool_result(db: &Db, user_id: &str, chat_id: &str, body: &
 /// (`type` = `source=='GENERATED' ? 'generatedImage' : 'chatFile'`), newest first.
 ///
 /// v4 also walks the chat's messages for Librarian mount-file *announcement*
-/// attachments (no link table) — a bounded deferral this round (the courier/images
-/// fixture carries none; the Salon gallery consumes uploaded + generated files). It
-/// is enumerated in the lane report.
+/// attachments — the read-back half of [`chat_attach_mount_file`], since the
+/// announcement message IS the attachment record and no link-table row exists.
+/// (P4.6ab left this a bounded deferral; P4.9E4A closes it, because the attach
+/// write is meaningless without the read that surfaces it.)
+///
+/// The `seenIds` set is what makes a double attach show up ONCE: v4 checks the
+/// *attachment id* against the set and, on the modern path where the attachment
+/// id IS the link id, adds that same id back — so the second announcement's
+/// attachment is skipped. Note the asymmetry v4 carries: the legacy fallback
+/// resolves an attachment id as a `fileId`, and then `seenIds` gains the LINK
+/// id while the loop keeps testing attachment ids. Reproduced, not repaired.
 pub fn chat_files_list(db: &Db, chat_id: &str) -> Response {
     let chat_id_owned = chat_id.to_string();
     let chat = match db.read_main(move |c| chats_read::find_by_id(c, &chat_id_owned)) {
@@ -805,6 +813,123 @@ pub fn chat_files_list(db: &Db, chat_id: &str) -> Response {
         Ok(f) => f,
         Err(e) => return internal(e),
     };
+
+    // ── The mount-file announcement walk (v4 `route.ts:386-424`) ───────────
+    // Mount-file attachments are recorded only on Librarian announcement
+    // messages (no link table). Walk the chat's messages and collect any
+    // attachment ids that resolve through the mount index. The whole walk is
+    // inside v4's `try`: any failure warns and leaves the uploaded/generated
+    // list intact.
+    {
+        use crate::db::doc_mount_blobs::DocMountBlobsRepository;
+        use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
+
+        let mut seen: std::collections::HashSet<String> = files
+            .iter()
+            .filter_map(|f| f.get("id").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect();
+        let cid = chat_id.to_string();
+        match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
+            Ok(events) => {
+                for event in events {
+                    if event.get("type").and_then(Value::as_str) != Some("message") {
+                        continue;
+                    }
+                    let ids: Vec<String> = event
+                        .get("attachments")
+                        .and_then(Value::as_array)
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let created_at = event.get("createdAt").cloned().unwrap_or(Value::Null);
+                    for attachment_id in ids {
+                        if seen.contains(&attachment_id) {
+                            continue;
+                        }
+                        // Try as a link id (modern) or fall back to file id.
+                        let aid = attachment_id.clone();
+                        let resolved = db.read_mount_index(move |c| {
+                            let links = DocMountFileLinksRepository::new(c);
+                            if let Some(l) = links.find_by_id_with_content(&aid)? {
+                                return Ok(Some((
+                                    l.id,
+                                    l.file_id,
+                                    l.mount_point_id,
+                                    l.relative_path,
+                                    l.file_name,
+                                    l.original_file_name,
+                                )));
+                            }
+                            // The legacy fallback: v4's `findByFileId` returns the
+                            // SAME joined shape, so re-read the winning row through
+                            // the joined getter rather than widen `LinkRow`.
+                            let Some(first) = links.find_by_file_id(&aid)?.into_iter().next()
+                            else {
+                                return Ok(None);
+                            };
+                            Ok(links.find_by_id_with_content(&first.id)?.map(|l| {
+                                (
+                                    l.id,
+                                    l.file_id,
+                                    l.mount_point_id,
+                                    l.relative_path,
+                                    l.file_name,
+                                    l.original_file_name,
+                                )
+                            }))
+                        });
+                        let Ok(Some((
+                            id,
+                            file_id,
+                            mount_point_id,
+                            relative_path,
+                            file_name,
+                            original,
+                        ))) = resolved
+                        else {
+                            continue;
+                        };
+                        let fid = file_id.clone();
+                        let blob = db.read_mount_index(move |c| {
+                            DocMountBlobsRepository::new(c).find_by_file_id(&fid)
+                        });
+                        let Ok(Some(blob)) = blob else { continue };
+                        let url = format!(
+                            "/api/v1/mount-points/{}/blobs/{}",
+                            mount_point_id,
+                            crate::tools::photo::encode_uri(&relative_path)
+                        );
+                        files.push(json!({
+                            "id": id,
+                            // v4 `originalFileName ?? fileName` — the `??` falls
+                            // back on NULL only, so a stored empty string wins.
+                            "filename": original.unwrap_or(file_name),
+                            "filepath": url,
+                            "mimeType": blob.stored_mime_type,
+                            "size": blob.size_bytes,
+                            "url": url,
+                            "createdAt": created_at,
+                            "type": "mountFile",
+                        }));
+                        seen.insert(id);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    chat_id = %chat_id,
+                    error = %e,
+                    "[Chats v1 Files] Failed to enumerate mount-file attachments"
+                );
+            }
+        }
+    }
+
     // Newest first (v4 sorts by createdAt desc).
     files.sort_by(|a, b| {
         let at = a.get("createdAt").and_then(Value::as_str).unwrap_or("");
@@ -1223,4 +1348,289 @@ fn server_error_regenerate() -> Response {
         ErrorKind::Internal,
         "Failed to queue story background regeneration",
     )
+}
+
+// ===========================================================================
+// P4.9E4A — attach-mount-file (v4 `handleAttachMountFile`,
+// `app/api/v1/chats/[id]/files/route.ts:250-346`)
+// ===========================================================================
+
+/// The host seam for one vision describe — v4 `generateImageDescription(file,
+/// repos, userId)` (`lib/chat/file-attachment-fallback.ts:483`). Only the
+/// composing host holds the completion provider and the image transcoder the
+/// describe rides, so the dispatch layer reaches it
+/// erased (the `ConsultRunner` / `announcement_preview` / `RegenerateTitleDriver`
+/// precedent). `None` on the assembly → the ladder resolves to `''` with a warn
+/// and the attach still succeeds, which is v4's own posture for **every**
+/// describe failure on this path.
+///
+/// ⚠ LIVE means real money: one vision-LLM call per attach of an undescribed
+/// image (the cached / kept-image / non-image arms never reach the driver).
+pub trait ImageDescribeDriver: Send + Sync {
+    fn describe<'a>(
+        &'a self,
+        file: crate::services::file_fallback::FallbackFile,
+    ) -> Pin<Box<dyn Future<Output = crate::services::file_fallback::FallbackResult> + Send + 'a>>;
+}
+
+/// v4 `ensureImageDescription` (`files/route.ts:188-248`) — resolve whatever
+/// description ends up associated with the blob: cached, freshly generated, or
+/// `''` on any failure. Every failure arm is warn-and-continue, exactly as v4.
+///
+/// **A v4 quirk carried, not fixed:** [`generate_image_description`]'s
+/// persisted-text tier looks the file up in `files` by `file.id`, but this path
+/// passes a `doc_mount_blobs` id (v4 `files/route.ts:216`) — a disjoint id
+/// space, so that tier is an effective miss here and the ladder always falls
+/// through to vision. Matched deliberately.
+async fn ensure_image_description(
+    db: &Db,
+    describe: Option<&Arc<dyn ImageDescribeDriver>>,
+    blob: &crate::db::doc_mount_blobs::BlobWithLink,
+) -> String {
+    use crate::db::doc_mount_blobs::DocMountBlobsRepository;
+
+    if !blob.stored_mime_type.to_lowercase().starts_with("image/") {
+        return String::new();
+    }
+    let existing = crate::jsstr::js_trim(&blob.description);
+    if !existing.is_empty() {
+        return existing.to_string();
+    }
+
+    let blob_id = blob.id.clone();
+    let bytes =
+        match db.read_mount_index(move |c| DocMountBlobsRepository::new(c).read_data(&blob_id)) {
+            Ok(Some(b)) => b,
+            // v4: `readData` throw → warn + ''; a null buffer → '' as well.
+            Ok(None) => return String::new(),
+            Err(e) => {
+                tracing::warn!(
+                    blob_id = %blob.id,
+                    error = %e,
+                    "[Chats v1 Files] Failed to read blob bytes for description"
+                );
+                return String::new();
+            }
+        };
+
+    let Some(describe) = describe else {
+        tracing::warn!(
+            blob_id = %blob.id,
+            "[Chats v1 Files] No ImageDescribeDriver assembled — attaching without a \
+             vision description (v4's own any-failure arm)"
+        );
+        return String::new();
+    };
+
+    let data = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    };
+    let result = describe
+        .describe(crate::services::file_fallback::FallbackFile {
+            id: blob.id.clone(),
+            filename: blob.original_file_name.clone(),
+            mime_type: blob.stored_mime_type.clone(),
+            data: Some(data),
+        })
+        .await;
+
+    // v4 checks the UNTRIMMED description for emptiness, then trims.
+    let raw = match (&result.type_, result.image_description.as_deref()) {
+        (crate::services::file_fallback::FallbackType::ImageDescription, Some(d))
+            if !d.is_empty() =>
+        {
+            d
+        }
+        _ => {
+            tracing::warn!(
+                blob_id = %blob.id,
+                error = ?result.error,
+                "[Chats v1 Files] Image description generation did not return a description"
+            );
+            return String::new();
+        }
+    };
+    let description = crate::jsstr::js_trim(raw).to_string();
+
+    // Cache it on the blob's link (v4 `docMountBlobs.updateDescription(blob.id,
+    // description)` — no linkId, so the FIRST link of the blob's file is the
+    // target, which for a multi-linked blob is not necessarily the attached one).
+    let blob_id = blob.id.clone();
+    let cached = description.clone();
+    if let Err(e) = db
+        .write(move |ws| {
+            DocMountBlobsRepository::new(super::mount_files::mount_conn(ws)?)
+                .update_description(&blob_id, &cached, None)
+                .map(|_| ())
+        })
+        .await
+    {
+        tracing::warn!(
+            blob_id = %blob.id,
+            error = %e,
+            "[Chats v1 Files] Failed to persist generated description"
+        );
+    }
+    description
+}
+
+/// v4 `POST /api/v1/chats/[id]/files?action=attach-mount-file`
+/// (`handleAttachMountFile`) — attach a document-store file to the chat by
+/// posting the Librarian's attachment announcement.
+///
+/// **The announcement message IS the attachment record** (`writer.ts:152-160`):
+/// the `doc_mount_file_links` row id rides as the synthetic message's single
+/// `attachments` entry; no link-table row is written. The only durable writes on
+/// the path are that announcement and (when vision runs) the blob-description
+/// cache. There is deliberately **no dedupe** — attaching the same
+/// `(mountPointId, relativePath)` twice posts two announcements carrying the
+/// same `mountFileId`; the dedupe lives on the read side
+/// ([`chat_files_list`]'s `seenIds`).
+pub async fn chat_attach_mount_file(
+    db: &Db,
+    describe: Option<&Arc<dyn ImageDescribeDriver>>,
+    chat_id: &str,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Response {
+    use crate::db::doc_mount_blobs::DocMountBlobsRepository;
+    use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
+    use crate::services::librarian_notifications::{
+        post_librarian_attach_announcement, LibrarianAttachAnnouncement,
+    };
+
+    // v4's outer POST resolves the chat BEFORE the action dispatch
+    // (`route.ts:34-38`), so `Chat not found` precedes the body validation.
+    let cid = chat_id.to_string();
+    match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    }
+
+    // `!mountPointId || typeof mountPointId !== 'string'` — the web edge coerces
+    // a missing / non-string field to `""`, so an empty value covers both arms.
+    if mount_point_id.is_empty() {
+        return bad_request("mountPointId is required");
+    }
+    if relative_path.is_empty() {
+        return bad_request("relativePath is required");
+    }
+
+    let (mp, rp) = (mount_point_id.to_string(), relative_path.to_string());
+    let mount_file = match db.read_mount_index(move |c| {
+        DocMountFileLinksRepository::new(c).find_by_mount_point_and_path(&mp, &rp)
+    }) {
+        Ok(Some(f)) => f,
+        Ok(None) => return not_found("Mount-point file"),
+        Err(e) => return internal(e),
+    };
+
+    let (mp, rp) = (mount_point_id.to_string(), relative_path.to_string());
+    let blob = match db.read_mount_index(move |c| {
+        DocMountBlobsRepository::new(c).find_by_mount_point_and_path(&mp, &rp)
+    }) {
+        Ok(Some(b)) => b,
+        Ok(None) => {
+            tracing::warn!(
+                chat_id = %chat_id,
+                mount_point_id = %mount_point_id,
+                relative_path = %relative_path,
+                "[Chats v1 Files] Mount file has no blob row, refusing to attach"
+            );
+            return not_found("Mount-point file blob");
+        }
+        Err(e) => return internal(e),
+    };
+
+    // Tolerant: v4 `mountPoint?.name ?? null` — a missing mount point is not an error.
+    let mp = mount_point_id.to_string();
+    let mount_point_name = db
+        .read_mount_index(move |c| DocMountPointsRepository::new(c).find_id_and_name_by_id(&mp))
+        .ok()
+        .flatten()
+        .map(|(_, name)| name);
+
+    // The three-source description ladder. For kept images (anything under a
+    // `photos/` folder) the link's extractedText already carries the original
+    // generation prompt, scene snapshot, and saver caption — richer, by
+    // construction, than vision could produce, and free.
+    let mut description = String::new();
+    let mut description_source = "empty";
+    if crate::db::doc_mount_file_links::is_photos_relative_path(Some(relative_path)) {
+        if let Some(from_markdown) =
+            crate::photos::keep_image_markdown::build_attach_description_from_kept_image(
+                mount_file.extracted_text.as_deref(),
+            )
+        {
+            description = from_markdown;
+            description_source = "kept-image-markdown";
+        }
+    }
+    if description.is_empty() {
+        let had_cached = !crate::jsstr::js_trim(&blob.description).is_empty();
+        description = ensure_image_description(db, describe, &blob).await;
+        if !description.is_empty() {
+            description_source = if had_cached {
+                "vision-llm-cached"
+            } else {
+                "vision-llm-generated"
+            };
+        }
+    }
+
+    let display_title = if blob.original_file_name.is_empty() {
+        mount_file.file_name.clone()
+    } else {
+        blob.original_file_name.clone()
+    };
+    let announcement = post_librarian_attach_announcement(
+        db,
+        &LibrarianAttachAnnouncement {
+            chat_id: chat_id.to_string(),
+            display_title: display_title.clone(),
+            file_path: relative_path.to_string(),
+            mount_point: mount_point_name,
+            mount_file_id: mount_file.id.clone(),
+            mime_type: blob.stored_mime_type.clone(),
+            description: Some(description.clone()),
+        },
+    )
+    .await;
+
+    let Some(announcement) = announcement else {
+        return internal("Failed to post Librarian attachment announcement");
+    };
+
+    let url = format!(
+        "/api/v1/mount-points/{}/blobs/{}",
+        mount_point_id,
+        crate::tools::photo::encode_uri(relative_path)
+    );
+    tracing::info!(
+        chat_id = %chat_id,
+        mount_file_id = %mount_file.id,
+        mount_point_id = %mount_point_id,
+        relative_path = %relative_path,
+        description_included = !description.is_empty(),
+        description_source = %description_source,
+        "[Chats v1 Files] Mount-point file attached via Librarian"
+    );
+
+    Response::ChatMedia(json!({
+        "file": {
+            "id": mount_file.id,
+            "filename": display_title,
+            "filepath": url,
+            "mimeType": blob.stored_mime_type,
+            "size": blob.size_bytes,
+            "url": url,
+            "type": "mountFile",
+        },
+        "announcement": {
+            "id": announcement.get("id").cloned().unwrap_or(Value::Null),
+            "createdAt": announcement.get("createdAt").cloned().unwrap_or(Value::Null),
+        },
+    }))
 }

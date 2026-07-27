@@ -2668,6 +2668,25 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.9E3B ===
+    // === P4.9E4A: the library-picker server remainder (append-only) ===
+    /// v4 `POST /api/v1/chats/{id}/files?action=attach-mount-file`
+    /// (`handleAttachMountFile`) — attach a document-store file to the chat by
+    /// posting the Librarian's attachment announcement (which IS the attachment
+    /// record). → `{file: {…, type: "mountFile"}, announcement: {id, createdAt}}`.
+    ///
+    /// Both string fields are `#[serde(default)]` because v4's validation is
+    /// hand-rolled, not Zod: a missing OR non-string field is falsy and answers
+    /// `badRequest`, so the web edge coerces either to `""` and the handler's
+    /// empty check covers both arms byte-for-byte.
+    #[serde(rename_all = "camelCase")]
+    ChatAttachMountFile {
+        chat_id: String,
+        #[serde(default)]
+        mount_point_id: String,
+        #[serde(default)]
+        relative_path: String,
+    },
+    // === end P4.9E4A ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

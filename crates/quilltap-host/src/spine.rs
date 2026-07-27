@@ -660,6 +660,52 @@ where
     }
 }
 
+// === P4.9E4A: the vision-describe runner ===
+/// The `attach-mount-file` describe seam: the host's completion provider plus
+/// the host image codec (the pre-vision downsize) and the REAL `logLLMCall`
+/// write, so an attach's `IMAGE_DESCRIPTION` row appears exactly as v4 logs it.
+/// The core's [`generate_image_description`](quilltap_core::services::file_fallback::generate_image_description)
+/// is the whole body — profile resolution, the refusal heuristics, and the
+/// uncensored retry all run there, so the differential drives the exact
+/// composition production uses.
+///
+/// ⚠ LIVE means real money: one vision-LLM call per attach of an image with no
+/// cached description and no kept-image markdown.
+struct HostImageDescribeRunner<C> {
+    db: Db,
+    user_id: String,
+    completion: Arc<C>,
+}
+
+impl<C> quilltap_core::api::chat_media::ImageDescribeDriver for HostImageDescribeRunner<C>
+where
+    C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
+{
+    fn describe<'a>(
+        &'a self,
+        file: quilltap_core::services::file_fallback::FallbackFile,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = quilltap_core::services::file_fallback::FallbackResult>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let transcoder = HostImageCodec;
+            let deps = quilltap_core::services::file_fallback::FallbackDeps {
+                db: &self.db,
+                completion: &*self.completion,
+                transcoder: &transcoder,
+                user_id: &self.user_id,
+                now_ms: now_unix_ms(),
+            };
+            quilltap_core::services::file_fallback::generate_image_description(&deps, &file).await
+        })
+    }
+}
+// === end P4.9E4A ===
+
 impl<C> quilltap_core::services::chat_admin::RegenerateTitleDriver for HostRegenerateTitleRunner<C>
 where
     C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
@@ -2693,6 +2739,11 @@ pub struct SpineBundle {
     /// (v4's own failure shape). ⚠ LIVE: one cheap-LLM call per pick.
     pub outfit_llm_choose:
         Option<Arc<dyn quilltap_core::services::outfit_selections::OutfitLlmChooseRunner>>,
+    /// The `attach-mount-file` vision-describe runner (P4.9E4A). `None` for
+    /// canned test factories — the describe ladder then resolves to `''` and
+    /// the attach still succeeds (v4's own any-failure arm).
+    /// ⚠ LIVE: one vision-LLM call per attach of an undescribed image.
+    pub image_describe: Option<Arc<dyn quilltap_core::api::chat_media::ImageDescribeDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2779,6 +2830,8 @@ impl SpineFactory for ProductionSpineFactory {
         let announcement_completion = Arc::clone(&completion);
         let title_completion = Arc::clone(&completion);
         let outfit_completion = Arc::clone(&completion);
+        // P4.9E4A: the attach-mount-file describe shares the same provider Arc.
+        let describe_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
@@ -2932,6 +2985,14 @@ impl SpineFactory for ProductionSpineFactory {
                 db: db.clone(),
                 user_id: SINGLE_USER_ID.to_string(),
                 completion: outfit_completion,
+            })),
+            // P4.9E4A: the attach-mount-file vision describe, LIVE — ⚠ one
+            // vision-LLM call per attach of an image that has neither a cached
+            // blob description nor kept-image markdown.
+            image_describe: Some(Arc::new(HostImageDescribeRunner {
+                db: db.clone(),
+                user_id: SINGLE_USER_ID.to_string(),
+                completion: describe_completion,
             })),
             chat_create,
             provider_actions: Some(provider_actions),
