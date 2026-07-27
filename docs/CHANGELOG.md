@@ -116,6 +116,11 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+The tool cabinet is unlocked. "Tools…" in the chat sidebar opens the full list of
+what the AI may reach for in this conversation, grouped and collapsible, with a
+three-state tick for each group and Enable All / Disable All to hand. Tools this
+conversation cannot use are shown greyed with the reason, and are not counted.
+
 Merge In is back in the Organize drawer. Pick another conversation — search by
 its name or by who is in it — then choose which of its characters come across and
 what they arrive wearing, with "same as last conversation" offered first. A recap

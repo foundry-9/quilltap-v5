@@ -82,6 +82,7 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
       [sectionOpen]="true"
       (chatUpdated)="refetched = refetched + 1"
       (openProject)="projectOpened = projectOpened + 1"
+      (openToolSettings)="toolSettingsOpened = toolSettingsOpened + 1"
     />
   `,
 })
@@ -89,6 +90,7 @@ class Host {
   readonly chatState = signal<ChatSectionState>(state());
   refetched = 0;
   projectOpened = 0;
+  toolSettingsOpened = 0;
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
@@ -393,8 +395,14 @@ describe('ChatSection — the agent-mode badge', () => {
   });
 });
 
-describe('ChatSection — deferrals', () => {
-  it('Tools… still refuses BY NAME rather than being hidden', async () => {
+describe('ChatSection — the Tools… entry', () => {
+  /**
+   * This used to pin a loud REFUSAL: the entry was present and answered with a
+   * sentence naming the unported tool inventory. P4.9E3C landed
+   * `ChatToolSettingsModal` over P4.9E3B's inventory, so the same entry now
+   * opens it — and the assertion is that it reports up rather than refusing.
+   */
+  it('opens the tool-settings modal instead of refusing', async () => {
     const fixture = await render();
     const entry = Array.from(
       fixture.nativeElement.querySelectorAll('button.qt-tool-palette-button'),
@@ -402,8 +410,7 @@ describe('ChatSection — deferrals', () => {
     expect(entry).toBeTruthy();
     entry.click();
     fixture.detectChanges();
-    const body = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
-    expect(body).toContain('has not been ported');
-    expect(body).toContain('/api/v1/tools');
+    expect(fixture.componentInstance.toolSettingsOpened).toBe(1);
+    expect(fixture.nativeElement.textContent).not.toContain('has not been ported');
   });
 });

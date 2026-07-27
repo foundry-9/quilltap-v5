@@ -67,6 +67,12 @@ async function readTitle(
  */
 const CHAT_EXPORT_LANDED = false;
 
+/**
+ * ACTIVATE-AT-UNIFY. `GET /api/v1/tools` is P4.9E3B's inventory; without it the
+ * tool tree has nothing to list. The unifier flips this to `true`.
+ */
+const TOOLS_INVENTORY_LANDED = false;
+
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
     page,
@@ -233,5 +239,45 @@ test.describe('P4.9E3C — speaking as a character', () => {
     await expect(
       page.locator(`qt-participant-card button[title="Speak as ${name}"]`),
     ).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+test.describe('P4.9E3C — LLM Tool Settings', () => {
+  // ACTIVATE-AT-UNIFY over P4.9E3B's tool inventory.
+  test.skip(!TOOLS_INVENTORY_LANDED, 'GET /api/v1/tools lands with P4.9E3B');
+
+  test('the Tools… entry opens the tree and writes both disable sets', async ({ page }) => {
+    const chatId = await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Chat');
+    await page.getByRole('button', { name: 'Tools…' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('LLM Tool Settings')).toBeVisible({ timeout: 15_000 });
+    // The entry used to answer with a refusal naming the unported inventory.
+    await expect(dialog.getByText('has not been ported')).toHaveCount(0);
+
+    const save = dialog.getByRole('button', { name: 'Save' });
+    await expect(save).toBeDisabled();
+
+    // Toggling the built-in group off writes every member id, not a pattern.
+    await dialog.getByRole('checkbox', { name: 'Toggle all Built-in Tools' }).click();
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.getByText('Tool settings saved')).toBeVisible({ timeout: 15_000 });
+
+    const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+    const body = (await resp.json()) as {
+      data?: { chat?: { disabledTools?: string[]; disabledToolGroups?: string[] } };
+    };
+    expect((body.data?.chat?.disabledTools ?? []).length).toBeGreaterThan(0);
+    expect(body.data?.chat?.disabledToolGroups ?? []).toEqual([]);
+
+    // Put it back, so no later beat runs against a chat with its tools off.
+    await openSidebarSection(page, 'Chat');
+    await page.getByRole('button', { name: 'Tools…' }).click();
+    await expect(dialog.getByText('LLM Tool Settings')).toBeVisible({ timeout: 15_000 });
+    await dialog.getByRole('button', { name: 'Enable All' }).click();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Tool settings saved')).toBeVisible({ timeout: 15_000 });
   });
 });

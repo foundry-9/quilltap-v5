@@ -74,15 +74,12 @@ export interface ChatSectionState {
  *
  * - **The Concierge tri-state** (v4 :1100): the chat PUT's `conciergeState` key
  *   is a named v5 deferral (`api/salon.rs:1216`).
- * - **Tools…** (v4 :1230) — the entry is here and REFUSES BY NAME. v4's
- *   `ChatToolSettingsModal` needs the tool inventory (`GET /api/v1/tools`,
- *   `app/api/v1/tools/route.ts`, 727 LOC: names, groups, per-chat availability),
- *   which no lane in this round ports — P4.9E3A lands only the WRITE verb
- *   (`chatUpdateToolSettings`). A modal with nothing to list would be a stub, so
- *   the entry stays and says what it is waiting for. (P4.9E1B cross-lane
- *   escalation; the write verb is mirrored in `core-contract.ts` and unused.)
  * - **Run Tool…** (v4 :1243) — `RunToolModal` is unported. (v5's composer
  *   custom-tools popup is Pascal's surface, a different thing.)
+ *
+ * **Tools… is LIVE** (v4 :1230-1241, P4.9E3C) over P4.9E3B's tool inventory. The
+ * entry REFUSED BY NAME until then, the inventory (`GET /api/v1/tools`, 727 LOC)
+ * having been unported.
  *
  * **Agent Mode is LIVE** (v4 :1116-1127) — {@link ChatSection.onAgentModeToggle}.
  * It had been tracked in NEITHER of `m6-screen-parity.md`'s two tables, being a
@@ -225,23 +222,16 @@ export interface ChatSectionState {
         <span class="qt-label">Auto-generate character avatars</span>
       </label>
 
-      <!-- Tools… (v4 :1230-1241) — the modal is not ported; see the class note. -->
+      <!-- Tools… (v4 :1230-1241) -->
       <button
         type="button"
         class="qt-tool-palette-button"
         title="Configure LLM tools"
-        (click)="toolSettingsRefused.set(true)"
+        (click)="openToolSettings.emit()"
       >
         <qt-icon name="settings" class="w-4 h-4" />
         <span>Tools…</span>
       </button>
-      @if (toolSettingsRefused()) {
-        <p class="text-xs qt-text-secondary" role="status">
-          The tool cabinet stays locked for now: choosing which tools a
-          conversation may reach for needs the instrument inventory, which has
-          not been ported (v4 <code>GET /api/v1/tools</code>).
-        </p>
-      }
 
       <!-- Regenerate Story Background -->
       @if (storyBackgroundsEnabled()) {
@@ -287,6 +277,8 @@ export class ChatSection {
   readonly regenerateBackground = output<void>();
   /** v4 `onProjectClick` — opens `ChatProjectModal`. */
   readonly openProject = output<void>();
+  /** v4 `onToolSettingsClick` — opens `ChatToolSettingsModal`. */
+  readonly openToolSettings = output<void>();
 
   /**
    * v4 `handleAvatarGenToggle` (`ChatSidebar.tsx:1065-1083`): POST the toggle,
@@ -298,8 +290,6 @@ export class ChatSection {
     () => this.state().avatarGenerationEnabled === true,
   );
   protected readonly avatarGenSaving = signal(false);
-  /** The Tools… entry's loud refusal (see the class note). */
-  protected readonly toolSettingsRefused = signal(false);
 
   /**
    * The badge's displayed value. Seeded from the chat's RESOLVED agent mode and

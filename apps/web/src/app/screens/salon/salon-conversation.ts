@@ -43,6 +43,7 @@ import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
 import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { MergeConversationModal } from '../../chat/merge-conversation-modal';
+import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
 import { SelectLlmProfileDialog } from '../../chat/select-llm-profile-dialog';
@@ -208,6 +209,7 @@ interface CascadePrompt {
     BulkCharacterReplaceModal,
     ChatProjectModal,
     MergeConversationModal,
+    ChatToolSettingsModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
     Modal,
@@ -287,6 +289,7 @@ interface CascadePrompt {
           (mergeIn)="showMerge.set(true)"
           (bulkReplace)="showBulkReplace.set(true)"
           (openProject)="showProject.set(true)"
+          (openToolSettings)="showToolSettings.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -563,6 +566,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showToolSettings() && chat(); as c) {
+      <qt-chat-tool-settings-modal
+        [chatId]="c.id"
+        [disabledTools]="c.disabledTools ?? []"
+        [disabledToolGroups]="c.disabledToolGroups ?? []"
+        (saved)="onToolSettingsSaved()"
+        (close)="showToolSettings.set(false)"
       />
     }
 
@@ -1151,6 +1164,14 @@ export class SalonConversation {
    * a reset effect.
    */
   protected readonly showMerge = signal(false);
+  /** v4 `toolSettingsModalOpen`, opened from the Chat section's Tools… entry. */
+  protected readonly showToolSettings = signal(false);
+
+  /** v4 patches its local chat (`ChatModals.tsx:394-400`); v5 refetches. */
+  protected async onToolSettingsSaved(): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message: 'Tool settings saved' });
+    await this.onChatUpdated();
+  }
 
   /** v4 `onMerged` → `fetchChat` (`SalonView.tsx:1594`). */
   protected async onConversationMerged(message: string): Promise<void> {

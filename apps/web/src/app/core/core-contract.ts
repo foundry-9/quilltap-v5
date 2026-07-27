@@ -2421,6 +2421,9 @@ export interface ChatDetail {
   projectId: string | null;
   projectName: string | null;
   turnSkippingEnabled: boolean | null;
+  /** The two whole-set disable lists (`api/salon.rs:384-387`). */
+  disabledTools?: string[];
+  disabledToolGroups?: string[];
   agentModeEnabled: boolean;
   resolvedAgentModeEnabled: boolean;
   agentModeSource: string;

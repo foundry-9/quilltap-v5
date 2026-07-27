@@ -1,6 +1,7 @@
 import type { CoreClient } from '../core/core-client';
 import type { ChatCreateOutfitSelectionInput } from '../core/core-contract';
 import type { PreviousOutfitSummary } from '../screens/new-chat/outfit-selector';
+import type { AvailableTool } from './tools/tool-settings';
 
 /**
  * The chat-admin verbs the in-chat dialog family reaches for (P4.9E3A's server
@@ -152,4 +153,21 @@ export async function mergeConversation(
   const merge = data['merge'] as { mergedCharacterIds?: unknown } | undefined;
   const ids = merge?.mergedCharacterIds;
   return Array.isArray(ids) ? ids.length : null;
+}
+
+/**
+ * §1 `ToolsList` — the tool inventory (v4 `GET /api/v1/tools`).
+ *
+ * `chatId` is what makes the reply carry per-chat availability;
+ * `includeSchemas` adds each tool's `parameters` JSON Schema and is only asked
+ * for by the Run Tool picker (v4 `RunToolModal.tsx:80`), since it is a much
+ * larger body.
+ */
+export async function listTools(
+  core: CoreClient,
+  params: { chatId?: string; includeSchemas?: boolean } = {},
+): Promise<AvailableTool[]> {
+  const data = await core.dispatchData({ type: 'toolsList', ...params });
+  const tools = data['tools'];
+  return Array.isArray(tools) ? (tools as AvailableTool[]) : [];
 }

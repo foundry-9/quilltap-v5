@@ -40084,3 +40084,62 @@ dialog silently stays on step 1. Wait for a NAMED candidate before clicking.
 
 Gate: ng test 244 files / 3,032; `npx playwright test zz-bulk-replace` 2 passed /
 1 gated skip. SPA 0.5.306.
+
+### Unit record — P4.9E3C unit 9: the tool-settings tree (2026-07-27)
+
+**The Tools… entry no longer refuses.** Three new files under `chat/tools/`:
+
+- `tool-settings.ts` — v4's `types.ts` + `utils.ts` (74 + 184 LOC) as pure
+  functions: the two group-pattern spellings, `getGroupCheckState`,
+  `buildToolHierarchy` (the five built-in categories that get groups of their
+  own, plugin subgroup nesting, the MCP rename, the id fallback for an unnamed
+  plugin tool), `extractAllGroupIds`, and `isToolEnabled`'s three disable
+  mechanisms. Kept apart from the component because the arithmetic is what is
+  worth testing, and because v4 shares it with a project modal v5 does not port.
+- `tool-settings-content.ts` — v4's 565-LOC tree.
+- `chat-tool-settings-modal.ts` — v4's 171-LOC host.
+
+**The subtle part, and both halves are pinned by tests:** built-in groups and
+plugin groups disable by DIFFERENT mechanisms. A built-in group toggle writes
+every member id into `disabledTools`; a plugin group toggle writes ONE glob
+pattern into `disabledToolGroups` and, on re-enable, ALSO clears the members'
+individual entries — otherwise a tool switched off on its own would stay off
+after its group came back. And a subgroup pattern is only added when the parent
+plugin is not already disabled, or the child pattern would outlive the parent's
+re-enable.
+
+Also carried faithfully: the tree is expanded by DEFAULT (the component tracks
+what was collapsed); `showAvailability` changes the ARITHMETIC as well as the
+paint, so an unreachable tool is excluded from every count; and — recorded
+in-code as an oddity, not fixed — v4's group CHECK STATE is computed over all
+tools while the counts beside it are not, so a group whose only reachable tool is
+on can read "indeterminate".
+
+⚠ **REDUCED: the `allowToolUse` warning box.** v4 shows it when any LLM
+participant's connection profile has tools switched off (`ChatModals.tsx:392`),
+because then nothing in the dialog matters. v5's chat read does not project
+`allowToolUse` on a participant's connection profile (`api/salon.rs` enriches
+id/name/provider/modelName only), so the condition cannot be computed in the
+browser. The box is NOT rendered rather than rendered wrong; the input is kept,
+so one binding turns it on the day the projection grows the field. **Cross-lane
+escalation — a server change this lane may not make.**
+
+`ChatDetail` gained `disabledTools` / `disabledToolGroups`, which the server has
+projected since P4.9E3A and the mirror had never declared.
+
+**The refusal's spec pin is retired, not deleted:** `chat-section.spec.ts`'s
+"Tools… still refuses BY NAME" became "opens the tool-settings modal instead of
+refusing", asserting both the emit AND the absence of the old sentence.
+
+Verification: 10 pure tests (`tool-settings.spec.ts`) + 9 component tests
+(`chat-tool-settings-modal.spec.ts`), the two group mechanisms asserted on the
+WIRE body rather than on internal state.
+
+⚠ **ACTIVATE-AT-UNIFY: `TOOLS_INVENTORY_LANDED`** in
+`e2e/salon-dialogs-flow.spec.ts` — `false` on this branch. The gated beat opens
+the tree, asserts the old refusal sentence is gone, disables the built-in group,
+reads both lists back through `chatGet`, and restores them with Enable All so no
+later beat runs against a tool-less chat.
+
+Gate: ng test 247 files / 3,049; `npx playwright test salon-dialogs-flow` 3
+passed / 2 gated skips. SPA 0.5.307.
