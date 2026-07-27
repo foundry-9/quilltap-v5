@@ -1,0 +1,18 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "f0000000-0000-4000-8000-00000000000f",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "frozenNowMs": 1777939200000,
+  "cannedOutfits": {
+    "pipPick": {
+      "content": "{\"top\": [\"00000000-0000-4000-8000-0000000000b4\"], \"bottom\": [], \"footwear\": [\"00000000-0000-4000-8000-0000000000b2\"], \"accessories\": [\"00000000-0000-4000-8000-0000000000b3\"]}",
+      "promptTokens": 180,
+      "completionTokens": 40
+    },
+    "pipInvalidIds": {
+      "content": "{\"top\": [\"99999999-9999-4999-8999-999999999999\", \"00000000-0000-4000-8000-0000000000b2\"], \"bottom\": [\"00000000-0000-4000-8000-0000000000b1\"], \"footwear\": [], \"accessories\": \"00000000-0000-4000-8000-0000000000b3\"}",
+      "promptTokens": 180,
+      "completionTokens": 44
+    }
+  }
+}

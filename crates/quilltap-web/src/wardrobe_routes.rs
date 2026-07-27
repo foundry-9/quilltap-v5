@@ -39,7 +39,7 @@ use crate::text_replacements_routes::{chat_get_background, dispatch_core, error_
 /// Unwrap a wardrobe-family body to the raw route shape.
 fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
-        CoreResponse::Wardrobe(v) | CoreResponse::ChatOutfit(v) => (
+        CoreResponse::Wardrobe(v) | CoreResponse::ChatOutfit(v) | CoreResponse::ChatDialog(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
@@ -201,11 +201,35 @@ pub async fn chat_action_get(
                 Err(r) => r,
             }
         }
-        Some("outfit-summary") => error_json(
-            StatusCode::BAD_REQUEST,
-            "The outfit-summary action is not ported yet (a P4.9f1 named deferral — \
-             v4 handleGetOutfitSummary, outfit.ts:106)",
-        ),
+        Some("outfit-summary") => {
+            let req = CoreRequest::ChatOutfitSummary { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // The SillyTavern-JSONL byte download (P4.9E3B — v4 get.ts:46–127).
+        // Headers live at this edge: `application/x-ndjson` + v4's exact
+        // attachment filename (the characters_routes.rs byte-leg precedent).
+        Some("export") => {
+            let req = CoreRequest::ChatExport { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(CoreResponse::ChatExportPayload { filename, jsonl }) => (
+                    StatusCode::OK,
+                    [
+                        ("content-type", "application/x-ndjson".to_string()),
+                        (
+                            "content-disposition",
+                            format!("attachment; filename=\"{filename}\""),
+                        ),
+                    ],
+                    jsonl,
+                )
+                    .into_response(),
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
         _ => chat_get_background(state, path, query).await,
     }
 }

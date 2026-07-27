@@ -2608,6 +2608,58 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.9E3A ===
+    // === P4.9E3B: the chat-dialog server remainder (§1, frozen) ===
+    /// The tool inventory (v4 `GET /api/v1/tools`, app/api/v1/tools/route.ts:429).
+    #[serde(rename_all = "camelCase")]
+    ToolsList {
+        #[serde(default)]
+        chat_id: Option<String>,
+        #[serde(default)]
+        include_schemas: Option<bool>,
+    },
+    /// Chat transcript export as SillyTavern JSONL (v4 `GET …/chats/{id}?action=export`).
+    #[serde(rename_all = "camelCase")]
+    ChatExport {
+        chat_id: String,
+    },
+    /// Per-character equipped-outfit summary (v4 `GET …/chats/{id}?action=outfit-summary`).
+    #[serde(rename_all = "camelCase")]
+    ChatOutfitSummary {
+        chat_id: String,
+    },
+    /// Search & replace dry-run (v4 `POST /api/v1/search-replace?action=preview`).
+    /// `scope` is v4's discriminated union: {"type":"chat","chatId":…} |
+    /// {"type":"character","characterId":…}. The two include flags default TRUE
+    /// (v4 prefaults) — absent means true, not false.
+    #[serde(rename_all = "camelCase")]
+    SearchReplacePreview {
+        scope: serde_json::Value,
+        search_text: String,
+        replace_text: String,
+        #[serde(default)]
+        include_messages: Option<bool>,
+        #[serde(default)]
+        include_memories: Option<bool>,
+    },
+    /// Search & replace execute (v4 `POST /api/v1/search-replace?action=execute`).
+    #[serde(rename_all = "camelCase")]
+    SearchReplaceExecute {
+        scope: serde_json::Value,
+        search_text: String,
+        replace_text: String,
+        #[serde(default)]
+        include_messages: Option<bool>,
+        #[serde(default)]
+        include_memories: Option<bool>,
+    },
+    /// Re-attribute ONE message (v4 `POST /api/v1/messages/{id}?action=reattribute`).
+    /// Also deletes every memory sourced from the message (v4 route.ts:342+).
+    #[serde(rename_all = "camelCase")]
+    MessageReattribute {
+        message_id: String,
+        new_participant_id: String,
+    },
+    // === end P4.9E3B ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -2930,6 +2982,24 @@ pub enum Response {
     /// `ChatCreate` precedent), so the BODY is what §1 freezes.
     ChatAdmin(serde_json::Value),
     // === end P4.9E3A ===
+    // === P4.9E3B: the chat-dialog server remainder ===
+    /// The tool inventory body — v4 `successResponse({ tools, count })`.
+    ToolsInventory(serde_json::Value),
+    /// The chat export payload: the JSONL bytes plus the download filename.
+    /// The `Content-Type: application/x-ndjson` + `Content-Disposition` headers
+    /// belong at the quilltap-web edge (the `characters_routes.rs:373` precedent).
+    #[serde(rename_all = "camelCase")]
+    ChatExportPayload {
+        filename: String,
+        jsonl: String,
+    },
+    /// A chat-dialog verb body (outfit-summary's `{summary}`, search-replace's
+    /// raw un-enveloped preview/result, reattribute's
+    /// `{success, message, memoriesDeleted}`) — each of v4's handlers returns a
+    /// differently-shaped literal, so the boundary carries them as-is (the
+    /// `ChatAdmin` precedent).
+    ChatDialog(serde_json::Value),
+    // === end P4.9E3B ===
     Error(CoreError),
 }
 

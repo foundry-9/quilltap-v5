@@ -40,6 +40,18 @@ The corpus that checks this behavior could not see the change at all. The
 conversation it tested happened to seat the character you play at the head of
 the cast, so the old choice and the new one agreed on every row; the test file
 now carries five more rooms, each built to disagree in exactly one way.
+A conversation can be exported again, and a fitting can be read at a glance.
+The transcript download (`?action=export`) is back: the SillyTavern-JSONL
+format, byte-for-byte — every line attributed to its real speaker (including
+user-played characters under their own names), swipe alternatives bundled,
+system lines dropped, and the filename carrying the character and the
+conversation's birth timestamp. Alongside it, the equipped-outfit summary
+(`?action=outfit-summary`) now answers with resolved item titles per slot —
+composites expanded to their leaves, items only shown in slots they actually
+cover — instead of refusing by name. Both proven byte-identical against the
+old app over a new committed fixture family (chat-dialogs); the remaining
+chat-dialog verbs (tools inventory, search-replace, per-message
+re-attribution) are wired to answer loudly that they are in flight.
 
 Planned the next round of work, in four side-by-side orders. First, the urgent
 one: nothing written since the port took over this app's data has been made

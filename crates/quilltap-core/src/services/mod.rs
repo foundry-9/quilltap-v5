@@ -168,4 +168,8 @@ pub mod chat_admin;
 pub mod chat_merge;
 pub mod chat_rng;
 pub mod chat_run_tool;
+
+// === P4.9E3B: the chat-dialog server remainder ===
+pub mod chat_export;
+// === end P4.9E3B ===
 // ── end P4.9E3A ──

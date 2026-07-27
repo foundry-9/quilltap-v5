@@ -1196,6 +1196,45 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.9E3A ===
+            // === P4.9E3B: the chat-dialog server remainder ===
+            Request::ChatExport { chat_id } => match self.ready_db() {
+                Ok(db) => crate::services::chat_export::chat_export(&db, SINGLE_USER_ID, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatOutfitSummary { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_outfits::chat_outfit_summary(&db, &chat_id),
+                Err(r) => r,
+            },
+            // The three remaining §1 families land unit-by-unit within this
+            // lane; until each lands its arm answers the loud named refusal
+            // (the standing `not yet available` idiom).
+            Request::ToolsList { .. } => match self.ready_db() {
+                Ok(_) => Response::error(
+                    ErrorKind::BadRequest,
+                    "The tools inventory is recognized but not yet available \
+                     (P4.9E3B in flight — v4 app/api/v1/tools/route.ts:429).",
+                ),
+                Err(r) => r,
+            },
+            Request::SearchReplacePreview { .. } | Request::SearchReplaceExecute { .. } => {
+                match self.ready_db() {
+                    Ok(_) => Response::error(
+                        ErrorKind::BadRequest,
+                        "Search & replace is recognized but not yet available \
+                         (P4.9E3B in flight — v4 app/api/v1/search-replace/route.ts).",
+                    ),
+                    Err(r) => r,
+                }
+            }
+            Request::MessageReattribute { .. } => match self.ready_db() {
+                Ok(_) => Response::error(
+                    ErrorKind::BadRequest,
+                    "Message re-attribution is recognized but not yet available \
+                     (P4.9E3B in flight — v4 app/api/v1/messages/[id]/route.ts:336).",
+                ),
+                Err(r) => r,
+            },
+            // === end P4.9E3B ===
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate => match self.ready_backup_host() {
                 Ok((db, host)) => super::system_backup::backup_create(&db, host.as_ref()),

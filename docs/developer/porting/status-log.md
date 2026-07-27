@@ -39428,3 +39428,51 @@ one existed.
   help text now lags v4 by one more delta (the popup's perspective wording).
 - The two `apps/web` riders above (stale `core-contract.ts` comment; no
   `characterLabel` spec) — **P4.9E3C's**, recorded not taken.
+## Lane record — P4.9E3B unit 1 (fixture + export + outfit-summary), 2026-07-27
+
+**The chat-dialogs fixture family + the two chat-GET fan-out arms.** Branch
+`claude/chat-dialog-server-porting-d64442`; v4 verified clean at `e8a49597`
+before porting (no drift).
+
+- **New committed fixture family `chat-dialogs-{main,mount}.db`**
+  (`build-chat-dialogs-fixture.ts` + `chat-dialogs-web.json`), built entirely
+  through v4's real repos: Friday + two connection profiles (`CONN` is the
+  default and carries `allowWebSearch`), four characters (Nora/Pip/Vera/Wren —
+  Wren with both wardrobe flags OFF), a never-created `MISSING_CHAR` id wired
+  as a live participant (the broken-vault export fallback), six wardrobe items
+  incl. a composite, two projects (one keeping its official store link, one
+  with every link removed via the real `unlink`), eight chats covering the
+  export / search-replace / reattribute / tools-availability / merge / summary
+  arms, five memories (sourced, character-scope, keyword-only and
+  case-asymmetry rows), and the `cheapLLMSettings` row.
+- **`ChatExport` (unit 2 of the order) LIVE**: `services/chat_export.rs` ports
+  `exportSTChatAsJSONL` (lib/sillytavern/chat.ts:222) + the handler
+  (get.ts:46–127) — the participant-name attribution map, the primary-name
+  fallback for a broken-vault participant, the role-SYSTEM filter, the
+  swipe-group algorithm reproduced LITERALLY including the order-sensitive
+  emit-then-sort-in-place check (module header documents why not to "fix"
+  it), `extra` from a truthy `rawResponse` only, and v4's exact object-literal
+  key order per JSONL line. The byte leg lives on the chats GET fan-out
+  (`wardrobe_routes.rs` `?action=export`): `application/x-ndjson` +
+  `attachment; filename="{name}_chat_{ms}.jsonl"`.
+- **`ChatOutfitSummary` (unit 3) LIVE**: `chat_outfit_summary` in
+  `api/chat_outfits.rs` (v4 outfit.ts:106) — archetype tier + per-OUTFIT-KEY
+  character wardrobes into one pool, composite expansion, the
+  slot-coverage filter, `{summary}` in the equipped object's own key order.
+  The P4.9f1 named refusal in the fan-out is GONE.
+- **§1 landed whole**: the six frozen request variants + the three response
+  shapes (`ToolsInventory` / `ChatExportPayload` / `ChatDialog`) appended
+  after the P4.9E3A regions. The four not-yet-landed §1 verbs answer loud
+  named in-flight refusals in `engine.rs` (replaced unit-by-unit within this
+  lane).
+- **Differential `chat_export_equivalence` (6 cases, green first run)** over
+  `chat-dialogs-export.test.ts` driving v4's REAL chat GET route: the export
+  bytes compared VERBATIM (1,244 bytes incl. swipes/swipe_id/extra/all four
+  speaker-name arms/metadata header) + both download headers; outfit-summary
+  compared as body + raw key-order; the two 404 arms each. Fixture-richness
+  probed post-run (swipes/extra/fallback names present; SYSTEM dropped).
+  Oracle env var: `QT_ORACLE_CHAT_EXPORT`.
+- **A jest-environment note for the oracle recipe**: v4's jest `next/server`
+  shim exposes JSON bodies as parsed objects on `.body` and byte bodies as raw
+  strings (no `.text()`); the case handles both shapes.
+- Versions: core 0.0.382, harness 0.0.329, web 0.0.48.
