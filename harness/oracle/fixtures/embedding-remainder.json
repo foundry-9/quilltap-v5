@@ -1,0 +1,426 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e0000000-0000-4000-8000-000000000001",
+  "seedTimestamp": "2026-05-01T10:00:00.000Z",
+  "renderNowIso": "2026-07-27T15:07:09.123Z",
+  "embedDim": 8,
+  "oversizeChars": 131073,
+  "characters": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "name": "Aria",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "name": "Bram",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000003",
+      "name": "Eve",
+      "controlledBy": "user"
+    }
+  ],
+  "embeddingProfiles": [
+    {
+      "id": "b0000000-0000-4000-8000-000000000002",
+      "name": "Eight Dimensions",
+      "provider": "OPENAI",
+      "modelName": "text-embedding-3-small",
+      "dimensions": 8,
+      "truncateToDimensions": null,
+      "isDefault": false
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000001",
+      "name": "House Default",
+      "provider": "BUILTIN",
+      "modelName": "tfidf",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "isDefault": true
+    }
+  ],
+  "chats": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "key": "unrendered",
+      "title": "The Lamps Of The Eastern Quay",
+      "renderedMarkdown": null,
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000001",
+          "characterId": "c0000000-0000-4000-8000-000000000003",
+          "controlledBy": "user"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000003",
+          "characterId": "c0000000-0000-4000-8000-0000000000ff",
+          "controlledBy": "user"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "Are the eastern lamps lit tonight?",
+          "participantId": "10000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-05-01T10:05:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Every one of them, and two more besides that nobody will admit to having hung.",
+          "participantId": "10000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-05-01T10:06:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "[Tool call made]\n{\n  \"toolName\": \"lamp_count\"\n}\n[Tool Result: 14]",
+          "participantId": "10000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-05-01T10:07:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000004",
+          "type": "system",
+          "createdAt": "2026-05-01T10:08:00.000Z",
+          "systemEventType": "STATUS_CHANGE",
+          "description": "The Concierge cleared its throat."
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000005",
+          "type": "message",
+          "role": "USER",
+          "content": "Then we shall count them ourselves.",
+          "participantId": "10000000-0000-4000-8000-000000000003",
+          "createdAt": "2026-05-02T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "key": "rendered-unembedded",
+      "title": "A Half-Finished Ledger",
+      "renderedMarkdown": "## Interchange 0\n\nstale text from an older render\n",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000011",
+          "characterId": "c0000000-0000-4000-8000-000000000003",
+          "controlledBy": "user"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000012",
+          "characterId": "c0000000-0000-4000-8000-000000000002",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000011",
+          "type": "message",
+          "role": "USER",
+          "content": "Read me the first column.",
+          "participantId": "10000000-0000-4000-8000-000000000011",
+          "createdAt": "2026-05-01T11:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000012",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Twelve entries, and eleven of them in the same hand.",
+          "participantId": "10000000-0000-4000-8000-000000000012",
+          "createdAt": "2026-05-01T11:01:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000013",
+          "type": "message",
+          "role": "USER",
+          "content": "And the twelfth?",
+          "participantId": "10000000-0000-4000-8000-000000000011",
+          "createdAt": "2026-05-01T11:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "key": "oversize-chunk",
+      "title": "One Enormous Interchange",
+      "renderedMarkdown": "## Interchange 0\n\nrendered already\n",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000021",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000021",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "A single very long speech, abbreviated here for the corpus.",
+          "participantId": "10000000-0000-4000-8000-000000000021",
+          "createdAt": "2026-05-01T12:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "key": "empty",
+      "title": "An Empty Room",
+      "renderedMarkdown": null,
+      "participants": [],
+      "messages": []
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "key": "system-only",
+      "title": "Only The Concierge Spoke",
+      "renderedMarkdown": null,
+      "participants": [],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000041",
+          "type": "system",
+          "createdAt": "2026-05-01T13:00:00.000Z",
+          "systemEventType": "STATUS_CHANGE",
+          "description": "Nobody arrived."
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000006",
+      "key": "healthy",
+      "title": "Fully Rendered And Embedded",
+      "renderedMarkdown": "## Interchange 0\n\nall done\n",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000051",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000051",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Nothing here needs mending, which is itself suspicious.",
+          "participantId": "10000000-0000-4000-8000-000000000051",
+          "createdAt": "2026-05-01T14:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "conversationChunks": [
+    {
+      "id": "f0000000-0000-4000-8000-000000000001",
+      "chatId": "a0000000-0000-4000-8000-000000000002",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\nstale chunk zero\n",
+      "participantNames": [
+        "User",
+        "Bram"
+      ],
+      "embedded": true
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000002",
+      "chatId": "a0000000-0000-4000-8000-000000000002",
+      "interchangeIndex": 1,
+      "content": "## Interchange 1\n\nstale chunk one\n",
+      "participantNames": [
+        "User"
+      ],
+      "embedded": false
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000003",
+      "chatId": "a0000000-0000-4000-8000-000000000003",
+      "interchangeIndex": 0,
+      "content": "<oversize>",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": false
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000004",
+      "chatId": "a0000000-0000-4000-8000-000000000006",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\nembedded already\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": true
+    }
+  ],
+  "oversizeChunkId": "f0000000-0000-4000-8000-000000000003",
+  "memories": [
+    {
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "summary": "The lamps were counted.",
+      "content": "Aria counted fourteen lamps along the eastern quay and refused to explain two of them.",
+      "embedded": true
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "summary": "The ledger was disputed.",
+      "content": "Aria maintains the twelfth entry is a forgery in an unusually confident hand.",
+      "embedded": false
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000003",
+      "characterId": "c0000000-0000-4000-8000-000000000002",
+      "summary": "Bram slept through it.",
+      "content": "Bram was, by his own emphatic account, not asleep at any point during the evening.",
+      "embedded": true
+    }
+  ],
+  "seedVectorEntryMemoryId": "e1000000-0000-4000-8000-000000000001",
+  "orphanVectorEntryId": "e2000000-0000-4000-8000-000000000009",
+  "helpDocSeeds": [
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "title": "Stale Doc Not On Disk",
+      "path": "help/gone.md",
+      "url": "/help/gone",
+      "content": "This doc exists only in the database; the disk sync prunes it.",
+      "contentHash": "0000000000000000000000000000000000000000000000000000000000000001",
+      "embedded": true
+    }
+  ],
+  "statusRows": [
+    {
+      "id": "a2000000-0000-4000-8000-000000000001",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-000000000001",
+      "profileId": "b0000000-0000-4000-8000-000000000001",
+      "status": "EMBEDDED"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000002",
+      "entityType": "CONVERSATION_CHUNK",
+      "entityId": "f0000000-0000-4000-8000-000000000002",
+      "profileId": "b0000000-0000-4000-8000-000000000001",
+      "status": "FAILED"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000003",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-000000000003",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "status": "EMBEDDED"
+    }
+  ],
+  "jobs": [
+    {
+      "id": "a3000000-0000-4000-8000-000000000001",
+      "name": "dead-embed-for-unembedded-chunk",
+      "type": "EMBEDDING_GENERATE",
+      "status": "DEAD",
+      "payload": {
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "f0000000-0000-4000-8000-000000000002",
+        "chatId": "a0000000-0000-4000-8000-000000000002",
+        "profileId": "b0000000-0000-4000-8000-000000000001"
+      },
+      "priority": 10,
+      "attempts": 3,
+      "createdAt": "2026-05-01T10:30:00.000Z"
+    },
+    {
+      "id": "a3000000-0000-4000-8000-000000000002",
+      "name": "pending-render-for-rendered-unembedded",
+      "type": "CONVERSATION_RENDER",
+      "status": "PENDING",
+      "payload": {
+        "chatId": "a0000000-0000-4000-8000-000000000002"
+      },
+      "priority": -1,
+      "attempts": 0,
+      "createdAt": "2026-05-01T10:31:00.000Z"
+    },
+    {
+      "id": "a3000000-0000-4000-8000-000000000003",
+      "name": "pending-embed-survives-partial-scope",
+      "type": "EMBEDDING_GENERATE",
+      "status": "PENDING",
+      "payload": {
+        "entityType": "HELP_DOC",
+        "entityId": "a1000000-0000-4000-8000-000000000001",
+        "profileId": "b0000000-0000-4000-8000-000000000001"
+      },
+      "priority": 0,
+      "attempts": 0,
+      "createdAt": "2026-05-01T10:32:00.000Z"
+    }
+  ],
+  "renderCases": [
+    {
+      "name": "unrendered-chat-first-render",
+      "chatId": "a0000000-0000-4000-8000-000000000001",
+      "fullReembed": false
+    },
+    {
+      "name": "rendered-chat-reembeds-only-missing",
+      "chatId": "a0000000-0000-4000-8000-000000000002",
+      "fullReembed": false
+    },
+    {
+      "name": "rendered-chat-full-reembed-dedupes",
+      "chatId": "a0000000-0000-4000-8000-000000000002",
+      "fullReembed": true
+    },
+    {
+      "name": "healthy-chat-skips-already-embedded-chunk",
+      "chatId": "a0000000-0000-4000-8000-000000000006",
+      "fullReembed": false
+    },
+    {
+      "name": "empty-chat-returns-early",
+      "chatId": "a0000000-0000-4000-8000-000000000004",
+      "fullReembed": true
+    },
+    {
+      "name": "missing-chat-returns-early",
+      "chatId": "a0000000-0000-4000-8000-0000000000ff",
+      "fullReembed": false
+    }
+  ],
+  "reindexCases": [
+    {
+      "name": "mismatched-dim-skips-matching-rows",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "scope": "mismatched-dim"
+    },
+    {
+      "name": "builtin-partial-scope-throws",
+      "profileId": "b0000000-0000-4000-8000-000000000001",
+      "scope": "mismatched-dim"
+    },
+    {
+      "name": "missing-profile-throws",
+      "profileId": "b0000000-0000-4000-8000-0000000000ff",
+      "scope": null
+    },
+    {
+      "name": "full-scope-wipes-and-reembeds-everything",
+      "profileId": "b0000000-0000-4000-8000-000000000001",
+      "scope": "all"
+    }
+  ],
+  "missingCharacterId": "c0000000-0000-4000-8000-0000000000ff"
+}

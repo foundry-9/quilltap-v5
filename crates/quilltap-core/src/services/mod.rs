@@ -179,4 +179,5 @@ pub mod tools_inventory;
 
 // === P4.6BM: the embedding-family remainder ===
 pub mod conversation_markdown;
+pub mod conversation_render_job;
 // === end P4.6BM ===

@@ -133,6 +133,45 @@ pub struct CcChunkRow {
     pub content: String,
 }
 
+/// v4's `ConversationChunkInput` as the render handler builds it — the five
+/// fields it passes to `upsert`. `embedding` is deliberately absent: the render
+/// never supplies one, which is what makes the update arm preserve the vector
+/// already stored.
+pub struct CcUpsert {
+    pub chat_id: String,
+    pub interchange_index: f64,
+    pub content: String,
+    pub participant_names: Vec<String>,
+    pub message_ids: Vec<String>,
+}
+
+/// A chunk row as the CONVERSATION_RENDER handler and EMBEDDING_REINDEX_ALL read
+/// it (P4.6BM) — the fields those two consume plus `has_embedding`, the
+/// `chunk.embedding` truthiness test each branches on. The vector itself is never
+/// needed there, so the BLOB is probed rather than decoded.
+#[derive(Debug, Clone)]
+pub struct CcRow {
+    pub id: String,
+    pub chat_id: String,
+    /// `interchangeIndex` — a JS number (REAL affinity); carried as `f64`.
+    pub interchange_index: f64,
+    pub content: String,
+    /// v4 `!chunk.embedding` — an absent or EMPTY vector is falsy. v5 stores an
+    /// empty vector as SQL NULL, so `embedding IS NOT NULL` captures both.
+    pub has_embedding: bool,
+}
+
+fn marshal_cc_row(row: &rusqlite::Row) -> rusqlite::Result<CcRow> {
+    let blob: Option<Vec<u8>> = row.get(4)?;
+    Ok(CcRow {
+        id: row.get(0)?,
+        chat_id: row.get(1)?,
+        interchange_index: row.get(2)?,
+        content: row.get(3)?,
+        has_embedding: blob.is_some_and(|b| !b.is_empty()),
+    })
+}
+
 impl<'c> ConversationChunksRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
@@ -377,6 +416,91 @@ impl<'c> ConversationChunksRepository<'c> {
         let rows = stmt.query_map(params![chat_id], |r| r.get::<_, String>(0))?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    // === P4.6BM: the CONVERSATION_RENDER handler's reads + upsert ===
+
+    /// v4 `findByChatId` — every chunk for a chat, **ordered by
+    /// `interchangeIndex` ascending** (v4's `{ sort: { interchangeIndex: 1 } }`).
+    /// The column is REAL (see the module doc), so the sort is numeric, not
+    /// lexical. Read-only.
+    pub fn find_by_chat_id(&self, chat_id: &str) -> Result<Vec<CcRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, interchangeIndex, content, embedding \
+             FROM conversation_chunks WHERE chatId = ?1 ORDER BY interchangeIndex ASC",
+        )?;
+        let rows = stmt.query_map(params![chat_id], marshal_cc_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// v4 `findByInterchangeIndex` — `findOneByFilter({chatId, interchangeIndex})`.
+    /// `findOne` takes the FIRST match in storage order, so this reads in rowid
+    /// order and stops at the first row (the pair is not unique-constrained;
+    /// duplicates are legal and v4 silently prefers the earliest). Read-only.
+    pub fn find_by_interchange_index(
+        &self,
+        chat_id: &str,
+        interchange_index: f64,
+    ) -> Result<Option<CcRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, interchangeIndex, content, embedding \
+             FROM conversation_chunks WHERE chatId = ?1 AND interchangeIndex = ?2 \
+             ORDER BY rowid ASC LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![chat_id, interchange_index], marshal_cc_row)?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    /// v4 `upsert(input)` — update the chunk matching `(chatId,
+    /// interchangeIndex)` if one exists, else create it.
+    ///
+    /// The update arm writes **only** `content` / `participantNames` /
+    /// `messageIds` (v4's `updateData`), deliberately leaving the `embedding`
+    /// BLOB alone — that is what makes a re-render preserve embeddings already
+    /// computed. (v4's `input.embedding !== undefined` branch never fires from
+    /// the render handler, whose input object carries no `embedding` key; it is
+    /// not modeled.) `updatedAt` is stamped from the injected `now_iso`, matching
+    /// `_update`'s minted `now`.
+    ///
+    /// The create arm mints the row with `new_id` + `now_iso` for all three of
+    /// id / createdAt / updatedAt and a NULL embedding (v4's `_create` with the
+    /// schema's `embedding` default). Returns `(chunk_id, created)`.
+    pub fn upsert(
+        &self,
+        input: &CcUpsert,
+        new_id: &str,
+        now_iso: &str,
+    ) -> Result<(String, bool), DbError> {
+        if let Some(existing) =
+            self.find_by_interchange_index(&input.chat_id, input.interchange_index)?
+        {
+            let patch = CcUpdate {
+                content: Some(input.content.clone()),
+                participant_names: Some(input.participant_names.clone()),
+                message_ids: Some(input.message_ids.clone()),
+                updated_at: now_iso.to_string(),
+                ..Default::default()
+            };
+            self.update(&existing.id, &patch)?;
+            return Ok((existing.id, false));
+        }
+        let create = CcCreate {
+            chat_id: input.chat_id.clone(),
+            interchange_index: input.interchange_index,
+            content: input.content.clone(),
+            participant_names: input.participant_names.clone(),
+            message_ids: input.message_ids.clone(),
+            embedding: None,
+        };
+        let opts = CreateOptions {
+            id: new_id.to_string(),
+            created_at: now_iso.to_string(),
+            updated_at: now_iso.to_string(),
+        };
+        self.create(&create, &opts)?;
+        Ok((new_id.to_string(), true))
+    }
+
+    // === end P4.6BM ===
 
     /// Delete the chunk `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").

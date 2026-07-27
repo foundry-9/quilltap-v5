@@ -713,6 +713,14 @@ pub struct ChatUpdate {
     /// handler.
     pub danger_classified_at_message_count: Option<Option<f64>>,
     // === end P4.9E3A ===
+    // === P4.6BM ===
+    /// `renderedMarkdown` (TEXT) — the Scriptorium render. Written ONLY by the
+    /// `CONVERSATION_RENDER` handler, which deliberately leaves `updated_at`
+    /// `None` so a background render does not reorder every recents list
+    /// (v4 `conversation-render.ts:63-66`, and the same reason v4's
+    /// `chats.update` preserves `updatedAt` unless the caller names it).
+    pub rendered_markdown: Option<String>,
+    // === end P4.6BM ===
     pub updated_at: Option<String>,
 }
 
@@ -1220,6 +1228,11 @@ impl<'c> ChatsRepository<'c> {
             set_col!("dangerClassifiedAtMessageCount", Box::new(v));
         }
         // === end P4.9E3A ===
+        // === P4.6BM ===
+        if let Some(v) = &patch.rendered_markdown {
+            set_col!("renderedMarkdown", Box::new(v.clone()));
+        }
+        // === end P4.6BM ===
         set_col!("updatedAt", Box::new(resolved_updated_at));
 
         let id_idx = values.len() + 1;

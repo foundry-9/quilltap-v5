@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+The "render conversation" button now does something. Pressing it has been
+minting a background job with nothing on the other end since the chat dialogs
+landed — the job retried three times and died, exactly the way the embedding
+jobs did before this round's sibling repair. The worker exists now: it renders
+the conversation, stores the interchange chunks (keeping any embeddings already
+computed), and queues embeddings for the ones still missing them, without
+disturbing the conversation's last-modified time.
+
 Ported the conversation renderer that turns a chat into archive Markdown — the
 piece the "render conversation" job needs before it can run at all. It is a pure
 transformation with no model call: visible messages are grouped into

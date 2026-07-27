@@ -40703,3 +40703,105 @@ QT_ORACLE_CONVERSATION_MARKDOWN=/tmp/oracle-conversation-markdown.ndjson \
 `cargo test --workspace` 1,668 passed / 0 failed with the new family by name.
 No fixture touched, so no other oracle family is invalidated. No `apps/web`
 touch.
+
+---
+
+## Lane record — P4.6BM unit 2: the CONVERSATION_RENDER job handler
+
+**Ported:** v4 `lib/background-jobs/handlers/conversation-render.ts`
+(`handleConversationRender`, 127 LOC) →
+`quilltap-core/src/services/conversation_render_job.rs`, plus the three
+`conversation_chunks` repo methods it needs (`find_by_chat_id`,
+`find_by_interchange_index`, `upsert`), a `rendered_markdown` field on
+`db::chats::ChatUpdate`, and registration in the host's seam-free handler set.
+
+**This closes a live wound, not just a deferral.** v5 has minted
+`CONVERSATION_RENDER` jobs since P4.9E3B wired the manual "render conversation"
+button, with no handler registered — every press produced a job that retried
+three times and went DEAD, the dogfood-#35 shape one job type over.
+
+**Placement:** the handler needs no model or wire seam, only the DB, so it
+registers in `host.rs` beside `EMBEDDING_REFIT` rather than through the spine
+(the precedent the P4.6BL order itself names). `now_iso` is injected exactly as
+`EmbeddingRefitHandler` does it (`Option<String>`, `None` = the real clock).
+
+**Deliberate deviation from the order, recorded:** the order's tier-1 item 2
+asks for the job-runner "fallback entry removed". `KNOWN_JOB_TYPES` is
+**not** a list of unported types — its doc comment defines it as a mirror of
+every type v4's `handlers/index.ts` registers, and it only selects WHICH loud
+message an *unregistered* type gets. P4.6BL left `EMBEDDING_GENERATE` in it
+after registering that handler, which is the correct precedent: removing
+`CONVERSATION_RENDER` would make a type v4 genuinely registers fall to v4's
+`No handler registered for job type:` string. Left intact; membership is moot
+once a handler exists.
+
+**v4 details carried, each pinned by the corpus:**
+
+- `renderedMarkdown` is written **without** bumping `updatedAt` (v4's
+  `chats.update` preserves it unless named; a background render must not
+  reorder every recents list).
+- The upsert rewrites only content / participantNames / messageIds, so an
+  already-embedded chunk keeps its vector and is not re-enqueued.
+- The whole embedding-enqueue block is caught: an enqueue failure warns and the
+  job still completes.
+- The default profile is `find(isDefault) || profiles[0]` — insertion order, no
+  sort.
+- Missing chat and zero-event chat both COMPLETE the job (v4 `return`s).
+
+**Repo-surface correction to the order's §6:** it lists `db/vector_store.rs` as
+missing a `delete_store`. The v4 analog is `VectorStoreManager.deleteStore` →
+`VectorIndicesRepository.deleteByCharacterId`, and
+`db::vector_indices::delete_by_character_id` **already exists** (only v4's
+in-memory store cache, already a documented v5 no-op, is absent). Nothing to
+add there.
+
+**Differential:** new tier-3 family `embedding_remainder_equivalence` over a NEW
+committed fixture pair (`crates/quilltap-web/tests/fixtures/
+embedding-remainder-{main,mount}.db`), diffing eight tables — `chats`,
+`conversation_chunks`, `background_jobs`, `embedding_status`, `memories`,
+`help_docs`, `vector_entries`, `vector_indices`.
+
+Three things about it are worth carrying:
+
+1. **The oracle had to be a jest case, not tsx.** Every enqueue calls
+   `ensureProcessorRunning`, which in-process FORKS v4's job child; the child
+   then claims the very jobs under measurement and the run never exits (it hung
+   for five minutes before this was diagnosed). v4's own kill switch
+   `QUILLTAP_JOB_CHILD=1` is NOT usable: `sqlite/client.ts` reads the same flag
+   and opens the DB read-only, so the handlers could not write. jest +
+   `jest.doMock` on `@/lib/background-jobs/processor` is the only stub that
+   works, and it is the ONLY seam mocked — this family has no model call at all.
+2. **Minted values are REMAPPED, not blanked.** The render mints a UUID per new
+   chunk and per enqueued job, and a minted chunk id reappears inside its job's
+   `payload`. The test relabels each minted chunk id to
+   `<chunk:{chatId}#{index}>` everywhere it occurs, blanks minted rows' own ids,
+   and re-sorts both sides by a natural key. Pinned ids stay visible, so "the
+   upsert reused the seeded row" remains an asserted fact. `conversation_chunks`
+   timestamps deliberately compare EXACT (both sides stamp the injected clock).
+3. **The clock is frozen on the oracle side and injected on ours**, which is
+   what lets `chats.renderedMarkdown` — a string containing a `Current time:`
+   line — compare byte-for-byte instead of being normalized away.
+
+**Green on the first run again, so four mutations were run — and one SURVIVED,
+exposing a real corpus blind spot.** Replacing `payload.full_reembed ||
+!chunk.has_embedding` with `true` changed nothing, because the corpus's
+`fullReembed: true` case re-enqueued the same chunk later and the final state
+converged. A fifth render case was added (`healthy-chat-skips-already-embedded-
+chunk`: a chat whose only chunk is already embedded and which is never
+full-reembedded) and the mutation then fails on a 8-vs-7 job count. The other
+three — bumping `updatedAt`, taking `profiles[0]` instead of the default, and
+dropping the empty-events early return — were caught as written.
+
+**A second blind spot was found by inspection and fixed in the fixture:** the
+default embedding profile was also the FIRST row, so `find(isDefault) ||
+profiles[0]` could not be told apart. The corpus now seeds the NON-default
+profile first; mutation 3 fails immediately with that ordering and would have
+passed without it.
+
+**Regen recipe:** in the `embedding_remainder_equivalence.rs` header (fixture
+builder, the `/tmp` jest mirror, `TZ=UTC`, `QT_ORACLE_OUT`). The fixture `.db`
+pair is COMMITTED and no other family reads it, so nothing else is invalidated.
+
+**Gate:** fmt, clippy `-D warnings` both feature sets, full
+`cargo test --workspace` 1,669 passed / 0 failed with both new families by name.
+No `apps/web` touch.

@@ -46,6 +46,7 @@ use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::enclave::step::AutonomousRoomScheduleTickHandler;
 use quilltap_core::services::aurora_notifications::WardrobeOutfitAnnouncementHandler;
+use quilltap_core::services::conversation_render_job::ConversationRenderHandler;
 use quilltap_core::services::creation_progress::CreationProgressBus;
 use quilltap_core::services::danger_scan;
 use quilltap_core::services::embedding_refit_job::EmbeddingRefitHandler;
@@ -470,6 +471,16 @@ impl EngineAssembler for HostAssembler {
             "EMBEDDING_REFIT",
             Box::new(EmbeddingRefitHandler { now_iso: None }),
         );
+        // === P4.6BM ===
+        // CONVERSATION_RENDER needs no model/wire seam — only the DB — so it
+        // joins the seam-free set beside EMBEDDING_REFIT rather than riding the
+        // spine. Before this registration every job the manual
+        // "render conversation" button minted retried three times and died.
+        registry.register(
+            "CONVERSATION_RENDER",
+            Box::new(ConversationRenderHandler { now_iso: None }),
+        );
+        // === end P4.6BM ===
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
