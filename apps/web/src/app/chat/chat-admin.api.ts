@@ -97,3 +97,17 @@ export async function bulkReattribute(
     memoriesDeleted: Number(data['memoriesDeleted'] ?? 0),
   };
 }
+
+/**
+ * §1 `MessageReattribute` — move ONE message to a different participant (v4
+ * `ReattributeMessageDialog.tsx:82-90`). Every memory sourced from the message
+ * is deleted server-side; the count comes back for the sentence.
+ */
+export async function reattributeMessage(
+  core: CoreClient,
+  messageId: string,
+  newParticipantId: string,
+): Promise<{ memoriesDeleted: number }> {
+  const data = await core.dispatchData({ type: 'messageReattribute', messageId, newParticipantId });
+  return { memoriesDeleted: Number(data['memoriesDeleted'] ?? 0) };
+}

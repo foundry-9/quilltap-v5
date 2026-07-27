@@ -87,6 +87,7 @@ import { VirtualRow } from './virtual-row';
                     (cancelEdit)="cancelEdit.emit()"
                     (imageClick)="imageClick.emit($event)"
                     (saveImage)="saveImage.emit($event)"
+                    (reattribute)="reattribute.emit($event)"
                     (courierSettled)="courierSettled.emit($event)"
                   />
                 } @else if (item.type === 'tool') {
@@ -176,6 +177,8 @@ export class MessageList {
   readonly imageClick = output<ImageClickEvent>();
   readonly saveImage = output<{ messageId: string; attachmentId: string }>();
   readonly courierSettled = output<string>();
+  /** A row's swap icon — open `ReattributeMessageDialog` for that message. */
+  readonly reattribute = output<MessageDto>();
   /** A row's cpu icon — open the Inspector scrolled to that message (v4 `onViewLLMLogs`). */
   readonly viewLlmLogs = output<string>();
 

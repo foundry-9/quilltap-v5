@@ -116,6 +116,11 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+A single message can be handed to a different speaker again. The swap icon is back
+on the message toolbar, next to Delete, and appears whenever there is somebody
+else in the conversation to hand it to. The dialog says up front that memories
+drawn from the message will be deleted, and afterwards how many were.
+
 A conversation can be filed into a project, or taken out of one, from the chat
 sidebar again. The Project entry used to appear only for a chat that was already
 in a project, and only led away to the project's own page — so a loose chat had

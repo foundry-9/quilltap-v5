@@ -48,7 +48,10 @@ export interface ImageClickEvent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
   template: `
+    <!-- v4 stamps message-<id> on the row (MessageRow.tsx:222,263); it is how
+         handleReattributed scrolls a moved line back into view. -->
     <div
+      [id]="'message-' + message().id"
       class="qt-chat-message-row"
       [class.qt-chat-message-row-user]="author().isUser"
       [class.qt-chat-message-row-assistant]="!author().isUser"
@@ -235,6 +238,19 @@ export interface ImageClickEvent {
                   <qt-icon name="refresh" class="w-4 h-4" />
                 </button>
               }
+              <!-- Re-attribute (v4 MessageActionBar.tsx:138-147) — shown only
+                   when the cast holds someone else to hand it to. -->
+              @if (canReattribute()) {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Re-attribute to different participant"
+                  aria-label="Re-attribute to different participant"
+                  (click)="reattribute.emit(message())"
+                >
+                  <qt-icon name="swap" class="w-4 h-4" />
+                </button>
+              }
               @if (showLlmLogsAction()) {
                 <button
                   type="button"
@@ -342,6 +358,17 @@ export class MessageRow {
    * Emits the message id, as v4 passes it.
    */
   readonly viewLlmLogs = output<string>();
+  /** v4 `onReattribute(message.id)` — opens `ReattributeMessageDialog`. */
+  readonly reattribute = output<MessageDto>();
+
+  /**
+   * v4 gates the entry on `participantData.filter(p => p.id !== message.participantId)`
+   * being non-empty (`MessageActionBar.tsx:139`) — i.e. there is somebody else to
+   * hand the line to.
+   */
+  protected readonly canReattribute = computed(
+    () => this.chat().participants.filter((p) => p.id !== this.message().participantId).length > 0,
+  );
 
   protected readonly editDraft = signal('');
 

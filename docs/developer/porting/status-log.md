@@ -39947,3 +39947,36 @@ Also: `injectQuery` needs macrotask turns to resolve in a component test —
 
 Gate: ng test 241 files / 3,013; `npx playwright test salon-dialogs-flow` 2 passed
 / 1 gated skip. SPA 0.5.303.
+
+### Unit record — P4.9E3C unit 6: ReattributeMessageDialog (2026-07-27)
+
+`chat/reattribute-message-dialog.ts` (v4 `ReattributeMessageDialog.tsx`, 258 LOC),
+opened from the MESSAGE ACTION BAR — v4's swap icon at
+`message-row/MessageActionBar.tsx:138-147`, gated on there being someone other
+than the message's current author to hand it to. `message-row.ts` grew the entry
+and `canReattribute`; `message-list.ts` and `salon-conversation.ts` thread it.
+
+Ported: the current author excluded from the list (`:69-71`); nothing preselected,
+so the confirm is dead until a choice is made (`:50,58`); the up-front warning
+that the message's memories will be deleted; the count on the reply mentioned only
+when non-zero, with both pluralisations (`:102-106`); the hand-rolled overlay
+(this one is not `BaseModal`) with click-outside and Escape ignored mid-request.
+v4's "No other participants available in this chat" empty state is ported even
+though the action-bar gate makes it near-unreachable — it is v4's.
+
+**`salon-conversation.ts` gained the message DOM anchor.** v4's `handleReattributed`
+(`SalonView.tsx:1206-1218`) refetches and then, after 100 ms, scrolls the moved
+line back into view via `document.getElementById('message-<id>')`. v5's rows
+carried no such id, so the scroll-back had nothing to find; `message-row.ts` now
+stamps it exactly as v4 does (`MessageRow.tsx:222,263`).
+
+Verification: 5 component tests (`reattribute-message-dialog.spec.ts`).
+
+⚠ **ACTIVATE-AT-UNIFY: `MESSAGE_REATTRIBUTE_LANDED`** in
+`e2e/zz-bulk-replace-destructive.spec.ts` — `false` on this branch. The gated beat
+hovers a row, opens the dialog from the action bar, asserts the
+nothing-preselected disabled state, and moves the line. It shares the bulk beat's
+`zz-` slot because it has the same irreversibility: the memories go with it.
+
+Gate: ng test 242 files / 3,018; `npx playwright test zz-bulk-replace` 1 passed /
+1 gated skip. SPA 0.5.304.

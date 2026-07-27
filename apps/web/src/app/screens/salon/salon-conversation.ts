@@ -43,6 +43,7 @@ import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
 import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
+import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
 import {
   removeParticipant,
   rebuildSystemPrompt,
@@ -191,6 +192,7 @@ interface CascadePrompt {
     ChatRenameModal,
     BulkCharacterReplaceModal,
     ChatProjectModal,
+    ReattributeMessageDialog,
     Modal,
   ],
   template: `
@@ -335,6 +337,7 @@ interface CascadePrompt {
           (cancelEdit)="editingId.set(null)"
           (imageClick)="modalImage.set($event)"
           (saveImage)="saveImageTarget.set($event)"
+          (reattribute)="reattributeTarget.set($event)"
           (courierSettled)="onCourierSettled()"
         />
       </div>
@@ -542,6 +545,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (reattributeTarget(); as target) {
+      <qt-reattribute-message-dialog
+        [messageId]="target.id"
+        [currentParticipantId]="target.participantId"
+        [participants]="chat()!.participants"
+        (reattributed)="onMessageReattributed($event)"
+        (close)="reattributeTarget.set(null)"
       />
     }
 
@@ -1076,6 +1089,26 @@ export class SalonConversation {
   protected readonly showBulkReplace = signal(false);
   /** v4 `projectModalOpen`, opened from the Chat section's Project entry. */
   protected readonly showProject = signal(false);
+  /** v4 `reattributeDialogState`, opened from a message's action bar. */
+  protected readonly reattributeTarget = signal<MessageDto | null>(null);
+
+  /**
+   * v4 `handleReattributed` (`SalonView.tsx:1206-1218`): close, refetch, then
+   * scroll the message back into view after a beat — the list re-renders around
+   * the moved row, so v4 waits 100ms before looking for it.
+   */
+  protected async onMessageReattributed(message: string): Promise<void> {
+    const target = this.reattributeTarget();
+    this.reattributeTarget.set(null);
+    this.chatFlash.set({ kind: 'success', message });
+    await this.onChatUpdated();
+    if (!target) return;
+    setTimeout(() => {
+      document
+        .getElementById(`message-${target.id}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
 
   /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:193`); the sentence is v4's. */
   protected async onProjectAssigned(message: string): Promise<void> {

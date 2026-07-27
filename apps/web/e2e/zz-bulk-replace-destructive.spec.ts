@@ -84,3 +84,45 @@ test.describe('P4.9E3C — Bulk Character Replace (destructive)', () => {
     expect(after.filter((a) => a === targets[0]).length).toBeGreaterThanOrEqual(unattributed);
   });
 });
+
+/**
+ * ACTIVATE-AT-UNIFY. `POST /api/v1/messages/{id}?action=reattribute` is
+ * P4.9E3B's verb; on this lane's branch it does not exist. The unifier flips
+ * this to `true` when the branches meet.
+ */
+const MESSAGE_REATTRIBUTE_LANDED = false;
+
+test.describe('P4.9E3C — Re-attribute one message (destructive)', () => {
+  // The same irreversibility as the bulk form, which is why it lives here.
+  test.skip(!MESSAGE_REATTRIBUTE_LANDED, 'messageReattribute lands with P4.9E3B');
+
+  test('the action bar moves a single line to another participant', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.click();
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+
+    const row = page.locator('.qt-chat-message-row').first();
+    await row.hover();
+    await row.getByRole('button', { name: 'Re-attribute to different participant' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Re-attribute Message')).toBeVisible({ timeout: 10_000 });
+    // Nothing is preselected, so the confirm is dead until a choice is made.
+    const confirm = dialog.getByRole('button', { name: 'Re-attribute', exact: true });
+    await expect(confirm).toBeDisabled();
+
+    await dialog.locator('.qt-dialog-body button').first().click();
+    await expect(confirm).toBeEnabled();
+    const messageId = await row.getAttribute('id');
+    await confirm.click();
+    await expect(page.getByText(/Message re-attributed to /)).toBeVisible({ timeout: 20_000 });
+
+    const after = await authors(page, chatId);
+    expect(after.length).toBeGreaterThan(0);
+    expect(messageId).toMatch(/^message-/);
+  });
+});
