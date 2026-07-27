@@ -74,8 +74,10 @@ export interface ChatSectionState {
  *
  * - **The Concierge tri-state** (v4 :1100): the chat PUT's `conciergeState` key
  *   is a named v5 deferral (`api/salon.rs:1216`).
- * - **Run Tool…** (v4 :1243) — `RunToolModal` is unported. (v5's composer
- *   custom-tools popup is Pascal's surface, a different thing.)
+ *
+ * **Run Tool… is LIVE** (v4 :1243-1255, P4.9E3C) — an operator-initiated call over
+ * the same inventory. Not to be confused with v5's composer custom-tools popup,
+ * which is Pascal's surface and a different thing.
  *
  * **Tools… is LIVE** (v4 :1230-1241, P4.9E3C) over P4.9E3B's tool inventory. The
  * entry REFUSED BY NAME until then, the inventory (`GET /api/v1/tools`, 727 LOC)
@@ -222,6 +224,17 @@ export interface ChatSectionState {
         <span class="qt-label">Auto-generate character avatars</span>
       </label>
 
+      <!-- Run Tool… (v4 :1243-1255) -->
+      <button
+        type="button"
+        class="qt-tool-palette-button"
+        title="Run a tool manually"
+        (click)="openRunTool.emit()"
+      >
+        <qt-icon name="wrench" class="w-4 h-4" />
+        <span>Run Tool…</span>
+      </button>
+
       <!-- Tools… (v4 :1230-1241) -->
       <button
         type="button"
@@ -279,6 +292,8 @@ export class ChatSection {
   readonly openProject = output<void>();
   /** v4 `onToolSettingsClick` — opens `ChatToolSettingsModal`. */
   readonly openToolSettings = output<void>();
+  /** v4 `onRunToolClick` — opens `RunToolModal`. */
+  readonly openRunTool = output<void>();
 
   /**
    * v4 `handleAvatarGenToggle` (`ChatSidebar.tsx:1065-1083`): POST the toggle,

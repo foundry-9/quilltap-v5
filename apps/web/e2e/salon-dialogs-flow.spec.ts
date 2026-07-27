@@ -281,3 +281,31 @@ test.describe('P4.9E3C — LLM Tool Settings', () => {
     await expect(page.getByText('Tool settings saved')).toBeVisible({ timeout: 15_000 });
   });
 });
+
+test.describe('P4.9E3C — Run Tool', () => {
+  // ACTIVATE-AT-UNIFY over P4.9E3B's tool inventory.
+  test.skip(!TOOLS_INVENTORY_LANDED, 'GET /api/v1/tools lands with P4.9E3B');
+
+  test('the picker lists the invocable tools and the form gates the run', async ({ page }) => {
+    await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Chat');
+    await page.getByRole('button', { name: 'Run Tool…' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Run Tool', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByLabel('Search tools')).toBeVisible();
+
+    // Narrow to one tool, then step into its form.
+    await dialog.getByLabel('Search tools').fill('memor');
+    const first = dialog.locator('.qt-dialog-body button').first();
+    await expect(first).toBeVisible({ timeout: 10_000 });
+    const toolName = (await first.locator('.font-medium').first().innerText()).trim();
+    await first.click();
+
+    await expect(dialog.getByText(`Run Tool: ${toolName}`)).toBeVisible({ timeout: 10_000 });
+    // The preview labels itself off the form's validity, and Back returns.
+    await expect(dialog.getByText(/Arguments preview \((valid|incomplete)\)/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Back' }).click();
+    await expect(dialog.getByLabel('Search tools')).toBeVisible();
+  });
+});

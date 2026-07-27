@@ -116,6 +116,12 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+Run Tool is back: pick a tool by name, description or id from a searchable list
+grouped by kind, fill in its parameters — the form is built from the tool's own
+declaration, required fields first, optional ones behind their own tick — and run
+it as one of your characters, privately if you wish. Tools this conversation
+cannot use are shown with the reason and cannot be picked.
+
 The tool cabinet is unlocked. "Tools…" in the chat sidebar opens the full list of
 what the AI may reach for in this conversation, grouped and collapsible, with a
 three-state tick for each group and Enable All / Disable All to hand. Tools this

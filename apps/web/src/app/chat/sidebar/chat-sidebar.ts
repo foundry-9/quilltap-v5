@@ -285,6 +285,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (regenerateBackground)="regenerateBackground.emit()"
             (openProject)="openProject.emit()"
             (openToolSettings)="openToolSettings.emit()"
+            (openRunTool)="openRunTool.emit()"
           />
         </qt-collapsible-card>
 
@@ -373,6 +374,8 @@ export class ChatSidebar implements OnInit {
   readonly openProject = output<void>();
   /** v4 `onToolSettingsClick` — opens `ChatToolSettingsModal`. */
   readonly openToolSettings = output<void>();
+  /** v4 `onRunToolClick` — opens `RunToolModal`. */
+  readonly openRunTool = output<void>();
 
   // --- Visibility section ---
   readonly visibilityState = input.required<VisibilityState>();

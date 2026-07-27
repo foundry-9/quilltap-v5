@@ -171,3 +171,24 @@ export async function listTools(
   const tools = data['tools'];
   return Array.isArray(tools) ? (tools as AvailableTool[]) : [];
 }
+
+/**
+ * §1-adjacent — `ChatRunTool` (v4 `RunToolModal.tsx:134-142`). v4 treats a body
+ * without `success: true` as a failure even on a 200, so the same check is made
+ * here rather than trusting the status alone.
+ */
+export async function runTool(
+  core: CoreClient,
+  params: {
+    chatId: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+    characterId?: string;
+    private: boolean;
+  },
+): Promise<void> {
+  const data = await core.dispatchData({ type: 'chatRunTool', ...params });
+  if (data['success'] === false) {
+    throw new Error(String(data['error'] ?? data['message'] ?? 'Tool execution failed'));
+  }
+}

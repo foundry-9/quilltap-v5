@@ -44,6 +44,7 @@ import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-mod
 import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { MergeConversationModal } from '../../chat/merge-conversation-modal';
 import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal';
+import { RunToolModal } from '../../chat/tools/run-tool-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
 import { SelectLlmProfileDialog } from '../../chat/select-llm-profile-dialog';
@@ -210,6 +211,7 @@ interface CascadePrompt {
     ChatProjectModal,
     MergeConversationModal,
     ChatToolSettingsModal,
+    RunToolModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
     Modal,
@@ -290,6 +292,7 @@ interface CascadePrompt {
           (bulkReplace)="showBulkReplace.set(true)"
           (openProject)="showProject.set(true)"
           (openToolSettings)="showToolSettings.set(true)"
+          (openRunTool)="showRunTool.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -566,6 +569,15 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showRunTool() && chat(); as c) {
+      <qt-run-tool-modal
+        [chatId]="c.id"
+        [participants]="c.participants"
+        (executed)="onToolRun()"
+        (close)="showRunTool.set(false)"
       />
     }
 
@@ -1166,6 +1178,13 @@ export class SalonConversation {
   protected readonly showMerge = signal(false);
   /** v4 `toolSettingsModalOpen`, opened from the Chat section's Tools… entry. */
   protected readonly showToolSettings = signal(false);
+  /** v4 `runToolModalOpen`, opened from the Chat section's Run Tool… entry. */
+  protected readonly showRunTool = signal(false);
+
+  /** v4 `onToolExecuted` → `fetchChat` (`ChatModals.tsx:377`). */
+  protected async onToolRun(): Promise<void> {
+    await this.onChatUpdated();
+  }
 
   /** v4 patches its local chat (`ChatModals.tsx:394-400`); v5 refetches. */
   protected async onToolSettingsSaved(): Promise<void> {

@@ -40143,3 +40143,46 @@ later beat runs against a tool-less chat.
 
 Gate: ng test 247 files / 3,049; `npx playwright test salon-dialogs-flow` 3
 passed / 2 gated skips. SPA 0.5.307.
+
+### Unit record — P4.9E3C unit 10: RunToolModal + JsonSchemaForm (2026-07-27)
+
+`chat/tools/json-schema-form.ts` (v4 `components/chat/JsonSchemaForm.tsx`, 382
+LOC) and `chat/tools/run-tool-modal.ts` (v4 `RunToolModal.tsx`, 409 LOC); the
+Chat section's "Run Tool…" entry is live.
+
+⚠ **The order's premise here was wrong, and the correction is worth recording.**
+It says "v5 already has a JSON-schema-driven form family in the Workbench
+(builder-form, P4.6bb) — reuse before writing a new one." It has neither:
+`screens/custom-tools/builder-form.ts` is an EDITOR for Pascal's own
+`CustomToolParameterSpec` format, and `chat/custom-tool-params-form.ts` renders
+that same narrow format. Nothing in v5 rendered JSON Schema before this. So v4's
+form is ported outright, which is what the differential discipline wanted anyway.
+
+`JsonSchemaForm` ports: required fields first; optionals behind their own
+checkbox, pre-included when they carry a default or an existing value, and
+REMOVED from the values when unticked; input by type (enum → select, boolean →
+checkbox, number/integer → number with bounds and step, object/array → a JSON
+textarea that keeps the raw string while it does not parse, string → text or
+textarea by v4's description heuristic); and `oneOf` as a radio group whose
+variant switch clears the value, with v4's own variant labels.
+
+`RunToolModal` ports: the `userInvocable !== false` filter, the search over name
+AND description AND id, the `CATEGORY_INFO` emoji grouping with its title-case
++ ⚙️ fallback, the disabled half-opacity row that shows `unavailableReason` in
+place of the description, the schema-default pre-population, the blank-stripping
+before send, `toolName` being the tool's ID, "Run as character" sending the
+CHARACTER id rather than the participant id, and the `(valid)`/`(incomplete)`
+preview. v4 treats a 200 whose body says `success: false` as a failure; `runTool`
+does the same rather than trusting the status.
+
+Verification: 10 component tests (`run-tool-modal.spec.ts`) including pure tests
+for `cleanArguments` (which keeps `false` and `0` while dropping `''`) and
+`categoryInfo`.
+
+⚠ **ACTIVATE-AT-UNIFY: `TOOLS_INVENTORY_LANDED`** (shared with unit 9) — the Run
+Tool beat opens the picker, narrows it, steps into a tool's form, checks the
+preview label and steps back. It deliberately does NOT run a tool: an operator
+tool call writes a message and can reach a model.
+
+Gate: ng test 248 files / 3,059; `npx playwright test salon-dialogs-flow` 3
+passed / 3 gated skips. SPA 0.5.308.
