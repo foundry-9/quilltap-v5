@@ -293,9 +293,9 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
 
   it('orders the gutter group by v4’s grid fill order', () => {
     // v4 `ComposerGutterTools.tsx:36-46` fills a two-column grid left to right:
-    // announcement, mail / library-file, camera / paperclip, RNG / wand. Library
-    // file is p4.9e3 and RNG has no v5 server verb, so those two are absent —
-    // the rest keep v4's relative order, flattened into v5's single row.
+    // announcement, mail / library-file, camera / paperclip, RNG / wand — six
+    // tools, all six now present (library file landed in P4.9E4B, the last empty
+    // slot), flattened into v5's single row in v4's relative order.
     const fixture = render();
     const labels = [...fixture.nativeElement.querySelectorAll('.qt-chat-composer-actions button')]
       .map((b) => (b as HTMLElement).getAttribute('aria-label'))
@@ -303,6 +303,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
         [
           'Insert announcement',
           'Post a letter',
+          'Attach file from library',
           'Generate image',
           'Attach a file',
         ].includes(l ?? ''),
@@ -310,9 +311,52 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     expect(labels).toEqual([
       'Insert announcement',
       'Post a letter',
+      'Attach file from library',
       'Generate image',
       'Attach a file',
     ]);
+  });
+
+  it('raises openLibrary from v4’s row-2 col-1 button, titled v4’s way', () => {
+    const fixture = render();
+    const seen: string[] = [];
+    fixture.componentInstance.openLibrary.subscribe(() => seen.push('library'));
+    const button = fixture.nativeElement.querySelector(
+      'button[aria-label="Attach file from library"]',
+    ) as HTMLButtonElement;
+    expect(button.title).toBe('Attach file from library');
+    button.click();
+    expect(seen).toEqual(['library']);
+  });
+
+  it('puts a linked library file in the tray, once, and sends its id', async () => {
+    const fixture = render();
+    const linked = {
+      id: 'lib-1',
+      filename: 'atlas.pdf',
+      filepath: 'uploads/atlas.pdf',
+      mimeType: 'application/pdf',
+      url: '/api/v1/files/lib-1',
+    };
+    fixture.componentInstance.addAttachedFile(linked);
+    // A second link of the same file must not double the chip (nor the send id).
+    fixture.componentInstance.addAttachedFile(linked);
+    fixture.detectChanges();
+
+    const chips = fixture.nativeElement.querySelectorAll('.qt-chat-attachment-chip');
+    expect(chips).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('atlas.pdf');
+
+    const sends: ComposerSend[] = [];
+    fixture.componentInstance.send.subscribe((s: ComposerSend) => sends.push(s));
+    richEditor(fixture).contentChange.emit('here it is');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit'),
+    );
+    await settle(fixture);
+    expect(sends).toHaveLength(1);
+    expect(sends[0].fileIds).toEqual(['lib-1']);
   });
 
   it('disables both while the composer is disabled (v4’s `disabled` prop)', () => {

@@ -41241,3 +41241,47 @@ without a reset effect. The seal is faithful: `closeOnBackdrop`, Escape, Back an
 Cancel are all inert while `linking`, and the spec drives that with a gated fetch.
 
 **Gate:** `npx ng test` 251 files / 3,108 passed; `npx ng build` clean.
+
+## Lane P4.9E4B — unit 4: the gutter entry, the Salon wiring, the retired note
+
+The composer gutter's last empty slot is filled: **row 2 col 1, `file-plus`,
+"Attach file from library"** (v4 `ComposerGutterTools.tsx:90-100`, title and
+aria-label verbatim), raising `openLibrary`. All six of v4's gutter tools are now
+present; the composer's header note and the gutter-order spec both say so, and
+the order assertion GREW to five labels rather than being weakened.
+
+**The tray hand-off.** v4 keeps `attachedFiles` in SalonView and passes it down;
+v5 keeps the tray inside the composer, beside the upload and conflict machinery
+that fills it. So the picker reaches it through a new public
+`ChatComposer.addAttachedFile`, which the Salon calls on `fileLinked` via
+`viewChild(ChatComposer)`. The composer lives inside `#chatContentTpl`, which the
+panes render through an outlet — a view query still matches it, because queries
+follow the DECLARATION view, not the insertion point. `addAttachedFile` IGNORES a
+file already in the tray, so a double-link cannot produce a double chip or a
+duplicated `fileIds` entry on the send (pinned by a spec).
+
+**The two Salon handlers keep v4's asymmetry:** `onLibraryFileLinked` puts the
+file in the tray and flashes v4's sentence; `onLibraryMountFileAttached` flashes
+and **only** invalidates the chat query — v4's `fetchChat()`, no tray hand-off,
+because the Librarian announcement is already a transcript message.
+
+**Retired:** `salon-conversation.ts`'s LOUD tier-3 deferral block for
+`LibraryFilePickerModal` (with its "the gutter entry is ABSENT rather than
+refusing" reasoning) is gone, replaced by a one-line landing note. The
+`AllLLMPauseModal` deferral beside it STANDS unchanged — it is unreachable in v4
+itself (tier 3 of this order).
+
+**e2e:** `e2e/salon-library-picker-flow.spec.ts`, three beats.
+
+- The gutter entry + scope step: **LIVE**.
+- General → pick → the chip lands in the composer tray + v4's flash sentence:
+  **LIVE** (the `?action=link` leg has been on main since P4.6ah; the beat seeds
+  its own root-level library file through the REST upload leg AFTER the unlock).
+- The store leg (pick a store file → no chip, the Librarian's announcement in the
+  transcript exactly once): **ACTIVATE-AT-UNIFY**, gated on
+  `ATTACH_MOUNT_FILE_LANDED = false`. It seeds a database store + a markdown file
+  and cleans the store up in `afterAll`, so it neither contaminates the shared
+  fixture nor needs an edit at unification — only the constant flips.
+
+`salon-post-office-flow.spec.ts`'s gutter-order beat was updated the same way as
+the unit spec: it now expects the library button in v4's slot.

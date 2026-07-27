@@ -88,8 +88,9 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     await expect(actions.getByRole('button', { name: 'Insert announcement' })).toBeVisible();
     await expect(actions.getByRole('button', { name: 'Post a letter' })).toBeVisible();
 
-    // v4's grid fill order, flattened: announcement, mail, camera, paperclip.
-    // (Library file is p4.9e3; RNG has no v5 server verb — both named deferrals.)
+    // v4's grid fill order, flattened: announcement, mail, library file, camera,
+    // paperclip. (Library file filled its slot in P4.9E4B; RNG mounts its own
+    // component and carries no aria-label of this shape.)
     const labels = await actions.locator('button').evaluateAll((nodes) =>
       nodes
         .map((n) => n.getAttribute('aria-label'))
@@ -97,6 +98,7 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
           (l) =>
             l === 'Insert announcement' ||
             l === 'Post a letter' ||
+            l === 'Attach file from library' ||
             l === 'Generate image' ||
             l === 'Attach a file',
         ),
@@ -104,6 +106,7 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     expect(labels).toEqual([
       'Insert announcement',
       'Post a letter',
+      'Attach file from library',
       'Generate image',
       'Attach a file',
     ]);

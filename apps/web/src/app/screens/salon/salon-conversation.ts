@@ -15,6 +15,10 @@ import { filter } from 'rxjs';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { ChatComposer, type PendingToolResultChip } from '../../chat/chat-composer';
+import {
+  LibraryFilePickerModal,
+  type LinkedLibraryFile,
+} from '../../chat/library-picker/library-file-picker-modal';
 import type { RngPendingResult } from '../../chat/rng-dropdown';
 import { customToolsKeys } from '../../chat/custom-tools.api';
 import { ConversationHeader } from '../../chat/conversation-header';
@@ -216,6 +220,7 @@ interface CascadePrompt {
     SearchReplaceModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
+    LibraryFilePickerModal,
     Modal,
   ],
   template: `
@@ -403,6 +408,7 @@ interface CascadePrompt {
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
         (openGenerate)="showStandaloneGenerate.set(true)"
+        (openLibrary)="showLibraryPicker.set(true)"
         (openAnnouncement)="showAnnouncement.set(true)"
         (openMail)="showComposeMail.set(true)"
         (customToolRan)="onCustomToolRan()"
@@ -497,6 +503,15 @@ interface CascadePrompt {
         [userCharacterName]="firstUserCharacter()?.name"
         (imageDeleted)="onCourierSettled()"
         (close)="showGallery.set(false)"
+      />
+    }
+
+    @if (showLibraryPicker() && chatId(); as id) {
+      <qt-library-file-picker-modal
+        [chatId]="id"
+        (fileLinked)="onLibraryFileLinked($event)"
+        (mountFileAttached)="onLibraryMountFileAttached($event)"
+        (close)="showLibraryPicker.set(false)"
       />
     }
 
@@ -886,6 +901,16 @@ export class SalonConversation {
   /** The message list, so a user send can force a scroll-to-bottom (v4 `scrollOnUserMessage`). */
   private readonly messageList = viewChild(MessageList);
 
+  /**
+   * The composer, so a linked library file can reach its tray. v4 keeps
+   * `attachedFiles` in SalonView and passes it down; v5 keeps the tray inside the
+   * composer, beside the upload machinery that fills it, so the hand-off is a
+   * method call rather than a prop. The composer lives in `#chatContentTpl`,
+   * which the panes render through an outlet — a view query still matches it,
+   * since queries follow the DECLARATION view, not the insertion point.
+   */
+  private readonly composer = viewChild(ChatComposer);
+
   protected readonly chatQuery = injectQuery(() => ({
     queryKey: ['chat', this.chatId()],
     enabled: !!this.chatId(),
@@ -1156,16 +1181,11 @@ export class SalonConversation {
   // off `useModalState`; v5 keeps its signal-per-dialog pattern (see the Post
   // Office note below, which weighed the same choice).
   //
-  // ## Tier-3 deferral (LOUD — rendered nowhere, nothing stubbed)
+  // `LibraryFilePickerModal` — deferred by name here through P4.9E3C — LANDED in
+  // P4.9E4B: `qt-library-file-picker-modal`, opened from the composer gutter's
+  // file-plus button, which had been ABSENT rather than refusing.
   //
-  // **`LibraryFilePickerModal`** (v4 `components/chat/LibraryFilePickerModal.tsx`,
-  // 616 LOC) is NOT ported. It is the composer gutter's "Library file" entry and
-  // reaches SIX endpoints — projects, mount points, `?action=photo-albums`,
-  // `?action=group-stores`, `files?action=attach-mount-file`, `files?action=link`
-  // — plus character and user photos, and delegates browsing to the file-browser
-  // family. One of those legs, `attach-mount-file`, is itself a named server
-  // deferral. It wants its own round; the gutter entry is ABSENT rather than
-  // refusing, because a picker that could list nothing is not a picker.
+  // ## Tier-3 deferral (LOUD — rendered nowhere, nothing stubbed)
   //
   // **`AllLLMPauseModal`** (v4 `components/chat/AllLLMPauseModal.tsx`, 148 LOC)
   // is NOT ported, because it is unreachable in v4 itself. `ChatModals.tsx:423`
@@ -1185,6 +1205,8 @@ export class SalonConversation {
   // `ChatModals.tsx:427`, computing this dead modal's `nextPauseAt`.
   // -------------------------------------------------------------------------
 
+  /** v4 `libraryFilePickerOpen` (`useModalState.ts:38`), opened from the gutter. */
+  protected readonly showLibraryPicker = signal(false);
   /** v4 `renameModalOpen` (`useModalState.ts`), opened from Organize. */
   protected readonly showRename = signal(false);
   /** v4 `bulkCharacterReplaceOpen`, opened from the Edit Content section. */
@@ -1364,6 +1386,27 @@ export class SalonConversation {
   }
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
+  /**
+   * The picker linked a legacy library file (v4 `ChatModals.tsx:250-261`): push it
+   * into the composer's pending-attachment tray so the next send carries it. The
+   * message is v4's own toast sentence — v5 has no toasts, so it lands as the
+   * chat flash.
+   */
+  protected onLibraryFileLinked(linked: LinkedLibraryFile): void {
+    this.composer()?.addAttachedFile(linked.file);
+    this.chatFlash.set({ kind: 'success', message: linked.message });
+  }
+
+  /**
+   * The picker pinned a document-store file (v4 `ChatModals.tsx:262-266`). There
+   * is NO tray hand-off — the Librarian announcement is already in the transcript
+   * — so this only refetches the chat, exactly as v4's `fetchChat()` does.
+   */
+  protected async onLibraryMountFileAttached(message: string): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
   protected async onAnnouncementPosted(): Promise<void> {
     this.chatFlash.set({ kind: 'success', message: 'Announcement posted' });
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });

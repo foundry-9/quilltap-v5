@@ -57,10 +57,9 @@ export interface PendingToolResultChip extends RngPendingResult {
  *
  * **The gutter group follows v4's grid fill order** (`ComposerGutterTools.tsx
  * :36-46`: announcement, mail / library-file, camera / paperclip, RNG / wand),
- * flattened into v5's single action row. One of v4's six is still absent and is
- * a named deferral, not an omission:
- *
- *  - **Library file** belongs to `p4.9e3` (`LibraryFilePickerModal`).
+ * flattened into v5's single action row. All six of v4's tools are present:
+ * **Library file** filled the last empty slot in P4.9E4B, raising `openLibrary`,
+ * which the Salon answers with `qt-library-file-picker-modal`.
  *
  * **RNG** filled its slot in P4.9E1B, over P4.9E3A's `chatRng`. It rolls in
  * PREVIEW mode, so the result arrives as a chip above the box rather than as a
@@ -72,12 +71,12 @@ export interface PendingToolResultChip extends RngPendingResult {
  * The composition-mode toggle leads the row: it is v4's own composer-level
  * control (`ChatComposer.tsx`), not one of the gutter tools.
  *
- * ⚠ The row is now TEN wide, where v4's grid spends only two columns on six
+ * ⚠ The row is now ELEVEN wide, where v4's grid spends only two columns on six
  * tools. That difference is load-bearing in a narrow pane: `_chat.css` gives the
  * message box a `min-width` floor and lets both the inner wrapper and this row
  * wrap, or the tools crowd the box to zero width and it stops being clickable at
  * all (see the P4.9E2B lane record). Check the split-pane width before adding a
- * tenth.
+ * twelfth.
  *
  * v4 has **no** composer drag-and-drop upload — the phrase appeared in v5's own
  * deferral note (P4.6ac's lane record) and propagated, but there is no drag
@@ -209,9 +208,21 @@ export interface PendingToolResultChip extends RngPendingResult {
             <qt-icon name="mail" class="w-5 h-5" />
           </button>
 
+          <!-- v4 gutter row 2, col 1: Library file (ComposerGutterTools :90-100),
+               down to its title, aria-label and file-plus glyph. -->
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            title="Attach file from library"
+            aria-label="Attach file from library"
+            [disabled]="disabled()"
+            (click)="openLibrary.emit()"
+          >
+            <qt-icon name="file-plus" class="w-5 h-5" />
+          </button>
+
           <!-- v4 gutter row 2, col 2: Generate Image (:102-112). It is v4's ONLY
-               opener for the standalone generate dialog. (Row 2 col 1, Library
-               file, is p4.9e3.) -->
+               opener for the standalone generate dialog. -->
           <button
             type="button"
             class="qt-chat-toolbar-button"
@@ -367,6 +378,8 @@ export class ChatComposer implements OnInit {
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
   readonly openGenerate = output<void>();
+  /** The file-plus glyph — the Salon answers with the Library file picker. */
+  readonly openLibrary = output<void>();
   /** The megaphone — the Salon answers with the Insert Announcement dialog. */
   readonly openAnnouncement = output<void>();
   /** The envelope — the Salon answers with the Compose Mail dialog. */
@@ -529,6 +542,23 @@ export class ChatComposer implements OnInit {
 
   protected removeAttachedFile(fileId: string): void {
     this.attachedFiles.update((files) => files.filter((f) => f.id !== fileId));
+  }
+
+  /**
+   * Put an already-linked file in the tray, so the next send carries it (v4's
+   * `onFileLinked` → `setAttachedFiles`, `ChatModals.tsx:250-261`).
+   *
+   * v4 keeps `attachedFiles` in SalonView and passes it down; v5 keeps the tray
+   * here, beside the upload and conflict machinery that fills it. That leaves the
+   * Library file picker — the one other producer — needing a way in, and this is
+   * it: the Salon calls it on the picker's `fileLinked`. Ignores a file already
+   * in the tray, so a double-link can't produce a double chip (and a duplicate
+   * `fileIds` entry on the send).
+   */
+  addAttachedFile(file: UploadedChatFile): void {
+    this.attachedFiles.update((files) =>
+      files.some((f) => f.id === file.id) ? files : [...files, file],
+    );
   }
 
   private async upload(

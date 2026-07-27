@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The composer's last missing tool is there: a button that opens the library
+picker. A file you pick from the old library waits above the message box for
+your next send; a document you pin from a store is announced by the Librarian
+in the conversation itself.
+
 The library file picker itself: choose General, your own photo gallery, a group's
 shelf, a project, or any document store, then pick a file. A file from the old
 library rides along with your next message; a document from a store is pinned to
