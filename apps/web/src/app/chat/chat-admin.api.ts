@@ -1,5 +1,8 @@
 import type { CoreClient } from '../core/core-client';
-import type { ChatCreateOutfitSelectionInput } from '../core/core-contract';
+import type {
+  ChatCreateOutfitSelectionInput,
+  SearchReplaceScopeWire,
+} from '../core/core-contract';
 import type { PreviousOutfitSummary } from '../screens/new-chat/outfit-selector';
 import type { AvailableTool } from './tools/tool-settings';
 
@@ -191,4 +194,55 @@ export async function runTool(
   if (data['success'] === false) {
     throw new Error(String(data['error'] ?? data['message'] ?? 'Tool execution failed'));
   }
+}
+
+/** §1 `SearchReplacePreview` — the dry-run counts (v4 `useSearchReplace.ts:75-93`). */
+export async function searchReplacePreview(
+  core: CoreClient,
+  params: {
+    scope: SearchReplaceScopeWire;
+    searchText: string;
+    replaceText: string;
+    includeMessages: boolean;
+    includeMemories: boolean;
+  },
+): Promise<{
+  messageMatches: number;
+  memoryMatches: number;
+  affectedChats: number;
+  affectedMemories: number;
+}> {
+  const data = await core.dispatchData({ type: 'searchReplacePreview', ...params });
+  return {
+    messageMatches: Number(data['messageMatches'] ?? 0),
+    memoryMatches: Number(data['memoryMatches'] ?? 0),
+    affectedChats: Number(data['affectedChats'] ?? 0),
+    affectedMemories: Number(data['affectedMemories'] ?? 0),
+  };
+}
+
+/** §1 `SearchReplaceExecute` — the irreversible write (v4 `:133-146`). */
+export async function searchReplaceExecute(
+  core: CoreClient,
+  params: {
+    scope: SearchReplaceScopeWire;
+    searchText: string;
+    replaceText: string;
+    includeMessages: boolean;
+    includeMemories: boolean;
+  },
+): Promise<{
+  messagesUpdated: number;
+  memoriesUpdated: number;
+  chatsAffected: number;
+  errors: string[];
+}> {
+  const data = await core.dispatchData({ type: 'searchReplaceExecute', ...params });
+  const errors = data['errors'];
+  return {
+    messagesUpdated: Number(data['messagesUpdated'] ?? 0),
+    memoriesUpdated: Number(data['memoriesUpdated'] ?? 0),
+    chatsAffected: Number(data['chatsAffected'] ?? 0),
+    errors: Array.isArray(errors) ? errors.map(String) : [],
+  };
 }

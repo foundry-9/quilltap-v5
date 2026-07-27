@@ -40186,3 +40186,40 @@ tool call writes a message and can reach a model.
 
 Gate: ng test 248 files / 3,059; `npx playwright test salon-dialogs-flow` 3
 passed / 3 gated skips. SPA 0.5.308.
+
+### Unit record — P4.9E3C unit 11: SearchReplaceModal (2026-07-27)
+
+`chat/tools/search-replace-modal.ts` — v4's `components/tools/search-replace/**`
+(~1,100 LOC across a modal, a hook and five step components) as ONE component:
+v5 keeps the five steps and drops the five files, because the hook's state is
+signals on the component everywhere else in this codebase. The Edit Content
+drawer's **Replace** entry, deferred at unit 4, now lands and the section is
+complete against v4's two text entries.
+
+Ported, with the v4 line refs in the class doc: the step indicator covering only
+the FIRST THREE steps; "Next" on the confirm step EXECUTING rather than
+advancing (which is why it reads "Replace All" there); Back clearing the
+confirmation tick so a changed search cannot inherit an old consent; `canProceed`
+on the search step requiring a preview WITH matches, so a search that found
+nothing cannot be carried forward; the 300 ms debounce that refires on the
+include flags as well as the text; a failed execute still landing on `results`
+rather than stranding the operator; the dialog sealed while executing; and v4's
+opening step — `search`, not `scope`, because the Salon always supplies a scope,
+with `scope` reachable by going Back.
+
+**Both include flags are sent explicitly on every request.** §1 records that they
+default TRUE server-side, so an omission would read as "included" — the exact
+opposite of an unticked box. The spec asserts the whole body, so a future
+conditional-spread would fail loudly.
+
+Verification: 8 component tests (`search-replace-modal.spec.ts`), including the
+no-matches gate, the tick-dropped-on-Back rule, and the character-scope shape.
+
+⚠ **ACTIVATE-AT-UNIFY: `SEARCH_REPLACE_LANDED`** in
+`e2e/salon-dialogs-flow.spec.ts` — `false` on this branch. The gated beat runs a
+REAL preview that finds nothing, asserts the wizard refuses to advance, and walks
+back to the scope step. It deliberately never executes: search-and-replace is
+irreversible, and a beat that ran it would have to live in the `zz-` file.
+
+Gate: ng test 249 files / 3,067; `npx playwright test salon-dialogs-flow` 3
+passed / 4 gated skips. SPA 0.5.309.

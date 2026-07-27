@@ -45,6 +45,7 @@ import { ChatProjectModal } from '../../chat/chat-project-modal';
 import { MergeConversationModal } from '../../chat/merge-conversation-modal';
 import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal';
 import { RunToolModal } from '../../chat/tools/run-tool-modal';
+import { SearchReplaceModal } from '../../chat/tools/search-replace-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
 import { SelectLlmProfileDialog } from '../../chat/select-llm-profile-dialog';
@@ -212,6 +213,7 @@ interface CascadePrompt {
     MergeConversationModal,
     ChatToolSettingsModal,
     RunToolModal,
+    SearchReplaceModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
     Modal,
@@ -290,6 +292,7 @@ interface CascadePrompt {
           (rename)="showRename.set(true)"
           (mergeIn)="showMerge.set(true)"
           (bulkReplace)="showBulkReplace.set(true)"
+          (searchReplace)="showSearchReplace.set(true)"
           (openProject)="showProject.set(true)"
           (openToolSettings)="showToolSettings.set(true)"
           (openRunTool)="showRunTool.set(true)"
@@ -569,6 +572,15 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showSearchReplace() && chat(); as c) {
+      <qt-search-replace-modal
+        [chatId]="c.id"
+        [chatTitle]="c.title"
+        (completed)="onSearchReplaced()"
+        (close)="showSearchReplace.set(false)"
       />
     }
 
@@ -1180,6 +1192,13 @@ export class SalonConversation {
   protected readonly showToolSettings = signal(false);
   /** v4 `runToolModalOpen`, opened from the Chat section's Run Tool… entry. */
   protected readonly showRunTool = signal(false);
+  /** v4 `searchReplaceOpen`, opened from the Edit Content section. */
+  protected readonly showSearchReplace = signal(false);
+
+  /** v4 `onComplete` — the transcript may have changed under the operator. */
+  protected async onSearchReplaced(): Promise<void> {
+    await this.onChatUpdated();
+  }
 
   /** v4 `onToolExecuted` → `fetchChat` (`ChatModals.tsx:377`). */
   protected async onToolRun(): Promise<void> {

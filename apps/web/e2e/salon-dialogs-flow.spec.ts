@@ -73,6 +73,12 @@ const CHAT_EXPORT_LANDED = false;
  */
 const TOOLS_INVENTORY_LANDED = false;
 
+/**
+ * ACTIVATE-AT-UNIFY. `POST /api/v1/search-replace?action=preview|execute` is
+ * P4.9E3B's pair. The unifier flips this to `true`.
+ */
+const SEARCH_REPLACE_LANDED = false;
+
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
     page,
@@ -307,5 +313,37 @@ test.describe('P4.9E3C — Run Tool', () => {
     await expect(dialog.getByText(/Arguments preview \((valid|incomplete)\)/)).toBeVisible();
     await dialog.getByRole('button', { name: 'Back' }).click();
     await expect(dialog.getByLabel('Search tools')).toBeVisible();
+  });
+});
+
+test.describe('P4.9E3C — Search & Replace', () => {
+  // ACTIVATE-AT-UNIFY over P4.9E3B's preview/execute pair.
+  test.skip(!SEARCH_REPLACE_LANDED, 'search-replace lands with P4.9E3B');
+
+  test('previews a search in this chat and refuses to go on without matches', async ({ page }) => {
+    await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Edit Content');
+    await page.getByRole('button', { name: 'Replace' }).click();
+
+    const dialog = page.getByRole('dialog');
+    // v4 opens on step 2 when a scope was supplied, and the Salon always
+    // supplies this chat.
+    await expect(dialog.locator('#qt-sr-find')).toBeVisible({ timeout: 15_000 });
+    const next = dialog.getByRole('button', { name: 'Next' });
+    await expect(next).toBeDisabled();
+
+    // A search with no matches is a real preview and still cannot proceed.
+    await dialog.locator('#qt-sr-find').fill('zzz-not-in-this-transcript');
+    await expect(dialog.getByText('No matches found')).toBeVisible({ timeout: 15_000 });
+    await expect(next).toBeDisabled();
+
+    // Back reaches the scope step with the chat preselected.
+    await dialog.getByRole('button', { name: 'Back' }).click();
+    await expect(dialog.getByText('Select Scope')).toBeVisible();
+    await expect(dialog.getByLabel('Current Chat')).toBeChecked();
+
+    // Nothing was written: this beat deliberately never executes.
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog.getByText('Select Scope')).toHaveCount(0);
   });
 });

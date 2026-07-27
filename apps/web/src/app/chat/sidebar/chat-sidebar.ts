@@ -325,7 +325,10 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
           [isOpen]="openSection() === 'edit'"
           (openChange)="setSection('edit', $event)"
         >
-          <qt-edit-section (bulkReplace)="bulkReplace.emit()" />
+          <qt-edit-section
+            (searchReplace)="searchReplace.emit()"
+            (bulkReplace)="bulkReplace.emit()"
+          />
         </qt-collapsible-card>
       </div>
 
@@ -393,6 +396,7 @@ export class ChatSidebar implements OnInit {
   readonly openGallery = output<void>();
 
   // --- Edit Content section ---
+  readonly searchReplace = output<void>();
   readonly bulkReplace = output<void>();
 
   readonly chatUpdated = output<void>();

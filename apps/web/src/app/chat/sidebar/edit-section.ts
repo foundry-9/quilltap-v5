@@ -10,10 +10,8 @@ import { Icon } from '../../ui/icon';
  * The accordion has declared an `'edit'` id since P4.9H1 (`chat-sidebar.ts`),
  * but nothing rendered it: this is that section arriving, in v4's order.
  *
- * Ported: **Bulk Replace** (v4 :1636, `BulkCharacterReplaceModal`). **Replace**
- * (:1624, `SearchReplaceModal`) arrives with that dialog — the section leads with
- * the entry it can actually answer rather than shipping a button that does
- * nothing.
+ * Ported: **Replace** (v4 :1624, `SearchReplaceModal`) and **Bulk Replace**
+ * (:1636, `BulkCharacterReplaceModal`), in v4's order.
  *
  * ## Tier-3 deferrals (LOUD — rendered nowhere, nothing stubbed)
  *
@@ -39,6 +37,16 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
+        title="Search and replace in chat"
+        (click)="searchReplace.emit()"
+      >
+        <qt-icon name="search" class="w-4 h-4" />
+        <span>Replace</span>
+      </button>
+
+      <button
+        type="button"
+        class="qt-tool-palette-button"
         title="Bulk re-attribute messages between characters"
         (click)="bulkReplace.emit()"
       >
@@ -49,5 +57,6 @@ import { Icon } from '../../ui/icon';
   `,
 })
 export class EditSection {
+  readonly searchReplace = output<void>();
   readonly bulkReplace = output<void>();
 }

@@ -116,6 +116,13 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+Search and Replace returns, in the Edit Content drawer. Choose whether to work in
+this conversation or across every conversation with one character, type what to
+find and what to put in its place, and see how many messages and memories would
+change before anything does. It will not let you go on until a search has actually
+matched something, and asks you to confirm in as many words that the change cannot
+be undone.
+
 Run Tool is back: pick a tool by name, description or id from a searchable list
 grouped by kind, fill in its parameters — the form is built from the tool's own
 declaration, required fields first, optional ones behind their own tick — and run
