@@ -25,6 +25,7 @@ import {
   type TurnState,
 } from '../turn-order';
 import { ChatSection, type ChatSectionState } from './chat-section';
+import { EditSection } from './edit-section';
 import { OrganizeSection } from './organize-section';
 import type { ConnectionProfileOption } from './participant-card';
 import { ParticipantsSection } from './participants-section';
@@ -125,6 +126,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
     ChatSection,
     VisibilitySection,
     OrganizeSection,
+    EditSection,
   ],
   host: {
     '[class.qt-chat-sidebar]': '!effectiveCollapsed()',
@@ -313,6 +315,14 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (openGallery)="openGallery.emit()"
           />
         </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Edit Content"
+          [isOpen]="openSection() === 'edit'"
+          (openChange)="setSection('edit', $event)"
+        >
+          <qt-edit-section (bulkReplace)="bulkReplace.emit()" />
+        </qt-collapsible-card>
       </div>
 
       @if (turnSelectionResult()?.debug; as debug) {
@@ -370,6 +380,9 @@ export class ChatSidebar implements OnInit {
   readonly rename = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
+
+  // --- Edit Content section ---
+  readonly bulkReplace = output<void>();
 
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();

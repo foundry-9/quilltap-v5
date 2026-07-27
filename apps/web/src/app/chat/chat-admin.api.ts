@@ -65,3 +65,35 @@ export async function regenerateChatTitle(core: CoreClient, chatId: string): Pro
   const data = await core.dispatchData({ type: 'chatRegenerateTitle', chatId });
   return String(data['title'] ?? '');
 }
+
+/** v4's `roleFilter` values (`BulkCharacterReplaceModal.tsx:49`). */
+export type RoleFilter = 'ASSISTANT' | 'USER' | 'both';
+
+/** What v4's bulk-reattribute reply drives (`:172-177`). */
+export interface BulkReattributeResult {
+  messagesUpdated: number;
+  memoriesDeleted: number;
+}
+
+/**
+ * §1 `ChatBulkReattribute` — v4 `BulkCharacterReplaceModal.tsx:151-158`.
+ *
+ * `sourceParticipantId` is required and nullable: `null` means "the messages
+ * with no participant at all", the operator's own turns. Every memory sourced
+ * from a moved message is deleted server-side.
+ */
+export async function bulkReattribute(
+  core: CoreClient,
+  params: {
+    chatId: string;
+    sourceParticipantId: string | null;
+    targetParticipantId: string;
+    roleFilter: RoleFilter;
+  },
+): Promise<BulkReattributeResult> {
+  const data = await core.dispatchData({ type: 'chatBulkReattribute', ...params });
+  return {
+    messagesUpdated: Number(data['messagesUpdated'] ?? 0),
+    memoriesDeleted: Number(data['memoriesDeleted'] ?? 0),
+  };
+}

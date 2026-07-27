@@ -40,6 +40,7 @@ import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
+import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import {
   removeParticipant,
@@ -187,6 +188,7 @@ interface CascadePrompt {
     WhisperDialog,
     AddCharacterDialog,
     ChatRenameModal,
+    BulkCharacterReplaceModal,
     Modal,
   ],
   template: `
@@ -261,6 +263,7 @@ interface CascadePrompt {
           (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
           (editEnclave)="showEditEnclave.set(true)"
           (rename)="showRename.set(true)"
+          (bulkReplace)="showBulkReplace.set(true)"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -536,6 +539,16 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showBulkReplace() && chat(); as c) {
+      <qt-bulk-character-replace-modal
+        [chatId]="c.id"
+        [participants]="c.participants"
+        [messages]="c.messages"
+        (reattributed)="onBulkReattributed($event)"
+        (close)="showBulkReplace.set(false)"
       />
     }
 
@@ -1046,6 +1059,14 @@ export class SalonConversation {
 
   /** v4 `renameModalOpen` (`useModalState.ts`), opened from Organize. */
   protected readonly showRename = signal(false);
+  /** v4 `bulkCharacterReplaceOpen`, opened from the Edit Content section. */
+  protected readonly showBulkReplace = signal(false);
+
+  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:265`); the counts are v4's copy. */
+  protected async onBulkReattributed(message: string): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message });
+    await this.onChatUpdated();
+  }
 
   /**
    * v4 `onSuccess` patches its local chat object in place

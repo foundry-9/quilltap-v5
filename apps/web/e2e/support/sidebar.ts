@@ -9,7 +9,12 @@ import { expect, type Page } from '@playwright/test';
  * Beats that drive a control inside the sidebar go through here: expand if
  * collapsed, then open the named card if it isn't already open. Idempotent.
  */
-export type SidebarSection = 'Participants' | 'Chat' | 'Visibility' | 'Organize';
+export type SidebarSection =
+  | 'Participants'
+  | 'Chat'
+  | 'Visibility'
+  | 'Organize'
+  | 'Edit Content';
 
 export async function openSidebarSection(page: Page, section: SidebarSection): Promise<void> {
   // The sidebar only renders once the chat record has loaded, so a beat that

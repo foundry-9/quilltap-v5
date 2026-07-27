@@ -39853,3 +39853,52 @@ SPA 0.5.301.
 fails with "Playwright Test did not expect test.describe() to be called here"
 pointing at a harness fixture builder — which reads exactly like a broken new
 spec and is not.
+
+### Unit record — P4.9E3C unit 4: Bulk Character Replace + the Edit Content section (2026-07-27)
+
+**The sidebar's fifth drawer finally renders.** `SidebarSectionId` has declared
+`'edit'` since P4.9H1 and nothing had ever drawn it; `chat/sidebar/edit-section.ts`
+is that section (v4 `ChatSidebar.tsx:1600-1672`).
+
+It ships with **Bulk Replace** only. v4's other three entries:
+
+- **Replace** (:1624) rides unit 11's `SearchReplaceModal` — the section leads
+  with the entry it can answer rather than shipping a dead button.
+- **Re-extract Memories** (:1648) and **Delete Memories (n)** (:1660) are DEFERRED
+  BY NAME in the component doc: neither has a v5 verb (v5's extraction handlers
+  run on the turn path only), and the second's label wants a per-chat memory count
+  the chat read does not project. They belong to the Commonplace Book family.
+
+`chat/bulk-character-replace-modal.ts` ports v4's 376-LOC dialog. The load-bearing
+piece is the **`__UNASSIGNED__` sentinel** (`:52,75`): a `<select>` cannot carry
+`null`, so "the operator's own unattributed turns" travels as a literal string and
+is lowered to a real `null` at the request boundary — and ONLY there. v4 gates
+Submit on the SELECTION string, never on the derived id (`:138`), because the id
+is `null` both for "nothing chosen" and for the legitimate unassigned source; a
+check on the id would refuse the very case the sentinel exists for. Also ported:
+the client-side affected count with its upper-casing role compare (`:115`), the
+source-excluded target list and its sentinel exception (`:120-126`), the
+clear-target-that-became-source effect (`:129-134`), the fewer-than-two-participants
+refusal (`:224`), and both pluralised counts with the memories line dropped at zero
+(`:172-177`).
+
+Recorded reductions: v4 imports `Avatar` there and never uses it (an `<option>`
+carries no image in either app), and the dialog never re-attributes TO the
+sentinel — `availableTargets` holds only real participants, so `targetParticipantId`
+is always an id even though the lowering at `:76` would permit a `null` the schema
+forbids.
+
+Verification: 10 component tests (`bulk-character-replace-modal.spec.ts`), the
+sentinel arms asserted field-for-field on the wire, plus a live e2e beat.
+
+⚠ **The beat is a `zz-` spec, deliberately** —
+`e2e/zz-bulk-replace-destructive.spec.ts`. Bulk re-attribution has no undo:
+reversing it would sweep the target's own messages along, and the memories
+extracted from the moved messages are deleted outright. So it sorts after every
+ordinary spec and before `zz-delete-all-destructive` (`zz-b` < `zz-d`) — never
+after `zzz-restore-destructive`. It moves Group Expedition's unattributed turns
+onto a character and asserts the authors through `chatGet`.
+`e2e/support/sidebar.ts`'s `SidebarSection` union gained `'Edit Content'`.
+
+Gate: ng test 240 files / 3,007; `npx playwright test zz-bulk-replace` 1/1.
+SPA 0.5.302.

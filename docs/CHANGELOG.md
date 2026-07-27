@@ -116,6 +116,13 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+The chat sidebar has its Edit Content drawer, and in it Bulk Replace: move every
+message from one speaker to another in a single stroke, filtered to the AI's
+replies, your own, or all of them. A count of what will move is shown before you
+commit, including for your own unattributed turns, which are their own choice in
+the list. Memories drawn from the moved messages are deleted, and the dialog says
+so plainly before and how many afterwards.
+
 Renaming a conversation is possible again. The sidebar has a Rename entry, and
 the dialog behind it carries the old app's arrangement exactly: while automatic
 naming is on the title field is dead and there is nothing to save; untick it and
