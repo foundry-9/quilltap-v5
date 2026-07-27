@@ -346,18 +346,203 @@ export interface ChatRngRequest {
  * Replace the chat's disabled-tool sets (v4 `POST …?action=update-tool-settings`).
  * Both arrays are whole-set replacements, not deltas.
  *
- * **No v5 consumer yet, deliberately.** Rendering v4's `ChatToolSettingsModal`
- * needs the tool INVENTORY (`GET /api/v1/tools`, `app/api/v1/tools/route.ts`,
- * 727 LOC — names, groups, per-chat availability), which no lane in this round
- * ports; the modal is deferred loudly at its entry point (`chat/sidebar/
- * chat-section.ts`). The shape is mirrored here so the contract diff stays
- * complete and the modal is a UI-only step once the inventory verb lands.
+ * The consumer is `ChatToolSettingsModal` (`chat/tools/chat-tool-settings-modal.ts`),
+ * which lists the inventory through {@link ToolsListRequest}.
  */
 export interface ChatUpdateToolSettingsRequest {
   type: 'chatUpdateToolSettings';
   chatId: string;
   disabledTools: string[];
   disabledToolGroups: string[];
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the chat-admin family (§1, OWNER: lane P4.9E3A — landed
+// 2026-07-26). Mirrored here NAME FOR NAME from `api/types.rs:2514-2610`; a
+// shape change is a cross-lane escalation, never a unilateral edit.
+//
+// `chatRng` and `chatUpdateToolSettings` (above) were mirrored when P4.9E3A
+// landed; these nine were not, because no screen could reach them yet.
+// ---------------------------------------------------------------------------
+
+/**
+ * Regenerate a chat's title from its transcript (v4
+ * `POST …?action=regenerate-title`).
+ *
+ * ⚠ **One cheap-LLM call per press, in production.** v4 has no button of this
+ * name: the ONLY path to it is ticking "Use automatic naming" in
+ * `ChatRenameModal` (`ChatRenameModal.tsx:52`), which is why v5's live verb was
+ * unreachable until that dialog landed.
+ */
+export interface ChatRegenerateTitleRequest {
+  type: 'chatRegenerateTitle';
+  chatId: string;
+}
+
+/** Attach a tag (v4 `POST …?action=add-tag`). */
+export interface ChatAddTagRequest {
+  type: 'chatAddTag';
+  chatId: string;
+  tagId: string;
+}
+
+/** Detach a tag (v4 `POST …?action=remove-tag`). */
+export interface ChatRemoveTagRequest {
+  type: 'chatRemoveTag';
+  chatId: string;
+  tagId: string;
+}
+
+/**
+ * Re-attribute many messages at once (v4 `POST …?action=bulk-reattribute`).
+ *
+ * `sourceParticipantId` is v4-`nullable`: an explicit `null` means "the messages
+ * with no participant at all" — the operator's own turns — which is what
+ * `BulkCharacterReplaceModal`'s `__UNASSIGNED__` sentinel lowers to
+ * (`BulkCharacterReplaceModal.tsx:52,75`). It is NOT optional: the key is always
+ * sent. `roleFilter` server-defaults to `"both"`.
+ */
+export interface ChatBulkReattributeRequest {
+  type: 'chatBulkReattribute';
+  chatId: string;
+  sourceParticipantId: string | null;
+  targetParticipantId: string;
+  roleFilter?: 'ASSISTANT' | 'USER' | 'both';
+}
+
+/**
+ * Fold another conversation's cast + summary into this chat (v4
+ * `POST …?action=merge-conversation`). `chatId` is the merge TARGET.
+ */
+export interface ChatMergeConversationRequest {
+  type: 'chatMergeConversation';
+  chatId: string;
+  sourceChatId: string;
+  characterIds?: string[];
+  /** The ported `OutfitSelectionSchema` analog — the new-chat form's shape. */
+  outfitSelections?: ChatCreateOutfitSelectionInput[];
+}
+
+/**
+ * Operator-initiated tool execution (v4 `POST …?action=run-tool`), the
+ * `RunToolModal` verb. `toolName` is the tool's **id**, not its display name
+ * (`RunToolModal.tsx:139`).
+ */
+export interface ChatRunToolRequest {
+  type: 'chatRunTool';
+  chatId: string;
+  toolName: string;
+  arguments?: Record<string, unknown>;
+  characterId?: string;
+  private?: boolean;
+}
+
+/**
+ * Toggle agent mode for this chat (v4 `POST …?action=toggle-agent-mode`).
+ *
+ * The column is TRI-state and the variant carries all three arms (`Rust
+ * Option<Option<bool>>`): key absent ⇒ leave alone, `null` ⇒ clear the per-chat
+ * override back to the cascade, `true`/`false` ⇒ pin it. **v4's badge only ever
+ * sends `true` or `false`** (`useChatControls.ts:369` computes
+ * `agentModeEnabled === null || !agentModeEnabled`), so the ported badge sends
+ * only those two arms — a client that sent `null` would be inventing a control
+ * v4 does not have.
+ */
+export interface ChatToggleAgentModeRequest {
+  type: 'chatToggleAgentMode';
+  chatId: string;
+  enabled?: boolean | null;
+}
+
+/** Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`). */
+export interface ChatReclassifyDangerRequest {
+  type: 'chatReclassifyDanger';
+  chatId: string;
+}
+
+/** Queue a Scriptorium render with full re-embed (v4 `POST …?action=render-conversation`). */
+export interface ChatRenderConversationRequest {
+  type: 'chatRenderConversation';
+  chatId: string;
+}
+
+// ---------------------------------------------------------------------------
+// §1 — the chat-dialog wire surface (written verbatim and identically in the
+// P4.9E3B and P4.9E3C work orders). P4.9E3B owns the Rust half; this lane
+// consumes it. Field names, casing and nesting are FROZEN — a change is a
+// cross-lane escalation.
+//
+// Response bodies are deliberately NOT pinned by §1: each is read through
+// `CoreClient.dispatchData` against what E3B's differential proves.
+//
+// **Two REST edges are part of the same contract**, reached via `apiUrl()`
+// rather than dispatch:
+//   - `GET /api/v1/tools?chatId=…&includeSchemas=true`
+//   - `GET /api/v1/chats/{chatId}?action=export` (byte download,
+//     `application/x-ndjson`, `Content-Disposition: attachment`)
+// ---------------------------------------------------------------------------
+
+/** The tool inventory (v4 `GET /api/v1/tools`, `app/api/v1/tools/route.ts:429`). */
+export interface ToolsListRequest {
+  type: 'toolsList';
+  chatId?: string;
+  includeSchemas?: boolean;
+}
+
+/** Chat transcript export as SillyTavern JSONL (v4 `GET …/chats/{id}?action=export`). */
+export interface ChatExportRequest {
+  type: 'chatExport';
+  chatId: string;
+}
+
+/** Per-character equipped-outfit summary (v4 `GET …/chats/{id}?action=outfit-summary`). */
+export interface ChatOutfitSummaryRequest {
+  type: 'chatOutfitSummary';
+  chatId: string;
+}
+
+/**
+ * v4's search-replace scope, a discriminated union
+ * (`components/tools/search-replace/types.ts`).
+ */
+export type SearchReplaceScopeWire =
+  | { type: 'chat'; chatId: string }
+  | { type: 'character'; characterId: string };
+
+/**
+ * Search & replace dry-run (v4 `POST /api/v1/search-replace?action=preview`).
+ *
+ * ⚠ **Both include flags default TRUE** on the server (v4 prefaults) — an absent
+ * key means "included", not "excluded". The client therefore always sends them
+ * explicitly rather than relying on the omission meaning what it looks like.
+ */
+export interface SearchReplacePreviewRequest {
+  type: 'searchReplacePreview';
+  scope: SearchReplaceScopeWire;
+  searchText: string;
+  replaceText: string;
+  includeMessages?: boolean;
+  includeMemories?: boolean;
+}
+
+/** Search & replace execute (v4 `POST /api/v1/search-replace?action=execute`). */
+export interface SearchReplaceExecuteRequest {
+  type: 'searchReplaceExecute';
+  scope: SearchReplaceScopeWire;
+  searchText: string;
+  replaceText: string;
+  includeMessages?: boolean;
+  includeMemories?: boolean;
+}
+
+/**
+ * Re-attribute ONE message (v4 `POST /api/v1/messages/{id}?action=reattribute`).
+ * Also deletes every memory sourced from the message (v4 `route.ts:342+`).
+ */
+export interface MessageReattributeRequest {
+  type: 'messageReattribute';
+  messageId: string;
+  newParticipantId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1685,9 +1870,25 @@ export type CoreRequest =
   | ChatSetAvatarRequest
   | ChatRemoveAvatarRequest
   | ChatToggleAvatarGenerationRequest
-  // --- The two chat-admin verbs this lane consumes (§1; P4.9E3A's) ---
+  // --- The chat-admin family (§1; P4.9E3A's server half) ---
   | ChatRngRequest
   | ChatUpdateToolSettingsRequest
+  | ChatRegenerateTitleRequest
+  | ChatAddTagRequest
+  | ChatRemoveTagRequest
+  | ChatBulkReattributeRequest
+  | ChatMergeConversationRequest
+  | ChatRunToolRequest
+  | ChatToggleAgentModeRequest
+  | ChatReclassifyDangerRequest
+  | ChatRenderConversationRequest
+  // --- The chat-dialog surface (§1; P4.9E3B's server half) ---
+  | ToolsListRequest
+  | ChatExportRequest
+  | ChatOutfitSummaryRequest
+  | SearchReplacePreviewRequest
+  | SearchReplaceExecuteRequest
+  | MessageReattributeRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest

@@ -116,6 +116,14 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+The browser now knows how to ask for the rest of the conversation commands. Nine
+requests the server has answered since last week — regenerate a title, add and
+remove a tag, re-attribute messages in bulk, merge another conversation in, run a
+tool by hand, switch agent mode, re-run the danger check, render the transcript —
+had no description on the page's side, so nothing could send them. Six more, for
+the tool inventory, transcript export, outfit summary, search-and-replace and
+single-message re-attribution, are described ahead of the server work that
+answers them. Nothing calls these yet; the dialogs that will are next.
 
 Planned the next round of work, in four side-by-side orders. First, the urgent
 one: nothing written since the port took over this app's data has been made

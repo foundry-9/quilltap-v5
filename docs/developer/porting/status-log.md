@@ -39722,3 +39722,37 @@ models it correctly — nothing to change in v5.
 - `apply_outfit_for_added_participant` gained `user_id` + the runner param;
   `chat_add_participant` / `chat_merge_conversation` / `apply_chat_merge`
   gained the runner param (harness call sites updated with `None`).
+### Unit record — P4.9E3C unit 1: the chat-dialog contract mirror (2026-07-27)
+
+`apps/web/src/app/core/core-contract.ts` gained fifteen request interfaces and
+their union members:
+
+- **The nine P4.9E3A verbs that had no mirror** — `chatRegenerateTitle`,
+  `chatAddTag`, `chatRemoveTag`, `chatBulkReattribute`, `chatMergeConversation`,
+  `chatRunTool`, `chatToggleAgentMode`, `chatReclassifyDanger`,
+  `chatRenderConversation`. (`chatRng` + `chatUpdateToolSettings` were mirrored
+  when P4.9E3A landed; these nine were not, because no screen could reach them.)
+- **The six §1 verbs P4.9E3B implements** — `toolsList`, `chatExport`,
+  `chatOutfitSummary`, `searchReplacePreview`, `searchReplaceExecute`,
+  `messageReattribute`, written from the order's §1 block verbatim.
+
+Diffed name-for-name against `crates/quilltap-core/src/api/types.rs:2514-2610`
+(the enum is `Request`, `#[serde(tag = "type", rename_all = "camelCase")]`, and
+every variant in the range carries its own `rename_all = "camelCase"`). Three
+shapes needed the comment rather than the type to carry the contract:
+
+- `chatBulkReattribute.sourceParticipantId` is `Option<String>` **without**
+  `#[serde(default)]` — the key is required and may be `null`; `null` is the
+  meaning of `BulkCharacterReplaceModal`'s `__UNASSIGNED__` sentinel, not an
+  omission.
+- `chatToggleAgentMode.enabled` is the full tri-state `Option<Option<bool>>`,
+  but v4's badge sends only `true`/`false` (`useChatControls.ts:369`), so the
+  mirror documents which arms a faithful client may use.
+- `searchReplace{Preview,Execute}`'s two include flags **default TRUE** on the
+  server, so an absent key does not mean "excluded"; the client sends them.
+
+The stale "no v5 consumer yet, deliberately" note on `chatUpdateToolSettings`
+(written when the tool inventory looked unportable this round) was replaced with
+a pointer to its consumer.
+
+Gate: `npx tsc --noEmit -p tsconfig.app.json` clean. SPA 0.5.299.
