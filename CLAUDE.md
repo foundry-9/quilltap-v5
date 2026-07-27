@@ -1505,6 +1505,38 @@ records THERE. Update this summary only when a phase or round completes.
   inline in `system_restore_state.rs`. The lane did not act because the order forbade moving the
   phase order without a ruling. Details: `status-log.md` → "Lane record — P4.d22
   units 2–3".
+- **P4.d23 — the restore file-replay dedupe: CLOSED on main (2026-07-26, single
+  lane); the ruling is DISCHARGED and the skip check is LIVE.** v5's restore no
+  longer re-ingests a file whose document-store rows the archive already carries
+  (`orchestrator.rs` → `carried_store_rows`), and the divergence list GREW by one
+  named entry (`REPLAY_DEDUPE`) exactly as the ruling predicted. Two committed
+  archives built by v4's REAL `createBackup` make the claim measurement rather
+  than analysis — `restore-archive-uploads.zip` (a store-backed `files` row) and
+  `restore-archive-gen2.zip` (taken from an instance that was itself restored) —
+  built by a SEPARATE builder so the existing five are byte-untouched
+  (`system_backup_equivalence` re-proves it). `system_restore_state` 4 → **8
+  cases**, the four new ones asserted in both directions and mutation-tested.
+  **Two of the order's own premises were disproved by running them** (the point
+  of the "establish before designing" instruction): the archived store rows do
+  NOT key on the `files` row's id — `doc_mount_blobs.fileId` is a
+  `doc_mount_files.id`, a disjoint space, and the storage key is the only exact
+  handle; and **v5's slot never carried the predicted `UNIQUE(fileId)` hazard**,
+  because v5's `link_blob_content` upserts by `fileId` and so REUSES the archived
+  blob. v5's real cost was a spurious duplicate LINK per carried file,
+  unique-suffixed and accumulating one more copy on every restore generation —
+  quieter than the predicted crash and, over generations, worse. That correction
+  is why the differential's tripwire is link arithmetic; the first assertions
+  written passed with the check disabled, and only the mutation test caught it.
+  v4's own second-generation loss is now MEASURED, not reasoned: it refuses two
+  archived links and a folder where v5 restores the same archive with zero
+  warnings. `PHASE_ORDER_RESIDUAL` was re-examined and **STAYS** — structurally,
+  since a legacy disk-key file is still re-ingested on both sides, so the two
+  slots still differ in insertion order; the check removed the hazards, not the
+  ordering. Versions: core 0.0.381, harness 0.0.328. **Two items outstanding:**
+  the e2e restore beat (`zzz-restore-destructive.spec.ts` — `apps/web` was not
+  this lane's; it should ride the next round that already obliges a full
+  Playwright run), and reporting the measurement back to the v4 side, where this
+  repair is currently marked out of scope. Lane record: `status-log.md`.
   The previous baseline paragraphs follow for history:
 - **Oracle baseline: `231be14c` (v4 HEAD, 2026-07-25), adopted at the
   P4.d18 ∥ P4.d19 ∥ P4.d20 ∥ P4.d21 drift-round unification.** Eighteen families

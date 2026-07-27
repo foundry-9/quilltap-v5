@@ -38509,3 +38509,219 @@ divergences — the sparse-array blob truncation (2026-07-24) and the three v4
 restore bugs (2026-07-25). Same shape each time: v5 declines to reproduce a
 data-loss behaviour, the divergence is asserted in both directions, and the
 rationale is written down so a later round cannot mistake it for a port gap.
+
+
+## Lane record — P4.d23, the restore file-replay dedupe (2026-07-26)
+
+**CLOSED.** Single lane, server + harness only; `apps/web/**` untouched. v4
+verified clean at the baseline `c1507f47` at lane start and again at the gate.
+Discharges the 2026-07-26 ruling above. Versions: core 0.0.381, harness 0.0.328.
+
+### The predicate, and the two beliefs it corrected
+
+The order required establishing the identity test by RUNNING it rather than
+inheriting P4.d22's reasoning. Both inherited beliefs turned out to be wrong.
+
+**Belief 1 — "the archived doc-store rows key on the `files` row's own id."**
+They do not. `doc_mount_blobs.fileId` references `doc_mount_files.id` — a
+content row, content-addressed by sha and shared across mounts — an id space
+entirely disjoint from `files.id`. The ruling's "which is why the failure mode is
+a `UNIQUE(fileId)` violation" was reasoning about the right constraint on the
+wrong id.
+
+**The predicate actually adopted** (`orchestrator.rs` → `carried_store_rows`):
+a file is already carried by the archive's document store when all three hold —
+
+1. its ARCHIVED `storageKey` parses as `mount-blob:<mp>:<blob>` (a legacy disk
+   key such as `<userId>/portrait.png` names no store row and is re-ingested
+   exactly as before);
+2. the archive's `doc_mount_blobs` collection carries a row with that blob id —
+   this is what "the archive carries the store rows" means literally;
+3. that blob is PRESENT in the mount-index database at the moment the files
+   phase runs, i.e. 22f actually restored it. If 22f warned, the bytes are not
+   in the store and the file is re-ingested so the user still gets it back.
+
+The handle is the storage key because it is the very pointer the `files` row
+uses to find its bytes, so a match means "this row's bytes are already in the
+store" — which is exactly the question. Every miss returns `None` and re-ingests;
+silently dropping a file the user expected back is the worst failure this surface
+has. In `new-account` mode `uuid_remap` has no rule for `storageKey`, so
+resolution runs in the archive's id space and the key is rebuilt in the restored
+one, pairing original to remapped BY INDEX — the trick 22f and the files loop
+already use for on-disk names.
+
+**Belief 2 — "v5's slot carries the `UNIQUE(fileId)` hazard."** It does not, and
+this only came out under a mutation test. v5's `link_blob_content` **upserts**
+the blob by `fileId` rather than inserting, so a replay that matches the archived
+content row by sha REUSES the archived blob instead of colliding with it. No
+violation, no refused row, and therefore no visible damage in the blob or content
+tables at all. What a v5 re-ingest actually cost was quieter and, across
+generations, worse: one spurious **link** per file — unique-suffixed to
+`restored/<name> (2)` when the archive's own link already sits there, so a
+second-generation archive accumulates another copy on every restore.
+
+That correction is why the differential's tripwire is the link arithmetic (E
+below) and not the blob counts: the first assertions written here passed with the
+check disabled, and the mutation test is the only reason that was found.
+
+### The two archives (tier 1 item 1)
+
+`harness/oracle/fixtures/build-restore-archives-dedupe.test.ts` — a SEPARATE
+builder, because re-running `build-restore-archives.test.ts` would rewrite all
+five committed archives (each carries fresh stamps) and invalidate oracles this
+lane has no business moving. The existing five are byte-untouched, and
+`system_backup_equivalence` re-proves the archive bytes unmoved.
+
+- **`restore-archive-uploads.zip`** — the committed `system-data-*` fixture DBs
+  copied to scratch, the Quilltap Uploads mount minted by v4's OWN provisioning
+  migration, `ledger.txt` written through v4's REAL `writeUserUploadToMountStore`
+  and its `files` row created exactly as `app/api/v1/files/shared.ts:186` writes
+  one. So its `files` collection holds one legacy disk-key row (`portrait.png`,
+  inherited) and one store-backed row — which makes the check's narrowness
+  visible in every case: the legacy row is still re-ingested on both sides.
+- **`restore-archive-gen2.zip`** — that archive restored by v4's REAL restore
+  into a fresh instance whose uploads pointer was aligned to the archive's mount,
+  then backed up again. Both files therefore sit at `restored/…`.
+
+The uploads mount id is a fresh UUID on every regeneration (v4's migration mints
+it); nothing may hard-code it, and the differential reads it out of the archive.
+
+**Building gen-2 observed v4's knowingly-kept residual for the first time**
+rather than reasoning about it: the seed restore warns `Failed to restore
+doc-store folder "restored": UNIQUE constraint failed`, because v4's own replay
+at `22a-bis` reached that folder first.
+
+### `alignUploadsPointer` — why the new cases need setup at all
+
+No `replace` case could reach the file replay without it. `deleteUserData` drops
+every `doc_mount_points` row but deliberately leaves `instance_settings` alone,
+so the surviving `userUploadsMountPointId` names the target's own (now-deleted)
+mount, 22a restores the ARCHIVE's mounts under the archive's ids, and the pointer
+dangles — both engines warn and restore nothing. That is exactly why the
+committed five never exercised this. Setting it is what disaster recovery IS: you
+are restoring your own backup onto your own instance, where those ids agree.
+
+It is setup, not normalization — both sides read the value out of the archive and
+write it BEFORE the baseline is dumped, so the two baselines still describe the
+same instance and `compare_baseline` still means what it says. Deliberately NOT
+applied in `new-account` mode: nothing is wiped and every archive id is remapped,
+so an aligned pointer would name a mount that no longer exists. There the replay
+correctly lands in the target's OWN uploads mount — which still shares the
+archive's CONTENT rows, since `doc_mount_files` is global and keyed by sha, so
+the carried case is reached anyway.
+
+### The differential (tier 1 items 3 + 4)
+
+`system_restore_state` 4 → **8 cases**: `restore_uploads_replace` /
+`_new_account` and `restore_gen2_replace` / `_new_account`. The divergence is
+`REPLAY_DEDUPE`, carving five tables (`main.files`, `doc_mount_blobs`,
+`doc_mount_files`, `doc_mount_file_links`, `doc_mount_folders`), two summary
+counters and `warnings` out of the row diff and replacing them with five
+directional assertions:
+
+- **A** — v5 restored a `files` row for every carried file, and its `storageKey`
+  names a blob actually present in the restored store (the file is reachable).
+- **B** — v4 holds exactly `carried` more `doc_mount_blobs` and `doc_mount_files`
+  rows. A statement about **v4's** slot: at `22a-bis` its replay runs before
+  22c/22f, finds no content row to match, and mints its own.
+- **C** — the storage keys differ; v4's points at the blob its replay minted.
+- **D** — on `restore_gen2_replace` v4 must refuse one archived link per carried
+  file and v5 must refuse none. **The measured data loss:** v4 emits
+  `Failed to restore doc-store file link "restored/portrait.png": UNIQUE
+  constraint failed` and the same for `ledger.txt`; v5 restores that archive with
+  **zero warnings**.
+- **E, the tripwire** — `v4_links − v5_links == carried − (archived links v4
+  refused)`. Both sides create one link per genuinely re-ingested file, so those
+  cancel; what is left is v4's replay link per carried file, less the archived
+  links its replay locked out. On `gen2_replace` that is `0 == 2 − 2`, which is
+  how the loss is pinned arithmetically as well as by wording.
+
+**Mutation-tested.** With `carried_store_rows` forced to return `None`, all four
+cases fail on (E) — including `gen2_replace`, where v5 climbs to 85 links against
+v4's 83 by adding two unique-suffixed duplicates while keeping the archived ones.
+(A)–(D) all passed under that mutation, which is the finding recorded above.
+
+The `Quilltap Uploads` rollup columns are masked on the dedupe cases and BOUNDED
+rather than pinned (v4 can never count fewer), because on the gen-2 archive the
+rollup the backup recorded and the one v4 recomputes coincide at 2.
+
+### `PHASE_ORDER_RESIDUAL` re-examined (tier 1 item 5) — it STAYS
+
+Answered explicitly, as the order required. Both hazards are gone, but the
+residual is **still required**, and structurally rather than incidentally: the
+check only fires for a file the archive carries store rows for. A file with a
+LEGACY disk `storageKey` — which is exactly what `restore-archive.zip`'s one
+`files` row has, and what every pre-mount-store instance's rows have — is
+genuinely re-ingested on both sides, and the two slots still write its content
+row, link and blob at different points in the insertion order. The check removed
+the two HAZARDS; it did not, and could not, remove the ordering difference that
+produced them. The three tables keep their order-insensitive comparison for as
+long as the two placements differ, which the ruling says is permanently. The
+"awaiting the phase-order ruling" wording is gone from the assertion and the
+carve-out now reads as the decision it is.
+
+### Tier 2 / deferrals
+
+- **Item 6, the e2e restore beat, was NOT run** — `apps/web` is not this lane's,
+  no `apps/web` file was touched, and the order forbids editing the spec. It is
+  the only tier-2 item outstanding; it should ride the next round that already
+  obliges a full Playwright run.
+- **Item 7, report to the v4 side: owed to the human, not done in the v4 repo.**
+  v4's `found-bugs.md:400-402` calls this repair out of scope. It is worth taking
+  there: implemented, it is ~30 lines and it removes a data loss v4 currently
+  logs as three warnings on every second-generation restore. v4's own residual
+  section can be updated with the measurement in the final report.
+- `V5_STATS_GAP` (the unported best-effort `refreshStats`) was left alone, as
+  the order directs.
+- The `DbError::Key` Display-prefix leak stays a separate recorded finding.
+
+### Oracle regeneration
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=~/source/quilltap-v5
+# the two archives (writes ONLY the two — never the other five)
+TMPO=/tmp/qt-restore-archives-dedupe
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/fixtures/build-restore-archives-dedupe.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ARCHIVE_OUT=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+  $N/npx jest --silent --watchman=false --testTimeout=600000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- build-restore-archives-dedupe
+
+# the restore oracle (13 cases: 5 preview + 8 restore). ⚠ ANCHOR the pattern —
+# a bare `-- system-restore` also matches nothing else today, but `.test` keeps
+# it honest if a sibling file ever lands.
+TMPO=/tmp/qt-sysrestore-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-restore.test
+
+cd $V5W
+QT_ORACLE_SYSTEM_RESTORE=/tmp/oracle-system-restore.ndjson \
+QT_ORACLE_SYSTEM_BACKUP=/tmp/oracle-system-backup.ndjson \
+  cargo test -p quilltap-harness --test system_restore_state \
+    --test system_restore_equivalence --test system_backup_equivalence -- --nocapture
+```
+
+Fixtures delivered: the two archives. Fixtures consumed, unchanged:
+`restore-archives/`'s existing five and `system-data-*`. No other family's
+fixture moved, so no other oracle is invalidated.
+
+### Gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings`
+**and** with `--features quilltap-core/native-transport`; `cargo test --workspace
+--no-fail-fast` → **390 test binaries / 1,649 tests / 0 failed**; `cargo build
+--release`. The three restore/backup families run BY NAME with `--nocapture` over
+oracles regenerated fresh at `c1507f47`, **zero SKIP lines**:
+`system_restore_state` (8 restore cases + `preview_writes_nothing`),
+`system_restore_equivalence` (5 preview cases), `system_backup_equivalence` (the
+archive bytes re-proved unmoved). No SPA run owed — `apps/web` untouched.

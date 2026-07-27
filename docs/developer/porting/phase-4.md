@@ -1,15 +1,18 @@
-1. **`p4.d23` — the restore file-replay dedupe.** ✅ The ruling that used to head
-   this list is MADE (2026-07-26, human): **v5 KEEPS its files-phase placement
-   and v4's `22a-bis` is NOT adopted**; instead the replay learns to skip
-   re-ingesting a file the archive already carries store rows for. That is v4's
-   own named "proper fix" (`found-bugs.md:400-402`), and it is only writable
-   from v5's slot — at `22a-bis` the archived rows do not exist yet. It removes
-   BOTH latent hazards rather than trading one for the other. Order:
-   `work-orders/p4.d23-restore-file-replay-dedupe.md`. **Tier 1 includes
-   building the two archives the family lacks** (a second-generation one, and
-   one carrying a Quilltap Uploads mount) — without them neither hazard is
-   reachable and the claim is analysis, not measurement. Expect the divergence
-   list to GROW by one named entry: v4 re-ingests unconditionally, v5 will not.
+1. ~~**`p4.d23` — the restore file-replay dedupe.**~~ **DONE — CLOSED
+   2026-07-26.** The ruled skip check is on main; `system_restore_state` runs 8
+   cases over two new committed archives (`restore-archive-uploads.zip`,
+   `restore-archive-gen2.zip`, both built by v4's real `createBackup`), and the
+   divergence list grew by one named entry (`REPLAY_DEDUPE`) exactly as
+   predicted. `PHASE_ORDER_RESIDUAL` was re-examined and **stays** — the check
+   removes the two hazards, not the ordering, and a legacy disk-key file is still
+   re-ingested on both sides. Two of the order's premises were disproved by
+   running them (the id space, and v5's predicted `UNIQUE(fileId)` hazard — v5
+   upserts, so its real cost was a duplicate LINK accumulating per restore
+   generation). Lane record: `status-log.md`. **Two items outstanding:** the e2e
+   restore beat (`zzz-restore-destructive.spec.ts`), which should ride the next
+   round that already obliges a full Playwright run; and reporting the
+   measurement to the v4 side, where this repair is currently marked out of
+   scope.
 
 # Phase 4 kickoff — transports, hosts, and the Angular SPA
 

@@ -87,6 +87,15 @@ const PREVIEW_CASES: PreviewCase[] = [
  *   restore_minimal          every optional collection absent
  *   restore_new_account      the full archive, `mode: 'new-account'` — no wipe,
  *                            every id remapped first
+ *
+ * P4.d23 adds four more over the two archives built for the file-replay dedupe
+ * (`build-restore-archives-dedupe.test.ts`), the first that can reach the replay
+ * with the archive's own store rows already in place:
+ *
+ *   restore_uploads_replace      / _new_account   a first-generation archive
+ *                            whose one `files` row is store-backed
+ *   restore_gen2_replace         / _new_account   a second-generation archive,
+ *                            whose files already sit at `restored/…`
  */
 const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
@@ -95,6 +104,7 @@ const RESTORE_CASES: Array<{
   name: string;
   archive: string;
   mode?: 'replace' | 'new-account';
+  alignUploadsPointer?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -104,6 +114,23 @@ const RESTORE_CASES: Array<{
   // is the "already there", so this also proves the restore does not collide with
   // the seeded user / chat settings / embedding profile / built-in mounts.
   { name: 'restore_new_account', archive: 'restore-archive.zip', mode: 'new-account' },
+
+  // ── P4.d23: the four file-replay-dedupe cases ────────────────────────────
+  //
+  // The five archives above cannot reach the replay at all in `replace` mode:
+  // none carries a Quilltap Uploads mount, so the surviving `userUploadsMount-
+  // PointId` dangles and both engines warn instead of restoring. `alignUploads-
+  // Pointer` repoints the freshly provisioned target at the ARCHIVE's own
+  // uploads mount before the restore, which is what disaster recovery is —
+  // restoring your own backup onto your own instance. Read out of the archive on
+  // both sides, so it is setup, not normalization. In `new-account` mode it is
+  // deliberately NOT applied: nothing is wiped, ids are remapped, and the replay
+  // correctly lands in the target's OWN uploads mount — which still shares the
+  // archive's CONTENT rows, since `doc_mount_files` is global and keyed by sha.
+  { name: 'restore_uploads_replace', archive: 'restore-archive-uploads.zip', alignUploadsPointer: true },
+  { name: 'restore_uploads_new_account', archive: 'restore-archive-uploads.zip', mode: 'new-account' },
+  { name: 'restore_gen2_replace', archive: 'restore-archive-gen2.zip', alignUploadsPointer: true },
+  { name: 'restore_gen2_new_account', archive: 'restore-archive-gen2.zip', mode: 'new-account' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -171,7 +198,7 @@ function dumpPartition(db: import('better-sqlite3').Database): Record<string, un
 }
 
 async function runRestoreCase(
-  c: { name: string; archive: string },
+  c: { name: string; archive: string; mode?: string; alignUploadsPointer?: boolean },
   archives: string,
   scratchRoot: string,
 ): Promise<Record<string, unknown>> {
@@ -275,6 +302,25 @@ async function runRestoreCase(
     // that no archive put there. The Rust side subtracts this from the post-state
     // and diffs only the DELTA, so the claim is "the two restores WRITE the same
     // rows" rather than "the two instances end up identical".
+    // P4.d23: repoint the target at the archive's own uploads mount, BEFORE the
+    // baseline is dumped so the two sides' baselines still describe the same
+    // instance. `lib/instance-settings` exports no setter for this key (the
+    // provisioning migration writes it directly), so use its own raw upsert.
+    if (c.alignUploadsPointer) {
+      const { parseBackupZip } = await import('@/lib/backup/restore/archive');
+      const parsed = await parseBackupZip(join(archives, c.archive));
+      rmSync(parsed.extractDir, { recursive: true, force: true });
+      const row = (parsed.data.instanceSettings ?? []).find(
+        (r: { key: string; value: string }) => r.key === 'userUploadsMountPointId',
+      );
+      if (!row) throw new Error(`${c.archive} carries no userUploadsMountPointId to align to`);
+      await rawQuery(
+        'INSERT INTO "instance_settings" ("key", "value") VALUES (?, ?) ' +
+          'ON CONFLICT("key") DO UPDATE SET "value" = excluded."value"',
+        ['userUploadsMountPointId', row.value],
+      );
+    }
+
     const preState = dumpAll();
 
     const { restore } = await import('@/lib/backup/restore/restore');

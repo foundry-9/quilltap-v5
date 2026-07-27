@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+A restore no longer puts a file back twice. When the backup already describes
+where a file lives inside the app's own document store, the bytes are left
+exactly where they are and only the file's own record is written. Before this,
+every restore added a second path pointing at the same bytes, and a backup taken
+from an instance that had itself been restored gathered another copy each time
+round — an accumulation with no end to it. The old app still does that, and on
+the second-generation case it also loses the very records it was restoring: two
+of them are refused outright because its own copy reached their place first. This
+app now brings that same backup back without a single complaint. The difference
+is written down and checked from both sides, so it can neither be quietly undone
+nor quietly widened.
+
+One belief that had been carried on paper turned out to be wrong, and checking it
+was the first thing this work did. The identity of a stored file was said to run
+through the file's own record; it does not — the store keys its content by a
+separate name entirely, and the only exact handle is the pointer the record
+already uses to find its bytes. The predicted way this app would go wrong turned
+out to be wrong too: it does not collide, because it reuses what is already
+there. What it did instead was quieter and, over generations of backups, worse.
+
 Two more saved backups were built for the tests, because the fault the last
 decision was about could not be reached by any of the ones already on hand. None
 of them held a file that lived inside the app's own document store, and none

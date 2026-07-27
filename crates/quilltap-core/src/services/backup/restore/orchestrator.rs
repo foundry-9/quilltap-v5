@@ -363,6 +363,18 @@ fn restore_on_writer(
     // Everything else keeps v4's order exactly. `system_restore_state` asserts
     // the divergence in both directions (v4 restores zero files, v5 restores
     // them).
+    //
+    // ## ⚠ RULED DIVERGENCE (2026-07-26) — the slot is KEPT, and it earns its keep
+    //
+    // v4's `c1507f47` moved ITS files phase to `22a-bis` (after 22a, before 22b).
+    // v5 was asked to follow and was overruled: **v5 keeps this later slot.** The
+    // reason is not that one slot's hazard is milder — both slots have one — but
+    // that only this slot makes v4's own named repair WRITABLE. At `22a-bis` the
+    // archived link and blob rows have not been restored yet, so a replay has
+    // nothing to consult; here it does. See `carried_store_rows` below for the
+    // check that repair became, and `status-log.md` → "Ruling — the restore
+    // file-replay dedupe". Aligning the two phase orders fails
+    // `system_restore_state` deliberately.
 
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
     if let Some(mount) = mount {
@@ -828,12 +840,22 @@ fn restore_on_writer(
             // The on-disk lookup MUST use the original row: new-account remaps
             // the id, the archive's file names do not move (v4 `:133-136`).
             let on_disk = extracted.data.files.get(i).unwrap_or(file);
+            // ⚠ RULED DIVERGENCE (2026-07-26) — see `carried_store_rows`.
+            let carried = carried_store_rows(mount, data, &extracted.data, on_disk);
             match get_file_from_extracted_backup(&root_path, on_disk, backup_format) {
                 Some(bytes) => warn_row!(
                     w,
                     c.files,
                     format!("Failed to restore file \"{name}\""),
-                    restore_one_file(main, mount, codec.as_ref(), target_user_id, file, &bytes)
+                    restore_one_file(
+                        main,
+                        mount,
+                        codec.as_ref(),
+                        target_user_id,
+                        file,
+                        &bytes,
+                        carried.as_ref()
+                    )
                 ),
                 None => w.push(format!("File not found in backup: {name}")),
             }
@@ -1397,6 +1419,113 @@ fn restore_mount_family(
 // Per-phase helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// What the archive already holds for one user file: the document-store blob its
+/// `storageKey` points at, as that blob now stands in the restored database.
+struct CarriedBlob {
+    /// `mount-blob:<mp>:<blob>` in the RESTORED id space.
+    storage_key: String,
+    stored_mime_type: String,
+    size_bytes: f64,
+}
+
+/// ## ⚠ RULED DIVERGENCE (2026-07-26) — the archive's own store rows win
+///
+/// v4 re-ingests every user file unconditionally: the bytes go back through a
+/// bridge, which mints a fresh link (and, at v4's `22a-bis` slot, a fresh content
+/// row and blob) beside the ones the archive already carries. v4 names the proper
+/// repair itself and puts it out of scope (`found-bugs.md:400-402`) — *"teach the
+/// replay to recognise that the archive already carries the store rows for a file
+/// and skip re-ingesting it, rather than reshuffling phase order"*. **The human
+/// ruling of 2026-07-26 keeps v5's later files-phase slot precisely so that this
+/// check can exist**, because at `22a-bis` the archived rows have not been
+/// restored yet and there is nothing to consult. `status-log.md` → "Ruling — the
+/// restore file-replay dedupe"; `system_restore_state` asserts it in both
+/// directions.
+///
+/// ## The predicate, and why it is exact rather than heuristic
+///
+/// A file is "already carried by the archive's document store" when all three
+/// hold:
+///
+/// 1. its ARCHIVED `storageKey` parses as `mount-blob:<mp>:<blob>` — a legacy
+///    disk key (`<userId>/portrait.png`) names no store row and is re-ingested
+///    exactly as before;
+/// 2. the archive's `doc_mount_blobs` collection carries a row with that blob id
+///    — this is what "the archive carries the store rows" means literally;
+/// 3. that blob is PRESENT in the mount-index database right now, i.e. phase 22f
+///    actually restored it. If 22f warned, the bytes are not in the store and the
+///    file is re-ingested so the user still gets it back.
+///
+/// The handle is the storage key, not the `files` row's id. P4.d22 reasoned that
+/// "the archived doc-store rows key on that same id" — **that is wrong, and this
+/// lane's first job was to check it**: `doc_mount_blobs.fileId` references
+/// `doc_mount_files.id` (a content row, content-addressed by sha and shared
+/// between mounts), an id space entirely disjoint from `files.id`. The storage
+/// key is the only exact handle, and it is the very pointer the `files` row uses
+/// to find its bytes — so a match means "this row's bytes are already in the
+/// store", which is exactly the question.
+///
+/// ## new-account
+///
+/// `uuid_remap` has no rule for `storageKey`, so the remapped row still names the
+/// ARCHIVE's blob and mount. Resolution therefore runs in the archive's id space
+/// and the key is rebuilt in the restored one, pairing original to remapped BY
+/// INDEX — the same trick 22f and the files loop already use for on-disk names.
+///
+/// Fails soft in every direction: any miss returns `None` and the file is
+/// re-ingested, which is the safe answer. Silently dropping a file the user
+/// expected back is the worst failure this surface has.
+fn carried_store_rows(
+    mount: &Connection,
+    data: &crate::services::backup::BackupData,
+    original: &crate::services::backup::BackupData,
+    on_disk: &Value,
+) -> Option<CarriedBlob> {
+    let key = os(on_disk, "storageKey")?;
+    let (archive_mp, archive_blob) =
+        crate::services::file_storage::parse_mount_blob_storage_key(&key)?;
+
+    let i = original
+        .doc_mount_blobs
+        .iter()
+        .position(|b| id_of(b) == archive_blob)?;
+    let blob_id = data
+        .doc_mount_blobs
+        .get(i)
+        .map(id_of)
+        .unwrap_or(archive_blob);
+
+    // Present, or 22f never got it in. A missing table reads the same as a
+    // missing row: re-ingest.
+    let (stored_mime_type, size_bytes) = mount
+        .query_row(
+            "SELECT storedMimeType, sizeBytes FROM doc_mount_blobs WHERE id = ?1",
+            rusqlite::params![blob_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)),
+        )
+        .ok()?;
+
+    // The mount half of the key is cosmetic on the read path (every reader
+    // resolves by blob id), but a restored row should not name a mount that no
+    // longer exists. An unremapped mount falls back to the archive's own id.
+    let mount_point_id = original
+        .doc_mount_points
+        .iter()
+        .position(|m| id_of(m) == archive_mp)
+        .and_then(|j| data.doc_mount_points.get(j))
+        .map(id_of)
+        .unwrap_or(archive_mp);
+
+    Some(CarriedBlob {
+        storage_key: crate::services::file_storage::build_mount_blob_storage_key(
+            &mount_point_id,
+            &blob_id,
+        ),
+        stored_mime_type,
+        size_bytes,
+    })
+}
+
 /// Phase 5's body for one file (v4 `:136-187`).
 ///
 /// Project-bound files land in the project's document store; project-less ones in
@@ -1405,6 +1534,11 @@ fn restore_mount_family(
 /// POST-bridge mime and size rather than what the backup claimed (`:167-172`);
 /// re-writing the backup's claim would re-introduce the "media_type X but bytes
 /// are Y" error a pre-fix backup carries.
+///
+/// `carried` short-circuits the ingest — see [`carried_store_rows`] for the
+/// ruling and the predicate. The row it writes keeps the same shape: the mime and
+/// size still describe what is actually in the store, read off the archive's own
+/// blob rather than off a bridge that has just re-written it.
 fn restore_one_file(
     main: &Connection,
     mount: &Connection,
@@ -1412,31 +1546,49 @@ fn restore_one_file(
     target_user_id: &str,
     file: &Value,
     bytes: &[u8],
+    carried: Option<&CarriedBlob>,
 ) -> Result<(), DbError> {
     let filename = s(file, "originalFilename");
     let mime = s(file, "mimeType");
-    let stored = match os(file, "projectId") {
-        Some(project_id) => crate::services::file_storage::write_project_file_to_mount_store(
-            mount,
-            codec,
-            &project_id,
-            &filename,
-            bytes,
-            &mime,
-            os(file, "folderPath").as_deref().or(Some("/")),
-            None,
-        )?,
-        None => crate::services::file_storage::write_user_upload_to_mount_store(
-            main, mount, codec, &filename, bytes, &mime, "restored", None,
-        )?,
+    let stored = match carried {
+        Some(_) => None,
+        None => Some(match os(file, "projectId") {
+            Some(project_id) => crate::services::file_storage::write_project_file_to_mount_store(
+                mount,
+                codec,
+                &project_id,
+                &filename,
+                bytes,
+                &mime,
+                os(file, "folderPath").as_deref().or(Some("/")),
+                None,
+            )?,
+            None => crate::services::file_storage::write_user_upload_to_mount_store(
+                main, mount, codec, &filename, bytes, &mime, "restored", None,
+            )?,
+        }),
+    };
+    let (storage_key, stored_mime_type, size_bytes) = match (&stored, carried) {
+        (Some(s), _) => (
+            s.storage_key(),
+            s.stored_mime_type.clone(),
+            s.size_bytes as f64,
+        ),
+        (None, Some(c)) => (
+            c.storage_key.clone(),
+            c.stored_mime_type.clone(),
+            c.size_bytes,
+        ),
+        // Unreachable: `stored` is `None` only when `carried` is `Some`.
+        (None, None) => unreachable!("the file phase either ingests or reuses"),
     };
 
     let create = crate::db::files::FileCreate {
         user_id: target_user_id.to_string(),
         sha256: s(file, "sha256"),
         original_filename: filename,
-        mime_type: stored.stored_mime_type.clone(),
-        size: stored.size_bytes as f64,
+        mime_type: stored_mime_type,
+        size: size_bytes,
         width: on(file, "width"),
         height: on(file, "height"),
         is_plain_text: ob(file, "isPlainText"),
@@ -1450,7 +1602,7 @@ fn restore_one_file(
         tags: sa(file, "tags"),
         project_id: os(file, "projectId"),
         folder_path: os(file, "folderPath"),
-        storage_key: Some(stored.storage_key()),
+        storage_key: Some(storage_key),
         file_status: str_or(file, "fileStatus", "ok"),
     };
     crate::db::files::FilesRepository::new(main).create(
