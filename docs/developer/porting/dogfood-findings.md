@@ -91,12 +91,19 @@ catch, since every fixture is built fresh.
   (`ProfilesTab.tsx:385`), and nowhere in the chat settings tab or the sidebar.
   v5 has both of those consumers (`new-chat-form.ts`, characters
   `defaults-tab.ts`). Parity, not an omission.
-  **NOT walked — the next pass starts here:** Part F (Data & System: export /
-  import execute / backup / restore both modes / delete-all / tasks queue /
-  auto-lock / LLM log viewer — destructive, needs the scratch copy), Part G
-  (chunk-on-write: a fresh character's vault searchable without a reindex), and
-  Part H (retrospective-recall live behavior — finding #28's downstream look,
-  itself owed since 2026-07-24).
+  **Part G (chunk-on-write)** — the fix WORKS (both vaults created during the
+  walk carry chunks written at creation), but checking it surfaced **#35**: the
+  chunks are never embedded, because `EMBEDDING_GENERATE` has no handler. The
+  step as scripted was also unrunnable — v5 has no semantic-search UI at all —
+  so it was measured against the mount-index directly.
+  **NOT walked — the next pass starts here:** **Part F** (Data & System: export
+  / import execute / backup / restore both modes / delete-all / tasks queue /
+  auto-lock / LLM log viewer — destructive, needs the scratch copy at
+  `~/qt-dogfood-scratch`; four of these cards answered a refusal until
+  2026-07-25 and are the largest untested surface in the port), and **Part H**
+  (retrospective-recall live behavior — finding #28's downstream look, owed
+  since 2026-07-24). Part H is unaffected by #35: memory embedding runs inline
+  through `EngineAssembly.memory_embedding`, not through the dead job.
 
 - **The 2026-07-26 `231be14c` drift-round dogfood walk — CLEAN, zero
   findings.** The round: P4.d18 (the fictional story clock) ∥ P4.d19 (the
