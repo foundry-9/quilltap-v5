@@ -38884,3 +38884,104 @@ dialog exists.
 
 Docs + four comment lines; no behavior touched. `ng test` 238 files / 2,981,
 unchanged. No Rust, no e2e, no version bump owed (no shipped code changed).
+
+## Round planned — the embedding repair + chat-dialog family round (P4.6BL ∥ P4.9E3B ∥ P4.9E3C ∥ P4.D24), 2026-07-27
+
+**Drift check — TWICE, because v4 moved mid-planning.** At planning start v4
+HEAD was `c1507f47` (the baseline) with one dirty file,
+`docs/developer/found-bugs.md`: the human-authored entry for v4 Bug 5 (a
+composer custom-tool run consults the first participant's fact sheet, not the
+operator's character — v5 reproduces it exactly). While the first three orders
+were being written, **v4 shipped the fix: `e8a49597` (4.8.0-dev.108),
+"fix(pascal): a composer run rolls against the operator's own sheet"** — the
+human flagged it and the re-check confirmed it. Classification: ONE commit;
+its only `lib`/route change is `app/api/v1/chats/[id]/custom-tools/route.ts`
+(+103: `operatorCharacterIds` + `preferOperator` + the widened
+`characterLabel` contract), a **ported surface** (`api/custom_tools.rs`,
+P4.6ay unit 7); v4's own commit message says *"v5 owes the mirror change and
+no tripwire will fire for it"* (both sides agreed until v4 moved; the
+`pascal_custom_tools_route_equivalence` tripwire fires on regen). Everything
+else is docs/version chores + `help/custom-tools.md` content (joins the
+`p4.9i2` bank). **The round gained a fourth lane (P4.D24) that owns the
+mirror re-port and the baseline move to `e8a49597`**; the other three lanes'
+oracle families import nothing from the drifted file (verified by the pascal
+families being its only importers), so they regenerate straight from the
+checkout at `e8a49597`. Every lane re-checks at start and STOPs if v4 moves
+past `e8a49597`.**
+
+### Scope
+
+Two threads the 2026-07-27 dogfood walk made unavoidable, the family that
+walk's finding #34 re-scoped, plus the mid-planning drift:
+
+1. **Finding #35 — the EMBEDDING_GENERATE handler.** The known deferral whose
+   measurement changed its priority: 2,088 DEAD jobs on the Friday copy, every
+   v5-written chunk unembedded, no manual repair possible. The findings file
+   names it "the strongest candidate for the next round".
+2. **The `p4.9e3` dialog family**, whose remaining cost is now precisely
+   known: eleven SPA surfaces over the live P4.9E3A verbs, plus five server
+   pieces v5 still lacks (the 727-LOC tools inventory, chat export,
+   search-replace, per-message reattribute, outfit-summary) and three
+   standing server debts that want the same files (the two `llm_choose`
+   refusals; the twice-deferred `TimestampConfigSchema` normalization — this
+   round finally owns both straddled files).
+
+### The split — four lanes
+
+| Order | Lane scope |
+| --- | --- |
+| `work-orders/p4.6bl-embedding-generate-handler.md` | the 490-LOC four-entity handler + `isPermanentEmbeddingError` + the oversize/empty guards, four new repo write methods, spine registration, a new tier-3 family on the `memory_pipeline_jobs` recipe, the backlog heal, and (tier 2) un-refusing `memoryGenerateEmbeddings`/`RebuildIndex` |
+| `work-orders/p4.9e3b-chat-dialog-server-remainder.md` | the tools inventory + REST edge, chat export (byte leg on the existing chats GET fan-out), search-replace (preview/execute, both scopes), `MessageReattribute`, `ChatOutfitSummary`, the `llm_choose` host driver into both refusal sites, and the timestampConfig write normalization with its 400 arm |
+| `work-orders/p4.9e3c-chat-dialogs-spa.md` | the eleven dialogs + the agent-mode badge + the new Edit Content section + the contract mirror (nine P4.9E3A verbs + six §1 verbs), the ACTIVATE-AT-UNIFY beats over E3B's verbs, the m6 §2.2 corrections, and the P4.d23-owed `zzz-restore-destructive.spec.ts` re-run |
+| `work-orders/p4.d24-operator-perspective-drift.md` | the `e8a49597` mirror re-port (`operator_character_ids` + `prefer_operator` at both `custom_tools.rs` call sites, v4's label semantics), the pascal route family regenerated + extended at the new baseline (the red run recorded as the drift's fingerprint), the baseline move, and the finding-#30/Bug-5 reconciliation |
+
+**Why this split.** BL is disjoint from everything (job/embedding files vs
+chat files vs `apps/web`). E3B↔E3C meet only at the §1 contract (six request
+variants + two REST edges), written verbatim in both orders. D24 is confined
+to `api/custom_tools.rs` + the pascal route family, which no other lane
+names; its one possible SPA touch (a `characterLabel` render on a
+single-variant popup row, if v5's popup turns out not to render it) is a
+recorded handoff to E3C, which owns `apps/web/**`. The shared Rust files
+(`types.rs`, `engine.rs`, `spine.rs`, `services/mod.rs`) follow the standing
+labelled-append discipline; BL's only `engine.rs` touch is the two refusal
+arms at :2661–2668, which it owns; D24 touches none of them.
+
+### Survey corrections baked into the orders (2026-07-27, three fresh surveys + the drift classification)
+
+- v5 **does** have a help-doc surface (repo + search + sync + seven harness
+  families) — the HELP_DOC branch is the cheapest of the four to port, not a
+  refusal-arm candidate. What's missing is only an `update_embedding` write.
+- **Five live enqueue paths** mint dead EMBEDDING_GENERATE jobs, not two
+  (add `api/memories.rs:1442`, `cold_chunk_reembed.rs:102`,
+  `mount_index/reindex.rs:327`).
+- `EMBEDDING_MAX_CHARS` (128×1024) is unported anywhere in v5.
+- `ChatToggleAgentMode` **now carries the full tri-state** — the old
+  "no `enabled` field" escalation was resolved at the chat-action-round
+  unification; the planning premise was stale.
+- `ReattributeMessageDialog` calls a **per-message** verb
+  (`POST /api/v1/messages/{id}?action=reattribute`), not `bulk-reattribute` —
+  the m6 §2.2 annotation is wrong, and the table also carries five duplicated
+  rows; E3C corrects both.
+- `llm_choose` is **already ported** (`outfit_selections.rs:424`, live on
+  chat-create) — the two refusals are plumbing gaps, and the two v5 refusal
+  behaviors currently disagree with each other AND with v4 (which falls back
+  to the default outfit on any failure).
+- The `TimestampConfigSchema` re-parse is the **repository-write** parse only
+  (`chatUpdateRequestSchema` has no `timestampConfig` key at all).
+- A new v4 bug surfaced by the survey, recorded in E3B's order for the human
+  to carry upstream: **stop-impersonate is unreachable from v4's own client**
+  (client sends DELETE, the action is registered only on POST, DELETE
+  hard-rejects). v5's single-verb model is already correct.
+
+### Deliberately left out of the round
+
+- **Dogfood Parts F and H** (Data & System destructive walk; retrospective
+  recall live behavior) — human walk items, runnable in parallel with the
+  round; they conflict with no lane.
+- **The P4.d23 measurement report to the v4 side** — human-carried v4-side
+  work. (v4 Bug 5 stopped being on this list mid-planning: v4 fixed it in
+  `e8a49597` and the v5 mirror became lane P4.D24.)
+- `ProjectToolSettingsModal` (shares `ToolSettingsContent`) — a later
+  Prospero rider, noted in E3C.
+- `p4.9i2` (help/HelpChat), `p4.9h2`, the `chat_settings` explicit-`null`
+  gap, `browserUserAgent`, D21 — the standing pools, unchanged.

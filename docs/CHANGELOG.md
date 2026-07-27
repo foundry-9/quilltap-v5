@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Planned the next round of work, in four side-by-side orders. First, the urgent
+one: nothing written since the port took over this app's data has been made
+searchable — the job that turns new text into search vectors was never given a
+worker, so those jobs quietly die and new material can never be found by
+meaning. Its order ports the worker, the guards that keep a hopeless job from
+being retried forever, and a repair for the backlog. Second and third, the
+remaining conversation dialogs: the server pieces still missing (the tool
+inventory, transcript export, search-and-replace, single-message
+re-attribution, and two smaller debts) and the dialogs themselves (rename with
+automatic naming, merging one conversation into another, bulk and per-message
+re-attribution, running a tool by hand, choosing which tools a chat may use,
+and more). Fourth, added mid-planning when the old app shipped its fix for the
+bug this port's last test walk uncovered: a custom tool run from the composer
+now consults the sheet of the character you are actually playing, and this app
+owes the same correction. No code changed; this is planning only.
+
 An announcement spoken by someone who is not in the room now arrives under their
 own name. It always was their announcement — the characters in the scene knew
 perfectly well who had spoken, and the record kept underneath said so plainly —
