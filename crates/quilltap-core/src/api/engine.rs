@@ -2816,10 +2816,12 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.6BL tier 2 ===
-            Request::ChatQueueMemories { .. } => match self.ready_db() {
-                Ok(_) => super::memories::not_available("queue-memories"),
+            // === P4.6BM ===
+            Request::ChatQueueMemories { chat_id } => match self.ready_db() {
+                Ok(db) => super::memories::chat_queue_memories(&db, SINGLE_USER_ID, &chat_id).await,
                 Err(r) => r,
             },
+            // === end P4.6BM ===
             // === P4.6v: mount files (lane A, append-only) ===
             Request::MountFilesList { mount_point_id } => match self.ready_db() {
                 Ok(db) => super::mount_files::mount_files_list(&db, &mount_point_id),

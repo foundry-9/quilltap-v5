@@ -88,6 +88,8 @@ interface MessageSeed {
   role?: string;
   content?: string;
   participantId?: string | null;
+  systemSender?: string;
+  isSilentMessage?: boolean;
   systemEventType?: string;
   description?: string;
   createdAt: string;
@@ -97,8 +99,21 @@ interface ChatSeed {
   key: string;
   title: string;
   renderedMarkdown: string | null;
+  chatType?: string;
   participants: ParticipantSeed[];
   messages: MessageSeed[];
+}
+interface ConnectionSeed {
+  id: string;
+  userId: string;
+  name: string;
+  provider: string;
+  modelName: string;
+}
+interface ChatSettingsSeed {
+  id: string;
+  userId: string;
+  cheapLLMSettings: Record<string, unknown>;
 }
 interface ChunkSeed {
   id: string;
@@ -144,6 +159,9 @@ interface JobSeed {
 interface Spec {
   testPepperBase64: string;
   userId: string;
+  secondUserId: string;
+  connectionProfiles: ConnectionSeed[];
+  chatSettings: ChatSettingsSeed;
   seedTimestamp: string;
   embedDim: number;
   oversizeChars: number;
@@ -231,6 +249,31 @@ async function main(): Promise<void> {
     { username: 'friday', email: null, name: 'Friday' } as never,
     { id: spec.userId, createdAt: TS, updatedAt: TS } as never
   );
+  // The SECOND user exists only so `queue-memories` has a caller with no
+  // chat-settings row (the resolver's `null` → 400 arm) and so one connection
+  // profile can be owned by somebody else (the ownership check).
+  await repos.users.create(
+    { username: 'stranger', email: null, name: 'A Stranger' } as never,
+    { id: spec.secondUserId, createdAt: TS, updatedAt: TS } as never
+  );
+
+  for (const c of spec.connectionProfiles) {
+    await repos.connections.create(
+      { userId: c.userId, name: c.name, provider: c.provider, modelName: c.modelName } as never,
+      { id: c.id, createdAt: TS, updatedAt: TS } as never
+    );
+  }
+
+  // `defaultCheapProfileId` deliberately points at the OTHER user's profile, so
+  // v4's resolver finds the row, rejects it on ownership, and falls through to
+  // the USER_DEFINED branch — both branches exercised by one seed.
+  await repos.chatSettings.create(
+    {
+      userId: spec.chatSettings.userId,
+      cheapLLMSettings: spec.chatSettings.cheapLLMSettings,
+    } as never,
+    { id: spec.chatSettings.id, createdAt: TS, updatedAt: TS } as never
+  );
 
   for (const c of spec.characters) {
     await repos.characters.create(
@@ -259,7 +302,7 @@ async function main(): Promise<void> {
       {
         userId: spec.userId,
         title: chat.title,
-        chatType: 'salon',
+        chatType: chat.chatType ?? 'salon',
         contextSummary: null,
         renderedMarkdown: chat.renderedMarkdown,
         participants: chat.participants.map((p, i) => ({

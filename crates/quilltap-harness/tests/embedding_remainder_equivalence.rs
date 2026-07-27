@@ -88,12 +88,45 @@ struct ReindexCase {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct QueueMemoriesCase {
+    name: String,
+    chat_id: String,
+    user_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
     render_now_iso: String,
     render_cases: Vec<RenderCase>,
     reindex_cases: Vec<ReindexCase>,
+    queue_memories_cases: Vec<QueueMemoriesCase>,
+}
+
+/// v4 `lib/api/responses.ts` kind→status (the routes-family mapping).
+fn status_of(kind: quilltap_core::api::ErrorKind) -> u16 {
+    use quilltap_core::api::ErrorKind;
+    match kind {
+        ErrorKind::BadRequest => 400,
+        ErrorKind::Unauthorized => 401,
+        ErrorKind::Forbidden => 403,
+        ErrorKind::NotFound => 404,
+        ErrorKind::Conflict => 409,
+        ErrorKind::Unprocessable => 422,
+        ErrorKind::Locked => 423,
+        ErrorKind::Internal => 500,
+    }
+}
+
+/// A `Response` as the (status, body) pair the oracle's rows compare against.
+fn status_body(r: &quilltap_core::api::Response) -> (u16, Value) {
+    if let quilltap_core::api::Response::Error(e) = r {
+        return (status_of(e.kind), serde_json::json!({ "error": e.message }));
+    }
+    let v = serde_json::to_value(r).unwrap();
+    (200, v.get("data").cloned().unwrap_or(Value::Null))
 }
 
 /// (table, main?, natural sort columns, timestamps stay EXACT on minted rows).
@@ -282,6 +315,7 @@ async fn embedding_remainder_matches_oracle() {
     let mut oracle_reconcile: Option<ReconcileResult> = None;
     let mut oracle_renders: Vec<(String, String, Option<String>)> = Vec::new();
     let mut oracle_reindexes: Vec<(String, String, Option<String>)> = Vec::new();
+    let mut oracle_queue: Vec<(String, u16, Value)> = Vec::new();
     let mut want_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut want_columns: BTreeMap<String, Value> = BTreeMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -304,6 +338,11 @@ async fn embedding_remainder_matches_oracle() {
                 v["name"].as_str().unwrap().to_string(),
                 v["outcome"].as_str().unwrap().to_string(),
                 v.get("error").and_then(Value::as_str).map(str::to_string),
+            )),
+            Some("queueMemories") => oracle_queue.push((
+                v["name"].as_str().unwrap().to_string(),
+                v["status"].as_u64().unwrap() as u16,
+                v["body"].clone(),
             )),
             Some("table") => {
                 let table = v["table"].as_str().unwrap().to_string();
@@ -347,6 +386,24 @@ async fn embedding_remainder_matches_oracle() {
             .count(),
         2,
         "the corpus stopped exercising both reindex throw arms"
+    );
+    assert_eq!(
+        oracle_queue
+            .iter()
+            .map(|(n, _, _)| n.as_str())
+            .collect::<Vec<_>>(),
+        spec.queue_memories_cases
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        "oracle queue-memories case set/order diverges from the corpus — regenerate"
+    );
+    // All three 400 arms must actually have fired (both empty-batch messages and
+    // the no-cheap-LLM one), or a port that never rejects would agree.
+    assert_eq!(
+        oracle_queue.iter().filter(|(_, s, _)| *s == 400).count(),
+        3,
+        "the corpus stopped exercising all three queue-memories 400 arms"
     );
     assert_eq!(
         want_tables.keys().cloned().collect::<BTreeSet<_>>(),
@@ -462,6 +519,23 @@ async fn embedding_remainder_matches_oracle() {
         "reindex outcome sequence diverges"
     );
 
+    // ── Phase 4: the queue-memories action, corpus order. The user id is the
+    // CASE's, not the corpus default — one case names the second user, whose
+    // missing chat-settings row is the resolver's `null` → 400 arm.
+    for (case, (want_name, want_status, want_body)) in
+        spec.queue_memories_cases.iter().zip(oracle_queue.iter())
+    {
+        let got =
+            quilltap_core::api::memories::chat_queue_memories(&db, &case.user_id, &case.chat_id)
+                .await;
+        let (got_status, got_body) = status_body(&got);
+        assert_eq!(
+            (got_status, &got_body),
+            (*want_status, want_body),
+            "queue-memories case {want_name} diverges"
+        );
+    }
+
     // ── Dump + diff.
     let mut got_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut got_columns: BTreeMap<String, Value> = BTreeMap::new();
@@ -515,9 +589,10 @@ async fn embedding_remainder_matches_oracle() {
     }
 
     println!(
-        "embedding_remainder: reconcile + {} render / {} reindex cases, {} tables OK",
+        "embedding_remainder: reconcile + {} render / {} reindex / {} queue-memories cases, {} tables OK",
         got_renders.len(),
         got_reindexes.len(),
+        spec.queue_memories_cases.len(),
         TABLES.len()
     );
 }

@@ -273,6 +273,66 @@ pub fn resolve_uncensored_cheap_llm_selection(
     standard_selection
 }
 
+// === P4.6BM ===
+
+/// v4 `resolveCheapLLMProfileId` (`app/api/v1/chats/[id]/actions/memories.ts:36-58`)
+/// — the connection-profile id the user has configured for memory extraction, or
+/// `None` when none resolves.
+///
+/// Two branches, in order, each requiring the profile to EXIST **and** to belong
+/// to the user:
+///
+///   1. `cheapLLMSettings.defaultCheapProfileId`;
+///   2. `strategy === 'USER_DEFINED'` AND `cheapLLMSettings.userDefinedProfileId`.
+///
+/// This is deliberately NOT [`get_cheap_llm_provider`]'s five-tier priority
+/// order: v4 factors a much narrower resolver for this one action, with no
+/// `isCheap` sweep, no Ollama probe and no current-profile fallback, and a
+/// `None` here is a 400 rather than a silent downgrade. Ported once here so the
+/// two call sites cannot drift.
+///
+/// `chat_settings` is the user's row (v4 `chatSettings.findByUserId`), and
+/// `lookup_profile` reads a connection profile by id (v4
+/// `connections.findById`), returning its `userId` — the ownership check.
+pub fn resolve_cheap_llm_profile_id(
+    chat_settings: Option<&serde_json::Value>,
+    user_id: &str,
+    mut lookup_profile_user_id: impl FnMut(&str) -> Option<String>,
+) -> Option<String> {
+    let cheap = chat_settings.and_then(|s| s.get("cheapLLMSettings"));
+    let owned = |id: &str, lookup: &mut dyn FnMut(&str) -> Option<String>| -> bool {
+        lookup(id).as_deref() == Some(user_id)
+    };
+
+    if let Some(id) = cheap
+        .and_then(|c| c.get("defaultCheapProfileId"))
+        .and_then(serde_json::Value::as_str)
+    {
+        if owned(id, &mut lookup_profile_user_id) {
+            return Some(id.to_string());
+        }
+    }
+
+    let is_user_defined = cheap
+        .and_then(|c| c.get("strategy"))
+        .and_then(serde_json::Value::as_str)
+        == Some("USER_DEFINED");
+    if is_user_defined {
+        if let Some(id) = cheap
+            .and_then(|c| c.get("userDefinedProfileId"))
+            .and_then(serde_json::Value::as_str)
+        {
+            if owned(id, &mut lookup_profile_user_id) {
+                return Some(id.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+// === end P4.6BM ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

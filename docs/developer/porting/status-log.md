@@ -40953,3 +40953,56 @@ normalized row.
 **Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
 passed / 0 failed. Fixture rebuilt twice this unit (the profile reorder and the
 surviving help doc); no other family reads it. No `apps/web` touch.
+
+---
+
+## Lane record — P4.6BM unit 6: `chatQueueMemories` un-refused (tier 2)
+
+**Ported:** v4 `handleQueueMemories`
+(`app/api/v1/chats/[id]/actions/memories.ts:85-166`) →
+`api::memories::chat_queue_memories`, plus v4's narrow `resolveCheapLLMProfileId`
+(factored once into `cheap_llm::resolve_cheap_llm_profile_id`) and
+`enqueueMemoryExtractionBatch` (`services::queue_service`, over unit 4's
+`create_batch`). `engine.rs`'s refusal arm is gone; `api/types.rs` changed only
+in its doc comment, as the Shared contract requires.
+
+**The factored resolver is deliberately NOT `get_cheap_llm_provider`.** v4 has
+two different cheap-LLM resolutions and this action uses the narrower one: two
+branches (`defaultCheapProfileId`, then `USER_DEFINED` + `userDefinedProfileId`),
+each requiring the profile to exist AND be owned by the caller, with no `isCheap`
+sweep, no Ollama probe, and no current-profile fallback — a miss is a 400, not a
+silent downgrade. Ported once so the two call sites cannot drift.
+
+**The batch enqueue has NO dedupe**, unlike the single-job
+`enqueue_memory_extraction` which dedupes on the
+`(chatId, turnOpener, anchor)` triple. A second press stacks a second full set.
+That is v4's behavior and the corpus pins it with a deliberate second press.
+
+**Corpus design, since two of these arms are easy to leave uncovered:**
+
+- `defaultCheapProfileId` points at a profile owned by the SECOND user, so
+  branch 1 finds the row, rejects it on OWNERSHIP, and falls through to branch 2.
+  One seed exercises both branches and the ownership check; without a
+  cross-owned profile that check is dead weight.
+- The second user has no `chat_settings` row at all, which is the resolver's
+  `null` → 400 arm. Reaching it needed the action to be callable with an
+  arbitrary user id, so both sides drive the handler DIRECTLY (the oracle
+  synthesizes an `AuthenticatedContext`) rather than through the route wrapper.
+- The autonomous chat carries one eligible ASSISTANT message plus one
+  `systemSender`, one `isSilentMessage`, one with no `participantId`, and a USER
+  line — one message per exclusion in v4's filter.
+- The salon chat carries a `systemSender` USER message (the salon branch's only
+  exclusion) between two real openers.
+- Both empty-batch arms have their own chat, so both branch-specific 400 strings
+  are compared rather than one standing in for the other.
+
+**Differential:** phase 4 of `embedding_remainder_equivalence` (6 cases,
+status + body compared exactly), with a shape assertion that all THREE 400 arms
+fired. Six mutations, all caught: dropping the ownership check, skipping the
+USER_DEFINED branch, ignoring `systemSender`/`isSilentMessage` in the autonomous
+branch, ignoring `systemSender` in the salon branch, ignoring the missing
+`participantId`, and adding a dedupe.
+
+**Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
+passed / 0 failed. No `apps/web` touch — and per the Shared contract, the SPA
+lane does not consume this verb this round, so no cross-lane mirror is owed.

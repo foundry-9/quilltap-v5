@@ -1288,8 +1288,11 @@ pub enum Request {
         character_id: String,
         confirm: bool,
     },
-    /// v4 per-chat `?action=queue-memories` — deferred (`resolveCheapLLMProfileId`
-    /// + the batch extraction enqueue are unported); recognized-but-refused.
+    /// v4 per-chat `?action=queue-memories` — queue one per-turn
+    /// `MEMORY_EXTRACTION` job per turn in the chat (P4.6BM). v4's legacy
+    /// `characterId`/`characterName`/`messagePairs` request fields are accepted
+    /// by its Zod schema and ignored by the handler, so `chat_id` is the whole
+    /// live surface.
     #[serde(rename_all = "camelCase")]
     ChatQueueMemories {
         chat_id: String,

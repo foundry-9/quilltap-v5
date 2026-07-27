@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+"Queue memories" on a conversation works again. It queues one extraction job
+per turn — per opening message in an ordinary chat, per spoken line in a room
+that runs itself — skipping staff announcements and silent asides. If no cheap
+model is configured, or there is nothing in the conversation to extract from, it
+says so plainly instead of refusing by name.
+
 Re-embedding everything now works. The job that rebuilds the whole search index
 — fired automatically after the built-in vectorizer refits its vocabulary — had
 no worker either, so it too died after three attempts. It now re-embeds help

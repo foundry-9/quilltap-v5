@@ -220,6 +220,145 @@
           "createdAt": "2026-05-01T14:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000009",
+      "key": "queue-salon",
+      "title": "A Salon To Queue",
+      "renderedMarkdown": "## Interchange 0\n\nrendered\n",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000061",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000061",
+          "type": "message",
+          "role": "USER",
+          "content": "First turn opener.",
+          "participantId": null,
+          "createdAt": "2026-05-01T15:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000062",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "An answer nobody asked for.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "createdAt": "2026-05-01T15:01:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000063",
+          "type": "message",
+          "role": "USER",
+          "content": "A Staff announcement, not a turn.",
+          "participantId": null,
+          "systemSender": "concierge",
+          "createdAt": "2026-05-01T15:02:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000064",
+          "type": "message",
+          "role": "USER",
+          "content": "Second turn opener.",
+          "participantId": null,
+          "createdAt": "2026-05-01T15:03:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000007",
+      "key": "autonomous",
+      "title": "A Room That Runs Itself",
+      "renderedMarkdown": "## Interchange 0\n\nrendered\n",
+      "chatType": "autonomous",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000061",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000071",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The room speaks.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "createdAt": "2026-05-01T16:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000072",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "A Staff notice.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "systemSender": "concierge",
+          "createdAt": "2026-05-01T16:01:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000073",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "A silent aside.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "isSilentMessage": true,
+          "createdAt": "2026-05-01T16:02:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000074",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Nobody in particular said this.",
+          "participantId": null,
+          "createdAt": "2026-05-01T16:03:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000075",
+          "type": "message",
+          "role": "USER",
+          "content": "A user line in an autonomous room.",
+          "participantId": null,
+          "createdAt": "2026-05-01T16:04:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000076",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The room speaks again.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "createdAt": "2026-05-01T16:05:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000008",
+      "key": "autonomous-empty",
+      "title": "A Room With Nothing To Extract",
+      "renderedMarkdown": "## Interchange 0\n\nrendered\n",
+      "chatType": "autonomous",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000061",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000081",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Only a Staff notice.",
+          "participantId": "10000000-0000-4000-8000-000000000061",
+          "systemSender": "concierge",
+          "createdAt": "2026-05-01T17:00:00.000Z"
+        }
+      ]
     }
   ],
   "conversationChunks": [
@@ -431,5 +570,63 @@
       "scope": "all"
     }
   ],
-  "missingCharacterId": "c0000000-0000-4000-8000-0000000000ff"
+  "missingCharacterId": "c0000000-0000-4000-8000-0000000000ff",
+  "secondUserId": "e0000000-0000-4000-8000-000000000002",
+  "connectionProfiles": [
+    {
+      "id": "c9000000-0000-4000-8000-000000000001",
+      "userId": "e0000000-0000-4000-8000-000000000001",
+      "name": "The Cheap Desk",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini"
+    },
+    {
+      "id": "c9000000-0000-4000-8000-000000000002",
+      "userId": "e0000000-0000-4000-8000-000000000002",
+      "name": "Someone Else's Desk",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini"
+    }
+  ],
+  "chatSettings": {
+    "id": "c8000000-0000-4000-8000-000000000001",
+    "userId": "e0000000-0000-4000-8000-000000000001",
+    "cheapLLMSettings": {
+      "strategy": "USER_DEFINED",
+      "defaultCheapProfileId": "c9000000-0000-4000-8000-000000000002",
+      "userDefinedProfileId": "c9000000-0000-4000-8000-000000000001"
+    }
+  },
+  "queueMemoriesCases": [
+    {
+      "name": "salon-one-job-per-non-system-user-message",
+      "chatId": "a0000000-0000-4000-8000-000000000009",
+      "userId": "e0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "salon-second-press-stacks-no-dedupe",
+      "chatId": "a0000000-0000-4000-8000-000000000009",
+      "userId": "e0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "autonomous-one-job-per-eligible-assistant-message",
+      "chatId": "a0000000-0000-4000-8000-000000000007",
+      "userId": "e0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "autonomous-empty-batch-400",
+      "chatId": "a0000000-0000-4000-8000-000000000008",
+      "userId": "e0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "salon-empty-batch-400",
+      "chatId": "a0000000-0000-4000-8000-000000000005",
+      "userId": "e0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "no-cheap-llm-400",
+      "chatId": "a0000000-0000-4000-8000-000000000009",
+      "userId": "e0000000-0000-4000-8000-000000000002"
+    }
+  ]
 }

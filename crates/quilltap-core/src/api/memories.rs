@@ -39,7 +39,9 @@ use crate::services::memory_gate::{
 use crate::services::memory_service::{
     delete_memories_by_chat_id_with_vectors, search_memories_semantic, SemanticSearchOptions,
 };
-use crate::services::queue_service::enqueue_memory_housekeeping;
+use crate::services::queue_service::{
+    enqueue_memory_extraction_batch, enqueue_memory_housekeeping, MemoryExtractionBatchEntry,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -1578,3 +1580,147 @@ pub async fn memory_rebuild_index(db: &Db, character_id: &str, confirm: bool) ->
         "failed": result.failed,
     }))
 }
+
+// === P4.6BM: the per-chat `?action=queue-memories` action ===
+
+/// v4 `handleQueueMemories` (`app/api/v1/chats/[id]/actions/memories.ts:85-166`)
+/// — queue one per-turn `MEMORY_EXTRACTION` job for every turn in a chat.
+///
+/// The two branches are v4's, and they are NOT symmetric:
+///
+///   - **autonomous** chats have no USER role in history, so one job is queued
+///     per non-system, non-silent ASSISTANT message that HAS a `participantId`,
+///     with that message as the `extractionAnchorMessageId` (the anchor keeps
+///     each job's dedupe key distinct, and each job's transcript walks from the
+///     start of history through it).
+///   - **every other** chat type queues one job per non-system USER message,
+///     which OPENS the turn the handler then walks forward from.
+///
+/// Error arms (both 400, both byte-matched): no cheap LLM configured, and an
+/// empty batch with a branch-specific message.
+///
+/// The legacy `characterId` / `characterName` / `messagePairs` request fields are
+/// still accepted by v4's Zod schema and ignored by the handler (per-turn jobs
+/// cover the whole turn), so v5's `ChatQueueMemories { chat_id }` variant is the
+/// whole live surface.
+pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Response {
+    // The chat itself (v4's route wrapper resolves it before dispatching).
+    let cid = chat_id.to_string();
+    let chat = match db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &cid)) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+
+    // v4 `resolveCheapLLMProfileId` — the narrow two-branch resolver, shared
+    // with any future caller (`cheap_llm::resolve_cheap_llm_profile_id`).
+    let uid = user_id.to_string();
+    let resolved: Result<Option<String>, DbError> = db.read_main(move |conn| {
+        let settings = crate::db::chat_settings::find_by_user_id(conn, &uid)?;
+        let mut lookup = |id: &str| -> Option<String> {
+            crate::db::connection_profiles::find_by_id(conn, id)
+                .ok()
+                .flatten()
+                .and_then(|p| p.get("userId").and_then(Value::as_str).map(str::to_string))
+        };
+        Ok(crate::cheap_llm::resolve_cheap_llm_profile_id(
+            settings.as_ref(),
+            &uid,
+            &mut lookup,
+        ))
+    });
+    let connection_profile_id = match resolved {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return bad_request(
+                "No valid cheap LLM configured. Please set a cheap LLM profile in settings.",
+            )
+        }
+        Err(e) => return internal(e),
+    };
+
+    let cid = chat_id.to_string();
+    let messages =
+        match db.read_main(move |conn| crate::db::chats_messages_read::get_messages(conn, &cid)) {
+            Ok(m) => m,
+            Err(e) => return internal(e),
+        };
+    let is_autonomous = chat.get("chatType").and_then(Value::as_str) == Some("autonomous");
+
+    let str_field = |m: &Value, k: &str| m.get(k).and_then(Value::as_str).map(str::to_string);
+    let truthy = |m: &Value, k: &str| match m.get(k) {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
+        _ => false,
+    };
+
+    let mut entries: Vec<MemoryExtractionBatchEntry> = Vec::new();
+    for m in &messages {
+        if m.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        if is_autonomous {
+            if m.get("role").and_then(Value::as_str) != Some("ASSISTANT")
+                || truthy(m, "systemSender")
+                || truthy(m, "isSilentMessage")
+            {
+                continue;
+            }
+            // v4 `if (!event.participantId) continue` — absent OR empty.
+            let Some(id) = str_field(m, "id") else {
+                continue;
+            };
+            if str_field(m, "participantId").is_none_or(|p| p.is_empty()) {
+                continue;
+            }
+            entries.push(MemoryExtractionBatchEntry {
+                turn_opener_message_id: None,
+                extraction_anchor_message_id: Some(id),
+            });
+        } else {
+            if m.get("role").and_then(Value::as_str) != Some("USER") || truthy(m, "systemSender") {
+                continue;
+            }
+            let Some(id) = str_field(m, "id") else {
+                continue;
+            };
+            entries.push(MemoryExtractionBatchEntry {
+                turn_opener_message_id: Some(id),
+                extraction_anchor_message_id: None,
+            });
+        }
+    }
+
+    if entries.is_empty() {
+        return bad_request(if is_autonomous {
+            "No assistant messages found in this chat — nothing to extract memories from."
+        } else {
+            "No user messages found in this chat — nothing to extract memories from."
+        });
+    }
+
+    let job_ids = match enqueue_memory_extraction_batch(
+        db,
+        user_id,
+        chat_id,
+        &connection_profile_id,
+        &entries,
+        // v4 passes `{ priority: 0 }` explicitly.
+        0.0,
+    )
+    .await
+    {
+        Ok(ids) => ids,
+        Err(e) => return internal(e),
+    };
+
+    Response::Memory(json!({
+        "success": true,
+        "jobCount": job_ids.len(),
+        "chatId": chat_id,
+        "turnCount": entries.len(),
+    }))
+}
+
+// === end P4.6BM ===

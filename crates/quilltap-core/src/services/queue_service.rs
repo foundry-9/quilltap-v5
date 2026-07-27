@@ -308,6 +308,81 @@ pub async fn enqueue_memory_extraction(
     enqueue_job(db, user_id, "MEMORY_EXTRACTION", payload, 3.0).await
 }
 
+// === P4.6BM ===
+
+/// One entry of v4's `MemoryExtractionBatchEntry` union, in the only shape the
+/// `queue-memories` action builds (the bare-string / null legacy arms are not
+/// modeled — no caller uses them).
+#[derive(Debug, Clone)]
+pub struct MemoryExtractionBatchEntry {
+    pub turn_opener_message_id: Option<String>,
+    pub extraction_anchor_message_id: Option<String>,
+}
+
+/// v4 `enqueueMemoryExtractionBatch` — ONE batch insert of `MEMORY_EXTRACTION`
+/// jobs, one per entry. Returns the minted ids in input order; an empty input
+/// inserts nothing.
+///
+/// **No dedupe, deliberately.** Unlike the single-job
+/// [`enqueue_memory_extraction`] — which dedupes on the
+/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId)` triple — the batch
+/// helper goes straight to `createBatch`, so a second press of "queue memories"
+/// stacks a second full set. That is v4's behavior and the reason the action's
+/// caller clears prior jobs first.
+///
+/// The payload materializes all four keys including nulls (v4's object literal),
+/// so the stored bytes match. `priority` is the caller's (`0` from the action);
+/// `maxAttempts` is v4's default 3.
+pub async fn enqueue_memory_extraction_batch(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+    entries: &[MemoryExtractionBatchEntry],
+    priority: f64,
+) -> Result<Vec<String>, DbError> {
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+    let now = now_iso();
+    let jobs: Vec<BjCreate> = entries
+        .iter()
+        .map(|e| BjCreate {
+            user_id: user_id.to_string(),
+            job_type: "MEMORY_EXTRACTION".to_string(),
+            status: Some("PENDING".to_string()),
+            payload: serde_json::json!({
+                "chatId": chat_id,
+                "turnOpenerMessageId": e.turn_opener_message_id,
+                "extractionAnchorMessageId": e.extraction_anchor_message_id,
+                "connectionProfileId": connection_profile_id,
+            }),
+            priority,
+            attempts: 0.0,
+            max_attempts: 3.0,
+            last_error: None,
+            scheduled_at: now.clone(),
+            started_at: None,
+            completed_at: None,
+        })
+        .collect();
+    let ids: Vec<String> = (0..jobs.len())
+        .map(|_| uuid::Uuid::new_v4().to_string())
+        .collect();
+    let (jobs_for_write, ids_for_write, now_for_write) = (jobs, ids.clone(), now);
+    db.write(move |ws| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(ws.main().connection())
+            .create_batch(&jobs_for_write, &ids_for_write, &now_for_write)
+            .map(|_| ())
+    })
+    .await?;
+    // v4 fires the processor only when something was actually enqueued.
+    ensure_processor_running();
+    Ok(ids)
+}
+
+// === end P4.6BM ===
+
 /// v4 `enqueueCarinaMemoryExtraction` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `CARINA_MEMORY_EXTRACTION` job for a posted Carina reference answer,
 /// deduping against in-flight jobs (PENDING/PROCESSING) with a matching
