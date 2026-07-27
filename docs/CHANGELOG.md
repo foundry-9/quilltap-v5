@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Two more saved backups were built for the tests, because the fault the last
+decision was about could not be reached by any of the ones already on hand. None
+of them held a file that lived inside the app's own document store, and none
+carried the store that project-less uploads go to — so in the replacing kind of
+restore neither app put a single file back, and the disaster the whole question
+was about never happened. The first new backup comes from an instance with that
+store provisioned and a real upload sitting in it. The second is taken from an
+instance that had itself been restored, so its files sit exactly where a restore
+wants to write them. Both were produced by the old app's own backup routine,
+which is what keeps the comparison honest. Building the second one already showed
+the old app losing a folder record to a collision with its own replay — the first
+time that has been observed rather than reasoned about.
+
 A decision was made about how a restore puts the user's files back, and it went
 against the recommendation on the table. The old app writes those files at an
 earlier moment than this one does. Each moment has its own way of going wrong,
