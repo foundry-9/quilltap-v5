@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
+import { ProjectToolSettingsModal } from '../project-tool-settings-modal';
 import { ProjectModelBehaviorCard } from './project-model-behavior-card';
 
 function project(over: Partial<ProjectDetail>): ProjectDetail {
@@ -22,6 +24,8 @@ function project(over: Partial<ProjectDetail>): ProjectDetail {
     defaultRoleplayTemplateId: null,
     defaultAlertCharactersOfLanternImages: null,
     answerConfirmationOverride: null,
+    defaultDisabledTools: [],
+    defaultDisabledToolGroups: [],
     backgroundDisplayMode: 'theme',
     state: null,
     createdAt: '2024-01-01T00:00:00.000Z',
@@ -118,5 +122,73 @@ describe('ProjectModelBehaviorCard — roleplay template picker', () => {
         project: { defaultRoleplayTemplateId: 't1' },
       }),
     );
+  });
+});
+
+describe('ProjectModelBehaviorCard — the Default Tool Settings row (P4.9E4B)', () => {
+  async function renderCard(over: Partial<ProjectDetail>): Promise<ComponentFixture<ProjectModelBehaviorCard>> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProjectModelBehaviorCard],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchData: (async () => []) as unknown as CoreClient['dispatchData'],
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProjectModelBehaviorCard);
+    fixture.componentRef.setInput('project', project(over));
+    fixture.componentRef.setInput('defaultOpen', true);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  function configureButton(fixture: ComponentFixture<unknown>): HTMLButtonElement {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+    ).find((b) => b.textContent?.trim() === 'Configure')!;
+  }
+
+  it('summarises an untouched project as "All tools enabled", with Configure LIVE', async () => {
+    const fixture = await renderCard({});
+    expect(fixture.nativeElement.textContent).toContain('All tools enabled');
+    // The stub's disabled affordance is gone.
+    expect(configureButton(fixture).disabled).toBe(false);
+  });
+
+  it('pluralises v4’s counts and joins both halves', async () => {
+    const one = await renderCard({ defaultDisabledTools: ['a'] });
+    expect(one.nativeElement.textContent).toContain('1 tool disabled');
+
+    const many = await renderCard({
+      defaultDisabledTools: ['a', 'b'],
+      defaultDisabledToolGroups: ['g'],
+    });
+    expect(many.nativeElement.textContent).toContain('2 tools disabled, 1 group disabled');
+
+    const groupsOnly = await renderCard({ defaultDisabledToolGroups: ['g', 'h'] });
+    expect(groupsOnly.nativeElement.textContent).toContain('2 groups disabled');
+    expect(groupsOnly.nativeElement.textContent).not.toContain('tool disabled');
+  });
+
+  it('opens the dialog and adopts its result at once (v4 handleToolSettingsSuccess)', async () => {
+    const fixture = await renderCard({});
+    configureButton(fixture).click();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Default Tool Settings');
+
+    // v4 replaces its local arrays from the success payload, so the summary moves
+    // before any refetch lands.
+    const dialog = fixture.debugElement.query(By.directive(ProjectToolSettingsModal))
+      .componentInstance as ProjectToolSettingsModal;
+    dialog.saved.emit({ disabledTools: ['a', 'b'], disabledToolGroups: [] });
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain('2 tools disabled');
   });
 });

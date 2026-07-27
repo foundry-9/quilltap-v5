@@ -1500,7 +1500,11 @@ export interface ProjectAestheticSetRequest {
   content?: string;
 }
 
-/** Default tool settings (v4 `?action=update-tool-settings`) — the SPA row is deferred. */
+/**
+ * Default tool settings for a project's NEW chats (v4
+ * `?action=update-tool-settings`). Its SPA row landed in P4.9E4B:
+ * `qt-project-tool-settings-modal`, off the Model Behavior card's Configure.
+ */
 export interface ProjectToolSettingsUpdateRequest {
   type: 'projectToolSettingsUpdate';
   projectId: string;
@@ -3013,6 +3017,15 @@ export interface ProjectDetail {
   defaultRoleplayTemplateId: string | null;
   defaultAlertCharactersOfLanternImages: boolean | null;
   answerConfirmationOverride: 'ON' | 'OFF' | null;
+  /**
+   * The default tool roster for NEW chats in this project (v4
+   * `defaultDisabledTools` / `defaultDisabledToolGroups`). Storage always
+   * materializes both arrays (`db/projects.rs:49-52,133-134`) and `project_get`
+   * spreads them out, so they are declared named rather than arriving through the
+   * index signature (P4.9E4B, whose Default Tool Settings dialog reads them).
+   */
+  defaultDisabledTools: string[];
+  defaultDisabledToolGroups: string[];
   backgroundDisplayMode: 'latest_chat' | 'project' | 'static' | 'theme';
   state: Record<string, unknown> | null;
   createdAt: string;

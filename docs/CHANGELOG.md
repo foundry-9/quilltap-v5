@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+A project can decide which tools its new conversations start with. The Configure
+button on Model Behavior was a dead affordance under the words "All tools
+enabled"; it now opens the same tool tree the chat settings use, minus the
+per-chat availability shading a project has no way to know about.
+
 The composer's last missing tool is there: a button that opens the library
 picker. A file you pick from the old library waits above the message box for
 your next send; a document you pin from a store is announced by the Librarian

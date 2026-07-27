@@ -41285,3 +41285,44 @@ itself (tier 3 of this order).
 
 `salon-post-office-flow.spec.ts`'s gutter-order beat was updated the same way as
 the unit spec: it now expects the library button in v4's slot.
+
+## Lane P4.9E4B — unit 5 (rider A): the project Default Tool Settings dialog
+
+`screens/prospero/project-tool-settings-modal.ts` — v4's
+`ProjectToolSettingsModal.tsx` (145 LOC) over the ALREADY-SHARED
+`qt-tool-settings-content`. Its whole server side was already live
+(`ProjectToolSettingsUpdate` + `ToolsList` + the materialized storage); only the
+dialog and its opener were missing, and the Configure button had been a DISABLED
+affordance under a hardcoded "All tools enabled".
+
+The two things that make it a separate dialog in v4 are both carried:
+
+- **`showAvailability` is FALSE** (`:112`) — a project has no chat to check a
+  tool against, so nothing greys out and the shared content counts every tool as
+  available. Correspondingly the inventory is fetched with **no `chatId`**
+  (`:43`), which a spec pins by asserting the exact request object.
+- **The project footer note** (`:115`), word for word — these are defaults for
+  NEW chats, existing chats unaffected.
+
+The card row is un-stubbed with v4's real `toolSummary` (`:47-62`, pluralised
+counts joined with a comma, else "All tools enabled") and v4's local-state
+posture (`:39-40,64-68`): both arrays are held locally, seeded from the project
+and REPLACED from the dialog's success, so the summary moves before any refetch
+lands. The invalidate still fires behind it.
+
+**Contract:** `ProjectDetail` now declares `defaultDisabledTools` /
+`defaultDisabledToolGroups` by name instead of letting them arrive through the
+index signature (storage always materializes both arrays,
+`db/projects.rs:49-52,133-134`). Two existing spec fixtures were extended to
+match; no request or response shape moved.
+
+**Tests:** five dialog cases (the no-`chatId` read, the footer note, the
+set-vs-set Save gate INCLUDING an equal-but-new array that must NOT enable it,
+the whole-array write + close, the failed save that stays open) and three card
+cases (the untouched summary + a live Configure, v4's pluralisation across all
+three shapes, and adopt-at-once from the dialog's success). One e2e beat in
+`projects-flow.spec.ts`: open from Prospero → Save is inert → disable a group →
+save → the summary moves → it survives a full reload (so the write reached
+`projectGet`).
+
+**Gate:** `npx ng test` 252 files / 3,118 passed; `npx ng build` clean.

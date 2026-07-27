@@ -57,6 +57,8 @@ function project(over: Partial<ProjectDetail> = {}): ProjectDetail {
     defaultRoleplayTemplateId: null,
     defaultAlertCharactersOfLanternImages: null,
     answerConfirmationOverride: null,
+    defaultDisabledTools: [],
+    defaultDisabledToolGroups: [],
     backgroundDisplayMode: 'theme',
     state: {},
     createdAt: '2024-01-01T00:00:00Z',

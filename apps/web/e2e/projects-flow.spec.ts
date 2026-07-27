@@ -234,6 +234,64 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await expect(reloaded).toHaveValue(value!, { timeout: 10_000 });
   });
 
+  // P4.9E4B — Default Tool Settings (the Model Behavior card's Configure). The
+  // row was a disabled affordance until now; the write is `projectToolSettings
+  // Update`, live on main since P4.9E3B's Prospero server slice, and the read-back
+  // is `projectGet` after a full reload.
+  test('Default Tool Settings: disable a builtin group, read it back through projectGet', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${PROJ_BASE_URL}/prospero`);
+    await unlockIfLocked(page);
+
+    const projectCards = page.locator('qt-project-card');
+    await expect(projectCards.first()).toBeVisible({ timeout: 10_000 });
+    await projectCards.first().getByRole('link', { name: 'Open' }).click();
+    await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
+
+    const card = page.locator('qt-project-model-behavior-card');
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const configure = card.getByRole('button', { name: 'Configure', exact: true });
+    if (!(await configure.isVisible().catch(() => false))) {
+      await card.getByRole('button', { name: /Model Behavior/ }).click();
+    }
+    await expect(configure).toBeEnabled({ timeout: 10_000 });
+    await expect(card).toContainText('All tools enabled');
+    await configure.click();
+
+    // A dialog's component host is zero-sized — locate by role.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog).toContainText('Existing chats are not affected.');
+    // Save is inert until something moves (v4's set-vs-set gate).
+    const save = dialog.locator('[qt-modal-footer]').getByRole('button', { name: /Save/ });
+    await expect(save).toBeDisabled();
+
+    // Turn off the first group, then save.
+    await dialog.locator('[role="checkbox"]').first().click();
+    await expect(save).toBeEnabled({ timeout: 10_000 });
+    await save.click();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+
+    // The summary moved at once (v4 adopts the success payload locally)...
+    await expect(card).not.toContainText('All tools enabled', { timeout: 10_000 });
+
+    // ...and it survives a full reload, so the write really reached the project.
+    await page.reload();
+    await unlockIfLocked(page, page.locator('qt-project-model-behavior-card'));
+    const reloadedCard = page.locator('qt-project-model-behavior-card');
+    if (
+      !(await reloadedCard
+        .getByRole('button', { name: 'Configure', exact: true })
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await reloadedCard.getByRole('button', { name: /Model Behavior/ }).click();
+    }
+    await expect(reloadedCard).toContainText(/disabled/, { timeout: 10_000 });
+  });
+
   // P4.6o — the project Wardrobe card (inline draft form + rows).
   test('the Wardrobe card: create a default item, see its badges, delete it', async ({ page }) => {
     test.setTimeout(60_000);

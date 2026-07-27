@@ -6,6 +6,7 @@ import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-cont
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { fetchRoleplayTemplates, templateKeys } from '../../settings/templates/templates.api';
+import { ProjectToolSettingsModal } from '../project-tool-settings-modal';
 import { projectKeys, updateProject } from '../projects.api';
 
 /**
@@ -16,13 +17,18 @@ import { projectKeys, updateProject } from '../projects.api';
  * picker fetches the roleplay-templates listing (P4.6p) and binds the project's
  * `defaultRoleplayTemplateId`.
  *
- * DEFERRED LOUDLY: the Default Tool Settings row (v4 `ProjectToolSettingsModal`,
- * needs a tools-listing surface v5 doesn't expose) stays a disabled affordance.
+ * The Default Tool Settings row landed in P4.9E4B (it had been a disabled
+ * affordance reading "All tools enabled", waiting on a tool inventory v5 did not
+ * expose until P4.9E3B's `toolsList`): the real `toolSummary` and a live
+ * Configure that opens `qt-project-tool-settings-modal`. As in v4
+ * (`ModelBehaviorCard.tsx:39-40,64-68`), the two arrays are held LOCALLY and
+ * updated from the dialog's success, so the summary changes at once without
+ * waiting on a refetch.
  */
 @Component({
   selector: 'qt-project-model-behavior-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, ErrorAlert],
+  imports: [CollapsibleCard, ErrorAlert, ProjectToolSettingsModal],
   template: `
     <qt-collapsible-card
       title="Model Behavior"
@@ -108,19 +114,28 @@ import { projectKeys, updateProject } from '../projects.api';
         <div class="flex items-center justify-between p-3 rounded-lg qt-border qt-bg-surface">
           <div>
             <h4 class="qt-label text-foreground">Default Tool Settings</h4>
-            <p class="qt-text-xs qt-text-secondary">All tools enabled</p>
+            <p class="qt-text-xs qt-text-secondary">{{ toolSummary() }}</p>
           </div>
           <button
             type="button"
             class="qt-button qt-button-secondary qt-button-sm"
-            title="Configuring the tool roster is not yet available"
-            disabled
+            (click)="showToolSettings.set(true)"
           >
             Configure
           </button>
         </div>
       </div>
     </qt-collapsible-card>
+
+    @if (showToolSettings()) {
+      <qt-project-tool-settings-modal
+        [projectId]="project().id"
+        [disabledTools]="localDisabledTools()"
+        [disabledToolGroups]="localDisabledToolGroups()"
+        (saved)="onToolSettingsSaved($event)"
+        (close)="showToolSettings.set(false)"
+      />
+    }
   `,
 })
 export class ProjectModelBehaviorCard {
@@ -131,6 +146,44 @@ export class ProjectModelBehaviorCard {
   private readonly queryClient = injectQueryClient();
   protected readonly saveError = signal<string | null>(null);
   protected readonly savingTemplate = signal(false);
+  protected readonly showToolSettings = signal(false);
+
+  /**
+   * v4 keeps both arrays in local state seeded from the project (`:39-40`) and
+   * replaces them on the dialog's success (`:64-68`), so the summary line updates
+   * before any refetch lands. `null` means "not overridden yet" — the project's
+   * own values are used until the dialog writes.
+   */
+  private readonly savedDisabledTools = signal<string[] | null>(null);
+  private readonly savedDisabledToolGroups = signal<string[] | null>(null);
+
+  protected readonly localDisabledTools = computed(
+    () => this.savedDisabledTools() ?? this.project().defaultDisabledTools ?? [],
+  );
+  protected readonly localDisabledToolGroups = computed(
+    () => this.savedDisabledToolGroups() ?? this.project().defaultDisabledToolGroups ?? [],
+  );
+
+  /** v4 `toolSummary` (`:47-62`) — the pluralised counts, or "All tools enabled". */
+  protected readonly toolSummary = computed(() => {
+    const toolCount = this.localDisabledTools().length;
+    const groupCount = this.localDisabledToolGroups().length;
+    if (toolCount === 0 && groupCount === 0) return 'All tools enabled';
+    const parts: string[] = [];
+    if (toolCount > 0) parts.push(`${toolCount} tool${toolCount !== 1 ? 's' : ''} disabled`);
+    if (groupCount > 0) parts.push(`${groupCount} group${groupCount !== 1 ? 's' : ''} disabled`);
+    return parts.join(', ');
+  });
+
+  /** v4 `handleToolSettingsSuccess` (`:64-68`) — adopt, then let the parent refetch. */
+  protected async onToolSettingsSaved(next: {
+    disabledTools: string[];
+    disabledToolGroups: string[];
+  }): Promise<void> {
+    this.savedDisabledTools.set(next.disabledTools);
+    this.savedDisabledToolGroups.set(next.disabledToolGroups);
+    await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+  }
 
   private readonly templatesQuery = injectQuery(() => ({
     queryKey: templateKeys.list(),
