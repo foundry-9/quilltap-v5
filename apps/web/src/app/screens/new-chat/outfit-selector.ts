@@ -39,9 +39,45 @@ export interface OutfitSelectorCharacter {
  * disabled Compose radio (with its "not yet available" title) is that
  * deferral's visible surface. See the work-order status header.
  */
-export function computeSyncInitialMode(char: OutfitSelectorCharacter): OutfitSelectionMode {
+export function computeSyncInitialMode(
+  char: OutfitSelectorCharacter,
+  sourceChatId?: string | null,
+): OutfitSelectionMode {
+  if (sourceChatId) return 'previous_chat';
   if (char.canChooseOutfit && !char.isUserControlled) return 'llm_choose';
   return 'default';
+}
+
+/**
+ * v4's per-character equipped-outfit summary from a source chat
+ * (`outfit-selector.tsx:102`): each of the four slots holds the items resolved
+ * at the end of that conversation.
+ */
+export type PreviousOutfitSummary = Record<
+  string,
+  Partial<Record<'top' | 'bottom' | 'footwear' | 'accessories', { itemId: string; title: string }[]>>
+>;
+
+/** v4 `SLOT_LABELS`, for the continuation preview line. */
+const SLOT_LABELS: Record<'top' | 'bottom' | 'footwear' | 'accessories', string> = {
+  top: 'Top',
+  bottom: 'Bottom',
+  footwear: 'Footwear',
+  accessories: 'Accessories',
+};
+
+/** v4 `previousChatPreview` (`outfit-selector.tsx:385-405`). */
+export function previousChatPreview(
+  slots: PreviousOutfitSummary[string] | null | undefined,
+): string | null {
+  if (!slots) return null;
+  const equipped = (['top', 'bottom', 'footwear', 'accessories'] as const)
+    .map((slot) => ({ slot, titles: (slots[slot] ?? []).map((i) => i.title) }))
+    .filter((entry) => entry.titles.length > 0);
+  if (equipped.length === 0) {
+    return 'Nothing equipped at the end of the source chat — defaults will be used.';
+  }
+  return equipped.map((e) => `${SLOT_LABELS[e.slot]}: ${e.titles.join(', ')}`).join(' · ');
 }
 
 interface ModeOption {
@@ -99,6 +135,13 @@ interface ModeOption {
                 </label>
               }
             </div>
+            @if (previewFor(char.id); as preview) {
+              <div
+                class="mt-2 ml-6 rounded border qt-border-default qt-bg-muted/40 px-2 py-1.5 text-xs qt-text-secondary"
+              >
+                {{ preview }}
+              </div>
+            }
             @if (modeFor(char.id) === 'none') {
               <div
                 class="mt-2 ml-6 rounded border qt-border-warning/50 qt-bg-warning/10 px-2 py-1.5 text-xs qt-text-warning"
@@ -115,6 +158,14 @@ interface ModeOption {
 export class OutfitSelector {
   readonly characters = input.required<OutfitSelectorCharacter[]>();
   readonly disabled = input(false);
+  /**
+   * Continuation mode (v4 `sourceChatId` + `previousOutfitSummary`): when set,
+   * a "Same as last conversation" option leads the list and every character
+   * opens on it. Used by the Merge In… flow (P4.9E3C); the new-chat form leaves
+   * both unset and behaves exactly as before.
+   */
+  readonly sourceChatId = input<string | null>(null);
+  readonly previousOutfitSummary = input<PreviousOutfitSummary | null>(null);
   readonly selectionsChange = output<ChatCreateOutfitSelectionInput[]>();
 
   private readonly overrides = signal<Record<string, OutfitSelectionMode>>({});
@@ -124,7 +175,7 @@ export class OutfitSelector {
   private readonly selections = computed<ChatCreateOutfitSelectionInput[]>(() =>
     this.characters().map((c) => ({
       characterId: c.id,
-      mode: this.overrides()[c.id] ?? computeSyncInitialMode(c),
+      mode: this.overrides()[c.id] ?? computeSyncInitialMode(c, this.sourceChatId()),
     })),
   );
 
@@ -137,11 +188,26 @@ export class OutfitSelector {
     const override = this.overrides()[id];
     if (override) return override;
     const char = this.characters().find((c) => c.id === id);
-    return char ? computeSyncInitialMode(char) : 'default';
+    return char ? computeSyncInitialMode(char, this.sourceChatId()) : 'default';
+  }
+
+  /** The continuation preview line, shown while `previous_chat` is chosen. */
+  protected previewFor(id: string): string | null {
+    if (this.modeFor(id) !== 'previous_chat') return null;
+    return previousChatPreview(this.previousOutfitSummary()?.[id] ?? null);
   }
 
   protected optionsFor(char: OutfitSelectorCharacter): ModeOption[] {
-    const opts: ModeOption[] = [
+    const opts: ModeOption[] = [];
+    if (this.sourceChatId()) {
+      opts.push({
+        value: 'previous_chat',
+        label: 'Same as last conversation',
+        description:
+          'Carry forward whatever they were wearing at the end of the source chat',
+      });
+    }
+    opts.push(
       {
         value: 'default',
         label: 'Use defaults',
@@ -153,7 +219,7 @@ export class OutfitSelector {
         description: 'Pick the starting outfit slot by slot.',
         disabledTitle: 'Composing an outfit here is not yet available in this build.',
       },
-    ];
+    );
     if (!char.isUserControlled) {
       opts.push({
         value: 'llm_choose',

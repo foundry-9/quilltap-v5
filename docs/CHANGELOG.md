@@ -116,6 +116,12 @@ cover — instead of refusing by name. Both proven byte-identical against the
 old app over a new committed fixture family (chat-dialogs); the remaining
 chat-dialog verbs (tools inventory, search-replace, per-message
 re-attribution) are wired to answer loudly that they are in flight.
+Merge In is back in the Organize drawer. Pick another conversation — search by
+its name or by who is in it — then choose which of its characters come across and
+what they arrive wearing, with "same as last conversation" offered first. A recap
+of where that conversation left off is added here. Autonomous rooms are not
+offered, and are not given the entry themselves.
+
 Speaking as one of your characters now sticks. Choosing "Speak as" flipped the
 card for a moment and then quietly undid itself, because the app was reading that
 state back from a record that never carried it; it is now kept where the old app

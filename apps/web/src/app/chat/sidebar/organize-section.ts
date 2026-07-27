@@ -20,8 +20,9 @@ import { Icon } from '../../ui/icon';
  * missing here is UI over a live boundary, not a port.
  *
  * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported.
- * - **Merge In…** (v4 :1566) — `MergeConversationModal` is unported; its verb
- *   (`ChatMergeConversation`, over the ported `apply_chat_merge`) IS live.
+ *
+ * **Merge In… is LIVE** (v4 :1566, P4.9E3C) — and, like v4, it is hidden in an
+ * autonomous room.
  *
  * **Export is LIVE** (v4 :1509-1511,1578-1586, P4.9E3C): the entry navigates the
  * window straight at the byte route, exactly as v4 does — there is no dialog and
@@ -81,6 +82,18 @@ import { Icon } from '../../ui/icon';
         <span>State…</span>
       </button>
 
+      @if (!isAutonomousRoom()) {
+        <button
+          type="button"
+          class="qt-tool-palette-button"
+          title="Merge another conversation's characters and summary into this one"
+          (click)="mergeIn.emit()"
+        >
+          <qt-icon name="user-plus" class="w-4 h-4" />
+          <span>Merge In…</span>
+        </button>
+      }
+
       <button
         type="button"
         class="qt-tool-palette-button"
@@ -110,6 +123,7 @@ export class OrganizeSection {
 
   readonly editEnclave = output<void>();
   readonly rename = output<void>();
+  readonly mergeIn = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
 

@@ -312,6 +312,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [isAutonomousRoom]="isAutonomousRoom()"
             (editEnclave)="editEnclave.emit()"
             (rename)="rename.emit()"
+            (mergeIn)="mergeIn.emit()"
             (openState)="openState.emit()"
             (openGallery)="openGallery.emit()"
           />
@@ -381,6 +382,7 @@ export class ChatSidebar implements OnInit {
   readonly isAutonomousRoom = input(false);
   readonly editEnclave = output<void>();
   readonly rename = output<void>();
+  readonly mergeIn = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
 

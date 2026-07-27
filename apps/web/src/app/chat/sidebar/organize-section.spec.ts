@@ -14,6 +14,7 @@ import { OrganizeSection } from './organize-section';
       [isAutonomousRoom]="isAutonomousRoom()"
       (editEnclave)="fired.push('enclave')"
       (rename)="fired.push('rename')"
+      (mergeIn)="fired.push('merge')"
       (openState)="fired.push('state')"
       (openGallery)="fired.push('gallery')"
     />
@@ -43,10 +44,18 @@ function labels(fixture: ComponentFixture<Host>): string[] {
 describe('OrganizeSection', () => {
   it('shows Copy ID, State and Gallery — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
-    expect(labels(fixture)).toEqual(['Copy ID', 'Rename', 'State…', 'Export', 'Gallery']);
+    expect(labels(fixture)).toEqual([
+      'Copy ID',
+      'Rename',
+      'State…',
+      'Merge In…',
+      'Export',
+      'Gallery',
+    ]);
 
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
+    // Merge In… is HIDDEN in an autonomous room (v4 :1566 `&& !isAutonomousRoom`).
     expect(labels(fixture)).toEqual([
       'Edit Enclave',
       'Copy ID',

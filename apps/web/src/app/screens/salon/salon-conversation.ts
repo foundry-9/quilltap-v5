@@ -42,6 +42,7 @@ import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
 import { ChatProjectModal } from '../../chat/chat-project-modal';
+import { MergeConversationModal } from '../../chat/merge-conversation-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
 import { SelectLlmProfileDialog } from '../../chat/select-llm-profile-dialog';
@@ -206,6 +207,7 @@ interface CascadePrompt {
     ChatRenameModal,
     BulkCharacterReplaceModal,
     ChatProjectModal,
+    MergeConversationModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
     Modal,
@@ -282,6 +284,7 @@ interface CascadePrompt {
           (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
           (editEnclave)="showEditEnclave.set(true)"
           (rename)="showRename.set(true)"
+          (mergeIn)="showMerge.set(true)"
           (bulkReplace)="showBulkReplace.set(true)"
           (openProject)="showProject.set(true)"
           (openState)="showStateEditor.set(true)"
@@ -560,6 +563,15 @@ interface CascadePrompt {
         entityType="chat"
         [entityId]="id"
         (close)="showStateEditor.set(false)"
+      />
+    }
+
+    @if (showMerge() && chat(); as c) {
+      <qt-merge-conversation-modal
+        [targetChatId]="c.id"
+        [existingCharacterIds]="castCharacterIds()"
+        (merged)="onConversationMerged($event)"
+        (close)="showMerge.set(false)"
       />
     }
 
@@ -1133,6 +1145,18 @@ export class SalonConversation {
   protected readonly showBulkReplace = signal(false);
   /** v4 `projectModalOpen`, opened from the Chat section's Project entry. */
   protected readonly showProject = signal(false);
+  /**
+   * v4 `mergeConversationOpen`. Like v4 (`SalonView.tsx:1586-1597`) the dialog is
+   * MOUNTED only while open, so its two-step state resets on every open without
+   * a reset effect.
+   */
+  protected readonly showMerge = signal(false);
+
+  /** v4 `onMerged` → `fetchChat` (`SalonView.tsx:1594`). */
+  protected async onConversationMerged(message: string): Promise<void> {
+    this.chatFlash.set({ kind: 'success', message });
+    await this.onChatUpdated();
+  }
   /** v4 `reattributeDialogState`, opened from a message's action bar. */
   protected readonly reattributeTarget = signal<MessageDto | null>(null);
   /**

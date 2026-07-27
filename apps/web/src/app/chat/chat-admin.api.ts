@@ -1,4 +1,6 @@
 import type { CoreClient } from '../core/core-client';
+import type { ChatCreateOutfitSelectionInput } from '../core/core-contract';
+import type { PreviousOutfitSummary } from '../screens/new-chat/outfit-selector';
 
 /**
  * The chat-admin verbs the in-chat dialog family reaches for (P4.9E3A's server
@@ -110,4 +112,44 @@ export async function reattributeMessage(
 ): Promise<{ memoriesDeleted: number }> {
   const data = await core.dispatchData({ type: 'messageReattribute', messageId, newParticipantId });
   return { memoriesDeleted: Number(data['memoriesDeleted'] ?? 0) };
+}
+
+/**
+ * §1 `ChatOutfitSummary` — what each character was wearing at the end of a
+ * source chat (v4 `MergeConversationModal.tsx:102-110`), for the "Same as last
+ * conversation" preview.
+ *
+ * v4 reads `data.summary`; a body without it yields `null`, which the selector
+ * renders as no preview rather than failing.
+ */
+export async function readOutfitSummary(
+  core: CoreClient,
+  chatId: string,
+): Promise<PreviousOutfitSummary | null> {
+  const data = await core.dispatchData({ type: 'chatOutfitSummary', chatId });
+  const summary = data['summary'];
+  return summary && typeof summary === 'object' ? (summary as PreviousOutfitSummary) : null;
+}
+
+/**
+ * §1 `ChatMergeConversation` — fold a source conversation's cast + recap into
+ * this one (v4 `MergeConversationModal.tsx:172-181`). `chatId` is the TARGET.
+ *
+ * Returns the server's merged count (`data.merge.mergedCharacterIds.length`,
+ * `:187`) or `null` when the body does not carry it — v4 then falls back to the
+ * client's own count.
+ */
+export async function mergeConversation(
+  core: CoreClient,
+  params: {
+    chatId: string;
+    sourceChatId: string;
+    characterIds: string[];
+    outfitSelections: ChatCreateOutfitSelectionInput[];
+  },
+): Promise<number | null> {
+  const data = await core.dispatchData({ type: 'chatMergeConversation', ...params });
+  const merge = data['merge'] as { mergedCharacterIds?: unknown } | undefined;
+  const ids = merge?.mergedCharacterIds;
+  return Array.isArray(ids) ? ids.length : null;
 }

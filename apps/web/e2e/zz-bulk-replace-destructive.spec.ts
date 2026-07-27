@@ -41,6 +41,14 @@ async function authors(page: Page, chatId: string): Promise<(string | null)[]> {
   return (body.data?.chat?.messages ?? []).map((m) => m.participantId);
 }
 
+/** How many participants the chat carries. */
+async function castSize(page: Page, chatId: string): Promise<number> {
+  const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+  expect(resp.ok(), `chatGet → ${resp.status()}`).toBe(true);
+  const body = (await resp.json()) as { data?: { chat?: { participants?: unknown[] } } };
+  return (body.data?.chat?.participants ?? []).length;
+}
+
 test.describe('P4.9E3C — Bulk Character Replace (destructive)', () => {
   test('re-attributes the operator’s own turns to a character', async ({ page }) => {
     await page.goto('/salon');
@@ -124,5 +132,50 @@ test.describe('P4.9E3C — Re-attribute one message (destructive)', () => {
     const after = await authors(page, chatId);
     expect(after.length).toBeGreaterThan(0);
     expect(messageId).toMatch(/^message-/);
+  });
+});
+
+/**
+ * P4.9E3C — Merge a Conversation In. Also destructive, and for the same reason
+ * the bulk beat is: it permanently enlarges the target chat's cast and posts a
+ * Host recap into it. There is no un-merge.
+ */
+test.describe('P4.9E3C — Merge In (destructive)', () => {
+  test('folds another conversation’s characters into this one', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.click();
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+    const before = await castSize(page, chatId);
+
+    await openSidebarSection(page, 'Organize');
+    await page.getByRole('button', { name: 'Merge In…' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Merge a Conversation In')).toBeVisible({ timeout: 10_000 });
+    // This chat is not a candidate for merging into itself.
+    await expect(dialog.getByText('Solo Voyage', { exact: false })).toHaveCount(0);
+
+    // Wait for the list to arrive before picking — clicking during the loading
+    // state hits a button that is about to be replaced.
+    const source = dialog.locator('.qt-dialog-body button', { hasText: 'Chat Images' });
+    await expect(source).toBeVisible({ timeout: 15_000 });
+    await source.click();
+
+    // Step 2: everyone eligible is checked, and the merge button counts them.
+    await expect(dialog.getByText('Who joins', { exact: true })).toBeVisible({ timeout: 15_000 });
+    const boxes = dialog.locator('input[type="checkbox"]');
+    const count = await boxes.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      await expect(boxes.nth(i)).toBeChecked();
+    }
+
+    await dialog.getByRole('button', { name: /^Merge In/ }).click();
+    await expect(page.getByText(/Merged \d+ character/)).toBeVisible({ timeout: 30_000 });
+    expect(await castSize(page, chatId)).toBeGreaterThan(before);
   });
 });

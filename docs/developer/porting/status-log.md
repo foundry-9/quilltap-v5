@@ -40041,3 +40041,46 @@ tests cover the dialog; the impersonation round trip it hangs off has a live bea
 
 Gate: ng test 243 files / 3,023; `npx playwright test salon-dialogs-flow` 3 passed
 / 1 gated skip. SPA 0.5.305.
+
+### Unit record — P4.9E3C unit 8: MergeConversationModal (2026-07-27)
+
+`chat/merge-conversation-modal.ts` (v4 `MergeConversationModal.tsx`, 373 LOC),
+opened from the Organize drawer's new "Merge In…" — hidden in an autonomous room,
+as v4 hides it (`ChatSidebar.tsx:1566`).
+
+Ported: both candidate filters (not this chat, never an autonomous room) and the
+search over title OR company (`:114-125`); `presentCharacters`, which
+de-duplicates and drops removed participants so a character who LEFT the source
+is not brought back (`:63-74`); everyone eligible checked by default with v4's
+italic refusal when all are unchecked (`:151,310-314`); the outfit choices
+narrowed to the included set before they travel (`:179` — an unchecked
+character's staged choice must not go); the merged count off the reply with the
+client's own as fallback (`:187`). Like v4 (`SalonView.tsx:1586-1597`) the dialog
+is MOUNTED only while open, which is why neither version needs a reset effect.
+
+**`outfit-selector.ts` gained the continuation mode.** `computeSyncInitialMode`
+now takes v4's `sourceChatId` argument and returns `previous_chat` when it is
+set (v4 `outfit-selector.tsx:88-92`), a "Same as last conversation" option leads
+the list, and `previousChatPreview` (`:385-405`, with v4's `SLOT_LABELS` and its
+"Nothing equipped…" fallback) renders under it. The new-chat form passes neither
+input and is byte-unchanged.
+
+⚠ **Step 2's summary read is P4.9E3B's `chatOutfitSummary`.** Until it lands the
+read fails and the selector shows no preview — which is exactly what v4 renders
+before its own query resolves. The MODE still leads and is still seeded, because
+that is what v4 seeds a continuation with regardless of the preview. So the
+dialog needed no gate: it degrades to v4's own pre-resolution state.
+
+Verification: 9 component tests (`merge-conversation-modal.spec.ts`) including a
+unit test for `presentCharacters` and the assertion that an unchecked character's
+outfit choice is dropped from the request — plus a live e2e beat in the `zz-`
+destructive spec (merging is not reversible: it enlarges the cast permanently and
+posts a Host recap), which merges a second conversation's characters in and reads
+the cast size back through `chatGet`.
+
+⚠ **e2e trap worth remembering:** clicking `.qt-dialog-body button` first while a
+list query is still loading hits a button that is about to be replaced, and the
+dialog silently stays on step 1. Wait for a NAMED candidate before clicking.
+
+Gate: ng test 244 files / 3,032; `npx playwright test zz-bulk-replace` 2 passed /
+1 gated skip. SPA 0.5.306.
