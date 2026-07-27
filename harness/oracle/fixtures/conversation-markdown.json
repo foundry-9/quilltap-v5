@@ -1,0 +1,347 @@
+{
+  "nowIso": "2026-07-27T15:07:09.123Z",
+  "cases": [
+    {
+      "name": "empty-no-metadata",
+      "characterNames": [],
+      "metadata": null,
+      "messages": []
+    },
+    {
+      "name": "empty-with-metadata",
+      "characterNames": [["p-user", "User"]],
+      "metadata": {
+        "conversationId": "chat-empty",
+        "title": "A Silent Room",
+        "createdAt": "2026-02-01T09:00:00.000Z",
+        "lastUpdatedAt": "2026-02-03T18:30:00.000Z"
+      },
+      "messages": []
+    },
+    {
+      "name": "single-user-turn-no-metadata",
+      "characterNames": [["p-user", "User"]],
+      "metadata": null,
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "Good morning, Aria.",
+          "participantId": "p-user",
+          "createdAt": "2026-02-01T09:05:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "assistant-first-opens-interchange-zero",
+      "characterNames": [["p-aria", "Aria"], ["p-user", "User"]],
+      "metadata": {
+        "conversationId": "chat-assistant-first",
+        "title": "The Opening Gambit",
+        "createdAt": "2026-02-01T08:59:00.000Z",
+        "lastUpdatedAt": "2026-02-01T09:20:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The lamps were already lit when you arrived.",
+          "participantId": "p-aria",
+          "createdAt": "2026-02-01T09:00:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "USER",
+          "content": "Were they? I remember darkness.",
+          "participantId": "p-user",
+          "createdAt": "2026-02-01T09:05:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Memory is a poor lamplighter, my dear.",
+          "participantId": "p-aria",
+          "createdAt": "2026-02-01T09:06:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "multi-interchange-same-day-span",
+      "characterNames": [["p-user", "User"], ["p-aria", "Aria"], ["p-bram", "Bram"]],
+      "metadata": {
+        "conversationId": "chat-multi",
+        "title": "Three Voices Before Noon",
+        "createdAt": "2026-03-14T07:00:00.000Z",
+        "lastUpdatedAt": "2026-03-14T11:59:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "Who is left in the parlour?",
+          "participantId": "p-user",
+          "createdAt": "2026-03-14T08:15:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Only myself and Bram, and Bram is asleep.",
+          "participantId": "p-aria",
+          "createdAt": "2026-03-14T08:16:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "I am emphatically NOT asleep.",
+          "participantId": "p-bram",
+          "createdAt": "2026-03-14T08:17:00.000Z"
+        },
+        {
+          "id": "m3",
+          "type": "message",
+          "role": "USER",
+          "content": "Then wake up properly and answer the door.",
+          "participantId": "p-user",
+          "createdAt": "2026-03-14T12:40:00.000Z"
+        },
+        {
+          "id": "m4",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The door has been answered. Nobody was there.",
+          "participantId": "p-aria",
+          "createdAt": "2026-03-14T12:41:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "cross-day-span-and-unmapped-participants",
+      "characterNames": [["p-aria", "Aria"]],
+      "metadata": {
+        "conversationId": "chat-crossday",
+        "title": "An Overnight Correspondence",
+        "createdAt": "2026-04-11T20:00:00.000Z",
+        "lastUpdatedAt": "2026-04-12T09:00:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "It is late.",
+          "participantId": "p-nobody",
+          "createdAt": "2026-04-11T23:45:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "It is early. The distinction matters enormously.",
+          "participantId": "p-also-nobody",
+          "createdAt": "2026-04-12T00:07:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "I concur with whoever said that.",
+          "participantId": null,
+          "createdAt": "2026-04-12T00:08:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "skips-non-message-types-and-empty-content",
+      "characterNames": [["p-user", "User"], ["p-aria", "Aria"]],
+      "metadata": null,
+      "messages": [
+        {
+          "id": "s0",
+          "type": "system",
+          "role": "USER",
+          "content": "The Concierge cleared its throat.",
+          "participantId": "p-user",
+          "createdAt": "2026-05-01T10:00:00.000Z"
+        },
+        {
+          "id": "cs0",
+          "type": "context-summary",
+          "role": "ASSISTANT",
+          "content": "Previously, in the parlour…",
+          "participantId": "p-aria",
+          "createdAt": "2026-05-01T10:01:00.000Z"
+        },
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "",
+          "participantId": "p-user",
+          "createdAt": "2026-05-01T10:02:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "TOOL",
+          "content": "tool chatter nobody wants",
+          "participantId": "p-aria",
+          "createdAt": "2026-05-01T10:03:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "USER",
+          "content": "Anyone still there?",
+          "participantId": "p-user",
+          "createdAt": "2026-05-01T10:04:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "strips-tool-artifacts-and-drops-empty-remainder",
+      "characterNames": [["p-user", "User"], ["p-aria", "Aria"]],
+      "metadata": {
+        "conversationId": "chat-tools",
+        "title": "Machinery, Mostly",
+        "createdAt": "2026-06-02T14:00:00.000Z",
+        "lastUpdatedAt": "2026-06-02T14:30:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "Look up the ledger, would you?",
+          "participantId": "p-user",
+          "createdAt": "2026-06-02T14:05:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "[Tool call made]\n{\n  \"toolName\": \"search\"\n}\n[Tool Result: 12 rows]",
+          "participantId": "p-aria",
+          "createdAt": "2026-06-02T14:06:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "[Tool call made]\nThe ledger shows twelve entries, all of them dubious.",
+          "participantId": "p-aria",
+          "createdAt": "2026-06-02T14:07:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "lowercase-role-and-duplicate-display-names",
+      "characterNames": [["p-a", "Aria"], ["p-b", "Aria"], ["p-user", "User"]],
+      "metadata": {
+        "conversationId": "chat-dupes",
+        "title": "Two Arias, One Room",
+        "createdAt": "2026-06-20T09:00:00.000Z",
+        "lastUpdatedAt": "2026-06-20T09:10:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "user",
+          "content": "Which of you is which?",
+          "participantId": "p-user",
+          "createdAt": "2026-06-20T09:01:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "assistant",
+          "content": "I am Aria.",
+          "participantId": "p-a",
+          "createdAt": "2026-06-20T09:02:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "assistant",
+          "content": "And I am also Aria, which is the whole difficulty.",
+          "participantId": "p-b",
+          "createdAt": "2026-06-20T09:03:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "midnight-and-noon-hour-rendering",
+      "characterNames": [["p-user", "User"]],
+      "metadata": {
+        "conversationId": "chat-hours",
+        "title": "Bells at the Extremes",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "lastUpdatedAt": "2026-01-01T12:00:00.000Z"
+      },
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "Midnight exactly.",
+          "participantId": "p-user",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "USER",
+          "content": "Seven minutes past midnight.",
+          "participantId": "p-user",
+          "createdAt": "2026-01-01T00:07:00.000Z"
+        },
+        {
+          "id": "m2",
+          "type": "message",
+          "role": "USER",
+          "content": "Noon exactly.",
+          "participantId": "p-user",
+          "createdAt": "2026-01-01T12:00:00.000Z"
+        },
+        {
+          "id": "m3",
+          "type": "message",
+          "role": "USER",
+          "content": "One minute past noon.",
+          "participantId": "p-user",
+          "createdAt": "2026-01-01T12:01:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "multiline-content-and-markdown-body",
+      "characterNames": [["p-user", "User"], ["p-aria", "Aria"]],
+      "metadata": null,
+      "messages": [
+        {
+          "id": "m0",
+          "type": "message",
+          "role": "USER",
+          "content": "Recite the inventory:\n\n- one lantern\n- two ledgers\n\nThat is all.",
+          "participantId": "p-user",
+          "createdAt": "2026-07-01T16:20:00.000Z"
+        },
+        {
+          "id": "m1",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "## A Heading Inside A Message\n\nAnd a paragraph beneath it, for the avoidance of doubt.",
+          "participantId": "p-aria",
+          "createdAt": "2026-07-01T16:21:00.000Z"
+        }
+      ]
+    }
+  ]
+}

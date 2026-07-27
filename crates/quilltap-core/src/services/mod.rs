@@ -176,3 +176,7 @@ pub mod search_replace;
 pub mod tools_inventory;
 // === end P4.9E3B ===
 // ── end P4.9E3A ──
+
+// === P4.6BM: the embedding-family remainder ===
+pub mod conversation_markdown;
+// === end P4.6BM ===

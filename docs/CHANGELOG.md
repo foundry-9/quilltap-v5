@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Ported the conversation renderer that turns a chat into archive Markdown — the
+piece the "render conversation" job needs before it can run at all. It is a pure
+transformation with no model call: visible messages are grouped into
+interchanges, each numbered and timestamped, with a metadata header folded into
+the first chunk. Verified byte-for-byte against the old app over eleven cases,
+and the test's sensitivity was proven by deliberately breaking the port six ways
+and confirming each was caught.
+
 Files kept in a document store can now be handed to a conversation. Pick one
 from the library and the Librarian sets it before the cast, announcing what it
 is and where it came from, and describing it so that a model without eyes still

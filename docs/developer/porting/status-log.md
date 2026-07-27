@@ -40629,3 +40629,77 @@ was touched, so no SPA gate is owed** — the picker dialog is P4.9E4B's.
 
 Versions: quilltap-core 0.0.389, quilltap-harness 0.0.336, quilltap-web 0.0.51,
 quilltap-host 0.0.44.
+---
+
+## Lane record — P4.6BM unit 1: the Scriptorium conversation renderer (tier-1)
+
+**Ported:** v4 `lib/scriptorium/markdown-renderer.ts`'s single export
+`renderConversationMarkdown` (224 LOC) →
+`quilltap-core/src/services/conversation_markdown.rs`. Pure, DB-free, LLM-free:
+chat events in, numbered Markdown + per-interchange chunk rows out. It is the
+substantive blocker under the CONVERSATION_RENDER handler (unit 2), so it ported
+first and alone.
+
+**Findings worth carrying:**
+
+- **v4's `participants` parameter is accepted and never read.** The signature
+  takes `participants: ChatParticipantBase[]`; the body references it nowhere
+  (the display-name map is the caller's job). The port omits the parameter — no
+  behavior was dropped, and a future reader should not go looking for it.
+- **The renderer has its OWN `formatDateTime`, and it is NOT
+  `format_time::format_date_time`.** The Post Office's formatter renders a
+  **2-digit** hour (`09:05 AM`); the Scriptorium's uses `hour: 'numeric'`
+  (`9:05 AM`). Reusing the existing helper would have been a silent one-character
+  divergence on every rendered message line. `MONTHS_LONG` is now `pub(crate)`
+  and shared; `civil_from_days` was already `pub(crate)` on `clock`.
+- **v4's `formatDateTime` catch block is unreachable.** Neither `new Date(bad)`
+  nor `toLocaleDateString` throws — they render the literal `"Invalid Date"` — so
+  the `catch` that would have returned the raw ISO can never run. The port
+  reproduces the reachable behavior (`"Invalid Date at Invalid Date"`), verified
+  empirically in Node rather than read off the source.
+- **Two counters, not one.** `globalMessageIndex` counts across the WHOLE
+  conversation while `interchangeIndex` counts interchanges, and the
+  `## Interchange N` header is written with the index the interchange will
+  *later* be given (the increment happens when the PREVIOUS one is finalized).
+  A per-interchange message counter is the obvious wrong guess; the corpus pins
+  it.
+
+**Differential:** new tier-1 EXACT family `conversation_markdown_equivalence`
+(11 cases, 14 interchanges), byte-for-byte on `markdown` and every interchange
+field with **zero normalization**. The oracle drives v4's real module.
+
+- The renderer's one impure read is `new Date().toISOString()` for the header's
+  `Current time:` line. The oracle freezes it by replacing `globalThis.Date`
+  with a subclass whose no-arg constructor and `now()` return the corpus
+  `nowIso`, **before** importing the module.
+- `TZ=UTC` is load-bearing on both sides (v4 formats with an explicit `'en-US'`
+  locale but no timezone, so the output follows the host zone).
+- Corpus coverage: empty with and without metadata, assistant-first (interchange
+  0 opened by a non-USER message), multi-interchange same-day span, cross-day
+  span, unmapped/absent participant fallbacks, skipped `system` /
+  `context-summary` / non-USER-ASSISTANT / empty-content rows, tool-artifact
+  stripping including a message stripped to nothing, lowercase roles, duplicate
+  display names (the `Set` dedup), midnight/noon hour rendering, and multi-line
+  Markdown bodies.
+
+**The family was green on its first run, so its sensitivity was proven by
+mutation, not assumed.** Six deliberate breakages, each caught: a 2-digit hour;
+a per-interchange message counter; dropping the participant-name dedup; joining
+interchanges with `\n\n`; forcing the same-day span branch; and not prepending
+the metadata header to interchange 0.
+
+**Regen recipe:**
+
+```
+cd ~/source/quilltap-server
+TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <v5>/harness/oracle/cases/conversation-markdown.ts \
+  > /tmp/oracle-conversation-markdown.ndjson
+QT_ORACLE_CONVERSATION_MARKDOWN=/tmp/oracle-conversation-markdown.ndjson \
+  cargo test -p quilltap-harness --test conversation_markdown_equivalence
+```
+
+**Gate:** fmt clean, clippy `--workspace --all-targets -D warnings` clean, full
+`cargo test --workspace` 1,668 passed / 0 failed with the new family by name.
+No fixture touched, so no other oracle family is invalidated. No `apps/web`
+touch.

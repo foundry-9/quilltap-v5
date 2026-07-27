@@ -17,7 +17,10 @@
 use crate::clock::iso_to_ms;
 
 /// en-US full month names (`month: 'long'`).
-const MONTHS_LONG: [&str; 12] = [
+/// Shared with the Scriptorium renderer's own `formatDateTime`
+/// ([`crate::services::conversation_markdown`]), which differs only in its
+/// `hour: 'numeric'` rendering.
+pub(crate) const MONTHS_LONG: [&str; 12] = [
     "January",
     "February",
     "March",
