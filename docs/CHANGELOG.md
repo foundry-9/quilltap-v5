@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Conversations are now re-rendered as they grow: every turn that produces
+content queues the render that keeps the archive copy and its searchable pieces
+current. Until now that only happened when the button was pressed by hand or the
+app repaired itself at startup.
+
 "Queue memories" on a conversation works again. It queues one extraction job
 per turn — per opening message in an ordinary chat, per spoken line in a room
 that runs itself — skipping staff announcements and silent asides. If no cheap

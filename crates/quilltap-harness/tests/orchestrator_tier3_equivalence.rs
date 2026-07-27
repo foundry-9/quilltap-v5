@@ -858,6 +858,10 @@ fn orchestrator_tier3_matches_oracle() {
                         timezone: Some("UTC".to_string()),
                         provider_supports_web_search: false,
                     };
+                    // P4.6BM: v4 gates its post-cycle render trigger on the
+                    // INITIAL result's `hasContent`, which the chain options
+                    // take by value below.
+                    let initial_had_content = result.has_content;
                     rt.block_on(orchestrator::execute_turn_chain(
                         &mut deps,
                         ExecuteTurnChainOptions {
@@ -874,6 +878,20 @@ fn orchestrator_tier3_matches_oracle() {
                         make_chain_input,
                     ))
                     .expect("chain");
+                    // P4.6BM: v4's post-cycle Scriptorium trigger, at v4's own
+                    // placement (`orchestrator.service.ts:236-247` — after the
+                    // chain, "every turn with content"). The production analog
+                    // is in `quilltap-host`'s spine; this composition mirrors
+                    // `handleSendMessage`, so the trigger belongs here too.
+                    if initial_had_content {
+                        rt.block_on(
+                            quilltap_core::services::conversation_render_job::trigger_conversation_render(
+                                &db,
+                                &spec.user_id,
+                                &call.chat_id,
+                            ),
+                        );
+                    }
                 }
             }
             Err(_e) => {

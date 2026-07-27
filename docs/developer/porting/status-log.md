@@ -41006,3 +41006,52 @@ branch, ignoring `systemSender` in the salon branch, ignoring the missing
 **Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
 passed / 0 failed. No `apps/web` touch — and per the Shared contract, the SPA
 lane does not consume this verb this round, so no cross-lane mirror is owed.
+
+---
+
+## Lane record — P4.6BM unit 7: the per-turn conversation-render trigger (tier 2)
+
+**Ported:** v4 `triggerConversationRender`
+(`lib/services/chat-message/memory-trigger.service.ts:239`) →
+`services::conversation_render_job::trigger_conversation_render`, called from
+`quilltap-host`'s send spine at v4's own placement — after the turn chain, gated
+on the INITIAL result's `has_content` (v4 `orchestrator.service.ts:236-247`,
+"runs on every turn with content"), swallowing every failure.
+
+Without it, `renderedMarkdown` and the interchange chunks only ever advance via
+the manual button or the boot reconcile; with it, a conversation stays rendered
+and searchable as it grows. The payload is `{ chatId }` alone — no
+`fullReembed` — so a per-turn render embeds only the chunks still missing one.
+
+v4's SIBLING trigger, `triggerSceneStateTracking`, stays unported:
+`SCENE_STATE_TRACKING` has no v5 handler, so enqueuing it would mint jobs
+nothing can run — the exact wound this lane is closing elsewhere.
+
+**The pin, and why it took an existing family rather than a new case.** v4's
+trigger lives in the `handleSendMessage` stream body, OUTSIDE `processMessage` /
+`executeTurnChain`. The only oracle family that drives `handleSendMessage` is
+`orchestrator_tier3` — and it had been **explicitly no-op'ing
+`triggerConversationRender`** ("wave-4 subsystems the Rust orchestrator does not
+drive"). That mock is now removed for the render trigger (the scene-state one
+stays), and the Rust harness composition — which exists to mirror
+`handleSendMessage` — calls the ported trigger at the same point with the same
+gate. The production analog is the host spine.
+
+The pin is load-bearing, not decorative: the regenerated dump carries **25**
+`CONVERSATION_RENDER` rows at priority −1 with the `{chatId}`-only payload.
+Three mutations, all caught: dropping the `has_content` gate, sending
+`fullReembed: true`, and removing the trigger entirely.
+
+**Fixture/oracle impact:** `orchestrator-tier3.test.ts` (the case file) changed,
+so `orchestrator_tier3`'s oracle MUST be regenerated — its committed vintage is
+now stale by design. The fixture builder is untouched. Baseline discipline: the
+family was regenerated and run GREEN *before* the change, so the post-change
+green is attributable.
+
+**Regen note:** the header recipe assumes `$V5=~/source/quilltap-v5`. From a
+worktree under `.claude/`, jest's `testPathIgnorePatterns` matches `/\.claude/`
+and the run reports "0 matches" — mirror the case + its `fixtures/*.json` to
+`/tmp` and point `--roots` there (the standing `/tmp`-mirror rule).
+
+**Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
+passed / 0 failed with all four oracle env vars set. No `apps/web` touch.

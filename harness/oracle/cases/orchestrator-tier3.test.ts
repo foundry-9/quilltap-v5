@@ -548,16 +548,18 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/background-jobs/processor');
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
   });
-  // handleSendMessage's post-cycle scene-state + conversation-render triggers are
-  // wave-4 subsystems (the Scriptorium / scene tracker) the Rust orchestrator does
-  // not drive — no-op them so their enqueues do not appear in the diffed dump.
+  // `triggerSceneStateTracking` stays no-op'd: SCENE_STATE_TRACKING has no v5
+  // handler, so its enqueues would be jobs nothing can run.
+  // `triggerConversationRender` is now LIVE on both sides (P4.6BM): the Rust
+  // harness mirrors v4's post-cycle placement (after the chain, gated on the
+  // INITIAL result's `hasContent`), so the render enqueues belong in the diffed
+  // `background_jobs` dump.
   jest.doMock('@/lib/services/chat-message/memory-trigger.service', () => {
     const actual = jest.requireActual('@/lib/services/chat-message/memory-trigger.service');
     return {
       __esModule: true,
       ...actual,
       triggerSceneStateTracking: async () => undefined,
-      triggerConversationRender: async () => undefined,
     };
   });
 

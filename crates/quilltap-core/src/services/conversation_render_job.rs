@@ -296,6 +296,32 @@ async fn enqueue_embeddings(
     Ok(())
 }
 
+/// v4 `triggerConversationRender`
+/// (`lib/services/chat-message/memory-trigger.service.ts:239`) — the per-turn
+/// enqueue, fired from the send path once a turn (and any turn chain) has
+/// produced content.
+///
+/// The payload is `{ chatId }` alone — NO `fullReembed` key — so a per-turn
+/// render only embeds the chunks that still lack an embedding; the manual
+/// re-render button is the one that passes `fullReembed: true`.
+///
+/// **Every failure is swallowed** (v4 catches and logs, and its caller catches
+/// again): the turn's content is already persisted and streamed, and a queue
+/// hiccup must not surface as a failed send. That is why this returns `()`.
+pub async fn trigger_conversation_render(db: &Db, user_id: &str, chat_id: &str) {
+    if let Err(e) =
+        crate::services::queue_service::enqueue_conversation_render(db, user_id, chat_id, None)
+            .await
+    {
+        tracing::warn!(
+            target: "quilltap::chat",
+            chat_id = %chat_id,
+            error = %e,
+            "Failed to trigger conversation render",
+        );
+    }
+}
+
 /// A `CONVERSATION_RENDER` [`crate::services::job_runner::JobHandler`]. Like
 /// `EMBEDDING_REFIT` it needs no model/wire seam — only the DB — so the host
 /// registers it in the seam-free set rather than through the spine.

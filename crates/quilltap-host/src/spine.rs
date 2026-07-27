@@ -1326,6 +1326,12 @@ where
                 provider_supports_web_search,
             }
         };
+        // === P4.6BM ===
+        // v4 gates its post-cycle conversation-render trigger on the INITIAL
+        // result's `hasContent` (`orchestrator.service.ts:236`), which the
+        // chain options take by value below — capture it first.
+        let initial_had_content = initial.has_content;
+        // === end P4.6BM ===
         let chain_result = orchestrator::execute_turn_chain(
             &mut deps,
             ExecuteTurnChainOptions {
@@ -1363,6 +1369,23 @@ where
                 },
             ));
         }
+
+        // === P4.6BM ===
+        // v4's post-cycle Scriptorium trigger (`orchestrator.service.ts:236-247`)
+        // — "runs on every turn with content", after the chain, swallowing every
+        // failure. This is what keeps `renderedMarkdown` and the interchange
+        // chunks current as a conversation grows; without it only the manual
+        // button and the boot reconcile ever render. (v4's sibling scene-state
+        // trigger stays unported — SCENE_STATE_TRACKING has no handler.)
+        if initial_had_content {
+            quilltap_core::services::conversation_render_job::trigger_conversation_render(
+                &self.db,
+                quilltap_core::api::SINGLE_USER_ID,
+                &chat_id,
+            )
+            .await;
+        }
+        // === end P4.6BM ===
 
         Ok(dto)
     }
