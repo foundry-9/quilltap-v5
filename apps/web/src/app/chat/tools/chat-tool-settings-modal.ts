@@ -32,16 +32,26 @@ import { ToolSettingsContent } from './tool-settings-content';
  *   project modal passes false; the Prospero sibling is not this lane's.)
  * - The footer note is v4's, word for word.
  *
- * ## The `allowToolUse` warning box — REDUCED, and why
+ * ## The `allowToolUse` warning box — v4-FAITHFUL by outcome (disposition closed)
  *
  * v4 shows a warning when any LLM participant's connection profile has
  * `allowToolUse === false` (`ChatModals.tsx:392`), because then nothing below
  * matters. v5's chat read does not project `allowToolUse` on a participant's
- * connection profile (`api/salon.rs` enriches only id/name/provider/modelName),
- * so the condition cannot be computed in the browser. The box is therefore not
- * rendered rather than rendered wrong — and the input is kept, so the day the
- * projection grows the field, one binding turns it on. Recorded as a cross-lane
- * escalation in the lane record; this lane may not change the server.
+ * connection profile, so the condition cannot be computed in the browser, and
+ * the box is not rendered.
+ *
+ * P4.9E3C escalated that as a v5 server gap. **P4.9E4B's survey closed it: v4
+ * does not project the field either.** `getConnectionProfile`
+ * (`lib/services/chat-enrichment.service.ts:354-379`) returns exactly
+ * `{id, name, provider, modelName, apiKey}`, so v4's own condition compares
+ * `undefined === false` and the box is **dead code in v4 itself** — it can never
+ * render there. v5 not rendering it is therefore not a reduction at all; the two
+ * apps behave identically, and no server change is owed.
+ *
+ * The `profileToolsDisabled` input and the gated box STAY, so that if v4 ever
+ * grows the projection, one binding turns it on. The upstream choice — project
+ * the field or delete the box — is recorded on `dogfood-findings.md`'s post-5.0
+ * v4-side list, the same family as the unreachable `AllLLMPauseModal`.
  */
 @Component({
   selector: 'qt-chat-tool-settings-modal',

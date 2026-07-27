@@ -251,6 +251,72 @@ describe('RngDropdown (v4 components/chat/RngDropdown.tsx, gutter variant)', () 
     expect(seen).toEqual([]);
   });
 
+  it('dismisses on a press outside, closing the custom panel with it (v4 useClickOutside)', () => {
+    const fixture = mount(stub());
+    open(fixture);
+    // Open the custom sub-panel too — v4 closes BOTH.
+    (
+      [...fixture.nativeElement.querySelectorAll('button')].find((b) =>
+        (b.textContent ?? '').includes('Custom Roll'),
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="menu"]')).toBeTruthy();
+
+    // A press INSIDE leaves it alone.
+    (fixture.nativeElement.querySelector('[role="menu"]') as HTMLElement).dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="menu"]')).toBeTruthy();
+
+    // A press OUTSIDE closes it — v4 listens on mousedown, not click.
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="menu"]')).toBeNull();
+
+    // …and the custom panel did not survive to the next open.
+    open(fixture);
+    expect(text(fixture)).not.toContain('Sides');
+  });
+
+  it('swaps the die for a spinner while a roll is in flight (v4 :187-195)', async () => {
+    let release: ((v: Record<string, unknown>) => void) | undefined;
+    const client: Partial<CoreClient> = {
+      dispatchData: (() =>
+        new Promise((resolve) => {
+          release = resolve;
+        })) as unknown as CoreClient['dispatchData'],
+    };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [RngDropdown],
+      providers: [{ provide: CoreClient, useValue: client }],
+    });
+    const fixture = TestBed.createComponent(RngDropdown);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+
+    const trigger = () =>
+      fixture.nativeElement.querySelector(
+        '[aria-label="Random number generator"]',
+      ) as HTMLButtonElement;
+    expect(trigger().querySelector('qt-icon')).toBeTruthy();
+    expect(trigger().querySelector('.qt-spinner-sm')).toBeNull();
+
+    open(fixture);
+    menuItem(fixture, 'Roll 1d20').click();
+    fixture.detectChanges();
+
+    expect(trigger().querySelector('.qt-spinner-sm')).toBeTruthy();
+    expect(trigger().querySelector('qt-icon')).toBeNull();
+
+    release!(D20_PREVIEW);
+    await settle(fixture);
+    expect(trigger().querySelector('.qt-spinner-sm')).toBeNull();
+    expect(trigger().querySelector('qt-icon')).toBeTruthy();
+  });
+
   it('does not open at all while the composer is disabled', () => {
     const fixture = mount(stub(), true);
     open(fixture);

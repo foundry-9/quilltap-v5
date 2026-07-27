@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+The dice dropdown now closes when you click away from it, and its die spins
+while a roll is on the wire. And a warning the tool settings dialog was said to
+be missing turns out never to have appeared in the old app either — its
+condition can never be true there — so it is recorded as an upstream question
+rather than built.
+
 A project can decide which tools its new conversations start with. The Configure
 button on Model Behavior was a dead affordance under the words "All tools
 enabled"; it now opens the same tool tree the chat settings use, minus the

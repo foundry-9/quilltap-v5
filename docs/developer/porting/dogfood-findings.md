@@ -424,6 +424,27 @@ catch, since every fixture is built fresh.
   the still-deferred EMBEDDING_REINDEX_ALL. The e2e instance has no API keys
   by design, so the live proof (real embeds on the Friday copy) is the walk's.
 
+- **⚠ v4-SIDE (post-5.0), added 2026-07-27 (P4.9E4B, rider C) — the "Tools
+  disabled by connection profile" warning box is DEAD CODE IN v4 ITSELF.** v4's
+  `ChatModals.tsx:392` renders the box when any LLM participant's connection
+  profile has `allowToolUse === false`, but `getConnectionProfile`
+  (`lib/services/chat-enrichment.service.ts:354-379`) projects exactly
+  `{id, name, provider, modelName, apiKey}` — it never carries `allowToolUse`.
+  The condition therefore compares `undefined === false` and can never be true,
+  so **no v4 user has ever seen this warning**, and a chat whose profile really
+  does forbid tools looks, in the tool settings dialog, exactly like one that
+  allows them.
+  This closes a P4.9E3C escalation the other way round: v5's chat read does not
+  project the field either, so v5 not rendering the box is **v4-faithful by
+  outcome**, not a reduction, and no v5 server change is owed. v5 keeps the
+  `profileToolsDisabled` input and the gated box, so one binding turns it on if
+  v4 ever grows the projection.
+  The upstream choice is v4's: either add `allowToolUse` to the enrichment
+  projection (and the warning starts working) or delete the box. Same family as
+  the unreachable `AllLLMPauseModal` — a control wired to something that cannot
+  reach it. Deliberately NOT changed during the port: touching v4 moves the
+  oracle baseline mid-flight.
+
 - **A dogfood re-check after an SPA fix needs a HARD RELOAD, not a server
   restart (2026-07-27 — it cost a full round trip).** Finding #31's fix was
   reported as still broken after the human rebuilt the bundle *and* restarted the

@@ -41326,3 +41326,52 @@ save → the summary moves → it survives a full reload (so the write reached
 `projectGet`).
 
 **Gate:** `npx ng test` 252 files / 3,118 passed; `npx ng build` clean.
+
+## Lane P4.9E4B — unit 6 (riders B + C): the RNG residuals and the `allowToolUse` disposition
+
+**Rider B — the dropdown's two missing behaviors.** The phase-4/m6 note that
+"the dropdown itself is still owed" was stale (it landed with P4.9E1B); what was
+actually missing was two things, both now ported:
+
+1. **Click-outside dismissal** (v4 `useClickOutside`, `:78-83`). v4 listens on
+   **mousedown**, not click, so the menu is gone before the click reaches
+   whatever was underneath; its ref wraps the whole tool (trigger included) and
+   the callback closes the custom panel with the menu. All three details are
+   carried, and the spec exercises inside-press (stays open), outside-press
+   (closes), and that the custom panel did not survive to the next open.
+2. **The trigger spinner** (`:187-195`) — the die swaps for `qt-spinner-sm`
+   while a roll is in flight, driven by a gated dispatch in the spec.
+
+The header comment's third residual is corrected rather than ported: it claimed
+v4's legacy non-preview path was "kept", but `pendingResult` is unconditional
+and the Salon always listens, so that branch has no v5 caller and is not ported.
+`variant='palette'` and `onClose` are likewise dropped —
+`ComposerGutterTools.tsx:132-139` is v4's only live mount and it passes
+`variant='gutter'`.
+
+**The click-outside test was mutation-checked**: with the handler short-circuited
+it fails, and it passes again when restored.
+
+**Rider C — `allowToolUse`: recorded, deliberately NOT ported.** P4.9E3C
+escalated the missing projection as a v5 server gap. The survey closes it the
+other way: **v4 does not project the field either.** `getConnectionProfile`
+(`lib/services/chat-enrichment.service.ts:354-379`, read at `e8a49597`) returns
+exactly `{id, name, provider, modelName, apiKey}`, so v4's warning-box condition
+(`ChatModals.tsx:392`) compares `undefined === false` and the box is **dead code
+in v4 itself** — no v4 user has ever seen it. v5's box-not-rendered is therefore
+v4-faithful by outcome, not a reduction, and no v5 server change is owed. The
+`profileToolsDisabled` input and the gated box STAY, so one binding turns it on
+if v4 ever grows the projection.
+
+`chat-tool-settings-modal.ts`'s doc block is rewritten from "cross-lane
+escalation" to that disposition, and the upstream choice (project the field or
+delete the box) is appended to `dogfood-findings.md`'s post-5.0 v4-side list —
+the same family as the unreachable `AllLLMPauseModal`.
+
+**Docs:** `m6-screen-parity.md` §2.2's LibraryFilePickerModal row is DONE with
+both divergences named; its ChatToolSettingsModal "⚠ REDUCED" annotation is
+struck and replaced with the disposition; the §5 row-9 "the dropdown itself is
+still owed" claim is struck as STALE; row 10 goes from nine-of-twelve to
+eleven-of-twelve.
+
+**Gate:** `npx ng test` 252 files / 3,120 passed; `npx ng build` clean.

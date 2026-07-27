@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import { rollRng, type RngKind } from './chat-cast.api';
 import { CoreClient } from '../core/core-client';
@@ -44,9 +52,16 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
  * **Preview mode is the whole point.** v4 rolls with `preview: true` whenever a
  * pending-result handler exists, so the roll is NOT written as a message: it
  * comes back as a chip in the composer, which the operator can discard, and it
- * only becomes a TOOL row when they send. The legacy path — roll straight into
- * the conversation — is what v4 does when nothing is listening for a pending
- * result, and it is kept for the same reason.
+ * only becomes a TOOL row when they send. v5 always previews: `pendingResult` is
+ * an unconditional output and the Salon always listens, so v4's legacy branch —
+ * roll straight into the conversation, taken when nothing is listening — has no
+ * v5 caller and is NOT ported. (v4's `variant='palette'` second look and its
+ * `onClose` are likewise dropped: `ComposerGutterTools.tsx:132-139` is v4's only
+ * live mount, and it passes `variant='gutter'`.)
+ *
+ * The menu dismisses on a click outside (v4 `useClickOutside`, `:78-83`, on
+ * `mousedown` and closing the custom panel with it), and the trigger swaps its
+ * die for a spinner while a roll is in flight (`:187-195`).
  *
  * The request says `kind` where v4 says `type` (the E3A §1 rename: `type` is the
  * v5 request union's own tag). The `arguments` bag that comes BACK is v4's own
@@ -56,6 +71,9 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
 @Component({
   selector: 'qt-rng-dropdown',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // v4 listens on mousedown, not click, so the menu is gone before the click
+  // lands on whatever was underneath it.
+  host: { '(document:mousedown)': 'onDocumentMouseDown($event)' },
   imports: [Icon],
   template: `
     <div class="relative">
@@ -69,7 +87,11 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
         [disabled]="disabled() || loading()"
         (click)="toggle()"
       >
-        <qt-icon name="dice" class="w-5 h-5" />
+        @if (loading()) {
+          <span class="qt-spinner-sm"></span>
+        } @else {
+          <qt-icon name="dice" class="w-5 h-5" />
+        }
       </button>
 
       @if (open()) {
@@ -191,6 +213,7 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
 })
 export class RngDropdown {
   private readonly core = inject(CoreClient);
+  private readonly host = inject(ElementRef<HTMLElement>);
 
   readonly chatId = input.required<string>();
   readonly disabled = input(false);
@@ -232,6 +255,18 @@ export class RngDropdown {
     this.open.set(!this.open());
     this.customOpen.set(false);
     this.error.set(null);
+  }
+
+  /**
+   * v4 `useClickOutside(dropdownRef, …, { enabled: isOpen })` (`:78-83`): a press
+   * anywhere outside the whole tool — trigger included, since v4's ref wraps both
+   * — closes the menu AND the custom panel.
+   */
+  protected onDocumentMouseDown(event: Event): void {
+    if (!this.open()) return;
+    if (this.host.nativeElement.contains(event.target as Node)) return;
+    this.open.set(false);
+    this.customOpen.set(false);
   }
 
   /** v4 `handleCustomRoll` — the range check happens BEFORE any request. */
