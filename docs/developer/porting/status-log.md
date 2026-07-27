@@ -41055,3 +41055,57 @@ and the run reports "0 matches" — mirror the case + its `fixtures/*.json` to
 
 **Gate:** fmt, clippy both feature sets, full `cargo test --workspace` 1,668
 passed / 0 failed with all four oracle env vars set. No `apps/web` touch.
+
+---
+
+## Lane record — P4.6BM closing summary (all seven units landed)
+
+**Four deliverables, all live**, and three of them were closing a live bug rather
+than filling a gap: `CONVERSATION_RENDER` (its jobs died on every press of the
+manual button), `EMBEDDING_REINDEX_ALL` (its jobs died after every BUILTIN
+vocabulary refit), the startup reconcile (which replaces the P4.6BL v5-only
+stand-in), and `chatQueueMemories` (the last refusal arm in this surface). Tier 2
+landed whole: the per-turn render trigger fires on every turn with content.
+
+**Three deferrals, all named:**
+
+1. **The embedding-profiles management route surface** (`?action=reindex`, the
+   create/PUT triggers, `invalidateAllEmbeddings`) stays `p4.9h`'s. v5 has no
+   `api/embedding-profiles` module at all, so there is no refusal arm to leave in
+   place — nothing was armed and nothing was removed. The handler is now ready
+   for it, and the enqueue helper carries `scope`.
+2. **The character-rename `fullReembed` call site** (v4
+   `character-rename.service.ts:420`, `characters/[id]/handlers/post.ts:334`):
+   `lib/services/character-rename.service.ts` is **entirely unported** in v5 —
+   there is no rename service to hang the call on. Recorded, not invented, per
+   the order.
+3. **`triggerSceneStateTracking`**, v4's sibling of the trigger unit 7 ported,
+   stays unported: `SCENE_STATE_TRACKING` has no v5 handler, so wiring it would
+   mint jobs nothing can run — the exact wound this lane closes elsewhere. The
+   `orchestrator_tier3` oracle still no-ops it, deliberately.
+
+**One deliberate deviation from the order**, argued in unit 2's record:
+`KNOWN_JOB_TYPES` keeps its `CONVERSATION_RENDER` and `EMBEDDING_REINDEX_ALL`
+entries. That list mirrors v4's registry and only selects WHICH loud message an
+*unregistered* type gets; removing a type v4 does register would hand it v4's
+"No handler registered" string. P4.6BL set the precedent by leaving
+`EMBEDDING_GENERATE` in place.
+
+**Neutrality proofs for the three signature changes** (`cancel_by_type` gained an
+injected clock; `enqueue_conversation_render` and `enqueue_embedding_reindex_all`
+gained `Option` params so a caller can OMIT a payload key rather than
+materialize it): `background_jobs_tier2`, `embedding_refit_tier3` (whose runner
+E2E covers the reindex enqueue directly) and `chat_admin_routes` were all
+regenerated fresh at `e8a49597` and re-run green.
+
+**Fixtures:** ONE new committed pair, `embedding-remainder-{main,mount}.db`. No
+existing fixture was touched, so no other family is invalidated. The one existing
+oracle CASE this lane edited is `orchestrator-tier3.test.ts` (unit 7's un-mock) —
+that family's committed oracle is stale by design and must be regenerated.
+
+**Final gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` clean on both feature sets; full `cargo test
+--workspace` **1,668 passed / 0 failed**; release build clean; the lane's three
+differentials run BY NAME with `--nocapture`, **zero SKIP**. `apps/web` untouched
+(`git diff main --name-only` matches nothing under it), so **no SPA gate is
+owed** — stated here as the order requires.
