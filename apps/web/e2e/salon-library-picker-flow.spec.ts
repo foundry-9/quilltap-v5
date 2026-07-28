@@ -18,8 +18,8 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * branch: the unifier flips it to `true` and the walk runs with no other edit.
  */
 
-/** ACTIVATE-AT-UNIFY: flip to `true` when P4.9E4A's attach-mount-file leg lands. */
-const ATTACH_MOUNT_FILE_LANDED = false;
+/** ACTIVATED at the 2026-07-27 unification: P4.9E4A's attach-mount-file leg is on main. */
+const ATTACH_MOUNT_FILE_LANDED = true;
 
 const LIBRARY_FILE = 'e2e-library-note.txt';
 const STORE_NAME = 'Library Picker E2E';
