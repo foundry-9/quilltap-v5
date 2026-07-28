@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Unified the library-picker and embedding rounds into one main line. Three
+strands: attaching library files to a conversation (server and dialog both),
+and the embedding family made whole — rendering conversations to searchable
+text, reconciling unfinished renders at startup, re-embedding everything on
+demand, and queueing a chat's memories by hand. Two of those workers had been
+receiving jobs and letting them die for want of a handler; both now work. The
+unification's code review caught and fixed three things the lanes' own gates
+could not see: a test that attached the one kind of file neither app can
+attach (a store's markdown document — a quirk both apps share, now recorded
+upstream), a re-embed that would have wiped help-doc vectors on a scope
+string it should have ignored, and a stranded comment.
+
 Ran the whole browser walk against the real server. The picker's live leg works
 end to end: pick a file from General and it is waiting above the message box.
 

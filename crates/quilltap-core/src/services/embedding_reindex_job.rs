@@ -309,7 +309,10 @@ async fn phase_help_docs(
         crate::db::help_docs::HelpDocsRepository::new(conn).find_all_with_embedding_dims()
     })?;
 
-    if !partial {
+    // v4 :153 gates the wipe on `scope === 'all'` EXACTLY — not on "not
+    // partial". An unrecognized scope string wipes nothing in v4 (and the
+    // payload doc above promises the same), so compare against the literal.
+    if payload.scope.as_deref().unwrap_or("all") == "all" {
         let now = now_iso.to_string();
         db.write(move |ws| {
             crate::db::help_docs::HelpDocsRepository::new(ws.main().connection())

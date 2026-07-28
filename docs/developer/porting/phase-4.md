@@ -3459,3 +3459,44 @@ by `p4.d23` a day earlier.
    (help/HelpChat — the `help/custom-tools.md` drift from `e8a49597` joins this
    bank), `p4.9h2`, the `chat_settings` explicit-`null` gap (still tripwired),
    `browserUserAgent`, and D21 (release/signing, never started).
+
+### Round outcome (2026-07-27, second round of the day) — the library picker + embedding remainder, UNIFIED
+
+**All three lanes CLOSED** (P4.9E4A ∥ P4.9E4B ∥ P4.6BM). The oracle baseline
+stays **`e8a49597`** (v4 did not move during the round); no drift debt. Full
+records in `status-log.md` ("Lane record — P4.9E4A", "Lane P4.9E4B", "Lane
+record — P4.6BM" units 1–7 + closing summary, and the round record); gate
+numbers in CLAUDE.md's Status bullet.
+
+**The round's headline: the last refusal arms in two surfaces are gone.** The
+composer can attach a document-store file (the Librarian announces it, the
+three-rung description ladder describes it — ⚠ one vision-LLM call per
+genuinely unknown image, live in the production spine), and the embedding
+family is complete: `CONVERSATION_RENDER` and `EMBEDDING_REINDEX_ALL` have
+handlers (both had been minting dead jobs from live callers — the manual
+render button and every BUILTIN refit), the startup reconcile replaces the
+P4.6BL boot stand-in (retired), and `chatQueueMemories` was the surface's
+last refusal. The picker dialog landed with all six gutter tools present,
+plus the project Default Tool Settings dialog (rider A), the RNG residuals
+(rider B), and the `allowToolUse` disposition (rider C — dead code in v4
+itself, recorded as a v4-side item).
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass — still the top item, now with more owed to it.** Never
+   exercised on real data: the embedding worker (P4.6BL's live proof — boot
+   repair draining Friday's backlog, now via the reconcile), the whole
+   chat-dialog family (P4.9E3C), the library picker + attach flow (this
+   round; the vision describe costs real money), the render/reindex handlers
+   on a real library, and the still-owed walk Parts D (retrospective recall)
+   and F (Data & System, destructive, scratch copy) and H.
+2. **M6 rows 6+** — `p4.9h` (prompt library + Core Whisper chain + the memory
+   cards + embedding-profiles management, for which P4.6BM's reindex handler
+   is now ready), `p4.9i2` (help/HelpChat), `p4.9k` (character AI dialogs),
+   `p4.9n` (files fidelity), `p4.9l` (composer toolbar), `p4.9m` (toast bus).
+3. **The standing pools:** the `DbError::Key` message-prefix leak (237
+   construction sites — wants a quiet solo lane), `V5_STATS_GAP` (tripwired),
+   the `chat_settings` explicit-`null` gap (tripwired), `browserUserAgent`,
+   `p4.9h2`, D21 (release/signing, never started), and the v4-side list in
+   `dogfood-findings.md` (stop-impersonate DELETE, `AllLLMPauseModal`, the
+   dead `allowToolUse` warning box).

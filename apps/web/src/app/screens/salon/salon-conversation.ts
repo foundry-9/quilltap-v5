@@ -1385,7 +1385,6 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
-  /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   /**
    * The picker linked a legacy library file (v4 `ChatModals.tsx:250-261`): push it
    * into the composer's pending-attachment tray so the next send carries it. The
@@ -1407,6 +1406,7 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
+  /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   protected async onAnnouncementPosted(): Promise<void> {
     this.chatFlash.set({ kind: 'success', message: 'Announcement posted' });
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });

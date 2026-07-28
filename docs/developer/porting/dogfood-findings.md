@@ -445,6 +445,22 @@ catch, since every fixture is built fresh.
   reach it. Deliberately NOT changed during the port: touching v4 moves the
   oracle baseline mid-flight.
 
+- **⚠ v4-SIDE (post-5.0), added 2026-07-27 (the picker round's unification
+  review) — the library picker lists a store's markdown documents, but
+  attaching one 404s in BOTH apps.** A `.md`/`.txt`/`.json` PUT into a
+  database store takes the native-text DOCUMENT branch
+  (`lib/mount-index/store-file.ts:202` — `writeDatabaseDocument`, no
+  `doc_mount_blobs` row), and `handleAttachMountFile` requires a blob
+  (`files/route.ts:271-279` — `notFound('Mount-point file blob')`). So the
+  picker's browse panel happily shows a store's markdown documents and every
+  pick answers "Mount-point file blob not found" — in v4 and, faithfully, in
+  v5. Found when the round's ACTIVATE-AT-UNIFY beat seeded a markdown file
+  and hit the 404 live. The upstream choice is v4's: filter native-text
+  documents out of the picker's store browse, or teach attach-mount-file to
+  hand the Librarian a document (it has extractedText — the description
+  ladder's first rung already reads it for photos). Deliberately NOT changed
+  during the port.
+
 - **A dogfood re-check after an SPA fix needs a HARD RELOAD, not a server
   restart (2026-07-27 — it cost a full round trip).** Finding #31's fix was
   reported as still broken after the human rebuilt the bundle *and* restarted the

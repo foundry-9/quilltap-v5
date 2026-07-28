@@ -41412,3 +41412,107 @@ unreachable in v4's picker (`showUpload={false}`), `AllLLMPauseModal` stays
 deferred (unreachable in v4 itself), and no files-family listing gap surfaced —
 the browse decision went to a bespoke panel over the shared pure folder model,
 so there was nothing to half-render.
+
+---
+
+## Round record — the library picker + embedding remainder round (UNIFIED 2026-07-27)
+
+**Lanes:** P4.9E4A (attach-mount-file + the describe seam) ∥ P4.9E4B (the
+LibraryFilePickerModal SPA + riders) ∥ P4.6BM (the embedding-family
+remainder). **All three CLOSED**; per-lane records above. Planned and unified
+the same day; the baseline `e8a49597` never moved (drift-checked at planning,
+at each lane start, and at unification — v4 clean).
+
+**Reconciliation.** `unify/picker-embedding` from main; cherry-picks in
+dependency order (E4A's 1, BM's 7, E4B's 7). Conflicts were exactly the
+predicted union-merges (`docs/CHANGELOG.md`, `status-log.md`) — zero source
+conflicts, the append-only fence discipline held on all five shared Rust
+files. **The version recount caught the cherry-pick collapse:** core landed at
+BM's absolute 0.0.394 instead of the accumulated 388+1+6 — recounted to
+core 0.0.395, harness 0.0.342, host 0.0.48 (web 0.0.51 and SPA 0.5.318
+survived intact).
+
+**The wires.** (1) The §1 `chatAttachMountFile` contract diffed name-for-name
+across `api/types.rs` and `core-contract.ts` — clean, including the union
+membership. (2) `ATTACH_MOUNT_FILE_LANDED` flipped to `true` in
+`salon-library-picker-flow.spec.ts` — the store-attach beat ran LIVE for the
+first time at the gate (picker → store file → the Librarian announcement in
+the transcript → the file list showing it once). (3) The `orchestrator_tier3`
+oracle — stale by design after P4.6BM unit 7's un-mock — regenerated fresh
+(227 rows) and re-run green. ⚠ The jest pattern `orchestrator-tier3` also
+matches `brahma-orchestrator-tier3.test.ts`, which fails on its missing env
+vars AFTER the real case wrote its NDJSON: the regen script exits non-zero
+while the oracle is intact. Check the row count, not the exit code.
+
+**Gate.** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean on BOTH feature sets; release build
+clean; full `cargo test --workspace` **1,670 passed / 0 failed** with the
+round's env vars set; the round's four families PLUS the four neutrality
+families (`background_jobs_tier2`, `chat_admin_routes`,
+`courier_images_routes`, `embedding_refit_tier3`) re-run BY NAME against the
+merged tree with `--nocapture` — nine test binaries, **zero SKIP** (the
+neutrality families ran against the lanes' same-day `e8a49597` oracles still
+in /tmp; the round's four regenerated fresh at unification). SPA: `ng test`
+**252 files / 3,120 passed**; `ng build` clean; full Playwright **155 passed / 0 failed / 0 skips** against the fresh dist,
+re-run whole after each review fix (the first full run failed the newly
+activated store-attach beat — see the review block below).
+
+**The §3 code review (the unify skill's new blocking step, run at this
+unification).** Three lane-scoped reviewers over the full combined diff, the
+verdict owned here. Findings, all resolved on the unify branch or recorded:
+
+- **BLOCKING (fixed, `salon-library-picker-flow.spec.ts`):** the
+  ACTIVATE-AT-UNIFY store-attach beat was wrong as committed — it seeded
+  `picker-plan.md`, and a native-text PUT into a database store goes down
+  v4's DOCUMENT branch (`store-file.ts:202` — `writeDatabaseDocument`, no
+  blob row), so attach-mount-file 404s "Mount-point file blob not found" on
+  BOTH sides. The first full-suite run failed exactly there. Fixed as the
+  spec's gesture, not the port: the seed is now a binary PNG (blob branch,
+  WebP transcode renaming the stored path), the toast asserts the LISTED
+  post-transcode name, and the transcript asserts the NEWEST collapsed
+  Librarian chip (systemSender messages render as chips, not bubbles)
+  expands to name the file. The first shape tried — count-before + 1 —
+  failed in the FULL suite only: the count read raced transcript hydration
+  and other beats leave Librarian chips of their own in the shared fixture
+  chat, the exact run-order class the e2e-traps memory warns about. A count
+  assertion on a virtualized shared-fixture transcript is the wrong shape;
+  "attached exactly once" is the Rust differential's `attach_twice` case. **The quirk itself is v4-faithful and recorded on the v4-side
+  list:** the picker lists a store's markdown documents but attaching one
+  404s in both apps.
+- **Worth-fixing (fixed, `embedding_reindex_job.rs`):** the phase-1
+  help-doc wipe gated on `!partial` where v4 gates on `scope === 'all'`
+  exactly (`embedding-reindex.ts:153`) — an unrecognized scope string would
+  wipe every help-doc embedding in v5 and nothing in v4, contradicting the
+  payload doc's own promise. Unreachable today (no caller sends a scope),
+  which is why no corpus case pinned it. One-line fix; the family re-ran
+  green.
+- **Worth-fixing (fixed, `salon-conversation.ts`):** `onAnnouncementPosted`'s
+  doc comment had been stranded above `onLibraryFileLinked` by the
+  insertion — moved back.
+- **Worth-fixing (recorded, P4.9E4A's header):** the describe-profile
+  auto-pick arm (no configured `imageDescriptionProfileId`) is live with no
+  differential case — the lane record's "Deferrals: None" was overstated;
+  now a named coverage deferral riding the next fixture-touching lane.
+- **Notes (recorded, not acted on):** the E4A malformed-JSON edge answers
+  400 where v4's outer catch answers 500 (mirrors the pre-existing `link`
+  posture); the announcement-failure 500 is inspection-matched only (needs
+  fault injection to pin); the render trigger fires after a failed turn
+  chain (v5's established chain-error posture; the reconcile heals the same
+  state); `fullReembed` decodes via `as_bool`, not JS truthiness (no caller
+  mints a non-boolean); the picker's gallery-error copy drops v4's
+  `String(error)` prefix; the e2e legacy seed has no afterAll cleanup
+  (run-order-baseline class, currently harmless). E4A's reviewer
+  independently regenerated the oracle and ran its own mutation
+  (display-title fallback collapse) — the differential failed as designed.
+
+**Standing after the round:** the composer's library attach is LIVE end to
+end (⚠ one vision-LLM call per genuinely unknown image — the live describe
+is the next dogfood walk's, along with the render/reindex handlers on real
+data); the P4.6BL boot stand-in is retired in favor of the ported reconcile;
+the embedding surface's last refusal arm is gone. Deferred loud (named in the
+order headers and phase-4.md): embedding-profiles management routes
+(`p4.9h`), character-rename `fullReembed` (rename service unported),
+`triggerSceneStateTracking` (no handler). Versions: core 0.0.396, harness
+0.0.342, host 0.0.48, web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5,
+SPA 0.5.319 (core and the SPA each +1 at the unification's review-fix
+commit).

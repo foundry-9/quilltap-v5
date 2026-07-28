@@ -1507,6 +1507,38 @@ records THERE. Update this summary only when a phase or round completes.
   **stop-impersonate is unreachable from v4's own client** (client sends DELETE;
   the action is registered only on POST) — v5 already models it correctly.
   Round record: `status-log.md`.
+- **The library picker + embedding remainder round (P4.9E4A ∥ P4.9E4B ∥
+  P4.6BM): UNIFIED on main (2026-07-27) — ALL THREE CLOSED; the previous
+  round's five loud deferrals all close with it.** The composer attaches
+  document-store files end to end (`chatAttachMountFile` + the
+  `ImageDescribeDriver` seam LIVE in the spine — **⚠ one vision-LLM call per
+  attach of a genuinely unknown image**; kept-image markdown and cached blob
+  descriptions cost nothing; the `GET files` mount-file read-back the order
+  wrongly said existed was ported too) ∥ the LibraryFilePickerModal + gutter
+  entry (all six gutter tools present) + the project Default Tool Settings
+  dialog + the RNG residuals + the `allowToolUse` disposition (**dead code in
+  v4 itself** — recorded v4-side, not ported) ∥ the embedding family COMPLETE:
+  CONVERSATION_RENDER (the pure 224-LOC renderer tier-1 byte-exact, 11 cases)
+  + the startup reconcile (the P4.6BL boot stand-in RETIRED) +
+  EMBEDDING_REINDEX_ALL (both had been minting DEAD jobs from live callers) +
+  `chatQueueMemories` un-refused. **The unify skill's new §3 code review ran
+  and BLOCKED once, as designed:** the ACTIVATE-AT-UNIFY store-attach beat had
+  seeded a native-text file — v4's document branch writes no blob, so attach
+  404s in BOTH apps (now on the v4-side list); fixed as the spec's gesture
+  (binary seed, chip-count assertion). Review also fixed the reindex phase-1
+  wipe gate (`!partial` → `scope == "all"`) and recorded the describe
+  auto-pick coverage deferral in E4A's header. Gate: fmt/clippy both feature
+  sets/release build clean; `cargo test --workspace` **1,670 / 0** with the
+  round's env vars; the round's four families FRESH at `e8a49597` + the four
+  neutrality families re-run BY NAME zero SKIP; ng test 252 files / 3,120;
+  ng build clean; full Playwright **155/155 zero skips** (the store-attach beat
+  LIVE). Deferred loud: embedding-profiles management routes (`p4.9h`),
+  character-rename `fullReembed` (rename service unported),
+  `triggerSceneStateTracking` (no handler). Versions: core 0.0.396, harness
+  0.0.342, host 0.0.48, web 0.0.51, SPA 0.5.319. **The dogfood pass is now
+  the top next item** — it owes the embedding worker's live proof, the
+  chat-dialog family, the picker/attach flow (real describe spend), and walk
+  Parts D/F/H — see phase-4.md. Round record: `status-log.md`.
 - **Oracle baseline: `e8a49597` (v4 HEAD, 2026-07-27, 4.8.0-dev.108), adopted
   at the embedding-repair + chat-dialog round's unification — NO v4 drift debt
   remains.** The one commit past the prior `c1507f47` baseline is v4's fix for

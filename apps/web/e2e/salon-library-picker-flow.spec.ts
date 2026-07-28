@@ -23,7 +23,20 @@ const ATTACH_MOUNT_FILE_LANDED = true;
 
 const LIBRARY_FILE = 'e2e-library-note.txt';
 const STORE_NAME = 'Library Picker E2E';
-const STORE_FILE = 'picker-plan.md';
+/**
+ * The store seed must be BINARY. A `.md`/`.txt` PUT into a database store goes
+ * down v4's native-text DOCUMENT branch (`store-file.ts:202` —
+ * `writeDatabaseDocument`, no `doc_mount_blobs` row), and attach-mount-file
+ * 404s "Mount-point file blob not found" on BOTH sides for it — v4-faithful.
+ * A PNG lands in the blob branch and transcodes to WebP, renaming the stored
+ * path (`normaliseBlobRelativePath`), so the LISTED name is `.webp` while the
+ * announcement's display title keeps the ORIGINAL upload name
+ * (`originalFileName || fileName`).
+ */
+const STORE_FILE_UPLOAD = 'picker-plan.png';
+const STORE_FILE_LISTED = 'picker-plan.webp';
+const TINY_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 let storeId = '';
 
@@ -72,7 +85,7 @@ async function seedLibraryFile(): Promise<boolean> {
   }
 }
 
-/** Seed a database document store with one markdown file in it. */
+/** Seed a database document store with one BINARY (blob-backed) file in it. */
 async function seedStore(): Promise<boolean> {
   if (storeId) return true;
   const ctx = await pwRequest.newContext();
@@ -88,15 +101,18 @@ async function seedStore(): Promise<boolean> {
     } | null;
     storeId = body?.data?.mountPoint?.id ?? '';
     if (!storeId) return false;
-    const put = await ctx.put(`${BASE_URL}/api/v1/mount-points/${storeId}/files/${STORE_FILE}`, {
-      multipart: {
-        file: {
-          name: STORE_FILE,
-          mimeType: 'text/markdown',
-          buffer: Buffer.from('# The plan\n\nAll of it, written down.\n'),
+    const put = await ctx.put(
+      `${BASE_URL}/api/v1/mount-points/${storeId}/files/${STORE_FILE_UPLOAD}`,
+      {
+        multipart: {
+          file: {
+            name: STORE_FILE_UPLOAD,
+            mimeType: 'image/png',
+            buffer: Buffer.from(TINY_PNG_BASE64, 'base64'),
+          },
         },
       },
-    });
+    );
     return put.ok();
   } catch {
     return false;
@@ -194,17 +210,29 @@ test.describe('P4.9E4B — the Library file picker', () => {
     await dialog.getByText(STORE_NAME, { exact: true }).click();
     await expect(dialog.getByText(`Browse Files — ${STORE_NAME}`)).toBeVisible({ timeout: 15_000 });
 
-    await dialog.getByRole('button', { name: new RegExp(STORE_FILE) }).first().click();
+    await dialog.getByRole('button', { name: /picker-plan/ }).first().click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
 
     // No composer chip — the announcement IS the hand-off.
     await expect(page.locator('.qt-chat-attachment-chip')).toHaveCount(0);
+    // The toast wears the LISTED (post-transcode) name…
     await expect(
-      page.getByText(`Attached "${STORE_FILE}" — the Librarian has noted it`),
+      page.getByText(`Attached "${STORE_FILE_LISTED}" — the Librarian has noted it`),
     ).toBeVisible();
-    // The Librarian's announcement is in the transcript, exactly once.
+    // …and the announcement joins the transcript as a collapsed Librarian chip
+    // (every systemSender message renders as a chip — v4-faithful). The
+    // transcript is virtualized and other beats leave Librarian chips of their
+    // own, so a count assertion is run-order-fragile; "attached exactly once"
+    // is the Rust differential's `attach_twice` case. Here: the NEWEST chip is
+    // ours — expanded, it names the file (title = `originalFileName ||
+    // fileName`, the ORIGINAL upload name).
+    const librarianChips = page
+      .locator('.qt-chat-messages-list .qt-chat-announcement-chip')
+      .filter({ hasText: 'The Librarian' });
+    await expect(librarianChips.last()).toBeVisible({ timeout: 15_000 });
+    await librarianChips.last().click();
     await expect(
-      page.locator('.qt-chat-messages-list').getByText(STORE_FILE, { exact: false }),
-    ).toHaveCount(1, { timeout: 15_000 });
+      page.locator('.qt-chat-messages-list').getByText(/picker-plan/).first(),
+    ).toBeVisible({ timeout: 10_000 });
   });
 });
