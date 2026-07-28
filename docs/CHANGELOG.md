@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Embeddings refreshed by simply reading a quiet conversation now survive the
+next housekeeping sweep. Opening a chat that has gone cold re-embeds it so
+search works, but reading is not the same as taking a turn, so the chat stayed
+"quiet" and the very next sweep threw the fresh vectors away — one paid
+re-embed per read. The sweep now only discards embeddings older than the
+retention window, so a reopened chat stays searchable for a full window from
+the moment you opened it.
+
 Embedding outcomes are now recorded even for entities that never got a tracking
 row. Marking an entity embedded or failed used to update an existing row and
 quietly do nothing when there was none — which, since nothing creates those rows

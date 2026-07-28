@@ -41615,3 +41615,75 @@ QT_ORACLE_OUT=/tmp/oracle-embedding-generate.ndjson \
 Gate at this commit: `cargo fmt --all --check`, `cargo clippy --workspace
 --all-targets -D warnings`, `cargo test --workspace --no-fail-fast` → 399 test
 binaries, zero failures, plus both families green by name.
+
+---
+
+## Lane record — P4.D25 unit 2: the reopen-warmth age guard (v4 `f7cc887b`, Bug 6 follow-up)
+
+**Landed.** `db/conversation_chunks.rs`'s `clear_embeddings_for_chat` gains
+`older_than: Option<&str>`; when present the SQL gains `AND updatedAt < ?3` and
+the params go `[now, chatId, olderThan]` — v4 builds the clause and the param
+list together, and the port matches both. `services/collapse_stale_chat_caches.rs`
+threads its cutoff in: v5 already computed the ISO cutoff
+(`retention_cutoff_iso`), so the sweep binds the same value it already used for
+`cutoff_ms`, exactly as v4 now derives `cutoffMs`/`cutoffIso` from one
+`retentionCutoff`. Both modules carry v4's new *why* paragraphs.
+
+The bug this closes is real money: reading a cold chat re-embeds it on open, but
+reading never counts as played activity, so the chat stays stale and the next
+sweep discarded the fresh vectors — one paid re-embed per read/sweep cycle. The
+embedding row's own `updatedAt` is the reopen signal.
+
+**Differential — `conversation_chunks_tier2_equivalence`
+(`QT_ORACLE_CONVERSATION_CHUNKS`).** `clearEmbeddingsForChat` had NO coverage in
+this family (it was create/update/delete only). Added three pinned embedded
+chunks on a new chat and three `clearEmbeddings` ops: guard ON at the cutoff,
+the identical pass again, guard OFF on the older chat. The oracle now emits a
+`clearResults` line ahead of the dump, so the per-op ROW COUNTS — the direct
+observable of the guard — are diffed before the state, and a corpus-shape
+assertion pins them at `[1, 0, 2]`. Sparing is asserted at byte level: the two
+spared rows keep their exact seeded `updatedAt` (a stamp is placeholdered only
+when it is absent from the committed spec), and the v5-side injected
+`CLEAR_NOW_ISO` is deliberately NOT in the spec so it normalizes like the
+oracle's live `new Date()`.
+
+**Differential — `collapse_stale_chat_caches_tier2_equivalence`
+(`QT_ORACLE_RETENTION_CACHES`).** The fixture's three chunks were all stamped
+`seedTs`, i.e. all older than any cutoff — so the family was structurally blind
+to the new guard (the D24 shape again). Each chunk now carries its OWN
+`updatedAt` from the spec, and the stale chat gained TWO warm embedded chunks:
+one stamped EXACTLY at the retention cutoff (`<` is strict → spared) and one
+inside the window. `chunkEmbeddingsCleared` stays **1** where the pre-fix sweep
+cleared **3**. The chunks projection swapped its `updatedAtChanged` boolean for
+the raw `updatedAt`, placeholdered exactly when it differs from that row's
+SEEDED value — so "spared" vs "cleared" is now a byte-level distinction rather
+than a bit.
+
+**Sensitivity.** Both families first-run green (the port landed first), so
+mutation-proven, twice each:
+- guard ignored entirely (the pre-`f7cc887b` behavior v5 shipped): CC → RED with
+  `left: [3, 0, 2], right: [1, 0, 2]`; caches → RED on `summary diverged`.
+- `<=` instead of `<` (the boundary row wrongly cleared): caches → RED on
+  `summary diverged`.
+Restored → both green.
+
+Fixtures: both are `/tmp`-built from their committed builders; no committed
+`.db` moved. `build-retention-caches-fixture.ts` now seeds from a `chunks[]`
+array (the three flat `*ChunkId` spec keys are gone).
+
+Regen recipes (Node 24, from `~/source/quilltap-server`, v4 at `083fdf68`):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-cc-fixture.db npx tsx $V5/harness/oracle/fixtures/build-conversation-chunks-fixture.ts
+QT_FIXTURE_CC=/tmp/qt-cc-fixture.db  npx tsx $V5/harness/oracle/cases/conversation-chunks-tier2.ts > /tmp/oracle-cc.ndjson
+
+QT_FIXTURE_OUT=/tmp/qt-retention-caches.db node --import tsx $V5/harness/oracle/fixtures/build-retention-caches-fixture.ts
+QT_FIXTURE_RETENTION_CACHES=/tmp/qt-retention-caches.db node --import tsx $V5/harness/oracle/cases/collapse-stale-chat-caches-tier2.ts > /tmp/oracle-retention-caches.ndjson
+```
+
+Also fixed on the way past: the P4.D25 EG table spec tripped
+`clippy::type_complexity` once it grew a fifth element — extracted a
+`TableSpec` alias.
+
+Gate at this commit: fmt, clippy both feature sets, `cargo test --workspace
+--no-fail-fast` clean, plus both families green by name and mutation-checked.

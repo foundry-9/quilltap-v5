@@ -12,14 +12,17 @@
  *   - a `messages` projection (id/chatId + the five discardable columns + content
  *     — the stale chat's laden message goes all-NULL keeping content; the active
  *     chat's message survives);
- *   - a `chunks` projection (id/chatId/content + `embeddingNull` + a boolean
- *     `updatedAtChanged` vs the seed timestamp — the stale chat's embedded chunk
- *     is cold-tiered (NULL) with a bumped updatedAt; its already-cold chunk is
- *     skipped by the guard (updatedAt unchanged); the active chunk survives).
+ *   - a `chunks` projection (id/chatId/content + `embeddingNull` + the raw
+ *     `updatedAt` — the stale chat's OLD embedded chunk is cold-tiered (NULL,
+ *     stamp minted); its already-cold chunk is skipped by the `IS NOT NULL`
+ *     guard; its two WARM chunks (one stamped EXACTLY at the retention cutoff,
+ *     one inside the window) are spared by v4 f7cc887b's `updatedAt < cutoff`
+ *     age guard and keep their seeded stamps; the active chat's chunk survives).
  *
- * The chunk `updatedAt` value itself is minted (v4 stamps `new Date()`, the Rust
- * sweep injects `nowMs`), so it is compared only as the `updatedAtChanged`
- * boolean — a legitimately-nondeterministic column.
+ * The chunk `updatedAt` value on a CLEARED row is minted (v4 stamps
+ * `new Date()`, the Rust sweep injects `nowMs`), so the Rust harness
+ * placeholders any stamp that is not the row's own seeded value — which makes
+ * "spared" and "cleared" a byte-level distinction rather than a boolean.
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -38,6 +41,7 @@ interface Spec {
   testPepperBase64: string;
   nowIso: string;
   seedTs: string;
+  chunks: Array<{ id: string; updatedAt: string }>;
 }
 
 async function main(): Promise<void> {
@@ -82,12 +86,15 @@ async function main(): Promise<void> {
        FROM chat_messages ORDER BY id ASC`,
     [],
   );
+  // P4.D25: each chunk now carries its OWN seeded `updatedAt` (the warmth
+  // window is what is under test), so the projection emits the raw value and
+  // the Rust harness placeholders anything that is not the row's seeded stamp.
+  // A `<ts>` therefore means "this row was cold-tiered", exactly.
   const chunks = await rawQuery<Array<Record<string, unknown>>>(
-    `SELECT id, chatId, content,
-            CASE WHEN embedding IS NULL THEN 1 ELSE 0 END AS embeddingNull,
-            CASE WHEN updatedAt != ? THEN 1 ELSE 0 END AS updatedAtChanged
+    `SELECT id, chatId, content, updatedAt,
+            CASE WHEN embedding IS NULL THEN 1 ELSE 0 END AS embeddingNull
        FROM conversation_chunks ORDER BY id ASC`,
-    [spec.seedTs],
+    [],
   );
 
   process.stdout.write(JSON.stringify({ kind: 'summary', summary }) + '\n');

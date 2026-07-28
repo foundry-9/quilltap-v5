@@ -14,13 +14,20 @@
 //!   - a `messages` projection (the five discardable columns + content — the
 //!     stale chat's laden message all-NULL keeping content; the guard skips the
 //!     bare second message; the active chat's message survives),
-//!   - a `chunks` projection (embeddingNull + a boolean updatedAtChanged vs the
-//!     seed timestamp — the stale chat's embedded chunk cold-tiered with a bumped
-//!     updatedAt; the already-cold chunk skipped by the guard; the active chunk
-//!     survives).
+//!   - a `chunks` projection (embeddingNull + the raw `updatedAt` — the stale
+//!     chat's OLD embedded chunk cold-tiered with a minted updatedAt; the
+//!     already-cold chunk skipped by the `IS NOT NULL` guard; its two WARM
+//!     chunks spared; the active chunk survives).
 //!
-//! The chunk `updatedAt` VALUE is minted (v4 stamps `new Date()`, the Rust sweep
-//! injects `nowMs`), so it is compared only as the `updatedAtChanged` boolean.
+//! P4.D25 — the warmth window (v4 `f7cc887b`). The sweep now clears only
+//! embeddings whose own `updatedAt` predates the staleness cutoff, so a chat the
+//! user merely READS keeps the vectors its reopen re-embedded. The fixture
+//! carries two extra embedded chunks on the STALE chat — one stamped EXACTLY at
+//! the cutoff (`<` is strict, so it survives) and one inside the window — and
+//! `chunkEmbeddingsCleared` stays 1 where the pre-fix sweep cleared 3. A
+//! cleared row's `updatedAt` is minted on both sides, so a stamp is
+//! placeholdered exactly when it differs from that row's SEEDED value; a stamp
+//! that survives byte-identical is the proof the guard spared it.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -35,13 +42,62 @@
 //!   QT_FIXTURE_RETENTION_CACHES=/tmp/qt-retention-caches.db \
 //!     cargo test -p quilltap-harness --test collapse_stale_chat_caches_tier2_equivalence
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::collapse_stale_chat_caches::collapse_stale_chat_caches;
 use serde_json::{json, Value};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const NOW_ISO: &str = "2026-06-01T00:00:00.000Z";
-const SEED_TS: &str = "2026-01-01T00:00:00.000Z";
+
+fn spec_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/retention-caches.json")
+}
+
+/// chunk id -> the `updatedAt` the fixture SEEDED it with. A dumped stamp that
+/// differs from its row's seeded value was minted by the collapse (v4 stamps
+/// `new Date()`, this side injects `nowMs`), so it is placeholdered on both
+/// sides — and a stamp that survives unchanged is proof the age guard SPARED
+/// that row.
+fn seeded_chunk_stamps() -> BTreeMap<String, String> {
+    let spec: Value = serde_json::from_str(
+        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
+    )
+    .expect("parse spec");
+    spec["chunks"]
+        .as_array()
+        .expect("spec.chunks")
+        .iter()
+        .map(|c| {
+            (
+                c["id"].as_str().expect("chunk id").to_string(),
+                c["updatedAt"]
+                    .as_str()
+                    .expect("chunk updatedAt")
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
+/// Placeholder every chunk row whose `updatedAt` is not its seeded value.
+fn normalize_chunks(rows: &mut [Value], seeded: &BTreeMap<String, String>) {
+    for row in rows.iter_mut() {
+        let id = row["id"].as_str().unwrap_or_default().to_string();
+        let minted = match (seeded.get(&id), row.get("updatedAt")) {
+            (Some(want), Some(Value::String(got))) => want != got,
+            _ => true,
+        };
+        if minted {
+            row.as_object_mut()
+                .expect("chunk row object")
+                .insert("updatedAt".to_string(), Value::String("<ts>".to_string()));
+        }
+    }
+}
 
 fn oracle_line(text: &str, kind: &str) -> Value {
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -169,32 +225,58 @@ fn collapse_stale_chat_caches_matches_oracle() {
         "messages projection diverged"
     );
 
-    // 4) chunks projection (updatedAt compared only as the changed-vs-seed bool).
+    // 4) chunks projection. The raw `updatedAt` rides along: a stamp that still
+    //    equals the row's SEEDED value proves the age guard spared it; a minted
+    //    one (placeholdered on both sides) proves it was cold-tiered.
     let got_chunks = db
         .read_main(|c| {
             let mut stmt = c.prepare(
-                "SELECT id, chatId, content, \
-                        CASE WHEN embedding IS NULL THEN 1 ELSE 0 END AS embeddingNull, \
-                        CASE WHEN updatedAt != ?1 THEN 1 ELSE 0 END AS updatedAtChanged \
+                "SELECT id, chatId, content, updatedAt, \
+                        CASE WHEN embedding IS NULL THEN 1 ELSE 0 END AS embeddingNull \
                  FROM conversation_chunks ORDER BY id ASC",
             )?;
             let rows = stmt
-                .query_map([SEED_TS], |r| {
+                .query_map([], |r| {
                     Ok(json!({
                         "id": r.get::<_, String>(0)?,
                         "chatId": r.get::<_, String>(1)?,
                         "content": r.get::<_, String>(2)?,
-                        "embeddingNull": r.get::<_, i64>(3)?,
-                        "updatedAtChanged": r.get::<_, i64>(4)?,
+                        "updatedAt": r.get::<_, String>(3)?,
+                        "embeddingNull": r.get::<_, i64>(4)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
         .expect("read chunks");
+
+    let seeded = seeded_chunk_stamps();
+    let mut got_chunks = got_chunks;
+    let mut want_chunks = oracle_line(&oracle_text, "chunks")["rows"]
+        .as_array()
+        .expect("oracle chunks rows")
+        .clone();
+    normalize_chunks(&mut got_chunks, &seeded);
+    normalize_chunks(&mut want_chunks, &seeded);
+
+    // Corpus shape: the warmth window must actually SPARE embedded rows on the
+    // stale chat, or an unguarded port (v4's pre-f7cc887b behavior, which v5
+    // reproduced) would agree with the oracle.
+    let spared = want_chunks
+        .iter()
+        .filter(|r| {
+            r["chatId"].as_str() == Some("aaaaaaa1-0000-4000-8000-000000000001")
+                && r["embeddingNull"].as_i64() == Some(0)
+        })
+        .count();
+    assert_eq!(
+        spared, 2,
+        "the corpus stopped exercising the warmth window (boundary + inside-window)"
+    );
+
     assert_eq!(
         &Value::Array(got_chunks),
-        oracle_line(&oracle_text, "chunks").get("rows").unwrap(),
+        &Value::Array(want_chunks),
         "chunks projection diverged"
     );
 

@@ -399,6 +399,17 @@ impl<'c> ConversationChunksRepository<'c> {
     /// `embedding IS NOT NULL` guard makes a second pass a no-op. Returns the
     /// number of rows cleared.
     ///
+    /// `older_than` (ISO-8601) restricts clearing to embeddings last written
+    /// before that moment (v4 `f7cc887b`). The maintenance sweep passes its
+    /// staleness cutoff here so an embedding minted by the reopen path
+    /// (`cold-chunk-reembed`) survives for a full retention window from the
+    /// reopen: a chat the user READS — without playing a message, so it stays
+    /// "stale" — keeps its warmth instead of being re-embedded (paid) on every
+    /// open and cleared again by every sweep. The embedding row's own
+    /// `updatedAt` is the reopen signal; nothing else writes chunk rows on a
+    /// stale chat, because renders only fire on played messages and the boot
+    /// reconcile skips stale chats.
+    ///
     /// Unlike [`Self::update`], this DELIBERATELY bumps `updatedAt` (the cold-tier
     /// is a real change the chunk carries) — v4 stamps `new Date().toISOString()`;
     /// the sweep injects `now_iso` here for a deterministic differential.
@@ -406,12 +417,24 @@ impl<'c> ConversationChunksRepository<'c> {
         &self,
         chat_id: &str,
         now_iso: &str,
+        older_than: Option<&str>,
     ) -> Result<usize, DbError> {
-        let affected = self.conn.execute(
+        // v4 builds the SQL and the param list together: the guard clause is
+        // appended only when `olderThan` is present, and the params go
+        // `[now, chatId, olderThan?]` — match both exactly.
+        let age_guard = if older_than.is_some() {
+            " AND updatedAt < ?3"
+        } else {
+            ""
+        };
+        let sql = format!(
             "UPDATE conversation_chunks SET embedding = NULL, updatedAt = ?1 \
-             WHERE chatId = ?2 AND embedding IS NOT NULL",
-            params![now_iso, chat_id],
-        )?;
+             WHERE chatId = ?2 AND embedding IS NOT NULL{age_guard}"
+        );
+        let affected = match older_than {
+            Some(cutoff) => self.conn.execute(&sql, params![now_iso, chat_id, cutoff])?,
+            None => self.conn.execute(&sql, params![now_iso, chat_id])?,
+        };
         Ok(affected)
     }
 

@@ -121,7 +121,14 @@ fn fixtures_dir() -> PathBuf {
 /// (entityType, entityId, profileId) triple and their minted id blanked; every
 /// id the corpus pinned still compares exactly, so "the update arm reused the
 /// existing row" stays visible.
-const TABLES: &[(&str, &str, bool, &[&str], &[&str])] = &[
+type TableSpec = (
+    &'static str,
+    &'static str,
+    bool,
+    &'static [&'static str],
+    &'static [&'static str],
+);
+const TABLES: &[TableSpec] = &[
     (
         "background_jobs",
         "id",

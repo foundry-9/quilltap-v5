@@ -17,7 +17,12 @@
 //!
 //! It also cold-tiers the chat's `conversation_chunks` embeddings (NULLs the
 //! BLOB, keeps `content` for keyword search); the Salon chat-load path re-embeds
-//! on demand ([`super::cold_chunk_reembed`], once ported).
+//! on demand ([`super::cold_chunk_reembed`], once ported). Embeddings are only
+//! cleared when their own `updatedAt` predates the staleness cutoff (v4
+//! `f7cc887b`): a reopen re-embed stamps the rows, so a chat the user merely
+//! *reads* (never playing a message, so it stays "stale") keeps its warmth for a
+//! full retention window from the reopen instead of being re-embedded (paid) on
+//! every open and cleared again by every sweep.
 //!
 //! NEVER touched: `content`, `opaqueContent`, `thoughtSignature`, `attachments`,
 //! `contextSummary`, `chats.state`, memories, `summaryAnchor`.
@@ -78,9 +83,11 @@ async fn collapse_one_chat(
     db: &Db,
     chat_id: &str,
     now_iso: &str,
+    cutoff_iso: &str,
 ) -> Result<(usize, usize, usize), DbError> {
     let cid = chat_id.to_string();
     let stamp = now_iso.to_string();
+    let cutoff = cutoff_iso.to_string();
     db.write(move |writers| {
         let conn = writers.main().connection();
 
@@ -108,8 +115,14 @@ async fn collapse_one_chat(
         )?;
 
         // 3. Cold-tier the chat's conversation-chunk embeddings (keep content).
-        let chunk_embeddings =
-            ConversationChunksRepository::new(conn).clear_embeddings_for_chat(&cid, &stamp)?;
+        //    Only embeddings older than the staleness cutoff: rows the reopen
+        //    path re-embedded inside the window are recent warmth, not dead
+        //    weight (v4 `f7cc887b`).
+        let chunk_embeddings = ConversationChunksRepository::new(conn).clear_embeddings_for_chat(
+            &cid,
+            &stamp,
+            Some(&cutoff),
+        )?;
 
         Ok((chat_rows, message_rows, chunk_embeddings))
     })
@@ -143,7 +156,7 @@ pub async fn collapse_stale_chat_caches(
         let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
         // v4 wraps each chat's collapse in try/catch — a failure is swallowed
         // (warn) and the rest continue.
-        match collapse_one_chat(db, chat_id, &now_iso).await {
+        match collapse_one_chat(db, chat_id, &now_iso, &cutoff).await {
             Ok((chat_rows, message_rows, chunk_embeddings)) => {
                 if chat_rows > 0 || message_rows > 0 || chunk_embeddings > 0 {
                     summary.chats_collapsed += 1;

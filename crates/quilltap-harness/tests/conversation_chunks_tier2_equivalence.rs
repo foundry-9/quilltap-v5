@@ -2,10 +2,22 @@
 //!
 //! Structural DB diff. Both sides start from the SAME seed fixture (built by
 //! harness/oracle/fixtures/build-conversation-chunks-fixture.ts), run the SAME
-//! create / update / delete op sequence from the committed spec, dump the
-//! `conversation_chunks` table canonically, and assert the post-op state is
-//! identical. Ids and timestamps are pinned on both sides, so the dumps must
-//! match with zero normalization.
+//! create / update / delete / clearEmbeddings op sequence from the committed
+//! spec, dump the `conversation_chunks` table canonically, and assert the
+//! post-op state is identical.
+//!
+//! P4.D25 — `clearEmbeddingsForChat`'s `olderThan` age guard (v4 `f7cc887b`).
+//! Three `clearEmbeddings` ops close its arms: the guard ON (only rows STRICTLY
+//! older than the cutoff go — the row stamped exactly at it and the row after it
+//! are both spared), a second identical pass (0 rows), and the guard OFF. The
+//! per-op row COUNTS are diffed first, because they are the direct observable of
+//! the guard; a corpus-shape assertion pins them at `[1, 0, 2]` so a corpus that
+//! stopped sparing anything cannot pass silently.
+//!
+//! A cold-tiered row's `updatedAt` is MINTED (v4 stamps `new Date()`; this side
+//! injects `CLEAR_NOW_ISO`), so a timestamp absent from the committed spec is
+//! placeholdered on both sides. Every pinned id and timestamp still compares
+//! exactly — which is what makes "the guard SPARED this row" an assertion.
 //!
 //! A BLOB case (after `help_docs`): the `embedding` Float32 buffer is exercised
 //! on insert (a non-empty `Vec<f32>` → the storage blob via
@@ -31,6 +43,7 @@
 //!   QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db \
 //!     cargo test -p quilltap-harness --test conversation_chunks_tier2_equivalence
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::conversation_chunks::{CcCreate, CcUpdate, CreateOptions};
@@ -58,6 +71,15 @@ enum Op {
     Update { id: String, data: UpdateData },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D25 — v4 `clearEmbeddingsForChat` with its new optional `olderThan`
+    /// age guard. `older_than: None` in the spec means "call it with no cutoff".
+    #[serde(rename = "clearEmbeddings")]
+    ClearEmbeddings {
+        #[serde(rename = "chatId")]
+        chat_id: String,
+        #[serde(rename = "olderThan")]
+        older_than: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -108,6 +130,50 @@ fn spec_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/conversation-chunks-tier2.json")
 }
 
+/// The `now` stamp the Rust port injects into `clear_embeddings_for_chat`.
+/// Deliberately NOT in the committed spec: v4 mints its own `new Date()` there,
+/// so this value is v5-side only and must normalize to `<ts>` like the oracle's.
+const CLEAR_NOW_ISO: &str = "2026-06-06T06:06:06.606Z";
+
+/// Every string literal anywhere in the committed spec — the values BOTH sides
+/// pinned.
+fn pinned_literals(spec: &Value) -> BTreeSet<String> {
+    fn walk(v: &Value, out: &mut BTreeSet<String>) {
+        match v {
+            Value::String(s) => {
+                out.insert(s.clone());
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            Value::Object(o) => o.values().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(spec, &mut out);
+    out
+}
+
+/// Placeholder a cold-tiered row's minted `updatedAt`; leave every pinned
+/// timestamp exact.
+fn normalize(dump: &mut Value, label: &str, pinned: &BTreeSet<String>) {
+    let rows = dump
+        .get_mut("rows")
+        .and_then(Value::as_array_mut)
+        .unwrap_or_else(|| panic!("{label}: dump has no rows array"));
+    for row in rows.iter_mut() {
+        let obj = row
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("{label}: row is not an object"));
+        let minted = match obj.get("updatedAt") {
+            Some(Value::String(s)) => !pinned.contains(s),
+            _ => false,
+        };
+        if minted {
+            obj.insert("updatedAt".to_string(), Value::String("<ts>".to_string()));
+        }
+    }
+}
+
 #[test]
 fn conversation_chunks_tier2_matches_oracle() {
     let oracle_path = match std::env::var("QT_ORACLE_CONVERSATION_CHUNKS") {
@@ -134,10 +200,37 @@ fn conversation_chunks_tier2_matches_oracle() {
         .unwrap_or_else(|e| panic!("cannot read fixture spec: {e}"));
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse fixture spec");
 
-    // Parse the oracle's expected post-op dump (one NDJSON object).
+    // Every timestamp the corpus PINS. A row cold-tiered by
+    // `clearEmbeddingsForChat` carries a minted `updatedAt` instead (v4 stamps
+    // `new Date()`; this side injects CLEAR_NOW_ISO), so anything not in this
+    // set is placeholdered on both dumps — and every pinned stamp still
+    // compares exactly, which is what proves the age guard SPARED a row.
+    let spec_json: Value = serde_json::from_str(&spec_text).expect("parse fixture spec json");
+    let pinned = pinned_literals(&spec_json);
+
+    // Parse the oracle's NDJSON: a `clearResults` line then the `dump` line.
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    let mut want_cleared: Option<Vec<u64>> = None;
+    let mut oracle: Option<Value> = None;
+    for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).expect("parse oracle line");
+        match v.get("kind").and_then(Value::as_str) {
+            Some("clearResults") => {
+                want_cleared = Some(
+                    v["cleared"]
+                        .as_array()
+                        .expect("cleared array")
+                        .iter()
+                        .map(|n| n.as_u64().expect("cleared count"))
+                        .collect(),
+                )
+            }
+            _ => oracle = Some(v),
+        }
+    }
+    let want_cleared = want_cleared.expect("oracle emitted no clearResults line — regenerate");
+    let mut oracle = oracle.expect("oracle emitted no dump line — regenerate");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
     let work = std::env::temp_dir().join(format!("qt-cc-rust-{}.db", std::process::id()));
@@ -147,6 +240,7 @@ fn conversation_chunks_tier2_matches_oracle() {
     // Run the SAME op sequence through the Rust port.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let mut got_cleared: Vec<u64> = Vec::new();
     {
         let repo = writer.conversation_chunks();
         for op in &spec.ops {
@@ -191,15 +285,44 @@ fn conversation_chunks_tier2_matches_oracle() {
                         .unwrap_or_else(|e| panic!("conversation_chunks.delete {id}: {e}"));
                     assert!(found, "delete target {id} not found in fixture");
                 }
+                Op::ClearEmbeddings {
+                    chat_id,
+                    older_than,
+                } => {
+                    let cleared = repo
+                        .clear_embeddings_for_chat(chat_id, CLEAR_NOW_ISO, older_than.as_deref())
+                        .unwrap_or_else(|e| {
+                            panic!("conversation_chunks.clear_embeddings_for_chat {chat_id}: {e}")
+                        });
+                    got_cleared.push(cleared as u64);
+                }
             }
         }
     }
 
-    let got = writer
+    let mut got = writer
         .dump_table_json("conversation_chunks", "id")
         .expect("dump conversation_chunks");
 
     let _ = std::fs::remove_file(&work);
+
+    // The counts each `clearEmbeddings` returned are the DIRECT observable of
+    // v4 f7cc887b's age guard — assert them before the state diff, so a guard
+    // that cleared the wrong set names itself.
+    assert_eq!(
+        got_cleared, want_cleared,
+        "clearEmbeddingsForChat row counts diverged"
+    );
+    // And pin the corpus's own shape: the guard must have SPARED something
+    // (a first pass that cleared everything would agree with an unguarded port).
+    assert_eq!(
+        want_cleared,
+        vec![1, 0, 2],
+        "the corpus stopped exercising the olderThan guard (on / idempotent / off)"
+    );
+
+    normalize(&mut got, "rust", &pinned);
+    normalize(&mut oracle, "oracle", &pinned);
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for
