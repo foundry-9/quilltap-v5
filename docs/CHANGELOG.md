@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the next porting round: a work order for catching up to the old app's
+embedding-warmth fixes. The old app stopped its startup repair pass and its
+maintenance sweep from fighting each other — the repair no longer re-embeds
+chats the sweep deliberately put to sleep, embeddings refreshed by merely
+reading a chat survive the next sweep for a full retention window, and
+embedding outcomes are actually recorded even for entities that never got a
+tracking row. The port currently reproduces the old fighting behavior, which
+costs real money on every startup against a large library; the order specifies
+the mirror fixes, the oracle regeneration at the new baseline, and the fixture
+extensions needed to prove each new arm.
+
 Corrected the port's screen-parity record before the next dogfood walk. Five
 service seams listed as refusing had gone live and two were never armed at all;
 each remaining one now cites the exact source of its refusal, so the list can be
