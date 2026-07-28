@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Closed the embedding-warmth catch-up round: the port now matches the old app's
+fixes for all three of these, with the differential corpora extended to prove
+each new arm and every one of them mutation-checked.
+
 Startup no longer re-embeds every conversation the housekeeping sweep put to
 sleep. Quiet chats are deliberately cold-tiered — their rendered text and search
 vectors are dropped and rebuilt when you next open them — but the startup repair
