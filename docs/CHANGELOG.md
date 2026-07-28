@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Recorded the walk that proved the embedding repair on real data. Booting the
+real library used to re-embed every quiet conversation the housekeeping had
+deliberately set aside — thousands of paid calls per restart, cleared again by
+the next sweep. Predicting that cost before starting the server is what caught
+it, and the prediction was written down first so the boot was a test rather
+than a story told afterward. The repaired boot did three conversations and five
+embeddings where the old one would have done 671 and 9,609; the handful that
+still cannot be embedded are now remembered as such, so no later start
+reconsiders them. Of the chunks with no embedding, the great majority are
+merely resting and warm again on reopen, while 515 are too long for the model
+and want a change in the old app first.
+
 Unified the embedding-warmth catch-up round onto main. Single lane, no
 conflicts; the review found no blocking issues; the reference baseline moved to
 the old app's current head, with all seven affected comparison suites

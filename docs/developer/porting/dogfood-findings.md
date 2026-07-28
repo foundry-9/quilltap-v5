@@ -58,7 +58,76 @@ catch, since every fixture is built fresh.
 | 33 | A user-initiated RNG roll rendered its standalone tool card under **Amy**, the last participant to speak, though the card's own line read "You ran rng" and the following characters correctly treated the roll as the operator's | **Faithfully ported v4 bug — v5 reproduces v4 exactly, in both halves.** The persisted row is identical on both sides: v4's orchestrator writes a pending tool result with `initiatedBy:'user'` and **no `participantId`** (`orchestrator.service.ts:611-630`), and so does v5 — confirmed on the dogfood copy (`participantId` NULL, `{"tool":"rng","initiatedBy":"user",…}`). Both renderers then run the same positional borrow: a TOOL row with no participant takes the nearest preceding assistant's, stopping at a USER boundary (v4 `VirtualizedMessageList.tsx:228-247`, v5 `chat-view-model.ts::resolveToolAvatar` — a verbatim port). Because the row is written BEFORE the user's message, the nearest preceding assistant is the last character who spoke. The header markup is byte-faithful too: when a header avatar resolves, BOTH render that character's name bold and the attribution line beneath it, and v4's own conditional (`actorName !== headerAvatar.name ? "${actorName} ran " : "ran "`, `ToolMessage.tsx:438-443`) is what produces the "Amy" / "You ran rng" pair the screenshot shows. v5's `actorName` (`operatorName \|\| 'You'`) and `attributionPrefix` match line for line | **NOT A BUG (v5)** (2026-07-27) — recorded so it is not re-reported, and NOT fixed: the borrow is v4 behavior and changing it unilaterally would break the oracle comparison. The right repair is v4-first (give a user-initiated tool row the operator's identity, or suppress the borrow when `initiatedBy === 'user'`) → added to the post-5.0 v4-side list. The card is not *wrong* about who rolled — it says "You ran rng" — it is wrong about whose face to put on it |
 | 34 | Four Part-B walk items have no UI at all: **regenerate title**, **bulk reattribute**, **toggle agent mode**, **merge conversations** | **Not a defect — a known unwritten SPA lane (`p4.9e3`), plus one genuinely untracked item.** All four DO have v4 UI (surveyed 2026-07-27): regenerate-title has no button of its own and fires only from `ChatRenameModal`'s "Use automatic naming" checkbox (`ChatRenameModal.tsx:52,184-192`), reached from sidebar → Organize → **Rename**; bulk reattribute is `BulkCharacterReplaceModal` behind sidebar → **Edit Content** → "Bulk Replace" (`ChatSidebar.tsx:1636-1647`) — a whole sidebar section v5 has never had; agent mode is the "Agent On/Off" badge in the Chat section (`ChatSidebar.tsx:1116-1127`); merge is "Merge In…" in Organize (`ChatSidebar.tsx:1566-1576`). P4.9E3A landed all eleven SERVER verbs on 2026-07-26 and said so ("No UI can reach it this round"); P4.9E1B, the round's SPA lane, scoped to the cast dialogs + RNG. **The one real gap in the trail: the agent-mode toggle was tracked NOWHERE** — being a badge rather than a modal it fell between `m6-screen-parity.md`'s two tables | **NOT A BUG; TRAIL CORRECTED** `25dc4823` — the agent-mode row added to m6's sidebar-controls table; the stale "unported" claims in `chat-section.ts:71` and `organize-section.ts:17-21` corrected (they blamed missing server halves that have since landed, which materially understates how cheap `p4.9e3` now is — it is UI over a live boundary for everything except **Export**, whose verb really is still missing). The walk script's error, not the app's |
 
-| 35 | The server console warns continuously: `Job type "EMBEDDING_GENERATE" is recognized but its handler is not yet available in the native runner`. **2,088 such jobs are DEAD** on the dogfood copy, and every chunk written since v5 took over the instance is unembedded | **A KNOWN DEFERRAL whose real cost was invisible until now — no `EMBEDDING_GENERATE` handler is registered anywhere.** The runner's `KNOWN_JOB_TYPES` lists it (`job_runner.rs:143`) so it gets the loud "recognized but not available" fallback, and `tools/executor.rs:355` calls it "a tracked deferral". **Both enqueue paths are LIVE and neither can ever complete:** `services/queue_service.rs:192` (memory embeddings) and `services/mount_index/embedding_scheduler.rs:45` (mount chunks). Each job retries 3× and dies. **Measured blast radius on the Friday copy:** every established vault is 100% embedded (Friday 747/747, Charlie 572/572, Amy 467/467 — all v4-era work), while the two character vaults created during this walk have chunks and **zero** embeddings (Test2 8 chunks / 0 embedded, minutes old; Tanya 6 / 0, three hours old). So P4.6BK's chunk-on-write fix works — the chunks are written at creation, which is what Part G set out to check — but nothing embeds them, and semantic search over anything added under v5 silently finds nothing. There is no workaround: `quilltap docs embed` enqueues to the same dead handler, and `docs status` refuses. v4's handler is `lib/background-jobs/handlers/embedding-generate.ts`, 490 LOC over FOUR entity types (`MEMORY`, `CONVERSATION_CHUNK`, `HELP_DOC`, `MOUNT_CHUNK`), including a deterministic-failure classifier that exists precisely to stop this DEAD-row accumulation | **OPEN — needs an order, not a dogfood commit** (2026-07-27). Too big to fix in place: a 490-LOC handler across four entity types plus its differential. Recorded in the standing notes with the sizing; the embedding *provider* seam already exists and is wired live (`EngineAssembly.memory_embedding`), so this is a handler port over an available capability, not a from-scratch subsystem |
+| 35 | The server console warns continuously: `Job type "EMBEDDING_GENERATE" is recognized but its handler is not yet available in the native runner`. **2,088 such jobs are DEAD** on the dogfood copy, and every chunk written since v5 took over the instance is unembedded | **A KNOWN DEFERRAL whose real cost was invisible until now — no `EMBEDDING_GENERATE` handler is registered anywhere.** The runner's `KNOWN_JOB_TYPES` lists it (`job_runner.rs:143`) so it gets the loud "recognized but not available" fallback, and `tools/executor.rs:355` calls it "a tracked deferral". **Both enqueue paths are LIVE and neither can ever complete:** `services/queue_service.rs:192` (memory embeddings) and `services/mount_index/embedding_scheduler.rs:45` (mount chunks). Each job retries 3× and dies. **Measured blast radius on the Friday copy:** every established vault is 100% embedded (Friday 747/747, Charlie 572/572, Amy 467/467 — all v4-era work), while the two character vaults created during this walk have chunks and **zero** embeddings (Test2 8 chunks / 0 embedded, minutes old; Tanya 6 / 0, three hours old). So P4.6BK's chunk-on-write fix works — the chunks are written at creation, which is what Part G set out to check — but nothing embeds them, and semantic search over anything added under v5 silently finds nothing. There is no workaround: `quilltap docs embed` enqueues to the same dead handler, and `docs status` refuses. v4's handler is `lib/background-jobs/handlers/embedding-generate.ts`, 490 LOC over FOUR entity types (`MEMORY`, `CONVERSATION_CHUNK`, `HELP_DOC`, `MOUNT_CHUNK`), including a deterministic-failure classifier that exists precisely to stop this DEAD-row accumulation | ~~**OPEN — needs an order, not a dogfood commit**~~ **FIXED and LIVE-PROVEN (2026-07-28).** The order ran as **P4.6BL** (the handler, all four entity types, with the permanent-error classifier) and **P4.6BM** (the reconcile that feeds it). Live proof on the Friday copy 2026-07-28: a boot minted 3 renders → 5 `EMBEDDING_GENERATE` jobs → all COMPLETED, and the permanent-error path marked 5 oversize chunks FAILED instead of retrying them to DEAD, which is the exact accumulation this finding was about. **No new DEAD rows across two boots.** The walk that proved it also surfaced that v4 itself had a much larger bug behind the same symptom — see the 2026-07-28 walk record below and the P4.D25 round |
+
+- **The 2026-07-28 walk, Part B — the embedding pendulum, MEASURED AND PROVEN
+  on real data; and the walk that never happened, which is the point.** The
+  script's first step was to *predict* what booting would cost before booting.
+  That prediction is what caught v4's largest live bug of the port so far:
+  **9,652 of 11,357 conversation chunks (85%) sat unembedded on the real Friday
+  instance**, and the boot reconcile was about to "heal" them at ~$2 of OpenAI
+  spend. Handing the diagnosis to a session in the v4 repo produced three v4
+  fixes (`a0243abd`, `f7cc887b`, `a5d6cee5` — v4's own Bugs 6 and 7), which v5
+  then re-ported as **P4.D25**. The cause was a **pendulum between two
+  subsystems**: the stale-chat sweep deliberately cold-tiers quiet chats (NULL
+  `renderedMarkdown`, NULL chunk embeddings), and the boot reconcile read that
+  deliberate state as pipeline damage and re-embedded the whole cold tier on
+  every boot, which the next sweep then cleared again. v4 measured 8,762 chunks
+  embedded **exactly 6× each**.
+
+  **The live proof, predicted in advance and then measured** (the prediction was
+  written down *before* the boot, so it is a test rather than a rationalization):
+
+  | | predicted | measured |
+  | --- | --- | --- |
+  | incomplete chats found | 598 | 598 |
+  | skipped as stale | 595 | 595 (598 found − 3 enqueued, 0 unknown-activity) |
+  | `CONVERSATION_RENDER` enqueued | 3 | **3** |
+  | `EMBEDDING_GENERATE` calls | 5 | **5, all COMPLETED** |
+  | new DEAD rows | 0 | **0** |
+  | **second boot**: new renders | 0 | **0** |
+
+  Pre-fix, the same boot would have enqueued 671 renders and ~9,609 embeddings.
+  The second boot is the one that settles it: the pendulum's whole signature was
+  *repeat* work, and a restart that enqueues **nothing** is the direct evidence
+  that the ~$2-per-restart is gone rather than merely smaller this once.
+
+  **The 5 chunks did NOT gain embeddings, and that is correct.** They are
+  34k–117k chars — under v5's 131,072-char transport cap, over
+  `text-embedding-3-large`'s 8,192-token (~31k char) context — so they fail
+  deterministically, `is_permanent_embedding_error` marks them FAILED without
+  retry, and the job COMPLETES. The FAILED rows could not land before (that was
+  v4's Bug 7, `markAsFailed` silently no-opping), so **the first boot after the
+  fix pays a one-time discovery cost and every later boot is free**: the
+  reconcile's new FAILED exclusion retired those 3 chats immediately, 598 → 595.
+  That self-termination is the convergence `a5d6cee5` was designed for, and it
+  is why the residual is not a small pendulum of its own.
+
+  **What the 9,656 unembedded chunks actually are** (the number that looked
+  alarming and turns out to be mostly healthy): **9,098 cold-tiered by design**
+  (within model context; warm on reopen, and that warmth now survives the sweep
+  thanks to P4.D25 unit 2), **515 permanently stuck** over the model's context
+  pending v4's renderer-side sub-chunking (a v4-side gap v4's own comment
+  names), and **43 empty/over-cap**, correctly excluded by both apps.
+
+  **Two items this left behind.** (1) The boot log is gated on
+  `enqueued > 0 || failed > 0` (`quilltap-host/src/host.rs:805`), so the
+  expected healthy outcome — `enqueued` ≈ 0 with `skipped_stale` large — prints
+  **nothing**, and the fix's entire signature is invisible in the field. Logging
+  sits outside the differential contract (P4.18), so nothing is red; it is a
+  one-line rider (`|| skipped_stale > 0`, or log unconditionally when
+  `incomplete_chats > 0`, which is nearer v4 — v4 logs a "found incomplete
+  conversations" line before the loop and its completion line unconditionally).
+  (2) The 515 oversize chunks are a **v4-side** item for the post-5.0 list:
+  interchange sub-chunking, so a long interchange can embed at all.
+
+  **The transferable lesson, for the next dogfood script:** on a real instance,
+  *predict the cost of a destructive-or-expensive automatic action and check the
+  prediction against the DB before triggering it.* Every number above came from
+  read-only SQL run before the server ever started. Booting first would have
+  spent the money, drained the backlog, and — worst — looked like a **success**
+  ("the reconcile works, the backlog drained"), hiding a bug that had been
+  burning ~$2 per restart in production.
 
 - **The 2026-07-27 chat-action-round dogfood walk — Parts A–E, two fixes and two
   non-bugs.** The first pass over the chat-action-remainder round (P4.9E1A ∥
@@ -283,6 +352,21 @@ catch, since every fixture is built fresh.
   pre-emptively restructured for this** — it is the reason a merely-inherited
   awkwardness can be left alone now and revisited later, and the reason the
   provider-I/O divergence is deliberately a one-off rather than a first step.
+- **Post-5.0 v4-side ITEM (2026-07-28) — interchange sub-chunking, so a long
+  interchange can embed at all.** Found while proving P4.D25 on the Friday copy:
+  **515 conversation chunks are permanently unembeddable** on that instance —
+  over `text-embedding-3-large`'s 8,192-token (~31k char) context but under the
+  131,072-char `EMBEDDING_MAX_CHARS` transport cap. Both apps behave correctly
+  (`isPermanentEmbeddingError` / `is_permanent_embedding_error` marks them FAILED
+  without retry, and since v4 `a5d6cee5` the reconcile then excludes them
+  forever), so nothing retries and nothing accumulates — but those interchanges
+  are silently absent from semantic search and always will be. v4's own comment
+  already names the repair: *"oversized interchanges await renderer-side
+  sub-chunking."* This is **v4-first** — the renderer is shared oracle surface,
+  and a v5-only split would move the diff. Not urgent: it is a slow quality
+  ceiling, not a failure. **v5 reproduces v4 exactly here and should keep
+  doing so** until v4 moves.
+
 - **Post-5.0 v4-side FIXES (human, 2026-07-24) — real v4 bugs v5 has already
   fixed, whose v4 half is queued rather than dropped.** Distinct from the
   papercut list below: these ARE bugs, and v5 does NOT reproduce them. What is
