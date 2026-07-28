@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Made code review an explicit, blocking step of the unify skill
+(.claude/commands/unify.md). The unifier now reads the whole combined diff
+before landing it and judges it on two axes: whether the lane built what its
+work order actually asked for (right tier, the specified differential over
+the specified fixture, deferrals that match the code, refusals that refuse
+loudly by name), and whether the code is right and good — v4 fidelity
+checked against v4's real source rather than the diff alone, the standing
+rules in CLAUDE.md, ordinary engineering quality, and the blast radius
+no single lane could see. A finding blocks like a failing gate: fix it on
+the unify branch or escalate, never land it quietly. Findings go in the
+round record, the memory note, and the final report, including the ones
+already fixed. Tooling only — no crate or SPA source touched.
+
 Planned the next porting round and committed its three work orders: the
 library file picker's server remainder (the attach-from-store leg and its
 image-describe seam), the picker dialog itself plus three small UI riders,
