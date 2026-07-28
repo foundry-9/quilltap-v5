@@ -359,6 +359,107 @@
           "createdAt": "2026-05-01T17:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000010",
+      "key": "reconcile-fresh-unrendered",
+      "title": "A Lamp Lit Only Yesterday",
+      "renderedMarkdown": null,
+      "comment": "P4.D25 arm (A), FRESH: a played message inside the retention window, so the staleness gate lets it through and the reconcile ENQUEUES.",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000101",
+          "characterId": "c0000000-0000-4000-8000-000000000003",
+          "controlledBy": "user"
+        },
+        {
+          "id": "10000000-0000-4000-8000-000000000102",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000101",
+          "type": "message",
+          "role": "USER",
+          "content": "Is anyone still awake down there?",
+          "participantId": "10000000-0000-4000-8000-000000000101",
+          "createdAt": "2026-07-20T09:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-000000000102",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Only the lamps, and they are not saying.",
+          "participantId": "10000000-0000-4000-8000-000000000102",
+          "createdAt": "2026-07-20T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000011",
+      "key": "reconcile-fresh-pending-render",
+      "title": "A Second Lamp, Also Recent",
+      "renderedMarkdown": null,
+      "comment": "P4.D25 arm (A), FRESH, with a PENDING CONVERSATION_RENDER already seeded — the reconcile's `reused` counter (the dedupe lives in the enqueue helper).",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000111",
+          "characterId": "c0000000-0000-4000-8000-000000000003",
+          "controlledBy": "user"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000111",
+          "type": "message",
+          "role": "USER",
+          "content": "Then I shall ask the lamps myself.",
+          "participantId": "10000000-0000-4000-8000-000000000111",
+          "createdAt": "2026-07-20T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000012",
+      "key": "reconcile-fresh-failed-default-profile",
+      "title": "One Chunk The Embedder Will Never Take",
+      "renderedMarkdown": "## Interchange 0\n\nrendered already\n",
+      "comment": "P4.D25 FAILED-status exclusion: rendered, with ONE un-embedded chunk that already carries a FAILED embedding_status for the DEFAULT profile -> arm (B) must not select it, so it never appears in incompleteChats at all. It has NO played messages, so the staleness gate falls back to chats.updatedAt -- which is why this chat carries a fresh `updatedAt`.",
+      "updatedAt": "2026-07-21T09:00:00.000Z",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000121",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000013",
+      "key": "reconcile-fresh-failed-other-profile",
+      "title": "A Chunk That Failed Under Somebody Else's Profile",
+      "renderedMarkdown": "## Interchange 0\n\nrendered already\n",
+      "comment": "P4.D25 profile scoping: the same shape, but the FAILED row names the NON-default profile. A chunk that failed under one profile may embed fine under another, so this chat IS still selected and enqueued.",
+      "participants": [
+        {
+          "id": "10000000-0000-4000-8000-000000000131",
+          "characterId": "c0000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d0000000-0000-4000-8000-000000000131",
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The ledger is fine; it is the ink that failed.",
+          "participantId": "10000000-0000-4000-8000-000000000131",
+          "createdAt": "2026-07-20T09:00:00.000Z"
+        }
+      ]
     }
   ],
   "conversationChunks": [
@@ -402,6 +503,26 @@
         "Aria"
       ],
       "embedded": true
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000010",
+      "chatId": "a0000000-0000-4000-8000-000000000012",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\npermanently unembeddable\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": false
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000011",
+      "chatId": "a0000000-0000-4000-8000-000000000013",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\nrecoverable under the default profile\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": false
     }
   ],
   "oversizeChunkId": "f0000000-0000-4000-8000-000000000003",
@@ -471,6 +592,20 @@
       "entityId": "e1000000-0000-4000-8000-000000000003",
       "profileId": "b0000000-0000-4000-8000-000000000002",
       "status": "EMBEDDED"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000010",
+      "entityType": "CONVERSATION_CHUNK",
+      "entityId": "f0000000-0000-4000-8000-000000000010",
+      "profileId": "b0000000-0000-4000-8000-000000000001",
+      "status": "FAILED"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000011",
+      "entityType": "CONVERSATION_CHUNK",
+      "entityId": "f0000000-0000-4000-8000-000000000011",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "status": "FAILED"
     }
   ],
   "jobs": [
@@ -514,6 +649,18 @@
       "priority": 0,
       "attempts": 0,
       "createdAt": "2026-05-01T10:32:00.000Z"
+    },
+    {
+      "id": "a3000000-0000-4000-8000-000000000010",
+      "name": "pending-render-for-fresh-chat",
+      "type": "CONVERSATION_RENDER",
+      "status": "PENDING",
+      "payload": {
+        "chatId": "a0000000-0000-4000-8000-000000000011"
+      },
+      "priority": -1,
+      "attempts": 0,
+      "createdAt": "2026-07-21T10:00:00.000Z"
     }
   ],
   "renderCases": [

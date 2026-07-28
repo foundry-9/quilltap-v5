@@ -9,6 +9,26 @@
 //! `embedding_status`, `memories`, `help_docs`, `vector_entries` and
 //! `vector_indices`.
 //!
+//! ## P4.D25 — the reconcile's staleness gate + FAILED-status exclusion
+//!
+//! Phase 1 now exercises v4 `a0243abd`/`a5d6cee5`: the scan carries a
+//! `NOT EXISTS … embedding_status … FAILED` clause bound to the resolved default
+//! profile, and every selected row goes through the shared `isStale` gate. The
+//! corpus grew FOUR chats whose activity sits INSIDE the retention window
+//! (everything older was, by design, stale relative to `renderNowIso`): a fresh
+//! arm-(A) chat (enqueued), a fresh arm-(A) chat with a PENDING render already
+//! seeded (reused), a fresh chat whose only un-embedded chunk is FAILED for the
+//! DEFAULT profile (excluded from arm (B) outright — and with no played
+//! messages, so it exercises the gate's `chats.updatedAt` fallback), and its
+//! twin whose FAILED row names the OTHER profile (still selected). The oracle
+//! reports `{incompleteChats: 4, enqueued: 2, reused: 1, skippedStale: 1}`.
+//!
+//! Two fail-soft arms are NOT reachable from this corpus and are covered by the
+//! module's own unit tests instead: the no-profile sentinel (`''`, which matches
+//! no rows) and the profile-resolution-threw arm that keeps it — reaching either
+//! here would mean emptying `embedding_profiles` mid-run, which the later
+//! reindex phases depend on.
+//!
 //! Nothing about this family is model-dependent — no LLM, no embedding provider —
 //! so the oracle drives v4's real handler with **only** `ensureProcessorRunning`
 //! stubbed (in-process it forks v4's job child, which would claim the very jobs
@@ -327,6 +347,7 @@ async fn embedding_remainder_matches_oracle() {
                     enqueued: v["enqueued"].as_u64().unwrap() as usize,
                     reused: v["reused"].as_u64().unwrap() as usize,
                     failed: v["failed"].as_u64().unwrap() as usize,
+                    skipped_stale: v["skippedStale"].as_u64().unwrap() as usize,
                 })
             }
             Some("render") => oracle_renders.push((
@@ -444,20 +465,29 @@ async fn embedding_remainder_matches_oracle() {
     // ── Phase 1: the startup reconcile, over the pristine fixture copy.
     let want_reconcile = oracle_reconcile.expect("oracle emitted no reconcile row — regenerate");
     // A reconcile that found nothing would agree with a port that did nothing,
-    // so pin the corpus's own shape: BOTH arms fire, and the dedupe reuses.
+    // so pin the corpus's own shape: BOTH arms fire, the dedupe reuses, and
+    // (P4.D25) the staleness gate actually SKIPS cold-tiered chats.
     assert!(
         want_reconcile.incomplete_chats >= 2
             && want_reconcile.enqueued >= 1
-            && want_reconcile.reused >= 1,
-        "the corpus stopped exercising both reconcile arms + the dedupe: {want_reconcile:?}"
+            && want_reconcile.reused >= 1
+            && want_reconcile.skipped_stale >= 1,
+        "the corpus stopped exercising both reconcile arms + the dedupe + the stale skip: {want_reconcile:?}"
     );
     // The reconcile is a BOOT pass: synchronous, on the writer connection. Under
     // the async test runtime that needs a blocking thread (`write_blocking`
     // panics if called on a runtime thread).
     let got_reconcile = {
         let db = db.clone();
+        let now_ms =
+            quilltap_core::clock::iso_to_ms(&spec.render_now_iso).expect("parse renderNow");
         tokio::task::spawn_blocking(move || {
-            db.write_blocking(|ws| Ok(reconcile_conversation_rendering(ws.main().connection())))
+            db.write_blocking(move |ws| {
+                Ok(reconcile_conversation_rendering(
+                    ws.main().connection(),
+                    now_ms,
+                ))
+            })
         })
         .await
         .expect("join reconcile")

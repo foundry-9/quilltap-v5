@@ -832,6 +832,14 @@ pub fn resolve_stale_chat_days(db: &Db) -> i64 {
         .unwrap_or(STALE_CHAT_RETENTION_DAYS)
 }
 
+/// [`resolve_stale_chat_days`] against one borrowed connection — the boot
+/// reconcile's form (it runs on the writer's main connection and cannot reach
+/// the read pool from inside a write closure).
+pub fn resolve_stale_chat_days_conn(conn: &rusqlite::Connection) -> i64 {
+    crate::db::instance_settings::get_data_retention_settings(conn)
+        .unwrap_or(STALE_CHAT_RETENTION_DAYS)
+}
+
 // ============================================================================
 // Read / admin surface (v4 queue-service read helpers)
 // ============================================================================

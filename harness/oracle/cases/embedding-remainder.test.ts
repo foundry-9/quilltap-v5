@@ -25,7 +25,11 @@
  *   1. RECONCILE — v4's `reconcileConversationRendering()` over the PRISTINE
  *      fixture, recorded as `{kind:'reconcile', ...counters}`. It runs first
  *      because that is where boot runs it, and because both later phases mutate
- *      exactly what its scan reads.
+ *      exactly what its scan reads. Since P4.D25 those counters include
+ *      `skippedStale`, and the scan excludes chunks already FAILED for the
+ *      resolved default profile — both read the frozen clock, so the corpus's
+ *      pre-P4.D25 chats are all stale by construction and the four chats added
+ *      for this round are the ones that get through.
  *   2. RENDER — each corpus `renderCases` entry through `handleConversationRender`
  *      with a synthesized job row, recorded as `{kind:'render', name, outcome,
  *      error}`.

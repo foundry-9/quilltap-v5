@@ -41687,3 +41687,153 @@ Also fixed on the way past: the P4.D25 EG table spec tripped
 
 Gate at this commit: fmt, clippy both feature sets, `cargo test --workspace
 --no-fail-fast` clean, plus both families green by name and mutation-checked.
+
+---
+
+## Lane record — P4.D25 unit 3: the boot reconcile stops fighting the sweep (v4 `a0243abd` + `a5d6cee5`)
+
+**Landed — this is the money bug.** `services/conversation_render_reconcile.rs`
+now carries v4's post-drift shape:
+
+- **The scan** grew v4's `NOT EXISTS … embedding_status … status='FAILED'`
+  clause on arm (B), bound to the resolved default profile, plus
+  `c."updatedAt"` in the projection. Ported byte-faithfully from v4's SQL,
+  comments included.
+- **Profile resolution** runs before the scan: `pick_reembed_profile_id` (v4's
+  `findAll().find(isDefault) || [0]` — the same selection the render handler
+  makes), `?.id ?? ''`. On error → warn and keep `''`, a sentinel that matches
+  no rows, so the exclusion no-ops rather than the boot failing.
+- **The staleness gate** runs per row, through the SHARED `is_stale` predicate
+  and the same `resolve_stale_chat_days` window the sweeps use. Both of v4's
+  fail-soft arms are ported: stale → `skipped_stale++`, continue; a THROWN
+  staleness check → `skipped_stale++`, warn, continue (unknown staleness skips,
+  never heals — the Salon open path is the recovery).
+- `skipped_stale` joins `ReconcileResult` and the host's summary log.
+
+**The integration point the order flagged, solved differently than it
+suggested.** The order proposed re-signaturing the reconcile to take `&Db`, but
+`host.rs` calls it from INSIDE `db.write_blocking`, so a `&Db`-shaped reconcile
+would have had to reach the read pool from within a write closure (and a nested
+`write_blocking` on the writer thread would deadlock outright). Instead the two
+helpers it needs gained connection-based forms —
+`maintenance::is_stale_conn(conn, chat, cutoff_ms)` and
+`queue_service::resolve_stale_chat_days_conn(conn)` — with the existing `&Db`
+versions delegating to them. The whole pass stays on the writer's main
+connection; `host.rs` gains only `now_ms` (`clock::now_unix_ms()`).
+`maintenance::is_stale`'s doc carries v4's new wording — including that the
+reconcile MUST use this gate, and that reading only `id`/`updatedAt` IS v4's
+`Pick<ChatMetadata, 'id'|'updatedAt'>` narrowing (v5 already passed a `&Value`,
+so no signature moved there).
+
+**Differential — `embedding_remainder_equivalence`
+(`QT_ORACLE_EMBEDDING_REMAINDER`).** The corpus was structurally unable to show
+any of this: `renderNowIso` is `2026-07-27` and every seeded chat's activity is
+`2026-05-01`, so after the fix EVERY chat is stale and the reconcile would have
+gone to all-skipped — losing the enqueue and dedupe arms the family already
+proved. The fixture therefore gained FOUR chats whose activity sits inside the
+retention window:
+
+| chat | shape | expected |
+|---|---|---|
+| `reconcile-fresh-unrendered` | arm (A), played message 2026-07-20 | enqueued |
+| `reconcile-fresh-pending-render` | arm (A) + a seeded PENDING render | reused |
+| `reconcile-fresh-failed-default-profile` | rendered, one un-embedded chunk FAILED for the DEFAULT profile, **no played messages** | excluded from the scan entirely — and it exercises the gate's `chats.updatedAt` fallback |
+| `reconcile-fresh-failed-other-profile` | same, but the FAILED row names the OTHER profile | still selected → enqueued |
+
+The builder learned an optional per-chat `updatedAt` (defaulting to the corpus
+`seedTimestamp`) for that third row. Oracle at `083fdf68`:
+`{incompleteChats: 4, enqueued: 2, reused: 1, failed: 0, skippedStale: 1}` —
+green on the Rust side first run. The corpus-shape assertion now also demands
+`skippedStale >= 1`.
+
+Worth recording: the FAILED-status exclusion was ALREADY latent in the corpus —
+the pre-existing chat `rendered-unembedded` has a seeded FAILED status for its
+un-embedded chunk under the default profile, so the drift silently drops it out
+of `incompleteChats` (and with it the old source of `reused`, which is why the
+fresh pending-render chat was needed).
+
+**Sensitivity.** First-run green, so mutation-proven, three times — one per new
+arm:
+- staleness gate neutered → `enqueued: 3, skipped_stale: 0` vs `2 / 1`;
+- FAILED-status exclusion removed → `incomplete_chats: 6, skipped_stale: 2` vs
+  `4 / 1`;
+- profile scoping dropped (any profile's FAILED masks) → `incomplete_chats: 3,
+  enqueued: 1` vs `4 / 2`.
+Restored → green.
+
+**Two fail-soft arms are NOT in the differential, deliberately and by name:**
+the no-profile sentinel and the profile-resolution-threw arm that keeps it.
+Reaching either from this corpus would mean emptying `embedding_profiles`
+mid-run, which the later reindex phases depend on (two of their four cases are
+throw arms keyed to specific profile ids). Both are covered by new unit tests in
+the module — `no_profile_binds_a_sentinel_that_excludes_nothing` proves the `''`
+bind excludes nothing, which is exactly what the throw arm falls back to. The
+module's test schema grew `chats.updatedAt`, `chat_messages.{systemSender,
+createdAt}`, `embedding_status` and `embedding_profiles`, and gained
+`stale_chats_are_skipped_not_healed` and
+`failed_chunks_are_excluded_for_the_default_profile_only` (whose profile seed
+puts `isDefault` on the SECOND row, so "default, else first" is visible).
+
+**Fixture moved:** `crates/quilltap-web/tests/fixtures/embedding-remainder-{main,mount}.db`
+(rebuilt from the extended corpus and re-copied). Checked for other consumers —
+`grep -rl "embedding-remainder-" crates/*/tests harness/` names only this
+family's test, case and builder, so nothing else is invalidated.
+
+Regen recipe (Node 24, from `~/source/quilltap-server`, v4 clean at `083fdf68`):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-er-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-er-mount.db \
+  npx tsx $V5/harness/oracle/fixtures/build-embedding-remainder-fixture.ts
+cp /tmp/qt-er-main.db  $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db
+cp /tmp/qt-er-mount.db $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db
+mkdir -p /tmp/qt-er-oracle/cases /tmp/qt-er-oracle/fixtures
+cp $V5/harness/oracle/cases/embedding-remainder.test.ts /tmp/qt-er-oracle/cases/
+cp $V5/harness/oracle/fixtures/embedding-remainder.json  /tmp/qt-er-oracle/fixtures/
+cp -R $V5/harness/oracle/fixtures/help-sync              /tmp/qt-er-oracle/fixtures/
+TZ=UTC QT_FIXTURE_ER_MAIN=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db \
+QT_FIXTURE_ER_MOUNT=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-embedding-remainder.ndjson \
+  npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots /tmp/qt-er-oracle/cases -- embedding-remainder
+```
+
+### Neutrality (the order's tier 2)
+
+`QT_ORACLE_MAINT` (the asset sweep — v4's change there is type-only) and
+`QT_ORACLE_COLD_REEMBED` (unchanged, but its `updatedAt` stamping is now the
+warmth signal the cache sweep reads, so a regression there would silently break
+the window) were both regenerated at `083fdf68` and re-run BY NAME: green,
+behavior unchanged.
+
+### Round gate (P4.D25, all three units)
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -D warnings`
+both feature sets (plain and `quilltap-core/native-transport`);
+`cargo build --release --workspace`; `cargo test --workspace --no-fail-fast`
+with all nine env vars → **399 test binaries / 1,673 tests / 0 failed**; the
+seven families re-run by name with `--nocapture`, **zero SKIP lines**. No
+`apps/web` file was touched, so no ng/Playwright run is owed.
+
+### Queued for the unifier — the baseline move
+
+This lane does NOT edit `CLAUDE.md` or `phase-4.md`. The replacement wording for
+CLAUDE.md's baseline paragraph:
+
+> **Oracle baseline: `083fdf68` (v4 HEAD, 2026-07-28), adopted at the P4.D25
+> embedding-warmth drift-catch-up unification — NO v4 drift debt remains.** The
+> four commits past `e8a49597` are v4's own fixes for its `found-bugs.md` Bugs 6
+> and 7 (`a0243abd` the boot reconcile's stale exclusion, `f7cc887b` the
+> `clearEmbeddingsForChat` age guard, `a5d6cee5` the mark* upserts + the
+> FAILED-profile exclusion) plus a version chore; all three behavior commits
+> carry an explicit "Oracle note for the v5 port". Seven families regenerated
+> there — the five the drift changes (`embedding_status_tier2`,
+> `conversation_chunks_tier2`, `collapse_stale_chat_caches_tier2`,
+> `embedding_generate_jobs`, `embedding_remainder`) and the two neutrality
+> families (`maintenance_sweep_tier2`, `cold_chunk_reembed_tier2`). Families the
+> round did not touch keep their prior regen vintage. v4's tree is clean at
+> `083fdf68`, so oracles regenerate straight from `~/source/quilltap-server`.
+> `help/data-retention.md` rode along in `f7cc887b` and needs no v5 action (v5
+> syncs help docs from disk at runtime).
+
+Versions after the round: core **0.0.399**, harness **0.0.345**, host
+**0.0.49**; web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.

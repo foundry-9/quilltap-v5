@@ -789,13 +789,19 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // un-embedded interchange chunks — and re-enqueue a
             // CONVERSATION_RENDER for each. The handler re-chunks (preserving
             // existing embeddings) and re-enqueues the missing embeds, so both
-            // arms heal. This REPLACES the P4.6BL v5-only direct-embed repair,
+            // arms heal. STALE chats are excluded (P4.D25 / v4 a0243abd): the
+            // cache collapse cold-tiers quiet chats into exactly the state this
+            // scan reads as damage, so healing them here re-embedded the whole
+            // cold tier on every boot at real cost. This REPLACES the P4.6BL v5-only direct-embed repair,
             // which existed only because that handler was unported; the
             // coverage argument is in the reconcile's module doc. No-op on a
             // healthy instance; returns zeros (never fails the boot) when a
             // lazily-created table is absent.
             let reconcile =
-                quilltap_core::services::conversation_render_reconcile::reconcile_conversation_rendering(main);
+                quilltap_core::services::conversation_render_reconcile::reconcile_conversation_rendering(
+                    main,
+                    quilltap_core::clock::now_unix_ms(),
+                );
             if reconcile.enqueued > 0 || reconcile.failed > 0 {
                 tracing::info!(
                     target: "quilltap::boot",
@@ -803,6 +809,7 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     enqueued = reconcile.enqueued,
                     reused = reconcile.reused,
                     failed = reconcile.failed,
+                    skipped_stale = reconcile.skipped_stale,
                     "Conversation render reconciliation complete",
                 );
             }

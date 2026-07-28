@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Startup no longer re-embeds every conversation the housekeeping sweep put to
+sleep. Quiet chats are deliberately cold-tiered — their rendered text and search
+vectors are dropped and rebuilt when you next open them — but the startup repair
+pass read that as damage and rebuilt the whole cold tier on every launch, at
+real cost, only for the next sweep to clear it again. The repair now uses the
+same "has this gone quiet?" test the sweep does and leaves those chats alone;
+opening one still restores it. It also stops retrying chunks the embedder has
+already refused as permanently unembeddable.
+
 Embeddings refreshed by simply reading a quiet conversation now survive the
 next housekeeping sweep. Opening a chat that has gone cold re-embeds it so
 search works, but reading is not the same as taking a turn, so the chat stayed

@@ -214,12 +214,32 @@ fn chats_read_count_override(conn: &rusqlite::Connection, image_id: &str) -> Res
 /// timestamp is never stale ("unknown activity — never touch").
 ///
 /// Exported (crate-internal) as THE shared staleness gate for every stale-gated
-/// maintenance sweep (asset collapse, cache collapse, chunk cold-tiering) so they
-/// can never disagree on what "stale" means (v4 exports `isStale`).
+/// maintenance sweep (asset collapse, cache collapse, chunk cold-tiering) **AND
+/// for the startup render/embed reconcile**, so they can never disagree on what
+/// "stale" means (v4 exports `isStale`). The reconcile MUST use this gate:
+/// cold-tiering deliberately leaves stale chats with NULL `renderedMarkdown` and
+/// NULL chunk embeddings, and a reconcile that can't tell "cold-tiered" from
+/// "broken" re-embeds the entire cold tier on every boot just for the next sweep
+/// to clear it again (v4 `a0243abd`).
+///
+/// Reads only `id` and `updatedAt` off `chat`, which is v4's narrowing to
+/// `Pick<ChatMetadata, 'id' | 'updatedAt'>` — so a caller scanning with raw SQL
+/// can synthesize the two fields instead of hydrating a full chat row.
 pub(crate) fn is_stale(db: &Db, chat: &Value, cutoff_ms: i64) -> Result<bool, DbError> {
+    db.read_main(|c| is_stale_conn(c, chat, cutoff_ms))
+}
+
+/// [`is_stale`] against one borrowed connection — what the boot reconcile needs,
+/// since it already runs on the writer's main connection and cannot reach for
+/// the read pool's `&Db` from inside a write closure.
+pub(crate) fn is_stale_conn(
+    conn: &rusqlite::Connection,
+    chat: &Value,
+    cutoff_ms: i64,
+) -> Result<bool, DbError> {
     let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
     let cid = chat_id.to_string();
-    let last_played = db.read_main(|c| chats_messages_read::get_last_played_message_at(c, &cid))?;
+    let last_played = chats_messages_read::get_last_played_message_at(conn, &cid)?;
     let last_activity = last_played.or_else(|| {
         chat.get("updatedAt")
             .and_then(Value::as_str)

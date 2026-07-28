@@ -34,6 +34,14 @@
  *                             excluded (its EXISTS demands type='message' AND a
  *                             USER/ASSISTANT role).
  *       `healthy`             rendered + embedded chunk → neither arm.
+ *     …plus FOUR P4.D25 chats whose activity is INSIDE the retention window, so
+ *     the reconcile's new staleness gate lets them through while every chat
+ *     above is skipped as cold-tiered: a fresh arm-(A) chat (enqueued), a fresh
+ *     arm-(A) chat that already has a PENDING render (reused), a fresh chat
+ *     whose only un-embedded chunk is FAILED for the DEFAULT profile (excluded
+ *     from arm (B) entirely — and with no played messages, so it exercises the
+ *     gate's `chats.updatedAt` fallback), and its twin whose FAILED row names
+ *     the OTHER profile (still selected — the exclusion is per-profile).
  *   - FOUR conversation chunks (embedded / un-embedded / oversize / embedded).
  *   - THREE memories across two characters, two of them carrying an 8-dim
  *     embedding so `mismatched-dim` has rows to SKIP as well as rows to take.
@@ -100,6 +108,9 @@ interface ChatSeed {
   title: string;
   renderedMarkdown: string | null;
   chatType?: string;
+  /** P4.D25: the staleness gate's fallback when a chat has no played messages.
+   *  Defaults to the corpus `seedTimestamp` (which is stale by design). */
+  updatedAt?: string;
   participants: ParticipantSeed[];
   messages: MessageSeed[];
 }
@@ -319,7 +330,7 @@ async function main(): Promise<void> {
         })),
         tags: [],
       } as never,
-      { id: chat.id, createdAt: TS, updatedAt: TS } as never
+      { id: chat.id, createdAt: TS, updatedAt: chat.updatedAt ?? TS } as never
     );
     for (const m of chat.messages) {
       const event =
@@ -338,7 +349,7 @@ async function main(): Promise<void> {
   // `addMessage` bumps `updatedAt`; re-pin it so both sides read identical rows
   // (and so the render's `- Last Updated:` header line is deterministic).
   for (const chat of spec.chats) {
-    await repos.chats.update(chat.id, { updatedAt: TS } as never);
+    await repos.chats.update(chat.id, { updatedAt: chat.updatedAt ?? TS } as never);
   }
 
   for (const c of spec.conversationChunks) {
