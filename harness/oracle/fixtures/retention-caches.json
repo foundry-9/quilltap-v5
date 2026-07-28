@@ -12,8 +12,48 @@
   "staleMsgId": "bbbbbbb1-0000-4000-8000-000000000001",
   "staleMsg2Id": "bbbbbbb2-0000-4000-8000-000000000002",
   "activeMsgId": "bbbbbbb3-0000-4000-8000-000000000003",
-  "staleChunkEmbeddedId": "cc000001-0000-4000-8000-000000000001",
-  "staleChunkColdId": "cc000002-0000-4000-8000-000000000002",
-  "activeChunkId": "cc000003-0000-4000-8000-000000000003",
-  "embedding": [0.5, -0.25, 0.75, 0.125]
+  "embedding": [
+    0.5,
+    -0.25,
+    0.75,
+    0.125
+  ],
+  "cutoffIso": "2026-05-02T00:00:00.000Z",
+  "chunks": [
+    {
+      "id": "cc000001-0000-4000-8000-000000000001",
+      "chat": "stale",
+      "embedded": true,
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "comment": "Older than the staleness cutoff -> cold-tiered (embedding NULLed, updatedAt minted)."
+    },
+    {
+      "id": "cc000002-0000-4000-8000-000000000002",
+      "chat": "stale",
+      "embedded": false,
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "comment": "Already cold -> skipped by the `embedding IS NOT NULL` guard, updatedAt untouched."
+    },
+    {
+      "id": "cc000004-0000-4000-8000-000000000004",
+      "chat": "stale",
+      "embedded": true,
+      "updatedAt": "2026-05-02T00:00:00.000Z",
+      "comment": "P4.D25 boundary: stamped EXACTLY at the cutoff. `updatedAt < cutoff` is strict, so it SURVIVES."
+    },
+    {
+      "id": "cc000005-0000-4000-8000-000000000005",
+      "chat": "stale",
+      "embedded": true,
+      "updatedAt": "2026-05-20T00:00:00.000Z",
+      "comment": "P4.D25 warmth: re-embedded by a reopen INSIDE the retention window. The chat is still stale (reading never counts as played activity), but the vectors must SURVIVE — before f7cc887b this was one paid re-embed per read/sweep cycle."
+    },
+    {
+      "id": "cc000003-0000-4000-8000-000000000003",
+      "chat": "active",
+      "embedded": true,
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "comment": "On the ACTIVE chat -> never reached; survives regardless of age."
+    }
+  ]
 }

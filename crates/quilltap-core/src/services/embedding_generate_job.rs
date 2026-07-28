@@ -28,8 +28,12 @@
 //!     path uses. v4's handler predates the episodic anchors and was never
 //!     updated; the re-embed path therefore drops the anchor line, and v5
 //!     matches.
-//!   - **`markAsEmbedded`/`markAsFailed` never create a status row** — an
-//!     entity that was enqueued without one keeps having none.
+//!   - **`markAsEmbedded`/`markAsFailed` UPSERT** (v4 `a5d6cee5`, Bug 7 —
+//!     re-ported in P4.D25). They used to be find-then-update and returned
+//!     `null` silently when the triple had no row, which — once v4's
+//!     enqueue-time upserts went away — was *every* newly-minted entity, so no
+//!     outcome was ever recorded. Both now mint the row, which is why the
+//!     handler threads the job's `userId` down to every mark site.
 //!
 //! ## v4 side-effects that map to no-ops in v5
 //!
@@ -152,19 +156,23 @@ fn db_str(e: crate::db::DbError) -> String {
     format!("{e}")
 }
 
-/// `markAsFailed` through the writer (main partition). Returns the repo's
-/// found-a-row flag; a `false` mirrors v4's silent `null` (no row, no write).
+/// `markAsFailed` through the writer (main partition). Since v4 `a5d6cee5` the
+/// repo UPSERTS, so the job's `user_id` rides along to mint the row when the
+/// triple has none — v4 passes `job.userId` at all thirteen of its call sites,
+/// which v5 consolidates into this one.
 async fn mark_failed(
     db: &Db,
     entity_type: &'static str,
     entity_id: &str,
     profile_id: &str,
     error: &str,
+    user_id: &str,
 ) -> Result<bool, crate::db::DbError> {
-    let (eid, pid, msg) = (
+    let (eid, pid, msg, uid) = (
         entity_id.to_string(),
         profile_id.to_string(),
         error.to_string(),
+        user_id.to_string(),
     );
     db.write(move |ws| {
         EmbeddingStatusRepository::new(ws.main().connection()).mark_as_failed(
@@ -172,24 +180,32 @@ async fn mark_failed(
             &eid,
             &pid,
             &msg,
+            &uid,
         )
     })
     .await
 }
 
-/// `markAsEmbedded` through the writer (main partition).
+/// `markAsEmbedded` through the writer (main partition). Upserts — see
+/// [`mark_failed`] for why `user_id` is threaded.
 async fn mark_embedded(
     db: &Db,
     entity_type: &'static str,
     entity_id: &str,
     profile_id: &str,
+    user_id: &str,
 ) -> Result<bool, crate::db::DbError> {
-    let (eid, pid) = (entity_id.to_string(), profile_id.to_string());
+    let (eid, pid, uid) = (
+        entity_id.to_string(),
+        profile_id.to_string(),
+        user_id.to_string(),
+    );
     db.write(move |ws| {
         EmbeddingStatusRepository::new(ws.main().connection()).mark_as_embedded(
             entity_type,
             &eid,
             &pid,
+            &uid,
         )
     })
     .await
@@ -204,8 +220,9 @@ async fn catch_arm(
     entity_id: &str,
     profile_id: &str,
     message: String,
+    user_id: &str,
 ) -> Result<(), String> {
-    mark_failed(db, entity_type, entity_id, profile_id, &message)
+    mark_failed(db, entity_type, entity_id, profile_id, &message, user_id)
         .await
         .map_err(db_str)?;
     if is_permanent_embedding_error(&message) {
@@ -236,6 +253,7 @@ async fn guard_skip(
     entity_id: &str,
     profile_id: &str,
     text: &str,
+    user_id: &str,
 ) -> Result<Option<()>, String> {
     let Some(reason) = preflight_skip_reason(text) else {
         return Ok(None);
@@ -247,7 +265,7 @@ async fn guard_skip(
         reason = %reason,
         "[EmbeddingGenerate] Skipping deterministically unembeddable entity",
     );
-    mark_failed(db, entity_type, entity_id, profile_id, &reason)
+    mark_failed(db, entity_type, entity_id, profile_id, &reason, user_id)
         .await
         .map_err(db_str)?;
     Ok(Some(()))
@@ -274,9 +292,16 @@ async fn memory_branch<E: EmbeddingProvider>(
             memory_id = %payload.entity_id,
             "[EmbeddingGenerate] Memory not found",
         );
-        mark_failed(db, "MEMORY", &payload.entity_id, &pid, "Memory not found")
-            .await
-            .map_err(db_str)?;
+        mark_failed(
+            db,
+            "MEMORY",
+            &payload.entity_id,
+            &pid,
+            "Memory not found",
+            user_id,
+        )
+        .await
+        .map_err(db_str)?;
         return Ok(());
     };
 
@@ -299,7 +324,7 @@ async fn memory_branch<E: EmbeddingProvider>(
 
     match memory_try(db, embedding, user_id, payload, &pid, &character_id, &text).await {
         Ok(()) => Ok(()),
-        Err(msg) => catch_arm(db, "MEMORY", &payload.entity_id, &pid, msg).await,
+        Err(msg) => catch_arm(db, "MEMORY", &payload.entity_id, &pid, msg, user_id).await,
     }
 }
 
@@ -312,7 +337,7 @@ async fn memory_try<E: EmbeddingProvider>(
     character_id: &str,
     text: &str,
 ) -> Result<(), String> {
-    if guard_skip(db, "MEMORY", &payload.entity_id, profile_id, text)
+    if guard_skip(db, "MEMORY", &payload.entity_id, profile_id, text, user_id)
         .await?
         .is_some()
     {
@@ -371,7 +396,7 @@ async fn memory_try<E: EmbeddingProvider>(
     // v4 :182 `unloadStore(characterId)` — no-op in v5 (no cached store
     // manager; see the module doc).
 
-    mark_embedded(db, "MEMORY", &payload.entity_id, profile_id)
+    mark_embedded(db, "MEMORY", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
     tracing::info!(
@@ -416,7 +441,17 @@ async fn conversation_chunk_branch<E: EmbeddingProvider>(
 
     match conversation_chunk_try(db, embedding, user_id, payload, &pid, &chunk).await {
         Ok(()) => Ok(()),
-        Err(msg) => catch_arm(db, "CONVERSATION_CHUNK", &payload.entity_id, &pid, msg).await,
+        Err(msg) => {
+            catch_arm(
+                db,
+                "CONVERSATION_CHUNK",
+                &payload.entity_id,
+                &pid,
+                msg,
+                user_id,
+            )
+            .await
+        }
     }
 }
 
@@ -434,6 +469,7 @@ async fn conversation_chunk_try<E: EmbeddingProvider>(
         &payload.entity_id,
         profile_id,
         &chunk.content,
+        user_id,
     )
     .await?
     .is_some()
@@ -469,9 +505,15 @@ async fn conversation_chunk_try<E: EmbeddingProvider>(
         ));
     }
 
-    mark_embedded(db, "CONVERSATION_CHUNK", &payload.entity_id, profile_id)
-        .await
-        .map_err(db_str)?;
+    mark_embedded(
+        db,
+        "CONVERSATION_CHUNK",
+        &payload.entity_id,
+        profile_id,
+        user_id,
+    )
+    .await
+    .map_err(db_str)?;
     tracing::info!(
         target: "quilltap::jobs",
         chunk_id = %chunk.id,
@@ -510,6 +552,7 @@ async fn help_doc_branch<E: EmbeddingProvider>(
             &payload.entity_id,
             &pid,
             "Help doc not found",
+            user_id,
         )
         .await
         .map_err(db_str)?;
@@ -518,7 +561,7 @@ async fn help_doc_branch<E: EmbeddingProvider>(
 
     match help_doc_try(db, embedding, user_id, payload, &pid, &doc).await {
         Ok(()) => Ok(()),
-        Err(msg) => catch_arm(db, "HELP_DOC", &payload.entity_id, &pid, msg).await,
+        Err(msg) => catch_arm(db, "HELP_DOC", &payload.entity_id, &pid, msg, user_id).await,
     }
 }
 
@@ -531,9 +574,16 @@ async fn help_doc_try<E: EmbeddingProvider>(
     doc: &crate::db::help_docs::HelpDocRow,
 ) -> Result<(), String> {
     let text = format!("{}\n\n{}", doc.title, doc.content);
-    if guard_skip(db, "HELP_DOC", &payload.entity_id, profile_id, &text)
-        .await?
-        .is_some()
+    if guard_skip(
+        db,
+        "HELP_DOC",
+        &payload.entity_id,
+        profile_id,
+        &text,
+        user_id,
+    )
+    .await?
+    .is_some()
     {
         return Ok(());
     }
@@ -563,7 +613,7 @@ async fn help_doc_try<E: EmbeddingProvider>(
         ));
     }
 
-    mark_embedded(db, "HELP_DOC", &payload.entity_id, profile_id)
+    mark_embedded(db, "HELP_DOC", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
     tracing::info!(
@@ -605,6 +655,7 @@ async fn mount_chunk_branch<E: EmbeddingProvider>(
             &payload.entity_id,
             &pid,
             "Mount chunk not found",
+            user_id,
         )
         .await
         .map_err(db_str)?;
@@ -613,7 +664,7 @@ async fn mount_chunk_branch<E: EmbeddingProvider>(
 
     match mount_chunk_try(db, embedding, user_id, payload, &pid, &chunk).await {
         Ok(()) => Ok(()),
-        Err(msg) => catch_arm(db, "MOUNT_CHUNK", &payload.entity_id, &pid, msg).await,
+        Err(msg) => catch_arm(db, "MOUNT_CHUNK", &payload.entity_id, &pid, msg, user_id).await,
     }
 }
 
@@ -631,6 +682,7 @@ async fn mount_chunk_try<E: EmbeddingProvider>(
         &payload.entity_id,
         profile_id,
         &chunk.content,
+        user_id,
     )
     .await?
     .is_some()
@@ -674,7 +726,7 @@ async fn mount_chunk_try<E: EmbeddingProvider>(
     // v4 :446 `invalidateMountPoint(chunk.mountPointId)` — no-op in v5 (no
     // in-memory mount-chunk cache; see the module doc).
 
-    mark_embedded(db, "MOUNT_CHUNK", &payload.entity_id, profile_id)
+    mark_embedded(db, "MOUNT_CHUNK", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
     tracing::info!(

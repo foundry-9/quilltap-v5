@@ -13,8 +13,13 @@
  *     column (rawResponse / reasoningContent / reasoningSegments / renderedHtml /
  *     debugMemoryLogs); a SECOND played message with NONE of them set (the
  *     `IS NOT NULL` guard must skip it → messageRowsCleared stays 1); an EMBEDDED
- *     conversation-chunk and an already-COLD one (embedding NULL — the guard must
- *     skip it → chunkEmbeddingsCleared stays 1). `chats.updatedAt` is pinned to
+ *     conversation-chunk older than the cutoff and an already-COLD one (embedding
+ *     NULL — the guard must skip it); plus, since P4.D25 (v4 `f7cc887b`), TWO
+ *     WARM embedded chunks — one stamped EXACTLY at the retention cutoff, one
+ *     inside the window. `updatedAt < cutoff` is strict, so both survive and
+ *     chunkEmbeddingsCleared stays 1; before that fix all three went, which cost
+ *     one paid re-embed per read/sweep cycle on a chat the user merely reads.
+ *     `chats.updatedAt` is pinned to
  *     `seedTs` so the "collapse never bumps updatedAt" invariant is checkable.
  *   - `chat-active` (last played message 1 d before `nowIso` → NOT stale):
  *     identical shape (caches + a discardable-laden message + an embedded chunk),
@@ -49,9 +54,8 @@ interface Spec {
   staleMsgId: string;
   staleMsg2Id: string;
   activeMsgId: string;
-  staleChunkEmbeddedId: string;
-  staleChunkColdId: string;
-  activeChunkId: string;
+  cutoffIso: string;
+  chunks: Array<{ id: string; chat: 'stale' | 'active'; embedded: boolean; updatedAt: string }>;
   embedding: number[];
 }
 
@@ -138,22 +142,22 @@ async function main(): Promise<void> {
   await loadDiscardable(spec.activeMsgId);
 
   // --- conversation chunks --------------------------------------------------
-  const chunk = async (id: string, chatId: string, embedding: number[] | null) => {
+  // Each chunk carries its OWN `updatedAt`: since v4 f7cc887b the cache collapse
+  // only clears embeddings older than the staleness cutoff, so a row's age is
+  // the thing under test (see the per-chunk comments in the spec).
+  for (const c of spec.chunks) {
     await chunks.create(
       {
-        chatId,
+        chatId: c.chat === 'stale' ? spec.staleChatId : spec.activeChatId,
         interchangeIndex: 0,
-        content: `chunk ${id}`,
+        content: `chunk ${c.id}`,
         participantNames: [],
         messageIds: [],
-        embedding,
+        embedding: c.embedded ? spec.embedding : null,
       } as never,
-      { id, createdAt: spec.seedTs, updatedAt: spec.seedTs },
+      { id: c.id, createdAt: spec.seedTs, updatedAt: c.updatedAt },
     );
-  };
-  await chunk(spec.staleChunkEmbeddedId, spec.staleChatId, spec.embedding);
-  await chunk(spec.staleChunkColdId, spec.staleChatId, null);
-  await chunk(spec.activeChunkId, spec.activeChatId, spec.embedding);
+  }
 
   // --- set caches + pin chats.updatedAt/lastMessageAt (addMessage bumped them) --
   const dressChat = async (chatId: string, lastMessageAt: string) => {
@@ -168,7 +172,9 @@ async function main(): Promise<void> {
   await dressChat(spec.activeChatId, spec.activeMsgAt);
 
   await closeDatabase();
-  process.stderr.write(`built retention-caches fixture: ${out} (2 chats, 3 messages, 3 chunks)\n`);
+  process.stderr.write(
+    `built retention-caches fixture: ${out} (2 chats, 3 messages, ${spec.chunks.length} chunks)\n`,
+  );
   process.exit(0);
 }
 

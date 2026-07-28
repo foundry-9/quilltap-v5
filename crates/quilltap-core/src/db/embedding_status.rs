@@ -2,7 +2,8 @@
 //! `lib/database/repositories/embedding-status.repository.ts`.
 //!
 //! Scope: `create`, `update`, `delete`, and (P4.6BL) the mark helpers
-//! `markAsEmbedded`/`markAsFailed` the EMBEDDING_GENERATE handler writes through.
+//! `markAsEmbedded`/`markAsFailed` the EMBEDDING_GENERATE handler writes through
+//! — both UPSERTS since v4 `a5d6cee5` (P4.D25).
 //! The remaining custom helpers — `upsertByEntity`/`markAllPendingByProfileId`/
 //! the by-profile finders and deletes / `getStatsByProfileId` — stay out of
 //! scope. `embedding_status` tracks the embedding status of entities (memories,
@@ -104,14 +105,31 @@ impl<'c> EmbeddingStatusRepository<'c> {
     /// plain `String`; `embedded_at`/`error` bind `Option<String>` (NULL when
     /// `None`).
     pub fn create(&self, data: &EsCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        // v4 reads the clock ONCE per create: `createdAt = options?.createdAt ||
+        // now`, `updatedAt = now`.
         let now = clock::now_iso();
+        self.insert(data, &opts.id, &opts.created_at, &now)
+    }
+
+    /// The raw INSERT behind [`Self::create`] and the mark* create arms, with
+    /// both timestamps supplied. Split out so the mark* arms — which reach v4's
+    /// `create` with NO `CreateOptions`, and therefore land `createdAt === now
+    /// === updatedAt` from a SINGLE clock read — can reproduce that exactly
+    /// instead of reading the clock twice.
+    fn insert(
+        &self,
+        data: &EsCreate,
+        id: &str,
+        created_at: &str,
+        updated_at: &str,
+    ) -> Result<(), DbError> {
         self.conn.execute(
             "INSERT INTO embedding_status \
                (id, userId, entityType, entityId, profileId, status, embeddedAt, \
                 error, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
-                opts.id,
+                id,
                 data.user_id,
                 data.entity_type,
                 data.entity_id,
@@ -119,8 +137,8 @@ impl<'c> EmbeddingStatusRepository<'c> {
                 data.status,
                 data.embedded_at,
                 data.error,
-                opts.created_at,
-                now,
+                created_at,
+                updated_at,
             ],
         )?;
         Ok(())
@@ -217,23 +235,53 @@ impl<'c> EmbeddingStatusRepository<'c> {
 
     /// v4 `markAsEmbedded` — flip the entity's status row to `EMBEDDED`, stamp
     /// `embeddedAt`, and CLEAR `error` (v4 sets `error: null` explicitly).
-    /// Returns `Ok(false)` when no status row exists for the triple: v4 returns
-    /// `null` **without creating one** — the row is minted at enqueue time by the
-    /// callers that track status, and a marker never invents it.
     ///
-    /// Two clock reads, in v4's order: `embeddedAt` is read when the patch is
-    /// built (`this.getCurrentTimestamp()` in `markAsEmbedded`), then `update`
-    /// mints its own `now` for `updatedAt`.
+    /// **UPSERTS** (v4 `a5d6cee5`, Bug 7): when no row exists for the
+    /// (entityType, entityId, profileId) triple it CREATES one. The old
+    /// find-then-update shape returned `null` silently — and once the
+    /// enqueue-time upsert paths left v4 (`scheduleEmbedding`'s removal, the
+    /// reindex batch-insert refactor) that was *every* newly-minted entity, so
+    /// EMBEDDED/FAILED outcomes were simply lost. `user_id` is required because
+    /// the create arm has to mint a row; the EMBEDDING_GENERATE handler passes
+    /// the job's `userId`.
+    ///
+    /// Clock reads, in v4's order. **Update arm:** `embeddedAt` is read when the
+    /// patch is built (`this.getCurrentTimestamp()` in `markAsEmbedded`), then
+    /// `update` mints its own `now` for `updatedAt`. **Create arm:** the same
+    /// `embeddedAt` read happens first, then [`Self::create`] mints `now` for
+    /// BOTH `createdAt` (no `CreateOptions`, so `options?.createdAt || now`
+    /// falls through) and `updatedAt`.
+    ///
+    /// Returns whether a row was written (always `true` in practice — the create
+    /// arm cannot miss).
     pub fn mark_as_embedded(
         &self,
         entity_type: &str,
         entity_id: &str,
         profile_id: &str,
+        user_id: &str,
     ) -> Result<bool, DbError> {
-        let Some(id) = self.find_id_by_entity(entity_type, entity_id, profile_id)? else {
-            return Ok(false);
-        };
         let embedded_at = clock::now_iso();
+        let Some(id) = self.find_id_by_entity(entity_type, entity_id, profile_id)? else {
+            // v4 logs `logger.debug('Creating embedding status row on
+            // markAsEmbedded (no existing row)')` here.
+            let now = clock::now_iso();
+            self.insert(
+                &EsCreate {
+                    user_id: user_id.to_string(),
+                    entity_type: entity_type.to_string(),
+                    entity_id: entity_id.to_string(),
+                    profile_id: profile_id.to_string(),
+                    status: "EMBEDDED".to_string(),
+                    embedded_at: Some(embedded_at),
+                    error: None,
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                &now,
+                &now,
+            )?;
+            return Ok(true);
+        };
         let updated_at = clock::now_iso();
         let affected = self.conn.execute(
             "UPDATE embedding_status \
@@ -245,18 +293,41 @@ impl<'c> EmbeddingStatusRepository<'c> {
     }
 
     /// v4 `markAsFailed` — flip the entity's status row to `FAILED` and record
-    /// the error message. `embeddedAt` is deliberately untouched (v4's patch
-    /// names only `status` + `error`). Returns `Ok(false)` when no status row
-    /// exists for the triple (v4 returns `null` without creating one).
+    /// the error message. On the UPDATE arm `embeddedAt` is deliberately
+    /// untouched (v4's patch names only `status` + `error`).
+    ///
+    /// **UPSERTS** for the same reason as [`Self::mark_as_embedded`] (v4
+    /// `a5d6cee5`, Bug 7): a permanent embedding failure must land a FAILED row
+    /// even when no PENDING row was ever created, or the startup reconcile
+    /// re-attempts the same unembeddable entity on every boot. The create arm
+    /// writes `embeddedAt: null` explicitly.
     pub fn mark_as_failed(
         &self,
         entity_type: &str,
         entity_id: &str,
         profile_id: &str,
         error: &str,
+        user_id: &str,
     ) -> Result<bool, DbError> {
         let Some(id) = self.find_id_by_entity(entity_type, entity_id, profile_id)? else {
-            return Ok(false);
+            // v4 logs `logger.debug('Creating embedding status row on
+            // markAsFailed (no existing row)')` here.
+            let now = clock::now_iso();
+            self.insert(
+                &EsCreate {
+                    user_id: user_id.to_string(),
+                    entity_type: entity_type.to_string(),
+                    entity_id: entity_id.to_string(),
+                    profile_id: profile_id.to_string(),
+                    status: "FAILED".to_string(),
+                    embedded_at: None,
+                    error: Some(error.to_string()),
+                },
+                &uuid::Uuid::new_v4().to_string(),
+                &now,
+                &now,
+            )?;
+            return Ok(true);
         };
         let updated_at = clock::now_iso();
         let affected = self.conn.execute(

@@ -17,8 +17,17 @@
 //! transition), then diffs EIGHT tables — `background_jobs`,
 //! `embedding_status`, `memories`, `vector_entries`, `vector_indices`,
 //! `conversation_chunks`, `help_docs` (main) and `doc_mount_chunks` (mount) —
-//! with minted timestamps placeholder-normalized and everything else EXACT
-//! (this family mints no UUIDs; every id is fixture data).
+//! with minted timestamps placeholder-normalized and everything else EXACT.
+//!
+//! ⚠️ P4.D25 — `embedding_status` is now the one table that mints. Since v4
+//! `a5d6cee5`, `markAsEmbedded`/`markAsFailed` UPSERT, so the corpus's
+//! `mc-happy-no-status-row` job (whose entity was deliberately seeded WITHOUT a
+//! status row) mints a fresh row with a fresh UUID. That table is therefore
+//! keyed by the natural (entityType, entityId, profileId) triple, its minted id
+//! blanked to `<minted>` and that row's own timestamps placeholdered; every
+//! corpus-pinned id and timestamp still compares exactly. A shape assertion
+//! pins that exactly one such row exists, so a port that reverted to the old
+//! silent no-op cannot pass by dumping one row fewer unnoticed.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; the /tmp
 //! mirror dodges jest's `/.claude/` testPathIgnorePatterns):
@@ -100,27 +109,74 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-/// (table, order_by, main?, timestamp columns to placeholder). This family
-/// mints NO UUIDs — every id is fixture data — so normalization is
-/// timestamps-only; `lastError` / `error` strings, statuses, attempts and
+/// (table, order_by, main?, timestamp columns to placeholder, natural sort key).
+/// Almost nothing here mints a UUID — every id is fixture data, so normalization
+/// is timestamps-only and `lastError` / `error` strings, statuses, attempts and
 /// payloads all compare EXACT.
-const TABLES: &[(&str, &str, bool, &[&str])] = &[
+///
+/// The ONE exception is `embedding_status` since P4.D25 (v4 `a5d6cee5`):
+/// `markAsEmbedded`/`markAsFailed` now UPSERT, so a job whose entity was never
+/// given a status row (the corpus's `mc-happy-no-status-row`) mints one with a
+/// fresh UUID. Those rows are therefore keyed by the natural
+/// (entityType, entityId, profileId) triple and their minted id blanked; every
+/// id the corpus pinned still compares exactly, so "the update arm reused the
+/// existing row" stays visible.
+const TABLES: &[(&str, &str, bool, &[&str], &[&str])] = &[
     (
         "background_jobs",
         "id",
         true,
         &["scheduledAt", "startedAt", "completedAt", "updatedAt"],
+        &[],
     ),
-    ("embedding_status", "id", true, &["embeddedAt", "updatedAt"]),
-    ("memories", "id", true, &["updatedAt"]),
-    ("vector_entries", "id", true, &["createdAt"]),
-    ("vector_indices", "id", true, &["createdAt", "updatedAt"]),
-    ("conversation_chunks", "id", true, &["updatedAt"]),
-    ("help_docs", "id", true, &["updatedAt"]),
-    ("doc_mount_chunks", "id", false, &["updatedAt"]),
+    (
+        "embedding_status",
+        "id",
+        true,
+        &["embeddedAt", "updatedAt"],
+        &["entityType", "entityId", "profileId"],
+    ),
+    ("memories", "id", true, &["updatedAt"], &[]),
+    ("vector_entries", "id", true, &["createdAt"], &[]),
+    (
+        "vector_indices",
+        "id",
+        true,
+        &["createdAt", "updatedAt"],
+        &[],
+    ),
+    ("conversation_chunks", "id", true, &["updatedAt"], &[]),
+    ("help_docs", "id", true, &["updatedAt"], &[]),
+    ("doc_mount_chunks", "id", false, &["updatedAt"], &[]),
 ];
 
-fn normalize_table(dump: &mut Value, table: &str, ts_columns: &[&str]) {
+/// Every UUID-shaped string anywhere in the committed corpus — the ids BOTH
+/// sides pinned, so anything else in a dump was minted at run time.
+fn pinned_ids(spec: &Value) -> BTreeSet<String> {
+    fn walk(v: &Value, out: &mut BTreeSet<String>) {
+        match v {
+            Value::String(s) => {
+                if s.len() == 36 && s.as_bytes()[14] == b'4' && s.matches('-').count() == 4 {
+                    out.insert(s.clone());
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            Value::Object(o) => o.values().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(spec, &mut out);
+    out
+}
+
+fn normalize_table(
+    dump: &mut Value,
+    table: &str,
+    ts_columns: &[&str],
+    natural_sort: &[&str],
+    pinned: &BTreeSet<String>,
+) {
     let rows = dump
         .get_mut("rows")
         .and_then(Value::as_array_mut)
@@ -134,6 +190,34 @@ fn normalize_table(dump: &mut Value, table: &str, ts_columns: &[&str]) {
                 obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
             }
         }
+        if natural_sort.is_empty() {
+            continue;
+        }
+        let minted = match obj.get("id") {
+            Some(Value::String(s)) => !pinned.contains(s),
+            _ => false,
+        };
+        if minted {
+            obj.insert("id".to_string(), Value::String("<minted>".to_string()));
+            // A minted row's own timestamps are minted too (the mark* create arm
+            // reaches v4's `create` with no CreateOptions, so `createdAt` falls
+            // through to `now`). Pinned rows keep theirs EXACT.
+            let cols: Vec<String> = obj.keys().cloned().collect();
+            for col in cols {
+                if col.ends_with("At") && obj.get(&col).map(|v| !v.is_null()).unwrap_or(false) {
+                    obj.insert(col, Value::String("<ts>".to_string()));
+                }
+            }
+        }
+    }
+    if !natural_sort.is_empty() {
+        rows.sort_by_key(|r| {
+            natural_sort
+                .iter()
+                .map(|c| r.get(*c).and_then(Value::as_str).unwrap_or("").to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        });
     }
 }
 
@@ -178,10 +262,11 @@ async fn embedding_generate_jobs_match_oracle() {
         }
     };
 
-    let spec: Spec = serde_json::from_str(
-        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
-    )
-    .expect("parse spec");
+    let spec_text =
+        std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}"));
+    let spec_json: Value = serde_json::from_str(&spec_text).expect("parse spec json");
+    let pinned = pinned_ids(&spec_json);
+    let spec: Spec = serde_json::from_str(&spec_text).expect("parse spec");
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
@@ -425,7 +510,7 @@ async fn embedding_generate_jobs_match_oracle() {
     // Dump + diff the eight tables (timestamps placeholdered, all else exact).
     let mut got: Vec<Value> = TABLES
         .iter()
-        .map(|(table, order_by, main, _)| {
+        .map(|(table, order_by, main, _, _)| {
             if *main {
                 db.read_main(|conn| dump_table_json_conn(conn, table, order_by))
             } else {
@@ -440,7 +525,7 @@ async fn embedding_generate_jobs_match_oracle() {
 
     let mut want: Vec<Value> = TABLES
         .iter()
-        .map(|(table, _, _, _)| {
+        .map(|(table, _, _, _, _)| {
             let mut v = oracle_tables
                 .remove(*table)
                 .unwrap_or_else(|| panic!("oracle missing table {table}"));
@@ -449,12 +534,29 @@ async fn embedding_generate_jobs_match_oracle() {
         })
         .collect();
 
-    for (i, (table, _, _, ts_columns)) in TABLES.iter().enumerate() {
-        normalize_table(&mut got[i], table, ts_columns);
-        normalize_table(&mut want[i], table, ts_columns);
+    for (i, (table, _, _, ts_columns, natural_sort)) in TABLES.iter().enumerate() {
+        normalize_table(&mut got[i], table, ts_columns, natural_sort, &pinned);
+        normalize_table(&mut want[i], table, ts_columns, natural_sort, &pinned);
     }
 
-    for (i, (table, _, _, _)) in TABLES.iter().enumerate() {
+    // Corpus-shape guard (P4.D25): the `mc-happy-no-status-row` job's entity has
+    // no seeded status row, so the upserting markAsEmbedded MUST mint one. A
+    // port that kept the old silent no-op would otherwise just dump one row
+    // fewer, and only the row-count assert would notice.
+    let minted_status = want[1]["rows"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter(|r| r.get("id").and_then(Value::as_str) == Some("<minted>"))
+                .count()
+        })
+        .unwrap_or(0);
+    assert_eq!(
+        minted_status, 1,
+        "the corpus stopped exercising the mark* create arm — regenerate the oracle"
+    );
+
+    for (i, (table, _, _, _, _)) in TABLES.iter().enumerate() {
         assert_eq!(
             got[i]["columns"], want[i]["columns"],
             "{table} column set / order"

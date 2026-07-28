@@ -41516,3 +41516,102 @@ order headers and phase-4.md): embedding-profiles management routes
 0.0.342, host 0.0.48, web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5,
 SPA 0.5.319 (core and the SPA each +1 at the unification's review-fix
 commit).
+
+---
+
+## Lane record — P4.D25 unit 1: the embedding-status mark* upsert (v4 `a5d6cee5`, Bug 7)
+
+**Landed** (branch `claude/p4-d25-embedding-warmth-drift-00bc87`). v4 baseline
+`083fdf68`, drift-checked clean at lane start (`git log 083fdf68..HEAD` empty,
+tree clean).
+
+`db/embedding_status.rs`'s `mark_as_embedded` / `mark_as_failed` were
+find-then-update, returning `Ok(false)` when the (entityType, entityId,
+profileId) triple had no row — with a doc comment that spelled the old contract
+out as deliberate ("a marker never invents it"). Since v4 removed its
+enqueue-time upserts that arm was reached by *every* newly-minted entity, so
+EMBEDDED/FAILED outcomes were silently discarded. Both now UPSERT and take a
+required `user_id`; the doc carries v4's new *why*.
+
+Two fidelity details the port had to get right, neither visible from the diff
+alone:
+
+- **One clock read on the create arm.** v4's `create` reads
+  `getCurrentTimestamp()` ONCE and uses it for both `createdAt` (via
+  `options?.createdAt || now`) and `updatedAt`; the mark* path passes no
+  `CreateOptions`, so a faithful create lands `createdAt === updatedAt`
+  exactly. v5's `create` minted `updatedAt` internally, so a naive call would
+  have read the clock twice and could land them a millisecond apart. `create`
+  now delegates to a private `insert(data, id, created_at, updated_at)` that
+  the mark arms call with a single `now`. The regenerated oracle confirms the
+  shape: all three created rows carry `createdAt == updatedAt == embeddedAt`.
+- **`embeddedAt` is read BEFORE the create's `now`** (v4 evaluates it at the
+  call site), and `markAsFailed`'s create arm writes `embeddedAt: null`
+  explicitly while its UPDATE arm leaves `embeddedAt` alone.
+
+`services/embedding_generate_job.rs` threads the job's `user_id` to every mark
+site. v4 passes `job.userId` at thirteen call sites; v5 consolidates them into
+`mark_failed` / `mark_embedded` plus the shared `catch_arm` and `guard_skip`, so
+the thread is four signatures wide, not thirteen. All four v4 arms
+(oversize/empty guard, "<X> not found", the success mark, the catch block) go
+through them — verified by grep, not by assumption.
+
+**Differential — `embedding_status_tier2_equivalence` (`QT_ORACLE_EMBEDDING_STATUS`).**
+The family covered create/update/delete only, so mark* had NO coverage at all.
+Added five ops: both UPDATE arms (markAsEmbedded clearing `error`; markAsFailed
+NOT touching `embeddedAt`), both CREATE arms, and different-profile masking (an
+entity with a row under profile f1, marked under f2, must create a second row
+and leave the first alone). 4 rows → 6, three of them minted.
+
+The create arm mints `id`, `createdAt` and `embeddedAt`, which the family had
+never had to normalize. Rather than placeholder those columns wholesale — which
+would have erased the two preservation assertions — the harness placeholders an
+`id`/`createdAt`/`embeddedAt` cell **only when its value is absent from the
+committed spec**, and sorts by the natural (entityType, entityId, profileId)
+triple instead of by id. So row `1a…01`'s pinned `2026-03-01` `embeddedAt`
+still compares exactly, which is what makes "markAsFailed left it alone" a real
+assertion.
+
+**Sensitivity (the order's D24 requirement).** First run was green, so it was
+proven by mutation, twice: (a) reverting both create arms to the pre-drift
+silent no-op → RED at the corpus-shape assertion (`mark_as_embedded wrote
+nothing for e5…e5`); (b) a subtler slip — markAsFailed's UPDATE arm also
+stamping `embeddedAt` → RED on the row diff. Restored → green.
+
+**Differential — `embedding_generate_jobs_equivalence` (`QT_ORACLE_EG`).**
+This one produced a genuine red→green fingerprint on the UNCHANGED corpus: it
+already carried a job named `mc-happy-no-status-row`, whose mount chunk was
+deliberately seeded without a status row. The oracle regenerated at `083fdf68`
+now dumps **13** `embedding_status` rows where the committed one had 12 — the
+thirteenth minted by the upsert. `embedding_status` is therefore the one table
+in this family that mints: it is now keyed by the natural triple, its minted id
+blanked, and that row's own timestamps placeholdered (every pinned id and
+timestamp still exact). A shape assertion pins that exactly one such row
+exists, so a port that reverted to the silent no-op cannot pass by quietly
+dumping one row fewer. Mutation-checked: reverting the create arm → RED
+(`embedding_status rows diverge at index 10`).
+
+Fixtures: none moved. The EG oracle was regenerated against the COMMITTED
+`embedding-generate-{main,mount}.db` (the committed-fixture trap — no rebuild,
+so no fresh UUIDs); the embedding-status fixture is `/tmp`-built from its
+builder, which is unchanged.
+
+Regen recipes (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`, from
+`~/source/quilltap-server`, v4 clean at `083fdf68`):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-es-fixture.db npx tsx $V5/harness/oracle/fixtures/build-embedding-status-fixture.ts
+QT_FIXTURE_ES=/tmp/qt-es-fixture.db  npx tsx $V5/harness/oracle/cases/embedding-status-tier2.ts > /tmp/oracle-es.ndjson
+
+mkdir -p /tmp/qt-eg-oracle/cases /tmp/qt-eg-oracle/fixtures
+cp $V5/harness/oracle/cases/embedding-generate-jobs.test.ts /tmp/qt-eg-oracle/cases/
+cp $V5/harness/oracle/fixtures/embedding-generate-jobs.json /tmp/qt-eg-oracle/fixtures/
+TZ=UTC QT_FIXTURE_EG_MAIN=$V5/crates/quilltap-web/tests/fixtures/embedding-generate-main.db \
+QT_FIXTURE_EG_MOUNT=$V5/crates/quilltap-web/tests/fixtures/embedding-generate-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-embedding-generate.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots /tmp/qt-eg-oracle/cases -- embedding-generate-jobs
+```
+
+Gate at this commit: `cargo fmt --all --check`, `cargo clippy --workspace
+--all-targets -D warnings`, `cargo test --workspace --no-fail-fast` → 399 test
+binaries, zero failures, plus both families green by name.

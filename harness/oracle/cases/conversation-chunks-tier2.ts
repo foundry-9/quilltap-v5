@@ -19,7 +19,14 @@
  *      the embedding cell is a raw Buffer -> canonValue lowercase hex, or null)
  *      and emit it as one NDJSON row.
  *
- * NORMALIZATION SPEC: none. Every id and timestamp is pinned on both sides.
+ * NORMALIZATION SPEC (P4.D25): a row cold-tiered by `clearEmbeddingsForChat`
+ * carries a MINTED `updatedAt` (v4 stamps `new Date()`; the Rust port injects
+ * its own), so the harness placeholders any timestamp not literally present in
+ * the committed spec. Every other id and timestamp is pinned on both sides.
+ *
+ * Emits TWO NDJSON lines: `{kind:'clearResults', cleared:[...]}` — the row
+ * counts each `clearEmbeddings` op returned, which is the direct observable of
+ * v4 `f7cc887b`'s new `olderThan` age guard — then `{kind:'dump', ...}`.
  *
  * Run from the v4 server checkout under Node 24 (matches v4's `.nvmrc`), AFTER
  * building the fixture:
@@ -43,10 +50,13 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  kind: 'create' | 'update' | 'delete' | 'clearEmbeddings';
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
+  /** clearEmbeddings only. `olderThan: null` means "call it with no cutoff". */
+  chatId?: string;
+  olderThan?: string | null;
 }
 
 interface Spec {
@@ -91,11 +101,20 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ConversationChunksRepository();
 
+  const clearResults: number[] = [];
   for (const op of spec.ops) {
     if (op.kind === 'create') {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'clearEmbeddings') {
+      // `undefined` (not null) is what turns the age guard OFF in v4.
+      clearResults.push(
+        await repo.clearEmbeddingsForChat(
+          op.chatId as string,
+          op.olderThan === null ? undefined : op.olderThan
+        )
+      );
     } else {
       await repo.delete(op.id as string);
     }
@@ -123,7 +142,10 @@ async function main(): Promise<void> {
   });
 
   process.stdout.write(
-    JSON.stringify({ case: 'conversation-chunks-tier2', ...dump }) + '\n'
+    JSON.stringify({ kind: 'clearResults', cleared: clearResults }) + '\n'
+  );
+  process.stdout.write(
+    JSON.stringify({ kind: 'dump', case: 'conversation-chunks-tier2', ...dump }) + '\n'
   );
   process.exit(0);
 }

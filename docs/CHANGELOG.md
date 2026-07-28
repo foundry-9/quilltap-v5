@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Embedding outcomes are now recorded even for entities that never got a tracking
+row. Marking an entity embedded or failed used to update an existing row and
+quietly do nothing when there was none — which, since nothing creates those rows
+up front any more, was every newly created memory, chunk and document. Both
+markers now create the row they need, so a permanent failure is remembered
+instead of being retried on the next startup.
+
 Planned the next porting round: a work order for catching up to the old app's
 embedding-warmth fixes. The old app stopped its startup repair pass and its
 maintenance sweep from fighting each other — the repair no longer re-embeds

@@ -32,7 +32,17 @@
     "and is safe to commit.",
     "",
     "DETERMINISM: every id and timestamp is pinned, so both sides produce",
-    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+    "byte-identical post-op state and the canonical dump needs ZERO normalization.",
+    "",
+    "P4.D25 (v4 `f7cc887b`, Bug 6 follow-up): `clearEmbeddingsForChat` gained an",
+    "optional `olderThan` ISO cutoff (`AND updatedAt < ?`), so an embedding minted",
+    "by the reopen path survives the maintenance sweep for a full retention window.",
+    "Three `clearEmbeddings` ops close the arms: the guard ON (one row older than",
+    "the cutoff cleared; the row stamped EXACTLY at the cutoff and the row after it",
+    "both spared — `<` is strict), a second identical pass (0 rows, idempotent),",
+    "and the guard OFF (no `olderThan` — every embedded row on the chat goes).",
+    "A cleared row's `updatedAt` is MINTED (v4 stamps `new Date()`; v5 injects its",
+    "own), so the harness placeholders any timestamp not literally in this spec."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -41,9 +51,20 @@
       "chatId": "c0000000-0000-4000-8000-00000000aaaa",
       "interchangeIndex": 0,
       "content": "Aurora greets the salon at dawn.",
-      "participantNames": ["Aurora", "Prospero"],
-      "messageIds": ["m1000000-0000-4000-8000-000000000001", "m1000000-0000-4000-8000-000000000002"],
-      "embedding": [0.5, -0.25, 0.75, 0.125],
+      "participantNames": [
+        "Aurora",
+        "Prospero"
+      ],
+      "messageIds": [
+        "m1000000-0000-4000-8000-000000000001",
+        "m1000000-0000-4000-8000-000000000002"
+      ],
+      "embedding": [
+        0.5,
+        -0.25,
+        0.75,
+        0.125
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
@@ -67,9 +88,19 @@
         "chatId": "c0000000-0000-4000-8000-00000000aaaa",
         "interchangeIndex": 2,
         "content": "Pascal tallies the ledger entries.",
-        "participantNames": ["Pascal", "Carina"],
-        "messageIds": ["m1000000-0000-4000-8000-000000000003"],
-        "embedding": [0.5, -0.25, 0.75, 0.125]
+        "participantNames": [
+          "Pascal",
+          "Carina"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-000000000003"
+        ],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
       },
       "options": {
         "id": "3c000000-0000-4000-8000-000000000003",
@@ -101,7 +132,11 @@
       "data": {
         "content": "Aurora greets the salon at dawn, rewritten.",
         "interchangeIndex": 5,
-        "participantNames": ["Aurora", "Prospero", "Pascal"],
+        "participantNames": [
+          "Aurora",
+          "Prospero",
+          "Pascal"
+        ],
         "updatedAt": "2026-03-01T00:00:00.000Z"
       }
     },
@@ -111,7 +146,9 @@
       "id": "2b000000-0000-4000-8000-000000000002",
       "data": {
         "content": "Prospero replies with a grander flourish.",
-        "messageIds": ["m1000000-0000-4000-8000-000000000009"],
+        "messageIds": [
+          "m1000000-0000-4000-8000-000000000009"
+        ],
         "updatedAt": "2026-03-02T00:00:00.000Z"
       }
     },
@@ -119,6 +156,96 @@
       "kind": "delete",
       "comment": "Delete the NULL-embedding `Carina` chunk created above.",
       "id": "4d000000-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D25 clear-guard corpus: embedded chunk on chat dddd stamped 2026-04-01T00:00:00.000Z.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000dddd",
+        "interchangeIndex": 0,
+        "content": "The lamplighter's first round.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "5e000000-0000-4000-8000-000000000005",
+        "createdAt": "2026-04-01T00:00:00.000Z",
+        "updatedAt": "2026-04-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D25 clear-guard corpus: embedded chunk on chat dddd stamped 2026-04-15T00:00:00.000Z.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000dddd",
+        "interchangeIndex": 1,
+        "content": "The lamplighter's second round.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "6f000000-0000-4000-8000-000000000006",
+        "createdAt": "2026-04-01T00:00:00.000Z",
+        "updatedAt": "2026-04-15T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D25 clear-guard corpus: embedded chunk on chat dddd stamped 2026-05-01T00:00:00.000Z.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000dddd",
+        "interchangeIndex": 2,
+        "content": "The lamplighter's third round.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [],
+        "embedding": [
+          0.5,
+          -0.25,
+          0.75,
+          0.125
+        ]
+      },
+      "options": {
+        "id": "7a000000-0000-4000-8000-000000000007",
+        "createdAt": "2026-04-01T00:00:00.000Z",
+        "updatedAt": "2026-05-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "clearEmbeddings",
+      "comment": "Guard ON at 2026-04-15: only the 2026-04-01 row is strictly older, so exactly ONE row is cold-tiered. The row stamped EXACTLY at the cutoff is SPARED (`updatedAt < ?`), and so is the 2026-05-01 row — that is the reopen warmth the sweep must not discard.",
+      "chatId": "c0000000-0000-4000-8000-00000000dddd",
+      "olderThan": "2026-04-15T00:00:00.000Z"
+    },
+    {
+      "kind": "clearEmbeddings",
+      "comment": "The identical pass again: 0 rows. The `embedding IS NOT NULL` guard makes it idempotent AND the age guard still spares the two warm rows.",
+      "chatId": "c0000000-0000-4000-8000-00000000dddd",
+      "olderThan": "2026-04-15T00:00:00.000Z"
+    },
+    {
+      "kind": "clearEmbeddings",
+      "comment": "Guard OFF (no olderThan) on chat aaaa: both embedded rows go regardless of age; the already-NULL row is skipped by the IS NOT NULL guard, so the count is 2, not 3.",
+      "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+      "olderThan": null
     }
   ]
 }

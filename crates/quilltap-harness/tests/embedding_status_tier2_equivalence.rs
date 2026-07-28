@@ -2,9 +2,19 @@
 //!
 //! Structural DB diff. Both sides start from the SAME seed fixture (built by
 //! harness/oracle/fixtures/build-embedding-status-fixture.ts), run the SAME
-//! create / update / delete op sequence from the committed spec, dump the
-//! `embedding_status` table canonically (sorted by id), and assert the post-op
-//! state is identical.
+//! create / update / delete / markEmbedded / markFailed op sequence from the
+//! committed spec, dump the `embedding_status` table canonically, and assert the
+//! post-op state is identical.
+//!
+//! ⚠️ P4.D25 — the mark* CREATE arm mints. Since v4 `a5d6cee5`,
+//! `markAsEmbedded`/`markAsFailed` UPSERT, and the create path reaches v4's
+//! `create` with NO `CreateOptions`, so `id` and `createdAt` (and, for
+//! markAsEmbedded, `embeddedAt`) are all minted. Rows are therefore sorted by
+//! the natural key (entityType, entityId, profileId) rather than by id, and an
+//! `id`/`createdAt`/`embeddedAt` cell is placeholdered ONLY when its value does
+//! not appear literally in the committed spec — so every pinned value still
+//! compares exactly. That is what keeps "markAsFailed left `embeddedAt` alone"
+//! and "the other profile's row was not touched" real assertions.
 //!
 //! ⚠️ MINTED `updatedAt` — single-column placeholder normalization. Like
 //! `tfidf_vocabulary` (and unlike `folders`/`tags`/`image_profiles`, which pin
@@ -33,6 +43,7 @@
 //!   QT_FIXTURE_EMBEDDING_STATUS=/tmp/qt-es-fixture.db \
 //!     cargo test -p quilltap-harness --test embedding_status_tier2_equivalence
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::embedding_status::{CreateOptions, EsCreate, EsUpdate};
@@ -60,6 +71,31 @@ enum Op {
     Update { id: String, data: UpdateData },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D25 — v4's upserting `markAsEmbedded` (both arms + profile masking).
+    #[serde(rename = "markEmbedded")]
+    MarkEmbedded {
+        #[serde(rename = "entityType")]
+        entity_type: String,
+        #[serde(rename = "entityId")]
+        entity_id: String,
+        #[serde(rename = "profileId")]
+        profile_id: String,
+        #[serde(rename = "userId")]
+        user_id: String,
+    },
+    /// P4.D25 — v4's upserting `markAsFailed`.
+    #[serde(rename = "markFailed")]
+    MarkFailed {
+        #[serde(rename = "entityType")]
+        entity_type: String,
+        #[serde(rename = "entityId")]
+        entity_id: String,
+        #[serde(rename = "profileId")]
+        profile_id: String,
+        error: String,
+        #[serde(rename = "userId")]
+        user_id: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -107,18 +143,48 @@ struct UpdateData {
     error: Option<String>,
 }
 
-/// The minted (nondeterministic) column — placeholdered on both sides.
+/// Always minted by the repo's override, on every write — placeholdered
+/// unconditionally on both sides.
 const TS_COLUMNS: &[&str] = &["updatedAt"];
+
+/// Minted only on the mark* CREATE arm (v4's `create` falls through to
+/// `options?.id || generateId()` / `options?.createdAt || now`, and
+/// `markAsEmbedded` stamps a fresh `embeddedAt`). These are placeholdered ONLY
+/// when the value is absent from the committed spec — so every pinned id and
+/// pinned timestamp still compares exactly, and "markAsFailed left `embeddedAt`
+/// alone" stays an assertion rather than a normalization artifact.
+const PINNABLE_COLUMNS: &[&str] = &["id", "createdAt", "embeddedAt"];
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/embedding-status-tier2.json")
 }
 
-/// Collapse the minted `updatedAt` column to a `<ts>` placeholder, in place, on a
-/// `{ table, columns, rows }` dump. Every other field (ids, createdAt, payload)
-/// is left exact so the structural diff still catches real divergence.
-fn normalize(dump: &mut Value, label: &str) {
+/// Every string literal anywhere in the committed spec — the values BOTH sides
+/// pinned. Anything else in a dumped `id`/`createdAt`/`embeddedAt` cell was
+/// minted at run time.
+fn pinned_literals(spec: &Value) -> BTreeSet<String> {
+    fn walk(v: &Value, out: &mut BTreeSet<String>) {
+        match v {
+            Value::String(s) => {
+                out.insert(s.clone());
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            Value::Object(o) => o.values().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(spec, &mut out);
+    out
+}
+
+/// Collapse the minted `updatedAt` column to a `<ts>` placeholder and any
+/// unpinned `id`/`createdAt`/`embeddedAt` to `<minted>`/`<ts>`, in place, on a
+/// `{ table, columns, rows }` dump; then re-sort by the natural key
+/// (entityType, entityId, profileId), which is unique in this corpus and — unlike
+/// `id` — survives the mark* create arm's minted UUID.
+fn normalize(dump: &mut Value, label: &str, pinned: &BTreeSet<String>) {
     let rows = dump
         .get_mut("rows")
         .and_then(Value::as_array_mut)
@@ -132,7 +198,24 @@ fn normalize(dump: &mut Value, label: &str) {
                 obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
             }
         }
+        for col in PINNABLE_COLUMNS {
+            let minted = match obj.get(*col) {
+                Some(Value::String(s)) => !pinned.contains(s),
+                _ => false,
+            };
+            if minted {
+                let placeholder = if *col == "id" { "<minted>" } else { "<ts>" };
+                obj.insert((*col).to_string(), Value::String(placeholder.to_string()));
+            }
+        }
     }
+    rows.sort_by_key(|r| {
+        ["entityType", "entityId", "profileId"]
+            .iter()
+            .map(|c| r.get(*c).and_then(Value::as_str).unwrap_or("").to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
 }
 
 #[test]
@@ -159,6 +242,8 @@ fn embedding_status_tier2_matches_oracle() {
     // Parse the committed spec (pepper + op sequence) — same file the oracle used.
     let spec_text = std::fs::read_to_string(spec_path())
         .unwrap_or_else(|e| panic!("cannot read fixture spec: {e}"));
+    let spec_json: Value = serde_json::from_str(&spec_text).expect("parse fixture spec json");
+    let pinned = pinned_literals(&spec_json);
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse fixture spec");
 
     // Parse the oracle's expected post-op dump (one NDJSON object).
@@ -217,6 +302,31 @@ fn embedding_status_tier2_matches_oracle() {
                     let found = repo.delete(id).expect("embedding_status.delete");
                     assert!(found, "delete target {id} not found in fixture");
                 }
+                Op::MarkEmbedded {
+                    entity_type,
+                    entity_id,
+                    profile_id,
+                    user_id,
+                } => {
+                    let wrote = repo
+                        .mark_as_embedded(entity_type, entity_id, profile_id, user_id)
+                        .expect("embedding_status.mark_as_embedded");
+                    // Both arms write: the update arm because the row exists,
+                    // the create arm because it mints one.
+                    assert!(wrote, "mark_as_embedded wrote nothing for {entity_id}");
+                }
+                Op::MarkFailed {
+                    entity_type,
+                    entity_id,
+                    profile_id,
+                    error,
+                    user_id,
+                } => {
+                    let wrote = repo
+                        .mark_as_failed(entity_type, entity_id, profile_id, error, user_id)
+                        .expect("embedding_status.mark_as_failed");
+                    assert!(wrote, "mark_as_failed wrote nothing for {entity_id}");
+                }
             }
         }
     }
@@ -227,9 +337,25 @@ fn embedding_status_tier2_matches_oracle() {
 
     let _ = std::fs::remove_file(&work);
 
-    // One normalization (placeholder the minted updatedAt), applied to both dumps.
-    normalize(&mut got, "rust");
-    normalize(&mut oracle, "oracle");
+    // One normalization (placeholder the minted columns + natural-key sort),
+    // applied to both dumps.
+    normalize(&mut got, "rust", &pinned);
+    normalize(&mut oracle, "oracle", &pinned);
+
+    // Corpus-shape guard: the mark* CREATE arms must actually have minted rows,
+    // or a port that still returned a silent no-op would agree with the oracle.
+    let minted = got["rows"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter(|r| r.get("id").and_then(Value::as_str) == Some("<minted>"))
+                .count()
+        })
+        .unwrap_or(0);
+    assert_eq!(
+        minted, 3,
+        "the corpus stopped exercising the mark* create arms (3 expected)"
+    );
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for

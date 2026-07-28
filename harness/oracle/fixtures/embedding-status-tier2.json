@@ -26,7 +26,24 @@
     "pepper and is safe to commit.",
     "",
     "DETERMINISM: ids + createdAt + payload columns are pinned; only the minted",
-    "updatedAt column needs normalization (placeholdered both sides)."
+    "updatedAt column needs normalization (placeholdered both sides).",
+    "",
+    "P4.D25 (v4 `a5d6cee5`, Bug 7): markAsEmbedded / markAsFailed are now UPSERTS",
+    "taking a required userId. Five `markEmbedded`/`markFailed` ops close the",
+    "corpus over both arms of both functions:",
+    "  - the UPDATE arms (an existing triple; markAsEmbedded clears `error`,",
+    "    markAsFailed leaves `embeddedAt` alone — which is why row 1a…01's pinned",
+    "    2026-03-01 embeddedAt must survive EXACTLY),",
+    "  - the CREATE arms (a triple with no row — markAsEmbedded stamps embeddedAt",
+    "    and nulls error; markAsFailed writes embeddedAt NULL), and",
+    "  - different-profile masking (a triple whose entity has a row under ANOTHER",
+    "    profile must still create, and must not touch the other profile's row).",
+    "",
+    "A created row's id / createdAt / embeddedAt are MINTED (v4's create falls",
+    "through to `options?.id || generateId()` and `options?.createdAt || now`), so",
+    "the harness placeholders any id or timestamp NOT literally present in this",
+    "spec — pinned values stay exact, which is what makes the preservation cases",
+    "assertions rather than normalization artifacts."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -112,6 +129,48 @@
       "kind": "delete",
       "comment": "Delete the second created status.",
       "id": "4d000000-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "markEmbedded",
+      "comment": "UPDATE arm: the seed FILE row is FAILED with an error; markAsEmbedded flips it to EMBEDDED, stamps a MINTED embeddedAt and CLEARS the error.",
+      "entityType": "FILE",
+      "entityId": "e2000000-0000-4000-8000-0000000000e2",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "userId": "aa000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "markFailed",
+      "comment": "UPDATE arm: markAsFailed patches ONLY status + error, so row 1a…01 keeps the pinned 2026-03-01 embeddedAt the earlier update set.",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-0000000000e1",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "error": "embedding provider returned 500",
+      "userId": "aa000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "markEmbedded",
+      "comment": "CREATE arm: no row for this triple. Pre-a5d6cee5 this was a silent no-op; now it mints an EMBEDDED row (minted id/createdAt/embeddedAt, error NULL).",
+      "entityType": "CONVERSATION_CHUNK",
+      "entityId": "e5000000-0000-4000-8000-0000000000e5",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "userId": "aa000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "markFailed",
+      "comment": "CREATE arm: no row for this triple. The minted row carries embeddedAt NULL (v4 passes it explicitly) and the error string.",
+      "entityType": "MOUNT_CHUNK",
+      "entityId": "e6000000-0000-4000-8000-0000000000e6",
+      "profileId": "22000000-0000-4000-8000-0000000000f2",
+      "error": "Oversize: 200000 chars exceeds 131072-char cap",
+      "userId": "aa000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "markEmbedded",
+      "comment": "Different-profile masking: entity e1…e1 HAS a row, but under profile f1. Marking it under f2 must CREATE a second row and leave the f1 row FAILED.",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-0000000000e1",
+      "profileId": "22000000-0000-4000-8000-0000000000f2",
+      "userId": "aa000000-0000-4000-8000-0000000000aa"
     }
   ]
 }

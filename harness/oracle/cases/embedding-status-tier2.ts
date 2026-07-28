@@ -2,10 +2,17 @@
  * Tier-2 oracle case — the `embedding_status` repo (Phase-2).
  *
  * Proves what state v4 leaves the database in after a fixed create / update /
- * delete sequence, so the Rust port can be diffed against it (structural DB
- * diff). Banks an all-TEXT marshaling surface: UUID columns (userId, entityId,
- * profileId) as TEXT, two enum columns as TEXT (entityType, status), and two
- * NULLABLE TEXT columns (embeddedAt, error). No booleans, numbers, JSON, or BLOB.
+ * delete / markEmbedded / markFailed sequence, so the Rust port can be diffed
+ * against it (structural DB diff). Banks an all-TEXT marshaling surface: UUID
+ * columns (userId, entityId, profileId) as TEXT, two enum columns as TEXT
+ * (entityType, status), and two NULLABLE TEXT columns (embeddedAt, error). No
+ * booleans, numbers, JSON, or BLOB.
+ *
+ * P4.D25 (v4 `a5d6cee5`): the five mark* ops drive v4's REAL upserting
+ * `markAsEmbedded`/`markAsFailed` — both arms of each, plus different-profile
+ * masking. A created row's id/createdAt/embeddedAt are minted by v4 (no
+ * CreateOptions on that path), so the Rust harness placeholders any id or
+ * timestamp not literally present in the committed spec.
  *
  * Flow (mirrors tfidf-vocabulary-tier2.ts):
  *   1. copy the SEED-ONLY fixture to a fresh working copy;
@@ -42,10 +49,16 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  kind: 'create' | 'update' | 'delete' | 'markEmbedded' | 'markFailed';
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string };
+  /** mark* ops only — the (entityType, entityId, profileId) triple + userId. */
+  entityType?: string;
+  entityId?: string;
+  profileId?: string;
+  userId?: string;
+  error?: string;
 }
 
 interface Spec {
@@ -95,6 +108,21 @@ async function main(): Promise<void> {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'markEmbedded') {
+      await repo.markAsEmbedded(
+        op.entityType as never,
+        op.entityId as string,
+        op.profileId as string,
+        op.userId as string
+      );
+    } else if (op.kind === 'markFailed') {
+      await repo.markAsFailed(
+        op.entityType as never,
+        op.entityId as string,
+        op.profileId as string,
+        op.error as string,
+        op.userId as string
+      );
     } else {
       await repo.delete(op.id as string);
     }
