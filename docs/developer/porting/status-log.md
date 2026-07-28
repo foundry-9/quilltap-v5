@@ -41837,3 +41837,90 @@ CLAUDE.md's baseline paragraph:
 
 Versions after the round: core **0.0.399**, harness **0.0.345**, host
 **0.0.49**; web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.
+
+---
+
+## Round record — the P4.D25 embedding-warmth drift catch-up, UNIFIED (2026-07-28)
+
+**Single lane, all tiers landed; P4.D25 CLOSED; the oracle baseline MOVES
+`e8a49597` → `083fdf68`; no v4 drift debt remains.** Branch
+`claude/p4-d25-embedding-warmth-drift-00bc87`, four commits cherry-picked
+clean onto `unify/p4.d25` (zero conflicts — single lane) and fast-forwarded
+to main.
+
+**Survey.** Delivered scope verified against the order's tier list unit by
+unit: tier 1 items 1–5 and tier 2 item 6 all present in the code, both
+recorded deviations match the code (the `&Db` → `_conn`-twins re-signature;
+the two sentinel arms covered by module unit tests instead of the
+differential), and tier 3 is genuinely empty (no refusal arms were needed —
+nothing in the drift maps to an unported surface). v4 verified at `083fdf68`
+clean at survey AND re-verified immediately before oracle regeneration.
+
+**The §3 review (the whole combined diff, against v4's real diff at
+`e8a49597..083fdf68`): NO blocking findings.** What was checked and held:
+
+- **Fidelity, line for line.** All four drifted surfaces compared against
+  v4's actual code: the mark* upsert arms (create payloads field-for-field,
+  `markAsFailed`'s create arm writing `embeddedAt: null` explicitly while its
+  UPDATE arm leaves `embeddedAt` alone, the debug-log arms noted as comments),
+  the `olderThan` guard (strict `<`, the `[now, chatId, olderThan?]` param
+  order, the SQL built together with the params exactly as v4 does), the
+  sweep's one-`retentionCutoff` derivation of both `cutoffMs` and `cutoffIso`,
+  and the reconcile (v4's SQL byte-faithful including comments; profile
+  resolution → scan → early return → cutoff → per-row gate, in v4's order;
+  both fail-soft arms). v4's new *why*-comments carried across on every
+  surface.
+- **The clock-read sequence.** The port hoists `embedded_at` before the find
+  where v4 reads it after — verified equivalent (the find consumes no clock
+  read, so the read ORDER v4's frozen-clock oracles observe is unchanged), and
+  the single-read create arm (`createdAt == updatedAt == embeddedAt` from one
+  `now`) is reproduced via the new private `insert` rather than a second
+  `create` clock read.
+- **The `&Db` deviation is correct, not just recorded.** `host.rs:801` calls
+  the reconcile from inside `db.write_blocking`; the order's proposed `&Db`
+  signature would deadlock on any nested write. The `_conn` twins delegate in
+  the right direction (`is_stale` → `is_stale_conn`), so the sweeps'
+  behavior is untouched — confirmed by the two neutrality families.
+- **Call-site closure.** `mark_as_embedded`/`mark_as_failed` are reachable
+  only through the job service's consolidated wrappers (grep-verified); all
+  four v4 arm shapes (guard-skip, not-found, success, catch) thread
+  `job.userId`. `clear_embeddings_for_chat`'s only caller is the cache sweep;
+  the reconcile's only caller is host boot.
+- **Differential sensitivity is real, not asserted.** The pinned-literal
+  normalization (placeholder a minted cell only when absent from the committed
+  spec) keeps the preservation cases byte-level; each family carries a
+  corpus-shape guard (`[1, 0, 2]` clear counts; exactly 3 / exactly 1 minted
+  rows; `skippedStale >= 1`) so a reverted port cannot pass by dumping less;
+  and the lane's mutation transcripts (guard ignored, `<=` boundary slip,
+  gate neutered, exclusion dropped, scoping dropped) are recorded per family.
+
+**Unification wires: none owed** — single lane, no cross-lane contract. The
+unifier's work was the queued baseline move (CLAUDE.md + phase-4.md), made
+exactly per the wording banked in the unit-3 lane record.
+
+**The gate (on `unify/p4.d25`, oracles regenerated FRESH at `083fdf68`):**
+
+- v4 re-verified at `083fdf68`, tree clean, immediately before regen.
+- All SEVEN families regenerated fresh in clean invocations (five tsx
+  fixture+case pairs into `/tmp`; the two jest families via `/tmp` mirrors
+  against the COMMITTED fixture DBs, per the committed-fixture rule). Each
+  regenerated NDJSON grepped for a marker only the new baseline can produce:
+  `cleared:[1,0,2]`, `chunkEmbeddingsCleared:1`, 6 `embedding_status` rows,
+  the EG dump's 13th (minted) status row, `skippedStale:1`.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (plain and
+  `quilltap-core/native-transport`); `cargo build --release --workspace`
+  clean.
+- `cargo test --workspace --no-fail-fast` with all nine env vars: see
+  CLAUDE.md's Status bullet for the counts; zero failures. The seven families
+  re-run BY NAME with `--nocapture`: zero SKIP lines, all green.
+- No `apps/web` file changed ⇒ no ng/Playwright run owed (per the order).
+
+**Versions after the round:** core 0.0.399, harness 0.0.345, host 0.0.49;
+web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.
+
+**What's next:** the dogfood pass stays the top item and now also owes this
+round's live proof — a boot against the Friday copy that does NOT mass
+re-embed (`skipped_stale` visible in the boot log), and a read-then-sweep
+cycle that keeps a reopened chat's vectors. See phase-4.md's round-outcome
+section.

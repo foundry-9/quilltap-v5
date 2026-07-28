@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Unified the embedding-warmth catch-up round onto main. Single lane, no
+conflicts; the review found no blocking issues; the reference baseline moved to
+the old app's current head, with all seven affected comparison suites
+regenerated fresh there and green by name. Full quality gate: formatting,
+lints on both feature sets, release build, and the whole workspace test suite
+with zero failures. No web-app changes this round, so no browser suite was
+owed. Final versions: core 0.0.399, harness 0.0.345, host 0.0.49.
+
 Closed the embedding-warmth catch-up round: the port now matches the old app's
 fixes for all three of these, with the differential corpora extended to prove
 each new arm and every one of them mutation-checked.

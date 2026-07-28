@@ -3500,3 +3500,40 @@ itself, recorded as a v4-side item).
    `p4.9h2`, D21 (release/signing, never started), and the v4-side list in
    `dogfood-findings.md` (stop-impersonate DELETE, `AllLLMPauseModal`, the
    dead `allowToolUse` warning box).
+
+### Round outcome (2026-07-28) — the P4.D25 embedding-warmth drift catch-up, UNIFIED
+
+**P4.D25 CLOSED** (single lane; order
+`work-orders/p4.d25-embedding-warmth-drift.md`). The oracle baseline MOVES to
+**`083fdf68`** (v4 HEAD, 2026-07-28) and the drift debt is CLEARED. Full lane
+records + the round record in `status-log.md`; gate numbers in CLAUDE.md's
+Status bullet.
+
+**The round's headline: v5 stops burning money on every boot.** v4's Bugs 6 + 7
+fixes are mirrored — the boot reconcile now runs the shared `is_stale` gate
+(cold-tiered chats skip; unknown staleness skips, never heals) and excludes
+chunks already FAILED for the profile a re-embed would use; the cache sweep only
+clears embeddings older than the retention cutoff, so a reopen re-embed
+survives; and the `mark_as_embedded`/`mark_as_failed` upserts mean outcomes
+actually land for entities that never got a status row. Two deviations from the
+order stand, both recorded: the `&Db` re-signature was rejected (deadlock inside
+`write_blocking`; `_conn` twins instead), and the reconcile's two
+sentinel/fail-soft arms are unit-tested rather than differential-covered
+(reaching them would empty `embedding_profiles` mid-corpus).
+
+**Next candidates, in rough value order** (unchanged from the previous round,
+with this round's live proof added to item 1):
+
+1. **The dogfood pass — still the top item.** Everything the previous round
+   owed (the embedding worker, the chat-dialog family, the picker/attach flow,
+   walk Parts D/F/H) plus this round's: a boot against the Friday copy that
+   does NOT mass re-embed (watch `skipped_stale` in the boot log), and a
+   read-then-sweep cycle that keeps the reopened chat's vectors.
+2. **M6 rows 6+** — `p4.9h` (prompt library + Core Whisper chain + the memory
+   cards + embedding-profiles management), `p4.9i2` (help/HelpChat —
+   `help/data-retention.md` joins that bank's sync-at-runtime set), `p4.9k`,
+   `p4.9n`, `p4.9l`, `p4.9m`.
+3. **The standing pools:** the `DbError::Key` message-prefix leak,
+   `V5_STATS_GAP` (tripwired), the `chat_settings` explicit-`null` gap
+   (tripwired), `browserUserAgent`, `p4.9h2`, D21, and the v4-side list in
+   `dogfood-findings.md`.

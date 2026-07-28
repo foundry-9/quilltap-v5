@@ -1539,6 +1539,54 @@ records THERE. Update this summary only when a phase or round completes.
   the top next item** — it owes the embedding worker's live proof, the
   chat-dialog family, the picker/attach flow (real describe spend), and walk
   Parts D/F/H — see phase-4.md. Round record: `status-log.md`.
+- **The P4.D25 `083fdf68` embedding-warmth drift catch-up: CLOSED, UNIFIED on
+  main (2026-07-28, single lane) — the oracle baseline MOVES to `083fdf68` and
+  the drift debt is CLEARED.** v4's fixes for its own Bugs 6 + 7, mirrored into
+  the already-ported embedding/maintenance family — a real-money bug v5
+  reproduced line-for-line until now: the boot reconcile read the cache
+  collapse's deliberate cold-tiering as damage and re-embedded the whole cold
+  tier on every boot (~$2/restart on the measured Friday instance), and the
+  next sweep cleared it again. Landed: the `mark_as_embedded`/`mark_as_failed`
+  UPSERTS + required `user_id` threaded through all four consolidated mark
+  sites (v4's thirteen); the `clear_embeddings_for_chat` `older_than` age
+  guard bound to the cache sweep's cutoff (reopen warmth survives a full
+  retention window); the boot reconcile's staleness gate (shared `is_stale`,
+  both fail-soft arms — unknown staleness SKIPS, never heals) +
+  FAILED-profile-exclusion SQL + `skipped_stale`. The order's proposed `&Db`
+  re-signature was correctly REJECTED by the lane (the reconcile runs inside
+  `write_blocking`; a nested write would deadlock) — `is_stale_conn` /
+  `resolve_stale_chat_days_conn` twins instead. Every fixture the drift made
+  structurally blind was extended (the remainder corpus had gone ALL-stale
+  the moment the gate landed; four in-window chats restored its arms) and
+  every first-run-green family was mutation-proven, per the D24 rule. Gate:
+  fmt, clippy both feature sets, release build, **399 test binaries / 1,673
+  tests / 0 failed** with all nine env vars, the seven families re-run by
+  name zero SKIP over oracles regenerated FRESH at `083fdf68` (each NDJSON
+  grepped for a new-baseline marker). No `apps/web` change — no SPA gate
+  owed. The §3 review found no blocking issues. Versions: core 0.0.399,
+  harness 0.0.345, host 0.0.49; web 0.0.51, cli 0.0.3, quilltap-tauri 0.0.5,
+  SPA 0.5.319 unchanged. **The dogfood pass remains the top next item** (it
+  now also owes this round's live proof: a boot against the Friday copy that
+  does NOT mass re-embed). Round record: `status-log.md`.
+- **Oracle baseline: `083fdf68` (v4 HEAD, 2026-07-28), adopted at the P4.D25
+  embedding-warmth drift-catch-up unification — NO v4 drift debt remains.** The
+  four commits past `e8a49597` are v4's own fixes for its `found-bugs.md` Bugs 6
+  and 7 (`a0243abd` the boot reconcile's stale exclusion, `f7cc887b` the
+  `clearEmbeddingsForChat` age guard, `a5d6cee5` the mark* upserts + the
+  FAILED-profile exclusion) plus a version chore; all three behavior commits
+  carry an explicit "Oracle note for the v5 port". Seven families regenerated
+  there — the five the drift changes (`embedding_status_tier2`,
+  `conversation_chunks_tier2`, `collapse_stale_chat_caches_tier2`,
+  `embedding_generate_jobs`, `embedding_remainder`) and the two neutrality
+  families (`maintenance_sweep_tier2`, `cold_chunk_reembed_tier2`). Families the
+  round did not touch keep their prior regen vintage. v4's tree is clean at
+  `083fdf68`, so oracles regenerate straight from `~/source/quilltap-server`.
+  `help/data-retention.md` rode along in `f7cc887b` and needs no v5 action (v5
+  syncs help docs from disk at runtime). ⚠ v4 is mid-4.8/4.9 dev — drift-check
+  before every round. ⚠ **When regenerating a family whose fixture is
+  COMMITTED, point the oracle at the committed DBs** (the case headers' recipes
+  rebuild into `/tmp` and a rebuild mints fresh UUIDs).
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `e8a49597` (v4 HEAD, 2026-07-27, 4.8.0-dev.108), adopted
   at the embedding-repair + chat-dialog round's unification — NO v4 drift debt
   remains.** The one commit past the prior `c1507f47` baseline is v4's fix for
