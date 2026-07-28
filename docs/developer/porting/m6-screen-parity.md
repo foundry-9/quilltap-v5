@@ -182,6 +182,7 @@ PARITY the moment `p4.9b` lands. The card-Chat divergence is recorded at
 | Terminal pop-out | `app/salon/[id]/terminal/[sessionId]/page.tsx:14-80` | `screens/salon/terminal-popout.ts`, route `app.routes.ts:27-30` | **PARITY** (P4.6u) |
 | LLM Inspector slide-over | `components/chat/LLMInspectorPanel.tsx:42`, mounted `SalonView.tsx:1696` | `chat/llm-inspector-panel.ts:138`, mounted `salon-conversation.ts:362` | **PARITY** (P4.6as) — see F2 |
 | Tool-result card | `components/chat/ToolMessage.tsx` + `group-tool-messages.ts` | `chat/tool-message.ts` + `chat/group-tool-messages.ts` | **PARITY** (P4.17) — `generate_image` thumbnails deferred (assistant bubble renders chat images, P4.6ac) |
+| Scriptorium status badge + click-to-render | `components/chat/ChatCard.tsx:255-273` — a three-state badge (`none`/`rendered`/`embedded`, colour + title) whose click re-renders via `onRenderConversation` → `?action=render-conversation`; wired at `app/salon/SalonListView.tsx:162,272` and `components/character/character-conversations-tab.tsx:186,344` | absent — `screens/salon/chat-card.ts` renders nothing for the field, though it arrives on the wire (`core-contract.ts:2214`) | **MISSING** → backlog 17. The `chatRenderConversation` verb is LIVE (P4.6BM) and the per-turn render trigger fires automatically; what has no v5 caller is the **manual re-render** and the render/embed status a user can see. Surfaced while scripting the 2026-07-27 dogfood walk — like the agent-mode badge above, it is an affordance rather than a modal, so neither inventory tracked it |
 | Autonomous-include toggle | `components/dashboard/nav-user-menu-quick-hide.tsx:100-105` (user menu) | `screens/salon/autonomous-visibility.ts:13-14` (salon-list header) | **DIVERGENCE-DOCUMENTED** |
 | Tag-hide / hide-dangerous filtering | `components/providers/quick-hide-provider.tsx:183-209` | absent — `screens/salon/salon-list.ts:24-28` | **MISSING** → `p4.9d` |
 | Per-chat Core Whisper override | `SalonView.tsx:1760-1763` → `ChatSidebar` | absent (F3) | **MISSING** → `p4.9h` |
@@ -696,7 +697,7 @@ lanes). These are liftable straight into `/setupphase`.
 | 4 | `p4.9d-quick-hide-provider` | the provider + tag-hide + hide-dangerous across salon list, home, characters, prospero; the `tags-tab` `quickHide` authoring column | lane | tags surface (landed) |
 | 5 | ~~`p4.9g-data-system-tab`~~ | **DONE 2026-07-24** (P4.9G1 ∥ P4.9G2) for the tab + LLMLogViewer ×2 hosts + backup/restore/export/import/delete-all dialogs. **Remainder: P4.9G1's delete-all, export/import and backup/restore SERVER families are OPEN** (the SPA cards refuse loudly). Capabilities report → Providers tab; search dialog → toolbar; image-profile validate/list-models still needs live providers — all re-binned at the 2026-07-24 scope correction (§2.6) | — | — |
 | 6 | `p4.9h-prompt-library-core-whisper` | the prompt library; the Core Whisper card **and** the chat-sidebar override (F3 — port the chain as one); memory embedding-profiles / dedup / summaries; tag pickers; formatting-prompt helper | round | none |
-| 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
+| 7 | ~~`p4.9f`~~ → **`p4.9f1` + `p4.9f2`** — **DONE 2026-07-19** (~~one gap: `wardrobePreviewAvatar`'s render step is refusal-armed pending the `avatar_preview` host wire, itself blocked on the WebP codec seam~~ **that gap CLOSED 2026-07-21: P4.6bf wired `HostAvatarPreviewRenderer` over the existing `HostImageCodec` and `avatar_preview` is LIVE** — ⚠ the out-of-chat Preview button costs real money. `wardrobeAnalyzeImage` still refuses, and is on the §5.3 row) | the global wardrobe dialog (character picker + chat-aware equip + avatar generation) + transfer + import-from-image + item editor. **RE-SIZED 2026-07-18: a server∥SPA PAIR, not a lane.** The 2026-07-18 survey found SEVEN missing verb families (equip's 7 modes, outfit read, the transfers wrapper, the global archetype tier, preview/regenerate avatar, analyze-image) — the "equip verbs" this row assumed do not exist. The services underneath ARE ported, so the server half is mostly dispatch + differential | round (2 lanes) | ~~equip verbs~~ **absent — `p4.9f1` delivers them**; `image_generation` (LIVE) |
 | 8 | `p4.9e1-chat-cast-dialogs` | AddCharacterDialog + nested CreateNPC + SummonFromLore | lane | tier-3 LLM services for Summon |
 | 9 | ~~`p4.9e2-chat-post-office-dialogs`~~ **DONE 2026-07-25** (P4.9E2A server ∥ P4.9E2B SPA) | ComposeMail + InsertAnnouncement + Whisper **+ the gutter-tool entry points**. ~~Deferred: the RNG dropdown — v5 has no `?action=rng` verb, so it needs a server lane.~~ ~~**The `ChatRng` verb landed 2026-07-26 (P4.9E3A); the dropdown itself is still owed.**~~ **STALE — the dropdown landed WITH P4.9E1B** (`chat/rng-dropdown.ts`, 279 LOC: d6/d20 with ± spinners, Flip Coin, Spin the Bottle, the validated Custom Roll panel, the preview chip). P4.9E4B closed its last two residuals vs v4 — click-outside dismissal and the trigger spinner — so the row is complete. The row's "DnD upload" was a PHANTOM (see §2.2) | lane | post-office writers (landed) |
 | 10 | `p4.9e3-chat-admin-dialogs` | the `ChatModals.tsx` barrel remainder + `useModalState` (Merge, Reattribute, BulkReplace, RunTool, ChatToolSettings, ChatProject, chat-host StateEditor, SearchReplace, AllLLMPause, SelectLLMProfile, LibraryFilePicker, ChatRename) | round | ~~round~~ **SUBSTANTIALLY DONE** (P4.9E3C, 2026-07-27): nine of the twelve landed, plus the agent-mode badge and a new Edit Content sidebar section. **`LibraryFilePickerModal` landed 2026-07-27 (P4.9E4B), so eleven of the twelve are done.** The one remaining is `AllLLMPauseModal`, deferred by name because it is unreachable in v4 itself (see §2.2) |
@@ -706,6 +707,7 @@ lanes). These are liftable straight into `/setupphase`.
 | 14 | `p4.9l-salon-composer-toolbar` | `roleplayTemplateId`-aware toolbar delimiters — a composer vertical, **not** a rider (`phase-4.md:1615-1618`) | lane | a composer toolbar must exist first |
 | 15 | `p4.9m-toast-bus` | a toast bus; terminal exit/kill toasts; `chat-update` side effects; xterm optional addons | rider | none |
 | 16 | `p4.9j-workspace-tabs` | the tabbed workspace: host, tab strip, 21 tab kinds, split panes, keep-alive, drag reorder, `?open=` intents, backdrop arbitration | **round (largest)** | ~~a human ruling first~~ **RULED 2026-07-18: port it** — **DONE 2026-07-19** (the P4.9J1 ∥ P4.9J2 round) |
+| 17 | `p4.9o-scriptorium-status-badge` | the chat-card Scriptorium badge (three states, v4's exact titles) + click-to-render, on **both** hosts — the salon list and the character Conversations tab (§1.2). Pure SPA: the verb (`chatRenderConversation`) and the `scriptoriumStatus` field are both already live and on the wire | rider | none (P4.6BM landed the handler; before it, the button would have minted dead jobs) |
 
 Sequencing note (updated 2026-07-19, post-p4.9j): rows **1, 7, and 16 are
 DONE** — the consult-wire + image-detail + wardrobe round closed `p4.9a`
@@ -806,13 +808,27 @@ not sufficient.
 | **Turnkey `tauri dev` loop** | documented, not wired | `status-log.md:14855-14857`, `:15140-15141` |
 | **Plugin system beyond provider manifests** | **WON'T-PORT** by locked decision — v4's npm plugin tools/routes; the `ToolRunner` inner-fallback seam stays loud | `phase-4.md:273-276` |
 | **`Last-Event-ID` replay** beyond the §2 resync signal | deferred | `status-log.md:14866-14868` |
-| **Refusing service seams**: `filesSync`, attach-mount-file, thumbnail codec, cleanup-stale disk keys, auto-describe, pdf/docx extractor, WebP codec, `conversion.ts`, fs watcher + store-event chain, `quilltap docs` CLI, `memoryGenerateEmbeddings`/`RebuildIndex`/`chatQueueMemories`, extract-memories-dry-run, `EMBEDDING_GENERATE` | all loud, named, armed | `status-log.md:11542-11562`, `:9517-9524`, `:8683-8688`; `p4.6ah:11-16`; `p4.d3:19` |
+| **Refusing service seams** (re-verified against the code 2026-07-27): `filesSync`, batch thumbnail generation (a dispatch no-op — the on-demand byte-GET route carries the codec), cleanup-stale / orphan disk keys, chat-file auto-describe, the pdf/docx `DocumentTextExtractor`, `conversion.ts` (mount convert/deconvert), the fs watcher + store-event chain, the `quilltap docs` CLI subset, `wardrobeAnalyzeImage`, `imageProfileValidateKey`/`ListModels` | all loud, named, armed | `api/files.rs:1549`, `:1233-1240`; `quilltap-web/src/lib.rs:380`; `services/chat_files.rs:769`; `services/mount_index/converters.rs:36`; `api/mount_files.rs:910,948`; `quilltap-cli/src/docs_cmd.rs:221,1683`; `api/wardrobe.rs:980`; `api/image_profiles.rs:664,667` |
 | **D22 — no new features during the port** | standing; v5-only banked capabilities stay dormant | `phase-4.md:278-281` |
 
 The refusing-seam row is the one most likely to surprise: those are
 **behaviors a user can reach**, armed to refuse loudly rather than to lie.
 A retirement that ships them still-refusing is a product decision (v4 could
 do these things), even though none is a screen.
+
+**Five seams came OFF that row on 2026-07-27** — it had gone stale, which is
+the failure mode a row like this invites, since nothing fails when a seam
+goes live and its name stays listed. `attach-mount-file` is LIVE (P4.9E4A,
+with the vision describe ladder); `memoryGenerateEmbeddings` /
+`memoryRebuildIndex` and the `EMBEDDING_GENERATE` job handler are LIVE
+(P4.6BL); `chatQueueMemories` is LIVE (P4.6BM); the WebP codec is wired in
+the host and mount blob uploads transcode through it (P4.6bf → P4.6bg unit
+6), leaving `RefusingWebpTranscoder` only as the no-host fallback. Two
+listed names were never armed seams at all and are dropped rather than
+moved: **extract-memories-dry-run** does not exist anywhere in v5 (v4's
+route action is simply unported — absent, not refusing), and
+`api::memories::not_available` now has **zero callers**, the two lanes
+above having un-refused every action that used it.
 
 ### 5.4 The short answer
 

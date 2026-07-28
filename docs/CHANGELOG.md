@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Corrected the port's screen-parity record before the next dogfood walk. Five
+service seams listed as refusing had gone live and two were never armed at all;
+each remaining one now cites the exact source of its refusal, so the list can be
+re-checked mechanically instead of by memory. Recorded one real gap the check
+turned up: the old app's chat cards carry a badge showing whether a conversation
+has been rendered and embedded for search, and clicking it renders again — v5
+receives that status and does nothing with it.
+
 Unified the library-picker and embedding rounds into one main line. Three
 strands: attaching library files to a conversation (server and dialog both),
 and the embedding family made whole — rendering conversations to searchable

@@ -916,3 +916,24 @@ catch, since every fixture is built fresh.
   static-options sites documented proven-safe). The standing rule for NEW
   selects stands: never bind `[value]` on a `<select>` whose options load
   async — bind `[selected]` per option.
+- **The Scriptorium status badge + manual re-render has no v5 caller**
+  (found 2026-07-27 while scripting the walk for the library-picker +
+  embedding round, not by browsing). v4's `ChatCard.tsx:255-273` shows a
+  three-state badge (`none`/`rendered`/`embedded`) whose click re-renders,
+  on both the salon list and the character Conversations tab; v5's
+  `chat-card.ts` renders nothing, though `scriptoriumStatus` already
+  arrives on the wire and `chatRenderConversation` is live. Recorded as
+  **m6 §1.2 + backlog row 17 (`p4.9o`, rider-sized)**. Note the
+  sequencing: before P4.6BM landed the handler, this button would have
+  minted dead jobs — so it was right to be missing, and is now merely
+  missing.
+- **A stale list is the failure mode of any "refusing seams" inventory.**
+  The m6 §5.3 row was re-verified against the code on 2026-07-27 and five
+  of its names had gone live (attach-mount-file,
+  `memoryGenerateEmbeddings`/`RebuildIndex`, `chatQueueMemories`,
+  `EMBEDDING_GENERATE`, the WebP codec) with two more never armed at all.
+  Nothing fails when a seam goes live and its name stays listed, so it
+  silently accumulates work that is already done. **Re-verify that row by
+  grepping the refusal strings whenever a round un-refuses anything** —
+  the sources are now cited per-seam in the row itself, which makes the
+  check mechanical.
