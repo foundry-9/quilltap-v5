@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Photographs can be attached to a conversation again. Anything over about two
+megabytes — which is to say most photographs — was turned away at the door with
+a bewildering complaint about the shape of the request, while the app's own
+ten-megabyte allowance sat further inside, never consulted. The doorway has been
+widened to the figure the old app names, so the allowance decides, and says so
+plainly when a file really is too large. The same doorway governs every upload
+in the app, so store files, character imports and photo galleries were all
+equally afflicted.
+
 Recorded the walk that proved the embedding repair on real data. Booting the
 real library used to re-embed every quiet conversation the housekeeping had
 deliberately set aside — thousands of paid calls per restart, cleared again by

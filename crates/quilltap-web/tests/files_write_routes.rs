@@ -111,3 +111,68 @@ async fn files_write_web_edges() {
         .unwrap();
     assert_eq!(resp.status(), 400, "link without fileId");
 }
+
+/// Dogfood finding #36 — a chat-file upload larger than axum's 2 MB
+/// `DefaultBodyLimit` must reach the handler, so the PORTED 10 MB cap
+/// (`MAX_CHAT_FILE_SIZE`) is what answers rather than the transport.
+///
+/// The bug: `Multipart::from_request` enforced the 2 MB default and failed
+/// before any handler ran, so every photo over 2 MB — most photos — was refused
+/// with a flat `400 "Invalid multipart body"`, while v4 accepted it. The
+/// existing multipart coverage never caught it because every fixture payload in
+/// the suite (and every Playwright upload) is a few bytes.
+///
+/// Both directions are pinned deliberately. Raising the transport limit could
+/// have been "fixed" by removing the ceiling entirely, so the oversize arm
+/// proves the ported cap still decides, with v4's own message — that arm fails
+/// if someone disables the limit outright, and the 3 MB arm fails if the 2 MB
+/// default ever comes back.
+#[tokio::test(flavor = "multi_thread")]
+async fn chat_file_upload_over_axum_default_body_limit() {
+    let base = common::materialize_fixture_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let upload = |bytes: Vec<u8>, name: &'static str| {
+        let client = client.clone();
+        async move {
+            let form = reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(bytes)
+                    .file_name(name)
+                    .mime_str("image/png")
+                    .unwrap(),
+            );
+            client
+                .post(format!("http://{addr}/api/v1/chats/{SMOKE_CHAT_ID}/files"))
+                .multipart(form)
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // 3 MB — over axum's 2 MB default, under the ported 10 MB cap. Before the
+    // fix this was `400 "Invalid multipart body"`.
+    let resp = upload(vec![0xAB; 3 * 1024 * 1024], "big.png").await;
+    let status = resp.status();
+    let body: Value = resp.json().await.unwrap();
+    assert_ne!(
+        body["error"], "Invalid multipart body",
+        "a 3 MB upload must reach the handler, not die at the transport limit \
+         (status {status}, body {body})"
+    );
+
+    // 11 MB — over the ported cap, so the APPLICATION answers, in v4's words.
+    let resp = upload(vec![0xAB; 11 * 1024 * 1024], "huge.png").await;
+    assert_eq!(resp.status(), 400, "oversize upload");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["error"], "File size exceeds maximum allowed size of 10 MB",
+        "the ported cap must be the one that refuses, not the transport"
+    );
+}

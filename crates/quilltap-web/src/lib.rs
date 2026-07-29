@@ -161,6 +161,26 @@ pub fn production_host_config(base_dir: PathBuf, version: String) -> HostConfig 
     config
 }
 
+/// The request-body ceiling for every route (dogfood finding #36).
+///
+/// axum applies a **2 MB** `DefaultBodyLimit` unless told otherwise, and that
+/// limit is enforced by the body extractors — so `Multipart::from_request`
+/// fails before any handler runs and the caller sees a flat
+/// `400 "Invalid multipart body"`. That silently shadowed every ported
+/// application-level cap: `MAX_CHAT_FILE_SIZE` (10 MB,
+/// `services/chat_files.rs`) and the 10 MB image cap
+/// (`services/file_storage.rs`) can only decide an upload the transport lets
+/// through, so a 3 MB photo v4 accepts was refused at the edge with the wrong
+/// error and the wrong status.
+///
+/// v4 imposes no per-route limit of its own — its route handlers stream
+/// `request.formData()` — and the only ceiling it states anywhere is
+/// `next.config`'s `bodySizeLimit: '100mb'`. Matching that keeps the ported
+/// caps authoritative (they fire well below it, with v4's own messages) while
+/// leaving a hard backstop, which matters because the no-auth HTTP/Docker
+/// deployment (D1/D12) is first-class and every upload is buffered whole.
+const MAX_REQUEST_BODY_BYTES: usize = 100 * 1024 * 1024;
+
 /// Build the full router over a shared state.
 pub fn build_router(state: SharedState) -> Router {
     Router::new()
@@ -391,6 +411,10 @@ pub fn build_router(state: SharedState) -> Router {
         // (or `RUST_LOG=debug`) surfaces the per-request line on demand — never
         // drowning the default, never a per-token span on the hot path.
         .layer(tower_http::trace::TraceLayer::new_for_http())
+        // Must sit outside the routes it governs: the body extractors read this
+        // limit, so raising it here is what lets the ported per-surface caps be
+        // the ones that answer. See [`MAX_REQUEST_BODY_BYTES`].
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state)
 }
 
