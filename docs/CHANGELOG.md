@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Recorded a deeper finding behind the picture-attachment work: when you attach a
+picture from a document store and ask the app to describe it, the description is
+confidently wrong — it describes a different picture entirely. The cause is that
+the picture is never actually sent to the model on this path; only the words
+"describe this image" are, so the model invents a plausible face. Tracing showed
+the right file and the right bytes all the way to the edge of the wire, where
+they are dropped. Fixing it means teaching each provider how to carry an image,
+and proving it with a test that actually inspects the wire — the existing test
+was satisfied by a stand-in that saw the image the real path threw away. Left as
+its own piece of work, not patched in place.
+
 Photographs can be attached to a conversation again. Anything over about two
 megabytes — which is to say most photographs — was turned away at the door with
 a bewildering complaint about the shape of the request, while the app's own
