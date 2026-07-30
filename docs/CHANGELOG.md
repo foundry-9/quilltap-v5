@@ -87,6 +87,13 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+Ported the content-width preference: the narrow-vs-wide layout toggle now has
+its engine — the old app's exact localStorage key and widths (900px chat
+rows and 75rem pages in narrow; full width in wide), the 1000px viewport gate
+(wide mode is meaningless on a small window), and cross-tab sync. Also fixed a
+transcription drift: the static page width said 72rem where the old app uses
+75rem. The toggle button itself lands in the toolbar next.
+
 Ported the global-search endpoint (`GET /api/v1/ui/search`) — the one server
 piece the top toolbar's search bar was missing. It searches characters, chats,
 messages, memories, and tags for the signed-in user, ranks exact matches first,

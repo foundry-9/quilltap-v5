@@ -346,7 +346,10 @@
   --qt-chat-attachment-overlay: rgb(0 0 0 / 0.2);
 
   --qt-chat-message-row-max-width: 900px;
-  --qt-page-max-width: 72rem;
+  /* v4's NARROW_PAGE_WIDTH is 75rem (content-width-provider.tsx:29); the old
+     72rem static default was a transcription drift, corrected by P4.9P. The
+     ContentWidthService re-applies the live value on the root element. */
+  --qt-page-max-width: 75rem;
   --qt-card-grid-auto-min: 520px;
 
   --qt-chat-sidebar-width: 18rem;

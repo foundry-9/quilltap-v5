@@ -44342,3 +44342,23 @@ QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
 QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
   cargo test -p quilltap-harness --test ui_search_equivalence -- --nocapture
 ```
+
+## Lane record — P4.9P unit 5: the content-width service + NavContentWidthToggle (2026-07-30)
+
+`ContentWidthService` (root signal service) ports v4's
+`content-width-provider.tsx` whole: the exact localStorage key
+(`quilltap.contentWidth.isWide`, literal `'true'` only), the five constants
+(900px/'100%' chat rows, 75rem/'100%' pages, the 1000px matchMedia gate),
+cross-tab `storage` sync (key-scoped, removals ignored), and the root-element
+application (`--qt-chat-message-row-max-width` + `--qt-page-max-width` +
+`data-full-width="true"` — the CSS consumers wired-and-waiting since P4.6ap
+now light up). `qt-nav-content-width-toggle` ports the button: null under
+1000px, `qt-navbar-toggle[-active]`, `aria-pressed`, compress/expand.
+**Divergences (recorded):** v4's hydrate-then-read `storageReady` two-phase is
+a React-SSR artifact — v5 reads at construction; v4 applies via useEffect —
+v5 applies explicitly from each transition (same observable writes); v4's
+provider-absent null arm collapses (a root service always exists). **The
+ordered `72rem`→`75rem` correction is taken** (`_variables.css` — the static
+default was a transcription drift; the service re-applies live values anyway).
+Specs: 10 (service 7 — including the wide-preference-on-narrow-viewport gate
+and the storage-event filter — + toggle 3). Mounted by unit 3's toolbar.
