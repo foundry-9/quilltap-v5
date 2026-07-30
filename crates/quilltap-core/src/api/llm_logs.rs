@@ -72,7 +72,7 @@ fn list_failed() -> Response {
 /// the leading run of ASCII digits. **`NaN` when no digit follows** — the arm the
 /// route's garbage-limit quirk rides on. The result is a JS number (`f64`), not an
 /// integer, so the NaN survives the arithmetic below exactly as it does in v4.
-fn js_parse_int_10(s: &str) -> f64 {
+pub(super) fn js_parse_int_10(s: &str) -> f64 {
     let t = s.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let (negative, rest) = match t.strip_prefix('-') {
         Some(r) => (true, r),
@@ -94,7 +94,7 @@ fn js_parse_int_10(s: &str) -> f64 {
 
 /// JS `Math.min(a, b)` — **NaN-propagating**. Rust's `f64::min` returns the
 /// non-NaN operand instead, which would quietly repair v4's garbage-limit quirk.
-fn js_min(a: f64, b: f64) -> f64 {
+pub(super) fn js_min(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         return f64::NAN;
     }

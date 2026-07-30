@@ -2696,6 +2696,26 @@ pub enum Request {
         relative_path: String,
     },
     // === end P4.9E4A ===
+    // === P4.9P: the global-search endpoint (append-only) ===
+    /// v4 `GET /api/v1/ui/search?q=…&types=…&limit=…&offset=…` — the global
+    /// SearchBar/SearchDialog endpoint. All four params ride as RAW strings:
+    /// the HANDLER ports v4's trim/parseInt/Math.min-max body (including the
+    /// NaN empty-page quirk) so dispatch and REST agree byte-for-byte.
+    #[serde(rename_all = "camelCase")]
+    UiSearch {
+        #[serde(default)]
+        q: Option<String>,
+        /// CSV of `chats|characters|tags|memories|messages`; unknown entries are
+        /// filtered out and an all-unknown list falls back to ALL types (v4's
+        /// `parsedTypes.length > 0` gate).
+        #[serde(default)]
+        types: Option<String>,
+        #[serde(default)]
+        limit: Option<String>,
+        #[serde(default)]
+        offset: Option<String>,
+    },
+    // === end P4.9P ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -2968,6 +2988,10 @@ pub enum Response {
     /// and the delete's `{success, deletedId}`. Pinned by
     /// `llm_logs_routes_equivalence`.
     LlmLog(serde_json::Value),
+    /// The `uiSearch` success body — v4's `SearchResponse` (`{results,
+    /// totalCount, query, types, hasMore, countsByType}`, `successResponse`'s
+    /// RAW payload). Pinned by `ui_search_equivalence` (P4.9P).
+    UiSearch(serde_json::Value),
     /// The system default-aesthetic body, byte-identical to the project pair:
     /// get → `{content}`; set → `{success: true}`. Pinned by
     /// `image_aesthetics_routes_equivalence`.

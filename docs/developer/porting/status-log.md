@@ -44249,3 +44249,96 @@ no behavior those families compare). No `apps/web` change — no SPA gate owed.
 design):** a real describe call and a real in-chat vision send on the Friday
 copy, verifying the model describes the ACTUAL image — dogfood #37's live
 close-out. Versions at lane close: core 0.0.414, harness 0.0.359.
+## Lane record — P4.9P units 1–2: the `uiSearch` server vertical + differential (2026-07-30)
+
+**The verb.** `api/ui_search.rs` ports v4's `app/api/v1/ui/search/route.ts`
+(311 lines, GET only) whole: the min-2/required validation arms, the
+VALID_TYPES CSV filter with the all-unknown→all-types fallback, the five
+per-type searches composed over the EXISTING repo reads
+(`characters_read::find_by_user_id` overlaid, `chats_read::find_by_user_id`,
+`ChatSearchRepository::search_messages_global`,
+`memories_read::search_by_content` per character,
+`tags::find_all` filtered to the user in-handler — v4's `tags.findByUserId`
+is the base-repo filter, same rows/rowid order), the stable
+matchPriority-then-updatedAt-desc sort, pre-pagination `countsByType` (key
+order = first-encounter in the SORTED results), JS `slice` pagination with
+`ToIntegerOrInfinity` bounds, and v4's URL strings VERBATIM (`/aurora/{id}`,
+`/salon/{id}?msg=`, `/gallery?tag=` — they are DATA the SPA maps). Wire:
+`Request::UiSearch` (four RAW string params — the handler owns
+parseInt/Math.min-max so dispatch and REST agree), `Response::UiSearch`,
+`GET /api/v1/ui/search` in `quilltap-web` (`ui_search_routes.rs`), and the
+`UiSearchRequest` mirror in `core-contract.ts` (§1 name-for-name).
+`llm_logs.rs`'s `js_parse_int_10`/`js_min` went `pub(super)` for reuse.
+
+**Quirks carried (all differential-pinned, none "fixed"):**
+1. `characterNames` matches `characters.find(c => c.id === participant.id)` —
+   the PARTICIPANT row id, not `characterId`, so the list is empty for every
+   normally-created chat. The fixture seeds one participant whose id EQUALS
+   its characterId (resolves) and one normal participant (stays empty) — the
+   broken compare is pinned in BOTH directions.
+2. Garbage `limit` → NaN → `slice(offset, NaN)` = EMPTY page with
+   `hasMore: true`; garbage `offset` NaN-poisons `hasMore` to false instead.
+   Reused the llm-logs NaN helpers; new NaN-propagating `js_max`.
+3. JS falsy fallbacks: `importance || 5` (an importance-0 memory reports 5),
+   `title || null` (empty-string character title nulls), `chat.title ||
+   'Untitled Chat'`.
+4. Snippet indices computed on the LOWERCASED strings but sliced from the
+   ORIGINAL content (UTF-16 units via `jsstr`); a content-only memory match
+   still reports `matchedField: 'summary'` and its snippet takes
+   createSnippet's no-match head-truncation branch.
+
+**The differential** (`ui_search_equivalence`, 23 cases, zero SKIP with env
+vars): all five types + sort + scoping in one fan-out case, each single-type
+filter, unknown-type filtering + all-unknown fallback, the three validation
+arms, the 50-cap over a 66-match corpus (61 messages + 1 character + 1 chat +
+1 memory + 2 tags), offset paging + `hasMore` both ways, garbage/negative/
+empty limit+offset, exact-match priority-0, uppercase + trimmed-echo queries,
+and the >1000-char query (repo `MAX_SEARCH_QUERY_LENGTH` guard). Body diff +
+raw KEY-ORDER diff on every success case (countsByType insertion order rides
+on it). A corpus-shape gate pins the case list, the five-types coverage, and
+the 66 total — a truncated fixture cannot pass silently. First run was green,
+so sensitivity was proven by THREE deliberate mutations (participant-id
+compare "fixed" to characterId; the `importance||5` arm repaired; the sort
+tiebreak flipped) — each fails the differential; all reverted.
+
+**Fixture: /tmp-built, NOT committed** (the order's call — no existing
+committed family carries all five search types richly enough: the home family
+has null descriptions + an empty memories table). `ui-search.json` (committed
+spec) + `build-ui-search-fixture.ts` build
+`/tmp/qt-ui-search-fixture/{main,mount}.db` via v4's REAL repos. Two builder
+lessons re-learned: `chats.title` is NOT NULL under the current DDL (v4's
+`c.title?.` guard is vestigial; the `'Untitled Chat'` arm is reachable only
+via an EMPTY title, which the builder re-pins by raw UPDATE), and the
+store-backed character create mints LIVE slim-row timestamps regardless of
+create opts (the home builder's project lesson — characters are now re-pinned
+by raw UPDATE; the first oracle run caught build-clock timestamps that would
+have made the sort nondeterministic across rebuilds).
+
+**Regen recipe** (v4 tree was DIRTY at lane start — in-flight pascal work —
+so the oracle runs from a pinned detached worktree at the round baseline;
+v4 HEAD == `dcd9440a`, no drift):
+```
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p49p-dcd9440a dcd9440a
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-pin-p49p-dcd9440a/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-pin-p49p-dcd9440a/packages/quilltap/node_modules
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd /tmp/qt-v4-pin-p49p-dcd9440a
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-ui-search-fixture.ts
+TMPO=/tmp/qt-ui-search-oracle-stage
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/ui-search.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/ui-search.json" "$TMPO/fixtures/"
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+QT_ORACLE_OUT=/tmp/oracle-ui-search.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- ui-search
+# then:
+QT_ORACLE_UI_SEARCH=/tmp/oracle-ui-search.ndjson \
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+  cargo test -p quilltap-harness --test ui_search_equivalence -- --nocapture
+```

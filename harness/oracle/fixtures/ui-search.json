@@ -1,0 +1,232 @@
+{
+  "_comment": "P4.9P ui-search differential spec. The fixture is BUILT INTO /tmp (per the order: no committed pair — no existing committed family carries all five search types richly enough). Both differential sides read the same /tmp DBs; see build-ui-search-fixture.ts + ui-search.test.ts headers for the recipe. Timestamps are all PINNED and distinct except the ONE deliberate tie (C1.updatedAt == ms05.createdAt — the stable-sort insertion-order arm).",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "userId": "9a000000-0000-4000-8000-000000000001",
+  "otherUserId": "9a000000-0000-4000-8000-000000000002",
+  "brassMessageCount": 60,
+  "brassChatId": "da000000-0000-4000-8000-000000000003",
+  "brassBaseTimestamp": "2026-01-03T00:00:00.000Z",
+  "characters": [
+    {
+      "id": "ca000000-0000-4000-8000-000000000001",
+      "name": "Airship Zara",
+      "title": "Captain of the Copper Fleet",
+      "description": null,
+      "isFavorite": true,
+      "updatedAt": "2026-01-05T12:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "ca000000-0000-4000-8000-000000000002",
+      "name": "Bertram",
+      "title": "",
+      "description": "Keeper of the airship logs and brass fittings",
+      "isFavorite": false,
+      "updatedAt": "2026-01-07T00:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "ca000000-0000-4000-8000-000000000003",
+      "name": "Ottoline",
+      "title": "Clockmaker",
+      "description": "A clockmaker of quiet renown",
+      "isFavorite": false,
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "ca000000-0000-4000-8000-000000000004",
+      "name": "Wren",
+      "title": null,
+      "description": null,
+      "isFavorite": false,
+      "updatedAt": "2026-01-01T06:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "ca000000-0000-4000-8000-000000000005",
+      "name": "Quicksilver",
+      "title": null,
+      "description": null,
+      "isFavorite": false,
+      "updatedAt": "2026-01-03T06:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "ca000000-0000-4000-8000-000000000006",
+      "name": "Airship Ghost",
+      "title": null,
+      "description": "A decoy owned by the other user",
+      "isFavorite": false,
+      "updatedAt": "2026-01-06T06:00:00.000Z",
+      "user": "other"
+    }
+  ],
+  "chats": [
+    {
+      "id": "da000000-0000-4000-8000-000000000001",
+      "title": "The Airship Voyage",
+      "updatedAt": "2026-01-06T00:00:00.000Z",
+      "lastMessageAt": "2026-01-06T01:02:00.000Z",
+      "user": "primary",
+      "participants": [
+        {
+          "id": "ea000000-0000-4000-8000-000000000001",
+          "characterId": "ca000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "messages": [
+        {
+          "id": "fa000000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "I boarded the airship at dawn with trepidation",
+          "createdAt": "2026-01-06T01:00:00.000Z"
+        },
+        {
+          "id": "fa000000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The morning fog rolled across the harbor while the dock crews worked their winches, and then the airship rose slowly above the copper rooftops, its brass fittings gleaming in the first light while the crowd below cheered and waved their hats at the marvellous sight of it climbing away toward the mountains beyond the bay.",
+          "createdAt": "2026-01-06T01:01:00.000Z"
+        },
+        {
+          "id": "fa000000-0000-4000-8000-000000000003",
+          "role": "SYSTEM",
+          "content": "The airship system notice that must never match",
+          "createdAt": "2026-01-06T01:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "da000000-0000-4000-8000-000000000002",
+      "title": "airship",
+      "updatedAt": "2026-01-04T00:00:00.000Z",
+      "lastMessageAt": "2026-01-04T01:00:00.000Z",
+      "user": "primary",
+      "participants": [
+        {
+          "id": "ca000000-0000-4000-8000-000000000005",
+          "characterId": "ca000000-0000-4000-8000-000000000005"
+        }
+      ],
+      "messages": [
+        {
+          "id": "fa000000-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "Nothing relevant here at all",
+          "createdAt": "2026-01-04T01:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "da000000-0000-4000-8000-000000000003",
+      "title": "Brass Bazaar",
+      "updatedAt": "2026-01-08T00:00:00.000Z",
+      "lastMessageAt": "2026-01-03T00:01:00.000Z",
+      "user": "primary",
+      "participants": [],
+      "messages": []
+    },
+    {
+      "id": "da000000-0000-4000-8000-000000000004",
+      "title": "",
+      "updatedAt": "2026-01-01T12:00:00.000Z",
+      "lastMessageAt": "2026-01-05T12:00:00.000Z",
+      "user": "primary",
+      "participants": [],
+      "messages": [
+        {
+          "id": "fa000000-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "An airship passed silently overhead",
+          "createdAt": "2026-01-05T12:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "da000000-0000-4000-8000-000000000005",
+      "title": "Airship Decoy",
+      "updatedAt": "2026-01-05T00:00:00.000Z",
+      "lastMessageAt": "2026-01-06T02:00:00.000Z",
+      "user": "other",
+      "participants": [],
+      "messages": [
+        {
+          "id": "fa000000-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "airship decoy content owned by the other user",
+          "createdAt": "2026-01-06T02:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "memories": [
+    {
+      "id": "ba000000-0000-4000-8000-000000000001",
+      "characterId": "ca000000-0000-4000-8000-000000000003",
+      "content": "A long entry in the voyage log recounting the departure ceremony in full detail",
+      "summary": "The airship voyage over the copper sea began at dawn with much fanfare",
+      "importance": 0,
+      "source": "AUTO",
+      "createdAt": "2026-01-09T00:00:00.000Z",
+      "updatedAt": "2026-01-09T00:00:00.000Z"
+    },
+    {
+      "id": "ba000000-0000-4000-8000-000000000002",
+      "characterId": "ca000000-0000-4000-8000-000000000003",
+      "content": "The airship docked beside the brass tower",
+      "summary": "Airship docked",
+      "importance": 0.85,
+      "source": "MANUAL",
+      "createdAt": "2026-01-03T12:00:00.000Z",
+      "updatedAt": "2026-01-03T12:00:00.000Z"
+    },
+    {
+      "id": "ba000000-0000-4000-8000-000000000003",
+      "characterId": "ca000000-0000-4000-8000-000000000004",
+      "content": "They discussed the airship engines at length",
+      "summary": "A quiet day at the docks",
+      "importance": 0.5,
+      "source": "AUTO",
+      "createdAt": "2026-01-02T12:00:00.000Z",
+      "updatedAt": "2026-01-02T12:00:00.000Z"
+    }
+  ],
+  "tags": [
+    {
+      "id": "aa000000-0000-4000-8000-000000000001",
+      "name": "brass",
+      "quickHide": false,
+      "updatedAt": "2026-01-04T06:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000002",
+      "name": "Brass & Goggles",
+      "quickHide": true,
+      "updatedAt": "2026-01-06T06:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000003",
+      "name": "airship-fittings",
+      "quickHide": false,
+      "updatedAt": "2026-01-10T00:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000004",
+      "name": "porcelain",
+      "quickHide": false,
+      "updatedAt": "2026-01-01T18:00:00.000Z",
+      "user": "primary"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000005",
+      "name": "airship-ghost-tag",
+      "quickHide": false,
+      "updatedAt": "2026-01-02T18:00:00.000Z",
+      "user": "other"
+    }
+  ]
+}

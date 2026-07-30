@@ -32,6 +32,8 @@ pub mod files_routes;
 pub mod health;
 // === P4.6ar: the llm-logs read surface + system image-aesthetics REST edges ===
 pub mod llm_logs_routes;
+// === P4.9P: the global-search REST edge ===
+pub mod ui_search_routes;
 // === end P4.6ar ===
 pub mod multipart;
 // === P4.9c: the user-profile + data-dir REST edges (lane C, append-only) ===
@@ -317,6 +319,9 @@ pub fn build_router(state: SharedState) -> Router {
                 .put(llm_logs_routes::system_image_aesthetics_put),
         )
         // === end P4.6ar ===
+        // === P4.9P: the global-search endpoint ===
+        .route("/api/v1/ui/search", get(ui_search_routes::ui_search_get))
+        // === end P4.9P ===
         // === P4.6au: the home dashboard ===
         .route("/api/v1/system/home", get(system_routes::system_home_get))
         // === P4.9G1: the Data & System server surface ===

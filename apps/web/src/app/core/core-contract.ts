@@ -593,6 +593,23 @@ export interface ChatAttachMountFileRequest {
   relativePath: string;
 }
 
+/**
+ * The global-search endpoint (v4 `GET /api/v1/ui/search`) — the SearchBar /
+ * SearchDialog's one call (P4.9P). All four params are RAW strings: the server
+ * handler owns v4's trim/parseInt/Math.min-max body (including the NaN
+ * empty-page quirk), so the SPA passes its numbers as strings the way the URL
+ * query does. Success body: v4's `SearchResponse` (`{results, totalCount,
+ * query, types, hasMore, countsByType}`).
+ */
+export interface UiSearchRequest {
+  type: 'uiSearch';
+  q?: string;
+  /** CSV of `chats|characters|tags|memories|messages`. */
+  types?: string;
+  limit?: string;
+  offset?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pascal custom tools — the composer popup's wire contract (§4, OWNER: lane
 // P4.6ay). The two verbs are the SPA's path to `GET`/`POST
@@ -1953,6 +1970,8 @@ export type CoreRequest =
   | ChatGroupStoresRequest
   // --- The library picker's mount-attach leg (§1; P4.9E4A's server half) ---
   | ChatAttachMountFileRequest
+  // --- The global-search endpoint (§1; P4.9P) ---
+  | UiSearchRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
   | ChatSendMailRequest

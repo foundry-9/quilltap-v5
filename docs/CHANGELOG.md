@@ -87,6 +87,16 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+Ported the global-search endpoint (`GET /api/v1/ui/search`) — the one server
+piece the top toolbar's search bar was missing. It searches characters, chats,
+messages, memories, and tags for the signed-in user, ranks exact matches first,
+and pages results. The port reproduces the old app's behavior bug-for-bug,
+verified case-by-case against it over a purpose-built fixture (23 checks,
+including three deliberate-mutation sensitivity proofs): a garbage `limit`
+returns an empty page while claiming more results exist, an importance-zero
+memory reports importance 5, and the chat rows' `characterNames` list is empty
+for every normally-created chat because the old app compares the wrong id —
+all faithfully carried and pinned by tests, not fixed silently.
 
 Planned the next porting round: four parallel work orders. One catches v5 up
 to the old app's newest change (a failed project-settings read can no longer

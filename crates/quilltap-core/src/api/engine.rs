@@ -3362,6 +3362,26 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.9E4A ===
+            // === P4.9P: the global-search endpoint ===
+            Request::UiSearch {
+                q,
+                types,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::ui_search::ui_search(
+                    &db,
+                    SINGLE_USER_ID,
+                    &super::ui_search::UiSearchParams {
+                        q: q.as_deref(),
+                        types: types.as_deref(),
+                        limit: limit.as_deref(),
+                        offset: offset.as_deref(),
+                    },
+                ),
+                Err(r) => r,
+            },
+            // === end P4.9P ===
             Request::ChatAddToolResult { chat_id, body } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_media::chat_add_tool_result(&db, SINGLE_USER_ID, &chat_id, &body)

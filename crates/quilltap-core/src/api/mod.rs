@@ -83,6 +83,9 @@ pub mod chat_post_office;
 // === P4.9E1A: the chat cast + avatar-override surface (append-only) ===
 pub mod chat_cast;
 // === end P4.9E1A ===
+// === P4.9P: the global-search endpoint (append-only) ===
+pub mod ui_search;
+// === end P4.9P ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};
