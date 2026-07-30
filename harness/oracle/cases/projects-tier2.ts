@@ -16,6 +16,13 @@
  * (MOUNT-INDEX). Minted-values remap form; the Rust harness applies the shared
  * cross-db id-map.
  *
+ * P4.D29 (v4 `dcd9440a`) added the three `readProperties` refusal/seed arms:
+ * `plantProperties` writes raw bytes into a store's `properties.json` through the
+ * REAL `writeDatabaseDocument`, `deleteProperties` removes it through the REAL
+ * `deleteDatabaseDocument`, and `updateExpectError` records the thrown message
+ * into a new `errors` array the harness diffs alongside the tables — with the
+ * tables themselves as the "wrote nothing" proof.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -32,12 +39,23 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'addToRoster' | 'removeFromRoster' | 'setAllowAnyCharacter';
+  kind:
+    | 'create'
+    | 'update'
+    | 'addToRoster'
+    | 'removeFromRoster'
+    | 'setAllowAnyCharacter'
+    // P4.D29 (v4 dcd9440a): the readProperties refusal/seed arms.
+    | 'plantProperties'
+    | 'deleteProperties'
+    | 'updateExpectError';
   label: string;
   input?: Record<string, unknown>;
   patch?: Record<string, unknown>;
   characterId?: string;
   value?: boolean;
+  /** `plantProperties`: the raw bytes to write into `properties.json`. */
+  content?: string;
 }
 
 interface Spec {
@@ -80,15 +98,30 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
 
+  const { writeDatabaseDocument, deleteDatabaseDocument } = await import(
+    '@/lib/mount-index/database-store'
+  );
+
   await initializeDatabase();
   const repos = getRepositories();
 
   const idByLabel = new Map<string, string>();
+  /** Thrown-error messages from the `updateExpectError` arms, in op order. */
+  const errors: Array<{ label: string; message: string | null }> = [];
   for (const op of spec.ops) {
     const id = () => {
       const v = idByLabel.get(op.label);
       if (!v) throw new Error(`op references unknown label: ${op.label}`);
       return v;
+    };
+    /** The label's official store, read RAW (a broken overlay must not block it). */
+    const mountPointId = async (): Promise<string> => {
+      const raw = (await repos.projects.findByIdRaw(id())) as
+        | { officialMountPointId?: string | null }
+        | null;
+      const mp = raw?.officialMountPointId;
+      if (!mp) throw new Error(`project ${op.label} has no officialMountPointId`);
+      return mp;
     };
     switch (op.kind) {
       case 'create': {
@@ -99,6 +132,22 @@ async function main(): Promise<void> {
       case 'update':
         await repos.projects.update(id(), op.patch as never);
         break;
+      case 'plantProperties':
+        await writeDatabaseDocument(await mountPointId(), 'properties.json', op.content as string);
+        break;
+      case 'deleteProperties':
+        await deleteDatabaseDocument(await mountPointId(), 'properties.json');
+        break;
+      case 'updateExpectError': {
+        let message: string | null = null;
+        try {
+          await repos.projects.update(id(), op.patch as never);
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
+        break;
+      }
       case 'addToRoster':
         await repos.projects.addToRoster(id(), op.characterId as string);
         break;
@@ -156,6 +205,7 @@ async function main(): Promise<void> {
       links,
       folders,
       projectLinks,
+      errors,
     }) + '\n'
   );
   process.exit(0);

@@ -17,6 +17,18 @@
 //! addToRoster + removeFromRoster (the `characterRoster` array RMW preserving the
 //! other 15 keys); setAllowAnyCharacter (a bool RMW); and a DB-only `name` update.
 //!
+//! Since P4.D29 (v4 `dcd9440a`) it also banks the `read_properties` refusal/seed
+//! arms through THREE more stores, proving the shared generic through the SECOND
+//! `StoreEntity` (the group bag is 2 keys, this one 16 — a refused write here
+//! would have flattened several keys at once). Gamma's `properties.json` is
+//! overwritten with malformed bytes and Delta's with a schema-invalid body
+//! (`characterRoster` a string — a TYPE mismatch both Zod and serde reject; see
+//! the lane record for why v4's own `not-a-uuid` test body was NOT used);
+//! Epsilon's file is DELETED, the one arm that may seed from the slim row. The
+//! thrown messages are recorded oracle-side into an `errors` array and diffed
+//! here, ids remapped through each side's own token map and only the
+//! parse-detail tail elided (see `UNPARSEABLE_MARKER`).
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -35,10 +47,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::projects::{ProjectCreateInput, ProjectCreateOptions, ProjectsRepository};
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+use quilltap_core::db::projects::{
+    find_official_mount_point_id_raw, ProjectCreateInput, ProjectCreateOptions, ProjectsRepository,
+};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 #[derive(Deserialize)]
 struct Spec {
@@ -74,6 +89,20 @@ enum Op {
     },
     #[serde(rename = "setAllowAnyCharacter")]
     SetAllowAnyCharacter { label: String, value: bool },
+    /// Overwrite `properties.json` with raw bytes, bypassing the overlay's
+    /// serializer (the corrupt-store arms). v4 drives `writeDatabaseDocument`.
+    #[serde(rename = "plantProperties")]
+    PlantProperties { label: String, content: String },
+    /// Remove `properties.json` entirely — v4's genuine-absence (NOT_FOUND) arm,
+    /// the ONLY one that may seed defaults.
+    #[serde(rename = "deleteProperties")]
+    DeleteProperties { label: String },
+    /// Run the update expecting a refusal; the message is recorded and diffed.
+    #[serde(rename = "updateExpectError")]
+    UpdateExpectError {
+        label: String,
+        patch: Map<String, Value>,
+    },
 }
 
 struct TableSpec {
@@ -188,11 +217,62 @@ fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<Stri
     }
 }
 
-fn normalize_all(dumps: &mut [Value]) {
+/// Normalize every table and return the shared id-map, so the recorded error
+/// messages can be remapped with the SAME first-seen tokens.
+fn normalize_all(dumps: &mut [Value]) -> HashMap<String, String> {
     let mut id_map: HashMap<String, String> = HashMap::new();
     for (i, spec) in TABLES.iter().enumerate() {
         normalize_table(&mut dumps[i], spec, &mut id_map);
     }
+    id_map
+}
+
+/// The one seam the thrown messages cannot cross: the parse detail. v4's tail is
+/// V8's `JSON.parse` text or a Zod issue array; v5's is serde's. Everything up to
+/// and including `properties.json unparseable: ` IS compared byte-for-byte (that
+/// is v4's `ProjectStoreUnavailableError` message, ids remapped); the tail is
+/// replaced with a placeholder and separately asserted non-empty on both sides.
+/// This is the standing "`is not valid JSON:` wording" seam, not a normalization
+/// of convenience. Mirrors `groups_tier2_equivalence`.
+const UNPARSEABLE_MARKER: &str = "properties.json unparseable: ";
+
+/// Remap minted ids to the shared tokens, then elide the parse-detail tail.
+fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side: &str) -> String {
+    let mut out = message.to_string();
+    for (raw, token) in id_map {
+        if out.contains(raw.as_str()) {
+            out = out.replace(raw.as_str(), token);
+        }
+    }
+    if let Some(idx) = out.find(UNPARSEABLE_MARKER) {
+        let head_end = idx + UNPARSEABLE_MARKER.len();
+        assert!(
+            !out[head_end..].trim().is_empty(),
+            "{side}: empty parse detail in {out:?}"
+        );
+        out.truncate(head_end);
+        out.push_str("<parse-detail>");
+    }
+    out
+}
+
+/// `[{label, message}]` → normalized, order preserved. A `null` message means the
+/// update did NOT throw and is kept as-is, so a side that silently succeeds where
+/// the other refuses goes RED.
+fn normalize_errors(errors: &Value, id_map: &HashMap<String, String>, side: &str) -> Vec<Value> {
+    errors
+        .as_array()
+        .unwrap_or_else(|| panic!("{side}: errors is not an array: {errors}"))
+        .iter()
+        .map(|e| {
+            let label = e["label"].clone();
+            let message = match e.get("message") {
+                Some(Value::String(m)) => Value::String(normalize_error_message(m, id_map, side)),
+                _ => Value::Null,
+            };
+            json!({ "label": label, "message": message })
+        })
+        .collect()
 }
 
 /// Split a flat create input into (name, description, instructions, state, properties).
@@ -270,6 +350,7 @@ fn projects_tier2_matches_oracle() {
     let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open mount: {e}"));
 
+    let mut got_errors: Vec<Value> = Vec::new();
     {
         let repo = ProjectsRepository::new(main.connection(), mount.connection());
         let mut id_by_label: HashMap<String, String> = HashMap::new();
@@ -278,8 +359,35 @@ fn projects_tier2_matches_oracle() {
                 .unwrap_or_else(|| panic!("op references unknown label {label}"))
                 .clone()
         };
+        // The label's official store, read RAW — a broken overlay must not block
+        // it (v4 reads it through `projects.findByIdRaw`).
+        let mount_point_id = |map: &HashMap<String, String>, label: &str| -> String {
+            find_official_mount_point_id_raw(main.connection(), &lookup(map, label))
+                .unwrap_or_else(|e| panic!("raw mount lookup {label}: {e}"))
+                .flatten()
+                .unwrap_or_else(|| panic!("project {label} has no officialMountPointId"))
+        };
         for op in &spec.ops {
             match op {
+                Op::PlantProperties { label, content } => {
+                    let mp = mount_point_id(&id_by_label, label);
+                    DocMountFileLinksRepository::new(mount.connection())
+                        .write_database_document(&mp, "properties.json", content)
+                        .unwrap_or_else(|e| panic!("plant {label}: {e}"));
+                }
+                Op::DeleteProperties { label } => {
+                    let mp = mount_point_id(&id_by_label, label);
+                    DocMountFileLinksRepository::new(mount.connection())
+                        .delete_database_document(&mp, "properties.json")
+                        .unwrap_or_else(|e| panic!("delete properties {label}: {e}"));
+                }
+                Op::UpdateExpectError { label, patch } => {
+                    let message = match repo.update(&lookup(&id_by_label, label), patch) {
+                        Ok(_) => Value::Null,
+                        Err(e) => Value::String(e.to_string()),
+                    };
+                    got_errors.push(json!({ "label": label, "message": message }));
+                }
                 Op::Create { label, input } => {
                     let created = repo
                         .create(&split_create_input(input), &ProjectCreateOptions::default())
@@ -333,8 +441,23 @@ fn projects_tier2_matches_oracle() {
         })
         .collect();
 
-    normalize_all(&mut got);
-    normalize_all(&mut want);
+    let got_id_map = normalize_all(&mut got);
+    let want_id_map = normalize_all(&mut want);
+
+    // The P4.D29 refusal arms: v4's thrown message vs v5's, ids remapped through
+    // each side's OWN first-seen map and only the parse-detail tail elided.
+    let got_errs = normalize_errors(&Value::Array(got_errors.clone()), &got_id_map, "rust");
+    let want_errs = normalize_errors(
+        oracle
+            .get("errors")
+            .unwrap_or_else(|| panic!("oracle has no `errors` array — regenerate it (see header)")),
+        &want_id_map,
+        "oracle",
+    );
+    assert_eq!(
+        got_errs, want_errs,
+        "refusal-arm messages diverged\n  rust:   {got_errs:?}\n  oracle: {want_errs:?}"
+    );
 
     for (i, s) in TABLES.iter().enumerate() {
         assert_eq!(got[i]["table"], want[i]["table"], "{}: table name", s.table);
@@ -354,9 +477,9 @@ fn projects_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().clone()
     };
-    assert_eq!(rows("projects").len(), 2, "2 project rows");
-    assert_eq!(rows("points").len(), 2, "2 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 2, "2 project→store links");
+    assert_eq!(rows("projects").len(), 5, "5 project rows");
+    assert_eq!(rows("points").len(), 5, "5 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 5, "5 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the
@@ -381,5 +504,52 @@ fn projects_tier2_matches_oracle() {
         "Alpha RMW-preserved properties.json not found; documents: {docs:?}"
     );
 
-    eprintln!("OK: projects store-backed tier-2 matched oracle (7 tables, 2 DBs).");
+    // ── P4.D29: the refusal arms wrote NOTHING ────────────────────────────
+    // Gamma's malformed bytes and Delta's schema-invalid body are still their
+    // stores' `properties.json` after both patches were refused. Before
+    // `dcd9440a` each would have been REPLACED by a defaults-seeded bag — which
+    // for the 16-key project bag means SEVERAL keys silently lost per write, the
+    // exact damage the drift describes.
+    let has_doc = |content: &str| {
+        docs.iter()
+            .any(|d| d["content"] == Value::String(content.into()))
+    };
+    assert!(
+        has_doc("{ not json"),
+        "gamma's planted malformed properties.json was overwritten — the refusal did not hold"
+    );
+    assert!(
+        has_doc(
+            "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": \"not-an-array\",\n  \"color\": \"#bb0000\"\n}"
+        ),
+        "delta's planted schema-invalid properties.json was overwritten"
+    );
+    // Neither refused patch's key reached a bag anywhere in the store.
+    assert!(
+        !docs.iter().any(|d| d["content"]
+            .as_str()
+            .is_some_and(|c| c.contains("\"answerConfirmationOverride\": \"ON\"")
+                && !c.contains("\"color\": \"#778899\""))),
+        "gamma's refused patch reached the store as a defaults-seeded bag"
+    );
+    assert!(
+        !docs.iter().any(|d| d["content"]
+            .as_str()
+            .is_some_and(|c| c.contains("\"defaultAgentModeEnabled\": true")
+                && !c.contains("\"color\": \"#aa0000\""))),
+        "delta's refused patch reached the store as a defaults-seeded bag"
+    );
+    // Epsilon's `properties.json` was genuinely ABSENT — the one arm that may
+    // seed from the slim row, so its `icon` legitimately does not survive.
+    assert!(
+        has_doc(
+            "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#0e0e0e\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"
+        ),
+        "the genuine-absence seed arm did not write its defaults-seeded bag; documents: {docs:?}"
+    );
+
+    eprintln!(
+        "OK: projects store-backed tier-2 matched oracle (7 tables, 2 DBs, {} refusal arms).",
+        got_errs.len()
+    );
 }

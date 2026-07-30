@@ -43562,3 +43562,57 @@ schema-invalid arm with a type mismatch, which both sides reject. Closing it
 means porting Zod's format validators across the property bags — its own unit.
 
 Versions: core 0.0.412, harness 0.0.357.
+
+### Lane record — P4.D29 unit 2 (the projects tier-2 arms — the second `StoreEntity`)
+
+The same three arms through the OTHER `StoreEntity`, which is the point: the
+engine is generic, but the group bag is 2 keys and the project bag is 16, so a
+refusal that failed here would have flattened several keys per write. Gamma takes
+malformed bytes then an `answerConfirmationOverride` patch; Delta takes a
+schema-invalid body then a `defaultAgentModeEnabled` patch; Epsilon's file is
+deleted then patched. Corpus shape 2/2/2 → 5/5/5 (projects / points /
+projectLinks). No source change — unit 1's port covers both entities; this unit
+is corpus + differential only (harness 0.0.358).
+
+**Why Delta's body is a type mismatch, not v4's own `not-a-uuid`.** v4's new
+jest suite makes its schema-invalid body `defaultImageProfileId: 'not-a-uuid'`.
+Using that verbatim would have gone RED — but on a PRE-EXISTING lenience gap, not
+on `dcd9440a`: v5's `ProjectEntity::parse_properties` is `serde_json::from_value`,
+which enforces TYPES but not Zod's FORMAT validators, so `z.string().uuid()`
+accepts `"not-a-uuid"` in v5 and rejects it in v4. The corpus therefore uses
+`characterRoster: "not-an-array"`, which both Zod and serde reject, so the arm
+measures the drift and nothing else. The format-validator gap is recorded as a
+loud deferral in unit 1's record; it is orthogonal (the hydrate path shares
+`parse_properties`) and wants its own unit.
+
+**A concern that did not materialize.** The genuine-absence arm is the first time
+either family reaches `apply_write_overlay`'s seed-from-entity branch, which
+parses the raw SLIM row through the property schema. For projects that risked a
+NULL-column blow-up (serde's `#[serde(default)]` covers a MISSING field, not an
+explicit `null`, and Zod's `.default([])` likewise). Both sides produced the same
+materialized-defaults bag, so the branch is now covered rather than merely
+assumed.
+
+**Mutation-proofed** (green on first run, D24 rule): the fail-soft revert goes
+RED on the refusal-arm messages, and with the `errors` assertion neutered it goes
+RED on `doc_mount_files` — the post-state "wrote nothing" proof is independently
+sensitive here too.
+
+**Regen recipe** (Node 24, from the v4 checkout at `dcd9440a`; rebuild the
+fixture first — a rebuild mints fresh ids, so never pair a fresh fixture with a
+stale oracle):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+rm -f /tmp/qt-projects-main.db /tmp/qt-projects-mount.db
+QT_FIXTURE_PROJECTS_MAIN=/tmp/qt-projects-main.db \
+QT_FIXTURE_PROJECTS_MOUNT=/tmp/qt-projects-mount.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-projects-tier2-fixture.ts
+QT_FIXTURE_PROJECTS_MAIN=/tmp/qt-projects-main.db \
+QT_FIXTURE_PROJECTS_MOUNT=/tmp/qt-projects-mount.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/projects-tier2.ts > /tmp/oracle-projects.ndjson
+```
+
+Gate at this commit: fmt, clippy both feature sets, `cargo test --workspace
+--no-fail-fast` 401 binaries / 1,705 tests / 0 failed.

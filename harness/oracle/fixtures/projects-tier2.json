@@ -47,6 +47,79 @@
       "kind": "removeFromRoster",
       "label": "alpha",
       "characterId": "aaaaaaaa-0000-4000-8000-000000000001"
+    },
+
+    {
+      "kind": "create",
+      "label": "gamma",
+      "input": {
+        "name": "Gamma",
+        "description": "Desc G",
+        "state": {},
+        "color": "#aa0000",
+        "defaultAgentModeEnabled": true,
+        "backgroundDisplayMode": "project"
+      }
+    },
+    {
+      "kind": "create",
+      "label": "delta",
+      "input": {
+        "name": "Delta",
+        "description": "Desc D",
+        "state": {},
+        "color": "#bb0000",
+        "defaultImageProfileId": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "kind": "create",
+      "label": "epsilon",
+      "input": {
+        "name": "Epsilon",
+        "description": "Desc E",
+        "state": {},
+        "color": "#cc0000",
+        "icon": "bolt"
+      }
+    },
+
+    {
+      "kind": "plantProperties",
+      "label": "gamma",
+      "content": "{ not json"
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "gamma",
+      "patch": {
+        "answerConfirmationOverride": "ON"
+      }
+    },
+
+    {
+      "kind": "plantProperties",
+      "label": "delta",
+      "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": \"not-an-array\",\n  \"color\": \"#bb0000\"\n}"
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "delta",
+      "patch": {
+        "defaultAgentModeEnabled": true
+      }
+    },
+
+    {
+      "kind": "deleteProperties",
+      "label": "epsilon"
+    },
+    {
+      "kind": "update",
+      "label": "epsilon",
+      "patch": {
+        "color": "#0e0e0e"
+      }
     }
   ]
 }

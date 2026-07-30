@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Extended the same settings-file protection check to projects, the other entity
+that uses the shared engine — a project carries sixteen settings to a group's
+two, so a bad write there loses far more at once. No behavior changed; this is
+the proof for the second entity.
+
+
 A failed read of a project's or group's settings file can no longer wipe that
 entire settings bag. The overlay engine used to answer every read failure with
 "there is nothing here yet," and the caller reads that as permission to start
