@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Wrote down a wish for later: letting you speak as a character for a stretch of
+turns and have them go back to being driven by their own model when you stop.
+The old app only ever half-did this — it will let you offer to speak as a
+character it never actually hands you the pen for — and the new app copies that
+faithfully for now. The note captures the cleaner way to do it eventually, which
+turns out to need no stored data at all, only a check at the moment it is a
+character's turn. Deferred until after the first release.
+
 Noted why an autonomous room's status badge appears down in the left rail
 rather than across the top: the old app keeps it in a top toolbar the new one
 has not built yet, so the badge — along with the queue-status indicators, the
