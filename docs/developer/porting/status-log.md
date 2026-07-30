@@ -42986,3 +42986,97 @@ no oracle can see it; on a non-UTC host, a chat with no timezone configured
 anywhere would format at twice the offset in the wrong direction. `spine.rs` is
 not in this order's ownership and no sibling lane owns it either, so it is
 reported rather than touched.
+
+## Lane record — P4.d28 unit 2: the transcript renderer + the content-disposition lift (2026-07-30)
+
+Order: `work-orders/p4.d28-export-markdown-transcript.md` (tier-1 items 1 + the
+§3 disposition lift, plus tier 2 in full).
+
+**What landed.**
+
+- `services/markdown_transcript.rs` — v4 `lib/export/markdown-transcript.ts`
+  entire: the inclusion filter, speaker resolution (all six precedence steps),
+  the swipe collapse, the layout, `transcript_filename`. Reads the repos' JSON
+  (the `chat_export` precedent) rather than v4's typed shapes.
+- `content_disposition.rs` (NEW, in the CORE) — v4's `b3ee00f1` dedupe of
+  `buildContentDisposition` into `lib/api/content-disposition.ts`, with
+  `files_routes.rs`'s private copy re-pointed at it. **Deviation from the order,
+  deliberate:** the order suggested a shared helper inside `quilltap-web`, but
+  the harness does not depend on `quilltap-web` and adding it would drag
+  `native-transport` into every harness build via feature unification. v4 put
+  the helper in `lib/api/` — which IS `quilltap-core` — and `mime.rs` is the
+  standing precedent for an HTTP-shaped pure helper there. The differential now
+  drives the REAL production helper instead of a copy living beside the
+  assertion.
+- **A real bug the lift fixed.** `files_routes`'s copy built the ASCII fallback
+  with `chars()`, but JS `replace(/[^\x00-\x7F]/g, '_')` replaces each UTF-16
+  code UNIT: an astral character (any emoji) is two units and gets TWO
+  underscores. Every non-ASCII filename with an emoji served a header that
+  differed from v4's. Reachable from the transcript (a chat title survives into
+  the filename) and from the files routes; pinned by two corpus rows.
+
+**The differential — a corpus, not the fixture.** New family
+`markdown_transcript_equivalence` over `QT_ORACLE_MARKDOWN_TRANSCRIPT` (53 rows:
+35 `transcript`, 10 `filename`, 8 `disposition`), driving v4's real
+`buildMarkdownTranscript` / `transcriptFilename` / `buildContentDisposition`.
+Byte-for-byte on the rendered document, no normalization. The committed
+`chat-dialogs` fixture was deliberately NOT extended: it has no whispers, no
+Pascal/Carina rows, no `customAnnouncer`, no Host link notices, no fictional
+clock and an ASCII title, and widening it would force all five of its consumers
+to regenerate together (fresh minted UUIDs) to reach arms a pure corpus reaches
+for nothing. Every tier-2 matrix item the order lists is covered; nothing was
+dropped.
+
+**Sensitivity: 13 mutations, every one recorded.** The family ran green first
+try, so each arm was attacked: `heading_safe` made identity, the swipe tie's
+strict `>` relaxed to `>=`, `HOST_LINK_KINDS` losing `merge-to`, the unknown-Staff
+raw-key fallback replaced, the DATE_ONLY/TIME_ONLY promotion dropped, the
+fallback anchor not passed, the whisper suffix fired on an empty target list, the
+Brahma sentinel arm removed, the ASCII fallback done over `chars()`, the message
+body left untrimmed, the chat's own config ignored in favour of the Salon
+default, and the off-scene-character fallback swapped — **all RED**.
+
+**Two mutations came back GREEN, and they are different animals:**
+
+1. **A mutation that never applied.** `find(|p| type == "CHARACTER")` →
+   `find(|p| characterId.is_some())` read GREEN because the perl pattern's
+   indentation was wrong and the substitution silently did nothing. ⚠ **An
+   inapplicable mutation is indistinguishable from an insensitive assertion** —
+   grep the mutated source before believing a green. Once applied it exposed a
+   REAL corpus gap: every participant list started with the CHARACTER entry. A
+   new row (`primary-skips-non-character-participant`) puts a `type: 'USER'`
+   participant first — impossible in a validated chat, since v4's
+   `ParticipantTypeEnum` has exactly one member, so v4's own filter is vestigial
+   — and the renderer does no runtime validation, so the corpus can hand it one.
+   The mutation is now RED.
+2. **A line no input can reach.** Dropping v4's terminal
+   `replace(/\n*$/, '\n')` stays GREEN with the mutation verifiably applied,
+   because the builder pushes an empty string after every block: `join("\n")`
+   already ends with exactly one newline, always. v4's normalization is
+   defensive-only. The port keeps it for fidelity; the differential provably
+   cannot distinguish it, which is recorded here rather than left as a silent
+   green.
+
+**Regen recipe:**
+
+```
+cd ~/source/quilltap-server
+TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <v5>/harness/oracle/cases/markdown-transcript.ts > /tmp/oracle-markdown-transcript.ndjson
+QT_ORACLE_MARKDOWN_TRANSCRIPT=/tmp/oracle-markdown-transcript.ndjson \
+  cargo test -p quilltap-harness --test markdown_transcript_equivalence -- --nocapture
+```
+
+`TZ=UTC` is load-bearing (the case hard-fails without it, and the zone-less
+FRIENDLY path reads the host zone). New-baseline markers: a `"kind":"disposition"`
+row, and `staff-display-names` carrying `Suparṇā` (byte-compared against v4's
+source at authoring time, U+1E47 + U+0101).
+
+**One fidelity improvement over the injected-offset convention.** The renderer's
+`LocalOffset` is either `Fixed(i64)` (what the differential injects; `TZ=UTC` ⇒
+0) or `Zone(&str)`, resolved PER MESSAGE. v4 asks each `Date` for its own
+`getTimezoneOffset()`, so a transcript spanning a DST change in the HOST zone
+(reachable only with no timezone configured anywhere) renders each message at
+the offset then in force; a single injected offset would not. No oracle can see
+the difference under `TZ=UTC` — it is why the seam exists rather than a claim the
+diff proves.

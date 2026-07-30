@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+A conversation can now be turned into a readable Markdown document — the
+renderer half, with the button and the route still to come. The transcript
+carries the chat's title, its opening scenario with the names filled in, and
+every line anyone actually said: the characters, you, Pascal's rolls, Carina's
+and Brahma's answers, the announcements you inserted, and the Host's notices
+about where a conversation came from or went. Whispers are marked as whispers.
+Housekeeping chatter, system messages, tool results, and anything sent to a
+model stay out. Each line sits under its speaker and the time on the chat's own
+clock — fictional time when the chat runs one, in the chat's timezone, with
+date-only and time-only formats promoted so a transcript keeps both halves.
+Where a message has several regenerated versions, the one on display is the one
+that is written down. Proven against the old app over 53 cases and then
+mutation-tested arm by arm; the download filename and its header ride the same
+proof, and the header's handling of emoji in a filename was quietly wrong until
+this work made it visible.
+
 The chat clock can now be asked what time it was at any past moment, not just
 what time it is now. Fictional time already advanced in step with the real
 clock; the new entry point applies that same arithmetic to an arbitrary instant

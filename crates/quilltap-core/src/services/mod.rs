@@ -188,3 +188,6 @@ pub mod embedding_reindex_job;
 /// PHASE 3.7), wired immediately after the render reconcile.
 pub mod embedding_dimension_reconcile;
 // === end P4.d27 ===
+// === P4.d28: the Markdown transcript export ===
+pub mod markdown_transcript;
+// === end P4.d28 ===

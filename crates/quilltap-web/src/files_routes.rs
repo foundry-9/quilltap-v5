@@ -84,44 +84,17 @@ pub(crate) fn db_and_backend(
     Ok((db, backend))
 }
 
-/// v4 `buildContentDisposition` — RFC 5987 for non-ASCII filenames.
+/// v4 `buildContentDisposition` with its `inline` default — the two local
+/// copies moved into `quilltap_core::content_disposition` when v4 `b3ee00f1`
+/// deduplicated its own pair into `lib/api/content-disposition.ts`. The lift
+/// also fixed a divergence this copy carried: the ASCII fallback replaced each
+/// non-ASCII `char`, where JS replaces each UTF-16 code UNIT, so an astral
+/// character (an emoji in a filename) got one underscore instead of two.
 fn build_content_disposition(filename: &str) -> String {
-    let has_non_ascii = filename.bytes().any(|b| !b.is_ascii());
-    if !has_non_ascii {
-        return format!("inline; filename=\"{filename}\"");
-    }
-    let ascii: String = filename
-        .chars()
-        .map(|c| if c.is_ascii() { c } else { '_' })
-        .collect();
-    format!(
-        "inline; filename=\"{ascii}\"; filename*=UTF-8''{}",
-        encode_uri_component(filename)
+    quilltap_core::content_disposition::build_content_disposition(
+        filename,
+        quilltap_core::content_disposition::Disposition::Inline,
     )
-}
-
-/// JS `encodeURIComponent` over the unreserved set it keeps
-/// (`A–Z a–z 0–9 - _ . ! ~ * ' ( )`).
-fn encode_uri_component(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.as_bytes() {
-        match b {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'!'
-            | b'~'
-            | b'*'
-            | b'\''
-            | b'('
-            | b')' => out.push(*b as char),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
 }
 
 /// The immutable file-bytes response (proxy + download routes).
