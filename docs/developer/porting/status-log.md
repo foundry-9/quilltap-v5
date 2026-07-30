@@ -43229,3 +43229,22 @@ keeps it entirely local.
   same sites (`handlers/get.ts:120` builds the JSONL header by hand), so this is
   fidelity, not debt. A non-ASCII name would produce an unquoted-UTF-8 header on
   BOTH sides.
+
+### P4.d28 — the v4 drift that landed mid-lane, and why the oracles are still `b3ee00f1`
+
+At lane start `git log b3ee00f1..HEAD` was empty but v4's tree was **DIRTY**
+(four in-flight `background-jobs/child` files). Those were judged outside this
+family's import graph and the oracles were regenerated straight from the
+checkout. During the lane that work committed as **`5cc76688`** ("fix(jobs):
+read-your-writes detector compares tables, not repositories"), so v4 HEAD is now
+one commit past this round's baseline.
+
+**The judgement was then verified rather than left as reasoning.** All three of
+this lane's families were regenerated from a CLEAN detached worktree pinned at
+`b3ee00f1` (`/tmp/qt-v4-pin-b3ee00f1`) and diffed against the committed-run
+output: `chat-timestamp`, `markdown-transcript` and `chat-dialogs-export` are
+**byte-identical**. The drift is a job-child logging fix — its only `lib` file
+is `background-jobs/child/child-repositories-proxy.ts`, which no route-tier or
+pure-tier oracle here reaches — so the baseline for this lane's families is
+`b3ee00f1` either way, and the unifier can move the round's baseline to
+`5cc76688` (or not) without re-running any of them.
