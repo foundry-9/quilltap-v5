@@ -30,7 +30,10 @@
 //!   QT_FIXTURE_OUT=/tmp/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-orch-mount.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-orchestrator-fixture.ts
 //!   QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db \
-//!   QT_ORACLE_OUT=/tmp/oracle-orchestrator.ndjson \
+//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-orchestrator.ndjson \
+//!     ^-- TZ=UTC is REQUIRED since P4.d26: the distill TODAY line renders in
+//!     the SERVER-LOCAL zone, so this oracle is now TZ-sensitive (the harness
+//!     pins server_tz "UTC").
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- orchestrator-tier3
 //! Run:
 //!   QT_ORACLE_ORCHESTRATOR=/tmp/oracle-orchestrator.ndjson \

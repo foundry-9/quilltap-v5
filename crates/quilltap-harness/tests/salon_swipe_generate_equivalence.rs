@@ -11,7 +11,9 @@
 //! `NoopSeams` (matching the oracle's mocked feeders + K-loader).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
-//!   … QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson npx jest -- salon-swipe-generate
+//!   … TZ=UTC QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson npx jest -- salon-swipe-generate
+//!   (TZ=UTC REQUIRED since P4.d26 — the distill TODAY line is server-local;
+//!   the harness pins server_tz "UTC")
 //! Run:
 //!   QT_ORACLE_SALON_SWIPE=/tmp/oracle-salon-swipe.ndjson \
 //!     cargo test -p quilltap-harness --test salon_swipe_generate_equivalence

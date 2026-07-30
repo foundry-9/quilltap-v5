@@ -36,7 +36,9 @@
 //!   QT_FIXTURE_ENCLAVE_STEP_MAIN=/tmp/qt-enclave-step-main.db \
 //!   QT_FIXTURE_ENCLAVE_STEP_MOUNT=/tmp/qt-enclave-step-mount.db \
 //!   QT_FIXTURE_ENCLAVE_STEP_LLMLOGS=/tmp/qt-enclave-step-llmlogs.db \
-//!   QT_ORACLE_OUT=/tmp/oracle-enclave-step.ndjson \
+//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-enclave-step.ndjson \
+//!     ^-- TZ=UTC REQUIRED since P4.d26 (server-local distill TODAY line;
+//!     the step passes the instance zone as server_tz).
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- enclave-step-tier3
 //! Run:

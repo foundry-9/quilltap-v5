@@ -28,7 +28,9 @@
 //!   QT_FIXTURE_OUT=/tmp/qt-regen-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-regen-mount.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-regenerate-swipe-fixture.ts
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
-//!   QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
+//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
+//!     ^-- TZ=UTC REQUIRED since P4.d26 (server-local distill TODAY line;
+//!     the harness pins server_tz "UTC").
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- regenerate-swipe-tier3
 //! Run:
