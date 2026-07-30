@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Mirrored the old app's write-up of the day-reading work alongside the port, and
+the app now says in its log when it has overruled the model's reading of a date
+(and when it deliberately has not, for a reference pointing at tomorrow).
+
 A resolved stretch of time now narrows a memory search whether or not the app
 decided the conversation was looking backwards. It used to throw the window away
 on any turn its classifier called present-tense — which is exactly the turn the

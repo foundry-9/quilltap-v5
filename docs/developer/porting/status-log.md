@@ -42345,3 +42345,92 @@ QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db QT_FIXTURE_BC_MOUNT=/tmp/qt-bui
 
 ⚠ The `episodic-recall-*` fixtures are COMMITTED: point the oracle at the
 committed files (never at a rebuild — a rebuild mints fresh UUIDs).
+
+---
+
+## Lane record — P4.d26 unit 5: the transitive neutrality regens, the tier-2 riders, and one PRE-EXISTING red found on the way
+
+**Landed** (2026-07-30, lane `claude/p4-d26-day-references-ec789e`).
+
+**Tier-2 riders (both taken):** v4's new feature doc is mirrored to
+`docs/v4/developer/features/complete/episodic-recall-day-references-and-fresh-boost.md`
+(v4 keeps it under `complete/`, so the mirror does too), and
+`merge_day_reference` emits v4's two `logger.debug` lines as
+`tracing::debug!(target: "quilltap::memory", …)`. v5's lines carry no
+chat/character id: v4 passes them into `mergeDayReference` purely for logging and
+v5's function is not handed them. Log output is outside the differential contract
+(P4.18).
+
+**Neutrality regens — six families regenerated fresh at `b3ee00f1` and re-run BY
+NAME, all green:** `orchestrator_tier3` (227 rows), `regenerate_swipe_tier3`,
+`memory_tasks` (the CREATION side — byte-identical, which is the check that the
+§1b trap held: v4's `renderClockBlock` still uses `getUTCDay()` and v5's
+`render_clock_block` was NOT "fixed" to local), `salon_swipe_generate`,
+`search_tools` (both legs — v4's own commit says the explicit search-tool path is
+untouched, and it is), and `vault_conv_search` (its `episodic-recall-*` fixture
+never moved, so this re-run is confirmation rather than obligation).
+
+### ⚠ `enclave_step_tier3_equivalence` is RED — pre-existing, NOT this lane's, and not fixed here
+
+Regenerating it exposed a v5 divergence that has been on main since P4.19 and was
+invisible because the family's last green run used an oracle artifact from an
+earlier round (a `/tmp` NDJSON that no longer exists). **Proven three ways:**
+
+| code | oracle | result |
+|---|---|---|
+| main (`7ed40302`) | fresh at `083fdf68` (the PREVIOUS baseline) | RED at `llm_logs`: **13 distill rows vs v4's 12**, the 13th an error row |
+| main (`7ed40302`) | fresh at `b3ee00f1` | RED at `chats` — main lacks this lane's port (a red→green fingerprint FOR the port) |
+| this lane | fresh at `b3ee00f1` | `chats` GREEN; RED at `llm_logs` on the SAME single extra row |
+
+`chats` is asserted before `llm_logs`, so the middle and bottom rows together say:
+the port is right on everything the family covers, and the one divergence is the
+pre-existing extra row. v4 emits exactly 12 distill calls at BOTH baselines
+(counted from the oracle's recorded canned entries), so the drift did not remove
+one.
+
+**What the extra row is.** In the `fold_fires` case (the "Fold room", 11
+alternating ASSISTANT seeds), v5 runs the P4.19 proactive pre-compute distill
+with a 1-message window (`Fold seed line 11.`) where v4's `proactiveRecallTask`
+BAILS and never calls the cheap LLM. The harness has no canned entry for a call
+v4 never made, so v5's call fails, the failure is logged as an `llm_logs` error
+row (the ruled P4.13 divergence — v4 does not log failed cheap calls), and
+because the pre-compute returned nothing, v5 then ALSO runs build_context's
+fallback distill (the 11-message window v4 uses). One extra call, one extra row,
+one cascade.
+
+**Why only this case shows it, and what is still undetermined.** The fixture's
+other 20 chats carry ONE seeded message or none — so pre-compute's
+"messages-since-this-character-last-spoke" window and buildContext's last-12
+window render IDENTICALLY there, and a v5-only pre-compute call is
+indistinguishable from v4's buildContext call. The fold room (11 alternating
+seeds) is the only chat where the two windows differ, which is why it is the only
+case that exposes anything. What is NOT determined is whether v4's
+`proactiveRecallTask` runs and bails there or never runs in the enclave path at
+all: both of its guards read as satisfied (the same chat's buildContext distill
+runs, so `cheapLLMSelection` is non-null; and Byron — the verified responder on
+both sides — last spoke at line 10 with Ada's line 11 after it, so
+`messagesSinceLastSpoke` is non-empty). Settling it needs v4-side
+instrumentation, which is outside this order. Either way the observable fact is
+the same: v5 emits one cheap-LLM call per affected autonomous turn that v4 does
+not.
+
+**Why it is not fixed here.** It is not part of `505dcb1f`; the surface is
+P4.19's windowing/guards, its fix needs its own diagnosis and its own
+differential case, and landing a speculative guard change inside a drift-port
+round would blur the provenance of both. **It costs real money in production —
+one extra cheap-LLM call per affected autonomous turn** — so it deserves its own
+follow-up item, not a rider.
+
+### ⚠ v4 moved during the lane: HEAD is now `5cc76688`
+
+`5cc76688 fix(jobs): read-your-writes detector compares tables, not repositories`
+landed mid-lane (it was the uncommitted work that made v4's tree dirty at lane
+start). It touches `lib/background-jobs/child/child-repositories-proxy.ts` — the
+FORKED-CHILD repositories proxy, whose whole subsystem is a locked v5 non-port
+(the in-process job runner), so the likely disposition is NO PORT; that call
+belongs to the unifier/next round, not this lane. **Every oracle in this lane was
+generated from a detached worktree pinned at `b3ee00f1`**, so nothing here is
+contaminated by it. Note for whoever regenerates next: the shared pin
+`/private/tmp/qt-v4-pin-b3ee00f1` was REMOVED by another lane mid-run; this lane
+re-created its own at `/private/tmp/qt-v4-pin-p4d26-b3ee00f1`. Use a
+lane-unique pin path.

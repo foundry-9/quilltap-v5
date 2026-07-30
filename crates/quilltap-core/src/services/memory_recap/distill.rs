@@ -239,8 +239,26 @@ pub fn merge_day_reference(
         return parsed;
     };
     if !day_reference.past_pointing {
+        // v4 `logger.debug('[MemorySearchKeywords] Day reference is
+        // future-pointing; leaving LLM signals alone')`. Log output is outside
+        // the differential contract (P4.18); v5's line carries no chat/character
+        // id because this function, unlike v4's, is not handed them.
+        tracing::debug!(
+            target: "quilltap::memory",
+            matched = %day_reference.matched,
+            "Day reference is future-pointing; leaving LLM signals alone",
+        );
         return parsed;
     }
+    tracing::debug!(
+        target: "quilltap::memory",
+        matched = %day_reference.matched,
+        from = %day_reference.time_range.from,
+        to = %day_reference.time_range.to,
+        overrode_llm_time_range = parsed.time_range.is_some(),
+        llm_retrospective = parsed.retrospective,
+        "Deterministic day reference resolved",
+    );
     DistilledSearch {
         retrospective: true,
         time_range: Some(day_reference.time_range.clone()),
