@@ -44399,3 +44399,32 @@ NavigationEnd → stop + re-fire (v4's usePathname effect), mount → fire.
 Specs: 7 (bucket table pinned, count/zero logic, dim-at-zero render +
 tooltip, mount-check-no-poll-at-zero, active→poll→stop-at-zero drain,
 notifyQueueChange wake, failed-fetch collapse).
+
+## Lane record — P4.9P unit 6: SearchBar + dropdown + SearchDialog + results (2026-07-30)
+
+`search/` ports v4's four search components: `search.types.ts` (v4 `types.ts`
+whole), `qt-search-bar` (the ⌘K/Ctrl+K platform split at v4's exact 768px
+check, 300ms debounce, min-2 gate, dropdown w-96 z-50 with per-type
+`(shown/total)` filter buttons + "See all results →", mousedown
+click-outside, Enter=immediate / Escape=close+blur, the mobile icon button),
+`qt-search-dialog` (chips with the last-chip-undeselectable rule, paged
+search on PAGE_SIZE 20, infinite scroll within 100px of the bottom, the
+`type-id` append dedupe, the stale-response `currentQuery` guard,
+countsByType updated only on NEW searches, the ↵/Esc footer), and
+`qt-search-results` (the five card types + `qt-highlight` marks). Both
+callers fetch the REST edge over `apiUrl()` — the surface v4 exercises.
+
+**URL mapping (`mapResultUrl`, each a documented divergence):**
+`/aurora/{id}[?tab=…]` → `/characters/{id}[?tab=…]` (the guard preserves
+`?tab=`, so the memories deep-link works); `/gallery?tag=` → `/photos?tag=`
+(the tag FILTER is a named deferral — the photos screen doesn't read it
+yet); `/salon/{id}?msg=` unchanged (named deferral: no v5 message-anchor
+affordance; the workspace guard carries only the chat id). Navigation goes
+through `router.navigateByUrl` so query strings survive.
+
+**Omitted (dead in v4 itself, recorded):** the `matchedTag` /
+`matchedViaCharacter` card arms — v4's route never emits either field.
+
+Specs: 12 (mapping table, highlight escaping, first-encounter grouping,
+append dedupe, bar debounce + endpoint shape, sub-2 no-fetch/no-dropdown,
+result-click clear + mapped href, see-all dialog seed).

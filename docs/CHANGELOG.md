@@ -87,6 +87,16 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+Ported the global search UI: the inline search bar (Cmd+K or Ctrl+K, 300ms
+debounce, a dropdown of the first twenty results with per-type counts and
+"See all results") and the full search dialog (type filter chips, infinite
+scroll with load-more dedupe, Enter to search, Esc to close). Result rows
+navigate to this app's routes: character results land on the character page
+(the memories tab deep-link carries), chat and message results land in the
+conversation. Two deep-link refinements are deferred by name: jumping to the
+exact matched message, and pre-filtering the photo gallery by tag. The bar
+mounts in the toolbar next.
+
 Ported the background-queue status badges: five compact counters (memory,
 embedding, summaries, danger checks, image generation) that light up while
 background work is running and dim to zero when it drains. Polling is
