@@ -601,6 +601,15 @@ because both are app-layout-mounted console surfaces with the same
 >   (`components/search/search-bar.tsx:218` → `components/layout/page-toolbar.tsx`,
 >   route `GET /api/v1/ui/search`) → re-binned to a future
 >   **global-search/toolbar lane** (unscheduled; v5 has no page-toolbar yet).
+>   **WIDENED (2026-07-29, dogfood finding #38):** the unported
+>   `page-toolbar.tsx` hosts FOUR occupants, not just search —
+>   `AutonomousRoomBadges`, `QueueStatusBadges`, the `SearchBar`, and
+>   `NavContentWidthToggle`, plus the page-specific left/right slots (e.g. the
+>   chat's project link). Two of these already exist in v5 but are homeless:
+>   `AutonomousRoomBadges` is ported and parked in the left-sidebar footer
+>   (`shell/shell.ts:138`) because there is no top header — the badge that
+>   surfaced #38. When the toolbar lane runs it must relocate the autonomous
+>   badges off the footer stopgap and retire that placement.
 > - **SearchReplaceModal** (tools variant) is opened from the chat views
 >   (`app/salon/[id]/components/ChatModals.tsx`, `CharacterDetailView.tsx`)
 >   → re-binned to **`p4.9e3`** (the chat-admin dialog family), where its

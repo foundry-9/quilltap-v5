@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Noted why an autonomous room's status badge appears down in the left rail
+rather than across the top: the old app keeps it in a top toolbar the new one
+has not built yet, so the badge — along with the queue-status indicators, the
+search box, and the width toggle that share that toolbar — has nowhere proper to
+live. Recorded against the toolbar work, which is its own piece; the badge is
+cosmetic and harmless where it sits for now.
+
 Recorded a deeper finding behind the picture-attachment work: when you attach a
 picture from a document store and ask the app to describe it, the description is
 confidently wrong — it describes a different picture entirely. The cause is that
