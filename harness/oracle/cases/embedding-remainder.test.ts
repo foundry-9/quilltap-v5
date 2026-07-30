@@ -33,6 +33,19 @@
  *   2. RENDER — each corpus `renderCases` entry through `handleConversationRender`
  *      with a synthesized job row, recorded as `{kind:'render', name, outcome,
  *      error}`.
+ *   2b. DIMENSION RECONCILE (P4.d27) — v4's REAL `reconcileEmbeddingDimensions()`
+ *      once per corpus `dimensionReconcileCases` entry, recorded as
+ *      `{kind:'dimReconcile', name, ...result}`. It runs HERE — after the renders,
+ *      before the reindexes — for a reason the first attempt found the hard way:
+ *      run after the reindex phase, its DELETE and meta-snap arms both report
+ *      zero, because full-scope reindex has already emptied `vector_entries` and
+ *      `vector_indices`. Two arms would have been silently uncovered.
+ *      Each case's prelude rewrites which profile is `isDefault` (one UPDATE of
+ *      harness scaffolding, identical on both sides); the LAST case restores the
+ *      corpus's BUILTIN default so the phases after it see the state they were
+ *      written against. The cases walk the BUILTIN skip, the no-fixed-dim skip,
+ *      the full enforce-and-enqueue arm, the dedupe, the no-profile skip, and the
+ *      restore.
  *   3. REINDEX — each corpus `reindexCases` entry through
  *      `handleEmbeddingReindexAll`, same shape. `process.chdir`s into the
  *      COMMITTED help tree (`fixtures/help-sync/`, shared with the P4.1b
@@ -90,6 +103,14 @@ interface QueueMemoriesCase {
   chatId: string;
   userId: string;
 }
+/** P4.d27 — one boot dimension-reconcile pass, with its default-profile prelude. */
+interface DimensionReconcileCase {
+  name: string;
+  /** `UPDATE embedding_profiles SET isDefault = (id = ?)` when set. */
+  setDefaultProfileId: string | null;
+  /** `UPDATE embedding_profiles SET isDefault = 0` — reaches the no-profile arm. */
+  clearDefault: boolean;
+}
 interface Spec {
   testPepperBase64: string;
   userId: string;
@@ -97,6 +118,7 @@ interface Spec {
   renderCases: RenderCase[];
   reindexCases: ReindexCase[];
   queueMemoriesCases: QueueMemoriesCase[];
+  dimensionReconcileCases: DimensionReconcileCase[];
 }
 
 /** The natural sort key per diffed table — id-free, so minted rows still align. */
@@ -261,6 +283,28 @@ async function main(): Promise<void> {
         error,
       })
     );
+  }
+
+  // ── Phase 2b: the boot DIMENSION reconcile (P4.d27 / v4 `7391404e`), LAST
+  // because each case's prelude rewrites which embedding profile is the default
+  // — state the earlier phases depend on. The prelude itself is harness
+  // scaffolding (one UPDATE, identical on both sides), not ported code; what is
+  // measured is v4's REAL `reconcileEmbeddingDimensions()` and the rows it
+  // leaves behind.
+  const { reconcileEmbeddingDimensions } = await import(
+    '@/lib/startup/reconcile-embedding-dimensions'
+  );
+  for (const dc of spec.dimensionReconcileCases) {
+    if (dc.clearDefault) {
+      await rawQuery('UPDATE embedding_profiles SET isDefault = 0');
+    } else if (dc.setDefaultProfileId) {
+      await rawQuery('UPDATE embedding_profiles SET isDefault = 0');
+      await rawQuery('UPDATE embedding_profiles SET isDefault = 1 WHERE id = ?', [
+        dc.setDefaultProfileId,
+      ]);
+    }
+    const result = await reconcileEmbeddingDimensions();
+    lines.push(JSON.stringify({ kind: 'dimReconcile', name: dc.name, ...result }));
   }
 
   // ── Phase 3: the reindex handler, corpus order.

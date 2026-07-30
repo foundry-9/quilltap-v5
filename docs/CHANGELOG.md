@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Every start-up now checks that the whole stored corpus still matches the
+embedding standard the current default profile produces, and repairs it if it
+does not. This is the fix for the failure that prompted it in the old app:
+switching which profile is the default never re-embedded anything, so a corpus
+written under the old built-in scheme could sit there indefinitely — invisible to
+every semantic search, and complained about in the logs on every housekeeping
+round. The pass deletes search-index entries at the wrong width (they are derived
+data and are rebuilt), corrects the index's recorded width, quietly retires cold
+conversations' stale vectors to the same state the routine housekeeping would
+leave them in (they warm up again when you reopen the room), counts what still
+needs work, and queues exactly one repair job — never two, however many times you
+restart while it drains. It skips anything the embedding provider has permanently
+refused, and skips itself entirely when the default profile is the built-in one,
+whose width belongs to its own refitting. On a healthy instance it is a handful
+of counts and nothing else.
+
+The start-up conversation-repair pass now reports itself in the log whenever it
+found anything to consider, not only when it queued work. Its healthy outcome is
+"found some, skipped them all as cold" — which used to print nothing at all, so
+the whole point of the previous round's fix was invisible in the field.
+
 The re-embed-everything pass caught up with the old app on four counts. It now
 also re-embeds document-store chunks — but only in stores that are switched on,
 since a switched-off store is not searchable and re-embeds itself when it is

@@ -42645,3 +42645,119 @@ QT_ORACLE_OUT=/tmp/oracle-embedding-remainder.ndjson \
 
 New-baseline marker to grep: any `"entityType":"MOUNT_CHUNK"` payload in the
 NDJSON (phase 4 did not exist before this drift).
+
+---
+
+## Lane record — P4.d27 unit 3 (the boot dimension reconcile) — 2026-07-30
+
+The new module (`services/embedding_dimension_reconcile.rs`), wired into
+`quilltap-host`'s `seed_built_ins` immediately after the render reconcile —
+v4's 3.6-then-3.7 order preserved inside the same `write_blocking` closure.
+
+**⚠ THE FINDING: v4's mount-chunk count is DEAD CODE, and v5 reproduces it dead.**
+
+`countNonconformingMountChunks` opens with
+`tableExists(mainDb, 'doc_mount_points')`, and its comment asserts "mount point
+config lives in the main DB". **It does not.** `doc_mount_points` is a
+mount-index table — v4's own repository logs *"Failed to ensure doc_mount_points
+table in **mount index database**"*, and `fresh_schema.json` (re-dumped from v4's
+live `generateDDL` under D23) lists it under `mountIndex`. So on every real
+instance the guard is false and the function returns 0 before it ever opens the
+mount-index handle. **v4's own unit test does not catch this because it creates
+`doc_mount_points` in its *main* test database.**
+
+Established empirically, not by reading: the differential's corpus deliberately
+carries non-conforming chunks on an ENABLED mount, and v4's REAL
+`reconcileEmbeddingDimensions()` reports `mountChunks: 0` for them. (The same
+corpus proves the mount-index placement from the other side — unit 2's phase 4
+reads mount points through the mount connection and matches v4's `findEnabled`
+exactly.)
+
+**Disposition: reproduced faithfully.** The order authorized no divergence, and
+the port's default is fidelity (the sparse-array and restore-bug precedents). The
+port therefore keeps v4's operation ORDER exactly, so the count is 0 here too. It
+is guarded three ways so it cannot be "fixed" by accident:
+
+1. the module doc's ⚠ section states it and says *do not fix without a ruling*;
+2. a unit test carries BOTH table placements — one proving the counting logic is
+   a correct port (v4's own test shape, `doc_mount_points` on the main
+   connection), one proving that with the table where production keeps it the
+   answer is 0;
+3. the differential asserts `mountChunks == 0` across every case as a TRIPWIRE,
+   with the reason inline. Mutation-tested: re-pointing the guard at the mount
+   connection turns the family RED.
+
+**Impact, for the human's ruling:** on a real instance the reconcile never
+notices non-conforming document-store chunks, so it will not enqueue a reindex
+*for them alone*. They are not permanently stranded — the reindex handler's phase
+4 (unit 2) reads mount points correctly and re-embeds them whenever a reindex runs
+for any other reason, which on a corpus in this state it always will. **A v4-side
+one-liner** (read `doc_mount_points` from the mount-index handle) is queued for
+the post-5.0 v4-first list; v5 follows when v4 moves.
+
+**The module, arm by arm** — v4's phase order verbatim: db-unavailable →
+no-profile → BUILTIN → no-fixed-dim (`truncateToDimensions ?? dimensions`) →
+DELETE non-conforming `vector_entries` (no FAILED exclusion, no user scoping —
+v4 deletes outright) → snap `vector_indices` meta → NULL stale chats'
+non-conforming chunks → four COUNTs (memories with the `characterId IS NOT NULL`
+guard and NULL included; live chunks with the orphan exclusion and NULL NOT
+counted; help docs with NULL included; mount chunks) → enqueue one deduped
+`mismatched-dim` reindex → v4's two-arm log.
+
+Constraints inherited from P4.D25, all honoured: `is_stale_conn` +
+`resolve_stale_chat_days_conn` (the `&Db` flavors would deadlock inside
+`write_blocking`), and a direct-connection enqueue rather than the async
+`enqueue_embedding_reindex_all` — the row is byte-identical to that helper's
+(priority −1, maxAttempts 3). v5's `db-unavailable` analog is a main partition
+with no `embedding_profiles` table (v5 is handed a live connection, so v4's null
+handle has no direct equivalent).
+
+**Differential — the new `dimReconcile` phase, and WHERE it runs.** Six cases,
+each with a one-UPDATE `isDefault` prelude (harness scaffolding, identical both
+sides). The phase sits between the renders and the reindexes, and **the placement
+is load-bearing**: the first attempt ran it last, and its DELETE and meta-snap
+arms both reported ZERO because full-scope reindex had already emptied
+`vector_entries` and `vector_indices`. Two arms would have been silently
+uncovered — first-run green and meaningless. Moving the phase earlier produced
+`del 2 / meta 1`. The sixth case restores the corpus's BUILTIN default so the
+later phases see the state they were written against. A seventh corpus tweak
+followed the same logic: the pruned seed help doc was made non-conforming so the
+help-doc count has a non-zero answer (its sibling is non-conforming AND FAILED,
+so the one number covers both directions).
+
+Oracle answers (v4's own): BUILTIN skip → all zero; no-fixed-dim → all zero;
+enforce → `del 2, meta 1, stale 1, {memories 4, chunks 1, helpDocs 1,
+mountChunks 0}, enqueued true`; second pass → identical counts, `enqueued FALSE`
+(the dedupe is the only thing that changed, which is what makes it the assertion);
+no-profile → all zero; restore → BUILTIN skip again.
+
+**GREEN on the first run.** Per the D24/D25 rule, five mutations:
+
+| Mutation | Result |
+|---|---|
+| memory count's `NOT_FAILED` exclusion dropped | RED — `enforces-target-dim-and-enqueues` |
+| stale-chunk NULLing removed | RED — same case |
+| live-chunk count's orphan exclusion dropped | RED — same case |
+| enqueue dedupe removed | RED — `second-pass-dedupes` |
+| **the mount-chunk guard "fixed" to read the mount partition** | **RED — the tripwire fires as designed** |
+
+Ten module unit tests cover what the corpus cannot reach: v4's own seven test
+cases (both blob formats deleted + meta snapped; memory counting with FAILED and
+character-less exclusions; stale NULLing vs live counting; enabled-mounts-only;
+the dedupe; the BUILTIN no-op; the conforming no-op), plus the mount-placement
+pin, the three skip arms, and `truncateToDimensions` winning over `dimensions`.
+
+**The dogfood rider (tier 2, taken).** `host.rs`'s render-reconcile boot log was
+gated on `enqueued > 0 || failed > 0`, so the healthy P4.D25 outcome (`enqueued`
+≈ 0, `skipped_stale` large) printed NOTHING and the stale-skip fix's whole
+signature was invisible in the field. The gate is now `incomplete_chats > 0`,
+which is also nearer v4 (it logs before the loop and unconditionally after). The
+new pass follows the same rule: it logs whenever it had a profile to enforce, and
+logs the skip reason otherwise. Log output stays outside the differential
+contract (P4.18).
+
+**Fixture:** `embedding-remainder-{main,mount}.db` rebuilt again (a third
+embedding profile with no fixed dimension, for the `no-fixed-dim` arm; the seed
+help doc made non-conforming). Same single consumer as unit 2. Regen recipe
+unchanged from unit 2's record; the new-baseline marker for this unit is a
+`"kind":"dimReconcile"` line in the NDJSON.

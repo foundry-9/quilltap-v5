@@ -57,6 +57,30 @@
 //! against the ORACLE's own `background_jobs` dump, before the row diff — the diff
 //! proves v5 agrees with v4, the guards prove the corpus still asks.
 //!
+//! ## P4.d27 — the boot dimension reconcile (phase 2b)
+//!
+//! v4's NEW startup self-heal runs as its own phase, six cases deep, each with a
+//! one-UPDATE prelude choosing which profile is `isDefault`. It sits between the
+//! renders and the reindexes, and the placement is load-bearing: run it AFTER the
+//! reindex phase and its DELETE and meta-snap arms both report zero, because full
+//! scope has already emptied `vector_entries` and `vector_indices`. Two arms would
+//! have been silently uncovered. The last case restores the corpus's BUILTIN
+//! default so the phases after it see the state they were written against.
+//!
+//! Every counter is asserted non-zero SOMEWHERE in the sequence (a corpus where
+//! every pass skipped would agree with a port that did nothing) — with one
+//! deliberate exception:
+//!
+//! **⚠ `mismatched.mountChunks` is asserted to stay ZERO.** v4's
+//! `countNonconformingMountChunks` guards on `tableExists(mainDb,
+//! 'doc_mount_points')`, and that table lives in the MOUNT-INDEX partition, so the
+//! function returns 0 before it ever reaches the chunks. It is dead code in v4 and
+//! reproduced dead here; the corpus deliberately holds non-conforming chunks on an
+//! ENABLED mount, so the assertion is a tripwire — a "fix" that made the count
+//! work turns it red by design. v4's own unit test misses this because it creates
+//! `doc_mount_points` in its *main* test database, and this port's unit tests
+//! carry BOTH placements to pin the difference.
+//!
 //! ## Minted values
 //!
 //! The render mints a UUID per NEW chunk and per enqueued job, and a minted chunk
@@ -104,6 +128,9 @@ use quilltap_core::services::conversation_render_job::{
 use quilltap_core::services::conversation_render_reconcile::{
     reconcile_conversation_rendering, ReconcileResult,
 };
+use quilltap_core::services::embedding_dimension_reconcile::{
+    reconcile_embedding_dimensions, DimensionReconcileResult, MismatchedCounts, SkippedReason,
+};
 use quilltap_core::services::embedding_reindex_job::{
     handle_embedding_reindex_all, EmbeddingReindexAllPayload,
 };
@@ -132,6 +159,16 @@ struct QueueMemoriesCase {
     name: String,
     chat_id: String,
     user_id: String,
+}
+
+/// P4.d27 — one boot dimension-reconcile pass plus its default-profile prelude
+/// (harness scaffolding: one UPDATE, run identically on both sides).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DimensionReconcileCase {
+    name: String,
+    set_default_profile_id: Option<String>,
+    clear_default: bool,
 }
 
 /// P4.d27 — one arm of v4 `7391404e`, named so a fixture edit that stops
@@ -163,6 +200,7 @@ struct Spec {
     reindex_cases: Vec<ReindexCase>,
     reindex_shape_guards: ReindexShapeGuards,
     queue_memories_cases: Vec<QueueMemoriesCase>,
+    dimension_reconcile_cases: Vec<DimensionReconcileCase>,
 }
 
 /// v4 `lib/api/responses.ts` kind→status (the routes-family mapping).
@@ -376,6 +414,7 @@ async fn embedding_remainder_matches_oracle() {
     let mut oracle_renders: Vec<(String, String, Option<String>)> = Vec::new();
     let mut oracle_reindexes: Vec<(String, String, Option<String>)> = Vec::new();
     let mut oracle_queue: Vec<(String, u16, Value)> = Vec::new();
+    let mut oracle_dim: Vec<(String, DimensionReconcileResult)> = Vec::new();
     let mut want_tables: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut want_columns: BTreeMap<String, Value> = BTreeMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -400,6 +439,38 @@ async fn embedding_remainder_matches_oracle() {
                 v["outcome"].as_str().unwrap().to_string(),
                 v.get("error").and_then(Value::as_str).map(str::to_string),
             )),
+            // P4.d27 — `{kind:'dimReconcile', name, ...result}`.
+            Some("dimReconcile") => {
+                let m = &v["mismatched"];
+                oracle_dim.push((
+                    v["name"].as_str().unwrap().to_string(),
+                    DimensionReconcileResult {
+                        target_dimensions: v["targetDimensions"].as_u64().map(|n| n as usize),
+                        skipped_reason: v["skippedReason"].as_str().map(|s| match s {
+                            "no-profile" => SkippedReason::NoProfile,
+                            "builtin-profile" => SkippedReason::BuiltinProfile,
+                            "no-fixed-dim" => SkippedReason::NoFixedDim,
+                            "db-unavailable" => SkippedReason::DbUnavailable,
+                            other => panic!("unknown skippedReason {other:?}"),
+                        }),
+                        vector_entries_deleted: v["vectorEntriesDeleted"].as_u64().unwrap()
+                            as usize,
+                        vector_index_meta_fixed: v["vectorIndexMetaFixed"].as_u64().unwrap()
+                            as usize,
+                        stale_chunk_embeddings_cleared: v["staleChunkEmbeddingsCleared"]
+                            .as_u64()
+                            .unwrap()
+                            as usize,
+                        mismatched: MismatchedCounts {
+                            memories: m["memories"].as_u64().unwrap() as usize,
+                            conversation_chunks: m["conversationChunks"].as_u64().unwrap() as usize,
+                            help_docs: m["helpDocs"].as_u64().unwrap() as usize,
+                            mount_chunks: m["mountChunks"].as_u64().unwrap() as usize,
+                        },
+                        reindex_enqueued: v["reindexEnqueued"].as_bool().unwrap(),
+                    },
+                ))
+            }
             Some("queueMemories") => oracle_queue.push((
                 v["name"].as_str().unwrap().to_string(),
                 v["status"].as_u64().unwrap() as u16,
@@ -608,6 +679,89 @@ async fn embedding_remainder_matches_oracle() {
         "render outcome sequence diverges"
     );
 
+    // ── Phase 2b: the boot DIMENSION reconcile (P4.d27). Runs where boot runs it
+    // relative to the render reconcile, and BEFORE the reindex phase — after it,
+    // `vector_entries` and `vector_indices` are empty (full scope wipes both) and
+    // the DELETE and meta-snap arms would both read zero.
+    //
+    // Like the render reconcile this is a BOOT pass on the writer connection, so
+    // it needs a blocking thread; the mount-index connection is handed in from the
+    // same writer set, exactly as `seed_built_ins` does. The per-case prelude is
+    // harness scaffolding — one UPDATE of `isDefault`, identical on both sides.
+    {
+        let want_names: Vec<&str> = oracle_dim.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            want_names,
+            spec.dimension_reconcile_cases
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>(),
+            "oracle dimension-reconcile case set/order diverges from the corpus — regenerate"
+        );
+        // A corpus where every pass skipped, or found nothing, would agree with a
+        // port that did nothing at all. Pin that each arm of the pass actually
+        // fires somewhere in the sequence.
+        let any = |f: fn(&DimensionReconcileResult) -> bool| oracle_dim.iter().any(|(_, r)| f(r));
+        assert!(
+            any(|r| r.vector_entries_deleted > 0)
+                && any(|r| r.vector_index_meta_fixed > 0)
+                && any(|r| r.stale_chunk_embeddings_cleared > 0)
+                && any(|r| r.mismatched.memories > 0)
+                && any(|r| r.mismatched.conversation_chunks > 0)
+                && any(|r| r.mismatched.help_docs > 0)
+                && any(|r| r.reindex_enqueued)
+                && any(|r| r.skipped_reason == Some(SkippedReason::BuiltinProfile))
+                && any(|r| r.skipped_reason == Some(SkippedReason::NoFixedDim))
+                && any(|r| r.skipped_reason == Some(SkippedReason::NoProfile))
+                && any(|r| r.target_dimensions.is_some() && !r.reindex_enqueued),
+            "the corpus stopped exercising an arm of the dimension reconcile: {oracle_dim:?}"
+        );
+        // ⚠ `mountChunks` is asserted to stay ZERO — see the port's module doc.
+        // v4's own guard reads `doc_mount_points` from the MAIN database, where
+        // that table does not live, so the count is dead code in v4 and dead here.
+        // The corpus deliberately holds non-conforming chunks on an ENABLED mount,
+        // so a "fix" that made this count work would turn this line red BY DESIGN.
+        assert!(
+            oracle_dim
+                .iter()
+                .all(|(_, r)| r.mismatched.mount_chunks == 0),
+            "v4's mount-chunk count is dead code (it guards on the main DB); a non-zero \
+             answer means either v4 moved or the port diverged — see the module doc"
+        );
+
+        for (case, (want_name, want)) in
+            spec.dimension_reconcile_cases.iter().zip(oracle_dim.iter())
+        {
+            let db2 = db.clone();
+            let (clear, set) = (case.clear_default, case.set_default_profile_id.clone());
+            let now_ms =
+                quilltap_core::clock::iso_to_ms(&spec.render_now_iso).expect("parse renderNow");
+            let got = tokio::task::spawn_blocking(move || {
+                db2.write_blocking(move |ws| {
+                    let main = ws.main().connection();
+                    if clear {
+                        main.execute("UPDATE embedding_profiles SET isDefault = 0", [])?;
+                    } else if let Some(id) = set {
+                        main.execute("UPDATE embedding_profiles SET isDefault = 0", [])?;
+                        main.execute(
+                            "UPDATE embedding_profiles SET isDefault = 1 WHERE id = ?1",
+                            [&id],
+                        )?;
+                    }
+                    Ok(reconcile_embedding_dimensions(
+                        main,
+                        ws.mount_index().map(|mi| mi.connection()),
+                        now_ms,
+                    ))
+                })
+            })
+            .await
+            .expect("join dimension reconcile")
+            .expect("dimension reconcile");
+            assert_eq!(&got, want, "dimension-reconcile case {want_name} diverges");
+        }
+    }
+
     // ── Phase 3: the reindex handler, corpus order. Both sides walk the SAME
     // committed help tree — the oracle by chdir (v4 captures
     // `HELP_DIR = join(process.cwd(), 'help')` at module load), this side
@@ -713,8 +867,9 @@ async fn embedding_remainder_matches_oracle() {
     }
 
     println!(
-        "embedding_remainder: reconcile + {} render / {} reindex / {} queue-memories cases, {} tables OK",
+        "embedding_remainder: reconcile + {} render / {} dim-reconcile / {} reindex / {} queue-memories cases, {} tables OK",
         got_renders.len(),
+        spec.dimension_reconcile_cases.len(),
         got_reindexes.len(),
         spec.queue_memories_cases.len(),
         TABLES.len()

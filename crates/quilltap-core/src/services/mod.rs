@@ -182,3 +182,9 @@ pub mod conversation_render_job;
 pub mod conversation_render_reconcile;
 pub mod embedding_reindex_job;
 // === end P4.6BM ===
+
+// === P4.d27 (v4 `7391404e`) ===
+/// The boot-time embedding-dimension self-heal (v4 `instrumentation.ts`
+/// PHASE 3.7), wired immediately after the render reconcile.
+pub mod embedding_dimension_reconcile;
+// === end P4.d27 ===

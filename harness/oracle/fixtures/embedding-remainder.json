@@ -47,6 +47,16 @@
       "dimensions": null,
       "truncateToDimensions": null,
       "isDefault": true
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000003",
+      "name": "A Desk With No Fixed Width",
+      "provider": "OPENAI",
+      "modelName": "text-embedding-3-large",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "isDefault": false,
+      "comment": "P4.d27 — exists only for the boot reconcile's `no-fixed-dim` arm: a NON-builtin default that declares neither dimension. It is never a reindex case's profile, so it is inert until the dimension-reconcile phase makes it the default."
     }
   ],
   "chats": [
@@ -719,7 +729,10 @@
       "url": "/help/gone",
       "content": "This doc exists only in the database; the disk sync prunes it.",
       "contentHash": "0000000000000000000000000000000000000000000000000000000000000001",
-      "embedded": true
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "quantized",
+      "comment": "P4.d27 — non-conforming and NOT failed, so the reconcile's help-doc count has a row to find. Its sibling below is non-conforming AND failed, so the one number covers both directions. (The reindex's disk sync prunes this doc, but the reconcile runs before that.)"
     },
     {
       "id": "a1000000-0000-4000-8000-000000000002",
@@ -880,6 +893,44 @@
       "name": "missing-chat-returns-early",
       "chatId": "a0000000-0000-4000-8000-0000000000ff",
       "fullReembed": false
+    }
+  ],
+  "dimensionReconcileCases": [
+    {
+      "name": "builtin-default-skips",
+      "comment": "P4.d27 — the corpus default IS the BUILTIN profile, so the very first pass must be a total no-op: a TF-IDF profile's dimension is the fitted vocabulary size, which the refit pipeline owns. No prelude.",
+      "setDefaultProfileId": null,
+      "clearDefault": false
+    },
+    {
+      "name": "no-fixed-dim-warns",
+      "comment": "A non-BUILTIN default that declares neither truncateToDimensions nor dimensions. The prelude points isDefault at the third profile, which exists only for this arm.",
+      "setDefaultProfileId": "b0000000-0000-4000-8000-000000000003",
+      "clearDefault": false
+    },
+    {
+      "name": "enforces-target-dim-and-enqueues",
+      "comment": "The meaty arm: the 8-dimension OPENAI profile becomes the default, so every legacy-width vector in the corpus is non-conforming. Deletes the two legacy vector entries, snaps the index meta, NULLs the stale chat's chunk, counts the recoverable rows, and enqueues ONE mismatched-dim reindex.",
+      "setDefaultProfileId": "b0000000-0000-4000-8000-000000000002",
+      "clearDefault": false
+    },
+    {
+      "name": "second-pass-dedupes",
+      "comment": "Immediately again, with no prelude: the reindex the previous case enqueued is still PENDING, so findRecentByType finds it and this pass must NOT stack a second one. The counts stay non-zero (nothing has drained), which is what makes the dedupe the only thing that changed.",
+      "setDefaultProfileId": null,
+      "clearDefault": false
+    },
+    {
+      "name": "no-default-profile-skips",
+      "comment": "With isDefault cleared everywhere, the profile lookup finds nothing.",
+      "setDefaultProfileId": null,
+      "clearDefault": true
+    },
+    {
+      "name": "restores-the-builtin-default",
+      "comment": "The phase runs BEFORE the reindex cases (so its DELETE and meta-snap arms have vector rows to act on), which means it must hand the corpus back exactly as it found it. Putting the BUILTIN profile back also re-proves the skip on a corpus the earlier cases have already changed.",
+      "setDefaultProfileId": "b0000000-0000-4000-8000-000000000001",
+      "clearDefault": false
     }
   ],
   "reindexShapeGuards": {

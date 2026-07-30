@@ -802,7 +802,15 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     main,
                     quilltap_core::clock::now_unix_ms(),
                 );
-            if reconcile.enqueued > 0 || reconcile.failed > 0 {
+            // The gate is `incomplete_chats > 0`, NOT `enqueued > 0` (dogfood
+            // finding, `dogfood-findings.md`): the healthy P4.D25 outcome is
+            // `enqueued` ≈ 0 with `skipped_stale` large, and the old gate printed
+            // nothing at all for it — so the whole signature of the stale-skip fix
+            // was invisible in the field. v4 logs its "found incomplete
+            // conversations" line before the loop and its completion line
+            // unconditionally, so this is also the nearer shape. Log output sits
+            // outside the differential contract (P4.18).
+            if reconcile.incomplete_chats > 0 {
                 tracing::info!(
                     target: "quilltap::boot",
                     incomplete_chats = reconcile.incomplete_chats,
@@ -814,6 +822,49 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.6BM ===
+            // === P4.d27 (v4 `7391404e`) ===
+            // v4's PHASE 3.7, immediately behind 3.6 and inside the same closure
+            // so the order is preserved. One embedding standard per instance:
+            // delete non-conforming vector-index entries, snap the index meta,
+            // converge stale chats to the cold tier, and enqueue ONE deduped
+            // `mismatched-dim` reindex for whatever still needs re-embedding.
+            // COUNT-only (nothing hydrated) on a conforming corpus, and the
+            // repair is enqueued rather than run inline, so a big backlog cannot
+            // block the loading screen. Never fails the boot.
+            //
+            // The mount-index connection is passed for fidelity with v4's call
+            // shape; v4's own guard reads `doc_mount_points` from the MAIN
+            // database, where that table does not live, so the mount-chunk count
+            // is dead in v4 and reproduced dead here — see the module doc's ⚠.
+            let dim_reconcile =
+                quilltap_core::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(
+                    main,
+                    ws.mount_index().map(|mi| mi.connection()),
+                    quilltap_core::clock::now_unix_ms(),
+                );
+            // Same lesson as the gate above: report the pass whenever it had a
+            // profile to enforce, so a healthy "corpus conforms" is visible too.
+            if let Some(target) = dim_reconcile.target_dimensions {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    target_dimensions = target,
+                    vector_entries_deleted = dim_reconcile.vector_entries_deleted,
+                    vector_index_meta_fixed = dim_reconcile.vector_index_meta_fixed,
+                    stale_chunk_embeddings_cleared = dim_reconcile.stale_chunk_embeddings_cleared,
+                    mismatched_memories = dim_reconcile.mismatched.memories,
+                    mismatched_conversation_chunks = dim_reconcile.mismatched.conversation_chunks,
+                    mismatched_help_docs = dim_reconcile.mismatched.help_docs,
+                    reindex_enqueued = dim_reconcile.reindex_enqueued,
+                    "Embedding dimension reconciliation complete",
+                );
+            } else if let Some(reason) = dim_reconcile.skipped_reason {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    reason = reason.as_str(),
+                    "Embedding dimension reconciliation skipped",
+                );
+            }
+            // === end P4.d27 ===
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
