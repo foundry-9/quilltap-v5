@@ -597,6 +597,27 @@ catch, since every fixture is built fresh.
   ladder's first rung already reads it for photos). Deliberately NOT changed
   during the port.
 
+- **⚠ v4-SIDE (post-5.0), added 2026-07-30 (P4.d27, the 5cc76688-round
+  unification) — v4's boot dimension-reconcile mount-chunk count is DEAD
+  CODE.** `reconcile-embedding-dimensions.ts`'s `countNonconformingMountChunks`
+  opens with `tableExists(mainDb, 'doc_mount_points')` and its comment claims
+  "mount point config lives in the main DB" — it does not (`doc_mount_points`
+  is a mount-index table; v4's own repository log line and `fresh_schema.json`
+  both say so), so on every real instance the guard is false and the count
+  returns 0 before the mount-index handle is ever opened. v4's own unit test
+  misses it because it creates the table in its *main* test DB. Established
+  empirically: v4's REAL `reconcileEmbeddingDimensions()` reports
+  `mountChunks: 0` over a corpus with non-conforming chunks on an ENABLED
+  mount. **The fix is a one-liner** (read `doc_mount_points` from the
+  mount-index handle). Consequence meanwhile: the reconcile never enqueues a
+  reindex *for mount chunks alone* — they are not stranded, since the reindex
+  handler's phase 4 reads mount points correctly and heals them whenever a
+  reindex runs for any other reason. v5 reproduces the dead count faithfully
+  behind a TRIPWIRE (`embedding_dimension_reconcile.rs`'s module-doc ⚠, a
+  both-placements unit test, and the differential's `mountChunks == 0`
+  assertion, which goes RED if anyone "fixes" v5 first). **v5 follows when v4
+  moves — do not fix v5 unilaterally.**
+
 - **A dogfood re-check after an SPA fix needs a HARD RELOAD, not a server
   restart (2026-07-27 — it cost a full round trip).** Finding #31's fix was
   reported as still broken after the human rebuilt the bundle *and* restarted the

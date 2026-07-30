@@ -3217,12 +3217,18 @@ mod tests {
     fn local_offset_minutes_is_js_west_positive() {
         // 2026-07-28T12:00:00Z — Chicago on CDT (UTC-5): JS offset +300.
         let summer_noon_utc = 1_785_240_000_000;
-        assert_eq!(js_local_offset_minutes("America/Chicago", summer_noon_utc), 300);
+        assert_eq!(
+            js_local_offset_minutes("America/Chicago", summer_noon_utc),
+            300
+        );
         // Same instant in Tokyo (UTC+9, no DST): JS offset -540.
         assert_eq!(js_local_offset_minutes("Asia/Tokyo", summer_noon_utc), -540);
         // 2026-01-15T12:00:00Z — Chicago on CST (UTC-6): JS offset +360.
         let winter_noon_utc = 1_768_478_400_000;
-        assert_eq!(js_local_offset_minutes("America/Chicago", winter_noon_utc), 360);
+        assert_eq!(
+            js_local_offset_minutes("America/Chicago", winter_noon_utc),
+            360
+        );
         // UTC and an unresolvable zone (falls back to UTC) are both 0.
         assert_eq!(js_local_offset_minutes("UTC", summer_noon_utc), 0);
         assert_eq!(js_local_offset_minutes("Not/AZone", summer_noon_utc), 0);
