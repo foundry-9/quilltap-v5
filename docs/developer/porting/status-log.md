@@ -43448,3 +43448,117 @@ identical Shared-contract table across the orders). P4.9P owes the round's
 full SPA gate; the three Rust lanes owe none. The dogfood pass remains the
 top HUMAN item and is not an agent order — it now also owes P4.21's live
 vision proof when that lane lands.
+
+### Lane record — P4.D29 unit 1 (the `read_properties` re-port + the groups tier-2 arms)
+
+**v4 baseline `dcd9440a`, drift-checked at lane start** (`git log
+dcd9440a..HEAD` empty, tree clean) — the previously-brewing store-overlay work
+IS this commit, so oracles regenerate straight from `~/source/quilltap-server`.
+
+**The port.** `db/document_store_overlay.rs`'s `read_properties` now mirrors
+v4's post-`dcd9440a` shape: `Ok(None)` only for a genuinely absent
+`properties.json`; malformed JSON and a schema-rejected body both raise
+`OverlayError::Unavailable` with v4's exact detail wording (`properties.json
+unparseable: <detail>`); the finder's `DbError` keeps propagating (v4's
+"unreadable" arm — v5's `Ok(None)` ≡ v4's `NOT_FOUND`, v5's `Err(DbError)` ≡ v4's
+every-other-read-error). Signature gained the entity id, threaded from
+`apply_write_overlay`'s already-extracted `id`; the error type moved `DbError` →
+`OverlayError`. The stale "Non-throwing by design" doc comment is replaced by
+v4's new why-comment (the load-bearing null-vs-throw distinction), and the module
+docblock gained the matching bullet. `tracing::error!` at both refusal sites and
+`debug!` on the genuine-absence path (v4's log levels; log output stays outside
+the differential contract per P4.18).
+
+v4's `entityId = '(unknown)'` default is NOT modeled: every v4 call site
+post-`dcd9440a` passes the id, and v5's single call site does too, so a required
+parameter avoids an unreachable branch.
+
+**A pre-existing divergence found and FIXED on the way past.** v4's message is
+`Project <id> …` / `Group <id> …` — its overlay config carries both
+`entityLabel` and `entityLabelCapitalized`, and the error class builds from the
+capitalized one. v5's `Display` interpolated the lowercase `entity_label()`, so
+every `Unavailable` message read `project <id> …`. It had never mattered because
+nothing compared it: `api::{projects,groups}::overlay_to_db` maps `Unavailable`
+to `DbError::Key(detail)`, keeping only the detail, and no differential had ever
+recorded the full message. This lane's new `errors` diff DOES compare it, so the
+`Display` impl now capitalizes at that one site (`entity_label()` stays lowercase
+— the two `store_backed.rs` sentences that use it read as prose).
+
+**The differential — why the tier-2 families, not the routes families.** Three
+reasons, all decided at survey:
+1. The tier-2 families drive `repos.{groups,projects}.update()` directly, which
+   is exactly `applyWriteOverlay`'s surface — the same surface v4's new jest
+   suite exercises. The routes families would add auth/envelope noise.
+2. **The routes families' fixtures are COMMITTED**
+   (`crates/quilltap-web/tests/fixtures/groups-projects-{main,mount}.db`) — the
+   order's claim that "none of this family's fixtures are committed" holds only
+   for the tier-2 families, which build into `/tmp`. Planting a corrupt store in
+   a committed fixture would invalidate every other family sharing it and
+   re-commit binary DBs; the tier-2 corpora cost nothing.
+3. The route PUT calls `find_by_id` (a hydrating read) BEFORE the write, so a
+   corrupted store throws in `hydrate_one` — the READ path's pre-existing throw,
+   not the drift's. See unit 4's record for the disposition.
+
+**The corpus.** `harness/oracle/fixtures/groups-tier2.json` gained three stores
+and four op kinds' worth of arms (fixture builder untouched — both DBs still
+start empty):
+- `plantProperties` — overwrite `properties.json` with raw bytes through the
+  REAL `writeDatabaseDocument` / `DocMountFileLinksRepository::write_database_document`;
+- `deleteProperties` — remove it through the REAL `deleteDatabaseDocument` /
+  `delete_database_document` (the genuine-absence arm);
+- `updateExpectError` — run the patch, record the thrown message.
+
+Gamma takes malformed bytes (`{ not json`), Delta a schema-invalid body
+(`"color": 123` — a TYPE mismatch, deliberately: v4's Zod also validates
+`defaultImageProfileId` as a uuid where v5's serde does not, so v4's own test
+body would have been red on a PRE-EXISTING lenience gap rather than on the drift;
+see the deferral below). Epsilon's file is deleted, then patched — the only arm
+that may seed from the slim row, and its `icon` legitimately does not survive.
+Both refusal arms then prove "wrote nothing" from the post-state: the planted
+bytes are still the stores' `properties.json`, and neither refused patch's
+defaults-seeded bag (`{"color":"#010203"}` / `{"icon":"moon"}`) exists anywhere.
+Corpus shape assertions moved 2/2/7/7/8/0/2 → 5/5/15/16/20/0/5.
+
+**The one seam the messages cannot cross** is the parse detail: V8's `JSON.parse`
+text and Zod's issue array vs serde's. `normalize_error_message` remaps minted
+ids through each side's OWN first-seen token map, then truncates at
+`properties.json unparseable: ` and asserts the elided tail is non-empty on both
+sides. Everything before the marker — including the capitalized label and both
+ids — is compared byte-for-byte. A side that silently SUCCEEDS records `null`,
+so a missing refusal goes red rather than normalizing away.
+
+**Mutation-proofed** (the family was green on its first run, so per the D24 rule
+the sensitivity had to be produced, not assumed). Three mutations, each reverted:
+1. both parse arms short-circuited back to `Ok(None)` (the pre-`dcd9440a` port)
+   → RED on the refusal-arm messages;
+2. the `Display` capitalization dropped → RED on the refusal-arm messages;
+3. mutation 1 again with the `errors` assertion neutered → RED on
+   `doc_mount_files`, proving the "wrote nothing" post-state diff is
+   independently sensitive and not decorative.
+
+**Regen recipe** (Node 24, from the v4 checkout at `dcd9440a`; both env vars are
+required by BOTH steps, and the fixture must be rebuilt first — a rebuild mints
+fresh ids, so never mix a fresh fixture with a stale oracle):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+rm -f /tmp/qt-groups-main.db /tmp/qt-groups-mount.db
+QT_FIXTURE_GROUPS_MAIN=/tmp/qt-groups-main.db \
+QT_FIXTURE_GROUPS_MOUNT=/tmp/qt-groups-mount.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-groups-tier2-fixture.ts
+QT_FIXTURE_GROUPS_MAIN=/tmp/qt-groups-main.db \
+QT_FIXTURE_GROUPS_MOUNT=/tmp/qt-groups-mount.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/groups-tier2.ts > /tmp/oracle-groups.ndjson
+```
+
+**Deferred loud (recorded, not taken — not this lane's):** v5's
+`ProjectEntity::parse_properties` does NOT reproduce v4's Zod **format**
+validators (`defaultImageProfileId` is `z.string().uuid()` in v4, a bare
+`Option<String>` in v5), so a stored `"not-a-uuid"` — v4's own new test body —
+is accepted by v5 and refused by v4. It is PRE-EXISTING (the hydrate path shares
+`parse_properties`) and orthogonal to `dcd9440a`; the corpus therefore proves the
+schema-invalid arm with a type mismatch, which both sides reject. Closing it
+means porting Zod's format validators across the property bags — its own unit.
+
+Versions: core 0.0.412, harness 0.0.357.

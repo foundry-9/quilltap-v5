@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+A failed read of a project's or group's settings file can no longer wipe that
+entire settings bag. The overlay engine used to answer every read failure with
+"there is nothing here yet," and the caller reads that as permission to start
+from scratch — so one unreadable or corrupted settings file quietly reset every
+setting to its default, and because unset options write nothing at all, the
+damage was invisible in the file and compounded on the next save. Now only a
+genuinely missing file may seed defaults; a file that exists but cannot be read
+or understood refuses the write and says which project or group it was, leaving
+the stored bytes untouched. The refusal is proven against the old app on both
+entity types, including that nothing at all gets written.
+
 Planned the next porting round: four parallel work orders. One catches v5 up
 to the old app's newest change (a failed project-settings read can no longer
 silently reset the settings to defaults — v5 currently has the same bug the

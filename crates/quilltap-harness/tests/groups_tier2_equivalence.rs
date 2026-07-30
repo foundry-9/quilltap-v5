@@ -28,6 +28,16 @@
 //! dedup-by-sha (`"{}"` shared by three links across two stores; `""` shared by
 //! two), and orphan-on-rewrite (the pre-update content rows persist).
 //!
+//! Since P4.D29 (v4 `dcd9440a`) it also banks the `read_properties` refusal/seed
+//! arms through THREE more stores: Gamma's `properties.json` is overwritten with
+//! malformed bytes and Delta's with a schema-invalid body, and each then takes a
+//! property-only patch that must be REFUSED with the planted bytes left intact
+//! (the unchanged post-state IS the "wrote nothing" proof); Epsilon's file is
+//! DELETED, the one arm that may seed defaults from the slim row. The thrown
+//! messages are recorded oracle-side into an `errors` array and diffed here, ids
+//! remapped through each side's own token map and only the parse-detail tail
+//! elided (see `UNPARSEABLE_MARKER`).
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -46,10 +56,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::groups::{GroupCreateInput, GroupCreateOptions, GroupsRepository};
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+use quilltap_core::db::groups::{
+    find_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupsRepository,
+};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 #[derive(Deserialize)]
 struct Spec {
@@ -65,6 +78,20 @@ enum Op {
     Create { label: String, input: CreateInput },
     #[serde(rename = "update")]
     Update {
+        label: String,
+        patch: Map<String, Value>,
+    },
+    /// Overwrite `properties.json` with raw bytes, bypassing the overlay's
+    /// serializer (the corrupt-store arms). v4 drives `writeDatabaseDocument`.
+    #[serde(rename = "plantProperties")]
+    PlantProperties { label: String, content: String },
+    /// Remove `properties.json` entirely — v4's genuine-absence (NOT_FOUND) arm,
+    /// the ONLY one that may seed defaults.
+    #[serde(rename = "deleteProperties")]
+    DeleteProperties { label: String },
+    /// Run the update expecting a refusal; the message is recorded and diffed.
+    #[serde(rename = "updateExpectError")]
+    UpdateExpectError {
         label: String,
         patch: Map<String, Value>,
     },
@@ -234,11 +261,65 @@ fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<Stri
     }
 }
 
-fn normalize_all(dumps: &mut [Value]) {
+/// Normalize every table and return the shared id-map, so the recorded error
+/// messages can be remapped with the SAME first-seen tokens.
+fn normalize_all(dumps: &mut [Value]) -> HashMap<String, String> {
     let mut id_map: HashMap<String, String> = HashMap::new();
     for (i, spec) in TABLES.iter().enumerate() {
         normalize_table(&mut dumps[i], spec, &mut id_map);
     }
+    id_map
+}
+
+/// The one seam the thrown messages cannot cross: the parse detail. v4's tail is
+/// V8's `JSON.parse` text or a Zod issue array; v5's is serde's. Everything up to
+/// and including `properties.json unparseable: ` IS compared byte-for-byte (that
+/// is v4's `ProjectStoreUnavailableError`/`GroupStoreUnavailableError` message,
+/// ids remapped); the tail is replaced with a placeholder and separately asserted
+/// non-empty on both sides. This is the standing "`is not valid JSON:` wording"
+/// seam, not a normalization of convenience.
+const UNPARSEABLE_MARKER: &str = "properties.json unparseable: ";
+
+/// Remap minted ids to the shared tokens, then elide the parse-detail tail.
+/// Panics if a message claims `unparseable` with an empty detail (which would
+/// make the placeholder hide a real difference).
+fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side: &str) -> String {
+    let mut out = message.to_string();
+    for (raw, token) in id_map {
+        if out.contains(raw.as_str()) {
+            out = out.replace(raw.as_str(), token);
+        }
+    }
+    if let Some(idx) = out.find(UNPARSEABLE_MARKER) {
+        let head_end = idx + UNPARSEABLE_MARKER.len();
+        assert!(
+            !out[head_end..].trim().is_empty(),
+            "{side}: empty parse detail in {out:?}"
+        );
+        out.truncate(head_end);
+        out.push_str("<parse-detail>");
+    }
+    out
+}
+
+/// `[{label, message}]` → normalized, order preserved (the op order is the corpus
+/// order on both sides).
+fn normalize_errors(errors: &Value, id_map: &HashMap<String, String>, side: &str) -> Vec<Value> {
+    errors
+        .as_array()
+        .unwrap_or_else(|| panic!("{side}: errors is not an array: {errors}"))
+        .iter()
+        .map(|e| {
+            let label = e["label"].clone();
+            let message = match e.get("message") {
+                Some(Value::String(m)) => Value::String(normalize_error_message(m, id_map, side)),
+                // `null` = the update did NOT throw. Kept as-is so a side that
+                // silently succeeds where the other refuses goes RED.
+                _ => Value::Null,
+            };
+            json!({ "label": label, "message": message })
+        })
+        .collect()
 }
 
 #[test]
@@ -293,11 +374,45 @@ fn groups_tier2_matches_oracle() {
     let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open mount: {e}"));
 
+    let mut got_errors: Vec<Value> = Vec::new();
     {
         let repo = GroupsRepository::new(main.connection(), mount.connection());
         let mut id_by_label: HashMap<String, String> = HashMap::new();
+        // The label's official store, read RAW — a broken overlay must not block
+        // it (v4 reads it through `groups.findByIdRaw`).
+        let mount_point_id = |id_by_label: &HashMap<String, String>, label: &String| -> String {
+            let id = id_by_label
+                .get(label)
+                .unwrap_or_else(|| panic!("op references unknown label {label}"));
+            find_official_mount_point_id_raw(main.connection(), id)
+                .unwrap_or_else(|e| panic!("raw mount lookup {label}: {e}"))
+                .flatten()
+                .unwrap_or_else(|| panic!("group {label} has no officialMountPointId"))
+        };
         for op in &spec.ops {
             match op {
+                Op::PlantProperties { label, content } => {
+                    let mp = mount_point_id(&id_by_label, label);
+                    DocMountFileLinksRepository::new(mount.connection())
+                        .write_database_document(&mp, "properties.json", content)
+                        .unwrap_or_else(|e| panic!("plant {label}: {e}"));
+                }
+                Op::DeleteProperties { label } => {
+                    let mp = mount_point_id(&id_by_label, label);
+                    DocMountFileLinksRepository::new(mount.connection())
+                        .delete_database_document(&mp, "properties.json")
+                        .unwrap_or_else(|e| panic!("delete properties {label}: {e}"));
+                }
+                Op::UpdateExpectError { label, patch } => {
+                    let id = id_by_label
+                        .get(label)
+                        .unwrap_or_else(|| panic!("op references unknown label {label}"));
+                    let message = match repo.update(id, patch) {
+                        Ok(_) => Value::Null,
+                        Err(e) => Value::String(e.to_string()),
+                    };
+                    got_errors.push(json!({ "label": label, "message": message }));
+                }
                 Op::Create { label, input } => {
                     let created = repo
                         .create(
@@ -354,8 +469,23 @@ fn groups_tier2_matches_oracle() {
         })
         .collect();
 
-    normalize_all(&mut got);
-    normalize_all(&mut want);
+    let got_id_map = normalize_all(&mut got);
+    let want_id_map = normalize_all(&mut want);
+
+    // The P4.D29 refusal arms: v4's thrown message vs v5's, ids remapped through
+    // each side's OWN first-seen map and only the parse-detail tail elided.
+    let got_errs = normalize_errors(&Value::Array(got_errors.clone()), &got_id_map, "rust");
+    let want_errs = normalize_errors(
+        oracle
+            .get("errors")
+            .unwrap_or_else(|| panic!("oracle has no `errors` array — regenerate it (see header)")),
+        &want_id_map,
+        "oracle",
+    );
+    assert_eq!(
+        got_errs, want_errs,
+        "refusal-arm messages diverged\n  rust:   {got_errs:?}\n  oracle: {want_errs:?}"
+    );
 
     for (i, s) in TABLES.iter().enumerate() {
         assert_eq!(got[i]["table"], want[i]["table"], "{}: table name", s.table);
@@ -376,36 +506,63 @@ fn groups_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().clone()
     };
-    assert_eq!(rows("groups").len(), 2, "2 group rows");
-    assert_eq!(rows("points").len(), 2, "2 mount-point rows");
-    assert_eq!(rows("files").len(), 7, "7 deduped file rows");
-    assert_eq!(rows("documents").len(), 7, "7 document rows");
-    assert_eq!(rows("links").len(), 8, "8 link rows (2 stores × 4 files)");
+    assert_eq!(rows("groups").len(), 5, "5 group rows");
+    assert_eq!(rows("points").len(), 5, "5 mount-point rows");
+    assert_eq!(rows("files").len(), 15, "15 deduped file rows");
+    assert_eq!(rows("documents").len(), 16, "16 document rows");
+    assert_eq!(rows("links").len(), 20, "20 link rows (5 stores × 4 files)");
     assert_eq!(rows("folders").len(), 0, "0 folders (all files top-level)");
-    assert_eq!(rows("groupLinks").len(), 2, "2 group→store links");
+    assert_eq!(rows("groupLinks").len(), 5, "5 group→store links");
 
     // The properties read-modify-write PRESERVED the untouched `icon` while
     // changing `color` (Alpha's final properties.json).
     let docs = rows("documents");
+    let has_doc = |content: &str| {
+        docs.iter()
+            .any(|d| d["content"] == Value::String(content.into()))
+    };
     let final_props = "{\n  \"color\": \"#445566\",\n  \"icon\": \"star\"\n}";
     assert!(
-        docs.iter()
-            .any(|d| d["content"] == Value::String(final_props.into())),
+        has_doc(final_props),
         "RMW-preserved properties.json not found; documents: {docs:?}"
     );
     // The empty-bag store (Beta) wrote `{}` and the empty description.md (`""`).
+    assert!(has_doc("{}"), "empty properties.json `{{}}` not found");
+    assert!(has_doc(""), "empty markdown file `\"\"` not found");
+
+    // ── P4.D29: the refusal arms wrote NOTHING ────────────────────────────
+    // Gamma's malformed bytes and Delta's schema-invalid bytes are still the
+    // stores' `properties.json` after their patches were refused. Before
+    // `dcd9440a` both would have been REPLACED by a defaults-seeded bag
+    // carrying only the one patched key (`{"color":"#010203"}` /
+    // `{"icon":"moon"}`) — silently flattening everything else.
     assert!(
-        docs.iter()
-            .any(|d| d["content"] == Value::String("{}".into())),
-        "empty properties.json `{{}}` not found"
+        has_doc("{ not json"),
+        "gamma's planted malformed properties.json was overwritten — the refusal did not hold"
     );
     assert!(
-        docs.iter()
-            .any(|d| d["content"] == Value::String("".into())),
-        "empty markdown file `\"\"` not found"
+        has_doc("{\n  \"color\": 123,\n  \"icon\": \"cog\"\n}"),
+        "delta's planted schema-invalid properties.json was overwritten"
+    );
+    assert!(
+        !has_doc("{\n  \"color\": \"#010203\"\n}"),
+        "gamma's refused patch reached the store as a defaults-seeded bag"
+    );
+    assert!(
+        !has_doc("{\n  \"icon\": \"moon\"\n}"),
+        "delta's refused patch reached the store as a defaults-seeded bag"
+    );
+    // Epsilon's `properties.json` was genuinely ABSENT — the one arm that may
+    // seed from the slim row (`{}`), so its icon legitimately does not survive.
+    assert!(
+        has_doc("{\n  \"color\": \"#0e0e0e\"\n}"),
+        "the genuine-absence seed arm did not write its defaults-seeded bag"
     );
 
-    eprintln!("OK: groups store-backed tier-2 matched oracle (8 tables, 2 DBs).");
+    eprintln!(
+        "OK: groups store-backed tier-2 matched oracle (8 tables, 2 DBs, {} refusal arms).",
+        got_errs.len()
+    );
 }
 
 /// The keystone asymmetry (v4 `applyOverlayOne` THROWS, `applyOverlay` DROPS): a

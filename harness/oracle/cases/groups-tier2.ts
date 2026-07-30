@@ -28,6 +28,14 @@
  * `file.id`, `link.mountPointId` → the store, etc. — verify by relationship) and
  * placeholders timestamps. `chunkCount` diffs exactly (P4.6BK).
  *
+ * P4.D29 (v4 `dcd9440a`) added the three `readProperties` refusal/seed arms. The
+ * corpus plants raw bytes into a store's `properties.json` (`plantProperties`,
+ * via the REAL `writeDatabaseDocument`) or removes it outright
+ * (`deleteProperties`, the REAL `deleteDatabaseDocument`), then runs a
+ * property-only patch. `updateExpectError` records the thrown message into a new
+ * `errors` array the harness diffs alongside the tables — and the tables are the
+ * "wrote nothing" proof: the planted bytes must still be there afterwards.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -53,7 +61,29 @@ interface UpdateOp {
   label: string;
   patch: Record<string, unknown>;
 }
-type Op = CreateOp | UpdateOp;
+/** Overwrite `properties.json` with raw bytes, bypassing the overlay serializer. */
+interface PlantPropertiesOp {
+  kind: 'plantProperties';
+  label: string;
+  content: string;
+}
+/** Remove `properties.json` entirely (v4's genuine-absence / NOT_FOUND arm). */
+interface DeletePropertiesOp {
+  kind: 'deleteProperties';
+  label: string;
+}
+/** Run the update expecting a throw; the thrown message is recorded + diffed. */
+interface UpdateExpectErrorOp {
+  kind: 'updateExpectError';
+  label: string;
+  patch: Record<string, unknown>;
+}
+type Op =
+  | CreateOp
+  | UpdateOp
+  | PlantPropertiesOp
+  | DeletePropertiesOp
+  | UpdateExpectErrorOp;
 
 interface Spec {
   testPepperBase64: string;
@@ -94,20 +124,57 @@ async function main(): Promise<void> {
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { writeDatabaseDocument, deleteDatabaseDocument } = await import(
+    '@/lib/mount-index/database-store'
+  );
 
   await initializeDatabase();
   const repos = getRepositories();
 
   // Run the op sequence, tracking minted ids by label (both sides do the same).
   const idByLabel = new Map<string, string>();
+  /** Thrown-error messages from the `updateExpectError` arms, in op order. */
+  const errors: Array<{ label: string; message: string | null }> = [];
   for (const op of spec.ops) {
-    if (op.kind === 'create') {
-      const created = await repos.groups.create(op.input as never);
-      idByLabel.set(op.label, created.id);
-    } else {
-      const id = idByLabel.get(op.label);
-      if (!id) throw new Error(`update references unknown label: ${op.label}`);
-      await repos.groups.update(id, op.patch as never);
+    const id = (): string => {
+      const v = idByLabel.get(op.label);
+      if (!v) throw new Error(`op references unknown label: ${op.label}`);
+      return v;
+    };
+    /** The label's official store, read RAW (a broken overlay must not block it). */
+    const mountPointId = async (): Promise<string> => {
+      const raw = (await repos.groups.findByIdRaw(id())) as
+        | { officialMountPointId?: string | null }
+        | null;
+      const mp = raw?.officialMountPointId;
+      if (!mp) throw new Error(`group ${op.label} has no officialMountPointId`);
+      return mp;
+    };
+    switch (op.kind) {
+      case 'create': {
+        const created = await repos.groups.create(op.input as never);
+        idByLabel.set(op.label, created.id);
+        break;
+      }
+      case 'update':
+        await repos.groups.update(id(), op.patch as never);
+        break;
+      case 'plantProperties':
+        await writeDatabaseDocument(await mountPointId(), 'properties.json', op.content);
+        break;
+      case 'deleteProperties':
+        await deleteDatabaseDocument(await mountPointId(), 'properties.json');
+        break;
+      case 'updateExpectError': {
+        let message: string | null = null;
+        try {
+          await repos.groups.update(id(), op.patch as never);
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
+        break;
+      }
     }
   }
 
@@ -180,6 +247,7 @@ async function main(): Promise<void> {
       folders,
       groupLinks,
       chunks,
+      errors,
     }) + '\n'
   );
   process.exit(0);

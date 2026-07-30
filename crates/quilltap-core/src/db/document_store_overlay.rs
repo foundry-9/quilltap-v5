@@ -31,6 +31,11 @@
 //!     whole list. The keystone invariant is `properties.json` + a non-null
 //!     `officialMountPointId`; a missing/unparseable `state.json` is non-fatal
 //!     (`{}`), and an empty `description.md`/`instructions.md` hydrates to `null`.
+//!   - [`read_properties`] returns `None` ONLY for a genuinely absent
+//!     `properties.json`, and ERRORS when the file exists but is unreadable or
+//!     unparseable. Its caller treats `None` as "seed from the raw row", and
+//!     post-cutover that row holds no property values — so a lenient read
+//!     silently resets the settings bag to schema defaults (v4 `dcd9440a`).
 //!
 //! ## What is NOT ported here (vs v4)
 //!
@@ -160,14 +165,24 @@ impl std::fmt::Display for OverlayError {
                 id,
                 mount_point_id,
                 detail,
-            } => write!(
-                f,
-                "{} {} has no usable document store (officialMountPointId={}): {}",
-                entity_label,
-                id,
-                mount_point_id.as_deref().unwrap_or("null"),
-                detail
-            ),
+            } => {
+                // v4 renders the label CAPITALIZED here ("Project …"/"Group …")
+                // — its overlay config carries both `entityLabel` and
+                // `entityLabelCapitalized`, and the message is built from the
+                // latter. v5 keeps `entity_label()` lowercase (the other
+                // sentences that use it read as prose), so capitalize at the one
+                // site whose bytes must match v4's `error.message`.
+                let (head, tail) = entity_label.split_at(1);
+                write!(
+                    f,
+                    "{}{} {} has no usable document store (officialMountPointId={}): {}",
+                    head.to_uppercase(),
+                    tail,
+                    id,
+                    mount_point_id.as_deref().unwrap_or("null"),
+                    detail
+                )
+            }
             OverlayError::Db(e) => write!(f, "{e}"),
         }
     }
@@ -376,22 +391,78 @@ pub fn apply_overlay<E: StoreEntity>(
     Ok(out)
 }
 
-/// Read + parse `properties.json` for one mount point, or `None` on any failure
-/// (v4 `readProperties` — the read-modify-write seed). Non-throwing by design.
+/// Read + validate `properties.json` for one mount point (v4 `readProperties` —
+/// the read-modify-write seed).
+///
+/// Returns `None` **only** when `properties.json` is genuinely absent from the
+/// store. Every other failure — an unreadable mount index, a transient
+/// repository error, malformed JSON, a body the schema rejects — is an error:
+/// the finder's [`DbError`] propagates as [`OverlayError::Db`] (v4's
+/// "unreadable" arm), and the two parse failures raise
+/// [`OverlayError::Unavailable`].
+///
+/// That distinction is load-bearing, not pedantry (v4 `dcd9440a`). Callers read
+/// `None` as "nothing persisted yet, seed from the raw row", and post-cutover
+/// the slim DB row carries no property values at all. Collapsing a *failed* read
+/// into `None` therefore resets the entire settings bag to schema defaults — and
+/// because the no-default optionals then serialize to nothing, the loss is
+/// invisible in the file and compounds through every later write.
+///
+/// `entity_id` is for the error message only, so a failure names the
+/// project/group rather than just its mount point. (v4 defaults it to
+/// `'(unknown)'`; every v5 call site — like every post-`dcd9440a` v4 one — has
+/// the id, so the parameter is required here rather than adding an unreachable
+/// branch.)
+///
+/// The v4↔v5 arm mapping: v5's finder returns `Ok(None)` where v4's
+/// `readDatabaseDocument` throws `DatabaseStoreError { code: 'NOT_FOUND' }`, so
+/// `Ok(None)` ≡ v4's NOT_FOUND arm and `Err(DbError)` ≡ v4's every-other-read-
+/// error arm.
 pub fn read_properties<E: StoreEntity>(
     mount: &Connection,
     mount_point_id: &str,
-) -> Result<Option<E::Properties>, DbError> {
+    entity_id: &str,
+) -> Result<Option<E::Properties>, OverlayError> {
     let content = DocMountDocumentsRepository::new(mount)
         .find_by_mount_point_and_path(mount_point_id, PROPERTIES_JSON_PATH)?;
     let Some(content) = content else {
+        tracing::debug!(
+            entity = E::entity_label(),
+            entity_id,
+            official_mount_point_id = mount_point_id,
+            "{PROPERTIES_JSON_PATH} absent — caller may seed defaults"
+        );
         return Ok(None);
     };
-    let value: Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-    Ok(E::parse_properties(&value).ok())
+    let value: Value = serde_json::from_str(&content).map_err(|e| {
+        tracing::error!(
+            entity = E::entity_label(),
+            entity_id,
+            official_mount_point_id = mount_point_id,
+            reason = %e,
+            "{PROPERTIES_JSON_PATH} unparseable — refusing to treat as absent"
+        );
+        OverlayError::unavailable::<E>(
+            entity_id,
+            Some(mount_point_id),
+            format!("{PROPERTIES_JSON_PATH} unparseable: {e}"),
+        )
+    })?;
+    let parsed = E::parse_properties(&value).map_err(|detail| {
+        tracing::error!(
+            entity = E::entity_label(),
+            entity_id,
+            official_mount_point_id = mount_point_id,
+            reason = %detail,
+            "{PROPERTIES_JSON_PATH} unparseable — refusing to treat as absent"
+        );
+        OverlayError::unavailable::<E>(
+            entity_id,
+            Some(mount_point_id),
+            format!("{PROPERTIES_JSON_PATH} unparseable: {detail}"),
+        )
+    })?;
+    Ok(Some(parsed))
 }
 
 /// Serialize the property bag the way v4 does: `JSON.stringify(parse(x), null, 2)`
@@ -497,8 +568,15 @@ pub fn apply_write_overlay<E: StoreEntity>(
             links.write_database_document(mount_point_id, STATE_JSON_PATH, &value)?;
         }
         if !touched_props.is_empty() {
-            // Seed from the existing file, else from parse(entity) (= `{}`).
-            let seed: Value = match read_properties::<E>(mount, mount_point_id)? {
+            // Read-modify-write so a partial patch doesn't blow away unspecified
+            // keys. `read_properties` errors rather than returning `None` when
+            // the file exists but can't be read or parsed, so the
+            // seed-from-entity fallback fires only for a store that has no
+            // `properties.json` at all — a broken invariant the backfill heals,
+            // where there is nothing to preserve anyway. (Seeding from a raw row
+            // on a *failed* read is what silently reset a project's whole
+            // settings bag to defaults — v4 `dcd9440a`.)
+            let seed: Value = match read_properties::<E>(mount, mount_point_id, id)? {
                 Some(p) => serde_json::to_value(&p)
                     .map_err(|e| OverlayError::Db(DbError::Key(format!("props seed: {e}"))))?,
                 None => {

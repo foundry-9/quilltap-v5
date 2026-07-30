@@ -35,6 +35,78 @@
       "patch": {
         "name": "Beta Renamed"
       }
+    },
+
+    {
+      "kind": "create",
+      "label": "gamma",
+      "input": {
+        "name": "Gamma",
+        "description": "Desc G",
+        "state": {},
+        "color": "#aa0000",
+        "icon": "gear"
+      }
+    },
+    {
+      "kind": "create",
+      "label": "delta",
+      "input": {
+        "name": "Delta",
+        "description": "Desc D",
+        "state": {},
+        "color": "#bb0000",
+        "icon": "cog"
+      }
+    },
+    {
+      "kind": "create",
+      "label": "epsilon",
+      "input": {
+        "name": "Epsilon",
+        "description": "Desc E",
+        "state": {},
+        "color": "#cc0000",
+        "icon": "bolt"
+      }
+    },
+
+    {
+      "kind": "plantProperties",
+      "label": "gamma",
+      "content": "{ not json"
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "gamma",
+      "patch": {
+        "color": "#010203"
+      }
+    },
+
+    {
+      "kind": "plantProperties",
+      "label": "delta",
+      "content": "{\n  \"color\": 123,\n  \"icon\": \"cog\"\n}"
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "delta",
+      "patch": {
+        "icon": "moon"
+      }
+    },
+
+    {
+      "kind": "deleteProperties",
+      "label": "epsilon"
+    },
+    {
+      "kind": "update",
+      "label": "epsilon",
+      "patch": {
+        "color": "#0e0e0e"
+      }
     }
   ]
 }
