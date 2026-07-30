@@ -32,9 +32,18 @@
 //! ## v4 behavior reproduced deliberately
 //!
 //!   - **The try/catch asymmetry is real and load-bearing.** Phases 1 (help
-//!     docs) and 3 (conversation chunks) are each wrapped and CONTINUE on
-//!     failure; phase 2 (memories) is NOT, so a memory-side failure fails the
-//!     whole job. Do not "tidy" this into three matching arms.
+//!     docs), 3 (conversation chunks) and 4 (mount chunks) are each wrapped and
+//!     CONTINUE on failure; phase 2 (memories) is NOT. Do not "tidy" this into
+//!     matching arms. ⚠ Precisely stated (corrected at the 5cc76688-round
+//!     unification): in v4 even the uncaught region cannot actually FAIL the
+//!     job — every repo call in it is `safeQuery`-wrapped or caught
+//!     (`cancelByType`, `markAllPendingByProfileId`, `findByCharacterId`,
+//!     `deleteStore`, `createBatch` all fail soft), so only the two explicit
+//!     throws (profile-not-found, BUILTIN-partial-scope) end a v4 run. v5
+//!     PROPAGATES a `DbError` in that region to a Failed (and so retried) job —
+//!     a deliberate divergence in the conservative direction, reachable only
+//!     through infra-level DB faults no differential can inject; the fan-out
+//!     read alone is fail-soft (matching v4's observable arm the fixture pins).
 //!   - **Flat priority 0, `maxAttempts` 3.** NOT `EMBEDDING_ENTITY_PRIORITIES` —
 //!     these records are built by hand, unlike `enqueue_embedding_generate`'s
 //!     (10 for MEMORY/CONVERSATION_CHUNK) and unlike the boot repair's.
