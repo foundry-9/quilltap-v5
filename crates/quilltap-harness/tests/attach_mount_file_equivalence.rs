@@ -374,6 +374,8 @@ fn attach_mount_file_matches_oracle() {
     for row in canned_rows {
         let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
         let attachments = vec![CompletionAttachment {
+            // Off the canned key (P4.21) — the oracle's recorded keys carry no id.
+            id: String::new(),
             filename: row.filename,
             mime_type: row.mime_type,
             data: String::new(),

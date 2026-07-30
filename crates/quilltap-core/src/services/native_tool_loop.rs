@@ -538,6 +538,7 @@ where
                 tool_call_id: None,
                 tool_calls: None,
                 cache_control: None,
+                attachments: None,
             });
             current_messages.push(ThreadedMessage {
                 role: "user".to_string(),
@@ -548,6 +549,7 @@ where
                 tool_call_id: None,
                 tool_calls: None,
                 cache_control: None,
+                attachments: None,
             });
 
             let mut params = base_params.clone();
@@ -743,6 +745,7 @@ mod tests {
                     tool_call_id: None,
                     tool_calls: None,
                     cache_control: None,
+                    attachments: None,
                 }],
                 base_params: base_params("m"),
                 tool_context: create_tool_context(
@@ -858,6 +861,7 @@ mod tests {
                     tool_call_id: None,
                     tool_calls: None,
                     cache_control: None,
+                    attachments: None,
                 }],
                 base_params: base_params("m"),
                 tool_context: create_tool_context(

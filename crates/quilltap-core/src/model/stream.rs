@@ -91,6 +91,17 @@ pub enum StreamMessage {
         /// prompt-cache breakpoint the context builder stamps; consumed by the
         /// anthropic builder's per-message cache arm.
         cache_control: Option<serde_json::Value>,
+        /// v4 `msg.attachments` (`FileAttachment[]`) — carried as the VERBATIM
+        /// JSON bags the file subsystem built (`{id, filepath, filename,
+        /// mimeType, size, data, url?, …}`), so no conversion can drop a field
+        /// (P4.21; dogfood #37's structural cause was a conversion that read
+        /// `content` alone). The request builders read `id`/`mimeType`/`data`/
+        /// `url`/`filename` with JS truthiness and emit each provider's wire
+        /// image/document parts; the canned tier-3 key ignores them (role +
+        /// content only), so oracle-recorded keys are unchanged. Empty for every
+        /// message the attachment stamper (`message_context`) didn't touch —
+        /// v4 stamps the merged slate onto the LAST user message only.
+        attachments: Vec<serde_json::Value>,
     },
     Assistant {
         content: String,
@@ -131,6 +142,16 @@ impl StreamMessage {
         StreamMessage::User {
             content: content.into(),
             cache_control: None,
+            attachments: Vec::new(),
+        }
+    }
+
+    /// The user message's attachments (empty for every other role — only v4's
+    /// user messages ever carry them onto the wire).
+    pub fn attachments(&self) -> &[serde_json::Value] {
+        match self {
+            StreamMessage::User { attachments, .. } => attachments,
+            _ => &[],
         }
     }
 
@@ -163,6 +184,7 @@ impl StreamMessage {
         StreamMessage::User {
             content: format!("[Tool Result: {name}]\n{content}"),
             cache_control: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -311,13 +333,15 @@ impl std::error::Error for StreamError {}
 ///
 /// **Deferred** from v4's `LLMParams` (not set on the primary-stream path, or
 /// carried above the seam, so omitted to keep the boundary minimal):
-/// `strictMaxTokens` (a cheap-LLM-only flag — the streaming path never sets it),
-/// `toolChoice` / `responseFormat` / `seed` / `user` (the chat path doesn't set
-/// them here), and `attachments` on messages (v4 casts them onto `LLMMessage`,
-/// but attachment *delivery* is resolved above this seam and reported back via
-/// `StreamChunk::attachment_results`). `tools` is carried as opaque JSON — the
-/// provider-specific tool serialisation is settled before the call, and the
-/// canned key hashes it verbatim.
+/// `strictMaxTokens` (a cheap-LLM-only flag — the streaming path never sets it)
+/// and `toolChoice` / `responseFormat` / `seed` / `user` (the chat path doesn't
+/// set them here). `attachments` ride the MESSAGES, not the params (P4.21,
+/// matching v4's `messages[].attachments`): the file subsystem stamps the
+/// merged slate onto the last user [`StreamMessage::User`], the request
+/// builders emit each provider's wire parts from it, and the sent/failed
+/// outcome is reported back via `StreamChunk::attachment_results`. `tools` is
+/// carried as opaque JSON — the provider-specific tool serialisation is
+/// settled before the call, and the canned key hashes it verbatim.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StreamParams {
     pub messages: Vec<StreamMessage>,

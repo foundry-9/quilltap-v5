@@ -538,6 +538,7 @@ fn assistant_ledger_entry(latest: &str, state: &StreamingState) -> ThreadedMessa
         tool_call_id: None,
         tool_calls: None,
         cache_control: None,
+        attachments: None,
     }
 }
 
@@ -558,6 +559,7 @@ fn nudge_user_entry(duplicate_count: usize) -> ThreadedMessage {
         tool_call_id: None,
         tool_calls: None,
         cache_control: None,
+        attachments: None,
     }
 }
 
@@ -576,6 +578,7 @@ fn tool_result_ledger_entry<Strat: TextToolStrategy + ?Sized>(
         tool_call_id: None,
         tool_calls: None,
         cache_control: None,
+        attachments: None,
     }
 }
 

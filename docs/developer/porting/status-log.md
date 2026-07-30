@@ -44050,3 +44050,51 @@ landed; the tier-3 deferrals were respected (the P4.13 failed-cheap-call ruling
 was not touched — the failing CALL disappeared, not the ruling — and no v4-side
 fix was made). No v4 bug or dead code surfaced, so `dogfood-findings.md` gets no
 new entry from this lane.
+## Lane record — P4.21 unit 1: the attachment carrying types + threading (2026-07-30)
+
+**Branch `claude/p4-21-image-attachments-wire-53abb7`.** Drift-check: v4 HEAD
+is exactly the pinned `dcd9440a`; the tree is dirty with in-flight Pascal work
+(`lib/pascal/custom-tools.ts`), disjoint from this lane's surface — corpus
+regeneration will use a pinned detached worktree per the standing rule.
+
+Deliverables 1–2 of the order (the carrying story + the four drop sites):
+
+- `StreamMessage::User` gains `attachments: Vec<serde_json::Value>` — the
+  VERBATIM v4 `FileAttachment` JSON bags (`{id, filepath, filename, mimeType,
+  size, data, …}`), so no conversion can drop a field (dogfood #37's
+  structural cause was a conversion that read `content` alone). The canned
+  tier-3 stream key projects role+content only — oracle-recorded keys are
+  unchanged. `ThreadedMessage` gains `attachments: Option<Vec<Value>>`
+  (`skip_serializing_if` — slate serialization unchanged when absent).
+  `CompletionAttachment` gains `id` (`#[serde(skip)]` — off the canned key,
+  which predates it and must keep matching the v4 oracle's recorded keys).
+- **Drop site 1** (orchestrator primary-stream conversion): the user arm
+  carries `m.attachments`. **Drop site 2** (the tool-loop slates): the
+  orchestrator's `loop_messages` + `make_text_messages` maps thread
+  `m.attachments`; `to_stream_message`'s user arm forwards them, so the last
+  user message keeps its image payload across tool-loop re-streams (v4
+  re-sends the same messages array each iteration). The loops' synthetic
+  turns (assistant tool-call turn, tool results, force-final nudge, brahma
+  `plain_message`) carry `None`, matching v4's bare `{role, content}` appends.
+  **Drop site 3** (`regenerate_swipe`): the stamped last-user attachments
+  thread into `CompletionParams.attachments` (v4 forwards
+  `attachments: m.attachments` into `provider.sendMessage`). **Drop site 4**
+  (`request_input_from_params`): `params.attachments` are stamped onto the
+  LAST user `StreamMessage` as `FileAttachment` bags — the describe path now
+  reaches the builders with its image intact.
+- The google builder's consecutive-user-message merge concatenates
+  attachments (v4: `lastMsg.attachments = [...(lastMsg.attachments || []),
+  ...msg.attachments]`).
+- The stale out-of-scope doc comments rewritten (`request_builder/mod.rs`
+  `RequestInput.messages`, `stream.rs` `StreamParams`).
+- Order-cite correction, verified in v4: `lib/chat/apply-chat-continuation.ts:155`
+  is a message-ROW copy on chat fork (data layer, already ported), not a wire
+  send — the four sites above are the complete wire-drop list.
+
+New pin: `attachments_are_stamped_onto_the_last_user_message`
+(`completion_provider.rs`) — a describe-shaped `CompletionParams` reaches the
+builders with the bag on the last user message and earlier user messages bare.
+The builders still ignore attachments in this commit (unit 2 ports the nine
+wire shapes), so the request-envelope corpus is unchanged and
+`request_builder_equivalence` + `tool_wire_call_site` prove the wire
+byte-identical. Versions: core 0.0.412, harness 0.0.357.

@@ -673,6 +673,7 @@ pub(super) fn plain_message(role: &str, content: &str) -> ThreadedMessage {
         tool_call_id: None,
         tool_calls: None,
         cache_control: None,
+        attachments: None,
     }
 }
 

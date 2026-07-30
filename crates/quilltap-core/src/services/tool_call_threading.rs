@@ -70,6 +70,13 @@ pub struct ThreadedMessage {
     /// slate serialization is unchanged when `None`).
     #[serde(rename = "cacheControl", skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<Value>,
+    /// v4 `msg.attachments` (`FileAttachment[]` JSON bags, verbatim) — carried
+    /// through the loop slates so the LAST user message keeps its image payload
+    /// across tool-loop re-streams exactly as v4's plugins see it (P4.21;
+    /// absent everywhere else, so slate serialization is unchanged when
+    /// `None`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<Value>>,
 }
 
 /// v4 `JSON.stringify(arguments)`: normalize integer-valued floats to bare
@@ -160,6 +167,7 @@ pub fn build_assistant_tool_call_message(
         tool_call_id: None,
         tool_calls: tool_calls_payload,
         cache_control: None,
+        attachments: None,
     }
 }
 
@@ -196,6 +204,7 @@ pub fn to_stream_message(m: &ThreadedMessage) -> StreamMessage {
         _ => StreamMessage::User {
             content: m.content.clone(),
             cache_control: m.cache_control.clone(),
+            attachments: m.attachments.clone().unwrap_or_default(),
         },
     }
 }
@@ -223,6 +232,7 @@ pub fn build_tool_result_messages(tool_messages: &[ToolMessage]) -> Vec<Threaded
                     tool_call_id: Some(call_id.to_string()),
                     tool_calls: None,
                     cache_control: None,
+                    attachments: None,
                 },
                 None => ThreadedMessage {
                     role: "user".to_string(),
@@ -233,6 +243,7 @@ pub fn build_tool_result_messages(tool_messages: &[ToolMessage]) -> Vec<Threaded
                     tool_call_id: None,
                     tool_calls: None,
                     cache_control: None,
+                    attachments: None,
                 },
             },
         )

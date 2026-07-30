@@ -112,6 +112,11 @@ fn message_from_json(m: &Value) -> StreamMessage {
         _ => StreamMessage::User {
             content,
             cache_control: m.get("cacheControl").cloned(),
+            attachments: m
+                .get("attachments")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default(),
         },
     }
 }

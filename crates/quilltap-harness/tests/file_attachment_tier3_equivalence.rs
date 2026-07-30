@@ -260,6 +260,8 @@ fn file_attachment_matches_oracle() {
             } => {
                 let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
                 let attachments = vec![CompletionAttachment {
+                    // Off the canned key (P4.21) — the oracle's recorded keys carry no id.
+                    id: String::new(),
                     filename,
                     mime_type,
                     data: String::new(),

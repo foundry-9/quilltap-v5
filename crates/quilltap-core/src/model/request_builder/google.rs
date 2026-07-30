@@ -204,14 +204,25 @@ pub fn format_messages_for_google(
 
     // Merge consecutive plain user messages (not tool results — v4 also guarded
     // `msg.toolCallId == null`, vacuous here: a User variant never carries one).
+    // Attachments merge too (v4: `lastMsg.attachments = [...(lastMsg.attachments
+    // || []), ...msg.attachments]`).
     let mut merged: Vec<StreamMessage> = Vec::new();
     for msg in &non_system {
         if let (
-            Some(StreamMessage::User { content: last, .. }),
-            StreamMessage::User { content, .. },
+            Some(StreamMessage::User {
+                content: last,
+                attachments: last_atts,
+                ..
+            }),
+            StreamMessage::User {
+                content,
+                attachments,
+                ..
+            },
         ) = (merged.last_mut(), msg)
         {
             *last = format!("{last}\n\n{content}");
+            last_atts.extend(attachments.iter().cloned());
             continue;
         }
         merged.push((*msg).clone());

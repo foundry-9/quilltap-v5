@@ -421,6 +421,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     // Build the vision call.
     let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
     let attachments = vec![CompletionAttachment {
+        id: file.id.clone(),
         filename: file.filename.clone(),
         mime_type: attachment_mime.clone(),
         data: attachment_data,

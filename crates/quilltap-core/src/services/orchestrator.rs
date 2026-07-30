@@ -2051,7 +2051,10 @@ where
     // Build the stream params from the wrapper's formatted messages (v4 forwards
     // `formattedMessages`, the model params, no tools [corpus], no web search).
     // An assistant turn's persisted `thoughtSignature` rides through (the google
-    // round-trip — v4 passes it on the message; P4.13 threads it to the wire).
+    // round-trip — v4 passes it on the message; P4.13 threads it to the wire),
+    // and the last user message's `attachments` ride with it (v4
+    // `streaming.service.ts` maps `attachments: m.attachments`; P4.21 — this
+    // conversion reading `content` alone was dogfood #37's drop site 1).
     let stream_messages: Vec<StreamMessage> = formatted_messages
         .iter()
         .map(|m| match m.role.as_str() {
@@ -2063,7 +2066,11 @@ where
                 thought_signature: m.thought_signature.clone(),
                 cache_control: None,
             },
-            _ => StreamMessage::user(m.content.clone()),
+            _ => StreamMessage::User {
+                content: m.content.clone(),
+                cache_control: None,
+                attachments: m.attachments.clone().unwrap_or_default(),
+            },
         })
         .collect();
     // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`
@@ -2178,6 +2185,10 @@ where
             tool_call_id: None,
             tool_calls: None,
             cache_control: None,
+            // The last user message's attachments survive into the loop slate
+            // (P4.21 drop site 2 — v4's loop re-sends the same messages array,
+            // image payload intact, on every tool-loop iteration).
+            attachments: m.attachments.clone(),
         })
         .collect();
     // finding #22 carry-out: the memory slate the LLM saw this turn, threaded into
@@ -2244,6 +2255,9 @@ where
                 tool_call_id: None,
                 tool_calls: None,
                 cache_control: None,
+                // The text passes re-send the same slate — attachments intact
+                // (P4.21; v4's continuation calls reuse `formattedMessages`).
+                attachments: m.attachments.clone(),
             })
             .collect()
     };

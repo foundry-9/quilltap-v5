@@ -43,6 +43,15 @@ been switched off in a way nobody noticed — a stand-in written back when the
 new app had not yet ported that step, left in place after it did. The stand-in
 is gone, the check runs against the old app's real code again, and both sides
 now agree exactly. No application code changed.
+Started fixing the round's headline bug (an attached image never actually
+reaches the model): messages can now carry their image attachments all the way
+from the chat pipeline to the request layer. The four spots that silently
+dropped the image just before the network call now pass it through — the
+streaming path, both tool loops, the regenerate path, and the image-describe
+path. The request bodies themselves don't include images yet (that's the next
+step), so behavior on the wire is unchanged by this commit; a new test pins
+that the describe path's conversion keeps the attachment instead of dropping
+it.
 
 Planned the next porting round: four parallel work orders. One catches v5 up
 to the old app's newest change (a failed project-settings read can no longer

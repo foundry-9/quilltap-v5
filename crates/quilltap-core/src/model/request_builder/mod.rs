@@ -61,9 +61,12 @@ pub use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload}
 #[derive(Clone, Debug, Default)]
 pub struct RequestInput {
     pub model: String,
-    /// v4 `LLMMessage[]` — the carrying enum; attachments are out of scope here
-    /// (the chat path's formatted messages are text; multimodal is the file
-    /// subsystem's concern).
+    /// v4 `LLMMessage[]` — the carrying enum. A user message carries its
+    /// `attachments` (v4's `FileAttachment` JSON bags, stamped by the file
+    /// subsystem onto the last user message); each provider's builder emits its
+    /// wire image/document parts from them — or drops them and reports the
+    /// failure — exactly as v4's plugin `formatMessages*` does, and the
+    /// sent/failed outcome rides [`BuiltRequest::attachment_results`] (P4.21).
     pub messages: Vec<StreamMessage>,
     pub temperature: Option<f64>,
     pub max_tokens: Option<i64>,

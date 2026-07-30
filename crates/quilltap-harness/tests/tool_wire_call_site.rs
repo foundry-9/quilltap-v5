@@ -206,6 +206,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             tool_call_id: None,
             tool_calls: None,
             cache_control: None,
+            attachments: None,
         },
         ThreadedMessage {
             role: "user".into(),
@@ -216,6 +217,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             tool_call_id: None,
             tool_calls: None,
             cache_control: None,
+            attachments: None,
         },
     ];
     let tool_context = create_tool_context(

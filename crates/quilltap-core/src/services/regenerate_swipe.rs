@@ -29,7 +29,7 @@ use serde_json::{json, Map, Value};
 use crate::db::runtime::Db;
 use crate::db::{memories_read, DbError};
 use crate::model::completion::{
-    CompletionMessage, CompletionParams, CompletionProvider, CompletionRole,
+    CompletionAttachment, CompletionMessage, CompletionParams, CompletionProvider, CompletionRole,
 };
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::build_context::{BuildContextSeams, ConnectionProfileInput};
@@ -374,6 +374,26 @@ where
             content: m.content.clone(),
         })
         .collect();
+    // The stamped attachments (last user message — the only carrier) thread into
+    // `CompletionParams.attachments`, which `request_input_from_params` stamps
+    // back onto the last user message for the builders (P4.21 drop site 3 — v4
+    // forwards `attachments: m.attachments` into `provider.sendMessage` here).
+    let attachments: Vec<CompletionAttachment> = mc_result
+        .formatted_messages
+        .iter()
+        .rev()
+        .find_map(|m| m.attachments.as_ref())
+        .map(|bags| {
+            bags.iter()
+                .map(|a| CompletionAttachment {
+                    id: json_str(a, "id").unwrap_or_default(),
+                    filename: json_str(a, "filename").unwrap_or_default(),
+                    mime_type: json_str(a, "mimeType").unwrap_or_default(),
+                    data: json_str(a, "data").unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let temperature = json_f64(&params_value, "temperature");
     let max_tokens = json_f64(&params_value, "max_tokens")
         .map(|f| f as i64)
@@ -393,7 +413,7 @@ where
                 strict_max_tokens: false,
                 cache_key: Some(character_id.clone()),
                 profile_parameters: Some(params_value),
-                attachments: Vec::new(),
+                attachments,
             },
         )
         .await

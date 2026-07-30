@@ -54,6 +54,11 @@ pub struct CompletionMessage {
 /// empty, so the canned key is byte-identical to the pre-W4.4b key there.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct CompletionAttachment {
+    /// v4 `FileAttachment.id` — the file id the wire's `attachmentResults`
+    /// reports sent/failed by (P4.21). Off the canned key (the key predates it
+    /// and the v4 oracle's recorded keys must keep matching).
+    #[serde(skip)]
+    pub id: String,
     pub filename: String,
     #[serde(rename = "mimeType")]
     pub mime_type: String,

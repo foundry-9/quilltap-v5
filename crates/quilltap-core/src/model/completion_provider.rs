@@ -35,20 +35,49 @@ use crate::provider_manifest::Registry;
 /// plain-text equivalents — a `Tool`-role completion message has no id and no
 /// representation on this path, so it is dropped exactly as v4's builders drop
 /// an id-less tool message (unreachable from every cheap-LLM caller).
-fn request_input_from_params(params: &CompletionParams) -> RequestInput {
+///
+/// `params.attachments` are stamped onto the LAST user message (v4's
+/// image-description call sends `messages: [{ role: 'user', content, attachments:
+/// [attachmentForLLM] }]` — one user message carrying the vision payload), as
+/// `FileAttachment` JSON bags for the request builders to emit (P4.21; before
+/// this, the describe path built its params correctly and the wire dropped them
+/// — dogfood #37).
+pub(crate) fn request_input_from_params(params: &CompletionParams) -> RequestInput {
     use crate::model::completion::CompletionRole;
+    let mut messages: Vec<StreamMessage> = params
+        .messages
+        .iter()
+        .filter_map(|m| match m.role {
+            CompletionRole::System => Some(StreamMessage::system(m.content.clone())),
+            CompletionRole::User => Some(StreamMessage::user(m.content.clone())),
+            CompletionRole::Assistant => Some(StreamMessage::assistant(m.content.clone())),
+            CompletionRole::Tool => None,
+        })
+        .collect();
+    if !params.attachments.is_empty() {
+        let bags: Vec<serde_json::Value> = params
+            .attachments
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "id": a.id,
+                    "filename": a.filename,
+                    "mimeType": a.mime_type,
+                    "data": a.data,
+                })
+            })
+            .collect();
+        if let Some(StreamMessage::User { attachments, .. }) = messages
+            .iter_mut()
+            .rev()
+            .find(|m| matches!(m, StreamMessage::User { .. }))
+        {
+            *attachments = bags;
+        }
+    }
     RequestInput {
         model: params.model.clone(),
-        messages: params
-            .messages
-            .iter()
-            .filter_map(|m| match m.role {
-                CompletionRole::System => Some(StreamMessage::system(m.content.clone())),
-                CompletionRole::User => Some(StreamMessage::user(m.content.clone())),
-                CompletionRole::Assistant => Some(StreamMessage::assistant(m.content.clone())),
-                CompletionRole::Tool => None,
-            })
-            .collect(),
+        messages,
         temperature: params.temperature,
         max_tokens: Some(params.max_tokens),
         top_p: None,
@@ -187,6 +216,48 @@ mod tests {
             profile_parameters: None,
             attachments: Vec::new(),
         }
+    }
+
+    /// P4.21 (dogfood #37): a describe-shaped call — one user message +
+    /// `CompletionParams.attachments` — must reach the request builders with the
+    /// attachment stamped on the last user message. The old
+    /// `request_input_from_params` read `m.content` alone, so the describe path
+    /// built its params correctly and the wire silently dropped the image; the
+    /// canned tier-3 provider KEYS on attachments, which is why the differential
+    /// stayed green through a total outage. This pins the conversion itself.
+    #[test]
+    fn attachments_are_stamped_onto_the_last_user_message() {
+        use crate::model::completion::CompletionAttachment;
+        use crate::model::stream::StreamMessage;
+        let mut p = params("vision-model");
+        p.messages = vec![
+            CompletionMessage::system("sys"),
+            CompletionMessage::user("first"),
+            CompletionMessage::user("Describe this image."),
+        ];
+        p.attachments = vec![CompletionAttachment {
+            id: "file-1".to_string(),
+            filename: "photo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: "aGVsbG8=".to_string(),
+        }];
+        let input = request_input_from_params(&p);
+        // Only the LAST user message carries the bag (v4's describe call has one
+        // user message; the rule generalizes as "last user" like the stamper's).
+        let atts: Vec<&[serde_json::Value]> = input
+            .messages
+            .iter()
+            .filter(|m| matches!(m, StreamMessage::User { .. }))
+            .map(|m| m.attachments())
+            .collect();
+        assert_eq!(atts.len(), 2);
+        assert!(atts[0].is_empty(), "earlier user message must stay bare");
+        assert_eq!(atts[1].len(), 1);
+        let bag = &atts[1][0];
+        assert_eq!(bag["id"], "file-1");
+        assert_eq!(bag["filename"], "photo.png");
+        assert_eq!(bag["mimeType"], "image/png");
+        assert_eq!(bag["data"], "aGVsbG8=");
     }
 
     #[tokio::test]
