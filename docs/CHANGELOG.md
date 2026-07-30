@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Planned the next porting round: three parallel work orders catching v5 up to
+the old app's latest three changes — same-day memory recall with a fresh-event
+boost (P4.d26), the enforced single embedding standard with its boot-time
+dimension reconcile (P4.d27), and the new Export Markdown chat transcript
+(P4.d28). Each order carries a fresh survey of both codebases, the oracle
+families it must regenerate at the new baseline, and its fixture obligations.
+Docs only; no code changed.
+
 Wrote down a wish for later: letting you speak as a character for a stretch of
 turns and have them go back to being driven by their own model when you stop.
 The old app only ever half-did this — it will let you offer to speak as a
