@@ -23,6 +23,20 @@
 //! wall clock. Counts, id lists (and their order), actions, and the
 //! percent/similarity numbers are compared byte-exact.
 //!
+//! ## P4.d27 — the merge pass's dimension skip (v4 `7391404e`)
+//!
+//! v4 now skips a stored vector whose width differs from the store's, quietly and
+//! once, instead of handing `search` a query it rejects with a warning on every
+//! call. **It is outcome-neutral**: `search` already returns `[]` for a
+//! dimension-mismatched query on BOTH sides, so no merge decision moves — the
+//! change is log volume and a saved scan. The corpus therefore carries a
+//! four-component entry in a three-component store (H4's `a4000005`, whose first
+//! three components make it a 95%-cosine near-duplicate of `a4000001`) not to
+//! observe the skip but to PIN the neutrality: `deletedIds`/`mergedIds` are
+//! identical with and without it, measured. Invert the skip onto CONFORMING
+//! entries and the merges stop, which is what makes this family sensitive to the
+//! condition even though it cannot see the skip itself.
+//!
 //! ⏳ CORPUS FRESHNESS: decisions depend on wall-clock age; the corpus outcomes
 //! hold while the spec's "recent" dates (2026-06-xx) are under the 6-month
 //! windows (until ~2026-12). Both sides stay in agreement after that (the diff
@@ -277,10 +291,19 @@ async fn memory_housekeeping_tier2_matches_oracle() {
         );
     }
 
-    // Sanity (fresh-date corpus): H1 keeps 5 of 7, H2 keeps 2 of 3, H3 keeps 3
-    // of 5 → 10 memories; entries: h1-old-high + h2-keep + h2-other + a3000001.
-    // H4 (the episodic date-guard character) keeps 3 of 4: its same-occasion
-    // near-duplicate pair merges, its >7-days-apart pair does NOT — the guard.
+    // Sanity (fresh-date corpus): H1 keeps 4 of 7, H2 keeps 2 of 3, H3 keeps 3
+    // of 5 → 9 memories. H4 (the episodic date-guard character) keeps 4 of 5:
+    // its same-occasion near-duplicate pair merges, its >7-days-apart pair does
+    // NOT — the guard — and its P4.d27 mismatched-width seed survives untouched.
+    //
+    // ⚠ These are HAND COUNTS after a passing row diff, so they check the CORPUS,
+    // not the port (`harness-corpus-shape-constants-rot`). The memories number was
+    // already stale when P4.d27 arrived — the committed 13 against an actual 12 —
+    // which nothing noticed because the family SKIPs without its env vars. Both
+    // numbers were re-measured against the pre-seed corpus at that point (12 / 7)
+    // and again after (13 / 8), and the +1 each is exactly the new seed and its
+    // entry: `deletedIds` and `mergedIds` are IDENTICAL across the two runs, which
+    // is the proof that the mismatched-width seed changes no merge decision.
     assert_eq!(
         got_dumps[0]["rows"].as_array().unwrap().len(),
         13,
@@ -288,7 +311,7 @@ async fn memory_housekeeping_tier2_matches_oracle() {
     );
     assert_eq!(
         got_dumps[2]["rows"].as_array().unwrap().len(),
-        7,
+        8,
         "vector_entries survivors"
     );
 

@@ -336,6 +336,9 @@ pub async fn run_housekeeping(
         let store = db.read_main(move |conn| CharacterVectorStore::load(conn, &char_id));
         if let Ok(store) = store {
             let entry_by_id: HashMap<&str, &[f32]> = store.all_entries().collect();
+            // P4.d27 / v4 `7391404e`.
+            let store_dimensions = store.dimensions();
+            let mut nonconforming_skipped = 0usize;
 
             for mem in &remaining {
                 if delete_set.contains(&mem.id) {
@@ -344,6 +347,21 @@ pub async fn run_housekeeping(
                 let Some(embedding) = entry_by_id.get(mem.id.as_str()) else {
                     continue;
                 };
+                // A stored vector from a previous embedding profile cannot be
+                // compared against this index — skip it quietly, once, instead of
+                // handing `search` a query it will reject with a warning on every
+                // call. It is dead weight until the reindex re-embeds it.
+                //
+                // ⚠ OUTCOME-NEUTRAL by construction: `search` already returns an
+                // empty result for a dimension-mismatched query (both here and in
+                // v4), so this changes no merge decision — only the log volume and
+                // the wasted scan. The differential's corpus carries a
+                // mismatched-width entry precisely to PIN that neutrality; invert
+                // this condition onto conforming entries and the family goes red.
+                if store_dimensions.is_some_and(|d| embedding.len() != d) {
+                    nonconforming_skipped += 1;
+                    continue;
+                }
                 let matches = store.search(embedding, 10);
 
                 for m in &matches {
@@ -408,6 +426,19 @@ pub async fn run_housekeeping(
                         break;
                     }
                 }
+            }
+
+            // ONE summary line per character instead of one warning per entry per
+            // sweep (v4 `7391404e`) — on the corpus that prompted the fix this was
+            // thousands of lines a pass.
+            if nonconforming_skipped > 0 {
+                tracing::info!(
+                    target: "quilltap::memory",
+                    character_id = %character_id,
+                    nonconforming_skipped,
+                    store_dimensions = store_dimensions.unwrap_or(0),
+                    "[Housekeeping] Skipped non-conforming vectors in merge pass — awaiting re-embed",
+                );
             }
         }
     }

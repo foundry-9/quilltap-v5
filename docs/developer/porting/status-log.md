@@ -42761,3 +42761,61 @@ embedding profile with no fixed dimension, for the `no-fixed-dim` arm; the seed
 help doc made non-conforming). Same single consumer as unit 2. Regen recipe
 unchanged from unit 2's record; the new-baseline marker for this unit is a
 `"kind":"dimReconcile"` line in the NDJSON.
+
+---
+
+## Lane record — P4.d27 unit 4 (the housekeeping merge-pass skip) — 2026-07-30
+
+The last of v4 `7391404e`'s four behavior surfaces: `services/housekeeping.rs`
+pass 2 now reads the store's width (the new `CharacterVectorStore::dimensions()`)
+and skips an entry whose vector is a different width, counting them and emitting
+ONE summary line per character instead of a warning per entry per sweep.
+
+**The finding that shaped the verification: this change is OUTCOME-NEUTRAL.**
+v4's `CharacterVectorStore.search` already returns `[]` for a dimension-mismatched
+query (it logs "Query vector dimension mismatch" and bails), and v5's port already
+did the same — plus it skips entries whose length differs from the query's. So the
+skip cannot move a merge decision; it removes a wasted call and a log line. On the
+corpus that prompted v4's fix that log line was thousands of entries a pass.
+
+That means **no differential can observe the skip directly** — the results and the
+DB state are identical with or without it, and log output is outside the
+differential contract (P4.18). So the corpus was extended not to see the skip but
+to PIN the neutrality, and the sensitivity was placed where it is real:
+
+- H4 (the merge-pass character) gained `a4000005`, a FOUR-component entry in a
+  three-component store, whose first three components make it a 95%-cosine
+  near-duplicate of `a4000001` — i.e. a row that WOULD fold something away if it
+  were ever compared.
+- Neutrality **measured, not argued**: the oracle was regenerated against the
+  pre-seed corpus and the post-seed corpus and the two compared.
+  `deletedIds`/`mergedIds` are IDENTICAL (`a4000004` merges into `a4000003` in
+  both; the >7-days-apart pair is spared by the episodic date guard in both). The
+  only differences are `kept 3 → 4`, `totalBefore 4 → 5`, and the seed's own row
+  and entry.
+- **Mutation (the sensitivity that matters):** invert the condition so it skips
+  CONFORMING entries → `memory_housekeeping_tier2` RED at "per-op results
+  diverged". Restored → green.
+
+**⚠ A pre-existing stale constant, found and fixed on the way past.** The family's
+hand-written sanity counts said `13` memories / `7` entries; the actual pre-seed
+corpus produces `12` / `7`. Nothing had noticed because the family SKIPs when its
+env vars are unset, and the workspace gate does not set them by default. This is
+the `harness-corpus-shape-constants-rot` trap in its quietest form — a hand count
+placed after a passing row diff checks the corpus, not the port. Both numbers are
+now re-measured (`13` / `8` post-seed) and the comment says what they are and how
+they were derived, so the next reader does not trust them as port assertions.
+
+**Regen recipe** (Node 24, cwd `/private/tmp/qt-v4-pin-b3ee00f1`, `V5` = the lane
+worktree) — the fixture is `/tmp`-built, not committed:
+
+```
+PATH=$N:$PATH QT_FIXTURE_OUT=/tmp/qt-mem-housekeeping-fixture.db \
+  npx tsx $V5/harness/oracle/fixtures/build-memory-housekeeping-fixture.ts
+PATH=$N:$PATH QT_FIXTURE_MEMHOUSEKEEPING=/tmp/qt-mem-housekeeping-fixture.db \
+  npx tsx $V5/harness/oracle/cases/memory-housekeeping-tier2.ts \
+  > /tmp/oracle-mem-housekeeping.ndjson
+```
+
+New-baseline marker to grep: `a4000005` (three occurrences — the memory row, its
+vector entry, and its kept-detail).

@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Memory housekeeping's tidy-up round no longer complains once per leftover vector.
+When a character's memories still hold vectors from a previous embedding scheme,
+they cannot be compared against the current search index — so the round now steps
+over them quietly and says so once at the end, instead of logging a warning for
+each one on every pass. On the instance that prompted this, that was thousands of
+lines a round. Nothing about which memories get merged changes: those vectors were
+already being ignored, just noisily.
+
 Every start-up now checks that the whole stored corpus still matches the
 embedding standard the current default profile produces, and repairs it if it
 does not. This is the fix for the failure that prompted it in the old app:
