@@ -11,7 +11,8 @@
  * Memory[] (most), a number (count*), `{ memories, totalCount }` (paginated),
  * `{ high, medium, low }` (tier), a `Map`→object (countByChatIds), an array of
  * batches (findByCharacterIdInBatches), a string[] (findDistinctChatIds), or an
- * array of `{ id, characterId }` (findIdsWithoutEmbedding). The `embedding` field
+ * array of `{ id, characterId }` (findIdsWithoutEmbedding), a string[]
+ * (findDistinctCharacterIds — P4.d27). The `embedding` field
  * of any returned Memory is a `Float32Array` → `JSON.stringify` emits the
  * `{"0":…}` object the Rust port reproduces from the BLOB.
  *
@@ -223,6 +224,9 @@ async function main(): Promise<void> {
       }
       case 'findDistinctChatIds':
         result = await repo.findDistinctChatIds();
+        break;
+      case 'findDistinctCharacterIds':
+        result = await repo.findDistinctCharacterIds();
         break;
       case 'searchByContentAboutCharacter':
         result = await repo.searchByContentAboutCharacter(

@@ -6,6 +6,19 @@
 //! committed spec, dump the `embedding_status` table canonically, and assert the
 //! post-op state is identical.
 //!
+//! ## P4.d27 — the `listFailedEntityIds` read
+//!
+//! v4 `7391404e` adds one read to this repo, which the `mismatched-dim` reindex
+//! scope and the boot dimension reconcile both use as an exclusion set. It is
+//! driven here, over the post-op state, as `{kind:'listFailed', name, ids}` rows
+//! that precede the state dump. A `Set` has no JSON form, so the ids are compared
+//! SORTED on both sides — the consumer is a membership test, never an ordered
+//! walk. The corpus covers a matching read, the same entityType under the OTHER
+//! profile (an EMBEDDED row lives there — the profileId predicate), a
+//! non-FAILED-only (entityType, profileId) pair (the status predicate), and a
+//! pair with no rows at all. The missing-table fail-soft arm is not reachable
+//! from a provisioned fixture and lives in the module's own unit test.
+//!
 //! ⚠️ P4.D25 — the mark* CREATE arm mints. Since v4 `a5d6cee5`,
 //! `markAsEmbedded`/`markAsFailed` UPSERT, and the create path reaches v4's
 //! `create` with NO `CreateOptions`, so `id` and `createdAt` (and, for
@@ -57,6 +70,19 @@ struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
     ops: Vec<Op>,
+    /// P4.d27 — `listFailedEntityIds` reads, run after the whole op sequence.
+    #[serde(rename = "listFailedReads")]
+    list_failed_reads: Vec<ListFailedRead>,
+}
+
+/// One `listFailedEntityIds(entityType, profileId)` read.
+#[derive(Deserialize)]
+struct ListFailedRead {
+    name: String,
+    #[serde(rename = "entityType")]
+    entity_type: String,
+    #[serde(rename = "profileId")]
+    profile_id: String,
 }
 
 #[derive(Deserialize)]
@@ -246,10 +272,50 @@ fn embedding_status_tier2_matches_oracle() {
     let pinned = pinned_literals(&spec_json);
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse fixture spec");
 
-    // Parse the oracle's expected post-op dump (one NDJSON object).
+    // Parse the oracle NDJSON: the `listFailed` read rows (P4.d27), then the one
+    // untagged line carrying the post-op state dump.
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    let mut oracle: Option<Value> = None;
+    let mut oracle_reads: Vec<(String, Vec<String>)> = Vec::new();
+    for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).expect("parse oracle line");
+        match v.get("kind").and_then(Value::as_str) {
+            Some("listFailed") => oracle_reads.push((
+                v["name"].as_str().expect("read name").to_string(),
+                v["ids"]
+                    .as_array()
+                    .expect("read ids")
+                    .iter()
+                    .map(|x| x.as_str().expect("id string").to_string())
+                    .collect(),
+            )),
+            Some(other) => panic!("unknown oracle row kind {other:?}"),
+            None => oracle = Some(v),
+        }
+    }
+    let mut oracle = oracle.expect("oracle emitted no state dump — regenerate");
+    // Corpus-shape guard (not a hand count): the oracle ran EXACTLY this corpus's
+    // reads, in order.
+    assert_eq!(
+        oracle_reads
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>(),
+        spec.list_failed_reads
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>(),
+        "oracle listFailed read set/order diverges from the corpus — regenerate"
+    );
+    // A read family where every answer is empty would agree with a port that
+    // always returns nothing, and one where every answer is non-empty would
+    // agree with a port that ignores the predicates. Pin both directions.
+    assert!(
+        oracle_reads.iter().any(|(_, ids)| !ids.is_empty())
+            && oracle_reads.iter().any(|(_, ids)| ids.is_empty()),
+        "the corpus stopped exercising both a matching and an empty listFailed read"
+    );
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
     let work = std::env::temp_dir().join(format!("qt-es-rust-{}.db", std::process::id()));
@@ -328,6 +394,23 @@ fn embedding_status_tier2_matches_oracle() {
                     assert!(wrote, "mark_as_failed wrote nothing for {entity_id}");
                 }
             }
+        }
+    }
+
+    // P4.d27 — the new read, over the same post-op state, in corpus order.
+    {
+        let repo = writer.embedding_status();
+        for (read, (want_name, want_ids)) in spec.list_failed_reads.iter().zip(oracle_reads.iter())
+        {
+            let mut got: Vec<String> = repo
+                .list_failed_entity_ids(&read.entity_type, &read.profile_id)
+                .into_iter()
+                .collect();
+            got.sort();
+            assert_eq!(
+                &got, want_ids,
+                "listFailedEntityIds read {want_name} diverges"
+            );
         }
     }
 

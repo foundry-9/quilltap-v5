@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Groundwork for enforcing one embedding standard per instance: the app can now
+list which items an embedding provider has permanently refused (so a repair pass
+stops re-paying for the same guaranteed failures), enumerate which characters
+actually own memories (rather than asking the character list, which quietly drops
+a character whose fact-sheet folder is unreachable), read a stored document
+chunk's vector width, and ask a character's search index how wide its vectors
+are. Also adds the shared measurement — the width of a stored vector, whatever
+format it was saved in — used to find vectors that no longer match the current
+standard. No behavior change on its own; the repair passes that use all of this
+land next.
+
 Mirrored the old app's write-up of the day-reading work alongside the port, and
 the app now says in its log when it has overruled the model's reading of a date
 (and when it deliberately has not, for a reference pointing at tomorrow).

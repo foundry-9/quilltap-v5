@@ -330,6 +330,29 @@ pub fn float32_to_blob_raw(embedding: &[f32]) -> Vec<u8> {
     out
 }
 
+/// SQL expression yielding an embedding blob's dimension regardless of its
+/// on-disk format (v4 `EMBEDDING_DIM_SQL`, which `7391404e` re-homed into
+/// `float32-conversion.ts` "beside the blob layout" — so it lives beside the
+/// codec here too, for the same reason: an SQL-side dimension check must never
+/// drift from the byte layout above).
+///
+/// The expression names the bare column `embedding`, so it only composes into a
+/// statement whose (single) table has that column — every embedding-bearing
+/// table does.
+///
+/// ⚠ v5's own convention is to decode in Rust (`blob_to_float32(..).len()`), and
+/// that stays the convention for row-by-row work: the two agree on well-formed
+/// blobs but this expression is a byte-length heuristic, not a decode. It exists
+/// for the boot-time dimension reconcile, where the point is (a) selecting rows
+/// with SQL byte-identical to v4's and (b) keeping the conforming-corpus path a
+/// COUNT that hydrates nothing. v4 itself measures in SQL here and in JS
+/// (`embedding.length`) in the reindex's dim-match — do not "unify" them.
+pub const EMBEDDING_DIM_SQL: &str = "CASE
+  WHEN substr(embedding, 1, 3) = X'EB0101' THEN length(embedding) - 11
+  WHEN substr(embedding, 1, 3) = X'EB0102' THEN (length(embedding) - 7) / 2
+  ELSE length(embedding) / 4
+END";
+
 /// True when `key` is a JS *canonical array index*: the decimal string of a
 /// `u32` in `[0, 2^32 - 2]`, with no leading zeros (`"0"` excepted) and no sign.
 /// These are exactly the property keys that `Object.values` iterates first, in
@@ -648,6 +671,70 @@ mod tests {
             "overlap {}",
             overlap_sum / queries as f64
         );
+    }
+
+    // ---- EMBEDDING_DIM_SQL -------------------------------------------------
+
+    /// The SQL dimension expression must agree with the Rust decoder on every
+    /// format it can meet on disk — that agreement is the whole reason v4 homes
+    /// the constant beside the codec, and the boot dimension reconcile selects
+    /// rows for DELETE with it.
+    #[test]
+    fn dim_sql_agrees_with_the_decoder_on_all_three_formats() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (id TEXT, embedding BLOB);")
+            .unwrap();
+
+        let vec8: Vec<f32> = (0..8).map(|i| (i as f32) / 10.0).collect();
+        let vec258: Vec<f32> = (0..258).map(|i| (i as f32) / 1000.0).collect();
+        let cases: Vec<(&str, Vec<u8>, usize)> = vec![
+            ("raw-8", float32_to_blob_raw(&vec8), 8),
+            ("raw-258", float32_to_blob_raw(&vec258), 258),
+            (
+                "int8-8",
+                float32_to_quantized(&vec8, EMBEDDING_DTYPE_INT8),
+                8,
+            ),
+            (
+                "int8-258",
+                float32_to_quantized(&vec258, EMBEDDING_DTYPE_INT8),
+                258,
+            ),
+            ("f16-8", float32_to_quantized(&vec8, EMBEDDING_DTYPE_F16), 8),
+            (
+                "f16-258",
+                float32_to_quantized(&vec258, EMBEDDING_DTYPE_F16),
+                258,
+            ),
+        ];
+        for (id, blob, want) in &cases {
+            conn.execute(
+                "INSERT INTO t (id, embedding) VALUES (?1, ?2)",
+                rusqlite::params![id, blob],
+            )
+            .unwrap();
+            assert_eq!(
+                blob_to_float32(blob).len(),
+                *want,
+                "{id}: the decoder disagrees with the case"
+            );
+        }
+
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT id, {EMBEDDING_DIM_SQL} FROM t ORDER BY rowid"
+            ))
+            .unwrap();
+        let got: Vec<(String, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let want: Vec<(String, i64)> = cases
+            .iter()
+            .map(|(id, _, d)| (id.to_string(), *d as i64))
+            .collect();
+        assert_eq!(got, want, "EMBEDDING_DIM_SQL diverges from the codec");
     }
 
     // ---- legacy text -------------------------------------------------------

@@ -42434,3 +42434,96 @@ contaminated by it. Note for whoever regenerates next: the shared pin
 `/private/tmp/qt-v4-pin-b3ee00f1` was REMOVED by another lane mid-run; this lane
 re-created its own at `/private/tmp/qt-v4-pin-p4d26-b3ee00f1`. Use a
 lane-unique pin path.
+## Lane record — P4.d27 unit 1 (the `7391404e` support reads) — 2026-07-30
+
+The four support surfaces v4's new dimension-reconcile + reindex code needs, all
+landed ahead of their consumers so each arrives with its own differential rather
+than riding one big diff.
+
+**Drift check at lane start:** v4 HEAD is EXACTLY the order's baseline
+`b3ee00f1` — no commit drift. But the tree was **DIRTY** (three files:
+`lib/background-jobs/child/child-repositories-proxy.ts` + its test + a changelog
+entry — an in-flight read-your-writes *log-diagnostic* refinement in v4's
+fork/IPC jobs child, a surface v5 deliberately never ports). Per the order's own
+rule (`regen straight from the checkout … pin a detached worktree only on
+drift/dirty`) every oracle in this lane regenerates from a pinned detached
+worktree at `/private/tmp/qt-v4-pin-b3ee00f1` (node_modules symlinked at the root
++ `packages/{quilltap,plugin-types,plugin-utils}` + `plugins/dist`).
+
+**What landed**
+
+- `embedding_blob::EMBEDDING_DIM_SQL` — v4's blob-format-aware SQL dimension
+  expression, homed beside the codec for v4's own stated reason (an SQL-side
+  dimension check must never drift from the byte layout). v5 had none; the
+  convention here stays "decode in Rust" for row-by-row work, and the doc says
+  so — this exists so the reconcile's DELETE/COUNT row selection is byte-identical
+  to v4's AND the conforming-corpus path hydrates nothing. Pinned by a new unit
+  test that runs the expression through SQLite over all three on-disk formats
+  (raw Float32, int8, f16) at two widths and asserts it equals
+  `blob_to_float32(..).len()` — six cases.
+- `db::embedding_status::list_failed_entity_ids(entity_type, profile_id)` →
+  `HashSet<String>`, **fail-soft to an empty set** (v4's `safeQuery` fallback).
+  Failing OPEN is the safe direction for an exclusion set: the worst outcome is
+  re-attempting a row that fails again, never dropping an embeddable one.
+- `db::memories_read::find_distinct_character_ids(conn)` → `Vec<String>`, **not**
+  a `Result`: v4 wraps it in `safeQuery` with `[]`, and the difference is
+  observable — the reindex's memory phase is the one phase v4 does NOT catch, so
+  a read failure must yield an empty fan-out and a COMPLETED job. (Its sibling
+  `find_distinct_chat_ids` is `safeQuery`-wrapped in v4 too but was ported as a
+  `Result`; noted, not changed — its callers are outside this lane.)
+- `db::doc_mount_chunks::ChunkRow.embedding_dim` — the DECODED component count,
+  the `conversation_chunks::CcRow` convention (⚠ byte arithmetic is wrong on
+  quantized blobs). Both `ChunkRow` reads now share one projection const +
+  marshaller; `has_embedding` deliberately stays the SQL byte test, so a blob too
+  short to decode into one float still reads as "present" exactly as before.
+- `db::vector_store::CharacterVectorStore::dimensions()` — v4 `getDimensions()`;
+  the value was already computed at load (meta else first entry), only private.
+
+**Differentials**
+
+| Family | Extension | Result |
+|---|---|---|
+| `memories_read_equivalence` | one `findDistinctCharacterIds` query (39 → 40) | green, oracle regenerated at `b3ee00f1` |
+| `embedding_status_tier2_equivalence` | a new `listFailedReads` phase — SIX reads emitted as `{kind:'listFailed', name, ids}` rows ahead of the state dump | green, oracle regenerated at `b3ee00f1` |
+
+The `listFailed` corpus covers a matching read, the same entityType under the
+OTHER profile (where an EMBEDDED row lives — the `profileId` predicate), a pair
+whose only row the op sequence flipped to EMBEDDED (the `status` predicate — and
+proof the read follows current status, not history), and a pair with no rows at
+all. A `Set` has no JSON form, so ids compare SORTED on both sides; the consumer
+is a membership test, never an ordered walk. Both directions are corpus-shape
+asserted (at least one non-empty AND one empty answer), so neither a
+never-returns nor an ignores-the-predicates port could agree.
+
+**Sensitivity (both families were first-run GREEN, so per the D24/D25 rule):**
+
+- `list_failed_entity_ids`: replaced `status = 'FAILED'` with
+  `status IS NOT NULL` → `embedding_status_tier2` RED at the
+  `memory-under-profile-f2-is-profile-scoped` read (`left:
+  ["e1000000-…-0000000000e1"]`, right `[]`). Restored → green.
+- `find_distinct_character_ids`: early-returned `Vec::new()` →
+  `memories_read` RED at query 37 (`left: []`, right the two character ids).
+  Restored → green.
+- The unreachable fail-soft arm (no `embedding_status` table — what a
+  lazily-created v4 instance presents, the P4.9G3 lesson) is a module
+  `#[cfg(test)]` test that asserts empty WITHOUT the table and then non-empty
+  WITH it, so the empty answer is provably the fail-soft arm and not a broken
+  query.
+
+**Regen recipes** (Node 24 `~/.nvm/versions/node/v24.13.1/bin`, cwd
+`/private/tmp/qt-v4-pin-b3ee00f1`, `V5` = the lane worktree):
+
+```
+QT_FIXTURE_MEMREAD=/tmp/qt-memread.db $N/npx tsx \
+  $V5/harness/oracle/fixtures/build-memories-read-fixture.ts
+QT_FIXTURE_MEMREAD=/tmp/qt-memread.db $N/npx tsx \
+  $V5/harness/oracle/cases/memories-read.ts > /tmp/oracle-memread.ndjson
+
+QT_FIXTURE_OUT=/tmp/qt-es-fixture.db $N/npx tsx \
+  $V5/harness/oracle/fixtures/build-embedding-status-fixture.ts
+QT_FIXTURE_ES=/tmp/qt-es-fixture.db $N/npx tsx \
+  $V5/harness/oracle/cases/embedding-status-tier2.ts > /tmp/oracle-es.ndjson
+```
+
+New-baseline markers to grep: `findDistinctCharacterIds` in the memread NDJSON;
+six `"kind":"listFailed"` lines in the embedding-status NDJSON.

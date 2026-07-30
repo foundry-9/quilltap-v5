@@ -257,6 +257,14 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
                 .map(Value::String)
                 .collect(),
         ),
+        // P4.d27 / v4 `7391404e`. Fail-soft (no `Result`) because v4 wraps it in
+        // `safeQuery` with `[]` — see the port's doc comment.
+        "findDistinctCharacterIds" => Value::Array(
+            mr::find_distinct_character_ids(conn)
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
         "searchByContentAboutCharacter" => Value::Array(
             mr::search_by_content_about_character(
                 conn,

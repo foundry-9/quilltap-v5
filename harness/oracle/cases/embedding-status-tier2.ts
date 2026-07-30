@@ -61,9 +61,17 @@ interface Op {
   error?: string;
 }
 
+/** P4.d27 — a `listFailedEntityIds(entityType, profileId)` read, run after the ops. */
+interface ListFailedRead {
+  name: string;
+  entityType: string;
+  profileId: string;
+}
+
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
+  listFailedReads: ListFailedRead[];
 }
 
 async function main(): Promise<void> {
@@ -128,6 +136,21 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.d27 (v4 `7391404e`): the new `listFailedEntityIds` read, over the
+  // post-op state. A Set has no JSON form, so each result is emitted as a
+  // SORTED array — the consumer is a membership test, never an ordered walk.
+  const readLines: string[] = [];
+  for (const read of spec.listFailedReads) {
+    const ids = await repo.listFailedEntityIds(read.entityType as never, read.profileId);
+    readLines.push(
+      JSON.stringify({
+        kind: 'listFailed',
+        name: read.name,
+        ids: [...ids].sort(),
+      })
+    );
+  }
+
   // Read RAW on-disk state through v4's own connected backend. table_info gives
   // schema column order; SELECT * gives the persisted rows (TEXT/enum strings
   // as-is, nulls explicit).
@@ -149,8 +172,10 @@ async function main(): Promise<void> {
     orderBy: 'id',
   });
 
+  // The `listFailed` read rows come FIRST (each tagged with `kind`); the state
+  // dump is the one line with no `kind`, so the Rust side can tell them apart.
   process.stdout.write(
-    JSON.stringify({ case: 'embedding-status-tier2', ...dump }) + '\n'
+    [...readLines, JSON.stringify({ case: 'embedding-status-tier2', ...dump })].join('\n') + '\n'
   );
   process.exit(0);
 }

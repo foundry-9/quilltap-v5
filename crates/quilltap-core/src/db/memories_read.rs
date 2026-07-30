@@ -904,6 +904,54 @@ pub fn count_by_chat_ids(conn: &Connection, chat_ids: &[String]) -> Result<Value
     Ok(Value::Object(m))
 }
 
+/// v4 `findDistinctCharacterIds` (P4.d27 / v4 `7391404e`) — every distinct
+/// `characterId` that owns at least one memory, non-null and non-empty.
+///
+/// The `EMBEDDING_REINDEX_ALL` fan-out reads this INSTEAD of the characters
+/// repository: `characters.findAll`/`findByUserId` silently DROP a character
+/// whose vault is unavailable, and a dropped character's memories would then be
+/// left permanently un-re-embedded after a profile switch. Memories are the
+/// ground truth for "who needs re-embedding".
+///
+/// **Deliberately NOT user-scoped** — the fan-out it replaced was. v4's SQL has
+/// no `userId` predicate (memories carry none directly; ownership is via the
+/// character), so on a multi-user instance every character with memories is
+/// enumerated, whoever owns it.
+///
+/// Returns the ids directly rather than a `Result` because v4 wraps this in
+/// `safeQuery` with `[]` as the fallback, and the difference is observable: the
+/// reindex's memory phase is the one phase v4 does NOT wrap in a try/catch, so a
+/// read failure here must yield an empty fan-out and a COMPLETED job — not a
+/// failed one. (Its sibling [`find_distinct_chat_ids`] is `safeQuery`-wrapped in
+/// v4 too but was ported as a `Result`; its callers are another lane's.)
+pub fn find_distinct_character_ids(conn: &Connection) -> Vec<String> {
+    let query = || -> Result<Vec<String>, DbError> {
+        let mut stmt = conn
+            .prepare("SELECT DISTINCT characterId FROM memories WHERE characterId IS NOT NULL")?;
+        let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            if let Some(s) = r? {
+                if !s.is_empty() {
+                    out.push(s);
+                }
+            }
+        }
+        Ok(out)
+    };
+    match query() {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::db",
+                error = %e,
+                "Error listing distinct memory characterIds",
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// `findDistinctChatIds` — distinct non-null, non-empty chatIds.
 pub fn find_distinct_chat_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
     let mut stmt = conn.prepare("SELECT DISTINCT chatId FROM memories WHERE chatId IS NOT NULL")?;

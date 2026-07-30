@@ -114,6 +114,19 @@ impl CharacterVectorStore {
         self.entries.len()
     }
 
+    /// v4 `getDimensions()` — the store's vector width: the metadata row's
+    /// `dimensions` when there is one, else the first loaded entry's length, else
+    /// `None` for an empty store with no meta (all decided in
+    /// [`load`](Self::load)).
+    ///
+    /// The housekeeping merge pass reads it to skip entries left over from a
+    /// previous embedding profile (P4.d27 / v4 `7391404e`): a vector of another
+    /// width cannot be compared against this index and would warn on every
+    /// `search` call.
+    pub fn dimensions(&self) -> Option<usize> {
+        self.dimensions
+    }
+
     /// Whether an entry with this id is loaded (v4 `hasVector`).
     pub fn has_vector(&self, id: &str) -> bool {
         self.index.contains_key(id)

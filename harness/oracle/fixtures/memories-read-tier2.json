@@ -193,6 +193,7 @@
     { "kind": "countBySourceMessageIds", "ids": ["5f000000-0000-4000-8000-000000000001", "5f000000-0000-4000-8000-000000000002"] },
     { "kind": "countByChatIds", "chatIds": ["c1c1c1c1-0000-4000-8000-000000000001", "c2c2c2c2-0000-4000-8000-000000000002"] },
     { "kind": "findDistinctChatIds" },
+    { "kind": "findDistinctCharacterIds", "comment": "P4.d27 / v4 7391404e — the new EMBEDDING_REINDEX_ALL fan-out enumeration. Distinct non-null characterIds over BOTH characters in the corpus; deliberately NOT user-scoped (the SQL carries no userId predicate). The user-scoping pin proper lives in embedding_remainder, where the fan-out's actual consumer runs." },
     { "kind": "searchByContentAboutCharacter", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "aboutCharacterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "query": "tea" },
     { "kind": "searchByContent", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "query": "xyzzy" }
   ]

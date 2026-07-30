@@ -384,6 +384,56 @@ impl<'c> EmbeddingStatusRepository<'c> {
 
     // === end P4.6BM ===
 
+    // === P4.d27 (v4 `7391404e`) ===
+
+    /// v4 `listFailedEntityIds` — the entity ids of one type marked FAILED for a
+    /// profile, as a set.
+    ///
+    /// The `mismatched-dim` reindex scope and the boot dimension reconcile both
+    /// use it to exclude deterministically-unembeddable rows (oversize,
+    /// over-context, NaN inputs): without it every boot would re-enqueue, and
+    /// re-pay for, the same guaranteed failures.
+    ///
+    /// Fail-soft to an EMPTY set (v4 wraps it in `safeQuery` with `new Set()` as
+    /// the fallback) — including the missing-table case a lazily-created v4
+    /// instance can present. An exclusion set that fails open is the safe
+    /// direction: the worst outcome is re-attempting a row that will fail again,
+    /// never dropping a row that could have been embedded.
+    pub fn list_failed_entity_ids(
+        &self,
+        entity_type: &str,
+        profile_id: &str,
+    ) -> std::collections::HashSet<String> {
+        let query = || -> Result<std::collections::HashSet<String>, DbError> {
+            let mut stmt = self.conn.prepare(
+                "SELECT entityId FROM embedding_status \
+                 WHERE entityType = ?1 AND profileId = ?2 AND status = 'FAILED'",
+            )?;
+            let rows =
+                stmt.query_map(params![entity_type, profile_id], |r| r.get::<_, String>(0))?;
+            let mut out = std::collections::HashSet::new();
+            for row in rows {
+                out.insert(row?);
+            }
+            Ok(out)
+        };
+        match query() {
+            Ok(set) => set,
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    entity_type = %entity_type,
+                    profile_id = %profile_id,
+                    error = %e,
+                    "Error listing FAILED embedding-status entity ids",
+                );
+                std::collections::HashSet::new()
+            }
+        }
+    }
+
+    // === end P4.d27 ===
+
     /// True iff a row with this id exists — the `update` precondition (a missing
     /// target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
@@ -400,5 +450,37 @@ impl<'c> EmbeddingStatusRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v4 wraps `listFailedEntityIds` in `safeQuery` with `new Set()` as the
+    /// fallback, so a read failure must yield an EMPTY exclusion set rather than
+    /// propagate. The reachable failure in v5 is the one a lazily-created v4
+    /// instance presents: no `embedding_status` table at all (the P4.9G3 lesson).
+    /// Not reachable from a provisioned differential fixture, so it lives here.
+    #[test]
+    fn list_failed_entity_ids_fails_soft_to_an_empty_set() {
+        let conn = Connection::open_in_memory().unwrap();
+        let repo = EmbeddingStatusRepository::new(&conn);
+        assert!(repo.list_failed_entity_ids("MEMORY", "p1").is_empty());
+
+        // With the table present, the same call reads normally — so the empty
+        // answer above is the fail-soft arm and not a broken query.
+        conn.execute_batch(
+            "CREATE TABLE embedding_status (\
+                id TEXT PRIMARY KEY, entityType TEXT, entityId TEXT, profileId TEXT, \
+                status TEXT);\
+             INSERT INTO embedding_status VALUES ('s1','MEMORY','m1','p1','FAILED');\
+             INSERT INTO embedding_status VALUES ('s2','MEMORY','m2','p1','EMBEDDED');\
+             INSERT INTO embedding_status VALUES ('s3','MEMORY','m3','p2','FAILED');",
+        )
+        .unwrap();
+        let got = repo.list_failed_entity_ids("MEMORY", "p1");
+        assert_eq!(got.len(), 1);
+        assert!(got.contains("m1"));
     }
 }

@@ -72,6 +72,44 @@
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
+  "listFailedReads": [
+    {
+      "name": "memory-under-profile-f1",
+      "comment": "P4.d27 / v4 7391404e — the matching arm: markFailed's UPDATE arm left MEMORY/e1 FAILED under profile f1.",
+      "entityType": "MEMORY",
+      "profileId": "11000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "memory-under-profile-f2-is-profile-scoped",
+      "comment": "Same entityType, the OTHER profile — where markEmbedded left an EMBEDDED row. Proves the profileId predicate.",
+      "entityType": "MEMORY",
+      "profileId": "22000000-0000-4000-8000-0000000000f2"
+    },
+    {
+      "name": "mount-chunk-under-profile-f2",
+      "comment": "markFailed's CREATE arm minted this one; proves the read sees minted rows too.",
+      "entityType": "MOUNT_CHUNK",
+      "profileId": "22000000-0000-4000-8000-0000000000f2"
+    },
+    {
+      "name": "file-under-profile-f1",
+      "comment": "The seed row for this pair arrived FAILED and the markEmbedded op flipped it to EMBEDDED — so an empty answer proves the read follows the CURRENT status, not the row's history.",
+      "entityType": "FILE",
+      "profileId": "11000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "conversation-chunk-under-profile-f1-status-scoped",
+      "comment": "A non-FAILED row of this (entityType, profileId) exists, so an empty set proves the status predicate rather than an empty table.",
+      "entityType": "CONVERSATION_CHUNK",
+      "profileId": "11000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "unknown-entity-type",
+      "comment": "No rows at all — the trivially-empty arm.",
+      "entityType": "HELP_DOC",
+      "profileId": "22000000-0000-4000-8000-0000000000ff"
+    }
+  ],
   "ops": [
     {
       "kind": "create",

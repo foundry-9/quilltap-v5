@@ -141,6 +141,44 @@ pub struct ChunkRow {
     /// v4 `!chunk.embedding || chunk.embedding.length === 0` inverted: `true`
     /// when a non-empty embedding BLOB is stored.
     pub has_embedding: bool,
+    /// The stored vector's component count — all `embeddingMatchesDim` reads
+    /// (EMBEDDING_REINDEX_ALL's new phase 4, P4.d27). `0` for a NULL/empty BLOB,
+    /// which can never equal a positive target dim, so such a chunk re-embeds.
+    ///
+    /// ⚠ The DECODED length, never `length(embedding) / 4` — current writes are
+    /// int8-quantized (`11 + dim` bytes), so byte arithmetic gives a plausible,
+    /// wrong answer. (Same convention and same warning as
+    /// [`super::conversation_chunks::CcRow::embedding_dim`].)
+    pub embedding_dim: usize,
+}
+
+/// The projection every [`ChunkRow`] read shares. The embedding BLOB rides along
+/// (rather than a `length(embedding) > 0` probe alone) because `embedding_dim` is
+/// the DECODED component count; `has_embedding` stays the SQL byte test so a blob
+/// too short to decode into a single float keeps reading as "present", exactly as
+/// it did before that field existed.
+const CHUNK_ROW_SELECT: &str = "SELECT id, linkId, mountPointId, chunkIndex, content, \
+     (embedding IS NOT NULL AND length(embedding) > 0), embedding \
+     FROM doc_mount_chunks";
+
+fn marshal_chunk_row(row: &rusqlite::Row) -> rusqlite::Result<ChunkRow> {
+    let blob: Option<Vec<u8>> = row.get(6)?;
+    Ok(ChunkRow {
+        id: row.get(0)?,
+        link_id: row.get(1)?,
+        mount_point_id: row.get(2)?,
+        chunk_index: match row.get_ref(3)? {
+            rusqlite::types::ValueRef::Integer(i) => i,
+            rusqlite::types::ValueRef::Real(f) => f as i64,
+            _ => 0,
+        },
+        content: row.get(4)?,
+        has_embedding: row.get::<_, i64>(5)? != 0,
+        embedding_dim: blob
+            .as_deref()
+            .map(|b| crate::embedding_blob::blob_to_float32(b).len())
+            .unwrap_or(0),
+    })
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -251,26 +289,11 @@ impl<'c> DocMountChunksRepository<'c> {
         &self,
         mount_point_id: &str,
     ) -> Result<Vec<ChunkRow>, DbError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, linkId, mountPointId, chunkIndex, content, \
-                    (embedding IS NOT NULL AND length(embedding) > 0) \
-             FROM doc_mount_chunks WHERE mountPointId = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("{CHUNK_ROW_SELECT} WHERE mountPointId = ?1"))?;
         let rows = stmt
-            .query_map(params![mount_point_id], |row| {
-                Ok(ChunkRow {
-                    id: row.get(0)?,
-                    link_id: row.get(1)?,
-                    mount_point_id: row.get(2)?,
-                    chunk_index: match row.get_ref(3)? {
-                        rusqlite::types::ValueRef::Integer(i) => i,
-                        rusqlite::types::ValueRef::Real(f) => f as i64,
-                        _ => 0,
-                    },
-                    content: row.get(4)?,
-                    has_embedding: row.get::<_, i64>(5)? != 0,
-                })
-            })?
+            .query_map(params![mount_point_id], marshal_chunk_row)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -281,24 +304,9 @@ impl<'c> DocMountChunksRepository<'c> {
     pub fn find_row_by_id(&self, id: &str) -> Result<Option<ChunkRow>, DbError> {
         self.conn
             .query_row(
-                "SELECT id, linkId, mountPointId, chunkIndex, content, \
-                        (embedding IS NOT NULL AND length(embedding) > 0) \
-                 FROM doc_mount_chunks WHERE id = ?1",
+                &format!("{CHUNK_ROW_SELECT} WHERE id = ?1"),
                 params![id],
-                |row| {
-                    Ok(ChunkRow {
-                        id: row.get(0)?,
-                        link_id: row.get(1)?,
-                        mount_point_id: row.get(2)?,
-                        chunk_index: match row.get_ref(3)? {
-                            rusqlite::types::ValueRef::Integer(i) => i,
-                            rusqlite::types::ValueRef::Real(f) => f as i64,
-                            _ => 0,
-                        },
-                        content: row.get(4)?,
-                        has_embedding: row.get::<_, i64>(5)? != 0,
-                    })
-                },
+                marshal_chunk_row,
             )
             .map(Some)
             .or_else(|e| match e {
