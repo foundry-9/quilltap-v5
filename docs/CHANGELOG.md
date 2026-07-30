@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+The chat clock can now be asked what time it was at any past moment, not just
+what time it is now. Fictional time already advanced in step with the real
+clock; the new entry point applies that same arithmetic to an arbitrary instant
+— a message written three hours ago — and, when a chat's fictional clock was
+started before the app recorded its real anchor, measures from a fallback the
+caller supplies (the conversation's own creation time). The live clock is now a
+one-line call into it, unchanged in behavior. Groundwork for the Markdown
+transcript export; proven against the old app over 47 new cases, including both
+daylight-saving boundaries and a clock deliberately pinned to 1969 so that
+anything secretly reading the wall clock would show up.
+
 Memory housekeeping's tidy-up round no longer complains once per leftover vector.
 When a character's memories still hold vectors from a previous embedding scheme,
 they cannot be compared against the current search index — so the round now steps

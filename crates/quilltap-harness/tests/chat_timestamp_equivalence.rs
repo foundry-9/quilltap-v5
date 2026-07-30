@@ -13,6 +13,12 @@
 //! `parse_date_ms → 0` bug (every real fictional clock reading 1970-adjacent
 //! nonsense) survive a green differential.
 //!
+//! P4.d28 (the `b3ee00f1` Markdown-transcript drift) added the `calcAt` family:
+//! the extracted `calculateTimestampAt` over arbitrary historical instants with
+//! an explicit fallback anchor — the shape the transcript renderer calls. Those
+//! oracle rows are recorded with the wall clock pinned to a 1969 sentinel, so a
+//! port that reached for a clock instead of the passed instant cannot pass.
+//!
 //! Generate the oracle output (TZ=UTC is REQUIRED — the undefined-timezone path
 //! reads the host TZ):
 //!   cd ~/source/quilltap-server
@@ -22,7 +28,7 @@
 //!   QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson cargo test -p quilltap-harness
 
 use quilltap_core::chat_timestamp::{
-    calculate_current_timestamp, ensure_fictional_base_real_time,
+    calculate_current_timestamp, calculate_timestamp_at, ensure_fictional_base_real_time,
     format_timestamp_for_system_prompt, parse_timestamp_in_timezone, resolve_timezone,
     should_inject_timestamp, CalculatedTimestamp, TimestampConfig, TimestampFormat, TimestampMode,
 };
@@ -119,6 +125,22 @@ enum Row {
         #[serde(default)]
         threw: bool,
     },
+    #[serde(rename = "calcAt")]
+    CalcAt {
+        id: String,
+        config: WireConfig,
+        timezone: Option<String>,
+        #[serde(rename = "realInstantMs")]
+        real_instant_ms: i64,
+        #[serde(rename = "fallbackAnchorMs", default)]
+        fallback_anchor_ms: Option<i64>,
+        #[serde(rename = "localOffsetMin")]
+        local_offset_min: i64,
+        #[serde(default)]
+        out: Option<WireCalcOut>,
+        #[serde(default)]
+        threw: bool,
+    },
     #[serde(rename = "inject")]
     Inject {
         id: String,
@@ -176,6 +198,8 @@ fn chat_timestamp_matches_oracle() {
     let mut count = 0usize;
     let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
     let mut naive_calc_rows = 0usize;
+    let mut anchored_calc_at_rows = 0usize;
+    let mut fictional_anchored_calc_at_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         {
             let raw: Value = serde_json::from_str(line).unwrap();
@@ -184,6 +208,14 @@ fn chat_timestamp_matches_oracle() {
                 .or_default() += 1;
             if raw["kind"] == "calc" && raw["id"].as_str().unwrap().starts_with("naive-") {
                 naive_calc_rows += 1;
+            }
+            if raw["kind"] == "calcAt" && raw["fallbackAnchorMs"].is_i64() {
+                anchored_calc_at_rows += 1;
+                if raw["config"]["useFictionalTime"] == Value::Bool(true)
+                    && raw["config"]["fictionalBaseRealTime"].is_null()
+                {
+                    fictional_anchored_calc_at_rows += 1;
+                }
             }
         }
         match serde_json::from_str::<Row>(line).unwrap() {
@@ -225,6 +257,40 @@ fn chat_timestamp_matches_oracle() {
                             is_fictional: want.is_fictional,
                         },
                         "calc '{id}'"
+                    );
+                }
+            }
+            Row::CalcAt {
+                id,
+                config,
+                timezone,
+                real_instant_ms,
+                fallback_anchor_ms,
+                local_offset_min,
+                out,
+                threw,
+            } => {
+                let cfg: TimestampConfig = config.into();
+                let got = calculate_timestamp_at(
+                    real_instant_ms,
+                    &cfg,
+                    timezone.as_deref(),
+                    fallback_anchor_ms,
+                    local_offset_min,
+                );
+                if threw {
+                    assert!(got.is_err(), "calcAt '{id}' expected error, got {got:?}");
+                } else {
+                    let want = out.expect("non-threw row must carry out");
+                    let got = got.unwrap_or_else(|e| panic!("calcAt '{id}' unexpected error: {e}"));
+                    assert_eq!(
+                        got,
+                        CalculatedTimestamp {
+                            formatted: want.formatted,
+                            iso_value: want.iso_value,
+                            is_fictional: want.is_fictional,
+                        },
+                        "calcAt '{id}'"
                     );
                 }
             }
@@ -297,7 +363,9 @@ fn chat_timestamp_matches_oracle() {
     // floor is the one that matters — those zone-less `datetime-local` bases
     // are the case class P4.d18 added, and losing them re-opens the blind spot
     // that hid `parse_date_ms → 0`.
-    for family in ["resolve", "calc", "inject", "format", "parseTz", "ensure"] {
+    for family in [
+        "resolve", "calc", "calcAt", "inject", "format", "parseTz", "ensure",
+    ] {
         assert!(
             kinds.get(family).copied().unwrap_or(0) > 0,
             "oracle carries no '{family}' rows — regeneration lost a family (kinds: {kinds:?})"
@@ -306,6 +374,19 @@ fn chat_timestamp_matches_oracle() {
     assert!(
         naive_calc_rows >= 20,
         "expected the zone-less datetime-local fictional-base calc rows (>= 20), got {naive_calc_rows}"
+    );
+    // P4.d28: the `calcAt` rows that carry an explicit fallback anchor are the
+    // extraction's whole point (the transcript passes the chat's createdAt), and
+    // the anchored-fictional subset is what proves the anchor is CONSULTED
+    // rather than ignored. A regeneration that dropped either would leave the
+    // family nominally present and the extraction unproven.
+    assert!(
+        anchored_calc_at_rows >= 20,
+        "expected the fallback-anchor calcAt rows (>= 20), got {anchored_calc_at_rows}"
+    );
+    assert!(
+        fictional_anchored_calc_at_rows >= 10,
+        "expected the anchored-FICTIONAL calcAt rows (>= 10), got {fictional_anchored_calc_at_rows}"
     );
 
     eprintln!("OK: chat-timestamp matched oracle ({count} rows, kinds: {kinds:?}).");

@@ -547,15 +547,45 @@ pub fn resolve_timezone(
 /// `timezone == None` path. Returns [`InvalidTimezone`] if a named zone can't be
 /// resolved (mirroring `Intl.DateTimeFormat`'s throw).
 ///
-/// Fictional time: when active with a base timestamp, the timestamp advances by
-/// real elapsed time since the fictional base was set (or since `now_ms` if no
-/// real-base is recorded — v4's `new Date()` fallback, which makes elapsed 0).
-/// A base timestamp that JS `new Date(...)` can't parse becomes `NaN` there and
-/// propagates through the arithmetic; the corpus keeps bases well-formed.
+/// v4 `b3ee00f1` made this a one-line delegate to [`calculate_timestamp_at`]
+/// with no fallback anchor — behaviour-neutral for every existing caller (the
+/// missing anchor collapses elapsed time to zero exactly as the old
+/// `new Date()` fallback did).
 pub fn calculate_current_timestamp(
     config: &TimestampConfig,
     timezone: Option<&str>,
     now_ms: i64,
+    local_offset_minutes: i64,
+) -> Result<CalculatedTimestamp, InvalidTimezone> {
+    calculate_timestamp_at(now_ms, config, timezone, None, local_offset_minutes)
+}
+
+/// Calculate the chat's clock reading at an arbitrary real-world instant — v4
+/// `calculateTimestampAt` (`lib/chat/timestamp-utils.ts:359`, extracted from
+/// `calculateCurrentTimestamp` by `b3ee00f1` so the Markdown transcript can
+/// translate historical messages).
+///
+/// `real_instant_ms` is the instant to translate (a message's `createdAt` for
+/// the transcript, the injected `Date.now()` for the live clock).
+/// `local_offset_minutes` is the host's `getTimezoneOffset()` value (positive =
+/// west of UTC), used only on the `timezone == None` path. Returns
+/// [`InvalidTimezone`] if a named zone can't be resolved (mirroring
+/// `Intl.DateTimeFormat`'s throw).
+///
+/// Fictional time: when active with a base timestamp, the story instant is the
+/// fictional base plus the real time elapsed between the anchor
+/// (`fictionalBaseRealTime`) and `real_instant_ms` — story time runs 1:1 with
+/// the wall clock. `fallback_anchor_ms` is measured from when the config
+/// predates `fictionalBaseRealTime` stamping (the transcript passes the chat's
+/// `createdAt`); `None` defaults to `real_instant_ms` itself, which collapses
+/// elapsed time to zero — the pre-anchor behaviour of the live clock. A base
+/// timestamp that JS `new Date(...)` can't parse becomes `NaN` there and
+/// propagates through the arithmetic; the corpus keeps bases well-formed.
+pub fn calculate_timestamp_at(
+    real_instant_ms: i64,
+    config: &TimestampConfig,
+    timezone: Option<&str>,
+    fallback_anchor_ms: Option<i64>,
     local_offset_minutes: i64,
 ) -> Result<CalculatedTimestamp, InvalidTimezone> {
     // v4 guards on JS truthiness, so an empty-string base is "no base".
@@ -580,12 +610,12 @@ pub fn calculate_current_timestamp(
                 .filter(|s| !s.is_empty())
             {
                 Some(s) => parse_date_ms(s, local_offset_minutes),
-                None => now_ms,
+                None => fallback_anchor_ms.unwrap_or(real_instant_ms),
             };
-            let elapsed = now_ms - real_base;
+            let elapsed = real_instant_ms - real_base;
             (fictional_base + elapsed, true)
         }
-        None => (now_ms, false),
+        None => (real_instant_ms, false),
     };
 
     // Format with timezone support.

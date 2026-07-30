@@ -42918,3 +42918,71 @@ reporting the same counts and `reindex_enqueued=false` while it drains.
 
 **Versions after the lane:** core 0.0.403, harness 0.0.349, host 0.0.50; web
 0.0.52, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.
+## Lane record — P4.d28 unit 1: the `calculate_timestamp_at` extraction (2026-07-30)
+
+Order: `work-orders/p4.d28-export-markdown-transcript.md` (tier-1 item 2).
+Branch: `claude/p4-export-markdown-transcript-b95c6e`. v4 baseline
+`b3ee00f1`, drift-checked at lane start (`git log b3ee00f1..HEAD` empty; v4's
+tree carries four unrelated in-flight `background-jobs/child` edits, none in
+this family's import graph — the timestamp oracle is a `tsx` case importing
+`lib/chat/timestamp-utils` only, so regen ran straight from the checkout).
+
+**What landed.** `chat_timestamp.rs` gains `calculate_timestamp_at(
+real_instant_ms, config, timezone, fallback_anchor_ms, local_offset_minutes)`
+— v4's `calculateTimestampAt` (`timestamp-utils.ts:359`). The three lines the
+extraction changes, and nothing else: the `real_base` fallback is
+`fallback_anchor_ms.unwrap_or(real_instant_ms)` (was `now_ms`), `elapsed`
+measures from `real_instant_ms`, and the non-fictional arm returns
+`real_instant_ms`. `calculate_current_timestamp` is now the one-line delegate
+with `None` for the anchor — behaviour-neutral for every existing caller,
+which the untouched 89 `calc` rows keep proving.
+
+**The differential.** `chat_timestamp.rs`'s oracle case gained a `calcAt`
+family (47 rows, 187 total): v4's own new test block row-for-row
+(`timestamp-utils.test.ts:429-480`), the anchor-ignored-when-stamped and
+unanchored-no-fallback arms, a fallback anchor AFTER the instant (negative
+elapsed — reachable whenever a message predates its chat row), every format ×
+every zone at a historical instant, both US DST boundaries read at the message
+instant, all ten `NAIVE_BASES` zone-less `datetime-local` bases anchored 2h30m
+back (the production fictional shape), CUSTOM + the empty-format fallback, and
+the unresolvable-zone throw (the transcript's 500 arm).
+
+**Two things worth carrying:**
+
+- **The clock sentinel.** `calculateTimestampAt` must read no clock at all, so
+  the `calcAt` rows are recorded with `PINNED_NOW` set to `-86_400_000`
+  (1969-12-31). A port — or a v4 regression — that reached for `Date.now()`
+  instead of the passed instant lands in 1969 and the diff says so. This is
+  cheaper than asserting purity in a comment, which is all v4's header does.
+- **Sensitivity was proven, not assumed** (the D24/D25 rule; the family ran
+  green first try). Mutation 1: `None => real_instant_ms` (ignore the caller's
+  anchor) → RED at `calcAt 'v4test-fallback-anchor'`. Mutation 2: the delegate
+  passes `Some(0)` → RED at `calc 'fictional-no-realbase'`, i.e. the OLD
+  family still guards the neutrality claim. The shape guard grew two floors —
+  `>= 20` anchored `calcAt` rows and `>= 10` anchored-FICTIONAL ones — because
+  a regeneration that dropped the anchored subset would leave the family
+  nominally present and the extraction unproven.
+
+**Regen recipe (this family):**
+
+```
+cd ~/source/quilltap-server
+TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <v5>/harness/oracle/cases/chat-timestamp.ts > /tmp/oracle-chat-timestamp.ndjson
+QT_ORACLE_CHAT_TIMESTAMP=/tmp/oracle-chat-timestamp.ndjson \
+  cargo test -p quilltap-harness --test chat_timestamp_equivalence -- --nocapture
+```
+
+`TZ=UTC` is load-bearing (the case hard-fails without it). New-baseline
+marker: a `"kind":"calcAt"` row; `hist-naive-istanbul-1550` carries the
+sub-minute LMT offset `+01:56` that P4.d21 fixed.
+
+**Spotted, NOT fixed — a pre-existing sign divergence outside this lane's
+ownership.** `quilltap-host/src/spine.rs:888` `local_offset_minutes` returns
+jiff's EAST-positive offset, but `chat_timestamp`'s parameter is documented and
+consumed as JS `getTimezoneOffset()`, i.e. WEST-positive (`chat_timestamp.rs:
+211` subtracts it). Every differential runs under `TZ=UTC` where both are 0, so
+no oracle can see it; on a non-UTC host, a chat with no timezone configured
+anywhere would format at twice the offset in the wrong direction. `spine.rs` is
+not in this order's ownership and no sibling lane owns it either, so it is
+reported rather than touched.

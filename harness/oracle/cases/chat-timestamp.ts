@@ -12,6 +12,14 @@
  * differential), and the ensure-anchor family replacing the deleted
  * initializeFictionalTime.
  *
+ * Widened again by P4.d28 (the `b3ee00f1` Markdown-transcript drift): the
+ * `calcAt` family drives the newly extracted `calculateTimestampAt` over
+ * ARBITRARY historical instants with an explicit fallback anchor — the shape the
+ * transcript renderer calls it in. Those rows deliberately pin the wall clock to
+ * a sentinel far from every recorded instant: `calculateTimestampAt` must read
+ * no clock at all, so a port (or a v4 regression) that reached for `Date.now()`
+ * would land in 1969 and the diff would say so.
+ *
  * The impure clock is pinned: `Date.now()` is overridden to a fixed epoch-ms per
  * row and the value recorded in the NDJSON so the Rust port injects the identical
  * `now_ms`. The `timezone === undefined` path reads the host TZ, so this case MUST
@@ -30,6 +38,7 @@ import {
   resolveTimezone,
   parseTimestampInTimezone,
   calculateCurrentTimestamp,
+  calculateTimestampAt,
   shouldInjectTimestamp,
   formatTimestampForSystemPrompt,
   ensureFictionalBaseRealTime,
@@ -75,6 +84,17 @@ type Row =
       config: TimestampConfig
       timezone: string | null
       nowMs: number
+      localOffsetMin: number
+      out?: CalculatedTimestamp
+      threw?: boolean
+    }
+  | {
+      kind: 'calcAt'
+      id: string
+      config: TimestampConfig
+      timezone: string | null
+      realInstantMs: number
+      fallbackAnchorMs: number | null
       localOffsetMin: number
       out?: CalculatedTimestamp
       threw?: boolean
@@ -344,6 +364,217 @@ pushCalc(
   }),
   'UTC',
   T_MAIN,
+)
+
+// ---- calculateTimestampAt (P4.d28) ---------------------------------------
+// The extraction `b3ee00f1` made so a transcript can translate historical
+// messages. Three differences from the live clock, all tabled here: the
+// `realBase` fallback is the caller's anchor (not `new Date()`), elapsed time is
+// measured from the passed instant, and the non-fictional arm returns that
+// instant itself.
+//
+// The clock is pinned to a SENTINEL these rows never legitimately produce: this
+// function must read no clock, and a row that came out 1969-adjacent would prove
+// otherwise on either side.
+const CLOCK_SENTINEL = -86_400_000 // 1969-12-31T00:00:00.000Z
+
+function pushCalcAt(
+  id: string,
+  config: TimestampConfig,
+  timezone: string | null,
+  realInstantMs: number,
+  fallbackAnchorMs: number | null,
+) {
+  PINNED_NOW = CLOCK_SENTINEL
+  const off = new Date(realInstantMs).getTimezoneOffset()
+  try {
+    const out =
+      fallbackAnchorMs === null
+        ? calculateTimestampAt(new Date(realInstantMs), config, timezone ?? undefined)
+        : calculateTimestampAt(
+            new Date(realInstantMs),
+            config,
+            timezone ?? undefined,
+            new Date(fallbackAnchorMs),
+          )
+    rows.push({
+      kind: 'calcAt',
+      id,
+      config,
+      timezone,
+      realInstantMs,
+      fallbackAnchorMs,
+      localOffsetMin: off,
+      out,
+    })
+  } catch {
+    rows.push({
+      kind: 'calcAt',
+      id,
+      config,
+      timezone,
+      realInstantMs,
+      fallbackAnchorMs,
+      localOffsetMin: off,
+      threw: true,
+    })
+  }
+}
+
+// v4's own new test block (timestamp-utils.test.ts:429-480), row-for-row.
+pushCalcAt(
+  'v4test-historical-onto-fictional',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1920-05-01T20:00',
+    fictionalBaseRealTime: '2026-01-01T00:00:00.000Z',
+  }),
+  'UTC',
+  new Date('2026-01-01T00:45:00.000Z').getTime(),
+  null,
+)
+pushCalcAt(
+  'v4test-fallback-anchor',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1920-05-01T20:00',
+    fictionalBaseRealTime: null,
+  }),
+  'UTC',
+  new Date('2026-01-01T01:30:00.000Z').getTime(),
+  new Date('2026-01-01T00:00:00.000Z').getTime(),
+)
+pushCalcAt(
+  'v4test-real-instant-passthrough',
+  base({ format: 'ISO8601', timezone: null, useFictionalTime: false }),
+  null,
+  new Date('2026-01-01T12:00:00.000Z').getTime(),
+  null,
+)
+
+// The anchor is only consulted when the config carries none: a stamped
+// `fictionalBaseRealTime` wins over the passed anchor.
+pushCalcAt(
+  'anchor-ignored-when-stamped',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1920-05-01T20:00',
+    fictionalBaseRealTime: '2026-01-01T00:00:00.000Z',
+  }),
+  'UTC',
+  new Date('2026-01-01T00:45:00.000Z').getTime(),
+  new Date('1990-01-01T00:00:00.000Z').getTime(), // a decades-off anchor, deliberately
+)
+// No config anchor AND no passed anchor → elapsed collapses to zero (the base).
+pushCalcAt(
+  'unanchored-no-fallback-is-base',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1920-05-01T20:00',
+    fictionalBaseRealTime: null,
+  }),
+  'UTC',
+  new Date('2026-01-01T01:30:00.000Z').getTime(),
+  null,
+)
+// An anchor AFTER the instant → negative elapsed (the story clock runs backward
+// from its base). The transcript reaches this whenever a message predates the
+// chat row's own createdAt.
+pushCalcAt(
+  'fallback-anchor-after-instant',
+  base({
+    format: 'ISO8601',
+    timezone: 'UTC',
+    useFictionalTime: true,
+    fictionalBaseTimestamp: '1920-05-01T20:00',
+    fictionalBaseRealTime: null,
+  }),
+  'UTC',
+  new Date('2026-01-01T00:00:00.000Z').getTime(),
+  new Date('2026-01-01T02:15:00.000Z').getTime(),
+)
+
+// Every format at a historical instant, in each zone and the zone-less path —
+// the transcript's real workload (FRIENDLY after the DATE_ONLY/TIME_ONLY
+// promotion, ISO8601 when the operator picked it).
+const T_HIST = new Date('1926-03-14T19:05:07.000Z').getTime()
+for (const fmt of ['ISO8601', 'FRIENDLY', 'DATE_ONLY', 'TIME_ONLY'] as const) {
+  for (const z of zones) {
+    pushCalcAt(
+      `hist-${fmt}-${z ?? 'none'}`,
+      base({ format: fmt, timezone: z }),
+      z,
+      T_HIST,
+      new Date('2026-01-01T00:00:00.000Z').getTime(),
+    )
+  }
+}
+
+// Historical instants across both US DST boundaries, in a named zone: the
+// offset must be the one in force AT THE MESSAGE, not at export time.
+for (const [label, t] of [
+  ['spring-before', T_SPRING_BEFORE],
+  ['spring-after', T_SPRING_AFTER],
+  ['fall-before', T_FALL_BEFORE],
+  ['fall-after', T_FALL_AFTER],
+] as const) {
+  pushCalcAt(
+    `hist-dst-${label}`,
+    base({ format: 'FRIENDLY', timezone: 'America/New_York' }),
+    'America/New_York',
+    t,
+    new Date('2026-01-01T00:00:00.000Z').getTime(),
+  )
+}
+
+// The production fictional shape: a zone-less `datetime-local` base, anchored at
+// the chat's createdAt, read at a message instant hours later.
+for (const [suffix, fictionalBaseTimestamp, z] of NAIVE_BASES) {
+  pushCalcAt(
+    `hist-naive-${suffix}`,
+    base({
+      format: 'FRIENDLY',
+      timezone: z,
+      useFictionalTime: true,
+      fictionalBaseTimestamp,
+      fictionalBaseRealTime: null,
+    }),
+    z,
+    new Date('2026-07-02T15:04:56.789Z').getTime(),
+    new Date('2026-07-02T12:34:56.789Z').getTime(), // 2h30m of story time
+  )
+}
+
+// CUSTOM (and the empty-format FRIENDLY fallback) at a historical instant.
+pushCalcAt(
+  'hist-custom',
+  base({ format: 'CUSTOM', customFormat: 'YYYY-MM-DD HH:mm dddd', timezone: 'UTC' }),
+  'UTC',
+  T_HIST,
+  null,
+)
+pushCalcAt(
+  'hist-custom-empty-falls-friendly',
+  base({ format: 'CUSTOM', customFormat: null, timezone: 'UTC' }),
+  'UTC',
+  T_HIST,
+  null,
+)
+// An unresolvable zone throws — the transcript's 500 arm.
+pushCalcAt(
+  'hist-invalid-zone-throws',
+  base({ format: 'FRIENDLY', timezone: 'Not/AZone' }),
+  'Not/AZone',
+  T_HIST,
+  null,
 )
 
 // ---- shouldInjectTimestamp -----------------------------------------------
