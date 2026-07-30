@@ -42016,3 +42016,84 @@ family in the round), but: (a) a lane that re-runs its drift-check and
 finds `5cc76688` should PROCEED, not stop — the answer is in the
 `c81d316b` order text; (b) the unifier's baseline move is `083fdf68` →
 `5cc76688`, NOT `b3ee00f1`, regardless of what a lane record says.
+
+---
+
+## Lane record — P4.d26 unit 1: the day-references resolver (`day_references.rs`) + its tier-1 family
+
+**Landed** (2026-07-30, lane `claude/p4-d26-day-references-ec789e`; v4 baseline
+`b3ee00f1`, the drifted commit `505dcb1f`).
+
+The new pure module `crates/quilltap-core/src/day_references.rs` ports v4's
+`lib/memory/day-references.ts` whole: the ordered `DAY_REFERENCE_PATTERN`
+alternation, the local-calendar helpers (`startOfLocalDay` / `localTimeOnDay` /
+Monday-anchored `startOfLocalWeek`), the full `resolvePhrase` table, and the
+latest-match-wins scan with v4's "an unresolvable match still consumed its span"
+rule.
+
+**The one v5 seam — the zone is a parameter.** v4 reads the ambient process
+zone (`new Date(y, m, d)`); core never may (parallel test threads, and
+`TimeZone::system()` reads the environment at lookup). `resolve_day_reference`
+therefore takes an IANA name. A single fixed offset would NOT have done: v4
+resolves the offset *per constructed day*, so a "last week" window spanning a
+DST transition has different offsets on its two ends — the differential's
+`dst-spring-last-week` case pins exactly that (`2026-03-02T06:00:00.000Z` →
+`2026-03-09T05:00:00.000Z` in Chicago). Civil→instant goes through jiff's
+`compatible` disambiguation, which is V8's own choice for both gaps (shift
+forward) and folds (earlier offset). An unresolvable zone name falls back to
+UTC — an arm v4 cannot reach, documented at the function.
+
+Two JS-fidelity details carried: `Number("0")` is falsy, so "0 days ago"
+resolves to `None` like any out-of-range N (and `Number("01")` is 1, so
+`01 days ago` is a real hit); the regex uses `(?-u:\b)` + `[0-9]` because JS
+`\b`/`\d` are ASCII-only. The `regex` crate's alternation is leftmost-FIRST,
+the same preference order V8's backtracking engine applies, which is what makes
+v4's longest-first ordering ("day before yesterday" before "yesterday")
+load-bearing identically on both sides — pinned by a case.
+
+**The differential — `day_references_equivalence` (NEW family,
+`QT_ORACLE_DAY_REFERENCES`), 92 rows green.** 46 corpus cases run through v4's
+REAL `resolveDayReference` under **two zone legs**, because the bug this commit
+mirrors is precisely a UTC-vs-local difference and under `TZ=UTC` local *is*
+UTC: a single-zone differential could not tell the fix from the bug. Every
+corpus `now` is an absolute instant, so the same corpus resolved in two zones is
+the local-calendar proof; each NDJSON row records the zone it ran in and the
+Rust side is fed that name. `2026-07-29T02:44:00.000Z` is the diagnosed chat's
+wall clock (21:44 CDT on the 28th), and the Chicago leg reproduces v4's
+live-verified `from=2026-07-28T05:00:00.000Z` where the UTC leg says
+`2026-07-29T00:00:00.000Z`.
+
+Coverage is asserted as SHAPE, never a hand count: rows == cases x zone legs,
+both required zones present, ≥10 cases must actually DIFFER between the legs,
+and both a resolved and a null arm must exist. A regenerate that loses a leg
+fails rather than passing on half the evidence.
+
+**Sensitivity (the D24/D25 rule — the family was first-run GREEN):** proven by
+two mutations, each restored. (a) Resolving civil→instant in UTC instead of the
+zone → `mission-today @ America/Chicago: resolution diverges`. (b) Sunday-anchored
+weeks (`days_since_monday = js_day`) → `this-week-tuesday @ UTC: resolution
+diverges`. Ten in-crate unit tests port v4's own suite case-for-case, run under
+`America/Chicago` with absolute expectations (v4's suite cannot pin `TZ`, so it
+computes expectations through the same API it tests; v5 has no such constraint).
+
+**Regen recipe** (v4's tree was DIRTY at lane start — three uncommitted files
+including one under `lib/` — so every oracle in this lane regenerates from a
+detached worktree pinned at the baseline):
+
+```bash
+PIN=/private/tmp/qt-v4-pin-b3ee00f1
+git -C ~/source/quilltap-server worktree add --detach $PIN b3ee00f1
+ln -sfn ~/source/quilltap-server/node_modules $PIN/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        $PIN/packages/quilltap/node_modules
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree> ; cd $PIN
+TZ=UTC             $N/node --import tsx $W/harness/oracle/cases/day-references.ts \
+  >  /tmp/oracle-day-references.ndjson
+TZ=America/Chicago $N/node --import tsx $W/harness/oracle/cases/day-references.ts \
+  >> /tmp/oracle-day-references.ndjson
+# then, from the v5 worktree:
+QT_ORACLE_DAY_REFERENCES=/tmp/oracle-day-references.ndjson \
+  cargo test -p quilltap-harness --test day_references_equivalence -- --nocapture
+```
+
+No fixture DB moved, so no other family is invalidated by this unit.

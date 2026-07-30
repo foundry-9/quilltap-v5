@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Taught the app to read the calendar the way you do. When a conversation says
+"the mission today" or "how did it go this morning?", a new piece of the memory
+machinery works out exactly which stretch of hours that means — against the
+clock on the wall where the app runs, not the one in Greenwich. That distinction
+is the whole point: at a quarter to ten in the evening in Chicago it is already
+tomorrow in Greenwich, so a "today" resolved the wrong way covers a day in which
+nothing happened. It handles yesterday, the day before, last night, this and
+last week, and up to a fortnight of "N days ago", spelled out or in figures;
+"tomorrow" and "next week" are recognized and deliberately left alone. Nothing
+uses it yet — this is the piece, wired up next — and it is proven against the
+old app's own version of it in two different timezones, including across both
+ends of daylight saving.
 Planned the next porting round: three parallel work orders catching v5 up to
 the old app's latest three changes — same-day memory recall with a fresh-event
 boost (P4.d26), the enforced single embedding standard with its boot-time

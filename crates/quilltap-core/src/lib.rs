@@ -163,6 +163,7 @@ pub mod context_compression;
 pub mod context_summary;
 pub mod core_whisper;
 pub mod courier;
+pub mod day_references;
 pub mod db;
 pub mod dbkey;
 pub mod doc_edit;
