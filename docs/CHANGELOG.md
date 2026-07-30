@@ -43,6 +43,15 @@ been switched off in a way nobody noticed — a stand-in written back when the
 new app had not yet ported that step, left in place after it did. The stand-in
 is gone, the check runs against the old app's real code again, and both sides
 now agree exactly. No application code changed.
+Closed out the image-attachment work order: final verification run (every
+test suite green, the six image-specific comparisons re-run by name against
+freshly generated reference output), the work order marked complete, and
+the leftovers named out loud — the one live test that costs real money is
+queued for the next hands-on session, and two bugs found in the OLD app
+along the way (its OpenRouter path refuses to send images at all when not
+streaming, and its Grok text-file handling is unreachable dead code) are
+flagged for the post-5.0 fix list rather than copied around.
+
 Third step of the image-attachment fix: the app now reports what happened to
 each attachment. When a provider sends or rejects an image, the sent/failed
 outcome (with the provider's exact reason) rides the reply the same way it

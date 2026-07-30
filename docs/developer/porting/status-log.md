@@ -44208,3 +44208,44 @@ The production pixel work is the P4.1b `HostImageCodec` (P4.6bf).
 Gate (units 3–4): fmt clean; clippy both feature sets `-D warnings` clean;
 `cargo test --workspace` 401 binaries / 0 failed. Versions: core 0.0.414,
 harness 0.0.359.
+
+## Lane record — P4.21 unit 5 + lane close: the verification gate + the loud deferrals (2026-07-30)
+
+**P4.21 CLOSES — tiers 1 AND 2 complete.** Tier-2 item 7's hardening is the
+two unit pins (`attachments_are_stamped_onto_the_last_user_message`,
+`response_carries_the_builders_attachment_results`) — the canned tier-3
+substrate keys on attachments and so structurally cannot see the wire; the
+pins sit exactly at the conversion and the bytes it concealed.
+
+**Gate:** fmt clean; clippy both feature sets `-D warnings` clean; release
+build clean; `cargo test --workspace --no-fail-fast` with the lane's env
+vars — 401 test binaries / 0 failed. The order's six differentials re-run BY
+NAME with `--nocapture`, zero SKIP: `request_builder_equivalence` (144
+envelopes, 3 recorded refusals), `request_builder_google_equivalence`,
+`request_builder_google_wire_equivalence` (18 cases both modes),
+`response_parse_equivalence` (neutrality), `file_attachment_tier3_equivalence`
++ `attach_mount_file_equivalence` (both over oracles regenerated FRESH from
+the pinned `dcd9440a` worktree this same day — neutrality: this lane changed
+no behavior those families compare). No `apps/web` change — no SPA gate owed.
+
+**Tier-3 deferrals (loud, named):**
+- **Grok Files API** — v4's own deferral; its "requires Grok Files API"
+  arm is DEAD CODE in v4 (the images-only mime gate runs first), ported as
+  written and pinned by the grok `unsupported-attachment` vector.
+- **Animated-image static-frame extraction** — the resize schedule treats
+  GIF as static-frame only (v4 `RESIZABLE_MIME_TYPES` comment); actual
+  frame handling rides the host `HostImageCodec` seam (the standing codec
+  family: production WebP codec, conversion.ts).
+- **The stale `lib/llm/attachment-support.ts` client map** — says
+  OpenRouter unsupported while the plugin emits; v5 was NOT bent to match
+  it. **For the human to carry to the post-5.0 v4-side list** (this lane
+  does not edit `dogfood-findings.md` in a parallel round), together with
+  the OpenRouter non-streaming vision refusal (the SDK rejects v4's own
+  content-parts messages client-side — v4's non-streaming regenerate/
+  continuation legs CANNOT send images at all today; v5 reproduces the
+  refusal).
+
+**💸 BANKED for the next dogfood pass (the e2e instance has no API keys by
+design):** a real describe call and a real in-chat vision send on the Friday
+copy, verifying the model describes the ACTUAL image — dogfood #37's live
+close-out. Versions at lane close: core 0.0.414, harness 0.0.359.
