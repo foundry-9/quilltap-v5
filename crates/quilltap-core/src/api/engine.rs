@@ -1253,6 +1253,15 @@ impl CoreEngine {
                 Ok(db) => crate::services::chat_export::chat_export(&db, SINGLE_USER_ID, &chat_id),
                 Err(r) => r,
             },
+            // === P4.d28: the readable Markdown transcript ===
+            Request::ChatExportMarkdown { chat_id } => match self.ready_db() {
+                Ok(db) => crate::services::markdown_transcript::chat_export_markdown(
+                    &db,
+                    SINGLE_USER_ID,
+                    &chat_id,
+                ),
+                Err(r) => r,
+            },
             Request::ChatOutfitSummary { chat_id } => match self.ready_db() {
                 Ok(db) => super::chat_outfits::chat_outfit_summary(&db, &chat_id),
                 Err(r) => r,

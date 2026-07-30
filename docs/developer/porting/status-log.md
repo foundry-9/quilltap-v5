@@ -43080,3 +43080,96 @@ source at authoring time, U+1E47 + U+0101).
 the offset then in force; a single injected offset would not. No oracle can see
 the difference under `TZ=UTC` — it is why the seam exists rather than a claim the
 diff proves.
+
+## Lane record — P4.d28 unit 3: the `export-markdown` verb, engine arm and web edge (2026-07-30)
+
+Order: `work-orders/p4.d28-export-markdown-transcript.md` (tier-1 item 3 +
+tier 2's route half).
+
+**What landed.** `Request::ChatExportMarkdown { chat_id }` +
+`Response::ChatMarkdownTranscriptPayload { filename, markdown }` in the frozen
+§1 union; the engine arm; `chat_export_markdown` in
+`services/markdown_transcript.rs` (v4's `handleExportMarkdown` — the 404, the
+character-id collection, the `chatSettings` reads, the `user.name || 'User'`
+fallback, and v4's catch mapped to the 500 the `Intl` throw would produce); and
+`Some("export-markdown")` in `wardrobe_routes::chat_action_get`, sending
+`text/markdown; charset=utf-8`, the RFC 5987 disposition built by the
+PRODUCTION helper, and `Cache-Control: no-store` — the one header v4 sends here
+and nowhere else in that fan-out.
+
+**The fixture WAS extended, and the five-consumer rule discharged.** The order
+allowed enumerating what a fixture couldn't reach; the renderer's matrix went
+to the pure corpus (unit 2), but three things are the ROUTE's and only a fixture
+can reach them: the character-id collection reaching past the cast into
+`customAnnouncer.characterId` and `carinaMeta.answererId`, and the Salon-level
+config/timezone reads. So `chat-dialogs-{main,mount}.db` gained MARKDOWN_CHAT (a
+non-ASCII title, a chat-level fictional clock, a whisper, an off-scene announcer,
+a custom-named announcer, Carina-as-Wren, Carina-as-Brahma, a Pascal roll, a Host
+link notice beside a Host time-mark, Staff housekeeping beside a Staff
+announcement) plus a Salon `timezone` and `defaultTimestampConfig`.
+
+**Before touching the committed fixture, the rebuild was proven deterministic**
+— the builder was run UNMODIFIED into `/tmp`, the tools family's oracle
+generated against both that and the committed DBs, and the two NDJSONs diffed
+IDENTICAL. (The DB *bytes* differ every build — the cipher's nonces — so a
+sha256 comparison proves nothing; the logical comparison is the one that
+counts.) All five consumers then regenerated together and re-ran green:
+`chat_export` (14 cases, up from 9), `tools_inventory`, `message_reattribute`,
+`search_replace`, `outfit_llm_choose_tier3`.
+
+**The Salon timezone is load-bearing for determinism, not decoration.** With no
+zone anywhere in `resolveTimezone`'s chain, both sides format in whatever zone
+the runner sits in — the oracle under `TZ=UTC`, the Rust side under the host's
+real zone (the service resolves `jiff::tz::TimeZone::system()`, as v4 reads the
+host TZ through `Intl`). An explicit Salon zone makes every transcript case
+machine-independent.
+
+**A sensitivity trap worth the retelling.** The Salon `defaultTimestampConfig`
+was first written as `DATE_ONLY` — and the "Salon default ignored" mutation came
+back GREEN, because the transcript PROMOTES `DATE_ONLY` to `FRIENDLY` and
+`FALLBACK_CONFIG` is already `FRIENDLY`: the two paths render identically, so
+"the Salon default is read" was unprovable. It is now `CUSTOM` with a format
+string, distinguishable from both, and it proves the whole config rides through
+rather than just its `format`.
+
+**Route-tier mutations: six of seven RED.** customAnnouncer ids not collected →
+RED (`export_markdown_rich`); carinaMeta ids not collected → RED; participant
+ids not collected → RED (both rich cases); the Salon default ignored → RED; the
+Salon timezone ignored → RED; the user-profile read dropped → RED. The seventh
+— **removing the Brahma-sentinel exclusion from the `findByIds` argument** —
+stays GREEN and provably so: the sentinel matches no character row, and the
+renderer answers `Brahma` from the sentinel check BEFORE consulting the name
+map, so passing it to the query changes nothing observable. v4's exclusion is an
+optimisation; the port keeps it for fidelity. Recorded, not hidden — the same
+class as unit 2's unreachable trailing-newline normalization.
+
+⚠ Two mutations in the unit-2 battery had silently failed to APPLY (perl
+patterns written against pre-`cargo fmt` indentation), which reads exactly like
+an insensitive assertion. The unit-3 battery therefore asserts each pattern is
+present before substituting; the script is worth keeping in that shape.
+
+**Regen recipe (the whole chat-dialogs family — always regenerate all five):**
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd ~/source/quilltap-server
+# 1. the fixture itself (only when the builder changed)
+TZ=UTC QT_FIXTURE_CD_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
+      QT_FIXTURE_CD_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-chat-dialogs-fixture.ts
+# 2. the five oracles, from a /tmp mirror (jest ignores .claude/ paths)
+TMPO=/tmp/qt-cd-oracle; rm -rf $TMPO; mkdir -p $TMPO/cases $TMPO/fixtures
+cp $W/harness/oracle/cases/chat-dialogs-*.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/chat-dialogs-web.json $TMPO/fixtures/
+for c in export tools reattribute search-replace llm-choose-tier3; do
+  QT_FIXTURE_CD_MAIN=… QT_FIXTURE_CD_MOUNT=… QT_ORACLE_OUT=/tmp/oracle-$c.ndjson TZ=UTC \
+    $N/npx jest --silent --watchman=false --testTimeout=120000 \
+      --roots "$PWD" --roots "$TMPO/cases" -- chat-dialogs-$c
+done
+```
+
+Env vars: `QT_ORACLE_CHAT_EXPORT`, `QT_ORACLE_TOOLS_INVENTORY`,
+`QT_ORACLE_MESSAGE_REATTRIBUTE`, `QT_ORACLE_SEARCH_REPLACE`,
+`QT_ORACLE_LLM_CHOOSE`. New-baseline marker for the export family: an
+`export_markdown_rich` row whose `contentDisposition` carries
+`filename*=UTF-8''Supar%E1%B9%87…`.

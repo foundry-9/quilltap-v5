@@ -30,6 +30,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
+use quilltap_core::content_disposition::{build_content_disposition, Disposition};
 use serde_json::Value;
 
 use crate::files_routes::error_json;
@@ -224,6 +225,32 @@ pub async fn chat_action_get(
                         ),
                     ],
                     jsonl,
+                )
+                    .into_response(),
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // The readable Markdown transcript (P4.d28 — v4's `export-markdown.ts`,
+        // registered in v4's if-chain right after `export`). Its headers differ
+        // from the JSONL leg's in two ways that are the point: the RFC 5987
+        // disposition (a chat title reaches the filename with its non-ASCII
+        // intact) and `Cache-Control: no-store`, which v4 sends here and
+        // nowhere else in this fan-out.
+        Some("export-markdown") => {
+            let req = CoreRequest::ChatExportMarkdown { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(CoreResponse::ChatMarkdownTranscriptPayload { filename, markdown }) => (
+                    StatusCode::OK,
+                    [
+                        ("content-type", "text/markdown; charset=utf-8".to_string()),
+                        (
+                            "content-disposition",
+                            build_content_disposition(&filename, Disposition::Attachment),
+                        ),
+                        ("cache-control", "no-store".to_string()),
+                    ],
+                    markdown,
                 )
                     .into_response(),
                 Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

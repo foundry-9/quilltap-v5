@@ -3,14 +3,20 @@
  *
  * P4.9E3B chat-export + outfit-summary ORACLE: drives v4's REAL chat GET route
  * (`app/api/v1/chats/[id]/route.ts` → `handlers/get.ts` `?action=export` /
- * `?action=outfit-summary`) over a FRESH copy of the committed chat-dialogs
- * fixture per case, and emits each response — the export's status + headers +
- * RAW BODY TEXT (the JSONL bytes are the wire payload) and the summary's JSON
- * body — so the Rust port (`services::chat_export` +
- * `api::chat_outfits::chat_outfit_summary`) diffs byte-for-byte.
+ * `?action=export-markdown` / `?action=outfit-summary`) over a FRESH copy of the
+ * committed chat-dialogs fixture per case, and emits each response — the
+ * exports' status + headers + RAW BODY TEXT (the JSONL and Markdown bytes are
+ * the wire payload) and the summary's JSON body — so the Rust port
+ * (`services::chat_export`, `services::markdown_transcript::chat_export_markdown`
+ * + `api::chat_outfits::chat_outfit_summary`) diffs byte-for-byte.
+ *
+ * P4.d28 added the `export-markdown` cases (v4 `b3ee00f1`); they also record
+ * `Cache-Control`, which that route sends and no other arm of the fan-out does.
  *
  * **Must run under `TZ=UTC`** (the export filename + `send_date` embed
- * `Date.getTime()` values).
+ * `Date.getTime()` values). The transcript cases are zone-independent by
+ * construction — the fixture's chat settings carry an explicit timezone — but
+ * the rule stands for the family.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -43,6 +49,8 @@ const NOCHAR_CHAT = 'c2000000-0000-4000-8000-000000000002';
 const SR_CHAT = 'c2000000-0000-4000-8000-000000000003';
 const TOOLS_CHAT_BARE = 'c2000000-0000-4000-8000-000000000006';
 const MERGE_SOURCE = 'c2000000-0000-4000-8000-000000000008';
+const MERGE_TARGET = 'c2000000-0000-4000-8000-000000000007';
+const MARKDOWN_CHAT = 'c2000000-0000-4000-8000-000000000009';
 const MISSING_ID = '99999999-9999-4999-8999-999999999999';
 
 const RealDate = Date;
@@ -112,7 +120,7 @@ function applyMocks(spec: Spec): void {
 
 interface CaseSpec {
   name: string;
-  action: 'export' | 'outfit-summary' | 'group-stores';
+  action: 'export' | 'export-markdown' | 'outfit-summary' | 'group-stores';
   chatId: string;
 }
 
@@ -187,8 +195,13 @@ async function runCase(
       contentType: header('Content-Type'),
       contentDisposition: header('Content-Disposition'),
     };
-    if (c.action === 'export' && resp.status === 200) {
-      out.bodyText = bodyText; // the JSONL bytes, compared verbatim
+    if (c.action === 'export-markdown') {
+      // The transcript route sends `Cache-Control: no-store`, which no other arm
+      // of this fan-out does — it is part of the ported surface, not furniture.
+      out.cacheControl = header('Cache-Control');
+    }
+    if ((c.action === 'export' || c.action === 'export-markdown') && resp.status === 200) {
+      out.bodyText = bodyText; // the document bytes, compared verbatim
     } else {
       // JSON responses: the shim keeps the parsed object on `.body`; a real
       // NextResponse yields text.
@@ -243,6 +256,24 @@ async function main(): Promise<void> {
     { name: 'export_multi', action: 'export', chatId: EXPORT_CHAT },
     { name: 'export_no_character', action: 'export', chatId: NOCHAR_CHAT },
     { name: 'export_chat_missing', action: 'export', chatId: MISSING_ID },
+    // P4.d28: the Markdown transcript. MARKDOWN_CHAT carries the arms the ROUTE
+    // owns rather than the renderer — the character-id collection reaching into
+    // `customAnnouncer` (an off-scene Pip) and `carinaMeta` (Wren, and the
+    // Brahma sentinel that must NOT be looked up) — plus a non-ASCII title, so
+    // the RFC 5987 `Content-Disposition` arm is pinned end to end.
+    { name: 'export_markdown_rich', action: 'export-markdown', chatId: MARKDOWN_CHAT },
+    // EXPORT_CHAT has no timestampConfig of its own, so this one proves the
+    // Salon-level default (DATE_ONLY, promoted to FRIENDLY) and the
+    // Salon-level timezone are both read — and it carries the swipe group, the
+    // broken-vault participant, the SYSTEM/TOOL rows and the type-'system'
+    // event the transcript drops.
+    { name: 'export_markdown_defaults', action: 'export-markdown', chatId: EXPORT_CHAT },
+    // A scenario with {{char}}/{{user}} to render, and a cast whose first
+    // participant is user-controlled.
+    { name: 'export_markdown_scenario', action: 'export-markdown', chatId: MERGE_TARGET },
+    // No participants, no messages: the heading-only document.
+    { name: 'export_markdown_empty', action: 'export-markdown', chatId: NOCHAR_CHAT },
+    { name: 'export_markdown_chat_missing', action: 'export-markdown', chatId: MISSING_ID },
     // Pip's composite expands to coat+boots (boots dropped from `top` by the
     // slot filter), the unresolvable hat id vanishes, and Nora's bare entry
     // keeps its four empty arrays.

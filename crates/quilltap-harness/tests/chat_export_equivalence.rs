@@ -23,6 +23,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::content_disposition::{build_content_disposition, Disposition};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -32,6 +33,8 @@ const NOCHAR_CHAT: &str = "c2000000-0000-4000-8000-000000000002";
 const SR_CHAT: &str = "c2000000-0000-4000-8000-000000000003";
 const TOOLS_CHAT_BARE: &str = "c2000000-0000-4000-8000-000000000006";
 const MERGE_SOURCE: &str = "c2000000-0000-4000-8000-000000000008";
+const MERGE_TARGET: &str = "c2000000-0000-4000-8000-000000000007";
+const MARKDOWN_CHAT: &str = "c2000000-0000-4000-8000-000000000009";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
 
 #[derive(Deserialize)]
@@ -86,6 +89,16 @@ fn project(r: &Response) -> Value {
             "contentType": "application/x-ndjson",
             "contentDisposition": format!("attachment; filename=\"{filename}\""),
             "bodyText": jsonl,
+        }),
+        // P4.d28: the transcript's edge — the RFC 5987 disposition (built by the
+        // PRODUCTION helper, not a copy of it) and the `no-store` header v4
+        // sends here and nowhere else in this fan-out.
+        Response::ChatMarkdownTranscriptPayload { filename, markdown } => json!({
+            "status": 200,
+            "contentType": "text/markdown; charset=utf-8",
+            "contentDisposition": build_content_disposition(filename, Disposition::Attachment),
+            "cacheControl": "no-store",
+            "bodyText": markdown,
         }),
         Response::ChatDialog(v) => json!({ "status": 200, "body": v }),
         Response::Error(e) => {
@@ -174,7 +187,11 @@ fn chat_export_matches_oracle() {
 
         if let Some(want_text) = want.get("bodyText").and_then(Value::as_str) {
             // The byte legs: headers + JSONL text, verbatim.
-            for key in ["contentType", "contentDisposition"] {
+            for key in ["contentType", "contentDisposition", "cacheControl"] {
+                // `cacheControl` is recorded only for the transcript cases.
+                if want.get(key).is_none() && got.get(key).is_none() {
+                    continue;
+                }
                 if got.get(key) != want.get(key) {
                     eprintln!(
                         "[{name}] {key} mismatch: {:?} != {:?}",
@@ -226,6 +243,23 @@ fn chat_export_matches_oracle() {
     ] {
         let db = fresh_db(&spec, name);
         let r = quilltap_core::services::chat_export::chat_export(&db, &spec.user_id, chat);
+        check(name, &r);
+    }
+
+    // ── ?action=export-markdown (P4.d28) ────────────────────────────────────
+    for (name, chat) in [
+        ("export_markdown_rich", MARKDOWN_CHAT),
+        ("export_markdown_defaults", EXPORT_CHAT),
+        ("export_markdown_scenario", MERGE_TARGET),
+        ("export_markdown_empty", NOCHAR_CHAT),
+        ("export_markdown_chat_missing", MISSING_ID),
+    ] {
+        let db = fresh_db(&spec, name);
+        let r = quilltap_core::services::markdown_transcript::chat_export_markdown(
+            &db,
+            &spec.user_id,
+            chat,
+        );
         check(name, &r);
     }
 

@@ -2625,6 +2625,12 @@ pub enum Request {
     ChatExport {
         chat_id: String,
     },
+    /// The readable Markdown transcript (v4 `GET …/chats/{id}?action=export-markdown`,
+    /// P4.d28 / v4 `b3ee00f1`).
+    #[serde(rename_all = "camelCase")]
+    ChatExportMarkdown {
+        chat_id: String,
+    },
     /// Per-character equipped-outfit summary (v4 `GET …/chats/{id}?action=outfit-summary`).
     #[serde(rename_all = "camelCase")]
     ChatOutfitSummary {
@@ -3022,6 +3028,15 @@ pub enum Response {
     ChatExportPayload {
         filename: String,
         jsonl: String,
+    },
+    /// The Markdown transcript payload: the document bytes plus the download
+    /// filename. `Content-Type: text/markdown; charset=utf-8`, the RFC 5987
+    /// `Content-Disposition`, and v4's `Cache-Control: no-store` are the web
+    /// edge's (P4.d28).
+    #[serde(rename_all = "camelCase")]
+    ChatMarkdownTranscriptPayload {
+        filename: String,
+        markdown: String,
     },
     /// A chat-dialog verb body (outfit-summary's `{summary}`, search-replace's
     /// raw un-enveloped preview/result, reattribute's

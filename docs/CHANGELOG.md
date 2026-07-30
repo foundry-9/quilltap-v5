@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The Markdown transcript is now something the app will actually hand you:
+`GET /api/v1/chats/{id}?action=export-markdown` renders the conversation and
+serves it as a download, named after the chat — accents and emoji in a title
+survive into the filename — and marked never to be cached, since a transcript
+goes stale the moment anyone speaks. The route gathers names for everyone the
+transcript mentions, including characters who are only ever named in an
+announcement or in an answer Carina gave on their behalf, and falls back to the
+Salon's own clock settings when a chat has none of its own. The test fixture
+grew a conversation shaped for exactly this — a whisper, an off-scene voice, a
+Brahma answer, a Host notice beside a Host time-mark — and every part of the
+route was then broken on purpose to confirm the test noticed.
+
 A conversation can now be turned into a readable Markdown document — the
 renderer half, with the button and the route still to come. The transcript
 carries the chat's title, its opening scenario with the names filled in, and

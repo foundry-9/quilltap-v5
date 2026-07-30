@@ -1,7 +1,8 @@
 /**
  * The committed chat-dialogs server-surface fixture builder (P4.9E3B
  * deliverable) — the shared test-pepper substrate for
- * `chat_export_equivalence` (export + outfit-summary), `search_replace_equivalence`,
+ * `chat_export_equivalence` (export + export-markdown + outfit-summary),
+ * `search_replace_equivalence`,
  * `message_reattribute_equivalence`, `tools_inventory_equivalence` (tier 2) and
  * `outfit_llm_choose_tier3_equivalence` (tier 3).
  *
@@ -45,7 +46,20 @@
  *      MERGE_SOURCE (Pip; `equippedOutfit` for Pip incl. the composite — ALSO
  *      the outfit-summary subject, with a bare `NORA` entry whose slots are
  *      empty and a slot id whose item doesn't cover the slot).
- *   7. Chat settings (`cheapLLMSettings`) — the llm_choose config source.
+ *   7. Chat settings — `cheapLLMSettings` (the llm_choose config source) plus,
+ *      since P4.d28, a Salon `timezone` and a CUSTOM `defaultTimestampConfig`:
+ *      the transcript's fallback chain, and what makes every transcript case
+ *      machine-independent (with no zone anywhere in the chain both sides
+ *      format in whatever zone the runner happens to be in).
+ *   8. MARKDOWN_CHAT (P4.d28) — the Markdown-transcript subject: a non-ASCII
+ *      title (the RFC 5987 `Content-Disposition` arm), a chat-level fictional
+ *      `timestampConfig` that must win over the Salon default, a whisper, an
+ *      announcement voiced by an OFF-SCENE character and one voiced by a custom
+ *      name, Carina answering as a character and as Brahma (whose sentinel id
+ *      must never be looked up), a Pascal roll, a Host link notice beside a Host
+ *      housekeeping notice, and Staff housekeeping beside a Staff announcement.
+ *      The off-scene and Carina ids exist ONLY in message metadata, so they are
+ *      what proves the route's character-id collection reaches past the cast.
  *
  * No row lives in the llm-logs partition; the empty `background_jobs` table is
  * materialized so fresh copies share a schema.
@@ -99,6 +113,8 @@ const TOOLS_CHAT_NOSTORES = 'c2000000-0000-4000-8000-000000000005';
 const TOOLS_CHAT_BARE = 'c2000000-0000-4000-8000-000000000006';
 const MERGE_TARGET = 'c2000000-0000-4000-8000-000000000007';
 const MERGE_SOURCE = 'c2000000-0000-4000-8000-000000000008';
+// P4.d28: the Markdown-transcript subject (see section 8).
+const MARKDOWN_CHAT = 'c2000000-0000-4000-8000-000000000009';
 
 const PROJECT_1 = 'aaaa0000-0000-4000-8000-000000000001';
 const PROJECT_2 = 'aaaa0000-0000-4000-8000-000000000002';
@@ -122,6 +138,9 @@ const P6_WREN = 'e2000000-0000-4000-8000-000000000041';
 const P7_VERA = 'e2000000-0000-4000-8000-000000000051';
 const P7_NORA = 'e2000000-0000-4000-8000-000000000052';
 const P8_PIP = 'e2000000-0000-4000-8000-000000000061';
+// MARKDOWN_CHAT participants (P4.d28).
+const P9_NORA = 'e2000000-0000-4000-8000-000000000071';
+const P9_VERA = 'e2000000-0000-4000-8000-000000000072';
 
 // EXPORT_CHAT messages.
 const X1 = 'd4000000-0000-4000-8000-000000000001'; // USER / VERA
@@ -142,8 +161,22 @@ const R3 = 'd5000000-0000-4000-8000-000000000003'; // no match / VERA
 const R4 = 'd5000000-0000-4000-8000-000000000004'; // 'lantern' ×1 / NORA, 2 sourced memories
 const R5 = 'd5000000-0000-4000-8000-000000000005'; // 'Lantern' (capital) — counted, NOT replaced
 
+// MARKDOWN_CHAT messages (P4.d28).
+const M1 = 'd6000000-0000-4000-8000-000000000001'; // USER / VERA
+const M2 = 'd6000000-0000-4000-8000-000000000002'; // ASSISTANT / NORA
+const M3 = 'd6000000-0000-4000-8000-000000000003'; // whisper
+const M4 = 'd6000000-0000-4000-8000-000000000004'; // customAnnouncer → off-scene PIP
+const M5 = 'd6000000-0000-4000-8000-000000000005'; // customAnnouncer → custom name
+const M6 = 'd6000000-0000-4000-8000-000000000006'; // carina → WREN as answerer
+const M7 = 'd6000000-0000-4000-8000-000000000007'; // carina → the Brahma sentinel
+const M8 = 'd6000000-0000-4000-8000-000000000008'; // pascal (any kind)
+const M9 = 'd6000000-0000-4000-8000-000000000009'; // host continuation-from (kept)
+const M10 = 'd6000000-0000-4000-8000-00000000000a'; // host timestamp (dropped)
+const M11 = 'd6000000-0000-4000-8000-00000000000b'; // Staff housekeeping (dropped)
+const M12 = 'd6000000-0000-4000-8000-00000000000c'; // Staff announcement (kept)
+
 // Memories.
-const MEM_R4A = 'f2000000-0000-4000-8000-000000000001'; // NORA / SR_CHAT / source R4 / 'lantern'
+const MEM_R4A ='f2000000-0000-4000-8000-000000000001'; // NORA / SR_CHAT / source R4 / 'lantern'
 const MEM_R4B = 'f2000000-0000-4000-8000-000000000002'; // NORA / SR_CHAT / source R4 / summary-only match
 const MEM_N1 = 'f2000000-0000-4000-8000-000000000003'; // NORA / no chat / 'lantern'
 const MEM_P1 = 'f2000000-0000-4000-8000-000000000004'; // PIP / SR_CHAT / 'lantern' keyword-only match
@@ -751,7 +784,11 @@ async function main(): Promise<void> {
   }
   await repos.groupCharacterMembers.addMember('dd000000-0000-4000-8000-000000000001', VERA);
 
-  // 9. Chat settings (the llm_choose cheap-LLM config source).
+  // 9. Chat settings (the llm_choose cheap-LLM config source; P4.d28 adds the
+  // Salon-level timezone + defaultTimestampConfig the transcript falls back to,
+  // which is ALSO what makes every transcript case machine-independent — without
+  // an explicit zone somewhere in the chain, `resolveTimezone` returns nothing
+  // and both sides format in whatever zone the runner happens to be in).
   await repos.chatSettings.create(
     {
       userId: spec.userId,
@@ -760,9 +797,195 @@ async function main(): Promise<void> {
         fallbackToLocal: false,
         embeddingProvider: 'OPENAI',
       },
+      timezone: 'Europe/Istanbul',
+      // CUSTOM, deliberately: the FALLBACK_CONFIG the transcript uses when
+      // neither the chat nor the Salon carries a config is FRIENDLY, and so is
+      // a promoted DATE_ONLY — so a DATE_ONLY default here would render
+      // identically to no default at all, and "the Salon default is read" would
+      // be unprovable. A custom format string is distinguishable from both, and
+      // proves the whole config rides through rather than just its `format`.
+      defaultTimestampConfig: {
+        mode: 'EVERY_MESSAGE',
+        format: 'CUSTOM',
+        customFormat: 'YYYY/MM/DD HH:mm',
+        useFictionalTime: false,
+        autoPrepend: true,
+        intervalMinutes: 15,
+      },
     } as never,
     { id: 'c8000000-0000-4000-8000-000000000002', createdAt: TS, updatedAt: TS } as never,
   );
+
+  // 8b. MARKDOWN_CHAT — the P4.d28 transcript subject. Every arm here is one the
+  // ROUTE owns rather than the renderer: the character-id collection reaching
+  // past the participants into `customAnnouncer.characterId` and
+  // `carinaMeta.answererId` (with the Brahma sentinel excluded), the chat-level
+  // timestampConfig winning over the Salon default, and a non-ASCII title, which
+  // is what carries the download name into `Content-Disposition`'s RFC 5987 arm.
+  await repos.chats.create(
+    {
+      userId: spec.userId,
+      title: 'Suparṇā’s Ledger 🎩',
+      chatType: 'salon',
+      scenarioText: '{{char}} keeps the ledger while {{user}} watches the water.',
+      timestampConfig: {
+        mode: 'EVERY_MESSAGE',
+        format: 'FRIENDLY',
+        useFictionalTime: true,
+        fictionalBaseTimestamp: '1926-03-14T19:05',
+        timezone: 'UTC',
+        autoPrepend: true,
+        intervalMinutes: 15,
+      },
+      participants: [
+        mkParticipant(P9_NORA, NORA, 'llm', 0, { connectionProfileId: CONN }),
+        mkParticipant(P9_VERA, VERA, 'user', 1),
+      ],
+      tags: [],
+    } as never,
+    { id: MARKDOWN_CHAT, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M1,
+    role: 'USER',
+    content: 'Vera sets down the lamp. "Read me the last entry."',
+    participantId: P9_VERA,
+    createdAt: '2026-05-01T12:00:00.000Z',
+    attachments: [],
+  });
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M2,
+    role: 'ASSISTANT',
+    content: 'Nora turns the page. "Three barrels, and a name struck through."',
+    participantId: P9_NORA,
+    createdAt: '2026-05-01T12:01:00.000Z',
+    attachments: [],
+  });
+  // A whisper — marked in the heading, not hidden.
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M3,
+    role: 'ASSISTANT',
+    content: 'Nora, lower: "The name was yours."',
+    participantId: P9_NORA,
+    targetParticipantIds: [P9_VERA],
+    createdAt: '2026-05-01T12:02:00.000Z',
+    attachments: [],
+  });
+  // An announcement voiced by an OFF-SCENE character: the route must collect
+  // PIP's id from `customAnnouncer` even though Pip is in no participant slot.
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M4,
+    role: 'ASSISTANT',
+    systemKind: 'announcement',
+    participantId: null,
+    customAnnouncer: { kind: 'character', characterId: PIP },
+    content: 'A knock at the counting-house door.',
+    createdAt: '2026-05-01T12:03:00.000Z',
+    attachments: [],
+  });
+  // The same, voiced by a custom name.
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M5,
+    role: 'ASSISTANT',
+    systemKind: 'announcement',
+    participantId: null,
+    customAnnouncer: { kind: 'custom', displayName: 'The Narrator' },
+    content: 'Somewhere below, the tide turns.',
+    createdAt: '2026-05-01T12:04:00.000Z',
+    attachments: [],
+  });
+  // Carina answering AS a character (WREN's id comes from carinaMeta alone)…
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M6,
+    role: 'ASSISTANT',
+    systemSender: 'carina',
+    systemKind: 'carina-response',
+    participantId: null,
+    carinaMeta: { answererId: WREN, question: 'Who signed the ledger?' },
+    content: 'Wren, from the doorway: "The harbourmaster did."',
+    createdAt: '2026-05-01T12:05:00.000Z',
+    attachments: [],
+  });
+  // …and Carina answering as Brahma, whose sentinel id must NOT be looked up.
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M7,
+    role: 'ASSISTANT',
+    systemSender: 'carina',
+    systemKind: 'carina-response',
+    participantId: null,
+    carinaMeta: {
+      answererId: 'b4a4c0de-0000-4000-8000-000000000001',
+      question: 'How many ledgers are there?',
+    },
+    content: 'There are four ledgers.',
+    createdAt: '2026-05-01T12:06:00.000Z',
+    attachments: [],
+  });
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M8,
+    role: 'ASSISTANT',
+    systemSender: 'pascal',
+    systemKind: 'custom-tool-result',
+    participantId: null,
+    content: 'Pascal rolls for the tide: 17.',
+    createdAt: '2026-05-01T12:07:00.000Z',
+    attachments: [],
+  });
+  // A Host LINK notice (kept) and a Host housekeeping notice (dropped).
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M9,
+    role: 'ASSISTANT',
+    systemSender: 'host',
+    systemKind: 'continuation-from',
+    participantId: null,
+    content: 'This conversation continues from [The Evening Watch](/salon/x).',
+    createdAt: '2026-05-01T12:08:00.000Z',
+    attachments: [],
+  });
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M10,
+    role: 'ASSISTANT',
+    systemSender: 'host',
+    systemKind: 'timestamp',
+    participantId: null,
+    content: 'The Host marks the hour.',
+    createdAt: '2026-05-01T12:09:00.000Z',
+    attachments: [],
+  });
+  // Staff housekeeping (dropped) vs a Staff announcement the operator inserted.
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M11,
+    role: 'ASSISTANT',
+    systemSender: 'commonplaceBook',
+    systemKind: 'memory-whisper',
+    participantId: null,
+    content: 'A memory resurfaces, and should not be in the transcript.',
+    createdAt: '2026-05-01T12:10:00.000Z',
+    attachments: [],
+  });
+  await add(MARKDOWN_CHAT, {
+    type: 'message',
+    id: M12,
+    role: 'ASSISTANT',
+    systemSender: 'suparna',
+    systemKind: 'announcement',
+    participantId: null,
+    content: 'The mail packet is sighted.',
+    createdAt: '2026-05-01T12:11:00.000Z',
+    attachments: [],
+  });
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

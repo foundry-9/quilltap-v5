@@ -46,11 +46,14 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::api::types::{ErrorKind, Response};
 use crate::chat_timestamp::{
     calculate_timestamp_at, resolve_timezone, InvalidTimezone, TimestampConfig, TimestampFormat,
     TimestampMode,
 };
 use crate::clock::iso_to_ms;
+use crate::db::runtime::Db;
+use crate::db::{characters_read, chat_settings, chats_messages_read, chats_read, users, DbError};
 use crate::jsstr::{is_js_ws, js_trim};
 use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
 use crate::templates::{process_template, TemplateContext};
@@ -505,4 +508,131 @@ pub fn transcript_filename(chat: &Value) -> String {
     let base = js_trim(&sanitized);
     let base = if base.is_empty() { "chat" } else { base };
     format!("{base}_transcript.md")
+}
+
+// ===========================================================================
+// The route tier — v4 `app/api/v1/chats/[id]/actions/export-markdown.ts`
+// ===========================================================================
+
+/// The host's local IANA zone, for the zone-less formatting path (the
+/// `api::autonomous_rooms::system_tz` precedent — v4 reads the same host TZ
+/// through `Intl`). A fixed offset with no IANA name falls back to `UTC`.
+fn system_tz() -> String {
+    jiff::tz::TimeZone::system()
+        .iana_name()
+        .unwrap_or("UTC")
+        .to_string()
+}
+
+/// v4 `handleExportMarkdown`. `user_id` selects the operator row (the
+/// transcript's `userName` = `user.name || 'User'`).
+///
+/// The `Content-Type` / `Content-Disposition` / `Cache-Control` headers belong
+/// at the quilltap-web edge (the `characters_routes.rs:373` byte-leg
+/// precedent); this returns the bytes and the filename v4's header names.
+pub fn chat_export_markdown(db: &Db, user_id: &str, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    let uid = user_id.to_string();
+    let tz = system_tz();
+    let out: Result<Result<Response, Response>, DbError> = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let Some(chat) = chats_read::find_by_id(main, &cid)? else {
+                return Ok(Err(Response::error(ErrorKind::NotFound, "Chat not found")));
+            };
+
+            let events = chats_messages_read::get_messages(main, &cid)?;
+
+            // Every character the transcript may need a name for:
+            // participants, custom announcers voiced by a (possibly
+            // off-scene) character, and Carina answerers. The Brahma
+            // sentinel is not a real character. v4 builds a Set, so ids are
+            // deduped in first-seen order.
+            let mut character_ids: Vec<String> = Vec::new();
+            let push_id = |id: &str, ids: &mut Vec<String>| {
+                if !ids.iter().any(|existing| existing == id) {
+                    ids.push(id.to_string());
+                }
+            };
+            if let Some(participants) = chat.get("participants").and_then(Value::as_array) {
+                for p in participants {
+                    if let Some(id) = s(p, "characterId").filter(|v| !v.is_empty()) {
+                        push_id(id, &mut character_ids);
+                    }
+                }
+            }
+            for event in &events {
+                if s(event, "type") != Some("message") {
+                    continue;
+                }
+                if let Some(id) = event
+                    .get("customAnnouncer")
+                    .and_then(|a| s(a, "characterId"))
+                    .filter(|v| !v.is_empty())
+                {
+                    push_id(id, &mut character_ids);
+                }
+                if let Some(id) = event
+                    .get("carinaMeta")
+                    .and_then(|m| s(m, "answererId"))
+                    .filter(|v| !v.is_empty() && *v != BRAHMA_CARINA_ANSWERER_ID)
+                {
+                    push_id(id, &mut character_ids);
+                }
+            }
+
+            // Broken-vault characters are dropped by findByIds; their
+            // messages fall back to the generic names in the builder.
+            let characters = characters_read::find_by_ids(main, mount, &character_ids)?;
+            let mut character_names_by_id: HashMap<String, String> = HashMap::new();
+            for c in &characters {
+                if let (Some(id), Some(name)) = (s(c, "id"), s(c, "name")) {
+                    character_names_by_id.insert(id.to_string(), name.to_string());
+                }
+            }
+
+            let settings = chat_settings::find_by_user_id(main, &uid)?;
+            let default_timestamp_config = settings
+                .as_ref()
+                .and_then(|s| s.get("defaultTimestampConfig"));
+            let chat_settings_timezone = settings
+                .as_ref()
+                .and_then(|s| s.get("timezone"))
+                .and_then(Value::as_str);
+
+            let user_name = users::find_profile_by_id(main, &uid)?
+                .and_then(|u| u.name)
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| "User".to_string());
+
+            let markdown = match build_markdown_transcript(&MarkdownTranscriptInput {
+                chat: &chat,
+                events: &events,
+                character_names_by_id: &character_names_by_id,
+                user_name: &user_name,
+                default_timestamp_config,
+                chat_settings_timezone,
+                local_offset: LocalOffset::Zone(&tz),
+            }) {
+                Ok(md) => md,
+                // v4's `Intl` throw lands in the handler's catch.
+                Err(_) => {
+                    return Ok(Err(Response::error(
+                        ErrorKind::Internal,
+                        "Failed to export chat as Markdown",
+                    )))
+                }
+            };
+
+            Ok(Ok(Response::ChatMarkdownTranscriptPayload {
+                filename: transcript_filename(&chat),
+                markdown,
+            }))
+        })
+    });
+    match out {
+        Ok(Ok(r)) => r,
+        Ok(Err(r)) => r,
+        // v4's try/catch → serverError.
+        Err(_) => Response::error(ErrorKind::Internal, "Failed to export chat as Markdown"),
+    }
 }
