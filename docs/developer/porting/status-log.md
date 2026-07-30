@@ -41924,3 +41924,95 @@ round's live proof — a boot against the Friday copy that does NOT mass
 re-embed (`skipped_stale` visible in the boot log), and a read-then-sweep
 cycle that keeps a reopened chat's vectors. See phase-4.md's round-outcome
 section.
+
+---
+
+## Round planned — the `5cc76688` drift catch-up: P4.d26 ∥ P4.d27 ∥ P4.d28 (2026-07-30)
+
+**The drift check found v4 THREE behavior commits past `083fdf68`, tree
+clean; a FOURTH landed mid-planning and is dispositioned NO-PORT.** New
+baseline for the round: v4 **`5cc76688`** (the move `083fdf68` →
+`5cc76688` is QUEUED for the unifier — no lane edits `CLAUDE.md` or
+`phase-4.md`). Classification:
+
+- `505dcb1f` — **behavior**: same-day recall + fresh-event boost. New pure
+  `lib/memory/day-references.ts`; the distill merge + local TODAY line in
+  `memory-tasks.ts` (search side only — `renderClockBlock` deliberately
+  stays UTC); `freshEventMultiplier` (×1.6/×1.35, unconditional) + echo
+  guard + `RecallContext.{currentChatId,nowMs}` in `recall-tags.ts`; the
+  `occurredWithin` retro-flag ungating in pre-compute / context-manager /
+  recall-replay. All five lib files land on PORTED surfaces (P4.d13, P4.19,
+  the build-context spine). → **lane P4.d26**.
+- `7391404e` — **behavior**: one embedding standard, enforced. The NEW
+  startup dimension reconcile (v4 Phase 3.7); the EMBEDDING_REINDEX_ALL
+  handler's Phase 4 (mount chunks) + `findDistinctCharacterIds` fan-out +
+  stale/FAILED skips; the housekeeping merge-pass dim skip; two new repo
+  reads; `EMBEDDING_DIM_SQL` exported beside the codec. Lands on the PORTED
+  P4.6BM/P4.D25 family — EXCEPT the PUT embedding-profiles trigger matrix,
+  which lands on the UNPORTED `p4.9h` surface and **BANKS there** (with its
+  also-unported `EMBEDDING_REAPPLY_PROFILE` dependency). → **lane P4.d27**
+  (+ the free dogfood-Part-B boot-log rider).
+- `b3ee00f1` — **behavior + UI**: Export Markdown transcript. The pure
+  renderer `lib/export/markdown-transcript.ts`; the `export-markdown` chat
+  GET action; `calculateTimestampAt` extracted from the ported P4.d18
+  clock module (behavior-neutral for existing callers); the
+  `buildContentDisposition` dedupe (**verified byte-identical to both prior
+  copies — no committed oracle invalidated**); one ChatSidebar Organize
+  button. → **lane P4.d28** (the round's ONLY `apps/web` lane; owns
+  `api/types.rs` and the full SPA gate).
+- `5cc76688` — **NO-PORT** ("read-your-writes detector compares tables,
+  not repositories"). Its only lib change is
+  `lib/background-jobs/child/child-repositories-proxy.ts`, the
+  forked-job-child write-buffer proxy v5 deliberately does not port (the
+  W4.8 ruling: in-process handlers over the compiler-enforced single
+  writer — no child proxy or read-your-writes detector exists in v5); the
+  fix is log-only even in v4 ("No behavioural change beyond the log"); and
+  no oracle case imports the file (grep-verified; the only v5 mention of
+  read-your-writes is a doc comment in `mount_index/reindex_file.rs:83`).
+  Verified three ways at planning, 2026-07-30. The baseline still moves
+  past it so lane drift-checks don't trip.
+
+**The three orders** (ownership fully disjoint — no cross-lane API
+contract; d28 is the only lane on `api/types.rs`, `quilltap-web`, and the
+SPA; d26/d27 split `quilltap-host` by file, `spine.rs` vs `host.rs`):
+
+- `work-orders/p4.d26-day-references-fresh-boost.md` — incl. the non-UTC
+  DST oracle leg (TZ=UTC alone cannot distinguish local-calendar from UTC
+  math — the exact bug class the commit fixes) and the explicit-timezone
+  seam threaded from the host's `tz`.
+- `work-orders/p4.d27-embedding-dimension-reconcile.md` — the reconcile
+  inside `write_blocking` with `_conn` twins (the P4.D25 deadlock rule);
+  the direct-connection job enqueue per the render reconcile's precedent.
+- `work-orders/p4.d28-export-markdown-transcript.md` — the route-tier
+  differential over the `chat-dialogs` fixture family (five consumers
+  regen together if it moves), the `chat_timestamp` corpus extension, the
+  live e2e beat.
+
+**One planning collision investigated and cleared:** a lane survey claimed
+`embedding_remainder_equivalence` sits on `episodic-recall-{main,mount}.db`
+— WRONG (it sits on `embedding-remainder-{main,mount}.db`; direct grep).
+The confusion's source: both fixture families' regen recipes use the SAME
+env-var names `QT_FIXTURE_ER_MAIN/MOUNT` for DIFFERENT files. Both orders
+carry the warning; the fixture ownership is genuinely disjoint (d26:
+episodic-recall + its consumers incl. `vault_conv_search`; d27:
+embedding-remainder).
+
+Left out of the round, named: **dogfood #37** (image attachments never
+reach the LLM wire — v5 port divergence, not drift; order-sized, first
+step is the in-chat-vision scope investigation; the strongest next-round
+candidate), the top page-toolbar lane (#38), `p4.9o` (Scriptorium badge
+rider), the `p4.9i2` help-doc riders (`help/chats.md`,
+`help/embedding-profiles.md`, `help/episodic-memory.md`,
+`help/memory-recall-relevance.md` all joined the bank this drift).
+
+Orders committed on branch `claude/setupphase-v4-drift-catchup-55b154`
+(`c9238b87` + the `c81d316b` baseline move). ⚠ **Timing note for the
+unifier:** the three lanes were LAUNCHED from the `c9238b87` versions of
+the orders — i.e. with the baseline text still reading `b3ee00f1` — before
+`5cc76688` landed in v4 and before `c81d316b` moved the round baseline. The
+disposition makes this harmless (`5cc76688` touches nothing any lane ports,
+and regenerating oracles at `5cc76688` is identical to `b3ee00f1` for every
+family in the round), but: (a) a lane that re-runs its drift-check and
+finds `5cc76688` should PROCEED, not stop — the answer is in the
+`c81d316b` order text; (b) the unifier's baseline move is `083fdf68` →
+`5cc76688`, NOT `b3ee00f1`, regardless of what a lane record says.
