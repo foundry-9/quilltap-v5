@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Planned the next porting round: four parallel work orders. One catches v5 up
+to the old app's newest change (a failed project-settings read can no longer
+silently reset the settings to defaults — v5 currently has the same bug the
+old app just fixed). One closes a standing test failure that costs real money:
+autonomous rooms make one extra cheap-LLM call per turn that the old app does
+not. One fixes the round's headline: images attached to a chat never actually
+reach the model — the description you get back is an invention — traced to
+four spots where the image is dropped just before the network call, on every
+provider. And one builds the top toolbar the app has been missing: global
+search (with its one missing server endpoint), background-job badges, the
+autonomous-room badges moved out of their sidebar stopgap, and the
+content-width toggle. Each order carries a fresh survey of both codebases and
+its test obligations. Docs only; no code changed.
+
 Brought three lanes of catch-up work together and shipped them as one: the
 same-day memory recall and fresh-event boost, the enforced single embedding
 standard with its boot-time self-heal, and the Export Markdown transcript.

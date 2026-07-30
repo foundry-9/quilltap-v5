@@ -43383,3 +43383,68 @@ enclave-step follow-up order (item 3); dogfood #37 (the image-attachment
 wire order, still the strongest next-round candidate); the top toolbar
 lane (#38); `p4.9h` (now carrying the banked PUT trigger matrix +
 EMBEDDING_REAPPLY_PROFILE dependency).
+
+## Round planned — the drift + standing-red + dogfood round: P4.D29 ∥ P4.20 ∥ P4.21 ∥ P4.9P (2026-07-30)
+
+**The drift check found v4 ONE behavior commit past `5cc76688`, tree
+clean** — the previously-brewing store-overlay work landed as exactly this
+commit, so the standing "regenerate from a pinned worktree" caution lifts.
+New baseline for the round: v4 **`dcd9440a`** (the move `5cc76688` →
+`dcd9440a` is QUEUED for the unifier via lane P4.D29 — no lane edits
+`CLAUDE.md` or `phase-4.md`). Classification:
+
+- `dcd9440a` — **behavior on a PORTED surface** ("a failed properties.json
+  read no longer wipes project settings"). `readProperties` in the
+  document-store overlay engine now returns null ONLY for a genuinely
+  absent `properties.json` and THROWS the entity's unavailability error on
+  unreadable/malformed/schema-invalid bodies; `applyWriteOverlay`
+  propagates instead of seeding a defaults bag. v5's `read_properties`
+  (`db/document_store_overlay.rs:381-395`) reproduces the OLD fail-soft
+  wipe line-for-line → **lane P4.D29**. The commit's backfill-caller half
+  (`lib/startup/backfill-{group,project}-stores.ts`) lands on the UNPORTED
+  startup-backfill slice and banks there.
+
+**The four orders** (ownership fully disjoint; the two contested files are
+assigned — `services/orchestrator.rs` to P4.21 with a STOP-and-record rule
+for P4.20's possible call-site diff, `api/types.rs`/`engine.rs` to P4.9P as
+the round's only API-boundary and SPA lane):
+
+- `work-orders/p4.d29-store-overlay-read-hardening.md` — the drift re-port:
+  the three throw arms + entity-id thread in `read_properties`, the
+  corrupt-properties differential arms over BOTH store entities (v4's new
+  174-line jest suite is the case blueprint), the blast-radius regen +
+  neutrality proof for the groups/projects/vault-overlay families. Queues
+  the baseline move.
+- `work-orders/p4.20-enclave-precompute-window.md` — closes the STANDING
+  RED `enclave_step_tier3_equivalence` (the P4.19 pre-compute windowing
+  divergence: one extra cheap-LLM call + one error `llm_logs` row per
+  affected autonomous turn, real money). First job is the empirical v4
+  instrumentation the `5cc76688` round said was owed (runs-and-bails vs
+  never-reached); the fix is confined to `pre_compute.rs`/`enclave/**`;
+  the precompute family gains the window-differing case class whose
+  absence let this ship green.
+- `work-orders/p4.21-image-attachments-wire.md` — dogfood #37, scope
+  SETTLED at planning: **in-chat vision is affected, not just describe** —
+  v4 emits attachments on ALL completions through one shared field and
+  per-provider builders (six emit, three drop-and-report); v5 ports the
+  whole loading pipeline then discards at four wire-boundary sites
+  (orchestrator ×2, regenerate_swipe, `request_input_from_params`). The
+  lane threads the types, ports all nine builders' wire shapes, and closes
+  the corpus blind spot (93 request-envelope vectors, zero with
+  attachments). 💸 live proof banked for the dogfood pass.
+- `work-orders/p4.9p-page-toolbar.md` — dogfood #38 + the m6 §2.6
+  global-search/toolbar lane, one vertical: the ONE missing endpoint
+  (`GET /api/v1/ui/search`; all five repo primitives already exist in
+  Rust) as a dispatch verb + REST edge + differential, then the toolbar
+  SPA — relocate the ported autonomous badges off the sidebar-footer
+  stopgap (retiring it), QueueStatusBadges over the already-live
+  `/api/v1/system/jobs` `activeByType`, SearchBar/Dialog/results, the
+  content-width toggle on v4's exact localStorage key (correcting v5's
+  static `72rem` narrow default to v4's `75rem`). The toolbar CSS is
+  already ported verbatim and waiting.
+
+Execution: all four lanes in parallel (disjoint ownership pinned in an
+identical Shared-contract table across the orders). P4.9P owes the round's
+full SPA gate; the three Rust lanes owe none. The dogfood pass remains the
+top HUMAN item and is not an agent order — it now also owes P4.21's live
+vision proof when that lane lands.
