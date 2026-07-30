@@ -884,13 +884,10 @@ where
         runner
     }
 
-    /// The local UTC offset (minutes) for the configured zone at `now_ms`.
+    /// The local UTC offset (minutes) for the configured zone at `now_ms`,
+    /// in JS `getTimezoneOffset()` convention (see [`js_local_offset_minutes`]).
     fn local_offset_minutes(&self, now_ms: i64) -> i64 {
-        use jiff::Timestamp;
-        let tz = jiff::tz::TimeZone::get(&self.tz).unwrap_or(jiff::tz::TimeZone::UTC);
-        Timestamp::from_millisecond(now_ms)
-            .map(|ts| tz.to_offset(ts).seconds() as i64 / 60)
-            .unwrap_or(0)
+        js_local_offset_minutes(&self.tz, now_ms)
     }
 
     /// Pre-resolve the effective connection profile's `(provider, model)` for
@@ -1301,13 +1298,8 @@ where
         let tz_name = self.tz.clone();
         let make_chain_input = move |pid: String| {
             let now = now_unix_ms();
-            let offset = {
-                use jiff::Timestamp;
-                let tz = jiff::tz::TimeZone::get(&tz_name).unwrap_or(jiff::tz::TimeZone::UTC);
-                Timestamp::from_millisecond(now)
-                    .map(|ts| tz.to_offset(ts).seconds() as i64 / 60)
-                    .unwrap_or(0)
-            };
+            // `self` is out of reach inside this move closure, hence the free fn.
+            let offset = js_local_offset_minutes(&tz_name, now);
             ProcessMessageInput {
                 log_context: LogContext::none(),
                 chat_id: chain_chat_id.clone(),
@@ -1840,6 +1832,23 @@ where
             })
         })
     }
+}
+
+/// The local UTC offset (minutes) for `tz_name` at `now_ms`, in **JS
+/// `getTimezoneOffset()` convention: positive = west of UTC** (Chicago in
+/// summer is +300). jiff's `to_offset` is east-positive (Chicago −300), so
+/// the sign flips here. Every core consumer of `local_offset_minutes`
+/// (`chat_timestamp`'s zone-less arm) documents and SUBTRACTS the JS
+/// convention — feeding it the raw jiff sign renders a no-timezone chat at
+/// the mirrored offset on any non-UTC host (found at the 5cc76688-round
+/// unification; invisible to the differentials, which all pin TZ=UTC where
+/// both conventions read 0).
+fn js_local_offset_minutes(tz_name: &str, now_ms: i64) -> i64 {
+    use jiff::Timestamp;
+    let tz = jiff::tz::TimeZone::get(tz_name).unwrap_or(jiff::tz::TimeZone::UTC);
+    Timestamp::from_millisecond(now_ms)
+        .map(|ts| -(tz.to_offset(ts).seconds() as i64) / 60)
+        .unwrap_or(0)
 }
 
 /// `Math.random()` off the OS CSPRNG (via the ported `RandomBytes` source).
@@ -3199,5 +3208,23 @@ mod tests {
             let r = os_random01();
             assert!((0.0..1.0).contains(&r), "out of range: {r}");
         }
+    }
+
+    /// The JS `getTimezoneOffset()` sign convention: positive = WEST of UTC.
+    /// Pinned at absolute instants so the assertions hold on any host zone.
+    /// (jiff's raw `to_offset` is east-positive; the flip is the point.)
+    #[test]
+    fn local_offset_minutes_is_js_west_positive() {
+        // 2026-07-28T12:00:00Z — Chicago on CDT (UTC-5): JS offset +300.
+        let summer_noon_utc = 1_785_240_000_000;
+        assert_eq!(js_local_offset_minutes("America/Chicago", summer_noon_utc), 300);
+        // Same instant in Tokyo (UTC+9, no DST): JS offset -540.
+        assert_eq!(js_local_offset_minutes("Asia/Tokyo", summer_noon_utc), -540);
+        // 2026-01-15T12:00:00Z — Chicago on CST (UTC-6): JS offset +360.
+        let winter_noon_utc = 1_768_478_400_000;
+        assert_eq!(js_local_offset_minutes("America/Chicago", winter_noon_utc), 360);
+        // UTC and an unresolvable zone (falls back to UTC) are both 0.
+        assert_eq!(js_local_offset_minutes("UTC", summer_noon_utc), 0);
+        assert_eq!(js_local_offset_minutes("Not/AZone", summer_noon_utc), 0);
     }
 }
