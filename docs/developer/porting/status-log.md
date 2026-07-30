@@ -44362,3 +44362,40 @@ ordered `72rem`→`75rem` correction is taken** (`_variables.css` — the static
 default was a transcription drift; the service re-applies live values anyway).
 Specs: 10 (service 7 — including the wide-preference-on-narrow-viewport gate
 and the storage-event filter — + toggle 3). Mounted by unit 3's toolbar.
+
+## Lane record — P4.9P unit 4: QueueStatusBadges + the queue-change bus + trigger sites (2026-07-30)
+
+`queue-status.logic.ts` ports v4's bucket table (five buckets, exact job-type
+keys), `hasActiveJobs`, `getQueueCount`, and `notifyQueueChange()` — the
+MECHANISM decision the order asked to record: v5 keeps v4's window
+CustomEvent (`quilltap:queue-change`) verbatim, because its whole point is
+that ANY code can fire it with no dependency on the badges, which holds
+equally in Angular. `qt-queue-status-badges` ports the component: always
+rendered, `qt-queue-badge-idle` dim at 0, v4's exact tooltip shape,
+event-driven start / stop-at-zero 5s poll over
+`fetch(apiUrl('/api/v1/system/jobs'))` no-store reading `activeByType`
+(the route has been live since P4.9G1; this is its first SPA consumer),
+NavigationEnd → stop + re-fire (v4's usePathname effect), mount → fire.
+
+**Trigger-site map (v4's 21 calls → v5), the order's enumeration:**
+- LIVE (5 sites): the salon send-turn reconcile point in
+  `salon-conversation.ts` (covers v4's FOUR `useSSEStreaming` completion
+  callbacks — v5 has one unified path); `onRegenerate` (messageSwipe — v4
+  `useMessageActions:327`); `onRegenerateBackground` success (v4
+  `useChatControls:410`); `scriptorium.store.scanStore` success guarded on
+  `embeddingJobsEnqueued > 0` (covers v4's TWO scan hooks — one shared v5
+  store); `memory-regenerate-card` success (v4 `memory-regenerate-card:83`).
+- NO ANALOG — documented divergences, each blocked on an unported surface:
+  SalonListView re-extract + render-conversation (×2 — v5's salon list has no
+  such row actions); the in-chat queue-memories action (v4
+  `useMemoryActions:74` — `chatQueueMemories` is live server-side, no SPA
+  caller yet); embedding-profiles ProfileModal/ProfileList (×4 — the
+  management surface is the standing `p4.9h` deferral);
+  conversation-summary-regenerate-card (×1 — card unported);
+  character-conversations-tab re-extract / re-render / refresh-archive (×3 —
+  the P4.6g action-list deferral). When those surfaces land, their orders
+  inherit the trigger call.
+
+Specs: 7 (bucket table pinned, count/zero logic, dim-at-zero render +
+tooltip, mount-check-no-poll-at-zero, active→poll→stop-at-zero drain,
+notifyQueueChange wake, failed-fetch collapse).

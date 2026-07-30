@@ -3,6 +3,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../core/core-client';
 import type { RegenerateAllStatus } from '../../../core/core-contract';
+import { notifyQueueChange } from '../../../layout/queue-status.logic';
 import { fetchRegenerateStatus, memoryKeys, regenerateAllMemories } from '../../../memory/memory.api';
 
 const POLL_INTERVAL_MS = 5000;
@@ -118,6 +119,9 @@ export class MemoryRegenerateCard {
     try {
       await regenerateAllMemories(this.core);
       this.confirming.set(false);
+      // v4 `memory-regenerate-card.tsx:83` wakes the toolbar queue badges too
+      // (the sweep rides the MEMORY_REGENERATE_* queue).
+      notifyQueueChange();
       // Light the in-flight badge immediately.
       await this.queryClient.invalidateQueries({ queryKey: memoryKeys.regenerateStatus() });
     } catch (err) {

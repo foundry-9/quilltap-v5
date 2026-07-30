@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import { notifyQueueChange } from '../../layout/queue-status.logic';
 import * as api from './scriptorium.api';
 import type {
   CreateDocumentStoreData,
@@ -106,6 +107,12 @@ export class ScriptoriumStore {
         kind: 'success',
         message: `Scan complete: ${result.scanResult.filesScanned} files scanned, ${result.embeddingJobsEnqueued} embedding jobs queued`,
       });
+      // v4 wakes the queue badges when a scan enqueued embedding jobs
+      // (useDocumentStores:141 / useDocumentStoreDetail:126 — v5's one shared
+      // store covers both call sites), guarded on the count exactly as v4 is.
+      if (result.embeddingJobsEnqueued > 0) {
+        notifyQueueChange();
+      }
       return true;
     } catch (err) {
       this._flash.set({ kind: 'error', message: message(err, 'Failed to scan document store') });

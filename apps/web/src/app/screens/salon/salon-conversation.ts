@@ -34,6 +34,7 @@ import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import type { ChatSectionState } from '../../chat/sidebar/chat-section';
 import type { VisibilityState } from '../../chat/sidebar/visibility-section';
 import type { ImageClickEvent } from '../../chat/message-row';
+import { notifyQueueChange } from '../../layout/queue-status.logic';
 import { ImageModal } from '../../images/image-modal';
 import { SaveImageDialog } from '../../images/save-image-dialog';
 import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
@@ -1018,6 +1019,9 @@ export class SalonConversation {
       // Both §2 success arms are shown verbatim: "…queued" and "…already in
       // progress" are distinct states the user should be able to tell apart.
       this.chatFlash.set({ kind: 'success', message: result.message });
+      // v4 `useChatControls` (:410) wakes the queue badges — the regeneration
+      // rides the STORY_BACKGROUND_GENERATION queue.
+      notifyQueueChange();
       this.poller.start(
         this.backgroundVar(),
         async () => (await this.backgroundQuery.refetch()).data ?? null,
@@ -2312,6 +2316,10 @@ export class SalonConversation {
     // Reconcile: refetch the canonical chat (v4 `fetchChat()` on done), then clear
     // the optimistic overlays so the streamed bubbles hand off without duplication.
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    // Wake the queue badges — the turn just enqueued post-turn jobs (v4 fires
+    // notifyQueueChange at all four useSSEStreaming completion callbacks
+    // (:771/:827/:1018/:1038); v5's single reconcile point covers them).
+    notifyQueueChange();
     this.stream.set(null);
     this.optimisticUser.set(null);
 
@@ -2452,6 +2460,9 @@ export class SalonConversation {
   protected async onRegenerate(message: MessageDto): Promise<void> {
     await this.core.dispatch({ type: 'messageSwipe', messageId: message.id });
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    // v4 `useMessageActions.generateSwipe` (:327) wakes the queue badges after
+    // the swipe lands (the regeneration enqueues post-turn jobs).
+    notifyQueueChange();
   }
 
   protected async onDelete(message: MessageDto): Promise<void> {

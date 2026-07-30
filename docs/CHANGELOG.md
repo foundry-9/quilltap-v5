@@ -87,6 +87,14 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+Ported the background-queue status badges: five compact counters (memory,
+embedding, summaries, danger checks, image generation) that light up while
+background work is running and dim to zero when it drains. Polling is
+event-driven, exactly like the old app: it wakes when an action queues jobs
+(sending a turn, regenerating a response or a story background, scanning a
+document store, the regenerate-all sweep), re-checks on navigation, and stops
+itself once every queue is empty. The badges appear in the toolbar next.
+
 Ported the content-width preference: the narrow-vs-wide layout toggle now has
 its engine — the old app's exact localStorage key and widths (900px chat
 rows and 75rem pages in narrow; full width in wide), the 1000px viewport gate
