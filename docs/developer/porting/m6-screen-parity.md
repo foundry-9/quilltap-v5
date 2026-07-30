@@ -579,7 +579,7 @@ real directories.
 | SearchReplaceModal (tools) | `components/tools/search-replace/SearchReplaceModal.tsx` | `chat/tools/search-replace-modal.ts` | ~~`p4.9e3`~~ **DONE** (P4.9E3C, 2026-07-27 — the five v4 step components collapsed into one, the wizard behaviour unchanged) |
 | Housekeeping dialog | `components/memory/housekeeping-dialog.tsx` | `memory/housekeeping-dialog.ts:21` | **PARITY** (P4.6t) |
 | Memory-creation dialog | `components/import/memory-creation-dialog.tsx` | absent | **MISSING** → `p4.9h` |
-| Search dialog | `components/search/search-dialog.tsx` | absent | **MISSING** → toolbar (re-binned 2026-07-24, §2.6) |
+| Search dialog | `components/search/search-dialog.tsx` | `search/search-dialog.ts` | **DONE (P4.9P, 2026-07-30)** — bar + dialog + results over the new `uiSearch` verb; §2.6's toolbar note is CLOSED |
 | HelpChatDialog | `components/help-chat/HelpChatDialog.tsx`, mounted `app-layout.tsx:135` | absent | **MISSING** → `p4.9i` |
 | BrahmaConsoleDialog | `components/brahma-console/BrahmaConsoleDialog.tsx`, mounted `app-layout.tsx:136` | absent | **MISSING** → `p4.9i` |
 
@@ -597,19 +597,22 @@ because both are app-layout-mounted console surfaces with the same
 > - **CapabilitiesReportDialog** + `capabilities-report-card` are hosted on
 >   the **Providers tab** (`components/settings/tabs/ProvidersTabContent.tsx:10,74`)
 >   → re-binned to a future **Providers-tab rider** (unscheduled).
-> - **SearchDialog** is the **global toolbar's** search
->   (`components/search/search-bar.tsx:218` → `components/layout/page-toolbar.tsx`,
->   route `GET /api/v1/ui/search`) → re-binned to a future
->   **global-search/toolbar lane** (unscheduled; v5 has no page-toolbar yet).
->   **WIDENED (2026-07-29, dogfood finding #38):** the unported
->   `page-toolbar.tsx` hosts FOUR occupants, not just search —
->   `AutonomousRoomBadges`, `QueueStatusBadges`, the `SearchBar`, and
->   `NavContentWidthToggle`, plus the page-specific left/right slots (e.g. the
->   chat's project link). Two of these already exist in v5 but are homeless:
->   `AutonomousRoomBadges` is ported and parked in the left-sidebar footer
->   (`shell/shell.ts:138`) because there is no top header — the badge that
->   surfaced #38. When the toolbar lane runs it must relocate the autonomous
->   badges off the footer stopgap and retire that placement.
+> - **SearchDialog / the global-search+toolbar lane — CLOSED (P4.9P,
+>   2026-07-30).** `qt-page-toolbar` hosts v4's four occupants in v4's order
+>   (autonomous badges — RELOCATED off the footer stopgap, which is retired —
+>   queue-status badges, the SearchBar, NavContentWidthToggle) plus the slot
+>   service; `GET /api/v1/ui/search` is ported with a 23-case differential.
+>   **The tier-2 slot ruling (recorded): the Salon KEEPS its inline
+>   `qt-conversation-header`; the slots landed with NO consumer.** v4's one
+>   slot consumer only works in a tabbed shell through the per-tab bridge
+>   (`components/workspace/tab-toolbar.tsx` — the focused pane's active tab
+>   supplies the global slots), which v5 lacks; without it the global slots
+>   would show chat A's breadcrumb while chat B's tab is focused. Follow-up:
+>   port the bridge, then move the header into the slots. Named deferrals:
+>   the `?msg=` message anchor on message results, the `/photos?tag=` filter
+>   (the photos screen doesn't read it yet), and the ten queue-trigger sites
+>   whose v4 surfaces are unported (each inherits the `notifyQueueChange`
+>   call when its surface lands).
 > - **SearchReplaceModal** (tools variant) is opened from the chat views
 >   (`app/salon/[id]/components/ChatModals.tsx`, `CharacterDetailView.tsx`)
 >   → re-binned to **`p4.9e3`** (the chat-admin dialog family), where its

@@ -44518,3 +44518,124 @@ ruling. The loud deferrals: the `?msg=` message anchor, the `/photos?tag=`
 filter, the ten no-analog queue-trigger sites (each blocked on an unported
 surface), and the workspace per-tab toolbar bridge (the named follow-up
 that unlocks the Salon slot adoption).**
+
+## Round record — the drift + standing-red + dogfood round unification (P4.D29 ∥ P4.20 ∥ P4.21 ∥ P4.9P), 2026-07-30
+
+**ALL FOUR CLOSED; the oracle baseline MOVES to `dcd9440a`; dogfood #37 and
+#38 are FIXED.** Reconciled on `unify/dcd9440a-round`: the sixteen lane
+commits cherry-picked in dependency order (D29 → P4.20 → P4.21 → P4.9P; the
+Rust lanes before the SPA/api lane), only version-file conflicts (all
+confirmed version-only per the playbook before resolving; core auto-merged
+SILENTLY on the identical 0.0.412 bump — the recount rule fired again).
+Version recount: core 0.0.411 + 6 bumps → 0.0.417 (+1 §3 review → **0.0.418**),
+harness 0.0.356 + 7 → **0.0.363**, web → **0.0.55**, SPA 0.5.325 (+1 review →
+**0.5.326**); host/cli/tauri unchanged.
+
+**v4 drift handling.** v4 moved THREE commits past `dcd9440a` mid-round:
+`83118077` (pascal custom-tools through the canonical mount reader —
+BEHAVIOR on the PORTED loader; catch-up OWED, phase-4.md item 2) and two
+test-coverage-only commits (`71dcc7e8`, `80cafed5` — NO-PORT). Tree CLEAN at
+`80cafed5`. Every oracle/corpus this unification regenerated came from a
+pinned detached worktree at `dcd9440a`
+(`/private/tmp/qt-v4-pin-unify-dcd9440a`). **Two regen traps found:** the
+provider-corpus recorders ALSO need `plugins/node_modules` AND per-plugin
+`plugins/dist/*/node_modules` symlinks in the pin — and a missing one does
+NOT fail the script; it records the 34 anthropic vectors as `refused:true /
+"Cannot find module '@anthropic-ai/sdk'"` and only the byte-diff against the
+committed corpus catches the poisoned output (the refusal-line shape makes a
+resolution failure look like recorded behavior).
+
+**The §3 review (two parallel reviewers + my own pass over D29/P4.20; I own
+the verdict). One SHIPPING bug and two fidelity gaps, all fixed on the
+branch (`387b1dc3`), each with a pin:**
+
+1. **BLOCKING — the search dialog's open-seeding effect tracked
+   `selectedTypes`** (`search-dialog.ts` — the `performSearch(initial,
+   this.selectedTypes(), …)` read registered the dependency): in any dialog
+   opened pre-seeded ("See all results →", a type-count click), every chip
+   toggle re-ran the seeding — chips snapped back (permanently frozen in the
+   type-count flow), the typed query was clobbered, the initial search
+   re-fired. No spec or beat covered the dialog. Fixed by computing the seed
+   types locally (v4's effect deps are [isOpen, initialQuery, initialTypes]
+   only); `search-dialog.spec.ts` added and MUTATION-PROVEN (re-introducing
+   the read fails both specs).
+2. **The Anthropic/Grok text-document decode-failure arm was unfaithful**
+   (`anthropic_text_document_data` / the old `forgiving_base64`): the doc
+   comment claimed "the callers fall back like v4's catch", but v4's catch is
+   DEAD CODE — Node's `Buffer.from(s,'base64')` NEVER throws; it leniently
+   mangles ("hello" → "\u{FFFD}\u{FFFD}e", "x=1" → ""), so v5 shipped
+   raw content where v4 ships mojibake, on a LIVE arm (any newline-free
+   base64-charset text file). Fixed with a byte-faithful
+   `node_lenient_base64` (probed on Node 24: skip invalid chars incl.
+   URL-safe mapping, stop at the first `=`, floor(bits/8); 17-vector unit
+   pin) and the corpus gained `text-attachment-mangled-b64` (anthropic ×
+   both modes; 144 → 146, pre-existing vectors byte-identical,
+   red-under-mutation proven).
+3. **The CHAT_MESSAGE `llm_logs` projection logged `attachments: None`**
+   where v4 logs the bags verbatim (`streaming.service.ts:454`) — the wire
+   was threaded in P4.21 unit 1, the log wasn't; the Inspector would have
+   shown no attachments on every vision send. Fixed via the extracted
+   `log_request_messages` helper + unit pin. (A placement gotcha en route:
+   inserting a helper directly above `log_chat_message_call` detached its
+   `#[allow(clippy::too_many_arguments)]` — clippy caught it.)
+
+**Recorded, not fixed (each named in place or in an order header):** the
+regenerate funnel's 4-field `CompletionAttachment` narrowing drops `url`
+(named-divergence comment in `regenerate_swipe.rs`; widening would disturb
+the frozen canned-key serialization); wire-byte unit pins for drop sites 1/3
+(the two conversions the canned substrate structurally cannot see) — a named
+test-gap follow-up; the dialog `clearQuery` divergence + the `avatarUrl`
+omission documented in place; duplicate-query-param resolution (axum
+last-wins vs v4 first-wins — hand-crafted URLs only); v4's
+`findByFilter` Zod row-drop on corrupt tag rows (v5 emits every row).
+**Adjudications:** P4.D29's tier-2 unit-4 escalation is ORDERED as a
+next-round item rather than landed here (an api/** error-envelope unit with
+its own differential obligation — phase-4.md item 3); P4.20's recorded
+standing-red strike wording applied to CLAUDE.md/phase-4.md with its
+correction (the red cost NO production money — the oracle, not v4, was the
+divergence).
+
+**The unification wires:** the §1 contract diffed name-for-name clean
+(`uiSearch`: q/types/limit/offset, optional strings both sides); the
+baseline move made (CLAUDE.md — D29's queued wording, adjusted for the
+mid-round drift + the now-clean tree); the standing-red wording struck from
+CLAUDE.md and phase-4.md item 2 per P4.20's record; the m6 §2.6 toolbar note
+CLOSED + the P4.9P tier-2 slot ruling recorded there; all four order status
+headers updated. No ACTIVATE-AT-UNIFY beats existed this round (P4.9P's four
+beats shipped live on its branch); P4.20 owed no orchestrator wire (zero v5
+source changed).
+
+**The gate (on `unify/dcd9440a-round`):**
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release` clean.
+- Oracles regenerated FRESH from the pinned `dcd9440a` worktree and re-run
+  BY NAME with `--nocapture`, zero SKIP: `groups_tier2_equivalence` +
+  `projects_tier2_equivalence` (fresh corpora carrying the new refusal
+  arms, marker-grepped), `precompute_equivalence` (12 cases incl. both new
+  window shapes), `enclave_step_tier3_equivalence` (GREEN — the standing
+  red is CLOSED, on the COMBINED branch carrying P4.21's orchestrator
+  changes), `ui_search_equivalence` (23 cases), 
+  `file_attachment_tier3_equivalence`, `attach_mount_file_equivalence`,
+  `request_builder_equivalence` (146 envelopes, 3 recorded refusals),
+  `request_builder_google_equivalence`,
+  `request_builder_google_wire_equivalence`, `response_parse_equivalence`,
+  `tool_wire_call_site` (6). The three provider corpora regenerated from
+  the pin: request-envelopes byte-identical at 144 then extended to 146 by
+  the review fix (pre-existing lines byte-identical), google-wire +
+  google-request byte-identical.
+- `cargo test --workspace --no-fail-fast` with all round env vars, AFTER
+  the review fixes: **402 test binaries / 1,719 tests / 0 failed**.
+- SPA: `ng test` **259 files / 3,154 passed** (the new dialog spec in);
+  `ng build` clean; **full Playwright 160 passed / 0 failed / 0 skipped**
+  (4.3 m, fresh dist + fresh release binaries; the four P4.9P beats and
+  both destructive tails green; no run-order flakes this round).
+
+**Versions after the round:** core 0.0.418, harness 0.0.363, host 0.0.51,
+web 0.0.55, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.326.
+
+**What's next:** the dogfood pass (now also owing P4.21's 💸 live vision
+proof and a toolbar/search walk); the `83118077` Pascal drift catch-up; the
+store-unavailable 503 envelope (the ordered D29 escalation); then p4.9h /
+the toolbar bridge / the Zod format-validator gap — phase-4.md's
+next-candidates list is current.

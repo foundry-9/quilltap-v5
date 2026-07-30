@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Brought the round's four lanes together and shipped them as one. Images you
+attach to a conversation now actually reach the model — before this, every
+"describe this image" answer was an invention, because the picture was
+silently dropped just before the network call on every provider; the fix is
+proven byte-for-byte against freshly recorded requests from all nine
+providers, in both streaming and non-streaming modes. The app also gained its
+top toolbar: global search (Cmd+K) across chats, characters, messages, tags,
+and memories, live background-job badges, the autonomous-room badges moved to
+where they belong, and a content-width toggle that remembers your choice. A
+just-landed upstream fix was mirrored the same day: a failed read of a
+project's settings file can no longer silently reset those settings to
+defaults. And a long-standing red test turned out to be the test lying, not
+the app misbehaving — the test kitchen had been suppressing a call the
+reference app really makes; no extra money was ever being spent, and the test
+now watches the exact prompt to keep that class of blindness closed. Full
+fleet green: 1,719 native checks, 3,154 interface checks, 160 end-to-end
+walks including four new toolbar walks.
+
 The unification review of this round's four lanes caught and fixed three
 things before they reached anyone. The search dialog's filter chips were broken
 whenever the dialog opened pre-seeded from "See all results" or a type count:

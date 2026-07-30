@@ -1599,13 +1599,95 @@ records THERE. Update this summary only when a phase or round completes.
   binaries / 1,705 / 0 with the round's 25 families by name zero SKIP over
   oracles regenerated fresh from a pinned `5cc76688` worktree; clippy both
   feature sets; release build; ng 252 files / 3,121; full Playwright
-  **156/156 zero skips**. **Standing loud:** `enclave_step_tier3` is RED
-  from a PRE-EXISTING P4.19 pre-compute-windowing divergence (one extra
-  cheap-LLM call + an error `llm_logs` row per affected autonomous turn —
-  real money; a dedicated follow-up order is owed — phase-4.md item 2); the
-  round's live proofs join the owed dogfood pass. Versions: core 0.0.411,
+  **156/156 zero skips**. The round's live proofs join the owed dogfood
+  pass. (Its "standing loud" enclave_step_tier3 red was CLOSED by P4.20 the
+  next round: the red was a stale ORACLE mock, not a v5 divergence, and no
+  production money was ever being spent.) Versions: core 0.0.411,
   harness 0.0.356, host 0.0.51, web 0.0.54, cli 0.0.3, quilltap-tauri
   0.0.5, SPA 0.5.320.
+- **The drift + standing-red + dogfood round (P4.D29 ∥ P4.20 ∥ P4.21 ∥
+  P4.9P): UNIFIED on main (2026-07-30) — ALL FOUR CLOSED; the oracle
+  baseline MOVES to `dcd9440a`; dogfood #37 and #38 are FIXED.** The
+  `dcd9440a` store-overlay read-hardening re-port (a failed
+  `properties.json` read can no longer wipe a settings bag; the corrupt-
+  store refusal arms through BOTH `StoreEntity`s, mutation-proven; a
+  pre-existing lowercase-label `Display` divergence fixed on the way; the
+  unit-4 routes-envelope tier-2 arm ESCALATED — v4 answers a deliberate
+  contextful 503 where v5 still answers 500 + leaked detail, the fix
+  belongs to `api/**` with an ordered shape recorded in the lane record) ∥
+  the standing `enclave_step_tier3` red CLOSED — **the diagnosis REFUTED
+  the planning hypothesis**: v4 never bails on the Fold turn; the oracle
+  case still carried a W4.11a-era stub of `runPreContextPreCompute` that
+  P4.19 retired in one sibling file and missed here, so the harness was
+  lying about v4 and v5 was NEVER making an extra production call (zero v5
+  source changed; the precompute family now diffs the DISTILL PROMPT
+  itself — the window/cap/truncation in one comparand — and gained the two
+  window-differing shapes, mutation-proven) ∥ P4.21: **image attachments
+  reach the provider wire on every completion path** (dogfood #37 fixed —
+  the carrying types, all four drop sites, the nine builders' recorded
+  byte shapes, `attachmentResults` both modes, the corpus blind spot
+  closed: request-envelopes 93 → 146, google-wire 10 → 18, all
+  pre-existing vectors byte-identical, coverage shape-asserted; three
+  v4-side finds recorded — the @openrouter/sdk refuses non-streaming
+  vision sends in v4 itself, Grok's text/PDF arms are dead code, the
+  stale `attachment-support.ts` client map) ∥ P4.9P: **the top
+  page-toolbar vertical** (dogfood #38 fixed — the `uiSearch` verb +
+  `GET /api/v1/ui/search` with a 23-case differential over a /tmp-built
+  five-type fixture, quirks carried; the toolbar + slot service + shell
+  cutover with the sidebar-footer stopgap RETIRED; queue-status badges
+  over the live jobs route with v4's event-driven poll; the search
+  bar/dialog/results; the content-width service on v4's exact key with
+  the 72rem→75rem correction; four e2e beats incl. the lock/unlock gate
+  walk). **The §3 review caught a shipping bug + two fidelity gaps, all
+  fixed on the unify branch with pins:** the search dialog's open-seeding
+  effect tracked `selectedTypes` (chips froze/reset in any pre-seeded
+  dialog — spec added, mutation-proven), the Anthropic text-document
+  decode-failure arm diverged from Node's never-throwing lenient decoder
+  (now byte-faithful, probed on Node 24, pinned by the new
+  `text-attachment-mangled-b64` corpus vectors), and the CHAT_MESSAGE
+  `llm_logs` projection dropped the attachment bags v4 logs. Gate: 402
+  test binaries / 1,717 / 0 (see the round record for the by-name list);
+  clippy both feature sets; release build; ng 259 files / 3,154; full
+  Playwright green (numbers in the round record). Deferred loud: the
+  store-unavailable 503 envelope (escalated, ordered next), the Zod
+  format-validator gap on property bags, wire-byte unit pins for drop
+  sites 1/3, the Salon slot adoption behind the workspace per-tab toolbar
+  bridge, the `?msg=` anchor + `/photos?tag=` filter, the ten no-analog
+  queue-trigger sites. **💸 P4.21's live proof (real describe + in-chat
+  vision on the Friday copy) joins the owed dogfood pass.** Versions:
+  core 0.0.418, harness 0.0.363, web 0.0.55, SPA 0.5.326; host/cli/tauri
+  unchanged.
+- **Oracle baseline: `dcd9440a` (2026-07-30), adopted at the P4.D29
+  store-overlay-hardening unification. ⚠ v4 HAS ALREADY DRIFTED PAST IT.**
+  The one commit past `5cc76688` is `dcd9440a` (a failed `properties.json`
+  read no longer wipes a settings bag → P4.D29). Nine families regenerated
+  there — the two the drift changes (`groups_tier2`, `projects_tier2`) and
+  seven neutrality families (`groups_routes`, `projects_routes`,
+  `group_doc_mount_links_tier2`, `project_doc_mount_links_tier2`,
+  `vault_read_overlay`, `system_restore_state`, `system_import_state`) —
+  all green, the happy paths output-neutral; the unification re-ran the
+  round's other families (enclave-step, precompute, ui-search,
+  file-attachment, attach-mount-file, the three provider corpora) fresh
+  from a pinned `dcd9440a` worktree too. Families the round did not touch
+  keep their prior regen vintage. **⚠ v4 moved THREE commits past the
+  baseline during the round: `83118077` ("pascal custom-tool definitions
+  load through the canonical mount reader") lands on the PORTED
+  `lib/pascal/custom-tools.ts` — a drift catch-up is OWED (boundary
+  enforcement via `resolveFsAbsolute`, blob-stored definitions becoming
+  readable, a new `SOURCE_NOT_FOUND` race skip; the pascal /
+  tool-definitions / workbench families are its blast radius) — while
+  `71dcc7e8` and `80cafed5` are test-coverage-only (NO-PORT). v4's tree is
+  CLEAN at `80cafed5`, but regenerate oracles from a worktree pinned at
+  `dcd9440a` until the Pascal drift is absorbed
+  (`oracle-regen-pinned-v4-worktree` — note the pin also needs
+  `plugins/node_modules` + per-plugin `plugins/dist/*/node_modules`
+  symlinks when regenerating provider corpora).** ⚠ Since P4.d26 the
+  distill-transitive tier-3 oracles (orchestrator / salon-swipe /
+  regenerate-swipe / enclave-step, plus the distill/precompute/replay/
+  build-context families) are **TZ-SENSITIVE** — their recipes pin TZ=UTC;
+  never regenerate without the pins. ⚠ The standing committed-fixture
+  regen rule applies unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `5cc76688` (v4 HEAD, 2026-07-30), adopted at the
   5cc76688 drift-catch-up unification — NO v4 drift debt remains.** The four
   commits past `083fdf68`: `505dcb1f` (same-day recall + fresh boost →

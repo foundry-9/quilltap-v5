@@ -3569,25 +3569,56 @@ post-5.0).
    Export Markdown download from a rich chat) plus everything previously
    owed (walk Parts D/F items, the P4.6BM embedding-worker live proof
    already banked).
-2. **The enclave-step pre-compute divergence — a dedicated follow-up order.**
-   `enclave_step_tier3_equivalence` is a STANDING RED (pre-existing, P4.19):
-   v5 runs the proactive pre-compute distill with a 1-message window where
-   v4's `proactiveRecallTask` bails, then also runs the fallback distill —
-   one extra cheap-LLM call + one error `llm_logs` row per affected
-   autonomous turn (real money). Diagnosis notes in the P4.d26 unit-5 lane
-   record; the fix needs its own differential case.
-3. **Dogfood #37 — the image-attachment wire order** (unchanged; the
-   strongest feature-sized candidate: no provider builder emits image parts,
-   so vision calls go out text-only; first step is scoping whether in-chat
-   vision is affected).
-4. **The top page-toolbar lane** (#38: autonomous badges + queue badges +
-   search + width toggle), `p4.9h` (prompt library + embedding-profiles
-   management — now carrying the banked PUT trigger matrix and its
-   `EMBEDDING_REAPPLY_PROFILE` handler dependency), `p4.9i2`, `p4.9o`, and
-   the standing pools.
+2. **The enclave-step pre-compute divergence** — ~~a dedicated follow-up
+   order~~ **DONE (P4.20, 2026-07-30): the planning hypothesis was REFUTED
+   — the red was a stale ORACLE mock (a W4.11a-era stub P4.19 retired in
+   one file and missed in the enclave-step case), not a v5 divergence, and
+   no production money was ever being spent. The family is back in the
+   normal green gate; the precompute family now diffs the distill prompt.**
+3. **Dogfood #37 — the image-attachment wire order** — **DONE (P4.21,
+   2026-07-30): in-chat vision WAS affected; attachments now reach the
+   wire on every completion path across all nine providers, corpus-pinned
+   (146 envelopes). 💸 The live proof rides the next dogfood pass.**
+4. **The top page-toolbar lane (#38)** — **DONE (P4.9P, 2026-07-30): the
+   toolbar + `uiSearch` vertical landed; the sidebar-footer stopgap is
+   retired.**
 
-⚠ **Watch item:** v4's tree is DIRTY with in-flight store-overlay work
-(`document-store-overlay.ts`, `backfill-{group,project}-stores.ts`) — the
-next drift is brewing on a PORTED surface. Drift-check before the next
-round; regenerate oracles from a pinned worktree until it lands and is
-absorbed.
+### Round outcome (2026-07-30) — the drift + standing-red + dogfood round, UNIFIED
+
+**P4.D29 ∥ P4.20 ∥ P4.21 ∥ P4.9P ALL CLOSED** (orders
+`work-orders/p4.d29-store-overlay-read-hardening.md` /
+`p4.20-enclave-precompute-window.md` / `p4.21-image-attachments-wire.md` /
+`p4.9p-page-toolbar.md`). The oracle baseline MOVES to **`dcd9440a`**;
+dogfood findings #37 and #38 are FIXED. Full round record in
+`status-log.md`; gate numbers in CLAUDE.md's Status bullet.
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass** — item 1 above stands whole, and now ALSO owes
+   P4.21's 💸 live proof (a real describe call + a real in-chat vision send
+   on the Friday copy — the model must describe the ACTUAL image) and a
+   toolbar/search walk on real data.
+2. **The `83118077` Pascal drift catch-up** — v4 moved mid-round on the
+   PORTED `lib/pascal/custom-tools.ts` (`readToolFile` → the canonical
+   `readMountFileBytes`: path-boundary enforcement, blob-stored definitions
+   become readable, a `SOURCE_NOT_FOUND` race skip). Blast radius: the
+   pascal / tool-definitions / workbench oracle families. Small,
+   lane-sized. (`71dcc7e8`/`80cafed5` are test-coverage-only — NO-PORT.)
+3. **The store-unavailable 503 envelope** — the P4.D29 unit-4 escalation:
+   v4 maps Project/Group/CharacterVault store-unavailable errors to a
+   deliberate contextful 503 (`{error, projectId}` etc.) where v5 answers
+   500 + a leaked internal detail. The ordered shape (additive
+   `ErrorKind::Unavailable` + an entity-id field on `CoreError` + the two
+   `overlay_to_db` replacements + the vault sibling) is in the P4.D29
+   unit-4 lane record. Small; touches `api/**`.
+4. **`p4.9h`** (prompt library + embedding-profiles management — carrying
+   the banked PUT trigger matrix, its `EMBEDDING_REAPPLY_PROFILE`
+   dependency, and now four of the queue-badge trigger sites), the
+   workspace per-tab toolbar bridge (unlocks the Salon slot adoption —
+   the P4.9P tier-2 ruling), the Zod format-validator gap on property
+   bags (P4.D29's deferral), `p4.9i2`, `p4.9o`, and the standing pools.
+
+⚠ **Watch item:** v4 is THREE commits past the `dcd9440a` baseline
+(`83118077` behavior — item 2 above; two test-only). The tree is CLEAN at
+`80cafed5`, but regenerate oracles from a worktree pinned at `dcd9440a`
+until the Pascal drift is absorbed.
