@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+The unification review of this round's four lanes caught and fixed three
+things before they reached anyone. The search dialog's filter chips were broken
+whenever the dialog opened pre-seeded from "See all results" or a type count:
+toggling a chip snapped everything back, wiped what you had typed, and re-ran
+the original search — fixed, with a regression test that fails on the old
+wiring. A subtle text-decoding mismatch was fixed too: text files whose content
+merely looks like base64 are now garbled exactly the way the old app garbles
+them (its decoder never fails, it mangles), proven against a freshly recorded
+sample. And the LLM Inspector now records image attachments on chat requests
+the way the old app does, so a vision send shows what was actually attached.
+
 Re-checked every neighbouring test family against the old app after the
 settings-file fix, including the ones that only pass nearby — all still agree,
 and the fix changes nothing on the healthy paths. Two families the plan listed

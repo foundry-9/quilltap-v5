@@ -175,10 +175,17 @@ export class SearchDialog {
         const initial = this.initialQuery();
         const initialTypes = this.initialTypes();
         if (initial) this.query.set(initial);
-        this.selectedTypes.set(initialTypes && initialTypes.length > 0 ? initialTypes : ALL_TYPES);
+        // Compute the seed types locally rather than reading `selectedTypes()`
+        // back — a signal read here would REGISTER the effect on it, so every
+        // later chip toggle would re-run this seeding (snapping the chips back
+        // to the initial types, clobbering the typed query, and re-firing the
+        // initial search). v4's effect deps are [isOpen, initialQuery,
+        // initialTypes] only (search-dialog.tsx:110-140).
+        const seedTypes = initialTypes && initialTypes.length > 0 ? initialTypes : ALL_TYPES;
+        this.selectedTypes.set(seedTypes);
         setTimeout(() => this.searchInput()?.nativeElement.focus(), 100);
         if (initial && initial.length >= 2) {
-          void this.performSearch(initial, this.selectedTypes(), 0, true);
+          void this.performSearch(initial, seedTypes, 0, true);
         }
       } else {
         this.query.set('');
@@ -220,6 +227,14 @@ export class SearchDialog {
     void this.performSearch(this.query(), this.selectedTypes(), 0, true);
   }
 
+  /**
+   * DIVERGENCE from v4 (recorded): in v4, clearing the input of a dialog
+   * opened with an initial query immediately re-runs the INITIAL search and
+   * repopulates results under the now-empty input — its second open effect
+   * (search-dialog.tsx:143-151) depends on `hasSearched`, which this reset
+   * flips. v5's seeding effect deliberately does not track `hasSearched`, so
+   * a cleared dialog stays cleared.
+   */
   protected clearQuery(): void {
     this.query.set('');
     this.results.set([]);

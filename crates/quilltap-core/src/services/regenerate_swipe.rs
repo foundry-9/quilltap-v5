@@ -378,6 +378,15 @@ where
     // `CompletionParams.attachments`, which `request_input_from_params` stamps
     // back onto the last user message for the builders (P4.21 drop site 3 — v4
     // forwards `attachments: m.attachments` into `provider.sendMessage` here).
+    //
+    // NAMED DIVERGENCE (§3 review, recorded not fixed): this funnel narrows the
+    // bag to 4 fields and so drops `url`. A mount-file bag carries BOTH `url`
+    // and `data`, and Z.AI/OpenRouter prefer `url` — so a regenerate with a
+    // mount-file attachment on those providers sends the data URL where v4
+    // sends its relative `/api/v1/mount-points/…` url (itself a v4 bug: the
+    // provider cannot fetch it). Widening `CompletionAttachment` would disturb
+    // the frozen canned-key serialization the tier-3 oracles record, so the
+    // narrowing stays until that key is versioned.
     let attachments: Vec<CompletionAttachment> = mc_result
         .formatted_messages
         .iter()

@@ -182,6 +182,11 @@ const PDF_ATT = {
 const TXT_ATT_B64 = { id: 'att-txt-1', filename: 'notes.txt', mimeType: 'text/plain', size: 11, data: 'aGVsbG8gd29ybGQ=' };
 // Raw text data (contains a newline) — v4 sends it as-is.
 const TXT_ATT_RAW = { id: 'att-txt-2', filename: 'raw.txt', mimeType: 'text/plain', size: 17, data: 'line one\nline two' };
+// Base64-LOOKING but strictly-invalid data (newline-free, base64 charset, bad
+// length). Node's Buffer.from never throws — it leniently mangles ("hello" →
+// "��e") — so v4's decode-failure catch is dead and the mojibake
+// ships. Pins the §3-review finding on the lenient-decode arm.
+const TXT_ATT_MANGLED = { id: 'att-txt-3', filename: 'word.txt', mimeType: 'text/plain', size: 5, data: 'hello' };
 const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
 
 /// `modes` restricts a case to a subset of `stream` / `send` (default: both).
@@ -211,6 +216,7 @@ function casesFor(provider) {
     add('pdf-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Summarize this document.', attachments: [PDF_ATT] }] });
     add('text-attachment-b64', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_B64] }] });
     add('text-attachment-raw', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_RAW] }] });
+    add('text-attachment-mangled-b64', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_MANGLED] }] });
     add('attachment-no-data', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
     add('multi-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, PDF_ATT] }] });
     add('image-attachment-caching', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG], profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });

@@ -85,9 +85,13 @@ const ANTHROPIC_SUPPORTED_MIME_TYPES: &[&str] = &[
 ];
 
 /// v4's text/plain document data: base64-LOOKING data (no newline, only the
-/// base64 charset) is decoded to text first; anything else — and any decode
-/// failure — ships as-is. `toString('utf-8')` maps invalid sequences to
-/// replacement chars, hence the lossy conversion.
+/// base64 charset) is decoded to text first; anything else ships as-is.
+/// `toString('utf-8')` maps invalid sequences to replacement chars, hence the
+/// lossy conversion. Node's `Buffer.from(s, 'base64')` NEVER throws — v4's
+/// decode-failure `catch` (ship as-is) is dead code — so content that merely
+/// LOOKS like base64 is mangled, not passed through: `"hello"` becomes
+/// `"\u{FFFD}\u{FFFD}e"` on both sides (pinned by the corpus's
+/// `text-attachment-mangled-b64` vectors).
 fn anthropic_text_document_data(data: &str) -> String {
     let looks_base64 = !data.contains('\n')
         && !data.is_empty()
@@ -97,10 +101,7 @@ fn anthropic_text_document_data(data: &str) -> String {
     if !looks_base64 {
         return data.to_string();
     }
-    match super::responses_api::forgiving_base64(data) {
-        Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        None => data.to_string(),
-    }
+    String::from_utf8_lossy(&super::responses_api::node_lenient_base64(data)).into_owned()
 }
 
 /// v4 `formatMessagesWithAttachments`. Batches consecutive tool results, expands

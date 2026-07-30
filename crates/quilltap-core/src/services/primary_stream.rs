@@ -51,8 +51,8 @@ use crate::db::DbError;
 use crate::finish_reason::extract_finish_reason;
 use crate::message_formatter::{normalize_content_block_format, strip_character_name_prefix};
 use crate::model::stream::{
-    canned_stream_key, StreamCacheUsage, StreamChunk, StreamError, StreamParams, StreamUsage,
-    StreamingCompletionProvider,
+    canned_stream_key, StreamCacheUsage, StreamChunk, StreamError, StreamMessage, StreamParams,
+    StreamUsage, StreamingCompletionProvider,
 };
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
@@ -845,6 +845,25 @@ pub(crate) struct StreamLogCtx<'a> {
 /// writer never throws — the watermark precedent). The [`LogContext`] rides
 /// [`StreamLogCtx::log_context`] — none on the request path, the run's id under
 /// an autonomous turn (U4.4).
+/// The CHAT_MESSAGE log's request-message projection — v4 logs
+/// `attachments: m.attachments` verbatim (streaming.service.ts:452-455), so the
+/// LLM Inspector shows the attachment bags on vision sends; a message with no
+/// attachments stays absent in the log. (The §3 unification-review fix: P4.21
+/// unit 1 threaded the wire but left this log projection on `None`.)
+fn log_request_messages(messages: &[StreamMessage]) -> Vec<LogRequestMessage> {
+    messages
+        .iter()
+        .map(|m| LogRequestMessage {
+            role: m.role_str().to_string(),
+            content: m.content().to_string(),
+            attachments: match m.attachments() {
+                [] => None,
+                a => Some(a.to_vec()),
+            },
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn log_chat_message_call(
     log: &StreamLogCtx<'_>,
@@ -889,15 +908,7 @@ pub(crate) async fn log_chat_message_call(
         provider: profile.provider.clone(),
         model_name: profile.model_name.clone(),
         request: LogRequest {
-            messages: params
-                .messages
-                .iter()
-                .map(|m| LogRequestMessage {
-                    role: m.role_str().to_string(),
-                    content: m.content().to_string(),
-                    attachments: None,
-                })
-                .collect(),
+            messages: log_request_messages(&params.messages),
             temperature: params.temperature,
             max_tokens: params.max_tokens,
             tools: tools_nonempty,
@@ -1233,6 +1244,28 @@ pub fn find_previous_response_id(provider: &str, existing_messages: &[Value]) ->
 mod tests {
     use super::*;
     use crate::services::chat_events::RecordingSink;
+
+    /// The §3-review pin: the CHAT_MESSAGE log projection carries each
+    /// message's attachment bags (v4 streaming.service.ts:452-455), None when
+    /// a message has none.
+    #[test]
+    fn log_request_messages_carry_attachment_bags() {
+        let bag = serde_json::json!({
+            "id": "att-1", "filename": "boat.png", "mimeType": "image/png",
+            "size": 3, "data": "AAAA"
+        });
+        let msgs = vec![
+            StreamMessage::system("sys"),
+            StreamMessage::User {
+                content: "look".to_string(),
+                cache_control: None,
+                attachments: vec![bag.clone()],
+            },
+        ];
+        let logged = log_request_messages(&msgs);
+        assert_eq!(logged[0].attachments, None);
+        assert_eq!(logged[1].attachments, Some(vec![bag]));
+    }
 
     #[test]
     fn locale_string_groups_thousands() {

@@ -90,21 +90,21 @@ fn user_content(
                     }));
                     results.sent.push(att_id(a));
                 } else if mime.starts_with("text/") {
-                    match forgiving_base64(data) {
-                        Some(bytes) => {
-                            let text = String::from_utf8_lossy(&bytes);
-                            let filename = a
-                                .get("filename")
-                                .and_then(Value::as_str)
-                                .unwrap_or_default();
-                            parts.push(json!({
-                                "type": "input_text",
-                                "text": format!("[File: {filename}]\n{text}"),
-                            }));
-                            results.sent.push(att_id(a));
-                        }
-                        None => att_fail(results, a, "Failed to decode text file"),
-                    }
+                    // v4's `catch` → "Failed to decode text file" is DEAD CODE:
+                    // Node's Buffer.from never throws, so the sent arm always
+                    // runs (this whole text/* branch is itself dead in v4 —
+                    // the images-only supported-mime gate runs first).
+                    let bytes = node_lenient_base64(data);
+                    let text = String::from_utf8_lossy(&bytes);
+                    let filename = a
+                        .get("filename")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    parts.push(json!({
+                        "type": "input_text",
+                        "text": format!("[File: {filename}]\n{text}"),
+                    }));
+                    results.sent.push(att_id(a));
                 } else {
                     att_fail(
                         results,
@@ -122,18 +122,35 @@ fn user_content(
     Value::Array(parts)
 }
 
-/// Node's `Buffer.from(s, 'base64')` for the realistic input space: standard
-/// alphabet, padding optional. `None` on inputs Node would mangle rather than
-/// decode cleanly (degenerate; the callers fall back like v4's catch).
-pub(crate) fn forgiving_base64(data: &str) -> Option<Vec<u8>> {
-    use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
-    use base64::engine::DecodePaddingMode;
-    use base64::Engine;
-    let engine = GeneralPurpose::new(
-        &base64::alphabet::STANDARD,
-        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
-    );
-    engine.decode(data).ok()
+/// Node's `Buffer.from(s, 'base64')`, byte-faithful — it NEVER throws (v4's
+/// decode-failure `catch` arms are dead code). Probed on Node 24 (the §3
+/// unification review): invalid characters are SKIPPED (whitespace and
+/// URL-safe `-`/`_` map into the alphabet), decoding STOPS at the first `=`,
+/// and the accumulated 6-bit groups emit `floor(bits / 8)` bytes — so
+/// `"hello"` decodes to `[0x85, 0xE9, 0x65]` and `"x=1"` to `[]`, where a
+/// strict decoder would refuse both.
+pub(crate) fn node_lenient_base64(data: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len() * 3 / 4);
+    let mut acc: u32 = 0;
+    let mut bits: u32 = 0;
+    for c in data.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => (c - b'A') as u32,
+            b'a'..=b'z' => (c - b'a' + 26) as u32,
+            b'0'..=b'9' => (c - b'0' + 52) as u32,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' => break,
+            _ => continue,
+        };
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
 }
 
 fn function_call_items(tool_calls: &[ToolCallPayload]) -> Vec<Value> {
@@ -493,4 +510,38 @@ pub fn build_grok_body(input: &RequestInput, results: &mut StreamAttachmentResul
         b.set("tools", Value::Array(tools));
     }
     b.into_value()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::node_lenient_base64;
+
+    /// Every vector probed on Node 24 (`Buffer.from(s, 'base64')`) at the §3
+    /// unification review — the decoder must be byte-faithful, incl. the
+    /// mangle arms a strict decoder would refuse.
+    #[test]
+    fn node_lenient_base64_matches_node_24() {
+        let cases: &[(&str, &[u8])] = &[
+            ("hello", &[133, 233, 101]),
+            ("x=1", &[]),
+            ("a!b", &[105]),
+            ("ab=cd", &[105]),
+            ("aGVsbG8=", b"hello"),
+            ("aGVs bG8=", b"hello"),
+            ("YQ", b"a"),
+            ("YQ=", b"a"),
+            ("!!!", &[]),
+            ("TWFu", b"Man"),
+            ("TWE=", b"Ma"),
+            ("TQ==", b"M"),
+            ("hel\tlo", &[133, 233, 101]),
+            ("++//", &[251, 239, 255]),
+            ("-_", &[251]),
+            ("+/", &[251]),
+            ("", &[]),
+        ];
+        for (input, want) in cases {
+            assert_eq!(node_lenient_base64(input), want.to_vec(), "input {input:?}");
+        }
+    }
 }

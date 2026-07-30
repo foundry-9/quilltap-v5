@@ -28,7 +28,8 @@ import {
  * the click intercepts into `router.navigateByUrl` so query strings survive.
  *
  * OMITTED (dead in v4 itself): the `matchedTag` / `matchedViaCharacter` card
- * arms — v4's `/api/v1/ui/search` route never emits either field (they are
+ * arms and the character card's `avatarUrl` image arm — v4's
+ * `/api/v1/ui/search` route never emits any of the three fields (they are
  * relics of an older search shape in `types.ts`), so the arms cannot render;
  * v5 ports the reachable rendering.
  */
