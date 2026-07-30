@@ -126,6 +126,12 @@ pub struct CompletionResponse {
     /// refusal heuristic (`finishReason === 'length'` on a reasoning model) and
     /// recorded by `logLLMCall`. `None` for callers that don't populate it.
     pub finish_reason: Option<String>,
+    /// v4 `response.attachmentResults` (P4.21) — the builder's format-time
+    /// sent/failed report, carried for parity. `Some` from the real
+    /// `execute_completion` composition; `None` from the canned tier-3
+    /// provider (the v4 oracle's mock returns none either — no differential
+    /// diffs it on this path, and no v4 caller consumes it here).
+    pub attachment_results: Option<crate::model::stream::StreamAttachmentResults>,
 }
 
 /// Error from a completion call. The message text matters: v4's execution path
@@ -315,6 +321,7 @@ impl CannedCompletionProvider {
                 content: content.into(),
                 usage,
                 finish_reason: None,
+                attachment_results: None,
             },
         );
         self

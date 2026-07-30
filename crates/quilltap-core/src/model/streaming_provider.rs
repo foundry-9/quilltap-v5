@@ -235,12 +235,20 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
     /// Build the finalized [`TransportRequest`] + the decoder for one call.
     /// Split out so the request construction is unit-testable without a
     /// transport round-trip.
+    #[allow(clippy::type_complexity)]
     fn prepare(
         &self,
         provider: &str,
         base_url: Option<&str>,
         params: &StreamParams,
-    ) -> Result<(TransportRequest, Box<dyn StreamDecoder + Send>), StreamError> {
+    ) -> Result<
+        (
+            TransportRequest,
+            Box<dyn StreamDecoder + Send>,
+            crate::model::stream::StreamAttachmentResults,
+        ),
+        StreamError,
+    > {
         let registry = Registry::built_in();
         let manifest = registry
             .get_provider(provider)
@@ -286,6 +294,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                 api_key,
             },
             build_decoder(selection),
+            built.attachment_results,
         ))
     }
 }
@@ -311,7 +320,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
         // Prepare synchronously; the async part is only the transport call.
         let prepared = self.prepare(provider, base_url, params);
         async move {
-            let (request, mut decoder) = match prepared {
+            let (request, mut decoder, attachment_results) = match prepared {
                 Ok(p) => p,
                 Err(e) => return single_error(e.message),
             };
@@ -328,12 +337,22 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
             // failed blocking_send.
             let mut bytes_rx = bytes_rx;
             std::thread::spawn(move || {
+                // v4's plugins attach the format-time `attachmentResults` to the
+                // chunks they yield; the provider-agnostic decoders stamp an
+                // EMPTY `Some(..)` on the final chunk, so the builder's real
+                // report replaces exactly those (P4.21).
+                let stamp = move |mut chunk: crate::model::stream::StreamChunk| {
+                    if chunk.attachment_results.is_some() {
+                        chunk.attachment_results = Some(attachment_results.clone());
+                    }
+                    chunk
+                };
                 loop {
                     match bytes_rx.blocking_recv() {
                         Some(Ok(bytes)) => match decoder.push(&bytes) {
                             Ok(chunks) => {
                                 for chunk in chunks {
-                                    if tx.blocking_send(Ok(chunk)).is_err() {
+                                    if tx.blocking_send(Ok(stamp(chunk))).is_err() {
                                         return;
                                     }
                                 }
@@ -355,7 +374,7 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
                 match decoder.finish() {
                     Ok(chunks) => {
                         for chunk in chunks {
-                            if tx.blocking_send(Ok(chunk)).is_err() {
+                            if tx.blocking_send(Ok(stamp(chunk))).is_err() {
                                 return;
                             }
                         }
@@ -669,6 +688,57 @@ mod tests {
         let last = chunks.last().unwrap();
         assert!(last.done);
         assert_eq!(last.usage.unwrap().total_tokens, 5);
+    }
+
+    /// P4.21: the builder's format-time `attachmentResults` replace the
+    /// decoder's empty stamp on the FINAL chunk — a DeepSeek stream with an
+    /// attachment reports the drop-and-report failure, exactly what v4's
+    /// plugin attaches to the chunks it yields.
+    #[tokio::test]
+    async fn final_chunk_carries_the_builders_attachment_results() {
+        let wire = concat!(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"}}]}\n\n",
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let t = FakeStreamTransport::new(vec![Ok(wire.as_bytes().to_vec())]);
+        let p = WireStreamingProvider::new(
+            t,
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let mut prms = params("deepseek-chat");
+        prms.messages = vec![crate::model::stream::StreamMessage::User {
+            content: "What is in this image?".to_string(),
+            cache_control: None,
+            attachments: vec![serde_json::json!({
+                "id": "att-1",
+                "filename": "photo.png",
+                "mimeType": "image/png",
+                "size": 8,
+                "data": "aGVsbG8h",
+            })],
+        }];
+        let items = drain(p.stream_message("DEEPSEEK", None, &prms).await).await;
+        let chunks: Vec<_> = items.into_iter().map(|r| r.unwrap()).collect();
+        let last = chunks.last().unwrap();
+        assert!(last.done);
+        let results = last
+            .attachment_results
+            .as_ref()
+            .expect("final chunk must carry attachment results");
+        assert!(results.sent.is_empty());
+        assert_eq!(results.failed.len(), 1);
+        assert_eq!(results.failed[0].id, "att-1");
+        assert_eq!(
+            results.failed[0].error,
+            "DeepSeek models do not accept file attachments. Send text-only messages."
+        );
+        // And the body stripped the attachment (plain string content).
+        let seen = p.transport.seen.lock().unwrap().clone().unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&seen.body).unwrap();
+        assert_eq!(body["messages"][0]["content"], "What is in this image?");
     }
 
     /// A mid-stream transport error becomes an `Err` item AFTER the chunks

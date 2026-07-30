@@ -87,6 +87,7 @@ impl CompletionProvider for CannedCompletion {
                 content,
                 usage: None,
                 finish_reason: None,
+                attachment_results: None,
             })
         }
     }

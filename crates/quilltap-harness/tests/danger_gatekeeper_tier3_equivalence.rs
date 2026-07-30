@@ -346,6 +346,7 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
                             total_tokens: row.usage.total_tokens,
                         }),
                         finish_reason: None,
+                        attachment_results: None,
                     },
                 );
             }

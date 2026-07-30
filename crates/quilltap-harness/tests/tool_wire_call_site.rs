@@ -124,6 +124,19 @@ impl ToolCallDetector for MarkerDetector {
 /// Run the real loop for `provider`/`model` and return the single request body
 /// the transport received on the post-tool re-stream.
 async fn captured_body(provider: &str, model: &str) -> Value {
+    captured_body_opts(provider, model, None).await
+}
+
+/// [`captured_body`] with an optional attachment bag stamped on the user
+/// message (P4.21 — dogfood #37's verification leg: the corpus proves the
+/// BUILDERS right and the loop tier-3 proves the SLATE right, but only this
+/// executes the conversion between them, which is exactly where the image
+/// was lost).
+async fn captured_body_opts(
+    provider: &str,
+    model: &str,
+    user_attachments: Option<Vec<Value>>,
+) -> Value {
     let dir = tempfile::tempdir().expect("tempdir");
     let db = Db::open_main(dir.path().join("wire.db"), PEPPER).expect("open db");
 
@@ -217,7 +230,7 @@ async fn captured_body(provider: &str, model: &str) -> Value {
             tool_call_id: None,
             tool_calls: None,
             cache_control: None,
-            attachments: None,
+            attachments: user_attachments,
         },
     ];
     let tool_context = create_tool_context(
@@ -426,4 +439,110 @@ async fn google_threads_the_linkage_and_thought_signature() {
         fr["name"], TOOL_NAME,
         "GOOGLE: functionResponse must correlate by the tool name"
     );
+}
+
+// ============================================================================
+// P4.21 — the attachment CALL-SITE pin (dogfood #37's verification leg)
+// ============================================================================
+
+/// The attachment bag the loop threads (the same shape `loadChatFilesForLLM`
+/// builds; tiny valid-base64 payload).
+fn wire_attachment() -> Value {
+    json!({
+        "id": "att-wire-1",
+        "filepath": "/api/v1/files/att-wire-1",
+        "filename": "photo.png",
+        "mimeType": "image/png",
+        "size": 8,
+        "data": "aGVsbG8h",
+    })
+}
+
+/// Every provider that EMITS images: the post-tool re-stream bytes must still
+/// carry the image part — the loop slate keeps the attachment across
+/// iterations, the conversion keeps it, and the builder emits it. Shapes are
+/// already byte-pinned by `request_builder_equivalence`; this pins the
+/// composition post-dispatch.
+#[tokio::test]
+async fn attachment_reaches_the_wire_bytes_per_family() {
+    let atts = Some(vec![wire_attachment()]);
+    let expected_data_url = "data:image/png;base64,aGVsbG8h";
+
+    // Responses API: an input_image part inside the user message's content.
+    for (provider, model) in [("OPENAI", "gpt-4o"), ("GROK", "grok-4")] {
+        let body = captured_body_opts(provider, model, atts.clone()).await;
+        let found = body["input"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{provider}: no input array"))
+            .iter()
+            .filter(|i| i["role"] == "user")
+            .filter_map(|i| i["content"].as_array())
+            .flatten()
+            .any(|part| part["type"] == "input_image" && part["image_url"] == expected_data_url);
+        assert!(found, "{provider}: the image never reached the wire (#37)");
+    }
+
+    // Anthropic: an image source block.
+    let body = captured_body_opts("ANTHROPIC", "claude-sonnet-4-5", atts.clone()).await;
+    let found = body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .filter_map(|m| m["content"].as_array())
+        .flatten()
+        .any(|b| b["type"] == "image" && b["source"]["data"] == "aGVsbG8h");
+    assert!(found, "ANTHROPIC: the image never reached the wire (#37)");
+
+    // Google: an inlineData part (wire framing has data before mimeType — the
+    // byte order is pinned by the google-wire corpus; here we pin presence).
+    let body = captured_body_opts("GOOGLE", "gemini-2.5-flash", atts.clone()).await;
+    let found = body["contents"]
+        .as_array()
+        .expect("contents")
+        .iter()
+        .filter_map(|c| c["parts"].as_array())
+        .flatten()
+        .any(|p| p["inlineData"]["data"] == "aGVsbG8h");
+    assert!(found, "GOOGLE: the image never reached the wire (#37)");
+
+    // Z.AI (vision model) + OpenRouter streaming: an image_url content part.
+    for (provider, model) in [("Z_AI", "glm-4.6v"), ("OPENROUTER", "openai/gpt-4o")] {
+        let body = captured_body_opts(provider, model, atts.clone()).await;
+        let found = body["messages"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{provider}: no messages array"))
+            .iter()
+            .filter_map(|m| m["content"].as_array())
+            .flatten()
+            .any(|p| p["type"] == "image_url" && p["image_url"]["url"] == expected_data_url);
+        assert!(found, "{provider}: the image never reached the wire (#37)");
+    }
+}
+
+/// The drop-and-report providers: the body must NOT leak the payload (plain
+/// string content, attachments stripped) — v4 strips them silently at format
+/// time and reports through `attachmentResults`.
+#[tokio::test]
+async fn drop_providers_strip_the_attachment_from_the_bytes() {
+    for (provider, model) in [
+        ("DEEPSEEK", "deepseek-chat"),
+        ("OLLAMA", "llama3.2"),
+        ("OPENAI_COMPATIBLE", "some-model"),
+    ] {
+        let body = captured_body_opts(provider, model, Some(vec![wire_attachment()])).await;
+        let user = body["messages"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{provider}: no messages array"))
+            .iter()
+            .find(|m| m["role"] == "user")
+            .unwrap_or_else(|| panic!("{provider}: no user message"));
+        assert_eq!(
+            user["content"], "Roll a die.",
+            "{provider}: the drop provider's user content must stay a plain string"
+        );
+        assert!(
+            !serde_json::to_string(&body).unwrap().contains("aGVsbG8h"),
+            "{provider}: the stripped attachment's bytes leaked into the body"
+        );
+    }
 }

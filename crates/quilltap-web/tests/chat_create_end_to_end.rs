@@ -86,6 +86,7 @@ impl CompletionProvider for AnyCompletion {
                 content: "{}".to_string(),
                 usage: None,
                 finish_reason: None,
+                attachment_results: None,
             })
         }
     }

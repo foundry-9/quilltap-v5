@@ -394,6 +394,7 @@ fn attach_mount_file_matches_oracle() {
                     total_tokens: u.total_tokens,
                 }),
                 finish_reason: row.finish_reason,
+                attachment_results: None,
             },
         );
     }

@@ -443,6 +443,7 @@ fn answer_confirmation_tier3_matches_oracle() {
                         content: row.response,
                         usage: None,
                         finish_reason: None,
+                        attachment_results: None,
                     },
                 );
             }

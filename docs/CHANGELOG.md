@@ -43,6 +43,18 @@ been switched off in a way nobody noticed — a stand-in written back when the
 new app had not yet ported that step, left in place after it did. The stand-in
 is gone, the check runs against the old app's real code again, and both sides
 now agree exactly. No application code changed.
+Third step of the image-attachment fix: the app now reports what happened to
+each attachment. When a provider sends or rejects an image, the sent/failed
+outcome (with the provider's exact reason) rides the reply the same way it
+does in the old app, on both the streaming and non-streaming paths. A new
+always-on test drives the real chat loop through the real request layer and
+checks the actual network bytes carry the image for all six providers that
+support them — and that the three that don't keep the image bytes out of
+their requests entirely. Also confirmed by inspection and existing tests:
+the size-limit resize the old app applies before sending (per-provider
+ceilings, same numbers) was already ported and already covers both file
+storage paths.
+
 Second step of the image-attachment fix: all nine model providers now build
 the image into the actual network request, matching the old app byte for
 byte. Six providers embed the image (each in its own wire format, including

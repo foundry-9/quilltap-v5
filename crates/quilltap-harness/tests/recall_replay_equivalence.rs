@@ -120,6 +120,7 @@ impl CompletionProvider for CannedDistillProvider {
                         total_tokens: 120,
                     }),
                     finish_reason: Some("stop".to_string()),
+                    attachment_results: None,
                 }),
                 None => Err(CompletionError::new("canned failure")),
             }

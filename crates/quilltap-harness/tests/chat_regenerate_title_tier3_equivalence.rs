@@ -119,6 +119,7 @@ impl CompletionProvider for CannedTitleProvider {
                 total_tokens: canned.prompt_tokens + canned.completion_tokens,
             }),
             finish_reason: None,
+            attachment_results: None,
         })
     }
 }

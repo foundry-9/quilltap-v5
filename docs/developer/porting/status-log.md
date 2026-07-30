@@ -44163,3 +44163,48 @@ mutation-proven** (the D24 rule): five mutations — responses emission off,
 anthropic branch off, Z.AI vision gate inverted, google inlineData reframe
 off, one failure-string typo — each went red at the expected vector; the
 restored tree is green.
+
+## Lane record — P4.21 units 3–4: attachmentResults on the response/final chunk + the call-site byte pin; the resize-parity verification (2026-07-30)
+
+**Unit 3 (deliverables 3's reporting half + 5).** The reporting channel was
+already plumbed end-to-end (decoders stamp an EMPTY `Some` on the final
+chunk; the loops copy it into streaming state; the finalizer emits it on the
+done event) — what was missing was the REAL report. Now:
+`WireStreamingProvider`'s pump replaces the decoder's empty stamp with the
+builder's format-time results (exactly what v4's plugins attach to the
+chunks they yield), and `execute_completion` carries them on
+`CompletionResponse.attachment_results` (v4 `LLMResponse.attachmentResults`;
+`None` from the canned tier-3 provider — the v4 oracle's mock returns none
+either, and no v4 caller consumes it on the completion path). Two unit pins:
+a DeepSeek stream's final chunk reports the drop-and-report failure string
+while the body strips the image; an Anthropic describe-shaped
+`execute_completion` reports `sent` and its bytes carry the image block.
+
+**The call-site pin** (`tool_wire_call_site.rs`): two new always-on tests
+drive the REAL `run_native_tool_loop` through the REAL
+`WireStreamingProvider` with an attachment on the user slate —
+`attachment_reaches_the_wire_bytes_per_family` asserts the post-tool
+re-stream BYTES carry the image part on all six emitting providers
+(OpenAI/Grok `input_image`, Anthropic image block, Google `inlineData`,
+Z.AI-vision + OpenRouter `image_url`), and
+`drop_providers_strip_the_attachment_from_the_bytes` asserts
+DeepSeek/Ollama/OpenAI-compatible keep the payload OUT of the body. Proven
+sensitive by mutation: re-breaking `to_stream_message`'s user arm went red
+at `OPENAI: the image never reached the wire (#37)`.
+
+**Unit 4 (tier-2 item 6) closes by VERIFICATION, no code change.** The
+order's "needs a fresh trace" premise was stale: v4's chat-path resize was
+already ported in W4.4b — `read_file_as_base64` (legacy `files`) AND
+`load_mount_file_as_attachment` (mount) both gate on
+`calculate_base64_size` > `get_provider_max_base64_size` and run
+`resize_image_for_provider` over the injected `ImageTranscoder` seam, whose
+schedule (geometric ×0.8 walk from the ORIGINAL width, the quality-fallback
+overwrite, the exhausted-loop inconsistency) is differential-pinned with a
+deterministic fake mirrored by the oracle's Sharp mock. Ceilings re-checked
+against the plugins at `dcd9440a`: anthropic + z-ai 5 MB, openai/google/grok
+20 MB, the rest the 4 MB default — the manifest JSONs match value-for-value.
+The production pixel work is the P4.1b `HostImageCodec` (P4.6bf).
+
+Gate (units 3–4): fmt clean; clippy both feature sets `-D warnings` clean;
+`cargo test --workspace` 401 binaries / 0 failed. Versions: core 0.0.414,
+harness 0.0.359.

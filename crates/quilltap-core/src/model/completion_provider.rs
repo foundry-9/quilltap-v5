@@ -164,6 +164,8 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
                 total_tokens: parsed.usage.total_tokens,
             }),
             finish_reason: parsed.finish_reason,
+            // The builder's format-time report (v4 attaches it to LLMResponse).
+            attachment_results: Some(built.attachment_results.clone()),
         })
     })
 }
@@ -370,6 +372,51 @@ mod tests {
             seen.url.contains(":generateContent") && !seen.url.contains("streamGenerateContent"),
             "google used the streaming endpoint on the non-streaming path: {}",
             seen.url
+        );
+    }
+
+    /// P4.21: the non-streaming composition carries the builder's
+    /// `attachmentResults` on the response (v4 `LLMResponse.attachmentResults`)
+    /// — an Anthropic describe-shaped call reports its image as sent, and the
+    /// body carries the image source block.
+    #[tokio::test]
+    async fn response_carries_the_builders_attachment_results() {
+        use crate::model::completion::CompletionAttachment;
+        let body = br#"{"content":[{"type":"text","text":"a photo"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}"#.to_vec();
+        let transport = FakeTransport {
+            body,
+            seen: std::sync::Mutex::new(None),
+        };
+        let mut p = params("claude-haiku-4-5-20251001");
+        p.messages = vec![CompletionMessage::user("Describe this image.")];
+        p.attachments = vec![CompletionAttachment {
+            id: "file-9".to_string(),
+            filename: "photo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: "aGVsbG8h".to_string(),
+        }];
+        let resp = execute_completion(
+            &transport,
+            "ANTHROPIC",
+            None,
+            "synthetic-key",
+            &p,
+            &TransportPolicy::default(),
+            "Quilltap/test",
+            None,
+        )
+        .await
+        .expect("completion");
+        let results = resp
+            .attachment_results
+            .expect("response must carry attachment results");
+        assert_eq!(results.sent, vec!["file-9".to_string()]);
+        assert!(results.failed.is_empty());
+        let seen = transport.seen.lock().unwrap().clone().unwrap();
+        let sent = String::from_utf8(seen.body).unwrap();
+        assert!(
+            sent.contains(r#""type":"image""#) && sent.contains("aGVsbG8h"),
+            "the describe-path bytes must carry the image block: {sent}"
         );
     }
 

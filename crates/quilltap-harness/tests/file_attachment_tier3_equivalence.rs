@@ -280,6 +280,7 @@ fn file_attachment_matches_oracle() {
                             total_tokens: u.total_tokens,
                         }),
                         finish_reason,
+                        attachment_results: None,
                     },
                 );
             }
