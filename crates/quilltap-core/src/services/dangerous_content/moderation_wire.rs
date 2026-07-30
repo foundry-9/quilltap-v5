@@ -80,6 +80,7 @@ pub fn build_moderation_request(content: &str, base_url: Option<&str>) -> BuiltR
         url,
         headers: vec![("content-type".to_string(), "application/json".to_string())],
         body: Value::Object(body),
+        attachment_results: Default::default(),
     }
 }
 

@@ -20,7 +20,192 @@
 
 use serde_json::{json, Value};
 
-use super::{num, Body, BuildError, RequestInput, StreamMessage};
+use super::{
+    att_fail, att_id, att_str, collect_drop_failures, num, Body, BuildError, RequestInput,
+    StreamAttachmentResults, StreamMessage,
+};
+
+// ============================================================================
+// Attachment handling (P4.21)
+// ============================================================================
+
+/// v4's fixed drop-and-report messages (each provider's `attachmentErrorMessage`
+/// / `collectAttachmentFailures` literal).
+const DEEPSEEK_ATTACHMENT_ERROR: &str =
+    "DeepSeek models do not accept file attachments. Send text-only messages.";
+const OLLAMA_ATTACHMENT_ERROR: &str =
+    "Ollama file attachment support not yet implemented (requires multimodal model detection)";
+const OPENAI_COMPATIBLE_ATTACHMENT_ERROR: &str =
+    "OpenAI-compatible provider file attachment support varies by implementation (not yet implemented)";
+
+/// v4's Z.AI supported mime types (`Z_AI_SUPPORTED_MIME_TYPES`).
+const Z_AI_SUPPORTED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
+/// v4's OpenRouter supported image mime types (`SUPPORTED_IMAGE_MIME_TYPES`).
+const OPENROUTER_IMAGE_MIME_TYPES: &[&str] =
+    &["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+/// v4 Z.AI `isVisionModel` (`VISION_MODEL_PATTERNS`: `/^glm-\d+(\.\d+)?v/i`,
+/// `/^glm-5v/i`, `/^autoglm-phone/i` — the second is subsumed by the first;
+/// kept as written).
+fn is_zai_vision_model(model: &str) -> bool {
+    use std::sync::LazyLock;
+    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
+        vec![
+            regex::Regex::new(r"(?i)^glm-\d+(\.\d+)?v").unwrap(),
+            regex::Regex::new(r"(?i)^glm-5v").unwrap(),
+            regex::Regex::new(r"(?i)^autoglm-phone").unwrap(),
+        ]
+    });
+    PATTERNS.iter().any(|re| re.is_match(model))
+}
+
+/// v4 Z.AI `buildUserContent`: no attachments → the plain string; otherwise a
+/// content-parts ARRAY (text + `image_url` parts), even when every attachment
+/// fails — the non-vision / no-data arms still switch the wire shape to an
+/// array (pinned by the `image-attachment-non-vision` vector).
+fn zai_user_content(
+    msg: &StreamMessage,
+    model_supports_vision: bool,
+    results: &mut StreamAttachmentResults,
+) -> Value {
+    let atts = msg.attachments();
+    if atts.is_empty() {
+        return json!(msg.content());
+    }
+    let mut parts: Vec<Value> = Vec::new();
+    if !msg.content().is_empty() {
+        parts.push(json!({ "type": "text", "text": msg.content() }));
+    }
+    for a in atts {
+        let mime = a
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !Z_AI_SUPPORTED_MIME_TYPES.contains(&mime) {
+            att_fail(
+                results,
+                a,
+                format!(
+                    "Unsupported file type: {mime}. Z.AI supports: {}",
+                    Z_AI_SUPPORTED_MIME_TYPES.join(", ")
+                ),
+            );
+            continue;
+        }
+        if !model_supports_vision {
+            att_fail(
+                results,
+                a,
+                "Selected Z.AI model does not support image input. Use a vision model such as glm-4.5v or glm-4.6v.",
+            );
+            continue;
+        }
+        // v4 `attachmentToImageUrl`: `attachment.url` first, else the data URL.
+        let url = match att_str(a, "url") {
+            Some(u) => u.to_string(),
+            None => match att_str(a, "data") {
+                Some(d) => format!("data:{mime};base64,{d}"),
+                None => {
+                    att_fail(results, a, "Attachment missing data or URL");
+                    continue;
+                }
+            },
+        };
+        parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
+        results.sent.push(att_id(a));
+    }
+    if parts.is_empty() {
+        parts.push(json!({ "type": "text", "text": "" }));
+    }
+    Value::Array(parts)
+}
+
+/// v4 OpenRouter `buildMessageContent`: plain string unless the message carries
+/// at least one SUPPORTED image with data-or-url; then a parts array. The url
+/// is `img.url ?? data:` — NULLISH, so a present-but-empty `url` ships verbatim
+/// (never happens in practice; carried faithfully).
+fn openrouter_message_content(msg: &StreamMessage) -> Value {
+    let images: Vec<&Value> = msg
+        .attachments()
+        .iter()
+        .filter(|a| {
+            let mime = a
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            OPENROUTER_IMAGE_MIME_TYPES.contains(&mime)
+                && (att_str(a, "data").is_some() || att_str(a, "url").is_some())
+        })
+        .collect();
+    if images.is_empty() {
+        return json!(msg.content());
+    }
+    let mut parts: Vec<Value> = Vec::new();
+    if !msg.content().is_empty() {
+        parts.push(json!({ "type": "text", "text": msg.content() }));
+    }
+    for img in images {
+        let mime = img
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let url = match img.get("url").and_then(Value::as_str) {
+            Some(u) => u.to_string(),
+            None => format!(
+                "data:{mime};base64,{}",
+                img.get("data").and_then(Value::as_str).unwrap_or_default()
+            ),
+        };
+        parts.push(json!({ "type": "image_url", "image_url": { "url": url } }));
+    }
+    Value::Array(parts)
+}
+
+/// v4 OpenRouter `collectAttachmentResults`: image mimes with data-or-url are
+/// `sent` (they ship inline as content parts); image rows missing both fail;
+/// non-image mimes fail with the not-yet-implemented message.
+fn openrouter_collect_attachment_results(
+    messages: &[StreamMessage],
+    results: &mut StreamAttachmentResults,
+) {
+    for m in messages {
+        for a in m.attachments() {
+            let mime = a
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if OPENROUTER_IMAGE_MIME_TYPES.contains(&mime) {
+                if att_str(a, "data").is_some() || att_str(a, "url").is_some() {
+                    results.sent.push(att_id(a));
+                } else {
+                    att_fail(results, a, "Image attachment missing data and url");
+                }
+            } else {
+                att_fail(
+                    results,
+                    a,
+                    format!("OpenRouter {mime} attachments are not yet implemented"),
+                );
+            }
+        }
+    }
+}
+
+/// Does any message carry an image OpenRouter would format inline? (v4
+/// `hasImageAttachments` — the vision trigger for both the streaming
+/// chat-completions routing and the SDK's non-streaming refusal.)
+fn openrouter_has_formattable_images(messages: &[StreamMessage]) -> bool {
+    messages.iter().any(|m| {
+        m.attachments().iter().any(|a| {
+            let mime = a
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            OPENROUTER_IMAGE_MIME_TYPES.contains(&mime)
+                && (att_str(a, "data").is_some() || att_str(a, "url").is_some())
+        })
+    })
+}
 
 // ============================================================================
 // Shared chat-completions message formatting
@@ -44,6 +229,7 @@ fn chat_messages(
     messages: &[StreamMessage],
     literal_function_type: bool,
     echo_reasoning: bool,
+    user_content: &mut dyn FnMut(&StreamMessage) -> Value,
 ) -> Value {
     let mut out = Vec::new();
     for msg in messages {
@@ -90,13 +276,25 @@ fn chat_messages(
                 }
                 out.push(m.into_value());
             }
+            StreamMessage::User { .. } => {
+                // The user content is provider-shaped: a plain string for most,
+                // a content-parts array for the vision providers (Z.AI /
+                // OpenRouter) when attachments ride the message (P4.21).
+                out.push(json!({ "role": "user", "content": user_content(msg) }));
+            }
             _ => {
-                // system / assistant (no tool calls) / user → {role, content}
+                // system / assistant (no tool calls) → {role, content}
                 out.push(json!({ "role": msg.role_str(), "content": msg.content() }));
             }
         }
     }
     Value::Array(out)
+}
+
+/// The plain user-content arm (attachments stripped from the body — the
+/// drop-and-report providers).
+fn plain_user_content(msg: &StreamMessage) -> Value {
+    json!(msg.content())
 }
 
 /// `params.responseFormat` → the OpenAI `response_format` object, or `None`.
@@ -147,8 +345,12 @@ fn stop_value(input: &RequestInput) -> Option<Value> {
 /// literal per method, with `stop` BEFORE the stream keys, and `sendMessage`
 /// carries no `stream` key at all (the OpenAI SDK's non-streaming create sends
 /// the literal verbatim).
-pub fn build_openai_compatible_body(input: &RequestInput) -> Value {
-    let messages = chat_messages(&input.messages, false, false);
+pub fn build_openai_compatible_body(
+    input: &RequestInput,
+    results: &mut StreamAttachmentResults,
+) -> Value {
+    collect_drop_failures(&input.messages, OPENAI_COMPATIBLE_ATTACHMENT_ERROR, results);
+    let messages = chat_messages(&input.messages, false, false, &mut plain_user_content);
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
@@ -225,8 +427,9 @@ fn strip_thinking_incompatible(b: &mut Body) {
     }
 }
 
-pub fn build_deepseek_body(input: &RequestInput) -> Value {
-    let messages = chat_messages(&input.messages, true, true);
+pub fn build_deepseek_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    collect_drop_failures(&input.messages, DEEPSEEK_ATTACHMENT_ERROR, results);
+    let messages = chat_messages(&input.messages, true, true, &mut plain_user_content);
     let mut b = base_body(input, messages);
     b.set_opt("stop", stop_value(input));
     if let Some(tools) = &input.tools {
@@ -289,8 +492,11 @@ fn zai_supports_reasoning_effort(model: &str) -> bool {
     minor >= 2
 }
 
-pub fn build_zai_body(input: &RequestInput) -> Value {
-    let messages = chat_messages(&input.messages, true, true);
+pub fn build_zai_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    let vision = is_zai_vision_model(&input.model);
+    let messages = chat_messages(&input.messages, true, true, &mut |m| {
+        zai_user_content(m, vision, results)
+    });
     let mut b = base_body(input, messages);
     b.set_opt("stop", stop_value(input));
 
@@ -371,7 +577,11 @@ fn openrouter_fallback_models(input: &RequestInput) -> Option<&Vec<Value>> {
 ///   `chat.send()`, whose Speakeasy-generated zod codec re-emits the body in the
 ///   SDK's own (camelCase-alphabetical) field order, renames camelCase to
 ///   snake_case, and DROPS every key its schema does not declare.
-pub fn build_openrouter_body(input: &RequestInput) -> Result<Value, BuildError> {
+pub fn build_openrouter_body(
+    input: &RequestInput,
+    results: &mut StreamAttachmentResults,
+) -> Result<Value, BuildError> {
+    openrouter_collect_attachment_results(&input.messages, results);
     if input.stream {
         Ok(build_openrouter_stream_body(input))
     } else {
@@ -380,7 +590,12 @@ pub fn build_openrouter_body(input: &RequestInput) -> Result<Value, BuildError> 
 }
 
 fn build_openrouter_stream_body(input: &RequestInput) -> Value {
-    let messages = chat_messages(&input.messages, false, false);
+    let messages = chat_messages(
+        &input.messages,
+        false,
+        false,
+        &mut openrouter_message_content,
+    );
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("messages", messages)
@@ -560,6 +775,18 @@ fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError>
                 .to_string(),
         ));
     }
+    // A formattable image switches `buildMessageContent` to a content-parts
+    // array, which the SDK's message schema also REJECTS at input validation —
+    // v4's non-streaming vision sends nothing (recorded: the
+    // `image-attachment`/`image-attachment-tools` send vectors are refusals).
+    if openrouter_has_formattable_images(&input.messages) {
+        return Err(BuildError::ProviderRefused(
+            "OPENROUTER: the @openrouter/sdk rejects a content-parts (vision) \
+             message on the non-streaming path — input validation fails and v4 \
+             sends no request at all"
+                .to_string(),
+        ));
+    }
 
     let has_tools = input.tools.as_ref().is_some_and(|t| !t.is_empty());
     let mut b = Body::new();
@@ -624,8 +851,9 @@ fn build_openrouter_send_body(input: &RequestInput) -> Result<Value, BuildError>
 // Ollama (raw fetch to /api/chat)
 // ============================================================================
 
-pub fn build_ollama_body(input: &RequestInput) -> Value {
-    let messages = chat_messages(&input.messages, false, false);
+pub fn build_ollama_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    collect_drop_failures(&input.messages, OLLAMA_ATTACHMENT_ERROR, results);
+    let messages = chat_messages(&input.messages, false, false, &mut plain_user_content);
     let mut options = Body::new();
     options
         .set("temperature", num(input.temperature.unwrap_or(0.7)))

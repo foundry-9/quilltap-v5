@@ -90,6 +90,7 @@ pub fn build_openai_request(
             ("Authorization".into(), format!("Bearer {api_key}")),
         ],
         body: Value::Object(body),
+        attachment_results: Default::default(),
     }
 }
 
@@ -159,6 +160,7 @@ pub fn build_ollama_embed_request(
             "truncate": true,
             "options": { "num_ctx": num_ctx },
         }),
+        attachment_results: Default::default(),
     }
 }
 
@@ -170,6 +172,7 @@ pub fn build_ollama_legacy_request(base_url: &str, model: &str, input: &str) -> 
         url: format!("{base}/api/embeddings"),
         headers: vec![("Content-Type".into(), "application/json".into())],
         body: json!({ "model": model, "prompt": input }),
+        attachment_results: Default::default(),
     }
 }
 
@@ -181,6 +184,7 @@ pub fn build_ollama_show_request(base_url: &str, model: &str) -> BuiltRequest {
         url: format!("{base}/api/show"),
         headers: vec![("Content-Type".into(), "application/json".into())],
         body: json!({ "model": model }),
+        attachment_results: Default::default(),
     }
 }
 

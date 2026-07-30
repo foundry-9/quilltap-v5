@@ -16,7 +16,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::{RequestInput, StreamMessage};
+use super::{att_fail, att_id, att_str, RequestInput, StreamAttachmentResults, StreamMessage};
 
 /// JSON-Schema fields Google's function-calling API rejects (v4
 /// `UNSUPPORTED_SCHEMA_FIELDS`).
@@ -149,7 +149,15 @@ pub struct GoogleContents {
     pub contents: Vec<Value>,
     pub system_instruction: Option<String>,
     pub should_disable_tools: bool,
+    /// v4 `attachmentResults` (computed while formatting — sent ids + failure
+    /// strings, in message order). Diffed against the oracle-recorded results
+    /// by `request_builder_google_equivalence` (P4.21).
+    pub attachment_results: StreamAttachmentResults,
 }
+
+/// v4's supported attachment mime types (`GOOGLE_SUPPORTED_MIME_TYPES`).
+const GOOGLE_SUPPORTED_MIME_TYPES: &[&str] =
+    &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 /// v4 `formatMessagesForGoogle` (the text path). Extracts the system instruction,
 /// decides `shouldDisableTools` (unsupported model, or a thinking+tools model with
@@ -162,6 +170,7 @@ pub fn format_messages_for_google(
     has_tools: bool,
 ) -> GoogleContents {
     let is_thinking = is_thinking_model(model);
+    let mut attachment_results = StreamAttachmentResults::default();
 
     let system_msgs: Vec<&StreamMessage> = messages
         .iter()
@@ -300,6 +309,32 @@ pub fn format_messages_for_google(
             }
         }
 
+        // Image attachments → `inlineData` parts (v4's per-attachment gate:
+        // supported mime, then loaded data; failures reported, never emitted).
+        for a in msg.attachments() {
+            let mime = a
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !GOOGLE_SUPPORTED_MIME_TYPES.contains(&mime) {
+                att_fail(
+                    &mut attachment_results,
+                    a,
+                    format!(
+                        "Unsupported file type: {mime}. Google supports: {}",
+                        GOOGLE_SUPPORTED_MIME_TYPES.join(", ")
+                    ),
+                );
+                continue;
+            }
+            let Some(data) = att_str(a, "data") else {
+                att_fail(&mut attachment_results, a, "File data not loaded");
+                continue;
+            };
+            parts.push(json!({ "inlineData": { "mimeType": mime, "data": data } }));
+            attachment_results.sent.push(att_id(a));
+        }
+
         let role = if matches!(msg, StreamMessage::Assistant { .. }) {
             "model"
         } else {
@@ -313,6 +348,7 @@ pub fn format_messages_for_google(
         contents,
         system_instruction,
         should_disable_tools,
+        attachment_results,
     }
 }
 
@@ -450,12 +486,30 @@ fn reframe_function_call(fc: &Value) -> Result<Value, GoogleWireError> {
     Ok(Value::Object(out))
 }
 
-/// Reframe one part: a `functionCall` part rebuilds its inner object; every other
-/// part shape passes through unchanged.
+/// Reframe one part: a `functionCall` part rebuilds its inner object; an
+/// `inlineData` part rebuilds its Blob in the SDK's field order — `data,
+/// displayName?, mimeType` — which REVERSES the plugin's own `{mimeType, data}`
+/// (pinned by the google-wire `image-attachment` vectors); every other part
+/// shape passes through unchanged.
 fn reframe_part(part: &Value) -> Result<Value, GoogleWireError> {
     if let Some(fc) = part.get("functionCall") {
         let mut out = Map::new();
         out.insert("functionCall".into(), reframe_function_call(fc)?);
+        return Ok(Value::Object(out));
+    }
+    if let Some(blob) = part.get("inlineData") {
+        let mut inner = Map::new();
+        if let Some(data) = blob.get("data") {
+            inner.insert("data".into(), data.clone());
+        }
+        if let Some(dn) = blob.get("displayName") {
+            inner.insert("displayName".into(), dn.clone());
+        }
+        if let Some(mime) = blob.get("mimeType") {
+            inner.insert("mimeType".into(), mime.clone());
+        }
+        let mut out = Map::new();
+        out.insert("inlineData".into(), Value::Object(inner));
         return Ok(Value::Object(out));
     }
     Ok(part.clone())
@@ -489,9 +543,13 @@ fn reframe_content(content: &Value) -> Result<Value, GoogleWireError> {
 ///     `safetySettings` / `tools` stay at the request root;
 ///   - root key order: `contents, systemInstruction, safetySettings, tools?,
 ///     generationConfig`.
-pub fn build_google_wire_body(input: &RequestInput) -> Result<Value, GoogleWireError> {
+pub fn build_google_wire_body(
+    input: &RequestInput,
+    results: &mut StreamAttachmentResults,
+) -> Result<Value, GoogleWireError> {
     let (tools, has_tools) = build_tools(input);
     let sys = format_messages_for_google(&input.messages, &input.model, has_tools);
+    *results = sys.attachment_results.clone();
     let config = build_config(input, &sys, tools, has_tools);
     let config_obj = config.as_object().cloned().unwrap_or_default();
 

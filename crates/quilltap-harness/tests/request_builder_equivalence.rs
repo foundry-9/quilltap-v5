@@ -179,6 +179,12 @@ const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
     // `tool_call_id`, so a tool round-trip fails the SDK's INPUT validation and
     // no request leaves the process. (v4's own defect, carried faithfully.)
     ("OPENROUTER", "tool-roundtrip", "send"),
+    // P4.21: a formattable image switches `buildMessageContent` to a
+    // content-parts array, which the SDK's message schema ALSO rejects at input
+    // validation — v4's non-streaming vision sends nothing at all. (v4's own
+    // defect, carried faithfully; the streaming path routes around the SDK.)
+    ("OPENROUTER", "image-attachment", "send"),
+    ("OPENROUTER", "image-attachment-tools", "send"),
 ];
 
 #[test]
@@ -187,6 +193,12 @@ fn request_builder_matches_v4() {
     let mut rows = 0usize;
     let mut refusals = 0usize;
     let mut pairs = std::collections::HashSet::new();
+    // P4.21 attachment-coverage shape (the pre-P4.21 corpus had ZERO attachment
+    // vectors — the blind spot that hid dogfood #37; assert the SHAPE, not a
+    // hand count, per the corpus-shape-constants-rot rule).
+    let mut att_pairs = std::collections::HashSet::new();
+    let (mut saw_pdf, mut saw_text_doc, mut saw_no_data, mut saw_multi, mut saw_no_data_failure) =
+        (false, false, false, false, false);
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -202,6 +214,45 @@ fn request_builder_matches_v4() {
 
         let input = input_from_json(&row["input"], stream_from_mode(&row));
         let built = build_request(&provider, &input);
+
+        // Attachment-coverage bookkeeping (over the recorded INPUT, so refusal
+        // rows count toward coverage too).
+        if let Some(msgs) = row["input"].get("messages").and_then(Value::as_array) {
+            for m in msgs {
+                let Some(atts) = m.get("attachments").and_then(Value::as_array) else {
+                    continue;
+                };
+                if atts.is_empty() {
+                    continue;
+                }
+                att_pairs.insert((provider.clone(), mode.to_string()));
+                if atts.len() >= 2 {
+                    saw_multi = true;
+                }
+                for a in atts {
+                    match a.get("mimeType").and_then(Value::as_str) {
+                        Some("application/pdf") => saw_pdf = true,
+                        Some("text/plain") => saw_text_doc = true,
+                        _ => {}
+                    }
+                    if a.get("data").is_none() {
+                        saw_no_data = true;
+                    }
+                }
+            }
+        }
+        if let Some(failed) = row
+            .get("attachmentResults")
+            .and_then(|r| r.get("failed"))
+            .and_then(Value::as_array)
+        {
+            if failed
+                .iter()
+                .any(|f| f.get("error").and_then(Value::as_str) == Some("File data not loaded"))
+            {
+                saw_no_data_failure = true;
+            }
+        }
 
         // A recorded refusal: v4 made no request, so v5 must not build one.
         if row.get("refused").and_then(Value::as_bool) == Some(true) {
@@ -245,6 +296,22 @@ fn request_builder_matches_v4() {
             row["url"].as_str().unwrap(),
             "{provider}/{case}[{mode}] url"
         );
+
+        // Attachment results (P4.21): the recorder keeps the field only when
+        // non-empty, so an absent field means v4 reported NOTHING — and v5
+        // must report nothing too, not just "we didn't check".
+        let got_results = serde_json::to_value(&built.attachment_results).unwrap();
+        match row.get("attachmentResults") {
+            Some(want) => assert_eq!(
+                &got_results, want,
+                "{provider}/{case}[{mode}] attachmentResults diverged"
+            ),
+            None => assert_eq!(
+                got_results,
+                serde_json::json!({ "sent": [], "failed": [] }),
+                "{provider}/{case}[{mode}] reported attachment results v4 did not"
+            ),
+        }
     }
 
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
@@ -274,5 +341,33 @@ fn request_builder_matches_v4() {
             );
         }
     }
+    // Every provider must have an attachment vector in BOTH modes — a corpus
+    // with zero attachment vectors is exactly how #37 survived green.
+    for p in [
+        "ANTHROPIC",
+        "OPENAI",
+        "DEEPSEEK",
+        "OLLAMA",
+        "GROK",
+        "Z_AI",
+        "OPENROUTER",
+        "OPENAI_COMPATIBLE",
+    ] {
+        for mode in ["stream", "send"] {
+            assert!(
+                att_pairs.contains(&(p.to_string(), mode.to_string())),
+                "corpus has no attachment vector for provider {p} in mode {mode}"
+            );
+        }
+    }
+    assert!(saw_pdf, "corpus lost its PDF-attachment vector");
+    assert!(saw_text_doc, "corpus lost its text-document vectors");
+    assert!(saw_no_data, "corpus lost its data-not-loaded vector");
+    assert!(saw_multi, "corpus lost its multi-attachment vector");
+    assert!(
+        saw_no_data_failure,
+        "corpus lost the recorded 'File data not loaded' failure arm"
+    );
+
     eprintln!("OK: {rows} request envelopes ({refusals} recorded refusal(s)) matched v4.");
 }

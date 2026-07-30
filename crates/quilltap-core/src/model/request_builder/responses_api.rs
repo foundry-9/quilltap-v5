@@ -6,20 +6,134 @@
 
 use serde_json::{json, Value};
 
-use super::{num, Body, RequestInput, StreamMessage, ToolCallPayload};
+use super::{
+    att_fail, att_id, att_str, num, Body, RequestInput, StreamAttachmentResults, StreamMessage,
+    ToolCallPayload,
+};
 
 // ============================================================================
 // Message formatting (Responses API input items)
 // ============================================================================
 
-/// A user message's content array: `[{type:input_text, text}]` (empty text when
-/// the content is empty — v4's "avoid empty content array" guard).
-fn user_content(content: &str) -> Value {
-    if content.is_empty() {
-        json!([{ "type": "input_text", "text": "" }])
-    } else {
-        json!([{ "type": "input_text", "text": content }])
+const OPENAI_SUPPORTED_MIME_TYPES: &[&str] =
+    &["image/jpeg", "image/png", "image/gif", "image/webp"];
+const GROK_SUPPORTED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+/// Which plugin's user-content attachment arms apply (the two differ only in
+/// the failure-string label and Grok's extra — dead — mime branches).
+#[derive(Clone, Copy, PartialEq)]
+enum ResponsesFlavor {
+    OpenAi,
+    Grok,
+}
+
+/// A user message's content array (v4 `formatMessagesForResponsesAPI`'s user
+/// branch): the text part when content is non-empty, then one `input_image`
+/// part per surviving attachment, then the empty-text guard ONLY when nothing
+/// else was pushed — so an image-only message carries no empty text part
+/// (pinned by the `image-attachment-empty-content` vector).
+fn user_content(
+    msg: &StreamMessage,
+    flavor: ResponsesFlavor,
+    results: &mut StreamAttachmentResults,
+) -> Value {
+    let content = msg.content();
+    let mut parts: Vec<Value> = Vec::new();
+    if !content.is_empty() {
+        parts.push(json!({ "type": "input_text", "text": content }));
     }
+
+    let (label, mimes) = match flavor {
+        ResponsesFlavor::OpenAi => ("OpenAI", OPENAI_SUPPORTED_MIME_TYPES),
+        ResponsesFlavor::Grok => ("Grok", GROK_SUPPORTED_MIME_TYPES),
+    };
+    for a in msg.attachments() {
+        let mime = a
+            .get("mimeType")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !mimes.contains(&mime) {
+            att_fail(
+                results,
+                a,
+                format!(
+                    "Unsupported file type: {mime}. {label} supports: {}",
+                    mimes.join(", ")
+                ),
+            );
+            continue;
+        }
+        let Some(data) = att_str(a, "data") else {
+            att_fail(results, a, "File data not loaded");
+            continue;
+        };
+        match flavor {
+            ResponsesFlavor::OpenAi => {
+                parts.push(json!({
+                    "type": "input_image",
+                    "image_url": format!("data:{mime};base64,{data}"),
+                    "detail": "auto",
+                }));
+                results.sent.push(att_id(a));
+            }
+            ResponsesFlavor::Grok => {
+                // v4's grok branches AFTER the (images-only) supported gate, so
+                // the text/* and PDF arms below are dead code in v4 itself —
+                // ported as written, per the vestigial-cruft rule; a text file
+                // reaches the "Unsupported file type" arm above instead
+                // (pinned by the grok `unsupported-attachment` vector).
+                if mime.starts_with("image/") {
+                    parts.push(json!({
+                        "type": "input_image",
+                        "image_url": format!("data:{mime};base64,{data}"),
+                        "detail": "auto",
+                    }));
+                    results.sent.push(att_id(a));
+                } else if mime.starts_with("text/") {
+                    match forgiving_base64(data) {
+                        Some(bytes) => {
+                            let text = String::from_utf8_lossy(&bytes);
+                            let filename = a
+                                .get("filename")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default();
+                            parts.push(json!({
+                                "type": "input_text",
+                                "text": format!("[File: {filename}]\n{text}"),
+                            }));
+                            results.sent.push(att_id(a));
+                        }
+                        None => att_fail(results, a, "Failed to decode text file"),
+                    }
+                } else {
+                    att_fail(
+                        results,
+                        a,
+                        "PDF and binary document support requires Grok Files API (not yet implemented)",
+                    );
+                }
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        parts.push(json!({ "type": "input_text", "text": "" }));
+    }
+    Value::Array(parts)
+}
+
+/// Node's `Buffer.from(s, 'base64')` for the realistic input space: standard
+/// alphabet, padding optional. `None` on inputs Node would mangle rather than
+/// decode cleanly (degenerate; the callers fall back like v4's catch).
+pub(crate) fn forgiving_base64(data: &str) -> Option<Vec<u8>> {
+    use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
+    use base64::engine::DecodePaddingMode;
+    use base64::Engine;
+    let engine = GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+    engine.decode(data).ok()
 }
 
 fn function_call_items(tool_calls: &[ToolCallPayload]) -> Vec<Value> {
@@ -40,7 +154,10 @@ fn function_call_items(tool_calls: &[ToolCallPayload]) -> Vec<Value> {
 /// top-level `instructions`; later system messages become `developer` role items.
 /// A tool result always carries its `call_id` (the enum requires one — v4's
 /// `if (msg.toolCallId)` drop arm is unrepresentable).
-fn format_openai_messages(messages: &[StreamMessage]) -> (Vec<Value>, Option<String>) {
+fn format_openai_messages(
+    messages: &[StreamMessage],
+    results: &mut StreamAttachmentResults,
+) -> (Vec<Value>, Option<String>) {
     let mut instructions: Option<String> = None;
     let mut input = Vec::new();
     for msg in messages {
@@ -64,9 +181,9 @@ fn format_openai_messages(messages: &[StreamMessage]) -> (Vec<Value>, Option<Str
                 input.push(json!({ "type": "message", "role": "assistant", "content": content }));
                 input.extend(function_call_items(tool_calls));
             }
-            StreamMessage::User { content, .. } => {
+            StreamMessage::User { .. } => {
                 input.push(
-                    json!({ "type": "message", "role": "user", "content": user_content(content) }),
+                    json!({ "type": "message", "role": "user", "content": user_content(msg, ResponsesFlavor::OpenAi, results) }),
                 );
             }
         }
@@ -76,7 +193,10 @@ fn format_openai_messages(messages: &[StreamMessage]) -> (Vec<Value>, Option<Str
 
 /// v4 Grok `formatMessagesForResponsesAPI`: system stays as a `system`-role item
 /// (xAI has no `developer`/`instructions`).
-fn format_grok_messages(messages: &[StreamMessage]) -> Vec<Value> {
+fn format_grok_messages(
+    messages: &[StreamMessage],
+    results: &mut StreamAttachmentResults,
+) -> Vec<Value> {
     let mut input = Vec::new();
     for msg in messages {
         match msg {
@@ -96,9 +216,9 @@ fn format_grok_messages(messages: &[StreamMessage]) -> Vec<Value> {
                 input.push(json!({ "type": "message", "role": "assistant", "content": content }));
                 input.extend(function_call_items(tool_calls));
             }
-            StreamMessage::User { content, .. } => {
+            StreamMessage::User { .. } => {
                 input.push(
-                    json!({ "type": "message", "role": "user", "content": user_content(content) }),
+                    json!({ "type": "message", "role": "user", "content": user_content(msg, ResponsesFlavor::Grok, results) }),
                 );
             }
         }
@@ -300,8 +420,8 @@ fn openai_base(input: &RequestInput, item_input: Vec<Value>, instructions: Optio
 /// `buildBaseRequestParams` result and append `stream` last (`true` / `false`);
 /// nothing else moves between the two methods — the whole Responses-API family
 /// differs only by the flag.
-pub fn build_openai_body(input: &RequestInput) -> Value {
-    let (item_input, instructions) = format_openai_messages(&input.messages);
+pub fn build_openai_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    let (item_input, instructions) = format_openai_messages(&input.messages, results);
     let base = openai_base(input, item_input.clone(), instructions);
 
     if let Some(prev) = &input.previous_response_id {
@@ -327,8 +447,8 @@ pub fn build_openai_body(input: &RequestInput) -> Value {
 // Grok
 // ============================================================================
 
-pub fn build_grok_body(input: &RequestInput) -> Value {
-    let item_input = format_grok_messages(&input.messages);
+pub fn build_grok_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
+    let item_input = format_grok_messages(&input.messages, results);
     let mut b = Body::new();
     b.set("model", json!(input.model))
         .set("input", Value::Array(item_input))

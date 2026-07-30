@@ -44098,3 +44098,68 @@ The builders still ignore attachments in this commit (unit 2 ports the nine
 wire shapes), so the request-envelope corpus is unchanged and
 `request_builder_equivalence` + `tool_wire_call_site` prove the wire
 byte-identical. Versions: core 0.0.412, harness 0.0.357.
+
+## Lane record — P4.21 unit 2: the nine builders emit v4's attachment wire shapes + the corpus closes its blind spot (2026-07-30)
+
+**⚠ v4 drifted mid-lane:** main moved to `83118077` (the previously-dirty
+Pascal custom-tools work, committed). It touches NOTHING this lane's oracles
+import (verified: `lib/pascal/custom-tools.ts` + its test + version chores
+only); all corpora regenerate from the pinned detached worktree
+`/tmp/qt-v4-pin-p4.21-dcd9440a` per the standing rule. The unifier owes the
+usual drift disposition (Pascal-family; P4.D29 queues the baseline move).
+
+The wire shapes, each BUILT to a fresh recording of v4's real plugin at
+`dcd9440a` (never reasoned from source alone):
+
+- **OpenAI / Grok** (Responses API): `{type:'input_image', image_url:
+  'data:<mime>;base64,<data>', detail:'auto'}` parts; the empty-content
+  guard only fires when NOTHING was pushed, so an image-only message has no
+  empty text part (pinned by `image-attachment-empty-content`); chaining's
+  `extractLastUserMessage` keeps the image parts. Grok's text/* and PDF
+  branches are DEAD CODE IN V4 ITSELF (its supported-mime gate is
+  images-only and runs first) — ported as written per the vestigial-cruft
+  rule; a text file records the `Unsupported file type` arm
+  (`unsupported-attachment`).
+- **Anthropic**: image/PDF (`document`/base64) / text-plain
+  (`document`/text with the base64-decode heuristic — both decode arms
+  recorded) blocks; the cache breakpoint rides the LAST block, image
+  included (`image-attachment-caching`); all-failed on empty content falls
+  back to the plain string.
+- **Google**: `inlineData` parts; the consecutive-user merge concatenates
+  attachments; **the genai SDK's wire reframe REVERSES the Blob key order**
+  (plugin `{mimeType, data}` → wire `{data, mimeType}`) — caught by
+  recording, pinned in both google corpora.
+- **Z.AI**: `image_url` parts behind the vision-model regex gate
+  (`glm-\d+(\.\d+)?v` / `glm-5v` / `autoglm-phone`); a NON-vision model
+  still switches the wire to a parts ARRAY while reporting the failure
+  (`image-attachment-non-vision`).
+- **OpenRouter**: `image_url` parts on the streaming chat-completions path
+  (an image forces v4 off the SDK callModel path even with no tools, so a
+  no-tools streaming vector is finally recordable); **the non-streaming SDK
+  path REFUSES vision messages at input validation — v4 sends nothing**
+  (two new entries in `EXPECTED_REFUSALS`, recorded as refusal lines).
+- **DeepSeek / Ollama / OpenAI-compatible**: drop-and-report with v4's
+  exact strings; bodies prove the strip.
+
+`BuiltRequest` gains `attachment_results` (v4's format-time
+`attachmentResults`); every builder collects sent/failed in message order.
+The recorder now captures `attachmentResults` off the response/final chunk
+— kept on a line ONLY when non-empty, so all 93+10+5 pre-existing vectors
+stay byte-identical (verified against git per corpus). **Recorder bug found
+and fixed:** the canned OpenRouter send response was camelCase where the
+SDK's zod response schema wants the snake_case wire shape, so every
+OpenRouter send drive since P4.11 threw AFTER the capture — harmless for
+bodies, but it silently discarded the results this lane needed; two
+stream-mode string-pin cases (`pdf-attachment-tools`,
+`mixed-image-no-data-tools`) cover the strings the send path can't record.
+
+Corpora: request-envelopes 93 → 144 (51 attachment vectors incl. 2
+refusals), google-wire 10 → 18, google-request 5 → 9. All three
+differentials diff `attachmentResults` (absent field ⇒ v5 must report
+NOTHING) and grew shape-coverage assertions: every provider × both modes
+has an attachment vector, plus the pdf / text-document / no-data /
+multi-attachment / `File data not loaded` arms. **First-run-green was
+mutation-proven** (the D24 rule): five mutations — responses emission off,
+anthropic branch off, Z.AI vision gate inverted, google inlineData reframe
+off, one failure-string typo — each went red at the expected vector; the
+restored tree is green.

@@ -229,7 +229,10 @@ pub struct StreamCacheUsage {
 }
 
 /// Attachment-processing results carried on a chunk (v4 `AttachmentResults`).
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+/// Serializes to v4's `{ sent, failed }` shape (the differential diffs it
+/// against the oracle-recorded results; the finalizer emits it on the done
+/// event).
+#[derive(Clone, Debug, PartialEq, Eq, Default, serde::Serialize)]
 pub struct StreamAttachmentResults {
     /// IDs of attachments sent successfully.
     pub sent: Vec<String>,
@@ -238,7 +241,7 @@ pub struct StreamAttachmentResults {
 }
 
 /// One failed attachment (v4 `AttachmentResults.failed[]`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct StreamAttachmentFailure {
     pub id: String,
     pub error: String,

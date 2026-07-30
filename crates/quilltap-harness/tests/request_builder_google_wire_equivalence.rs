@@ -155,6 +155,7 @@ fn google_wire_body_matches_recorded() {
         .unwrap_or_else(|e| panic!("cannot read google wire fixture: {e}"));
 
     let mut count = 0usize;
+    let mut attachment_rows = 0usize;
     let mut modes = std::collections::HashSet::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -186,10 +187,41 @@ fn google_wire_body_matches_recorded() {
             row["url"].as_str().expect("recorded url"),
             "google url diverged (case '{case}' [{mode}])"
         );
+
+        // Attachment results (P4.21): absent = v4 reported nothing.
+        let got_results = serde_json::to_value(&built.attachment_results).unwrap();
+        match row.get("attachmentResults") {
+            Some(want) => assert_eq!(
+                &got_results, want,
+                "google/{case}[{mode}] attachmentResults diverged"
+            ),
+            None => assert_eq!(
+                got_results,
+                serde_json::json!({ "sent": [], "failed": [] }),
+                "google/{case}[{mode}] reported attachment results v4 did not"
+            ),
+        }
+        if row["input"]
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(|msgs| {
+                msgs.iter().any(|m| {
+                    m.get("attachments")
+                        .and_then(Value::as_array)
+                        .is_some_and(|a| !a.is_empty())
+                })
+            })
+        {
+            attachment_rows += 1;
+        }
         count += 1;
     }
 
     assert!(count > 0, "google wire fixture looks empty");
+    assert!(
+        attachment_rows >= 4,
+        "the google wire fixture lost its attachment vectors (P4.21), got {attachment_rows}"
+    );
     for mode in ["stream", "send"] {
         assert!(
             modes.contains(mode),

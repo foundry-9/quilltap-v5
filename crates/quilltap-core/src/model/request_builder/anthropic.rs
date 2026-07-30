@@ -22,7 +22,9 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::{num, Body, RequestInput, StreamMessage};
+use super::{
+    att_fail, att_id, att_str, num, Body, RequestInput, StreamAttachmentResults, StreamMessage,
+};
 
 /// v4 `SAMPLING_PARAMS_REJECTED_MODELS` (current source): these models reject
 /// `temperature`/`top_p`/`top_k` outright and 400 on fixed-budget thinking.
@@ -72,11 +74,46 @@ fn non_system(messages: &[StreamMessage]) -> Vec<&StreamMessage> {
         .collect()
 }
 
-/// v4 `formatMessagesWithAttachments` (the text path — attachments are the file
-/// subsystem's concern). Batches consecutive tool results, expands assistant
-/// tool-calls into content blocks, and attaches `cache_control` to the last user
-/// message (system_and_long_context) or a caller-flagged message.
-fn format_messages(messages: &[StreamMessage], cache: Option<&CacheOpts>) -> Vec<Value> {
+/// v4's supported attachment mime types (`ANTHROPIC_SUPPORTED_MIME_TYPES`).
+const ANTHROPIC_SUPPORTED_MIME_TYPES: &[&str] = &[
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "text/plain",
+];
+
+/// v4's text/plain document data: base64-LOOKING data (no newline, only the
+/// base64 charset) is decoded to text first; anything else — and any decode
+/// failure — ships as-is. `toString('utf-8')` maps invalid sequences to
+/// replacement chars, hence the lossy conversion.
+fn anthropic_text_document_data(data: &str) -> String {
+    let looks_base64 = !data.contains('\n')
+        && !data.is_empty()
+        && data
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
+    if !looks_base64 {
+        return data.to_string();
+    }
+    match super::responses_api::forgiving_base64(data) {
+        Some(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        None => data.to_string(),
+    }
+}
+
+/// v4 `formatMessagesWithAttachments`. Batches consecutive tool results, expands
+/// assistant tool-calls into content blocks, formats a user message's
+/// attachments into image/document blocks (collecting sent/failed), and attaches
+/// `cache_control` to the last user message (system_and_long_context) or a
+/// caller-flagged message — on the LAST content block when the message is
+/// multimodal.
+fn format_messages(
+    messages: &[StreamMessage],
+    cache: Option<&CacheOpts>,
+    results: &mut StreamAttachmentResults,
+) -> Vec<Value> {
     let non = non_system(messages);
     let last_user_index: Option<usize> =
         if cache.is_some_and(|c| c.strategy == "system_and_long_context") {
@@ -156,13 +193,82 @@ fn format_messages(messages: &[StreamMessage], cache: Option<&CacheOpts>) -> Vec
                 .and_then(|c| c.get("type"))
                 .and_then(Value::as_str)
                 == Some("ephemeral");
-        if is_last_user || honor_msg_cc {
-            out.push(json!({
-                "role": role,
-                "content": [{ "type": "text", "text": msg.content(), "cache_control": cache_control(ttl) }],
-            }));
-        } else {
+
+        // No attachments → v4's plain string / single-cached-text-block path.
+        let atts = msg.attachments();
+        if atts.is_empty() {
+            if is_last_user || honor_msg_cc {
+                out.push(json!({
+                    "role": role,
+                    "content": [{ "type": "text", "text": msg.content(), "cache_control": cache_control(ttl) }],
+                }));
+            } else {
+                out.push(json!({ "role": role, "content": msg.content() }));
+            }
+            i += 1;
+            continue;
+        }
+
+        // Multimodal content array: text first, then each surviving attachment
+        // as its block (PDF → base64 document, text/plain → text document with
+        // the base64-decode heuristic, else image).
+        let mut blocks: Vec<Value> = Vec::new();
+        if !msg.content().is_empty() {
+            blocks.push(json!({ "type": "text", "text": msg.content() }));
+        }
+        for a in atts {
+            let mime = a
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !ANTHROPIC_SUPPORTED_MIME_TYPES.contains(&mime) {
+                att_fail(
+                    results,
+                    a,
+                    format!(
+                        "Unsupported file type: {mime}. Anthropic supports: {}",
+                        ANTHROPIC_SUPPORTED_MIME_TYPES.join(", ")
+                    ),
+                );
+                continue;
+            }
+            let Some(data) = att_str(a, "data") else {
+                att_fail(results, a, "File data not loaded");
+                continue;
+            };
+            if mime == "application/pdf" {
+                blocks.push(json!({
+                    "type": "document",
+                    "source": { "type": "base64", "media_type": mime, "data": data },
+                }));
+            } else if mime == "text/plain" {
+                blocks.push(json!({
+                    "type": "document",
+                    "source": { "type": "text", "media_type": "text/plain", "data": anthropic_text_document_data(data) },
+                }));
+            } else {
+                blocks.push(json!({
+                    "type": "image",
+                    "source": { "type": "base64", "media_type": mime, "data": data },
+                }));
+            }
+            results.sent.push(att_id(a));
+        }
+
+        // The breakpoint rides the LAST block (image included) — v4 spreads
+        // cache_control onto it, guarded on a non-empty array.
+        if (is_last_user || honor_msg_cc) && !blocks.is_empty() {
+            if let Some(Value::Object(o)) = blocks.last_mut() {
+                o.insert("cache_control".to_string(), cache_control(ttl));
+            }
+        }
+        // v4: `content: content.length > 0 ? content : msg.content` — every
+        // attachment failing on an empty-content message falls back to the
+        // plain (empty) string.
+        if blocks.is_empty() {
             out.push(json!({ "role": role, "content": msg.content() }));
+        } else {
+            out.push(json!({ "role": role, "content": blocks }));
         }
         i += 1;
     }
@@ -206,7 +312,7 @@ fn apply_mid_history_breakpoint(messages: &mut [Value], ttl: Option<&str>) {
     }
 }
 
-pub fn build_body(input: &RequestInput) -> Value {
+pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
     // System messages (string, non-empty).
     let system_messages: Vec<&StreamMessage> = input
         .messages
@@ -259,7 +365,7 @@ pub fn build_body(input: &RequestInput) -> Value {
     } else {
         None
     };
-    let mut messages = format_messages(&input.messages, cache_opts.as_ref());
+    let mut messages = format_messages(&input.messages, cache_opts.as_ref(), results);
     if caching_enabled {
         apply_mid_history_breakpoint(&mut messages, cache_ttl.as_deref());
     }

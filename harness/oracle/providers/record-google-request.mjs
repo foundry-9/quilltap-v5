@@ -77,12 +77,37 @@ const CLEAN_TOOL = {
   parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
 };
 
+// P4.21 — attachment bags (mirror `loadChatFilesForLLM`'s shape).
+const IMG_ATT = {
+  id: 'att-img-1',
+  filepath: '/api/v1/files/att-img-1',
+  filename: 'photo.png',
+  mimeType: 'image/png',
+  size: 68,
+  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5CYII=',
+};
+const IMG_ATT_2 = {
+  id: 'att-img-2',
+  filepath: '/api/v1/files/att-img-2',
+  filename: 'sketch.jpg',
+  mimeType: 'image/jpeg',
+  size: 18,
+  data: '/9j/4AAQSkZJRgABAQ==',
+};
+const IMG_NO_DATA = { id: 'att-nodata-1', filename: 'missing.png', mimeType: 'image/png', size: 10 };
+
 const CASES = [
   { name: 'plain', params: { model: 'gemini-2.5-flash', messages: [SYS, USER], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'tools-sanitize', params: { model: 'gemini-2.5-flash', messages: [SYS, USER], tools: [DIRTY_TOOL], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'web-search', params: { model: 'gemini-2.5-flash', messages: [SYS, USER], webSearchEnabled: true, temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'thought-sig', params: { model: 'gemini-3-pro-preview', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT], tools: [CLEAN_TOOL], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'thinking-legacy-disable', params: { model: 'gemini-3-pro-preview', messages: [SYS, USER, { role: 'assistant', content: 'legacy no sig' }], tools: [CLEAN_TOOL], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  // P4.21 — inlineData parts, the consecutive-user merge concatenating
+  // attachments, and the no-data failure arm (part absent from contents).
+  { name: 'image-attachment', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  { name: 'multi-attachment', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, IMG_ATT_2] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  { name: 'merged-user-attachments', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'First image.', attachments: [IMG_ATT] }, { role: 'user', content: 'Second image.', attachments: [IMG_ATT_2] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  { name: 'attachment-no-data', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
 ];
 
 async function main() {
@@ -125,6 +150,9 @@ async function main() {
       globalThis.fetch = origFetch;
     }
 
+    // P4.21: `attachmentResults` recorded only when non-empty, so pre-P4.21
+    // vectors stay byte-identical.
+    const ar = fm.attachmentResults;
     lines.push(
       JSON.stringify({
         case: c.name,
@@ -133,6 +161,9 @@ async function main() {
         systemInstruction: fm.systemInstruction ?? null,
         shouldDisableTools: fm.shouldDisableTools,
         wireTools,
+        ...(ar && ((ar.sent && ar.sent.length) || (ar.failed && ar.failed.length))
+          ? { attachmentResults: ar }
+          : {}),
       })
     );
   }

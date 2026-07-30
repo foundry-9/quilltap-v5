@@ -101,8 +101,11 @@ function cannedJson(provider) {
     case 'ollama':
       return '{"message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}';
     case 'openrouter':
-      // The @openrouter/sdk ChatResult shape (camelCase usage keys).
-      return '{"id":"c","model":"x","choices":[{"index":0,"message":{"role":"assistant","content":""},"finishReason":"stop"}],"usage":{"promptTokens":1,"completionTokens":1,"totalTokens":2}}';
+      // The @openrouter/sdk parses the WIRE (snake_case) chat.completion shape
+      // through its zod response schema; the old camelCase stand-in failed
+      // response validation AFTER the capture, which silently discarded every
+      // send-mode `attachmentResults` (found by P4.21's results capture).
+      return '{"id":"c","object":"chat.completion","created":1,"model":"x","system_fingerprint":"fp","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}';
     default: // chat-completions
       return '{"id":"c","object":"chat.completion","created":1,"model":"x","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}';
   }
@@ -143,6 +146,44 @@ const ASSISTANT_TOOLCALL = {
 };
 const TOOL_RESULT = { role: 'tool', toolCallId: 'call_1', content: 'result text' };
 
+// ---- Attachment shapes (P4.21 — the corpus's first attachment vectors; the
+// pre-P4.21 corpus had ZERO, which is how dogfood #37 survived a
+// differential-verified port). The bags mirror what v4's `loadChatFilesForLLM`
+// builds: {id, filepath, filename, mimeType, size, data}.
+const IMG_ATT = {
+  id: 'att-img-1',
+  filepath: '/api/v1/files/att-img-1',
+  filename: 'photo.png',
+  mimeType: 'image/png',
+  size: 68,
+  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+};
+const IMG_ATT_2 = {
+  id: 'att-img-2',
+  filepath: '/api/v1/files/att-img-2',
+  filename: 'sketch.jpg',
+  mimeType: 'image/jpeg',
+  size: 18,
+  data: '/9j/4AAQSkZJRgABAQ==',
+};
+// Data never loaded — v4's `File data not loaded` / filtered-out arm.
+const IMG_NO_DATA = { id: 'att-nodata-1', filename: 'missing.png', mimeType: 'image/png', size: 10 };
+// Not in any provider's supportedMimeTypes.
+const TIFF_ATT = { id: 'att-tiff-1', filename: 'scan.tiff', mimeType: 'image/tiff', size: 9, data: 'AAAA' };
+const PDF_ATT = {
+  id: 'att-pdf-1',
+  filename: 'doc.pdf',
+  mimeType: 'application/pdf',
+  size: 17,
+  data: 'JVBERi0xLjQKJcTl8g==',
+};
+// base64-looking text data (no newline, all base64 chars) — v4's anthropic
+// text/plain arm DECODES it before the document block.
+const TXT_ATT_B64 = { id: 'att-txt-1', filename: 'notes.txt', mimeType: 'text/plain', size: 11, data: 'aGVsbG8gd29ybGQ=' };
+// Raw text data (contains a newline) — v4 sends it as-is.
+const TXT_ATT_RAW = { id: 'att-txt-2', filename: 'raw.txt', mimeType: 'text/plain', size: 17, data: 'line one\nline two' };
+const USER_IMG = { role: 'user', content: 'What is in this image?', attachments: [IMG_ATT] };
+
 /// `modes` restricts a case to a subset of `stream` / `send` (default: both).
 function casesFor(provider) {
   const base = { messages: [SYS, USER], model: 'MODEL', temperature: 0.5, maxTokens: 1000, topP: 0.9 };
@@ -164,6 +205,16 @@ function casesFor(provider) {
     add('boundary-first-new-gen-4-7', { ...base, model: 'claude-opus-4-7', messages: [SYS, USER] });
     add('boundary-dated-new-gen-4-8', { ...base, model: 'claude-opus-4-8-20260215', messages: [SYS, USER] });
     add('boundary-new-gen-thinking', { ...base, model: 'claude-opus-4-8', profileParameters: { thinkingBudget: 2048 } });
+    // P4.21 — attachment vectors (image + PDF + both text-decode arms + the
+    // failure arms + the cache-control-on-image-block interaction).
+    add('image-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG] });
+    add('pdf-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Summarize this document.', attachments: [PDF_ATT] }] });
+    add('text-attachment-b64', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_B64] }] });
+    add('text-attachment-raw', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Read this.', attachments: [TXT_ATT_RAW] }] });
+    add('attachment-no-data', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
+    add('multi-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, PDF_ATT] }] });
+    add('image-attachment-caching', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG], profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });
+    add('unsupported-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });
   } else if (provider === 'deepseek') {
     add('plain', { ...base, model: 'deepseek-chat' });
     add('tools', { ...base, model: 'deepseek-chat', tools: [TOOL], toolChoice: 'auto' });
@@ -171,11 +222,18 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'deepseek-chat', cacheKey: 'char-42' });
     add('thinking-strip', { ...base, model: 'deepseek-chat', profileParameters: { thinking: 'enabled' } });
     add('profile-params', { ...base, model: 'deepseek-chat', profileParameters: { frequency_penalty: 0.5, presence_penalty: 0.2, reasoning_effort: 'high' } });
+    // P4.21 — DeepSeek DROPS attachments (body shows plain string content).
+    add('image-attachment', { ...base, model: 'deepseek-chat', messages: [SYS, USER_IMG] });
   } else if (provider === 'z-ai') {
     add('plain', { ...base, model: 'glm-4.6' });
     add('web-search', { ...base, model: 'glm-4.6', webSearchEnabled: true });
     add('tools-cache', { ...base, model: 'glm-4.6', tools: [TOOL], toolChoice: 'auto', cacheKey: 'char-7' });
     add('reasoning-default', { ...base, model: 'glm-5.2', tools: [TOOL] });
+    // P4.21 — the vision-model gate: a vision model gets image_url parts; a
+    // non-vision model still switches to a parts ARRAY but reports the failure.
+    add('image-attachment-vision', { ...base, model: 'glm-4.6v', messages: [SYS, USER_IMG] });
+    add('image-attachment-non-vision', { ...base, model: 'glm-4.6', messages: [SYS, USER_IMG] });
+    add('attachment-no-data', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
   } else if (provider === 'openrouter') {
     add('tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL] });
     add('web-search', { ...base, model: 'openai/gpt-4o', tools: [TOOL], webSearchEnabled: true });
@@ -218,13 +276,31 @@ function casesFor(provider) {
     // Recording a streaming vector here would pin that gap as if this lane had
     // closed it; recording only `send` keeps the claim honest.
     add('no-tools', { ...base, model: 'openai/gpt-4o' }, ['send']);
+    // P4.21 — vision. Streaming: an image attachment forces v4 off the SDK
+    // callModel path onto streamViaChatCompletions even with NO tools, so a
+    // stream vector here is recordable (unlike the plain no-tools case above).
+    // Send: the @openrouter/sdk re-emits the content-parts array — recorded, not
+    // reasoned. The no-data arm is SEND-ONLY: with no usable image v4's
+    // streaming falls back to the unported SDK path.
+    add('image-attachment', { ...base, model: 'openai/gpt-4o', messages: [SYS, USER_IMG] });
+    add('image-attachment-tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, USER_IMG] });
+    add('attachment-no-data', { ...base, model: 'openai/gpt-4o', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] }, ['send']);
+    // Stream-only result-string pins (the send drive does not surface the
+    // SDK-path response's attachmentResults): the non-image arm and the
+    // missing-data arm, each alongside a body the raw-fetch path records.
+    add('pdf-attachment-tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, { role: 'user', content: 'Read this.', attachments: [PDF_ATT] }] }, ['stream']);
+    add('mixed-image-no-data-tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL], messages: [SYS, { role: 'user', content: 'What is here?', attachments: [IMG_ATT, IMG_NO_DATA] }] }, ['stream']);
   } else if (provider === 'ollama') {
     add('plain', { ...base, model: 'llama3' });
     add('tools-stop', { ...base, model: 'llama3', tools: [TOOL], stop: ['DONE'] });
+    // P4.21 — Ollama DROPS attachments (body shows plain string content).
+    add('image-attachment', { ...base, model: 'llama3', messages: [SYS, USER_IMG] });
   } else if (provider === 'openai-compatible') {
     add('plain', { ...base, model: 'local-model' });
     add('stop-cache', { ...base, model: 'local-model', stop: ['END'], cacheKey: 'char-1' });
     add('tool-roundtrip', { ...base, model: 'local-model', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
+    // P4.21 — the OpenAI-compatible base DROPS attachments.
+    add('image-attachment', { ...base, model: 'local-model', messages: [SYS, USER_IMG] });
   } else if (provider === 'openai') {
     add('plain', { ...base, model: 'gpt-4o' });
     add('first-call', { ...base, model: 'gpt-4o', messages: [SYS, USER] });
@@ -233,16 +309,35 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'gpt-4o', cacheKey: 'char-9' });
     add('reasoning-model', { ...base, model: 'gpt-5', profileParameters: { reasoningEffort: 'medium', reasoningSummary: true } });
     add('reasoning-cache-retention', { ...base, model: 'gpt-5.1', cacheKey: 'char-11' });
+    // P4.21 — Responses-API input_image vectors + the failure arms + the
+    // empty-content asymmetry (image only, no empty text part) + chaining
+    // (extractLastUserMessage keeps the image parts).
+    add('image-attachment', { ...base, model: 'gpt-4o', messages: [SYS, USER_IMG] });
+    add('multi-attachment', { ...base, model: 'gpt-4o', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, IMG_ATT_2] }] });
+    add('attachment-no-data', { ...base, model: 'gpt-4o', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
+    add('unsupported-attachment', { ...base, model: 'gpt-4o', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });
+    add('image-attachment-empty-content', { ...base, model: 'gpt-4o', messages: [SYS, { role: 'user', content: '', attachments: [IMG_ATT] }] });
+    add('image-attachment-chained', { ...base, model: 'gpt-4o', previousResponseId: 'resp_prev', messages: [SYS, { role: 'user', content: 'First.' }, { role: 'assistant', content: 'Ok.' }, USER_IMG] });
   } else if (provider === 'grok') {
     add('plain', { ...base, model: 'grok-4' });
     add('web-search', { ...base, model: 'grok-4', webSearchEnabled: true });
     add('tools-stop-cache', { ...base, model: 'grok-4', tools: [TOOL], stop: ['S'], cacheKey: 'char-3' });
+    // P4.21 — Grok input_image; a text file FAILS the images-only
+    // supportedMimeTypes gate FIRST (the plugin's text/plain branch is dead
+    // code in v4 itself — recorded to pin the gate order).
+    add('image-attachment', { ...base, model: 'grok-4', messages: [SYS, USER_IMG] });
+    add('unsupported-attachment', { ...base, model: 'grok-4', messages: [SYS, { role: 'user', content: 'Read this file.', attachments: [TXT_ATT_RAW] }] });
   } else if (provider === 'google') {
     add('plain', { ...base, model: 'gemini-2.5-flash' });
     add('tools', { ...base, model: 'gemini-2.5-flash', tools: [{ name: 'search', description: 'Search.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }] });
     add('web-search', { ...base, model: 'gemini-2.5-flash', webSearchEnabled: true });
     add('thought-sig', { ...base, model: 'gemini-3-pro-preview', tools: [{ name: 'search', description: 'Search.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }], messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
     add('stop', { ...base, model: 'gemini-2.5-flash', stop: ['STOP'] });
+    // P4.21 — inlineData parts + the consecutive-user merge (attachments concat).
+    add('image-attachment', { ...base, model: 'gemini-2.5-flash', messages: [SYS, USER_IMG] });
+    add('multi-attachment', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, IMG_ATT_2] }] });
+    add('merged-user-attachments', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'First image.', attachments: [IMG_ATT] }, { role: 'user', content: 'Second image.', attachments: [IMG_ATT_2] }] });
+    add('attachment-no-data', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
   }
   return cases;
 }
@@ -294,15 +389,22 @@ async function main() {
         ? makeResponse(cannedJson(provider), 'application/json')
         : makeResponse(cannedWire(provider), 'text/event-stream');
     };
+    // P4.21: capture `attachmentResults` off the response (send) / the chunks
+    // (stream) so the sent/failed outcome — including every failure STRING —
+    // is recorded rather than transcribed. Only kept on the line when
+    // non-empty, so every pre-P4.21 vector stays byte-identical.
+    let attachmentResults = null;
     try {
       const inst = await make();
       const params = { webSearchEnabled: false, ...c.params };
       if (mode === 'send') {
-        await inst.sendMessage(params, 'test-api-key');
+        const resp = await inst.sendMessage(params, 'test-api-key');
+        attachmentResults = (resp && resp.attachmentResults) || null;
       } else {
         // Drain the generator (fires the request, then parses the canned wire).
-        // eslint-disable-next-line no-unused-vars
-        for await (const _chunk of inst.streamMessage(params, 'test-api-key')) { /* discard */ }
+        for await (const chunk of inst.streamMessage(params, 'test-api-key')) {
+          if (chunk && chunk.attachmentResults) attachmentResults = chunk.attachmentResults;
+        }
       }
     } catch (e) {
       // The request is captured before any parse error; keep going. But a case
@@ -327,6 +429,11 @@ async function main() {
           refused: true,
           error: (failure ?? 'drive completed without fetch').split('\n')[0],
         }),
+        ...(attachmentResults &&
+        ((attachmentResults.sent && attachmentResults.sent.length) ||
+          (attachmentResults.failed && attachmentResults.failed.length))
+          ? { attachmentResults }
+          : {}),
       })
     );
   }

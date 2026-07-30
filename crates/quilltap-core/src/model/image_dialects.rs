@@ -106,6 +106,7 @@ pub fn build_image_request(
         url,
         headers,
         body,
+        attachment_results: Default::default(),
     })
 }
 

@@ -54,7 +54,10 @@ pub use google::sanitize_schema_for_google;
 // `RequestMessage`/`ToolCallMsg` bag — whose all-optional fields made an
 // id-less tool result representable — is GONE; re-exported here for the
 // builder family modules.
-pub use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload};
+pub use crate::model::stream::{
+    StreamAttachmentFailure, StreamAttachmentResults, StreamMessage, ToolCallFunction,
+    ToolCallPayload,
+};
 
 /// The provider-agnostic request input (v4 `LLMParams` subset). Optional fields
 /// map to v4's `?? default` / `if present` handling per provider.
@@ -117,6 +120,12 @@ pub struct BuiltRequest {
     /// The request body as a JSON value; serialize with `serde_json::to_string`
     /// (compact, preserve_order) for the wire bytes.
     pub body: Value,
+    /// v4 `attachmentResults` — computed at format time by every plugin (sent
+    /// ids + per-attachment failure strings) and attached to the RESPONSE /
+    /// final stream chunk, never the request body. The transport-side
+    /// composers copy this onto `StreamChunk::attachment_results` /
+    /// `CompletionResponse` (P4.21).
+    pub attachment_results: StreamAttachmentResults,
 }
 
 impl BuiltRequest {
@@ -173,31 +182,43 @@ pub fn build_request_with_registry(
         .ok_or_else(|| BuildError::UnknownProvider(provider.to_string()))?;
     let headers = auth_headers(manifest);
 
+    // Every builder collects v4's `attachmentResults` while formatting (sent
+    // ids + failure strings, in message order) — carried on the BuiltRequest
+    // for the response/final-chunk report, never in the body.
+    let mut attachment_results = StreamAttachmentResults::default();
+
     // Google's genai endpoint is model-specific (`/models/{model}:…`) and its wire
     // body is the SDK reframing (W4.7d) — handled separately from the fixed-path
     // chat-completions / responses / anthropic builders.
     if kind == ProviderKind::Google {
         let url = google::google_chat_url(&manifest.base_url, &input.model, input.stream);
-        let body = google::build_google_wire_body(input)
+        let body = google::build_google_wire_body(input, &mut attachment_results)
             .map_err(|e| BuildError::Deferred(format!("GOOGLE wire framing: {e}")))?;
         return Ok(BuiltRequest {
             method: "POST".to_string(),
             url,
             headers,
             body,
+            attachment_results,
         });
     }
 
     let url = format!("{}{}", manifest.base_url, manifest.endpoints.chat);
     let body = match kind {
-        ProviderKind::Anthropic => anthropic::build_body(input),
-        ProviderKind::OpenAi => responses_api::build_openai_body(input),
-        ProviderKind::Grok => responses_api::build_grok_body(input),
-        ProviderKind::DeepSeek => chat_completions::build_deepseek_body(input),
-        ProviderKind::ZAi => chat_completions::build_zai_body(input),
-        ProviderKind::OpenRouter => chat_completions::build_openrouter_body(input)?,
-        ProviderKind::Ollama => chat_completions::build_ollama_body(input),
-        ProviderKind::OpenAiCompatible => chat_completions::build_openai_compatible_body(input),
+        ProviderKind::Anthropic => anthropic::build_body(input, &mut attachment_results),
+        ProviderKind::OpenAi => responses_api::build_openai_body(input, &mut attachment_results),
+        ProviderKind::Grok => responses_api::build_grok_body(input, &mut attachment_results),
+        ProviderKind::DeepSeek => {
+            chat_completions::build_deepseek_body(input, &mut attachment_results)
+        }
+        ProviderKind::ZAi => chat_completions::build_zai_body(input, &mut attachment_results),
+        ProviderKind::OpenRouter => {
+            chat_completions::build_openrouter_body(input, &mut attachment_results)?
+        }
+        ProviderKind::Ollama => chat_completions::build_ollama_body(input, &mut attachment_results),
+        ProviderKind::OpenAiCompatible => {
+            chat_completions::build_openai_compatible_body(input, &mut attachment_results)
+        }
         ProviderKind::Google => unreachable!("handled above"),
     };
 
@@ -206,7 +227,50 @@ pub fn build_request_with_registry(
         url,
         headers,
         body,
+        attachment_results,
     })
+}
+
+// ============================================================================
+// Shared attachment helpers (P4.21)
+// ============================================================================
+
+/// A JS-truthy string field off a `FileAttachment` bag: `Some` iff present,
+/// a string, and non-empty (v4's `!attachment.data` treats `""` as missing).
+pub(crate) fn att_str<'a>(a: &'a Value, key: &str) -> Option<&'a str> {
+    a.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
+}
+
+/// The attachment's id (v4 always sets one; an absent id degrades to `""`
+/// rather than inventing).
+pub(crate) fn att_id(a: &Value) -> String {
+    a.get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// Record one failed attachment (v4 `failed.push({ id, error })`).
+pub(crate) fn att_fail(results: &mut StreamAttachmentResults, a: &Value, error: impl Into<String>) {
+    results.failed.push(StreamAttachmentFailure {
+        id: att_id(a),
+        error: error.into(),
+    });
+}
+
+/// v4 `collectAttachmentFailures` (DeepSeek / Ollama / the OpenAI-compatible
+/// base): the provider sends NO attachment — every one on every message fails
+/// with the provider's fixed message, and the body strips them silently.
+pub(crate) fn collect_drop_failures(
+    messages: &[StreamMessage],
+    error: &str,
+    results: &mut StreamAttachmentResults,
+) {
+    for m in messages {
+        for a in m.attachments() {
+            att_fail(results, a, error);
+        }
+    }
 }
 
 /// The provider's declared auth headers (v4 sets `defaultHeaders` on the SDK

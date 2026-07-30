@@ -273,6 +273,7 @@ pub fn build_serper_request(query: &str, max_results: i64, api_key: &str) -> Bui
             ("content-type".to_string(), "application/json".to_string()),
         ],
         body: Value::Object(body),
+        attachment_results: Default::default(),
     }
 }
 

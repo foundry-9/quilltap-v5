@@ -43,6 +43,20 @@ been switched off in a way nobody noticed — a stand-in written back when the
 new app had not yet ported that step, left in place after it did. The stand-in
 is gone, the check runs against the old app's real code again, and both sides
 now agree exactly. No application code changed.
+Second step of the image-attachment fix: all nine model providers now build
+the image into the actual network request, matching the old app byte for
+byte. Six providers embed the image (each in its own wire format, including
+the PDF and plain-text document forms for the one provider that accepts
+those), and three that don't support images drop them and report why. The
+test corpus that had zero image cases now has 63, recorded from the old
+app's real provider code, and every one is compared byte-for-byte — with a
+check that the corpus can never silently lose its image coverage again.
+Recording also surfaced two things worth knowing: the old app's OpenRouter
+provider refuses to send images at all on its non-streaming path (its SDK
+rejects them client-side — reproduced faithfully), and the recorder's fake
+OpenRouter reply had been malformed since it was written, which had been
+silently discarding part of what it should record.
+
 Started fixing the round's headline bug (an attached image never actually
 reaches the model): messages can now carry their image attachments all the way
 from the chat pipeline to the request layer. The four spots that silently

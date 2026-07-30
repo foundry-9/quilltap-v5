@@ -131,6 +131,7 @@ fn input_from_json(input: &Value) -> RequestInput {
 fn google_request_logic_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed google request NDJSON");
     let mut rows = 0usize;
+    let mut attachment_rows = 0usize;
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -180,7 +181,42 @@ fn google_request_logic_matches_v4() {
             got_tools, want_tools,
             "\ngoogle/{case} TOOLS (sanitizer) diverged\n  got:  {got_tools}\n  want: {want_tools}\n"
         );
+
+        // Attachment results (P4.21): recorded only when non-empty — absent
+        // means v4 reported nothing, and so must v5.
+        let got_results = serde_json::to_value(&fm.attachment_results).unwrap();
+        match row.get("attachmentResults") {
+            Some(want) => {
+                assert_eq!(
+                    &got_results, want,
+                    "google/{case} attachmentResults diverged"
+                )
+            }
+            None => assert_eq!(
+                got_results,
+                serde_json::json!({ "sent": [], "failed": [] }),
+                "google/{case} reported attachment results v4 did not"
+            ),
+        }
+        if row
+            .get("input")
+            .and_then(|i| i.get("messages"))
+            .and_then(Value::as_array)
+            .is_some_and(|msgs| {
+                msgs.iter().any(|m| {
+                    m.get("attachments")
+                        .and_then(Value::as_array)
+                        .is_some_and(|a| !a.is_empty())
+                })
+            })
+        {
+            attachment_rows += 1;
+        }
     }
 
     assert!(rows >= 5, "expected the google corpus, got {rows}");
+    assert!(
+        attachment_rows >= 3,
+        "the google corpus lost its attachment vectors (P4.21), got {attachment_rows}"
+    );
 }
