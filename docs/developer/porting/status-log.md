@@ -44428,3 +44428,40 @@ through `router.navigateByUrl` so query strings survive.
 Specs: 12 (mapping table, highlight escaping, first-encounter grouping,
 append dedupe, bar debounce + endpoint shape, sub-2 no-fetch/no-dropdown,
 result-click clear + mapped href, see-all dialog seed).
+
+## Lane record — P4.9P unit 3 + the tier-2 ruling: qt-page-toolbar + slots + shell cutover (2026-07-30)
+
+`qt-page-toolbar` ports v4 `page-toolbar.tsx`: left = the page's slot;
+center = `qt-search-bar`; right, v4's exact occupant order =
+`qt-autonomous-room-badges`, `qt-queue-status-badges`, the right slot,
+`qt-nav-content-width-toggle`. All responsive behavior is the
+already-ported-verbatim `.qt-page-toolbar*` CSS. Mounted in the shell inside
+`<main>` above the scroller (v4 `app-layout.tsx:113`); the shell only renders
+in the operational state, so v4's setup/unlock/no-session exclusions hold
+STRUCTURALLY (the toolbar cannot appear on `/setup*`/`/unlock` because the
+startup gate never mounts the shell there). **The sidebar-footer autonomous
+stopgap (`shell.ts:137-138`) is RETIRED** — the badges relocate to the
+toolbar right section, closing the m6 §2.6 WIDENED note.
+
+`PageToolbarService` is the slot provider (v4 `page-toolbar-provider.tsx` as
+a root signal service over `TemplateRef`s; the throws/optional accessor split
+collapses — the house divergence).
+
+**TIER-2 ITEM 8 DECIDED: the Salon KEEPS its inline `qt-conversation-header`
+— the slots land with NO consumer.** Rationale (against the workspace-tabs
+reality, as the order instructed): v4's ONE slot consumer is `SalonView`,
+and in v4's tabbed shell (also v5's default) the slot mechanism only works
+through the per-tab bridge (`components/workspace/tab-toolbar.tsx` — a
+per-tab registry; the FOCUSED pane's active tab supplies the global slots).
+v5 has no bridge; pushing the Salon header into the global slots without one
+would display chat A's breadcrumb/cost while chat B's tab is focused. The
+inline header renders the same content in-place and is already differential-
+covered. Tier-2 item 9 (the bridge) therefore also does not land. Follow-up:
+port the bridge, then move the header into the slots — the service's surface
+is ready for it. `m6-screen-parity.md` is the unifier's to update with this
+ruling.
+
+Gate at this commit: full ng test 258 files / 3,152 green (the shell cutover
+broke nothing); ng build clean. Specs: 2 toolbar specs (three sections +
+occupant order; slot render/clear with the right slot pinned BETWEEN queue
+badges and the width toggle).

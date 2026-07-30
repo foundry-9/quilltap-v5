@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
-import { AutonomousRoomBadges } from '../autonomous/autonomous-room-badges';
 import { BrahmaEntry } from '../brahma/brahma-entry';
 import { CoreClient } from '../core/core-client';
 import { DocumentsRailEntry } from '../documents/documents-rail-entry';
@@ -17,6 +16,7 @@ import { WardrobeControlDialog } from '../wardrobe/wardrobe-control-dialog';
 import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
 import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
 import { WorkspaceService } from '../workspace/workspace.service';
+import { PageToolbar } from '../layout/page-toolbar';
 import { AutoLockProvider } from '../screens/settings/system/auto-lock-provider';
 import { UserMenu } from './user-menu';
 
@@ -94,7 +94,7 @@ const NAV_ITEMS: NavItem[] = [
     RouterLink,
     RouterLinkActive,
     RouterOutlet,
-    AutonomousRoomBadges,
+    PageToolbar,
     UserMenu,
     WardrobeControlDialog,
     BrahmaEntry,
@@ -134,8 +134,6 @@ const NAV_ITEMS: NavItem[] = [
           </nav>
         </div>
         <div class="qt-left-sidebar-footer">
-          <!-- Autonomous run-state badges (renders nothing when no rooms are live). -->
-          <qt-autonomous-room-badges />
           <div class="qt-left-sidebar-footer-actions">
             <!-- v4 sidebar-footer.tsx:309 — the profile dropdown. -->
             <qt-user-menu />
@@ -175,6 +173,10 @@ const NAV_ITEMS: NavItem[] = [
 
       <div class="qt-app-main">
         <main class="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <!-- The top page toolbar (v4 app-layout.tsx:113 — inside <main>,
+               above the scroller). The autonomous badges RELOCATED here from
+               the sidebar-footer stopgap, which is retired (P4.9P). -->
+          <qt-page-toolbar />
           <!-- v4 app-layout.tsx: the inner scroller wrapper — page content
                scrolls HERE; full-height views (the chat) size to it exactly
                and run their own inner scroller instead. -->

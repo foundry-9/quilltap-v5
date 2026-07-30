@@ -87,6 +87,15 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+The top page toolbar is here: search in the center, and on the right the
+autonomous-room badges (moved out of their sidebar stopgap, which is retired),
+the background-queue badges, and the width toggle — the same arrangement as
+the old app, appearing on every screen once the vault is unlocked and never on
+setup or unlock. Pages will be able to put their own content in the toolbar's
+left and right slots; the chat keeps its inline header for now (the old app
+routes that content through a per-tab bridge this app hasn't ported yet, and
+without it the wrong chat's header could show).
+
 Ported the global search UI: the inline search bar (Cmd+K or Ctrl+K, 300ms
 debounce, a dropdown of the first twenty results with per-type counts and
 "See all results") and the full search dialog (type filter chips, infinite
