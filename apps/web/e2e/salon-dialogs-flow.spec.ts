@@ -198,7 +198,11 @@ test.describe('P4.9E3C — Export', () => {
   test('the Organize entry points at the transcript download', async ({ page }) => {
     const chatId = await openChat(page, 'Solo Voyage');
     await openSidebarSection(page, 'Organize');
-    await expect(page.getByRole('button', { name: 'Export' })).toBeVisible({ timeout: 10_000 });
+    // `exact` matters now that "Export Markdown" sits beside it — the default
+    // name match is a substring one and would resolve both buttons.
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // v4 navigates the window straight at the route, so what the beat can assert
     // is the response that navigation would get: the media type, the attachment
@@ -210,6 +214,38 @@ test.describe('P4.9E3C — Export', () => {
     expect(resp.headers()['content-disposition']).toContain('.jsonl');
     const first = (await resp.text()).split('\n')[0];
     expect(() => JSON.parse(first) as unknown).not.toThrow();
+  });
+
+  test('the Markdown transcript entry serves a readable document', async ({ page }) => {
+    const chatId = await openChat(page, 'Solo Voyage');
+    await openSidebarSection(page, 'Organize');
+    const entry = page.getByRole('button', { name: 'Export Markdown' });
+    await expect(entry).toBeVisible({ timeout: 10_000 });
+    await expect(entry).toHaveAttribute(
+      'title',
+      'Export the conversation as a readable Markdown transcript',
+    );
+
+    // The entry anchor-clicks the route, so what the beat asserts is the
+    // response that click fetches: the media type, the attachment name built
+    // from the chat's title, `no-store` (which no other arm of this fan-out
+    // sends), and the document's own shape.
+    const resp = await page.request.get(`/api/v1/chats/${chatId}?action=export-markdown`);
+    expect(resp.ok(), `export-markdown → ${resp.status()}`).toBe(true);
+    expect(resp.headers()['content-type']).toContain('text/markdown');
+    expect(resp.headers()['content-disposition']).toContain('attachment');
+    // The server names the file after the chat, so this ties the download name
+    // to the conversation the beat actually opened.
+    expect(resp.headers()['content-disposition']).toContain('Solo Voyage_transcript.md');
+    expect(resp.headers()['cache-control']).toBe('no-store');
+
+    const body = await resp.text();
+    expect(body.split('\n')[0]).toBe('# Solo Voyage');
+    // Every message heading is `## Speaker — timestamp` with a real EM DASH.
+    expect(body).toMatch(/^## .+ \u2014 .+$/m);
+    // Exactly one trailing newline.
+    expect(body.endsWith('\n')).toBe(true);
+    expect(body.endsWith('\n\n')).toBe(false);
   });
 });
 

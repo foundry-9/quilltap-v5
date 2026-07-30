@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { apiUrl } from '../../core/api-url';
+import { triggerUrlDownload } from '../../core/download-utils';
 import { CopyChatIdButton } from '../../ui/copy-chat-id-button';
 import { Icon } from '../../ui/icon';
 
@@ -28,6 +29,11 @@ import { Icon } from '../../ui/icon';
  * window straight at the byte route, exactly as v4 does — there is no dialog and
  * no fetch, the browser's own download machinery takes it from there. The route
  * itself is P4.9E3B's (`GET /chats/{id}?action=export`).
+ *
+ * **Export Markdown is LIVE** (v4 :1515-1519,1595-1604, P4.d28 over v4
+ * `b3ee00f1`): the readable transcript, sitting between Export and Gallery in
+ * v4's own order. v4 reaches it through `triggerUrlDownload` rather than a
+ * navigation, so the port does too.
  *
  * **Rename is LIVE** (v4 :1530, P4.9E3C 2026-07-27) — and with it
  * `regenerate-title`, which v4 exposes through no button of its own: the route
@@ -107,6 +113,16 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
+        title="Export the conversation as a readable Markdown transcript"
+        (click)="onExportMarkdown()"
+      >
+        <qt-icon name="file" class="w-4 h-4" />
+        <span>Export Markdown</span>
+      </button>
+
+      <button
+        type="button"
+        class="qt-tool-palette-button"
         title="View gallery"
         (click)="openGallery.emit()"
       >
@@ -136,5 +152,19 @@ export class OrganizeSection {
    */
   protected onExport(): void {
     window.location.href = apiUrl(`/api/v1/chats/${encodeURIComponent(this.chatId())}?action=export`);
+  }
+
+  /**
+   * v4 `handleExportMarkdown` (`ChatSidebar.tsx:1515-1519`). Unlike the JSONL
+   * entry above, v4 routes this one through `triggerUrlDownload` — an
+   * anchor-click, not a navigation. The filename passed here is only that
+   * anchor's fallback: the server names the real file after the chat via
+   * `Content-Disposition`.
+   */
+  protected onExportMarkdown(): void {
+    triggerUrlDownload(
+      `/api/v1/chats/${encodeURIComponent(this.chatId())}?action=export-markdown`,
+      'chat_transcript.md',
+    );
   }
 }

@@ -5,7 +5,7 @@ import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
-import { triggerBlobDownload } from './download-utils';
+import { triggerBlobDownload } from '../../../core/download-utils';
 import {
   ENTITY_TYPE_LABELS,
   EXPORTABLE_TYPES,

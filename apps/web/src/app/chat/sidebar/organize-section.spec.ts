@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrganizeSection } from './organize-section';
 
@@ -42,6 +42,10 @@ function labels(fixture: ComponentFixture<Host>): string[] {
 }
 
 describe('OrganizeSection', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('shows Copy ID, State and Gallery — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
     expect(labels(fixture)).toEqual([
@@ -50,6 +54,7 @@ describe('OrganizeSection', () => {
       'State…',
       'Merge In…',
       'Export',
+      'Export Markdown',
       'Gallery',
     ]);
 
@@ -62,6 +67,7 @@ describe('OrganizeSection', () => {
       'Rename',
       'State…',
       'Export',
+      'Export Markdown',
       'Gallery',
     ]);
   });
@@ -78,5 +84,31 @@ describe('OrganizeSection', () => {
       button.click();
     }
     expect(fixture.componentInstance.fired).toEqual(['enclave', 'rename', 'state', 'gallery']);
+  });
+
+  it('downloads the Markdown transcript by anchor-click, as v4 does', async () => {
+    const fixture = await render();
+    // `triggerUrlDownload` appends a real anchor and clicks it; intercept the
+    // click so the jsdom navigation never happens, and read the href off the
+    // element the helper built.
+    const clicked: Array<{ href: string; download: string }> = [];
+    const spy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push({ href: this.href, download: this.download });
+      });
+
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent!.trim() === 'Export Markdown',
+    ) as HTMLButtonElement;
+    button.click();
+
+    expect(spy).toHaveBeenCalledOnce();
+    expect(clicked[0].href).toContain('/api/v1/chats/chat-1?action=export-markdown');
+    // Only the anchor's fallback name — the server's Content-Disposition names
+    // the file after the chat.
+    expect(clicked[0].download).toBe('chat_transcript.md');
+    // The entry must not fire a Salon output (v4 keeps it entirely local).
+    expect(fixture.componentInstance.fired).toEqual([]);
   });
 });

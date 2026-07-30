@@ -1,17 +1,21 @@
-import { apiUrl } from '../../../core/api-url';
+import { apiUrl } from './api-url';
 
 /**
  * The v5 port of v4 `lib/download-utils.ts` (browser arm): trigger a file
  * download by anchor-click. The Electron/native save arm is out of scope for
  * the SPA/Tauri webview (there, the browser fallback is the honest behaviour).
  *
- * @module screens/settings/system/download-utils
+ * @module core/download-utils
+ *
+ * Re-homed here by P4.d28 when the Organize drawer's Export Markdown entry
+ * became its third consumer from a different feature — v4 keeps it in `lib/`
+ * for the same reason.
  */
 
 /**
- * Download a server URL (v4 `triggerUrlDownload`) — used for the single-use
- * backup zip stream. The path resolves through {@link apiUrl} (the D14 raw-route
- * rule). No-op outside a DOM.
+ * Download a server URL (v4 `triggerUrlDownload`) — the single-use backup zip
+ * stream and the Organize drawer's Markdown transcript. The path resolves
+ * through {@link apiUrl} (the D14 raw-route rule). No-op outside a DOM.
  */
 export function triggerUrlDownload(path: string, filename: string): void {
   if (typeof document === 'undefined') return;

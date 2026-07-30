@@ -502,6 +502,16 @@ export interface ChatExportRequest {
   chatId: string;
 }
 
+/**
+ * The readable Markdown transcript (v4 `GET …/chats/{id}?action=export-markdown`,
+ * P4.d28 / v4 `b3ee00f1`). Mirrored for the §1 contract diff; the Organize
+ * entry reaches the byte route directly, as v4's does.
+ */
+export interface ChatExportMarkdownRequest {
+  type: 'chatExportMarkdown';
+  chatId: string;
+}
+
 /** Per-character equipped-outfit summary (v4 `GET …/chats/{id}?action=outfit-summary`). */
 export interface ChatOutfitSummaryRequest {
   type: 'chatOutfitSummary';
@@ -1935,6 +1945,7 @@ export type CoreRequest =
   // --- The chat-dialog surface (§1; P4.9E3B's server half) ---
   | ToolsListRequest
   | ChatExportRequest
+  | ChatExportMarkdownRequest
   | ChatOutfitSummaryRequest
   | SearchReplacePreviewRequest
   | SearchReplaceExecuteRequest

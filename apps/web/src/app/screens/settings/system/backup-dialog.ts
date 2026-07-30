@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { Modal } from '../../../ui/modal';
-import { triggerUrlDownload } from './download-utils';
+import { triggerUrlDownload } from '../../../core/download-utils';
 
 /**
  * The Create Backup dialog (v4 `components/tools/backup-dialog.tsx`): a single

@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+**Export Markdown** now sits in a conversation's Organize drawer, between
+Export and Gallery, and hands you the readable transcript as a download named
+after the chat. The download helper the settings screens already used moved
+somewhere both can reach it rather than being copied. One wrinkle worth naming:
+the older Export button's test matched buttons by label prefix, so a second
+button starting with "Export" would have made it ambiguous — it now matches
+exactly.
+
 The Markdown transcript is now something the app will actually hand you:
 `GET /api/v1/chats/{id}?action=export-markdown` renders the conversation and
 serves it as a download, named after the chat — accents and emoji in a title

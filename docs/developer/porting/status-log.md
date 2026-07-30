@@ -43173,3 +43173,59 @@ Env vars: `QT_ORACLE_CHAT_EXPORT`, `QT_ORACLE_TOOLS_INVENTORY`,
 `QT_ORACLE_LLM_CHOOSE`. New-baseline marker for the export family: an
 `export_markdown_rich` row whose `contentDisposition` carries
 `filename*=UTF-8''Supar%E1%B9%87…`.
+
+## Lane record — P4.d28 unit 4: the Organize entry, the contract mirror, and the beats (2026-07-30)
+
+Order: `work-orders/p4.d28-export-markdown-transcript.md` (tier-1 items 4 + 5).
+
+**What landed.** `ChatExportMarkdownRequest` mirrored into `core-contract.ts`
+(name-for-name with the §1 union — no client dispatches it, the entry reaches
+the byte route directly exactly as v4's does); the **Export Markdown** button in
+the Organize drawer, between Export and Gallery in v4's own order, with v4's
+icon (`file`), title and label; a component spec; and a live e2e beat.
+
+**`download-utils` was re-homed, not cross-imported.**
+`triggerUrlDownload`/`triggerBlobDownload` lived under
+`screens/settings/system/`, which was fine while both consumers were settings
+dialogs. The Organize entry is the third consumer and belongs to another
+feature, so the module moved to `core/download-utils.ts` — where v4 keeps it
+(`lib/download-utils.ts`) — and its two existing importers were re-pointed. The
+helper stays single; nothing forked.
+
+**A shipping beat would have broken, and the fix is worth knowing.** Playwright's
+`getByRole(..., { name })` is a SUBSTRING match by default, so the older beat's
+`{ name: 'Export' }` began resolving both buttons the moment "Export Markdown"
+appeared beside it — a strict-mode violation, not a subtle wrong-element pick.
+That beat now passes `exact: true`. Any lane adding a button whose label extends
+an existing one inherits this.
+
+**What the new beat asserts** (the entry anchor-clicks, so the beat fetches what
+the click would): `text/markdown`, `attachment`, the download name built from
+the chat's own title (`Solo Voyage_transcript.md` — tying the header to the
+conversation the beat opened), `Cache-Control: no-store` (the header no other
+arm of the fan-out sends, and the only place the LIVE axum edge — not the
+harness's projection of it — is checked), the document's first line
+(`# Solo Voyage`), an EM-DASH message heading, and exactly one trailing newline.
+
+**The component spec** intercepts `HTMLAnchorElement.prototype.click`, so it
+reads the href and `download` off the anchor the helper actually built rather
+than trusting the call — and asserts the entry fires no Salon output, since v4
+keeps it entirely local.
+
+### P4.d28 — the order's tier-3 exclusions, as banked
+
+- **`help/chats.md` (+16 lines in v4 `b3ee00f1`)** — joins the `p4.9i2` help
+  bank. v5 has no help-authoring surface of its own and syncs help docs from
+  disk at runtime, so nothing here is blocked by it; v5's help text simply does
+  not yet mention the transcript.
+- **v4's Electron `downloadUrl` IPC arm** — `triggerUrlDownload`'s
+  `isElectron()` branch. The v5 helper is the browser arm only, which is the
+  honest behaviour in the Tauri webview; the standing
+  `tauri-shell-browser-affordances` note owns any future native save dialog.
+- **Re-pointing v5's other plain-format `Content-Disposition` sites**
+  (`wardrobe_routes.rs`'s JSONL export, `characters_routes.rs`,
+  `backup_routes.rs`) — v4 did not re-point its own, so neither did this lane.
+  They still build `attachment; filename="…"` inline — and so does v4 at the
+  same sites (`handlers/get.ts:120` builds the JSONL header by hand), so this is
+  fidelity, not debt. A non-ASCII name would produce an unquoted-UTF-8 header on
+  BOTH sides.
