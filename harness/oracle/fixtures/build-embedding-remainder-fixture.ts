@@ -55,6 +55,31 @@
  *     reconcile's `reused` counter), and a PENDING embed (partial scope must
  *     leave it alone; full scope cancels it).
  *
+ * P4.d27 (v4 `7391404e`) adds the non-conforming half of the corpus — the state
+ * v4's outage was actually in, which a conforming fixture cannot express:
+ *
+ *   - A FOURTH character (Nadia) owned by the SECOND user, with a memory, so the
+ *     reindex fan-out's not-user-scoped enumeration is pinned; plus a memory
+ *     whose `characterId` has NO `characters` row at all — the vault-unavailable
+ *     shape the old `characters.findByUserId` fan-out silently dropped.
+ *   - `legacyDim` / `legacyFormat` on any embedding-bearing seed: after every
+ *     create, that row's BLOB is rewritten to a vector of another width, in
+ *     either the headerless raw Float32 layout (the TF-IDF era) or the current
+ *     quantized header. The two take different branches of `EMBEDDING_DIM_SQL`,
+ *     so — like v4's own test — the corpus carries both. Applied to memories
+ *     (one per format), conversation chunks (stale / live / ORPHAN), the one
+ *     help doc whose id is pinned, two extra vector-index entries, and mount
+ *     chunks.
+ *   - TWO explicit document mount points, one ENABLED and one DISABLED, with
+ *     pinned ids (the per-character vault mounts exist but their ids are minted),
+ *     and five chunks across them: conforming, NULL, non-conforming, FAILED, and
+ *     one behind the disabled door.
+ *   - FAILED `embedding_status` rows for the 8-dimension profile covering all
+ *     four entity types, so both the reindex's `mismatched-dim` skips and the
+ *     reconcile's NOT_FAILED exclusions are observable.
+ *   - Aria's index meta dim comes from the spec (4, not the corpus width), so the
+ *     reconcile's meta snap is a visible change.
+ *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<the v5 worktree>
  *   cd ~/source/quilltap-server
@@ -67,10 +92,20 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+/** A vector stored in one of the two LEGACY on-disk widths/formats (P4.d27). */
+interface LegacyBlob {
+  /** Component count to write — anything other than `embedDim` is non-conforming. */
+  legacyDim?: number;
+  /** `raw` = headerless Float32 (the TF-IDF era); `quantized` = the current header. */
+  legacyFormat?: 'raw' | 'quantized';
+}
+
 interface CharacterSeed {
   id: string;
   name: string;
   controlledBy: string;
+  /** Defaults to the corpus `userId`; set to prove a read is not user-scoped. */
+  userId?: string;
 }
 interface ProfileSeed {
   id: string;
@@ -126,7 +161,7 @@ interface ChatSettingsSeed {
   userId: string;
   cheapLLMSettings: Record<string, unknown>;
 }
-interface ChunkSeed {
+interface ChunkSeed extends LegacyBlob {
   id: string;
   chatId: string;
   interchangeIndex: number;
@@ -134,14 +169,14 @@ interface ChunkSeed {
   participantNames: string[];
   embedded: boolean;
 }
-interface MemorySeed {
+interface MemorySeed extends LegacyBlob {
   id: string;
   characterId: string;
   summary: string;
   content: string;
   embedded: boolean;
 }
-interface HelpDocSeed {
+interface HelpDocSeed extends LegacyBlob {
   id: string;
   title: string;
   path: string;
@@ -149,6 +184,24 @@ interface HelpDocSeed {
   content: string;
   contentHash: string;
   embedded: boolean;
+}
+/** P4.d27 — a document mount point in the mount-index DB. */
+interface MountPointSeed {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+/** P4.d27 — a document mount chunk in the mount-index DB. */
+interface MountChunkSeed extends LegacyBlob {
+  id: string;
+  mountPointId: string;
+  chunkIndex: number;
+  content: string;
+  embedded: boolean;
+}
+/** P4.d27 — an extra vector-index entry, written at a legacy width. */
+interface VectorEntrySeed extends LegacyBlob {
+  id: string;
 }
 interface StatusSeed {
   id: string;
@@ -184,6 +237,12 @@ interface Spec {
   memories: MemorySeed[];
   seedVectorEntryMemoryId: string;
   orphanVectorEntryId: string;
+  /** Aria's index meta dim — DELIBERATELY not `embedDim`, so the reconcile snaps it. */
+  seedVectorIndexDimensions: number;
+  extraVectorEntries: VectorEntrySeed[];
+  docMountPoints: MountPointSeed[];
+  docMountChunkLinkId: string;
+  docMountChunks: MountChunkSeed[];
   helpDocSeeds: HelpDocSeed[];
   statusRows: StatusSeed[];
   jobs: JobSeed[];
@@ -218,6 +277,7 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -253,8 +313,38 @@ async function main(): Promise<void> {
     }
   }
 
+  const { float32ToBlob, float32ToBlobRaw } = await import('@/lib/embedding/float32-conversion');
+
   const TS = spec.seedTimestamp;
   const embedding = () => new Float32Array(Array.from({ length: spec.embedDim }, (_, i) => (i === 0 ? 1 : 0)));
+
+  /**
+   * P4.d27 — overwrite a row's `embedding` BLOB with a vector at a LEGACY width,
+   * in either on-disk format. The repositories always write the current
+   * quantized format at the corpus width, so a non-conforming corpus can only be
+   * built by rewriting the cell afterwards. `raw` reproduces the headerless
+   * TF-IDF-era layout that started v4's outage; `quantized` is the same width in
+   * the current header format, and the two take DIFFERENT branches of
+   * EMBEDDING_DIM_SQL — v4's own test covers both, so this corpus does too.
+   */
+  const legacyRewrites: Array<{ db: 'main' | 'mount'; table: string; seed: LegacyBlob & { id: string } }> = [];
+  const applyLegacyRewrites = () => {
+    for (const { db, table, seed } of legacyRewrites) {
+      if (!seed.legacyDim) continue;
+      const vec = new Float32Array(
+        Array.from({ length: seed.legacyDim }, (_, i) => (i === 0 ? 1 : 0))
+      );
+      const blob = seed.legacyFormat === 'quantized' ? float32ToBlob(vec) : float32ToBlobRaw(vec);
+      const handle = db === 'main' ? getRawDatabase() : getRawMountIndexDatabase();
+      if (!handle) throw new Error(`${db} DB handle unavailable for the legacy rewrite`);
+      const changed = handle
+        .prepare(`UPDATE "${table}" SET embedding = ? WHERE id = ?`)
+        .run(blob, seed.id).changes;
+      if (changed !== 1) {
+        throw new Error(`legacy rewrite matched ${changed} rows for ${table}.${seed.id}`);
+      }
+    }
+  };
 
   await repos.users.create(
     { username: 'friday', email: null, name: 'Friday' } as never,
@@ -288,7 +378,7 @@ async function main(): Promise<void> {
 
   for (const c of spec.characters) {
     await repos.characters.create(
-      { name: c.name, userId: spec.userId, controlledBy: c.controlledBy } as never,
+      { name: c.name, userId: c.userId ?? spec.userId, controlledBy: c.controlledBy } as never,
       { id: c.id }
     );
   }
@@ -365,6 +455,7 @@ async function main(): Promise<void> {
       } as never,
       { id: c.id, createdAt: TS, updatedAt: TS }
     );
+    legacyRewrites.push({ db: 'main', table: 'conversation_chunks', seed: c });
   }
 
   for (const m of spec.memories) {
@@ -392,14 +483,18 @@ async function main(): Promise<void> {
       } as never,
       { id: m.id, createdAt: TS, updatedAt: TS }
     );
+    legacyRewrites.push({ db: 'main', table: 'memories', seed: m });
   }
 
   // Aria's vector index: a meta row with a DELIBERATELY wrong dim plus one real
   // entry and one ORPHAN entry, so full-scope `deleteStore` is a visible change
-  // and partial scope's leave-it-alone is equally visible.
+  // and partial scope's leave-it-alone is equally visible. P4.d27 adds two
+  // entries at a LEGACY width (one per on-disk format) that the boot dimension
+  // reconcile DELETEs outright, and pins the meta dim from the spec so the
+  // reconcile's meta snap is a visible change too.
   const vectors = new VectorIndicesRepository();
   const ariaId = spec.characters[0].id;
-  await vectors.saveMeta(ariaId, 4);
+  await vectors.saveMeta(ariaId, spec.seedVectorIndexDimensions);
   await vectors.addEntry({
     id: spec.seedVectorEntryMemoryId,
     characterId: ariaId,
@@ -410,6 +505,48 @@ async function main(): Promise<void> {
     characterId: ariaId,
     embedding: embedding(),
   });
+  for (const e of spec.extraVectorEntries) {
+    await vectors.addEntry({ id: e.id, characterId: ariaId, embedding: embedding() });
+    legacyRewrites.push({ db: 'main', table: 'vector_entries', seed: e });
+  }
+
+  // P4.d27 — two explicit document mount points (one enabled, one disabled) and
+  // their chunks. Vault mounts exist already (one per character), but their ids
+  // are minted at build time; these are pinned so the corpus can name them.
+  for (const mp of spec.docMountPoints) {
+    await repos.docMountPoints.create(
+      {
+        name: mp.name,
+        basePath: '',
+        mountType: 'database',
+        storeType: 'documents',
+        includePatterns: ['*.md'],
+        excludePatterns: [],
+        enabled: mp.enabled,
+        scanStatus: 'idle',
+        conversionStatus: 'idle',
+        fileCount: 0,
+        chunkCount: 0,
+        totalSizeBytes: 0,
+      } as never,
+      { id: mp.id, createdAt: TS, updatedAt: TS }
+    );
+  }
+  for (const c of spec.docMountChunks) {
+    await repos.docMountChunks.create(
+      {
+        linkId: spec.docMountChunkLinkId,
+        mountPointId: c.mountPointId,
+        chunkIndex: c.chunkIndex,
+        content: c.content,
+        tokenCount: c.content.split(/\s+/).length,
+        headingContext: null,
+        embedding: c.embedded ? embedding() : null,
+      } as never,
+      { id: c.id, createdAt: TS, updatedAt: TS }
+    );
+    legacyRewrites.push({ db: 'mount', table: 'doc_mount_chunks', seed: c });
+  }
 
   for (const d of spec.helpDocSeeds) {
     await repos.helpDocs.create(
@@ -423,6 +560,7 @@ async function main(): Promise<void> {
       } as never,
       { id: d.id, createdAt: TS, updatedAt: TS }
     );
+    legacyRewrites.push({ db: 'main', table: 'help_docs', seed: d });
   }
 
   for (const s of spec.statusRows) {
@@ -459,13 +597,21 @@ async function main(): Promise<void> {
     );
   }
 
+  // LAST: rewrite every seed that asked for a legacy width/format. The repos
+  // always write the current quantized format at the corpus width, so this is
+  // the only way to bake a non-conforming corpus — and it must run after every
+  // create, since a later write would overwrite the cell.
+  applyLegacyRewrites();
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
     `built embedding-remainder fixture: ${outMain} + ${outMount} ` +
       `(${spec.chats.length} chats, ${spec.conversationChunks.length} chunks, ` +
       `${spec.memories.length} memories, ${spec.helpDocSeeds.length} help docs, ` +
-      `${spec.statusRows.length} status rows, ${spec.jobs.length} jobs)\n`
+      `${spec.statusRows.length} status rows, ${spec.jobs.length} jobs, ` +
+      `${spec.docMountPoints.length} mount points, ${spec.docMountChunks.length} mount chunks, ` +
+      `${legacyRewrites.filter((r) => r.seed.legacyDim).length} legacy-width vectors)\n`
   );
   process.exit(0);
 }

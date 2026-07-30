@@ -37,6 +37,26 @@
 //! `chats.renderedMarkdown` — a string carrying a `Current time:` line — compare
 //! **byte-exact**.
 //!
+//! ## P4.d27 — the reindex catch-up (v4 `7391404e`)
+//!
+//! Phase 3 now covers v4's new exclusions and its NEW phase 4. The corpus gained
+//! the non-conforming half v4's outage was actually made of: memories, chunks,
+//! help-doc and mount-chunk vectors written at a LEGACY width in BOTH on-disk
+//! formats (headerless raw Float32 and the quantized header — they take different
+//! `EMBEDDING_DIM_SQL` branches), two explicit mount points (one enabled, one
+//! disabled) with five chunks between them, FAILED `embedding_status` rows for all
+//! four entity types, a memory whose `characterId` has no `characters` row, and a
+//! memory under a character owned by the SECOND user.
+//!
+//! Those last two are the fan-out proof: v4 abandoned `characters.findByUserId`
+//! (which silently drops a character whose vault is unavailable, and is
+//! user-scoped) for `memories.findDistinctCharacterIds`. Neither memory can be
+//! reached by the old enumeration.
+//!
+//! The arms are asserted by name from the committed spec's `reindexShapeGuards`
+//! against the ORACLE's own `background_jobs` dump, before the row diff — the diff
+//! proves v5 agrees with v4, the guards prove the corpus still asks.
+//!
 //! ## Minted values
 //!
 //! The render mints a UUID per NEW chunk and per enqueued job, and a minted chunk
@@ -114,6 +134,25 @@ struct QueueMemoriesCase {
     user_id: String,
 }
 
+/// P4.d27 — one arm of v4 `7391404e`, named so a fixture edit that stops
+/// exercising it fails BY NAME instead of quietly agreeing.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShapeGuard {
+    entity_type: String,
+    entity_id: String,
+    why: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReindexShapeGuards {
+    mismatched_profile_id: String,
+    must_enqueue: Vec<ShapeGuard>,
+    must_not_enqueue: Vec<ShapeGuard>,
+    never_enqueued: Vec<ShapeGuard>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -122,6 +161,7 @@ struct Spec {
     render_now_iso: String,
     render_cases: Vec<RenderCase>,
     reindex_cases: Vec<ReindexCase>,
+    reindex_shape_guards: ReindexShapeGuards,
     queue_memories_cases: Vec<QueueMemoriesCase>,
 }
 
@@ -426,6 +466,60 @@ async fn embedding_remainder_matches_oracle() {
         3,
         "the corpus stopped exercising all three queue-memories 400 arms"
     );
+    // P4.d27 — the reindex arms, asserted against the ORACLE's own job dump
+    // BEFORE the row diff. The diff proves v5 agrees with v4; these prove the
+    // corpus still asks the questions the drift is about.
+    {
+        let g = &spec.reindex_shape_guards;
+        let jobs = want_tables
+            .get("background_jobs")
+            .expect("oracle dumped no background_jobs");
+        // (entityType, entityId, profileId) triples of every enqueued embed.
+        let embeds: Vec<(String, String, String)> = jobs
+            .iter()
+            .filter(|r| cell(r, "type") == "EMBEDDING_GENERATE")
+            .filter_map(|r| {
+                let p: Value = serde_json::from_str(&cell(r, "payload")).ok()?;
+                Some((
+                    p.get("entityType")?.as_str()?.to_string(),
+                    p.get("entityId")?.as_str()?.to_string(),
+                    p.get("profileId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                ))
+            })
+            .collect();
+        let in_mismatched_run = |guard: &ShapeGuard| {
+            embeds.iter().any(|(t, i, p)| {
+                t == &guard.entity_type && i == &guard.entity_id && p == &g.mismatched_profile_id
+            })
+        };
+        for guard in &g.must_enqueue {
+            assert!(
+                in_mismatched_run(guard),
+                "the corpus stopped exercising an arm — {} {} should be enqueued in mismatched-dim scope ({})",
+                guard.entity_type, guard.entity_id, guard.why
+            );
+        }
+        for guard in &g.must_not_enqueue {
+            assert!(
+                !in_mismatched_run(guard),
+                "the corpus stopped exercising an arm — {} {} must NOT be enqueued in mismatched-dim scope ({})",
+                guard.entity_type, guard.entity_id, guard.why
+            );
+        }
+        for guard in &g.never_enqueued {
+            assert!(
+                !embeds
+                    .iter()
+                    .any(|(t, i, _)| t == &guard.entity_type && i == &guard.entity_id),
+                "the corpus stopped exercising an arm — {} {} must never be enqueued, under any scope ({})",
+                guard.entity_type, guard.entity_id, guard.why
+            );
+        }
+    }
+
     assert_eq!(
         want_tables.keys().cloned().collect::<BTreeSet<_>>(),
         TABLES

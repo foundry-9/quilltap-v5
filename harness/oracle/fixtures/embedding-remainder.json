@@ -20,6 +20,13 @@
       "id": "c0000000-0000-4000-8000-000000000003",
       "name": "Eve",
       "controlledBy": "user"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000004",
+      "name": "Nadia",
+      "controlledBy": "llm",
+      "userId": "e0000000-0000-4000-8000-000000000002",
+      "comment": "P4.d27 — owned by the SECOND user. Her memory pins that the reindex fan-out (memories.findDistinctCharacterIds) is deliberately NOT user-scoped: the job runs as user 1 and must still reach her."
     }
   ],
   "embeddingProfiles": [
@@ -523,6 +530,45 @@
         "Aria"
       ],
       "embedded": false
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000020",
+      "chatId": "a0000000-0000-4000-8000-000000000003",
+      "interchangeIndex": 1,
+      "content": "## Interchange 1\n\na cold-tiered chunk at the old width\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 — non-conforming, on a STALE chat that no renderCase touches. The boot reconcile NULLs it (converging to the cold-tier state the stale sweep produces) and the reindex skips its chat whole."
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000021",
+      "chatId": "a0000000-0000-4000-8000-000000000010",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\na live chunk at the old width\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 — non-conforming on a FRESH chat, so the reconcile COUNTS it rather than NULLing it. Its embedding is non-NULL, so the render reconcile's arm (B) still does not fire for it (arm A already does)."
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000022",
+      "chatId": "a0000000-0000-4000-8000-0000000000ff",
+      "interchangeIndex": 0,
+      "content": "## Interchange 0\n\nan orphan chunk at the old width\n",
+      "participantNames": [
+        "Aria"
+      ],
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 orphan exclusion — its chat does not exist, so the reconcile must NOT count it (counting it would re-enqueue a futile reindex on every boot). The reindex cannot see it either: phase 3 walks chats, not chunks."
     }
   ],
   "oversizeChunkId": "f0000000-0000-4000-8000-000000000003",
@@ -547,10 +593,124 @@
       "summary": "Bram slept through it.",
       "content": "Bram was, by his own emphatic account, not asleep at any point during the evening.",
       "embedded": true
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000004",
+      "characterId": "c0000000-0000-4000-8000-0000000000ff",
+      "summary": "A memory with no character row.",
+      "content": "Whoever owned this recollection is not in the characters table at all, which is exactly the vault-unavailable shape the old fan-out dropped.",
+      "embedded": false,
+      "comment": "P4.d27 fan-out proof: characters.findByUserId can never return this characterId, so under the OLD enumeration this memory was left permanently un-re-embedded. The new memories-table fan-out reaches it."
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000005",
+      "characterId": "c0000000-0000-4000-8000-000000000004",
+      "summary": "Nadia keeps her own counsel.",
+      "content": "Nadia belongs to somebody else entirely, and says so at every opportunity.",
+      "embedded": false,
+      "comment": "P4.d27 not-user-scoped proof — Nadia is owned by the second user; the reindex job runs as the first."
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000006",
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "summary": "A vector from the old standard.",
+      "content": "Aria remembers this one in the width the house used before it changed its mind.",
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 — a legacy raw Float32 vector at the TF-IDF-era width. Non-conforming: the mismatched-dim reindex enqueues it, and the boot dimension reconcile counts it."
+    },
+    {
+      "id": "e1000000-0000-4000-8000-000000000007",
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "summary": "A vector the embedder will never take.",
+      "content": "Aria remembers something the embedder has refused, repeatedly and on principle.",
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "quantized",
+      "comment": "P4.d27 FAILED-skip proof, quantized so BOTH legacy formats are exercised. Non-conforming (so the dim check does not short-circuit first) AND marked FAILED for the 8-dimension profile, so mismatched-dim scope skips it and the reconcile does not count it."
     }
   ],
   "seedVectorEntryMemoryId": "e1000000-0000-4000-8000-000000000001",
   "orphanVectorEntryId": "e2000000-0000-4000-8000-000000000009",
+  "seedVectorIndexDimensions": 4,
+  "extraVectorEntries": [
+    {
+      "id": "e2000000-0000-4000-8000-000000000011",
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 — a legacy RAW entry at the old width. The boot reconcile DELETEs it outright (derived data; the memory re-embed recreates it)."
+    },
+    {
+      "id": "e2000000-0000-4000-8000-000000000012",
+      "legacyDim": 258,
+      "legacyFormat": "quantized",
+      "comment": "P4.d27 — the same, QUANTIZED. v4's own test covers both formats because the byte arithmetic differs per header."
+    }
+  ],
+  "docMountPoints": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "name": "The Open Archive",
+      "enabled": true,
+      "comment": "P4.d27 — the reindex's new phase 4 walks ENABLED mounts only."
+    },
+    {
+      "id": "d1000000-0000-4000-8000-000000000002",
+      "name": "The Shuttered Archive",
+      "enabled": false,
+      "comment": "P4.d27 — disabled: neither phase 4 nor the reconcile's count may reach its chunks (a disabled mount is not searchable, and its scan pipeline re-embeds when it is re-enabled)."
+    }
+  ],
+  "docMountChunkLinkId": "d3000000-0000-4000-8000-000000000001",
+  "docMountChunks": [
+    {
+      "id": "d2000000-0000-4000-8000-000000000001",
+      "mountPointId": "d1000000-0000-4000-8000-000000000001",
+      "chunkIndex": 0,
+      "content": "A conforming chunk, already at the house standard.",
+      "embedded": true,
+      "comment": "8 dimensions — CONFORMS, so mismatched-dim scope skips it on the dim check."
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "mountPointId": "d1000000-0000-4000-8000-000000000001",
+      "chunkIndex": 1,
+      "content": "A chunk nobody has embedded yet.",
+      "embedded": false,
+      "comment": "NULL embedding -> dim 0, which can never equal a positive target, so phase 4 enqueues it. The RECONCILE, by contrast, does not count a NULL mount chunk: those belong to the mount scan pipeline."
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000003",
+      "mountPointId": "d1000000-0000-4000-8000-000000000001",
+      "chunkIndex": 2,
+      "content": "A chunk at the width the house used to keep.",
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "Non-conforming on an enabled mount — phase 4 enqueues it."
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000004",
+      "mountPointId": "d1000000-0000-4000-8000-000000000001",
+      "chunkIndex": 3,
+      "content": "A chunk the embedder has refused for good.",
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "Non-conforming AND marked FAILED for the 8-dimension profile: mismatched-dim scope must skip it."
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000005",
+      "mountPointId": "d1000000-0000-4000-8000-000000000002",
+      "chunkIndex": 0,
+      "content": "A chunk behind a closed door.",
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "Non-conforming but on the DISABLED mount — must never be enqueued or counted."
+    }
+  ],
   "helpDocSeeds": [
     {
       "id": "a1000000-0000-4000-8000-000000000001",
@@ -568,7 +728,10 @@
       "url": "/survivor",
       "content": "stale content untouched (hash matches so nothing is rewritten)",
       "contentHash": "8b8c4225046a78d7b956cbc8c9cbb0ab04373b827135795badefd6ff6f08709f",
-      "embedded": true
+      "embedded": true,
+      "legacyDim": 258,
+      "legacyFormat": "raw",
+      "comment": "P4.d27 — the one help doc whose id is PINNED (the sync leaves it alone, hash matching). Non-conforming AND marked FAILED for the 8-dimension profile, so it exercises the help-doc arm of the reindex's FAILED skip, which the minted-id synced docs cannot."
     }
   ],
   "statusRows": [
@@ -606,6 +769,30 @@
       "entityId": "f0000000-0000-4000-8000-000000000011",
       "profileId": "b0000000-0000-4000-8000-000000000002",
       "status": "FAILED"
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000020",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-000000000007",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "status": "FAILED",
+      "comment": "P4.d27 — the memory arm of the reindex FAILED skip, and the reconcile's memory NOT_FAILED exclusion."
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000021",
+      "entityType": "HELP_DOC",
+      "entityId": "a1000000-0000-4000-8000-000000000002",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "status": "FAILED",
+      "comment": "P4.d27 — the help-doc arm."
+    },
+    {
+      "id": "a2000000-0000-4000-8000-000000000022",
+      "entityType": "MOUNT_CHUNK",
+      "entityId": "d2000000-0000-4000-8000-000000000004",
+      "profileId": "b0000000-0000-4000-8000-000000000002",
+      "status": "FAILED",
+      "comment": "P4.d27 — the mount-chunk arm (phase 4's FAILED skip)."
     }
   ],
   "jobs": [
@@ -695,6 +882,30 @@
       "fullReembed": false
     }
   ],
+  "reindexShapeGuards": {
+    "comment": "P4.d27 — corpus-shape guards, asserted against the ORACLE's background_jobs dump before the row diff. Each names an arm of v4 7391404e; if a fixture edit ever stops exercising one, the family says so by name instead of quietly agreeing with a port that lost it. `mismatchedProfileId` scopes the first two lists to the mismatched-dim run (full scope, which runs later, deliberately has no FAILED skip and no dim skip).",
+    "mismatchedProfileId": "b0000000-0000-4000-8000-000000000002",
+    "mustEnqueue": [
+      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000004", "why": "the fan-out proof — no characters row, so the OLD characters.findByUserId enumeration could never reach it" },
+      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000005", "why": "not user-scoped — Nadia belongs to the second user and the job runs as the first" },
+      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000006", "why": "a legacy raw Float32 vector at the old width" },
+      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000021", "why": "non-conforming on a FRESH chat — the stale skip must not swallow live chats" },
+      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000002", "why": "phase 4 exists at all: a NULL-embedding chunk on an enabled mount" },
+      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000003", "why": "phase 4's dim test: non-conforming on an enabled mount" }
+    ],
+    "mustNotEnqueue": [
+      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000001", "why": "conforming — the dim skip" },
+      { "entityType": "MEMORY", "entityId": "e1000000-0000-4000-8000-000000000007", "why": "the FAILED skip, memory arm (non-conforming, so the dim check cannot short-circuit it)" },
+      { "entityType": "HELP_DOC", "entityId": "a1000000-0000-4000-8000-000000000002", "why": "the FAILED skip, help-doc arm" },
+      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000011", "why": "the FAILED skip, conversation-chunk arm" },
+      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000004", "why": "the FAILED skip, mount-chunk arm" }
+    ],
+    "neverEnqueued": [
+      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000020", "why": "its chat is STALE, and the skip is not scope-gated — neither run may reach it" },
+      { "entityType": "CONVERSATION_CHUNK", "entityId": "f0000000-0000-4000-8000-000000000022", "why": "an ORPHAN chunk — phase 3 walks chats, so no run can see it" },
+      { "entityType": "MOUNT_CHUNK", "entityId": "d2000000-0000-4000-8000-000000000005", "why": "behind the DISABLED mount — phase 4 walks enabled mounts only" }
+    ]
+  },
   "reindexCases": [
     {
       "name": "mismatched-dim-skips-matching-rows",

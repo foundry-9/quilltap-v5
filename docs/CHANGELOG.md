@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+The re-embed-everything pass caught up with the old app on four counts. It now
+also re-embeds document-store chunks — but only in stores that are switched on,
+since a switched-off store is not searchable and re-embeds itself when it is
+switched back on. It skips conversations that have gone cold rather than paying
+to re-embed rooms nobody is reading, which the routine housekeeping would only
+clear again on its next round. When it is running the narrow "fix the mismatched
+vectors" pass it now leaves alone anything the embedding provider has already
+refused for good, instead of re-paying for the same guaranteed failure every
+time. And it works out which characters need re-embedding by asking the memories
+themselves rather than the character list — the character list quietly omits any
+character whose fact-sheet folder is unreachable, and those characters' memories
+were being left behind permanently.
+
 Groundwork for enforcing one embedding standard per instance: the app can now
 list which items an embedding provider has permanently refused (so a repair pass
 stops re-paying for the same guaranteed failures), enumerate which characters

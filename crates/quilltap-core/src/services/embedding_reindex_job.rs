@@ -3,9 +3,12 @@
 //! (`handleEmbeddingReindexAll`).
 //!
 //! A full embedding swap: re-embed help docs, then character memories, then
-//! conversation chunks, by batch-inserting one `EMBEDDING_GENERATE` job per row.
-//! v4 fires it after a TF-IDF vocabulary refit, after an embedding
-//! provider/model change, and from the manual "Re-embed Everything" button.
+//! conversation chunks, then document mount chunks, by batch-inserting one
+//! `EMBEDDING_GENERATE` job per row. v4 fires it after a TF-IDF vocabulary refit,
+//! after an embedding provider/model change **or a different profile becoming
+//! default**, from the manual "Re-embed Everything" button, and (since
+//! P4.d27 / v4 `7391404e`) whenever the boot dimension reconcile finds
+//! non-conforming vectors.
 //!
 //! ## Before this handler existed, its jobs died
 //!
@@ -39,10 +42,30 @@
 //!     `find_pending_for_entity`, so a partial-scope run can stack jobs on top
 //!     of pending ones; only full scope's `cancel_by_type` controls collisions.
 //!     Reproduced, not improved.
-//!   - **`MOUNT_CHUNK` is not covered** by this handler in v4. Matched.
 //!   - **`BATCH_SIZE = 200`** slices (v4 stays well under SQLite's 999-variable
 //!     limit).
 //!   - The payload is a bare cast, not Zod — both fields decode leniently.
+//!
+//! ## The three exclusions (P4.d27 / v4 `7391404e`)
+//!
+//!   - **STALE (cold-tiered) chats are skipped in phase 3.** The stale-chat sweep
+//!     deliberately clears their chunk embeddings and the Salon reopen path
+//!     re-embeds on demand with the then-current profile; re-embedding them here
+//!     would pay provider calls for chats nobody is reading, and the next sweep
+//!     would clear the result anyway. Same shared `isStale` gate as the sweeps.
+//!   - **FAILED entities are skipped in `mismatched-dim` scope**, per entity type,
+//!     via [`crate::db::embedding_status::EmbeddingStatusRepository::list_failed_entity_ids`].
+//!     Those are deterministic failures (oversize, over-context, NaN inputs), and
+//!     re-enqueueing them on every reconcile would re-pay for the same guaranteed
+//!     error. The sets load LAZILY, so `all` scope pays nothing.
+//!   - **Phase 4 walks ENABLED mount points only** — a disabled mount is not
+//!     searchable, and its scan pipeline re-embeds when it is re-enabled.
+//!
+//! The memory fan-out enumerates character ids from the MEMORIES table
+//! (`find_distinct_character_ids`), not from the characters repository:
+//! `characters.findByUserId` silently drops a character whose vault is
+//! unavailable, and a dropped character's memories would then be left permanently
+//! un-re-embedded. Memories are the ground truth here.
 //!
 //! ## v4 side-effects that map to no-ops in v5
 //!
@@ -65,10 +88,12 @@
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use std::collections::HashSet;
+
 use super::help_doc_sync::{sync_help_docs, HelpSourceFile};
 use crate::db::background_jobs::{BackgroundJobsRepository, BjCreate};
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, embedding_profiles, memories_read, DbError};
+use crate::db::{chats_read, embedding_profiles, memories_read, DbError};
 
 /// v4 `BATCH_SIZE` — max jobs per batch insert.
 const BATCH_SIZE: usize = 200;
@@ -105,6 +130,41 @@ impl EmbeddingReindexAllPayload {
 /// target dim. Null / empty (dim 0) is a MISMATCH, so such rows re-embed.
 fn embedding_matches_dim(dim: usize, target_dim: usize) -> bool {
     dim != 0 && dim == target_dim
+}
+
+/// v4's `failedIdsFor(entityType)` — the deterministically-FAILED entity ids to
+/// exclude, LAZILY per entity type and ONLY in `mismatched-dim` scope (`all` scope
+/// pays nothing, exactly as v4's ternary does).
+///
+/// v4's repo read is `safeQuery`-wrapped to an empty set; a read-pool failure here
+/// resolves the same way, so an unavailable exclusion set can only cause a
+/// re-attempt, never a dropped row.
+fn failed_ids_for(db: &Db, partial: bool, entity_type: &str, profile_id: &str) -> HashSet<String> {
+    if !partial {
+        return HashSet::new();
+    }
+    let (et, pid) = (entity_type.to_string(), profile_id.to_string());
+    db.read_main(move |conn| {
+        Ok(
+            crate::db::embedding_status::EmbeddingStatusRepository::new(conn)
+                .list_failed_entity_ids(&et, &pid),
+        )
+    })
+    .unwrap_or_default()
+}
+
+/// The per-phase tallies that reach v4's completion log. Counting is the only
+/// thing they do — no branch reads them — but v4 logs them and the boot reconcile
+/// is now a caller whose progress is otherwise invisible.
+#[derive(Default)]
+struct Counts {
+    enqueued: usize,
+    /// Rows skipped because their stored vector already matches the target dim.
+    dim_matched: usize,
+    /// Rows skipped because they are FAILED for this profile.
+    failed_skipped: usize,
+    /// Chats skipped whole because they are stale (phase 3 only).
+    stale_chats_skipped: usize,
 }
 
 /// Build the `EMBEDDING_GENERATE` record v4's `buildJobRecord` builds: PENDING,
@@ -187,6 +247,10 @@ pub async fn handle_embedding_reindex_all(
     }
 
     let mut job_records: Vec<BjCreate> = Vec::new();
+    let mut help = Counts::default();
+    let mut mem = Counts::default();
+    let mut chunk = Counts::default();
+    let mut mount = Counts::default();
 
     // ── Phase 1: help docs (v4 :134-175). Whole phase caught — continue on
     //    failure.
@@ -195,7 +259,10 @@ pub async fn handle_embedding_reindex_all(
     )
     .await
     {
-        Ok(mut records) => job_records.append(&mut records),
+        Ok((mut records, counts)) => {
+            job_records.append(&mut records);
+            help = counts;
+        }
         Err(e) => tracing::error!(
             target: "quilltap::jobs",
             error = %e,
@@ -204,17 +271,18 @@ pub async fn handle_embedding_reindex_all(
     }
 
     // ── Phase 2: character memories (v4 :180-210). DELIBERATELY NOT caught —
-    //    a failure here fails the job, unlike phases 1 and 3.
-    let uid = user_id.to_string();
-    let characters = db
-        .read_main(|main| {
-            db.read_mount_index(|mount| characters_read::find_by_user_id(main, mount, &uid))
-        })
-        .map_err(|e| format!("{e}"))?;
-    let character_ids: Vec<String> = characters
-        .iter()
-        .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
-        .collect();
+    //    a failure here fails the job, unlike phases 1, 3 and 4.
+    //
+    //    The fan-out reads the MEMORIES table, not the characters repository (v4
+    //    `7391404e`): `characters.findByUserId` silently drops a character whose
+    //    vault is unavailable, and that character's memories would then never be
+    //    re-embedded. See the module doc.
+    // The read itself is fail-soft (v4's `safeQuery`); an unavailable read pool
+    // resolves the same way, so this phase's no-catch rule still cannot turn a
+    // transient read failure into a failed job.
+    let character_ids = db
+        .read_main(|conn| Ok(memories_read::find_distinct_character_ids(conn)))
+        .unwrap_or_default();
 
     if scope == "all" {
         for character_id in &character_ids {
@@ -229,6 +297,7 @@ pub async fn handle_embedding_reindex_all(
         }
     }
 
+    let failed_memory_ids = failed_ids_for(db, partial, "MEMORY", &payload.profile_id);
     for character_id in &character_ids {
         let cid = character_id.clone();
         let memories = db
@@ -236,11 +305,16 @@ pub async fn handle_embedding_reindex_all(
             .map_err(|e| format!("{e}"))?;
         for memory in &memories {
             if partial && embedding_matches_dim(memory_embedding_dim(memory), target_dim) {
+                mem.dim_matched += 1;
                 continue;
             }
             let Some(id) = memory.get("id").and_then(Value::as_str) else {
                 continue;
             };
+            if failed_memory_ids.contains(id) {
+                mem.failed_skipped += 1;
+                continue;
+            }
             job_records.push(build_job_record(
                 user_id,
                 json!({
@@ -252,16 +326,34 @@ pub async fn handle_embedding_reindex_all(
                 }),
                 now_iso,
             ));
+            mem.enqueued += 1;
         }
     }
 
     // ── Phase 3: conversation chunks (v4 :215-240). Caught, like phase 1.
     match phase_conversation_chunks(db, user_id, payload, now_iso, partial, target_dim).await {
-        Ok(mut records) => job_records.append(&mut records),
+        Ok((mut records, counts)) => {
+            job_records.append(&mut records);
+            chunk = counts;
+        }
         Err(e) => tracing::error!(
             target: "quilltap::jobs",
             error = %e,
             "[EmbeddingReindexAll] Failed to process conversation chunks",
+        ),
+    }
+
+    // ── Phase 4: document mount chunks (v4 :299-330, NEW in `7391404e`). Caught,
+    //    like phases 1 and 3.
+    match phase_mount_chunks(db, user_id, payload, now_iso, partial, target_dim).await {
+        Ok((mut records, counts)) => {
+            job_records.append(&mut records);
+            mount = counts;
+        }
+        Err(e) => tracing::error!(
+            target: "quilltap::jobs",
+            error = %e,
+            "[EmbeddingReindexAll] Failed to process document mount chunks",
         ),
     }
 
@@ -284,6 +376,29 @@ pub async fn handle_embedding_reindex_all(
     // v4 :258 `ensureProcessorRunning()`.
     crate::services::queue_service::wake_processor();
 
+    // v4's completion log (:352-369). The boot dimension reconcile is now a
+    // caller whose progress is otherwise invisible, so this is the one place the
+    // per-phase tallies surface.
+    tracing::info!(
+        target: "quilltap::jobs",
+        profile_id = %payload.profile_id,
+        scope = %scope,
+        target_dim = target_dim,
+        help_doc_count = help.enqueued,
+        memory_count = mem.enqueued,
+        chunk_count = chunk.enqueued,
+        mount_chunk_count = mount.enqueued,
+        help_docs_skipped = help.dim_matched,
+        memories_skipped = mem.dim_matched,
+        chunks_skipped = chunk.dim_matched,
+        mount_chunks_skipped = mount.dim_matched,
+        stale_chats_skipped = chunk.stale_chats_skipped,
+        failed_skipped = help.failed_skipped + mem.failed_skipped
+            + chunk.failed_skipped + mount.failed_skipped,
+        total_enqueued = job_records.len(),
+        "[EmbeddingReindexAll] Reindex jobs enqueued",
+    );
+
     Ok(())
 }
 
@@ -296,7 +411,7 @@ async fn phase_help_docs(
     now_iso: &str,
     partial: bool,
     target_dim: usize,
-) -> Result<Vec<BjCreate>, DbError> {
+) -> Result<(Vec<BjCreate>, Counts), DbError> {
     // v4 syncs from disk FIRST, then reads the table, then (full scope) clears.
     let files = help_files.to_vec();
     db.write(move |ws| {
@@ -322,9 +437,17 @@ async fn phase_help_docs(
         .await?;
     }
 
+    // v4 loads the FAILED set after the sync + wipe, before the loop.
+    let failed = failed_ids_for(db, partial, "HELP_DOC", &payload.profile_id);
     let mut out = Vec::new();
+    let mut counts = Counts::default();
     for (id, dim) in docs {
         if partial && embedding_matches_dim(dim, target_dim) {
+            counts.dim_matched += 1;
+            continue;
+        }
+        if failed.contains(&id) {
+            counts.failed_skipped += 1;
             continue;
         }
         out.push(build_job_record(
@@ -336,8 +459,9 @@ async fn phase_help_docs(
             }),
             now_iso,
         ));
+        counts.enqueued += 1;
     }
-    Ok(out)
+    Ok((out, counts))
 }
 
 /// v4's phase 3 body, lifted so its `try`/`catch` is one call site.
@@ -348,14 +472,33 @@ async fn phase_conversation_chunks(
     now_iso: &str,
     partial: bool,
     target_dim: usize,
-) -> Result<Vec<BjCreate>, DbError> {
+) -> Result<(Vec<BjCreate>, Counts), DbError> {
     let uid = user_id.to_string();
     let chats = db.read_main(move |conn| chats_read::find_by_user_id(conn, &uid))?;
+    // v4 resolves the stale window ONCE for the whole phase. This handler runs on
+    // the async job runner with a live `&Db`, so the `&Db`-flavored `is_stale` is
+    // the right twin here — the `_conn` twins exist for the BOOT path, which is
+    // already inside a write closure (P4.D25).
+    let stale_cutoff_ms = crate::clock::iso_to_ms(&super::queue_service::retention_cutoff_iso(
+        super::queue_service::resolve_stale_chat_days(db),
+        crate::clock::iso_to_ms(now_iso).unwrap_or(0),
+    ))
+    .unwrap_or(0);
+    let failed = failed_ids_for(db, partial, "CONVERSATION_CHUNK", &payload.profile_id);
     let mut out = Vec::new();
+    let mut counts = Counts::default();
     for chat in &chats {
         let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
             continue;
         };
+        // Cold-tiered chats are healed on reopen, not here — see the module doc.
+        // v4 passes the whole chat row through to the shared gate; an error
+        // resolves to "not stale" inside it (v5's port keeps that), so a chat is
+        // never dropped for an unreadable message history.
+        if super::maintenance::is_stale(db, chat, stale_cutoff_ms)? {
+            counts.stale_chats_skipped += 1;
+            continue;
+        }
         let cid = chat_id.to_string();
         let chunks = db.read_main(move |conn| {
             crate::db::conversation_chunks::ConversationChunksRepository::new(conn)
@@ -363,6 +506,11 @@ async fn phase_conversation_chunks(
         })?;
         for chunk in &chunks {
             if partial && embedding_matches_dim(chunk.embedding_dim, target_dim) {
+                counts.dim_matched += 1;
+                continue;
+            }
+            if failed.contains(&chunk.id) {
+                counts.failed_skipped += 1;
                 continue;
             }
             out.push(build_job_record(
@@ -375,9 +523,66 @@ async fn phase_conversation_chunks(
                 }),
                 now_iso,
             ));
+            counts.enqueued += 1;
         }
     }
-    Ok(out)
+    Ok((out, counts))
+}
+
+/// v4's NEW phase 4 body (`7391404e`), lifted so its `try`/`catch` is one call
+/// site: one `EMBEDDING_GENERATE` per chunk of every ENABLED document mount.
+///
+/// Only enabled mounts — a disabled mount is not searchable, and its scan pipeline
+/// re-embeds when it is re-enabled. Mount points and chunks both live in the
+/// mount-index partition, so a main-only instance has neither and the phase is a
+/// no-op (`read_mount_index` fails, the caller logs and continues — v4's own arm
+/// for the same shape).
+async fn phase_mount_chunks(
+    db: &Db,
+    user_id: &str,
+    payload: &EmbeddingReindexAllPayload,
+    now_iso: &str,
+    partial: bool,
+    target_dim: usize,
+) -> Result<(Vec<BjCreate>, Counts), DbError> {
+    // v4 `docMountPoints.findEnabled()`. v5's accessor carries the same SELECT
+    // under a name from its first consumer (the operator doc-edit override).
+    let mount_points = db.read_mount_index(|conn| {
+        crate::db::doc_mount_points::DocMountPointsRepository::new(conn).find_enabled_for_docedit()
+    })?;
+    let failed = failed_ids_for(db, partial, "MOUNT_CHUNK", &payload.profile_id);
+    let mut out = Vec::new();
+    let mut counts = Counts::default();
+    for mount_point in &mount_points {
+        let mp = mount_point.id.clone();
+        let chunks = db.read_mount_index(move |conn| {
+            crate::db::doc_mount_chunks::DocMountChunksRepository::new(conn)
+                .find_rows_by_mount_point_id(&mp)
+        })?;
+        for chunk in &chunks {
+            if partial && embedding_matches_dim(chunk.embedding_dim, target_dim) {
+                counts.dim_matched += 1;
+                continue;
+            }
+            if failed.contains(&chunk.id) {
+                counts.failed_skipped += 1;
+                continue;
+            }
+            // v4's phase-4 payload carries exactly these three keys — no
+            // `mountPointId`, unlike the scan pipeline's enqueue.
+            out.push(build_job_record(
+                user_id,
+                json!({
+                    "entityType": "MOUNT_CHUNK",
+                    "entityId": chunk.id,
+                    "profileId": payload.profile_id,
+                }),
+                now_iso,
+            ));
+            counts.enqueued += 1;
+        }
+    }
+    Ok((out, counts))
 }
 
 /// The stored vector's length for a memory row as `memories_read` marshals it:

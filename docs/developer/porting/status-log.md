@@ -42527,3 +42527,121 @@ QT_FIXTURE_ES=/tmp/qt-es-fixture.db $N/npx tsx \
 
 New-baseline markers to grep: `findDistinctCharacterIds` in the memread NDJSON;
 six `"kind":"listFailed"` lines in the embedding-status NDJSON.
+
+---
+
+## Lane record — P4.d27 unit 2 (the reindex handler catch-up) — 2026-07-30
+
+`services/embedding_reindex_job.rs` was faithfully at the OLD v4. This brings it
+to `7391404e`: the memories-table fan-out, the stale-chat skip, the FAILED skips,
+the NEW phase 4, the counters, and the module-doc rewrite (its `MOUNT_CHUNK is
+not covered by this handler in v4. Matched.` line had become an anti-oracle and
+flipped with the code).
+
+**Landed**
+
+- **Fan-out** — `memories_read::find_distinct_character_ids` replaces
+  `characters_read::find_by_user_id`, in BOTH places v4 changed: the
+  `scope == "all"` store wipe and the memory walk. v4's *why* carried across.
+- **Phase 3 stale skip** — the shared `is_stale` gate, cutoff resolved ONCE per
+  phase from the injected clock. The `&Db` flavor is correct HERE (this handler
+  runs on the async job runner); the `_conn` twins exist for the boot path, which
+  is already inside a write closure. That distinction is now stated at the call
+  site so the P4.D25 trap cannot be re-introduced by symmetry.
+- **FAILED skips** — `failed_ids_for(db, partial, entity_type, profile_id)`,
+  lazy and per entity type, `mismatched-dim` only, in all four phases. Placed
+  AFTER the dim check in each, as v4 does — order matters: a conforming row never
+  reaches the FAILED test.
+- **Phase 4 (new)** — one `EMBEDDING_GENERATE` per chunk of every ENABLED mount,
+  whole-phase caught. Reuses `find_enabled_for_docedit` (v4 `findEnabled`'s exact
+  SELECT under a name from its first consumer) rather than adding a second copy.
+  The payload carries v4's exact three keys — no `mountPointId`, unlike the scan
+  pipeline's enqueue.
+- **The completion log** — v4 logs the per-phase tallies and v5 never did. It
+  matters more now: the boot dimension reconcile is a caller whose progress is
+  otherwise invisible. (Log output stays outside the differential contract,
+  P4.18.)
+
+**The fixture grew the non-conforming half of the corpus** — the state v4's
+outage was actually in, which the old fixture could not express:
+
+- `legacyDim` / `legacyFormat` on any embedding-bearing seed. The repositories
+  always write the CURRENT quantized format at the corpus width, so a
+  non-conforming corpus can only be built by rewriting the cell after the create;
+  the builder collects those rewrites and applies them LAST. Both on-disk formats
+  are used, because they take different branches of `EMBEDDING_DIM_SQL` — v4's own
+  test covers both, so this corpus does too. Applied to memories, conversation
+  chunks (stale / live / ORPHAN), the one help doc whose id is pinned, two extra
+  vector-index entries, and mount chunks.
+- A FOURTH character (Nadia) owned by the SECOND user, plus a memory under a
+  `characterId` with NO `characters` row. These are the fan-out proof: neither is
+  reachable by `characters.findByUserId` (user-scoped, and it drops a character
+  whose vault is unavailable).
+- TWO explicit document mount points — one ENABLED, one DISABLED — with pinned
+  ids (the per-character vault mounts exist already but their ids are minted at
+  build time), and five chunks between them: conforming, NULL, non-conforming,
+  FAILED, and one behind the disabled door.
+- FAILED `embedding_status` rows for all four entity types.
+- Aria's index meta dim moved into the spec (4, not the corpus width 8) so the
+  reconcile's meta snap will be a visible change in unit 3.
+
+**`reindexShapeGuards`** — a new committed spec block naming each arm, asserted
+against the ORACLE's own `background_jobs` dump BEFORE the row diff. The diff
+proves v5 agrees with v4; the guards prove the corpus still asks. Three lists:
+`mustEnqueue` / `mustNotEnqueue` (scoped to the mismatched-dim run — full scope
+runs later and deliberately has neither skip) and `neverEnqueued` (any scope: the
+stale chat's chunk, the orphan chunk, the disabled mount's chunk).
+
+**Differential:** `embedding_remainder_equivalence`, fixture rebuilt and oracle
+regenerated at `b3ee00f1` from the pinned worktree. **GREEN on the first run of
+the extended corpus** — so, per the D24/D25 rule, five mutations:
+
+| Mutation | Result |
+|---|---|
+| stale-chat skip removed (`if false`) | RED — `background_jobs` index 4 |
+| memory FAILED skip removed | RED — index 19 |
+| phase 4 removed entirely | RED — index 19 |
+| phase 4's `WHERE enabled = 1` dropped | RED — index 32 |
+| fan-out reverted to `characters_read::find_by_user_id` | RED — index 16 |
+
+Each restored to green. The last one is the meaningful one: it is literally v4's
+old code, and it goes red because the corpus contains two memories that
+enumeration cannot reach.
+
+**Where the arms land in the oracle** (v4's own answers, for the record): in
+mismatched-dim scope v4 enqueues 4 memories (NULL, no-character-row,
+second-user's-character, legacy-raw) and not the two conforming ones nor the
+FAILED one; 2 conversation chunks, both on FRESH chats; 8 of 9 help docs (the
+pinned one is FAILED); and 14 mount chunks — 12 vault chunks plus the enabled
+mount's NULL and non-conforming ones, but not its conforming or FAILED chunk, and
+never the disabled mount's. Full scope, which has no FAILED skip and no dim skip,
+enqueues 7 memories and 16 mount chunks.
+
+**Fixture blast radius:** `crates/quilltap-web/tests/fixtures/embedding-remainder-{main,mount}.db`
+were rebuilt. `grep -rl "embedding-remainder-" crates/*/tests` confirms
+`embedding_remainder_equivalence.rs` is the ONLY consumer, so no other family is
+invalidated.
+
+**Regen recipe** (Node 24, cwd `/private/tmp/qt-v4-pin-b3ee00f1`, `V5` = the lane
+worktree) — the fixture rebuild and the oracle regen must run together, and the
+oracle must point at the COMMITTED DBs:
+
+```
+QT_FIXTURE_OUT=/tmp/qt-er-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-er-mount.db \
+  $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-remainder-fixture.ts
+cp /tmp/qt-er-main.db  $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db
+cp /tmp/qt-er-mount.db $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db
+rm -rf /tmp/qt-er-oracle && mkdir -p /tmp/qt-er-oracle/cases /tmp/qt-er-oracle/fixtures
+cp $V5/harness/oracle/cases/embedding-remainder.test.ts /tmp/qt-er-oracle/cases/
+cp $V5/harness/oracle/fixtures/embedding-remainder.json  /tmp/qt-er-oracle/fixtures/
+cp -R $V5/harness/oracle/fixtures/help-sync              /tmp/qt-er-oracle/fixtures/
+TZ=UTC \
+QT_FIXTURE_ER_MAIN=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db \
+QT_FIXTURE_ER_MOUNT=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-embedding-remainder.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots /tmp/qt-er-oracle/cases -- embedding-remainder
+```
+
+New-baseline marker to grep: any `"entityType":"MOUNT_CHUNK"` payload in the
+NDJSON (phase 4 did not exist before this drift).
