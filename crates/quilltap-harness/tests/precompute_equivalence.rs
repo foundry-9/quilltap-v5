@@ -39,22 +39,30 @@
 //! are the unit specs in `pre_compute.rs`; the uncensored reroute is the tier-1
 //! differentialed `resolve_uncensored_cheap_llm_selection`.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; STAGE the case
-//! outside `.claude/` — v4's jest ignores those paths):
+//! Regenerate the oracle (Node 24, from the v4 checkout; STAGE the case outside
+//! `.claude/` — v4's jest ignores those paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
 //!   STAGE=/tmp/qt-oracle-stage
 //!   mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $W/harness/oracle/cases/precompute.test.ts $STAGE/harness/oracle/cases/
 //!   cp $W/harness/oracle/fixtures/{precompute-cases,episodic-recall}.json \
 //!      $STAGE/harness/oracle/fixtures/
-//!   cd ~/source/quilltap-server
+//!   cd ~/source/quilltap-server        # or a worktree pinned at the baseline
+//!   TZ=UTC \
 //!   QT_FIXTURE_ER_MAIN=$W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db \
 //!   QT_FIXTURE_ER_MOUNT=$W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db \
-//!     $N/node --import tsx $W/harness/oracle/fixtures/build-episodic-recall-fixture.ts
-//!   TZ=UTC QT_FIXTURE_ER_MAIN=... QT_FIXTURE_ER_MOUNT=... \
 //!   QT_ORACLE_OUT=/tmp/oracle-precompute.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
-//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- precompute
+//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "precompute\.test\.ts$"
+//!
+//! ⚠ **Do NOT rebuild the fixture to regenerate this family.** The
+//! `episodic-recall-{main,mount}.db` pair is COMMITTED and shared (recall-replay,
+//! vault-conv-search, the episodic families); `build-episodic-recall-fixture.ts`
+//! mints fresh UUIDs, so a rebuild silently invalidates every one of them. Point
+//! the oracle at the committed DBs, as above — both sides copy them per case and
+//! never write through. (The earlier header carried the builder invocation inline,
+//! which is the standing committed-fixture regen trap.) The jest filter is
+//! ANCHORED for the same class of reason (`oracle-regen-silent-stale-pass`).
 //! Run:
 //!   QT_ORACLE_PRECOMPUTE=/tmp/oracle-precompute.ndjson \
 //!     cargo test -p quilltap-harness --test precompute_equivalence -- --nocapture

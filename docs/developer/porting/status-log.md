@@ -43976,3 +43976,77 @@ does not have to re-derive them.
    stubbed-out v4 side left v5's real call without a canned answer. The
    “real money per autonomous turn” framing carried from the `5cc76688` round
    through the order and into phase-4.md; it should not be repeated.
+
+### P4.20 — blast radius: the stub was overlooked, not designed
+
+Three oracle cases reference `runPreContextPreCompute`. Two of them already do
+the right thing, and one of those two settles how the stale stub survived:
+
+- `harness/oracle/cases/orchestrator-tier3.test.ts:419-436` — **P4.19 un-mocked
+  it there**, with a comment saying exactly why: “`runPreContextPreCompute` now
+  runs REAL both sides … (Was mocked to an inert result while the Rust spine had
+  not yet ported the proactive path.)”
+- `harness/oracle/cases/precompute.test.ts` — drives the real service by design.
+- `harness/oracle/cases/enclave-step-tier3.test.ts` — the sibling P4.19 missed.
+
+So this was not a considered exception; the same edit was needed in two files and
+landed in one. No other oracle case stubs the service, so the blast radius is
+exactly the one family, and it is now closed.
+
+`orchestrator_tier3` stayed green across the gap because its rooms seed no
+memories and its responder never speaks mid-history — its since-last-spoke window
+and buildContext's window coincide, the same coincidence that hid the shape in
+the precompute corpus until unit 2 added it.
+
+### ⚠ P4.20 — v4 moved DURING the lane: HEAD is now `83118077`
+
+`83118077 refactor(pascal): custom-tool definitions load through the canonical
+mount reader` landed mid-lane — it is the uncommitted `lib/pascal/custom-tools.ts`
+work that made v4's tree dirty at lane start, now committed (plus its three jest
+suites, README/CHANGELOG and version chores). It touches a **PORTED** surface
+(v5's `pascal` custom-tool loading: `readToolFile` now delegates to
+`readMountFileBytes` and skips a `FileOpError`/`SOURCE_NOT_FOUND` race), so a
+drift disposition is owed — **by the next drift round, not by this lane.**
+
+**Nothing here is contaminated.** Every oracle in this lane was generated from the
+detached worktree pinned at the order's baseline `dcd9440a`
+(`/private/tmp/qt-v4-pin-p420-dcd9440a`, verified with `git -C … worktree list`
+before and after), precisely because the tree was already dirty with this change
+at lane start.
+
+For whoever dispositions it: the `precompute` family does not import the file at
+all. The `enclave-step-tier3` family reaches it transitively (the real
+orchestrator builds its tool roster), but the enclave-step fixture seeds **no
+custom tools**, so `loadToolsFromMount` lists nothing and the refactor is inert
+for it — expected, not verified, and cheap to confirm by regenerating the family
+at the new baseline.
+
+Also of note: a second lane-unique pin (`/private/tmp/qt-v4-pin-p49p-dcd9440a`,
+P4.9P's) was present alongside this lane's throughout. The lane-unique pin-path
+rule held — neither lane could delete the other's out from under it.
+
+### P4.20 — verification gate (2026-07-30)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH feature
+  sets (default and `--features quilltap-core/native-transport`).
+- `cargo test --workspace --no-fail-fast` with the lane's env vars: **401 test
+  binaries / 1,707 tests / 0 failed / 0 ignored.**
+- Both families re-run BY NAME with `--nocapture` over oracles regenerated fresh
+  from the pin at `dcd9440a` with TZ=UTC: `enclave_step_tier3_equivalence` GREEN
+  (all 19 calls; the standing red is CLOSED) and `precompute_equivalence` GREEN
+  (12 cases, up from 10). **Zero SKIP lines** for either.
+- **No `apps/web` change → no SPA gate owed.**
+- No committed fixture moved: the enclave-step fixture builds into `/tmp`, and
+  the precompute family reads the committed `episodic-recall-{main,mount}.db`
+  without writing through (both sides copy per case). **No other oracle family is
+  invalidated by this lane.**
+
+Versions: quilltap-core 0.0.411 → **0.0.412**, quilltap-harness 0.0.356 →
+**0.0.357**. All other crates unchanged.
+
+**Nothing is left OPEN under P4.20.** Tier 1 items 1–4 and tier 2 item 5 all
+landed; the tier-3 deferrals were respected (the P4.13 failed-cheap-call ruling
+was not touched — the failing CALL disappeared, not the ruling — and no v4-side
+fix was made). No v4 bug or dead code surfaced, so `dogfood-findings.md` gets no
+new entry from this lane.
