@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+The day-reading is now hooked up to the memory search, and the app tells the
+model what day it is in your own timezone. Every turn, before it goes looking
+through a character's memories, the app now scans the last few things said for a
+plain day reference and, if it finds one pointing at the past, uses its own
+answer instead of the model's — the small model that used to make that call read
+"the mission today" as present tense and turned the whole search for the day's
+events off. The date and weekday the model is told about are now local too, so it
+no longer resolves "yesterday" against a day that has not happened where you are.
+A reference to tomorrow is left alone, a fictional story clock is left alone, and
+only the last four messages are scanned, so a stale "yesterday" from three topics
+ago cannot hijack the search.
+
 Recent events now keep their footing when a character reaches for a memory. The
 ranking that decides which few memories reach a character barely distinguished
 something that happened yesterday from something twelve days ago, so

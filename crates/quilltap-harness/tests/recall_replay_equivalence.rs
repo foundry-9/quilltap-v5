@@ -148,7 +148,16 @@ impl RecallReplayDriver for TestDriver {
                 self.db.clone(),
                 CannedWireTransport::new(),
             ));
-            run_recall_replay(&self.db, &completion, &executor, &embedding, &input).await
+            // TZ=UTC on the oracle side (the process zone v4's resolver reads).
+            run_recall_replay(
+                &self.db,
+                &completion,
+                &executor,
+                &embedding,
+                &input,
+                Some("UTC"),
+            )
+            .await
         })
     }
 }

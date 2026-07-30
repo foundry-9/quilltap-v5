@@ -2,10 +2,15 @@
 //! tasks (`lib/memory/cheap-llm-tasks/memory-tasks.ts`):
 //! `MEMORY_KEYWORD_EXTRACTION_PROMPT` (the distillation task) and
 //! `MEMORY_RECAP_PROMPT` (the recap task). Neither has any interpolation, so
-//! each is a single raw string extracted mechanically by the session script
-//! (no byte was transcribed by hand); the tier-1/tier-3 differentials prove the
-//! bytes. Regenerate by re-running the extraction against the v4 checkout if the
-//! upstream prompts change.
+//! each is a single raw string extracted mechanically (no byte was transcribed
+//! by hand); the tier-1/tier-3 differentials prove the bytes.
+//!
+//! Regenerate when the upstream prompts change (P4.d26 moved the
+//! `retrospective` / `timeRange` instructions and added a second JSON example):
+//!
+//! ```text
+//! <scratchpad>/extract-prompts.py <v4-checkout> <v5-worktree>
+//! ```
 
 pub(crate) const MEMORY_KEYWORD_EXTRACTION_PROMPT: &str = r####"You are analyzing recent conversation messages to extract search keywords for a character's memory system, plus a one-word guess at what the current moment is about.
 
@@ -34,14 +39,15 @@ context — the single dominant subject, one of:
 
 paraphrase — ONE natural-language sentence describing what the characters are currently focused on, written as prose (not a keyword list). This is used to search memories by meaning, so make it specific and self-contained. Example: "They are arguing about whether to trust the stranger who arrived at the inn last night."
 
-retrospective — true ONLY when the conversation is currently referencing past shared events or asking to recall them ("remember when we…", "last week you said…", "that place we visited"). Talking about the present or planning the future is NOT retrospective.
+retrospective — true when the conversation is currently referencing past shared events or asking to recall them, including events from earlier the same day ("remember when we…", "last week you said…", "that place we visited", "the mission today", "how did it go this morning?", "what happened at the pool?"). Talking about how things are right now or planning the future is NOT retrospective.
 
-timeRange — when the turn references a specific past period, resolve it against the TODAY line in the input into absolute ISO dates: {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"}. "last week" on a Tuesday resolves to the previous calendar week; "in March" to that month. Use null when no time period is referenced or you cannot resolve one. (On a fictional timeline, use null unless real dates are actually stated.)
+timeRange — when the turn references a specific past period, resolve it against the TODAY line in the input into absolute ISO dates: {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"}. "last week" on a Tuesday resolves to the previous calendar week; "in March" to that month; "today" / "this morning" to the TODAY date itself; "yesterday" to the day before it. Use null when no time period is referenced or you cannot resolve one. (On a fictional timeline, use null unless real dates are actually stated.)
 
 entities — 0-5 proper nouns the turn names or clearly implies: places, people, named things ("Lighthouse Point", "Amy"). Empty array when none.
 
 Respond with a JSON object (3-10 keywords):
 {"keywords": ["keyword1", "keyword phrase 2", "keyword3"], "temporal": "present", "context": "relationships", "paraphrase": "A single sentence describing the current focus.", "retrospective": false, "timeRange": null, "entities": []}
+{"keywords": ["mission report", "soil samples"], "temporal": "past", "context": "information", "paraphrase": "Charlie is asking how today's mission went.", "retrospective": true, "timeRange": {"from": "2026-07-28", "to": "2026-07-28"}, "entities": ["Constantinople"]}
 
 JSON only - no other text."####;
 

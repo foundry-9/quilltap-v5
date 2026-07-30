@@ -484,6 +484,11 @@ pub struct BuildContextInput {
     // clock seams
     pub now_ms: i64,
     pub local_offset_minutes: i64,
+    /// The SERVER-LOCAL IANA zone (the v5 seam for v4's ambient process zone) —
+    /// the distill's TODAY line + day-reference scan resolve their calendar in
+    /// it. ⚠ NOT [`Self::timezone`], which is the story/timestamp zone v4's
+    /// `resolveTimezone` produces and can be a per-chat setting.
+    pub server_tz: Option<String>,
     pub minutes_since_last_timestamp_announcement: Option<i64>,
     /// v4 `options.autonomousContextCap` (U4.4, the enclave per-turn clamp):
     /// clamp the model-derived `budgetInfo.maxAvailable` down to this turn's
@@ -2108,6 +2113,7 @@ where
                         .timeline_mode
                         .clone()
                         .unwrap_or_else(|| "realtime".to_string()),
+                    local_tz: input.server_tz.clone(),
                 };
                 if let Some(d) = crate::services::memory_recap::distill::distill_memory_search(
                     executor,

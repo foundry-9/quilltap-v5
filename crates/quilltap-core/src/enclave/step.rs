@@ -697,6 +697,9 @@ where
         model_context_limit: sdeps.model_context_limit,
         timestamp_config: sdeps.timestamp_config.clone(),
         timezone: sdeps.timezone.clone(),
+        // The instance zone the step already carries for cron evaluation IS the
+        // server-local zone the memory distill needs.
+        server_tz: Some(sdeps.tz.to_string()),
         provider_supports_web_search: sdeps.provider_supports_web_search,
         log_context: LogContext {
             autonomous_run_id: Some(run_id.clone()),

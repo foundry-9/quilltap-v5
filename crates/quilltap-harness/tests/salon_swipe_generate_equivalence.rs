@@ -133,6 +133,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 model_context_limit: MODEL_CONTEXT_LIMIT,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
+                server_tz: Some("UTC".to_string()),
                 now_ms: FROZEN_NOW_MS,
                 local_offset_minutes: 0,
                 random01: 0.0,

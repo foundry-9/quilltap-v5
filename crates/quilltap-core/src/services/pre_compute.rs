@@ -97,6 +97,12 @@ pub struct ProactiveRecallInput<'a> {
     /// The wall-clock base (the injected `now_ms` seam standing in for v4's
     /// `new Date()`): drives the distill's TODAY line and the search's time decay.
     pub now_ms: i64,
+    /// The SERVER-LOCAL IANA zone (the v5 seam for v4's ambient process zone):
+    /// the distill's TODAY line and its deterministic day-reference scan resolve
+    /// their calendar in it. ⚠ NOT the story/timestamp timezone
+    /// (`ProcessMessageInput::timezone`, v4 `resolveTimezone`) — that one can be
+    /// a per-chat setting; this one is where the server stands.
+    pub server_tz: Option<&'a str>,
 }
 
 /// v4 `ProactiveRecallOutcome` (`{ memories, signals }`). Both fields are `None`
@@ -264,6 +270,7 @@ where
             .and_then(Value::as_str)
             .unwrap_or("realtime")
             .to_string(),
+        local_tz: input.server_tz.map(str::to_string),
     };
 
     // v4 `if (!keywordResult.success || !keywordResult.result ||

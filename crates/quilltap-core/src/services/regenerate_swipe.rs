@@ -63,6 +63,10 @@ pub struct RegenerateSwipeOptions {
     pub timestamp_config: Option<crate::chat_timestamp::TimestampConfig>,
     /// The resolved IANA timezone (v4 `resolveTimezone`).
     pub timezone: Option<String>,
+    /// The SERVER-LOCAL IANA zone (v4's ambient process zone) — the memory
+    /// distill's TODAY line + day-reference scan resolve their calendar in it.
+    /// ⚠ NOT [`Self::timezone`], the story/timestamp zone above.
+    pub server_tz: Option<String>,
     /// The wall clock (v4 `Date.now()` — the buildContext timestamp base + the
     /// swipe id/… mint points; the swipe's own `createdAt` is the target's).
     pub now_ms: i64,
@@ -131,6 +135,7 @@ where
         model_context_limit,
         timestamp_config,
         timezone,
+        server_tz,
         now_ms,
         local_offset_minutes,
         random01,
@@ -243,6 +248,7 @@ where
         model_context_limit,
         timestamp_config: timestamp_config.clone(),
         timezone: timezone.clone(),
+        server_tz: server_tz.clone(),
         is_continue_mode: true,
         now_ms,
         local_offset_minutes,

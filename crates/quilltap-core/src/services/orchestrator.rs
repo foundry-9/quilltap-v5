@@ -396,6 +396,13 @@ pub struct ProcessMessageInput {
     /// The IANA timezone buildContext resolves (v4 `resolveTimezone`); `None` =
     /// system default (`UTC` in the corpus).
     pub timezone: Option<String>,
+    /// The SERVER-LOCAL IANA zone (the v5 seam for v4's ambient process zone) —
+    /// the memory distill's TODAY line and its deterministic day-reference scan
+    /// resolve their calendar in it. ⚠ A DIFFERENT value from
+    /// [`Self::timezone`]: that is the story/timestamp zone (`resolveTimezone`,
+    /// a per-chat setting); this is where the server stands. `None` behaves like
+    /// a UTC server (what the corpora pin).
+    pub server_tz: Option<String>,
     /// Injected `provider.supportsWebSearch` — the provider-capability flag
     /// resolved above the seam. `useNativeWebSearch` ANDs it with the profile.
     pub provider_supports_web_search: bool,
@@ -1783,6 +1790,7 @@ where
             user_id: &user_id,
             chat_id: &chat_id,
             now_ms: input.clock.now_ms,
+            server_tz: input.server_tz.as_deref(),
         };
         match crate::services::pre_compute::proactive_recall_task(
             db,
@@ -1813,6 +1821,7 @@ where
         model_context_limit: input.model_context_limit,
         timestamp_config: input.timestamp_config.clone(),
         timezone: input.timezone.clone(),
+        server_tz: input.server_tz.clone(),
         is_continue_mode,
         now_ms: input.clock.now_ms,
         local_offset_minutes: input.clock.local_offset_minutes,
@@ -3228,6 +3237,9 @@ pub(crate) struct BuildContextArgs<'a> {
     pub timestamp_config: Option<crate::chat_timestamp::TimestampConfig>,
     /// The resolved IANA timezone (v4 `input.timezone`).
     pub timezone: Option<String>,
+    /// The SERVER-LOCAL IANA zone (v4's ambient process zone) — see
+    /// [`ProcessMessageInput::server_tz`]; NOT the story zone above.
+    pub server_tz: Option<String>,
     /// `continueMode === true` (v4 `input.options.continue_mode`).
     pub is_continue_mode: bool,
     /// The wall-clock base (v4 `input.clock.now_ms`).
@@ -3374,6 +3386,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         timestamp_config: args.timestamp_config.clone(),
         is_initial_message: false,
         timezone: args.timezone.clone(),
+        server_tz: args.server_tz.clone(),
         connection_profile: Some(args.connection_profile.clone()),
         context_compression_settings: if args.compression_enabled {
             Some(build_context::ContextCompressionSettingsInput {
@@ -3738,6 +3751,7 @@ mod tests {
             model_context_limit: 1000,
             timestamp_config: None,
             timezone: None,
+            server_tz: None,
             provider_supports_web_search: false,
             log_context: LogContext::none(),
         }

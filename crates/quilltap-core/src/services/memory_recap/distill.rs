@@ -32,9 +32,18 @@ pub struct ExtractionClock {
     pub now_iso: String,
     /// Which clock the chat's story runs on: `"realtime" | "narrative"`.
     pub timeline_mode: String,
+    /// The SERVER-LOCAL IANA zone (v5 seam — v4 reads the ambient process zone,
+    /// which core never may). Both the TODAY line and the deterministic
+    /// day-reference scan resolve their calendar in it; `None` behaves like a
+    /// UTC server. Quilltap is self-hosted, so this is the user's zone: a UTC
+    /// TODAY line tells someone talking at 21:44 CDT that it is already
+    /// tomorrow, and every "today" the model then resolves lands on a day
+    /// containing none of the memories it means (v4 `505dcb1f`).
+    pub local_tz: Option<String>,
 }
 
-/// v4 `WEEKDAYS` (memory-tasks.ts) — indexed by `getUTCDay()` (0 = Sunday).
+/// v4 `WEEKDAYS` (memory-tasks.ts) — indexed by `getDay()` (0 = Sunday), the
+/// LOCAL weekday since v4 `505dcb1f` (it was `getUTCDay()` before).
 const WEEKDAYS: [&str; 7] = [
     "Sunday",
     "Monday",
@@ -127,6 +136,118 @@ pub struct DistillMessage {
     pub content: String,
 }
 
+/// How many of the most recent messages the deterministic day-reference scanner
+/// reads. Deliberately far tighter than the 20 the prompt sees: an override that
+/// fires on a stale "yesterday" from three topics ago is worse than no override.
+const DAY_REFERENCE_SCAN_MESSAGES: usize = 4;
+
+/// v4 `localDateStamp(d)` — a LOCAL `YYYY-MM-DD` stamp (never
+/// `toISOString().slice(0, 10)`, which is UTC) plus the local weekday index the
+/// TODAY line's `WEEKDAYS` lookup uses (JS `getDay()`, 0 = Sunday).
+fn local_date_stamp(now_ms: i64, local_tz: Option<&str>) -> (String, usize) {
+    let zone = local_tz
+        .and_then(|tz| jiff::tz::TimeZone::get(tz).ok())
+        .unwrap_or(jiff::tz::TimeZone::UTC);
+    match jiff::Timestamp::from_millisecond(now_ms) {
+        Ok(ts) => {
+            let date = zone.to_datetime(ts).date();
+            (
+                format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day()),
+                date.weekday().to_sunday_zero_offset() as usize,
+            )
+        }
+        // Unreachable from the callers (the arm is gated on a finite clock).
+        Err(_) => (
+            crate::jsstr::utf16_truncate(&crate::clock::iso_from_unix_ms(now_ms), 10),
+            0,
+        ),
+    }
+}
+
+/// Resolve the turn's deterministic day reference exactly as v4's
+/// `extractMemorySearchKeywords` does (`505dcb1f`): realtime timelines with a
+/// finite clock only, scanning the RAW content of the last
+/// [`DAY_REFERENCE_SCAN_MESSAGES`] of the capped-20 window joined with a single
+/// newline — a different rendering from the speaker-prefixed, 500-unit-truncated
+/// text the prompt sees.
+///
+/// Public because the tier-1 differential drives the production pipeline
+/// (resolve → parse → merge) rather than re-deriving it.
+pub fn resolve_distill_day_reference(
+    recent_messages: &[DistillMessage],
+    clock: Option<&ExtractionClock>,
+) -> Option<crate::day_references::DayReferenceResolution> {
+    let now_iso = match clock {
+        Some(c) => c.now_iso.clone(),
+        None => crate::clock::now_iso(),
+    };
+    let timeline_mode = clock
+        .map(|c| c.timeline_mode.as_str())
+        .unwrap_or("realtime");
+    if timeline_mode != "realtime" {
+        return None;
+    }
+    let now_ms = crate::episodic::event_time_ms(Some(&now_iso))?;
+
+    // v4: `cappedMessages.slice(-DAY_REFERENCE_SCAN_MESSAGES)` over the same
+    // `recentMessages.slice(-20)` the prompt uses.
+    let start = recent_messages.len().saturating_sub(20);
+    let capped = &recent_messages[start..];
+    let scan_start = capped.len().saturating_sub(DAY_REFERENCE_SCAN_MESSAGES);
+    let text = capped[scan_start..]
+        .iter()
+        .map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    crate::day_references::resolve_day_reference(
+        &text,
+        now_ms,
+        clock.and_then(|c| c.local_tz.as_deref()).unwrap_or("UTC"),
+    )
+}
+
+/// Merge a deterministically-resolved day reference into the LLM's parsed
+/// signals (v4 `mergeDayReference`, `505dcb1f` fix 1).
+///
+/// - Past-pointing reference → the resolved window OVERRIDES any LLM range and
+///   forces `retrospective: true`. The override is the point: the model's own
+///   ranges are UTC-day-biased, and that bias is what made a same-day "the
+///   mission today" resolve to a window containing none of the mission.
+/// - Future-only reference ("tomorrow") → nothing applied; whatever the model
+///   said stands, since the lexicon covers less than the model does.
+/// - No reference → the parsed result passes through unchanged.
+///
+/// Accepted cost (v4's own): a purely forward-looking "let's go to the pool
+/// today" marks the turn retrospective. The consequences (a temporal flip toward
+/// today's memories, one turn without the anti-repetition penalty) are benign,
+/// and intent heuristics to dodge it would reintroduce exactly the brittleness
+/// this resolver exists to remove.
+///
+/// v4 applies this INSIDE the parse closure's success arm only; its catch arm
+/// returns a bare `{ keywords: [] }` because "callers bail on empty keywords, so
+/// there is nothing for the deterministic window to ride along with". The
+/// `parse_failed` guard is that arm.
+pub fn merge_day_reference(
+    parsed: DistilledSearch,
+    day_reference: Option<&crate::day_references::DayReferenceResolution>,
+) -> DistilledSearch {
+    if parsed.parse_failed {
+        return parsed;
+    }
+    let Some(day_reference) = day_reference else {
+        return parsed;
+    };
+    if !day_reference.past_pointing {
+        return parsed;
+    }
+    DistilledSearch {
+        retrospective: true,
+        time_range: Some(day_reference.time_range.clone()),
+        ..parsed
+    }
+}
+
 /// Build the exact `LLMMessage[]` v4's `extractMemorySearchKeywords` sends:
 /// the system prompt plus the user content with the conversation window (last
 /// 20 messages, each capped at 500 UTF-16 units) and the TODAY line (variable —
@@ -170,12 +291,13 @@ pub fn build_distill_messages(
     let timeline_mode = clock
         .map(|c| c.timeline_mode.as_str())
         .unwrap_or("realtime");
+    // Rendered from the SERVER-LOCAL calendar, not UTC (v4 `505dcb1f`): both the
+    // date and the weekday. The non-finite arm keeps the raw string unchanged.
     let today_line = match crate::episodic::event_time_ms(Some(&now_iso)) {
         Some(ms) => {
-            let weekday = WEEKDAYS[crate::episodic::utc_day_of_week(ms as i64) as usize];
-            // v4 slices the date prefix off the ISO string itself (code units;
-            // ASCII here so a byte slice is identical).
-            let date = crate::jsstr::utf16_truncate(&now_iso, 10);
+            let (date, weekday_index) =
+                local_date_stamp(ms as i64, clock.and_then(|c| c.local_tz.as_deref()));
+            let weekday = WEEKDAYS[weekday_index];
             format!("TODAY: {date} ({weekday}); timeline mode: {timeline_mode}")
         }
         None => format!("TODAY: {now_iso}; timeline mode: {timeline_mode}"),
@@ -206,13 +328,16 @@ pub async fn distill_memory_search<C: CompletionProvider>(
     clock: Option<&ExtractionClock>,
 ) -> Option<DistilledSearch> {
     let messages = build_distill_messages(recent_messages, character_name, clock);
+    // Resolved BEFORE the call, exactly where v4 resolves it, and applied inside
+    // the parse closure so the catch arm's bare `{ keywords: [] }` stays bare.
+    let day_reference = resolve_distill_day_reference(recent_messages, clock);
 
     let result = executor
         .execute(
             completion,
             selection,
             messages,
-            parse_extraction,
+            |content: &str| merge_day_reference(parse_extraction(content), day_reference.as_ref()),
             None,
             None,
             Some(character_id),
@@ -483,6 +608,7 @@ mod tests {
         let clock = ExtractionClock {
             now_iso: "2024-06-15T12:00:00.000Z".to_string(),
             timeline_mode: "narrative".to_string(),
+            local_tz: None,
         };
         let msgs = build_distill_messages(
             &[DistillMessage {
@@ -502,6 +628,7 @@ mod tests {
         let clock = ExtractionClock {
             now_iso: "sometime".to_string(),
             timeline_mode: "realtime".to_string(),
+            local_tz: None,
         };
         let msgs = build_distill_messages(&[], "Aria", Some(&clock));
         assert!(msgs[1]

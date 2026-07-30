@@ -337,6 +337,10 @@ async fn precompute_matches_oracle() {
                 .and_then(Value::as_str)
                 .unwrap_or("chat"),
             now_ms: spec.now_ms as i64,
+            // The oracle runs under TZ=UTC, where local == UTC (the
+            // local-vs-UTC crux is proven by the tier-1 day-references and
+            // distill families, which each carry a non-UTC leg).
+            server_tz: Some("UTC"),
         };
 
         let mut emit = |_stage: &str, _msg: String| {};

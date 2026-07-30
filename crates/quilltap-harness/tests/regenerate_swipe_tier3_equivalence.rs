@@ -328,6 +328,7 @@ fn regenerate_swipe_tier3_matches_oracle() {
                 model_context_limit: 200_000,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
+                server_tz: Some("UTC".to_string()),
                 now_ms: spec.frozen_now_ms,
                 local_offset_minutes: spec.local_offset_minutes,
                 random01: 0.0,

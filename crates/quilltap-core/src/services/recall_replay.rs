@@ -100,12 +100,21 @@ fn to_rows(results: &[SemanticSearchResult], head_size: usize) -> Vec<Value> {
 
 /// Run the replay (v4 `runRecallReplay`). Read-only against the chat and memory
 /// corpus. Errors carry v4's exact `Error` messages (the route maps them to 400).
+///
+/// `server_tz` is the SERVER-LOCAL IANA zone (the v5 seam for v4's ambient
+/// process zone), which the distill's TODAY line and day-reference scan resolve
+/// their calendar in. It is a parameter rather than a field on
+/// [`RunRecallReplayInput`] because the dispatch layer that builds that bag has
+/// no zone to give: the host driver supplies it (`None` behaves like a UTC
+/// server, which is what the differential pins).
+#[allow(clippy::too_many_arguments)]
 pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
     db: &Db,
     completion: &C,
     executor: &CheapLlmTaskExecutor,
     embedding: &E,
     input: &RunRecallReplayInput,
+    server_tz: Option<&str>,
 ) -> Result<Value, String> {
     let limit = input.limit.unwrap_or(25.0) as usize;
 
@@ -261,6 +270,7 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
             .and_then(Value::as_str)
             .unwrap_or("realtime")
             .to_string(),
+        local_tz: server_tz.map(str::to_string),
     };
     let signals: Option<DistilledSearch> = distill_memory_search(
         executor,

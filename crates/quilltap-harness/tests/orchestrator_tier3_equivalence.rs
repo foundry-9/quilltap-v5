@@ -809,6 +809,7 @@ fn orchestrator_tier3_matches_oracle() {
                 model_context_limit: 200_000,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
+                server_tz: Some("UTC".to_string()),
                 provider_supports_web_search: false,
             }
         };
@@ -856,6 +857,7 @@ fn orchestrator_tier3_matches_oracle() {
                         model_context_limit: 200_000,
                         timestamp_config: None,
                         timezone: Some("UTC".to_string()),
+                        server_tz: Some("UTC".to_string()),
                         provider_supports_web_search: false,
                     };
                     // P4.6BM: v4 gates its post-cycle render trigger on the

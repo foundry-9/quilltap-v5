@@ -1058,6 +1058,8 @@ where
             model_context_limit,
             timestamp_config,
             timezone: Some(self.tz.clone()),
+            // The host's own zone — the memory distill's local-calendar seam.
+            server_tz: Some(self.tz.clone()),
             now_ms,
             local_offset_minutes: self.local_offset_minutes(now_ms),
             random01,
@@ -1247,6 +1249,7 @@ where
             model_context_limit,
             timestamp_config: timestamp_config.clone(),
             timezone: Some(self.tz.clone()),
+            server_tz: Some(self.tz.clone()),
             provider_supports_web_search,
         };
 
@@ -1323,6 +1326,7 @@ where
                 model_context_limit,
                 timestamp_config: chain_tcfg.clone(),
                 timezone: Some(chain_tz.clone()),
+                server_tz: Some(chain_tz.clone()),
                 provider_supports_web_search,
             }
         };
@@ -2083,6 +2087,9 @@ where
                             &executor,
                             &*state.embedding,
                             &input,
+                            // The host's own zone: the dispatch layer that built
+                            // `input` has none to give (see the fn's doc).
+                            Some(&state.tz),
                         )
                         .await
                     }),

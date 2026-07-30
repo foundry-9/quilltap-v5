@@ -317,6 +317,230 @@
         "timelineMode": "realtime"
       },
       "responseText": "{\"keywords\":[\"count\"]}"
+    },
+    {
+      "name": "merge-same-day-rescue",
+      "messages": [
+        {
+          "role": "user",
+          "content": "No, no. I mean the mission today. I want to hear about it."
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"temporal\": \"present\", \"context\": \"information\", \"paraphrase\": \"Charlie is asking about the mission.\", \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-overrides-llm-range",
+      "messages": [
+        {
+          "role": "user",
+          "content": "how did the mission go today?"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2026-07-29\", \"to\": \"2026-07-29\"}}"
+    },
+    {
+      "name": "merge-yesterday",
+      "messages": [
+        {
+          "role": "user",
+          "content": "tell me about yesterday"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-narrative-timeline-untouched",
+      "messages": [
+        {
+          "role": "user",
+          "content": "I mean the mission today"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "narrative"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-no-reference-passthrough",
+      "messages": [
+        {
+          "role": "user",
+          "content": "how are the soil samples looking?"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"soil samples\"], \"retrospective\": false, \"timeRange\": null, \"entities\": [\"Constantinople\"]}"
+    },
+    {
+      "name": "merge-future-keeps-llm-range",
+      "messages": [
+        {
+          "role": "user",
+          "content": "let's go to the pool tomorrow"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"pool\"], \"retrospective\": true, \"timeRange\": {\"from\": \"2026-07-20\", \"to\": \"2026-07-26\"}}"
+    },
+    {
+      "name": "merge-stale-outside-scan-window",
+      "messages": [
+        {
+          "role": "user",
+          "content": "we went to the market yesterday"
+        },
+        {
+          "role": "assistant",
+          "content": "we did"
+        },
+        {
+          "role": "user",
+          "content": "anyway"
+        },
+        {
+          "role": "assistant",
+          "content": "quite"
+        },
+        {
+          "role": "user",
+          "content": "about those samples"
+        },
+        {
+          "role": "assistant",
+          "content": "they hold"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-inside-scan-window",
+      "messages": [
+        {
+          "role": "user",
+          "content": "we went to the market last spring"
+        },
+        {
+          "role": "assistant",
+          "content": "we did"
+        },
+        {
+          "role": "user",
+          "content": "and the mission today?"
+        },
+        {
+          "role": "assistant",
+          "content": "what about it"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-parse-failure-stays-bare",
+      "messages": [
+        {
+          "role": "user",
+          "content": "the mission today"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "not json at all"
+    },
+    {
+      "name": "merge-nonfinite-clock-no-scan",
+      "messages": [
+        {
+          "role": "user",
+          "content": "the mission today"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "sometime yesterday",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-raw-content-beyond-prompt-truncation",
+      "messages": [
+        {
+          "role": "user",
+          "content": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and the mission today, at last."
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
+    },
+    {
+      "name": "merge-latest-match-across-messages",
+      "messages": [
+        {
+          "role": "user",
+          "content": "we covered that yesterday"
+        },
+        {
+          "role": "assistant",
+          "content": "we did"
+        },
+        {
+          "role": "user",
+          "content": "but today, the mission"
+        },
+        {
+          "role": "assistant",
+          "content": "go on"
+        }
+      ],
+      "characterName": "Amy",
+      "clock": {
+        "nowIso": "2026-07-29T02:44:00.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "{\"keywords\": [\"mission\"], \"retrospective\": false, \"timeRange\": null}"
     }
   ]
 }

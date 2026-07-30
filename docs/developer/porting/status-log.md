@@ -42161,3 +42161,90 @@ Regen: `TZ=UTC $N/node --import tsx $W/harness/oracle/cases/recall-tags.ts >
 /tmp/oracle-recall-tags.ndjson` from the pinned worktree (see unit 1's record),
 then `QT_ORACLE_RECALL_TAGS=… cargo test -p quilltap-harness --test
 recall_tags_equivalence -- --nocapture`. No fixture DB moved.
+
+---
+
+## Lane record — P4.d26 unit 3: the distill side (prompt bytes, the local TODAY line, the day-reference merge) + the server-zone thread
+
+**Landed** (2026-07-30, lane `claude/p4-d26-day-references-ec789e`).
+
+`services/memory_recap/distill.rs` now does everything v4 `505dcb1f` added to
+`extractMemorySearchKeywords`:
+
+- **`prompt_text.rs` REGENERATED mechanically**, never hand-edited: a scratchpad
+  script slices both template literals out of v4's source between their
+  backticks and writes the whole generated file (it refuses rather than guessing
+  if a literal ever gains interpolation or an escape). The diff is exactly v4's
+  three prompt changes — the `retrospective` instruction now includes
+  "events from earlier the same day" with three same-day examples, `timeRange`
+  gains `"today" / "this morning"` → the TODAY date and `"yesterday"` → the day
+  before, and a SECOND JSON example line. `MEMORY_RECAP_PROMPT` came back
+  byte-identical, which is the check that the extraction is faithful. The recipe
+  is now in the file's header.
+- **The TODAY line renders the LOCAL date AND the LOCAL weekday** (v4 was
+  `nowIso.slice(0,10)` + `getUTCDay()`); the non-finite arm still prints the raw
+  string. `WEEKDAYS`'s doc-comment follows v4's from `getUTCDay()` to `getDay()`.
+- **`resolve_distill_day_reference`** (pub, so the differential drives the
+  production helper rather than re-deriving it): the realtime + finite-clock
+  gate, then the RAW content of the last `DAY_REFERENCE_SCAN_MESSAGES = 4` of the
+  capped-20 window joined with a single newline — a DIFFERENT rendering from the
+  speaker-prefixed, 500-unit-truncated text the prompt sees, and the corpus pins
+  that difference with a case whose day word sits past 500 units.
+- **`merge_day_reference`**: past-pointing overrides any LLM range and forces
+  `retrospective: true`; future-only changes nothing; no reference passes
+  through. It runs INSIDE the parse closure (`distill_memory_search` now passes a
+  closure capturing the resolution), so v4's catch arm still returns a bare
+  `{ keywords: [] }` — reproduced by the `parse_failed` guard, with a corpus case.
+  v4's accepted-cost why-comment is carried verbatim in spirit: a forward-looking
+  "let's go to the pool today" marks the turn retrospective, and intent
+  heuristics to dodge that would reintroduce the brittleness the resolver removes.
+
+**The server-zone thread (§1f).** `ExtractionClock` gains `local_tz`, and the
+zone reaches it from the host at every entrance: `ProcessMessageInput.server_tz`
+→ `ProactiveRecallInput.server_tz` and `BuildContextArgs`/`BuildContextInput`
+`server_tz`; `RegenerateSwipeOptions.server_tz`; the enclave step passes the
+instance zone it already carries for cron (`sdeps.tz`); `run_recall_replay` takes
+it as an explicit PARAMETER because the dispatch layer that builds its input bag
+has no zone — the host driver supplies `state.tz`. Every production site passes
+the host's own `self.tz`.
+
+⚠ **`server_tz` is NOT `timezone`.** The existing `timezone` field is the
+story/timestamp zone v4's `resolveTimezone` produces (chat timestampConfig →
+chatSettings → `QUILLTAP_TIMEZONE`) and can be a per-chat setting; the new field
+is where the server stands, which is what v4's `new Date(y, m, d)` reads. Reusing
+`timezone` would have been a real divergence for anyone whose story clock differs
+from their server, so both fields carry a ⚠ doc-comment naming the other.
+
+**Differential — `distill_search_extraction_equivalence`: 26 cases (was 14) x
+TWO zone legs, green.** The family now runs the whole corpus under `TZ=UTC` AND
+`TZ=America/Chicago` (new env var `QT_ORACLE_DISTILL_CHICAGO`, **required**
+whenever `QT_ORACLE_DISTILL` is set — a UTC-only run would pass on half the
+evidence, since local == UTC there). Twelve new cases cover the merge:
+same-day rescue, LLM-range override, yesterday, the narrative-timeline gate, a
+no-reference passthrough, future-keeps-LLM-range, stale-outside-the-scan-window,
+inside-the-scan-window, the parse-failure bare arm, the non-finite-clock gate,
+raw-content-beyond-the-prompt-truncation, and latest-match-across-messages. Seven
+cases are zone-sensitive, asserted as a floor. The Chicago leg reproduces v4's
+live-verified `from=2026-07-28T05:00:00.000Z` where UTC says
+`2026-07-29T00:00:00.000Z`, and renders `TODAY: 2026-07-28 (Tuesday)` where UTC
+says `2026-07-29 (Wednesday)`.
+
+**Sensitivity — four mutations, each restored, each reddening its intended
+case:** merge disabled → `object-full-retro-dateonly @ UTC` (the pre-existing
+corpus case whose text already said "last week" — the drift was visible in the
+oldest case in the family); UTC TODAY line → `clock-narrative-monday @
+America/Chicago: message 1 content diverges` (a Monday in UTC is a Sunday in
+Chicago); scan window 20 instead of 4 → `merge-stale-outside-scan-window`;
+truncated instead of raw content → `merge-raw-content-beyond-prompt-truncation`.
+
+**Not yet exercised in this commit's gate:** the three tier-3 families
+(`precompute` / `recall_replay` / `build_context_tier3`). Their v4 oracles now
+carry BOTH the merge and the `occurredWithin` ungating, and the ungating is unit
+4 — regenerating them here would compare v5-without-the-ungating against a v4
+oracle that has it. Their harness constructions were updated for the new fields
+(`server_tz: Some("UTC")`, matching the oracle's TZ) so the workspace still
+compiles.
+
+Regen (both legs, one recipe — the jest `/tmp` mirror because v4's jest ignores
+`.claude/` paths) is in the test header; the corpus is
+`harness/oracle/fixtures/memory-search-extraction.json`.
