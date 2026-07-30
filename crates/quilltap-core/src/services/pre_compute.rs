@@ -329,6 +329,13 @@ where
                 .get("commonplaceRecallHistory")
                 .unwrap_or(&Value::Null),
         )),
+        // Fresh-event boost: memories of the last 24/48h keep their footing
+        // against evergreen entries whatever the retrospective classifier
+        // decided. The chat id is the echo guard — this chat's own memories are
+        // already in context. (v4 passes `Date.now()`; the injected now_ms seam
+        // stands in for the wall clock.)
+        current_chat_id: Some(input.chat_id.to_string()),
+        now_ms: Some(input.now_ms as f64),
     };
 
     // Retrospective turns: multi-probe (entity string; paraphrase + resolved date

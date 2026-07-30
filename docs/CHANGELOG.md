@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Recent events now keep their footing when a character reaches for a memory. The
+ranking that decides which few memories reach a character barely distinguished
+something that happened yesterday from something twelve days ago, so
+well-labelled evergreen notes took every slot and "how did the mission go?" got
+answered from last month. Anything with an event time inside the last day now
+counts for considerably more, and inside two days for a little more, whether or
+not the app decided the conversation was looking backwards — this is the safety
+net for the times it decides wrong. Memories lifted out of the very conversation
+you are having are deliberately left alone: they are already on the page in front
+of the character, and boosting them would crowd out everything else.
+
 Taught the app to read the calendar the way you do. When a conversation says
 "the mission today" or "how did it go this morning?", a new piece of the memory
 machinery works out exactly which stretch of hours that means — against the

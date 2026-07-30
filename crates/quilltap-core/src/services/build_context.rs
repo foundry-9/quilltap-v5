@@ -2172,6 +2172,12 @@ where
                 recently_whispered_ids: Some(crate::recall_history::recently_whispered_id_set(
                     &input.chat.commonplace_recall_history,
                 )),
+                // Fresh-event boost (mirrors the proactive path): recent events
+                // keep their footing against evergreen memories whatever the
+                // retrospective classifier decided; the chat id is the echo
+                // guard. (v4 passes `Date.now()`; the injected seam stands in.)
+                current_chat_id: Some(input.chat.id.clone()),
+                now_ms: Some(now_ms_f),
             };
             // Retrospective multi-probe (mirrors the proactive path in
             // `pre_compute::proactive_recall_task`, now ported — P4.19).

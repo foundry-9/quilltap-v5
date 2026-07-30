@@ -316,6 +316,14 @@ pub struct RecallContextInput {
     /// ranked (item 5, `RELATED_EXPANSION` caps).
     pub expand_related: bool,
     pub recently_whispered_ids: Option<std::collections::HashSet<String>>,
+    /// The current chat's id — the fresh-event boost's echo guard (v4
+    /// `recallContext.currentChatId`, set at all three build sites).
+    pub current_chat_id: Option<String>,
+    /// The fresh-event boost's reference clock in epoch ms (v4
+    /// `recallContext.nowMs`). ⚠ NOT the same value as
+    /// [`SemanticSearchOptions::now_ms`] in every caller: recall-replay passes
+    /// the REPLAYED TURN's clock here and wall-clock now there.
+    pub now_ms: Option<f64>,
 }
 
 /// Options for [`search_memories_semantic`] (v4 `MemoryServiceOptions & {...}`),
@@ -805,6 +813,8 @@ fn apply_recall_multipliers(
         about_character_id: memory.get("aboutCharacterId").and_then(Value::as_str),
         occurred_at: memory.get("occurredAt").and_then(Value::as_str),
         created_at: memory.get("createdAt").and_then(Value::as_str),
+        // The memory's own chat (net JSON carries `chatId`) — the echo guard.
+        chat_id: memory.get("chatId").and_then(Value::as_str),
     };
     let ctx = RecallContext {
         current_project_id: rc.current_project_id.as_deref(),
@@ -816,6 +826,8 @@ fn apply_recall_multipliers(
         occurred_within: soft_window,
         expand_related: rc.expand_related,
         recently_whispered_ids: rc.recently_whispered_ids.as_ref(),
+        current_chat_id: rc.current_chat_id.as_deref(),
+        now_ms: rc.now_ms,
     };
     let adj = combine_recall_multipliers(&view, &ctx);
     if adj.exclude {

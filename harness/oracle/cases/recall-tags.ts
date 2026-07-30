@@ -33,6 +33,7 @@ import {
   participantMultiplier,
   recentlyWhisperedMultiplier,
   occurredWithinMultiplier,
+  freshEventMultiplier,
   combineRecallMultipliers,
   type TargetingTags,
   type TemporalTag,
@@ -154,6 +155,55 @@ for (const [id, mem, window] of windowCases) {
 }
 
 // ---------------------------------------------------------------------------
+// freshEventMultiplier(memory, nowMs, currentChatId) — the unconditional
+// fresh-event boost (v4 `505dcb1f`). The guard ladder IN ORDER: no/non-finite
+// clock, the echo guard (TRUTHINESS on both chat ids), occurredAt ?? createdAt,
+// Date.parse finiteness, negative age, then the two inclusive bands.
+// ---------------------------------------------------------------------------
+const FRESH_NOW = Date.parse('2026-07-29T02:44:00.000Z');
+const FRESH_HOUR = 60 * 60 * 1000;
+const FRESH_CHAT = 'chat-current';
+const freshAt = (msAgo: number) => new Date(FRESH_NOW - msAgo).toISOString();
+const freshCases: Array<[
+  string,
+  { occurredAt?: string | null; createdAt?: string; chatId?: string | null },
+  number | null | undefined,
+  string | null | undefined,
+]> = [
+  ['inside-24h', { occurredAt: freshAt(6 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['edge-24h-inclusive', { occurredAt: freshAt(24 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['just-past-24h', { occurredAt: freshAt(24 * FRESH_HOUR + 1) }, FRESH_NOW, FRESH_CHAT],
+  ['inside-48h', { occurredAt: freshAt(30 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['edge-48h-inclusive', { occurredAt: freshAt(48 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['just-past-48h', { occurredAt: freshAt(48 * FRESH_HOUR + 1) }, FRESH_NOW, FRESH_CHAT],
+  ['older-than-48h', { occurredAt: freshAt(49 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['created-fallback', { createdAt: freshAt(2 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['created-fallback-null-occurred', { occurredAt: null, createdAt: freshAt(2 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['empty-occurred-not-nullish', { occurredAt: '', createdAt: freshAt(2 * FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['no-clock-undefined', { occurredAt: freshAt(FRESH_HOUR) }, undefined, FRESH_CHAT],
+  ['no-clock-null', { occurredAt: freshAt(FRESH_HOUR) }, null, FRESH_CHAT],
+  ['no-clock-nan', { occurredAt: freshAt(FRESH_HOUR) }, NaN, FRESH_CHAT],
+  ['no-event-time', {}, FRESH_NOW, FRESH_CHAT],
+  ['unparsable-event', { occurredAt: 'not a date' }, FRESH_NOW, FRESH_CHAT],
+  ['future-event', { occurredAt: freshAt(-FRESH_HOUR) }, FRESH_NOW, FRESH_CHAT],
+  ['echo-same-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: FRESH_CHAT }, FRESH_NOW, FRESH_CHAT],
+  ['echo-other-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: 'chat-other' }, FRESH_NOW, FRESH_CHAT],
+  ['echo-null-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: null }, FRESH_NOW, FRESH_CHAT],
+  // Truthiness, not equality: an empty string on EITHER side disables the guard.
+  ['echo-empty-memory-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: '' }, FRESH_NOW, ''],
+  ['echo-empty-current-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: 'chat-other' }, FRESH_NOW, ''],
+  ['echo-no-current-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: FRESH_CHAT }, FRESH_NOW, null],
+  ['echo-undefined-current-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: FRESH_CHAT }, FRESH_NOW, undefined],
+  // The echo guard precedes the clock guard in neither direction that matters:
+  // no clock wins even for a foreign chat.
+  ['no-clock-other-chat', { occurredAt: freshAt(FRESH_HOUR), chatId: 'chat-other' }, undefined, FRESH_CHAT],
+];
+for (const [id, mem, nowMs, currentChatId] of freshCases) {
+  const r = freshEventMultiplier(mem, nowMs, currentChatId);
+  rows.push({ kind: 'mult', fn: 'fresh', id, multiplier: r.multiplier, fired: r.fired });
+}
+
+// ---------------------------------------------------------------------------
 // contextMultiplier(tags, turnContext).
 // ---------------------------------------------------------------------------
 const ctxCases: Array<[string, ContextTag, ContextTag | null]> = [
@@ -214,6 +264,8 @@ interface MemoryTagView {
   aboutCharacterId?: string | null;
   occurredAt?: string | null;
   createdAt?: string;
+  /** The chat the memory was extracted from — the fresh-event echo guard. */
+  chatId?: string | null;
 }
 const combineCases: Array<[string, MemoryTagView, RecallContext]> = [
   [
@@ -375,6 +427,108 @@ const combineCases: Array<[string, MemoryTagView, RecallContext]> = [
       currentProjectId: null,
       scopePolicy: 'down-weight',
       recentlyWhisperedIds: new Set(['M1']),
+    },
+  ],
+  // ---- fresh-event boost arms (P4.d26) ----
+  // The product order matters for f64 bit-equality: fresh is multiplied LAST
+  // and its label concatenated LAST.
+  [
+    'fresh-with-moment-demotion',
+    {
+      id: 'M1',
+      projectId: 'P1',
+      chatId: 'chat-other',
+      keywords: ['moment', 'scope: narrow', 'history'],
+      occurredAt: freshAt(6 * FRESH_HOUR),
+    },
+    {
+      currentProjectId: 'P1',
+      scopePolicy: 'down-weight',
+      currentChatId: FRESH_CHAT,
+      nowMs: FRESH_NOW,
+    },
+  ],
+  [
+    'fresh-inert-without-clock',
+    {
+      id: 'M1',
+      projectId: 'P1',
+      chatId: 'chat-other',
+      keywords: [],
+      occurredAt: freshAt(6 * FRESH_HOUR),
+    },
+    { currentProjectId: 'P1', scopePolicy: 'down-weight' },
+  ],
+  [
+    'fresh-suppressed-by-echo-guard',
+    {
+      id: 'M1',
+      projectId: null,
+      chatId: FRESH_CHAT,
+      keywords: [],
+      occurredAt: freshAt(FRESH_HOUR),
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      currentChatId: FRESH_CHAT,
+      nowMs: FRESH_NOW,
+    },
+  ],
+  [
+    'fresh48-band-in-combine',
+    {
+      id: 'M1',
+      projectId: null,
+      chatId: 'chat-other',
+      keywords: ['past'],
+      occurredAt: freshAt(30 * FRESH_HOUR),
+    },
+    {
+      currentProjectId: null,
+      scopePolicy: 'down-weight',
+      currentChatId: FRESH_CHAT,
+      nowMs: FRESH_NOW,
+    },
+  ],
+  [
+    'maximal-fresh-window-retro-stack',
+    {
+      id: 'M1',
+      projectId: 'P1',
+      chatId: 'chat-other',
+      aboutCharacterId: 'C1',
+      keywords: ['past', 'scope: narrow', 'history'],
+      occurredAt: freshAt(3 * FRESH_HOUR),
+    },
+    {
+      currentProjectId: 'P1',
+      scopePolicy: 'down-weight',
+      currentChatId: FRESH_CHAT,
+      nowMs: FRESH_NOW,
+      turnRetrospective: true,
+      turnContext: 'history',
+      presentAboutCharacterIds: ['C1'],
+      occurredWithin: {
+        from: new Date(FRESH_NOW - 24 * FRESH_HOUR).toISOString(),
+        to: new Date(FRESH_NOW).toISOString(),
+      },
+    },
+  ],
+  [
+    'fresh-with-cross-project-penalty',
+    {
+      id: 'M1',
+      projectId: 'P1',
+      chatId: 'chat-other',
+      keywords: ['scope: narrow'],
+      occurredAt: freshAt(FRESH_HOUR),
+    },
+    {
+      currentProjectId: 'P2',
+      scopePolicy: 'down-weight',
+      currentChatId: FRESH_CHAT,
+      nowMs: FRESH_NOW,
     },
   ],
 ];

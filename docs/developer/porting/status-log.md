@@ -42097,3 +42097,67 @@ QT_ORACLE_DAY_REFERENCES=/tmp/oracle-day-references.ndjson \
 ```
 
 No fixture DB moved, so no other family is invalidated by this unit.
+
+---
+
+## Lane record — P4.d26 unit 2: the fresh-event boost (`fresh_event_multiplier`) + its three context threads
+
+**Landed** (2026-07-30, lane `claude/p4-d26-day-references-ec789e`).
+
+`recall_tags.rs` gains v4 `505dcb1f`'s `freshEventMultiplier` and the two
+constants it reads (`FRESH_EVENT_24H = 1.6`, `FRESH_EVENT_48H = 1.35`, with v4's
+why-comment: the blend's recency term separates yesterday from twelve days ago
+by ~0.05, so without this "what just happened" holds no ground against
+evergreen present-tagged memories, and it is UNCONDITIONAL by design — the
+safety net for every turn the retrospective classifier misses).
+`MemoryTagView` gains `chat_id`; `RecallContext` gains `current_chat_id` +
+`now_ms`; `combine_recall_multipliers` multiplies fresh LAST and concatenates
+its label LAST (both load-bearing: the product order for f64 equality, the label
+order because the differential asserts `fired` exactly).
+
+The guard ladder is ported in v4's order, and two arms are JS-semantics, not
+taste: the echo guard reads TRUTHINESS (`memory.chatId && currentChatId && …`),
+so an empty string on either side disables it — mirrored by `is_empty` filters,
+with corpus rows for both sides; and a present-but-EMPTY `occurredAt` is used
+rather than falling back to `createdAt` (`??`, not `||`), then fails the parse
+and passes through — the existing `event_time_ms` collapse reaches the same
+outcome as v4's `!eventIso` / `!Number.isFinite(t)` pair.
+
+`services/memory_service.rs` threads both new fields through
+`RecallContextInput` → the per-row `RecallContext`, and the `MemoryTagView`
+build reads `chatId` off the memory's net JSON. All THREE v4 build sites now set
+them:
+
+- `pre_compute.rs` — `chat_id` + the injected `now_ms` seam (v4 `Date.now()`).
+- `build_context.rs` — `chat.id` + `now_ms_f` ("mirrors the proactive path").
+- `recall_replay.rs` — `input.chat_id` + **`Date.parse(clockIso)`, the REPLAYED
+  TURN's clock, NOT `input.now_ms`**. The two clocks are deliberately different
+  values in this one caller (the order's §1d warning); an unparsable clock lands
+  as v4's `NaN` and as v5's `None`, both disabling the boost.
+
+**Differential — `recall_tags_equivalence`, regenerated at `b3ee00f1`: 16 parse
+/ 68 mult / 19 combine (was 44 mult / 13 combine), green.** 24 new `fresh` rows
+cover the whole ladder (both band edges INCLUSIVE plus their +1ms neighbours,
+createdAt fallback, empty/unparsable/absent event time, future event, all three
+no-clock forms incl. NaN, and six echo-guard arms including both empty-string
+sides); six new `combine` rows pin the composition (fresh x moment demotion,
+inert without a clock, echo-suppressed inside combine, the 48h band, the maximal
+retro+window+fresh stack, and fresh under the cross-project penalty).
+
+**Sensitivity:** the family was first-run green on the new rows, so two
+mutations, each restored — `age < FRESH_24H_MS` (exclusive) reddens
+`fresh/edge-24h-inclusive` (rust=1.35 oracle=1.6); disabling the echo guard
+reddens `fresh/echo-same-chat` (rust=1.6 oracle=1). Four in-crate unit tests
+port v4's new suite arms case-for-case.
+
+**The boost is LIVE from this commit** (all three contexts carry a clock), but
+it can only fire where the event time is genuinely inside 48h — which is why
+this unit does not move the three tier-3 families: their corpora predate the
+drift. Their regen belongs to unit 4, which also lands the `occurredWithin`
+ungating v4 shipped in the same commit; regenerating them earlier would compare
+v5-without-the-merge against a v4 oracle that has it.
+
+Regen: `TZ=UTC $N/node --import tsx $W/harness/oracle/cases/recall-tags.ts >
+/tmp/oracle-recall-tags.ndjson` from the pinned worktree (see unit 1's record),
+then `QT_ORACLE_RECALL_TAGS=… cargo test -p quilltap-harness --test
+recall_tags_equivalence -- --nocapture`. No fixture DB moved.

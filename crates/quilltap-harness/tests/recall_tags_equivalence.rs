@@ -19,10 +19,11 @@
 use std::collections::{HashMap, HashSet};
 
 use quilltap_core::recall_tags::{
-    combine_recall_multipliers, context_multiplier, occurred_within_multiplier,
-    parse_targeting_tags, participant_multiplier, recently_whispered_multiplier,
-    scope_project_multiplier, temporal_multiplier, ContextTag, MemoryTagView, RecallContext,
-    RecallMultiplier, ScopePolicy, ScopeTag, TargetingTags, TemporalTag, TimeWindow,
+    combine_recall_multipliers, context_multiplier, fresh_event_multiplier,
+    occurred_within_multiplier, parse_targeting_tags, participant_multiplier,
+    recently_whispered_multiplier, scope_project_multiplier, temporal_multiplier, ContextTag,
+    MemoryTagView, RecallContext, RecallMultiplier, ScopePolicy, ScopeTag, TargetingTags,
+    TemporalTag, TimeWindow,
 };
 use serde::Deserialize;
 
@@ -364,6 +365,233 @@ fn recall_tags_matches_oracle() {
         assert_mult(&idx, &format!("window/{id}"), &got);
     }
 
+    // ---- freshEventMultiplier (P4.d26) ----
+    // 2026-07-29T02:44:00.000Z, the diagnosed chat's instant, and the corpus's
+    // `FRESH_NOW`. `ago(h)` mirrors the oracle's `freshAt(msAgo)`.
+    const FRESH_NOW: f64 = 1_785_293_040_000.0;
+    const HOUR: f64 = 3_600_000.0;
+    const FRESH_CHAT: &str = "chat-current";
+    let ago =
+        |hours: f64| quilltap_core::clock::iso_from_unix_ms((FRESH_NOW - hours * HOUR) as i64);
+    // (id, occurredAt, createdAt, memory chatId, nowMs, currentChatId)
+    let fresh_cases: Vec<(
+        &str,
+        Option<String>,
+        Option<String>,
+        Option<&str>,
+        Option<f64>,
+        Option<&str>,
+    )> = vec![
+        (
+            "inside-24h",
+            Some(ago(6.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "edge-24h-inclusive",
+            Some(ago(24.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "just-past-24h",
+            Some(quilltap_core::clock::iso_from_unix_ms(
+                (FRESH_NOW - 24.0 * HOUR - 1.0) as i64,
+            )),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "inside-48h",
+            Some(ago(30.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "edge-48h-inclusive",
+            Some(ago(48.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "just-past-48h",
+            Some(quilltap_core::clock::iso_from_unix_ms(
+                (FRESH_NOW - 48.0 * HOUR - 1.0) as i64,
+            )),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "older-than-48h",
+            Some(ago(49.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "created-fallback",
+            None,
+            Some(ago(2.0)),
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "created-fallback-null-occurred",
+            None,
+            Some(ago(2.0)),
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "empty-occurred-not-nullish",
+            Some(String::new()),
+            Some(ago(2.0)),
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "no-clock-undefined",
+            Some(ago(1.0)),
+            None,
+            None,
+            None,
+            Some(FRESH_CHAT),
+        ),
+        (
+            "no-clock-null",
+            Some(ago(1.0)),
+            None,
+            None,
+            None,
+            Some(FRESH_CHAT),
+        ),
+        (
+            "no-clock-nan",
+            Some(ago(1.0)),
+            None,
+            None,
+            Some(f64::NAN),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "no-event-time",
+            None,
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "unparsable-event",
+            Some("not a date".to_string()),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "future-event",
+            Some(quilltap_core::clock::iso_from_unix_ms(
+                (FRESH_NOW + HOUR) as i64,
+            )),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "echo-same-chat",
+            Some(ago(1.0)),
+            None,
+            Some(FRESH_CHAT),
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "echo-other-chat",
+            Some(ago(1.0)),
+            None,
+            Some("chat-other"),
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "echo-null-chat",
+            Some(ago(1.0)),
+            None,
+            None,
+            Some(FRESH_NOW),
+            Some(FRESH_CHAT),
+        ),
+        (
+            "echo-empty-memory-chat",
+            Some(ago(1.0)),
+            None,
+            Some(""),
+            Some(FRESH_NOW),
+            Some(""),
+        ),
+        (
+            "echo-empty-current-chat",
+            Some(ago(1.0)),
+            None,
+            Some("chat-other"),
+            Some(FRESH_NOW),
+            Some(""),
+        ),
+        (
+            "echo-no-current-chat",
+            Some(ago(1.0)),
+            None,
+            Some(FRESH_CHAT),
+            Some(FRESH_NOW),
+            None,
+        ),
+        (
+            "echo-undefined-current-chat",
+            Some(ago(1.0)),
+            None,
+            Some(FRESH_CHAT),
+            Some(FRESH_NOW),
+            None,
+        ),
+        (
+            "no-clock-other-chat",
+            Some(ago(1.0)),
+            None,
+            Some("chat-other"),
+            None,
+            Some(FRESH_CHAT),
+        ),
+    ];
+    for (id, occurred, created, chat, now, current_chat) in &fresh_cases {
+        let mem = MemoryTagView {
+            occurred_at: occurred.as_deref(),
+            created_at: created.as_deref(),
+            chat_id: *chat,
+            ..Default::default()
+        };
+        let got = fresh_event_multiplier(&mem, *now, *current_chat);
+        assert_mult(&idx, &format!("fresh/{id}"), &got);
+    }
+
     // ---- contextMultiplier ----
     let ctx_cases: Vec<(&str, ContextTag, Option<ContextTag>)> = vec![
         (
@@ -436,16 +664,20 @@ fn recall_tags_matches_oracle() {
         keywords: Vec<&'static str>,
         project_id: Option<&'static str>,
         about: Option<&'static str>,
-        occurred_at: Option<&'static str>,
-        created_at: Option<&'static str>,
+        /// Owned, because the fresh arms compute their event times from FRESH_NOW.
+        occurred_at: Option<String>,
+        created_at: Option<String>,
+        chat_id: Option<&'static str>,
         current_project_id: Option<&'static str>,
         policy: ScopePolicy,
         turn_context: Option<ContextTag>,
         turn_temporal: Option<TemporalTag>,
         turn_retrospective: bool,
-        occurred_within: Option<(&'static str, &'static str)>,
+        occurred_within: Option<(String, String)>,
         present: Vec<&'static str>,
         recent: Option<Vec<&'static str>>,
+        current_chat_id: Option<&'static str>,
+        now_ms: Option<f64>,
     }
     let combine_cases = vec![
         CC {
@@ -518,8 +750,8 @@ fn recall_tags_matches_oracle() {
             id: "retro-flip-past",
             mem_id: "M1",
             keywords: vec!["past", "scope: wide", "history"],
-            occurred_at: Some("2026-07-14T00:00:00.000Z"),
-            created_at: Some("2026-07-14T01:00:00.000Z"),
+            occurred_at: Some("2026-07-14T00:00:00.000Z".to_string()),
+            created_at: Some("2026-07-14T01:00:00.000Z".to_string()),
             turn_retrospective: true,
             ..Default::default()
         },
@@ -534,38 +766,50 @@ fn recall_tags_matches_oracle() {
             id: "retro-suspends-whisper",
             mem_id: "M1",
             keywords: vec!["past"],
-            occurred_at: Some("2026-07-14T00:00:00.000Z"),
-            created_at: Some("2026-07-14T01:00:00.000Z"),
+            occurred_at: Some("2026-07-14T00:00:00.000Z".to_string()),
+            created_at: Some("2026-07-14T01:00:00.000Z".to_string()),
             turn_retrospective: true,
             recent: Some(vec!["M1"]),
-            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            occurred_within: Some((
+                "2026-07-13T00:00:00.000Z".to_string(),
+                "2026-07-19T23:59:59.999Z".to_string(),
+            )),
             ..Default::default()
         },
         CC {
             id: "window-in",
             mem_id: "M1",
             keywords: vec![],
-            occurred_at: Some("2026-07-14T00:00:00.000Z"),
-            created_at: Some("2026-07-01T00:00:00.000Z"),
-            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            occurred_at: Some("2026-07-14T00:00:00.000Z".to_string()),
+            created_at: Some("2026-07-01T00:00:00.000Z".to_string()),
+            occurred_within: Some((
+                "2026-07-13T00:00:00.000Z".to_string(),
+                "2026-07-19T23:59:59.999Z".to_string(),
+            )),
             ..Default::default()
         },
         CC {
             id: "window-out",
             mem_id: "M1",
             keywords: vec![],
-            occurred_at: Some("2026-01-01T00:00:00.000Z"),
-            created_at: Some("2026-01-01T00:00:00.000Z"),
-            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            occurred_at: Some("2026-01-01T00:00:00.000Z".to_string()),
+            created_at: Some("2026-01-01T00:00:00.000Z".to_string()),
+            occurred_within: Some((
+                "2026-07-13T00:00:00.000Z".to_string(),
+                "2026-07-19T23:59:59.999Z".to_string(),
+            )),
             ..Default::default()
         },
         CC {
             id: "window-created-fallback-unparsable-occurred",
             mem_id: "M1",
             keywords: vec![],
-            occurred_at: Some("the third night at sea"),
-            created_at: Some("2026-07-14T12:00:00.000Z"),
-            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            occurred_at: Some("the third night at sea".to_string()),
+            created_at: Some("2026-07-14T12:00:00.000Z".to_string()),
+            occurred_within: Some((
+                "2026-07-13T00:00:00.000Z".to_string(),
+                "2026-07-19T23:59:59.999Z".to_string(),
+            )),
             ..Default::default()
         },
         CC {
@@ -574,23 +818,98 @@ fn recall_tags_matches_oracle() {
             keywords: vec!["scope: narrow", "past", "history"],
             project_id: Some("P1"),
             about: Some("C1"),
-            occurred_at: Some("2026-07-15T09:00:00.000Z"),
-            created_at: Some("2026-07-15T10:00:00.000Z"),
+            occurred_at: Some("2026-07-15T09:00:00.000Z".to_string()),
+            created_at: Some("2026-07-15T10:00:00.000Z".to_string()),
             current_project_id: Some("P1"),
             turn_context: Some(ContextTag::History),
             turn_temporal: Some(TemporalTag::Past),
             turn_retrospective: true,
             present: vec!["C1"],
             recent: Some(vec!["M1"]),
-            occurred_within: Some(("2026-07-13T00:00:00.000Z", "2026-07-19T23:59:59.999Z")),
+            occurred_within: Some((
+                "2026-07-13T00:00:00.000Z".to_string(),
+                "2026-07-19T23:59:59.999Z".to_string(),
+            )),
+            ..Default::default()
+        },
+        // ---- fresh-event boost arms (P4.d26) ----
+        CC {
+            id: "fresh-with-moment-demotion",
+            mem_id: "M1",
+            keywords: vec!["moment", "scope: narrow", "history"],
+            project_id: Some("P1"),
+            chat_id: Some("chat-other"),
+            occurred_at: Some(ago(6.0)),
+            current_project_id: Some("P1"),
+            current_chat_id: Some(FRESH_CHAT),
+            now_ms: Some(FRESH_NOW),
+            ..Default::default()
+        },
+        CC {
+            id: "fresh-inert-without-clock",
+            mem_id: "M1",
+            keywords: vec![],
+            project_id: Some("P1"),
+            chat_id: Some("chat-other"),
+            occurred_at: Some(ago(6.0)),
+            current_project_id: Some("P1"),
+            ..Default::default()
+        },
+        CC {
+            id: "fresh-suppressed-by-echo-guard",
+            mem_id: "M1",
+            keywords: vec![],
+            chat_id: Some(FRESH_CHAT),
+            occurred_at: Some(ago(1.0)),
+            current_chat_id: Some(FRESH_CHAT),
+            now_ms: Some(FRESH_NOW),
+            ..Default::default()
+        },
+        CC {
+            id: "fresh48-band-in-combine",
+            mem_id: "M1",
+            keywords: vec!["past"],
+            chat_id: Some("chat-other"),
+            occurred_at: Some(ago(30.0)),
+            current_chat_id: Some(FRESH_CHAT),
+            now_ms: Some(FRESH_NOW),
+            ..Default::default()
+        },
+        CC {
+            id: "maximal-fresh-window-retro-stack",
+            mem_id: "M1",
+            keywords: vec!["past", "scope: narrow", "history"],
+            project_id: Some("P1"),
+            about: Some("C1"),
+            chat_id: Some("chat-other"),
+            occurred_at: Some(ago(3.0)),
+            current_project_id: Some("P1"),
+            current_chat_id: Some(FRESH_CHAT),
+            now_ms: Some(FRESH_NOW),
+            turn_retrospective: true,
+            turn_context: Some(ContextTag::History),
+            present: vec!["C1"],
+            occurred_within: Some((ago(24.0), ago(0.0))),
+            ..Default::default()
+        },
+        CC {
+            id: "fresh-with-cross-project-penalty",
+            mem_id: "M1",
+            keywords: vec!["scope: narrow"],
+            project_id: Some("P1"),
+            chat_id: Some("chat-other"),
+            occurred_at: Some(ago(1.0)),
+            current_project_id: Some("P2"),
+            current_chat_id: Some(FRESH_CHAT),
+            now_ms: Some(FRESH_NOW),
             ..Default::default()
         },
         CC {
             id: "inert-context-unchanged",
             mem_id: "M1",
             keywords: vec!["past"],
-            occurred_at: Some("2026-07-14T00:00:00.000Z"),
-            created_at: Some("2026-07-14T01:00:00.000Z"),
+            occurred_at: Some("2026-07-14T00:00:00.000Z".to_string()),
+            created_at: Some("2026-07-14T01:00:00.000Z".to_string()),
             recent: Some(vec!["M1"]),
             ..Default::default()
         },
@@ -602,17 +921,18 @@ fn recall_tags_matches_oracle() {
             .recent
             .as_ref()
             .map(|r| r.iter().map(|x| x.to_string()).collect());
-        let window = cc.occurred_within.map(|(from, to)| TimeWindow {
-            from: from.to_string(),
-            to: to.to_string(),
+        let window = cc.occurred_within.as_ref().map(|(from, to)| TimeWindow {
+            from: from.clone(),
+            to: to.clone(),
         });
         let mem = MemoryTagView {
             id: Some(cc.mem_id),
             project_id: cc.project_id,
             keywords: &keywords,
             about_character_id: cc.about,
-            occurred_at: cc.occurred_at,
-            created_at: cc.created_at,
+            occurred_at: cc.occurred_at.as_deref(),
+            created_at: cc.created_at.as_deref(),
+            chat_id: cc.chat_id,
         };
         let ctx = RecallContext {
             current_project_id: cc.current_project_id,
@@ -624,6 +944,8 @@ fn recall_tags_matches_oracle() {
             occurred_within: window.as_ref(),
             expand_related: false,
             recently_whispered_ids: recent_set.as_ref(),
+            current_chat_id: cc.current_chat_id,
+            now_ms: cc.now_ms,
         };
         let got = combine_recall_multipliers(&mem, &ctx);
         let (wm, wf, we) = idx

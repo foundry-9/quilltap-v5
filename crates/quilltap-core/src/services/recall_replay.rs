@@ -333,6 +333,14 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         recently_whispered_ids: Some(recently_whispered_id_set(
             chat.get("commonplaceRecallHistory").unwrap_or(&Value::Null),
         )),
+        // Fresh-event boost against the REPLAYED TURN's clock, not wall-clock
+        // now — replaying an old turn must reproduce what recall would have done
+        // then. (v4 `Date.parse(clockIso)`: an unparsable clock lands as NaN and
+        // the multiplier's finite guard disables the boost, exactly as `None`
+        // does here. ⚠ NOT `input.now_ms`, which stays the decay seam on both
+        // search calls below.)
+        current_chat_id: Some(input.chat_id.clone()),
+        now_ms: crate::episodic::event_time_ms(Some(&clock_iso)),
     };
 
     // OLD path — episodic signals inert (byte-identical to pre-overhaul recall).
