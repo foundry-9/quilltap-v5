@@ -406,11 +406,10 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
                 .as_ref()
                 .map(|s| s.entities.clone())
                 .unwrap_or_default(),
-            occurred_within: if retrospective {
-                signals.as_ref().and_then(|s| s.time_range.clone())
-            } else {
-                None
-            },
+            // Ungated from the retrospective flag exactly as the two live
+            // consumers are (v4 `505dcb1f`) — the replay is only useful while it
+            // mirrors production.
+            occurred_within: signals.as_ref().and_then(|s| s.time_range.clone()),
             extra_probes,
             now_ms: input.now_ms,
             ..Default::default()

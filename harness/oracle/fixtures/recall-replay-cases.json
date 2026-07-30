@@ -123,6 +123,26 @@
         "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
       },
       "deleteConnections": true
+    },
+    {
+      "name": "turn_three_replayed_clock_fresh",
+      "body": {
+        "turnIndex": 3
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
+      "name": "turn_three_window_forwarded_not_retro",
+      "body": {
+        "turnIndex": 3
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"present\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2026-06-03\", \"to\": \"2026-06-04\"}, \"entities\": []}"
+      }
     }
   ]
 }

@@ -2230,13 +2230,15 @@ where
                         .as_ref()
                         .map(|s| s.entities.clone())
                         .unwrap_or_default(),
-                    occurred_within: if fallback_retro {
-                        turn_recall_signals
-                            .as_ref()
-                            .and_then(|s| s.time_range.clone())
-                    } else {
-                        None
-                    },
+                    // Ungated from the retrospective flag (v4 `505dcb1f`): a resolved
+                    // window is useful either way — the classifier misses same-day
+                    // references, and `search_memories_semantic`'s two-stage semantics
+                    // (hard filter only when enough hits survive, else the bounded soft
+                    // boost) make it starvation-safe. The flag still gates the temporal
+                    // flip, the anti-repetition suspension, and the multi-probe block.
+                    occurred_within: turn_recall_signals
+                        .as_ref()
+                        .and_then(|s| s.time_range.clone()),
                     extra_probes,
                     now_ms: now_ms_f,
                     ..Default::default()

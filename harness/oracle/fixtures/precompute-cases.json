@@ -1,6 +1,6 @@
 {
   "$comment": "P4.19 proactive pre-compute distill differential — case specs. Runs over a fresh copy of the committed episodic-recall-{main,mount}.db fixture (Elowen = the searched character with 7 memories incl. dated/entity episodic rows; Pip = a character with NO memories, for the search-empty arm). The chat/character/messages are synthetic inputs to runPreContextPreCompute / proactive_recall_task; the DB provides memories (by characterId) + the fitted BUILTIN TF-IDF embedding profile + the instance recall settings. ONLY the cheap-LLM distill is canned (per case), routed through each side's REAL parse. The clock is frozen to $nowMs on both sides.",
-  "$nowMs": 1780358400000,
+  "$nowMs": 1780574400000,
   "userId": "a0000000-0000-4000-8000-000000000001",
   "elowenId": "c1000000-0000-4000-8000-0000000000e1",
   "pipCharacterId": "c1000000-0000-4000-8000-0000000000f1",
@@ -132,6 +132,38 @@
         { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
       ],
       "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}" }
+    },
+    {
+      "$comment": "P4.d26: the classifier says NOT retrospective and offers no window; the turn plainly says 'today'. The deterministic resolver overrides both — retrospective flips true and the window becomes local midnight..now.",
+      "name": "day-reference-same-day-override",
+      "characterId": "c1000000-0000-4000-8000-0000000000e1",
+      "characterName": "Elowen",
+      "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
+      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "isContinueMode": false,
+      "content": "No, no. I mean the mission today. I want to hear about it.",
+      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "USER", "content": "What about the mission?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+      ],
+      "distill": { "kind": "json", "text": "{\"keywords\": [\"mission\", \"quay\"], \"paraphrase\": \"Charlie is asking how the mission at the quay went.\", \"retrospective\": false, \"timeRange\": null, \"entities\": [\"Gullwing Quay\"]}" }
+    },
+    {
+      "$comment": "P4.d26: no day reference anywhere in the turn, so the resolver stays silent and retrospective:false survives — the model's own window must still ride along (the occurredWithin ungating). Reverting the ungating reddens this case.",
+      "name": "window-forwarded-when-not-retrospective",
+      "characterId": "c1000000-0000-4000-8000-0000000000e1",
+      "characterName": "Elowen",
+      "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
+      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "isContinueMode": false,
+      "content": "And the dawn market?",
+      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+      ],
+      "distill": { "kind": "json", "text": "{\"keywords\": [\"quay\", \"dawn\"], \"paraphrase\": \"We visited the quay at dawn and watched the fleet.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2026-06-03\", \"to\": \"2026-06-04\"}, \"entities\": []}" }
     }
   ]
 }

@@ -379,14 +379,16 @@ where
             min_importance: Some(0.3),
             recall_context: Some(recall_context),
             // Episodic recall: entity anchoring always (a verbatim place name cannot
-            // be sliced off by the cosine floor); window + probes only on
-            // retrospective turns.
+            // be sliced off by the cosine floor); the multi-probe block above is
+            // still retrospective-only.
             entity_anchors: signals.entities.clone(),
-            occurred_within: if retrospective {
-                signals.time_range.clone()
-            } else {
-                None
-            },
+            // Ungated from the retrospective flag (v4 `505dcb1f`): a resolved
+            // window is useful either way — the classifier misses same-day
+            // references, and `search_memories_semantic`'s two-stage semantics
+            // (hard filter only when enough hits survive, else the bounded soft
+            // boost) make it starvation-safe. The flag still gates the temporal
+            // flip, the anti-repetition suspension, and the multi-probe block.
+            occurred_within: signals.time_range.clone(),
             extra_probes,
             now_ms: input.now_ms as f64,
             ..Default::default()

@@ -42248,3 +42248,100 @@ compiles.
 Regen (both legs, one recipe — the jest `/tmp` mirror because v4's jest ignores
 `.claude/` paths) is in the test header; the corpus is
 `harness/oracle/fixtures/memory-search-extraction.json`.
+
+---
+
+## Lane record — P4.d26 unit 4: the three `occurredWithin` ungating sites, and the tier-3 families regenerated
+
+**Landed** (2026-07-30, lane `claude/p4-d26-day-references-ec789e`).
+
+All three consumers stop gating the resolved window on the retrospective flag
+(v4 `505dcb1f`), carrying v4's shared why-comment: a resolved window is useful
+either way, `search_memories_semantic`'s two-stage semantics (hard filter only
+when enough hits survive, else the bounded soft boost) make it starvation-safe,
+and the flag still gates the temporal flip, the anti-repetition suspension, and
+the multi-probe block. `pre_compute.rs`'s stale "window + probes only on
+retrospective turns" comment was corrected with it.
+
+**The three tier-3 families regenerated at `b3ee00f1` — and all three now carry
+the drift's arms as observable cases:**
+
+- **`precompute_equivalence` 8 → 10 cases.** `$nowMs` moved 2026-06-02 →
+  **2026-06-04T12:00:00.000Z**, which is what brings the fixture's dated
+  memories inside the fresh bands (they sat in the FUTURE relative to the old
+  clock, where every fresh arm is inert by the age<0 guard). That alone made the
+  echo guard live: `…00a1` (occurredAt 2026-06-03T06:00, `chatId` = the case's
+  own chat) is 30h old and earns NOTHING, while `…00a2` (same freshness, no
+  chat) earns `fresh24↑`. Two new cases: `day-reference-same-day-override` (the
+  classifier says not-retrospective and offers no window; "the mission today"
+  flips it and supplies local-midnight..now) and
+  `window-forwarded-when-not-retrospective` (no day words anywhere, so the
+  resolver stays silent and `retrospective: false` survives — the ungating is
+  the only thing that can forward the model's window). The pre-existing
+  `retrospective-multi-probe` case now shows the OVERRIDE live end-to-end: its
+  "Remember last week?" text replaces the model's `2026-06-01..07` with
+  `2026-05-25..2026-06-01`.
+- **`recall_replay_equivalence` 13 → 15 cases.** `turn_three_replayed_clock_fresh`
+  (turnIndex 3 → `clockIso 2026-06-05T11:01`) is the case that pins the REPLAYED
+  clock: under `input.now_ms` (2026-06-15) nothing would be fresh, so the
+  `fresh48↑` labels on both paths exist only because the boost reads the turn's
+  own clock. `turn_three_window_forwarded_not_retro` is the ungating arm — turn
+  3's window is the only stretch of the fixture chat that carries NO day
+  reference, so `retrospective: false` survives the merge there (its first draft
+  was silently useless: the paraphrase surfaced only an undated memory, so no
+  window boost could show — the paraphrase had to name the quay).
+- **`build_context_tier3_equivalence` 13 → 15 ops.** `day_reference_flips_retro_turn`
+  and `window_forwarded_when_not_retrospective_turn`. ⚠ **Both needed their
+  paraphrase to be a text the corpus has a CANNED EMBEDDING for.** The first
+  drafts used fresh prose, so `generateEmbeddingForUser` had no vector, the
+  vector path failed, both sides fell back to text search identically — and the
+  op was green under a REVERTED port. Reusing the canned paraphrase (and adding
+  the one dated-probe key the retro path derives) made the vector path live and
+  the ungating mutation-visible.
+
+**Sensitivity — six mutations, each restored, each reddening its intended case:**
+
+| mutation | reddens |
+|---|---|
+| pre_compute ungating reverted | `window-forwarded-when-not-retrospective` (mult 0.85 vs 1.105) |
+| build_context ungating reverted | `window_forwarded_when_not_retrospective_turn: built context diverges` |
+| recall_replay ungating reverted | `turn_three_window_forwarded_not_retro` (0.935 vs 1.2155) |
+| recall_replay uses `input.now_ms` instead of the replayed clock | `turn_three_replayed_clock_fresh` (0.51 vs 0.6885) |
+| `memory_service` stops reading the memory's `chatId` | `spoke-then-window-searches` (1.1475 vs 0.85) |
+| `pre_compute` drops `current_chat_id` | `spoke-then-window-searches` (same) |
+| the distill merge disabled (unit 3's mutation, re-run here) | `retrospective_recall_turn: whisper rows / recall history diverge` — the merge is observable on the MAIN production path through the retro-signature ring |
+
+**Fixtures:** no committed `.db` moved. `episodic-recall-{main,mount}.db` are
+untouched, so `vault_conv_search_equivalence` (their third consumer) needs no
+regen — re-run and confirmed unaffected. The corpora that DID move are
+`precompute-cases.json` (`$nowMs` + 2 cases), `recall-replay-cases.json`
+(+2 cases), `build-context-tier3.json` (+2 ops, +1 canned embedding, +2
+completion rules), and `memory-search-extraction.json` (unit 3, +12 cases).
+
+**Regen recipe** for the three tier-3 families (from the pinned worktree; the
+jest `/tmp` mirror + STAGE because v4's jest ignores `.claude/` paths):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree> ; PIN=/private/tmp/qt-v4-pin-b3ee00f1
+STAGE=/tmp/qt-p4d26-stage; rm -rf $STAGE
+mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+cp $W/harness/oracle/cases/{precompute,recall-replay,build-context-tier3}.test.ts \
+   $STAGE/harness/oracle/cases/
+cp $W/harness/oracle/fixtures/{precompute-cases,recall-replay-cases,episodic-recall,build-context-tier3}.json \
+   $STAGE/harness/oracle/fixtures/
+cd $PIN
+export QT_FIXTURE_ER_MAIN=$W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db
+export QT_FIXTURE_ER_MOUNT=$W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db
+TZ=UTC QT_ORACLE_OUT=/tmp/oracle-precompute.ndjson $N/npx jest --silent \
+  --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- precompute
+TZ=UTC QT_ORACLE_OUT=/tmp/oracle-recall-replay.ndjson $N/npx jest --silent \
+  --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- recall-replay
+QT_FIXTURE_OUT=/tmp/qt-build-context-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-build-context-mount.db \
+  TZ=UTC $N/node --import tsx $W/harness/oracle/fixtures/build-context-tier3-fixture.ts
+QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db QT_FIXTURE_BC_MOUNT=/tmp/qt-build-context-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-build-context.ndjson TZ=UTC $N/npx jest --silent \
+  --watchman=false --testTimeout=240000 --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- build-context-tier3
+```
+
+⚠ The `episodic-recall-*` fixtures are COMMITTED: point the oracle at the
+committed files (never at a rebuild — a rebuild mints fresh UUIDs).

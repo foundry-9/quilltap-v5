@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+A resolved stretch of time now narrows a memory search whether or not the app
+decided the conversation was looking backwards. It used to throw the window away
+on any turn its classifier called present-tense — which is exactly the turn the
+day-reading was added to rescue — and the search is built so that a window can
+only ever help: it filters by time first and, if too little survives, falls back
+to the unfiltered set with the in-window entries merely favoured. Nothing can be
+starved by it. Replaying an old turn to see what a character would have recalled
+now judges freshness against that turn's own clock rather than today's.
+
 The day-reading is now hooked up to the memory search, and the app tells the
 model what day it is in your own timezone. Every turn, before it goes looking
 through a character's memories, the app now scans the last few things said for a

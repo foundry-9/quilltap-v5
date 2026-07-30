@@ -381,6 +381,11 @@
       1.0,
       0.0,
       0.0
+    ],
+    "They recall sketching the analytical engine loops at Lighthouse Point. (around 2024-06-15 to 2024-06-15)": [
+      0.95,
+      0.05,
+      0.0
     ]
   },
   "completionRules": [
@@ -408,6 +413,16 @@
       "op": "retrospective_recall_no_match_turn",
       "kind": "distill",
       "response": "{\"keywords\": [\"analytical engine\", \"Lighthouse Point\", \"sketching\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\"]}"
+    },
+    {
+      "op": "day_reference_flips_retro_turn",
+      "kind": "distill",
+      "response": "{\"keywords\": [\"sketching\", \"analytical engine\"], \"temporal\": \"present\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": false, \"timeRange\": null, \"entities\": [\"Lighthouse Point\"]}"
+    },
+    {
+      "op": "window_forwarded_when_not_retrospective_turn",
+      "kind": "distill",
+      "response": "{\"keywords\": [\"sketching\", \"Lighthouse Point\"], \"temporal\": \"present\", \"context\": \"history\", \"paraphrase\": \"They recall sketching the analytical engine loops at Lighthouse Point.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2024-06-03\", \"to\": \"2024-06-09\"}, \"entities\": [\"Lighthouse Point\"]}"
     }
   ],
   "chat": {
@@ -824,6 +839,36 @@
         },
         "entities": []
       }
+    },
+    {
+      "name": "day_reference_flips_retro_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "And the sketching we did earlier today \u2014 how far did we get?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null
+    },
+    {
+      "name": "window_forwarded_when_not_retrospective_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "What did the sketching sessions at Lighthouse Point cover?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null
     }
   ],
   "vaultConversationSummaries": [
