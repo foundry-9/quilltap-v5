@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Re-checked every neighbouring test family against the old app after the
+settings-file fix, including the ones that only pass nearby — all still agree,
+and the fix changes nothing on the healthy paths. Two families the plan listed
+turned out not to touch this code at all, and two others only look untouched:
+they load the routes indirectly, so a quick read of their imports gives the
+wrong answer. Both facts are written down for whoever checks next.
+
 Extended the same settings-file protection check to projects, the other entity
 that uses the shared engine — a project carries sixteen settings to a group's
 two, so a bad write there loses far more at once. No behavior changed; this is

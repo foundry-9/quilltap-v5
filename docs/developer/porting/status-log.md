@@ -43616,3 +43616,166 @@ QT_FIXTURE_PROJECTS_MOUNT=/tmp/qt-projects-mount.db \
 
 Gate at this commit: fmt, clippy both feature sets, `cargo test --workspace
 --no-fail-fast` 401 binaries / 1,705 tests / 0 failed.
+
+### Lane record — P4.D29 unit 3 (the blast-radius regen + neutrality proof)
+
+**⚠ v4 MOVED MID-LANE, and the lane caught it on the re-check.** The lane-start
+drift-check was clean at `dcd9440a`; v4 then committed `83118077` at 12:08:39
+local, and every oracle regenerated after that timestamp had unknowingly been
+produced at the NEW head. Rather than argue the new commit's neutrality, all
+nine oracles were regenerated from a PINNED detached worktree
+(`/private/tmp/qt-v4-pin-dcd9440a`, `oracle-regen-pinned-v4-worktree`: symlinked
+`node_modules` at the root and under `packages/{quilltap,plugin-types,
+plugin-utils}`, with `plugins/dist` already present), which was necessary anyway
+— v4's tree is now DIRTY as well (a modified `docs/CHANGELOG.md` plus eight
+untracked `__tests__` files). Every family below is therefore green against an
+oracle produced at `dcd9440a` and nothing else.
+
+**The nine families, all re-run BY NAME with `--nocapture`, ZERO SKIP lines:**
+
+| family | reaches the drifted file? | verdict |
+|---|---|---|
+| `groups_tier2_equivalence` | yes | green (carries the new arms) |
+| `projects_tier2_equivalence` | yes | green (carries the new arms) |
+| `groups_routes_equivalence` | yes (dynamic import) | green, output-neutral |
+| `projects_routes_equivalence` | yes (dynamic import) | green, output-neutral |
+| `group_doc_mount_links_tier2_equivalence` | **no** | green, output-neutral |
+| `project_doc_mount_links_tier2_equivalence` | **no** | green, output-neutral |
+| `vault_read_overlay_equivalence` | yes | green, output-neutral |
+| `system_restore_state` | yes | green, output-neutral |
+| `system_import_state` | yes | green, output-neutral |
+
+Reachability was established with a transitive-import walk over each oracle case
+(`@/`- and relative-specifier resolution, `.ts`/`.tsx`/`index.ts`). Two results
+correct the order's list, and one is a trap worth naming:
+
+- **The two doc-mount-links families do NOT import the overlay engine at all.**
+  They were regenerated and re-run anyway (they are cheap, and the order lists
+  them), but they are not in the blast radius.
+- **The routes families' static imports also say "no" — and that answer is
+  wrong.** They load route handlers through `loadRoute(path)`, a runtime-variable
+  `await import(path)`, which no static walk can follow. Anyone repeating this
+  analysis on a routes family must treat a "no" as unproven; the real answer is
+  yes (the routes drive `repos.{projects,groups}.update` → `applyWriteOverlay`).
+- `vault_read_overlay` DOES reach the engine despite being the CHARACTER vault's
+  family (a different overlay module) — via `lib/repositories/factory`.
+
+The happy-path families are output-neutral, as predicted: the drift only moves
+error arms that no existing case reaches.
+
+**A correction to the order's fixture claim.** "All fixtures build into `/tmp` …
+none of this family's fixtures are committed" is true of the tier-2 and
+doc-mount-links and vault families, but NOT of the routes families
+(`crates/quilltap-web/tests/fixtures/groups-projects-{main,mount}.db`) or the
+restore/import families (`restore-archives/`, `system-data-*.db`) — all
+committed, and all pointed at in place by the recipes above. No committed fixture
+was modified by this lane, so no other family is invalidated.
+
+**⚠ NEW v4 DRIFT, un-absorbed, on a PORTED surface.** `83118077`
+*"refactor(pascal): custom-tool definitions load through the canonical mount
+reader"* changes `lib/pascal/custom-tools.ts` — v5's ported Pascal custom-tools
+definition loader. It is not cosmetic: `readToolFile` now goes through
+`readMountFileBytes`, so (a) definition reads pass `resolveFsAbsolute` and a
+`.tool.json` path can no longer resolve outside its own store, (b) blob-stored
+definitions on database mounts become readable where the old direct
+`readDatabaseDocument` missed them, and (c) the load loop's
+"deleted between list and read" skip now also recognises `FileOpError` with code
+`SOURCE_NOT_FOUND`. A drift catch-up is OWED; the pascal oracle families
+(`pascal_*`, `tool_definitions*`, `workbench*`) are its blast radius. This lane
+did NOT absorb it — it is outside the order's mandate and outside its ownership.
+
+### Lane record — P4.D29 unit 4 (tier 2) — NOT LANDED, ESCALATED to the unifier
+
+The order's tier-2 item asks for a routes-level corrupted-store arm "proving the
+error envelope v4 leaks matches byte-for-byte." It is not landable in this lane,
+for two independent reasons, both established by reading the code rather than
+predicted:
+
+**1. Its premise is wrong — v4 does not leak `error.message` for this error
+class.** `lib/api/middleware/auth.ts` catches `ProjectStoreUnavailableError` /
+`GroupStoreUnavailableError` / `CharacterVaultUnavailableError` explicitly and
+returns a deliberate **503** with a fixed envelope:
+
+```
+{ error: 'Project document store unavailable', projectId: <id> }   // 503
+{ error: 'Group document store unavailable',   groupId:   <id> }   // 503
+{ error: 'Character vault unavailable',        characterId: <id> } // 503
+```
+
+v4's own comment states the intent: "Map each to a deliberate, contextful 503
+instead of an opaque 500 so callers and logs can tell store degradation apart
+from a generic crash."
+
+**v5 has none of it.** `api::projects::overlay_to_db` / `api::groups::overlay_to_db`
+collapse `OverlayError::Unavailable` to `DbError::Key(detail)` — the detail
+string only — which reaches the edge as `ErrorKind::Internal`, i.e. **500**
+carrying a raw internal detail, and `CoreError` has no field that could carry
+`projectId`/`groupId`/`characterId` at all. So a corrupt store answers 500 +
+leaky detail in v5 where v4 answers a contextful 503. **This is PRE-EXISTING and
+user-visible**, and an arm written against v4 today would go red on it rather
+than on `dcd9440a`.
+
+**2. The fix is another lane's file.** Closing it means editing
+`api/projects.rs`, `api/groups.rs` and adding an id-carrying field (or a
+store-unavailable `ErrorKind`) in `api/types.rs` — and the round's binding
+ownership table gives `crates/quilltap-core/src/api/**`, `types.rs` and
+`engine.rs` to **P4.9P**, exclusively. Per the shared contract this lane records
+the evidence and does not touch the file.
+
+**Proposed change, for whoever takes it** (a small additive shape, no existing
+envelope moves):
+
+- add `ErrorKind::Unavailable` → HTTP 503 (v5 already has `Locked` → 503; a
+  separate kind keeps "vault locked" distinguishable from "store broken");
+- extend `CoreError` with an optional entity-id field, the way `code` and
+  `associations` were added additively;
+- replace both `overlay_to_db`s with a mapping that returns
+  `Response::error_unavailable(kind_label, entity_id)` for
+  `OverlayError::Unavailable` and keeps `Db(d)` on the current path;
+- the character-vault error gets the same treatment (its message shape is
+  already a sibling).
+
+**A third fact worth carrying, whatever is decided.** Even after that fix, a
+routes-level arm would NOT exercise this drift: v4's `handlePutDefault` and
+v5's project/group PUT both call the HYDRATING `findById`/`find_by_id` before
+the write, so a corrupted `properties.json` throws in `hydrateOne`/`hydrate_one`
+— the READ path's pre-existing throw. The write-path refusal `dcd9440a` added is
+reachable only below the route (the repository surface this lane's tier-2
+families drive, which is also the surface v4's own new jest suite exercises). An
+envelope arm is worth having, but it belongs to the envelope fix, not to this
+drift.
+
+### P4.D29 — the QUEUED baseline move (for the unifier)
+
+The order asks this lane to queue, not make, the baseline edit. **⚠ Note the
+complication above: v4 moved to `83118077` mid-lane and its tree is now dirty.**
+The lane's own oracles are unambiguously at `dcd9440a` (pinned worktree), so the
+baseline may move to `dcd9440a` — but the paragraph must NOT claim the drift debt
+is cleared. Suggested replacement for the CLAUDE.md baseline paragraph:
+
+> - **Oracle baseline: `dcd9440a` (2026-07-30), adopted at the P4.D29
+>   store-overlay-hardening unification. ⚠ v4 HAS ALREADY DRIFTED PAST IT.** The
+>   one commit past `5cc76688` is `dcd9440a` (a failed `properties.json` read no
+>   longer wipes a settings bag → P4.D29). Nine families regenerated there — the
+>   two the drift changes (`groups_tier2`, `projects_tier2`) and seven neutrality
+>   families (`groups_routes`, `projects_routes`, `group_doc_mount_links_tier2`,
+>   `project_doc_mount_links_tier2`, `vault_read_overlay`, `system_restore_state`,
+>   `system_import_state`) — all green, the happy paths output-neutral. Families
+>   the round did not touch keep their prior regen vintage. **⚠ v4 committed
+>   `83118077` (pascal custom-tool definitions load through the canonical mount
+>   reader) DURING the round, on the PORTED `lib/pascal/custom-tools.ts`: a drift
+>   catch-up is OWED (boundary enforcement via `resolveFsAbsolute`, blob-stored
+>   definitions becoming readable, a new `SOURCE_NOT_FOUND` race skip; the pascal
+>   / tool-definitions / workbench families are its blast radius). ⚠ v4's tree is
+>   also DIRTY again — regenerate oracles from a pinned detached worktree
+>   (`oracle-regen-pinned-v4-worktree`) until it lands and is absorbed.** ⚠ Since
+>   P4.d26 the distill-transitive tier-3 oracles stay TZ-SENSITIVE — their recipes
+>   pin TZ=UTC; never regenerate without the pins. ⚠ The standing committed-fixture
+>   regen rule applies unchanged.
+
+**Gate for the lane** (final): `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` on BOTH feature sets; `cargo test
+--workspace --no-fail-fast` 401 binaries / 1,705 tests / 0 failed; the nine
+families above re-run by name with `--nocapture`, zero SKIP, over oracles
+regenerated fresh from the pinned `dcd9440a` worktree. **No `apps/web` change —
+no SPA gate owed.** Versions: core 0.0.412, harness 0.0.358.
