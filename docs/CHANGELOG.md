@@ -8,7 +8,11 @@ boost (P4.d26), the enforced single embedding standard with its boot-time
 dimension reconcile (P4.d27), and the new Export Markdown chat transcript
 (P4.d28). Each order carries a fresh survey of both codebases, the oracle
 families it must regenerate at the new baseline, and its fixture obligations.
-Docs only; no code changed.
+Docs only; no code changed. A fourth upstream commit landed during planning
+(a false-positive fix in the old app's job-child write-buffer diagnostics);
+it needs no port at all — that machinery deliberately has no counterpart
+here — so the round's baseline simply moves past it, recorded in all three
+orders.
 
 Wrote down a wish for later: letting you speak as a character for a stretch of
 turns and have them go back to being driven by their own model when you stop.
