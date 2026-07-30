@@ -25,6 +25,14 @@ genuinely missing file may seed defaults; a file that exists but cannot be read
 or understood refuses the write and says which project or group it was, leaving
 the stored bytes untouched. The refusal is proven against the old app on both
 entity types, including that nothing at all gets written.
+Fixed a test-kitchen recipe that had been quietly accusing the new app of a
+bug it never had. A check on autonomous rooms reported that the new app made
+one extra cheap-model call per turn, at real cost. Instrumenting the old app
+showed the opposite: the old app makes that call too, and the check itself had
+been switched off in a way nobody noticed — a stand-in written back when the
+new app had not yet ported that step, left in place after it did. The stand-in
+is gone, the check runs against the old app's real code again, and both sides
+now agree exactly. No application code changed.
 
 Planned the next porting round: four parallel work orders. One catches v5 up
 to the old app's newest change (a failed project-settings read can no longer

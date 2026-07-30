@@ -320,21 +320,20 @@ async function main(): Promise<void> {
     };
   });
 
-  // ---- buildContext feeders: the pre-compute wrapper inert (the W4.11a
-  //      spine-deferral mock — the Rust orchestrator ports only the compression
-  //      half + buildContext's own distill) ----
-  jest.doMock('@/lib/services/chat-message/pre-compute.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/pre-compute.service');
-    return {
-      __esModule: true,
-      ...actual,
-      runPreContextPreCompute: async () => ({
-        cachedCompressionResponse: undefined,
-        preSearchedMemories: undefined,
-        stopKeepAlive: () => undefined,
-      }),
-    };
-  });
+  // ---- `runPreContextPreCompute` runs REAL (P4.20) ----
+  // It used to be stubbed inert here: a W4.11a-era mock written when v5's
+  // orchestrator ported only the compression half of the pre-compute service and
+  // had no proactive-recall port at all. P4.19 landed that port
+  // (`services/pre_compute.rs`) and the stub was never retired, so from P4.19 on
+  // this oracle suppressed a call v4 really makes — v5 ran the proactive distill,
+  // v4 (as mocked) did not, and the family read RED at `llm_logs` with an extra
+  // MEMORY_EXTRACTION row that was blamed on a v4 guard bail. There is no bail:
+  // instrumenting `proactiveRecallTask` in a pinned v4 worktree showed it running
+  // to the distill on the Fold-room turn with the SAME 1-message window v5 uses
+  // (and bailing at `characterMessages.length === 0` in the other 20 rooms, where
+  // the responder has never spoken). The oracle, not v4, was the divergence — so
+  // the stub is gone and the real service runs: 13 MEMORY_EXTRACTION rows on both
+  // sides. See the P4.20 lane record in status-log.md.
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };

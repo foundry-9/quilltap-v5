@@ -43779,3 +43779,106 @@ is cleared. Suggested replacement for the CLAUDE.md baseline paragraph:
 families above re-run by name with `--nocapture`, zero SKIP, over oracles
 regenerated fresh from the pinned `dcd9440a` worktree. **No `apps/web` change —
 no SPA gate owed.** Versions: core 0.0.412, harness 0.0.358.
+## Lane record — P4.20 unit 1 (the diagnosis + the stale oracle mock) — 2026-07-30
+
+**Drift check at lane start:** v4 HEAD is EXACTLY the order's baseline
+`dcd9440a` — no commit drift. The tree was **DIRTY** (`lib/pascal/custom-tools.ts`
+— an in-flight refactor routing custom-tool definition reads through the
+canonical mount reader), so per the order's rule every oracle in this lane
+regenerates from a pinned detached worktree at
+`/private/tmp/qt-v4-pin-p420-dcd9440a` (node_modules symlinked at the root +
+`packages/{quilltap,plugin-types,plugin-utils}` + `plugins/dist`), staged for
+jest at `/tmp/qt-p420-stage` (the `.claude/` ignore rule).
+
+### The empirical diagnosis — the planning hypothesis is REFUTED
+
+The order's tier-1 item 1 asked whether v4's `proactiveRecallTask` runs-and-bails
+in the enclave path or is never reached. **Neither.** `proactiveRecallTask` was
+never reached *because the oracle case stubbed it out*, and it does not bail on
+the turn in question.
+
+Method: `lib/services/chat-message/pre-compute.service.ts` was instrumented in
+the pinned worktree (entry + each guard + the computed window, one JSON line per
+event to stderr) and the enclave-step oracle re-run. **Zero instrumentation lines
+appeared** — `runPreContextPreCompute` never executed. The cause is in this
+lane's own file, `harness/oracle/cases/enclave-step-tier3.test.ts:326`:
+
+```ts
+// ---- buildContext feeders: the pre-compute wrapper inert (the W4.11a
+//      spine-deferral mock — the Rust orchestrator ports only the compression
+//      half + buildContext's own distill) ----
+jest.doMock('@/lib/services/chat-message/pre-compute.service', () => ({ …,
+  runPreContextPreCompute: async () => ({ cachedCompressionResponse: undefined,
+    preSearchedMemories: undefined, stopKeepAlive: () => undefined }) }));
+```
+
+That mock is honest for the tree it was written against: at W4.11a v5's
+orchestrator ported only the compression half and had **no proactive-recall port
+at all**, so stubbing v4's wrapper inert kept the two sides comparable. **P4.19
+landed `services/pre_compute.rs` and wired it into the spine, and the stub was
+never retired.** From P4.19 on, this oracle suppressed a call v4 really makes.
+The RED was the harness lying about v4, not v5 diverging from it.
+
+With the stub removed, the instrumented run answers the order's question
+directly, for all 17 turn calls:
+
+| room | `characterMessages` | outcome |
+|---|---|---|
+| the 16 single-opener rooms (chats 1–15, 17) | **0** | `bail:never-spoke` — the opener belongs to participant **1**, the responder is participant **2** |
+| chat 16, the Fold room (11 alternating seeds) | 5 | window = `[{ASSISTANT, "Fold seed line 11."}]`, `lastCharacterMessageIndex = 9` → **proceeds to the distill** |
+
+So on the Fold turn **v4 computes the SAME 1-message window v5 computes and makes
+the SAME cheap-LLM call.** Every guard read as satisfied at planning because every
+guard *is* satisfied. The autonomous turn's inputs, recorded from the instrumented
+run: `isContinueMode: true`, `content: ""`, `characterParticipant.id =
+bbbbbbb2-…-000000000016`, `hasCheapSelection: true`, `existingMessages.length = 11`
+(all `role: ASSISTANT`, alternating `bbbbbbb1`/`bbbbbbb2`).
+
+The 20-of-21 blindness the order flagged is real but has a different cause than
+recorded: those rooms are not "≤1 message so the windows coincide" — they bail at
+the never-spoke guard and **never build a window at all**. The Fold room is the
+only room where `proactiveRecallTask` gets past its guards, which is why it is the
+only room that could ever have exposed the stub.
+
+### What landed
+
+`harness/oracle/cases/enclave-step-tier3.test.ts` — the stale mock deleted, and in
+its place a comment recording why it existed, why it went stale, and what the
+instrumentation showed (so the next reader does not re-derive this).
+
+**Zero v5 source changed.** `services/pre_compute.rs` and `enclave/step.rs` are
+untouched: the port was already faithful, and the order's tier-1 item 2 warned
+against a speculative guard change that merely silences the extra call — which is
+exactly what a "fix" here would have been. `services/orchestrator.rs` (P4.21's
+file this round) was never opened; no unification wire is owed.
+
+### The red→green fingerprint (the D24 mutation rule)
+
+Both oracles were generated from the same pinned worktree at `dcd9440a`, TZ=UTC,
+from freshly built fixtures, and diffed against the same unmodified v5 code:
+
+| oracle | v4 `llm_logs` MEMORY_EXTRACTION | `enclave_step_tier3_equivalence` |
+|---|---|---|
+| stub restored (the shipped state) | **12** | **RED** — `table llm_logs mismatch` |
+| stub removed (this commit) | **13** | **GREEN** — all 19 calls |
+
+13 is v5's count, unchanged throughout. The extra row is the Fold room's
+pre-compute distill, and with the stub gone the oracle records a canned entry for
+it, so v5's call resolves instead of failing — the P4.13 failed-cheap-call error
+row disappears with the failure, exactly as the order's tier-3 note required (the
+ruling itself is untouched).
+
+### For the unifier
+
+`enclave_step_tier3_equivalence` returns to the normal pass/fail count. The
+standing-red exclusion wording to strike:
+
+- `CLAUDE.md`, the `5cc76688` round bullet: “**Standing loud:** `enclave_step_tier3`
+  is RED from a PRE-EXISTING P4.19 pre-compute-windowing divergence (one extra
+  cheap-LLM call + an error `llm_logs` row per affected autonomous turn — real
+  money; a dedicated follow-up order is owed — phase-4.md item 2);” — and the
+  sentence's remaining clause about the round's live proofs stays.
+- `docs/developer/porting/phase-4.md` — its item-2 next-candidate entry for this
+  follow-up.
+
+No `apps/web` change in this lane → **no SPA gate owed.**
