@@ -44465,3 +44465,56 @@ Gate at this commit: full ng test 258 files / 3,152 green (the shell cutover
 broke nothing); ng build clean. Specs: 2 toolbar specs (three sections +
 occupant order; slot render/clear with the right slot pinned BETWEEN queue
 badges and the width toggle).
+
+## Lane record — P4.9P unit 7: the e2e beats + the lane gate (2026-07-30)
+
+`page-toolbar-flow.spec.ts` (4 beats, rides the shared server; 'p' sorts
+after 'foundation'):
+1. **The gate beat**: locks the shared server via the `lock` verb, proves the
+   toolbar ABSENT on the unlock screen, unlocks through the real UI, and
+   proves the toolbar present with v4's occupants (search input, FIVE queue
+   badges, width toggle) — plus the relocation claim both ways (no autonomous
+   badges in the rail footer; exactly one `qt-autonomous-room-badges` in the
+   toolbar). Re-unlocks in-beat so later files find the server open.
+2. **The search round-trip**: a REAL `GET /api/v1/ui/search` — types a
+   fixture character's name into the bar, sees the dropdown card, clicks,
+   lands on `/characters/{id}` (the `/aurora/` mapping working end to end),
+   and the bar clears (v4 handleResultClick).
+3. **The queue-badge beat — the deterministic variant** (the order's "or"),
+   and the reason is a FINDING worth keeping: **no real job can HOLD a
+   countable state on this server.** `activeByType` counts PENDING|PROCESSING
+   only (v4-faithful); a handler-less probe job is claimed and failed within
+   milliseconds; a retrying job sits in FAILED (not PENDING) between backoff
+   attempts; and every enqueue/resume path calls `pump.start()`, clearing any
+   `systemTasksQueueControl` stop — so a stop-the-pump-then-enqueue plan is
+   structurally impossible (the first full-suite run proved it empirically:
+   the probe job read "Sum0"). The beat instead intercepts
+   `/api/v1/system/jobs` in the browser and drives light → 5s-poll →
+   dim-at-zero; the endpoint's server side is pinned by the P4.9G1/G3
+   differentials and beat 1 renders the badges from an un-intercepted fetch.
+4. **The width beat**: toggle → `data-full-width` + the 100% CSS var →
+   reload → persists (v4's exact localStorage key) → toggled back.
+
+**Gate:** `cargo fmt --check` clean; clippy both feature sets clean;
+`cargo test --workspace --no-fail-fast` with the lane env vars — 0 failed,
+`ui_search_equivalence` BY NAME 23/23 zero SKIP (plus three mutation
+sensitivity proofs, reverted); the §1 wire diff name-for-name clean;
+`ng test` 258 files / 3,152 green; `ng build` clean; full Playwright over a
+fresh dist + fresh release binaries: my 4 beats green in every run; run 1
+159 passed / 1 failed (my beat 3's disproved probe-job premise, replaced),
+run 2 159 passed / 1 failed (`settings-data-system-flow` auto-lock
+fake-clock beat — passes 6/6 in ISOLATION at 695ms and passed full run 1
+under the same toolbar code, i.e. the known run-order-flake class), run 3
+recorded below.
+Run 3: 159 passed / 1 failed — the DOCUMENTED `wardrobe-flow.spec.ts:252`
+`set_all` full-suite flake (the P4.6bj precedent), re-proven green in
+isolation (3/3, :252 at 542ms); the auto-lock beat passed. My four beats
+were green in every full run. Disposition per the standing rule: the lane's
+Playwright gate is green with the two known run-order flakes re-proven.
+
+**P4.9P is COMPLETE — all tier-1 items landed; tier-2 item 8 decided
+(inline header kept, slots consumer-less), item 9 not applicable under that
+ruling. The loud deferrals: the `?msg=` message anchor, the `/photos?tag=`
+filter, the ten no-analog queue-trigger sites (each blocked on an unported
+surface), and the workspace per-tab toolbar bridge (the named follow-up
+that unlocks the Salon slot adoption).**

@@ -87,6 +87,16 @@ path. The request bodies themselves don't include images yet (that's the next
 step), so behavior on the wire is unchanged by this commit; a new test pins
 that the describe path's conversion keeps the attachment instead of dropping
 it.
+Walked the new toolbar end to end against the real server: it stays off the
+unlock screen and appears with all its occupants once the vault opens; a
+global search really round-trips (type a character name, click the result,
+land on their page); the queue badges light while work is queued and dim to
+idle when it drains; and the width toggle survives a reload. One finding
+worth recording from the walk: no background job can hold a visible "active"
+state on this server long enough to observe naturally — the active count
+excludes retrying jobs and every enqueue path restarts the worker — so the
+badge walk drives the counts through a controlled endpoint instead.
+
 The top page toolbar is here: search in the center, and on the right the
 autonomous-room badges (moved out of their sidebar stopgap, which is retired),
 the background-queue badges, and the width toggle — the same arrangement as
