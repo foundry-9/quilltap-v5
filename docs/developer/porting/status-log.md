@@ -42819,3 +42819,102 @@ PATH=$N:$PATH QT_FIXTURE_MEMHOUSEKEEPING=/tmp/qt-mem-housekeeping-fixture.db \
 
 New-baseline marker to grep: `a4000005` (three occurrences — the memory row, its
 vector entry, and its kept-detail).
+
+---
+
+## Lane record — P4.d27 unit 5 (neutrality, banks, close-out) — 2026-07-30
+
+**Neutrality re-runs.** All five families regenerated FRESH at `b3ee00f1` from the
+pinned worktree and re-run BY NAME with `--nocapture`, zero SKIP lines, all green:
+
+| Family | Env vars | Fixture |
+|---|---|---|
+| `maintenance_sweep_tier2_equivalence` | `QT_ORACLE_MAINT` + `QT_FIXTURE_MAINT_{MAIN,MOUNT}` | `/tmp`-built |
+| `collapse_stale_chat_caches_tier2_equivalence` | `QT_ORACLE_RETENTION_CACHES` + `QT_FIXTURE_RETENTION_CACHES` | `/tmp`-built |
+| `cold_chunk_reembed_tier2_equivalence` | `QT_ORACLE_COLD_REEMBED` + `QT_FIXTURE_COLD_REEMBED` | `/tmp`-built |
+| `embedding_generate_jobs_equivalence` | `TZ=UTC QT_ORACLE_EG` | **COMMITTED** — oracle pointed at the committed DBs, NOT rebuilt |
+| `embedding_refit_tier3_equivalence` | `QT_ORACLE_REFIT` + `QT_FIXTURE_REFIT_{MAIN,MOUNT}` | `/tmp`-built |
+
+⚠ `embedding_generate_jobs`'s recipe in its own header says to rebuild the fixture
+into `/tmp` and copy over the committed pair. For a NEUTRALITY re-run that is the
+wrong move — a rebuild mints fresh UUIDs and would move a fixture this lane has no
+business moving. The oracle was pointed straight at the committed
+`embedding-generate-{main,mount}.db` instead (the committed-fixture rule), and the
+family is green against the untouched files. The refit family matters because the
+refit → reindex chain ends in the handler this lane changed, and the BUILTIN skip
+in the new reconcile leans on the same profile shape.
+
+**Tier-3 bank — the PUT `/api/v1/embedding-profiles/[id]` trigger matrix →
+`p4.9h`.** v4 `7391404e`'s fourth surface lands on a surface v5 does not have: no
+embedding-profiles CRUD verb, no route, no SPA (the standing `p4.9h` deferral,
+named at `queue_service.rs:776-781` and in phase-4.md). Banked whole, with what a
+future lane needs:
+
+- **The matrix.** Becoming default → invalidate + reindex. An already-default
+  profile's provider/model/dimensions changing → same. Truncation-only change:
+  NARROW → a local Matryoshka re-apply (`EMBEDDING_REAPPLY_PROFILE`), WIDEN → a
+  full reindex (the narrower vectors cannot be widened locally). BUILTIN goes via
+  refit rather than reindex.
+- **What already exists in v5:** `invalidateAllEmbeddings` is
+  `db::embedding_status::mark_all_pending_by_profile_id`; the reindex enqueue is
+  `queue_service::enqueue_embedding_reindex_all`, whose doc already names this
+  future `Some("mismatched-dim")`-style caller.
+- **The hard dependency:** `EMBEDDING_REAPPLY_PROFILE` (~380 LOC,
+  `lib/embedding/reapply-profile.ts`) is unported. VERIFIED still refusing loudly:
+  it is in `job_runner::KNOWN_JOB_TYPES`, so a minted job fails with *"Job type
+  … is recognized but its handler is not yet available in the native runner"*
+  rather than silently dying. Nothing added — the refusal is correct as it stands,
+  and a truncation-narrowing PUT must not be un-refused before that handler lands
+  or it would mint jobs that cannot run.
+
+**Other banks, all no-action and recorded so nobody hunts for them:**
+
+- `getVectorStoreManager().unloadAll()` and the mount-chunk cache drop — documented
+  no-ops in v5 (no in-memory caches); notes carried in the new module and in
+  `embedding_reindex_job`.
+- `help/embedding-profiles.md` — v5 syncs help docs from disk at runtime; joins the
+  `p4.9i2` bank, no v5 action.
+
+**⚠ FOR THE UNIFIER / THE HUMAN — the v4 bug this lane found.** v4's
+`countNonconformingMountChunks` reads `doc_mount_points` from the MAIN database,
+where that table does not live (it is a mount-index table), so the reconcile's
+mount-chunk count is dead code in v4 and is reproduced dead in v5, behind a
+tripwire. Full detail in the unit-3 record. Two follow-ups belong to somebody
+else: (a) a one-line v4-side fix, for the post-5.0 v4-first list in
+`dogfood-findings.md` — this lane does not own that file; (b) once v4 moves, v5
+follows and the tripwire flips. **v5 needs no change now** — the reindex handler's
+phase 4 reads mount points correctly and heals those chunks on any reindex.
+
+**Also not this lane's to file:** the `p4.9h` bank above would sit naturally in
+phase-4.md's next-candidates list, but three lanes were live in this round and
+`phase-4.md` is not in this lane's ownership, so it is recorded here only.
+
+**Owed live proof.** The next dogfood pass should boot against the Friday copy and
+watch the new `Embedding dimension reconciliation complete` line: on that instance
+the default profile is neural and the corpus is the one v4's outage was measured
+on, so a non-zero `mismatched_memories` and exactly ONE enqueued
+`mismatched-dim` reindex is the expected first-boot shape — with the second boot
+reporting the same counts and `reindex_enqueued=false` while it drains.
+
+### The P4.d27 lane gate (2026-07-30, on `claude/p4-embedding-dimension-reconcile-85f960`)
+
+- v4 re-verified at `b3ee00f1` (HEAD; tree dirty with unrelated in-flight
+  jobs-child logging, so ALL oracles regenerated from the pinned detached worktree
+  `/private/tmp/qt-v4-pin-b3ee00f1`).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (plain and
+  `quilltap-core/native-transport`); `cargo build --release --workspace` clean.
+- `cargo test --workspace --no-fail-fast` with all TWELVE of this lane's env vars:
+  **399 test binaries / 1,686 tests / 0 failed**, and **zero SKIP lines**.
+- The lane's NINE families all ran BY NAME in that gate and are green:
+  `embedding_remainder`, `embedding_status_tier2`, `memories_read`,
+  `memory_housekeeping_tier2` (the four changed) and `maintenance_sweep_tier2`,
+  `collapse_stale_chat_caches_tier2`, `cold_chunk_reembed_tier2`,
+  `embedding_generate_jobs`, `embedding_refit_tier3` (the five neutrality).
+- No `apps/web` file changed ⇒ no ng / Playwright run owed (per the order).
+- Sensitivity evidence: eleven mutation transcripts across units 1–4, recorded in
+  the per-unit records above. Every family in this lane was first-run GREEN, so
+  none of them is asserted on the strength of that alone.
+
+**Versions after the lane:** core 0.0.403, harness 0.0.349, host 0.0.50; web
+0.0.52, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.
