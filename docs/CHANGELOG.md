@@ -25,6 +25,16 @@ genuinely missing file may seed defaults; a file that exists but cannot be read
 or understood refuses the write and says which project or group it was, leaving
 the stored bytes untouched. The refusal is proven against the old app on both
 entity types, including that nothing at all gets written.
+Closed a blind spot in the same check: it fed the memory-recall step a
+conversation and then never looked at what the step actually read, because the
+canned reply came back the same either way. The step could have read the wrong
+speaker's lines, or the whole history, or nothing, and the check would still
+have passed — which is how the problem above got in. It now compares the exact
+text handed to the model, and two new cases cover the shapes that were never
+tested: a room where the responder last spoke in the middle of the history, and
+a very long stretch that has to be trimmed. Deliberately breaking the app three
+different ways confirms each new case catches it.
+
 Fixed a test-kitchen recipe that had been quietly accusing the new app of a
 bug it never had. A check on autonomous rooms reported that the new app made
 one extra cheap-model call per turn, at real cost. Instrumenting the old app

@@ -534,6 +534,46 @@ mod tests {
         );
     }
 
+    /// The autonomous-room shape that DOES bail, transcribed from a v4
+    /// instrumentation run (P4.20). An autonomous turn arrives with
+    /// `isContinueMode: true` and empty `content`, so nothing is appended to the
+    /// window; in a room whose only seeded line belongs to the OTHER participant
+    /// seat, `characterMessages` is empty and the task never reaches the cheap
+    /// LLM. Sixteen of the enclave-step fixture's seventeen turn rooms are this
+    /// shape, and instrumenting v4's `proactiveRecallTask` showed every one of
+    /// them bailing here — which is why the Fold room below is the only room in
+    /// that fixture that can expose a windowing divergence at all.
+    #[test]
+    fn autonomous_opener_from_other_seat_bails() {
+        let events = vec![msg("ASSISTANT", "Opening remark 1.", "p-other")];
+        assert!(messages_since_last_spoke(&events, "p-char", true, "").is_none());
+    }
+
+    /// The Fold-room shape, transcribed from the same instrumentation run: eleven
+    /// alternating ASSISTANT seeds, the responder holding the even seat and so
+    /// last speaking at line 10. v4 computes `lastCharacterMessageIndex = 9` and
+    /// distills the SINGLE trailing line — not the last-12 window buildContext
+    /// would use, which is the whole eleven. This is the one place the two windows
+    /// differ, and it is pinned end-to-end against v4's real code by the
+    /// `fold-room-window-is-tail-only` case in the `precompute` differential.
+    #[test]
+    fn autonomous_fold_room_windows_only_the_trailing_line() {
+        let events: Vec<Value> = (0..11)
+            .map(|k| {
+                msg(
+                    "ASSISTANT",
+                    &format!("Fold seed line {}.", k + 1),
+                    if k % 2 == 0 { "p-other" } else { "p-char" },
+                )
+            })
+            .collect();
+        let window = messages_since_last_spoke(&events, "p-char", true, "").expect("window");
+        assert_eq!(
+            window,
+            vec![("ASSISTANT".to_string(), "Fold seed line 11.".to_string())],
+        );
+    }
+
     /// Non-message events and events missing role/content are filtered out before
     /// windowing (v4's `type === 'message' && 'role' in m && 'content' in m`).
     #[test]

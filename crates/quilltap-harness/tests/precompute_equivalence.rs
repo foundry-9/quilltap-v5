@@ -13,16 +13,31 @@
 //! profile; the canned distill text runs through each side's REAL parse. Floats
 //! compare at 1e-12. Elowen is the searched character (7 memories); Pip has none
 //! (the search-empty-signals-flow arm). The whole outcome is diffed:
+//! `distillPrompt` (the verbatim messages handed to the cheap LLM),
 //! `preSearchedMemories` (id/order + score/effectiveWeight/rawWeight/
 //! recallAdjustment — the recall-context multipliers prove the assembled search
 //! invocation transitively) and `recallSignals` (the parsed distill).
 //!
+//! **Why `distillPrompt` is diffed (P4.20).** The canned distill answers the same
+//! text whatever prompt it is given, so until the prompt itself was compared this
+//! family could not see the WINDOW: `messages_since_last_spoke` could have
+//! selected the wrong participant's seat, the whole history, or nothing at all,
+//! and every case would still have passed on identical memories + signals. That
+//! is the blind spot the P4.19 pre-compute shipped through. The prompt bytes pin
+//! the window, v4's `recentMessages.slice(-20)` cap, the 500-UTF-16-unit
+//! per-message truncation and the TODAY line in one comparand.
+//!
 //! Cases: never-spoke / continue-mode-empty-window / extraction-fail → both
 //! `null`; spoke-then-window / dangerous-reroute / retrospective-multi-probe /
 //! multi-character → memories + signals; search-empty → `null` memories + signals
-//! (signals still flow). The 10-cap + the pure windowing/guard cases are the unit
-//! specs in `pre_compute.rs`; the uncensored reroute is the tier-1 differentialed
-//! `resolve_uncensored_cheap_llm_selection`.
+//! (signals still flow); **fold-room-window-is-tail-only** — the enclave Fold-room
+//! shape (11 alternating seeds, the responder last spoke at line 10) where the
+//! since-last-spoke window is the single trailing line and buildContext's last-12
+//! window is all eleven, i.e. the one shape where the two windows differ; and
+//! **long-window-caps-at-twenty-and-truncates** — 25 messages since the responder
+//! spoke, one of them past 500 units. The 10-cap + the pure windowing/guard cases
+//! are the unit specs in `pre_compute.rs`; the uncensored reroute is the tier-1
+//! differentialed `resolve_uncensored_cheap_llm_selection`.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; STAGE the case
 //! outside `.claude/` — v4's jest ignores those paths):
@@ -45,6 +60,7 @@
 //!     cargo test -p quilltap-harness --test precompute_equivalence -- --nocapture
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use quilltap_core::cheap_llm::{CheapLlmSelection, DangerousContentSettings};
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -105,6 +121,10 @@ struct FixtureSpec {
 #[derive(Deserialize)]
 struct OracleRow {
     name: String,
+    /// The verbatim prompt v4 handed the cheap-LLM executor (P4.20), or `null`
+    /// when the task bailed before distilling.
+    #[serde(rename = "distillPrompt")]
+    distill_prompt: Value,
     #[serde(rename = "preSearchedMemories")]
     pre_searched_memories: Value,
     #[serde(rename = "recallSignals")]
@@ -112,9 +132,18 @@ struct OracleRow {
 }
 
 /// A completion provider that always answers the canned distill text or always
-/// fails (the distill is the only completion the proactive task makes).
+/// fails (the distill is the only completion the proactive task makes), and
+/// RECORDS the prompt it was handed.
+///
+/// The recording is what makes the family able to see the window at all (P4.20):
+/// the canned answer is independent of its input, so before the prompt was diffed
+/// `messages_since_last_spoke` could have windowed anything — the wrong
+/// participant, the whole history, nothing — and every case would still have
+/// passed. Diffing the prompt bytes pins the window, v4's `slice(-20)` cap, the
+/// 500-unit per-message truncation and the TODAY line in one comparand.
 struct CannedDistillProvider {
     response: Option<String>,
+    prompt: Mutex<Option<Vec<(String, String)>>>,
 }
 
 impl CompletionProvider for CannedDistillProvider {
@@ -122,8 +151,15 @@ impl CompletionProvider for CannedDistillProvider {
         &self,
         _provider: &str,
         _base_url: Option<&str>,
-        _params: &CompletionParams,
+        params: &CompletionParams,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        *self.prompt.lock().expect("prompt lock") = Some(
+            params
+                .messages
+                .iter()
+                .map(|m| (m.role.as_str().to_string(), m.content.clone()))
+                .collect(),
+        );
         let response = self.response.clone();
         async move {
             match response {
@@ -309,6 +345,7 @@ async fn precompute_matches_oracle() {
                 "json" => Some(case.distill.text.clone().unwrap_or_default()),
                 _ => None,
             },
+            prompt: Mutex::new(None),
         };
         let executor = CheapLlmTaskExecutor::new();
         let embedding = ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
@@ -355,6 +392,18 @@ async fn precompute_matches_oracle() {
         };
         let mut got = Map::new();
         got.insert(
+            "distillPrompt".to_string(),
+            match completion.prompt.lock().expect("prompt lock").as_ref() {
+                Some(messages) => Value::Array(
+                    messages
+                        .iter()
+                        .map(|(role, content)| json!({ "role": role, "content": content }))
+                        .collect(),
+                ),
+                None => Value::Null,
+            },
+        );
+        got.insert(
             "preSearchedMemories".to_string(),
             match &mems {
                 Some(v) => {
@@ -374,6 +423,7 @@ async fn precompute_matches_oracle() {
         let got = Value::Object(got);
 
         let want = json!({
+            "distillPrompt": oracle.distill_prompt,
             "preSearchedMemories": oracle.pre_searched_memories,
             "recallSignals": oracle.recall_signals,
         });

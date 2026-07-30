@@ -164,6 +164,71 @@
         { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
       ],
       "distill": { "kind": "json", "text": "{\"keywords\": [\"quay\", \"dawn\"], \"paraphrase\": \"We visited the quay at dawn and watched the fleet.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2026-06-03\", \"to\": \"2026-06-04\"}, \"entities\": []}" }
+    },
+    {
+      "$comment": "P4.20: the Fold-room shape — the ONLY window in the enclave-step fixture where the since-last-spoke window and buildContext's last-12 window differ, and therefore the only shape that could ever expose a pre-compute windowing divergence. Eleven alternating ASSISTANT seeds; the responder (Elowen) last spoke at line 10, so the window is the SINGLE trailing line 11 while the last-12 window is all eleven. Continue mode with empty content — the autonomous turn's exact inputs, recorded from v4 instrumentation. The `distillPrompt` assertion is what makes this case load-bearing: the canned distill answers regardless of its input, so before P4.20 a window divergence changed nothing observable.",
+      "name": "fold-room-window-is-tail-only",
+      "characterId": "c1000000-0000-4000-8000-0000000000e1",
+      "characterName": "Elowen",
+      "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
+      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "isContinueMode": true,
+      "content": "",
+      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 1.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 2.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 3.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 4.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 5.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 6.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 7.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 8.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 9.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 10.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 11.", "participantId": "e1000000-0000-4000-8000-000000000002" }
+      ],
+      "distill": { "kind": "json", "text": "{\"keywords\": [\"fold\", \"quay\"], \"paraphrase\": \"The company keeps folding the same thread back on itself.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}" }
+    },
+    {
+      "$comment": "P4.20: a 25-message window since the responder last spoke. v4 caps the prompt at `recentMessages.slice(-20)` and truncates any single message past 500 UTF-16 units to `substring(0, 500) + '...'`; entry 12 is deliberately longer than 500. Both rules are pure prompt shaping, so they were invisible to this family until `distillPrompt` was diffed — this case is what pins them.",
+      "name": "long-window-caps-at-twenty-and-truncates",
+      "characterId": "c1000000-0000-4000-8000-0000000000e1",
+      "characterName": "Elowen",
+      "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
+      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "isContinueMode": true,
+      "content": "",
+      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "content": "Elowen speaks, then falls silent.", "participantId": "e1000000-0000-4000-8000-000000000001" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 1.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 2.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 3.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 4.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 5.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 6.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 7.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 8.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 9.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 10.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 11.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry twelve: the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. ", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 13.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 14.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 15.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 16.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 17.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 18.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 19.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 20.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 21.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 22.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 23.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 24.", "participantId": "e1000000-0000-4000-8000-000000000002" },
+        { "type": "message", "role": "USER", "content": "Ledger entry 25.", "participantId": "e1000000-0000-4000-8000-000000000002" }
+      ],
+      "distill": { "kind": "json", "text": "{\"keywords\": [\"ledger\", \"harbour\"], \"paraphrase\": \"A long tally of ledger entries at the harbour.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}" }
     }
   ]
 }

@@ -15,11 +15,20 @@
  * `new Date()` are frozen to the corpus `$nowMs` (the search decay seam + the
  * distill TODAY line; the Rust side passes the same value as `now_ms`).
  *
- * Emits one NDJSON line per case: `{ name, preSearchedMemories, recallSignals }`.
+ * Emits one NDJSON line per case:
+ * `{ name, distillPrompt, preSearchedMemories, recallSignals }`.
  * `preSearchedMemories` is `null` (v4 undefined) or the ordered list of
  * `{ id, score, usedEmbedding, effectiveWeight, rawWeight, recallAdjustment }`;
  * `recallSignals` is `null` or v4's `MemorySearchExtraction` JSON. The search
  * path's `lastAccessedAt` bump never reaches the emitted shape.
+ *
+ * `distillPrompt` (P4.20) is the verbatim `LLMMessage[]` v4 handed the cheap-LLM
+ * executor — `null` when the task bailed before distilling. Without it this
+ * family cannot see the WINDOW at all: the canned distill answers the same text
+ * whatever it is given, so `messagesSinceLastSpoke` could window anything and
+ * every case would still pass. That blind spot is what let the P4.19 pre-compute
+ * ship green; recording the prompt closes it, and pins the 20-message cap and
+ * the 500-unit per-message truncation on the way past.
  *
  * Real-DB-under-jest (memory-gate-tier3 recipe): resetModules + doMock past
  * jest.setup's global DB mocks + better-sqlite3 → better-sqlite3-multiple-
@@ -151,10 +160,18 @@ async function main(): Promise<void> {
     );
     // The ONE model mock: the cheap-LLM executor. The canned text runs through
     // v4's REAL parse callback (the same seam recall-replay / memory-tasks use).
+    // The `messages` argument is CAPTURED, not ignored (P4.20): it is the only
+    // place the windowed conversation becomes observable, since the canned answer
+    // is the same whatever the prompt says.
+    let distillPrompt: Array<{ role: string; content: string }> | null = null;
     jest.doMock('@/lib/memory/cheap-llm-tasks/core-execution', () => ({
       __esModule: true,
       executeCheapLLMTask: jest.fn(
-        async (_sel: unknown, _messages: unknown, _uid: unknown, parse: unknown) => {
+        async (_sel: unknown, messages: unknown, _uid: unknown, parse: unknown) => {
+          distillPrompt = (messages as Array<{ role: string; content: string }>).map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
           if (c.distill.kind === 'fail') {
             return { success: false, error: 'canned failure' } as never;
           }
@@ -207,6 +224,7 @@ async function main(): Promise<void> {
     lines.push(
       JSON.stringify({
         name: c.name,
+        distillPrompt,
         preSearchedMemories: normalizeMemories(result.preSearchedMemories),
         recallSignals: result.recallSignals ?? null,
       }),

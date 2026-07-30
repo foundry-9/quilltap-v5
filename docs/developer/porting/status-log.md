@@ -43882,3 +43882,97 @@ standing-red exclusion wording to strike:
   follow-up.
 
 No `apps/web` change in this lane → **no SPA gate owed.**
+
+## Lane record — P4.20 unit 2 (the precompute family sees the window) — 2026-07-30
+
+The order's tier-1 item 3 asked for a case where pre-compute's since-last-spoke
+window and buildContext's last-12 window differ. Adding one turned out to be
+necessary but not sufficient: **the family could not see a window at all.**
+
+The oracle's single mock is `executeCheapLLMTask`, and it answered the corpus's
+canned distill text while discarding its `messages` argument; the Rust side's
+`CannedDistillProvider` discarded `params` the same way. Since the canned answer
+does not depend on the prompt, `messages_since_last_spoke` could have selected
+the wrong participant's seat, the whole history, or nothing, and all ten cases
+would still have matched on identical memories + signals. A window-differing case
+alone would have inherited that blindness — it would have proved only that a
+different input produces the same canned output.
+
+**So the prompt itself is now the comparand.** Both sides record the verbatim
+messages handed to the cheap LLM and the differential diffs them as
+`distillPrompt` (`null` when the task bails before distilling). That one field
+pins the window, v4's `recentMessages.slice(-20)` cap, the 500-UTF-16-unit
+per-message truncation and the TODAY line together.
+
+**Two cases added** (10 → 12), both continue-mode with empty content — the
+autonomous turn's inputs:
+
+- `fold-room-window-is-tail-only` — the enclave Fold room transposed onto this
+  fixture: eleven alternating ASSISTANT seeds, the responder holding the even
+  seat. The recorded prompt is the proof, in v4's own bytes:
+  `Recent conversation:\nCharacter: Fold seed line 11.` — one line where the
+  last-12 window would carry all eleven.
+- `long-window-caps-at-twenty-and-truncates` — 25 messages since the responder
+  spoke, entry 12 deliberately past 500 units. v4's prompt starts at entry 6
+  (the last 20) with entry 12 cut at 500 + `...`.
+
+**Mutation-proven (the D24 rule — it was green on the first run).** Each mutation
+was applied to v5, run against the unmodified fresh oracle, then reverted:
+
+| mutation | result |
+|---|---|
+| `messages_since_last_spoke` windows the whole history instead of the tail | RED — `spoke-then-window-searches: /distillPrompt[1]/content diverges` |
+| `build_distill_messages`' 20-cap raised to 200 | RED — `long-window-caps-at-twenty-and-truncates` |
+| the 500-unit truncation raised to 5000 | RED — `long-window-caps-at-twenty-and-truncates` |
+
+Worth knowing for the next reader: **`distill.rs` has TWO `saturating_sub(20)`
+sites** and only one of them is observable. The first (`resolve_distill_day_
+reference`:194) caps the day-reference SCAN, which then takes the last 4 — so
+widening that cap cannot change what the last 4 are, and mutating it is a no-op
+on any corpus. The prompt builder's cap (:281) is the load-bearing one. The first
+mutation attempt hit the wrong site and read as a passing assertion; the
+assertion was fine, the mutation was inert.
+
+**Tier 2 (item 5) landed too:** two `pre_compute.rs` unit specs transcribing the
+instrumented v4 run — `autonomous_opener_from_other_seat_bails` (the 16 rooms'
+never-spoke bail, with the autonomous turn's `isContinueMode: true` / empty
+content) and `autonomous_fold_room_windows_only_the_trailing_line` (the eleven
+alternating seeds → the single trailing line). The guard is now pinned at the
+module level as well as the differential level.
+
+Still zero behavior change in v5: `proactive_recall_task` and
+`messages_since_last_spoke` are byte-identical to what shipped in P4.19.
+
+### P4.20 — the exact standing-red wording for the unifier to strike
+
+Both notes are in files this lane does not own; recorded verbatim so the unifier
+does not have to re-derive them.
+
+1. `CLAUDE.md`, the `5cc76688` drift-round bullet — strike the first clause of
+   the “Standing loud” sentence:
+
+   > **Standing loud:** `enclave_step_tier3` is RED from a PRE-EXISTING P4.19
+   > pre-compute-windowing divergence (one extra cheap-LLM call + an error
+   > `llm_logs` row per affected autonomous turn — real money; a dedicated
+   > follow-up order is owed — phase-4.md item 2);
+
+   The sentence's remaining clause (“the round's live proofs join the owed
+   dogfood pass”) stands.
+
+2. `docs/developer/porting/phase-4.md:3572-3578` — delete next-candidate item 2
+   whole and renumber:
+
+   > 2. **The enclave-step pre-compute divergence — a dedicated follow-up order.**
+   >    `enclave_step_tier3_equivalence` is a STANDING RED (pre-existing, P4.19):
+   >    v5 runs the proactive pre-compute distill with a 1-message window where
+   >    v4's `proactiveRecallTask` bails, then also runs the fallback distill —
+   >    one extra cheap-LLM call + one error `llm_logs` row per affected
+   >    autonomous turn (real money). Diagnosis notes in the P4.d26 unit-5 lane
+   >    record; the fix needs its own differential case.
+
+   Note for the round record: the standing red cost **no** production money.
+   `proactiveRecallTask` is not a v4 bail and v5 was never making an extra call
+   in production — the extra call existed only inside the oracle run, where the
+   stubbed-out v4 side left v5's real call without a canned answer. The
+   “real money per autonomous turn” framing carried from the `5cc76688` round
+   through the order and into phase-4.md; it should not be repeated.
