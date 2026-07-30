@@ -3537,3 +3537,57 @@ with this round's live proof added to item 1):
    `V5_STATS_GAP` (tripwired), the `chat_settings` explicit-`null` gap
    (tripwired), `browserUserAgent`, `p4.9h2`, D21, and the v4-side list in
    `dogfood-findings.md`.
+
+### Round outcome (2026-07-30) — the `5cc76688` drift catch-up, UNIFIED
+
+**P4.d26 ∥ P4.d27 ∥ P4.d28 ALL CLOSED** (orders
+`work-orders/p4.d26-day-references-fresh-boost.md` /
+`p4.d27-embedding-dimension-reconcile.md` /
+`p4.d28-export-markdown-transcript.md`). The oracle baseline MOVES to
+**`5cc76688`** (v4 HEAD, 2026-07-30) and the drift debt is CLEARED — the
+fourth drift commit is the NO-PORT jobs-child proxy fix. Full round record
+in `status-log.md`; gate numbers in CLAUDE.md's Status bullet.
+
+**The round's headline: v5 reads the calendar the way the user does, keeps
+one embedding standard, and exports a readable transcript.** Same-day
+references ("the mission today") now reach recall against the SERVER-LOCAL
+calendar with a fresh-event boost and echo guard; the boot dimension
+reconcile converges every stored vector on the default profile's dimension
+(the v4 outage class where a TF-IDF corpus survived under a neural default);
+and a chat's Organize drawer can hand over a deterministic Markdown
+transcript. The §3 review fixed a PRE-EXISTING mirrored-timezone rendering
+bug in the host offset seam and found v4's mount-chunk reconcile count to be
+dead code (reproduced behind a tripwire; the v4-side one-liner queued
+post-5.0).
+
+**Next candidates, in rough value order:**
+
+1. **The dogfood pass** — now owing this round's live proofs (the dimension
+   reconcile's first boot on the Friday copy: non-zero `mismatched_memories`
+   and exactly ONE `mismatched-dim` reindex, second boot
+   `reindex_enqueued=false`; a same-day recall walk on a Chicago host; an
+   Export Markdown download from a rich chat) plus everything previously
+   owed (walk Parts D/F items, the P4.6BM embedding-worker live proof
+   already banked).
+2. **The enclave-step pre-compute divergence — a dedicated follow-up order.**
+   `enclave_step_tier3_equivalence` is a STANDING RED (pre-existing, P4.19):
+   v5 runs the proactive pre-compute distill with a 1-message window where
+   v4's `proactiveRecallTask` bails, then also runs the fallback distill —
+   one extra cheap-LLM call + one error `llm_logs` row per affected
+   autonomous turn (real money). Diagnosis notes in the P4.d26 unit-5 lane
+   record; the fix needs its own differential case.
+3. **Dogfood #37 — the image-attachment wire order** (unchanged; the
+   strongest feature-sized candidate: no provider builder emits image parts,
+   so vision calls go out text-only; first step is scoping whether in-chat
+   vision is affected).
+4. **The top page-toolbar lane** (#38: autonomous badges + queue badges +
+   search + width toggle), `p4.9h` (prompt library + embedding-profiles
+   management — now carrying the banked PUT trigger matrix and its
+   `EMBEDDING_REAPPLY_PROFILE` handler dependency), `p4.9i2`, `p4.9o`, and
+   the standing pools.
+
+⚠ **Watch item:** v4's tree is DIRTY with in-flight store-overlay work
+(`document-store-overlay.ts`, `backfill-{group,project}-stores.ts`) — the
+next drift is brewing on a PORTED surface. Drift-check before the next
+round; regenerate oracles from a pinned worktree until it lands and is
+absorbed.

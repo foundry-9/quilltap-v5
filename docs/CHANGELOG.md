@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Brought three lanes of catch-up work together and shipped them as one: the
+same-day memory recall and fresh-event boost, the enforced single embedding
+standard with its boot-time self-heal, and the Export Markdown transcript.
+Along the way the review caught and fixed a real, older bug nobody had been
+able to see: on any machine not running in UTC, a conversation with no
+timezone configured showed its clock mirrored the wrong way around the
+Greenwich line (an evening in Chicago rendered as if Chicago were east of
+London). Every test in the fleet had been blind to it because they all pin
+UTC, where the two conventions agree. Also tightened the test kitchen's own
+recipes: three of this round's checks now depend on the timezone they are
+generated under, and their instructions finally say so. Full suite green:
+1,705 native checks, 3,121 interface checks, 156 end-to-end walks.
+
 **Export Markdown** now sits in a conversation's Organize drawer, between
 Export and Gallery, and hands you the readable transcript as a download named
 after the chat. The download helper the settings screens already used moved

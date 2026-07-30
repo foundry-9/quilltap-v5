@@ -1568,6 +1568,64 @@ records THERE. Update this summary only when a phase or round completes.
   SPA 0.5.319 unchanged. **The dogfood pass remains the top next item** (it
   now also owes this round's live proof: a boot against the Friday copy that
   does NOT mass re-embed). Round record: `status-log.md`.
+- **The `5cc76688` drift catch-up round (P4.d26 ∥ P4.d27 ∥ P4.d28): UNIFIED
+  on main (2026-07-30) — ALL THREE CLOSED; the oracle baseline MOVES to
+  `5cc76688` and the drift debt is CLEARED** (the fourth drift commit is the
+  NO-PORT jobs-child proxy fix, dispositioned at planning). Same-day recall
+  + the fresh-event boost end-to-end (the new pure `day_references` resolver
+  with a TWO-zone-leg tier-1 family — under TZ=UTC alone this bug class is
+  invisible; the distill merge + local TODAY line with a REQUIRED Chicago
+  oracle leg; `fresh_event_multiplier` ×1.6/×1.35 + the echo guard; the
+  `occurredWithin` ungating at all three sites; the `server_tz` seam — the
+  host's IANA zone, NOT the story `timezone` — threaded from every
+  production entrance) ∥ one enforced embedding standard (the boot dimension
+  reconcile as v4 Phase 3.7, `_conn` twins + direct-connection deduped
+  enqueue; the reindex handler's mount-chunk phase 4 + memories-table
+  fan-out + stale/FAILED skips; the housekeeping merge-pass skip; **v4's
+  mount-chunk count found DEAD — wrong-database `tableExists` — reproduced
+  faithfully behind a TRIPWIRE**, the one-line v4-side fix queued post-5.0;
+  the PUT trigger matrix banked whole for `p4.9h` with its unported
+  `EMBEDDING_REAPPLY_PROFILE` dependency) ∥ Export Markdown (the pure
+  transcript renderer, 53-row byte differential; `calculate_timestamp_at`
+  extracted with a 1969 clock sentinel; the verb + web edge with RFC 5987 +
+  `no-store`; the Organize button + live beat; the content-disposition lift
+  fixing a real astral-char header bug). **The §3 review fixed a
+  PRE-EXISTING user-visible bug:** the host `local_offset_minutes` carried
+  jiff's east-positive sign where core consumes JS west-positive — a
+  no-timezone chat on any non-UTC host rendered at the MIRRORED offset;
+  fixed as one shared convention-pinned fn. The gate caught its own trap
+  too: P4.d26 made the four distill-transitive tier-3 oracles TZ-sensitive
+  and their regen recipes didn't pin TZ=UTC — now they do. Gate: 401 test
+  binaries / 1,705 / 0 with the round's 25 families by name zero SKIP over
+  oracles regenerated fresh from a pinned `5cc76688` worktree; clippy both
+  feature sets; release build; ng 252 files / 3,121; full Playwright
+  **156/156 zero skips**. **Standing loud:** `enclave_step_tier3` is RED
+  from a PRE-EXISTING P4.19 pre-compute-windowing divergence (one extra
+  cheap-LLM call + an error `llm_logs` row per affected autonomous turn —
+  real money; a dedicated follow-up order is owed — phase-4.md item 2); the
+  round's live proofs join the owed dogfood pass. Versions: core 0.0.411,
+  harness 0.0.356, host 0.0.51, web 0.0.54, cli 0.0.3, quilltap-tauri
+  0.0.5, SPA 0.5.320.
+- **Oracle baseline: `5cc76688` (v4 HEAD, 2026-07-30), adopted at the
+  5cc76688 drift-catch-up unification — NO v4 drift debt remains.** The four
+  commits past `083fdf68`: `505dcb1f` (same-day recall + fresh boost →
+  P4.d26), `7391404e` (one embedding standard → P4.d27), `b3ee00f1` (Export
+  Markdown → P4.d28), and `5cc76688` itself — **NO-PORT** (its only lib
+  change is the forked-job-child write-buffer proxy, a locked v5 non-port;
+  log-only even in v4; no oracle case imports it). Thirty-one oracle files
+  regenerated fresh at `5cc76688` at unification, every one marker-checked.
+  ⚠ **v4's working tree is DIRTY with in-flight store-overlay work**
+  (`document-store-overlay.ts`, `backfill-{group,project}-stores.ts`) — the
+  next drift is brewing on a PORTED surface; regenerate oracles from a
+  pinned detached worktree until it lands and is absorbed
+  (`oracle-regen-pinned-v4-worktree`). ⚠ Since P4.d26 the
+  distill-transitive tier-3 oracles (orchestrator / salon-swipe /
+  regenerate-swipe / enclave-step, plus the distill/precompute/replay/
+  build-context families) are **TZ-SENSITIVE** — their recipes pin TZ=UTC
+  (the day-references + distill families additionally carry a REQUIRED
+  America/Chicago leg); never regenerate without the pins. ⚠ The standing
+  committed-fixture regen rule applies unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `083fdf68` (v4 HEAD, 2026-07-28), adopted at the P4.D25
   embedding-warmth drift-catch-up unification — NO v4 drift debt remains.** The
   four commits past `e8a49597` are v4's own fixes for its `found-bugs.md` Bugs 6

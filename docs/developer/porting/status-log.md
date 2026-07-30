@@ -43248,3 +43248,138 @@ is `background-jobs/child/child-repositories-proxy.ts`, which no route-tier or
 pure-tier oracle here reaches — so the baseline for this lane's families is
 `b3ee00f1` either way, and the unifier can move the round's baseline to
 `5cc76688` (or not) without re-running any of them.
+
+---
+
+## Round record — the `5cc76688` drift catch-up (P4.d26 ∥ P4.d27 ∥ P4.d28), UNIFIED (2026-07-30)
+
+**ALL THREE LANES CLOSED; the oracle baseline MOVES `083fdf68` → `5cc76688`
+and the drift debt is CLEARED** (the fourth drift commit is the NO-PORT
+child-proxy fix, dispositioned at planning). Branch `unify/5cc76688-drift`,
+15 lane commits cherry-picked (d26's five, d27's five minus its order-copy,
+d28's five minus its copy) plus the three setupphase commits, the version
+accumulation, two §3 fix commits, the wires commit, and the gate's TZ-pin
+fix; fast-forwarded to main.
+
+**Survey.** Delivered scope verified against all three orders' tier lists
+unit by unit — every tier-1/tier-2 item present, every tier-3 bank named in
+code or records. Version accumulation: core 399+5+4+3 → **0.0.411**, harness
+345+4+4+3 → **0.0.356**, host 49+1+1 → **0.0.51**; web **0.0.54** and SPA
+**0.5.320** carried by d28. One source conflict across all fifteen
+cherry-picks (`services/mod.rs`, both lanes adding a module line — the
+benign class); CHANGELOG/status-log union-merged; order-file headers merged
+clean over the `c81d316b` baseline-move text.
+
+**The §3 review (three parallel fidelity reviewers over v4's REAL code +
+the unifier's own read of every hunk): two findings FIXED on the unify
+branch, one standing red documented, zero blocking findings in the lane
+code itself.**
+
+1. **FIXED — the host local-offset sign bug (the one that would have
+   shipped… had it not already shipped: it was PRE-EXISTING on main).**
+   d28 unit 1 reported it (spine.rs was d26's file this round, so only the
+   unifier could act): `spine.rs`'s `local_offset_minutes` returned jiff's
+   EAST-positive offset at BOTH producer sites while every core consumer
+   (`chat_timestamp`'s zone-less arm) documents and subtracts JS
+   `getTimezoneOffset()`'s WEST-positive convention — on any non-UTC host a
+   chat with no timezone configured rendered timestamps at the MIRRORED
+   offset (Chicago showed UTC+5). Invisible to every differential (all pin
+   TZ=UTC, where both conventions read 0). Fixed as one shared
+   `js_local_offset_minutes` free fn with the sign flip; pinned by a
+   host unit test at absolute instants (Chicago +300/+360, Tokyo −540,
+   UTC/unresolvable 0). The d26 reviewer confirmed the diagnosis and the
+   fix independently. Commit `9538f17a`.
+2. **FIXED (doc) — the reindex handler's failure-semantics claim.** The
+   module doc said a memory-side failure fails the whole job "as in v4";
+   the d27 reviewer proved v4's uncaught region is `safeQuery`-wrapped
+   throughout (only the two explicit throws end a v4 run). The doc now
+   states the truth: v5 deliberately propagates `DbError` there to a
+   Failed/retried job — the conservative arm — reachable only via
+   infra-level faults no differential can inject. Behavior deliberately
+   NOT changed (fail-toward-retry vs v4's silent partial completion; a
+   ruling can revisit).
+3. **Documented STANDING RED — `enclave_step_tier3_equivalence`
+   (PRE-EXISTING, P4.19's, not this round's).** Found by d26's neutrality
+   regen, proven red on MAIN with a fresh oracle at the PREVIOUS baseline
+   (three-way in the d26 unit-5 record). v5 runs the proactive pre-compute
+   distill with a 1-message window where v4's `proactiveRecallTask` bails,
+   then also runs the fallback distill: one extra cheap-LLM call + one
+   error `llm_logs` row per affected autonomous turn — REAL MONEY. The
+   unification gate re-confirmed the red is EXACTLY that single divergence
+   (llm_logs 30 rows vs 29; the 13th MEMORY_EXTRACTION). **A dedicated
+   follow-up order is owed** (diagnose v4's guard behavior, fix v5's
+   windowing, extend the family) — named in phase-4.md's next candidates.
+
+Review NOTEs recorded, none blocking: d26's Unicode-case-fold regex edge
+and the year-pad edge (both unreachable); d27's `db-unavailable` mapping
+approximation, mid-phase error-drop shape, and two log-line omissions (all
+documented); d28's five documented-divergence corners (corrupt-config
+handling, prototype-key senders, unparseable dates, `system_tz` fallback,
+e2e-pinned edge headers).
+
+**The wires:** the §1 contract diff ran name-for-name — the round's only
+delta is `chatExportMarkdown`, mirrored on both sides. The d26 order header
+was closed by the unifier (the lane branch was cut before the orders
+merged, so it could not close its own — a first; noted for the playbook).
+d27's v4-side finding (the DEAD mount-chunk count — `tableExists` on the
+wrong database, v4's own unit test fooled by a main-DB table) joined the
+post-5.0 v4-side list in `dogfood-findings.md`, with the tripwire warning
+not to "fix" v5 first. No ACTIVATE-AT-UNIFY beats existed this round
+(d28's beat shipped live on its branch).
+
+**The gate (on `unify/5cc76688-drift`; v4's checkout DIRTY with NEW
+in-flight work — project/group store write-overlay — so ALL oracles
+regenerated from a fresh pinned detached worktree
+`/private/tmp/qt-v4-pin-unify-5cc76688`):**
+
+- 31 oracle files regenerated fresh at `5cc76688`, every one marker-checked
+  (line counts matched the lane records everywhere counts were recorded).
+- **The gate caught its own trap and the round fixed it:** the first
+  workspace run went red on `orchestrator_tier3` — the fresh oracle had
+  rendered the distill TODAY line in the MACHINE's zone
+  (`2026-01-01 (Thursday)` Chicago vs the harness's pinned UTC
+  `2026-01-02 (Friday)`), because the four distill-transitive tier-3
+  recipe headers (orchestrator / salon-swipe / regenerate-swipe /
+  enclave-step) never said `TZ=UTC` — pre-drift they didn't need to, and
+  P4.d26 silently made them TZ-sensitive. The four headers now pin
+  `TZ=UTC` with the why; the oracles were regenerated correctly and all
+  three live families are green. (A regen recipe is part of the
+  differential's correctness surface — the same lesson class as
+  `oracle-regen-silent-stale-pass`.)
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with all the round's env vars:
+  **401 test binaries / 1,705 tests / 0 failed** (after the TZ-corrected
+  regen; the one mid-gate red was the gate's own stale-zone oracle, not
+  code). The round's 25 families re-run BY NAME with `--nocapture`: all
+  green, zero SKIP (one env-name quirk found: `embedding_status_tier2`
+  answers to `QT_FIXTURE_EMBEDDING_STATUS`, not only `QT_FIXTURE_ES`).
+- `enclave_step_tier3` run separately: RED at exactly the documented
+  pre-existing divergence (item 3 above) — excluded from the pass/fail
+  count as the standing known-red, per the P4.d15 precedent.
+- SPA: `ng test` **252 files / 3,121 passed**; `ng build` clean; full
+  Playwright **156 passed / 0 failed / 0 skipped** (3.7 m, against the
+  fresh dist; the new export-markdown beat live, asserting the media type,
+  the chat-titled RFC 5987 attachment name, `no-store`, the `# Solo
+  Voyage` H1, the em-dash heading, and the single trailing newline).
+
+**Versions after the round:** core 0.0.411, harness 0.0.356, host 0.0.51,
+web 0.0.54, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.320.
+
+**Watch item for the next drift check:** v4's working tree carries
+uncommitted in-flight work (`document-store-overlay.ts`,
+`backfill-{group,project}-stores.ts`, a new project-store write-overlay
+test) — the NEXT drift commit is already brewing on a PORTED surface
+(the P2-era document-store overlay). Drift-check before the next round
+per standing rule; expect a store-write-overlay feature.
+
+**What's next:** the dogfood pass (now also owing this round's live
+proofs: the dimension reconcile's first boot on the Friday copy — expect
+non-zero `mismatched_memories` and exactly ONE `mismatched-dim` reindex,
+second boot identical counts with `reindex_enqueued=false`; a same-day
+recall walk — "the mission today" reaching yesterday-evening memories on
+a Chicago host; an Export Markdown download from a rich chat); the
+enclave-step follow-up order (item 3); dogfood #37 (the image-attachment
+wire order, still the strongest next-round candidate); the top toolbar
+lane (#38); `p4.9h` (now carrying the banked PUT trigger matrix +
+EMBEDDING_REAPPLY_PROFILE dependency).
