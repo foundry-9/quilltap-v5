@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Planned the next porting round: five parallel work orders catching v5 up to
+the old app's latest nineteen commits. One re-routes custom-tool definition
+loading through the canonical store reader (definitions stored as blobs
+become loadable, and a definition path can no longer wander outside its own
+store); one fixes restores so a memory keeps its identity and the
+Commonplace Book's cross-references survive a restore intact; one proves the
+old app's big "no functional change" cleanup sweeps really changed nothing;
+one re-verifies every provider's network bytes after two major SDK upgrades
+upstream (the riskiest item — the reference app's wire format may have
+moved under it); and one brings the terminal's theme knobs, selection
+colors, and exited-session behavior up to date along with a few
+styling classes the interface referenced but never defined.
+
 Brought the round's four lanes together and shipped them as one. Images you
 attach to a conversation now actually reach the model — before this, every
 "describe this image" answer was an invention, because the picture was
