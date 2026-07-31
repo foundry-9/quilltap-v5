@@ -68,6 +68,29 @@ catch, since every fixture is built fresh.
 | 43 | Announcement chips show a **down**-chevron while collapsed, and carry no message identity | **Port divergence — three attributes dropped from v4's `AnnouncementChip`.** v4 (`app/salon/[id]/components/AnnouncementChip.tsx`) renders `AnnouncementBarContents` with no `expanded` prop, so a chip in a group always draws `chevron-right`; v5 hard-coded `chevron-down`, which reads as an open affordance on a closed chip. v4 also sets `aria-expanded`, an `aria-label` ("Expand \<sender\> \<kind\> message"), and — with an explicit comment saying why — `id="message-<id>"` + `data-message-id` "so deep-link and delete-next-focus scroll-to-message still resolve"; v5 set none of them (`message-row.ts:54` was the only site in the SPA minting `message-` ids). **Everything else checked in this area is byte-identical to v4** and is NOT the cause of the broader complaint: the whole `.qt-chat-announcement-*` / `.qt-chat-system-bar-*` CSS block diffs clean, and `.qt-chat-message-system`'s centered-italic rule (`_chat.css:230`) is v4's own | **FIXED** — chevron follows state, the `-down` modifier composed into the icon's `class` **input** (a per-class host binding would land on the wrong element — `qt-icon` applies `class` to an inner span), plus `aria-expanded`, the state-aware label, and the identity attributes. Two specs, both **mutation-proven**. ⚠ **This does not close the human's broader report** — a systematic announcement-rendering audit is a standing note below |
 | 41 | v5 writes `{"userId":…,"retentionDays":7.0}` into `background_jobs.payload` where v4 writes `…"retentionDays":7` | **Port divergence — a persisted JS number serialized as an `f64`.** `run_scheduled_cleanup` read `retentionDays` out of the untyped settings bag with `Value::as_f64` and dropped it straight into `serde_json::json!`, so a whole number rendered `7.0`; v4 carries a JS number to `JSON.stringify`, which renders `7`. Both apps read this column, and both parse either form, so nothing breaks today — but it is a byte divergence in shared persisted JSON, the exact class the `js_number_to_json` helper (`db/mod.rs:563`) exists for and that P4.6an already fixed once for `dangerousContentSettings` ("`1` not `1.0`"). **Invisible to the suite: `run_scheduled_cleanup` has no differential coverage at all** — its only caller is the host cadence, so no harness family ever built this payload. Found only because finding #40's failure row printed the payload | **FIXED** — the payload moves through `cleanup_payload()` + `js_number_to_json`; two unit tests pin the bytes (whole → `7`, fractional → `0.5` preserved), **mutation-proven** (restoring the raw `f64` fails the first test with `7.0` vs `7`). Key order is insertion order (`preserve_order`), matching v4's `{ userId, retentionDays }` |
 
+- **The 2026-07-31 `ff12f491`-round walk, Part A — the P4.D34 SPA riders, all
+  six items closed; two findings fixed, one v4 weakness recorded, one deferral
+  confirmed.** The lane's live proof is COLLECTED. Verified on the Friday copy:
+  the **exited-session input disable** (item 3 — `exit` the shell, the input
+  refuses keystrokes; newly live in both apps), the **shared Staff
+  display-name table** (item 5), and the **xterm-6 two-tier theme read**
+  (item 4) — the last one only after the re-test that matters: **both apps read
+  the xterm theme once at construction and neither re-reads on a live theme
+  switch**, so the pass is *switch theme → close and reopen the terminal*, at
+  which point the per-pack `--qt-terminal-*` values (cursor `hsl(15 75% 62%)`
+  Rains / `hsl(43 90% 60%)` Art Deco / `hsl(211 100% 65%)` Earl Grey) come
+  through. A future walk should not re-report a live switch doing nothing.
+  Item 1 (**the LLM Inspector hover, no visible change in Rains**) is **NOT a
+  v5 bug and needs no v5 change**: `.qt-inspector-entry:hover` is byte-identical
+  to v4, and it washes out in that theme because Rains sets
+  `--qt-card-border: var(--stroke-strong)` at opacity **1** while the hover
+  swaps in primary at **30% alpha** — the hover border is *fainter* than the
+  resting one. v4 behaves identically; it is a v4 design weakness, recorded so
+  it is not re-diagnosed. Items 2 and 6 produced findings **#43** and **#42**.
+  The human confirmed at close: chips and chevrons now read correctly, and the
+  **announcement-body formatting problem remains open by agreement** — the
+  survey lane above owns it.
+
 - **The 2026-07-28 walk, Part B — the embedding pendulum, MEASURED AND PROVEN
   on real data; and the walk that never happened, which is the point.** The
   script's first step was to *predict* what booting would cost before booting.
