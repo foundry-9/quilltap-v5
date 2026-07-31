@@ -68,6 +68,36 @@ catch, since every fixture is built fresh.
 | 43 | Announcement chips show a **down**-chevron while collapsed, and carry no message identity | **Port divergence — three attributes dropped from v4's `AnnouncementChip`.** v4 (`app/salon/[id]/components/AnnouncementChip.tsx`) renders `AnnouncementBarContents` with no `expanded` prop, so a chip in a group always draws `chevron-right`; v5 hard-coded `chevron-down`, which reads as an open affordance on a closed chip. v4 also sets `aria-expanded`, an `aria-label` ("Expand \<sender\> \<kind\> message"), and — with an explicit comment saying why — `id="message-<id>"` + `data-message-id` "so deep-link and delete-next-focus scroll-to-message still resolve"; v5 set none of them (`message-row.ts:54` was the only site in the SPA minting `message-` ids). **Everything else checked in this area is byte-identical to v4** and is NOT the cause of the broader complaint: the whole `.qt-chat-announcement-*` / `.qt-chat-system-bar-*` CSS block diffs clean, and `.qt-chat-message-system`'s centered-italic rule (`_chat.css:230`) is v4's own | **FIXED** — chevron follows state, the `-down` modifier composed into the icon's `class` **input** (a per-class host binding would land on the wrong element — `qt-icon` applies `class` to an inner span), plus `aria-expanded`, the state-aware label, and the identity attributes. Two specs, both **mutation-proven**. ⚠ **This does not close the human's broader report** — a systematic announcement-rendering audit is a standing note below |
 | 41 | v5 writes `{"userId":…,"retentionDays":7.0}` into `background_jobs.payload` where v4 writes `…"retentionDays":7` | **Port divergence — a persisted JS number serialized as an `f64`.** `run_scheduled_cleanup` read `retentionDays` out of the untyped settings bag with `Value::as_f64` and dropped it straight into `serde_json::json!`, so a whole number rendered `7.0`; v4 carries a JS number to `JSON.stringify`, which renders `7`. Both apps read this column, and both parse either form, so nothing breaks today — but it is a byte divergence in shared persisted JSON, the exact class the `js_number_to_json` helper (`db/mod.rs:563`) exists for and that P4.6an already fixed once for `dangerousContentSettings` ("`1` not `1.0`"). **Invisible to the suite: `run_scheduled_cleanup` has no differential coverage at all** — its only caller is the host cadence, so no harness family ever built this payload. Found only because finding #40's failure row printed the payload | **FIXED** — the payload moves through `cleanup_payload()` + `js_number_to_json`; two unit tests pin the bytes (whole → `7`, fractional → `0.5` preserved), **mutation-proven** (restoring the raw `f64` fails the first test with `7.0` vs `7`). Key order is insertion order (`preserve_order`), matching v4's `{ userId, retentionDays }` |
 
+- **The 2026-07-31 walk, Part B — P4.D30's blob-definition arm has NO PRODUCER,
+  and the step is unrunnable BY SHAPE (not skipped, retired).** Scripting the
+  walk asked the operator to open a blob-stored custom-tool definition; the
+  Friday copy's eight definitions were classified first, and all eight are
+  `Quilltap General` **database** mount, `fileType: json`, `source: database`,
+  with a `doc_mount_documents` row and **no** `doc_mount_blobs` row. That is not
+  an accident of this instance — it is **structural**: discovery requires
+  `*.tool.json` (`TOOL_FILE_SUFFIX`), `.json` maps to `NativeTextType::Json` →
+  fileType `json` → `is_text_like`, so `read_mount_file_bytes_conn` takes the
+  **document** branch for every definition the roster can find. A blob-stored
+  definition requires a row hand-written with a mismatched fileType, which is
+  precisely how the harness fixture makes one. The Workbench's save writes a
+  database *document*, and the ingest path maps the extension the same way, so
+  no UI in either app can produce one.
+
+  **v4 never claimed otherwise, which is the part worth carrying.** Its
+  `83118077` frames the change as a **deduplication** — `readToolFile`
+  hand-rolled its own storage dispatch and now calls the canonical
+  `readMountFileBytes` — and lists blob readability under "*two effects beyond
+  the deduplication*". The stated motivation is "*found by release checklist 1
+  (file provider)*", a path-safety audit. So **both** named side effects are
+  unreachable in practice: P4.D30's lane already disproved the other one
+  (boundary escapes, pinned by unit test as v4 pins it), and this note disposes
+  of the second. The drift's real content is the deduplication plus the
+  `SOURCE_NOT_FOUND` race skip. **Coverage for the blob arm is
+  `pascal_definition_reader_equivalence` alone** (6 cases, with an explicit
+  assertion that the blob case is present so it cannot silently vanish from the
+  corpus) — and that is the right and sufficient home for it. A future walk
+  should NOT script a live blob-definition step; there is nothing to click.
+
 - **The 2026-07-31 `ff12f491`-round walk, Part A — the P4.D34 SPA riders, all
   six items closed; two findings fixed, one v4 weakness recorded, one deferral
   confirmed.** The lane's live proof is COLLECTED. Verified on the Friday copy:
