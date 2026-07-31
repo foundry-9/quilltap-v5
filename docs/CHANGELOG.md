@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Icons that sit inside a search box no longer crowd the text you type — they
+had been placed at twice their intended offset, so the magnifier overlapped
+the first letter.
+
 Error messages inside dialogs are now actually coloured as errors. They had
 been asking for a "danger" text colour that no stylesheet anywhere defined, so
 they came out looking like ordinary informational text.

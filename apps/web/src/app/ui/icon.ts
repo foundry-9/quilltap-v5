@@ -41,6 +41,22 @@ export type IconName =
 @Component({
   selector: 'qt-icon',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // ⚠ Load-bearing, do not remove. `class` is an INPUT here (aliased below) that
+  // lands on the inner span — but Angular ALSO keeps the same static `class` on
+  // this host element, so a site writing `class="absolute left-3 …"` gets the
+  // offset applied TWICE: the host becomes a positioned box at left:12px, and
+  // the span then offsets another 12px inside it. v4's React `<Icon>` renders
+  // ONE span, so v5 was landing every positioned icon at double its offset —
+  // measured at the toolbar search bar, where the glyph sat 4px PAST the start
+  // of the input text (v4 clears it by 8px; dogfood finding #44).
+  //
+  // `display: contents` makes the host generate no box at all, so it cannot be a
+  // containing block and the host's copy of `absolute`/`left-*` has nothing to
+  // act on — the span resolves against the real positioned ancestor, exactly as
+  // v4's single element does. Verified in the browser rather than reasoned from
+  // the spec (blockification does NOT apply here), and pinned by a measured beat
+  // in `page-toolbar-flow.spec.ts`.
+  host: { style: 'display: contents' },
   template: `<span
     [class]="cssClass()"
     [attr.data-icon]="name()"

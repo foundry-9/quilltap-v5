@@ -184,3 +184,27 @@ test('the width toggle flips data-full-width and persists across reload', async 
   await page.getByRole('button', { name: 'Switch to narrow layout' }).click();
   await expect(html).not.toHaveAttribute('data-full-width', 'true');
 });
+
+test('the search magnifier clears the input text instead of overlapping it', async ({ page }) => {
+  await page.goto('/salon');
+  await maybeUnlock(page);
+  const input = page.locator('.qt-page-toolbar').getByPlaceholder('Search... (⌘K)');
+  await expect(input).toBeVisible();
+  await input.fill('Simon');
+
+  // Regression guard for dogfood finding #44. `qt-icon` takes `class` as an
+  // INPUT (applied to its inner span) while Angular also leaves the same static
+  // class on the host, so `absolute left-3` was applied TWICE and the glyph
+  // landed 4px PAST where the input's text begins. v4 renders one element and
+  // clears the text by 8px; the host is `display: contents` so it generates no
+  // box and the offset resolves once. Measured, not eyeballed.
+  const gap = await page.evaluate(() => {
+    const inp = [...document.querySelectorAll('input')].find(
+      (i) => (i as HTMLInputElement).value === 'Simon',
+    ) as HTMLInputElement;
+    const glyph = inp.parentElement!.querySelector('qt-icon [data-icon]') as HTMLElement;
+    const textStart = inp.getBoundingClientRect().left + parseFloat(getComputedStyle(inp).paddingLeft);
+    return textStart - glyph.getBoundingClientRect().right;
+  });
+  expect(gap).toBeGreaterThanOrEqual(6);
+});
