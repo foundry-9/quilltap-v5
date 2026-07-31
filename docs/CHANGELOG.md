@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+Exporting a transcript whose title mixes an apostrophe with accented or
+non-Latin characters now saves under its real name, rather than falling back to
+a version with underscores in place of those characters.
+
 A picture attached from the document store now shows up properly in a chat's
 photo gallery, instead of appearing as a deleted image. The picture was never
 gone — the gallery was looking for it in the wrong place.
