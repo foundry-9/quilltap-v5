@@ -45839,3 +45839,80 @@ sweep; pre-existing from P4.6bh — its families are red and waiting), the
 `terminal_tools` oracle that did not survive regen, D32's 28
 mechanically-unrunnable family recipes, and the store-unavailable 503
 envelope (P4.D29's escalation, unchanged).
+
+## Round planned — the dogfood-debt + sweep-debt round (P4.22→P4.23 ∥ P4.24 ∥ P4.25 ∥ P4.26 ∥ P4.27), 2026-07-31
+
+Planned at /setupphase against **v4 baseline `ff12f491`** (drift-checked at
+planning: v4 HEAD is `e1be028b`, exactly one commit past the baseline,
+release-packaging only — Dockerfiles/README/versions/one build-script line,
+re-verified NO-PORT today; tree clean). No drift debt; no baseline move this
+round; no lane writes baseline wording.
+
+**Five lanes, six orders** — the round clears the 2026-07-31 dogfood walk's
+promoted findings (#40, #42, #43, #47) and the `ff12f491` round's standing
+items (the 503 escalation, the `canChooseOutfit` red, `terminal_tools`, the
+recipe-runnability shortfall):
+
+- **Lane A (sequential, one branch):**
+  `work-orders/p4.22-character-vault-properties-clobber.md` (pre-existing,
+  amended with round context) THEN
+  `work-orders/p4.23-store-unavailable-503-envelope.md` (new). P4.22 lands
+  the character vault's present-but-unparseable write refusal + corpus arms
+  (finding #47, deliberate divergence until v4 ships its own fix); P4.23
+  then maps EVERY store-unavailable error — the three `overlay_to_db`
+  collapses, the `VaultUnavailable` read keystone, and P4.22's new refusal —
+  to v4's contextful 503 envelope (`lib/api/middleware/context.ts:176-205`;
+  the P4.D29 record's `auth.ts` attribution was wrong, corrected in the
+  order), with `ErrorKind::Unavailable`, the `CoreError` entity-id carry,
+  the web-edge status arms, the SPA contract mirror, and routes-level
+  envelope arms. Sequenced in one lane because P4.22's refusal IS an error
+  P4.23 must map — parallel lanes would have needed a designed-in-advance
+  error-shape contract for no gain.
+- **Lane B:** `work-orders/p4.24-llm-log-cleanup.md` (new) — finding #40:
+  the LAST unhandled job type. `cleanup_old_logs` (calendar-day cutoff),
+  the handler's five arms (incl. the unconditional second settings fetch),
+  ProductionSpineFactory registration, a NEW committed
+  `llm-log-cleanup-{main,llm-logs}.db` family with a tier-2 differential
+  (run against /tmp COPIES — cleanup mutates), enqueuer coverage closing
+  the hole that let #41 ship, and a DST-boundary America/Chicago leg
+  (the P4.d26 TZ-blindness rule).
+- **Lane C:** `work-orders/p4.25-toast-subsystem.md` (new) — finding #42:
+  port v4's `lib/toast.tsx` (107 call-site files at `ff12f491`) as a
+  ToastService + `qt-toast-container`, byte-copied message strings, the
+  full call-site census table, retire the invented inline errors
+  (ReattributeMessageDialog worked example), silent-success sites in
+  tier 2.
+- **Lane D:** `work-orders/p4.26-announcement-rendering-audit.md` (new) —
+  finding #43's standing note: the systematic systemSender × systemKind
+  parity audit, starting from the one un-taken lead (v5's expanded
+  announcement body renders `qt-message-content [content]` where v4 passes
+  `renderedHtml` + `renderingPatterns` + `dialogueDetection`). SPA-only;
+  server findings escalate.
+- **Lane E:** `work-orders/p4.27-sweep-debt-maintenance.md` (new) — D32's
+  sweep debt: the `canChooseOutfit` projection gap (diagnose from the red,
+  not by grep — four sites already carry the flag, the omitting reader is
+  a fifth; STOP rule if the fix lands in lane A's `api/**`), the
+  `terminal_tools` oracle rot, and the recipe-runnability pass (the lost
+  28-family list re-derived via D32's driver recipe; the driver committed
+  under `harness/tools/` this time; repo-writing recipes rewritten to /tmp
+  copies; per-family unique /tmp paths).
+
+**The binding shared-contract + ownership table is verbatim-identical in
+all six orders.** Notable rules: `api/**` is lane A's exclusively (E stops
+and records); lanes C and D partition `apps/web` by named file (D owns the
+four chat rendering files + `render/**` + `_chat.css`; C owns everything
+else it converts) and never edit the same e2e spec file; CHANGELOG +
+status-log append-only; version bumps per lane, unifier recounts.
+
+**Special drift tripwire for the round:** the human was asked to land the
+finding-#47 fix in v4 PROMPTLY (it is data loss against live Friday). If
+that lands mid-round, P4.22 reclassifies from deliberate divergence to
+ordinary drift re-port (its header says so) and the characters families'
+oracles move — lanes A and E both carry the warning and STOP on it.
+
+**Deliberately left out of this round:** the still-owed dogfood remainder
+(walk Parts G/H + the P4.D31 restore-memory-id live proof — human-run
+/dogfood items, not orders), `p4.9h` (prompt library + embedding-profiles
+management — the next big vertical, after this debt clears), the workspace
+per-tab toolbar bridge, the Zod format-validator gap (restated as tier-3
+in P4.23), `p4.9i2`, and the post-5.0 pools.

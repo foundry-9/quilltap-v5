@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Planned the next round of porting work (documentation only): five parallel
+work orders covering the character-vault save guard and its proper
+"store unavailable" error responses, automatic pruning of old LLM logs,
+the toast notification system, a systematic announcement-appearance audit,
+and test-harness maintenance.
+
 Exporting a transcript whose title mixes an apostrophe with accented or
 non-Latin characters now saves under its real name, rather than falling back to
 a version with underscores in place of those characters.
