@@ -11,8 +11,7 @@ import { Router } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { WORKSPACE_HANDLE } from '../workspace/workspace-contract';
-import { CoreClient } from '../core/core-client';
-import { CoreDispatchError } from '../core/core-contract';
+import { CoreClient, coreErrorMessage } from '../core/core-client';
 import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
 import {
@@ -478,9 +477,7 @@ export class CustomToolsPopup {
   }
 
   protected rosterErrorMessage(): string {
-    const e = this.rosterQuery.error();
-    if (e instanceof CoreDispatchError || e instanceof Error) return e.message;
-    return 'The tools could not be listed.';
+    return coreErrorMessage(this.rosterQuery.error(), 'The tools could not be listed.');
   }
 
   /** Identity of a roster entry — `name` alone isn't unique (a per-character
@@ -615,7 +612,7 @@ export class CustomToolsPopup {
       // The 400 arm's server message (v4 shows a toast; v5 has none). A Prospero
       // error was also posted server-side and arrives as a message on the next
       // refetch — this inline line is a different surface, so no double-render.
-      this.runError.set(err instanceof Error ? err.message : 'The tool could not be run.');
+      this.runError.set(coreErrorMessage(err, 'The tool could not be run.'));
     } finally {
       this.running.set(false);
     }

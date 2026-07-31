@@ -6,7 +6,7 @@ import {
   initialParamValues,
   type ParameterFormValues,
 } from '../../chat/custom-tool-params-form';
-import { CoreClient } from '../../core/core-client';
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type {
   CustomToolAuditResult,
   CustomToolMetadataInput,
@@ -71,8 +71,7 @@ export function stateToken(state: string | undefined): 'success' | 'warning' | '
  * here re-derives any of them.
  */
 export function extractErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message;
-  return 'The bench could not oblige.';
+  return coreErrorMessage(err, 'The bench could not oblige.');
 }
 
 @Component({

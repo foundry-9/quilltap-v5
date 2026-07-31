@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+The "what went wrong" sentence behind a failed action is now derived in one
+place instead of six, so the tool bench, the Workbench editor, the tool picker
+and the mail composer cannot drift apart on what they show you.
+
 The Staff display-name table — how the Host, the Librarian, Aurora and the rest
 are named in prose — now lives in one place instead of being spelled out beside
 the conversation labels, so a new member cannot be added to one surface and

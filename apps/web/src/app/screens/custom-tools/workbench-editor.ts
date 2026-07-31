@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 
-import { CoreClient } from '../../core/core-client';
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
 import {
   TOOLS_FOLDER,
@@ -60,6 +60,11 @@ interface JsonState {
   issues: string[];
   summary?: string;
   unknownKeys: string[];
+}
+
+/** {@link coreErrorMessage} with the bench's own fallback (v4 `0246c6c8`). */
+function extractErrorMessage(err: unknown): string {
+  return coreErrorMessage(err, 'Something went sideways at the bench.');
 }
 
 @Component({
@@ -378,7 +383,7 @@ export class WorkbenchEditor {
       this.initializeFromContent(file.content, file.mtime);
     } catch (err) {
       this.loadError.set(
-        err instanceof Error ? err.message : 'Something went sideways at the bench.',
+        extractErrorMessage(err),
       );
     } finally {
       this.loading.set(false);
@@ -597,7 +602,7 @@ export class WorkbenchEditor {
         return;
       }
       this.saveError.set(
-        err instanceof Error ? err.message : 'Something went sideways at the bench.',
+        extractErrorMessage(err),
       );
     } finally {
       this.saving.set(false);
@@ -628,7 +633,7 @@ export class WorkbenchEditor {
         }
       } catch (err) {
         this.saveError.set(
-          err instanceof Error ? err.message : 'Something went sideways at the bench.',
+          extractErrorMessage(err),
         );
         return;
       }
@@ -692,7 +697,7 @@ export class WorkbenchEditor {
           }
         } catch (err) {
           this.saveError.set(
-            err instanceof Error ? err.message : 'Something went sideways at the bench.',
+            extractErrorMessage(err),
           );
           return;
         }
@@ -711,7 +716,7 @@ export class WorkbenchEditor {
       this.conflictContent.set(null);
     } catch (err) {
       this.saveError.set(
-        err instanceof Error ? err.message : 'Something went sideways at the bench.',
+        extractErrorMessage(err),
       );
     }
   }

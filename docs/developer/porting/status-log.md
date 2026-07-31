@@ -45637,3 +45637,50 @@ participant message, the raw-tag fallback, and a case proving the Salon labels
 read this table and no other.
 
 **Gate:** `ng test` 262 files / 3,167 passed. SPA 0.5.330.
+
+---
+
+## Lane record — P4.D34 unit 5: the rest of the `0246c6c8` SPA slice (per-file verdicts)
+
+The order asked for a verdict per file. Diffed each at the pin.
+
+| v4 file (`0246c6c8`) | v5 analog | Verdict |
+| --- | --- | --- |
+| `app/salon/[id]/components/system-message-labels.ts` | `chat/system-message-labels.ts` | **MIRRORED** — unit 4. |
+| `lib/query/fetcher.ts` (new `apiErrorMessage`) | `core/core-client.ts` (new `coreErrorMessage`) | **MIRRORED at v5's shape**, see below. |
+| `components/chat/ComposeMailDialog.tsx` | `chat/post-office/compose-mail-dialog.ts:294` | **MIRRORED** (1 site). |
+| `components/chat/CustomToolRunDialog.tsx` | `chat/custom-tools-popup.ts:616` + `rosterErrorMessage()` | **MIRRORED** (2 sites). |
+| `components/custom-tools/ProvingBench.tsx` | `screens/custom-tools/proving-bench.ts:73` | **MIRRORED** — local `extractErrorMessage` kept as a fallback-carrying wrapper, exactly as v4 keeps its own. |
+| `components/custom-tools/WorkbenchEditor.tsx` | `screens/custom-tools/workbench-editor.ts` | **MIRRORED** — v5 carried FIVE inline repeats of the ternary + fallback string; they collapse onto one local wrapper (v4's shape). |
+| `components/settings/chat-settings/types.ts` (`DEFAULT_TIMESTAMP_CONFIG`) | — | **NO ANALOG.** v5's settings types are Rust-side. v4 collapsed five copies of the literal; v5's SPA has ONE (`screens/new-chat/timestamp-config-card.ts`'s `DEFAULT_TS`), and the exporter that added v4's fifth is Rust-side too (P4.d28). `screens/characters/view/tabs/defaults-tab.ts:478` is NOT a copy — a three-key read-side fallback (no `autoPrepend`, no `useFictionalTime`) for the character defaults tab. Nothing to collapse. |
+
+**The v5 shape of `apiErrorMessage`.** v4's helper does two jobs: unwrap an
+`ApiFetchError`'s parsed `{ error }` / `{ message }` body, then fall through to
+`Error.message` and finally the caller's fallback. **v5 has no analog of the
+first job** — `CoreDispatchError` is constructed FROM the `{ type: "error" }`
+envelope, so `.message` is already the sentence a person should read, and the
+unwrap has nothing to unwrap. `coreErrorMessage(err, fallback)` is v4's tail
+only, and it lives in `core/core-client.ts` for v4's own stated reason: beside
+the error it reads (`core-contract.ts` holds the class, but it is the frozen wire
+mirror and takes no UI helpers).
+
+⚠ **One behavior convergence, deliberate.** Two v5 sites had drifted to
+`(err instanceof Error && err.message) || fallback`, which substitutes the
+fallback for an Error whose message is empty; v4 returns the empty message.
+Adopting the shared helper moves `compose-mail-dialog.ts` (and the popup's
+roster arm, whose `e instanceof CoreDispatchError || e instanceof Error` was
+redundant — the former extends the latter) onto v4's semantics. Pinned by a spec
+case that says so.
+
+**NOT swept, recorded instead:** `chat/post-office/insert-announcement-dialog.ts:577`
+has a private `message(err, fallback)` in the `&&||` form — the same helper again,
+with the divergent empty-message arm. v4 did not touch that file in `0246c6c8`,
+so neither did this lane; it is the obvious first item for a future sweep, along
+with the ~15 other inline sites in both apps.
+
+**Spec:** `core/core-error-message.spec.ts` (4 cases) — a `CoreDispatchError`'s
+sentence, a plain `Error`'s message, the fallback reached ONLY by a non-Error
+throw, and the empty-message arm above.
+
+**Gate:** `ng test` 263 files / 3,171 passed; `npx tsc --noEmit` clean; `ng build`
+clean. SPA 0.5.331.

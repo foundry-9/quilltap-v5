@@ -30,6 +30,23 @@ export { parseEventData } from './core-transport';
 export type { ConnectionState, HealthStatus } from './core-transport';
 
 /**
+ * Pull a human-readable message out of a thrown value — v5's analog of v4
+ * `apiErrorMessage()` in `lib/query/fetcher.ts` (extracted by `0246c6c8`), and
+ * here for the same reason: beside the error it reads.
+ *
+ * v4's helper also unwraps an `ApiFetchError`'s parsed `{ error }` body, because
+ * its dialogs hold the raw fetch failure. v5 has no analog of that half:
+ * `CoreDispatchError` is constructed FROM the `{ type: "error" }` envelope, so
+ * its `message` is already the sentence a person should read. What is left is
+ * v4's tail — an `Error` yields its own message, anything else the caller's
+ * `fallback`, which is where each surface says what it could not do.
+ */
+export function coreErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
+
+/**
  * The ONE transport seam (D14): the whole server surface behind a single
  * injectable. Components never touch `fetch` / `EventSource` / Tauri IPC
  * directly — since P4.7b the raw touchpoints live in an internal

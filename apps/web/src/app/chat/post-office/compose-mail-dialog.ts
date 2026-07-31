@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import { CoreClient } from '../../core/core-client';
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { MarkdownField } from '../../editor/markdown-field';
 import { characterKeys, fetchCharacterList } from '../../screens/characters/characters.api';
@@ -291,7 +291,7 @@ export class ComposeMailDialog {
       this.close.emit();
     } catch (err) {
       this.errorMessage.set(
-        (err instanceof Error && err.message) || 'The letter could not be posted.',
+        coreErrorMessage(err, 'The letter could not be posted.'),
       );
     } finally {
       this.isSending.set(false);
