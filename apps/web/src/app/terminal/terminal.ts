@@ -12,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Terminal as XTermTerminal } from '@xterm/xterm';
+import { Terminal as XTermTerminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
 import { TerminalSessionService, type TerminalSessionHandle } from './terminal-session.service';
@@ -173,17 +173,40 @@ export class Terminal implements OnInit, AfterViewInit {
 
 /**
  * Read the xterm theme from the `--qt-terminal-*` CSS variables (v4
- * `getTerminalTheme`). Returns `{}` where `document` is absent (unit env).
+ * `getTerminalTheme`, `components/terminal/Terminal.tsx` @ `77ff4e2e`). Returns
+ * `{}` where `document` is absent (unit env).
+ *
+ * The `ITheme` annotation is load-bearing, exactly as in v4: without it the
+ * returned object is inferred and TypeScript skips excess-property checks, which
+ * is how v4's pre-6.0 `selection` key survived silently after xterm renamed it to
+ * `selectionBackground`. Annotating makes any unknown key a build error.
+ *
+ * Exported for the spec — v4 keeps it module-private, but v5's unit env cannot
+ * stand up an xterm instance to reach it through the component.
  */
-function readTerminalTheme(): Record<string, string> {
+export function readTerminalTheme(): ITheme {
   if (typeof document === 'undefined') return {};
   const style = getComputedStyle(document.documentElement);
   const get = (variable: string): string => style.getPropertyValue(variable).trim() || '#000000';
+  // Optional keys must stay undefined when a theme doesn't set them: xterm
+  // derives each from our themed background/foreground (the slider colors
+  // default to the foreground at 20/40/50% opacity), whereas `get`'s black
+  // fallback would paint them a hard #000.
+  const optional = (variable: string): string | undefined =>
+    style.getPropertyValue(variable).trim() || undefined;
   return {
     background: get('--qt-terminal-bg'),
     foreground: get('--qt-terminal-fg'),
     cursor: get('--qt-terminal-cursor'),
+    // xterm 6 renamed `selection` to `selectionBackground`; the old key is
+    // silently ignored, which drops every theme's selection color.
     selectionBackground: get('--qt-terminal-selection'),
+    cursorAccent: optional('--qt-terminal-cursor-accent'),
+    selectionForeground: optional('--qt-terminal-selection-fg'),
+    selectionInactiveBackground: optional('--qt-terminal-selection-inactive'),
+    scrollbarSliderBackground: optional('--qt-terminal-scrollbar'),
+    scrollbarSliderHoverBackground: optional('--qt-terminal-scrollbar-hover'),
+    scrollbarSliderActiveBackground: optional('--qt-terminal-scrollbar-active'),
     black: get('--qt-terminal-ansi-black'),
     red: get('--qt-terminal-ansi-red'),
     green: get('--qt-terminal-ansi-green'),

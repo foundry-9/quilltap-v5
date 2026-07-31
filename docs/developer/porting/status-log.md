@@ -45459,3 +45459,52 @@ opened. Versions: core 0.0.419, harness 0.0.364, host 0.0.52.
 differential runs on recorded pages). A dogfood boot with an OpenRouter key
 configured should show non-null context lengths and tool-capable models in cost
 estimation — it joins the owed dogfood pass.
+## Lane record — P4.D34 (the SPA drift riders), unit 1: the xterm-6 two-tier theme read
+
+**v4 reference:** `components/terminal/Terminal.tsx` → `getTerminalTheme(): ITheme`
+at `77ff4e2e`, plus `app/styles/qt-components/_variables.css` (the optional-knobs
+comment block that follows `--qt-terminal-selection`).
+
+`apps/web/src/app/terminal/terminal.ts` is v5's **only** xterm construction and
+theme-read site — verified by grep (`new XTermTerminal` and `readTerminalTheme`
+resolve there alone; `terminal-embed.ts` / `terminal-pane.ts` /
+`terminal-session-picker.ts` / `screens/salon/terminal-popout.ts` reference
+`--qt-terminal-*` only through CSS classes, never through a theme object). So the
+order's "every v5 terminal theme-read site" is one site.
+
+What landed:
+
+- `readTerminalTheme()` now returns `ITheme` (was `Record<string, string>`). The
+  annotation is load-bearing for the same reason it is in v4: without it the
+  object is inferred and TypeScript skips excess-property checks, which is how
+  v4's pre-6.0 `selection` key survived silently. v5 needed the wider type
+  anyway — `Record<string, string>` cannot hold the `undefined`s below.
+- The optional tier: `optional(variable)` returns `undefined` on an unset
+  variable where `get()` falls back to `'#000000'`, and the six new knobs read
+  through it — `cursorAccent`, `selectionForeground`,
+  `selectionInactiveBackground`, `scrollbarSliderBackground`,
+  `scrollbarSliderHoverBackground`, `scrollbarSliderActiveBackground`. Porting
+  these on the required tier would have painted every theme's scrollbar and
+  cursor accent hard black; that is the whole point of the two tiers.
+- The `_variables.css` optional-knobs comment block, mirrored verbatim into
+  v5's TERMINAL TOKENS section so theme authors find the contract at the same
+  place v4 puts it.
+
+**Recorded, no change needed (v5 was already ahead):**
+
+- `selectionBackground` — v5 has read the xterm-6 key since P4.6u; v4's dead
+  `selection` key is a v4 bug v4 just fixed, and is deliberately NOT ported in
+  its broken form. Now pinned by a spec.
+- `@xterm/addon-canvas` — v5 never loaded it (the addon was retired with xterm
+  6's canvas renderer; its last release peers on ^5). Nothing to remove.
+
+**Spec:** `apps/web/src/app/terminal/terminal-theme.spec.ts` (4 cases) — every
+optional knob is an explicit `undefined` when unset (asserting `key in theme`
+too, so a dropped key cannot pass as an undefined read), each reads through when
+set, the required tier still falls back to `#000000`, and the selection color
+lands on `selectionBackground` with no `selection` key present.
+`readTerminalTheme` is exported for the spec — a documented divergence from v4's
+module-private helper, since v5's unit env (vitest + jsdom, no canvas) cannot
+stand up an xterm instance to reach it through the component.
+
+**Gate:** `ng test` 260 files / 3,158 passed; `ng build` clean. SPA 0.5.327.

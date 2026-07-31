@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Terminal themes gained six optional colors: the cursor accent, selection text
+color, inactive selection, and the three scrollbar slider states. A theme that
+leaves any of them alone now gets xterm's own derived value, tinted from the
+terminal's background and foreground, instead of a hard black — themes that set
+none of them look exactly as they did.
 Re-verified every provider's network bytes after two major SDK upgrades
 upstream, and fixed what that surfaced. The bytes themselves did not move:
 all 146 recorded requests across the eight providers, both streaming and
