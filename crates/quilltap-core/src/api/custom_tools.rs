@@ -846,6 +846,40 @@ fn unprocessable(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::Unprocessable, msg)
 }
 
+/// Everything both bench actions need before they can deal (v4 `0246c6c8`'s
+/// `parseBenchRequest`).
+struct BenchRequest {
+    params: Option<Map<String, Value>>,
+    state: Option<Value>,
+    definition: crate::pascal::custom_tool_types::QtapCustomTool,
+    metadata: Map<String, Value>,
+}
+
+/// The steps both bench actions open with: read the params and the mock state,
+/// validate the definition, resolve the fact sheet. Each can bail with the 4xx
+/// the author reads, so the caller gets either everything it needs or the
+/// response to return instead.
+///
+/// v4's `benchRefusal` — the other half of the same collapse — has no analog
+/// worth extracting here: it exists to re-`throw` anything that is not a
+/// `CustomToolRunError`, and v5's `Err(CustomToolRunError(reason))` arm already
+/// names that one case, with no other error to pass along.
+fn parse_bench_request(
+    db: &Db,
+    definition: &Value,
+    params: Option<&Value>,
+    metadata: Option<&Value>,
+    state: Option<&Value>,
+) -> Result<BenchRequest, Response> {
+    Ok(BenchRequest {
+        params: parse_params(params)?,
+        // §B: mock merged state for `$state` refs (v4 `body.value.state ?? {}`).
+        state: parse_state(state)?,
+        definition: parse_definition(definition)?,
+        metadata: resolve_metadata(db, metadata)?,
+    })
+}
+
 /// v4 `handleLibrary`.
 pub fn custom_tools_library(db: &Db) -> Response {
     match db.read_main(|main| {
@@ -1135,21 +1169,13 @@ pub async fn custom_tool_preview(
     user_id: &str,
     consult: Option<&dyn ConsultRunner>,
 ) -> Response {
-    let params = match parse_params(params) {
+    let BenchRequest {
+        params,
+        state,
+        definition,
+        metadata,
+    } = match parse_bench_request(db, definition, params, metadata, state) {
         Ok(p) => p,
-        Err(r) => return r,
-    };
-    // §B: mock merged state for `$state` refs (v4 `body.value.state ?? {}`).
-    let state = match parse_state(state) {
-        Ok(s) => s,
-        Err(r) => return r,
-    };
-    let definition = match parse_definition(definition) {
-        Ok(d) => d,
-        Err(r) => return r,
-    };
-    let metadata = match resolve_metadata(db, metadata) {
-        Ok(m) => m,
         Err(r) => return r,
     };
 
@@ -1241,21 +1267,14 @@ pub fn custom_tool_audit(
     state: Option<&Value>,
     llm: Option<&Value>,
 ) -> Response {
-    let params = match parse_params(params) {
+    // §B's mock state is held fixed across every draw.
+    let BenchRequest {
+        params,
+        state,
+        definition,
+        metadata,
+    } = match parse_bench_request(db, definition, params, metadata, state) {
         Ok(p) => p,
-        Err(r) => return r,
-    };
-    // §B: mock merged state, held fixed across every draw.
-    let state = match parse_state(state) {
-        Ok(s) => s,
-        Err(r) => return r,
-    };
-    let definition = match parse_definition(definition) {
-        Ok(d) => d,
-        Err(r) => return r,
-    };
-    let metadata = match resolve_metadata(db, metadata) {
-        Ok(m) => m,
         Err(r) => return r,
     };
 

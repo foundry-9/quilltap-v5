@@ -44811,3 +44811,28 @@ Pin verified two ways: `lib/pascal/custom-tools.ts` in the pinned tree carries
 
 Tier 3 was "none expected" and none arose. The blob fixture built cleanly through
 v4's real writer, so no loud refusal was needed.
+
+### Lane record — P4.D30 unit 3 (tier 2: the `0246c6c8` pascal-slice mirrors)
+
+**`parseBenchRequest` — mirrored.** `parse_bench_request` + a `BenchRequest`
+struct in `api/custom_tools.rs` collapse the preamble the preview and audit
+handlers shared, preserving the four checks' evaluation ORDER (which decides
+*which* 4xx a doubly-invalid body gets — struct-literal fields evaluate in
+written order, so the shape carries it). Proven neutral by the regenerated
+workbench families (58 route cases incl. the 422 arms) and the custom-tools
+route family.
+
+**`benchRefusal` — deliberately NOT mirrored.** It exists to re-`throw`
+anything that is not a `CustomToolRunError`. v5's
+`Err(CustomToolRunError(reason)) => unprocessable(reason)` arm already names the
+one case, with no other error to pass along, so extracting a helper would add a
+name without removing a copy.
+
+**`withTimeout` → `lib/promise-timeout.ts` — no v5 analog needed.** v5 already
+owns the behavior in `TimeoutConsult` (host) over `consult_timeout_reason`
+(core), and v4's extraction moved only *where* the sentence is composed, not
+what it says. v5's split is already the shape v4 just adopted — the whole
+message belongs to the caller, not a label composed from one. Wording is
+byte-identical (`the consult timed out after 60s`), covered by
+`pascal_llm_consult_equivalence` (3 constants, 28 budgets, green at
+`ff12f491`).
