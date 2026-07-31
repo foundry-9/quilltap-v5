@@ -136,8 +136,11 @@ describe('SearchBar (v4 search-bar.tsx)', () => {
     await flush();
     fixture.detectChanges();
     // The dialog is open (its placeholder input exists) and ran the seeded search.
+    // Queried from `document`, not the fixture: SearchDialog portals its host to
+    // document.body so its fixed-position backdrop escapes the toolbar's
+    // `backdrop-filter` containing block (dogfood #45).
     expect(
-      fixture.nativeElement.querySelector(
+      document.querySelector(
         'input[placeholder="Search chats, characters, messages, tags, memories..."]',
       ),
     ).not.toBeNull();

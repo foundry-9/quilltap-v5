@@ -142,6 +142,7 @@ const DEBOUNCE_MS = 300;
 })
 export class SearchDialog {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly isOpen = input.required<boolean>();
   readonly initialQuery = input<string>('');
@@ -168,6 +169,32 @@ export class SearchDialog {
   private currentQuery = '';
 
   constructor() {
+    // PORTAL (a deliberate v5 divergence, ruled 2026-07-31 — dogfood #45).
+    //
+    // `SearchBar` renders this dialog inline, and the bar lives inside
+    // `.qt-page-toolbar`, which carries `backdrop-filter` (_layout.css:709).
+    // A `backdrop-filter` makes an element a CONTAINING BLOCK for
+    // `position: fixed` descendants, so the backdrop's `fixed inset-0`
+    // resolved against the toolbar instead of the viewport — measured at
+    // 1224x64 in a 1280x720 window. Clicking anywhere outside the toolbar hit
+    // the page, not the backdrop, so only Escape closed the dialog.
+    //
+    // v4 has the identical defect (its SearchBar also renders SearchDialog
+    // inline, with no portal, inside the same toolbar div); the human ruled
+    // that v5 fixes it now and the same fix is queued for v4. This restores
+    // v4's INTENT — the backdrop element and its `qt-dialog-overlay` class are
+    // untouched, it simply gets a containing block that is the viewport.
+    //
+    // NB `slide-over-panel.ts` records the standing "v5 renders inline"
+    // decision, whose stated premise was that no ancestor carries a
+    // transform/filter. The P4.9P toolbar invalidated that premise for
+    // anything rendered inside it; this is the first such surface.
+    if (typeof document !== 'undefined') {
+      const el = this.hostEl.nativeElement;
+      document.body.appendChild(el);
+      this.destroyRef.onDestroy(() => el.remove());
+    }
+
     // v4's open/close effect (:110-140): opening seeds the initial query/types
     // and focuses; closing resets everything.
     effect(() => {

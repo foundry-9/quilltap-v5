@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+Clicking outside the search dialog closes it again, instead of leaving Escape
+as the only way out.
+
 Icons that sit inside a search box no longer crowd the text you type — they
 had been placed at twice their intended offset, so the magnifier overlapped
 the first letter.

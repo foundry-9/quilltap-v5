@@ -208,3 +208,33 @@ test('the search magnifier clears the input text instead of overlapping it', asy
   });
   expect(gap).toBeGreaterThanOrEqual(6);
 });
+
+test('clicking outside the search dialog closes it (dogfood #45)', async ({ page }) => {
+  await page.goto('/salon');
+  await maybeUnlock(page);
+  const bar = page.locator('.qt-page-toolbar').getByPlaceholder('Search... (⌘K)');
+  await bar.fill('a');
+  await bar.fill('ab');
+  const seeAll = page.getByRole('button', { name: /see all results/i });
+  await expect(seeAll).toBeVisible({ timeout: 10_000 });
+  await seeAll.click();
+
+  const backdrop = page.locator('button[aria-label="Close search"]');
+  await expect(backdrop).toBeVisible();
+
+  // The backdrop must cover the VIEWPORT, not just the toolbar. `.qt-page-toolbar`
+  // carries `backdrop-filter`, which is a containing block for fixed descendants,
+  // so rendering the dialog inline clipped the backdrop to 1224x64 and there was
+  // nothing outside the toolbar to click. Assert the geometry, then the gesture.
+  const covers = await page.evaluate(() => {
+    const r = document
+      .querySelector('button[aria-label="Close search"]')!
+      .getBoundingClientRect();
+    return r.width >= window.innerWidth - 1 && r.height >= window.innerHeight - 1;
+  });
+  expect(covers).toBe(true);
+
+  // The gesture the operator actually makes: click well away from the dialog.
+  await page.mouse.click(60, page.viewportSize()!.height - 80);
+  await expect(backdrop).toHaveCount(0);
+});
