@@ -44836,3 +44836,219 @@ message belongs to the caller, not a label composed from one. Wording is
 byte-identical (`the consult timed out after 60s`), covered by
 `pascal_llm_consult_equivalence` (3 constants, 28 budgets, green at
 `ff12f491`).
+## Lane record — P4.D31, the `4ac66c29` restore memory-id re-port (2026-07-30/31)
+
+**Branch:** `claude/p4-restore-memory-ids-fc4f4d`. **Order:**
+`work-orders/p4.d31-restore-memory-ids.md`. **Status: CLOSED** — both tier-1
+and the tier-2 reconciliation landed; no deferrals, loud or otherwise.
+Commits: `1b6e3f44` (the port + its differential), `644c0213` (the sixteen
+4.8 columns made measurable). Versions: `quilltap-core` 0.0.418 → **0.0.419**,
+`quilltap-harness` 0.0.363 → **0.0.365**. No `apps/web` change, so no SPA gate
+is owed.
+
+### ⚠ Drift check — v4 moved one commit past the round baseline
+
+`git log ff12f491..HEAD` at lane start returned **`e1be028b`** ("fix(release):
+unbreak the standalone tarball and the Docker dependency stages"). The order
+says STOP on a moved baseline, so: it was inspected before proceeding, and it
+is **oracle-inert** — the diff is `Dockerfile`, `Dockerfile.ci`, `README.md`,
+`docs/CHANGELOG.md`, `package.json` + lock (version chore),
+`packages/quilltap/package.json`, and a duplicated-`const` deletion in
+`scripts/build-standalone-tarball.ts`. **Zero `lib/`, zero `app/`**, so no
+oracle family can import it. Every oracle this lane wrote was regenerated from
+a worktree pinned at `ff12f491` regardless, which is what the pin is for. The
+unifier should classify `e1be028b` NO-PORT and can adopt `ff12f491` as the
+baseline unchanged. The v4 tree was clean at `e1be028b` throughout.
+
+### Unit 1 — the port (`1b6e3f44`)
+
+One call site. `orchestrator.rs` phase 9 passed `copts!(new_id(), …)`; it now
+passes `copts!(id_of(m), …)`, the same helper the six other id-preserving
+phases use, and the phase comment carries v4's new `relatedMemoryIds`-lockstep
+rationale.
+
+**v5 needed no repository change**, which is worth recording because v4's fix
+is two-part. v4's root cause was `UserScopedMemoriesRepository` — hand-written
+because it scopes by character rather than userId, so it never inherited the
+generic wrapper's `CreateOptions` pass-through and silently dropped the
+argument. v5 has no analog: `db::memories::MemoriesRepository::create` has
+always taken `&CreateOptions`. v5's bug was purely the call site.
+
+One pre-existing convention noted, not changed: v4's `_create` does
+`options?.id || this.generateId()`, a FALSY fallback, where `id_of` only falls
+back on an ABSENT key — so an archived row with `id: ""` would diverge. This is
+uniform across all seven id-preserving phases (it is `id_of`'s definition, not
+this lane's choice), the schema types `id` as a UUID, and no archive produces
+it. Recorded rather than fixed, since changing `id_of` moves six other phases.
+
+### Unit 2 — the archive, and why one was needed
+
+`restore-archive-memory-graph.zip`, built by v4's REAL `createBackup` at the
+pin from a **separate** builder
+(`harness/oracle/fixtures/build-restore-archives-memory-graph.test.ts`), so the
+existing seven stay byte-untouched — the P4.d23 precedent. Verified: `git
+status` on the fixture directory showed only the one new untracked file.
+
+**The finding that justifies it.** All seven committed archives carry two
+memories with `relatedMemoryIds: []`. Mutation-testing the port against them
+(revert to `new_id()`, run) reddened the four `replace` cases and left **every
+`_new_account` case GREEN**. The reason is the differential's own origin-based
+normalizer, working exactly as designed: in `new-account` mode the archived ids
+are remapped before the restore applies, so a correctly-remapped id and an
+incorrectly-minted one are both UUIDs absent from the archive, and each is
+labelled `<minted-N>`. The arm was structurally blind, and the bug it was blind
+to is the one that had shipped.
+
+A populated edge is the detector. uuid-remap runs `id` and `relatedMemoryIds`
+through ONE memo, so a correct restore lands a row whose id is the SAME UUID as
+the edge pointing at it — one shared `<minted-N>` label — while a fresh mint
+splits them into two. The graph: four memories over the fixture's two
+characters, `G1↔G2`, `G1↔G3`, `G3↔G4`, two of them `aboutCharacterId`-scoped,
+so edges run both ways and across character scope.
+
+**Mutation-proven**, as the order required: with the port reverted,
+`restore_memory_graph_new_account` now reddens both through `main.memories
+differs` and through the new closure assertion's dangling-edge message, while
+the three older `_new_account` cases stay green — the blind spot demonstrated
+rather than asserted.
+
+`assert_memory_graph_intact` runs on **every** restore case (vacuous on the
+seven, cheap). It is a v5-only closure check and deliberately not a diff: a
+diff is an agreement test and would pass if both engines minted ids the same
+way, which is precisely the failure v4 shipped and v5 inherited.
+
+`V5_STATS_GAP` and `PHASE_ORDER_RESIDUAL` each gained the new `_new_account`
+case. **Not new divergences** — the archive is `restore-archive.zip`'s instance
+plus four memories and the same seeded `files/portrait.png`, so it replays one
+legacy-disk-key user file and meets the same two ruled residuals, asserted in
+both directions there too. The order's tripwire held: no existing divergence
+entry moved at the new baseline.
+
+### Unit 3 — the sixteen 4.8 columns (`644c0213`), tier-1 item 4
+
+The order names the regenerated `system_restore_state` diff as the check on
+v4's "all 16 columns ride the schema-driven pipeline" claim. **Audited, the
+diff could not carry it.** A row diff only sees a column the ARCHIVE populates;
+where a column is absent, both engines write the same default and a port that
+dropped it passes. Of the sixteen:
+
+- `memories` ×4 (`occurredAt`, `narrativeTime`, `entities`, `kind`) — reachable,
+  but only because this lane's own builder sets them;
+- `chats` ×4 + `chat_messages` ×6 — **absent from all seven committed archives**;
+- `chat_settings` ×2 — present but at their defaults.
+
+So twelve of the sixteen were unverifiable. The builder now gives every one a
+non-default value, written through v4's REAL `update` / `updateMessage` /
+`updateForUser` and asserted on read-back (a repository that silently dropped
+one would otherwise leave the archive unable to prove its own point).
+
+**Result: v5 round-trips all sixteen — no fix was needed, and it is now
+measured rather than inspected.** Mutation-proven per the D24 first-run-green
+rule: stripping `timelineMode`, `pascalMeta`, and the two `chat_settings` keys
+in the orchestrator reddens the diff, and reddens it ONLY on the memory-graph
+cases.
+
+### Tier 2 — reconciling v4's `restore-field-fidelity.test.ts`
+
+Its four cases: the new `chats`/`chat_messages` columns, the new `memories`
+columns, the new `chat_settings` columns, and the memory-id contract. All four
+are now subsumed by v5's state diff, which is the stronger claim in each case —
+v4's test mocks the repositories and asserts on `create`'s ARGUMENTS, where v5
+compares the persisted row after a real restore into a real instance.
+
+**That mocking has a consequence worth carrying.** Two of v4's test bags are
+shapes its own schemas would reject, and the mock hides it: `pascalMeta:
+{toolName, outcome, roll}` (the real `PascalMetaSchema` wants `tool` /
+`definitionTier` / `definitionMountId` / `params` / `rollForm` / `raw` /
+`value` / `state` / `outcomeIndex` / `invokedBy`) and
+`answerConfirmationSettings: {enabled, model}` (the schema is `{enabled}`
+alone; `model` is stripped). Both were found by writing them through the real
+repositories, which is what this builder does. Not a v4 bug — the test pins
+restore's pass-through, which is what it set out to pin — but it means v4's
+test does NOT establish that those two bags persist, and v5's now does. No v5
+assertion is owed.
+
+### Fixtures and oracles
+
+- **DELIVERS:** `crates/quilltap-web/tests/fixtures/restore-archives/
+  restore-archive-memory-graph.zip` (new, additive) + its builder. No other
+  archive's bytes moved; no other oracle family reads it
+  (`system_restore_equivalence` previews only the five preview archives, and
+  `system_backup_equivalence` builds its own).
+- **`harness/oracle/fixtures/uuid-remap-corpus.json` regenerated
+  BYTE-IDENTICAL** (sha256 `c62aa987…` before and after) — the remap code did
+  not drift, exactly as the order predicted.
+- Eleven families regenerated fresh from the pin and re-run BY NAME with
+  `--nocapture`: **zero SKIP, 12 passed / 0 failed**. `system_restore_state`,
+  `system_restore_equivalence`, `system_backup_equivalence`,
+  `backup_uuid_remap_equivalence`, `system_import_state`,
+  `system_import_equivalence`, `qtap_import_equivalence`,
+  `system_export_equivalence`, `system_delete_data_equivalence`,
+  `backup_mount_index_coercion_equivalence`, `stable_uuid_equivalence`.
+
+### The archive-builder recipe (verbatim)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-restore-archives-memgraph
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/fixtures/build-restore-archives-memory-graph.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd /private/tmp/qt-v4-pin-p4d31-ff12f491
+QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_ARCHIVE_OUT=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+  $N/npx jest --silent --watchman=false --testTimeout=600000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- build-restore-archives-memory-graph
+```
+
+Then regenerate the restore oracle (its own clean invocation):
+
+```bash
+TMPO=/tmp/qt-d31-sysrestore
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+cd /private/tmp/qt-v4-pin-p4d31-ff12f491
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-restore    # 15 lines: 5 preview + 10 restore
+```
+
+**Pin marker to grep for:** in the fresh NDJSON, `restore_replace`'s
+`state.main.memories[].id` must be the archive's own
+`ad000000-0000-4000-8000-00000000000{1,2}`. A pre-`4ac66c29` tree emits fresh
+UUIDs there. The builder additionally throws by name if the tree it runs
+against does not preserve the ids it asks for.
+
+### Verification gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D
+warnings` on BOTH feature sets; `cargo build --release`; `cargo test
+--workspace --no-fail-fast` with this lane's twelve env vars — **396 test
+binaries, 1,719 passed, 0 failed**; the eleven families re-run by name with
+`--nocapture`, zero SKIP. The lane's `target/` was removed after the gate.
+
+### Baseline wording for the unifier (this lane's slice)
+
+> **P4.D31 (`4ac66c29`) — CLOSED.** Restore preserves each memory's archived
+> id, so `relatedMemoryIds` edges still resolve in BOTH modes; v5 had ported
+> v4's own bug faithfully and the Commonplace Book's graph came back flattened
+> on every restore. One call site (`id_of`); no repository change was needed
+> (v4's `UserScopedMemoriesRepository` gap has no v5 analog). A NEW committed
+> archive `restore-archive-memory-graph.zip` (built by v4's real `createBackup`
+> from a separate builder — the seven existing archives are byte-untouched)
+> carries a four-memory graph, because **the seven could not see the bug in
+> `new-account` mode at all**: both a correct remapped id and a wrong minted
+> one are archive-absent UUIDs that the origin-based normalizer labels
+> `<minted-N>`. Mutation-proven both ways. The same archive closes a second
+> blind spot: of the sixteen columns added this cycle, **twelve had no
+> non-default value in any archive**, so v5's half of v4's release-checklist
+> claim was inspection, not measurement — all sixteen now round-trip under the
+> row diff, mutation-proven. `V5_STATS_GAP` and `PHASE_ORDER_RESIDUAL` each
+> gain the new `_new_account` case (the same ruled residuals, a second case of
+> the same archive shape — no divergence moved). The uuid-remap corpus
+> regenerated BYTE-IDENTICAL. ⚠ v4 moved to **`e1be028b`** during the round —
+> release infra only (Dockerfile / tarball script / version chore), **zero
+> `lib/`, NO-PORT**; oracles were pinned at `ff12f491` regardless.
