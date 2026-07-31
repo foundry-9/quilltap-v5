@@ -153,4 +153,63 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     // Back to normal: the composer's Open-terminal button is available again.
     await expect(page.getByRole('button', { name: 'Open terminal' })).toBeVisible();
   });
+
+  /**
+   * P4.D34 (v4 `77ff4e2e`): an exited session stops accepting keystrokes.
+   *
+   * NEWLY LIVE, in both apps. v4 poked `term._input`, which is not an xterm
+   * field in any version, so its guard always short-circuited and exited
+   * sessions stayed typeable; v5 never had the poke at all. `textarea` is the
+   * documented handle, and this is the first build that refuses the keys.
+   *
+   * The walk above cannot reach the assertion: the Salon pane tears the whole
+   * terminal down on exit (`toHaveCount(0)`), so there is no surviving textarea
+   * to inspect. The pop-out page keeps `<qt-terminal>` mounted past exit — it
+   * only swaps its Kill button away — so the beat runs there, over its own PTY.
+   */
+  test('an exited session disables the terminal input (pop-out page)', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+
+    await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+    const soloCard = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
+    await expect(soloCard).toBeVisible({ timeout: 15_000 });
+    const chatHref = await soloCard.getAttribute('href');
+    const chatId = (chatHref ?? '').split('/').pop() as string;
+    expect(chatId, 'a chat id from the salon list').toBeTruthy();
+
+    // A real PTY over the live REST leg, so the deep link addresses a genuine
+    // session (the same spawn the P4.d16 pop-out beat uses).
+    const spawned = await page.request.post('/api/v1/terminals', {
+      data: { chatId, label: 'Exit Disable', cols: 80, rows: 24 },
+    });
+    expect(spawned.ok(), 'spawn a real PTY').toBe(true);
+    const session = (await spawned.json()) as { session?: { id: string }; id?: string };
+    const sessionId = session.session?.id ?? session.id;
+    expect(sessionId, 'the spawned session id').toBeTruthy();
+
+    await page.goto(`/salon/${chatId}/terminal/${sessionId}`);
+    const xterm = page.locator('.xterm');
+    await expect(xterm).toBeVisible({ timeout: 15_000 });
+
+    // Live: the textarea takes input, and the Kill button is offered.
+    const textarea = page.locator('.xterm-helper-textarea');
+    await expect(textarea).not.toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Kill Session' })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // End the shell for real.
+    await xterm.click();
+    await page.keyboard.type('exit');
+    await page.keyboard.press('Enter');
+
+    // The exit lands: the Kill button goes (the popout's `state() !== 'exited'`
+    // gate), the closing line is written, and input is refused.
+    await expect(page.getByRole('button', { name: 'Kill Session' })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(xterm).toContainText('session ended', { timeout: 15_000 });
+    await expect(textarea).toBeDisabled({ timeout: 15_000 });
+  });
 });

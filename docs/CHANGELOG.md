@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+A terminal session that has ended now stops accepting keystrokes. Typing into a
+finished session did nothing before, in this app and in the reference app both —
+the old guard reached for a field xterm has never had, so it never fired.
+
 Terminal themes gained six optional colors: the cursor accent, selection text
 color, inactive selection, and the three scrollbar slider states. A theme that
 leaves any of them alone now gets xterm's own derived value, tinted from the

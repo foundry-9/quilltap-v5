@@ -45508,3 +45508,39 @@ module-private helper, since v5's unit env (vitest + jsdom, no canvas) cannot
 stand up an xterm instance to reach it through the component.
 
 **Gate:** `ng test` 260 files / 3,158 passed; `ng build` clean. SPA 0.5.327.
+
+---
+
+## Lane record — P4.D34 unit 2: the exited-session input disable
+
+**v4 reference:** the session-exit effect in `components/terminal/Terminal.tsx`
+@ `77ff4e2e`.
+
+NEWLY LIVE behavior in both apps, not a restoration. v4 poked `term._input`,
+which is not an xterm field in ANY version, so the guard always short-circuited
+and an exited session stayed typeable; v5 never had the poke at all — it wrote
+the closing line and left input alone. `textarea` is the documented handle.
+v4's broken form is deliberately NOT ported.
+
+`terminal.ts`'s exit branch now delegates to an exported `applySessionExit(term,
+info)` carrying both halves (the closing line and the disable), mirroring the
+single v4 effect body. The export is for the spec: v5's unit env (vitest +
+jsdom, no canvas) cannot stand up a real xterm, so the spec drives it with a
+fake term. v5 already touches the same handle by DOM query in
+`terminal-embed.ts:189` for focus; the component that owns the term uses the
+instance property, per the order.
+
+**Spec:** `terminal-session-exit.spec.ts` (5 cases) — the exit-code line, the
+signal line, the `unknown` fallback, the disable, and the no-textarea arm (xterm
+may not have attached one yet; the line must still be written).
+
+**e2e:** a new beat in `terminal-flow.spec.ts`, over its own real PTY. The
+existing walk CANNOT reach the assertion — the Salon pane tears the terminal
+down on exit (`expect(pane).toHaveCount(0)`), leaving no textarea to inspect. The
+pop-out page keeps `<qt-terminal>` mounted past exit (it only swaps its Kill
+button away), so the beat runs there: spawn over the live REST leg → deep-link to
+the pop-out → assert the textarea takes input → type `exit` → assert the Kill
+button goes, the closing line lands, and the textarea is disabled.
+
+**Gate:** `ng test` 261 files / 3,163 passed; `npx playwright test terminal-flow`
+2/2 green over a fresh dist and locally built debug binaries. SPA 0.5.328.

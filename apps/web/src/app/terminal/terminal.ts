@@ -15,7 +15,11 @@ import {
 import { Terminal as XTermTerminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
-import { TerminalSessionService, type TerminalSessionHandle } from './terminal-session.service';
+import {
+  TerminalSessionService,
+  type ExitInfo,
+  type TerminalSessionHandle,
+} from './terminal-session.service';
 
 /**
  * `qt-terminal` — the xterm.js surface (v4 `components/terminal/Terminal.tsx`).
@@ -89,11 +93,7 @@ export class Terminal implements OnInit, AfterViewInit {
           }
         } else if (state === 'exited' && !this.exitLineWritten) {
           this.exitLineWritten = true;
-          const info = this.handle.exitInfo();
-          const line = info?.signal
-            ? `\r\n[session ended — signal ${info.signal}]\r\n`
-            : `\r\n[session ended — exit code ${info?.code ?? 'unknown'}]\r\n`;
-          this.term.write(line);
+          applySessionExit(this.term, this.handle.exitInfo());
         }
       },
       { injector: this.injector },
@@ -168,6 +168,36 @@ export class Terminal implements OnInit, AfterViewInit {
     }
     this.term = null;
     this.handle?.release();
+  }
+}
+
+/** The slice of an xterm terminal {@link applySessionExit} touches. */
+type ExitableTerm = Pick<XTermTerminal, 'write' | 'textarea'>;
+
+/**
+ * Close out a terminal whose session has exited (v4's exit effect in
+ * `components/terminal/Terminal.tsx` @ `77ff4e2e`): write the closing line, then
+ * stop accepting input.
+ *
+ * The disable is NEWLY LIVE behavior, not a restoration. v4 used to poke
+ * `term._input`, which is not an xterm field in any version, so the guard always
+ * short-circuited and exited sessions stayed typeable; `textarea` is the
+ * documented handle. v5 never had the poke — it wrote the line and left input
+ * alone — so this is the first build of either app where an exited session
+ * actually refuses keystrokes.
+ *
+ * Exported for the spec: v5's unit env (vitest + jsdom, no canvas) cannot stand
+ * up a real xterm instance, so the spec drives this with a fake term.
+ */
+export function applySessionExit(term: ExitableTerm, info: ExitInfo | null): void {
+  const line = info?.signal
+    ? `\r\n[session ended — signal ${info.signal}]\r\n`
+    : `\r\n[session ended — exit code ${info?.code ?? 'unknown'}]\r\n`;
+  term.write(line);
+
+  const textarea = term.textarea;
+  if (textarea) {
+    textarea.disabled = true;
   }
 }
 
