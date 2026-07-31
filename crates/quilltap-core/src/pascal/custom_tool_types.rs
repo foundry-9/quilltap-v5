@@ -43,7 +43,9 @@
 //! `Infinity` (JSON has no `Infinity`/`NaN` literal), e.g. `{"gt": 1e999}`. v4
 //! parses that to `Infinity` and rejects it HERE, at the schema. serde_json
 //! rejects it one layer earlier, at the parse ("number out of range"), so v5
-//! rejects the same file at [`super::custom_tools::read_tool_file`] instead.
+//! rejects the same file at [`safe_parse`]'s JSON step instead (the load loop in
+//! [`super::roster::load_definitions`] turns that into an `is not valid JSON:`
+//! entry).
 //! Both refuse the definition; only the reason string differs, and it differs
 //! below this schema. [`FINITE_EXPECTED`] is carried faithfully regardless, so
 //! the check behaves if a non-finite value ever reaches it by another road.

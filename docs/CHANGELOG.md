@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Custom-tool definitions now load through the same store reader everything else
+uses. Three things follow. A `.tool.json` uploaded into a character's vault
+(or a project or group store) through the file surface is stored as an
+attachment rather than a text document — those definitions were invisible to
+Pascal, skipped with no error to explain the absence, and they now load. A
+definition path can no longer resolve outside the store that holds it. And a
+definition whose bytes are not valid text no longer fails the whole file: the
+bad bytes become replacement characters and the tool still loads, matching the
+reference app exactly. Also collapsed the two Workbench bench actions' shared
+opening steps into one helper, mirroring the same cleanup upstream.
+
 Planned the next porting round: five parallel work orders catching v5 up to
 the old app's latest nineteen commits. One re-routes custom-tool definition
 loading through the canonical store reader (definitions stored as blobs

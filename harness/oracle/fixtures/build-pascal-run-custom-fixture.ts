@@ -9,7 +9,10 @@
  *   - CHAR_A: ansible (metadata-gated) + coin (public) + whispered (private) tools;
  *             metadata { hasAnsibleAccess: true, clearanceLevel: 3 }.
  *   - CHAR_B: ansible; metadata { faction: "Ordo Ferrum" } (lacks the key).
- *   - CHAR_C: ansible; metadata {} (empty sheet).
+ *   - CHAR_C: ansible; metadata {} (empty sheet). Since P4.D30 also `beacon`
+ *             and `mangled`, both stored as database BLOBS rather than document
+ *             rows (v4 `83118077`): the canonical mount reader finds them where
+ *             the old direct `readDatabaseDocument` dispatch skipped them.
  *   - CHAR_D (P4.d19): a provisioned vault with its `properties.json` keystone
  *             DELETED, so `findById` raises the vault-unavailable error.
  * The General store carries the two AVAILABILITY-GATED definitions (P4.d19).
@@ -22,18 +25,20 @@
  * to the `.meta.json` sidecar (the Rust side reads them to pass
  * `character_mount_point_id`).
  *
- * Regenerate (v4 @ e8a49597, Node 24; the checkout is clean at the baseline, so
- * no pinned worktree is needed):
- *   cd ~/source/quilltap-server
+ * Regenerate (v4 @ ff12f491, Node 24; run it from a worktree PINNED at the
+ * baseline — `oracle-regen-pinned-v4-worktree` — whenever v4's checkout has
+ * moved past it or is dirty):
+ *   cd /private/tmp/qt-v4-pin-p4d30-ff12f491
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
  *
  * ⚠ A rebuild MINTS FRESH character-vault mount ids, so every family that reads
  * this fixture must be regenerated and re-run afterwards:
- * `pascal_custom_tools_route_equivalence`, `pascal_run_custom_handler_equivalence`
- * (both oracle-backed) and `pascal_build_tools_roster` (fixture-direct). The e2e
- * seed reads `vaultA` from the `.meta.json` sidecar, so it follows on its own.
+ * `pascal_custom_tools_route_equivalence`, `pascal_run_custom_handler_equivalence`,
+ * `pascal_definition_reader_equivalence` (all oracle-backed) and
+ * `pascal_build_tools_roster` (fixture-direct). The e2e seed reads `vaultA` from
+ * the `.meta.json` sidecar, so it follows on its own.
  */
 
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdtempSync, mkdirSync } from 'node:fs';
@@ -155,6 +160,43 @@ const WHISPERED = {
  * success. CHAR_B has no group, so gscore falls back to 99 → failure — the
  * per-entrance character scoping made visible in the outcome index.
  */
+/**
+ * P4.D30: a definition that lives as a database BLOB rather than a document row
+ * — the shape a `.tool.json` takes when it arrives through any of the four
+ * file-storage bridges, all of which pass `treatNativeTextAsDocument: false`.
+ * The old hand-rolled `readDatabaseDocument` dispatch could not see it.
+ */
+const BEACON = {
+  name: 'beacon',
+  description: 'Light the beacon.',
+  roll: { min: 0.9, max: 0.9 },
+  outcomes: [{ when: true, message: 'The beacon catches.', state: 'success' }],
+};
+
+/**
+ * The same, but its bytes carry one invalid UTF-8 byte where `<BAD>` sits (see
+ * `mangledBytes`). Node's `Buffer.toString('utf-8')` substitutes U+FFFD instead
+ * of throwing, so the file still parses — which is exactly the decode contract
+ * the Rust side has to match (`from_utf8_lossy`, not `read_to_string`).
+ */
+const MANGLED = {
+  name: 'mangled',
+  description: 'A message with a <BAD> byte in it.',
+  roll: { min: 0.4, max: 0.4 },
+  outcomes: [{ when: true, message: 'Read anyway.', state: 'info' }],
+};
+
+/** `MANGLED` serialized, with the `<BAD>` marker replaced by a raw 0xFF byte. */
+function mangledBytes(): Buffer {
+  const text = JSON.stringify(MANGLED, null, 2);
+  const at = text.indexOf('<BAD>');
+  return Buffer.concat([
+    Buffer.from(text.slice(0, at), 'utf8'),
+    Buffer.from([0xff]),
+    Buffer.from(text.slice(at + '<BAD>'.length), 'utf8'),
+  ]);
+}
+
 const STATEFUL = {
   name: 'stateful',
   description: 'Roll against the table stakes.',
@@ -342,6 +384,38 @@ async function main(): Promise<void> {
     } as never);
   };
 
+  /**
+   * P4.D30: the BLOB branch of the same real writer. `treatNativeTextAsDocument:
+   * false` is what every file-storage bridge passes, so a native-text file goes
+   * to `doc_mount_blobs` with a `fileType: 'blob'` link instead of a document
+   * row — no hand-inserted rows anywhere.
+   */
+  const writeVaultBlobBytes = async (
+    mountPointId: string,
+    relativePath: string,
+    data: Buffer,
+  ): Promise<void> => {
+    await storeMountFile({
+      mountPointId,
+      relativePath,
+      data,
+      originalMimeType: 'application/json',
+      treatNativeTextAsDocument: false,
+      assetStorage: 'database',
+      transcodeImages: false,
+      extractText: false,
+      enqueueEmbedding: false,
+      force: true,
+    } as never);
+  };
+
+  const writeVaultBlobFile = async (
+    mountPointId: string,
+    relativePath: string,
+    body: unknown,
+  ): Promise<void> =>
+    writeVaultBlobBytes(mountPointId, relativePath, Buffer.from(JSON.stringify(body, null, 2), 'utf8'));
+
   await writeVaultFile(vaultA, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultA, 'Tools/coin.tool.json', COIN);
   await writeVaultFile(vaultA, 'Tools/whispered.tool.json', WHISPERED);
@@ -355,6 +429,20 @@ async function main(): Promise<void> {
 
   await writeVaultFile(vaultC, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultC, 'metadata.json', {});
+
+  // P4.D30 (v4 `83118077`): two BLOB-stored definitions, written the way the
+  // file-storage bridges write (`treatNativeTextAsDocument: false`), which is
+  // how a `.tool.json` uploaded through the vault/upload surface actually lands
+  // — as a `doc_mount_blobs` row with a `fileType: 'blob'` link, not a document.
+  // Before the canonical-reader drift, both sides' `readDatabaseDocument` found
+  // no document row and skipped them SILENTLY, so an uploaded definition was
+  // invisible with no error to explain it. They must now load.
+  await writeVaultBlobFile(vaultC, 'Tools/beacon.tool.json', BEACON);
+  // The same blob path with one invalid UTF-8 byte (0xFF) inside the
+  // description: v4 does `bytes.toString('utf-8')`, whose decoder never throws
+  // — it substitutes U+FFFD — so the definition still parses and still loads,
+  // carrying the replacement character into the text the model reads.
+  await writeVaultBlobBytes(vaultC, 'Tools/mangled.tool.json', mangledBytes());
 
   // P4.d19: break CHAR_D's vault by removing the `properties.json` keystone the
   // overlay demands, so `findById` raises the vault-unavailable error. A

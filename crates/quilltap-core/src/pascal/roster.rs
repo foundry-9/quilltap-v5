@@ -29,13 +29,14 @@ use std::collections::HashSet;
 use rusqlite::Connection;
 use serde_json::{Map, Value};
 
-use crate::db::database_store::{
-    list_database_files, read_database_document, DbStoreErrorCode, StoreError,
-};
-use crate::db::doc_mount_points::DocMountPointsRepository;
+use crate::db::database_store::{list_database_files, DbStoreErrorCode};
+use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::tiered_mount_pool::{
     resolve_tiered_mount_pool, MountTier, TierContext, TierResolveOptions, TieredMountPool,
 };
+use crate::services::mount_index::file_op_error::FileOpErrorCode;
+use crate::services::mount_index::path_utils::normalise_relative_path;
+use crate::services::mount_index::read_file::{read_mount_file_bytes_conn, MountFileError};
 
 use super::custom_tool_types::{
     collect_unknown_keys, format_definition_issues, safe_parse, QtapCustomTool, MAX_ROSTER_SIZE,
@@ -121,6 +122,7 @@ pub struct RosterContext {
 }
 
 /// The content of one candidate tool file, whichever kind of store held it.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolFileContent {
     /// The file's bytes, read successfully.
     Content(String),
@@ -378,13 +380,21 @@ pub fn load_tools_from_mount(
 ) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>) {
     let empty = (Vec::new(), Vec::new());
 
-    let row = match DocMountPointsRepository::new(mount).find_by_id_for_docedit(mount_point_id) {
+    // The service-info row is the one the canonical reader wants, and it carries
+    // everything the listing needs too (`name`/`enabled`/`mountType`/`basePath`),
+    // so one fetch serves both halves. v4 reads the row twice — once here, once
+    // inside `readMountFileBytes` — which is the same row either way.
+    let row = match DocMountPointsRepository::new(mount).find_service_info_by_id(mount_point_id) {
         Ok(Some(r)) if r.enabled => r,
         _ => return empty,
     };
 
     // List the candidate root tool files. A listing failure yields an empty
     // mount, matching v4's warn-and-continue.
+    //
+    // The listing side is deliberately NOT routed through the mount index for
+    // on-disk stores: `Tools/` is enumerated live off the disk, because edits
+    // inside a mount don't reliably touch the index.
     let paths: Vec<String> = if row.mount_type == "database" {
         match list_database_files(mount, mount_point_id, Some(TOOLS_FOLDER)) {
             Ok(entries) => entries
@@ -395,37 +405,75 @@ pub fn load_tools_from_mount(
             Err(_) => return empty,
         }
     } else {
-        match list_tool_files_from_disk(&row.base_path) {
-            Ok(p) => p,
-            Err(_) => return empty,
+        // v4 calls `listToolFilesFromDisk(mount.basePath)`; a null basePath makes
+        // its `path.join` throw, which the same try/catch turns into an empty
+        // mount. Model that directly rather than joining onto "".
+        match row.base_path.as_deref() {
+            Some(base) => match list_tool_files_from_disk(base) {
+                Ok(p) => p,
+                Err(_) => return empty,
+            },
+            None => return empty,
         }
     };
 
-    let is_database = row.mount_type == "database";
     let files: Vec<(String, ToolFileContent)> = paths
         .into_iter()
         .map(|rel| {
-            let content = if is_database {
-                match read_database_document(mount, mount_point_id, &rel) {
-                    Ok(doc) => ToolFileContent::Content(doc.content),
-                    Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => {
-                        ToolFileContent::Skip
-                    }
-                    Err(e) => ToolFileContent::ReadError(e.to_string()),
-                }
-            } else {
-                let abs = std::path::Path::new(&row.base_path).join(&rel);
-                match std::fs::read_to_string(&abs) {
-                    Ok(s) => ToolFileContent::Content(s),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => ToolFileContent::Skip,
-                    Err(e) => ToolFileContent::ReadError(e.to_string()),
-                }
-            };
+            let content = read_tool_file(mount, &row, &rel);
             (rel, content)
         })
         .collect();
 
     load_definitions(&files, mount_point_id, &row.name, tier)
+}
+
+/// Read one definition's bytes, whichever kind of store holds it (v4
+/// `readToolFile`).
+///
+/// Delegates to the canonical mount reader rather than reaching for the disk or
+/// the documents table itself: that one helper already knows every storage shape
+/// (filesystem, Obsidian, database documents, database blobs) and enforces the
+/// mount-boundary check, so a definition path can never wander outside its own
+/// store — and a definition stored as a database BLOB, which the old direct
+/// `read_database_document` call missed entirely, is found.
+///
+/// v4's catch chain has three skip arms: `FileOpError SOURCE_NOT_FOUND` (added
+/// by this drift), `DatabaseStoreError NOT_FOUND`, and a raw `ENOENT`. Only the
+/// first is reachable now — the canonical reader converts every missing source,
+/// on disk or in the tables, into `SOURCE_NOT_FOUND`. The typed
+/// `DatabaseStoreError` arm is carried anyway, exactly as v4 carries it; v4's
+/// raw-`ENOENT` arm has no faithful analog here (v5's reader erases the io error
+/// kind into a message, and matching on message text would be a different rule
+/// from v4's `.code === 'ENOENT'`, not a port of it), and it is dead on both
+/// sides for the same reason the second arm is.
+fn read_tool_file(
+    mount: &Connection,
+    row: &MountServiceInfo,
+    relative_path: &str,
+) -> ToolFileContent {
+    // v4's `readMountFileBytes` normalises internally; v5's takes an
+    // already-normalised path, so the normalisation (and its traversal refusal)
+    // happens here.
+    let rel = match normalise_relative_path(relative_path) {
+        Ok(r) => r,
+        Err(e) => return ToolFileContent::ReadError(e.to_string()),
+    };
+
+    match read_mount_file_bytes_conn(mount, row, &rel) {
+        // v4 does `bytes.toString('utf-8')` — Node's decoder never throws, it
+        // substitutes U+FFFD. `from_utf8_lossy` is the byte-faithful analog;
+        // `read_to_string` (what this path used to do) would have failed instead.
+        Ok(file) => ToolFileContent::Content(String::from_utf8_lossy(&file.bytes).into_owned()),
+        // Deleted between list and read — a race, not a defect. Skip quietly.
+        Err(MountFileError::FileOp(e)) if e.code == FileOpErrorCode::SourceNotFound => {
+            ToolFileContent::Skip
+        }
+        Err(MountFileError::Store(e)) if e.code == DbStoreErrorCode::NotFound => {
+            ToolFileContent::Skip
+        }
+        Err(e) => ToolFileContent::ReadError(e.to_string()),
+    }
 }
 
 /// List `Tools/*.tool.json` in an on-disk store (filesystem or obsidian).
@@ -520,4 +568,77 @@ pub fn resolve_custom_tool_roster(
         |mount_point_id, tier| load_tools_from_mount(mount, mount_point_id, tier),
         || load_invoker_metadata(ctx, main, mount),
     )
+}
+
+#[cfg(test)]
+mod read_tool_file_tests {
+    //! The two `read_tool_file` arms the fixture differential cannot stage.
+    //!
+    //! v4 pins the same two with jest stubs, for the same reason: the race skip
+    //! needs a file to vanish BETWEEN the listing and the read, and the traversal
+    //! refusal needs a definition path neither listing can produce (`readdir`
+    //! names carry no `/`, and `isRootToolFile` rejects any database link path
+    //! with a segment after `Tools/`). Everything reachable through a real store
+    //! is proven by `pascal_definition_reader_equivalence` against v4's real code.
+
+    use super::*;
+
+    fn database_mount() -> MountServiceInfo {
+        MountServiceInfo {
+            id: "mp-1".into(),
+            mount_type: "database".into(),
+            base_path: None,
+            exclude_patterns: Vec::new(),
+            include_patterns: Vec::new(),
+            name: "store".into(),
+            enabled: true,
+            conversion_status: "idle".into(),
+        }
+    }
+
+    /// A mount-index connection carrying only the tables the reader's database
+    /// branch touches before it gives up.
+    fn empty_links_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (
+               id TEXT PRIMARY KEY, sha256 TEXT, fileSizeBytes INTEGER,
+               fileType TEXT, source TEXT, createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_file_links (
+               id TEXT PRIMARY KEY, fileId TEXT, mountPointId TEXT, relativePath TEXT,
+               fileName TEXT, folderId TEXT, lastModified TEXT, createdAt TEXT,
+               allowCharacterRead INTEGER, allowCharacterWrite INTEGER,
+               extractedText TEXT, originalMimeType TEXT, conversionStatus TEXT,
+               chunkCount INTEGER, description TEXT, extractionStatus TEXT,
+               allowEmbed INTEGER);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// v4: `if (error instanceof FileOpError && error.code === 'SOURCE_NOT_FOUND')
+    /// continue;` — the definition listed a moment ago is gone. A race, not a
+    /// defect: skipped quietly, never an error entry.
+    #[test]
+    fn vanished_definition_is_skipped_not_reported() {
+        let conn = empty_links_db();
+        let got = read_tool_file(&conn, &database_mount(), "Tools/gone.tool.json");
+        assert_eq!(got, ToolFileContent::Skip);
+    }
+
+    /// The boundary check the canonical reader brought with it: a definition path
+    /// can no longer resolve outside its own store. Unreachable from either
+    /// listing today — this pins it so a future listing change cannot quietly
+    /// reopen the door.
+    #[test]
+    fn escaping_definition_path_refuses() {
+        let conn = empty_links_db();
+        let got = read_tool_file(&conn, &database_mount(), "Tools/../../etc/passwd.tool.json");
+        assert_eq!(
+            got,
+            ToolFileContent::ReadError(
+                "Path traversal not allowed: Tools/../../etc/passwd.tool.json".into()
+            )
+        );
+    }
 }

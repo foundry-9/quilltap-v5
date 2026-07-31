@@ -44639,3 +44639,175 @@ proof and a toolbar/search walk); the `83118077` Pascal drift catch-up; the
 store-unavailable 503 envelope (the ordered D29 escalation); then p4.9h /
 the toolbar bridge / the Zod format-validator gap — phase-4.md's
 next-candidates list is current.
+
+---
+
+## Lane record — P4.D30 (the `83118077` Pascal canonical-reader drift re-port)
+
+**Branch:** `claude/pascal-canonical-reader-port-f2b249`. **Baseline:**
+`ff12f491`, oracles regenerated from the LANE-UNIQUE pin
+`/private/tmp/qt-v4-pin-p4d30-ff12f491`.
+
+### ⚠ Drift-check: v4 moved one commit past the baseline during the lane
+
+`e1be028b` ("unbreak the standalone tarball and the Docker dependency stages")
+landed on v4's `main` while this lane ran. It touches **zero** `lib/`, `app/`,
+`plugins/`, or `packages/quilltap/src` code — Dockerfile ×2, README, CHANGELOG,
+`package.json` versions, and one duplicated `const` in
+`scripts/build-standalone-tarball.ts`. No oracle case can import any of it, and
+every oracle here was regenerated from a worktree pinned at `ff12f491`
+regardless, so the lane did not port against a moved oracle. **The unifier
+should disposition it NO-PORT** when it moves the round baseline; the pin
+remains correct.
+
+### Unit 1 — the read path (tier 1, items 1 + 4)
+
+`pascal::roster`'s hand-rolled storage dispatch is gone. A new `read_tool_file`
+(mirroring v4's function of the same name) normalises the path and calls the
+canonical reader, so every storage shape is handled by the one helper that knows
+them all. Three v4 effects follow, and a fourth that was a pre-existing v5
+divergence:
+
+1. **Blob-stored definitions load.** All four v4 file-storage bridges pass
+   `treatNativeTextAsDocument: false`, so a `.tool.json` arriving through the
+   vault/upload surface lands as a `doc_mount_blobs` row with a
+   `fileType: 'blob'` link. The old `read_database_document` call found no
+   document row and skipped it **silently** — an uploaded definition was
+   invisible with no error to explain it.
+2. **Boundary enforcement** — `normalise_relative_path` + `resolve_fs_absolute`
+   now stand between a definition path and the disk.
+3. **The race skip widened** — `FileOpError SOURCE_NOT_FOUND` heads the skip
+   chain, ahead of the `DatabaseStoreError NOT_FOUND` arm v4 still carries.
+4. **A pre-existing v5 bug, fixed on the way past:** the old filesystem arm used
+   `std::fs::read_to_string`, which **fails** on invalid UTF-8, where v4's
+   `bytes.toString('utf-8')` substitutes U+FFFD and carries on. v5 turned a
+   definition v4 loads into a `could not be read` entry v4 never produces. The
+   port uses `String::from_utf8_lossy`, and the corpus pins it.
+
+v4's third skip arm (raw `ENOENT`) has **no faithful analog** and was
+deliberately not written: v5's `MountFileError` erases the io error kind into a
+message, and matching on message text would be a different rule from v4's
+`.code === 'ENOENT'`, not a port of it. It is dead on both sides anyway — the
+reader converts every missing source into `SOURCE_NOT_FOUND`.
+
+The reader gained a `_conn` twin (`read_mount_file_bytes_conn`, the P4.D25
+precedent) because the roster runs inside a held mount-index connection and
+cannot re-enter the pool. The `db` entry point now delegates to it, taking the
+connection **once** for the whole read instead of per query. Also fixed the
+stale `custom_tool_types.rs:46` doc link to a `read_tool_file` that never
+existed at that path.
+
+### Unit 2 — the differential (tier 1, items 2 + 3)
+
+New family `pascal_definition_reader_equivalence` (6 cases) over the extended
+`pascal-run-custom-{main,mount}.db`, driving v4's REAL `loadToolsFromMount` with
+**nothing mocked below the roster** — the whole point being that
+`pascal_roster_equivalence` mocks the store reads on purpose and therefore cannot
+see this drift at all.
+
+**⚠ An order premise disproved: boundary escapes are UNREACHABLE here.** The
+order asked for a differential arm where "a definition path that escapes its
+store refuses identically both sides." **Neither listing can produce one.**
+`readdir` names carry no `/`, and `isRootToolFile` rejects any database link path
+with a segment after `Tools/`. Two further candidate arms were chased and also
+proved unreachable: a filesystem mount with a null/empty `basePath` never reaches
+the read at all (v4's `path.join(null, …)` throws inside the LISTING's own
+try/catch, yielding an empty mount). So the boundary check is defence-in-depth,
+not observable behavior, and is pinned by a unit test
+(`pascal::roster::read_tool_file_tests::escaping_definition_path_refuses`)
+alongside the race skip — which v4 pins the same way, with a jest stub. The
+**reachable** new behaviors the corpus does prove are the blob arm and the
+lenient-decode arm.
+
+**Mutation proofs** (every new arm was first-run green — the P4.D24 rule):
+
+| mutation | expected red | result |
+|---|---|---|
+| `from_utf8_lossy` → strict `String::from_utf8` | reader family, `vault-c-blobs` | RED |
+| blob links routed down the document branch (the OLD dispatch) | reader family | RED |
+| same mutation, end-to-end | `pascal_custom_tools_route` **and** `pascal_run_custom_handler` | BOTH RED |
+| skip arm `SourceNotFound` → `MountNotFound` | the race-skip unit test | RED |
+
+The third row matters: the blob arm is live in **three independent
+differentials**, two of them through v4's real route handlers.
+
+### Fixtures changed, and what that invalidates
+
+`pascal-run-custom-{main,mount}.db` + its `.meta.json` sidecar were **rebuilt**
+(the builder is from-scratch, so all four vault ids are freshly minted). The
+builder gained `writeVaultBlobBytes`/`writeVaultBlobFile`, which call the same
+real `storeMountFile` with `treatNativeTextAsDocument: false, assetStorage:
+'database'` — the character-vault bridge's own options. **No row is
+hand-inserted.** CHAR_C's vault gained `Tools/beacon.tool.json` (blob) and
+`Tools/mangled.tool.json` (blob, one raw `0xFF` spliced into the description).
+CHAR_C is deliberately NOT in `pascal_build_tools_roster`'s CHAR_A/CHAR_B
+contexts, so that family's asserted roster order is unmoved.
+
+Invalidated and regenerated: `pascal_custom_tools_route_equivalence` (20),
+`pascal_run_custom_handler_equivalence` (24),
+`pascal_definition_reader_equivalence` (6, new), and `pascal_build_tools_roster`
+(fixture-direct). The e2e seed reads `vaultA` from the sidecar and follows on its
+own.
+
+**The §C corpus regenerated BYTE-IDENTICAL at `ff12f491`** (236 rows), so the
+harness case file and the SPA's committed copy
+(`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`,
+`diff -q` clean) stay in step and **no `apps/web` edit was needed** — that tree
+is P4.D34's exclusively.
+
+### The discovery oracle case had to move with v4
+
+`harness/oracle/cases/pascal-custom-tools-discovery.test.ts` stubbed
+`readDatabaseDocument`, which the drifted v4 **no longer calls** — regenerating
+it unchanged would have let the real reader run against a mocked
+`getRepositories`. It now stubs `readMountFileBytes` and returns
+`{bytes, mimeType, fileType}`, mirroring what v4 did to its own three Pascal
+suites. (v4's booby-trapped `fs.readFile` was not mirrored: this corpus is
+database-mounts-only, and the equivalent guarantee is what the new reader family
+measures against a real store.)
+
+### Regen recipes
+
+Every oracle below ran from `/private/tmp/qt-v4-pin-p4d30-ff12f491` (Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`), each in its own invocation. Full per-family
+recipes live in the case-file and test-file headers; the fixture rebuild is:
+
+```
+cd /private/tmp/qt-v4-pin-p4d30-ff12f491
+QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
+QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+  npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
+```
+
+The new family:
+
+```
+M=/tmp/qt-pascal-reader-mirror; mkdir -p $M/cases $M/fixtures
+cp <V5W>/harness/oracle/cases/pascal-definition-reader.test.ts $M/cases/
+cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
+cd /private/tmp/qt-v4-pin-p4d30-ff12f491
+QT_FIXTURE_PASCAL_MAIN=…/pascal-run-custom-main.db \
+QT_FIXTURE_PASCAL_MOUNT=…/pascal-run-custom-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-pascal-definition-reader.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$M/cases" -- pascal-definition-reader
+```
+
+Pin verified two ways: `lib/pascal/custom-tools.ts` in the pinned tree carries
+`readMountFileBytes` (the drift), and the route/handler NDJSONs carry `beacon`
+(the new fixture).
+
+### Baseline wording for the unifier (this lane's slice)
+
+> The `83118077` Pascal canonical-reader drift is ABSORBED (P4.D30). Fifteen
+> pascal/tool/workbench families regenerated at `ff12f491`; the
+> `pascal-run-custom-*` fixture family was rebuilt (fresh vault ids) and now
+> carries two blob-stored definitions. The §C corpus regenerated byte-identical,
+> so the SPA's committed copy is unmoved. ⚠ v4 has since moved to `e1be028b`
+> (release packaging only — Dockerfile/README/versions/one build script; zero
+> `lib` or `app` code): NO-PORT.
+
+### Nothing deferred
+
+Tier 3 was "none expected" and none arose. The blob fixture built cleanly through
+v4's real writer, so no loud refusal was needed.

@@ -169,8 +169,28 @@ fn load_mount(db: &Db, mount_point_id: &str) -> Result<MountServiceInfo, MountFi
 
 /// v4 `readMountFileBytes`: raw bytes + metadata for a mount file, regardless of
 /// storage shape. `rel` must already be normalised (the callers normalise).
+///
+/// Thin wrapper over [`read_mount_file_bytes_conn`]: it takes the mount-index
+/// connection ONCE for the whole read rather than per query, so the link row and
+/// the content it points at are read against the same connection.
 pub fn read_mount_file_bytes(
     db: &Db,
+    mp: &MountServiceInfo,
+    rel: &str,
+) -> Result<MountFileBytes, MountFileError> {
+    match db.read_mount_index(|conn| Ok(read_mount_file_bytes_conn(conn, mp, rel))) {
+        Ok(inner) => inner,
+        Err(e) => Err(MountFileError::Db(e)),
+    }
+}
+
+/// [`read_mount_file_bytes`] against an already-held mount-index connection.
+///
+/// The `_conn` twin exists because callers that already own a `&Connection` —
+/// Pascal's definition loader runs inside one read (P4.D30) — cannot re-enter
+/// the pool. Same dispatch, same errors; only the plumbing differs.
+pub fn read_mount_file_bytes_conn(
+    conn: &rusqlite::Connection,
     mp: &MountServiceInfo,
     rel: &str,
 ) -> Result<MountFileBytes, MountFileError> {
@@ -198,11 +218,8 @@ pub fn read_mount_file_bytes(
         }
     } else {
         // Database mount: the link row tells us documents (text) vs blobs.
-        let id = mp.id.clone();
-        let relc = rel.to_string();
-        let link = db.read_mount_index(move |conn| {
-            DocMountFileLinksRepository::new(conn).find_by_mount_point_and_path(&id, &relc)
-        })?;
+        let link =
+            DocMountFileLinksRepository::new(conn).find_by_mount_point_and_path(&mp.id, rel)?;
         let link = link.ok_or_else(|| {
             MountFileError::FileOp(FileOpError::new(
                 format!("File not found: {rel}"),
@@ -214,11 +231,8 @@ pub fn read_mount_file_bytes(
             link.file_type.as_str(),
             "markdown" | "txt" | "json" | "jsonl"
         ) {
-            let id = mp.id.clone();
-            let relc = rel.to_string();
-            let content = db.read_mount_index(move |conn| {
-                DocMountDocumentsRepository::new(conn).find_by_mount_point_and_path(&id, &relc)
-            })?;
+            let content =
+                DocMountDocumentsRepository::new(conn).find_by_mount_point_and_path(&mp.id, rel)?;
             let content = content.ok_or_else(|| {
                 MountFileError::FileOp(FileOpError::new(
                     format!("Document content missing: {rel}"),
@@ -235,21 +249,15 @@ pub fn read_mount_file_bytes(
                 file_type: link.file_type,
             })
         } else {
-            let file_id = link.file_id.clone();
-            let bytes = db.read_mount_index(move |conn| {
-                DocMountBlobsRepository::new(conn).read_data_by_file_id(&file_id)
-            })?;
+            let bytes = DocMountBlobsRepository::new(conn).read_data_by_file_id(&link.file_id)?;
             let bytes = bytes.ok_or_else(|| {
                 MountFileError::FileOp(FileOpError::new(
                     format!("Blob content missing: {rel}"),
                     FileOpErrorCode::SourceNotFound,
                 ))
             })?;
-            let id = mp.id.clone();
-            let relc = rel.to_string();
-            let meta = db.read_mount_index(move |conn| {
-                DocMountBlobsRepository::new(conn).find_by_mount_point_and_path(&id, &relc)
-            })?;
+            let meta =
+                DocMountBlobsRepository::new(conn).find_by_mount_point_and_path(&mp.id, rel)?;
             let (mime, sha, size) = match meta {
                 Some(m) => (m.stored_mime_type, m.sha256, m.size_bytes),
                 None => (

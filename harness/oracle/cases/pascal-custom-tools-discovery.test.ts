@@ -18,16 +18,17 @@
  * the same `safe_parse`). The DB/disk IO wrappers (`load_tools_from_mount`,
  * `list_tool_files_from_disk`) are thin and are what v4 mocks here too.
  *
- * `content` in a mount's file list is EXACTLY what `readDatabaseDocument` returns
- * (a string), so both sides parse the same bytes — a malformed-JSON case ships
- * the broken text verbatim.
+ * `content` in a mount's file list is the file's TEXT; the stub hands it back as
+ * the reader's `bytes`, so both sides parse the same bytes — a malformed-JSON
+ * case ships the broken text verbatim. (The real storage dispatch below this
+ * stub is the subject of `pascal-definition-reader`, over a real store.)
  *
- * Run (v4 @ d68638b4, Node 24; cp to a /tmp mirror, jest ignores .claude/):
+ * Run (v4 @ ff12f491, Node 24; cp to a /tmp mirror, jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-pascal-discovery-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
  *   cp "$V5W/harness/oracle/cases/pascal-custom-tools-discovery.test.ts" "$TMPO/cases/"
- *   cd ~/source/quilltap-server
+ *   cd /private/tmp/qt-v4-pin-p4d30-ff12f491
  *   QT_ORACLE_OUT=/tmp/oracle-pascal-discovery.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-discovery
@@ -39,7 +40,6 @@ jest.mock('@/lib/repositories/factory', () => ({ getRepositories: jest.fn() }));
 jest.mock('@/lib/mount-index/tiered-mount-pool', () => ({ resolveTieredMountPool: jest.fn() }));
 jest.mock('@/lib/mount-index/database-store', () => ({
   listDatabaseFiles: jest.fn(),
-  readDatabaseDocument: jest.fn(),
   DatabaseStoreError: class DatabaseStoreError extends Error {
     code: string;
     constructor(message: string, code: string) {
@@ -49,16 +49,24 @@ jest.mock('@/lib/mount-index/database-store', () => ({
   },
 }));
 
+// P4.D30 (v4 `83118077`): definition bytes now arrive through the canonical
+// mount reader, whatever kind of store holds them, so THAT is what this corpus
+// stubs — mirroring v4's own suite, which moved its stub the same way.
+jest.mock('@/lib/mount-index/read-file', () => ({
+  readMountFileBytes: jest.fn(),
+}));
+
 import { resolveCustomToolRoster } from '@/lib/pascal/custom-tools';
 import { MAX_ROSTER_SIZE } from '@/lib/pascal/custom-tool.types';
 import { getRepositories } from '@/lib/repositories/factory';
 import { resolveTieredMountPool } from '@/lib/mount-index/tiered-mount-pool';
-import { listDatabaseFiles, readDatabaseDocument } from '@/lib/mount-index/database-store';
+import { listDatabaseFiles } from '@/lib/mount-index/database-store';
+import { readMountFileBytes } from '@/lib/mount-index/read-file';
 
 const mockGetRepositories = getRepositories as jest.Mock;
 const mockResolvePool = resolveTieredMountPool as jest.Mock;
 const mockListDatabaseFiles = listDatabaseFiles as jest.Mock;
-const mockReadDatabaseDocument = readDatabaseDocument as jest.Mock;
+const mockReadMountFileBytes = readMountFileBytes as jest.Mock;
 
 const OUT = process.env.QT_ORACLE_OUT;
 const rows: unknown[] = [];
@@ -133,10 +141,10 @@ function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
       fileName: f.relativePath.split('/').pop(),
     }))
   );
-  mockReadDatabaseDocument.mockImplementation(async (mountId: string, relativePath: string) => {
+  mockReadMountFileBytes.mockImplementation(async (mountId: string, relativePath: string) => {
     const f = (mounts[mountId]?.files ?? []).find((x) => x.relativePath === relativePath);
     if (!f) throw new Error(`no such file: ${mountId}/${relativePath}`);
-    return { content: f.content };
+    return { bytes: Buffer.from(f.content, 'utf-8'), mimeType: 'application/json', fileType: 'json' };
   });
 }
 
