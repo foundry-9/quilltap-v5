@@ -36,7 +36,11 @@ import { ToolMessage } from './tool-message';
           type="button"
           class="qt-chat-announcement-chip"
           [class]="accentClasses(chip)"
+          [id]="'message-' + chip.id"
+          [attr.data-message-id]="chip.id"
           [title]="chip.sender + ' · ' + chip.kind"
+          [attr.aria-expanded]="isExpanded(chip.id)"
+          [attr.aria-label]="chipLabel(chip)"
           (click)="toggle(chip.id)"
         >
           <span class="qt-chat-announcement-dot" [class]="dotClass(chip)"></span>
@@ -49,7 +53,13 @@ import { ToolMessage } from './tool-message';
           }
           <span class="qt-chat-system-bar-kind">{{ chip.kind }}</span>
           <span class="qt-chat-system-bar-time">{{ time(chip.createdAt) }}</span>
-          <qt-icon name="chevron-down" class="qt-chat-system-bar-chevron" />
+          <!-- class on qt-icon is an INPUT applied to the inner span, so the
+               modifier has to be composed into that string; a per-class host
+               binding would land on the wrong element. -->
+          <qt-icon
+            [name]="isExpanded(chip.id) ? 'chevron-down' : 'chevron-right'"
+            [class]="chevronClasses(chip.id)"
+          />
         </button>
       }
     </div>
@@ -100,6 +110,28 @@ export class AnnouncementGroup {
   protected readonly expandedChips = computed(() =>
     this.chips().filter((c) => this.expanded().has(c.id)),
   );
+
+  protected isExpanded(id: string): boolean {
+    return this.expanded().has(id);
+  }
+
+  /** v4 appends its `-down` modifier only while the bar is open. */
+  protected chevronClasses(id: string): string {
+    return this.isExpanded(id)
+      ? 'qt-chat-system-bar-chevron qt-chat-system-bar-chevron-down'
+      : 'qt-chat-system-bar-chevron';
+  }
+
+  /**
+   * v4 `AnnouncementChip`'s `aria-label` — "Expand <sender> <kind> message".
+   * v4 hard-codes the "Expand" verb because its chip is only ever the collapsed
+   * affordance; v5 keeps the same chip mounted while the body renders below it,
+   * so the verb follows the state.
+   */
+  protected chipLabel(chip: AnnouncementChip): string {
+    const verb = this.isExpanded(chip.id) ? 'Collapse' : 'Expand';
+    return `${verb} ${chip.sender}${chip.kind ? ` ${chip.kind}` : ''} message`;
+  }
 
   protected toggle(id: string): void {
     const next = new Set(this.expanded());

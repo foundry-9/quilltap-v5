@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Error messages inside dialogs are now actually coloured as errors. They had
+been asking for a "danger" text colour that no stylesheet anywhere defined, so
+they came out looking like ordinary informational text.
+
+Announcement chips point their chevron the right way — to the right while
+closed, down once opened — and again carry the message identity that lets a
+link to a specific announcement find it.
+
 The scheduled log-cleanup job now records its retention setting the same way
 the reference app does — a plain `7` rather than `7.0`. Both apps read this
 value and both accepted either form, so nothing was broken; it is written the

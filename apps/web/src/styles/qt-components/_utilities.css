@@ -372,6 +372,30 @@
   }
 
   /**
+   * The `danger` spelling of the same colour.
+   *
+   * ⚠ **A deliberate v5 divergence, and the fix for a v4 bug v5 inherited.**
+   * Both apps' markup reaches for `qt-text-danger` and NEITHER defines it, so
+   * every site wearing it renders in the inherited body colour and an error
+   * reads as ordinary informational text. v4 has 5 such sites
+   * (`StartupProgress.tsx`, `ChatCreationProgressModal.tsx`); v5 has 14,
+   * because v4 signals most dialog failures with a toast (`lib/toast.tsx`,
+   * 103 files) and v5 has no toast system yet, so each ported dialog grew an
+   * inline error paragraph and reached for this name.
+   *
+   * Defining it — rather than rewriting 14 markup sites to
+   * `qt-text-destructive` — is the P4.D34 unit-3 remedy shape, and it keeps
+   * the two genuinely-ported sites byte-identical to v4's markup. The v4-side
+   * one-liner is queued post-5.0; when v4 defines it, this comment can go and
+   * the rule stays.
+   *
+   * Found dogfooding the `ff12f491` round (finding #42).
+   */
+  .qt-text-danger {
+    color: var(--color-destructive);
+  }
+
+  /**
    * Foreground intended for use on an accent-coloured surface
    * (e.g. text inside a qt-bg-accent pill).
    */

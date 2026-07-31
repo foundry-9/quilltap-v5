@@ -132,4 +132,37 @@ describe('AnnouncementGroup — Pascal outcome accent (P4.d21)', () => {
         .classList.contains('qt-chat-announcement-dot-low'),
     ).toBe(true);
   });
+
+  it('shows a collapsed chip a right-chevron, and swaps it on expand (v4 AnnouncementChip)', () => {
+    const fixture = render([chip()]);
+    const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
+
+    // v4 renders AnnouncementChip with no `expanded` prop, so a chip in a group
+    // always points right until the reader opens it.
+    expect(button.querySelector('qt-icon [data-icon]').getAttribute('data-icon')).toBe(
+      'chevron-right',
+    );
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('Expand The Host add message');
+
+    button.click();
+    fixture.detectChanges();
+
+    const chevron = button.querySelector('qt-icon [data-icon]');
+    expect(chevron.getAttribute('data-icon')).toBe('chevron-down');
+    expect(chevron.classList.contains('qt-chat-system-bar-chevron-down')).toBe(true);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-label')).toBe('Collapse The Host add message');
+  });
+
+  it('carries the message identity v4 keeps for deep-link scroll-to-message', () => {
+    const button = render([chip({ id: 'abc123' })]).nativeElement.querySelector(
+      '.qt-chat-announcement-chip',
+    );
+
+    // v4's comment on AnnouncementChip: the id/data-message-id are kept "so
+    // deep-link and delete-next-focus scroll-to-message still resolve".
+    expect(button.getAttribute('id')).toBe('message-abc123');
+    expect(button.getAttribute('data-message-id')).toBe('abc123');
+  });
 });
