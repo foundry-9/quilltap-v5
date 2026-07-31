@@ -73,6 +73,50 @@ catch, since every fixture is built fresh.
 | 43 | Announcement chips show a **down**-chevron while collapsed, and carry no message identity | **Port divergence — three attributes dropped from v4's `AnnouncementChip`.** v4 (`app/salon/[id]/components/AnnouncementChip.tsx`) renders `AnnouncementBarContents` with no `expanded` prop, so a chip in a group always draws `chevron-right`; v5 hard-coded `chevron-down`, which reads as an open affordance on a closed chip. v4 also sets `aria-expanded`, an `aria-label` ("Expand \<sender\> \<kind\> message"), and — with an explicit comment saying why — `id="message-<id>"` + `data-message-id` "so deep-link and delete-next-focus scroll-to-message still resolve"; v5 set none of them (`message-row.ts:54` was the only site in the SPA minting `message-` ids). **Everything else checked in this area is byte-identical to v4** and is NOT the cause of the broader complaint: the whole `.qt-chat-announcement-*` / `.qt-chat-system-bar-*` CSS block diffs clean, and `.qt-chat-message-system`'s centered-italic rule (`_chat.css:230`) is v4's own | **FIXED** — chevron follows state, the `-down` modifier composed into the icon's `class` **input** (a per-class host binding would land on the wrong element — `qt-icon` applies `class` to an inner span), plus `aria-expanded`, the state-aware label, and the identity attributes. Two specs, both **mutation-proven**. ⚠ **This does not close the human's broader report** — a systematic announcement-rendering audit is a standing note below |
 | 41 | v5 writes `{"userId":…,"retentionDays":7.0}` into `background_jobs.payload` where v4 writes `…"retentionDays":7` | **Port divergence — a persisted JS number serialized as an `f64`.** `run_scheduled_cleanup` read `retentionDays` out of the untyped settings bag with `Value::as_f64` and dropped it straight into `serde_json::json!`, so a whole number rendered `7.0`; v4 carries a JS number to `JSON.stringify`, which renders `7`. Both apps read this column, and both parse either form, so nothing breaks today — but it is a byte divergence in shared persisted JSON, the exact class the `js_number_to_json` helper (`db/mod.rs:563`) exists for and that P4.6an already fixed once for `dangerousContentSettings` ("`1` not `1.0`"). **Invisible to the suite: `run_scheduled_cleanup` has no differential coverage at all** — its only caller is the host cadence, so no harness family ever built this payload. Found only because finding #40's failure row printed the payload | **FIXED** — the payload moves through `cleanup_payload()` + `js_number_to_json`; two unit tests pin the bytes (whole → `7`, fractional → `0.5` preserved), **mutation-proven** (restoring the raw `f64` fails the first test with `7.0` vs `7`). Key order is insertion order (`preserve_order`), matching v4's `{ userId, retentionDays }` |
 
+- **The 2026-07-31 `ff12f491`-round walk, Parts B–F — coverage, and THREE owed
+  live proofs COLLECTED.** Eight findings (#41–#48); seven fixed in place, two
+  ordered (#40, #47), none left open.
+  - **Part B (P4.D30, the Pascal canonical reader) — PASS.** A blob-stored
+    definition could not be tested *by shape* (see the note below), but the
+    reachable arm was proven live: a database-store definition loads, opens in
+    the Workbench editor, runs on the bench, and runs again from the in-chat
+    composer popup — both entrances through the refactored reader.
+  - **Part C (P4.9P, the top toolbar) — PASS, with two findings.** The
+    autonomous run-state badge is in the toolbar and the sidebar-footer stopgap
+    is gone (**dogfood #38's fix confirmed live**); queue badges move with real
+    jobs; `Cmd+K`, the type-filter chips (incl. the pre-seeded case the §3
+    review fixed), and the content-width toggle all behave. Findings **#44**
+    (`qt-icon` applying its class twice — the glyph 4px PAST the input text on
+    all five positioned-icon sites) and **#45** (the backdrop clipped to the
+    toolbar by its own `backdrop-filter`) came out of this part.
+  - **Part D — PASS, with the walk's two most valuable findings.** Export
+    Markdown renders a real transcript from the largest chat and produced
+    **#46**; the P4.D29 store-hardening step was MIS-SPECIFIED and produced
+    **#47**, the character-vault clobber `dcd9440a` missed (see its own note).
+  - **Part E (P4.21, image attachments on the wire) — PASS; ⚠ P4.21's LIVE
+    PROOF IS COLLECTED and dogfood #37 is CLOSED.** The library-picker describe
+    leg returned a description of the ACTUAL image (the finding's exact repro,
+    a blonde-yacht PNG that previously produced a generic portrait); in-chat
+    vision works; **all three serializations verified on real sends — OpenAI-
+    compatible, Anthropic and Google** — and confirmed **in the LLM Inspector**,
+    not merely in the bubble, which is the check that distinguishes "the SPA
+    drew a thumbnail" from "the model received an image". The one non-pass was
+    **#48** (a store-attached image tombstoned in the chat gallery), fixed.
+  - **Part F (P4.D33, the OpenRouter pricing seam) — PASS; ⚠ P4.D33's LIVE
+    PROOF IS COLLECTED.** With a real OpenRouter key: a tool-using turn on a
+    tool-capable model reaches the wire with a **native `tools` array** rather
+    than the pseudo-tool prose loop, and cost estimates come from the live
+    catalogue rather than the fallback table. That is the half that bit — the
+    SDK key remap made every OpenRouter model report `supportsTools: false`,
+    so `checkModelSupportsTools` silently downgraded every one of them.
+
+  **NOT walked — the next pass starts here:** Part G (P4.d26's same-day recall
+  + fresh-event boost on a non-UTC host, and P4.d27's embedding standard),
+  Part H (the retrospective-recall look owed since 2026-07-24 — finding #28's
+  downstream half — plus Story's Clock and the per-chat Core-whisper override),
+  and Part I (**Data & System on a scratch copy — still the largest untested
+  surface in the port**, and the home of P4.D31's owed restore-memory-id proof).
+
 - **The 2026-07-31 walk, Part B — P4.D30's blob-definition arm has NO PRODUCER,
   and the step is unrunnable BY SHAPE (not skipped, retired).** Scripting the
   walk asked the operator to open a blob-stored custom-tool definition; the
