@@ -36,7 +36,7 @@ import type { PtySessionMeta } from '../../terminal/terminal-protocol';
     <div class="qt-terminal-popout-page h-full flex flex-col">
       <div class="qt-terminal-popout-header">
         <div class="flex items-center gap-3">
-          <button type="button" class="qt-icon-button" title="Back to chat" (click)="back()">
+          <button type="button" class="qt-button-icon" title="Back to chat" (click)="back()">
             <qt-icon name="chevron-left" class="w-5 h-5" />
           </button>
           <a [routerLink]="['/salon', chatId()]" class="qt-terminal-popout-link text-sm">Chat</a>

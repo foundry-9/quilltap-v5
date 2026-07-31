@@ -132,4 +132,66 @@ test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
         .getByRole('button', { name: 'View LLM request/response logs' }),
     ).toHaveCount(0);
   });
+
+  /**
+   * P4.D34 (v4 `101cbe3c`): the three qt-* utilities the templates reference.
+   *
+   * `.qt-text`, `.qt-bg-surface-hover` and both escaped hover variants were
+   * referenced across the interface but defined nowhere, so they did nothing
+   * silently — the Inspector's panel title fell back to inherited colour, and
+   * its muted controls never brightened on hover. This pins them in the BUILT
+   * stylesheet, which is where v4 verified the same fix: a plain rule inside
+   * `@layer utilities` does not get a `hover:` variant generated for it, so
+   * each escaped selector has to survive the pipeline on its own.
+   */
+  test('the qt-* utilities 101cbe3c defined survive into the built stylesheet', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openSoloVoyage(page);
+
+    const selectors = await page.evaluate(() => {
+      const found = new Set<string>();
+      const walk = (rules: CSSRuleList) => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSStyleRule) {
+            // Split the selector list: the production minifier merges rules
+            // that share a declaration block, so `.hover\:qt-bg-surface-hover`
+            // arrives comma-joined onto `.hover\:qt-bg-surface-alt`.
+            for (const one of rule.selectorText.split(',')) found.add(one.trim());
+          }
+          const nested = (rule as CSSGroupingRule).cssRules;
+          if (nested) walk(nested);
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          walk(sheet.cssRules);
+        } catch {
+          /* cross-origin sheet — none of ours */
+        }
+      }
+      return Array.from(found);
+    });
+
+    for (const wanted of [
+      '.qt-text',
+      '.qt-bg-surface-hover',
+      '.hover\\:qt-text:hover',
+      '.hover\\:qt-bg-surface-hover:hover',
+    ]) {
+      expect(selectors, `${wanted} must be in the generated CSS`).toContain(wanted);
+    }
+
+    // And it reaches the element: the Inspector's panel title carries qt-text,
+    // and must resolve an opaque colour rather than inheriting whatever the
+    // panel happened to set.
+    await page.getByRole('button', { name: 'Toggle LLM Inspector' }).click();
+    const title = page.locator('.qt-slide-over-panel h2.qt-text');
+    await expect(title).toBeVisible({ timeout: 15_000 });
+    const colour = await title.evaluate((el) => getComputedStyle(el).color);
+    expect(colour).toMatch(/^(rgb|oklch|color)\(/);
+    expect(colour).not.toMatch(/rgba?\([^)]*,\s*0\)$/);
+  });
 });

@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Three styling classes the interface referenced but never defined now exist:
+full-strength text, a hover background for clickable surfaces, and the two
+hover variants. The LLM Inspector's muted tabs brighten on hover again, and
+clickable rows in the tool dialogs respond to the pointer. Five icon-only
+buttons across the terminal chrome had their class name's two words
+transposed and so got no button styling at all; they are spelled right now.
+
 A terminal session that has ended now stops accepting keystrokes. Typing into a
 finished session did nothing before, in this app and in the reference app both —
 the old guard reached for a field xterm has never had, so it never fired.

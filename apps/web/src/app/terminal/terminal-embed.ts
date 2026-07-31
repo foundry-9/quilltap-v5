@@ -42,7 +42,7 @@ import {
         <div class="flex items-center gap-2 flex-1">
           <button
             type="button"
-            class="qt-icon-button p-1"
+            class="qt-button-icon p-1"
             [attr.aria-label]="collapsed() ? 'Expand' : 'Collapse'"
             (click)="toggleCollapse()"
           >

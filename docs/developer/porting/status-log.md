@@ -45544,3 +45544,63 @@ button goes, the closing line lands, and the textarea is disabled.
 
 **Gate:** `ng test` 261 files / 3,163 passed; `npx playwright test terminal-flow`
 2/2 green over a fresh dist and locally built debug binaries. SPA 0.5.328.
+
+---
+
+## Lane record — P4.D34 unit 3: the three qt-* utilities + the transposed button class
+
+**v4 reference:** `101cbe3c` — `app/styles/qt-components/_utilities.css` plus the
+class-name fixes in `TerminalPane.tsx` / `TerminalEmbed.tsx` /
+`TerminalPopoutPageClient.tsx`.
+
+**Survey result (the order asked for it explicitly):** all four selectors were
+UNDEFINED in v5's chain — not in `src/styles/qt-components/**`, not in any theme
+package. Expected: v5 ported the markup from a v4 that lacked the definitions.
+v5 references them widely (57 `qt-text` occurrences across 20+ files, 20
+`hover:qt-text`, one `hover:qt-bg-surface-hover` at
+`chat/tools/run-tool-modal.ts:122`), so every one of those sites was inheriting
+colour and never lifting on hover.
+
+Ported byte-faithful to v4's declarations, at v5's analog of the SAME file and
+the SAME sections (v4 put them app-side in `_utilities.css`, NOT in the theme
+package — the P4.d17 precedent does not apply, and no theme package needed a
+change: both resolve through `--color-foreground` / `--color-muted`, already
+consumed by their siblings):
+
+- `.qt-bg-surface-hover` — BACKGROUND UTILITIES, right after `.qt-bg-surface`.
+- `.qt-text` — TEXT COLOR UTILITIES, right before `.qt-text-secondary`.
+- `.hover\:qt-bg-surface-hover:hover` + `.hover\:qt-text:hover` — HOVER
+  VARIANTS. v4's note carries over exactly: `hover:` on a qt-* class does not
+  work by itself, because these are plain rules inside `@layer utilities` rather
+  than `@utility` registrations, so each variant is hand-authored as an escaped
+  selector. v5's `_utilities.css` already had that section with eight of them.
+  The ~230 other inert `hover:qt-*` usages are pre-existing in both apps and
+  are NOT addressed here, exactly as v4 chose.
+
+**The transposition:** v5 had `qt-icon-button` where the defined class is
+`qt-button-icon` at FIVE sites — `terminal-pane.ts` ×3, `terminal-embed.ts` ×1,
+`screens/salon/terminal-popout.ts` ×1 — the same five, in the same three
+components, that v4 fixed. (Two further `qt-button-icon` sites in
+`terminal-embed.ts` were already spelled right, so v5 carried v4's exact mix.)
+
+**Pin:** a new beat in `llm-inspector-flow.spec.ts` — v4's commit body names
+`LLMInspectorEntry`'s `qt-text-secondary hover:qt-text` as the visible casualty,
+so the pin lives with that surface. It walks the BUILT stylesheet's CSSOM for all
+four selectors and then asserts the panel title (`h2.qt-text`) resolves an opaque
+colour. This is where v4 verified its own fix (its PostCSS/Tailwind pipeline
+emitting each selector), and it is the failure mode that matters: a plain
+`@layer utilities` rule gets no variant generated for it.
+
+⚠ **A trap worth carrying:** the first run FAILED on
+`.hover\:qt-bg-surface-hover:hover`, and the definition was fine — the production
+minifier MERGES rules that share a declaration block, so the selector arrived
+comma-joined onto `.hover\:qt-bg-surface-alt:hover` and an exact `selectorText`
+match missed it. The scan now splits every selector list on commas. Any future
+CSSOM assertion in this repo needs the same split.
+
+**Sensitivity proven by mutation:** deleting the `.qt-text` rule and rebuilding
+drops `.qt-text{` from the built stylesheet (1 → 0 occurrences), so the beat's
+scan fails; restoring brings it back.
+
+**Gate:** `npx playwright test llm-inspector-flow` 3/3 green over a fresh dist.
+SPA 0.5.329.

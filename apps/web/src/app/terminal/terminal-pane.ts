@@ -36,7 +36,7 @@ import type { TerminalMode } from './terminal-api';
         <div class="flex items-center gap-1">
           <button
             type="button"
-            class="qt-icon-button p-1"
+            class="qt-button-icon p-1"
             [title]="mode() === 'focus' ? 'Restore split layout' : 'Maximize terminal'"
             [attr.aria-label]="mode() === 'focus' ? 'Restore split layout' : 'Maximize terminal'"
             (click)="toggleFocusMode.emit()"
@@ -46,7 +46,7 @@ import type { TerminalMode } from './terminal-api';
 
           <button
             type="button"
-            class="qt-icon-button p-1"
+            class="qt-button-icon p-1"
             title="Close pane (terminal stays alive)"
             aria-label="Close terminal pane"
             (click)="hidePane.emit()"
@@ -56,7 +56,7 @@ import type { TerminalMode } from './terminal-api';
 
           <button
             type="button"
-            class="qt-icon-button p-1 qt-text-destructive"
+            class="qt-button-icon p-1 qt-text-destructive"
             [class.opacity-70]="!confirmKill()"
             [title]="
               confirmKill()
