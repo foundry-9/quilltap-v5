@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The scheduled log-cleanup job now records its retention setting the same way
+the reference app does — a plain `7` rather than `7.0`. Both apps read this
+value and both accepted either form, so nothing was broken; it is written the
+same way now so the two cannot drift.
+
 Brought the drift-catch-up round's five lanes together and shipped them as
 one, clearing all nineteen of the reference app's outstanding commits. The
 highlights riding this train: restored backups keep the memory web intact,

@@ -984,11 +984,7 @@ pub async fn run_scheduled_cleanup(db: &Db) -> Result<(usize, usize), DbError> {
         if !enabled || retention_days <= 0.0 {
             continue;
         }
-        // v4's payload: `{ userId, retentionDays }` (retentionDays materialized).
-        let payload = serde_json::json!({
-            "userId": s.user_id,
-            "retentionDays": retention_days,
-        });
+        let payload = cleanup_payload(&s.user_id, retention_days);
         match enqueue_job(db, &s.user_id, "LLM_LOG_CLEANUP", payload, 3.0).await {
             Ok(_) => {
                 jobs_enqueued += 1;
@@ -998,6 +994,22 @@ pub async fn run_scheduled_cleanup(db: &Db) -> Result<(usize, usize), DbError> {
         }
     }
     Ok((users_processed, jobs_enqueued))
+}
+
+/// v4's `LLM_LOG_CLEANUP` payload: `{ userId, retentionDays }`, with
+/// `retentionDays` materialized from the settings bag.
+///
+/// `retention_days` arrives as `f64` because the settings bag is untyped JSON,
+/// but v4 carries a JS number all the way to `JSON.stringify`, where a
+/// whole-valued number renders `7` — never `7.0`. Serializing the `f64`
+/// directly wrote `"retentionDays":7.0` into a payload column both apps read
+/// (found on the Friday copy 2026-07-31, dogfood finding #41), so the value
+/// goes through [`js_number_to_json`] like every other persisted JS number.
+fn cleanup_payload(user_id: &str, retention_days: f64) -> Value {
+    serde_json::json!({
+        "userId": user_id,
+        "retentionDays": crate::db::js_number_to_json(retention_days),
+    })
 }
 
 // ============================================================================
@@ -1147,4 +1159,28 @@ pub fn enqueue_conversation_render_blocking(
     repo.create(&create, &opts)?;
     ensure_processor_running();
     Ok((id, true))
+}
+
+#[cfg(test)]
+mod scheduled_cleanup_tests {
+    use super::cleanup_payload;
+
+    /// The bytes v4 writes: a whole retention renders without a fractional part.
+    #[test]
+    fn whole_retention_serializes_as_an_integer() {
+        let payload = cleanup_payload("ffffffff-ffff-ffff-ffff-ffffffffffff", 7.0);
+        assert_eq!(
+            payload.to_string(),
+            r#"{"userId":"ffffffff-ffff-ffff-ffff-ffffffffffff","retentionDays":7}"#
+        );
+    }
+
+    /// A fractional retention keeps its fraction — `js_number_to_json` narrows
+    /// only when the value is exactly integral, matching `JSON.stringify`.
+    #[test]
+    fn fractional_retention_keeps_its_fraction() {
+        let payload = cleanup_payload("u", 0.5);
+        assert_eq!(payload["retentionDays"].as_f64(), Some(0.5));
+        assert!(payload.to_string().contains("0.5"));
+    }
 }
