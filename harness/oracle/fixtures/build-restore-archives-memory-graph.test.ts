@@ -94,6 +94,66 @@ const RIYA = 'a1000000-0000-4000-8000-000000000002';
 /** The fixture's own chat, so G1 carries a resolving `chatId` too. */
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 
+/**
+ * ── THE SIXTEEN 4.8 COLUMNS ──────────────────────────────────────────────────
+ *
+ * `4ac66c29` also carries v4's release-checklist claim that all sixteen columns
+ * added this cycle ride the schema-driven backup pipeline, pinned v4-side by its
+ * new `restore-field-fidelity.test.ts`. v5's side of that claim is the
+ * `system_restore_state` row diff — but a diff can only see a column the ARCHIVE
+ * populates: where a column is absent, both engines write the same default and a
+ * port that dropped it passes.
+ *
+ * Audited at P4.D31: of the sixteen, only the four `memories` columns were
+ * reachable, and only because THIS builder sets them. Ten (`chats` ×4,
+ * `chat_messages` ×6) are absent from all seven committed archives, and the two
+ * `chat_settings` ones sit at their defaults. So the four bags below give every
+ * one of the sixteen a non-default value in this archive, which is what turns
+ * v5's half of the claim from inspection into measurement.
+ *
+ * The values mirror v4's own test bags where the shape allows; they are written
+ * through v4's REAL `update` / `updateMessage` / `updateForUser`, so each one is
+ * Zod-valid before `createBackup` ever sees it.
+ */
+const NEW_CHAT_FIELDS = {
+  answerConfirmationOverride: 'ON',
+  commonplaceRecallHistory: { turns: [['ae000000-0000-4000-8000-000000000001']] },
+  timelineMode: 'narrative',
+  turnSkippingEnabled: true,
+};
+const NEW_MESSAGE_FIELDS = {
+  confirmed: true,
+  confirmationChecked: true,
+  confirmationRevised: false,
+  confirmationNotes: 'checked against the ledger',
+  confirmationOriginalContent: 'the original phrasing',
+  // v4's own field-fidelity test mocks the repositories, so its `pascalMeta`
+  // bag ({toolName, outcome, roll}) never meets `PascalMetaSchema`. This
+  // builder writes through the REAL repository, which Zod-validates, so the
+  // bag here is the schema's actual shape — a plausible d20 roll.
+  pascalMeta: {
+    tool: 'dice',
+    toolTitle: 'The Dice',
+    definitionTier: 'global',
+    definitionMountId: 'general',
+    params: { sides: 20, modifier: 2 },
+    rollForm: 'dice',
+    notation: '1d20+2',
+    raw: 15,
+    diceRolls: [15],
+    value: 17,
+    state: 'success',
+    outcomeIndex: 0,
+    invokedBy: 'llm',
+  },
+};
+const NEW_CHAT_SETTINGS_FIELDS = {
+  customTools: false,
+  // v4's test bag adds `model: 'some-model'`; `AnswerConfirmationSettingsSchema`
+  // is `{ enabled }` alone and strips it. `enabled: true` IS the non-default.
+  answerConfirmationSettings: { enabled: true },
+};
+
 /** The graph's four ids. Deliberately a distinct prefix from the fixture's own
  *  `ad…` memories, so a failure message says at a glance which row it is. */
 const G1 = 'ae000000-0000-4000-8000-000000000001';
@@ -284,6 +344,47 @@ async function main(): Promise<void> {
             `(asked for ${String(id)}, got ${String(created.id)}) — this builder ` +
             `must run against a tree carrying 4ac66c29`,
         );
+      }
+    }
+
+    // ── the sixteen 4.8 columns, given non-default values ────────────────────
+    // See NEW_*_FIELDS above for why. Written through v4's real repositories so
+    // every value is Zod-valid; asserted read-back, because a repository that
+    // silently dropped one would leave this archive quietly unable to prove the
+    // very thing it exists to prove.
+    const chat = (await repos.chats.findById(CHAT)) as Record<string, unknown> | null;
+    if (!chat) throw new Error(`the fixture must carry chat ${CHAT}`);
+    const updatedChat = (await repos.chats.update(CHAT, NEW_CHAT_FIELDS)) as Record<
+      string,
+      unknown
+    >;
+    for (const [k, v] of Object.entries(NEW_CHAT_FIELDS)) {
+      if (JSON.stringify(updatedChat?.[k]) !== JSON.stringify(v)) {
+        throw new Error(`chats.${k} did not take: ${JSON.stringify(updatedChat?.[k])}`);
+      }
+    }
+
+    const events = (await repos.chats.getMessages(CHAT)) as Array<Record<string, unknown>>;
+    const firstMessage = events.find((e) => e.type === 'message');
+    if (!firstMessage) throw new Error(`chat ${CHAT} must carry at least one message event`);
+    const updatedMessage = (await repos.chats.updateMessage(
+      CHAT,
+      firstMessage.id as string,
+      NEW_MESSAGE_FIELDS,
+    )) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(NEW_MESSAGE_FIELDS)) {
+      if (JSON.stringify(updatedMessage?.[k]) !== JSON.stringify(v)) {
+        throw new Error(`chat_messages.${k} did not take: ${JSON.stringify(updatedMessage?.[k])}`);
+      }
+    }
+
+    const updatedSettings = (await repos.chatSettings.updateForUser(
+      spec.userId,
+      NEW_CHAT_SETTINGS_FIELDS,
+    )) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(NEW_CHAT_SETTINGS_FIELDS)) {
+      if (JSON.stringify(updatedSettings?.[k]) !== JSON.stringify(v)) {
+        throw new Error(`chat_settings.${k} did not take: ${JSON.stringify(updatedSettings?.[k])}`);
       }
     }
 

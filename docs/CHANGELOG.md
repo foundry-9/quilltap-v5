@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The backup test fixture now carries every one of the sixteen columns added
+this cycle, so the restore comparison actually checks that each survives a
+round trip instead of quietly agreeing with itself about columns nobody
+filled in. Twelve of the sixteen had no value in any test archive.
+
 Restoring a backup now brings each memory back under its own identity.
 Memories were the only thing a restore renamed on the way in, and because
 memories cross-reference each other, every one of those links came back
