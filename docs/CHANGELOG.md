@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+The command line caught up with the reference app's own documentation pass:
+`quilltap docs --help` now lists semantic (meaning-based) search with its
+defaults instead of leaving it discoverable only by typing the command wrong,
+and tab-completion learned `file-verify`'s flags in all three shells plus
+`recall-replay` in fish. Byte-identical to the reference app across all 135
+command-line comparison cases.
+
 Refreshed the code comments that cite the reference app by filename and
 function, after it renamed a middleware file and dropped a legacy alias. No
 behavior change — it just means the next person tracing a note back to the
