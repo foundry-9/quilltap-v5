@@ -46500,3 +46500,47 @@ is being asserted.
   triggered.
 - Versions: core 0.0.428, harness 0.0.370 (this lane's bumps; unifier
   recounts per the playbook).
+## Lane record — P4.25 (the toast subsystem), unit 1: the module
+
+**Ported:** v4 `lib/toast.tsx` (151 LOC) → `apps/web/src/app/ui/toast.service.ts`
+(root-provided `ToastService`: `show` + `showSuccess`/`showError`/`showWarning`/
+`showInfo`), `apps/web/src/app/ui/toast-container.ts` (`qt-toast-container`,
+mounted once in `app.ts` OUTSIDE the startup switch so it is live on the
+pre-unlock gates exactly as v4's `document.body` mount is), and
+`styles/qt-components/_toast.css` (registered in `_index.css`).
+
+**The mechanism divergence, and it is the only one:** v4 is imperative and
+host-less — the first `showToast` lazily appends a `<div role="toast-container">`
+to `document.body` and mounts a React root into it. v5 holds the array in a
+signal and renders the container from boot. `role="toast-container"` is carried
+verbatim (v4's own testability handle; this lane's e2e anchor). v4's id shape
+`toast-${Date.now()}-${Math.random()}` becomes a monotonic counter — ids are
+internal, nothing renders or asserts one, and a counter cannot collide.
+
+**A v4 finding, deliberately NOT ported.** v4's toast body carries
+`animate-in fade-in slide-in-from-bottom-3 duration-300` plus an inline
+`animation: 'slideInUp 0.3s ease-out'`. `slideInUp` is defined **nowhere** in v4
+(`grep -rn slideInUp app lib components` returns only the call site) and
+`animate-in` belongs to `tailwindcss-animate`, which v4's `tailwind.config.ts`
+does not load. So **v4's toasts have no entry animation at all** — the markup is
+inert. Reproducing it would mean shipping dead CSS, so v5 reproduces the
+observable behavior (instant appearance) and records the v4-side one-liner
+(define the keyframes) as a post-5.0 item.
+
+**Colours** follow the order's instruction to use the qt conventions rather than
+v4's literal `bg-green-500 dark:bg-green-600` family: each type maps to the
+existing `--qt-status-{success,warning,info,danger}-{bg,fg,border}` triple, so
+themes theme the toasts for free. One visible consequence: the warning toast
+lands on `--color-warning-foreground` (near-black) instead of v4's `text-white`
+on yellow-500 — legible where v4's barely is.
+
+**Specs:** `apps/web/src/app/ui/toast.spec.ts`, 9 cases — the 3000 ms default
+and its exact expiry boundary (2999 → still there, 3000 → gone), the per-call
+override, the helper→type map with `show`'s `info` default, per-toast timers
+under a stacked pair, oldest-first order, distinct ids, and no dedup (v4 has
+none). Container: the `role="toast-container"` handle empty at rest, the four
+type classes, and node removal on expiry. **Mutation-proven** (the D24 rule):
+`duration * 2` in the timer and `warning → qt-toast-info` in the type map turned
+5 of the 9 RED; reverted, 9/9 green.
+
+**No Rust changed** — no cargo gate owed by this unit.

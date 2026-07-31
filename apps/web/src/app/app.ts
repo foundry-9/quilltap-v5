@@ -7,6 +7,7 @@ import { Unlock } from './screens/unlock/unlock';
 import { Shell } from './shell/shell';
 import { StartupService } from './startup/startup.service';
 import { ThemeService } from './theme/theme.service';
+import { ToastContainer } from './ui/toast-container';
 
 /**
  * The application root + startup gate (v4 `PepperVaultGate` + the health gates).
@@ -18,8 +19,12 @@ import { ThemeService } from './theme/theme.service';
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StartupScreen, SetupWizard, Unlock, Shell],
+  imports: [StartupScreen, SetupWizard, Unlock, Shell, ToastContainer],
   template: `
+    <!-- v4 mounts its toast container on document.body, so it is available on
+         every screen INCLUDING the pre-unlock gates; this sits outside the
+         switch for the same reason. -->
+    <qt-toast-container />
     @switch (state().kind) {
       @case ('operational') {
         <qt-shell />

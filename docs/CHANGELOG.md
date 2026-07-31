@@ -51,6 +51,9 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Quilltap has notifications again. A short message appears in the bottom-right
+corner when something finishes or fails, and clears itself after three seconds,
+the way the previous version did.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper

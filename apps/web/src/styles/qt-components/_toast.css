@@ -1,0 +1,75 @@
+/**
+ * Quilltap Component System - Toasts
+ *
+ * The notification stack, ported from v4 `lib/toast.tsx` (which styles itself
+ * inline + with Tailwind palette utilities, having no stylesheet of its own).
+ *
+ * v4's container geometry is copied exactly (`ensureContainer`, :22-32):
+ * fixed, bottom-right, z-50, pointer-events none, flex column, 10px gap,
+ * max-width 400px — with the toasts themselves re-enabling pointer events.
+ *
+ * The COLOURS follow the repo's qt-token convention rather than v4's literal
+ * `bg-green-500 dark:bg-green-600` family, per the order: the existing
+ * `--qt-status-*` triples are the sanctioned analog and are what every other
+ * status surface in v5 already uses, so themes theme the toasts for free. The
+ * one visible consequence is the warning toast, which lands on
+ * `--color-warning-foreground` (near-black) instead of v4's `text-white` on
+ * yellow-500 — legible where v4's is barely so.
+ *
+ * ⚠ v4 finding, deliberately NOT ported: v4's toast body also carries
+ * `animate-in fade-in slide-in-from-bottom-3 duration-300` and an inline
+ * `animation: 'slideInUp 0.3s ease-out'`. `slideInUp` is defined NOWHERE in v4
+ * (grep is empty) and `animate-in` belongs to `tailwindcss-animate`, which v4's
+ * `tailwind.config.ts` does not load — so v4's toasts appear with NO entry
+ * animation. Reproducing the inert markup would mean shipping dead CSS; the
+ * observable behavior (instant appearance) is what is ported. The v4-side
+ * one-liner (define the keyframes) is a post-5.0 item.
+ */
+
+@layer components {
+  .qt-toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 50;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 400px;
+  }
+
+  /* v4: `border … px-4 py-3 rounded-lg shadow-lg pointer-events-auto`. */
+  .qt-toast {
+    border: 1px solid transparent;
+    padding: 0.75rem 1rem;
+    border-radius: var(--qt-toast-radius, 0.5rem);
+    box-shadow: var(--qt-dialog-shadow, 0 10px 25px hsl(225 18% 10% / 0.15), 0 4px 10px hsl(225 18% 10% / 0.08));
+    pointer-events: auto;
+    overflow-wrap: anywhere;
+  }
+
+  .qt-toast-success {
+    background-color: var(--qt-toast-success-bg, var(--qt-status-success-bg));
+    border-color: var(--qt-toast-success-border, var(--qt-status-success-border));
+    color: var(--qt-toast-success-fg, var(--qt-status-success-fg));
+  }
+
+  .qt-toast-error {
+    background-color: var(--qt-toast-error-bg, var(--qt-status-danger-bg));
+    border-color: var(--qt-toast-error-border, var(--qt-status-danger-border));
+    color: var(--qt-toast-error-fg, var(--qt-status-danger-fg));
+  }
+
+  .qt-toast-warning {
+    background-color: var(--qt-toast-warning-bg, var(--qt-status-warning-bg));
+    border-color: var(--qt-toast-warning-border, var(--qt-status-warning-border));
+    color: var(--qt-toast-warning-fg, var(--qt-status-warning-fg));
+  }
+
+  .qt-toast-info {
+    background-color: var(--qt-toast-info-bg, var(--qt-status-info-bg));
+    border-color: var(--qt-toast-info-border, var(--qt-status-info-border));
+    color: var(--qt-toast-info-fg, var(--qt-status-info-fg));
+  }
+}
