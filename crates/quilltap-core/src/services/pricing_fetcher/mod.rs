@@ -128,14 +128,6 @@ pub struct PricingContext {
     pub api_keys: HashMap<String, String>,
 }
 
-/// v4 `findCheapestAvailableModel` options.
-#[derive(Clone, Debug, Default)]
-pub struct FindCheapestOptions {
-    pub require_vision: bool,
-    pub require_tools: bool,
-    pub exclude_providers: Vec<String>,
-}
-
 /// The injected fetch seam. Each method returns the raw JSON response body, or
 /// `None` on a network / non-2xx error (v4's `catch`).
 pub trait PricingFetch {
@@ -675,36 +667,6 @@ impl<F: PricingFetch> PricingFetcher<F> {
                 || m.model_id.contains(model_id)
                 || model_id.contains(&m.model_id)
         })
-    }
-
-    /// v4 `findCheapestAvailableModel`: cheapest across the pricing cache honoring
-    /// `requireVision`/`requireTools`/`excludeProviders`.
-    pub fn find_cheapest_available_model(
-        &self,
-        options: &FindCheapestOptions,
-        now_ms: i64,
-        ctx: &PricingContext,
-    ) -> Option<FetchedModelPricing> {
-        let cache = self.get_pricing_cache(now_ms, ctx);
-        let mut candidates: Vec<FetchedModelPricing> = Vec::new();
-        for (provider, models) in &cache {
-            if options.exclude_providers.iter().any(|p| p == provider) {
-                continue;
-            }
-            for model in models {
-                if options.require_vision && !model.supports_vision.unwrap_or(false) {
-                    continue;
-                }
-                if options.require_tools && !model.supports_tools.unwrap_or(false) {
-                    continue;
-                }
-                candidates.push(model.clone());
-            }
-        }
-        if candidates.is_empty() {
-            return None;
-        }
-        sort_by_cost(candidates).into_iter().next()
     }
 
     /// v4 `estimateMessageCost`: the OpenRouter-cache → registry → pricing-cache →

@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Followed the reference app's dead-code removal: a cheapest-model lookup nothing
+ever called is gone from both sides. Repairing its test along the way uncovered
+a check that had been quietly comparing nothing for months — the test kitchen
+was handing the reference app model data in a format it stopped reading two
+upgrades ago, so the comparison passed on emptiness. Fixed, and the real
+comparison passes.
+
 Followed the reference app's cleanup pass on our side of the fence: the Staff
 display-name table, the fallback timestamp settings, a memory's event time, and
 the "which character is you" lookup each now live in one place instead of

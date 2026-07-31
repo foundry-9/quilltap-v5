@@ -19,7 +19,7 @@ use std::sync::Mutex;
 
 use quilltap_core::provider_manifest::Registry;
 use quilltap_core::services::pricing_fetcher::{
-    FindCheapestOptions, PricingContext, PricingFetch, PricingFetcher, PricingProfile,
+    PricingContext, PricingFetch, PricingFetcher, PricingProfile,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -63,17 +63,6 @@ enum Op {
         completion_tokens: i64,
         #[serde(rename = "nowMs")]
         now_ms: i64,
-    },
-    #[serde(rename = "findCheapest")]
-    FindCheapest {
-        #[serde(rename = "nowMs")]
-        now_ms: i64,
-        #[serde(default, rename = "requireVision")]
-        require_vision: Option<bool>,
-        #[serde(default, rename = "requireTools")]
-        require_tools: Option<bool>,
-        #[serde(default, rename = "excludeProviders")]
-        exclude_providers: Option<Vec<String>>,
     },
 }
 
@@ -197,20 +186,6 @@ fn pricing_fetcher_matches_oracle() {
                     &ctx,
                 ))
                 .unwrap(),
-                Op::FindCheapest {
-                    now_ms,
-                    require_vision,
-                    require_tools,
-                    exclude_providers,
-                } => or_model_to_value(fetcher.find_cheapest_available_model(
-                    &FindCheapestOptions {
-                        require_vision: require_vision.unwrap_or(false),
-                        require_tools: require_tools.unwrap_or(false),
-                        exclude_providers: exclude_providers.clone().unwrap_or_default(),
-                    },
-                    *now_ms,
-                    &ctx,
-                )),
             };
             assert_eq!(got, sc.outputs[i], "scenario '{}' op #{i}", sc.id);
         }

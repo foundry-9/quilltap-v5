@@ -50,25 +50,38 @@ type Op =
       promptTokens: number;
       completionTokens: number;
       nowMs: number;
-    }
-  | {
-      kind: 'findCheapest';
-      nowMs: number;
-      requireVision?: boolean;
-      requireTools?: boolean;
-      excludeProviders?: string[];
     };
 
 let current: Scenario;
 let publicScriptIdx = 0;
 
+/**
+ * `@openrouter/sdk` 0.13 changed `models.list()` from returning the response
+ * body to returning a PAGINATED async-iterable whose model array lives at
+ * `page.result.data`, and v4 followed it in `f495c9c9`. This mock must hand
+ * back that shape, not the 0.12 body: a plain `{ data: [...] }` object is not
+ * async-iterable, so v4's `for await (const page of pages)` throws into its own
+ * catch and the SDK pricing cache silently comes back EMPTY — every
+ * `checkModelSupportsTools` lookup then misses and defaults to `true`, which is
+ * not what any scenario here is asking about.
+ *
+ * `sdkBody` stays in the 0.12 `{ data: [...] }` shape because that is what v5's
+ * `PricingFetch::openrouter_sdk_models` seam is handed (v5 GETs the REST
+ * `/api/v1/models` endpoint, which returns the full un-paginated list); the
+ * single page is wrapped here so both sides read the SAME models.
+ */
 jest.mock('@openrouter/sdk', () => ({
   __esModule: true,
   OpenRouter: class {
     models = {
       list: async () => {
         if (!current.sdkBody) throw new Error('sdk unavailable');
-        return current.sdkBody;
+        const body = current.sdkBody as { data: unknown[] };
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { result: { data: body.data } };
+          },
+        };
       },
     };
   },
@@ -251,21 +264,9 @@ const scenarios: Scenario[] = [
       { kind: 'estimate', provider: 'OPENAI_COMPATIBLE', modelName: 'mystery', promptTokens: 100, completionTokens: 100, nowMs: 0 },
     ],
   },
-  // E: findCheapestAvailableModel filters (OpenRouter SDK cache + fallback)
-  {
-    id: 'find-cheapest',
-    publicBody,
-    publicScript: [],
-    sdkBody,
-    ollamaBody: null,
-    profiles: [{ provider: 'OPENROUTER', apiKeyId: 'k1', baseUrl: null }],
-    apiKeys: { k1: 'sk-or-test' },
-    ops: [
-      { kind: 'findCheapest', nowMs: 0 }, // cheapest overall
-      { kind: 'findCheapest', nowMs: 0, requireTools: true }, // only tools-capable
-      { kind: 'findCheapest', nowMs: 0, excludeProviders: ['OPENROUTER'] }, // exclude the only provider -> null
-    ],
-  },
+  // (v4 `cc2e3c6f` deleted `findCheapestAvailableModel` as unreferenced dead
+  // code; scenario E went with it, and so did v5's port. See the P4.D32 lane
+  // record.)
 ];
 
 async function run() {
@@ -278,9 +279,7 @@ async function run() {
     publicScriptIdx = 0;
     installFetch();
 
-    const { getOpenRouterPricingForModel, findCheapestAvailableModel } = await import(
-      '@/lib/llm/pricing-fetcher'
-    );
+    const { getOpenRouterPricingForModel } = await import('@/lib/llm/pricing-fetcher');
     const { checkModelSupportsTools } = await import('@/lib/tools/pseudo-tool-support');
     const { estimateMessageCost } = await import('@/lib/services/cost-estimation.service');
 
@@ -291,7 +290,7 @@ async function run() {
         outputs.push(await getOpenRouterPricingForModel(op.provider as never, op.modelId));
       } else if (op.kind === 'checkTools') {
         outputs.push(await checkModelSupportsTools(op.provider as never, op.modelName, 'user-1'));
-      } else if (op.kind === 'estimate') {
+      } else {
         outputs.push(
           await estimateMessageCost(
             op.provider as never,
@@ -300,14 +299,6 @@ async function run() {
             op.completionTokens,
             'user-1'
           )
-        );
-      } else {
-        outputs.push(
-          await findCheapestAvailableModel('user-1', {
-            requireVision: op.requireVision,
-            requireTools: op.requireTools,
-            excludeProviders: op.excludeProviders as never,
-          })
         );
       }
     }
