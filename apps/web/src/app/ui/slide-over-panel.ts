@@ -38,6 +38,16 @@ import { Icon } from './icon';
  * or `filter` on an ancestor WOULD make `fixed` resolve against it; nothing in the
  * chat layout carries one.)
  *
+ * ⚠ THAT PREMISE IS NO LONGER TRUE EVERYWHERE. `.qt-page-toolbar` (P4.9P) carries
+ * `backdrop-filter`, which is exactly such a containing block, so anything
+ * `position: fixed` rendered INSIDE the toolbar resolves against the toolbar
+ * rather than the viewport. `search-dialog.ts` was the first surface to hit it
+ * (its backdrop clipped to 1224x64, so only Escape closed the dialog — dogfood
+ * #45) and now portals its host to `document.body`. The reasoning above still
+ * holds for this panel and for {@link import('./modal').Modal}, both of which are
+ * composed in the chat/shell layout; it does NOT hold for anything mounted in the
+ * toolbar. Check the ancestor chain before choosing "render inline" again.
+ *
  * ## CLOSED-STATE DIVERGENCE (deliberate — v4 has a defect here)
  *
  * v4 hard-codes `role="dialog"` + `aria-modal="true"` on the panel, and because
