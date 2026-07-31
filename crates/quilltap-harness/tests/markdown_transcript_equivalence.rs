@@ -28,6 +28,20 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+/// Vectors where v5 deliberately does NOT match v4, with the ruling behind each.
+///
+/// Dogfood #46 (ruled 2026-07-31, human): `encodeURIComponent` keeps a straight
+/// `'`, but RFC 8187 uses it as the `charset'language'value` delimiter, so v4's
+/// ext-value is ungrammatical whenever a filename carries BOTH an apostrophe and
+/// a non-ASCII character — browsers discard the parameter and fall back to the
+/// underscored ASCII name. v5 percent-encodes it. The identical fix is queued
+/// for v4; when it lands, the `divergence_vanished` arm fires and this entry
+/// should be retired.
+const EXPECTED_DIVERGENCES: &[(&str, &str)] = &[(
+    "ascii-apostrophe-with-non-ascii",
+    "dogfood #46 — the apostrophe is RFC 8187's delimiter; v5 percent-encodes it",
+)];
+
 use quilltap_core::content_disposition::{build_content_disposition, Disposition as CdDisposition};
 use quilltap_core::services::markdown_transcript::{
     build_markdown_transcript, transcript_filename, LocalOffset, MarkdownTranscriptInput,
@@ -114,6 +128,7 @@ fn markdown_transcript_matches_oracle() {
     let mut threw_rows = 0usize;
     let mut astral_disposition_rows = 0usize;
     let mut failed: Vec<String> = Vec::new();
+    let mut seen_divergences: std::collections::HashSet<String> = Default::default();
     let mut count = 0usize;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -198,7 +213,28 @@ fn markdown_transcript_matches_oracle() {
                     _ => CdDisposition::Inline,
                 };
                 let got = build_content_disposition(&filename, d);
-                if got != out {
+                if let Some(reason) = EXPECTED_DIVERGENCES.iter().find(|(k, _)| *k == id) {
+                    // A DELIBERATE divergence (ruled 2026-07-31, dogfood #46).
+                    // Asserted in BOTH directions so it cannot rot into an
+                    // accidental match: v4's recorded bytes must still carry the
+                    // raw delimiter, and v5's must differ only by that escape.
+                    if got == out {
+                        eprintln!(
+                            "[disposition {id}] the expected divergence VANISHED — v4 now agrees \
+                             ({}); retire the carve-out and this is an ordinary vector",
+                            reason.1
+                        );
+                        failed.push(format!("disposition_{id}_divergence_vanished"));
+                    } else if !out.contains("''") || out.replace('\'', "%27") == got {
+                        // The replace over-escapes v4's two delimiter quotes, so
+                        // equality here would mean v5 escaped those too.
+                        eprintln!(
+                            "[disposition {id}] divergence has the WRONG SHAPE: v4 {out:?} vs v5 {got:?}"
+                        );
+                        failed.push(format!("disposition_{id}_divergence_shape"));
+                    }
+                    seen_divergences.insert(id.clone());
+                } else if got != out {
                     eprintln!("[disposition {id}] GOT {got:?} WANT {out:?}");
                     failed.push(format!("disposition_{id}"));
                 }
@@ -217,6 +253,17 @@ fn markdown_transcript_matches_oracle() {
     // 500 arm), and so must the non-ASCII disposition rows — they are the only
     // ones that reach the RFC 5987 branch at all, and the UTF-16-code-unit
     // fallback the lift fixed is invisible without them.
+    // Every DECLARED divergence must have been exercised. Without this, deleting
+    // the vector from the oracle case file would silently retire the carve-out
+    // and the divergence would stop being measured at all.
+    for (id, why) in EXPECTED_DIVERGENCES {
+        assert!(
+            seen_divergences.contains(*id),
+            "the corpus carries no '{id}' row, so the declared divergence ({why}) is unproven — \
+             regenerate the oracle from the case file that defines it"
+        );
+    }
+
     for family in ["transcript", "filename", "disposition"] {
         assert!(
             kinds.get(family).copied().unwrap_or(0) > 0,

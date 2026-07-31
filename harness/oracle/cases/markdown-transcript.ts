@@ -608,6 +608,14 @@ const dispositionCases: Array<[string, string, 'inline' | 'attachment' | null]> 
   // underscores — the case a `chars()`-based port gets wrong.
   ['astral-attachment', 'Suparṇā’s Salon 🎩_transcript.md', 'attachment'],
   ['astral-inline', '🎩🎩.webp', 'inline'],
+  // A STRAIGHT ASCII apostrophe beside a non-ASCII character. The astral case
+  // above uses a CURLY apostrophe (U+2019), which is itself non-ASCII and so is
+  // percent-encoded — which is exactly why this family never saw the bug that
+  // dogfood #46 found on a real chat title. `encodeURIComponent` keeps a
+  // straight `'`, and RFC 8187 uses it as the charset'lang'value delimiter, so
+  // v4 emits an ungrammatical parameter that browsers discard. v5 DIVERGES here
+  // and percent-encodes it; the Rust side asserts the difference explicitly.
+  ['ascii-apostrophe-with-non-ascii', "Wings Over Suparṇā's Quiet Governance.md", 'attachment'],
   ['quote-in-ascii-name', 'a"b.md', 'attachment'],
   ['empty-name', '', 'attachment'],
 ]
