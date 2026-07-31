@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Re-verified every provider's network bytes after two major SDK upgrades
+upstream, and fixed what that surfaced. The bytes themselves did not move:
+all 146 recorded requests across the eight providers, both streaming and
+non-streaming, plus the Google request and response corpora, regenerate
+identical against the new SDKs — the upgrades were genuinely neutral, which
+is now measured rather than assumed. Three requests the OpenRouter SDK
+refuses to send at all still refuse, unchanged.
+
+The re-check did expose a real bug in OpenRouter model pricing. Quilltap
+reads that catalogue two different ways, and the authenticated one goes
+through OpenRouter's SDK, which renames the fields before Quilltap sees
+them. Quilltap was reading the renamed field names off the raw, un-renamed
+response — so every OpenRouter model came back with no context length and
+no tool support. Against the live catalogue that was 364 models missing
+their context length and 298 wrongly marked as unable to use tools, which
+in turn pushed conversations onto the slower text-based tool path they did
+not need. Both halves are now reproduced faithfully, along with the SDK's
+paging, so a catalogue larger than 500 models no longer gets quietly cut
+off at 500.
 The command line caught up with the reference app's own documentation pass:
 `quilltap docs --help` now lists semantic (meaning-based) search with its
 defaults instead of leaving it discoverable only by typing the command wrong,

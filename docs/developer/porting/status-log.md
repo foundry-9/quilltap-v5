@@ -45260,3 +45260,202 @@ re-run at `ff12f491`; the round's NO-PORTs are `71dcc7e8`, `80cafed5`,
 
 **Versions after the lane:** core 0.0.421, harness 0.0.364, cli 0.0.4; host,
 web, quilltap-tauri and the SPA unchanged.
+## Lane record — P4.D33 (the provider SDK-major wire check)
+
+Branch `claude/p4-d33-provider-sdk-wire-662202`. Order:
+`work-orders/p4.d33-provider-sdk-wire-check.md`. Round baseline **`ff12f491`**;
+oracles regenerated from the lane-unique pin
+`/private/tmp/qt-v4-pin-p4d33-ff12f491`.
+
+### Drift check — v4 moved ONE commit past the baseline, benignly
+
+v4 HEAD at lane start was **`e1be028b`**, not `ff12f491`:
+`fix(release): unbreak the standalone tarball and the Docker dependency stages`.
+Its whole diff is `Dockerfile` / `Dockerfile.ci` / `README.md` / `CHANGELOG` /
+`scripts/build-standalone-tarball.ts` plus a `4.8.0-dev.135 → .136` version
+chore — **zero `lib/`, `plugins/`, `app/`, or dependency change** (verified by
+`git diff --name-only ff12f491..e1be028b | grep -E '^(lib|plugins|app|packages/plugin)'`
+→ empty, and the `package.json`/`package-lock.json` diff is the version field
+alone). The tree was clean. The lane proceeded rather than stopping, because it
+regenerates from a worktree pinned at `ff12f491` regardless, so nothing here was
+ported against a moved oracle. **The unifier should still confirm HEAD before
+adopting a baseline.**
+
+### SDK preflight (tier-1 item 1) — the installed majors
+
+Verified before any regen, both at the checkout root and per plugin:
+
+| tree | package | version |
+| --- | --- | --- |
+| root | `openai` | **7.2.0** |
+| root | `@openrouter/sdk` | **1.2.2** |
+| root | `sharp` | **0.35.3** |
+| `plugins/dist/qtap-plugin-{openai,grok,deepseek,z-ai,openai-compatible}` | `openai` | **7.2.0** |
+| `plugins/dist/qtap-plugin-openrouter` | `@openrouter/sdk` | **1.2.2** |
+| `plugins/dist/qtap-plugin-google` | `@google/genai` | 1.52.0 |
+| `plugins/dist/qtap-plugin-anthropic` | `@anthropic-ai/sdk` | 0.88.0 |
+
+Not stale — no install was needed and none was run in the v4 checkout.
+
+### Tier-1 item 2 — the corpora regen + byte-diff: ALL FOUR NEUTRAL
+
+Every corpus regenerated at the pin is **byte-identical** to the committed one:
+
+| corpus | lines | verdict |
+| --- | --- | --- |
+| `request-envelopes.recorded.ndjson` | 146 | byte-identical |
+| `google-wire.recorded.ndjson` | 18 | byte-identical |
+| `google-request.recorded.ndjson` | 9 | byte-identical |
+| `response-bodies.recorded.ndjson` | 29 | byte-identical |
+
+Nothing was committed for this item — a byte-identical regen has nothing to
+commit, and that IS the deliverable.
+
+**Why this is a measurement and not a tautology.** The committed corpora were
+written at 12:59–14:04 on 2026-07-30 (v5 commits `c3cd262e` / `387b1dc3`); openai
+7 landed in v4's trees at **18:53** and `@openrouter/sdk` 1.2.2 at **20:04**
+(`node_modules` mtimes). So the committed bytes are genuinely the openai-6.48 /
+sdk-0.13 bytes, and reproducing them against the new majors proves the upgrades
+moved v4's wire not at all. The regen really ran against the new SDKs: the openai
+plugin's own resolution reports `7.2.0` from
+`plugins/dist/qtap-plugin-openai/node_modules/openai`, and the recorders printed
+per-provider line counts (the silent-stale-pass trap needs both checks — the
+corpora record no header, so there is no version marker inside them to grep).
+
+### Tier-1 item 3 — the three recorded refusals did NOT flip
+
+The order flagged these as the likeliest to move: P4.21 recorded that SDK 0.13
+refuses non-streaming vision sends client-side, so 1.2 might now send. It does
+not. All three openrouter `send` lines (`tool-roundtrip`, `image-attachment`,
+`image-attachment-tools`) still capture no request, and their recorded first-line
+error (`Input validation failed: [`) is unchanged. `BuildError::ProviderRefused`
+stays correct for those shapes; no builder change, no arm retired.
+
+### Tier-1 item 5 — the OpenRouter models-fetch re-survey, and TWO real bugs
+
+Re-read `@openrouter/sdk` **1.2.2** `esm/funcs/modelsList.js` in the pinned tree.
+
+*The request:* unchanged for v4's call shape. `Accept: application/json`,
+`HTTP-Referer`, `X-OpenRouter-Title`, plus the bearer from the security
+resolution. 1.2 adds `X-OpenRouter-Categories`, but `compactMap` drops it unless
+the caller sets `appCategories`, which v4 does not. v4 calls `client.models.list()`
+bare, so `GetModelsRequest$outboundSchema.optional()` yields `undefined` and
+`encodeFormQuery` emits an empty query — the first page is a plain
+`GET https://openrouter.ai/api/v1/models`, exactly what `providers.rs` issued.
+The surveyed-at comment moved from 0.13 to 1.2.2.
+
+*But the survey found two things v5 had wrong, neither of them SDK drift:*
+
+**(a) The key remap — a live, user-visible bug.** `Model$inboundSchema`'s zod
+transform `remap$`s the snake_case wire keys to camelCase before v4's
+`fetchOpenRouterPricing` reads them; that is exactly why v4's SDK-path parse
+reads `contextLength` / `supportedParameters` while its *public*-path parse reads
+`context_length` / `supported_parameters`. v5's host seam returns the raw HTTP
+body, so `parse_openrouter_sdk` was reading camelCase keys off a snake_case
+object. Measured against the live catalogue (`GET /api/v1/models`, 2026-07-30,
+364 models): v4 resolves **364/364** context lengths and **298** tool-capable
+models; v5 resolved **0 and 0**. The `supportsTools: false` half is the one that
+bites — it feeds `checkModelSupportsTools`, so every OpenRouter model looked
+incapable of native tools. Same class as dogfood #24.
+
+**(b) The page loop.** `modelsList`'s `nextFunc` continues whenever a page
+returns `>= limit` rows, `limit` being 500 when the caller passes no request.
+v4 accumulates every page; v5's single GET would truncate at 500. The live
+catalogue is at **364** (`total_count: 364`, `links.next: null`), so today the
+two agree — but at 73% of the threshold and growing, the divergence is a matter
+of time. Fixed rather than merely recorded.
+
+Both are now reproduced as pure decisions in the core
+(`remap_openrouter_sdk_models`, `openrouter_next_page_offset`,
+`OPENROUTER_PAGE_LIMIT`) and driven by the host's `openrouter_models_pages`,
+which walks the pages, concatenates, and remaps. The public leg is deliberately
+left alone with a comment saying so — it is a bare `fetch` in v4 too, and its
+parse reads the wire's own casing.
+
+### Tier-2 item 6 — the pricing parity check, and a new differential family
+
+The order's premise that `fetchOpenRouterPricing` "returned zero prices for the
+whole SDK-0.13 window" is **wrong**: `13f0ebd7` touched only the openrouter
+plugin's `image-provider.ts` / `embedding-provider.ts` / its own dead
+`pricing-fetcher.ts`. `lib/llm/pricing-fetcher.ts` — the one v5 ports — was
+already page-looping (its comment names the 0.13 change). The outage was in
+image/embedding model DISCOVERY, not pricing.
+
+The existing `pricing_fetcher_equivalence` **cannot** see this seam: its oracle
+mocks `@openrouter/sdk` and hands `models.list()` a hand-written camelCase
+`sdkBody`, so both sides consume the same already-remapped object — a corpus that
+agrees with itself. New family instead:
+
+**`openrouter_sdk_pricing_equivalence`** — drives v4's real
+`getProviderPricing('OPENROUTER', …)` with the **real `@openrouter/sdk` in the
+loop** and only `global.fetch` mocked underneath it, serving raw snake_case pages
+and recording every request url. Five scenarios: one page of three REAL captured
+models; 499 rows (the stop boundary); 500+3 (two pages); 500+500+3 (three pages);
+and an empty catalogue. Case file
+`harness/oracle/cases/openrouter-sdk-pricing.test.ts`; the NDJSON is /tmp-only
+(env `QT_ORACLE_OPENROUTER_SDK_PRICING`), no committed fixture.
+
+**Two overrides are load-bearing to reach the real SDK, and both fail silently.**
+(1) v4's `jest.config.ts` maps `^@openrouter/sdk$` to `__mocks__/@openrouter/sdk.ts`,
+whose `models.list` is a bare `jest.fn()`; left alone it returns `undefined`,
+`for await` throws, v4's catch returns `[]`, and **the first run of this oracle
+emitted four scenarios of nothing while passing**. Defeated with
+a `jest.mock('@openrouter/sdk', …)` factory that `require`s the package's real
+entry by absolute path (`<cwd>/node_modules/@openrouter/sdk/esm/index.js`, cwd
+being the jest rootDir) — the mapper is anchored `^…$`, so a path bypasses it. This is the same
+wrong-mock trap v4's own `13f0ebd7` message documents, and it notes three more
+test files (two openai, one `@anthropic-ai/sdk`) that may still be exercising it.
+(2) `next/jest` overrides the repo's `transformIgnorePatterns`, so the package's
+ESM arrives untransformed (`Unexpected token 'export'`); re-assert it on the CLI:
+`--transformIgnorePatterns "node_modules/(?!(@openrouter/sdk|jose)/)"`.
+
+**Mutation-proved (the D24 rule), and the third mutation earned its keep.** With
+remap → identity: fails on `model[0]`. With the page loop always stopping: fails
+the page count. With `offset + results.len()` → `results.len()`: **passed** — a
+two-page corpus cannot tell them apart, because page 1's offset is 0 and both
+give 500. Only a THIRD page distinguishes `offset=1000` from `offset=500`, so the
+`three-page-pagination` scenario exists because the mutation test found the gap,
+not because it was designed in. All three fail after it.
+
+The host's HTTP walk (which no harness family can see) is pinned by
+`openrouter_models_walk_pages_and_remap_keys` — a loopback server proving two
+requests, the exact follow-up url `?limit=500&offset=500`, in-order
+concatenation, and the camelCase landing.
+
+### Tier-3 — the banks (no code, loud)
+
+- **Item 7, the discovery halves.** `imageProfileListModels` /
+  `imageProfileValidateKey` stay refusal-armed (`api/image_profiles.rs`), and
+  embedding-profiles management stays banked for `p4.9h`. Both banks are now
+  written at the refusal site: when they land, the port target is v4 **at or
+  after `13f0ebd7`** — the PAGE-LOOPED read, never the `response.data` read that
+  shipped broken for a year and always fell through to `FALLBACK_IMAGE_MODELS`.
+- **Item 8, the synthetic response corpus.** `response-bodies` is still 29
+  vectors, all `synthetic: true`. openai 7 changed **no** response shape those
+  vectors encode — the corpus regenerated byte-identical through the new SDK's
+  own unwrap. The real-capture upgrade stays a standing item; no captures
+  attempted this lane.
+
+### Baseline wording for the unifier (this lane's slice)
+
+> The three provider corpora + the google pair were regenerated fresh at
+> `ff12f491` and are **byte-identical** to the committed ones: openai 6.48 → 7.2
+> and `@openrouter/sdk` 0.13.66 → 1.2.2 moved v4's provider wire not at all
+> (146 request envelopes both modes, 18 google-wire, 9 google-request, 29
+> response bodies). The three recorded OpenRouter `ProviderRefused` vectors still
+> refuse under 1.2. The models-fetch survey moved to SDK 1.2.2 and closed two
+> real v5 gaps on the authenticated pricing path (the SDK key remap and the page
+> loop) — new family `openrouter_sdk_pricing_equivalence`.
+
+### Files, and one ownership note
+
+`crates/quilltap-core/src/services/pricing_fetcher/mod.rs` and
+`crates/quilltap-core/src/api/image_profiles.rs` are outside the order's literal
+file list but inside its tier-2 mandate (the pricing parity check) and tier-3
+mandate (the banks); no sibling order names either file. `api/types.rs` was never
+opened. Versions: core 0.0.419, harness 0.0.364, host 0.0.52.
+
+**Live proof owed:** the pricing fix has no test against the real endpoint (the
+differential runs on recorded pages). A dogfood boot with an OpenRouter key
+configured should show non-null context lengths and tool-capable models in cost
+estimation — it joins the owed dogfood pass.

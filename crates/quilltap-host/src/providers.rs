@@ -14,13 +14,24 @@
 //!   https://openrouter.ai/api/v1/models` with `Content-Type: application/json`
 //!   and the 3 s `AbortSignal.timeout` (`OPENROUTER_FETCH_TIMEOUT_MS = 3000`).
 //! - `openrouter_sdk_models` — v4 `fetchOpenRouterPricing` via the
-//!   `@openrouter/sdk` `client.models.list()`, which issues (surveyed at
-//!   `@openrouter/sdk` `funcs/modelsList.js`) `GET
+//!   `@openrouter/sdk` `client.models.list()`, which issues (re-surveyed at
+//!   `@openrouter/sdk` **1.2.2** `funcs/modelsList.js`, P4.D33) `GET
 //!   https://openrouter.ai/api/v1/models` with `Accept: application/json`,
 //!   `Authorization: Bearer <key>`, `HTTP-Referer` (`BASE_URL` ||
 //!   `http://localhost:3000`) and `X-OpenRouter-Title: Quilltap` — reproduced
-//!   as that HTTP call. (The SDK's own backoff-retry config is NOT reproduced;
-//!   a failure returns `None`, host policy.)
+//!   as that HTTP call. (1.2 adds an `X-OpenRouter-Categories` header, but it is
+//!   `compactMap`-dropped unless the caller sets `appCategories`, which v4 does
+//!   not; the first page carries no query string because v4 passes no request.
+//!   The SDK's own backoff-retry config is NOT reproduced; a failure returns
+//!   `None`, host policy.)
+//!
+//!   Two things the SDK does between that GET and v4's parse are reproduced here
+//!   rather than left to the wire, because v4's parse consumes the SDK's output,
+//!   not the endpoint's (see [`quilltap_core::services::pricing_fetcher`]):
+//!   the **page loop** (`?limit=500&offset=N` until a short page — v4 accumulates
+//!   every page) and the model-level **key remap** (snake_case wire →
+//!   camelCase). Both are pure decisions in the core; this seam only supplies the
+//!   HTTP.
 //! - `ollama_tags` — v4 `fetchOllamaModels`: `GET {base_url}/api/tags`.
 //!
 //! The 3 s pricing timeout applies to all three in this host impl (v4 pins it
@@ -37,7 +48,10 @@ use std::time::Duration;
 
 use quilltap_core::model::streaming_provider::{ProviderKeySource, WireStreamingProvider};
 use quilltap_core::model::transport::{quilltap_user_agent, ReqwestTransport, TransportPolicy};
-use quilltap_core::services::pricing_fetcher::{PricingFetch, PricingFetcher};
+use quilltap_core::services::pricing_fetcher::{
+    openrouter_next_page_offset, remap_openrouter_sdk_models, PricingFetch, PricingFetcher,
+    OPENROUTER_PAGE_LIMIT,
+};
 use serde_json::Value;
 
 use crate::wire::{run_off_runtime, BlockingWireTransport, ReqwestWireTransport};
@@ -48,6 +62,9 @@ pub const PRICING_FETCH_TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// v4's `BASE_URL` fallback for openrouter's `HTTP-Referer`.
 const DEFAULT_BASE_URL: &str = "http://localhost:3000";
+
+/// The catalogue endpoint both openrouter pricing legs read.
+const OPENROUTER_MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 
 /// Issue one blocking GET (off-runtime) and parse the body as JSON when 2xx.
 /// Any transport failure, timeout, non-2xx status, or unparsable body → `None`
@@ -78,12 +95,53 @@ impl LivePricingFetch {
     pub fn new(base_url_env: Option<String>) -> Self {
         Self { base_url_env }
     }
+
+    /// Walk the SDK's model pages from `base` and hand back ONE body shaped like
+    /// what v4's parse consumes: every page's models concatenated, model keys
+    /// remapped snake_case → camelCase.
+    ///
+    /// The loop and the remap both come from the core (they are v4 behavior, not
+    /// host policy); this only issues the GETs. A page that fails mid-walk ends
+    /// the walk and keeps what was already collected — the same shape as a
+    /// truncated catalogue rather than a total loss, and `None` only when the
+    /// FIRST page fails (v4's `catch` → `[]` → the caller's fallback).
+    fn openrouter_models_pages(&self, base: &str, headers: &[(String, String)]) -> Option<Value> {
+        let mut collected: Vec<Value> = Vec::new();
+        let mut offset: usize = 0;
+        let mut url = base.to_string();
+        loop {
+            let page = match get_json(url, headers.to_vec()) {
+                Some(page) => page,
+                None if collected.is_empty() => return None,
+                None => break,
+            };
+            if let Some(models) = page.get("data").and_then(Value::as_array) {
+                collected.extend(models.iter().cloned());
+            }
+            match openrouter_next_page_offset(&page, offset) {
+                Some(next) => {
+                    // The follow-up request carries the SDK's materialized
+                    // `limit` default alongside the offset (recorded at 1.2.2:
+                    // `?limit=500&offset=500`); the first page carries neither.
+                    url = format!("{base}?limit={OPENROUTER_PAGE_LIMIT}&offset={next}");
+                    offset = next;
+                }
+                None => break,
+            }
+        }
+        Some(remap_openrouter_sdk_models(
+            &serde_json::json!({ "data": collected }),
+        ))
+    }
 }
 
 impl PricingFetch for LivePricingFetch {
     fn openrouter_public_models(&self) -> Option<Value> {
+        // The PUBLIC leg is a bare `fetch` in v4 too — one page, no SDK, and the
+        // parse reads the wire's own snake_case. Deliberately NOT page-looped or
+        // remapped; the two legs are different code paths in v4.
         get_json(
-            "https://openrouter.ai/api/v1/models".to_string(),
+            OPENROUTER_MODELS_URL.to_string(),
             vec![("Content-Type".to_string(), "application/json".to_string())],
         )
     }
@@ -93,15 +151,13 @@ impl PricingFetch for LivePricingFetch {
             .base_url_env
             .clone()
             .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
-        get_json(
-            "https://openrouter.ai/api/v1/models".to_string(),
-            vec![
-                ("Accept".to_string(), "application/json".to_string()),
-                ("Authorization".to_string(), format!("Bearer {api_key}")),
-                ("HTTP-Referer".to_string(), referer),
-                ("X-OpenRouter-Title".to_string(), "Quilltap".to_string()),
-            ],
-        )
+        let headers = vec![
+            ("Accept".to_string(), "application/json".to_string()),
+            ("Authorization".to_string(), format!("Bearer {api_key}")),
+            ("HTTP-Referer".to_string(), referer),
+            ("X-OpenRouter-Title".to_string(), "Quilltap".to_string()),
+        ];
+        self.openrouter_models_pages(OPENROUTER_MODELS_URL, &headers)
     }
 
     fn ollama_tags(&self, base_url: &str) -> Option<Value> {
@@ -271,6 +327,86 @@ mod tests {
         let seen = handle.join().unwrap();
         assert!(seen.starts_with("GET /api/tags"));
         assert_eq!(got.unwrap()["models"][0]["name"], "llama3.2");
+    }
+
+    /// A tiny loopback catalogue server: answers each GET with the next canned
+    /// body and records the request lines it saw.
+    fn serve_pages(
+        bodies: Vec<String>,
+    ) -> (std::net::SocketAddr, std::thread::JoinHandle<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for body in bodies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                seen.push(text.lines().next().unwrap_or_default().to_string());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+            seen
+        });
+        (addr, handle)
+    }
+
+    /// The SDK page walk + key remap, end to end over real HTTP: a full page
+    /// (500 rows) is followed at `?limit=500&offset=500`, a short page ends the
+    /// walk, the models concatenate in order, and the snake_case wire keys land
+    /// camelCase — which is what `parse_openrouter_sdk` reads. Without the walk
+    /// this returns 500 of 503 models; without the remap all 503 lose their
+    /// `contextLength` and `supportsTools`.
+    #[test]
+    fn openrouter_models_walk_pages_and_remap_keys() {
+        fn page(ids: impl Iterator<Item = String>) -> String {
+            let models: Vec<Value> = ids
+                .map(|id| {
+                    serde_json::json!({
+                        "id": id,
+                        "name": "m",
+                        "pricing": { "prompt": "0", "completion": "0" },
+                        "context_length": 4096,
+                        "supported_parameters": ["tools"],
+                        "architecture": { "modality": "text->text" },
+                    })
+                })
+                .collect();
+            serde_json::json!({ "data": models }).to_string()
+        }
+        let full = page((0..OPENROUTER_PAGE_LIMIT).map(|i| format!("full/{i}")));
+        let short = page((0..3).map(|i| format!("short/{i}")));
+        let (addr, handle) = serve_pages(vec![full, short]);
+
+        let fetch = LivePricingFetch::new(None);
+        let body = fetch
+            .openrouter_models_pages(&format!("http://{addr}/api/v1/models"), &[])
+            .expect("first page succeeded");
+
+        let seen = handle.join().unwrap();
+        assert_eq!(seen.len(), 2, "expected two requests, saw {seen:?}");
+        assert_eq!(seen[0], "GET /api/v1/models HTTP/1.1");
+        assert_eq!(
+            seen[1], "GET /api/v1/models?limit=500&offset=500 HTTP/1.1",
+            "the follow-up carries the SDK's materialized limit + offset"
+        );
+
+        let models = body["data"].as_array().unwrap();
+        assert_eq!(models.len(), OPENROUTER_PAGE_LIMIT + 3);
+        assert_eq!(models[0]["id"], "full/0");
+        assert_eq!(models[OPENROUTER_PAGE_LIMIT]["id"], "short/0");
+        // The remap is what makes the camelCase parser see the wire's values.
+        assert_eq!(models[0]["contextLength"], 4096);
+        assert!(models[0].get("context_length").is_none());
+        assert_eq!(models[0]["supportedParameters"][0], "tools");
+        assert!(models[0].get("supported_parameters").is_none());
+        // Nested keys the parse reaches are passed through unrenamed.
+        assert_eq!(models[0]["architecture"]["modality"], "text->text");
     }
 
     /// A non-2xx / refused-connection pricing fetch is `None`, not an error.

@@ -336,6 +336,94 @@ pub fn parse_openrouter_sdk(data: &Value, now_ms: i64) -> Vec<FetchedModelPricin
         .collect()
 }
 
+// ----------------------------------------------------------------------------
+// The `@openrouter/sdk` seam: what the SDK does between the wire and v4's parse
+// ----------------------------------------------------------------------------
+
+/// The page size `@openrouter/sdk`'s `modelsList` assumes when the caller passes
+/// no request — v4 calls `client.models.list()` bare, so this is always the
+/// effective limit (`const limit = request?.limit ?? 500`).
+pub const OPENROUTER_PAGE_LIMIT: usize = 500;
+
+/// The `@openrouter/sdk` `Model$inboundSchema` `remap$` table — the snake_case
+/// wire key each model object carries, and the camelCase key the SDK's zod
+/// transform hands v4's parse.
+const OPENROUTER_MODEL_REMAP: &[(&str, &str)] = &[
+    ("alias_target", "aliasTarget"),
+    ("canonical_slug", "canonicalSlug"),
+    ("context_length", "contextLength"),
+    ("default_parameters", "defaultParameters"),
+    ("expiration_date", "expirationDate"),
+    ("hugging_face_id", "huggingFaceId"),
+    ("knowledge_cutoff", "knowledgeCutoff"),
+    ("per_request_limits", "perRequestLimits"),
+    ("supported_parameters", "supportedParameters"),
+    ("supported_voices", "supportedVoices"),
+    ("top_provider", "topProvider"),
+];
+
+/// Reproduce `@openrouter/sdk`'s model-level key remap over a raw
+/// `GET /api/v1/models` body, so [`parse_openrouter_sdk`] sees what v4's
+/// `fetchOpenRouterPricing` sees.
+///
+/// **Why this exists.** v4 reaches the authenticated catalogue through the SDK,
+/// whose `Model$inboundSchema` zod transform renames the snake_case wire keys to
+/// camelCase before `fetchOpenRouterPricing` reads them — which is why that
+/// function reads `contextLength` / `supportedParameters` where the *public*
+/// fetch (raw `fetch`, no SDK) reads `context_length` / `supported_parameters`.
+/// The two casings in this module are not a v4 inconsistency to be tidied away;
+/// they are two different code paths, and [`parse_openrouter_sdk`] is correct as
+/// written. The host seam returns raw HTTP, so without this remap it fed the
+/// camelCase parser a snake_case body and every model came back with
+/// `contextLength: null` and `supportsTools: false` (measured 2026-07-30 against
+/// the live catalogue: 364/364 context lengths and 298 tool-capable models lost).
+/// Same class as dogfood #24 — an SDK-synthesized shape is not the wire shape.
+///
+/// Only the model-level table is applied: it covers every key
+/// [`parse_openrouter_sdk`] reads, and the one nested field it reaches
+/// (`architecture.modality`) is passed through unrenamed by
+/// `ModelArchitecture$inboundSchema`. Unknown keys are preserved rather than
+/// dropped — the SDK's zod would strip them, but nothing downstream reads them,
+/// and preserving is the lossless choice.
+pub fn remap_openrouter_sdk_models(raw: &Value) -> Value {
+    let models: Vec<Value> = as_array(raw, "data")
+        .into_iter()
+        .map(|model| match model {
+            Value::Object(map) => {
+                let mut out = serde_json::Map::with_capacity(map.len());
+                for (key, value) in map {
+                    let renamed = OPENROUTER_MODEL_REMAP
+                        .iter()
+                        .find(|(wire, _)| *wire == key)
+                        .map(|(_, sdk)| (*sdk).to_string())
+                        .unwrap_or(key);
+                    out.insert(renamed, value);
+                }
+                Value::Object(out)
+            }
+            other => other,
+        })
+        .collect();
+    serde_json::json!({ "data": models })
+}
+
+/// The SDK's `modelsList` page-loop decision, as a pure step: given the RAW page
+/// just received and the `offset` of the request that produced it, the offset to
+/// request next — or `None` to stop.
+///
+/// Verbatim from `funcs/modelsList.js`: stop on a missing/empty/non-array `data`,
+/// stop when the page is shorter than the limit, else continue at
+/// `offset + results.length`. v4 accumulates every page, so a host that fetches
+/// only the first one silently truncates the catalogue at
+/// [`OPENROUTER_PAGE_LIMIT`] models.
+pub fn openrouter_next_page_offset(raw_page: &Value, request_offset: usize) -> Option<usize> {
+    let results = raw_page.get("data").and_then(Value::as_array)?;
+    if results.is_empty() || results.len() < OPENROUTER_PAGE_LIMIT {
+        return None;
+    }
+    Some(request_offset + results.len())
+}
+
 /// v4 `fetchOllamaModels`: free (0 cost), null context; vision when the name
 /// includes "llava"/"vision"; tools always false.
 pub fn parse_ollama_models(data: &Value, now_ms: i64) -> Vec<FetchedModelPricing> {
@@ -383,8 +471,10 @@ fn average_cost(m: &FetchedModelPricing) -> f64 {
     (m.prompt_cost_per_1m + m.completion_cost_per_1m) / 2.0
 }
 
-/// v4 `sortByCost` — stable sort by average cost ascending.
-fn sort_by_cost(mut models: Vec<FetchedModelPricing>) -> Vec<FetchedModelPricing> {
+/// v4 `sortByCost` — stable sort by average cost ascending. Public so the
+/// P4.D33 differential replays the fetch path's real composition
+/// (`sort_by_cost(parse_openrouter_sdk(…))`) instead of a copy that can drift.
+pub fn sort_by_cost(mut models: Vec<FetchedModelPricing>) -> Vec<FetchedModelPricing> {
     models.sort_by(|a, b| {
         average_cost(a)
             .partial_cmp(&average_cost(b))

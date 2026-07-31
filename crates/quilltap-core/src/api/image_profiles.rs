@@ -659,6 +659,19 @@ pub async fn image_profile_generate(
 // ===========================================================================
 // Refusal arms (the LLM/IO-coupled actions — deferred this round)
 // ===========================================================================
+//
+// P4.D33 bank — when these land, the port target is v4 AT OR AFTER `13f0ebd7`.
+// `@openrouter/sdk` 0.13 turned `models.list()` / `embeddings.listModels()` into
+// paginated async-iterables whose rows live at `page.result.data`; three v4 call
+// sites (incl. `plugins/dist/qtap-plugin-openrouter/image-provider.ts` and
+// `embedding-provider.ts`, the two these arms would port) were left reading the
+// pre-0.13 `response.data`, so discovery silently returned NOTHING and always
+// fell through to `FALLBACK_IMAGE_MODELS`. Port the PAGE-LOOPED behavior, not
+// the shipped-for-a-year broken read. The equivalent seam on the pricing path is
+// already reproduced — see `services::pricing_fetcher::openrouter_next_page_offset`
+// and `remap_openrouter_sdk_models`, and the `openrouter_sdk_pricing_equivalence`
+// differential. The same bank applies to the `p4.9h` embedding-profiles
+// management surface.
 
 pub fn image_profile_validate_key() -> Response {
     not_available("validate-key")
