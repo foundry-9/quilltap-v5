@@ -323,18 +323,31 @@ export class PhotoGalleryModal {
   }
 
   protected thumbSrc(item: GalleryItem): string {
-    // Chat files serve off the id-keyed thumbnail route (the v5 byte path);
-    // vault photos come with their blob URL.
-    return item.kind === 'chat'
-      ? thumbnailUrl(item.data.id, this.thumbnailSize())
-      : (item.data.url ?? item.data.filepath);
+    // Vault photos come with their blob URL (v4 `:250`, `item.data.url ||
+    // item.data.filepath`) — and so do `mountFile` entries, which the server
+    // contributes from the Librarian announcement walk rather than the `files`
+    // table. Their `id` is a `doc_mount_file_links` id, so the id-keyed
+    // thumbnail route 404s on them (dogfood #48). Only genuine chat files —
+    // uploads and generated images, both real `files` rows — take the v5
+    // thumbnail path, which is itself a v5 divergence (v4 served thumbnails
+    // straight off `filepath`; see `image-urls.ts`).
+    if (item.kind !== 'chat' || item.data.type === 'mountFile') {
+      return item.data.url ?? item.data.filepath;
+    }
+    return thumbnailUrl(item.data.id, this.thumbnailSize());
   }
 
   protected chatFileFor(item: GalleryItem & { kind: 'chat' }): ChatGalleryFile {
     return {
       id: item.data.id,
       filename: item.data.filename,
-      url: fileUrl(item.data.id),
+      // Same split as `thumbSrc`: a `mountFile`'s id does not address the files
+      // route, so the full-size view must use the server's own blob URL or the
+      // click straight after the thumbnail 404s in turn (dogfood #48).
+      url:
+        item.data.type === 'mountFile'
+          ? (item.data.url ?? item.data.filepath)
+          : fileUrl(item.data.id),
     };
   }
 

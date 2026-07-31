@@ -310,4 +310,33 @@ describe('PhotoGalleryModal', () => {
       expect(detail().querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
     });
   });
+
+  it('serves a mountFile tile from the server URL, not the id-keyed files route', async () => {
+    // Dogfood #48: the announcement walk contributes `mountFile` entries whose
+    // `id` is a doc_mount_file_links id. Building /api/v1/files/{id} for those
+    // 404s and the grid renders "Image Deleted". v4 uses `url || filepath` for
+    // EVERY item (PhotoGalleryModal.tsx:250).
+    const fixture = await render(
+      stubClient({
+        files: [
+        file({
+          id: 'link-1',
+          filename: 'yacht.png',
+          type: 'mountFile',
+          url: '/api/v1/mount-points/mp-1/blobs/photos%2Fyacht.png',
+          filepath: '/api/v1/mount-points/mp-1/blobs/photos%2Fyacht.png',
+        }),
+        file({ id: 'f-2', filename: 'upload.png', type: 'chatFile' }),
+        ],
+      }),
+    );
+    await flush(fixture);
+
+    const srcs = gridImgs(fixture).map((i) => (i as HTMLImageElement).getAttribute('src'));
+    expect(srcs[0]).toBe('/api/v1/mount-points/mp-1/blobs/photos%2Fyacht.png');
+    expect(srcs[0]).not.toContain('/api/v1/files/');
+    // A genuine chat file still takes the v5 thumbnail route.
+    expect(srcs[1]).toContain('/api/v1/files/f-2');
+    expect(srcs[1]).toContain('action=thumbnail');
+  });
 });

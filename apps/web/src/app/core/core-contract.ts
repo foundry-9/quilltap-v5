@@ -1677,6 +1677,19 @@ export interface ChatFileDto {
   mimeType: string;
   sizeBytes?: number;
   createdAt?: string;
+  /**
+   * The server's own byte URL for this entry. For an uploaded/generated file it
+   * is `/api/v1/files/{id}`; for a `mountFile` it is the document-store blob
+   * route, whose id is a `doc_mount_file_links` id and is NOT addressable
+   * through the files route (dogfood #48).
+   */
+  url?: string;
+  /**
+   * v4's `type` discriminator: `chatFile` | `generatedImage` | `mountFile`.
+   * `mountFile` entries come from the Librarian announcement walk, not the
+   * `files` table.
+   */
+  type?: 'chatFile' | 'generatedImage' | 'mountFile';
 }
 
 /** The Courier paste-back: settle the pending manual turn (v4 `?action=resolve-external-turn`). */

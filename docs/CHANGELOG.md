@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+A picture attached from the document store now shows up properly in a chat's
+photo gallery, instead of appearing as a deleted image. The picture was never
+gone — the gallery was looking for it in the wrong place.
+
 Clicking outside the search dialog closes it again, instead of leaving Escape
 as the only way out.
 
