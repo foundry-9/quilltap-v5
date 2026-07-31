@@ -3592,18 +3592,35 @@ post-5.0).
 dogfood findings #37 and #38 are FIXED. Full round record in
 `status-log.md`; gate numbers in CLAUDE.md's Status bullet.
 
+### Round outcome (2026-07-31) — the `ff12f491` drift catch-up round, UNIFIED
+
+**P4.D30 ∥ P4.D31 ∥ P4.D32 ∥ P4.D33 ∥ P4.D34 ALL CLOSED** (orders
+`work-orders/p4.d30-pascal-canonical-reader.md` / `p4.d31-restore-memory-ids.md`
+/ `p4.d32-release-refactor-sweep.md` / `p4.d33-provider-sdk-wire-check.md` /
+`p4.d34-terminal-spa-riders.md`). Nineteen v4 commits absorbed; the oracle
+baseline MOVES to **`ff12f491`** (v4 HEAD `e1be028b` is one release-infra
+commit past it — NO-PORT). The four release-refactor commits proven
+output-neutral by D32's 290-family sweep; the SDK majors proven wire-neutral
+by D33's byte-identical corpora; two real pre-existing v5 bugs fixed on the
+OpenRouter pricing path; restore's memory-id bug fixed with the archive that
+can actually see it. Full round record in `status-log.md`; gate numbers in
+CLAUDE.md's Status bullet.
+
 **Next candidates, in rough value order:**
 
-1. **The dogfood pass** — item 1 above stands whole, and now ALSO owes
-   P4.21's 💸 live proof (a real describe call + a real in-chat vision send
-   on the Friday copy — the model must describe the ACTUAL image) and a
-   toolbar/search walk on real data.
-2. **The `83118077` Pascal drift catch-up** — v4 moved mid-round on the
-   PORTED `lib/pascal/custom-tools.ts` (`readToolFile` → the canonical
-   `readMountFileBytes`: path-boundary enforcement, blob-stored definitions
-   become readable, a `SOURCE_NOT_FOUND` race skip). Blast radius: the
-   pascal / tool-definitions / workbench oracle families. Small,
-   lane-sized. (`71dcc7e8`/`80cafed5` are test-coverage-only — NO-PORT.)
+1. **The dogfood pass** — long owed and still first: the embedding worker's
+   live proof, the chat-dialog family, the picker/attach flow, walk Parts
+   D/F/H, P4.21's 💸 vision proof, the toolbar/search walk — and now ALSO
+   **P4.D33's 💸 OpenRouter pricing proof** (boot with a real OpenRouter
+   key: cost estimation must show real context lengths and tool-capable
+   models — before the fix every model parsed to `contextLength: null`,
+   `supportsTools: false`).
+2. **The `canChooseOutfit` projection gap** — surfaced by D32's sweep:
+   v5's character read projection omits `canChooseOutfit`, which v4 emits
+   (`characters_read` / `characters_actions` red at BOTH pins; `git log -S`
+   proves no drift commit introduced it — it is the P4.6bh outfit round's
+   leftover: the vault flag landed, the DB read projection didn't).
+   Lane-sized; its differential families already exist and are red.
 3. **The store-unavailable 503 envelope** — the P4.D29 unit-4 escalation:
    v4 maps Project/Group/CharacterVault store-unavailable errors to a
    deliberate contextful 503 (`{error, projectId}` etc.) where v5 answers
@@ -3611,14 +3628,20 @@ dogfood findings #37 and #38 are FIXED. Full round record in
    `ErrorKind::Unavailable` + an entity-id field on `CoreError` + the two
    `overlay_to_db` replacements + the vault sibling) is in the P4.D29
    unit-4 lane record. Small; touches `api/**`.
-4. **`p4.9h`** (prompt library + embedding-profiles management — carrying
+4. **Sweep debt from D32** — the `terminal_tools` oracle did not survive
+   regeneration (unresolved — diagnose whether the case or the recipe
+   rotted), and 28 families' header recipes could not be run mechanically
+   (list in the D32 lane record / `/tmp/d32-rest-final.json`); worth a
+   maintenance pass that makes every header recipe actually runnable (the
+   `harness-recipes-are-runnable` rule).
+5. **`p4.9h`** (prompt library + embedding-profiles management — carrying
    the banked PUT trigger matrix, its `EMBEDDING_REAPPLY_PROFILE`
-   dependency, and now four of the queue-badge trigger sites), the
-   workspace per-tab toolbar bridge (unlocks the Salon slot adoption —
-   the P4.9P tier-2 ruling), the Zod format-validator gap on property
-   bags (P4.D29's deferral), `p4.9i2`, `p4.9o`, and the standing pools.
+   dependency — port target v4 AT/AFTER `13f0ebd7` per D33's bank — and
+   four of the queue-badge trigger sites), the workspace per-tab toolbar
+   bridge (unlocks the Salon slot adoption — the P4.9P tier-2 ruling),
+   the Zod format-validator gap on property bags (P4.D29's deferral),
+   `p4.9i2`, `p4.9o`, and the standing pools.
 
-⚠ **Watch item:** v4 is THREE commits past the `dcd9440a` baseline
-(`83118077` behavior — item 2 above; two test-only). The tree is CLEAN at
-`80cafed5`, but regenerate oracles from a worktree pinned at `dcd9440a`
-until the Pascal drift is absorbed.
+**Standing regen note:** v4 HEAD `e1be028b` is lib-inert past the
+`ff12f491` baseline — oracles may regenerate straight from the checkout
+until v4 moves again; drift-check before every round.

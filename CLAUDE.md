@@ -1657,6 +1657,80 @@ records THERE. Update this summary only when a phase or round completes.
   vision on the Friday copy) joins the owed dogfood pass.** Versions:
   core 0.0.418, harness 0.0.363, web 0.0.55, SPA 0.5.326; host/cli/tauri
   unchanged.
+- **The `ff12f491` drift catch-up round (P4.D30 ∥ P4.D31 ∥ P4.D32 ∥
+  P4.D33 ∥ P4.D34): UNIFIED on main (2026-07-31) — ALL FIVE CLOSED; the
+  oracle baseline MOVES to `ff12f491` and the drift debt is CLEARED.**
+  Nineteen v4 commits absorbed in five lanes. The Pascal canonical-reader
+  re-port (blob-stored definitions load, boundary enforcement, the
+  SOURCE_NOT_FOUND race skip; the new `read_mount_file_bytes_conn` twin; a
+  pre-existing v5 strict-UTF-8 divergence fixed via `from_utf8_lossy`; the
+  `pascal-run-custom-*` fixture REBUILT with two blob definitions; new
+  6-case `pascal_definition_reader_equivalence` — an order premise
+  disproved: boundary escapes are unreachable, pinned by unit test as v4
+  pins them) ∥ restore memory-id preservation (one call site; the NEW
+  `restore-archive-memory-graph.zip` because the seven committed archives
+  were structurally BLIND to the bug in `new-account` mode — the
+  `<minted-N>` normalizer labels correct and wrong ids identically; the
+  sixteen 4.8 columns made measurable, twelve had no non-default value in
+  any archive) ∥ the release-refactor neutrality sweep (**290 of 324
+  non-sibling families regenerated + re-run at the pin — the four
+  "no functional change" commits PROVEN neutral**; the helper mirrors; the
+  dead-code follow; `33cca411` was NOT a NO-PORT — the CLI help/completion
+  re-port fixed 6-of-135 Tier R reds; the `pricing_fetcher` oracle mock
+  had been STARVING v4 since SDK 0.13; 28 families' recipes did not
+  survive mechanical extraction — a stated shortfall; standing reds
+  surfaced: the `canChooseOutfit` projection gap, `terminal_tools`) ∥ the
+  provider SDK wire check (**openai 6.48→7.2 + `@openrouter/sdk`
+  0.13.66→1.2.2 moved v4's wire NOT AT ALL** — all four corpora
+  byte-identical, provably regenerated against the new SDKs; the three
+  recorded refusals still refuse; TWO real pre-existing v5 bugs found and
+  fixed on the authenticated OpenRouter pricing path — the SDK key remap
+  v5 never reproduced [364/364 context lengths + 298 tool-capable models
+  lost] and the 500-row page loop [catalogue at 364 and growing]; new
+  `openrouter_sdk_pricing_equivalence` with the REAL SDK in the oracle
+  loop) ∥ the SPA drift riders (the xterm-6 two-tier theme read; the
+  exited-session input disable — newly live in BOTH apps; the three qt-*
+  utilities + hover variants v5's templates referenced and nothing
+  defined — 57 `qt-text` sites inheriting colour; five
+  `qt-icon-button`→`qt-button-icon` transpositions; the shared Staff
+  display-name table; `coreErrorMessage`). Six NO-PORTs dispositioned
+  (`71dcc7e8` `80cafed5` `77c480d0` `ff12f491` `f46b0554` `0b9320a3`) plus
+  the mid-round `e1be028b` (release infra, zero lib). The §3 unification
+  review found NO blocking issues. Gate: the round's 15 differentials by
+  name over oracles regenerated FRESH from a pinned `ff12f491` worktree,
+  zero SKIP; fmt/clippy both feature sets; release build; full workspace
+  tests; ng test; ng build; full Playwright (numbers in the round
+  record). **💸 Live proofs owed to the next dogfood pass:** the
+  OpenRouter pricing fix (real context lengths + tool-capable models with
+  a real key) joins P4.21's vision proof and the toolbar/search walk.
+  Versions: core 0.0.425, harness 0.0.368, cli 0.0.4, host 0.0.52, SPA
+  0.5.331; web/tauri unchanged. Round record: `status-log.md`.
+- **Oracle baseline: `ff12f491` (v4 4.8.0-dev.135, 2026-07-31), adopted at
+  the `ff12f491` drift-round unification — NO v4 lib drift debt remains.**
+  The nineteen commits past `dcd9440a` are all absorbed or dispositioned
+  (see the round bullet above). **⚠ v4 HEAD is `e1be028b`, ONE commit past
+  the baseline: release packaging only (Dockerfile ×2 / README / versions /
+  one build-script const) — zero `lib/`, `app/`, or dependency change,
+  verified by name; NO-PORT.** Oracles may regenerate straight from
+  `~/source/quilltap-server` while HEAD stays `e1be028b`; pin a detached
+  worktree on any further drift (`oracle-regen-pinned-v4-worktree` — the
+  pin needs `plugins/node_modules` + per-plugin
+  `plugins/dist/*/node_modules` symlinks for provider corpora, and the
+  installed SDK majors must match package.json: openai 7,
+  `@openrouter/sdk` 1.2). The round regenerated: the whole
+  pascal/tool/workbench family + the rebuilt `pascal-run-custom-*`
+  fixture (D30), the restore/backup/remap/import family + the new
+  memory-graph archive (D31), 290 non-sibling families (D32's sweep), and
+  the four provider corpora byte-identical (D33). Families outside those
+  sets keep their prior regen vintage. ⚠ Since P4.d26 the
+  distill-transitive tier-3 oracles are **TZ-SENSITIVE** — their recipes
+  pin TZ=UTC (+ the America/Chicago legs where named); never regenerate
+  without the pins. ⚠ The standing committed-fixture regen rule applies
+  unchanged: point oracles at the committed DBs, never a rebuild — and
+  note D32's finding that some family recipes MUTATE committed fixtures
+  in place (`embedding-generate-*`, `embedding-remainder-*`,
+  `episodic-recall-*`): run those against /tmp COPIES.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `dcd9440a` (2026-07-30), adopted at the P4.D29
   store-overlay-hardening unification. ⚠ v4 HAS ALREADY DRIFTED PAST IT.**
   The one commit past `5cc76688` is `dcd9440a` (a failed `properties.json`

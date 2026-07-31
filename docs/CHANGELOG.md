@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Brought the drift-catch-up round's five lanes together and shipped them as
+one, clearing all nineteen of the reference app's outstanding commits. The
+highlights riding this train: restored backups keep the memory web intact,
+uploaded custom-tool definitions actually load, OpenRouter models report
+their real capabilities and prices again, ended terminal sessions stop
+taking keystrokes, and a batch of always-referenced-never-defined styling
+classes now exist — plus proof, measured rather than assumed, that two
+major SDK upgrades upstream and four large refactors changed no behavior
+at all. The reconciliation re-ran the round's sixteen equivalence families
+against freshly regenerated reference outputs (none skipped), and the
+review of the combined change found nothing blocking. Full fleet green:
+1,727 native checks across 404 suites, 3,171 interface checks across 263 files,
+and the complete end-to-end walk — 162 walks, none skipped.
+
 The "what went wrong" sentence behind a failed action is now derived in one
 place instead of six, so the tool bench, the Workbench editor, the tool picker
 and the mail composer cannot drift apart on what they show you.
