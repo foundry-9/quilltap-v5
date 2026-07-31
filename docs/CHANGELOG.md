@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Restoring a backup now brings each memory back under its own identity.
+Memories were the only thing a restore renamed on the way in, and because
+memories cross-reference each other, every one of those links came back
+pointing at nothing — the Commonplace Book's web of connections quietly
+came apart, with no error and no warning. This matches the fix the
+reference app just made, and applies to both restore modes.
 Custom-tool definitions now load through the same store reader everything else
 uses. Three things follow. A `.tool.json` uploaded into a character's vault
 (or a project or group store) through the file surface is stored as an

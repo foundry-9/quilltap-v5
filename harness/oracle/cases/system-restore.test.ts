@@ -96,6 +96,14 @@ const PREVIEW_CASES: PreviewCase[] = [
  *                            whose one `files` row is store-backed
  *   restore_gen2_replace         / _new_account   a second-generation archive,
  *                            whose files already sit at `restored/…`
+ *
+ * P4.D31 adds two more over the archive built for the memory-id contract
+ * (`build-restore-archives-memory-graph.test.ts`), the first carrying memories
+ * that reference each other:
+ *
+ *   restore_memory_graph_replace / _new_account   four extra memories wired into
+ *                            a graph, so `relatedMemoryIds` edges must still
+ *                            resolve after the restore
  */
 const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
@@ -131,6 +139,29 @@ const RESTORE_CASES: Array<{
   { name: 'restore_uploads_new_account', archive: 'restore-archive-uploads.zip', mode: 'new-account' },
   { name: 'restore_gen2_replace', archive: 'restore-archive-gen2.zip', alignUploadsPointer: true },
   { name: 'restore_gen2_new_account', archive: 'restore-archive-gen2.zip', mode: 'new-account' },
+
+  // ── P4.D31: the memory-id contract, both modes ───────────────────────────
+  //
+  // v4 `4ac66c29` stopped restore minting a fresh id for every memory. The seven
+  // archives above all carry two memories with `relatedMemoryIds: []`, which can
+  // only catch that in `replace` mode (where the archived id is a literal in the
+  // archive and so is COMPARED rather than normalized). In `new-account` mode
+  // both a correctly-remapped id and an incorrectly-minted one are UUIDs absent
+  // from the archive, so the differential's origin-based normalizer labels each
+  // `<minted-N>` and the arm is blind — verified by mutation.
+  //
+  // `restore-archive-memory-graph.zip` carries four extra memories wired into a
+  // graph (edges both ways, across characters, two of them `aboutCharacterId`-
+  // scoped). uuid-remap rewrites `id` and `relatedMemoryIds` through ONE memo,
+  // so a correct restore lands a row whose id is the SAME UUID as the edge that
+  // points at it — one shared `<minted-N>` label — while a fresh mint splits
+  // them into two. That is what makes the `new-account` arm sensitive.
+  { name: 'restore_memory_graph_replace', archive: 'restore-archive-memory-graph.zip' },
+  {
+    name: 'restore_memory_graph_new_account',
+    archive: 'restore-archive-memory-graph.zip',
+    mode: 'new-account',
+  },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

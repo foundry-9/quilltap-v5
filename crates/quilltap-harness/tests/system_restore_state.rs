@@ -179,10 +179,33 @@ const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
 /// the blob bytes. `main.files` is NOT among them — the file phase is its only
 /// writer, so there is nothing for its one row to be ordered against, and it is
 /// diffed in order like everything else.
+///
+/// P4.D31 added the three `restore_memory_graph_new_account` entries. Same
+/// reason as [`V5_STATS_GAP`]'s: that archive is `restore-archive.zip`'s
+/// instance plus four memories and the same seeded `files/portrait.png`, so its
+/// `new-account` restore replays one legacy-disk-key file and the two placements
+/// still write its content row, link and blob at different points in the
+/// insertion order. Not a new divergence — the ruled one, reached by a second
+/// case of the same shape.
 const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
     ("restore_new_account", "mountIndex", "doc_mount_blobs"),
     ("restore_new_account", "mountIndex", "doc_mount_file_links"),
     ("restore_new_account", "mountIndex", "doc_mount_files"),
+    (
+        "restore_memory_graph_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_memory_graph_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_memory_graph_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -209,7 +232,17 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
 ///
 /// Each entry is `(case, mount-point name)`; the three stat columns on that row
 /// are masked and checked separately.
-const V5_STATS_GAP: &[(&str, &str)] = &[("restore_new_account", "Quilltap Uploads")];
+///
+/// P4.D31 added `restore_memory_graph_new_account`. It is not a new gap: that
+/// archive is `restore-archive.zip`'s instance plus four memories, seeded with
+/// the same `files/portrait.png`, so its `new-account` restore replays the same
+/// one user file into the target's own uploads mount and hits the same stale
+/// rollup. The entry is the existing deferral reaching a second case of the same
+/// shape, and it is asserted in both directions there too.
+const V5_STATS_GAP: &[(&str, &str)] = &[
+    ("restore_new_account", "Quilltap Uploads"),
+    ("restore_memory_graph_new_account", "Quilltap Uploads"),
+];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
 const STATS_COLUMNS: &[&str] = &["fileCount", "chunkCount", "totalSizeBytes"];
@@ -778,6 +811,9 @@ fn archive_for(name: &str) -> &'static str {
         "restore_new_account" => "restore-archive.zip",
         "restore_uploads_replace" | "restore_uploads_new_account" => "restore-archive-uploads.zip",
         "restore_gen2_replace" | "restore_gen2_new_account" => "restore-archive-gen2.zip",
+        "restore_memory_graph_replace" | "restore_memory_graph_new_account" => {
+            "restore-archive-memory-graph.zip"
+        }
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -813,6 +849,121 @@ fn mode_for(name: &str) -> RestoreMode {
 /// is global and keyed by sha.
 fn aligns_uploads_pointer(name: &str) -> bool {
     matches!(name, "restore_uploads_replace" | "restore_gen2_replace")
+}
+
+/// ## P4.D31 — the memory-id contract, asserted on v5 ALONE
+///
+/// The row-for-row diff above already says "v5 restores the memories v4
+/// restores". This says something the diff cannot: that the restored graph is
+/// **internally closed**. A diff is an agreement test — if both engines minted
+/// fresh ids the same way, it would pass while every `relatedMemoryIds` edge
+/// pointed at nothing. That is exactly the failure v4 shipped for as long as it
+/// did (`4ac66c29`), and the failure v5 inherited by porting it faithfully, so
+/// the standing check is worth its few lines.
+///
+/// Three claims, per case, over the ARCHIVE's own memories:
+///
+/// 1. **Count.** Every archived memory came back (this is a fresh instance, so
+///    the restored set IS the archive's set in both modes).
+/// 2. **Identity.** In `replace` mode each row lands under its ARCHIVED id,
+///    verbatim. In `new-account` mode `remap_backup_data` runs first, so the
+///    archived ids must all be GONE and replaced by a bijective relabel —
+///    asserted as "same cardinality, disjoint from the archive's ids".
+/// 3. **Closure.** Every `relatedMemoryIds` edge resolves to a restored row, and
+///    the edge COUNT per row matches the archive's. A fresh mint breaks (3) in
+///    both modes, which is what makes this the mode-independent detector; (2) is
+///    what names *why*.
+fn assert_memory_graph_intact(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    failures: &mut Vec<String>,
+) {
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its memories");
+    let archived = &extracted.data.memories;
+    let empty: Vec<Value> = Vec::new();
+    let rows = got
+        .get("main")
+        .and_then(|p| p.get("memories"))
+        .unwrap_or(&empty);
+
+    // 1. count
+    if rows.len() != archived.len() {
+        failures.push(format!(
+            "[{name}] MEMORY GRAPH: restored {} memories, archive carries {}",
+            rows.len(),
+            archived.len()
+        ));
+        return;
+    }
+
+    let archived_ids: HashSet<&str> = archived
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str))
+        .collect();
+    let restored_ids: HashSet<&str> = rows
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str))
+        .collect();
+
+    // 2. identity
+    if name.ends_with("_new_account") {
+        let overlap: Vec<&str> = restored_ids.intersection(&archived_ids).copied().collect();
+        if !overlap.is_empty() {
+            failures.push(format!(
+                "[{name}] MEMORY GRAPH: new-account restore kept archived memory id(s) \
+                 {overlap:?} — remap_backup_data must relabel every one"
+            ));
+        }
+        if restored_ids.len() != archived_ids.len() {
+            failures.push(format!(
+                "[{name}] MEMORY GRAPH: {} distinct restored ids for {} archived — the \
+                 new-account relabel must be a bijection",
+                restored_ids.len(),
+                archived_ids.len()
+            ));
+        }
+    } else if restored_ids != archived_ids {
+        let missing: Vec<&str> = archived_ids.difference(&restored_ids).copied().collect();
+        let extra: Vec<&str> = restored_ids.difference(&archived_ids).copied().collect();
+        failures.push(format!(
+            "[{name}] MEMORY GRAPH: replace restore did not preserve archived memory ids \
+             (missing {missing:?}, unexpected {extra:?}) — v4 `restore.ts:189` passes `{{ id }}`"
+        ));
+    }
+
+    // 3. closure. `relatedMemoryIds` is a TEXT column holding a JSON array.
+    let edges_of = |m: &Value| -> Vec<String> {
+        match m.get("relatedMemoryIds") {
+            Some(Value::String(s)) => serde_json::from_str::<Vec<String>>(s).unwrap_or_default(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            _ => Vec::new(),
+        }
+    };
+    let archived_edges: usize = archived.iter().map(|m| edges_of(m).len()).sum();
+    let restored_edges: usize = rows.iter().map(|m| edges_of(m).len()).sum();
+    if archived_edges != restored_edges {
+        failures.push(format!(
+            "[{name}] MEMORY GRAPH: {restored_edges} relatedMemoryIds edges restored, \
+             archive carries {archived_edges}"
+        ));
+    }
+    for m in rows {
+        let id = m.get("id").and_then(Value::as_str).unwrap_or("<no id>");
+        for edge in edges_of(m) {
+            if !restored_ids.contains(edge.as_str()) {
+                failures.push(format!(
+                    "[{name}] MEMORY GRAPH: memory {id} points at {edge}, which no restored \
+                     memory carries — the Commonplace Book's graph came back flattened"
+                ));
+            }
+        }
+    }
 }
 
 /// Repoint `instance_settings.userUploadsMountPointId` at the archive's own
@@ -911,6 +1062,11 @@ fn system_restore_state_equivalence() {
         let got_state = read_state(&instance);
         let want_state = &case["state"];
 
+        // v5 alone: the restored memory graph must be internally closed. Run for
+        // EVERY case, not just the memory-graph ones — the other archives' edge
+        // sets are empty, so it is cheap there and guards the id preservation.
+        assert_memory_graph_intact(name, &zip, &host.temp_dir(), &got_state, &mut failures);
+
         let literals = archive_literals(&zip, &host.temp_dir());
         compare_case(
             name,
@@ -925,7 +1081,7 @@ fn system_restore_state_equivalence() {
         );
     }
 
-    assert_eq!(seen, 8, "expected all eight restore cases in the oracle");
+    assert_eq!(seen, 10, "expected all ten restore cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore-state difference(s):\n{}",

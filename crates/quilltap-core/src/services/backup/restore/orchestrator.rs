@@ -439,9 +439,26 @@ fn restore_on_writer(
         }
     }
 
-    // ── 9. Memories — v4 does NOT preserve the id here (`:235` destructures it
-    //    off), so every memory gets a fresh one. `characterId` etc. already point
-    //    at preserved ids, so nothing dangles. Legacy `personaId` is stripped.
+    // ── 9. Memories — ids ARE preserved (v4 `restore.ts:189`), as they are for
+    //    every other entity. `characterId` / `aboutCharacterId` already point at
+    //    preserved character ids, so nothing dangles there either. Legacy
+    //    `personaId` is stripped.
+    //
+    //    The memory's OWN id is the load-bearing one: memories reference each
+    //    other through `relatedMemoryIds`, which uuid-remap rewrites in lockstep
+    //    with `id` for new-account restores (`uuid_remap.rs:159-173` — one shared
+    //    memo, so an edge and its target resolve to the same new value). Minting
+    //    a fresh id here would leave every one of those edges pointing at a
+    //    memory that no longer exists, quietly flattening the Commonplace Book's
+    //    graph on restore.
+    //
+    //    ⚠ This was v4's own bug until `4ac66c29` (2026-07-30) — memories were
+    //    the ONLY entity restored without their backed-up id, because
+    //    `UserScopedMemoriesRepository` scopes by character rather than userId,
+    //    so it is hand-written and never forwarded the `CreateOptions` the
+    //    generic wrapper passes through. v5 had ported the bug faithfully. v5
+    //    needs no repository change to match the fix: `db::memories::
+    //    MemoriesRepository::create` has always taken `&CreateOptions`.
     {
         let repo = crate::db::memories::MemoriesRepository::new(main);
         for m in &data.memories {
@@ -474,7 +491,7 @@ fn restore_on_writer(
                 "Failed to restore memory".to_string(),
                 repo.create(
                     &create,
-                    &copts!(new_id(), crate::db::memories::CreateOptions)
+                    &copts!(id_of(m), crate::db::memories::CreateOptions)
                 )
             );
         }
