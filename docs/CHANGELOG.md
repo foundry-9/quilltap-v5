@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Refreshed the code comments that cite the reference app by filename and
+function, after it renamed a middleware file and dropped a legacy alias. No
+behavior change — it just means the next person tracing a note back to the
+other app finds the thing it names.
+
 Followed the reference app's dead-code removal: a cheapest-model lookup nothing
 ever called is gone from both sides. Repairing its test along the way uncovered
 a check that had been quietly comparing nothing for months — the test kitchen

@@ -81,7 +81,8 @@ fn forbidden(msg: impl Into<String>) -> Response {
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
-/// v4's Zod arm (`lib/api/middleware/auth.ts:166` → `validationError`): a schema
+/// v4's Zod arm (`lib/api/middleware/context.ts:167` → `validationError`; the
+/// file was `middleware/auth.ts` before `55752ad4`): a schema
 /// rejection is a 400 whose body is `{error: 'Validation error', details: […]}`.
 /// v5's error envelope carries no `details` array — the standing, named
 /// P4.6bb deferral — so only the `error` string is reproduced. The

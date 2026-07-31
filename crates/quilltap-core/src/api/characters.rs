@@ -11,7 +11,8 @@
 //!
 //! `user_id` is a parameter (not hard-coded `SINGLE_USER_ID`) so the differential
 //! harness can drive with the fixture's own user id on both sides; the engine
-//! passes `SINGLE_USER_ID`. Ownership (v4 `checkOwnership`) collapses to
+//! passes `SINGLE_USER_ID`. Ownership (v4 `checkOwnership`, renamed `exists`
+//! by `55752ad4` — it had always ignored its userId argument) collapses to
 //! NotFound-on-absent for the single-user v5.
 
 use serde_json::{json, Map, Value};
@@ -77,7 +78,8 @@ fn read_main_mount<T>(
 }
 
 /// v4's ownership gate for the `[id]` reads: `repos.characters.findById(id)`
-/// (the OVERLAID read — throws on a broken vault) + `checkOwnership`. Returns the
+/// (the OVERLAID read — throws on a broken vault) + `exists` (`checkOwnership`
+/// before `55752ad4`). Returns the
 /// overlaid character, or the NotFound/internal refusal.
 fn require_character(
     main: &rusqlite::Connection,
@@ -1493,7 +1495,8 @@ pub async fn character_photo_save_by_id(
 pub fn character_cascade_preview(db: &Db, _user_id: &str, character_id: &str) -> Response {
     let cid = character_id.to_string();
     let result = read_main_mount(db, move |main, mount| {
-        // v4's GET-action ownership gate (overlaid findById + checkOwnership).
+        // v4's GET-action ownership gate (overlaid findById + `exists`,
+        // spelled `checkOwnership` before `55752ad4`).
         if let Err(r) = require_character(main, mount, &cid) {
             return Ok(Err(r));
         }
@@ -1706,7 +1709,8 @@ fn build_update_patch(body: &Value) -> Map<String, Value> {
 // Sub-resource mutations (prompts / scenarios / plugin-data)
 // ===========================================================================
 
-/// Ownership gate inside a write closure (v4 `findById` + `checkOwnership`).
+/// Ownership gate inside a write closure (v4 `findById` + `exists`, spelled
+/// `checkOwnership` before `55752ad4`).
 fn require_character_owned(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,

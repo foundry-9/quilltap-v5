@@ -13,7 +13,8 @@
 //!
 //! `user_id` is a parameter (not hard-coded `SINGLE_USER_ID`) so the differential
 //! harness can drive with the fixture's own user id on both sides; the engine
-//! passes `SINGLE_USER_ID`. v4's `checkOwnership` collapses to NotFound-on-absent
+//! passes `SINGLE_USER_ID`. v4's ownership guard (`checkOwnership` until
+//! `55752ad4` renamed it `exists`) collapses to NotFound-on-absent
 //! for the single-user v5.
 
 use serde_json::{json, Map, Value};

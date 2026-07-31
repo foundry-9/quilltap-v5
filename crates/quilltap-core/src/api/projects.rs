@@ -6,7 +6,8 @@
 //! `projects/route.ts`, `[id]/actions/{project-crud,roster,chats,state,tools}.ts`,
 //! `[id]/mount-points/route.ts`) and returns a [`Response`] directly. Reads nest
 //! [`Db::read_main`] + [`Db::read_mount_index`]; writes go through the
-//! dual-connection writer ([`with_both_conns`]). v4's `checkOwnership` is a bare
+//! dual-connection writer ([`with_both_conns`]). v4's ownership guard
+//! (`checkOwnership` until `55752ad4` renamed it `exists`) is a bare
 //! existence guard (no userId filtering) → NotFound-on-absent here.
 
 use serde_json::{json, Map, Value};
