@@ -45684,3 +45684,66 @@ throw, and the empty-message arm above.
 
 **Gate:** `ng test` 263 files / 3,171 passed; `npx tsc --noEmit` clean; `ng build`
 clean. SPA 0.5.331.
+
+---
+
+## Lane record — P4.D34 (the SPA drift riders): the close-out
+
+**Order:** `work-orders/p4.d34-terminal-spa-riders.md`. Branch
+`claude/p4-terminal-spa-riders-4f7a5e`. **All tiers landed; nothing deferred.**
+Tier 1 items 1–4 and tier 2 item 5 are all on the branch; tier 3 was "none
+expected" and none arose.
+
+**⚠ v4 DRIFTED ONE COMMIT DURING THE LANE — verified INERT, and the unifier owns
+the call.** The order pins `ff12f491`; v4 HEAD is now `e1be028b`
+("fix(release): unbreak the standalone tarball and the Docker dependency
+stages", 4.8.0-dev.135 → .136). It touches `Dockerfile`, `Dockerfile.ci`,
+`README.md`, `docs/CHANGELOG.md`, `package-lock.json`, two `package.json`
+versions and `scripts/build-standalone-tarball.ts` — **zero files under `lib/`,
+`app/` or `components/`**, verified by name. It cannot reach this lane's
+reference surfaces (`components/terminal/Terminal.tsx`, `app/styles/**`, the
+`0246c6c8` SPA slice) and cannot move any oracle family, so the lane proceeded
+rather than stopping with nothing delivered. v4's tree is clean at `e1be028b`.
+**The sibling Rust lanes' regen pin is unaffected**; whether the recorded
+baseline moves to `e1be028b` is the unifier's decision, not this lane's.
+
+**The baseline-wording slice for the unifier** (this lane's contribution to the
+round's `CLAUDE.md` / `phase-4.md` paragraph — wording only, not applied here):
+
+> P4.D34 brought the SPA up to the drift's client half: xterm 6's two-tier
+> theme read (six optional knobs that must stay `undefined` so xterm derives
+> them, rather than taking the required tier's `#000000` and painting every
+> theme's scrollbar black) and the exited-session input disable — **newly live
+> in BOTH apps**, since v4's old `term._input` poke was never a real xterm
+> field and v5 never carried it at all; the three `qt-*` utilities plus both
+> escaped hover variants that v5's templates had referenced from the start and
+> nothing defined (57 `qt-text` sites inheriting colour, 20 `hover:qt-text`
+> controls that never brightened), together with the five terminal icon buttons
+> that spelled `qt-button-icon` backwards; and the `0246c6c8` client helper
+> mirrors — the shared Staff display-name table and one `coreErrorMessage`.
+> Zero Rust touched, so no cargo gate was owed.
+
+**Verification gate (the order's own):** `ng test` **263 files / 3,171 passed**;
+`npx tsc --noEmit` clean; `ng build` clean; Playwright over every surface the
+lane touched, against a FRESH dist and locally built binaries —
+`terminal-flow` (incl. the new exit-disable beat), `llm-inspector-flow` (incl.
+the new class-definition beat), `salon-custom-tools-flow`,
+`salon-post-office-flow`, `workbench-flow`, `workbench-gate-flow` — **24 passed
+/ 0 failed / 0 skipped** in one invocation (the two new beats among them; the
+inspector spec also ran 3/3 on its own beforehand). **No cargo gate:** the branch diff is `apps/web/**` + `docs/**` only (22 files, zero Rust),
+so the workspace gate would have recompiled ~10 GB to re-prove main.
+
+**Versions:** SPA **0.5.331** (0.5.326 → +5, one per unit). No crate versions
+moved.
+
+**Two gotchas worth carrying forward:**
+
+1. **A CSSOM selector assertion must split on commas.** The production minifier
+   merges rules sharing a declaration block, so `.hover\:qt-bg-surface-hover:hover`
+   arrives joined onto `.hover\:qt-bg-surface-alt:hover` and an exact
+   `selectorText` match misses it. This cost a red first run on a correct port.
+2. **A v5 terminal spec cannot stand up xterm.** vitest runs under jsdom with no
+   canvas (`HTMLCanvasElement.getContext` is unimplemented — the existing suite
+   already logs those warnings), so both terminal helpers are exported and
+   spec'd directly rather than through the component. v4 keeps both
+   module-private; that divergence is deliberate and noted at each site.
