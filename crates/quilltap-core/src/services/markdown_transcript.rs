@@ -48,14 +48,15 @@ use serde_json::Value;
 
 use crate::api::types::{ErrorKind, Response};
 use crate::chat_timestamp::{
-    calculate_timestamp_at, resolve_timezone, InvalidTimezone, TimestampConfig, TimestampFormat,
-    TimestampMode,
+    calculate_timestamp_at, default_timestamp_config, resolve_timezone, InvalidTimezone,
+    TimestampConfig, TimestampFormat, TimestampMode,
 };
 use crate::clock::iso_to_ms;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chat_settings, chats_messages_read, chats_read, users, DbError};
 use crate::jsstr::{is_js_ws, js_trim};
 use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
+use crate::staff_display_names::staff_display_name;
 use crate::templates::{process_template, TemplateContext};
 
 /// Host notices that record where a conversation came from or moved to — v4
@@ -65,26 +66,6 @@ const HOST_LINK_KINDS: [&str; 4] = [
     "continuation-to",
     "merge-from",
     "merge-to",
-];
-
-/// Display names for Staff members a user may pick as an announcement voice —
-/// v4 `STAFF_DISPLAY_NAMES`, byte-transcribed (`Suparṇā` carries U+1E47
-/// LATIN SMALL LETTER N WITH DOT BELOW and U+0101 LATIN SMALL LETTER A WITH
-/// MACRON). The nearest existing v5 table
-/// (`courier_transport::courier_system_sender_label`) is a different surface —
-/// it lacks three entries and wraps its output in `[Staff: …]`.
-const STAFF_DISPLAY_NAMES: [(&str, &str); 11] = [
-    ("lantern", "The Lantern"),
-    ("aurora", "Aurora"),
-    ("librarian", "The Librarian"),
-    ("concierge", "The Concierge"),
-    ("prospero", "Prospero"),
-    ("host", "The Host"),
-    ("commonplaceBook", "The Commonplace Book"),
-    ("ariel", "Ariel"),
-    ("suparna", "Suparṇā"),
-    ("pascal", "Pascal"),
-    ("carina", "Carina"),
 ];
 
 /// The host offset the zone-less formatting path reads (v4
@@ -143,22 +124,6 @@ pub struct MarkdownTranscriptInput<'a> {
 
 fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(Value::as_str)
-}
-
-/// v4's `FALLBACK_CONFIG` — used when neither the chat nor the Salon defaults
-/// carry one.
-fn fallback_config() -> TimestampConfig {
-    TimestampConfig {
-        mode: TimestampMode::None,
-        format: TimestampFormat::Friendly,
-        custom_format: None,
-        use_fictional_time: false,
-        fictional_base_timestamp: None,
-        fictional_base_real_time: None,
-        auto_prepend: true,
-        timezone: None,
-        interval_minutes: 15,
-    }
 }
 
 /// A stored `timestampConfig` object → the typed config. See the module header
@@ -293,11 +258,10 @@ fn resolve_speaker_name(
     }
 
     if let Some(sender) = sender {
-        return STAFF_DISPLAY_NAMES
-            .iter()
-            .find(|(key, _)| *key == sender)
-            .map(|(_, label)| label.to_string())
-            .unwrap_or_else(|| sender.to_string());
+        // v4's inline `STAFF_DISPLAY_NAMES[sender] ?? sender`, now the shared
+        // `staffDisplayName` — the raw-tag fallback is the same one this
+        // exporter already carried, so the bytes are unmoved.
+        return staff_display_name(Some(sender));
     }
 
     if let Some(pid) = s(msg, "participantId").filter(|v| !v.is_empty()) {
@@ -384,7 +348,9 @@ pub fn build_markdown_transcript(
                 .filter(|v| !v.is_null())
                 .and_then(config_from_value)
         })
-        .unwrap_or_else(fallback_config);
+        // v4's `FALLBACK_CONFIG`, now the shared `DEFAULT_TIMESTAMP_CONFIG` —
+        // the same literal the exporter carried as a fifth copy.
+        .unwrap_or_else(default_timestamp_config);
 
     // DATE_ONLY / TIME_ONLY drop half the information a transcript needs. The
     // promotion is a copy: `resolveTimezone` still reads the ORIGINAL config's

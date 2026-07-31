@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Followed the reference app's cleanup pass on our side of the fence: the Staff
+display-name table, the fallback timestamp settings, a memory's event time, and
+the "which character is you" lookup each now live in one place instead of
+several. No behavior changes — the transcript export is still byte-for-byte what
+it was, and the differential tests are the proof.
 The backup test fixture now carries every one of the sixteen columns added
 this cycle, so the restore comparison actually checks that each survives a
 round trip instead of quietly agreeing with itself about columns nobody

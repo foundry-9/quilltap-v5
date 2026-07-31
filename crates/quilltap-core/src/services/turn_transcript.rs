@@ -56,6 +56,36 @@ pub fn find_turn_opener_message_id(messages: &[Value]) -> Option<String> {
     None
 }
 
+/// Resolve the user-controlled character (if any) from a chat's participants,
+/// hydrated from a map of the chat's character rows — v4
+/// `resolveUserCharacterParticipant`, which `0246c6c8` moved here from the two
+/// byte-identical copies it had grown.
+///
+/// Quilltap is single-user per instance: at most one CHARACTER participant is
+/// marked as the user persona. When none exists — or its character row is
+/// missing from the map — the caller simply omits the user from its subject set.
+///
+/// Lives here because every caller is feeding [`build_turn_transcript`]'s
+/// `user_character_*` options, which is exactly what this returns.
+///
+/// v5 has ONE caller where v4 has two: the second is v4's streaming
+/// extract-memories DRY RUN (`?action=extract-memories`), a standing v5
+/// deferral, so the queue-memories verb v5 does port never needed it.
+pub fn resolve_user_character_participant<'a>(
+    participants: &[Value],
+    participant_characters: &'a std::collections::HashMap<String, Value>,
+) -> Option<&'a Value> {
+    let p = participants.iter().find(|p| {
+        p.get("type").and_then(Value::as_str) == Some("CHARACTER")
+            && p.get("controlledBy").and_then(Value::as_str) == Some("user")
+            && p.get("characterId")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty())
+    })?;
+    let char_id = p.get("characterId").and_then(Value::as_str)?;
+    participant_characters.get(char_id)
+}
+
 /// Build a per-turn transcript from chat history (v4 `buildTurnTranscript`).
 ///
 /// Walks forward from the turn opener (exclusive) to the end of the message

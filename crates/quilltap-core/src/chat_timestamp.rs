@@ -93,6 +93,30 @@ pub struct TimestampConfig {
     pub interval_minutes: i64,
 }
 
+/// The timestamp configuration a chat gets when nothing else supplies one — the
+/// settings-form default, and the last link of every resolution chain (chat
+/// config → Salon default → this). v4 `DEFAULT_TIMESTAMP_CONFIG`
+/// (`lib/chat/timestamp-utils.ts`, `0246c6c8`), which mirrors the Zod default on
+/// `chatSettings.defaultTimestampConfig`; keep the two in step.
+///
+/// A fn rather than a `const` because the struct carries `Option<String>`
+/// fields; the four keys v4's literal omits are the `.nullable().optional()`
+/// ones, which resolve to `None` here exactly as they resolve to `undefined`
+/// there.
+pub fn default_timestamp_config() -> TimestampConfig {
+    TimestampConfig {
+        mode: TimestampMode::None,
+        format: TimestampFormat::Friendly,
+        custom_format: None,
+        use_fictional_time: false,
+        fictional_base_timestamp: None,
+        fictional_base_real_time: None,
+        auto_prepend: true,
+        timezone: None,
+        interval_minutes: 15,
+    }
+}
+
 /// Date components read as they appear on a clock in a target timezone — v4's
 /// `DatePartsInTimezone`. `month` is 0-indexed, `day_of_week` is 0 = Sunday.
 struct DatePartsInTimezone {

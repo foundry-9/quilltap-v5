@@ -411,6 +411,23 @@ pub fn temporal_multiplier(tags: TargetingTags, retrospective: bool) -> RecallMu
     }
 }
 
+/// A memory's event time in ms — `occurredAt` when the episodic spine recorded
+/// one, else the write clock. `None` when neither is present or parsable, which
+/// both boosts below read as "no ground to stand on" and pass through.
+///
+/// v4 `eventTimeMs` (`lib/memory/recall-tags.ts`, `0246c6c8`), which returns
+/// `NaN` for the missing/unparsable arms and leans on the `Number.isFinite`
+/// gates that follow. `None` reaches the same two call sites the same way —
+/// and it also subsumes v4's older `if (!eventIso) return {multiplier: 1}`
+/// early return, because a missing OR empty iso lands here as `None`.
+///
+/// `occurredAt ?? createdAt` is NULLISH coalescing, so a present-but-EMPTY
+/// `occurredAt` is used (and then fails to parse) rather than falling back to
+/// `createdAt`; [`crate::episodic::event_time_ms`] returns `None` for empty.
+fn event_time_ms(memory: &MemoryTagView) -> Option<f64> {
+    crate::episodic::event_time_ms(memory.occurred_at.or(memory.created_at))
+}
+
 /// Time-window boost — the memory's event time (occurredAt ?? createdAt) falls
 /// inside the turn's resolved retrospective window. Soft fallback companion to
 /// the hard filter in `searchMemoriesSemantic`. No window, or no parsable
@@ -422,15 +439,8 @@ pub fn occurred_within_multiplier(
     let Some(window) = window else {
         return RecallMultiplier::pass();
     };
-    // v4 `memory.occurredAt ?? memory.createdAt` — nullish coalescing, so a
-    // present-but-empty occurredAt is used (and parses NaN → pass through).
-    let Some(event_iso) = memory.occurred_at.or(memory.created_at) else {
-        return RecallMultiplier::pass();
-    };
-    // v4 gates `if (!eventIso)` — an empty string is falsy → pass through
-    // (event_time_ms also returns None for empty, same outcome).
     let (Some(t), Some(from), Some(to)) = (
-        crate::episodic::event_time_ms(Some(event_iso)),
+        event_time_ms(memory),
         crate::episodic::event_time_ms(Some(&window.from)),
         crate::episodic::event_time_ms(Some(&window.to)),
     ) else {
@@ -478,15 +488,7 @@ pub fn fresh_event_multiplier(
             return RecallMultiplier::pass();
         }
     }
-    // v4 `memory.occurredAt ?? memory.createdAt` — nullish coalescing, so a
-    // present-but-empty occurredAt is used (and then falsy → pass through);
-    // `event_time_ms` returns None for both the empty and unparsable arms,
-    // which is the same outcome v4's `!eventIso` / `!Number.isFinite(t)` reach.
-    let Some(t) = memory
-        .occurred_at
-        .or(memory.created_at)
-        .and_then(|iso| crate::episodic::event_time_ms(Some(iso)))
-    else {
+    let Some(t) = event_time_ms(memory) else {
         return RecallMultiplier::pass();
     };
 

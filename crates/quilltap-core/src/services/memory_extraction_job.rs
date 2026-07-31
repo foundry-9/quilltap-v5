@@ -44,7 +44,9 @@ use crate::services::dangerous_content::resolver::resolve_dangerous_content_sett
 use crate::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
 };
-use crate::services::turn_transcript::{build_turn_transcript, BuildTurnTranscriptOptions};
+use crate::services::turn_transcript::{
+    build_turn_transcript, resolve_user_character_participant, BuildTurnTranscriptOptions,
+};
 
 /// The `MEMORY_EXTRACTION` job payload (v4 `MemoryExtractionPayload`).
 #[derive(Clone, Debug, Default)]
@@ -80,25 +82,6 @@ impl MemoryExtractionPayload {
             connection_profile_id: s("connectionProfileId"),
         }
     }
-}
-
-/// v4 `resolveUserCharacterParticipant`: the user-controlled character (if
-/// any) from the chat's participants. Quilltap is single-user per instance —
-/// at most one CHARACTER participant is marked as the user persona; when none
-/// exists the OTHER pass simply omits the user from its subject set.
-fn resolve_user_character_participant<'a>(
-    participants: &[Value],
-    participant_characters: &'a std::collections::HashMap<String, Value>,
-) -> Option<&'a Value> {
-    let p = participants.iter().find(|p| {
-        p.get("type").and_then(Value::as_str) == Some("CHARACTER")
-            && p.get("controlledBy").and_then(Value::as_str) == Some("user")
-            && p.get("characterId")
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
-    })?;
-    let char_id = p.get("characterId").and_then(Value::as_str)?;
-    participant_characters.get(char_id)
 }
 
 /// v4 `handleMemoryExtraction`. `Err(message)` is v4's `throw` (the runner
