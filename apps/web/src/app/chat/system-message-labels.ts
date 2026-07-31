@@ -8,22 +8,9 @@
  */
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
+import { staffDisplayName } from './staff-display-names';
 
 type StaffFields = Pick<MessageDto, 'systemSender' | 'systemKind' | 'content' | 'pascalMeta'>;
-
-const SENDER_DISPLAY_NAMES: Record<NonNullable<SystemSender>, string> = {
-  lantern: 'The Lantern',
-  aurora: 'Aurora',
-  librarian: 'The Librarian',
-  concierge: 'The Concierge',
-  prospero: 'Prospero',
-  host: 'The Host',
-  commonplaceBook: 'The Commonplace Book',
-  ariel: 'Ariel',
-  carina: 'Carina',
-  suparna: 'Suparṇā',
-  pascal: 'Pascal',
-};
 
 const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   'project-context': 'project information',
@@ -78,8 +65,7 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
 };
 
 export function getSystemSenderDisplayName(sender: SystemSender): string {
-  if (!sender) return '';
-  return SENDER_DISPLAY_NAMES[sender] ?? sender;
+  return staffDisplayName(sender);
 }
 
 function resolveRawKind(message: StaffFields): string {

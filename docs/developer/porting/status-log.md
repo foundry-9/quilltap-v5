@@ -45604,3 +45604,36 @@ scan fails; restoring brings it back.
 
 **Gate:** `npx playwright test llm-inspector-flow` 3/3 green over a fresh dist.
 SPA 0.5.329.
+
+---
+
+## Lane record — P4.D34 unit 4: the shared Staff display-name table
+
+**v4 reference:** `0246c6c8` — the new `lib/chat/staff-display-names.ts` and the
+collapse of `app/salon/[id]/components/system-message-labels.ts` onto it.
+
+`apps/web/src/app/chat/staff-display-names.ts` mirrors v4's module: the
+eleven-entry `STAFF_DISPLAY_NAMES` and `staffDisplayName(sender)`, with the
+raw-tag fallback for an unrecognised sender kept as part of the contract (a row
+written by a newer build must still show something rather than vanish).
+`system-message-labels.ts`'s local `SENDER_DISPLAY_NAMES` is gone;
+`getSystemSenderDisplayName` delegates.
+
+**Placement:** v4 puts the module in shared `lib/` because it has two consumers —
+the Salon labels and the Markdown transcript exporter. In v5 the transcript
+exporter is RUST-side (P4.d28's pure renderer), so the SPA has exactly one
+consumer today; the module still lands, per the order, so the next SPA surface
+that spells a Staff name reads the one table.
+
+**Not a duplicate, deliberately left alone:** `chat/post-office/post-office.api.ts`'s
+`STAFF_OPTIONS` looks like a second copy and is not — it is v4's
+InsertAnnouncementDialog picker roster, in v4's display order (not the enum's),
+omitting Carina and billing Pascal as "Pascal the Croupier". v4 keeps the two
+apart and `0246c6c8` did not touch it.
+
+**Spec:** `staff-display-names.spec.ts` (4 cases) — the whole table asserted
+verbatim (the Suparṇā diacritic included), the empty-string arm for an ordinary
+participant message, the raw-tag fallback, and a case proving the Salon labels
+read this table and no other.
+
+**Gate:** `ng test` 262 files / 3,167 passed. SPA 0.5.330.

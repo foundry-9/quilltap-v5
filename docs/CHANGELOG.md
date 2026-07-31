@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+The Staff display-name table — how the Host, the Librarian, Aurora and the rest
+are named in prose — now lives in one place instead of being spelled out beside
+the conversation labels, so a new member cannot be added to one surface and
+missed by another.
+
 Three styling classes the interface referenced but never defined now exist:
 full-strength text, a hover background for clickable surfaces, and the two
 hover variants. The LLM Inspector's muted tabs brighten on hover again, and
