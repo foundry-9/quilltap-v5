@@ -40,6 +40,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 const PIP: &str = "a2000000-0000-4000-8000-000000000002";
+/// Owns NO wardrobe: the P4.D39 guard-fix subject.
+const WREN: &str = "a2000000-0000-4000-8000-000000000004";
 const MERGE_TARGET: &str = "c2000000-0000-4000-8000-000000000007";
 const MERGE_SOURCE: &str = "c2000000-0000-4000-8000-000000000008";
 
@@ -258,6 +260,9 @@ fn outfit_llm_choose_matches_oracle() {
         add: bool,
         reply: Option<&'a str>,
         throws: bool,
+        /// The character joining / merging. PIP unless the case is about a
+        /// character with no wardrobe of their own (P4.D39's guard fix).
+        character: &'a str,
     }
     let cases = [
         Case {
@@ -265,30 +270,80 @@ fn outfit_llm_choose_matches_oracle() {
             add: true,
             reply: Some("pipPick"),
             throws: false,
+            character: PIP,
         },
         Case {
             name: "add_llm_choose_invalid_ids",
             add: true,
             reply: Some("pipInvalidIds"),
             throws: false,
+            character: PIP,
         },
         Case {
             name: "add_llm_choose_provider_fails",
             add: true,
             reply: None,
             throws: true,
+            character: PIP,
         },
         Case {
             name: "merge_llm_choose_pick",
             add: false,
             reply: Some("pipPick"),
             throws: false,
+            character: PIP,
         },
         Case {
             name: "merge_llm_choose_provider_fails",
             add: false,
             reply: None,
             throws: true,
+            character: PIP,
+        },
+        // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
+        // THE GUARD FIX: Wren owns no wardrobe. Before the fix the candidate
+        // list came from her vault alone, so she failed the non-empty guard and
+        // the model was never consulted at all — the `llmMessages` comparison
+        // below is what pins that, since an unconsulted case records none.
+        Case {
+            name: "add_llm_choose_empty_vault_reaches_shared_pool",
+            add: true,
+            reply: Some("wrenPicksShared"),
+            throws: false,
+            character: WREN,
+        },
+        // The validator used to drop any id outside the character's own vault,
+        // so a pick from the shared tier evaporated.
+        Case {
+            name: "add_llm_choose_picks_shared_item",
+            add: true,
+            reply: Some("pipPicksShared"),
+            throws: false,
+            character: PIP,
+        },
+        // Naked on purpose — honoured, no default fallback.
+        Case {
+            name: "add_llm_choose_deliberately_unclothed",
+            add: true,
+            reply: Some("deliberatelyBare"),
+            throws: false,
+            character: PIP,
+        },
+        // The same empty answer with no flag reads as a failure to choose.
+        Case {
+            name: "add_llm_choose_unflagged_empty_falls_back",
+            add: true,
+            reply: Some("unflaggedEmpty"),
+            throws: false,
+            character: PIP,
+        },
+        // Only a real boolean counts.
+        Case {
+            name: "add_llm_choose_stringy_deliberate_falls_back",
+            add: true,
+            reply: Some("stringyDeliberate"),
+            throws: false,
+            character: PIP,
         },
     ];
 
@@ -306,8 +361,8 @@ fn outfit_llm_choose_matches_oracle() {
 
         let (resp, is_add) = if c.add {
             let data = ParticipantAddData {
-                character_id: PIP.to_string(),
-                outfit_selection: Some(json!({ "characterId": PIP, "mode": "llm_choose" })),
+                character_id: c.character.to_string(),
+                outfit_selection: Some(json!({ "characterId": c.character, "mode": "llm_choose" })),
                 ..Default::default()
             };
             (
@@ -321,7 +376,7 @@ fn outfit_llm_choose_matches_oracle() {
                 true,
             )
         } else {
-            let selections = vec![json!({ "characterId": PIP, "mode": "llm_choose" })];
+            let selections = vec![json!({ "characterId": c.character, "mode": "llm_choose" })];
             (
                 rt.block_on(
                     quilltap_core::services::chat_merge::chat_merge_conversation(

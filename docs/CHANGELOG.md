@@ -196,6 +196,16 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Proved the outfit-choosing model now sees the shared wardrobe, against the
+reference app. A character who owns no clothes is now asked at all — before,
+the empty candidate list meant the model was skipped entirely and they were
+dressed in nothing — and a character with a wardrobe of their own can pick a
+shared garment without it being thrown away. The whole conversation sent to the
+model is compared word for word, including the new paragraph asking it to say
+when nakedness is the point, and the three ways an empty answer can arrive
+(flagged, unflagged, and flagged with the wrong kind of value) each land where
+they should.
+
 Proved the tri-tier dressing against the reference app on the add-a-character
 path: a character who owns no clothes at all now joins wearing the shared
 collection, shared and personal defaults layer in the order they were created,

@@ -13,6 +13,31 @@
       "content": "{\"top\": [\"99999999-9999-4999-8999-999999999999\", \"00000000-0000-4000-8000-0000000000b2\"], \"bottom\": [\"00000000-0000-4000-8000-0000000000b1\"], \"footwear\": [], \"accessories\": \"00000000-0000-4000-8000-0000000000b3\"}",
       "promptTokens": 180,
       "completionTokens": 44
+    },
+    "pipPicksShared": {
+      "content": "{\"top\": [\"00000000-0000-4000-8000-0000000000c1\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "promptTokens": 190,
+      "completionTokens": 22
+    },
+    "wrenPicksShared": {
+      "content": "{\"top\": [\"00000000-0000-4000-8000-0000000000c1\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "promptTokens": 150,
+      "completionTokens": 22
+    },
+    "deliberatelyBare": {
+      "content": "{\"deliberate\": true, \"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "promptTokens": 180,
+      "completionTokens": 18
+    },
+    "unflaggedEmpty": {
+      "content": "{\"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "promptTokens": 180,
+      "completionTokens": 16
+    },
+    "stringyDeliberate": {
+      "content": "{\"deliberate\": \"true\", \"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "promptTokens": 180,
+      "completionTokens": 20
     }
   }
 }

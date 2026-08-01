@@ -47,6 +47,8 @@ interface Spec {
 }
 
 const PIP = 'a2000000-0000-4000-8000-000000000002';
+/** Owns NO wardrobe: the guard-fix subject (P4.D39). */
+const WREN = 'a2000000-0000-4000-8000-000000000004';
 const MERGE_TARGET = 'c2000000-0000-4000-8000-000000000007';
 const MERGE_SOURCE = 'c2000000-0000-4000-8000-000000000008';
 
@@ -346,6 +348,76 @@ async function main(): Promise<void> {
         outfitSelections: [{ characterId: PIP, mode: 'llm_choose' }],
       },
       throws: true,
+    },
+
+    // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────────
+    // THE GUARD FIX. Wren owns no wardrobe at all. Before the fix the
+    // candidate list came from `findByCharacterId` alone, so Wren failed the
+    // non-empty guard and the model was never consulted — `llmMessages` was
+    // empty and she was silently dressed in (no) defaults. Now the shared tier
+    // reaches the pool, the consult happens, and she can pick a shared garment.
+    {
+      name: 'add_llm_choose_empty_vault_reaches_shared_pool',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: WREN,
+        outfitSelection: { characterId: WREN, mode: 'llm_choose' },
+      },
+      reply: 'wrenPicksShared',
+    },
+    // A character WITH a vault picks a SHARED id. Before the fix the validator
+    // dropped anything outside `findByCharacterId`, so this pick evaporated.
+    {
+      name: 'add_llm_choose_picks_shared_item',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPicksShared',
+    },
+    // Naked ON PURPOSE: every slot empty AND `"deliberate": true`. Honoured as
+    // an answer — no default fallback.
+    {
+      name: 'add_llm_choose_deliberately_unclothed',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'deliberatelyBare',
+    },
+    // The same empty answer WITHOUT the flag reads as a failure to choose →
+    // the default outfit (Pip's coat + the shared apron).
+    {
+      name: 'add_llm_choose_unflagged_empty_falls_back',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'unflaggedEmpty',
+    },
+    // Only a real boolean counts: a stringy "true" is not the deliberate claim,
+    // so this falls back too.
+    {
+      name: 'add_llm_choose_stringy_deliberate_falls_back',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'stringyDeliberate',
     },
   ];
 

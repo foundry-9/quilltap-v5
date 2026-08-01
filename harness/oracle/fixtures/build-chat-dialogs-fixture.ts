@@ -104,6 +104,10 @@ const P_DEF = '00000000-0000-4000-8000-0000000000b1'; // top, isDefault
 const P_BOOTS = '00000000-0000-4000-8000-0000000000b2'; // footwear
 const P_SCARF = '00000000-0000-4000-8000-0000000000b3'; // accessories
 const P_SET = '00000000-0000-4000-8000-0000000000b4'; // composite [P_DEF, P_BOOTS]
+// P4.D39: Quilltap General — the shared tier (g*).
+const GENERAL_MP = '00000000-0000-4000-8000-0000000000f1';
+const G_CAPE = '00000000-0000-4000-8000-0000000000c1'; // top, shared, NOT default
+const G_APRON = '00000000-0000-4000-8000-0000000000c2'; // bottom, shared, isDefault
 
 const EXPORT_CHAT = 'c2000000-0000-4000-8000-000000000001';
 const NOCHAR_CHAT = 'c2000000-0000-4000-8000-000000000002';
@@ -213,9 +217,8 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, getCollection, closeDatabase } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, ensureCollection, getCollection, closeDatabase, rawQuery } =
+    await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -334,8 +337,41 @@ async function main(): Promise<void> {
   }
 
   // 3. Wardrobe items.
+  // P4.D39: Quilltap General (an ordinary documents store + the
+  // `instance_settings` key — the wardrobe-routes recipe). Before this the
+  // shared wardrobe tier did not exist in this fixture at all, so the
+  // `llm_choose` candidate list could only ever have been a character's vault
+  // and the tri-tier merge was unmeasurable here.
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: GENERAL_MP, createdAt: TS, updatedAt: TS },
+  );
+  await rawQuery(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  await rawQuery('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+    'generalMountPointId',
+    GENERAL_MP,
+  ]);
+
   const seedItem = async (
-    characterId: string,
+    characterId: string | null,
     id: string,
     title: string,
     types: string[],
@@ -374,6 +410,12 @@ async function main(): Promise<void> {
     [P_DEF, P_BOOTS],
     'The whole working outfit in one piece.',
   );
+  // P4.D39: the shared tier. G_CAPE is a plain shared garment (it must reach the
+  // `llm_choose` candidate list from every character's pool); G_APRON is a
+  // shared DEFAULT (the fallback a failed pick lands on, and the whole outfit
+  // for a character who owns nothing).
+  await seedItem(null, G_CAPE, 'The house oilskin cape', ['top'], false);
+  await seedItem(null, G_APRON, 'The house apron', ['bottom'], true);
 
   // 4. Projects. PROJECT_1 keeps its official store (linked doc stores present);
   //    PROJECT_2 has every link REMOVED (the has-project-but-no-stores arm).
