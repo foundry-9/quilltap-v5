@@ -460,3 +460,63 @@ describe('OutcomesSection (v4 OutcomesSection.tsx)', () => {
     ]);
   });
 });
+
+/**
+ * The chip-label field (v4 `c4d4b0de`, `BuilderForm.tsx` +34): a per-run name
+ * for the deal, sat between Title and Name.
+ */
+describe('BuilderForm — the chip label', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('sits between Title and Name, and offers the templated placeholder', async () => {
+    const fixture = await renderForm(draftWith());
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).map((l) => l.textContent?.trim());
+    expect(labels.slice(0, 3)).toEqual(['Title', 'Chip label', 'Name']);
+
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#wb-chip-label',
+    )!;
+    expect(input.placeholder).toBe('Agent lambda — {{params.label}}');
+    expect(input.maxLength).toBe(160);
+  });
+
+  it('names the placeholder families and the fallback in its hint', async () => {
+    const fixture = await renderForm(draftWith());
+    const hint = text(fixture);
+    expect(hint).toContain('{{value}}, {{roll}}, {{dice}}, {{params.name}}');
+    expect(hint).toContain('{{metadata.key}}, {{state.path}}, and {{llm}}');
+    expect(hint).toContain('Blank, and the title labels the chip.');
+  });
+
+  it('emits the typed label', async () => {
+    const fixture = await renderForm(draftWith());
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#wb-chip-label',
+    )!;
+    input.value = 'Agent lambda — {{params.label}}';
+    input.dispatchEvent(new Event('input'));
+
+    expect(emitted.at(-1)!.chipLabel).toBe('Agent lambda — {{params.label}}');
+  });
+
+  it('shows a blocking error in place of the hint, and warnings under it', async () => {
+    const overLong = await renderForm(draftWith({ chipLabel: 'x'.repeat(161) }));
+    expect(text(overLong)).toContain('chip label is over 160 characters');
+    expect(
+      (overLong.nativeElement as HTMLElement).querySelector('#wb-chip-label')!.classList,
+    ).toContain('qt-input-error');
+
+    // A warning is advisory: the hint stays, and the ⚠ line joins it.
+    const warned = await renderForm(draftWith({ chipLabel: '{{params.ghost}}' }));
+    expect(text(warned)).toContain('⚠');
+    expect(text(warned)).toContain('names no declared parameter');
+    expect(
+      (warned.nativeElement as HTMLElement).querySelector('#wb-chip-label')!.classList,
+    ).not.toContain('qt-input-error');
+  });
+});

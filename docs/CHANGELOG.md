@@ -72,6 +72,16 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Gave the tool workbench the two controls the new format needs: a chip-label
+field beside the title, and a Side Effects card between the form and the
+outcome table where a roll's consequences are written down. A condition too
+rich for the card to draw is shown as a read-only badge rather than a
+control, so it cannot be flattened by accident. The test bench's miniature
+result now matches the real one — the heading stands over its own paragraph,
+so an outcome that opens with a list or a quote reads properly — and it
+lists what each effect would write, alongside a plain statement that the
+bench computes those effects and never applies them.
+
 Extended the tool builder's working model to hold a chip label and a list
 of side effects, and to hand them back unchanged when the file is saved
 again. A condition richer than the form can draw — the kind a person writes

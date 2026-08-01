@@ -48482,3 +48482,46 @@ failure rather than a silent drop.
 **Mutation proof** — the two new round-trip cases were green on the first run,
 so `definitionFromDraft`'s `chipLabel` and `effects` emissions were each
 disabled in turn: both went red, restored green.
+
+## Lane record — P4.D36 unit 4: the Workbench UI (2026-08-01)
+
+Four v4 diffs ported into the Angular Workbench:
+
+- **`builder-form.ts`** (v4 `BuilderForm.tsx` +34) — the "Chip label" input
+  between Title and Name, v4's placeholder and hint verbatim, the blocking
+  error replacing the hint and the advisory warnings joining it. Placeholder
+  and hint are module constants for the established reason: both contain
+  `{{…}}`, and an Angular interpolation would close at the first inner `}}`.
+- **`side-effects-section.ts`** (NEW; v4's `SideEffectsSection.tsx`, 252) —
+  mounted in `workbench-editor.ts` BETWEEN the builder form and the outcome
+  table, exactly where v4 mounts it. `'verbatim'` is a read-only badge and
+  never a select option, so a hand-written condition richer than the form can
+  draw cannot be flattened by nudging a control.
+- **`proving-bench.ts`** (v4 `ProvingBench.tsx` +30) — the miniature bubble
+  goes TWO-BLOCK (heading paragraph, then the message as its own block, so an
+  outcome opening with a list/heading/quote/fence renders correctly), headed by
+  the run's rendered `chipLabel` when it carried one; plus the dry-run block:
+  `→ <target.raw> = <json value> (would write)` per resolved effect,
+  `· effect N skipped: <reason>` per skip, and the italic "The bench computes
+  effects; it never applies them."
+- **`workbench.api.ts`** — §P's preview additions: `chipLabel?` and `effects?:
+  DryEffect[]` on `BenchRoll`, plus `isApplicableEffect`. **The dry shape is
+  deliberately NOT `pascalMeta.effects`**: a live run records what it APPLIED
+  (flat target string, `previous`, the tier the write landed in) where the
+  bench records what it RESOLVED (target still structured, no `previous` at
+  all) — the two are typed apart so neither can be read as the other.
+
+**Teeth** — `side-effects-section.spec.ts` (NEW, 10 tests): the When select's
+option list, the verbatim badge (asserting the CONTROL's absence, not merely
+the badge's presence), the value-kind reseed both ways, the blank-target prefix
+shortcuts, add/remove/cap with the title, and both issue severities rendering
+beside their own row. Plus 5 new `proving-bench.spec.ts` cases (chip-label
+heading, title fallback, blank-label fallback, the three dry-effect lines, and
+the silence when there are none) and 4 new `builder-form.spec.ts` cases (field
+ORDER between Title and Name, placeholder + maxlength, the hint's placeholder
+families, the emit, and error-vs-warning rendering).
+
+One trap worth the comment it now carries: `not.toContain('would write')` is
+NOT a safe negative in the bench, because the JSON-preview card's own hint says
+"What Save would write". The assertion tests `'(would write)'` with its
+parentheses.

@@ -18,6 +18,7 @@ import { definitionFromDraft, gateFromConditions, type ToolDraft } from '../../p
 import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
+import { isApplicableEffect, type BenchRoll, type DryEffect } from './workbench.api';
 
 /**
  * ProvingBench — the Workbench's right-hand panel: single dry-run rolls, the
@@ -124,7 +125,8 @@ export function extractErrorMessage(err: unknown): string {
             [class.opacity-60]="i > 0"
             [class.qt-chat-message-whisper]="entry.visibility === 'whisper'"
           >
-            <p>🎲 <strong>{{ bubbleTitle() }}</strong> — {{ entry.message }}</p>
+            <p>🎲 <strong>{{ bubbleHeading(entry) }}</strong></p>
+            <p>{{ entry.message }}</p>
             @if (entry.diceBreakdown) {
               <p class="text-xs qt-text-secondary font-mono">{{ entry.diceBreakdown }}</p>
             }
@@ -140,6 +142,21 @@ export function extractErrorMessage(err: unknown): string {
               <p class="text-xs qt-text-secondary font-mono">
                 consult {{ llm.ok ? 'answered' : failedSuffix(llm) }}: {{ jsonString(llm.output) }}
               </p>
+            }
+            @if (entry.effects && entry.effects.length > 0) {
+              <div class="text-xs qt-text-secondary font-mono">
+                @for (effect of entry.effects; track effect.index) {
+                  @if (isApplicable(effect)) {
+                    <p>
+                      → {{ effectTarget(effect) }} = {{ effectValue(effect) }}
+                      <em>(would write)</em>
+                    </p>
+                  } @else {
+                    <p>· effect {{ effect.index + 1 }} skipped: {{ effectSkipped(effect) }}</p>
+                  }
+                }
+                <p class="italic">The bench computes effects; it never applies them.</p>
+              </div>
             }
           </div>
         }
@@ -770,6 +787,35 @@ export class ProvingBench {
    */
   protected barColor(index: number): string {
     return `var(--qt-alert-${stateToken(this.draft().outcomes[index]?.state)}-border)`;
+  }
+
+  /**
+   * The bubble's heading: the run's rendered chip label when the definition
+   * declares one, else the display title. v4 `MiniPascalBubble` — and the
+   * heading now stands as its own paragraph over the message's own block, so
+   * an outcome opening with a list, a heading, a quote, or a fence renders
+   * correctly instead of being welded onto the end of a sentence.
+   */
+  protected bubbleHeading(roll: BenchRoll): string {
+    return roll.chipLabel?.trim() || this.bubbleTitle();
+  }
+
+  protected isApplicable(effect: DryEffect): boolean {
+    return isApplicableEffect(effect);
+  }
+
+  /** The target as the author wrote it — the raw text, not the parsed shape. */
+  protected effectTarget(effect: DryEffect): string {
+    return isApplicableEffect(effect) ? effect.target.raw : '';
+  }
+
+  /** v4 renders the resolved value through `JSON.stringify`, quotes and all. */
+  protected effectValue(effect: DryEffect): string {
+    return isApplicableEffect(effect) ? JSON.stringify(effect.value) : '';
+  }
+
+  protected effectSkipped(effect: DryEffect): string {
+    return isApplicableEffect(effect) ? '' : effect.skipped;
   }
 
   protected sheetSuffix(roll: CustomToolRunResult): string {

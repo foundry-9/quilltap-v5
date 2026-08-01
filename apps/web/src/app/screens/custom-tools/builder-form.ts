@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 
 import {
   IDENTIFIER_PATTERN,
+  MAX_CHIP_LABEL_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MAX_LLM_OUTPUT_CEILING,
   MAX_LLM_OUTPUT_LENGTH,
@@ -76,6 +77,14 @@ const ANSWER_CAP_HINT =
   `up to ${MAX_LLM_OUTPUT_CEILING.toLocaleString()}. Keep it short for a verdict, ` +
   'or let a long-winded oracle run on — the call’s token budget follows suit.';
 
+/** The chip-label field's placeholder and hint — same `{{…}}` reason as above. */
+const CHIP_LABEL_PLACEHOLDER = 'Agent lambda — {{params.label}}';
+
+const CHIP_LABEL_HINT =
+  'Optional. Names each RUN on the chip and the announcement heading, rendered after the deal — ' +
+  'takes {{value}}, {{roll}}, {{dice}}, {{params.name}}, {{metadata.key}}, {{state.path}}, and {{llm}}. ' +
+  'Blank, and the title labels the chip.';
+
 const CONSULT_OFF_HINT =
   'Off. Enable it and every run asks a model your question — the answer becomes {{llm}} in ' +
   'messages and a testable subject in the outcome table, with your own error line when no ' +
@@ -118,6 +127,27 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
           <p class="qt-hint">
             Optional. Leave it blank and the table announces {{ titleAnnouncement() }}.
           </p>
+        </div>
+
+        <div>
+          <label for="wb-chip-label" class="qt-label">Chip label</label>
+          <input
+            id="wb-chip-label"
+            type="text"
+            [value]="draft().chipLabel"
+            [maxLength]="MAX_CHIP_LABEL_LENGTH"
+            (input)="update({ chipLabel: inputValue($event) })"
+            [placeholder]="CHIP_LABEL_PLACEHOLDER"
+            [disabled]="disabled()"
+            class="qt-input w-full"
+            [class.qt-input-error]="chipLabelError() !== null"
+          />
+          <p [class]="chipLabelError() ? 'text-xs qt-text-destructive mt-1' : 'qt-hint'">
+            {{ chipLabelError() ?? CHIP_LABEL_HINT }}
+          </p>
+          @for (message of chipLabelWarnings(); track message) {
+            <p class="text-xs qt-text-secondary">⚠ {{ message }}</p>
+          }
         </div>
 
         <div>
@@ -560,6 +590,7 @@ export class BuilderForm {
   private readonly pendingRename = signal<{ id: string; from: string; to: string } | null>(null);
 
   protected readonly MAX_TITLE_LENGTH = MAX_TITLE_LENGTH;
+  protected readonly MAX_CHIP_LABEL_LENGTH = MAX_CHIP_LABEL_LENGTH;
   protected readonly MAX_DESCRIPTION_LENGTH = MAX_DESCRIPTION_LENGTH;
   protected readonly MAX_PARAMETERS = MAX_PARAMETERS;
   protected readonly MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH;
@@ -574,6 +605,8 @@ export class BuilderForm {
    */
   protected readonly PROMPT_PLACEHOLDER = PROMPT_PLACEHOLDER;
   protected readonly PROMPT_HINT = PROMPT_HINT;
+  protected readonly CHIP_LABEL_PLACEHOLDER = CHIP_LABEL_PLACEHOLDER;
+  protected readonly CHIP_LABEL_HINT = CHIP_LABEL_HINT;
   protected readonly ERROR_MESSAGE_HINT = ERROR_MESSAGE_HINT;
   protected readonly ANSWER_CAP_HINT = ANSWER_CAP_HINT;
   protected readonly CONSULT_OFF_HINT = CONSULT_OFF_HINT;
@@ -601,6 +634,18 @@ export class BuilderForm {
 
   readonly nameError = computed(() =>
     this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'name'),
+  );
+  readonly chipLabelError = computed(() =>
+    this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'chipLabel'),
+  );
+  /** The label's advisory placeholder warnings, rendered under the field. */
+  readonly chipLabelWarnings = computed(() =>
+    this.issues()
+      .filter(
+        (i) =>
+          i.severity === 'warning' && i.where.section === 'identity' && i.where.field === 'chipLabel',
+      )
+      .map((i) => i.message),
   );
   readonly descriptionError = computed(() =>
     this.fieldError((i) => i.where.section === 'identity' && i.where.field === 'description'),

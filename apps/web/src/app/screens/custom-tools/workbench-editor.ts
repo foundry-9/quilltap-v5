@@ -32,6 +32,7 @@ import { Icon } from '../../ui/icon';
 import { BuilderForm } from './builder-form';
 import { DestinationPicker, type PickedDestination } from './destination-picker';
 import { OutcomesSection } from './outcomes-section';
+import { SideEffectsSection } from './side-effects-section';
 import { ProvingBench } from './proving-bench';
 import * as api from './workbench.api';
 import { ToastService } from '../../ui/toast.service';
@@ -71,7 +72,14 @@ function extractErrorMessage(err: unknown): string {
 @Component({
   selector: 'qt-workbench-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, BuilderForm, OutcomesSection, ProvingBench, DestinationPicker],
+  imports: [
+    Icon,
+    BuilderForm,
+    SideEffectsSection,
+    OutcomesSection,
+    ProvingBench,
+    DestinationPicker,
+  ],
   template: `
     @if (loading()) {
       <div class="p-6 text-sm qt-text-secondary">Fetching the card from its store…</div>
@@ -198,6 +206,12 @@ function extractErrorMessage(err: unknown): string {
             <div class="flex-1 min-w-0 space-y-4">
               @if (editorMode() === 'form' && draft(); as current) {
                 <qt-builder-form
+                  [draft]="current"
+                  [issues]="issues()"
+                  [disabled]="saving()"
+                  (draftChange)="onDraftChange($event)"
+                />
+                <qt-side-effects-section
                   [draft]="current"
                   [issues]="issues()"
                   [disabled]="saving()"

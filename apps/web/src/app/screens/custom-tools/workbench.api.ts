@@ -1,5 +1,6 @@
 import type { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
+import type { EffectTarget } from '../../pascal/custom-tool-types';
 import type { ToolGateVerdict } from '../../pascal/tool-gate';
 import type {
   CoreRequest,
@@ -53,12 +54,39 @@ export interface GatedLibraryResponse extends CustomToolLibraryResponse {
 }
 
 /**
+ * §P of the `c4d4b0de` round — one effect as the BENCH sees it: either the
+ * value it would write, or the reason it was skipped (v4 `ResolvedEffect`).
+ *
+ * Deliberately NOT the shape `pascalMeta.effects` carries. A live run records
+ * what it APPLIED — a flat `target` string, the previous value, the tier the
+ * write landed in — where the bench records what it RESOLVED, with the target
+ * still structured and no `previous` at all, because the bench computes
+ * effects and never applies them.
+ */
+export type DryEffect =
+  | { index: number; target: EffectTarget; value: number | string | boolean }
+  | { index: number; skipped: string };
+
+/** True for a dry effect that would actually write. */
+export function isApplicableEffect(
+  effect: DryEffect,
+): effect is Extract<DryEffect, { target: EffectTarget }> {
+  return 'target' in effect;
+}
+
+/**
  * A bench roll, plus the gate verdict the server computed alongside it. The
  * bench always deals — a gate decides whether a character is OFFERED a tool,
  * not whether its author may test one they are holding — so the verdict rides
  * beside the roll rather than replacing it.
  */
-export type BenchRoll = CustomToolRunResult & { gate?: ToolGateVerdict };
+export type BenchRoll = CustomToolRunResult & {
+  gate?: ToolGateVerdict;
+  /** §P — the rendered chip label, when the definition declares one. */
+  chipLabel?: string;
+  /** §P — the definition's effects, resolved (or skipped) against this run. */
+  effects?: DryEffect[];
+};
 
 export const workbenchKeys = {
   /** The library — invalidated after every save and delete. */

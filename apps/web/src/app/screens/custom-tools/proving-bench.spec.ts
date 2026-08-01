@@ -534,6 +534,96 @@ function gatedDraft(): ToolDraft {
   return draft;
 }
 
+/**
+ * The `c4d4b0de` additions: the two-block miniature (heading paragraph over the
+ * message's own block, chip label preferred) and the dry-run effect display.
+ */
+describe('the two-block bubble and the dry run (v4 c4d4b0de)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('heads the bubble with the run\'s chip label when it rendered one', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({ preview: previewResult({ chipLabel: 'Agent lambda — Jackie' }) }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    const paragraphs = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.qt-pascal-result p'),
+    ).map((p) => p.textContent?.trim());
+    // The heading is its own block, and the message is its own — so an outcome
+    // opening with a list or a fence renders as one.
+    expect(paragraphs[0]).toBe('🎲 Agent lambda — Jackie');
+    expect(paragraphs[1]).toBe('Open.');
+  });
+
+  it('falls back to the display title when the run carried no label', async () => {
+    const fixture = await render(validDraft(), stubClient({ preview: previewResult() }));
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    const first = (fixture.nativeElement as HTMLElement).querySelector('.qt-pascal-result p');
+    expect(first?.textContent?.trim()).toBe('🎲 Unlock');
+  });
+
+  it('ignores a blank chip label rather than heading the bubble with nothing', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({ preview: previewResult({ chipLabel: '   ' }) }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    const first = (fixture.nativeElement as HTMLElement).querySelector('.qt-pascal-result p');
+    expect(first?.textContent?.trim()).toBe('🎲 Unlock');
+  });
+
+  it('shows what each effect WOULD write, and says it never writes any of it', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        preview: previewResult({
+          effects: [
+            {
+              index: 0,
+              target: { kind: 'state', path: ['encounter', 'count'], raw: 'state.encounter.count' },
+              value: 4,
+            },
+            {
+              index: 1,
+              target: { kind: 'metadata', key: 'lockpick', raw: 'metadata.lockpick' },
+              value: 'broken pick',
+            },
+            { index: 2, skipped: 'condition did not hold' },
+          ],
+        }),
+      }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    const rendered = text(fixture);
+    expect(rendered).toContain('→ state.encounter.count = 4');
+    // Quoted the way v4's JSON.stringify renders it, so a string is visibly a
+    // string rather than bare prose the reader has to guess at.
+    expect(rendered).toContain('→ metadata.lockpick = "broken pick"');
+    expect(rendered).toContain('(would write)');
+    expect(rendered).toContain('· effect 3 skipped: condition did not hold');
+    expect(rendered).toContain('The bench computes effects; it never applies them.');
+  });
+
+  it('says nothing at all about effects when the run resolved none', async () => {
+    const fixture = await render(validDraft(), stubClient({ preview: previewResult() }));
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+    // Note the parentheses: the JSON-preview card's own hint says "what Save
+    // would write", so the bare phrase is not a safe negative.
+    expect(text(fixture)).not.toContain('(would write)');
+    expect(text(fixture)).not.toContain('never applies them');
+  });
+});
+
 function previewResult(over: Record<string, unknown> = {}) {
   return {
     tool: 'unlock',
