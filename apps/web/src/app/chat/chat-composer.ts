@@ -24,6 +24,7 @@ import {
 import { CustomToolsPopup } from './custom-tools-popup';
 import { RngDropdown, type RngPendingResult } from './rng-dropdown';
 import { FileConflictDialog } from './file-conflict-dialog';
+import { ToastService } from '../ui/toast.service';
 
 /** What the composer emits on send — the text plus any attached file ids. */
 export interface ComposerSend {
@@ -140,9 +141,6 @@ export interface PendingToolResultChip extends RngPendingResult {
         </div>
       }
 
-      @if (uploadError(); as msg) {
-        <div class="qt-alert-error text-sm mb-2" role="alert">{{ msg }}</div>
-      }
 
       <form class="qt-chat-composer-inner" (submit)="onSubmit($event)">
         <qt-rich-editor
@@ -334,6 +332,7 @@ export interface PendingToolResultChip extends RngPendingResult {
 })
 export class ChatComposer implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly toasts = inject(ToastService);
 
   /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */
   readonly busy = input(false);
@@ -405,7 +404,6 @@ export class ChatComposer implements OnInit {
   protected readonly text = signal('');
   protected readonly attachedFiles = signal<UploadedChatFile[]>([]);
   protected readonly uploading = signal(false);
-  protected readonly uploadError = signal<string | null>(null);
 
   // Conflict-resolution state (v4 useFileAttachments).
   protected readonly conflict = signal<FileConflictInfo | null>(null);
@@ -566,12 +564,11 @@ export class ChatComposer implements OnInit {
     opts?: { resolution?: ConflictResolution; conflictingFileId?: string },
   ): Promise<void> {
     this.uploading.set(true);
-    this.uploadError.set(null);
     try {
       const result = await uploadChatFile(this.chatId(), file, opts);
       this.handleUploadResult(result, file);
     } catch (err) {
-      this.uploadError.set(err instanceof Error ? err.message : 'Failed to upload file');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to upload file');
     } finally {
       this.uploading.set(false);
     }
@@ -583,6 +580,8 @@ export class ChatComposer implements OnInit {
       this.conflict.set(result.conflict);
       return;
     }
+    // v4 `handleFileSelect` (:126-129) reports only the non-conflict arm.
+    this.toasts.showSuccess('File attached');
     this.attachedFiles.update((files) => [...files, result.file]);
   }
 
@@ -591,7 +590,6 @@ export class ChatComposer implements OnInit {
     const info = this.conflict();
     if (!file || !info) return;
     this.resolving.set(true);
-    this.uploadError.set(null);
     try {
       const result = await uploadChatFile(this.chatId(), file, {
         resolution,
@@ -601,10 +599,18 @@ export class ChatComposer implements OnInit {
       if (result.kind === 'file') {
         this.attachedFiles.update((files) => [...files, result.file]);
       }
+      // v4 `handleConflictResolution` (:160-166) — one sentence per resolution.
+      this.toasts.showSuccess(
+        resolution === 'skip'
+          ? 'Upload skipped'
+          : resolution === 'keepBoth'
+            ? 'File attached with new name'
+            : 'File replaced',
+      );
       this.conflict.set(null);
       this.pendingFile = null;
     } catch (err) {
-      this.uploadError.set(err instanceof Error ? err.message : 'Failed to resolve conflict');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to resolve conflict');
     } finally {
       this.resolving.set(false);
     }

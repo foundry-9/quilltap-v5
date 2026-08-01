@@ -43,6 +43,7 @@ import type { ActiveDocument } from './document-api';
 import { DocumentPane } from './document-pane';
 import { computeAbsorbNext, type OpenDocEntry } from './document-mode';
 import { StandaloneDocumentApi, type StandaloneScope } from './standalone-wire';
+import { ToastService } from '../ui/toast.service';
 
 const AUTOSAVE_DEBOUNCE_MS = 30000;
 
@@ -79,6 +80,7 @@ const AUTOSAVE_DEBOUNCE_MS = 30000;
 })
 export class StandaloneDocumentView implements OnInit {
   private readonly api = inject(StandaloneDocumentApi);
+  private readonly toasts = inject(ToastService);
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
   private readonly destroyRef = inject(DestroyRef);
@@ -287,8 +289,10 @@ export class StandaloneDocumentView implements OnInit {
       this.doc.update((d) => (d ? { ...d, filePath, displayTitle } : d));
       this.refreshTab(filePath, displayTitle);
     } catch (error) {
-      // v4 shows an error toast; the SPA has no toast bus here — log and swallow.
-      console.error('[StandaloneDocument] Failed to rename document', error);
+      // v4 `StandaloneDocumentView.tsx:288`.
+      this.toasts.showError(
+        error instanceof Error ? error.message : "Couldn't rename document.",
+      );
     }
   }
 
@@ -310,7 +314,10 @@ export class StandaloneDocumentView implements OnInit {
       });
       this.closeSelf();
     } catch (error) {
-      console.error('[StandaloneDocument] Failed to delete document', error);
+      // v4 `StandaloneDocumentView.tsx:327`.
+      this.toasts.showError(
+        error instanceof Error ? error.message : "Couldn't delete document.",
+      );
     }
   }
 

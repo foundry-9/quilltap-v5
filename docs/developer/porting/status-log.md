@@ -46627,3 +46627,46 @@ dialog's `No images were generated.` → `No images generated` and
 Outputs that existed only to carry a sentence to the parent are now `void`:
 `mountFileAttached`, `added`, `LinkedLibraryFile.message`. Full suite green
 (264 files / 3,183).
+
+## Lane record — P4.25 unit 4: the Salon's silent half
+
+The half of the walk that is NOT "retire an inline paragraph": v5 handlers that
+did the work and said nothing at all, where v4 raises a toast. Every string is
+v4's.
+
+- **Message actions** (`useMessageActions.ts`): copy → "Message copied to
+  clipboard!"; the failure arms of edit / delete / regenerate, all of which v5
+  swallowed into an unread promise; and the memory-cascade delete's
+  "Deleted message and N memor{y,ies}", which v4 raises ONLY when memories went
+  with the message (`:95-97`).
+- **The stream** (`useSSEStreaming.ts`): v4 raises four toasts from inside its
+  SSE reader; v5's reader is the pure reducer, so a new
+  `reportStreamTransitions(before, after)` raises them off its state
+  transitions — the `retrying` status stage (warning, the server's sentence),
+  the terminal `emptyResponse` reason, a recorded transport error, and the
+  `generate_image` tool result's success/failure pair. The send-failure arm
+  carries v4's `Unknown error`/`TypeError` → "Connection lost. Please try
+  again." substitution (`:841-845`), and Stop reports v4's info line only when
+  prose had begun (`:1055-1057`).
+- **`streaming-message`'s inline `qt-alert-error`** is retired: v4 renders no
+  inline stream error at all. The state keeps `error` as the halt signal, and
+  its spec now pins BOTH halves (carried, not rendered).
+- **Impersonation** (`useImpersonation.ts`): "Now speaking as X" / "Stopped
+  speaking as X" and both failure arms.
+- **Avatar regeneration + pause** (`SalonView.tsx:256-276`,
+  `useChatControls.ts:194-201`): the queued/failed pair and the paused/resumed
+  info pair.
+- **Composer uploads** (`useFileAttachments.ts`): "File attached", the three
+  conflict-resolution sentences ("Upload skipped" / "File attached with new
+  name" / "File replaced") and both failure arms; the inline `uploadError`
+  alert is retired.
+- **Terminal + Document Mode**: the three `useTerminalMode` failures + the
+  embed's kill, the friendly open-document error, and the standalone view's
+  rename/delete failures — each of which was an explicit "the SPA has no toast
+  bus — swallow" comment.
+
+**Unported v4 surfaces, recorded not ported** (the census names each): the
+Salon LIST's re-extract / re-render actions and `lib/chat-utils.ts`'s chat
+deletion have no v5 caller (v5's salon list is the slim port and nothing
+deletes a chat), and the character Conversations tab's per-card delete /
+re-extract / re-render were already a documented deferral of that vertical.

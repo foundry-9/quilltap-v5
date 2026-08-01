@@ -7,6 +7,7 @@ import {
   type TerminalPaneState,
 } from './terminal-api';
 import type { PtySessionMeta } from './terminal-protocol';
+import { ToastService } from '../ui/toast.service';
 
 /** The chat fields the terminal pane hydrates from (a structural subset of ChatDetail). */
 export interface ChatTerminalFields {
@@ -38,6 +39,7 @@ export function nextFocusMode(mode: TerminalMode): TerminalMode {
 @Injectable()
 export class TerminalModeController {
   private readonly api = inject(TerminalApi);
+  private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   private chatId: string | null = null;
@@ -149,22 +151,34 @@ export class TerminalModeController {
     await this.spawnNewSession();
   }
 
+  /** v4 `attachExistingSession` (`useTerminalMode.ts:181-195`). */
   async attachExistingSession(sessionId: string): Promise<void> {
     this.closeTerminalPicker();
-    const meta = await this.api.getTerminalSession(sessionId).catch(() => null);
-    if (!isLiveSession(meta)) {
-      // v4 surfaces a toast here; the SPA has no toast bus yet — no-op refusal.
-      return;
+    try {
+      const meta = await this.api.getTerminalSession(sessionId);
+      if (!isLiveSession(meta)) {
+        this.toasts.showError('That terminal session has already exited.');
+        return;
+      }
+      await this.enterModeWithSession(sessionId);
+    } catch (error) {
+      this.toasts.showError(
+        error instanceof Error ? error.message : 'Failed to attach session',
+      );
     }
-    await this.enterModeWithSession(sessionId);
   }
 
+  /** v4 `spawnAndEnter` (`useTerminalMode.ts:168-179`). */
   async spawnNewSession(): Promise<void> {
     this.closeTerminalPicker();
-    const session = await this.api.spawnTerminalSession(this.chatId!);
-    await this.enterModeWithSession(session.id);
-    // Refetch so the Ariel session-opened announcement appears.
-    await this.refetchChat?.();
+    try {
+      const session = await this.api.spawnTerminalSession(this.chatId!);
+      await this.enterModeWithSession(session.id);
+      // Refetch so the Ariel session-opened announcement appears.
+      await this.refetchChat?.();
+    } catch (error) {
+      this.toasts.showError(error instanceof Error ? error.message : 'Failed to spawn terminal');
+    }
   }
 
   /** Hide the pane but leave the PTY alive (v4 `hidePane`). */
@@ -180,8 +194,11 @@ export class TerminalModeController {
     this.activeTerminalSessionId.set(null);
     await this.persist({ terminalMode: 'normal', activeTerminalSessionId: null });
     if (sessionId) {
-      await this.api.killTerminalSession(sessionId).catch(() => {
-        // v4 toasts; the SPA swallows (the pane is already closed).
+      await this.api.killTerminalSession(sessionId).catch((error: unknown) => {
+        // v4 `killTerminal` (`:236-241`) reports even though the pane is closed.
+        this.toasts.showError(
+          error instanceof Error ? error.message : 'Failed to terminate session',
+        );
       });
     }
   }

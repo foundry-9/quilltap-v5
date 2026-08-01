@@ -51,6 +51,13 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Actions in a conversation that used to happen in silence now say what they did:
+copying a message, editing or deleting one, regenerating a reply, speaking as a
+character and handing them back, pausing, attaching a file and resolving a
+name clash, queuing an avatar, and opening a terminal or a document. Failures
+that were swallowed entirely — including a send that could not reach the
+server — are reported too.
+
 Saving a picture to an album, copying an image or a tool's request, uploading a
 photo, adding a character, creating an NPC, posting an announcement, sending
 mail, and attaching a library file all report themselves in the notification

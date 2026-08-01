@@ -102,15 +102,14 @@ import { ThinkingBlock } from './thinking-block';
       </div>
     }
 
-    @if (state().error) {
-      <div class="qt-chat-message-row qt-chat-message-row-assistant">
-        <div class="qt-chat-message-body">
-          <div class="qt-alert qt-alert-error">{{ state().error }}</div>
-        </div>
-      </div>
-    }
   `,
 })
+/**
+ * v4 renders NO inline stream error: a transport failure is a toast
+ * (`useSSEStreaming.ts:845`, `:1026`) and the bubble simply stops. The Salon
+ * raises it from `reportStreamTransitions`; the state's `error` field stays as
+ * the halt signal.
+ */
 export class StreamingMessage {
   readonly state = input.required<ChatStreamState>();
 }

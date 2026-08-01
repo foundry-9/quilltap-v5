@@ -4,6 +4,7 @@ import type { MessageDto } from '../core/core-contract';
 import { DocumentApi, type ActiveDocument } from './document-api';
 import { isMarkdownFile } from './frontmatter';
 import { formatAutosaveNotification } from './unified-diff';
+import { ToastService } from '../ui/toast.service';
 
 export type DocumentMode = 'normal' | 'split' | 'focus';
 
@@ -128,6 +129,7 @@ export function friendlyOpenDocumentError(
 @Injectable()
 export class DocumentModeController {
   private readonly api = inject(DocumentApi);
+  private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   private chatId: string | null = null;
@@ -422,14 +424,17 @@ export class DocumentModeController {
       return doc;
     } catch (error) {
       // A recoverable miss (e.g. the picker pointed at a since-deleted file):
-      // the pane just doesn't open. The SPA has no toast bus yet — swallow.
+      // the pane just doesn't open. v4 `openDocument` (:449-456) reports the
+      // friendly sentence as a toast; `openError` keeps it for the picker too.
       const raw = error instanceof Error ? error.message : String(error);
-      this.openError.set(friendlyOpenDocumentError(raw, params.filePath, params.title));
+      const friendly = friendlyOpenDocumentError(raw, params.filePath, params.title);
+      this.openError.set(friendly);
+      this.toasts.showError(friendly);
       return null;
     }
   }
 
-  /** The most recent open failure, surfaced for the picker/pane (no toast bus yet). */
+  /** The most recent open failure, surfaced for the picker/pane. */
   readonly openError = signal<string | null>(null);
 
   async closeDocument(docId?: string): Promise<void> {

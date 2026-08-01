@@ -2086,8 +2086,16 @@ export class SalonConversation {
   protected async onImpersonate(participantId: string): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
-    const data = await this.core.dispatchData({ type: 'chatImpersonate', chatId, participantId });
-    this.impersonatingLocal.set(readImpersonatingIds(data, [participantId]));
+    const name =
+      this.chat()?.participants.find((p) => p.id === participantId)?.character?.name ?? 'Character';
+    try {
+      const data = await this.core.dispatchData({ type: 'chatImpersonate', chatId, participantId });
+      this.impersonatingLocal.set(readImpersonatingIds(data, [participantId]));
+      this.toasts.showSuccess(`Now speaking as ${name}`);
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to start impersonation');
+      return;
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
@@ -2130,12 +2138,19 @@ export class SalonConversation {
       this.handOffTarget.set(participant);
       return;
     }
-    const data = await this.core.dispatchData({
-      type: 'chatStopImpersonate',
-      chatId,
-      participantId,
-    });
-    this.impersonatingLocal.set(readImpersonatingIds(data, []));
+    const name = participant?.character?.name ?? 'Character';
+    try {
+      const data = await this.core.dispatchData({
+        type: 'chatStopImpersonate',
+        chatId,
+        participantId,
+      });
+      this.impersonatingLocal.set(readImpersonatingIds(data, []));
+      this.toasts.showSuccess(`Stopped speaking as ${name}`);
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to stop impersonation');
+      return;
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
@@ -2155,30 +2170,37 @@ export class SalonConversation {
       });
       this.impersonatingLocal.set(readImpersonatingIds(data, []));
     } catch (err) {
-      this.toasts.showError(
-        err instanceof Error ? err.message : 'Failed to assign LLM profile',
-        );
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to assign LLM profile');
       return;
     }
     this.toasts.showSuccess(`${name} is now controlled by AI`);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
-  /** v4 `handleRegenerateAvatar` — the card's camera button. */
+  /** v4 `handleRegenerateAvatar` (`SalonView.tsx:256-276`) — the card's camera button. */
   protected async onRegenerateAvatar(participantId: string): Promise<void> {
     const chatId = this.chatId();
-    const characterId = (this.chat()?.participants ?? []).find((p) => p.id === participantId)
-      ?.character?.id;
+    const participant = (this.chat()?.participants ?? []).find((p) => p.id === participantId);
+    const characterId = participant?.character?.id;
     if (!chatId || !characterId) return;
-    await this.core.dispatch({ type: 'chatRegenerateAvatar', chatId, characterId });
+    const name = participant?.character?.name || 'Unknown';
+    const resp = await this.core.dispatch({ type: 'chatRegenerateAvatar', chatId, characterId });
+    if (resp.type === 'error') {
+      this.toasts.showError(resp.data.message || 'Failed to regenerate avatar');
+      return;
+    }
+    this.toasts.showInfo(`Avatar regeneration queued for ${name}`);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
+  /** v4 `togglePause` (`useChatControls.ts:194-201`). */
   protected async onTogglePause(): Promise<void> {
     const chatId = this.chatId();
     const chat = this.chat();
     if (!chatId || !chat) return;
-    await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: !chat.isPaused } });
+    const paused = !chat.isPaused;
+    await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: paused } });
+    this.toasts.showInfo(paused ? 'Auto-responses paused' : 'Auto-responses resumed');
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
@@ -2236,8 +2258,10 @@ export class SalonConversation {
     const sub = this.core.events$
       .pipe(filter((frame) => frame.chatId === chatId))
       .subscribe((frame) => {
+        const before = state;
         state = reduceChatFrame(state, frame);
         this.stream.set(state);
+        this.reportStreamTransitions(before, state);
       });
 
     try {
@@ -2274,7 +2298,13 @@ export class SalonConversation {
         'chatSend',
       );
     } catch (err) {
-      state = { ...state, error: err instanceof Error ? err.message : 'Send failed.' };
+      // v4 `useSSEStreaming` (:841-845): an unknown/TypeError failure reads as a
+      // lost connection; anything else keeps the server's own sentence.
+      const raw = err instanceof Error ? err.message : String(err);
+      const display =
+        raw === 'Unknown error' || raw === 'TypeError' ? 'Connection lost. Please try again.' : raw;
+      this.toasts.showError(display || 'Failed to send message');
+      state = { ...state, error: display || 'Failed to send message' };
       this.stream.set(state);
     } finally {
       sub.unsubscribe();
@@ -2305,9 +2335,59 @@ export class SalonConversation {
     }
   }
 
+  /**
+   * v4 raises these from inside its SSE reader; v5's reader is the pure
+   * reducer, so the reporting rides its state transitions instead.
+   *
+   *  - a `retrying` status stage → v4's warning toast, the server's own
+   *    sentence (`useSSEStreaming.ts:430-434`);
+   *  - a terminal `emptyResponse` → v4's error toast with the server's reason
+   *    or its fallback (`:720-722`);
+   *  - a recorded transport/stream error → v4's `:1024-1027` toast;
+   *  - a `generate_image` tool result → v4's success/failure pair (`:350-367`).
+   */
+  private reportStreamTransitions(before: ChatStreamState, after: ChatStreamState): void {
+    if (after.status?.stage === 'retrying' && before.status?.stage !== 'retrying') {
+      const message = after.status.message;
+      if (message) this.toasts.showWarning(message);
+    }
+    if (after.finalDone?.emptyResponse && !before.finalDone?.emptyResponse) {
+      this.toasts.showError(
+        after.finalDone.emptyResponseReason ||
+          'The AI returned an empty response. Use the Resend button to try again.',
+      );
+    }
+    if (after.error && after.error !== before.error) {
+      this.toasts.showError(after.error);
+    }
+    const settled = new Set(
+      before.toolBatches.flatMap((b) =>
+        b.calls.filter((c) => c.status !== 'pending').map((c) => c.id),
+      ),
+    );
+    for (const batch of after.toolBatches) {
+      for (const call of batch.calls) {
+        if (call.name !== 'generate_image' || call.status === 'pending' || settled.has(call.id)) {
+          continue;
+        }
+        const result = (call.result ?? {}) as { images?: unknown[]; error?: string };
+        if (call.status === 'success') {
+          const count = result.images?.length || 1;
+          this.toasts.showSuccess(
+            `Image generation complete! ${count} image${count > 1 ? 's' : ''} generated.`,
+          );
+        } else {
+          this.toasts.showError(`Image generation failed: ${result.error || 'Unknown error'}`);
+        }
+      }
+    }
+  }
+
   protected stop(): void {
     // The server turn rides the shared SSE and can't be aborted from here yet;
     // clear the local streaming overlay (tracked deferral: a real stop dispatch).
+    // v4 `stopStreaming` (:1055-1057) reports only when prose had begun.
+    if (this.stream()?.content) this.toasts.showInfo('Response stopped - chat paused');
     this.stream.set(null);
     this.optimisticUser.set(null);
   }
@@ -2351,8 +2431,10 @@ export class SalonConversation {
   // Message actions (tier 1)
   // -------------------------------------------------------------------------
 
+  /** v4 `copyMessageContent` (`useMessageActions.ts:358-361`). */
   protected onCopy(message: MessageDto): void {
     void navigator.clipboard?.writeText(message.content);
+    this.toasts.showSuccess('Message copied to clipboard!');
   }
 
   /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
@@ -2409,9 +2491,18 @@ export class SalonConversation {
     this.editingId.set(message.id);
   }
 
+  /** v4 `saveEdit` (`useMessageActions.ts:44-62`) — its only report is the failure. */
   protected async onSaveEdit(event: { id: string; content: string }): Promise<void> {
     this.editingId.set(null);
-    await this.core.dispatch({ type: 'messageEdit', messageId: event.id, content: event.content });
+    const resp = await this.core.dispatch({
+      type: 'messageEdit',
+      messageId: event.id,
+      content: event.content,
+    });
+    if (resp.type === 'error') {
+      this.toasts.showError(resp.data.message || 'Failed to update message');
+      return;
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
@@ -2424,8 +2515,13 @@ export class SalonConversation {
     this.swipeOverride.update((o) => ({ ...o, [gid]: next }));
   }
 
+  /** v4 `generateSwipe` (`useMessageActions.ts:318-332`). */
   protected async onRegenerate(message: MessageDto): Promise<void> {
-    await this.core.dispatch({ type: 'messageSwipe', messageId: message.id });
+    const resp = await this.core.dispatch({ type: 'messageSwipe', messageId: message.id });
+    if (resp.type === 'error') {
+      this.toasts.showError(resp.data.message || 'Failed to generate alternative response');
+      return;
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
     // v4 `useMessageActions.generateSwipe` (:327) wakes the queue badges after
     // the swipe lands (the regeneration enqueues post-turn jobs).
@@ -2452,6 +2548,10 @@ export class SalonConversation {
       });
       return;
     }
+    if (resp.type === 'error') {
+      this.toasts.showError(resp.data.message || 'Failed to delete message');
+      return;
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
@@ -2459,12 +2559,27 @@ export class SalonConversation {
     const pending = this.cascade();
     this.cascade.set(null);
     if (!pending) return;
-    await this.core.dispatch({
+    const resp = await this.core.dispatch({
       type: 'messageDelete',
       messageId: pending.messageId,
       memoryAction: action,
       skipConfirmation: true,
     });
+    if (resp.type === 'error') {
+      this.toasts.showError(resp.data.message || 'Failed to delete message');
+      return;
+    }
+    // v4 `completeDeleteWithMemoryAction` (:95-97) reports ONLY when memories
+    // went with the message.
+    const deleted =
+      resp.type === 'messageDelete' && 'memoriesDeleted' in resp.data
+        ? (resp.data.memoriesDeleted as number)
+        : 0;
+    if (deleted > 0) {
+      this.toasts.showSuccess(
+        `Deleted message and ${deleted} ${deleted === 1 ? 'memory' : 'memories'}`,
+      );
+    }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 

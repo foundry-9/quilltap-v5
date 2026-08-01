@@ -35,13 +35,17 @@ describe('StreamingMessage', () => {
     expect(text).toContain('Friday is composing a reply…');
   });
 
-  it('surfaces a mid-stream error frame', () => {
+  // v4 renders no inline stream error — the Salon toasts it
+  // (`useSSEStreaming.ts:1024-1027`) and the bubble simply stops. The folded
+  // state still CARRIES the sentence; only the render is v4's silence.
+  it('records a mid-stream error frame without rendering it', () => {
     const state = foldChatFrames([
       { content: 'Partial…' },
       { error: 'Failed to generate response', details: 'boom' },
     ]);
+    expect(state.error).toBe('Failed to generate response: boom');
     const fixture = render(state);
-    expect(fixture.nativeElement.textContent).toContain('Failed to generate response: boom');
+    expect(fixture.nativeElement.textContent).not.toContain('Failed to generate response');
   });
 
   /**

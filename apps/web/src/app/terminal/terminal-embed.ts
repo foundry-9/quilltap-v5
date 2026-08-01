@@ -22,6 +22,7 @@ import {
   type TerminalSessionHandle,
   type TerminalState,
 } from './terminal-session.service';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * `qt-terminal-embed` — the inline terminal wrapper for a Salon chat bubble (v4
@@ -101,6 +102,7 @@ export class TerminalEmbed implements OnInit {
   readonly label = input<string | null>(null);
 
   private readonly router = inject(Router);
+  private readonly toasts = inject(ToastService);
   private readonly sessions = inject(TerminalSessionService);
   private readonly api = inject(TerminalApi);
   private readonly destroyRef = inject(DestroyRef);
@@ -171,9 +173,10 @@ export class TerminalEmbed implements OnInit {
   }
 
   protected async kill(): Promise<void> {
-    await this.api.killTerminalSession(this.sessionId()).catch(() => {
-      // v4 toasts on failure; the SPA has no toast bus yet — swallow.
-    });
+    // v4 `handleKill` (`TerminalEmbed.tsx:68-79`) — both arms report the same line.
+    await this.api
+      .killTerminalSession(this.sessionId())
+      .catch(() => this.toasts.showError('Failed to terminate session'));
   }
 
   protected focusPane(): void {
