@@ -47002,3 +47002,270 @@ Full gate for the lane:
   over `crates/`, `Cargo.toml`, `Cargo.lock` and `harness/` is empty). The
   worktree's debug `quilltap-web`/`quilltap` were built only to run the gate.
 - `e2e/support/env.ts` restored to the default ports (4319 / 45301).
+---
+
+## Lane record — P4.26, the announcement-rendering parity audit (2026-07-31)
+
+Branch `claude/p4-26-announcement-rendering-114836`. SPA-only: **no Rust
+source changed, so no cargo gate is owed** (stated per the order). v4 baseline
+`ff12f491`; drift-checked at lane start — exactly `e1be028b` past it (release
+packaging, NO-PORT), tree clean.
+
+### The measurement the order demanded first — VERDICT: the lead is NOT the cause
+
+The order's one concrete lead was that v5's expanded announcement body renders
+`<qt-message-content [content]>` where v4's `MessageRow` passes
+`renderedHtml` + `renderingPatterns` + `dialogueDetection`, so the body might
+be skipping the roleplay/dialogue pass every other message gets. Measured
+first, both sides:
+
+- **v5 DOES run the pass on this path.** `MessageContent` →
+  `renderMarkdownCached` → `renderMarkdownToHtml`, which applies
+  `DEFAULT_RENDERING_PATTERNS` + `DEFAULT_DIALOGUE_DETECTION`
+  unconditionally (`markdown-renderer.ts:233-266`). The announcement body uses
+  the identical component an ordinary bubble uses — there is no second, poorer
+  path.
+- **v4's `renderedHtml` fast path is dead in v4 itself.** No `lib/` writer
+  sets the column at `ff12f491` (the only non-schema references are the
+  maintenance sweep that NULLs it and the Zod declarations), so v4's
+  announcements also render client-side through `MessageContent`.
+
+Two real gaps surfaced alongside the (refuted) lead, and are separated
+deliberately:
+
+- **Announcement-specific, FIXED:** the expanded body was not given the chat's
+  `blobMountPointId`, which `MessageRow` threads to every ordinary bubble — a
+  relative markdown image ref in an announcement could not resolve.
+- **App-wide, RECORDED NOT FIXED (out of this lane's mandate):** v5 never
+  fetches the chat's roleplay template, so `renderingPatterns` /
+  `dialogueDetection` are the DEFAULTS for **every** message, not just
+  announcements. v4 threads `template.renderingPatterns` from
+  `SalonView.tsx:744-775` into every row. This is a Salon-wide fidelity gap
+  with no announcement-specific component; it wants its own order.
+
+### What the audit actually found
+
+The order had already ruled out the CSS (the `.qt-chat-announcement-*` /
+`.qt-chat-system-bar-*` blocks are byte-identical), and this lane extended
+that ruling-out mechanically: the two label tables were parsed and compared
+programmatically — **49 kind labels and 75 sender×kind importance entries
+across 11 senders, identical on both sides.** So no per-pair data difference
+exists at all; every divergence is structural, and the five below are what
+the whole 91-row table reduces to.
+
+1. **The expanded body wore a class no v4 markup wears.** `.qt-chat-message-
+   system` is `@apply text-sm italic text-center py-2` on a muted slab. It is
+   defined in both stylesheets, and the ONLY use in the entire v4 checkout is
+   `packages/theme-storybook/src/stories/components/Chat.tsx` — the design
+   catalogue, not the app. v4's expanded announcement goes through the
+   ordinary message block (`MessageRow.tsx:294-300`), and a Staff row is
+   written `role: 'ASSISTANT'` (`announcer/writer.ts:76`,
+   `host-notifications/writer.ts:233/581/892`), so it lands on
+   `qt-chat-message-assistant`. **This is the headline: every announcement a
+   reader opened came out as tiny centred italics while every other message
+   in the room was a normal bubble.** The order's status header had reasoned
+   the opposite ("`.qt-chat-message-system`'s rule is v4's own, so centred
+   italic announcement bodies are faithful") — the RULE is v4's; the
+   APPLICATION is v5's invention.
+2. **The legacy kind inference was never ported.** v4's
+   `inferKindFromContent` reads the kind out of the persona-voiced body when
+   the row predates the `systemKind` column. Without it a legacy row resolves
+   to `''`, losing BOTH its kind label and its kind-specific importance tier
+   (the dot falls back to the sender's `'*'`). On a long-lived instance that
+   is most of the announcement history — which is what "almost no
+   announcement is styled correctly … for a while" describes.
+3. **The chip's kind span was unconditional.** v4 renders
+   `{kindLabel && <span …>}`. An always-present empty span spends the chip's
+   `gap: 0.5rem` on nothing, so a kindless sender floats away from its
+   timestamp — the visible half of (2).
+4. **Two of v4's three chip exemptions are KIND-scoped, and v5 had them
+   sender-scoped.** `isCollapsedAnnouncement` exempts Carina (any kind),
+   Suparṇā **`mail-delivery`**, and Pascal **`custom-tool-result`**. So v5
+   folded every letter into a chip (v4: "significant enough to read in full")
+   and spread the roll's exemption across Pascal's other kinds, including the
+   `custom-tool-error` row v4 chips.
+5. **`resolveMessageAuthor` had no Staff arm at all.** The rows that render
+   FULL fell through to the role fallback and were attributed to whichever
+   cast character sorted first — dogfood finding #31's exact shape on a
+   different set of rows. Worst case: a **Carina reference answer**, which v4
+   renders under the ANSWERER character's own name and portrait (then
+   off-scene, then the Brahma Console's pseudo-answerer, then a 'Carina'
+   fallback). v4's eleven avatar assets are now copied in byte-identical, and
+   v4's expanded systemSender header bar — which v5 had wired for Pascal
+   alone — is Staff-general.
+
+Smaller parity fixes folded in: the importance dot is `aria-hidden` on both
+the chip and the row bar (v4 sets it in `AnnouncementBarContents`), and the
+v5-only chip tooltip is gone (v4's chip carries none).
+
+### Adjudicated as DIVERGES-BY-DESIGN (recorded, deliberately not "fixed")
+
+- **v5 keeps the chip mounted and renders the body beneath it**, where v4
+  removes the chip from the run and re-renders the whole row with the bar as
+  its header (so v4's run splits chips-before / expanded-row / chips-after).
+  v5's model is deliberate, documented in `AnnouncementGroup`'s header, and
+  pinned by the P4.D34 chevron spec the order explicitly says not to regress.
+  Consequence carried with it: an expanded announcement in v5 has no action
+  bar, no danger badges and no attachment strip, because it is not a full
+  `MessageRow`. Recorded here rather than fixed — reversing it would regress
+  a recent, deliberate, spec'd decision.
+- **The full-row Staff bar is static** (`qt-chat-system-bar-static`) where
+  v4's is a collapse `<button>`. v4's click is inert for exactly these three
+  senders — they are the ones `isCollapsedAnnouncement` exempts — so the
+  affordance would lie.
+
+### The audit table — all 91 rows, none sampled
+
+Every `systemSender` × `systemKind` pair v4 can render: the union of the
+importance table's keys, `inferKindFromContent`'s returns per sender, and the
+kind literals v4's writers emit, plus one legacy (`systemKind` NULL) row per
+sender. Columns: the label and dot v4 resolves (v5 now resolves identically —
+mechanically verified), and the verdict.
+
+| sender | kind | label | dot | verdict |
+|---|---|---|---|---|
+| Ariel | `session-closed` | terminal closed | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Ariel | `session-opened` | terminal opened | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Ariel | `terminal` | terminal | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Ariel | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| Aurora | `avatar` | avatar | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Aurora | `opening-outfit` | opening outfit | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Aurora | `outfit-change` | outfit change | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Aurora | `wardrobe` | wardrobe | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Aurora | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| Carina | `carina-error` | reference desk | medium | DIVERGED — full row, but no header bar and the answer was attributed to the first cast character. FIXED (bar + answerer identity). |
+| Carina | `carina-response` | reference answer | medium | DIVERGED — full row, but no header bar and the answer was attributed to the first cast character. FIXED (bar + answerer identity). |
+| Carina | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| The Commonplace Book | `consolidated` | consolidated | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Commonplace Book | `inter-character-memories` | inter-character memories | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Commonplace Book | `memory-recap` | memory recap | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Commonplace Book | `relevant-memories` | relevant memories | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Commonplace Book | `rolling-summary` | rolling summary | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Commonplace Book | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| The Concierge | `danger` | danger | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Concierge | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| The Host | `add` | add | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `announcement` | announcement | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `autonomous-room-end` | run ended | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `autonomous-room-halfway` | halfway through | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `autonomous-room-nearing-end` | nearing the end | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `autonomous-room-paused` | run paused | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `autonomous-room-start` | run begun | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `core-whisper` | core whisper | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `join-scenario` | join scenario | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `nudge` | invited to speak | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `remove` | remove | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `roster` | roster | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `scenario` | scenario | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `silent-mode-enter` | silent mode (entering) | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `silent-mode-exit` | silent mode (leaving) | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `status-change` | status change | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `timestamp` | time | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `turn-pass` | nothing to add | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | `user-character` | user character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Host | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| The Lantern | `background` | background | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Lantern | `character-image` | character image | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Lantern | `image` | image | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Lantern | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| The Librarian | `announcement` | announcement | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `attached` | attached | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `blob-written` | blob written | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `blob-written-by-character` | asset added by character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `blob-written-by-user` | asset added by user | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `copied` | copied | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `copied-by-character` | copied by character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `copied-by-user` | copied by user | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `created` | created | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `created-by-character` | created by character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `created-by-user` | created by user | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `deleted` | deleted | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `deleted-by-character` | deleted by character | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `deleted-by-user` | deleted by user | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `edited` | edited | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `edited-by-character` | edited by character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `edited-by-user` | edited by user | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-created` | folder created | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-created-by-character` | folder created by character | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-created-by-user` | folder created by user | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-deleted` | folder deleted | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-deleted-by-character` | folder deleted by character | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `folder-deleted-by-user` | folder deleted by user | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `moved` | moved | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `moved-by-character` | moved by character | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `moved-by-user` | moved by user | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `opened` | opened | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `opened-by-character` | opened by character | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `opened-by-user` | opened by user | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `renamed` | renamed | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `saved` | saved | high | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | `summary` | summary | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| The Librarian | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| Pascal | `announcement` | announcement | high | DIVERGED — v4 chips it; v5 gave it a full row. FIXED (exemption narrowed to custom-tool-result). |
+| Pascal | `custom-tool-error` | the table couldn't deal | high | DIVERGED — v4 chips it; v5 gave it a full row. FIXED (exemption narrowed to custom-tool-result). |
+| Pascal | `custom-tool-result` | roll outcome | high | DIVERGED — bar/accent/dot matched; the portrait was suppressed. FIXED (Pascal’s own avatar). |
+| Pascal | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| Prospero | `announcement` | announcement | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `connection-profile-change` | connection change | medium | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `custom-tool-error` | the table couldn't deal | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `general-context` | general context | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `project-and-general-context` | project information and context | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `project-context` | project information | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | `tool-run` | tool run | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
+| Prospero | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
+| Suparṇā | `mail-delivery` | mail delivery | high | DIVERGED — v4 renders the letter FULL; v5 chipped it. FIXED (kind-scoped exemption + bar + portrait). |
+
+### Commits
+
+1. `873158c9` — port `inferKindFromContent` verbatim (+ v4's own test cases
+   and a branch-exhaustive spec).
+2. `91526b97` — the expanded body as an assistant bubble + `blobMountPointId`;
+   conditional kind span; `aria-hidden` dot; tooltip removed.
+3. `69c3e833` — kind-scoped chip exemptions; the Staff identity table + the
+   eleven v4 avatar assets; the Staff-general header bar.
+4. `41cc251a` — the two live e2e beats.
+5. this record.
+
+### Mutation proof (the D24 rule)
+
+Every new assertion was proven sensitive by reverting its fix and re-running:
+`resolveRawKind` → `''` reds 4 cases; sender-scoped exemptions red 2; removing
+the Staff avatar arm reds 3 (incl. the corrected `MessageRow` Pascal case);
+restoring `-system` + the unconditional span + the tooltip + the missing
+`aria-hidden` reds 4; `isStaffRow` → Pascal-only reds 2.
+
+### One earlier assertion CORRECTED rather than preserved
+
+`message-row.spec.ts` pinned "does not render a character avatar for a Pascal
+row". That was the lesser wrong while v5 had no Staff portraits — the
+alternative was hanging a cast member's face on the croupier. v4 has always
+drawn Pascal's own portrait (`getMessageAvatar:1127`); the case now pins that.
+
+### Deferred loudly
+
+- **Tier 2 (the side-by-side screenshot record) NOT delivered.** It needs a
+  running v4 dev server, which needs a real encrypted instance and its pepper
+  — and the pepper never enters this sandbox. What replaces it for the one
+  question screenshots were wanted for is stronger than a screenshot: the two
+  stylesheets' announcement blocks are byte-identical, and the class
+  responsible was found by grepping v4's whole checkout for its markup and
+  finding none outside the theme storybook. Worth a human eyeball on the next
+  dogfood pass all the same.
+- **The app-wide `renderingPatterns` / `dialogueDetection` gap** (see the
+  measurement above) — SPA-side but not announcement-specific; seeds a
+  follow-up order.
+- **No SERVER-side divergence was found**, so nothing is escalated on that
+  axis. (Both the announcement writers and the wire fields the SPA reads —
+  `systemSender` / `systemKind` / `pascalMeta` / `carinaMeta` /
+  `customAnnouncer` — matched v4 field for field during the survey.)
+
+### Ownership note for the unifier
+
+The order's lane-D row names `message-row`, `announcement-group`,
+`message-content`, `system-message-labels` + specs. Two files this lane had to
+touch are not in that list and are owned by **no** lane: `chat-view-model.ts`
+(+ its spec), which holds `isAnnouncementChip` / `buildRenderItems` /
+`resolveMessageAuthor` — i.e. the chip-vs-row membership and the identity the
+order's tier-1 item 2 requires auditing — and `apps/web/public/images/avatars/`
+(new, 11 files copied byte-identical from v4). Lane C converts toast call
+sites and neither file has one. `message-list.ts` was NOT touched.
