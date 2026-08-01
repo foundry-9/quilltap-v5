@@ -97,6 +97,9 @@ failures that were silent, such as a tool list that would not load, now say so.
 Quilltap has notifications again. A short message appears in the bottom-right
 corner when something finishes or fails, and clears itself after three seconds,
 the way the previous version did.
+A tool run posted by Prospero now carries Prospero's portrait in its card
+header, like every other Staff message.
+
 The Staff each have their own portrait and name in a conversation again.
 A reference answer from Carina now appears under the character who actually
 answered, a letter from Suparṇā under Suparṇā, and a roll under Pascal —

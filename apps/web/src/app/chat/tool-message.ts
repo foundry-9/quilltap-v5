@@ -9,7 +9,6 @@ import {
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { resolveMessageAuthor } from './chat-view-model';
-import { getSystemSenderDisplayName } from './system-message-labels';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
@@ -409,18 +408,19 @@ export class ToolMessage {
 
   /**
    * The standalone author (v4 `headerAvatar`, resolved upstream by
-   * `getMessageAvatar`). Null when embedded (the character's own avatar already
-   * heads the bubble). A Prospero / staff-authored run resolves through the
-   * systemSender label; a participant/role run through `resolveMessageAuthor`.
+   * `getMessageAvatar` — `VirtualizedMessageList.tsx:240-247` hands that
+   * function's whole result through, Staff rows included). Null when embedded:
+   * the character's own avatar already heads the bubble.
+   *
+   * P4.26: this used to special-case a `systemSender` row to the display name
+   * with a hardcoded `avatarUrl: null`, because `resolveMessageAuthor` had no
+   * Staff arm to defer to. It has one now, so the special case is gone and a
+   * standalone Prospero run wears Prospero's portrait, as it does in v4.
    */
   protected readonly headerAvatar = computed<{ name: string; avatarUrl: string | null } | null>(
     () => {
       if (this.embedded()) return null;
-      const m = this.message();
-      if (m.systemSender) {
-        return { name: getSystemSenderDisplayName(m.systemSender), avatarUrl: null };
-      }
-      const a = resolveMessageAuthor(m, this.chat());
+      const a = resolveMessageAuthor(this.message(), this.chat());
       return { name: a.name, avatarUrl: a.avatarUrl };
     },
   );

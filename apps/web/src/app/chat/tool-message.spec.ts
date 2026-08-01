@@ -342,3 +342,25 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
     });
   });
 });
+
+/**
+ * P4.26 — a standalone Staff-authored run wears its own portrait. v4 hands
+ * `getMessageAvatar`'s whole result to `headerAvatar`
+ * (`VirtualizedMessageList.tsx:240-247`), Staff rows included; v5 had
+ * special-cased them to the display name with a hardcoded null avatar, because
+ * `resolveMessageAuthor` had no Staff arm to defer to.
+ */
+describe('ToolMessage — the Staff header portrait (P4.26)', () => {
+  it('gives a standalone Prospero run Prospero’s own portrait', () => {
+    const fixture = render({
+      message: msg({
+        content: toolContent({ initiatedBy: 'user' }),
+        systemSender: 'prospero',
+        systemKind: 'tool-run',
+      }),
+    });
+    const img = el(fixture).querySelector('img');
+    expect(img?.getAttribute('src')).toBe('/images/avatars/prospero-avatar.webp');
+    expect(img?.getAttribute('alt')).toBe('Prospero');
+  });
+});
