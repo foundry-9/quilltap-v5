@@ -204,7 +204,10 @@ pub fn remove_from_character_gallery(
         patch.insert("avatarOverrides".into(), Value::Array(filtered));
     }
     if !patch.is_empty() {
-        crate::db::vault_character_update::update_character(main, mount, character_id, &patch)?;
+        // defaultImageId/avatarOverrides are slim keys — the P4.22 `Unavailable`
+        // refusal is unreachable here; collapse to this fn's GalleryError-via-DbError.
+        crate::db::vault_character_update::update_character(main, mount, character_id, &patch)
+            .map_err(crate::db::document_store_overlay::OverlayError::into_db)?;
     }
 
     let file_gc = links.delete_with_gc(link_id)?;

@@ -32,8 +32,8 @@ use crate::db::vault_wardrobe_public::{
 };
 use crate::db::{
     character_plugin_data, character_vault::create_character, characters_read,
-    doc_mount_documents::DocMountDocumentsRepository, tags, vault_character_arrays,
-    vault_character_update, wardrobe_read, DbError,
+    doc_mount_documents::DocMountDocumentsRepository, document_store_overlay::OverlayError, tags,
+    vault_character_arrays, vault_character_update, wardrobe_read, DbError,
 };
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
@@ -49,6 +49,12 @@ use super::types::{ErrorKind, Response};
 
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
+}
+/// Bridge the vault write overlay's error into the closures' `DbError` (the
+/// same idiom as the groups/projects api files). The `Unavailable` write
+/// refusal (P4.22) keeps its Display message on the way through.
+fn overlay_to_db(e: OverlayError) -> DbError {
+    e.into_db()
 }
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
@@ -959,7 +965,8 @@ pub async fn character_set_default_partner(
                 None => Value::Null,
             },
         );
-        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        vault_character_update::update_character(main, mount, &cid, &patch)
+            .map_err(overlay_to_db)?;
         Ok(Ok(partner_id))
     })
     .await;
@@ -1011,7 +1018,8 @@ pub async fn character_avatar(
         };
         let mut patch = serde_json::Map::new();
         patch.insert("defaultImageId".into(), image_val.clone());
-        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        vault_character_update::update_character(main, mount, &cid, &patch)
+            .map_err(overlay_to_db)?;
         // v4 builds `{...update(id,{defaultImageId}), defaultImage}` — the update
         // return is the patch merged onto the pre-update read (D4), and
         // enrichWithDefaultImage runs off the updated defaultImageId.
@@ -1075,7 +1083,8 @@ pub async fn character_add_tag(
                 "tags".into(),
                 Value::Array(current.into_iter().map(Value::String).collect()),
             );
-            vault_character_update::update_character(main, mount, &cid, &patch)?;
+            vault_character_update::update_character(main, mount, &cid, &patch)
+                .map_err(overlay_to_db)?;
         }
         Ok(Ok(tag))
     })
@@ -1118,7 +1127,8 @@ pub async fn character_remove_tag(
                 "tags".into(),
                 Value::Array(filtered.into_iter().map(Value::String).collect()),
             );
-            vault_character_update::update_character(main, mount, &cid, &patch)?;
+            vault_character_update::update_character(main, mount, &cid, &patch)
+                .map_err(overlay_to_db)?;
         }
         Ok(Ok(()))
     })
@@ -1655,7 +1665,8 @@ pub async fn character_update(
             return Ok(Err(not_found("Character")));
         }
         let patch = build_update_patch(&body);
-        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        vault_character_update::update_character(main, mount, &cid, &patch)
+            .map_err(overlay_to_db)?;
         // Reload through the overlay (managed fields read back from the vault).
         Ok(Ok(
             characters_read::find_by_id(main, mount, &cid)?.unwrap_or(Value::Null)

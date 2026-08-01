@@ -155,6 +155,17 @@ impl OverlayError {
     pub fn is_unavailable(&self) -> bool {
         matches!(self, OverlayError::Unavailable { .. })
     }
+
+    /// Collapse into the plain [`DbError`] surface for callers whose error type
+    /// predates the structured refusal (the `Unavailable` arm keeps its Display
+    /// message). Call sites that can answer v4's contextful 503 should match
+    /// the variants instead (`api/*`).
+    pub fn into_db(self) -> DbError {
+        match self {
+            OverlayError::Db(d) => d,
+            unavailable => DbError::Key(unavailable.to_string()),
+        }
+    }
 }
 
 impl std::fmt::Display for OverlayError {

@@ -447,7 +447,10 @@ where
         m
     };
     common::with_both_conns(db, move |main, mount| {
+        // avatarOverrides is a slim key — the P4.22 `Unavailable` refusal is
+        // unreachable here; collapse to the closure's DbError.
         crate::db::vault_character_update::update_character(main, mount, &char_id_upd, &patch)
+            .map_err(crate::db::document_store_overlay::OverlayError::into_db)
             .map(|_| ())
     })
     .await

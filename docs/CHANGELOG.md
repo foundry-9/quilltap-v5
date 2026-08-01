@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Editing a character whose vault `properties.json` has been corrupted now
+refuses the save with a clear error instead of silently and permanently
+resetting the character's pronouns, aliases, title, first message,
+talkativeness, and outfit-choice flag to defaults. Those six fields live only
+in that file, so a corrupted file plus one innocent edit used to destroy them
+with nothing on screen to say so. A vault whose properties file is genuinely
+absent still seeds defaults, as provisioning requires. This is a deliberate
+divergence from the reference app, which still carries the bug; the
+divergence is pinned by the test suite in both directions so it will surface
+the moment the reference app ships its own fix.
+
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper
 "store unavailable" error responses, automatic pruning of old LLM logs,

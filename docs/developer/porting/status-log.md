@@ -45916,3 +45916,89 @@ oracles move — lanes A and E both carry the warning and STOP on it.
 management — the next big vertical, after this debt clears), the workspace
 per-tab toolbar bridge, the Zod format-validator gap (restated as tier-3
 in P4.23), `p4.9i2`, and the post-5.0 pools.
+
+## Lane record — P4.22: the character vault's `properties.json` clobber (dogfood finding #47)
+
+**CLOSED on the lane branch (2026-07-31). A DELIBERATE DIVERGENCE from v4,**
+recorded the way the sparse-array blob divergence and the three restore bugs
+are recorded — v4 still carries the defect and the v4-side repair is queued
+(the human carries it; the order's header holds the two-edit description,
+including deleting v4's stale safety comment in `managed-fields.ts`).
+
+**Tier 1 — the fix.** `db/vault_character_update.rs::read_current_properties`
+now distinguishes the two arms P4.D29 distinguishes for the group/project
+bags: a GENUINELY ABSENT `properties.json`
+(`find_by_mount_point_and_path` → `None`) still returns `Ok(None)` and the
+RMW seeds `empty_properties_default()` (the Epsilon arm — provisioning
+depends on it); a PRESENT-but-unparseable file now REFUSES with
+`OverlayError::Unavailable { entity_label: "character", id, mount_point_id,
+detail: "properties.json unparseable: <detail>" }` — the same two-stage parse
+(JSON syntax → serde's message; valid-JSON-schema-violation → a fixed detail,
+since the shared `parse_vault_properties` collapses its reason exactly as
+v4's Zod `safeParse` does) and the same message shape as
+`document_store_overlay::read_properties`, so all three bags refuse alike.
+The READ overlay is untouched (fail-soft is v4-faithful and loses nothing).
+The refusal was shaped for P4.23 (same branch, next order): it reuses
+`OverlayError` so the 503 envelope mapping needs no rework.
+
+**Signature ripple (the error must survive to the api layer):**
+`apply_document_store_write_overlay` + `update_character` now return
+`Result<_, OverlayError>`. A new `OverlayError::into_db()` collapses to the
+old `DbError` surface at call sites whose patches cannot carry a
+`properties.json` key (the refusal is unreachable there, stated inline):
+`db/vault_character_arrays.rs` (4 sites — prompts/scenarios/partnerLinks/
+slim setters), `services/chat_avatars.rs`, `services/character_avatar_job.rs`,
+`photos/character_gallery_service.rs` (avatarOverrides/defaultImageId only).
+The five `api/characters.rs` call sites collapse via a local `overlay_to_db`
+(the groups/projects idiom) — P4.23 remaps them to the contextful 503.
+
+**Tier 2 — the corpus.** `characters-update-tier2.json` +
+`characters-update.ts` + `characters_update_tier2_equivalence.rs` restructured
+into THREE phases: `afterOps` (the four original ops + `deleteProperties` +
+the absent-arm reseed `{talkativeness: 0.9}` — an EQUALITY, both sides seed
+defaults), `postPlant` (`"{"` — the dogfood repro's exact bytes — planted
+through the REAL `write_database_document` on both sides, still an equality),
+and the `corrupt` arm (`{title: "clobber probe"}`), which is A PINNED
+DIVERGENCE in both directions:
+
+- v5 must refuse with the exact message head (`Character <id> has no usable
+  document store (officialMountPointId=<mp>): properties.json unparseable: `
+  + a non-empty elided tail, the P4.D29 `UNPARSEABLE_MARKER` convention) and
+  must have written NOTHING — its post-refusal state is byte-diffed against
+  the oracle's `postPlant` snapshot across all six tables, the planted bytes
+  are asserted still current, and no clobber bag exists anywhere.
+- v4 is asserted to have SILENTLY CLOBBERED: `message === null` and
+  `finalProperties` equal to the measured defaults+title bag byte-for-byte
+  (`V4_CLOBBERED_BAG`). **Both assertions go red the moment v4 lands its #47
+  fix — reclassify to an ordinary drift re-port then** (the assertion
+  messages say so).
+
+The oracle CONFIRMED the bug by measurement: v4 at `ff12f491` records
+`message: null` and the exact predicted clobber bytes.
+
+**Mutation-proven (the D24 rule), both directions:** (1) refusal
+short-circuited back to `Ok(None)` → RED on the no-throw catch; (2) refusal
+kept but the clobbered bag written first (a simulated partial write) → the
+message arm stays green and the `postRefusal` six-table diff goes RED on
+`doc_mount_files` — the post-state proof is independently sensitive, exactly
+as P4.D29's mutation 3 found for the group arms.
+
+**Fixture notes:** the baked `qt-charupd-*.db` fixtures are UNCHANGED (the
+builder reads only `spec.character`), so `metadata-vault-roundtrip` — the one
+other consumer of those DBs — is NOT invalidated. The spec/oracle/test now
+carry the op `kind` discriminator and the `plantedProperties`/`corruptPatch`
+fields. Regen recipe unchanged (the test header carries it; oracle straight
+from `~/source/quilltap-server` while v4 HEAD stays `e1be028b`).
+
+**Tier 3 (restated deferral):** the Zod format-validator gap on property bags
+stays deferred (P4.D29's own deferral). The characters bag has the analogous
+gap in the OPPOSITE direction: `parse_vault_properties` is stricter than a
+plain JSON parse (pronoun length 1–20, talkativeness 0.1–1.0) but collapses
+its reason to a fixed `schema validation failed` detail where the
+group/project bags carry Zod-ish messages — the detail tail is elided by the
+corpus normalization either way, so nothing is pinned to it.
+
+Gate at this commit: fmt clean; clippy both feature sets `-D warnings` clean;
+`cargo test --workspace --no-fail-fast` green with the CHARUPD env vars set
+(the extended family RAN, not skipped). Versions: core 0.0.428, harness
+0.0.370.

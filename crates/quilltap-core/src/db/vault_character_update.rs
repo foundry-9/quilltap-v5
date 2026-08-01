@@ -20,8 +20,19 @@
 //!     `exampleDialogues`): `None`/absent value → `""`.
 //!   - **properties** (`pronouns`/`aliases`/`title`/`firstMessage`/`talkativeness`):
 //!     read the current `properties.json` (parse; fall back to the empty-managed
-//!     default when missing), overlay only the touched keys, rewrite. The
-//!     untouched keys are preserved — the RMW invariant.
+//!     default when GENUINELY ABSENT), overlay only the touched keys, rewrite. The
+//!     untouched keys are preserved — the RMW invariant. A `properties.json` that
+//!     is PRESENT but unparseable REFUSES the patch (`OverlayError::Unavailable`)
+//!     instead of seeding defaults — see [`read_current_properties`]. **This is a
+//!     DELIBERATE DIVERGENCE from v4** (dogfood finding #47): v4's
+//!     `readCharacterVaultProperties` returns `null` on a parse failure and its
+//!     `??`-seed then projects the empty defaults over all six property fields,
+//!     permanently — the exact clobber v4's own `dcd9440a` hardened the
+//!     group/project bags against but missed for the character vault (the third
+//!     bag of the same shape, and post-cutover the ONLY home those six fields
+//!     have). The v4-side repair is queued; when it lands this becomes an
+//!     ordinary drift re-port and the characters-update corpus's divergence arm
+//!     goes red by design.
 //!   - **physical** (`physicalDescription`): a non-null value writes
 //!     `physical-description.md` + `physical-prompts.json`; a **null** value leaves
 //!     the vault files alone (clearing is a DB-side concern) — matching v4, which
@@ -48,6 +59,7 @@ use serde_json::{Map, Value};
 use super::characters::{CharacterUpdate, CharactersRepository, MANAGED_FIELDS};
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
+use super::document_store_overlay::OverlayError;
 use super::vault_character_write::{render_physical_prompts_json, render_properties_json};
 use super::DbError;
 use crate::vault_overlay::{
@@ -94,12 +106,17 @@ const PROPERTY_KEYS: &[&str] = &[
 /// Route the managed fields in `patch` to the character's vault and return the
 /// DB-bound remainder (v4 `applyDocumentStoreWriteOverlay`). `main` holds the slim
 /// row (the FK lookup); `mount` holds the store.
+///
+/// Errors: [`OverlayError::Db`] wraps every real DB failure;
+/// [`OverlayError::Unavailable`] (entity label `character`) is the
+/// present-but-unparseable `properties.json` write refusal — the P4.22
+/// deliberate divergence documented on the module.
 pub fn apply_document_store_write_overlay(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
     patch: &Map<String, Value>,
-) -> Result<Map<String, Value>, DbError> {
+) -> Result<Map<String, Value>, OverlayError> {
     let mount_point_id = match read_vault_fk(main, character_id)? {
         Some(id) => id,
         None => {
@@ -138,8 +155,11 @@ pub fn apply_document_store_write_overlay(
         .collect();
     if !touched.is_empty() {
         // Seed from the current properties.json; fall back to the empty-managed
-        // default (the raw slim row carries no managed values post-cutover).
-        let current = read_current_properties(mount, &mount_point_id)?
+        // default ONLY when the file is genuinely absent (the raw slim row
+        // carries no managed values post-cutover). A present-but-unparseable
+        // file refuses instead — `read_current_properties` errors rather than
+        // returning `None`, so this fallback can never fire on a corrupt bag.
+        let current = read_current_properties(mount, &mount_point_id, character_id)?
             .unwrap_or_else(empty_properties_default);
 
         let pronouns: Option<Pronouns> = if patch.contains_key("pronouns") {
@@ -285,12 +305,16 @@ pub fn apply_document_store_write_overlay(
 /// row's `updatedAt`). The closing overlay re-read is a READ concern (no DB
 /// mutation) and is left to the read overlay. Returns `true` if the slim row was
 /// updated, `false` if the update was managed-only (or the row was absent).
+///
+/// Errors as [`apply_document_store_write_overlay`] — the `Unavailable` arm is
+/// reachable only when the patch touches a `properties.json` key and the file is
+/// present but unparseable.
 pub fn update_character(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
     patch: &Map<String, Value>,
-) -> Result<bool, DbError> {
+) -> Result<bool, OverlayError> {
     let db_patch = apply_document_store_write_overlay(main, mount, character_id, patch)?;
     if db_patch.is_empty() {
         return Ok(false);
@@ -411,14 +435,67 @@ fn provision_vault_on_the_fly(
 }
 
 /// Read + parse the current `properties.json` for the RMW seed.
+///
+/// Returns `None` ONLY for a genuinely absent `properties.json` — the caller
+/// seeds [`empty_properties_default`], which is legitimate there (a vault whose
+/// bag was never written, or was deliberately deleted, has nothing to preserve;
+/// provisioning depends on this arm). A file that is PRESENT but unreadable or
+/// unparseable ERRORS ([`OverlayError::Unavailable`], entity label `character`)
+/// instead: post-cutover the six property fields have no DB columns, so seeding
+/// defaults over a *failed* read silently and permanently resets all six
+/// (dogfood finding #47 — the same clobber v4's `dcd9440a` closed for the
+/// group/project bags; mirrors [`super::document_store_overlay::read_properties`]
+/// including the `properties.json unparseable: <detail>` message form).
+///
+/// The refusal is a **deliberate divergence from v4**, whose
+/// `readCharacterVaultProperties` still collapses the failure into `null` and
+/// clobbers; see the module doc. The fail-soft READ overlay
+/// (`vault_read_overlay.rs`) is v4-faithful and deliberately untouched — a
+/// corrupt bag costs a read nothing, it is only the write that loses data.
 fn read_current_properties(
     mount: &Connection,
     mount_point_id: &str,
-) -> Result<Option<CharacterVaultProperties>, DbError> {
+    character_id: &str,
+) -> Result<Option<CharacterVaultProperties>, OverlayError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    match docs.find_by_mount_point_and_path(mount_point_id, PROPERTIES_JSON_PATH)? {
-        Some(content) => Ok(parse_vault_properties(&content)),
-        None => Ok(None),
+    let content = match docs.find_by_mount_point_and_path(mount_point_id, PROPERTIES_JSON_PATH)? {
+        Some(content) => content,
+        None => {
+            tracing::debug!(
+                entity = "character",
+                entity_id = character_id,
+                mount_point_id,
+                "{PROPERTIES_JSON_PATH} absent — caller may seed defaults"
+            );
+            return Ok(None);
+        }
+    };
+    let refuse = |detail: String| {
+        tracing::error!(
+            entity = "character",
+            entity_id = character_id,
+            mount_point_id,
+            reason = %detail,
+            "{PROPERTIES_JSON_PATH} unparseable — refusing to treat as absent"
+        );
+        OverlayError::Unavailable {
+            entity_label: "character",
+            id: character_id.to_string(),
+            mount_point_id: Some(mount_point_id.to_string()),
+            detail: format!("{PROPERTIES_JSON_PATH} unparseable: {detail}"),
+        }
+    };
+    // Two-stage, mirroring `read_properties::<E>`: a JSON syntax error carries
+    // serde's message; valid JSON that violates the schema carries the schema
+    // arm. `parse_vault_properties` is the read overlay's shared validator and
+    // collapses its reason (v4's Zod `safeParse` does the same) — the detail
+    // tail is a stated seam, elided by the corpus normalization either way.
+    if let Err(e) = serde_json::from_str::<Value>(&content) {
+        return Err(refuse(e.to_string()));
+    }
+    match parse_vault_properties(&content) {
+        Some(parsed) => Ok(Some(parsed)),
+        None => Err(refuse("schema validation failed".to_string())),
     }
 }
 

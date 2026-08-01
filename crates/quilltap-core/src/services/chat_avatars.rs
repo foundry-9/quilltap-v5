@@ -33,7 +33,10 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, image_profiles, vault_character_update, DbError};
+use crate::db::{
+    characters_read, chats_read, document_store_overlay::OverlayError, image_profiles,
+    vault_character_update, DbError,
+};
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::queue_service::enqueue_character_avatar_generation;
@@ -175,7 +178,10 @@ async fn write_overrides(
                     crate::write_partition::WriteDbTarget::MountIndex,
                 ))?;
         let main = w.main().connection();
-        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        // avatarOverrides is a slim key — the P4.22 `Unavailable` refusal is
+        // unreachable here; collapse to the closure's DbError.
+        vault_character_update::update_character(main, mount, &cid, &patch)
+            .map_err(OverlayError::into_db)?;
         Ok(())
     })
     .await

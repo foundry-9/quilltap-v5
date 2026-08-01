@@ -14,6 +14,20 @@
  * minted id. A character spans two DBs, so we dump BOTH the main slim `characters`
  * row and the mount-index store tables.
  *
+ * P4.22 (dogfood finding #47) extended the case with the vault-properties arms,
+ * in THREE phases:
+ *   - `afterOps`: the spec's ops (now including `deleteProperties` + the
+ *     absent-arm reseed — genuine absence seeds the empty-managed defaults on
+ *     BOTH sides), dumped and diffed as before.
+ *   - `postPlant`: `plantedProperties` (malformed bytes) written through the
+ *     REAL `writeDatabaseDocument`; both sides dump and still match.
+ *   - `corrupt`: `corruptPatch` applied EXPECTING THE SIDES TO DIVERGE. v4's
+ *     `readCharacterVaultProperties` collapses the parse failure into `null`
+ *     and the `??`-seed CLOBBERS the whole bag to defaults (this case records
+ *     `message: null` + the clobbered `finalProperties`); v5 refuses and writes
+ *     nothing. The Rust harness pins both directions, so this arm goes RED the
+ *     moment v4 lands its own #47 fix — reclassify to a drift re-port then.
+ *
  * NORMALIZATION (done identically on both dumps by the Rust harness): the
  * shared-id remap across all six tables (FKs verify by relationship) + timestamp
  * placeholders; chunkCount pinned. The DB-field change (isFavorite) and every
@@ -35,11 +49,14 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  patch: Record<string, unknown>;
+  kind?: 'update' | 'deleteProperties';
+  patch?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
+  plantedProperties: string;
+  corruptPatch: Record<string, unknown>;
 }
 
 async function main(): Promise<void> {
@@ -76,6 +93,9 @@ async function main(): Promise<void> {
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { writeDatabaseDocument, deleteDatabaseDocument } = await import(
+    '@/lib/mount-index/database-store'
+  );
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -85,29 +105,26 @@ async function main(): Promise<void> {
   if (idRow.length === 0) throw new Error('fixture has no character row');
   const characterId = idRow[0].id;
 
-  // The ops under test.
+  // The vault FK, read RAW (the vault-properties arms need the mount point).
+  const fkRow = (await rawQuery(
+    'SELECT characterDocumentMountPointId AS mp FROM characters LIMIT 1'
+  )) as Array<{ mp: string | null }>;
+  const mountPointId = fkRow[0]?.mp;
+  if (!mountPointId) throw new Error('fixture character has no vault FK');
+
+  // Phase 1: the ops under test.
   for (const op of spec.ops) {
-    await repos.characters.update(characterId, op.patch as never);
+    if (op.kind === 'deleteProperties') {
+      await deleteDatabaseDocument(mountPointId, 'properties.json');
+    } else {
+      await repos.characters.update(characterId, op.patch as never);
+    }
   }
 
-  // MAIN db: the slim characters row.
-  const charColumns = (
-    (await rawQuery('PRAGMA table_info(characters)')) as Array<{ name: string }>
-  ).map((c) => c.name);
-  const charRows = (await rawQuery('SELECT * FROM characters')) as Array<
-    Record<string, unknown>
-  >;
-  const characters = canonicalizeRows({
-    table: 'characters',
-    columns: charColumns,
-    rawRows: charRows,
-    orderBy: 'name',
-  });
-
-  // MOUNT-INDEX db: the store tables.
   const midb = getRawMountIndexDatabase();
   if (!midb) throw new Error('mount-index DB handle unavailable (degraded open?)');
-  const dumpTable = (table: string, orderBy: string) => {
+
+  const dumpMountTable = (table: string, orderBy: string) => {
     const columns = (
       midb.pragma(`table_info(${table})`) as Array<{ name: string }>
     ).map((c) => c.name);
@@ -116,12 +133,51 @@ async function main(): Promise<void> {
       .all() as Array<Record<string, unknown>>;
     return canonicalizeRows({ table, columns, rawRows, orderBy });
   };
+  const snapshot = async () => {
+    const charColumns = (
+      (await rawQuery('PRAGMA table_info(characters)')) as Array<{ name: string }>
+    ).map((c) => c.name);
+    const charRows = (await rawQuery('SELECT * FROM characters')) as Array<
+      Record<string, unknown>
+    >;
+    return {
+      characters: canonicalizeRows({
+        table: 'characters',
+        columns: charColumns,
+        rawRows: charRows,
+        orderBy: 'name',
+      }),
+      points: dumpMountTable('doc_mount_points', 'name'),
+      folders: dumpMountTable('doc_mount_folders', 'path'),
+      files: dumpMountTable('doc_mount_files', 'sha256'),
+      documents: dumpMountTable('doc_mount_documents', 'contentSha256'),
+      links: dumpMountTable('doc_mount_file_links', 'relativePath'),
+    };
+  };
 
-  const points = dumpTable('doc_mount_points', 'name');
-  const folders = dumpTable('doc_mount_folders', 'path');
-  const files = dumpTable('doc_mount_files', 'sha256');
-  const documents = dumpTable('doc_mount_documents', 'contentSha256');
-  const links = dumpTable('doc_mount_file_links', 'relativePath');
+  const afterOps = await snapshot();
+
+  // Phase 2: plant the malformed bytes through the REAL writeDatabaseDocument.
+  await writeDatabaseDocument(mountPointId, 'properties.json', spec.plantedProperties);
+  const postPlant = await snapshot();
+
+  // Phase 3: the corrupt-arm patch. v4 TODAY does not throw — the RMW seed
+  // clobbers the bag (finding #47). Record whatever happens so the harness can
+  // pin the divergence in both directions.
+  let message: string | null = null;
+  try {
+    await repos.characters.update(characterId, spec.corruptPatch as never);
+  } catch (err) {
+    message = err instanceof Error ? err.message : String(err);
+  }
+  const propsRow = midb
+    .prepare(
+      `SELECT d.content AS content FROM doc_mount_file_links l
+        JOIN doc_mount_documents d ON d.fileId = l.fileId
+       WHERE l.mountPointId = ? AND l.relativePath = 'properties.json'`
+    )
+    .get(mountPointId) as { content: string } | undefined;
+  const finalProperties = propsRow ? propsRow.content : null;
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
@@ -129,12 +185,9 @@ async function main(): Promise<void> {
   process.stdout.write(
     JSON.stringify({
       case: 'characters-update-tier2',
-      characters,
-      points,
-      folders,
-      files,
-      documents,
-      links,
+      afterOps,
+      postPlant,
+      corrupt: { message, finalProperties },
     }) + '\n'
   );
   process.exit(0);

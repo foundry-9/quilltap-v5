@@ -40,8 +40,18 @@
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
+use super::document_store_overlay::OverlayError;
 use super::vault_character_update::update_character;
 use super::DbError;
+
+// The `OverlayError::into_db` collapses below are safe: the `Unavailable` write
+// refusal (P4.22 — a present-but-unparseable `properties.json`) is UNREACHABLE
+// from this module, since every patch built here carries only folder-projected
+// (`systemPrompts`/`scenarios`) or slim (`partnerLinks`/setter) keys, never a
+// `properties.json` key — the RMW that refuses is never entered.
+fn overlay_to_db(e: OverlayError) -> DbError {
+    e.into_db()
+}
 
 // The array ops read the character through the FULL read path (sub-unit 4c) — the
 // same `find_by_id` the `findBy*` queries use — so the items they mutate
@@ -68,7 +78,7 @@ fn project_array(
 ) -> Result<(), DbError> {
     let mut patch = Map::new();
     patch.insert(key.to_string(), Value::Array(items));
-    update_character(main, mount, character_id, &patch)?;
+    update_character(main, mount, character_id, &patch).map_err(overlay_to_db)?;
     Ok(())
 }
 
@@ -351,7 +361,7 @@ pub fn add_partner_link(
         links.push(json!({ "partnerId": partner_id, "isDefault": is_default }));
         let mut patch = Map::new();
         patch.insert("partnerLinks".to_string(), Value::Array(links));
-        update_character(main, mount, character_id, &patch)?;
+        update_character(main, mount, character_id, &patch).map_err(overlay_to_db)?;
     }
     Ok(true)
 }
@@ -376,7 +386,7 @@ pub fn remove_partner_link(
     if filtered.len() != links.len() {
         let mut patch = Map::new();
         patch.insert("partnerLinks".to_string(), Value::Array(filtered));
-        update_character(main, mount, character_id, &patch)?;
+        update_character(main, mount, character_id, &patch).map_err(overlay_to_db)?;
     }
     Ok(true)
 }
@@ -396,7 +406,7 @@ fn set_one(
 ) -> Result<bool, DbError> {
     let mut patch = Map::new();
     patch.insert(key.to_string(), value);
-    update_character(main, mount, character_id, &patch)
+    update_character(main, mount, character_id, &patch).map_err(overlay_to_db)
 }
 
 /// Set favorite status (v4 `setFavorite`).
