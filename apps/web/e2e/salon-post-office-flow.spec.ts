@@ -40,7 +40,7 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * "landed" from "landed without the new field" — it would always read true and
  * activate this beat into a false pass. Gated by name instead, per the order.
  */
-const ANNOUNCEMENT_WHISPER_LANDED = false;
+const ANNOUNCEMENT_WHISPER_LANDED = true;
 
 /** Is a §1 Post Office verb on the server yet? (One dispatch, no side effects.) */
 async function postOfficeVerbsLive(page: Page): Promise<boolean> {

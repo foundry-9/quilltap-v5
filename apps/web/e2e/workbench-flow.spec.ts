@@ -61,7 +61,7 @@ let mockStateReady = false;
  * and a missing `effects` key is indistinguishable from a run whose effects all
  * skipped. **Unifier: flip this to `true` once P4.D35's server half is merged.**
  */
-const EFFECTS_PREVIEW_LANDED = false;
+const EFFECTS_PREVIEW_LANDED = true;
 
 /** The name beat 4 authors. Distinct enough that no sibling spec reads it. */
 const NEW_TOOL_NAME = 'e2e_probe_contrivance';

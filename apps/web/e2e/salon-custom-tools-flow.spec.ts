@@ -29,7 +29,7 @@ import { openSidebarSection } from './support/sidebar';
  * `chipLabel` into `pascalMeta`? A NAMED CONSTANT, per the round's shared
  * contract. **Unifier: flip to `true` once P4.D35's server half is merged.**
  */
-const CHIP_LABEL_SERVER_LANDED = false;
+const CHIP_LABEL_SERVER_LANDED = true;
 
 test.describe('Salon custom tools + whispers (P4.6ba)', () => {
   async function maybeUnlock(page: Page) {

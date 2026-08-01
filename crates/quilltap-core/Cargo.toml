@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.439"
+version = "0.0.444"
 edition = "2021"
 publish = false
 
@@ -95,7 +95,22 @@ jiff = "0.2.31"
 # the library itself — the writer runs on a plain OS thread (not a tokio worker),
 # so no scheduler is pulled into the core. The `macros` + `rt-multi-thread`
 # features (for `#[tokio::test]`) live in dev-dependencies below.
-tokio = { version = "1", default-features = false, features = ["sync"] }
+#
+# `time` joins `sync` for P4.D39's `OUTFIT_LLM_TIMEOUT_MS`: v4 bounds the
+# chat-start wardrobe consult with a `Promise.race` against a `setTimeout`, and
+# `tokio::time::timeout` is the mapping. It brings the timer TYPES only — the
+# driver still comes from whichever runtime the caller is already on (every one
+# in the tree is built with `enable_all`).
+tokio = { version = "1", default-features = false, features = ["sync", "time"] }
+
+# P4.D39: `futures_util::future::join_all` is the faithful mapping of v4's
+# `Promise.allSettled` over the per-character outfit resolvers — the chat-start
+# consults must overlap (serially, one stalled provider held up a whole cast for
+# 2m32s). Only `alloc` is needed: no executor, no IO, and the futures joined
+# here are deliberately NOT `Send` (they hold `&Connection`), which `join_all`
+# is happy with and a hand-rolled poll loop would be easy to get subtly wrong
+# about.
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 # P4.18: structured `tracing` events at the swallow sites (the job runner, the
 # cheap-LLM failed-call row, the `eprintln!` conversions). `tracing` is already
@@ -130,7 +145,7 @@ native-transport = ["dep:reqwest", "tokio/rt", "tokio/rt-multi-thread"]
 tempfile = "3"
 # Test-only: the runtime self-tests use `#[tokio::test]` and a multi-thread
 # runtime to exercise concurrent writers. Feature-unioned with the dep above.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 # P4.18 unit 5: the job-runner smoke test installs a capturing `Layer` to assert
 # a failed job emits a `tracing` event (the render subscriber lives in the bins,
 # but the test needs one to observe the event).
