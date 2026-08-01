@@ -48953,3 +48953,35 @@ this round).
 Gate for this unit: `npx vitest run src/app/chat/whisper-visibility.spec.ts`
 — 20/20 green (full workspace `ng test` deferred to the lane's closing
 commit).
+
+## Lane record — P4.D38 unit 2: theme WCAG updates (both commits, all six files)
+
+Applied `0ec25bdd` (light mode) + `1c55110b` (dark mode, Earl Grey/Rains
+only) exactly per the survey table already banked above under "Survey
+material the orders reference": `_variables.css` light+dark default-theme
+labels, Art Deco's light `--qt-chat-whisper-bg` rework (its `muted` is an
+unusually dim light-mode value, so the shared recipe needed a lighter mix,
+not just a darker label) + light label, Earl Grey's base-block (dark)
+whisper trio + light-block label, Great Estate's light label, Old
+School's light label, Rains' base-block (dark) whisper trio + light-block
+label. Carried v4's why-comments verbatim, including the two new
+"these are the dark-mode values; `.light` overrides them" notes on Earl
+Grey and Rains.
+
+**Verification, not just transcription**: diffed every touched value
+against v4's real `themes/bundled/*/styles.css` and
+`app/styles/qt-components/_variables.css` at the pin
+(`diff <(grep whisper-label-fg\|whisper-bg: v5-file) <(grep … v4-file)`)
+— all six files MATCH byte-for-byte. Confirmed Art Deco/Great
+Estate/Old School's DARK blocks were already correct (untouched by either
+v4 commit, and v5's existing dark values already equal v4's) before
+touching only their light blocks, exactly as the survey table predicted.
+
+theme.json bumps: art-deco 1.0.10→1.0.11, earl-grey 1.3.5→1.3.7 (both
+commits collapse to one version step since v5 lands them in a single
+unit), great-estate 1.0.5→1.0.6, old-school 1.0.11→1.0.12, rains
+1.3.8→1.3.10. Madman's Box confirmed unchanged (`madmans-box/styles.css`
+whisper-label-fg untouched by either v4 commit). v5 has no theme-package
+`dist/` build step (themes are served straight from
+`apps/web/public/themes/*`), so the order's "never hand-edit dist/"
+caution doesn't apply here — noted for completeness.

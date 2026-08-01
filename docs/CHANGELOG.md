@@ -172,6 +172,13 @@ hidden or dimmed, whichever Staff member or invented name it's signed as. A
 legacy row with no recorded kind keeps its old behavior rather than
 disappearing from a view the operator is used to.
 
+The "whispered to X" label on a whisper bubble, and the matching audience tag
+on a collapsed announcement chip, were unreadable in light mode in five of six
+bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
+the accessibility bar in two themes in dark mode as well. All six bundled
+themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
+light and dark mode, matching the reference app's fix.
+
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal
 custom-tool side-effects feature (server and Workbench halves), whispered
