@@ -32,6 +32,10 @@ untouched. A related oversight is fixed alongside: an older settings record
 that had never had its logging preferences written out was being skipped by the
 nightly sweep entirely, and is now swept on the same defaults everything else
 uses.
+A character's raw database record now reports whether the character may choose
+their own outfit, matching v4: the flag was stored and saved correctly but
+omitted from one read path, so anything reading the un-overlaid record saw it
+missing entirely.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper

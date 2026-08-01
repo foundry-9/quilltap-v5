@@ -24,7 +24,8 @@
 //!
 //! The **managed** columns (`MANAGED_FIELDS`) sit at their DDL defaults (the 4.6
 //! cutover writes never touch them), so `_findById` reads back their Zod defaults:
-//! `scenarios` / `systemPrompts` / `aliases` → `[]`, `talkativeness` → `0.5`, and
+//! `scenarios` / `systemPrompts` / `aliases` → `[]`, `talkativeness` → `0.5`,
+//! `canChooseOutfit` → `false`, and
 //! the nullable managed columns (`title` / `identity` / … / `pronouns` /
 //! `physicalDescription`) → omitted. We reproduce those four defaults directly
 //! (the columns provably hold nothing else). For a vault-linked character the read
@@ -160,6 +161,7 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
         "talkativeness".into(),
         Value::Number(serde_json::Number::from_f64(0.5).expect("0.5 is finite")),
     );
+    obj.insert("canChooseOutfit".into(), Value::Bool(false));
 
     Ok(Value::Object(obj))
 }

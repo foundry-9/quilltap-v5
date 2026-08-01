@@ -46337,3 +46337,48 @@ reader diagnosing a red does not have to work backwards to the cause.
 The test's config pushes `cleanup_interval_ms` out of the way along with every
 other cadence: the boot tick would otherwise enqueue a SECOND job and blur what
 is being asserted.
+## Lane record — P4.27 (lane E): the D32 sweep debt
+
+### Unit 1 — the `canChooseOutfit` projection gap (2026-07-31)
+
+- **Drift check at lane start:** `git log ff12f491..HEAD` in
+  `~/source/quilltap-server` shows exactly `e1be028b` (release infra,
+  NO-PORT), tree clean. The finding-#47 vault fix has NOT landed in v4 —
+  no lane-A oracle coordination needed.
+- **Diagnosed from the RED, per the order.** Regenerated the three
+  families' oracles fresh at `ff12f491`; `characters_read_equivalence`
+  RED on query 0 (`findByIdRaw`): v4 emits `canChooseOutfit: false` in
+  the slim row, v5 omitted it. The omitting reader is
+  `db/characters_read.rs::marshal_row` — a FIFTH site beyond the four the
+  order enumerated as already carrying the flag, exactly the "enumerate
+  every reader of the bag" shape. In v4 the field is MANAGED
+  (`store-backed.repository.ts` strips it on write; the column sits at
+  DDL default 0), so `_findById`'s hydrate + Zod `.default(false)`
+  materializes `false` on every raw read — the `talkativeness → 0.5`
+  pattern. Fix: one line in the managed-defaults block of `marshal_row`
+  (+ the module doc list). **The fix landed in `db/characters_read.rs` —
+  NOT `api/**` — so the STOP rule was not triggered.**
+- **Mutation-proven:** with the projection dropped, `characters_read`
+  and `characters_actions` go RED (the actions family diffs the post-op
+  `find_by_id_raw` row on 9 of 11 cases); restored, all three GREEN.
+- **A finding worth carrying:** `characters_reads_equivalence` is GREEN
+  at `ff12f491` both WITH and WITHOUT the fix — its surfaces obtain the
+  flag from the enrichment DTO (`canChooseOutfit ?? false`) and the vault
+  read overlay, never from the raw marshal. D32's red on that family was
+  therefore a sweep hazard (stale oracle or /tmp collision), not the
+  projection gap; the projection gap's true blast radius was
+  `characters_read` + `characters_actions`.
+- **Oracle regens (all three fresh at `ff12f491`, v4 checkout clean at
+  `e1be028b`, Node 24):**
+  - `characters_read`: build fixture →
+    `QT_FIXTURE_CHARREAD_MAIN=/tmp/qt-charread-main.db QT_FIXTURE_CHARREAD_MOUNT=/tmp/qt-charread-mount.db npx tsx harness/oracle/fixtures/build-characters-read-fixture.ts`
+    then the same env + `npx tsx harness/oracle/cases/characters-read.ts > /tmp/oracle-charread.ndjson`
+    (1 line, 11 queries; freshness marker: `canChooseOutfit` present).
+  - `characters-reads` / `characters-actions`: jest /tmp mirror per the
+    case headers, with the committed
+    `crates/quilltap-web/tests/fixtures/characters-{main,mount}.db`
+    COPIED to the mirror and the `QT_FIXTURE_CHARACTERS_*` env vars
+    pointed at the COPIES (the item-3 no-repo-writes policy applied
+    here too); 24 + 11 cases, `canChooseOutfit` present in both NDJSONs.
+- Committed `.db` fixtures byte-untouched (`git status` clean of
+  fixtures). Versions: core 0.0.428.
