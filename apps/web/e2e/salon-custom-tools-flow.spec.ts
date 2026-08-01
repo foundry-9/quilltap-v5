@@ -1,6 +1,6 @@
-import { expect, test, type Page } from './support/fixtures';
+import { expect, request as pwRequest, test, type Page } from './support/fixtures';
 
-import { E2E_PASSPHRASE } from './support/env';
+import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 
 /**
@@ -24,6 +24,13 @@ import { openSidebarSection } from './support/sidebar';
  * (the operator-facing carve-out) needs a Pascal whisper in the fixture, so that
  * assertion rides the activated flow.
  */
+/**
+ * ACTIVATE-AT-UNIFY (P4.D36 unit 8): does the server render a definition's
+ * `chipLabel` into `pascalMeta`? A NAMED CONSTANT, per the round's shared
+ * contract. **Unifier: flip to `true` once P4.D35's server half is merged.**
+ */
+const CHIP_LABEL_SERVER_LANDED = false;
+
 test.describe('Salon custom tools + whispers (P4.6ba)', () => {
   async function maybeUnlock(page: Page) {
     const passphrase = page.locator('#qt-passphrase');
@@ -129,5 +136,82 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     const whispers = page.getByRole('switch', { name: 'All Whispers' });
     await expect(whispers).toHaveAttribute('aria-checked', 'false');
     await expect(bar).toBeVisible(); // still shown with the toggle off
+  });
+
+  /**
+   * P4.D36 unit 8 — a labelled run's chip carries the definition's RENDERED
+   * chipLabel, not the tool's title.
+   *
+   * ACTIVATE-AT-UNIFY behind {@link CHIP_LABEL_SERVER_LANDED}: rendering the
+   * label into `pascalMeta.chipLabel` is P4.D35's server half. A NAMED CONSTANT
+   * rather than a probe, per the round's shared contract — and not probe-able
+   * anyway, since a server without the feature TOLERATES the unknown
+   * `chipLabel` key by design and runs the tool happily, chip unlabelled.
+   * **Unifier: flip this to `true` once P4.D35 is merged.**
+   *
+   * The beat authors its own labelled definition through the mount-file verb
+   * rather than leaning on whatever P4.D35's rebuilt fixture happens to carry:
+   * the claim under test is the label's journey from the file to the chip, and
+   * a beat that depended on a sibling's fixture CONTENTS would be asserting
+   * something it does not control.
+   */
+  test("a labelled run's chip shows the rendered label, not the title", async ({ page }) => {
+    test.skip(
+      !CHIP_LABEL_SERVER_LANDED,
+      'ACTIVATE-AT-UNIFY (P4.D36 unit 8): the server does not render pascalMeta.chipLabel yet — lane P4.D35 owns it',
+    );
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+    const ctx = await pwRequest.newContext();
+
+    // Where the seeded roster lives — read off an existing entry rather than
+    // transcribed, exactly as the seed reads the fixture's sidecar.
+    const rosterRes = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'chatCustomToolsList', chatId },
+    });
+    const roster = (await rosterRes.json()) as {
+      data?: { tools?: Array<{ mountPointId: string }> };
+    };
+    const mountPointId = roster.data?.tools?.[0]?.mountPointId;
+    expect(mountPointId, 'the seeded Tools roster should resolve').toBeTruthy();
+
+    // A fixed roll (min === max), so the rendered label is deterministic.
+    const definition = {
+      $schema: '/schemas/qtap-custom-tool.schema.json',
+      name: 'e2e_labelled',
+      title: 'Labelled Contrivance',
+      chipLabel: 'Labelled — {{value}}',
+      description: 'A labelled contrivance for the e2e walk.',
+      roll: { min: 7, max: 7 },
+      outcomes: [{ when: true, message: 'The label reads {{value}}.', state: 'info' }],
+    };
+    const write = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'mountFileWrite',
+        mountPointId,
+        path: 'Tools/e2e_labelled.tool.json',
+        content: `${JSON.stringify(definition, null, 2)}\n`,
+      },
+    });
+    expect(write.ok()).toBe(true);
+
+    const run = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'chatCustomToolRun', chatId, tool: 'e2e_labelled' },
+    });
+    expect(run.ok()).toBe(true);
+    await ctx.dispose();
+
+    // The chip names the RUN, not the tool: "Labelled — 7", never "Labelled
+    // Contrivance".
+    await page.reload();
+    await maybeUnlock(page);
+    const bar = page.locator('.qt-chat-system-bar', { hasText: 'Labelled — 7' }).last();
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar).toContainText('Pascal');
+    await expect(bar).not.toContainText('Labelled Contrivance');
   });
 });

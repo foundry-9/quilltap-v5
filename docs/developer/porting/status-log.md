@@ -48557,3 +48557,82 @@ so neither can be read as the other. `public/schemas/qtap-custom-tool.schema.jso
 is re-copied BYTE-FOR-BYTE from v4 at `c4d4b0de` (+90: `chipLabel`, `effects`,
 `$defs/Effect`, `$defs/EffectWhen`) — verified `diff -q` identical against the
 v4 checkout. The stale `dist/` copy is gitignored and does not ship.
+
+## Lane record — P4.D36 unit 8: the corpus check and the e2e beats (2026-08-01)
+
+### The §C corpus — regenerated, and byte-identical
+
+P4.D35 had not yet extended the corpus case file when this lane reached the
+unit, so the fallback in the order's Fixtures section was taken: the corpus was
+regenerated from the UNEXTENDED case file at `c4d4b0de` and compared. It comes
+back **byte-identical to the committed copy, all 236 rows** — which is a real
+result rather than a null one: it proves the drift's schema changes
+(`chipLabel`, `effects`, the extracted `validateWhenSubjects`, the two new
+`KNOWN_TOP_LEVEL_KEYS`) are OUTPUT-NEUTRAL over every existing row, so the
+committed corpus is still valid at the new baseline and the SPA copy needed no
+re-commit.
+
+```bash
+cd ~/source/quilltap-server            # clean at c4d4b0de
+TZ=UTC npx tsx <v5>/harness/oracle/cases/pascal-custom-tool-definition.ts \
+  > /tmp/oracle-pascal-definition-c4d4b0de.ndjson
+diff -q /tmp/oracle-pascal-definition-c4d4b0de.ndjson \
+  apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson
+```
+
+**For the unifier:** when P4.D35's extended case file lands, re-run that recipe
+and re-commit the SPA copy. Nothing else is needed — the replay spec's census
+is asserted by SHAPE (partition total, all kinds non-empty, ids unique, every
+row carrying the half the replay reads), so new rows and a new row COUNT are
+absorbed without an edit, and `REGENERATED_AT_BASELINE` is empty with its own
+guard. The new expression-rejection rows will then pin this lane's
+`expressions.ts` a second time, through the schema.
+
+### The e2e beats
+
+**Beat 9 (`workbench-flow.spec.ts`) — LIVE in-lane and passing.** Authors a
+chip label and a side effect in the form: the card's empty-state prose, Add
+effect, the blank-target prefix shortcut seeding `state.`, the quoting trap
+said beside the row (`broken pick` → "the expression does not parse"), the
+error clearing when a real expression replaces it, and — the actual assertion —
+the LIVE JSON preview carrying `"chipLabel"` and the effect's `target`/`value`.
+The preview is the exact bytes Save would write, so this proves the whole form
+→ draft → definition path rather than that two controls rendered.
+
+**Beat 10 (`workbench-flow.spec.ts`) — ACTIVATE-AT-UNIFY** behind the named
+constant `EFFECTS_PREVIEW_LANDED = false`: the bench's dry run (`→
+state.encounter.count = 4`, `(would write)`, "The bench computes effects; it
+never applies them."). Its gestures are beat 9's, so the unifier is activating
+a walk that has already run; only the three closing assertions are new.
+
+**Beat 11 (`salon-custom-tools-flow.spec.ts`) — ACTIVATE-AT-UNIFY** behind
+`CHIP_LABEL_SERVER_LANDED = false`: a labelled run's chip reads `Labelled — 7`
+and NOT the tool's title. It authors its own labelled definition through
+`mountFileWrite` (mount id read off the live roster, never transcribed) and
+runs it through `chatCustomToolRun`, so it depends on P4.D35's SERVER half only
+— not on what D35's rebuilt fixture happens to carry. A beat that leaned on a
+sibling's fixture CONTENTS would be asserting something it does not control.
+
+**Both gates are NAMED CONSTANTS, not capability probes**, per the round's
+shared contract — and neither is probe-able anyway: a server without the
+feature TOLERATES the unknown `chipLabel`/`effects` top-level keys by design
+(that tolerance is the format's forward-compatibility rule), so it answers a
+success envelope and runs the tool happily. "No error" would prove nothing, and
+an absent `effects` key is indistinguishable from a run whose effects all
+skipped.
+
+**⚠ Unifier: flip BOTH constants to `true` once P4.D35 is merged**
+(`EFFECTS_PREVIEW_LANDED` in `workbench-flow.spec.ts`,
+`CHIP_LABEL_SERVER_LANDED` in `salon-custom-tools-flow.spec.ts`).
+
+### Tier 2 item 9 — the pascalMeta consumers, verified
+
+No edit is owed in any P4.D38 file. `message-row.ts` (`:412`) and
+`chat-view-model.ts` (`:362`) both call `getSystemKindDisplayLabel(message)`,
+so the new `chipLabel → toolTitle → tool` precedence reaches the message row
+AND the announcement heading from the one function this lane owns. `PascalMeta`
+grew two OPTIONAL fields, so `message-list.ts`'s straight cast is unaffected.
+No CSS change either: `.qt-chat-system-bar-kind` already sets
+`overflow:hidden; text-overflow:ellipsis; white-space:nowrap` (`_chat.css:271`)
+with a 22ch cap on the announcement chip (`:364`), which is where a long
+rendered label belongs.

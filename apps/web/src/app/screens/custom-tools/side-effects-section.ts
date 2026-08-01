@@ -238,7 +238,9 @@ export class SideEffectsSection {
   }
 
   updateEffect(id: string, partial: Partial<DraftEffect>): void {
-    this.setEffects(this.effects().map((effect) => (effect.id === id ? { ...effect, ...partial } : effect)));
+    this.setEffects(
+      this.effects().map((effect) => (effect.id === id ? { ...effect, ...partial } : effect)),
+    );
   }
 
   protected onWhenChange(id: string, value: string): void {

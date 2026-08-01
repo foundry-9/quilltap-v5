@@ -50,6 +50,19 @@ let scriptedOracleReady = false;
  */
 let mockStateReady = false;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D36 unit 8, the `c4d4b0de` round): does
+ * `customToolPreview` resolve an effect and hand the bench its dry run?
+ *
+ * A NAMED CONSTANT rather than a capability probe, per the round's shared
+ * contract. It is not probe-able anyway: a server without the feature still
+ * answers a success envelope for an effect-bearing definition (unknown
+ * top-level keys are TOLERATED by design), so "no error" would prove nothing
+ * and a missing `effects` key is indistinguishable from a run whose effects all
+ * skipped. **Unifier: flip this to `true` once P4.D35's server half is merged.**
+ */
+const EFFECTS_PREVIEW_LANDED = false;
+
 /** The name beat 4 authors. Distinct enough that no sibling spec reads it. */
 const NEW_TOOL_NAME = 'e2e_probe_contrivance';
 
@@ -429,5 +442,117 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     await expect(
       page.getByRole('button', { name: /E2E Probe Contrivance/ }).first(),
     ).toBeVisible({ timeout: 15_000 });
+  });
+
+  /**
+   * Beat 9 (P4.D36) — the chip label and the Side Effects card, authored.
+   *
+   * LIVE in-lane: every gesture here is client-side, and the live JSON preview
+   * is the assertion — it shows the exact bytes Save would write, so `chipLabel`
+   * and `effects` appearing there proves the whole form → draft → definition
+   * path, not merely that two controls rendered.
+   */
+  test('the chip label and the Side Effects card author a labelled, effect-bearing draft', async ({
+    page,
+  }) => {
+    test.skip(
+      !workbenchBackendReady,
+      'customToolsLibrary dispatch not on this server yet — activates at unification',
+    );
+    await page.goto('/custom-tools');
+    await maybeUnlock(page);
+
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
+    await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('#wb-title').fill('E2E Effect Contrivance');
+    await page.locator('#wb-name').fill('e2e_effect_contrivance');
+    await page.locator('#wb-description').fill('An effect-bearing contrivance for the e2e walk.');
+    await page.locator('#wb-chip-label').fill('Lockpick — {{value}}');
+
+    // The card sits between the builder form and the outcome table, and starts
+    // by saying what an effect is for. SCOPED to the card: the Parameters card
+    // opens with "None declared." too, and an unscoped match is ambiguous (the
+    // beat's first live run caught it).
+    const effectsCard = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Side effects' }) });
+    await expect(effectsCard).toBeVisible();
+    await expect(effectsCard.getByText(/None declared\. An effect lets/)).toBeVisible();
+
+    await page.getByRole('button', { name: /Add effect/ }).click();
+    // A blank target offers its two prefixes; taking one seeds the field.
+    await page.getByRole('button', { name: 'state.', exact: true }).click();
+    const target = page.getByLabel('Effect target');
+    await expect(target).toHaveValue('state.');
+    await target.fill('state.encounter.count');
+
+    // The quoting trap, said beside the row: bare prose is not an expression.
+    const value = page.getByLabel('Effect value');
+    await value.fill('broken pick');
+    await expect(page.getByText(/the expression does not parse/)).toBeVisible();
+
+    // A real expression clears it.
+    await value.fill('{{state.encounter.count}} + 1');
+    await expect(page.getByText(/the expression does not parse/)).toHaveCount(0);
+
+    // The outcome row the fresh draft ships must still test something.
+    await page.getByRole('button', { name: 'add condition' }).first().click();
+    await page.getByLabel('Operand number').first().fill('0.5');
+    await page.getByLabel('Outcome message').first().fill('The lock reads {{value}}.');
+
+    // The exact bytes Save would write — both new keys, in the schema's order.
+    const preview = page.locator('pre').filter({ hasText: '"$schema"' }).first();
+    await expect(preview).toContainText('"chipLabel": "Lockpick — {{value}}"');
+    await expect(preview).toContainText('"target": "state.encounter.count"');
+    await expect(preview).toContainText('"value": "{{state.encounter.count}} + 1"');
+  });
+
+  /**
+   * Beat 10 (P4.D36) — the bench's dry run. ACTIVATE-AT-UNIFY behind
+   * {@link EFFECTS_PREVIEW_LANDED}: resolving an effect is P4.D35's server half.
+   * The gestures are beat 9's, so what the unifier activates has already been
+   * walked; only the three assertions at the end are new.
+   */
+  test('the bench shows what each effect would write, and says it never applies them', async ({
+    page,
+  }) => {
+    test.skip(
+      !workbenchBackendReady,
+      'customToolsLibrary dispatch not on this server yet — activates at unification',
+    );
+    test.skip(
+      !EFFECTS_PREVIEW_LANDED,
+      'ACTIVATE-AT-UNIFY (P4.D36 unit 8): customToolPreview does not resolve effects yet — lane P4.D35 owns the server half',
+    );
+    await page.goto('/custom-tools');
+    await maybeUnlock(page);
+
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
+    await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('#wb-title').fill('E2E Dry Run');
+    await page.locator('#wb-name').fill('e2e_dry_run');
+    await page.locator('#wb-description').fill('A dry-run contrivance for the e2e walk.');
+    await page.locator('#wb-chip-label').fill('Dry run — {{value}}');
+
+    await page.getByRole('button', { name: /Add effect/ }).click();
+    await page.getByLabel('Effect target').fill('state.encounter.count');
+    await page.getByLabel('Value kind').selectOption('literal-number');
+    await page.getByLabel('Effect value').fill('4');
+
+    await page.getByRole('button', { name: 'add condition' }).first().click();
+    await page.getByLabel('Operand number').first().fill('0.5');
+    await page.getByLabel('Outcome message').first().fill('The lock reads {{value}}.');
+
+    await page.getByRole('button', { name: /Roll/ }).first().click();
+
+    // The bubble is headed by the RENDERED chip label, over the message's own
+    // block — and the dry run says what would be written without writing it.
+    await expect(page.getByText(/→ state\.encounter\.count = 4/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText('(would write)')).toBeVisible();
+    await expect(page.getByText('The bench computes effects; it never applies them.')).toBeVisible();
   });
 });

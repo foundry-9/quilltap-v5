@@ -72,6 +72,17 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Walked the new tool-authoring controls in a real browser: filling in a
+chip label, adding a side effect, watching the editor object to a bare
+phrase where a quoted one was meant, and confirming that the exact file
+the editor would save carries both new pieces. Two further walks — the
+test bench's dry-run display, and a labelled roll's chip in the
+conversation — are written and waiting on the matching server work, each
+held behind a named switch rather than a guess about what the server can
+do. Also confirmed that the recorded reference results the browser is
+checked against are unchanged by this release of the reference app, so
+the existing checks still hold.
+
 Told the reader what a tool may change, and named each run by its own
 label. The Run Tool dialog now lists the places a tool may write when it
 runs — kept as a separate sentence from the list of things it quotes,
