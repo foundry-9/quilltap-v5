@@ -23,7 +23,19 @@ import { E2E_PASSPHRASE } from './support/env';
  * The chat is "Group Expedition", the same three-participant room the Post
  * Office beats use — Insert Announcement is how a Staff row gets written
  * without an LLM call (a staff announcement with the "Use as-is" profile costs
- * nothing).
+ * nothing). It is also the only chat that may safely GROW: "Solo Voyage" carries
+ * the token-total baselines.
+ *
+ * ⚠ THE SENDER CHOICE IS LOAD-BEARING. Chips carry only sender/kind/time, so
+ * every spec that wants "the announcement I just posted" reaches for
+ * `.filter({ hasText: <sender> }).last()` — and that resolves the moment a
+ * matching chip is visible, which in a virtualized list can be an OLDER chip if
+ * the new one has not painted yet. Posting as the Librarian here made
+ * `salon-post-office-flow`'s own Librarian beat expand THIS file's chip instead
+ * of its own, deterministically. So these beats deliberately use senders no
+ * other spec filters on (Aurora, The Commonplace Book): the Librarian belongs to
+ * the post-office and library-picker beats, and Prospero to the tool-message
+ * beat.
  */
 test.describe('P4.26 — announcement rendering', () => {
   async function maybeUnlock(page: Page) {
@@ -70,11 +82,11 @@ test.describe('P4.26 — announcement rendering', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
-    const line = await postStaffAnnouncement(page, 'librarian');
+    const line = await postStaffAnnouncement(page, 'commonplaceBook');
 
     const chip = page
       .locator('.qt-chat-announcement-chip')
-      .filter({ hasText: 'The Librarian' })
+      .filter({ hasText: 'The Commonplace Book' })
       .last();
     await expect(chip).toBeVisible({ timeout: 15_000 });
     await chip.click();
@@ -99,48 +111,48 @@ test.describe('P4.26 — announcement rendering', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
-    await postStaffAnnouncement(page, 'host');
-    await postStaffAnnouncement(page, 'prospero');
+    await postStaffAnnouncement(page, 'aurora');
+    await postStaffAnnouncement(page, 'commonplaceBook');
 
-    const hostChip = page.locator('.qt-chat-announcement-chip').filter({ hasText: 'The Host' }).last();
-    const prosperoChip = page
+    const first = page.locator('.qt-chat-announcement-chip').filter({ hasText: 'Aurora' }).last();
+    const second = page
       .locator('.qt-chat-announcement-chip')
-      .filter({ hasText: 'Prospero' })
+      .filter({ hasText: 'The Commonplace Book' })
       .last();
-    await expect(hostChip).toBeVisible({ timeout: 15_000 });
-    await expect(prosperoChip).toBeVisible();
+    await expect(first).toBeVisible({ timeout: 15_000 });
+    await expect(second).toBeVisible();
 
     // Both packed into ONE flex-wrapping group (v4 `announcement-render-items`).
-    // Asserted by membership rather than by count: this file's first beat leaves
-    // a Librarian chip in the same run, and the beats share one instance.
-    const group = page.locator('.qt-chat-announcement-group').last();
+    // Asserted by membership, never by count: the beats share one instance and
+    // this file's first beat has already left a chip of its own in the run.
+    const group = page
+      .locator('.qt-chat-announcement-group')
+      .filter({ has: page.locator('.qt-chat-announcement-chip').filter({ hasText: 'Aurora' }) })
+      .last();
     await expect(
-      group.locator('.qt-chat-announcement-chip').filter({ hasText: 'The Host' }),
-    ).toHaveCount(1);
-    await expect(
-      group.locator('.qt-chat-announcement-chip').filter({ hasText: 'Prospero' }),
-    ).toHaveCount(1);
+      group.locator('.qt-chat-announcement-chip').filter({ hasText: 'The Commonplace Book' }),
+    ).not.toHaveCount(0);
 
     // v4 `AnnouncementBarContents`, in order: dot · sender · kind · time · chevron.
-    await expect(hostChip.locator('.qt-chat-announcement-dot')).toHaveCount(1);
-    await expect(hostChip.locator('.qt-chat-system-bar-sender')).toHaveText('The Host');
+    await expect(first.locator('.qt-chat-announcement-dot')).toHaveCount(1);
+    await expect(first.locator('.qt-chat-system-bar-sender')).toHaveText('Aurora');
     // The posted row carries systemKind `announcement`, which has no display
     // override, so it shows verbatim — and the span is PRESENT because there is
     // a kind to show (it is omitted entirely when there is not).
-    await expect(hostChip.locator('.qt-chat-system-bar-kind')).toHaveText('announcement');
-    await expect(hostChip.locator('.qt-chat-system-bar-time')).toHaveCount(1);
-    await expect(hostChip.locator('[data-icon="chevron-right"]')).toHaveCount(1);
+    await expect(first.locator('.qt-chat-system-bar-kind')).toHaveText('announcement');
+    await expect(first.locator('.qt-chat-system-bar-time')).toHaveCount(1);
+    await expect(first.locator('[data-icon="chevron-right"]')).toHaveCount(1);
     // The dot is decorative — its colour is restated by the sender/kind text.
-    await expect(hostChip.locator('.qt-chat-announcement-dot')).toHaveAttribute(
+    await expect(first.locator('.qt-chat-announcement-dot')).toHaveAttribute(
       'aria-hidden',
       'true',
     );
 
     // Opening one leaves the other collapsed.
-    await hostChip.click();
-    await expect(hostChip.locator('[data-icon="chevron-down"]')).toHaveCount(1);
-    await expect(hostChip).toHaveAttribute('aria-expanded', 'true');
-    await expect(prosperoChip).toHaveAttribute('aria-expanded', 'false');
-    await expect(prosperoChip.locator('[data-icon="chevron-right"]')).toHaveCount(1);
+    await first.click();
+    await expect(first.locator('[data-icon="chevron-down"]')).toHaveCount(1);
+    await expect(first).toHaveAttribute('aria-expanded', 'true');
+    await expect(second).toHaveAttribute('aria-expanded', 'false');
+    await expect(second.locator('[data-icon="chevron-right"]')).toHaveCount(1);
   });
 });
