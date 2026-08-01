@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
+import { ToastService } from '../../../ui/toast.service';
 
 const DEFAULT_STALE_CHAT_DAYS = 30;
 const MIN_DAYS = 1;
@@ -72,6 +73,7 @@ const MAX_DAYS = 3650;
 })
 export class DataRetentionSettings {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly MIN_DAYS = MIN_DAYS;
   protected readonly MAX_DAYS = MAX_DAYS;
@@ -124,8 +126,10 @@ export class DataRetentionSettings {
       const saved = await this.core.updateDataRetentionSettings(parsed);
       this.days = saved.staleChatDays;
       this.draft.set(String(saved.staleChatDays));
+      this.toasts.showSuccess('Retention window saved');
     } catch {
       this.error.set('Failed to save data-retention settings');
+      this.toasts.showError('Failed to save data-retention settings');
       this.draft.set(String(this.days));
     } finally {
       this.saving.set(false);

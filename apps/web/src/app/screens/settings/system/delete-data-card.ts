@@ -4,6 +4,7 @@ import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 
 type Step = 'preview' | 'confirm' | 'deleting' | 'complete';
 
@@ -170,6 +171,7 @@ interface DeleteSummary {
 })
 export class DeleteDataCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly showDialog = signal(false);
   protected readonly step = signal<Step>('preview');
@@ -278,9 +280,12 @@ export class DeleteDataCard {
         confirm: 'DELETE_ALL_MY_DATA',
       });
       this.deleteSummary.set((data['summary'] ?? {}) as DeleteSummary);
+      this.toasts.showSuccess('All data has been deleted');
       this.step.set('complete');
     } catch (err) {
-      this.error.set(this.msg(err, 'Failed to delete data'));
+      const message = this.msg(err, 'Failed to delete data');
+      this.error.set(message);
+      this.toasts.showError(message);
       this.step.set('confirm');
     }
   }

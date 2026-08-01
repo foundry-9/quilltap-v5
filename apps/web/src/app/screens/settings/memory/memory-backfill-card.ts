@@ -4,6 +4,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../core/core-client';
 import type { BackfillProgress } from '../../../core/core-contract';
 import { fetchBackfillProgress, memoryKeys, startBackfill } from '../../../memory/memory.api';
+import { ToastService } from '../../../ui/toast.service';
 
 /**
  * The Repair Missing Embeddings card (v4 `components/tools/memory-backfill-card.tsx`):
@@ -63,6 +64,7 @@ import { fetchBackfillProgress, memoryKeys, startBackfill } from '../../../memor
 })
 export class MemoryBackfillCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   protected readonly running = signal(false);
@@ -82,10 +84,18 @@ export class MemoryBackfillCard {
     this.running.set(true);
     this.error.set(null);
     try {
-      await startBackfill(this.core, 500);
+      const result = await startBackfill(this.core, 500);
+      // v4 `:63` prefers the server's sentence, else names the count.
+      this.toasts.showSuccess(
+        (result as { message?: string; enqueued?: number }).message ||
+          `Enqueued ${(result as { enqueued?: number }).enqueued ?? 0} embedding jobs`,
+      );
       await this.queryClient.invalidateQueries({ queryKey: memoryKeys.backfill() });
     } catch (err) {
-      this.error.set(err instanceof Error && err.message ? err.message : 'Failed to start backfill');
+      const message =
+        err instanceof Error && err.message ? err.message : 'Failed to start backfill';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.running.set(false);
     }

@@ -5,6 +5,7 @@ import { CoreClient } from '../../../core/core-client';
 import type { RegenerateAllStatus } from '../../../core/core-contract';
 import { notifyQueueChange } from '../../../layout/queue-status.logic';
 import { fetchRegenerateStatus, memoryKeys, regenerateAllMemories } from '../../../memory/memory.api';
+import { ToastService } from '../../../ui/toast.service';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -86,6 +87,7 @@ const POLL_INTERVAL_MS = 5000;
 })
 export class MemoryRegenerateCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   protected readonly confirming = signal(false);
@@ -117,7 +119,12 @@ export class MemoryRegenerateCard {
     this.submitting.set(true);
     this.error.set(null);
     try {
-      await regenerateAllMemories(this.core);
+      const result = await regenerateAllMemories(this.core);
+      // v4 `:82` prefers the server's sentence.
+      this.toasts.showSuccess(
+        (result as { message?: string } | undefined)?.message ||
+          'Regeneration enqueued — chats will rebuild in the background',
+      );
       this.confirming.set(false);
       // v4 `memory-regenerate-card.tsx:83` wakes the toolbar queue badges too
       // (the sweep rides the MEMORY_REGENERATE_* queue).
@@ -125,9 +132,10 @@ export class MemoryRegenerateCard {
       // Light the in-flight badge immediately.
       await this.queryClient.invalidateQueries({ queryKey: memoryKeys.regenerateStatus() });
     } catch (err) {
-      this.error.set(
-        err instanceof Error && err.message ? err.message : 'Failed to start regeneration',
-      );
+      const message =
+        err instanceof Error && err.message ? err.message : 'Failed to start regeneration';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.submitting.set(false);
     }

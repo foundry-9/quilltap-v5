@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  inject,
   computed,
   effect,
   ElementRef,
@@ -21,6 +22,7 @@ import {
   type FrontmatterRow,
 } from './frontmatter';
 import { documentPaneUri } from './qtap-uri';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * `qt-document-pane` — the right-side document editor (v4 `DocumentPane`): a
@@ -198,6 +200,7 @@ import { documentPaneUri } from './qtap-uri';
   `,
 })
 export class DocumentPane {
+  private readonly toasts = inject(ToastService);
   readonly entry = input.required<OpenDocEntry>();
   readonly mode = input.required<DocumentMode>();
 
@@ -320,6 +323,8 @@ export class DocumentPane {
   protected async copyUri(): Promise<void> {
     try {
       await navigator.clipboard?.writeText(this.documentUri());
+      // v4 `DocumentPane.tsx:553` keeps BOTH the 1.2s tick and the toast.
+      this.toasts.showSuccess('Document URL copied');
       this.uriCopied.set(true);
       if (this.copyResetTimer) clearTimeout(this.copyResetTimer);
       this.copyResetTimer = setTimeout(() => this.uriCopied.set(false), 1200);

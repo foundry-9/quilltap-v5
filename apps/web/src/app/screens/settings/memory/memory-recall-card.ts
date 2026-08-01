@@ -4,6 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../../core/core-client';
 import type { RecallConfig } from '../../../core/core-contract';
 import { fetchRecallConfig, memoryKeys, setRecallConfig } from '../../../memory/memory.api';
+import { ToastService } from '../../../ui/toast.service';
 
 type ScopePolicy = 'down-weight' | 'exclude';
 
@@ -99,6 +100,7 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
 })
 export class MemoryRecallCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly scopePolicyOptions = SCOPE_POLICY_OPTIONS;
   protected readonly saving = signal(false);
@@ -141,10 +143,12 @@ export class MemoryRecallCard {
     try {
       const settings = await setRecallConfig(this.core, patch);
       this.local.set({ ...DEFAULT_CONFIG, ...settings });
+      this.toasts.showSuccess('Recall settings saved');
     } catch (err) {
-      this.error.set(
-        err instanceof Error && err.message ? err.message : 'Failed to save recall settings',
-      );
+      const message =
+        err instanceof Error && err.message ? err.message : 'Failed to save recall settings';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.saving.set(false);
     }

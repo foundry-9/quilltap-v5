@@ -51,6 +51,10 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+The memory maintenance cards, the retention window and Delete All Data confirm
+what they did, and copying a document's URL or failing to kill a popped-out
+terminal now says so.
+
 Saving or resetting a state bag, editing or deleting a memory, running memory
 housekeeping, updating an autonomous room, deleting a gallery photo and copying
 the data directory path all report themselves now.

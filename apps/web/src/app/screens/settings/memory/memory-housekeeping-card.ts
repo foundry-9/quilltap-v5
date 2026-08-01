@@ -10,6 +10,7 @@ import {
   runHousekeepingSweep,
   setHousekeepingConfig,
 } from '../../../memory/memory.api';
+import { ToastService } from '../../../ui/toast.service';
 
 const DEFAULT_CONFIG: HousekeepingConfig = {
   enabled: false,
@@ -154,6 +155,7 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
 })
 export class MemoryHousekeepingCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -258,10 +260,12 @@ export class MemoryHousekeepingCard {
     this.error.set(null);
     try {
       await runHousekeepingSweep(this.core);
+      this.toasts.showSuccess('Housekeeping job enqueued — it will run in the background');
     } catch (err) {
-      this.error.set(
-        err instanceof Error && err.message ? err.message : 'Failed to run housekeeping',
-      );
+      const message =
+        err instanceof Error && err.message ? err.message : 'Failed to run housekeeping';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.saving.set(false);
     }
@@ -273,10 +277,12 @@ export class MemoryHousekeepingCard {
     try {
       const settings = await setHousekeepingConfig(this.core, patch);
       this.local.set({ ...DEFAULT_CONFIG, ...settings });
+      this.toasts.showSuccess('Housekeeping settings saved');
     } catch (err) {
-      this.error.set(
-        err instanceof Error && err.message ? err.message : 'Failed to save housekeeping settings',
-      );
+      const message =
+        err instanceof Error && err.message ? err.message : 'Failed to save housekeeping settings';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.saving.set(false);
     }

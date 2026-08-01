@@ -21,6 +21,7 @@ import {
   type TerminalState,
 } from '../../terminal/terminal-session.service';
 import type { PtySessionMeta } from '../../terminal/terminal-protocol';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The full-page terminal pop-out (v4 `app/salon/[id]/terminal/[sessionId]/page`)
@@ -59,6 +60,7 @@ import type { PtySessionMeta } from '../../terminal/terminal-protocol';
 })
 export class TerminalPopout implements OnInit {
   private readonly route = inject(ActivatedRoute);
+  private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
   private readonly sessions = inject(TerminalSessionService);
   private readonly api = inject(TerminalApi);
@@ -100,8 +102,8 @@ export class TerminalPopout implements OnInit {
   }
 
   protected async kill(): Promise<void> {
-    await this.api.killTerminalSession(this.sessionId()).catch(() => {
-      // v4 toasts on failure; the SPA swallows.
-    });
+    await this.api
+      .killTerminalSession(this.sessionId())
+      .catch(() => this.toasts.showError('Failed to terminate session'));
   }
 }

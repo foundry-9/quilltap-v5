@@ -46892,3 +46892,19 @@ number cleaned (`Cleaned up ${data.result.deleted} memories`); v5's run reply
 carries no count, so the toast is "Memory housekeeping complete". Restoring
 v4's exact sentence needs the count on the response — a server-side item, not a
 toast one.
+
+## Lane record — P4.25 unit 8: the settings cards + two copy affordances
+
+Eight more OPEN rows closed. Every one of v4's six settings cards in this batch
+renders an inline error AND toasts (`memory-backfill-card.tsx:114`,
+`DataRetentionSettings.tsx:136`, `delete-data-card.tsx:304,325`, and the recall /
+regenerate / housekeeping cards likewise), so each v5 card KEEPS its inline line
+and gains v4's pair: the backfill's server-sentence-or-count success, "Recall
+settings saved", the regeneration's server-sentence-or-fallback, "Housekeeping
+settings saved" + "Housekeeping job enqueued — it will run in the background",
+"Retention window saved", and "All data has been deleted".
+
+Plus the two copy affordances where v4 keeps its own tick AND toasts: the
+Document pane's "Document URL copied" (`DocumentPane.tsx:553`) and the terminal
+popout's kill failure (`TerminalPopoutPageClient.tsx:26,29` — v4 raises the same
+line from both arms).
