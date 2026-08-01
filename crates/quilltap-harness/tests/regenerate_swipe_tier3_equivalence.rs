@@ -22,15 +22,22 @@
 //!
 //! Each call's throw/no-throw is also asserted (the `not_assistant` error path).
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; `.claude` copy):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; TMPO=/tmp/qt-oracle-run
+//! **TZ=UTC is REQUIRED since P4.d26** (the distill TODAY line renders in the
+//! SERVER-LOCAL zone, and the harness pins `server_tz` to "UTC"), so the pin below
+//! is load-bearing, not decoration.
+//!
+//! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
+//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-regen-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/regenerate-swipe-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/regenerate-swipe-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-regen-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-regen-mount.db \
-//!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-regenerate-swipe-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-regenerate-swipe-fixture.ts
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
 //!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
-//!     ^-- TZ=UTC REQUIRED since P4.d26 (server-local distill TODAY line;
-//!     the harness pins server_tz "UTC").
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- regenerate-swipe-tier3
 //! Run:

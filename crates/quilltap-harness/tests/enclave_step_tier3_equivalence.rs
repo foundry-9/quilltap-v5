@@ -26,21 +26,28 @@
 //!      SUMMARIZATION/TITLE_GENERATION rows UNtagged (the fold runs outside
 //!      the run scope on both sides).
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//! **TZ=UTC is REQUIRED since P4.d26** (the server-local distill TODAY line; the
+//! step passes the instance zone as `server_tz`), so the pin below is
+//! load-bearing, not decoration.
+//!
+//! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
+//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-enclave-step-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/enclave-step-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/enclave-step-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-enclave-step-main.db \
 //!   QT_FIXTURE_MOUNT_OUT=/tmp/qt-enclave-step-mount.db \
 //!   QT_FIXTURE_LLMLOGS_OUT=/tmp/qt-enclave-step-llmlogs.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-enclave-step-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-enclave-step-fixture.ts
 //!   QT_FIXTURE_ENCLAVE_STEP_MAIN=/tmp/qt-enclave-step-main.db \
 //!   QT_FIXTURE_ENCLAVE_STEP_MOUNT=/tmp/qt-enclave-step-mount.db \
 //!   QT_FIXTURE_ENCLAVE_STEP_LLMLOGS=/tmp/qt-enclave-step-llmlogs.db \
 //!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-enclave-step.ndjson \
-//!     ^-- TZ=UTC REQUIRED since P4.d26 (server-local distill TODAY line;
-//!     the step passes the instance zone as server_tz).
-//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- enclave-step-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- enclave-step-tier3
 //! Run:
 //!   QT_ORACLE_ENCLAVE_STEP=/tmp/oracle-enclave-step.ndjson \
 //!   QT_FIXTURE_ENCLAVE_STEP_MAIN=/tmp/qt-enclave-step-main.db \

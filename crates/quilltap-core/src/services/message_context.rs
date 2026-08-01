@@ -11,7 +11,8 @@
 //!     [`normalize_whisper_roles`] (433–453),
 //!     [`collect_lantern_image_file_ids_for_character`] (217–266).
 //!   - The composition [`build_message_context`] (458–799): the A–N sections
-//!     (commonplace strip / TOOL-whisper filter / opaque-anywhere / whisper
+//!     (commonplace strip / announcement attribution / whisper filter /
+//!     opaque-anywhere / whisper
 //!     re-role / conversation build / recap decision / timezone / buildContext /
 //!     provider formatting / Lantern merge / final messages / scene block).
 //!
@@ -28,6 +29,10 @@
 
 use serde_json::Value;
 
+use crate::announcement_attribution::{
+    attribute_adhoc_announcements, collect_announcer_character_ids, AnnouncerAttributable,
+    CustomAnnouncer,
+};
 use crate::db::runtime::Db;
 use crate::message_formatter::{self, FormattedMessage, MultiCharacterMessage, WireRole};
 use crate::model::completion::CompletionProvider;
@@ -69,6 +74,11 @@ pub struct WhisperMessage {
     pub attachments: Option<Vec<String>>,
     pub system_sender: Option<String>,
     pub system_kind: Option<String>,
+    /// v4 `customAnnouncer` (P4.D37 / `424a7381`) — who the operator signed an
+    /// ad-hoc announcement as. A rendering field until the attribution pass gave
+    /// it a voice in context. (`courier_transport` already read the same column
+    /// for its own transcript; that parity is what the pass restores.)
+    pub custom_announcer: Option<CustomAnnouncer>,
 }
 
 impl WhisperMessage {
@@ -96,6 +106,7 @@ impl WhisperMessage {
             attachments: str_array("attachments"),
             system_sender: str_field("systemSender"),
             system_kind: str_field("systemKind"),
+            custom_announcer: CustomAnnouncer::from_value(v.get("customAnnouncer")),
         }
     }
 
@@ -104,6 +115,24 @@ impl WhisperMessage {
             .as_ref()
             .map(|a| !a.is_empty())
             .unwrap_or(false)
+    }
+}
+
+/// The production carrier for the announcement-attribution pass (v4's
+/// `existingMessages` element type gained `customAnnouncer` in `424a7381`).
+impl AnnouncerAttributable for WhisperMessage {
+    fn content(&self) -> Option<&str> {
+        self.content.as_deref()
+    }
+    fn custom_announcer(&self) -> Option<CustomAnnouncer> {
+        self.custom_announcer.clone()
+    }
+    /// v4's `{ ...m, content }` spread — every other field survives.
+    fn with_content(&self, content: String) -> WhisperMessage {
+        WhisperMessage {
+            content: Some(content),
+            ..self.clone()
+        }
     }
 }
 
@@ -481,6 +510,23 @@ Output only {name}'s contribution."
     )
 }
 
+/// Whether the responding participant is a party to `m` — v4's section-B whisper
+/// predicate. Since `a163862c` it applies to EVERY role (it used to bail out early
+/// on anything that wasn't a TOOL message), which makes it exactly the test
+/// [`crate::message_attribution::filter_whisper_messages`] applies downstream in
+/// multi-character mode. `message_context_whisper_predicate_matches_the_shared_rule`
+/// pins that equivalence.
+fn is_whisper_party(m: &WhisperMessage, responding_id: &str) -> bool {
+    match &m.target_participant_ids {
+        None => true,
+        Some(t) if t.is_empty() => true,
+        Some(t) => {
+            m.participant_id.as_deref() == Some(responding_id)
+                || t.iter().any(|x| x == responding_id)
+        }
+    }
+}
+
 /// Compute the opaque-anywhere flag (v4 section C).
 fn compute_opaque_anywhere(params: &MessageContextParams<'_>) -> bool {
     if params.is_multi_character {
@@ -553,27 +599,63 @@ where
         parsed
     };
 
-    // --- B. Drop TOOL whispers the responding character isn't a target of. ---
+    // --- A2. Name the speaker on ad-hoc announcements (P4.D37 / v4 `424a7381`). ---
+    // `customAnnouncer` is a rendering field — the Salon paints the name and
+    // avatar on the bubble — so without this the model receives an anonymous block
+    // of prose and guesses who said it. See [`crate::announcement_attribution`].
+    let announcer_character_ids = collect_announcer_character_ids(&messages_without_cmpb);
+    let mut announcer_names: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for id in &announcer_character_ids {
+        let cid = id.clone();
+        match db.read_main(|main| {
+            db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &cid))
+        }) {
+            // v4: `if (character?.name) announcerNames.set(id, character.name)` —
+            // stored untrimmed; the resolver trims.
+            Ok(Some(c)) => {
+                if let Some(name) = c
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .filter(|n| !n.is_empty())
+                {
+                    announcer_names.insert(id.clone(), name.to_string());
+                }
+            }
+            Ok(None) => {}
+            // A deleted or unreadable character stays unnamed rather than blocking
+            // the turn; the announcement passes through as it did before.
+            Err(e) => {
+                tracing::warn!(
+                    character_id = %id,
+                    error = %e,
+                    "[Context] Could not resolve announcer name"
+                );
+            }
+        }
+    }
+    // Always run the pass: a `custom` announcer carries its own display name and
+    // needs no lookup, so gating on the resolved-name map would skip it.
+    let messages_attributed =
+        attribute_adhoc_announcements(&messages_without_cmpb, &announcer_names);
+
+    // --- B. Drop whispers the responding character isn't a party to. ---
+    // The same rule `filter_whisper_messages` applies in multi-character mode,
+    // enforced here so single-character context can't be the one place a private
+    // aside leaks. Operator-only Prospero runs (run-tool with `private: true`)
+    // target the userId, so no character participant ever matches and the message
+    // is filtered out of every context; a whispered ad-hoc announcement is excluded
+    // from every character it wasn't addressed to on the same test. (Before v4
+    // `a163862c` this arm tested TOOL messages only — the one path where a targeted
+    // non-TOOL message could reach a character it wasn't addressed to.)
     let responding_id = params.responding_participant_id;
     let messages_after_whisper_filter: Vec<WhisperMessage> = if !responding_id.is_empty() {
-        messages_without_cmpb
+        messages_attributed
             .into_iter()
-            .filter(|m| {
-                if m.role.as_deref() != Some("TOOL") {
-                    return true;
-                }
-                match &m.target_participant_ids {
-                    None => true,
-                    Some(t) if t.is_empty() => true,
-                    Some(t) => {
-                        m.participant_id.as_deref() == Some(responding_id)
-                            || t.iter().any(|x| x == responding_id)
-                    }
-                }
-            })
+            .filter(|m| is_whisper_party(m, responding_id))
             .collect()
     } else {
-        messages_without_cmpb
+        messages_attributed
     };
 
     // --- C. Opaque-anywhere. ---
@@ -916,5 +998,72 @@ mod tests {
         // turn → collected.
         let ids2 = collect_lantern_image_file_ids_for_character(&messages[..2], cp, true, None, 6);
         assert_eq!(ids2, vec!["img-1".to_string()]);
+    }
+
+    /// v4 `a163862c` deleted the `if (m.role !== 'TOOL') return true` first line
+    /// from this filter so it "applies the same test as filterWhisperMessages to
+    /// every role". Pin that equivalence directly: over a table that crosses every
+    /// role with every target shape, the section-B predicate and the shared
+    /// downstream rule must agree row for row. (The two are structurally identical
+    /// today; this is the test that fails if either drifts — and it is the only
+    /// place the widening is observable at all, since every chat that can produce
+    /// an LLM turn is multi-character and therefore ALSO runs
+    /// `filter_whisper_messages` downstream. See the P4.D37 lane record.)
+    #[test]
+    fn message_context_whisper_predicate_matches_the_shared_rule() {
+        use crate::message_attribution::{filter_whisper_messages, AttributionMessage};
+
+        const ME: &str = "p-me";
+        let target_shapes: [Option<Vec<String>>; 5] = [
+            None,
+            Some(vec![]),
+            Some(vec![ME.to_string()]),
+            Some(vec!["p-other".to_string()]),
+            Some(vec!["p-other".to_string(), ME.to_string()]),
+        ];
+        let senders = [None, Some(ME.to_string()), Some("p-other".to_string())];
+        let roles = ["TOOL", "USER", "ASSISTANT", "SYSTEM"];
+
+        let mut rows = 0;
+        for role in roles {
+            for targets in &target_shapes {
+                for sender in &senders {
+                    let wm = WhisperMessage {
+                        role: Some(role.to_string()),
+                        participant_id: sender.clone(),
+                        target_participant_ids: targets.clone(),
+                        ..Default::default()
+                    };
+                    let am = AttributionMessage {
+                        id: None,
+                        role: role.to_string(),
+                        content: String::new(),
+                        participant_id: sender.clone(),
+                        thought_signature: None,
+                        created_at: None,
+                        target_participant_ids: targets.clone(),
+                        host_event: None,
+                    };
+                    assert_eq!(
+                        is_whisper_party(&wm, ME),
+                        filter_whisper_messages(std::slice::from_ref(&am), ME)[0],
+                        "role={role} targets={targets:?} sender={sender:?}"
+                    );
+                    rows += 1;
+                }
+            }
+        }
+        assert_eq!(rows, 60, "the cross table lost rows");
+
+        // And the arm the widening added: a targeted NON-TOOL message addressed to
+        // someone else is now dropped, where the old guard let it through.
+        let whispered_announcement = WhisperMessage {
+            role: Some("ASSISTANT".to_string()),
+            participant_id: None,
+            target_participant_ids: Some(vec!["p-other".to_string()]),
+            system_kind: Some("announcement".to_string()),
+            ..Default::default()
+        };
+        assert!(!is_whisper_party(&whispered_announcement, ME));
     }
 }

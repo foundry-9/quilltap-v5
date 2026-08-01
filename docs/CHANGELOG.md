@@ -131,6 +131,21 @@ when they forget to quote a phrase, because the same complaint is also
 raised on the server about the same file and the two must not disagree.
 Verified against ninety-six results recorded from the reference app itself,
 plus its own test suite ported case for case.
+Announcements now tell the model who is speaking. When an announcement is
+posted as a named off-scene character or under a free-text name, that name
+was painted on the bubble but never reached the model, so the announcement
+arrived as anonymous prose and the model guessed the speaker — badly, and
+then carried the mistake into the scene. Each such announcement is now
+prefixed with its speaker's name in the model's transcript only; nothing
+stored, exported, or displayed changes, and an announcer whose name cannot
+be resolved passes through unnamed rather than being given an invented one.
+Re-running a turn does not stack the tag. The same pass also closes the
+last gap where a private aside could reach a character it was not
+addressed to: the single-character transcript builder applied its privacy
+check to tool results alone, and now applies it to every kind of message.
+Verified against the reference app's real code with a new twenty-six-case
+comparison plus eleven regenerated end-to-end comparisons.
+
 Manual announcements can now be whispered to specific people in a
 conversation instead of always being spoken to the room. The composer's
 audience is re-checked on the server against who is actually in the scene

@@ -10,7 +10,13 @@
  *   - two `chat_settings` rows: user1 `onSwipeRegenerate: DELETE_MEMORIES`, user2
  *     `KEEP_MEMORIES` (the memory-cascade gate is per-user);
  *   - four chats (`repos.chats.create` + `addMessages`, pinned ids/timestamps):
- *       A first_regen (an un-grouped ASSISTANT target),
+ *       A first_regen (an un-grouped ASSISTANT target) — since P4.D37 its history
+ *         also carries two ad-hoc announcements ahead of the target: a PUBLIC one
+ *         signed by an off-scene character (the attribution pass must tag it
+ *         `[Operator] …` in context) and one WHISPERED to the user participant
+ *         (which the every-role whisper filter must drop from Bertie's context —
+ *         before v4 `a163862c` that filter tested TOOL messages only, so this row
+ *         is the one that would have leaked),
  *       B existing_group (a target already grouped + one sibling swipe),
  *       C keep_memories (user2's chat),
  *       D not_assistant (a USER message — the error path);
@@ -52,6 +58,11 @@ interface MessageSpec {
   createdAt: string;
   swipeGroupId?: string;
   swipeIndex?: number;
+  /** P4.D37: an ad-hoc announcement's signed speaker (the attribution pass). */
+  customAnnouncer?: { kind: string; characterId?: string; displayName?: string } | null;
+  /** P4.D37: whisper targets — on ANY role since v4 `a163862c`. */
+  targetParticipantIds?: string[] | null;
+  systemKind?: string | null;
 }
 interface ChatSpec {
   id: string;
@@ -192,6 +203,11 @@ async function main(): Promise<void> {
         attachments: [],
         ...(m.swipeGroupId !== undefined ? { swipeGroupId: m.swipeGroupId } : {}),
         ...(m.swipeIndex !== undefined ? { swipeIndex: m.swipeIndex } : {}),
+        ...(m.customAnnouncer !== undefined ? { customAnnouncer: m.customAnnouncer } : {}),
+        ...(m.targetParticipantIds !== undefined
+          ? { targetParticipantIds: m.targetParticipantIds }
+          : {}),
+        ...(m.systemKind !== undefined ? { systemKind: m.systemKind } : {}),
       })) as never
     );
   }

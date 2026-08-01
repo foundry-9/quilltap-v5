@@ -48769,3 +48769,140 @@ QT_ORACLE_OUT=/tmp/oracle-announcer-tier3.ndjson TZ=UTC \
   $N/npx jest --silent --watchman=false --testTimeout=180000 \
     --roots "$PWD" --roots "$TMPO/cases" -- announcer-tier3
 ```
+
+---
+
+## Lane record — P4.D37 unit 2: announcement attribution + the every-role whisper filter
+
+Ports v4 `424a7381`'s server half (the `a163862c` filter alignment rides with it,
+since both land in the same `buildMessageContext` region).
+
+- **`announcement_attribution.rs` (NEW, pure)** — v4's
+  `lib/chat/context/announcement-attribution.ts` whole:
+  `resolve_announcer_name` (character → map lookup trimmed, `|| null`; custom →
+  `displayName` trimmed; **an unresolvable character returns None rather than a
+  placeholder** — the model treats a name as fact, so a wrong one is worse than
+  none), `collect_announcer_character_ids` (first-appearance, deduped), and
+  `attribute_adhoc_announcements` (no name → untouched; the idempotency guard
+  `body.startsWith("[name]")`; else `` `[{name}] {body}` ``, the same form
+  `attribute_messages_for_character` already emits).
+  v4's interface is structural, so v5 carries it as the `AnnouncerAttributable`
+  trait with two impls: `serde_json::Value` (what the differential drives — a raw
+  message object satisfies v4's interface literally) and
+  `services::message_context::WhisperMessage` (production). `with_content` is the
+  Rust spelling of v4's `{...m, content}` spread.
+- **`services/message_context.rs`** — `WhisperMessage.custom_announcer` (the
+  column was already in the event JSON; `courier_transport` had been reading it
+  for its own transcript since P4.6ab, which is exactly the one-path-attributed /
+  other-path-anonymous split v4 fixed); the pass wired between the CMPB strip and
+  the whisper filter with v4's up-front name lookup (each read fail-soft: a
+  deleted or unreadable character warns via `tracing` and stays unnamed rather
+  than blocking the turn) and v4's **always-run** rule, because a `custom`
+  announcer carries its own display name and gating on the resolved-name map
+  would skip it; and the whisper predicate extracted as `is_whisper_party` with
+  the `role != TOOL` early-out DELETED (v4 `a163862c`).
+
+### The new tier-1 family
+
+**`announcement_attribution_equivalence` — 26 records, EXACT, no
+normalization.** v4's own 109-line jest suite case-for-case, widened where that
+suite leans on TypeScript rather than a runtime check: a blank/whitespace display
+name, an empty-string `characterId`, a stored name needing a trim, absent
+`content`, a body that starts with a bracketed but DIFFERENT name, and the
+collection's first-appearance ordering. `attribute` records emit the WHOLE output
+array so "every other field survives" is diffed rather than asserted, and the
+idempotency record re-runs the pass on its own output exactly as the oracle does.
+Corpus shape is asserted per kind, so a truncated NDJSON cannot pass quietly.
+
+Green first run → mutation-proven (D24). Seven mutations, seven reds: inventing a
+name for an unresolvable character; dropping the trim; dropping the idempotency
+guard; not deduping the id collection; `with_content` replacing the message
+instead of one field; a placeholder for absent content; and — after one corpus
+widening — the empty-`characterId` guard. **That widening is worth noting:** the
+guard was insensitive at first because the name map could never contain an
+empty-string key, so removing it changed nothing. The corpus now seeds
+`['', 'Nobody At All']`, which is the only way v4's `!announcer.characterId`
+falsy check is observable at all.
+
+### The wiring, and one honest coverage limit
+
+The `regenerate-swipe-tier3` corpus gained two messages ahead of chat A's regen
+target (purely additive; no existing case's inputs moved): a PUBLIC announcement
+signed by an off-scene character, and one WHISPERED to the user participant. The
+builder's `MessageSpec` grew `customAnnouncer` / `targetParticipantIds` /
+`systemKind` to carry them. In the regenerated oracle the public one reaches the
+model as `[Operator] A word from beyond the scene.` and the whispered one does
+not reach it at all — on BOTH sides.
+
+Mutation proofs on the wiring: **skipping the attribution pass turns
+`regenerate_swipe_tier3` red.** Two other mutations ran GREEN and are recorded
+as limits rather than quietly banked:
+
+1. *Gating the pass on a non-empty name map* is invisible here, because this
+   corpus's context contains a character announcer as well as a custom one. The
+   always-run rule is v4's, and it is pinned by the tier-1 family's custom-only
+   `attribute` records.
+2. **Restoring the pre-`a163862c` `role != 'TOOL'` early-out changes nothing
+   observable, in ANY corpus.** Chased to its cause: `is_multi_character_chat`
+   is `userControlled >= 2 || activeLLM >= 1`, so *every chat that can produce an
+   LLM turn is multi-character*, and `build_context`'s multi path already runs
+   `filter_whisper_messages` over the identical rule
+   (`build_context.rs:2576`). The single-character branch this filter guards is
+   unreachable for an LLM turn, which makes v4's widening a belt-and-braces
+   alignment rather than a live leak fix — its own new comment says as much
+   ("enforced here so single-character context can't be the one place a private
+   aside leaks"), even though the commit message frames it as a leak. The filter
+   *as a whole* IS load-bearing: making it a no-op turns `orchestrator_tier3` red
+   (chat `d5000005`'s operator-only TOOL whisper). The widening itself is pinned
+   by the new
+   `message_context_whisper_predicate_matches_the_shared_rule` unit test, which
+   crosses four roles × five target shapes × three senders (60 rows) and asserts
+   `is_whisper_party` agrees with `filter_whisper_messages` row for row — the
+   equivalence v4's commit claims, made mechanical.
+
+### Regenerations — 11 families, each through its OWN recipe
+
+Every family this lane owns was regenerated AND re-run via
+`harness/tools/recipe_sweep.py --run <family>` (the "recipe executed verbatim"
+proof), all green: `post_office_routes`, `announcer_tier3`,
+`announcement_attribution`, `orchestrator_tier3`, `regenerate_swipe_tier3`,
+`enclave_step_tier3`, `file_attachment_tier3`, `salon_swipe_generate`,
+`salon_reads`, `salon_mutations`, `salon_skip`, `message_context_leaves`. The
+nine that this lane does not change behavior in are NEUTRALITY proofs and came
+back identical in behavior at the new baseline.
+
+**Three recipe headers were repaired on the way** (the standing
+`harness-recipes-are-runnable` rule): `regenerate_swipe_tier3`,
+`orchestrator_tier3` and `enclave_step_tier3` each carried a `^-- TZ=UTC
+REQUIRED …` prose note INSIDE the shell block, which the sweep driver executes
+verbatim → `syntax error near unexpected token '('`; and each pointed jest's
+`--roots` at a path under the repo (jest ignores `.claude/`, so a worktree run
+could never find the case) without staging the /tmp mirror the case's own
+`join(here,'..','fixtures',…)` read needs. All three now stage `$TMPO/cases` +
+`$TMPO/fixtures` and carry the TZ note as prose ABOVE the block. The TZ pins
+themselves are untouched — they remain load-bearing (P4.d26).
+
+**Disposition — `message_context_leaves`:** NOT extended. The order left the call
+open; the attribution leaves got their own tier-1 family (they are exported and
+tsx-drivable, which the inline filter is not), and the filter's widening is
+pinned by the equivalence unit test above, so a new leaf corpus would add no
+coverage either could not already give.
+
+**Gate:** `cargo fmt --all --check`; clippy BOTH feature sets with `-D warnings`;
+`cargo test --workspace --no-fail-fast` with all of this lane's oracle / fixture
+env vars — **408 test binaries / 1,753 tests / 0 failed**; then all twelve
+families re-run BY NAME with `--nocapture`, **zero SKIP** (the by-name run's
+per-family evidence: post-office 41 cases, announcer-tier3 15, attribution 26
+records, file-attachment "matched the oracle across all cases"). Versions: core
+0.0.435, harness 0.0.375 (host 0.0.55 from unit 1).
+
+**Regen recipe (the new family):**
+
+```
+cd ~/source/quilltap-server
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <v5-worktree>/harness/oracle/cases/announcement-attribution.ts \
+  > /tmp/oracle-announcement-attribution.ndjson
+QT_ORACLE_ANNOUNCEMENT_ATTRIBUTION=/tmp/oracle-announcement-attribution.ndjson \
+  cargo test -p quilltap-harness --test announcement_attribution_equivalence
+```

@@ -68,6 +68,33 @@
           "createdAt": "2026-01-02T03:04:05.000Z"
         },
         {
+          "id": "aa0e0001-0000-4000-8000-0000000000e1",
+          "role": "ASSISTANT",
+          "content": "A word from beyond the scene.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:04:05.100Z",
+          "systemKind": "announcement",
+          "customAnnouncer": {
+            "kind": "character",
+            "characterId": "bb000002-0000-4000-8000-000000000002"
+          }
+        },
+        {
+          "id": "aa0e0002-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Only for you, and not for Bertie.",
+          "participantId": null,
+          "createdAt": "2026-01-02T03:04:05.200Z",
+          "systemKind": "announcement",
+          "customAnnouncer": {
+            "kind": "custom",
+            "displayName": "A Distant Bell"
+          },
+          "targetParticipantIds": [
+            "aa0b0002-0000-4000-8000-0000000000b2"
+          ]
+        },
+        {
           "id": "aa010001-0000-4000-8000-000000000a01",
           "role": "ASSISTANT",
           "content": "An old, tired reply.",

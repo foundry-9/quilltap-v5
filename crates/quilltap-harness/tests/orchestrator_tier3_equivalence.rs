@@ -24,17 +24,24 @@
 //!      minted-values normalization (message/job ids remapped to first-appearance
 //!      tokens in a shared cross-table map; minted timestamps placeholdered).
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//! **TZ=UTC is REQUIRED since P4.d26**: the distill TODAY line renders in the
+//! SERVER-LOCAL zone, so this oracle is TZ-sensitive (the harness pins
+//! `server_tz` to "UTC"). The pin below is load-bearing, not decoration.
+//!
+//! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
+//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-orch-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-orch-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-orchestrator-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-orchestrator-fixture.ts
 //!   QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db \
 //!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-orchestrator.ndjson \
-//!     ^-- TZ=UTC is REQUIRED since P4.d26: the distill TODAY line renders in
-//!     the SERVER-LOCAL zone, so this oracle is now TZ-sensitive (the harness
-//!     pins server_tz "UTC").
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- orchestrator-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- orchestrator-tier3
 //! Run:
 //!   QT_ORACLE_ORCHESTRATOR=/tmp/oracle-orchestrator.ndjson \
 //!   QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db \
