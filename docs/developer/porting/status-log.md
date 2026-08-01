@@ -47314,3 +47314,29 @@ Librarian gesture and carries its own comment about the fragility; it stayed
 green throughout. The senders currently spoken for are **the Librarian**
 (post-office + library-picker), **Prospero** (tool-message, in Solo Voyage) and
 **Ariel** (terminal-flow).
+
+#### Addendum — one full-suite-only flake, adjudicated NOT this lane's
+
+`settings-data-system-flow`'s "auto-lock: the provider warns after the idle
+threshold (fake clock)" reddened on two full runs during this lane and then ran
+green on the gate run over the identical tree. It was chased rather than
+waved through, and every discriminator says it is not this lane's:
+
+| run | result |
+|---|---|
+| the beat alone (its own file) | 6/6 green |
+| with both alphabetical neighbours (`settings-autonomous`, `settings-chat-cards`) | 15/15 green |
+| paired directly with this lane's new spec | 8/8 green |
+| FULL suite with this lane's two beats excluded (product changes all in place) | **164/164 green** |
+| FULL suite, everything in (the gate run) | **166/166 green, zero skips** |
+
+No mechanism connects it either: the lane changed chat-message rendering, a
+view model and static avatar assets; the auto-lock idle provider and the
+Settings screen share none of them, and no announcement renders there. It
+reproduces only under the whole suite and not from any pair, which is the
+signature of a load/timing flake, not of state contamination. Flagged for the
+unifier: if it recurs, it belongs to the beat's owner, not to P4.26.
+
+(For contrast, the post-office red earlier in this lane WAS ours, reproduced
+deterministically from a two-file pair, and was fixed — see the sender-
+contention addendum above. That is the difference between the two.)
