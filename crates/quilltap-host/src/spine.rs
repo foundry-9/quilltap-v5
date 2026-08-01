@@ -658,6 +658,7 @@ where
                 &req.character_id,
                 req.scenario_text.as_deref(),
                 req.cheap_settings.as_ref(),
+                &req.project_mount_point_ids,
             )
             .await
         })

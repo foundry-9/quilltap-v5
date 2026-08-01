@@ -196,6 +196,24 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Characters are now dressed from all three wardrobe tiers when a chat opens.
+Until now the two paths that dress everyone at the start — creating a chat and
+adding someone to one — looked only in that character's own vault, so a
+character whose clothes all live in a project's shared store or in Quilltap
+General opened the scene wearing nothing, and the model that picks outfits was
+never even asked. Defaults from different tiers now layer together in the same
+slot, oldest first, and a character can still opt out of a shared default by
+keeping their own copy of it unmarked.
+
+Three problems from the first live run are fixed with it. Everyone's outfit is
+now decided at the same time rather than one after another — a chat that took
+two and a half minutes to open was waiting on a single slow reply — while the
+saving still happens one character at a time, because it has to. A stalled
+provider is given one minute and then the character wears their usual clothes.
+And "naked on purpose" is no longer indistinguishable from "the model gave up":
+the model is asked to say which it means, and only a plainly stated choice
+counts.
+
 Fixed an outfit made of shared parts resolving to nothing. A composite garment
 — a livery, a dress uniform, anything that bundles other pieces — used to be
 unpacked using only the wearer's own wardrobe, so when the bundle lived in a

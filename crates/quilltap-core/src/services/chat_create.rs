@@ -657,8 +657,15 @@ where
         .as_ref()
         .and_then(|s| s.get("cheapLLMSettings"))
         .filter(|v| !v.is_null());
+    // Shared wardrobe tiers in scope for this chat's project — General is always
+    // folded in by the pool read; these add the project stores.
+    let project_mount_point_ids = crate::tools::wardrobe_shared::resolve_project_mount_point_ids(
+        mount,
+        req.project_id.as_deref(),
+    );
     let outfit_ctx = OutfitContext {
         user_id,
+        project_mount_point_ids: &project_mount_point_ids,
         scenario_text: resolved_scenario.as_deref(),
         cheap_settings,
         source_chat_id: req.continuation_from_chat_id.as_deref(),

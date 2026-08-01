@@ -1248,13 +1248,31 @@ pub async fn apply_outfit_for_added_participant(
         .filter(|v| v.is_object())
         .map(slots_from_value);
 
+    // Project wardrobe tier for this chat, so a joining character can be dressed
+    // from the project's shared stores as well as their own vault (v4
+    // `participants.ts` threads `resolveProjectMountPointIds(chat.projectId)`).
+    let project_mount_point_ids = {
+        let cid = chat_id.to_string();
+        read_main_mount(db, |main, mount| {
+            Ok(
+                crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat(
+                    main, mount, &cid,
+                ),
+            )
+        })
+        .unwrap_or_default()
+    };
+
     let slots = match mode.as_str() {
         // No `sourceChatId` at this call site, so v4's `previous_chat` falls
         // straight through to the default wardrobe.
         "default" | "previous_chat" => {
             let cid = character_id.to_string();
+            let mounts = project_mount_point_ids.clone();
             match read_main_mount(db, |main, mount| {
-                crate::services::outfit_selections::resolve_default_outfit(main, mount, &cid)
+                crate::services::outfit_selections::resolve_default_outfit(
+                    main, mount, &cid, &mounts,
+                )
             }) {
                 Ok(s) => s,
                 Err(e) => {
@@ -1297,6 +1315,7 @@ pub async fn apply_outfit_for_added_participant(
                             character_id: character_id.to_string(),
                             scenario_text,
                             cheap_settings,
+                            project_mount_point_ids: project_mount_point_ids.clone(),
                         })
                         .await
                 }
@@ -1315,9 +1334,10 @@ pub async fn apply_outfit_for_added_participant(
                 // v4: any failure → resolveDefaultOutfit.
                 None => {
                     let cid = character_id.to_string();
+                    let mounts = project_mount_point_ids.clone();
                     match read_main_mount(db, |main, mount| {
                         crate::services::outfit_selections::resolve_default_outfit(
-                            main, mount, &cid,
+                            main, mount, &cid, &mounts,
                         )
                     }) {
                         Ok(s) => s,

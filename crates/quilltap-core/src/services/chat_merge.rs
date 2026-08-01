@@ -236,6 +236,25 @@ pub async fn apply_chat_merge(
         .filter(|v| !v.is_null())
         .cloned();
 
+    // Project wardrobe tier for the target chat. Hoisted out of the per-character
+    // loop — it's the same for every merged character.
+    let target_project_id = target_chat
+        .get("projectId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let project_mount_point_ids: Vec<String> = {
+        let pid = target_project_id.clone();
+        db.read_mount_index(move |mount| {
+            Ok(
+                crate::tools::wardrobe_shared::resolve_project_mount_point_ids(
+                    mount,
+                    pid.as_deref(),
+                ),
+            )
+        })
+        .unwrap_or_default()
+    };
+
     // Character tags to fold into the chat's tag set, mirroring the
     // add-character flow so merged characters surface under the chat's tags too.
     // Applied ONCE after all joins.
@@ -389,6 +408,7 @@ pub async fn apply_chat_merge(
                             character_id: character_id.clone(),
                             scenario_text: scenario_text.clone(),
                             cheap_settings: cheap_settings.clone(),
+                            project_mount_point_ids: project_mount_point_ids.clone(),
                         })
                         .await
                 }
@@ -422,6 +442,7 @@ pub async fn apply_chat_merge(
         let cheap = cheap_settings.clone();
         let uid = user_id.to_string();
         let scenario = scenario_text.clone();
+        let mounts = project_mount_point_ids.clone();
         let pid = participant_id.clone();
         let chat_for_stack = updated_chat.clone();
         let _ = db
@@ -436,6 +457,7 @@ pub async fn apply_chat_merge(
                 let outfits = ChatOutfitsRepository::new(main);
                 let ctx = OutfitContext {
                     user_id: &uid,
+                    project_mount_point_ids: &mounts,
                     scenario_text: scenario.as_deref(),
                     cheap_settings: cheap.as_ref(),
                     source_chat_id: Some(&source),

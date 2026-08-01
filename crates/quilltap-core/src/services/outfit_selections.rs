@@ -15,6 +15,18 @@
 //! decided four-slot preview) afterwards; the fallback path resolves the panel
 //! with a `log` warning + a `wardrobe-result`.
 //!
+//! ## The `8bb1a958` tri-tier contract (P4.D39)
+//!
+//! Every "what can this character wear?" question here asks the MERGED pool —
+//! the character's vault under Quilltap General and the chat project's stores
+//! ([`crate::db::wardrobe_read::find_wearable_pool_for_character`]) — never the
+//! vault alone. Tiers merge on the FULL lists and `isDefault` is filtered last,
+//! so a personal `isDefault: false` copy can shadow a shared default (the
+//! opt-out). Defaults from different tiers LAYER in a slot, ordered
+//! `createdAt` ascending. Resolution runs concurrently and commits serially;
+//! each consult is bounded by [`OUTFIT_LLM_TIMEOUT_MS`]; an all-empty answer
+//! counts only when the model flags it `"deliberate": true`.
+//!
 //! ## Documented seam — the malformed-JSON parse path
 //!
 //! v4's outfit parser calls `JSON.parse` (which THROWS on malformed JSON →
@@ -31,10 +43,10 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 
 use crate::cheap_llm::CheapLlmSelection;
-use crate::clock::iso_to_ms;
+use crate::db::archetype_wardrobe::find_archetypes;
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::wardrobe_read::find_by_character_id;
+use crate::db::wardrobe_read::{find_by_character_id, find_wearable_pool_for_character};
 use crate::db::{characters_read, connection_profiles, DbError};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
@@ -44,7 +56,8 @@ use crate::services::creation_progress::{
 };
 use crate::services::image_job_common::build_cheap_llm_selection;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
-use crate::wardrobe::{Slots, WARDROBE_SLOT_TYPES};
+use crate::wardrobe::{sort_for_default_outfit, Slots, WARDROBE_SLOT_TYPES};
+use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
 
 /// v4 `OUTFIT_SELECTION_PROMPT` (byte-exact).
 const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a roleplay character. Your job is to choose what a character should wear at the start of a scene, based on:
@@ -63,6 +76,12 @@ If the available wardrobe contains a composite item (its description mentions it
 Example response:
 {\"top\": [\"uuid-tshirt\", \"uuid-sweater\"], \"bottom\": [\"uuid-jeans\"], \"footwear\": [\"uuid-boots\"], \"accessories\": []}
 
+Wearing nothing at all is a legitimate choice, but you must mark it as a choice. If the character genuinely should be unclothed — a nudist at home, a bath or swim scene, a setting where clothing would be absurd — leave every slot empty AND include \"deliberate\": true:
+
+{\"deliberate\": true, \"top\": [], \"bottom\": [], \"footwear\": [], \"accessories\": []}
+
+An all-empty response WITHOUT \"deliberate\": true is read as a failure to choose, and the character will be dressed in their default outfit instead. Do not use the empty response to opt out of the task — if you are unsure, pick something.
+
 Do not include any other text, explanation, or markdown formatting. Just the JSON object.";
 
 /// One character's outfit selection (v4 `OutfitSelection`).
@@ -76,9 +95,20 @@ pub struct OutfitSelection {
 
 /// The context the LLM path needs (v4 `OutfitSelectionContext`, minus the
 /// progress emitter which is passed separately).
-#[derive(Clone, Debug, Default)]
+///
+/// Deliberately NOT `Default`: v4 made `projectMountPointIds` required "so a
+/// future call site that forgets it fails to compile instead of silently
+/// dressing characters from one tier", and a `..Default::default()` escape
+/// hatch would hand that guarantee straight back.
+#[derive(Clone, Debug)]
 pub struct OutfitContext<'a> {
     pub user_id: &'a str,
+    /// Project document stores in scope for this chat, resolved by the caller
+    /// from the project id it already holds
+    /// ([`resolve_project_mount_point_ids`](crate::tools::wardrobe_shared::resolve_project_mount_point_ids)
+    /// / `..._for_chat`). Folded into the shared wardrobe tier alongside
+    /// Quilltap General.
+    pub project_mount_point_ids: &'a [String],
     pub scenario_text: Option<&'a str>,
     /// The chat settings' `cheapLLMSettings` sub-object (v4 `buildCheapLLMConfig`
     /// source). `None` → the `DEFAULT_CHEAP_LLM_CONFIG` defaults.
@@ -102,36 +132,31 @@ fn slots_to_value(slots: &Slots) -> Value {
     })
 }
 
-/// v4 `resolveDefaultOutfit`: the character's wardrobe items marked default,
-/// oldest-`createdAt` first, each id pushed into every slot its `types` cover.
-pub fn resolve_default_outfit(
-    main: &Connection,
-    mount: &Connection,
-    character_id: &str,
-) -> Result<Slots, DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let items = find_by_character_id(main, &docs, character_id, false)?;
-    let mut defaults: Vec<Value> = items
-        .into_iter()
+/// v4 `resolveDefaultOutfit`'s pure half — the default outfit computed from an
+/// already-merged wearable pool.
+///
+/// Personal and shared defaults **layer** rather than one winning the slot; only
+/// an id collision shadows (a personal copy of a shared item replaces it, so a
+/// personal `isDefault: false` override is how a character opts out of a shared
+/// default). That is why the merge happens on the *full* pools and `isDefault`
+/// is filtered here, last — filtering first would hide the opt-out.
+///
+/// Order is deterministic by `createdAt` ascending (slot arrays read
+/// inner-to-outer); [`sort_for_default_outfit`] is mirrored by the client
+/// composer so the preview and the chat that opens agree.
+pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
+    let defaults: Vec<Value> = pool
+        .iter()
         .filter(|i| i.get("isDefault").and_then(Value::as_bool) == Some(true))
+        .filter(|i| !is_archived_truthy(i))
+        .cloned()
         .collect();
-    if defaults.is_empty() {
-        return Ok(Slots::default());
-    }
-    // Deterministic: oldest default first; a missing/unparseable createdAt sorts
-    // to the end (v4 `Number.POSITIVE_INFINITY`).
-    defaults.sort_by(|a, b| {
-        let at = s(a, "createdAt")
-            .and_then(|c| iso_to_ms(&c))
-            .unwrap_or(i64::MAX);
-        let bt = s(b, "createdAt")
-            .and_then(|c| iso_to_ms(&c))
-            .unwrap_or(i64::MAX);
-        at.cmp(&bt)
-    });
-
     let mut slots = Slots::default();
-    for item in &defaults {
+    if defaults.is_empty() {
+        return slots;
+    }
+
+    for item in sort_for_default_outfit(&defaults) {
         let Some(id) = item.get("id").and_then(Value::as_str) else {
             continue;
         };
@@ -147,19 +172,54 @@ pub fn resolve_default_outfit(
             }
         }
     }
-    Ok(slots)
+    slots
+}
+
+/// v4 `resolveDefaultOutfit(characterId, repos, { projectMountPointIds })` —
+/// the default outfit from every item marked default across all THREE tiers:
+/// the character's own vault, the project's linked stores, and Quilltap General.
+///
+/// Callers already holding a merged pool (the batch in
+/// [`apply_outfit_selections`] fetches the shared tier once) go straight to
+/// [`default_outfit_from_pool`].
+pub fn resolve_default_outfit(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Result<Slots, DbError> {
+    let docs = DocMountDocumentsRepository::new(mount);
+    let pool =
+        find_wearable_pool_for_character(main, &docs, character_id, project_mount_point_ids)?;
+    Ok(default_outfit_from_pool(&pool))
+}
+
+/// v4 `LLMOutfitChoice` — what the model decided.
+///
+/// `deliberately_unclothed` separates "the character should be naked" from "the
+/// model produced nothing usable" — two states that were previously identical on
+/// the wire (all-empty slots) and therefore indistinguishable to the caller.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LlmOutfitChoice {
+    pub slots: Slots,
+    /// The model explicitly flagged its empty answer as intentional.
+    pub deliberately_unclothed: bool,
 }
 
 /// v4 `chooseLLMOutfit`'s response parser (over the ported executor's infallible
 /// contract — see the module-header seam). Validates each candidate id against
 /// the wardrobe (must exist AND cover the slot), tolerating a legacy
-/// single-id/null shape.
-fn parse_outfit_response(content: &str, items: &[Value]) -> Slots {
+/// single-id/null shape, and reports the model's `deliberate` claim.
+fn parse_outfit_response(content: &str, items: &[Value]) -> LlmOutfitChoice {
     let clean = strip_code_fences(content);
     let parsed: Value = serde_json::from_str(&clean).unwrap_or(Value::Null);
     if !parsed.is_object() {
-        return Slots::default();
+        return LlmOutfitChoice::default();
     }
+    // Only an explicit boolean `true` counts. A model that omits the flag, or
+    // sends a stringy "true", has not made the deliberate claim — and the
+    // fallback (dress them in their defaults) is the safe reading.
+    let deliberately_unclothed = parsed.get("deliberate") == Some(&Value::Bool(true));
     // valid item ids + which slots each covers.
     let mut valid: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut item_slots: std::collections::HashMap<&str, Vec<&str>> =
@@ -209,7 +269,10 @@ fn parse_outfit_response(content: &str, items: &[Value]) -> Slots {
             }
         }
     }
-    result
+    LlmOutfitChoice {
+        slots: result,
+        deliberately_unclothed,
+    }
 }
 
 /// Build the two `chooseLLMOutfit` messages (system prompt + the character/
@@ -301,10 +364,19 @@ fn to_outfit_preview_slots(
     mount: &Connection,
     character_id: &str,
     slots: &Slots,
+    project_mount_point_ids: &[String],
 ) -> OutfitPreviewSlots {
     let docs = DocMountDocumentsRepository::new(mount);
-    let leaf = resolve_equipped_outfit_leaf_values(main, &docs, character_id, slots, &[])
-        .unwrap_or_default();
+    // The project tier reaches the preview too: without it a project-tier
+    // garment resolved with no title in the creation dialog (v4 defect 3).
+    let leaf = resolve_equipped_outfit_leaf_values(
+        main,
+        &docs,
+        character_id,
+        slots,
+        project_mount_point_ids,
+    )
+    .unwrap_or_default();
     let map = |items: &[Value]| -> Vec<OutfitPreviewEntry> {
         items
             .iter()
@@ -327,11 +399,131 @@ fn to_outfit_preview_slots(
     }
 }
 
+/// How long to wait on the wardrobe LLM for one character before giving up and
+/// dressing them in their defaults (v4 `OUTFIT_LLM_TIMEOUT_MS`).
+///
+/// A healthy call on a cheap model is a second or two. Observed in the wild: a
+/// provider that took 2m32s to emit 19 tokens, which — back when this loop was
+/// serial — stalled the entire chat-creation request behind one character.
+/// Concurrency stops one straggler from blocking the others; this stops a
+/// straggler from blocking the chat.
+///
+/// Note the underlying request is not aborted, only abandoned; it will still be
+/// billed and still land in the LLM log.
+pub const OUTFIT_LLM_TIMEOUT_MS: u64 = 60_000;
+
+/// The batch's wearable pools, fetched lazily and memoized — v4's
+/// `getSharedPool` / `getPool` promise memos.
+///
+/// Every read here is SYNCHRONOUS (rusqlite), so no `.await` can interleave
+/// inside a fetch and two concurrent resolvers can never race into a double
+/// read the way two JS callers would without the promise memo.
+struct PoolCache<'a> {
+    main: &'a Connection,
+    docs: DocMountDocumentsRepository<'a>,
+    project_mount_point_ids: &'a [String],
+    chat_id: &'a str,
+    shared: std::cell::RefCell<Option<std::rc::Rc<Vec<Value>>>>,
+    by_character: std::cell::RefCell<std::collections::HashMap<String, std::rc::Rc<Vec<Value>>>>,
+}
+
+impl<'a> PoolCache<'a> {
+    fn new(
+        main: &'a Connection,
+        mount: &'a Connection,
+        chat_id: &'a str,
+        project_mount_point_ids: &'a [String],
+    ) -> Self {
+        Self {
+            main,
+            docs: DocMountDocumentsRepository::new(mount),
+            project_mount_point_ids,
+            chat_id,
+            shared: std::cell::RefCell::new(None),
+            by_character: std::cell::RefCell::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// The shared tiers, read at most once for the whole batch and only when a
+    /// selection actually needs a pool — `find_archetypes` re-reads and parses
+    /// every file in each shared folder, and a batch of `manual`/`none`
+    /// selections shouldn't pay for a wardrobe read at all.
+    fn shared(&self) -> std::rc::Rc<Vec<Value>> {
+        if let Some(cached) = self.shared.borrow().clone() {
+            return cached;
+        }
+        let items = find_archetypes(self.main, &self.docs, false, self.project_mount_point_ids)
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    chat_id = self.chat_id,
+                    project_mount_count = self.project_mount_point_ids.len(),
+                    error = %e,
+                    "[applyOutfitSelections] Failed to read shared wardrobe tiers; using the character vault alone"
+                );
+                Vec::new()
+            });
+        let rc = std::rc::Rc::new(items);
+        *self.shared.borrow_mut() = Some(rc.clone());
+        rc
+    }
+
+    /// One character's merged pool (the shared tiers under their own vault),
+    /// memoized so a character whose `llm_choose` falls back to defaults doesn't
+    /// re-read their vault. Each side fails soft on its own.
+    fn get(&self, character_id: &str) -> std::rc::Rc<Vec<Value>> {
+        if let Some(cached) = self.by_character.borrow().get(character_id).cloned() {
+            return cached;
+        }
+        let shared = self.shared();
+        let own = find_by_character_id(self.main, &self.docs, character_id, false)
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    chat_id = self.chat_id, character_id, error = %e,
+                    "[applyOutfitSelections] Failed to read character wardrobe; using shared tiers alone"
+                );
+                Vec::new()
+            });
+        let pool = std::rc::Rc::new(merge_wearable_pool(&shared, &own));
+        tracing::debug!(
+            chat_id = self.chat_id,
+            character_id,
+            pool_size = pool.len(),
+            shared_count = shared.len(),
+            own_count = own.len(),
+            project_mount_count = self.project_mount_point_ids.len(),
+            "[applyOutfitSelections] Resolved wearable pool"
+        );
+        self.by_character
+            .borrow_mut()
+            .insert(character_id.to_string(), pool.clone());
+        pool
+    }
+}
+
 /// v4 `applyOutfitSelections`: resolve + persist each character's outfit. `main`
-/// is the writer connection (reads + `set_equipped_outfit`); `docs` the
+/// is the writer connection (reads + `set_equipped_outfit`); `mount` the
 /// mount-index store; `completion`/`executor` the cheap-LLM boundary for
-/// `llm_choose`. An outfit failure never propagates (v4's create-handler
-/// try/catch); per-selection read errors surface as `Err` for that try/catch.
+/// `llm_choose`.
+///
+/// Runs in two phases, exactly as v4 does:
+///
+///  1. **Resolve, concurrently.** Every character's slots are worked out in
+///     parallel — `llm_choose` is a network round trip apiece, and serially they
+///     added up (one stalled provider held the whole cast). Nothing is written
+///     here, and one character's failure can't cancel its siblings. v4 uses
+///     `Promise.allSettled`; v5 uses `join_all` over per-character futures on
+///     the caller's existing current-thread runtime, so network waits overlap
+///     while the DB reads stay serial at await points and the single-writer rule
+///     is untouched.
+///  2. **Commit, serially, in the caller's order.**
+///     [`ChatOutfitsRepository::set_equipped_outfit`] reads the chat's whole
+///     `equippedOutfit` map, sets one key and writes it back, so concurrent
+///     writers would lose every entry but the last.
+///
+/// Never returns `Err`: a character that can't be resolved or persisted is
+/// logged and left as-is rather than failing the chat around them (v4's
+/// post-`8bb1a958` contract). The `Result` stays in the signature because the
+/// create handler's `let _ =` treats it as v4's try/catch.
 #[allow(clippy::too_many_arguments)]
 pub async fn apply_outfit_selections<C: CompletionProvider>(
     main: &Connection,
@@ -344,36 +536,134 @@ pub async fn apply_outfit_selections<C: CompletionProvider>(
     emitter: &CreationProgressEmitter,
 ) -> Result<(), DbError> {
     let outfits = ChatOutfitsRepository::new(main);
-    for selection in selections {
-        let character_id = selection.character_id.as_str();
-        if apply_outfit_selection_sync(main, mount, &outfits, chat_id, selection, ctx)? {
-            continue;
-        }
-        if selection.mode == "llm_choose" {
-            apply_llm_choose(
-                main,
-                mount,
-                completion,
-                executor,
-                &outfits,
-                chat_id,
-                character_id,
-                ctx,
+    let pools = PoolCache::new(main, mount, chat_id, ctx.project_mount_point_ids);
+
+    // Phase 1 — resolve concurrently. `join_all` polls every future to
+    // completion and surfaces each one's own `Result`, which is v4's
+    // `allSettled` in Rust: a blow-up is captured per character, never
+    // cancelling its siblings.
+    let resolved: Vec<Result<Option<Value>, DbError>> =
+        futures_util::future::join_all(selections.iter().map(|selection| {
+            resolve_selection(
+                main, mount, completion, executor, &outfits, &pools, chat_id, selection, ctx,
                 emitter,
             )
-            .await?;
+        }))
+        .await;
+
+    // Phase 2 — commit serially, in the caller's order.
+    for (selection, outcome) in selections.iter().zip(resolved) {
+        let character_id = selection.character_id.as_str();
+        let value = match outcome {
+            Err(e) => {
+                tracing::error!(
+                    chat_id, character_id, error = %e,
+                    "[applyOutfitSelections] Failed to resolve outfit; character left as-is"
+                );
+                continue;
+            }
+            // v4 returns null for an unrecognised mode — nothing is written.
+            Ok(None) => continue,
+            Ok(Some(v)) => v,
+        };
+        if let Err(e) = outfits.set_equipped_outfit(chat_id, character_id, &value) {
+            tracing::error!(
+                chat_id, character_id, error = %e,
+                "[applyOutfitSelections] Failed to persist equipped outfit"
+            );
         }
-        // Any other mode is unknown — v4 logs and skips (no write).
     }
     Ok(())
 }
 
+/// v4 `resolveSelection` — work out what a character should be wearing. `None`
+/// means nothing should be written at all (an unrecognised mode).
+///
+/// Deliberately does **no** persistence: these run concurrently, and
+/// `set_equipped_outfit` is a read-modify-write of a single JSON column keyed by
+/// character, so concurrent writers would drop each other's entries. The caller
+/// commits the results serially afterwards. (`outfits` is here only for the
+/// `previous_chat` READ.)
+#[allow(clippy::too_many_arguments)]
+async fn resolve_selection<C: CompletionProvider>(
+    main: &Connection,
+    mount: &Connection,
+    completion: &C,
+    executor: &CheapLlmTaskExecutor,
+    outfits: &ChatOutfitsRepository<'_>,
+    pools: &PoolCache<'_>,
+    chat_id: &str,
+    selection: &OutfitSelection,
+    ctx: &OutfitContext<'_>,
+    emitter: &CreationProgressEmitter,
+) -> Result<Option<Value>, DbError> {
+    if let Some(value) = resolve_non_llm_selection(outfits, pools, selection, ctx) {
+        return Ok(Some(value));
+    }
+    if selection.mode == "llm_choose" {
+        return resolve_llm_choose(
+            main,
+            mount,
+            completion,
+            executor,
+            pools,
+            chat_id,
+            &selection.character_id,
+            ctx,
+            Some(emitter),
+        )
+        .await
+        .map(Some);
+    }
+    tracing::warn!(
+        chat_id,
+        character_id = selection.character_id.as_str(),
+        mode = selection.mode.as_str(),
+        "[applyOutfitSelections] Unknown outfit selection mode"
+    );
+    Ok(None)
+}
+
 /// The four modes that need no model call (`default` / `manual` / `none` /
-/// `previous_chat`), split out of [`apply_outfit_selections`] so a SYNC caller —
-/// the chat merge, which runs inside the single-writer closure and cannot hold
-/// connections across an await — reaches the same one implementation
-/// (P4.9E3A). Returns `true` when the selection was handled here; `false` for
-/// `llm_choose` and for an unknown mode, which the async wrapper dispatches.
+/// `previous_chat`). `None` for `llm_choose` and for an unknown mode, which the
+/// caller dispatches. The returned `Value` is what
+/// `set_equipped_outfit` should store — `previous_chat` carries the source
+/// chat's stored object through verbatim, as v4 does.
+fn resolve_non_llm_selection(
+    outfits: &ChatOutfitsRepository<'_>,
+    pools: &PoolCache<'_>,
+    selection: &OutfitSelection,
+    ctx: &OutfitContext<'_>,
+) -> Option<Value> {
+    let character_id = selection.character_id.as_str();
+    match selection.mode.as_str() {
+        "default" => Some(slots_to_value(&default_outfit_from_pool(
+            &pools.get(character_id),
+        ))),
+        "manual" => Some(slots_to_value(&selection.slots.clone().unwrap_or_default())),
+        "none" => Some(slots_to_value(&Slots::default())),
+        "previous_chat" => {
+            if let Some(source) = ctx.source_chat_id {
+                // v4 wraps the read in try/catch → fall back to default.
+                if let Ok(Some(prev)) =
+                    outfits.get_equipped_outfit_for_character(source, character_id)
+                {
+                    return Some(prev);
+                }
+            }
+            Some(slots_to_value(&default_outfit_from_pool(
+                &pools.get(character_id),
+            )))
+        }
+        _ => None,
+    }
+}
+
+/// The four no-model modes for a SYNC caller — the chat merge, which runs inside
+/// the single-writer closure and cannot hold connections across an await
+/// (P4.9E3A). Resolves through the same [`resolve_non_llm_selection`] the
+/// concurrent path uses, then persists. Returns `true` when the selection was
+/// handled here; `false` for `llm_choose` and for an unknown mode.
 pub fn apply_outfit_selection_sync(
     main: &Connection,
     mount: &Connection,
@@ -382,41 +672,11 @@ pub fn apply_outfit_selection_sync(
     selection: &OutfitSelection,
     ctx: &OutfitContext<'_>,
 ) -> Result<bool, DbError> {
-    let character_id = selection.character_id.as_str();
-    match selection.mode.as_str() {
-        "default" => {
-            let slots = resolve_default_outfit(main, mount, character_id)?;
-            outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-        }
-        "manual" => {
-            let slots = selection.slots.clone().unwrap_or_default();
-            outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-        }
-        "none" => {
-            outfits.set_equipped_outfit(
-                chat_id,
-                character_id,
-                &slots_to_value(&Slots::default()),
-            )?;
-        }
-        "previous_chat" => {
-            let mut applied = false;
-            if let Some(source) = ctx.source_chat_id {
-                // v4 wraps the read in try/catch → fall back to default.
-                if let Ok(Some(prev)) =
-                    outfits.get_equipped_outfit_for_character(source, character_id)
-                {
-                    outfits.set_equipped_outfit(chat_id, character_id, &prev)?;
-                    applied = true;
-                }
-            }
-            if !applied {
-                let slots = resolve_default_outfit(main, mount, character_id)?;
-                outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-            }
-        }
-        _ => return Ok(false),
-    }
+    let pools = PoolCache::new(main, mount, chat_id, ctx.project_mount_point_ids);
+    let Some(value) = resolve_non_llm_selection(outfits, &pools, selection, ctx) else {
+        return Ok(false);
+    };
+    outfits.set_equipped_outfit(chat_id, &selection.character_id, &value)?;
     Ok(true)
 }
 
@@ -426,10 +686,11 @@ pub enum LlmChooseOutcome {
     /// The consult never started (missing character / empty wardrobe / no
     /// resolvable profile) — v4 announces nothing and falls to the default.
     NotAttempted,
-    /// The consult ran; `slots` is `None` on a task failure (→ default).
+    /// The consult ran; `choice` is `None` on a task failure or a timeout
+    /// (→ default).
     Attempted {
         character_name: String,
-        slots: Option<Slots>,
+        choice: Option<LlmOutfitChoice>,
     },
 }
 
@@ -438,6 +699,12 @@ pub enum LlmChooseOutcome {
 /// `emitter` narrates `wardrobe-start` when present (chat-create's dialog);
 /// the RESULT frames stay at the call sites, which hold the connections the
 /// preview resolution needs.
+///
+/// The consult is bounded by [`OUTFIT_LLM_TIMEOUT_MS`]. v4 races the timer at
+/// the `applyOutfitSelections` layer; v5 races it here instead, because all
+/// three entrances (create, add-participant, merge) funnel through this one
+/// function, and the observable result is the same either way — a timeout falls
+/// back to the default outfit with the consult still counted as announced.
 #[allow(clippy::too_many_arguments)]
 pub async fn choose_llm_outfit<C: CompletionProvider>(
     completion: &C,
@@ -469,23 +736,62 @@ pub async fn choose_llm_outfit<C: CompletionProvider>(
 
     let messages = build_outfit_messages(character, wardrobe_items, scenario_text);
     let items_for_parse = wardrobe_items.to_vec();
-    let result = executor
-        .execute(
-            completion,
-            &selection,
-            messages,
-            move |content| parse_outfit_response(content, &items_for_parse),
-            None,
-            None,
-            Some(character_id),
-            Some("outfit-selection"),
-        )
-        .await;
+    let consult = executor.execute(
+        completion,
+        &selection,
+        messages,
+        move |content| parse_outfit_response(content, &items_for_parse),
+        None,
+        None,
+        Some(character_id),
+        Some("outfit-selection"),
+    );
 
-    let slots = if result.success { result.result } else { None };
+    let choice = match tokio::time::timeout(
+        std::time::Duration::from_millis(OUTFIT_LLM_TIMEOUT_MS),
+        consult,
+    )
+    .await
+    {
+        Ok(result) if result.success => result.result,
+        Ok(_) => None,
+        Err(_) => {
+            tracing::warn!(
+                character_id,
+                timeout_ms = OUTFIT_LLM_TIMEOUT_MS,
+                pool_size = wardrobe_items.len(),
+                "[applyOutfitSelections] LLM outfit selection timed out, falling back to defaults"
+            );
+            None
+        }
+    };
+
     LlmChooseOutcome::Attempted {
         character_name,
-        slots,
+        choice,
+    }
+}
+
+/// v4's read of a completed consult: which answers count as a pick.
+///
+/// `chooseLLMOutfit` never fails parsing — it drops ids it can't validate and
+/// still reports success. An all-empty answer therefore means either "nothing
+/// usable" or "naked on purpose", and only the model's own `deliberate` flag
+/// tells the two apart. Without it, dress them in their defaults.
+///
+/// Returns `(slots, deliberately_unclothed)` when the answer counts, `None`
+/// when the caller should fall back.
+fn accept_llm_choice(choice: Option<&LlmOutfitChoice>) -> Option<(Slots, bool)> {
+    let choice = choice?;
+    let picked = !choice.slots.top.is_empty()
+        || !choice.slots.bottom.is_empty()
+        || !choice.slots.footwear.is_empty()
+        || !choice.slots.accessories.is_empty();
+    let declared_bare = choice.deliberately_unclothed;
+    if picked || declared_bare {
+        Some((choice.slots.clone(), declared_bare && !picked))
+    } else {
+        None
     }
 }
 
@@ -501,6 +807,10 @@ pub struct OutfitLlmChooseRequest {
     pub scenario_text: Option<String>,
     /// The chat settings' `cheapLLMSettings` sub-object.
     pub cheap_settings: Option<Value>,
+    /// The chat's project document stores, resolved by the caller. Folded into
+    /// the shared wardrobe tier alongside Quilltap General so the candidate list
+    /// spans all three tiers.
+    pub project_mount_point_ids: Vec<String>,
 }
 
 pub trait OutfitLlmChooseRunner: Send + Sync {
@@ -522,14 +832,19 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     character_id: &str,
     scenario_text: Option<&str>,
     cheap_settings: Option<&Value>,
+    project_mount_point_ids: &[String],
 ) -> Option<Slots> {
     // v4 wraps the whole attempt in try/catch → fall to default (None).
     let cid = character_id.to_string();
+    let mounts = project_mount_point_ids.to_vec();
     let read = db.read_main(|main| {
         db.read_mount_index(|mount| {
             let docs = DocMountDocumentsRepository::new(mount);
             let character = characters_read::find_by_id(main, mount, &cid)?;
-            let items = find_by_character_id(main, &docs, &cid, false)?;
+            // Candidates come from all three tiers: a character whose entire
+            // wardrobe is shared used to fail the non-empty guard below and fall
+            // through to (empty) defaults without the LLM ever being consulted.
+            let items = find_wearable_pool_for_character(main, &docs, &cid, &mounts)?;
             let profiles = connection_profiles::find_all(main)?;
             Ok((character, items, profiles))
         })
@@ -555,35 +870,46 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     )
     .await
     {
-        LlmChooseOutcome::Attempted { slots, .. } => slots,
+        LlmChooseOutcome::Attempted { choice, .. } => {
+            accept_llm_choice(choice.as_ref()).map(|(slots, _)| slots)
+        }
         LlmChooseOutcome::NotAttempted => None,
     }
 }
 
+/// v4's `llm_choose` arm of `resolveSelection`: consult the cheap LLM over the
+/// merged pool, honour a deliberate-nudity claim, and otherwise fall back to the
+/// default outfit. Returns the value to persist — never `None`, because v4 always
+/// lands on *something* here. Resolution only; the caller commits.
 #[allow(clippy::too_many_arguments)]
-async fn apply_llm_choose<C: CompletionProvider>(
+async fn resolve_llm_choose<C: CompletionProvider>(
     main: &Connection,
     mount: &Connection,
     completion: &C,
     executor: &CheapLlmTaskExecutor,
-    outfits: &ChatOutfitsRepository<'_>,
+    pools: &PoolCache<'_>,
     chat_id: &str,
     character_id: &str,
     ctx: &OutfitContext<'_>,
-    emitter: &CreationProgressEmitter,
-) -> Result<(), DbError> {
-    let mut applied = false;
+    emitter: Option<&CreationProgressEmitter>,
+) -> Result<Value, DbError> {
+    let mut chosen: Option<Slots> = None;
+    let mut deliberately_unclothed = false;
+    // Track whether we announced a consult so the fallback path can still
+    // resolve the dialog's panel instead of leaving it spinning.
     let mut consulted = false;
     let mut consulted_name = String::new();
 
     // v4 wraps the whole attempt in try/catch → fall to default; a read error
     // here propagates to the create handler's try/catch (as v4's throws do).
-    let docs = DocMountDocumentsRepository::new(mount);
     let character = characters_read::find_by_id(main, mount, character_id)?;
-    let wardrobe_items = find_by_character_id(main, &docs, character_id, false)?;
+    let wardrobe_items = pools.get(character_id);
     let all_profiles = connection_profiles::find_all(main)?;
 
-    match choose_llm_outfit(
+    if let LlmChooseOutcome::Attempted {
+        character_name,
+        choice,
+    } = choose_llm_outfit(
         completion,
         executor,
         character.as_ref(),
@@ -592,45 +918,98 @@ async fn apply_llm_choose<C: CompletionProvider>(
         ctx.cheap_settings,
         ctx.scenario_text,
         character_id,
-        Some(emitter),
+        emitter,
     )
     .await
     {
-        LlmChooseOutcome::Attempted {
-            character_name,
-            slots,
-        } => {
-            consulted = true;
-            consulted_name = character_name.clone();
-            if let Some(slots) = slots {
-                outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-                applied = true;
-                // Publish the decided outfit for the dialog.
-                let preview = to_outfit_preview_slots(main, mount, character_id, &slots);
-                emitter.wardrobe_result(character_id, &character_name, preview);
+        consulted = true;
+        consulted_name = character_name;
+        match accept_llm_choice(choice.as_ref()) {
+            Some((slots, bare)) => {
+                chosen = Some(slots);
+                deliberately_unclothed = bare;
+            }
+            None => {
+                tracing::warn!(
+                    chat_id,
+                    character_id,
+                    pool_size = wardrobe_items.len(),
+                    "[applyOutfitSelections] LLM outfit selection failed, falling back to defaults"
+                );
             }
         }
-        LlmChooseOutcome::NotAttempted => {}
     }
 
-    if !applied {
-        let slots = resolve_default_outfit(main, mount, character_id)?;
-        outfits.set_equipped_outfit(chat_id, character_id, &slots_to_value(&slots))?;
-        if consulted {
+    if let Some(slots) = chosen {
+        if deliberately_unclothed {
+            tracing::info!(
+                chat_id,
+                character_id,
+                "[applyOutfitSelections] Character is deliberately unclothed by LLM choice"
+            );
+            if let Some(emitter) = emitter {
+                emitter.log(
+                    format!("{consulted_name} chose to wear nothing at all."),
+                    Some(LogLevel::Info),
+                );
+            }
+        }
+        publish_preview(
+            main,
+            mount,
+            emitter,
+            character_id,
+            &consulted_name,
+            &slots,
+            ctx.project_mount_point_ids,
+        );
+        return Ok(slots_to_value(&slots));
+    }
+
+    let slots = default_outfit_from_pool(&wardrobe_items);
+    // If we already told the dialog we were consulting this character, resolve
+    // their panel with the default we fell back to (and note it).
+    if consulted {
+        if let Some(emitter) = emitter {
             emitter.log(
                 format!("{consulted_name} settled on their usual attire."),
                 Some(LogLevel::Warn),
             );
-            let preview = to_outfit_preview_slots(main, mount, character_id, &slots);
-            emitter.wardrobe_result(character_id, &consulted_name, preview);
+            publish_preview(
+                main,
+                mount,
+                Some(emitter),
+                character_id,
+                &consulted_name,
+                &slots,
+                ctx.project_mount_point_ids,
+            );
         }
     }
-    Ok(())
+    Ok(slots_to_value(&slots))
+}
+
+/// v4 `publishPreview` — publish a resolved outfit to the status dialog. Inert
+/// without an emitter, and never fails (the resolve degrades to empty slots).
+fn publish_preview(
+    main: &Connection,
+    mount: &Connection,
+    emitter: Option<&CreationProgressEmitter>,
+    character_id: &str,
+    character_name: &str,
+    slots: &Slots,
+    project_mount_point_ids: &[String],
+) {
+    let Some(emitter) = emitter else { return };
+    let preview =
+        to_outfit_preview_slots(main, mount, character_id, slots, project_mount_point_ids);
+    emitter.wardrobe_result(character_id, character_name, preview);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
     use serde_json::json;
 
     fn item(id: &str, types: &[&str], is_default: bool) -> Value {
@@ -646,10 +1025,11 @@ mod tests {
         ];
         // Valid ids in the right slots; a bogus id + wrong-slot id dropped.
         let content = r#"{"top":["shirt","dress","nope","jeans"],"bottom":["dress"],"footwear":[],"accessories":[]}"#;
-        let slots = parse_outfit_response(content, &items);
-        assert_eq!(slots.top, vec!["shirt", "dress"]); // jeans (bottom-only) dropped from top
-        assert_eq!(slots.bottom, vec!["dress"]);
-        assert!(slots.footwear.is_empty());
+        let choice = parse_outfit_response(content, &items);
+        assert_eq!(choice.slots.top, vec!["shirt", "dress"]); // jeans (bottom-only) dropped from top
+        assert_eq!(choice.slots.bottom, vec!["dress"]);
+        assert!(choice.slots.footwear.is_empty());
+        assert!(!choice.deliberately_unclothed);
     }
 
     #[test]
@@ -657,10 +1037,252 @@ mod tests {
         let items = vec![item("shirt", &["top"], false)];
         // Legacy single-id shape.
         let s1 = parse_outfit_response(r#"{"top":"shirt"}"#, &items);
-        assert_eq!(s1.top, vec!["shirt"]);
-        // Non-object → empty.
+        assert_eq!(s1.slots.top, vec!["shirt"]);
+        // Non-object → empty, and never a deliberate claim.
         let s2 = parse_outfit_response("[1,2,3]", &items);
-        assert!(s2.top.is_empty() && s2.bottom.is_empty());
+        assert!(s2.slots.top.is_empty() && s2.slots.bottom.is_empty());
+        assert!(!s2.deliberately_unclothed);
+    }
+
+    #[test]
+    fn parse_dedupes_within_a_slot_and_strips_fences() {
+        let items = vec![item("shirt", &["top"], false)];
+        let dedup = parse_outfit_response(r#"{"top":["shirt","shirt"]}"#, &items);
+        assert_eq!(dedup.slots.top, vec!["shirt"]);
+        let fenced = parse_outfit_response("```json\n{\"top\":[\"shirt\"]}\n```", &items);
+        assert_eq!(fenced.slots.top, vec!["shirt"]);
+    }
+
+    // ── v4's `deliberate` contract (outfit-selection.test.ts) ────────────────
+
+    #[test]
+    fn a_flagged_empty_answer_is_deliberate() {
+        let items = vec![item("shirt", &["top"], false)];
+        let choice = parse_outfit_response(
+            r#"{"deliberate":true,"top":[],"bottom":[],"footwear":[],"accessories":[]}"#,
+            &items,
+        );
+        assert!(choice.deliberately_unclothed);
+        // And it counts as an answer: empty slots, honoured, no default fallback.
+        let (slots, bare) = accept_llm_choice(Some(&choice)).expect("flagged empty is accepted");
+        assert!(bare);
+        assert_eq!(slots, Slots::default());
+    }
+
+    #[test]
+    fn an_unflagged_empty_answer_falls_back_to_defaults() {
+        let items = vec![item("shirt", &["top"], false)];
+        let choice = parse_outfit_response(r#"{"top":[],"bottom":[]}"#, &items);
+        assert!(!choice.deliberately_unclothed);
+        assert!(accept_llm_choice(Some(&choice)).is_none());
+    }
+
+    #[test]
+    fn a_stringy_true_is_not_a_deliberate_claim() {
+        let items = vec![item("shirt", &["top"], false)];
+        for raw in [
+            r#"{"deliberate":"true","top":[]}"#,
+            r#"{"deliberate":1,"top":[]}"#,
+        ] {
+            let choice = parse_outfit_response(raw, &items);
+            assert!(
+                !choice.deliberately_unclothed,
+                "only a real boolean counts: {raw}"
+            );
+            assert!(accept_llm_choice(Some(&choice)).is_none());
+        }
+    }
+
+    #[test]
+    fn picked_items_survive_alongside_a_deliberate_flag() {
+        let items = vec![item("shirt", &["top"], false)];
+        let choice = parse_outfit_response(r#"{"deliberate":true,"top":["shirt"]}"#, &items);
+        assert!(choice.deliberately_unclothed);
+        // Something WAS picked, so the "chose to wear nothing at all" line must
+        // not fire — v4's `declaredBare && !picked`.
+        let (slots, bare) = accept_llm_choice(Some(&choice)).expect("a pick is accepted");
+        assert_eq!(slots.top, vec!["shirt"]);
+        assert!(!bare);
+    }
+
+    #[test]
+    fn a_missing_choice_falls_back() {
+        assert!(accept_llm_choice(None).is_none());
+    }
+
+    // ── The tri-tier default resolution (v4's tiers tests, at the pure layer) ─
+
+    #[test]
+    fn defaults_layer_across_tiers_in_created_at_order() {
+        // Created oldest-first: general, then project, then personal.
+        let pool = vec![
+            json!({ "id": "general-shirt", "types": ["top"], "isDefault": true, "createdAt": "2026-01-01T00:00:01.000Z" }),
+            json!({ "id": "project-waistcoat", "types": ["top"], "isDefault": true, "createdAt": "2026-01-01T00:00:02.000Z" }),
+            json!({ "id": "own-jacket", "types": ["top"], "isDefault": true, "createdAt": "2026-01-01T00:00:03.000Z" }),
+        ];
+        let slots = default_outfit_from_pool(&pool);
+        assert_eq!(
+            slots.top,
+            vec!["general-shirt", "project-waistcoat", "own-jacket"]
+        );
+    }
+
+    #[test]
+    fn a_shadowing_is_default_false_copy_equips_nothing() {
+        // What the pool hands over after `merge_wearable_pool` shadowed the
+        // shared default with the character's opt-out copy.
+        let pool = vec![json!({ "id": "livery", "types": ["top"], "isDefault": false })];
+        assert_eq!(default_outfit_from_pool(&pool), Slots::default());
+    }
+
+    #[test]
+    fn an_archived_default_is_excluded() {
+        let pool = vec![
+            json!({ "id": "archived-cloak", "types": ["top"], "isDefault": true, "archivedAt": "2026-02-02T00:00:00.000Z" }),
+            json!({ "id": "live-cloak", "types": ["top"], "isDefault": true }),
+        ];
+        assert_eq!(default_outfit_from_pool(&pool).top, vec!["live-cloak"]);
+    }
+
+    #[test]
+    fn a_multi_slot_default_lands_in_every_slot_it_covers() {
+        let pool = vec![json!({ "id": "dress", "types": ["top", "bottom"], "isDefault": true })];
+        let slots = default_outfit_from_pool(&pool);
+        assert_eq!(slots.top, vec!["dress"]);
+        assert_eq!(slots.bottom, vec!["dress"]);
+        assert!(slots.footwear.is_empty());
+    }
+
+    // ── The consult's timing contract (v4's concurrency + timeout tests) ─────
+    //
+    // Not differential-reachable: an oracle diff can observe the outfits that
+    // land, never the interleaving that produced them, and the harness's canned
+    // runners resolve instantly so the timer never fires there. v4 pins these
+    // with fake timers and instrumented fakes too
+    // (`apply-outfit-selections.concurrency.test.ts`).
+
+    /// A provider whose reply is delayed by `delay_ms`, or never arrives at all
+    /// (`delay_ms: None`) — v4's "never settles; the real-world case was 2m32s
+    /// for 19 tokens".
+    struct SlowProvider {
+        delay_ms: Option<u64>,
+        in_flight: std::sync::Arc<std::sync::Mutex<(usize, usize)>>,
+    }
+
+    impl CompletionProvider for SlowProvider {
+        async fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> Result<CompletionResponse, CompletionError> {
+            {
+                let mut g = self.in_flight.lock().unwrap();
+                g.0 += 1;
+                g.1 = g.1.max(g.0);
+            }
+            match self.delay_ms {
+                Some(ms) => tokio::time::sleep(std::time::Duration::from_millis(ms)).await,
+                // Never settles.
+                None => std::future::pending::<()>().await,
+            }
+            self.in_flight.lock().unwrap().0 -= 1;
+            Ok(CompletionResponse {
+                content: r#"{"top":["shirt"]}"#.to_string(),
+                usage: None,
+                finish_reason: None,
+                attachment_results: None,
+            })
+        }
+    }
+
+    fn consult_inputs() -> (Value, Vec<Value>, Vec<Value>) {
+        (
+            json!({ "id": "c1", "name": "Bertie" }),
+            vec![item("shirt", &["top"], false)],
+            vec![json!({ "id": "p1", "isDefault": true, "provider": "OPENAI", "model": "gpt-x" })],
+        )
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stalled_provider_gives_up_at_the_timeout() {
+        let (character, items, profiles) = consult_inputs();
+        let provider = SlowProvider {
+            delay_ms: None,
+            in_flight: Default::default(),
+        };
+        let executor = CheapLlmTaskExecutor::new();
+        let started = tokio::time::Instant::now();
+        let outcome = choose_llm_outfit(
+            &provider,
+            &executor,
+            Some(&character),
+            &items,
+            &profiles,
+            None,
+            None,
+            "c1",
+            None,
+        )
+        .await;
+        // The consult is abandoned, not awaited forever, and reads as "no
+        // usable answer" so the caller dresses them in their defaults.
+        match outcome {
+            LlmChooseOutcome::Attempted { choice, .. } => assert!(choice.is_none()),
+            LlmChooseOutcome::NotAttempted => panic!("the consult did start"),
+        }
+        // v4's literal, spelled out rather than read back from the constant, so
+        // moving the bound has to be a deliberate edit here too.
+        assert_eq!(
+            started.elapsed().as_millis() as u64,
+            60_000,
+            "gave up at exactly v4's OUTFIT_LLM_TIMEOUT_MS"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_batch_of_consults_is_bounded_by_the_slowest_not_their_sum() {
+        let (character, items, profiles) = consult_inputs();
+        let in_flight: std::sync::Arc<std::sync::Mutex<(usize, usize)>> = Default::default();
+        let provider = SlowProvider {
+            delay_ms: Some(40_000),
+            in_flight: in_flight.clone(),
+        };
+        let executor = CheapLlmTaskExecutor::new();
+
+        let started = tokio::time::Instant::now();
+        let outcomes = futures_util::future::join_all((0..4).map(|_| {
+            choose_llm_outfit(
+                &provider,
+                &executor,
+                Some(&character),
+                &items,
+                &profiles,
+                None,
+                None,
+                "c1",
+                None,
+            )
+        }))
+        .await;
+
+        assert_eq!(outcomes.len(), 4);
+        for outcome in outcomes {
+            match outcome {
+                LlmChooseOutcome::Attempted { choice, .. } => {
+                    assert_eq!(choice.expect("a reply landed").slots.top, vec!["shirt"]);
+                }
+                LlmChooseOutcome::NotAttempted => panic!("every consult should have run"),
+            }
+        }
+        // Four 40s calls: ~40s concurrent, ~160s serial.
+        assert!(
+            started.elapsed().as_millis() < 120_000,
+            "four consults took {:?} — they ran serially",
+            started.elapsed()
+        );
+        // And they really were in flight together.
+        assert_eq!(in_flight.lock().unwrap().1, 4);
     }
 
     #[test]
