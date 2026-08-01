@@ -241,6 +241,68 @@
           "state": "info"
         }
       ]
+    },
+    "effectful": {
+      "name": "effectful",
+      "title": "The Ledger Bench",
+      "chipLabel": "Ledger — {{params.entry}} ({{value}})",
+      "description": "A table that writes.",
+      "parameters": {
+        "entry": {
+          "type": "string",
+          "default": "sundries"
+        }
+      },
+      "roll": {
+        "min": 7,
+        "max": 7
+      },
+      "effects": [
+        {
+          "target": "state.encounter.count",
+          "value": "{{state.encounter.count}} + 1"
+        },
+        {
+          "target": "metadata.lastEntry",
+          "value": "'ledger:' + {{params.entry}}"
+        },
+        {
+          "when": {
+            "outcome": {
+              "eq": "success"
+            }
+          },
+          "target": "state.wins",
+          "value": 1
+        },
+        {
+          "when": {
+            "outcome": {
+              "eq": "failure"
+            }
+          },
+          "target": "state.losses",
+          "value": 1
+        },
+        {
+          "target": "state.unresolved",
+          "value": "{{metadata.absent_key}} + 1"
+        }
+      ],
+      "outcomes": [
+        {
+          "when": {
+            "gte": 5
+          },
+          "message": "Posted: {{params.entry}}.",
+          "state": "success"
+        },
+        {
+          "when": true,
+          "message": "Refused.",
+          "state": "info"
+        }
+      ]
     }
   },
   "cases": [
@@ -694,6 +756,42 @@
       "metadata": {
         "hasKey": false
       }
+    },
+    {
+      "name": "preview-effects-dry-run",
+      "method": "POST",
+      "action": "preview",
+      "definition": "effectful",
+      "_comment": "P4.D35: the bench COMPUTES the effects and shows them — the preview body carries chipLabel and the resolved effects (targets, values, and the two skip reasons) — and APPLIES NOTHING. The store dump on every case is what proves the second half."
+    },
+    {
+      "name": "preview-effects-with-state",
+      "method": "POST",
+      "action": "preview",
+      "definition": "effectful",
+      "state": {
+        "encounter": {
+          "count": 4
+        }
+      },
+      "_comment": "The bench's mock state feeds the expressions, so a resolved value depends on it — and still nothing is written."
+    },
+    {
+      "name": "preview-effects-with-metadata",
+      "method": "POST",
+      "action": "preview",
+      "definition": "effectful",
+      "metadata": {
+        "absent_key": 10
+      },
+      "_comment": "With the key present the last effect resolves instead of skipping — the skip reasons are computed, not canned."
+    },
+    {
+      "name": "audit-effects-ignored",
+      "method": "POST",
+      "action": "audit",
+      "definition": "effectful",
+      "_comment": "P4.D35: an audit that wrote ten thousand times would not be an audit. The body carries no chipLabel and no effects, and the stores are untouched."
     }
   ]
 }

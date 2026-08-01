@@ -306,6 +306,35 @@ fn canon(v: &Value) -> Value {
 /// Resolve a case's `metadata` — either given inline, or a `metadataCharacter`
 /// reference the corpus resolves to a `{ characterId }` object (exactly as the
 /// oracle's `bodyFor` does).
+/// P4.D35 — every character fact sheet the workbench fixture carries, read back
+/// after a bench case. See the assertion's comment for why this exists.
+///
+/// The fixture has no chat, so a `state.*` effect on this route has no cascade
+/// at all; the sheets are the only stores a preview could reach, and they are
+/// exactly what must not move.
+fn dump_bench_stores(db: &Db, characters: &Value) -> Value {
+    use quilltap_core::db::characters_read;
+    let mut metadata = serde_json::Map::new();
+    if let Some(map) = characters.as_object() {
+        for (label, id) in map {
+            let Some(id) = id.as_str() else { continue };
+            let sheet = db
+                .read_main(|main| {
+                    db.read_mount_index(|mount| {
+                        Ok(characters_read::find_by_id(main, mount, id)
+                            .ok()
+                            .flatten()
+                            .and_then(|c| c.get("metadata").cloned())
+                            .unwrap_or(Value::Null))
+                    })
+                })
+                .unwrap_or(Value::Null);
+            metadata.insert(label.clone(), sheet);
+        }
+    }
+    serde_json::json!({ "metadata": metadata })
+}
+
 fn metadata_for(case: &Value, characters: &Value) -> Option<Value> {
     if let Some(m) = case.get("metadata") {
         return Some(m.clone());
@@ -414,6 +443,16 @@ fn workbench_route_matches_oracle() {
             "case '{name}' status"
         );
         assert_eq!(canon(&body), canon(&want["body"]), "case '{name}' body");
+        // P4.D35: "the bench computes, never applies" is a claim about ABSENCE,
+        // and only a state diff can carry it — a body assertion alone would
+        // still pass if the preview quietly wrote. Dumped on EVERY case, so a
+        // preview that started writing is caught wherever it happened.
+        let got_stores = dump_bench_stores(&db, characters);
+        assert_eq!(
+            canon(&got_stores),
+            canon(&want["stores"]),
+            "case '{name}': the bench must have written nothing"
+        );
         // P4.d19 §2(b): the preview's `gate` key — present ONLY when the
         // definition gates, and `withheldBy` ABSENT (not null) when available.
         if let Some(gate) = body.get("data").unwrap_or(&body).get("gate") {

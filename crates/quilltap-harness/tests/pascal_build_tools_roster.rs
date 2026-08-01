@@ -132,12 +132,15 @@ fn build_tools_resolves_and_offers_run_custom() {
         })
         .unwrap();
     let expected_roster: Vec<_> = roster.tools.iter().map(|(_, t)| t.clone()).collect();
-    // The handler oracle's `unknown-tool` case pins this order to v4:
-    // ansible, coin, whispered, oracle, stateful, then the two GENERAL-store
-    // gated definitions (`oracle` is the 616930db consult tool; `stateful` is
-    // the P4.d10 `$state` tool; `secure_line`/`novice_aid` are P4.d19's gated
-    // pair). v4's "Available: …" list reads exactly this, so the order is v4's,
-    // not a guess — and CHAR_A's fact sheet qualifies for BOTH gates.
+    // The handler oracle's `unknown-tool` case pins this order to v4: CHAR_A's
+    // own vault in stored order — ansible, coin, whispered, oracle, stateful,
+    // then P4.D35's two effects tools (`ledger`, `sealed_tally`) — then the two
+    // GENERAL-store gated definitions. (`oracle` is the 616930db consult tool;
+    // `stateful` is the P4.d10 `$state` tool; `secure_line`/`novice_aid` are
+    // P4.d19's gated pair.) v4's "Available: …" list reads exactly this modulo
+    // the participant tier, which that case sees and this context does not:
+    // it resolves for CHAR_A ALONE, so CHAR_C's `beacon`/`mangled` are absent
+    // here and present there. CHAR_A's fact sheet qualifies for BOTH gates.
     assert_eq!(
         expected_roster
             .iter()
@@ -149,6 +152,8 @@ fn build_tools_resolves_and_offers_run_custom() {
             "whispered",
             "oracle",
             "stateful",
+            "ledger",
+            "sealed_tally",
             "secure_line",
             "novice_aid"
         ]
@@ -190,7 +195,9 @@ fn build_tools_resolves_and_offers_run_custom() {
             .iter()
             .map(|(n, _)| n.as_str())
             .collect::<Vec<_>>(),
-        vec!["ansible", "stateful"],
+        // `ledger` (P4.D35) is on CHAR_B's own vault and carries no gate, so it
+        // stays — the assertion is about the two GATED definitions being gone.
+        vec!["ansible", "stateful", "ledger"],
         "CHAR_B's sheet must be withheld BOTH gated definitions"
     );
     let description_b = run_custom_b["function"]["description"].as_str().unwrap();

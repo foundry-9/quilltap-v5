@@ -48153,3 +48153,93 @@ lacks them; nothing breaks at runtime (extra keys are tolerated), but v4's
 commit also gives the run dialog a "may write" line, which needs them. That
 file is not named in either order's ownership list — D36 should take it, or
 escalate.
+
+### Lane record — P4.D35 unit 6: the fixture rebuild + every affected family
+
+**The `pascal-run-custom-{main,mount}.db` fixture was REBUILT** through v4's
+real repos + `storeMountFile` at `c4d4b0de`, gaining:
+
+- **A PROJECT tier.** `The Ledger Office` (`a3000000-…-0000000000aa`), state
+  `{proj_tier: 'p', encounter: {count: 1}}`, and `CHAT.projectId` pointing at
+  it. Its store carries no `Tools/` folder, so the ROSTER is untouched and only
+  the cascade gains a tier — which is the whole point: without a project, "write
+  where it lives" cannot be posed a real question.
+- **`ledger`** (vaults A and B) — chipLabel + eleven effects. One CHAR_A run
+  touches ALL FIVE stores: `banner`→chat, `gscore`→group, `gen_tier`→general,
+  `proj_tier` and the NESTED `encounter.count`→project, `fresh_key`→chat (the
+  nowhere-default), and `metadata.lastEntry`→the fact sheet. The last three
+  effects are the skip paths (an outcome condition that misses, a comparator
+  that misses, an expression naming a metadata key nobody has).
+- **`sealed_tally`** (vault A) — `revealOdds: false` + one effect on
+  `difficulty`, which lives at BOTH the chat and general tiers, so it pins
+  cascade PRECEDENCE and the odds-line suppression at once. Rolls `min===max`
+  like every other fixture tool (its first draft had no `roll` spec, and v4's
+  default 0..1 range DRAWS — the byte-pool panic caught it immediately).
+
+**New minted vault ids** (`.meta.json` sidecar, committed):
+vaultA `21327f22-3f8e-4839-a9e8-d3ad9955abcc`,
+vaultB `61dba647-a7de-42f4-b79f-361c003a80e7`,
+vaultC `e69cec28-a945-4c1a-af7a-4843e1daa4b6`,
+vaultD `ef7ce6e6-7580-4e76-b249-092ae8a3285e`.
+The e2e seed reads `vaultA` from the sidecar at runtime, so it follows on its
+own (P4.D36 owns the spec side).
+
+**The store dump — the unit's real contribution.** Both route oracles and both
+Rust harnesses grew a `stores` capture: the four state tiers plus all three
+character fact sheets, read back through each side's REAL repositories after the
+run (`dumpStores` / `common::dump_pascal_stores`). Without it the differential
+could only compare `pascalMeta.effects`, which is what the applier CLAIMS —
+**mutation-proven: silently no-oping the general-state write left `pascalMeta`
+reporting the effect as applied and the body assertion green, and only the store
+dump went red.** The workbench route got the mirror-image dump
+(`dumpBenchStores` / `dump_bench_stores`) on EVERY case, because "the bench
+computes, never applies" is a claim about absence that no body assertion can
+carry.
+
+**Corpus growth:** handler 24 → 27 cases, chat route 20 → 24, workbench route
+58 → 62 (a new `effectful` definition + 3 previews + 1 audit).
+
+**Two committed pins moved with the fixture, both correctly:**
+`pascal_build_tools_roster`'s asserted roster order gained `ledger` and
+`sealed_tally`, and its CHAR_B assertion gained `ledger` (which is ungated and
+on B's own vault — the assertion is about the two GATED definitions being gone).
+
+**Every family regenerated fresh at `c4d4b0de` and re-run by name:**
+`pascal_custom_tool_definition`, `pascal_custom_tools_execution`,
+`pascal_custom_tools_route`, `pascal_run_custom_handler`,
+`pascal_definition_reader`, `pascal_build_tools_roster`, `pascal_run_custom`,
+`tool_definitions` (+ `_canonical`), `pascal_tool_vocabulary`,
+`pascal_writers`, `pascal_workbench_route`, `pascal_expressions` (new), and the
+neutrality set `pascal_simulate`, `pascal_roster`, `pascal_workbench`,
+`pascal_llm_consult`, `chats_messages_ops_tier2`, `state_routes`,
+`state_cascade`, `p4_6ay_workbench_wire_contract`.
+
+**Mutation proofs for the end-to-end arms (D24):**
+
+1. `resolve_tier` always answers chat → RED at `run-ledger-as-a`.
+2. The manual route drops the `asCharacterId` asymmetry (always passes the
+   perspective's id) → RED at `run-ledger-no-character`.
+3. The general-state commit silently no-ops → RED at `effects-all-tiers`, on
+   the STORE dump alone, with the body still green.
+
+**Tier-2 item 9 — v4's `side-effects.test.ts` matrix, disposed.** The applier
+was split into a pure `plan_applications` and an impure `commit_plan` (v4 keeps
+them together because its five writes are mockable repository calls; v5's four
+state paths are heterogeneous writer calls). That split makes 15 of v4's 17
+arms provable without a database, and they are: tier resolution across all four
+tiers, the nowhere-default, chat-wins precedence, the no-projectId skip, the
+ambiguous-group shadowing consequence, presence-not-truthiness, batching,
+sequential visibility through the local copies, an earlier effect pinning a
+later one's tier, the metadata whole-object RMW, the characterId gate, the
+cascade-null arm, the underscore re-check, skipped resolutions, and the
+`AppliedEffect` key order. The two remaining arms (per-store write failure,
+vault-gone survival) need real writers and are covered by the route
+differentials' store dumps.
+
+**Recorded, not fixed — the underscore re-check is UNREACHABLE from a loadable
+definition.** `parse_effect_target` rejects `state._x` at LOAD, so
+`resolve_effects` can never produce one. v4 reaches its own re-check only by
+hand-constructing a `ResolvedEffect` the loader would never have produced, and
+v5's unit test does exactly the same. It is a regression tripwire, not a live
+path — the same disposition `require_string` already carries in
+`custom_tools.rs`.

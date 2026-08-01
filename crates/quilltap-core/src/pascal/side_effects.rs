@@ -141,13 +141,62 @@ enum Store {
     Metadata,
 }
 
+/// What the pure planning pass worked out: the local working copies as they now
+/// stand, and the applications in effect order, each tagged with the store it
+/// rode.
+///
+/// v4 keeps planning and committing in one function because its five writes are
+/// mockable repository calls; v5's four state paths are heterogeneous writer
+/// calls, so the split is what makes v4's whole `side-effects.test.ts` matrix —
+/// tier resolution, batching, sequential visibility through the copies, the
+/// metadata RMW, the characterId gate, the cascade-null arm, the underscore
+/// re-check — provable without a database. Only the COMMIT half needs one.
+#[derive(Debug, Default)]
+struct Plan {
+    /// The four tiers as they now stand, `None` when the cascade was unreadable.
+    tiers: Option<[Value; 4]>,
+    /// The character's fact sheet with every metadata effect folded in, `None`
+    /// when no metadata effect applied.
+    metadata_next: Option<Map<String, Value>>,
+    pending: Vec<(Store, AppliedEffect)>,
+}
+
 /// Apply a run's resolved effects. Returns the writes that landed, in effect
 /// order, for `pascalMeta.effects`. Never fails the run.
 pub fn apply_custom_tool_effects(
     writers: &mut WriterSet,
     params: ApplyCustomToolEffectsParams<'_>,
 ) -> Vec<AppliedEffect> {
-    let ApplyCustomToolEffectsParams {
+    let chat_id = params.chat_id;
+    let tool_name = params.tool_name;
+    let cascade = params.cascade;
+    let character_id = params.character_id;
+
+    let Plan {
+        tiers,
+        metadata_next,
+        pending,
+    } = plan_applications(&params);
+    if pending.is_empty() {
+        return Vec::new();
+    }
+
+    commit_plan(
+        writers,
+        chat_id,
+        tool_name,
+        cascade,
+        character_id,
+        tiers,
+        metadata_next,
+        pending,
+    )
+}
+
+/// The pure half: decide WHERE each applicable effect goes and what it writes,
+/// mutating only local copies. Never touches a store.
+fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
+    let &ApplyCustomToolEffectsParams {
         chat_id,
         tool_name,
         effects,
@@ -166,7 +215,7 @@ pub fn apply_custom_tool_effects(
         })
         .collect();
     if applicable.is_empty() {
-        return Vec::new();
+        return Plan::default();
     }
 
     // Local working copies — read once, mutated in effect order, committed once
@@ -272,7 +321,27 @@ pub fn apply_custom_tool_effects(
         }
     }
 
-    // Commit — at most one write per touched store, each individually fail-soft.
+    Plan {
+        tiers,
+        metadata_next,
+        pending,
+    }
+}
+
+/// The impure half: at most one write per touched store, in the fixed order
+/// chat → project → group → general → metadata, each individually caught. A
+/// failed store's effects drop from the applied list.
+#[allow(clippy::too_many_arguments)]
+fn commit_plan(
+    writers: &mut WriterSet,
+    chat_id: &str,
+    tool_name: &str,
+    cascade: Option<&StateCascadeResult>,
+    character_id: Option<&str>,
+    tiers: Option<[Value; 4]>,
+    metadata_next: Option<Map<String, Value>>,
+    pending: Vec<(Store, AppliedEffect)>,
+) -> Vec<AppliedEffect> {
     let touched: Vec<Store> = {
         let mut seen: Vec<Store> = Vec::new();
         for (store, _) in &pending {
@@ -519,6 +588,8 @@ fn resolve_tier(
 
 #[cfg(test)]
 mod tests {
+    use super::super::custom_tool_types::parse_effect_target;
+    use super::super::expressions::ExprValue;
     use super::*;
     use crate::state::cascade::GroupTier;
     use serde_json::json;
@@ -615,6 +686,230 @@ mod tests {
             let t = tiers(json!({}), json!({ "k": held }), json!({}), json!({}));
             assert_eq!(resolve_tier(&t, &c, "k"), EffectTier::Project);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // v4's `side-effects.test.ts` matrix, over the pure planning pass.
+    //
+    // v4 mocks its five repository calls, so its whole matrix runs in one unit
+    // file. v5's writes are heterogeneous writer calls, so the matrix splits:
+    // everything below is planning, and the COMMIT half (one write per touched
+    // store, per-store failure isolation) is proven end-to-end by
+    // `pascal_custom_tools_route_equivalence` / `pascal_run_custom_handler_equivalence`
+    // over the rebuilt fixture.
+    // ---------------------------------------------------------------------
+
+    fn full_cascade(
+        chat: Value,
+        project: Value,
+        group: Value,
+        general: Value,
+    ) -> StateCascadeResult {
+        StateCascadeResult {
+            chat_state: chat,
+            project_state: project,
+            group_state: group,
+            general_state: general,
+            merged: json!({}),
+            group_tier: GroupTier {
+                status: "single",
+                candidates: Vec::new(),
+                applied_group_id: Some("g1".to_string()),
+            },
+            project_id: Some("p1".to_string()),
+        }
+    }
+
+    fn state_effect(index: usize, target: &str, value: ExprValue) -> ResolvedEffect {
+        ResolvedEffect::Applicable {
+            index,
+            target: parse_effect_target(target).expect("target parses"),
+            value,
+        }
+    }
+
+    fn plan(
+        effects: &[ResolvedEffect],
+        cascade: Option<&StateCascadeResult>,
+        character_id: Option<&str>,
+        metadata: &Map<String, Value>,
+    ) -> Plan {
+        plan_applications(&ApplyCustomToolEffectsParams {
+            chat_id: "chat-1",
+            tool_name: "probe",
+            effects,
+            cascade,
+            character_id,
+            metadata_snapshot: metadata,
+        })
+    }
+
+    #[test]
+    fn issues_one_application_per_effect_but_batches_by_store() {
+        let c = full_cascade(json!({"a": 1}), json!({}), json!({}), json!({}));
+        let effects = [
+            state_effect(0, "state.a", ExprValue::Number(2.0)),
+            state_effect(1, "state.a", ExprValue::Number(3.0)),
+            state_effect(2, "state.b", ExprValue::Bool(true)),
+        ];
+        let p = plan(&effects, Some(&c), None, &Map::new());
+        // Three applications in EFFECT order...
+        assert_eq!(p.pending.len(), 3);
+        // ...but all on ONE store, so the commit issues one write.
+        let stores: Vec<Store> = p.pending.iter().map(|(s, _)| *s).collect();
+        assert!(stores.iter().all(|s| *s == Store::Tier(EffectTier::Chat)));
+        // The last write wins in the local copy.
+        assert_eq!(p.tiers.unwrap()[0], json!({"a": 3, "b": true}));
+    }
+
+    #[test]
+    fn sequential_effects_see_each_other_through_the_local_copies() {
+        let c = full_cascade(json!({}), json!({}), json!({}), json!({}));
+        let effects = [
+            state_effect(0, "state.fresh", ExprValue::Number(1.0)),
+            state_effect(1, "state.fresh", ExprValue::Number(2.0)),
+        ];
+        let p = plan(&effects, Some(&c), None, &Map::new());
+        // The SECOND application's `previous` is the FIRST's write, read back
+        // from the local copy — never from a store re-read.
+        assert_eq!(p.pending[0].1.previous, None);
+        assert_eq!(p.pending[1].1.previous, Some(json!(1)));
+    }
+
+    #[test]
+    fn an_earlier_effect_minting_a_chat_key_pins_later_writes_there() {
+        // `k` lives only in GENERAL. The first effect writes `k`, which resolves
+        // to general; a DIFFERENT key `j` lives nowhere and mints at chat; then
+        // a second write of `j` must stay at chat because the local copy now
+        // carries it.
+        let c = full_cascade(json!({}), json!({}), json!({}), json!({"k": 1}));
+        let effects = [
+            state_effect(0, "state.k", ExprValue::Number(2.0)),
+            state_effect(1, "state.j", ExprValue::Number(3.0)),
+            state_effect(2, "state.j", ExprValue::Number(4.0)),
+        ];
+        let p = plan(&effects, Some(&c), None, &Map::new());
+        assert_eq!(p.pending[0].1.tier, Some(EffectTier::General));
+        assert_eq!(p.pending[1].1.tier, Some(EffectTier::Chat));
+        assert_eq!(p.pending[2].1.tier, Some(EffectTier::Chat));
+        assert_eq!(p.pending[2].1.previous, Some(json!(3)));
+    }
+
+    #[test]
+    fn metadata_read_modify_writes_the_snapshot_as_one_whole_object() {
+        let mut snapshot = Map::new();
+        snapshot.insert("keep".into(), json!("me"));
+        snapshot.insert("lockpick".into(), json!("whole"));
+        let effects = [
+            ResolvedEffect::Applicable {
+                index: 0,
+                target: parse_effect_target("metadata.lockpick").unwrap(),
+                value: ExprValue::String("broken pick".into()),
+            },
+            ResolvedEffect::Applicable {
+                index: 1,
+                target: parse_effect_target("metadata.tally").unwrap(),
+                value: ExprValue::Number(1.0),
+            },
+        ];
+        let p = plan(&effects, None, Some("char-1"), &snapshot);
+        let next = p.metadata_next.expect("metadata folded");
+        // Untouched keys SURVIVE — the write is a whole-object replace of a
+        // read-modified copy, not a wipe.
+        assert_eq!(next.get("keep"), Some(&json!("me")));
+        assert_eq!(next.get("lockpick"), Some(&json!("broken pick")));
+        assert_eq!(next.get("tally"), Some(&json!(1)));
+        assert_eq!(p.pending[0].1.previous, Some(json!("whole")));
+        assert_eq!(p.pending[1].1.previous, None);
+        assert_eq!(p.pending[0].1.tier, None);
+    }
+
+    #[test]
+    fn metadata_effects_skip_when_no_character_rolled() {
+        let effects = [ResolvedEffect::Applicable {
+            index: 0,
+            target: parse_effect_target("metadata.lockpick").unwrap(),
+            value: ExprValue::Bool(true),
+        }];
+        let p = plan(&effects, None, None, &Map::new());
+        assert!(p.pending.is_empty());
+        assert!(p.metadata_next.is_none());
+    }
+
+    #[test]
+    fn state_effects_skip_when_the_cascade_could_not_be_read_keeping_metadata() {
+        let effects = [
+            state_effect(0, "state.a", ExprValue::Number(1.0)),
+            ResolvedEffect::Applicable {
+                index: 1,
+                target: parse_effect_target("metadata.b").unwrap(),
+                value: ExprValue::Bool(true),
+            },
+        ];
+        let p = plan(&effects, None, Some("char-1"), &Map::new());
+        assert_eq!(p.pending.len(), 1);
+        assert_eq!(p.pending[0].0, Store::Metadata);
+        assert!(p.tiers.is_none());
+    }
+
+    #[test]
+    fn a_user_only_first_segment_is_refused_at_apply_time_too() {
+        // UNREACHABLE from a loadable definition — `parse_effect_target` rejects
+        // `state._x` at load, and this is the defense-in-depth re-check behind
+        // it. v4 reaches it the same way: by handing the applier a resolved
+        // effect the loader would never have produced.
+        let c = full_cascade(json!({}), json!({}), json!({}), json!({}));
+        let effects = [ResolvedEffect::Applicable {
+            index: 0,
+            target: EffectTarget::State {
+                path: vec![
+                    PathKey::Prop("_secrets".into()),
+                    PathKey::Prop("combo".into()),
+                ],
+                raw: "state._secrets.combo".into(),
+            },
+            value: ExprValue::Number(1.0),
+        }];
+        let p = plan(&effects, Some(&c), None, &Map::new());
+        assert!(p.pending.is_empty(), "the refused effect writes nothing");
+        // And nothing was mutated in the local copy either.
+        assert_eq!(p.tiers.unwrap()[0], json!({}));
+    }
+
+    #[test]
+    fn skipped_resolutions_are_ignored_and_nothing_applies() {
+        let effects = [
+            ResolvedEffect::Skipped {
+                index: 0,
+                reason: "condition did not hold".into(),
+            },
+            ResolvedEffect::Skipped {
+                index: 1,
+                reason: "expression did not evaluate: …".into(),
+            },
+        ];
+        let p = plan(&effects, None, Some("char-1"), &Map::new());
+        assert!(p.pending.is_empty());
+        assert!(p.tiers.is_none() && p.metadata_next.is_none());
+    }
+
+    #[test]
+    fn a_nested_path_writes_into_the_tier_its_first_segment_lives_in() {
+        let c = full_cascade(
+            json!({}),
+            json!({"encounter": {"count": 1}}),
+            json!({}),
+            json!({}),
+        );
+        let effects = [state_effect(
+            0,
+            "state.encounter.count",
+            ExprValue::Number(2.0),
+        )];
+        let p = plan(&effects, Some(&c), None, &Map::new());
+        assert_eq!(p.pending[0].1.tier, Some(EffectTier::Project));
+        assert_eq!(p.pending[0].1.previous, Some(json!(1)));
+        assert_eq!(p.tiers.unwrap()[1], json!({"encounter": {"count": 2}}));
     }
 
     #[test]

@@ -62,6 +62,8 @@ const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
 
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
+/** P4.D35: the PROJECT tier, so a side effect can land in all four stores. */
+const PROJECT = 'a3000000-0000-4000-8000-0000000000aa';
 const GENERAL_MP = '93000000-0000-4000-8000-0000000000aa';
 const P_A = 'e1000000-0000-4000-8000-00000000000a';
 const P_B = 'e1000000-0000-4000-8000-00000000000b';
@@ -212,6 +214,71 @@ const STATEFUL = {
     },
     { when: true, message: 'Short of the stakes.', state: 'failure' },
   ],
+};
+
+/**
+ * P4.D35 (v4 `c4d4b0de`): the side-effects tool. One run touches ALL FIVE
+ * stores when CHAR_A rolls it — "write where it lives" sends each key to the
+ * tier that already carries it, and the two keys nobody carries default to the
+ * chat tier:
+ *
+ *   banner            → chat    (chat state carries it)
+ *   gscore            → group   (group state carries it; CHAR_A is a member)
+ *   gen_tier          → general (the General mount's state.json carries it)
+ *   proj_tier         → project (the project store carries it)
+ *   encounter.count   → project (its FIRST SEGMENT lives there; nested write)
+ *   fresh_key         → chat    (nowhere → the most local store)
+ *   metadata.lastEntry→ the rolling character's fact sheet (whole-object RMW)
+ *
+ * CHAR_B has no group, so `gscore` is not in their cascade at all and the
+ * expression reading it fails to evaluate — the effect is SKIPPED rather than
+ * shadowed, which is the difference the two run cases make visible.
+ *
+ * The last three effects are the skip paths: an outcome condition that does not
+ * hold, a comparator condition that does not hold, and an expression naming a
+ * metadata key nobody has.
+ */
+const LEDGER = {
+  name: 'ledger',
+  title: 'The Ledger',
+  chipLabel: 'Ledger — {{params.entry}} ({{value}})',
+  description: 'Post an entry to the ledger.',
+  parameters: { entry: { type: 'string', default: 'sundries' } },
+  roll: { min: 7, max: 7 },
+  effects: [
+    { target: 'state.banner', value: "'ledger'" },
+    { target: 'state.gscore', value: '{{state.gscore}} + 1' },
+    { target: 'state.gen_tier', value: false },
+    { target: 'state.proj_tier', value: "'p:' + {{value}}" },
+    { target: 'state.encounter.count', value: '{{state.encounter.count}} + 1' },
+    { target: 'state.fresh_key', value: true },
+    { target: 'metadata.lastEntry', value: "'ledger:' + {{params.entry}}" },
+    { when: { outcome: { eq: 'success' } }, target: 'state.wins', value: 1 },
+    { when: { outcome: { eq: 'failure' } }, target: 'state.losses', value: 1 },
+    { when: { gte: 100 }, target: 'state.never', value: 1 },
+    { target: 'state.unresolved', value: '{{metadata.absent_key}} + 1' },
+  ],
+  outcomes: [
+    { when: { gte: 5 }, message: 'Posted: {{params.entry}}.', state: 'success' },
+    { when: true, message: 'Refused.', state: 'failure' },
+  ],
+};
+
+/**
+ * P4.D35: effects under `revealOdds: false` — the Side-effects line goes with
+ * the rest of the odds, and the write still happens. `difficulty` lives at BOTH
+ * the chat and the general tier, so this also pins cascade PRECEDENCE: chat is
+ * searched first and wins, and the expression reads the merged view (6, not 9).
+ */
+const SEALED_TALLY = {
+  name: 'sealed_tally',
+  description: 'Tally, quietly.',
+  revealOdds: false,
+  // min === max: no draw, so the outcome is deterministic on both sides
+  // without a shared byte source (the fixture's standing rule).
+  roll: { min: 1, max: 1 },
+  effects: [{ target: 'state.difficulty', value: '{{state.difficulty}} + 1' }],
+  outcomes: [{ when: true, message: 'Tallied.', state: 'info' }],
 };
 
 const ORACLE = {
@@ -421,10 +488,13 @@ async function main(): Promise<void> {
   await writeVaultFile(vaultA, 'Tools/whispered.tool.json', WHISPERED);
   await writeVaultFile(vaultA, 'Tools/oracle.tool.json', ORACLE);
   await writeVaultFile(vaultA, 'Tools/stateful.tool.json', STATEFUL);
+  await writeVaultFile(vaultA, 'Tools/ledger.tool.json', LEDGER);
+  await writeVaultFile(vaultA, 'Tools/sealed_tally.tool.json', SEALED_TALLY);
   await writeVaultFile(vaultA, 'metadata.json', { hasAnsibleAccess: true, clearanceLevel: 3 });
 
   await writeVaultFile(vaultB, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultB, 'Tools/stateful.tool.json', STATEFUL);
+  await writeVaultFile(vaultB, 'Tools/ledger.tool.json', LEDGER);
   await writeVaultFile(vaultB, 'metadata.json', { faction: 'Ordo Ferrum' });
 
   await writeVaultFile(vaultC, 'Tools/ansible.tool.json', ANSIBLE);
@@ -466,6 +536,20 @@ async function main(): Promise<void> {
   if ((group as { id: string }).id !== GROUP) throw new Error('group id drift');
   await repos.groups.update(GROUP, { state: { gscore: 4 } } as never);
   await repos.groupCharacterMembers.addMember(GROUP, CHAR_A);
+
+  // P4.D35: the PROJECT tier. Its store carries no `Tools/` folder, so the
+  // roster is untouched and only the CASCADE gains a tier — which is what makes
+  // the four-store effect matrix reachable at all. `encounter` is nested on
+  // purpose: an effect writing `state.encounter.count` must resolve its tier
+  // from the FIRST segment and then write down the path.
+  const project = await repos.projects.create(
+    { name: 'The Ledger Office', description: null, state: {} } as never,
+    { id: PROJECT, createdAt: TS, updatedAt: TS } as never,
+  );
+  if ((project as { id: string }).id !== PROJECT) throw new Error('project id drift');
+  await repos.projects.update(PROJECT, {
+    state: { proj_tier: 'p', encounter: { count: 1 } },
+  } as never);
 
   await repos.docMountPoints.create(
     {
@@ -536,6 +620,9 @@ async function main(): Promise<void> {
       ],
       // P4.d10: the chat tier of the cascade (narrowest — wins on collision).
       state: { difficulty: 6, banner: 'chat' },
+      // P4.D35: the chat belongs to the project, so the cascade has all four
+      // tiers and "write where it lives" can be posed a real question.
+      projectId: PROJECT,
       tags: [],
     } as never,
     { id: CHAT, createdAt: TS, updatedAt: TS } as never,

@@ -158,3 +158,73 @@ pub fn open_main_and_llm_logs_db(pepper: &str) -> (Db, tempfile::TempDir) {
     .expect("open db");
     (db, dir)
 }
+
+/// P4.D35 — the four state tiers plus every character's fact sheet, read back
+/// through the REAL repositories after a side-effect-bearing run.
+///
+/// This is what turns the applied-effects claim into a MEASUREMENT:
+/// `pascalMeta.effects` says where each write was MEANT to go, and this says
+/// where it actually landed. The oracle's `dumpStores` is its twin, reading v4's
+/// repositories over the same fixture.
+///
+/// The character ids are the fixture's three, labelled A/B/C. A broken vault
+/// reads as `null` rather than sinking the dump — the fixture's CHAR_D is not
+/// in the list, but CHAR_A/B/C can still be read through a partially damaged
+/// mount.
+pub fn dump_pascal_stores(db: &Db, chat_id: &str, group_id: &str, characters: [&str; 3]) -> Value {
+    use quilltap_core::db::characters_read;
+    use quilltap_core::db::chats_read;
+    use quilltap_core::db::groups::GroupsRepository;
+    use quilltap_core::db::projects::ProjectsRepository;
+    use quilltap_core::services::mount_index::general_state::read_general_state;
+
+    db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let chat = chats_read::find_by_id(main, chat_id)?;
+            let chat_state = chat
+                .as_ref()
+                .and_then(|c| c.get("state").cloned())
+                .unwrap_or(Value::Null);
+            let project_id = chat
+                .as_ref()
+                .and_then(|c| c.get("projectId").and_then(Value::as_str))
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+
+            let project_state = match &project_id {
+                Some(pid) => ProjectsRepository::new(main, mount)
+                    .find_by_id(pid)
+                    .ok()
+                    .flatten()
+                    .and_then(|p| p.get("state").cloned())
+                    .unwrap_or(Value::Null),
+                None => Value::Null,
+            };
+            let group_state = GroupsRepository::new(main, mount)
+                .find_by_id(group_id)
+                .ok()
+                .flatten()
+                .and_then(|g| g.get("state").cloned())
+                .unwrap_or(Value::Null);
+
+            let mut metadata = Map::new();
+            for (label, id) in ["A", "B", "C"].iter().zip(characters.iter()) {
+                let sheet = characters_read::find_by_id(main, mount, id)
+                    .ok()
+                    .flatten()
+                    .and_then(|c| c.get("metadata").cloned())
+                    .unwrap_or(Value::Null);
+                metadata.insert((*label).to_string(), sheet);
+            }
+
+            let mut out = Map::new();
+            out.insert("chat".into(), chat_state);
+            out.insert("project".into(), project_state);
+            out.insert("group".into(), group_state);
+            out.insert("general".into(), read_general_state(main, Some(mount)));
+            out.insert("metadata".into(), Value::Object(metadata));
+            Ok(Value::Object(out))
+        })
+    })
+    .expect("store dump reads")
+}

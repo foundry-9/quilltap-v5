@@ -44,6 +44,8 @@ const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
+/** P4.D35: the group tier the store dump reads back. */
+const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
 /** P4.d19: the character whose vault is broken (no `properties.json`). */
 const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
 const P_A = 'e1000000-0000-4000-8000-00000000000a';
@@ -101,6 +103,40 @@ const CONSULT_PROFILE_TS = '2026-03-01T00:00:00.000Z';
 /** The canned consult answer: `YES` hits the oracle tool's `eq: 'YES'` row. */
 const CONSULT_ANSWER = 'YES';
 const CONSULT_USAGE = { promptTokens: 42, completionTokens: 3, totalTokens: 45 };
+
+/**
+ * P4.D35: the four state tiers + every character's fact sheet, read back
+ * through v4's REAL repositories after the run. This is what makes the
+ * side-effect claim a MEASUREMENT — `pascalMeta.effects` says where each write
+ * was meant to go, and this says where it actually landed.
+ */
+async function dumpStores(chatId: string): Promise<Record<string, unknown>> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const { readGeneralState } = await import('@/lib/mount-index/general-state');
+  const repos = getRepositories();
+  const chat = (await repos.chats.findById(chatId)) as { state?: unknown; projectId?: string } | null;
+  const project = chat?.projectId
+    ? ((await repos.projects.findById(chat.projectId)) as { state?: unknown } | null)
+    : null;
+  const group = (await repos.groups.findById(GROUP)) as { state?: unknown } | null;
+  const metadata: Record<string, unknown> = {};
+  for (const [label, id] of [['A', CHAR_A], ['B', CHAR_B], ['C', CHAR_C]] as const) {
+    try {
+      const character = (await repos.characters.findById(id)) as { metadata?: unknown } | null;
+      metadata[label] = character?.metadata ?? null;
+    } catch {
+      // A broken vault reads as null rather than sinking the dump.
+      metadata[label] = null;
+    }
+  }
+  return {
+    chat: chat?.state ?? null,
+    project: project?.state ?? null,
+    group: group?.state ?? null,
+    general: await readGeneralState(),
+    metadata,
+  };
+}
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -293,6 +329,7 @@ async function runCase(
       output,
       columns,
       rows,
+      stores: await dumpStores(CHAT),
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
     };
@@ -387,6 +424,23 @@ async function main(): Promise<void> {
     // A name no roster carries, through a broken vault: the vault failure wins,
     // because it is answered first.
     { name: 'vault-broken-unknown-tool', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'nonexistent' } },
+
+    // ---- P4.D35: side effects, end-to-end through the LLM entrance -------
+    // CHAR_A touches all five stores in one run: chat (banner + the
+    // nowhere-default fresh_key + the outcome-conditioned win), project
+    // (proj_tier + the nested encounter.count), group (gscore), general
+    // (gen_tier), and the fact sheet (lastEntry, folded into a whole-object
+    // RMW that must keep hasAnsibleAccess and clearanceLevel).
+    { name: 'effects-all-tiers', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'ledger', parameters: { entry: 'brass' } } },
+    // CHAR_B is in no group, so `gscore` is not in their cascade at all: the
+    // expression reading it fails to evaluate and that effect is SKIPPED —
+    // NOT shadowed at the chat tier. The store dump is what proves the
+    // difference.
+    { name: 'effects-no-group-skips-the-group-write', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'ledger' } },
+    // `difficulty` lives at BOTH the chat and general tiers: chat is searched
+    // first and wins, and the expression reads the merged view (6, not 9).
+    // Also the `revealOdds: false` arm — the write happens, the odds do not.
+    { name: 'effects-precedence-under-sealed-odds', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'sealed_tally' } },
   ];
 
   const out = fs.createWriteStream(outPath);

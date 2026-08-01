@@ -61,6 +61,8 @@ const CHAT_REMOVED: &str = "c1000000-0000-4000-8000-000000000006";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
+/// P4.D35: the group tier the store dump reads back.
+const GROUP: &str = "a2000000-0000-4000-8000-0000000000aa";
 const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -542,6 +544,42 @@ async fn custom_tools_route_matches_oracle() {
         ("list-solo", CHAT_SOLO, None, false),
         // `removed` is not a candidate; `silent` still is.
         ("list-removed-operator", CHAT_REMOVED, None, false),
+        // -------------------------------------------------------------------
+        // P4.D35 — side effects through the MANUAL entrance.
+        // -------------------------------------------------------------------
+        (
+            "run-ledger-as-a",
+            CHAT,
+            Some(json!({
+                "tool": "ledger",
+                "asCharacterId": "a1000000-0000-4000-8000-00000000000a",
+                "parameters": { "entry": "brass" }
+            })),
+            false,
+        ),
+        (
+            "run-ledger-as-b",
+            CHAT,
+            Some(
+                json!({ "tool": "ledger", "asCharacterId": "a1000000-0000-4000-8000-00000000000b" }),
+            ),
+            false,
+        ),
+        // THE asymmetry: a run nobody made writes to nobody's fact sheet.
+        (
+            "run-ledger-no-character",
+            CHAT,
+            Some(json!({ "tool": "ledger" })),
+            false,
+        ),
+        (
+            "run-sealed-tally",
+            CHAT,
+            Some(
+                json!({ "tool": "sealed_tally", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
@@ -623,6 +661,20 @@ async fn custom_tools_route_matches_oracle() {
             canon(&Value::Array(sys)),
             canon(&Value::Array(oracle_system_rows(want))),
             "case '{name}' system rows"
+        );
+        // P4.D35: WHERE the writes landed, not merely what `pascalMeta` claims.
+        // A GET case's oracle `stores` is null, and so is the dump it is
+        // compared against — the read path writes nothing, which is itself
+        // worth asserting.
+        let got_stores = if body.is_some() {
+            common::dump_pascal_stores(&db, chat, GROUP, [CHAR_A, CHAR_B, CHAR_C])
+        } else {
+            Value::Null
+        };
+        assert_eq!(
+            canon(&got_stores),
+            canon(&want["stores"]),
+            "case '{name}' state tiers + fact sheets after the run"
         );
         checked += 1;
     }

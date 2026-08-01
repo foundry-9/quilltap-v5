@@ -49,6 +49,8 @@ const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
+/// P4.D35: the group tier the store dump reads back.
+const GROUP: &str = "a2000000-0000-4000-8000-0000000000aa";
 /// P4.d19: the character whose vault is broken (no `properties.json`).
 const CHAR_D: &str = "a1000000-0000-4000-8000-00000000000d";
 const P_A: &str = "e1000000-0000-4000-8000-00000000000a";
@@ -508,6 +510,28 @@ fn run_custom_handler_matches_oracle() {
             input: json!({ "tool": "stateful" }),
             profile: false,
         },
+        // ---- P4.D35: side effects, end-to-end through the LLM entrance ----
+        Case {
+            name: "effects-all-tiers",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "ledger", "parameters": { "entry": "brass" } }),
+            profile: false,
+        },
+        Case {
+            name: "effects-no-group-skips-the-group-write",
+            character_id: Some(CHAR_B),
+            vault: Some(meta.vault_b.clone()),
+            input: json!({ "tool": "ledger" }),
+            profile: false,
+        },
+        Case {
+            name: "effects-precedence-under-sealed-odds",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "sealed_tally" }),
+            profile: false,
+        },
     ];
 
     // The corpus is declared on BOTH sides, so a case added to the oracle and
@@ -599,6 +623,8 @@ fn run_custom_handler_matches_oracle() {
         // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
         let got_logs = common::dump_llm_logs(&db);
         let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
+        // P4.D35: WHERE the writes landed, not merely what `pascalMeta` claims.
+        let got_stores = common::dump_pascal_stores(&db, CHAT, GROUP, [CHAR_A, CHAR_B, CHAR_C]);
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
 
@@ -614,6 +640,12 @@ fn run_custom_handler_matches_oracle() {
             canon(&Value::Array(system_rows(&msgs))),
             canon(&Value::Array(system_rows(want))),
             "case '{}' posted messages",
+            case.name
+        );
+        assert_eq!(
+            canon(&got_stores),
+            canon(&want["stores"]),
+            "case '{}' state tiers + fact sheets after the run",
             case.name
         );
         checked += 1;

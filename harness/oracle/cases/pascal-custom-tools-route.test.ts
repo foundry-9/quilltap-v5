@@ -48,6 +48,9 @@ const CHAT_SOLO = 'c1000000-0000-4000-8000-000000000005';
 const CHAT_REMOVED = 'c1000000-0000-4000-8000-000000000006';
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
+/** P4.D35: the group tier the store dump reads back. */
+const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
+const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
 
 interface CaseSpec {
   name: string;
@@ -97,6 +100,40 @@ const CONSULT_PROFILE_TS = '2026-03-01T00:00:00.000Z';
 /** The canned consult answer: `YES` hits the oracle tool's `eq: 'YES'` row. */
 const CONSULT_ANSWER = 'YES';
 const CONSULT_USAGE = { promptTokens: 42, completionTokens: 3, totalTokens: 45 };
+
+/**
+ * P4.D35: the four state tiers + every character's fact sheet, read back
+ * through v4's REAL repositories after the run. This is what makes the
+ * side-effect claim a MEASUREMENT — `pascalMeta.effects` says where each write
+ * was meant to go, and this says where it actually landed.
+ */
+async function dumpStores(chatId: string): Promise<Record<string, unknown>> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const { readGeneralState } = await import('@/lib/mount-index/general-state');
+  const repos = getRepositories();
+  const chat = (await repos.chats.findById(chatId)) as { state?: unknown; projectId?: string } | null;
+  const project = chat?.projectId
+    ? ((await repos.projects.findById(chat.projectId)) as { state?: unknown } | null)
+    : null;
+  const group = (await repos.groups.findById(GROUP)) as { state?: unknown } | null;
+  const metadata: Record<string, unknown> = {};
+  for (const [label, id] of [['A', CHAR_A], ['B', CHAR_B], ['C', CHAR_C]] as const) {
+    try {
+      const character = (await repos.characters.findById(id)) as { metadata?: unknown } | null;
+      metadata[label] = character?.metadata ?? null;
+    } catch {
+      // A broken vault reads as null rather than sinking the dump.
+      metadata[label] = null;
+    }
+  }
+  return {
+    chat: chat?.state ?? null,
+    project: project?.state ?? null,
+    group: group?.state ?? null,
+    general: await readGeneralState(),
+    metadata,
+  };
+}
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -330,6 +367,7 @@ async function runCase(
       status,
       body,
       systemRows,
+      stores: c.method === 'POST' ? await dumpStores(chatId) : null,
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
     };
@@ -414,6 +452,20 @@ async function main(): Promise<void> {
     // The operator's first character is `removed` (not a candidate), their
     // second is `silent` (still present) — the silent one is chosen.
     { name: 'list-removed-operator', method: 'GET', chat: CHAT_REMOVED },
+    // ---------------------------------------------------------------------
+    // P4.D35 — side effects through the MANUAL entrance.
+    // ---------------------------------------------------------------------
+    // Made AS a character: all five stores, including the fact sheet.
+    { name: 'run-ledger-as-a', method: 'POST', body: { tool: 'ledger', asCharacterId: CHAR_A, parameters: { entry: 'brass' } } },
+    // No group for CHAR_B: the group write is SKIPPED, not shadowed.
+    { name: 'run-ledger-as-b', method: 'POST', body: { tool: 'ledger', asCharacterId: CHAR_B } },
+    // THE asymmetry: a run nobody made writes to nobody's sheet. The state
+    // effects still land (the cascade is the chat's, not a character's), but
+    // `metadata.lastEntry` must be absent from every fact sheet in the dump.
+    { name: 'run-ledger-no-character', method: 'POST', body: { tool: 'ledger' } },
+    // `revealOdds: false` + cascade precedence (chat's difficulty wins over
+    // general's).
+    { name: 'run-sealed-tally', method: 'POST', body: { tool: 'sealed_tally', asCharacterId: CHAR_A } },
   ];
 
   const out = fs.createWriteStream(outPath);

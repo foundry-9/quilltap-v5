@@ -105,6 +105,32 @@ interface Corpus {
   cases: CaseSpec[];
 }
 
+/**
+ * P4.D35 — every table the bench could conceivably write to, dumped as a
+ * row-count-and-content map after the case. "The bench computes, never applies"
+ * is a claim about ABSENCE, and only a state diff can carry it: a body
+ * assertion alone would still pass if the preview quietly wrote.
+ *
+ * The workbench fixture has no chat, so the reachable stores are the character
+ * fact sheets and the two document-store state documents; a `state.*` effect on
+ * this route has no cascade at all, which is itself the point — the bench
+ * resolves the effects against MOCK state and there is nowhere for them to go.
+ */
+async function dumpBenchStores(corpus: Corpus): Promise<Record<string, unknown>> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const repos = getRepositories();
+  const metadata: Record<string, unknown> = {};
+  for (const [label, id] of Object.entries(corpus.characters)) {
+    try {
+      const character = (await repos.characters.findById(id)) as { metadata?: unknown } | null;
+      metadata[label] = character?.metadata ?? null;
+    } catch {
+      metadata[label] = null;
+    }
+  }
+  return { metadata };
+}
+
 function mockRequest(url: string, body?: unknown): unknown {
   return {
     method: body === undefined ? 'GET' : 'POST',
@@ -324,6 +350,10 @@ async function runCase(
       body,
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
+      // P4.D35: the bench NEVER applies. Dumped on every case, not just the
+      // effects ones, so a preview that started writing would be caught
+      // wherever it happened.
+      stores: await dumpBenchStores(corpus),
     };
   } finally {
     await closeDatabase();

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Rebuilt the custom-tool test instance so the side effects can actually be
+measured rather than described. It now has a project alongside its conversation,
+group and shared stores, and two tools that write: one whose single roll touches
+all four stores plus the rolling character's own sheet, and one that keeps its
+odds secret while still writing. Both test harnesses now read every store back
+after a run and compare it to the reference app's, so "the write landed in the
+right place" is a measurement, not a claim about a record. The Workbench's dry
+run does the same in reverse: every bench case checks that nothing was written
+at all, which is the only way to prove a preview stays a preview. A deliberate
+break that silently skipped one store — leaving the record still claiming
+success — was caught by exactly that check.
+
 Connected the custom-tool side effects to the two places a tool can be rolled —
 a character reaching for it and the operator reaching for it from the composer.
 The writes land before the result is announced, so if the announcement fails the
