@@ -49609,3 +49609,50 @@ TZ=UTC QT_FIXTURE_CD_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-dialogs-mai
 
 (The capstone's fixture is /tmp-built and its rebuild is already stage 1 of
 `recipe_sweep.py --run chat_create_capstone_equivalence`.)
+### Unit record — P4.D40 unit 1: the pure list-indentation port + tier-1 differential (2026-08-01)
+
+New `apps/web/src/app/editor/list-indentation.ts` ports v4's
+`components/chat/lexical/transformers/list-indentation.ts`
+(`detectListIndentUnit`, `applyListIndentUnit`, `indentSourceLines`/
+`outdentSourceLines`/`shiftSourceListLines`, `mapListLines`, `LIST_ITEM_RE`,
+`FENCE_RE`, the fence/frontmatter guards, tab-width handling, the
+`setListIndentUnit`/`getListIndentUnit` WeakMap memory) verbatim, generalizing
+the memory's key from `LexicalEditor` to an arbitrary token object so v5's
+funnel functions (wired in unit 2) can thread it without a ProseMirror or
+Angular dependency. NOT ported: `normalizeListIndentForLexical` /
+`LEXICAL_LIST_INDENT_SIZE` — the import-side four-space-grid rewrite has no v5
+analog, since v5's CommonMark parser (`markdown-dialect.ts`) already resolves
+nesting depth from document structure and never had the flattening bug v4's
+fix addresses (item (a)'s disposition, per the order's survey).
+
+**The tier-1 differential** (`harness/oracle/cases/list-indentation.ts`, a
+plain `tsx` script — the module is pure and import-clean, no jest/DOM rig
+needed, following the `workspace-core.ts` captured-corpus pattern) drives v4's
+REAL module directly: 8 `detectListIndentUnit` cases, 8 `applyListIndentUnit`
+cases (incl. the marker-width floor and three idempotency arms), 7 chained
+`indentSourceLines`/`outdentSourceLines` cases (each step's input is the PREVIOUS
+step's real v4 output, never reimplemented) — mirroring v4's 160-line test
+file's full inventory. Emitted to the committed
+`apps/web/src/app/editor/__fixtures__/list-indentation-oracle.json`, replayed
+by `list-indentation.oracle.spec.ts` (24 assertions, byte-for-byte).
+
+**Mutation-proved (D24):** temporarily replaced the marker-width floor
+(`Math.max(step, markerWidth(parentMarker))` → `step`) — both the oracle spec
+and (once unit 2 lands the funnel wiring — pre-tested here since
+`markdown-round-trip.spec.ts`'s existing corpus already round-trips through
+`applyListIndentUnit` at the default unit) the round-trip gate's ordered-list
+entries went red on the `1. `/`10. ` parent-marker cases; reverted, re-green.
+
+Regen recipe (v4 clean at the round baseline `c4d4b0de`, no pin needed):
+
+```bash
+cd ~/source/quilltap-server
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/list-indentation.ts \
+  > ~/source/quilltap-v5/apps/web/src/app/editor/__fixtures__/list-indentation-oracle.json
+```
+
+Gate: `ng test --include='src/app/editor/**/*.spec.ts'` green (the new oracle
+spec's 24 cases + the pre-existing editor suite). Not yet wired into
+`markdown-dialect.ts` or the editor — unit 2.
+
+SPA 0.5.358.

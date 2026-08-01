@@ -265,6 +265,16 @@ character's opt-out from a shared default is itself an item, and filtering
 first would throw it away before it could do its job. The equip path, which
 needs archived garments so it can still name what someone is wearing, does not
 use this and says so.
+Ported the reference app's list-indentation math for the editor's Markdown
+bridge (P4.D40, tier 1 unit 1). The reference app resolves how deeply a
+Markdown list item is nested from the document's own structure, not by
+assuming every file uses two-space indentation, and re-indents its output to
+match whichever spacing the file was written with instead of rewriting the
+whole thing to one fixed width. New `editor/list-indentation.ts` ports the
+pure detect/apply/source-line-shift functions verbatim; a new tier-1
+differential drives the reference app's real module directly and byte-compares
+every case against the port (24 cases, zero reimplemented). Not yet wired into
+the live editor — that's the next commit.
 
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal
