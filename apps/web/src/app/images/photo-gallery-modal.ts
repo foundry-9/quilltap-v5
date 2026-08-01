@@ -21,6 +21,7 @@ import { ImageDetailModal } from './image-detail-modal';
 import { applyImageNavigation } from './image-navigation';
 import type { ImageData } from './images.api';
 import { fileUrl, thumbnailUrl } from './image-urls';
+import { ToastService } from '../ui/toast.service';
 
 /** v4 `PhotoGalleryModal` THUMBNAIL_SIZES / DEFAULT_THUMBNAIL_INDEX (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
@@ -181,6 +182,7 @@ type GalleryItem =
 })
 export class PhotoGalleryModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   /** v4's union discriminant; the live host always passes (or defaults to) `'chat'`. */
@@ -373,11 +375,13 @@ export class PhotoGalleryModal {
       if (chatId) {
         await this.queryClient.invalidateQueries({ queryKey: ['chatFilesList', chatId] });
       }
+      this.toasts.showSuccess('Image deleted');
       if (this.mode() === 'chat') {
         this.imageDeleted.emit(fileId);
       }
-    } catch {
-      // v4 toasts the failure; the grid keeps its item.
+    } catch (err) {
+      // v4 `:215` — the grid keeps its item and the reason is reported.
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete image');
     }
   }
 }

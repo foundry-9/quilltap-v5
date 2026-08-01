@@ -17,6 +17,7 @@ import { FormActions } from '../ui/form-actions';
 import { Modal } from '../ui/modal';
 import { createMemory, updateMemory } from './memory.api';
 import { importanceLabel, importancePercent, keywordsFromString, keywordsToString } from './memory-format';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The create / edit memory modal (v4 `components/memory/memory-editor.tsx`):
@@ -121,6 +122,7 @@ import { importanceLabel, importancePercent, keywordsFromString, keywordsToStrin
 })
 export class MemoryEditor implements OnInit {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
   /** The memory being edited, or `null` for create. */
@@ -181,6 +183,8 @@ export class MemoryEditor implements OnInit {
       } else {
         await createMemory(this.core, bag);
       }
+      // v4 `:86` — the sentence depends on which verb ran.
+      this.toasts.showSuccess(m ? 'Memory updated' : 'Memory created');
       this.saved.emit();
       this.close.emit();
     } catch (err) {

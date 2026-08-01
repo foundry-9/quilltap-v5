@@ -11,7 +11,6 @@ import {
 
 import { CoreClient } from '../../core/core-client';
 import type { GroupTier } from '../../core/core-contract';
-import { ErrorAlert } from '../../ui/error-alert';
 import { Modal } from '../../ui/modal';
 import {
   fetchState,
@@ -20,6 +19,7 @@ import {
   stateLabel,
   type StateEntityType,
 } from './state.api';
+import { ToastService } from '../../ui/toast.service';
 
 /** One inherited tier's summary — the label + the keys it contributes. */
 interface InheritedLayer {
@@ -43,12 +43,9 @@ interface InheritedLayer {
 @Component({
   selector: 'qt-state-editor-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, ErrorAlert],
+  imports: [Modal],
   template: `
     <qt-modal [title]="title()" maxWidth="2xl" (close)="close.emit()">
-      @if (saveError(); as msg) {
-        <qt-error-alert [message]="msg" class="mb-3" />
-      }
       @if (loading()) {
         <div class="flex items-center justify-center py-8 qt-text-secondary">
           <span>Loading state...</span>
@@ -193,6 +190,7 @@ export class StateEditorModal implements OnInit {
   protected readonly placeholder = '{\n  "key": "value"\n}';
 
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
@@ -201,7 +199,6 @@ export class StateEditorModal implements OnInit {
   protected readonly showResetConfirm = signal(false);
   protected readonly jsonError = signal<string | null>(null);
   // Public (read by the template AND asserted by the spec, the proving-bench idiom).
-  readonly saveError = signal<string | null>(null);
   readonly stateText = signal('{}');
   private readonly state = signal<Record<string, unknown>>({});
 
@@ -258,7 +255,7 @@ export class StateEditorModal implements OnInit {
       }
       this.editing.set(false);
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to load state');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to load state');
     } finally {
       this.loading.set(false);
     }
@@ -276,7 +273,6 @@ export class StateEditorModal implements OnInit {
   }
 
   async save(): Promise<void> {
-    this.saveError.set(null);
     let parsed: unknown;
     try {
       parsed = JSON.parse(this.stateText());
@@ -285,7 +281,7 @@ export class StateEditorModal implements OnInit {
       return;
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      this.saveError.set('State must be a JSON object');
+      this.toasts.showError('State must be a JSON object');
       return;
     }
     this.saving.set(true);
@@ -299,16 +295,16 @@ export class StateEditorModal implements OnInit {
       this.state.set(next);
       this.stateText.set(JSON.stringify(next, null, 2));
       this.editing.set(false);
+      this.toasts.showSuccess('State saved');
       this.saved.emit();
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to save state');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save state');
     } finally {
       this.saving.set(false);
     }
   }
 
   async reset(): Promise<void> {
-    this.saveError.set(null);
     this.resetting.set(true);
     try {
       await resetState(this.core, this.entityType(), this.entityId());
@@ -316,9 +312,10 @@ export class StateEditorModal implements OnInit {
       this.stateText.set('{}');
       this.editing.set(false);
       this.showResetConfirm.set(false);
+      this.toasts.showSuccess('State reset');
       this.saved.emit();
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to reset state');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to reset state');
     } finally {
       this.resetting.set(false);
     }

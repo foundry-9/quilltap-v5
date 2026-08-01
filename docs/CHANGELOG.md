@@ -51,6 +51,10 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Saving or resetting a state bag, editing or deleting a memory, running memory
+housekeeping, updating an autonomous room, deleting a gallery photo and copying
+the data directory path all report themselves now.
+
 Character defaults, groups and projects say what they changed. Every control on
 a character's Defaults tab now confirms the setting it wrote, and creating or
 deleting a group or project reports the result instead of leaving a red bar

@@ -4,6 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../core/core-client';
 import { Icon } from '../../ui/icon';
 import { fetchDataDir, profileKeys } from './profile.api';
+import { ToastService } from '../../ui/toast.service';
 
 /** v4 `DataDirectorySection.tsx:24-29` — the platform display names, verbatim. */
 const PLATFORM_NAMES: Record<string, string> = {
@@ -119,6 +120,7 @@ const PLATFORM_NAMES: Record<string, string> = {
 })
 export class DataDirectorySection {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly copied = signal(false);
 
@@ -137,7 +139,9 @@ export class DataDirectorySection {
 
   protected copyPath(path: string): void {
     void navigator.clipboard?.writeText(path).then(() => {
+      // v4 keeps BOTH the 2s tick and the toast (`footer-wrapper.tsx:66`).
       this.copied.set(true);
+      this.toasts.showSuccess('Path copied to clipboard');
       setTimeout(() => this.copied.set(false), 2000);
     });
   }

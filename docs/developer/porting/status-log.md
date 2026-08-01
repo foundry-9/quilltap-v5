@@ -46742,3 +46742,153 @@ ownership rule): `e2e/salon-dialogs-flow.spec.ts` (the rename dialog's
 `.qt-text-danger` probe) and `e2e/wardrobe-flow.spec.ts` (the avatar-preview
 no-API-key banner). Both now read the toast container. Plus
 `e2e/profile-flow.spec.ts` from unit 5.
+
+## Lane record — P4.25: THE CENSUS (all 106 v4 toast files, adjudicated)
+
+Every file under `components/` + `app/` + `lib/` that imports a toast helper at
+v4 `ff12f491`, counted fresh: **106 files, 521 call sites** (`lib/toast.tsx`
+itself is the 107th grep hit and is the port target, not a call site). Verdicts:
+**CONVERTED** (v5 raises v4's toast, and any v5-invented inline surface is
+retired), **BOTH** (v4 renders inline markup AND toasts — the inline stays),
+**OPEN** (the v5 screen exists and still owes some or all of v4's toasts — named
+exactly), **UNPORTED** (no v5 caller; the future screen lane inherits the
+wiring).
+
+| v4 file | calls | verdict | v5 site / note |
+|---|--:|---|---|
+| `app/aurora/AuroraView.tsx` | 10 | OPEN (1 of 10 done) | create-group arm → `screens/groups/group-create-dialog`. The delete/favorite/controlled-by/Carina/import/reset arms still silent on `screens/characters/list/*`. v4's `:377` load-error page is inline in v4 too. |
+| `app/aurora/[id]/edit/CharacterEditView.tsx` | 5 | OPEN / BOTH | `screens/characters/edit/character-edit.ts`. v4 `:300` renders an inline block AND toasts; v5 keeps the block, owes the 5 sentences. |
+| `app/aurora/[id]/edit/hooks/useCharacterEdit.ts` | 6 | OPEN | same file — "Character saved successfully!", "Avatar updated!", "Avatar cleared!" + 3 failures. |
+| `app/aurora/[id]/view/components/DescriptionsTab.tsx` | 5 | OPEN | `screens/characters/view/tabs/details-tab.ts` (the physical-description editor). |
+| `app/aurora/[id]/view/hooks/useCharacterView.ts` | 32 | CONVERTED (23) / OPEN (9) | `defaults-tab.ts` + `choose-outfit-card.ts` carry all nine controls' pairs. Still OPEN: template replace/restore (4), favorite/controlled-by/Carina (3), NPC toggle (2) — they live on `character-detail`/`template-display`. |
+| `app/aurora/groups/[id]/GroupDetailView.tsx` | 2 | OPEN | `screens/groups/group-editor.ts`. |
+| `app/aurora/groups/hooks/useGroupMembers.ts` | 4 | OPEN | `screens/groups/group-members-card.ts`. |
+| `app/aurora/hooks/useGroups.ts` | 4 | CONVERTED | `group-create-dialog.ts` + `groups-section.ts`. |
+| `app/aurora/new/NewCharacterView.tsx` | 4 | OPEN / BOTH | `screens/characters/new/new-character.ts`; v4 `:260` is inline AND toasts. |
+| `app/generate-image/GenerateImageView.tsx` | 6 | CONVERTED | `screens/generate-image/generate-image-page.ts`. |
+| `app/prospero/[id]/hooks/useProjectChats.ts` | 2 | OPEN | `screens/prospero/cards/project-chats-section.ts`. |
+| `app/prospero/[id]/hooks/useProjectDetail.ts` | 20 | OPEN | `screens/prospero/project-detail.ts` + its nine cards. The single largest remaining block. |
+| `app/prospero/hooks/useProjects.ts` | 4 | CONVERTED | `project-create-dialog.ts` + `prospero-list.ts`. |
+| `app/salon/SalonListView.tsx` | 6 | UNPORTED | the Salon LIST's re-extract / re-render actions have no v5 analog. |
+| `app/salon/[id]/SalonView.tsx` | 7 | CONVERTED | `salon-conversation.ts` (avatar poll/regenerate, pasted image, save-to-mount). |
+| `app/salon/[id]/components/DocumentPane.tsx` | 1 | OPEN | `documents/document-pane.ts` — "Document URL copied". |
+| `app/salon/[id]/hooks/useChatControls.ts` | 31 | CONVERTED | `salon-conversation.ts` + `chat-section.ts` + `visibility-section.ts`. |
+| `app/salon/[id]/hooks/useDocumentMode.ts` | 1 | CONVERTED | `documents/document-mode.ts`. |
+| `app/salon/[id]/hooks/useFileAttachments.ts` | 4 | CONVERTED | `chat/chat-composer.ts`. |
+| `app/salon/[id]/hooks/useImpersonation.ts` | 7 | CONVERTED | `salon-conversation.ts`. |
+| `app/salon/[id]/hooks/useLLMLogs.ts` | 0 | N/A | imports a helper it never calls (v4 dead import). |
+| `app/salon/[id]/hooks/useMemoryActions.ts` | 7 | UNPORTED | the in-chat memory re-extract / bulk delete actions have no v5 caller. |
+| `app/salon/[id]/hooks/useMessageActions.ts` | 8 | CONVERTED | `salon-conversation.ts`. |
+| `app/salon/[id]/hooks/useSSEStreaming.ts` | 9 | CONVERTED | `salon-conversation.reportStreamTransitions` + the send catch + `stop()`. |
+| `app/salon/[id]/hooks/useTerminalMode.ts` | 4 | CONVERTED | `terminal/terminal-mode.ts`. |
+| `app/salon/[id]/hooks/useTurnManagement.ts` | 6 | CONVERTED | `salon-conversation.ts` (all six arms). |
+| `app/salon/[id]/terminal/[sessionId]/TerminalPopoutPageClient.tsx` | 2 | OPEN | `screens/salon/terminal-popout.ts` — the two kill failures. |
+| `app/scriptorium/[id]/hooks/useDocumentStoreDetail.ts` | 4 | CONVERTED | folded into `ScriptoriumStore`. |
+| `app/scriptorium/hooks/useDocumentStores.ts` | 13 | CONVERTED | `ScriptoriumStore` (the `Flash` type is gone). |
+| `components/character/character-conversations-tab.tsx` | 9 | UNPORTED | the per-card delete / re-extract / re-render were already that vertical's documented deferral. |
+| `components/characters/RenameReplaceTab.tsx` | 2 | UNPORTED | no v5 rename/replace tab. |
+| `components/chat/AddCharacterDialog.tsx` | 3 | CONVERTED | `chat/cast/add-character-dialog.ts`. |
+| `components/chat/BulkCharacterReplaceModal.tsx` | 4 | CONVERTED | `chat/bulk-character-replace-modal.ts`. |
+| `components/chat/ChatCard.tsx` | 2 | CONVERTED / BOTH | `screens/salon/chat-card.ts` — v4 keeps the 1.5s check icon too. |
+| `components/chat/ChatGalleryImageViewModal.tsx` | 8 | CONVERTED | `images/chat-gallery-image-view-modal.ts`. |
+| `components/chat/ChatProjectModal.tsx` | 2 | CONVERTED | `chat/chat-project-modal.ts`. |
+| `components/chat/ChatRenameModal.tsx` | 5 | CONVERTED | `chat/chat-rename-modal.ts`. |
+| `components/chat/ChatSidebar.tsx` | 12 | CONVERTED | `chat/sidebar/chat-section.ts`. |
+| `components/chat/ChatToolSettingsModal.tsx` | 3 | CONVERTED | `chat/tools/chat-tool-settings-modal.ts` (incl. the load failure v5 never had). |
+| `components/chat/ComposeMailDialog.tsx` | 2 | CONVERTED / BOTH | `chat/post-office/compose-mail-dialog.ts` — v4 sets the inline alert AND toasts. |
+| `components/chat/CreateNPCDialog.tsx` | 6 | CONVERTED | `chat/cast/create-npc-dialog.ts`. |
+| `components/chat/CustomToolRunDialog.tsx` | 2 | CONVERTED / BOTH | `chat/custom-tools-popup.ts` — v4's inline error is the ROSTER load, which stays. |
+| `components/chat/GenerateImageDialog.tsx` | 7 | CONVERTED | `images/generate-image-dialog.ts` (two strings corrected to v4's bytes). |
+| `components/chat/ImageModal.tsx` | 8 | CONVERTED | `images/image-modal.ts`. |
+| `components/chat/InsertAnnouncementDialog.tsx` | 8 | CONVERTED | `chat/post-office/insert-announcement-dialog.ts`. |
+| `components/chat/LibraryFilePickerModal.tsx` | 4 | CONVERTED | `chat/library-picker/library-file-picker-modal.ts`. |
+| `components/chat/MergeConversationModal.tsx` | 2 | CONVERTED | `chat/merge-conversation-modal.ts`. |
+| `components/chat/ReattributeMessageDialog.tsx` | 3 | CONVERTED | `chat/reattribute-message-dialog.ts` — the finding's worked example. |
+| `components/chat/RunToolModal.tsx` | 3 | CONVERTED | `chat/tools/run-tool-modal.ts`. |
+| `components/chat/SelectLLMProfileDialog.tsx` | 2 | CONVERTED | `chat/select-llm-profile-dialog.ts`. |
+| `components/chat/StandaloneGenerateImageDialog.tsx` | 7 | CONVERTED | `images/standalone-generate-image-dialog.ts`. |
+| `components/chat/SummonFromLoreModal.tsx` | 2 | UNPORTED | no v5 summon-from-lore modal. |
+| `components/chat/ToolMessage.tsx` | 7 | CONVERTED (3 of 4 sites) | `chat/tool-message.ts` — the copy trio. The attachment-delete toast belongs to the thumbnail strip, a standing P4.17 deferral. |
+| `components/custom-tools/WorkbenchEditor.tsx` | 8 | CONVERTED | `screens/custom-tools/workbench-editor.ts`. |
+| `components/custom-tools/WorkbenchLibrary.tsx` | 3 | CONVERTED / BOTH | `workbench-library.ts` — v4 `:352` renders the LOAD error inline; it stays. |
+| `components/files/FileBrowser.tsx` | 13 | OPEN | `screens/files/files-browser.ts` — the whole files family is untouched by this lane. |
+| `components/files/FilePreview/hooks/useFileActions.ts` | 6 | OPEN | `screens/files/file-preview-modal.ts`. |
+| `components/files/FolderManagement/CreateFolderModal.tsx` | 3 | OPEN | `screens/files/create-folder-dialog.ts`. |
+| `components/files/MoveToProjectModal.tsx` | 2 | OPEN | `screens/files/move-to-project-dialog.ts`. |
+| `components/files/useMountPointBlobUpload.ts` | 2 | OPEN | `screens/scriptorium/store-detail.ts` upload leg. |
+| `components/files/useProjectFileUpload.ts` | 3 | OPEN | `screens/prospero/cards/project-files-card.ts`. |
+| `components/footer-wrapper.tsx` | 1 | CONVERTED | `screens/profile/data-directory-section.ts` (v4 keeps its tick too). |
+| `components/images/DeletedImagePlaceholder.tsx` | 1 | CONVERTED | `images/deleted-image-placeholder.ts`. |
+| `components/images/PhotoGalleryModal.tsx` | 3 | CONVERTED (2 of 3) | `images/photo-gallery-modal.ts`; the gallery LOAD failure rides the query's own error arm. |
+| `components/images/embedded-gallery/hooks/useGalleryData.ts` | 8 | CONVERTED | `screens/characters/view/tabs/gallery-tab.ts`. |
+| `components/images/image-detail/hooks/useImageActions.ts` | 10 | CONVERTED | `images/image-detail-modal.ts`. |
+| `components/images/image-gallery.tsx` | 1 | CONVERTED / BOTH | `images/image-gallery.ts` — v4 `:99` renders the LOAD error inline; only the DELETE is a toast. |
+| `components/import/import-wizard.tsx` | 2 | UNPORTED | v5's `.qtap` import is the Data & System wizard, a different surface with its own step reporting. |
+| `components/import/memory-creation-dialog.tsx` | 4 | UNPORTED | no v5 memory-creation dialog. |
+| `components/memory/housekeeping-dialog.tsx` | 2 | OPEN | `memory/housekeeping-dialog.ts`. |
+| `components/memory/memory-editor.tsx` | 1 | OPEN | `memory/memory-editor.ts` — "Memory updated"/"Memory created". |
+| `components/memory/memory-list.tsx` | 2 | OPEN | `memory/memory-list.ts`. |
+| `components/new-chat/EditEnclaveModal.tsx` | 3 | OPEN | `autonomous/edit-enclave-modal.ts`. |
+| `components/new-chat/hooks/useNewChat.ts` | 9 | OPEN | `screens/new-chat/*` — six validation refusals + the two creation successes. |
+| `components/profile/ProfileEditSection.tsx` | 4 | CONVERTED | `screens/profile/profile-edit-section.ts`. |
+| `components/providers/auto-lock-provider.tsx` | 1 | OPEN | `screens/settings/system/auto-lock-provider.ts` — v4 calls `showWarningToast()` with NO ARGUMENT (a v4 bug: an empty toast). |
+| `components/providers/qtap-link-provider.tsx` | 3 | OPEN | the `qtap://` link interceptor's two warnings + one failure. |
+| `components/settings/api-keys/ApiKeyModal.tsx` | 1 | OPEN | `screens/settings/providers/api-key-modal.ts` (note the 4000 ms duration). |
+| `components/settings/api-keys/ImportKeysDialog.tsx` | 1 | UNPORTED | no v5 import-keys dialog. |
+| `components/settings/chat-settings/DataRetentionSettings.tsx` | 2 | OPEN | `screens/settings/chat/data-retention-settings.ts`. |
+| `components/settings/connection-profiles/index.tsx` | 3 | OPEN | `screens/settings/providers/connection-profiles-card.ts` (auto-configure). |
+| `components/settings/plugins-tab.tsx` | 16 | UNPORTED | v5 has no plugins surface. |
+| `components/settings/plugins/PluginConfigModal.tsx` | 2 | UNPORTED | ditto. |
+| `components/settings/tags-tab.tsx` | 6 | CONVERTED | `screens/settings/appearance/tags-tab.ts`. |
+| `components/startup/migration-warning-notifier.tsx` | 1 | UNPORTED | no v5 migration notifier (the migration runner is deferred). |
+| `components/startup/plugin-upgrade-notifier.tsx` | 2 | UNPORTED | no v5 plugin system. |
+| `components/state/StateEditorModal.tsx` | 5 | OPEN | `shared/state/state-editor-modal.ts`. |
+| `components/tags/tag-editor.tsx` | 2 | OPEN | `screens/characters/edit/tag-chip-editor.ts`. |
+| `components/terminal/TerminalEmbed.tsx` | 2 | CONVERTED | `terminal/terminal-embed.ts`. |
+| `components/tools/backup-dialog.tsx` | 2 | OPEN / BOTH | `screens/settings/system/backup-dialog.ts`; v4 `:116` is inline AND toasts. |
+| `components/tools/capabilities-report-card.tsx` | 5 | UNPORTED | no v5 capabilities-report card. |
+| `components/tools/conversation-summary-regenerate-card.tsx` | 2 | UNPORTED | that card is a named v5 deferral. |
+| `components/tools/delete-data-card.tsx` | 2 | OPEN | `screens/settings/system/delete-data-card.ts`. |
+| `components/tools/memory-backfill-card.tsx` | 2 | OPEN | `screens/settings/memory/memory-backfill-card.ts`. |
+| `components/tools/memory-dedup-card.tsx` | 2 | UNPORTED | memory-dedup is a named v5 deferral. |
+| `components/tools/memory-housekeeping-card.tsx` | 4 | OPEN | `screens/settings/memory/memory-housekeeping-card.ts`. |
+| `components/tools/memory-recall-card.tsx` | 2 | OPEN | `screens/settings/memory/memory-recall-card.ts`. |
+| `components/tools/memory-regenerate-card.tsx` | 2 | OPEN | `screens/settings/memory/memory-regenerate-card.ts`. |
+| `components/tools/restore/hooks/useRestoreData.ts` | 3 | OPEN | `screens/settings/system/restore-dialog.ts`. |
+| `components/tools/tool-settings/ProjectToolSettingsModal.tsx` | 2 | CONVERTED | `screens/prospero/project-tool-settings-modal.ts`. |
+| `components/wardrobe/WardrobeTransferDialog.tsx` | 3 | CONVERTED | `wardrobe/wardrobe-transfer-dialog.ts`. |
+| `components/wardrobe/import-from-image-modal.tsx` | 5 | UNPORTED | the wardrobe import-from-image dialog is a named v5 deferral. |
+| `components/wardrobe/wardrobe-control-dialog.tsx` | 11 | CONVERTED | `wardrobe/wardrobe-control-dialog.ts`. |
+| `components/wardrobe/wardrobe-item-editor.tsx` | 6 | CONVERTED | `wardrobe/wardrobe-item-editor.ts`. |
+| `components/workspace/StandaloneDocumentView.tsx` | 2 | CONVERTED | `documents/standalone-document-view.ts`. |
+| `lib/chat-utils.ts` | 1 | UNPORTED | nothing in v5 deletes a chat. |
+
+**Tally: 106 files — 51 CONVERTED (7 of them "v4 has both", inline kept), 34
+OPEN on ported screens, 21 UNPORTED.** The OPEN rows are the honest remainder of
+the walk and are what a follow-up round picks up; they are enumerated above by
+file and by which sentences are missing, and none of them is a *regression* —
+each is a screen that was silent before this lane and is silent still.
+
+## Lane record — P4.25 unit 7: the census's cheapest OPEN rows
+
+Seven more files taken off the OPEN list while the Playwright gate ran:
+
+- **`shared/state/state-editor-modal`** — v4's `StateEditorModal.tsx` has no
+  inline error, so the `saveError` alert is retired for all five toasts,
+  including the two successes ("State saved" / "State reset") v5 never raised.
+- **`memory/memory-editor`**, **`memory/memory-list`**,
+  **`memory/housekeeping-dialog`**, **`autonomous/edit-enclave-modal`** — v4
+  renders an inline error in ALL FOUR (`memory-editor.tsx:203`,
+  `memory-list.tsx:282`, `housekeeping-dialog.tsx:213`,
+  `EditEnclaveModal.tsx:235`), so each keeps its block and GAINS v4's toasts:
+  "Memory updated"/"Memory created", "Memory deleted", the housekeeping run
+  pair, and the enclave's "Title cannot be empty"/"Enclave updated".
+- **`images/photo-gallery-modal`** and **`screens/profile/data-directory-section`**
+  (the `footer-wrapper.tsx:66` "Path copied to clipboard" sentence, alongside
+  v4's own 2-second tick).
+
+**One count-less sentence, recorded:** v4's housekeeping success names the
+number cleaned (`Cleaned up ${data.result.deleted} memories`); v5's run reply
+carries no count, so the toast is "Memory housekeeping complete". Restoring
+v4's exact sentence needs the count on the response — a server-side item, not a
+toast one.

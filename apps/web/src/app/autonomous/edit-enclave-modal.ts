@@ -20,6 +20,7 @@ import {
   type AutonomousSettingsHint,
   type NewChatAutonomousState,
 } from './autonomous.logic';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The Edit-Enclave modal (v4 `components/new-chat/EditEnclaveModal.tsx`): reuses
@@ -100,6 +101,7 @@ import {
 })
 export class EditEnclaveModal implements OnInit {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   /** Current room title, shown pre-filled and editable. */
@@ -168,7 +170,10 @@ export class EditEnclaveModal implements OnInit {
 
   protected async handleSave(): Promise<void> {
     const trimmedTitle = this.title().trim();
-    if (!trimmedTitle) return;
+    if (!trimmedTitle) {
+      this.toasts.showError('Title cannot be empty');
+      return;
+    }
     this.saving.set(true);
     this.clampedNote.set(false);
     try {
@@ -178,10 +183,11 @@ export class EditEnclaveModal implements OnInit {
         // v4 still saves; the flag was clamped off by the user policy.
         this.clampedNote.set(true);
       }
+      this.toasts.showSuccess('Enclave updated');
       this.saved.emit(trimmedTitle);
       this.close.emit();
     } catch (err) {
-      this.loadError.set(err instanceof Error ? err.message : 'Failed to update enclave');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update enclave');
     } finally {
       this.saving.set(false);
     }

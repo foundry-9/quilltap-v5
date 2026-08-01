@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { StateEditorModal } from './state-editor-modal';
 import type { StateEntityType } from './state.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The shared four-entity State editor — asserted against v4
@@ -60,6 +61,13 @@ async function render(
 
 function text(fixture: ComponentFixture<unknown>): string {
   return (fixture.nativeElement as HTMLElement).textContent ?? '';
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('StateEditorModal (v4 StateEditorModal.tsx)', () => {
@@ -163,7 +171,7 @@ describe('StateEditorModal (v4 StateEditorModal.tsx)', () => {
 
     modal.stateText.set('[1, 2]');
     await modal.save();
-    expect(modal.saveError()).toBe('State must be a JSON object');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'State must be a JSON object' });
     expect(seen.some((r) => r.type === 'groupStateSet')).toBe(false);
 
     modal.stateText.set('{"gold": 12}');

@@ -14,6 +14,7 @@ import { CoreClient } from '../core/core-client';
 import type { HousekeepingPreview } from '../core/core-contract';
 import { Modal } from '../ui/modal';
 import { fetchHousekeepingPreview, runHousekeeping } from './memory.api';
+import { ToastService } from '../ui/toast.service';
 
 const PREVIEW_DEBOUNCE_MS = 300;
 
@@ -176,6 +177,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
 })
 export class HousekeepingDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly characterId = input.required<string>();
@@ -258,9 +260,14 @@ export class HousekeepingDialog {
         mergeSimilar: this.mergeSimilar(),
         dryRun: false,
       });
+      // v4 `:89` names the count; v5's run reply carries none, so the sentence
+      // is the count-less half of v4's — recorded in the census.
+      this.toasts.showSuccess('Memory housekeeping complete');
       this.complete.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to run cleanup');
+      const message = err instanceof Error ? err.message : 'Failed to run cleanup';
+      this.error.set(message);
+      this.toasts.showError(message);
     } finally {
       this.running.set(false);
     }

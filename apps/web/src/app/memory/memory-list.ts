@@ -22,6 +22,7 @@ import { MemoryCard } from './memory-card';
 import { MemoryEditor } from './memory-editor';
 import { appendUniqueMemories } from './memory-format';
 import { deleteMemory } from './memory.api';
+import { ToastService } from '../ui/toast.service';
 
 const MEMORIES_PER_PAGE = 30;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -213,6 +214,7 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
 })
 export class MemoryList {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
@@ -353,10 +355,13 @@ export class MemoryList {
     this.banner.set(null);
     try {
       await deleteMemory(this.core, id);
+      this.toasts.showSuccess('Memory deleted');
       this.pendingDeleteId.set(null);
       await this.queryClient.invalidateQueries({ queryKey: memoryKeys.list(this.characterId()) });
     } catch (err) {
-      this.banner.set(err instanceof Error && err.message ? err.message : 'Failed to delete memory');
+      this.toasts.showError(
+        err instanceof Error && err.message ? err.message : 'Failed to delete memory',
+      );
     } finally {
       this.deletingId.set(null);
     }
