@@ -97,6 +97,10 @@ failures that were silent, such as a tool list that would not load, now say so.
 Quilltap has notifications again. A short message appears in the bottom-right
 corner when something finishes or fails, and clears itself after three seconds,
 the way the previous version did.
+Announcements written before Quilltap recorded what kind of announcement they
+were now show their kind again — "file saved", "arrived", "time" — and the
+coloured dot beside them goes back to grading them by importance. Older
+announcements had been arriving with a blank label and a uniform dot.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper
