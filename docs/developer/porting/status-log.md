@@ -46117,3 +46117,58 @@ Regen recipes: the groups/projects routes oracles per their headers
 store-unavailable oracle per its header (characters fixture). ⚠ /tmp proved
 volatile mid-lane (a wipe ate freshly-written NDJSON + fixture copies); the
 recipes' outputs are best pointed at a stable scratch dir.
+## Lane record — P4.24 unit 1 (the `cleanupOldLogs` repository delete)
+
+`crates/quilltap-core/src/db/llm_logs.rs` gains `cleanup_old_logs` plus the pure
+`llm_log_retention_cutoff_iso`, porting v4's
+`lib/database/repositories/llm-logs.repository.ts:368`.
+
+Three things the survey flagged and the port carries verbatim:
+
+- **`retentionDays < 0` warns and returns 0** — `< 0`, NOT `<= 0`. The "0 means
+  keep forever" reading belongs to the *handler* (unit 2); a 0 arriving here
+  deletes everything older than right now, and a unit test pins exactly that so
+  nobody "fixes" the guard later.
+- **The cutoff is LOCAL CALENDAR-DAY arithmetic**
+  (`cutoffDate.setDate(cutoffDate.getDate() - retentionDays)`), not
+  `now − N × 86_400_000`. The two agree under UTC and diverge by an hour across
+  any DST transition — which is why the differential (unit 3) needs its
+  America/Chicago leg, and why a UTC-only family would be structurally blind
+  here (the P4.d26 lesson, restated).
+- **The comparison is on the ISO STRING** (`createdAt: { $lt: iso }` → v4's
+  translator emits `"createdAt" < ?`), reproduced verbatim rather than
+  reinterpreted as a date comparison.
+
+**The v5 seam** (the `day_references` precedent): v4 reads the ambient process
+clock and zone; core never does, so `now_ms` and an IANA `tz` are parameters.
+The host passes its wall clock and configured zone; the differential pins both.
+
+`llm_log_retention_cutoff_iso` reproduces the ECMAScript steps of
+`Date.prototype.setDate` — `MakeDay`'s finiteness check *before*
+`ToIntegerOrInfinity`'s truncate-toward-zero (so `NaN` is `Invalid Date`, not
+day 0), the day-of-month-offset-from-the-1st rolling across months and years,
+the local time-of-day carried unchanged, and `UTC()`'s
+offset-in-effect-before-the-transition disambiguation (jiff's `compatible`, the
+choice `day_references` already documents as V8's). An unrepresentable cutoff is
+v4's `Invalid Date` → the throwing `toISOString()`, so it surfaces as `Err`
+rather than a panic. One known, unreachable divergence recorded inline: jiff's
+civil dates stop at year ±9999 where JS reaches 275760, so an absurd window is
+`None` here and a valid Date there — `LLMLoggingSettingsSchema` bounds
+`retentionDays` to `0..=365` and the handler's `<= 0` gate cuts the other end.
+
+⚠️ **Naming**: this is NOT
+`services::queue_service::retention_cutoff_iso`, which ports v4's *other*
+retention cutoff (the housekeeping sweep's `retentionCutoff(days, now)`) and
+genuinely IS `now − days × DAY_MS`. Two different v4 functions; a cross-reference
+note sits on both readings.
+
+Nine unit vectors were produced by running v4's own expression under Node 24
+(`TZ=<zone> node -e "const c=new Date('<now>');c.setDate(c.getDate()-<n>);…"`)
+and are quoted in the test: the UTC/Chicago pair that agree-then-diverge, both
+DST directions, the `0.5 → day 14` truncation, a year-boundary underflow, a
+400-day window, and Lord Howe's **half-hour** transition (which an
+offset-rounding shortcut would get wrong in a way a whole-hour zone hides).
+
+The full oracle differential against v4's real repository arrives in this lane's
+unit 3 (`llm_log_cleanup_*`); until then the port's proof is those v4-derived
+vectors plus the boundary/user-filter tests.

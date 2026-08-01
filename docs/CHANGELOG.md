@@ -21,6 +21,12 @@ absent still seeds defaults, as provisioning requires. This is a deliberate
 divergence from the reference app, which still carries the bug; the
 divergence is pinned by the test suite in both directions so it will surface
 the moment the reference app ships its own fix.
+Quilltap now prunes its own LLM debug logs again. Until now the daily cleanup
+task was scheduled but had no one to carry it out, so every start-up quietly
+minted a job that failed three times and gave up, and the log store simply kept
+growing. The retention window you set under Settings → Chat is honoured once
+more, counted in whole local calendar days so the boundary does not drift by an
+hour when daylight saving comes or goes.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper

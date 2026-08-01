@@ -807,6 +807,70 @@ impl<'c> LLMLogsRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `cleanupOldLogs(userId, retentionDays)` (llm-logs.repository.ts :368) —
+    /// the retention delete the `LLM_LOG_CLEANUP` job drives (P4.24, dogfood
+    /// finding #40). Returns the number of rows removed.
+    ///
+    /// Three details are load-bearing:
+    ///
+    ///   - **`retentionDays < 0` warns and returns 0** — note `< 0`, NOT `<= 0`.
+    ///     The "0 means keep forever" gate lives in the *handler*, so a 0 that
+    ///     reaches here would delete everything older than *right now*. v4's own
+    ///     shape; reproduced exactly. (v4 logs `Invalid retention days` here; log
+    ///     output is operator output, outside the differential contract — P4.18.)
+    ///   - **The cutoff is LOCAL CALENDAR-DAY arithmetic**, not
+    ///     `now − N × 86_400_000`. v4 writes
+    ///     `cutoffDate.setDate(cutoffDate.getDate() - retentionDays)`, which keeps
+    ///     the local wall-clock time and moves the local day, so the UTC cutoff
+    ///     shifts by an hour whenever the window straddles a DST transition. See
+    ///     [`llm_log_retention_cutoff_iso`].
+    ///   - **The comparison is on the ISO STRING** (`createdAt: { $lt: iso }`),
+    ///     which v4's SQLite translator lowers to `"createdAt" < ?`. `createdAt`
+    ///     is stored as the `toISOString()` text, so lexicographic ordering is
+    ///     chronological ordering; reproduced verbatim rather than reinterpreted
+    ///     as a date comparison.
+    ///
+    /// The two clock inputs are the v5 seam (`day_references`'s precedent): v4
+    /// reads the ambient process clock and zone, which core never does — parallel
+    /// test threads would race, and the zone must be a real IANA zone for the
+    /// calendar arithmetic to be exact. The host passes its wall clock and its
+    /// configured zone; the differential pins both.
+    ///
+    /// An unrepresentable cutoff (v4's `Invalid Date` → `toISOString()` throwing
+    /// `RangeError: Invalid time value`) surfaces as `Err`, matching v4's throw
+    /// out of `safeQuery`'s no-fallback overload. Unreachable through the handler
+    /// (Zod bounds `retentionDays` to 0..=365) but modeled rather than panicking.
+    pub fn cleanup_old_logs(
+        &self,
+        user_id: &str,
+        retention_days: f64,
+        now_ms: i64,
+        tz: &str,
+    ) -> Result<usize, DbError> {
+        // v4: `if (retentionDays < 0) { logger.warn(...); return 0; }`
+        if retention_days < 0.0 {
+            tracing::warn!(retention_days, "Invalid retention days");
+            return Ok(0);
+        }
+
+        let Some(cutoff) = llm_log_retention_cutoff_iso(now_ms, retention_days, tz) else {
+            return Err(DbError::Key("Invalid time value".to_string()));
+        };
+
+        let deleted = self.conn.execute(
+            "DELETE FROM llm_logs WHERE \"userId\" = ?1 AND \"createdAt\" < ?2",
+            params![user_id, cutoff],
+        )?;
+        tracing::info!(
+            user_id,
+            retention_days,
+            deleted_count = deleted,
+            cutoff_date = %cutoff,
+            "Cleaned up old LLM logs"
+        );
+        Ok(deleted)
+    }
+
     /// v4 `getTotalTokenUsageForRun(autonomousRunId, { includeCacheHits })` —
     /// the per-run token sum the autonomous-room turn handler's post-turn
     /// accounting reads (U4.4). Sums every row tagged with this run's id: the
@@ -981,6 +1045,85 @@ fn js_number_or_zero(v: Option<&Value>) -> f64 {
     v.and_then(Value::as_f64).unwrap_or(0.0)
 }
 
+/// v4's retention cutoff — the ISO string of
+///
+/// ```js
+/// const cutoffDate = new Date();                              // = now_ms
+/// cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+/// cutoffDate.toISOString()
+/// ```
+///
+/// evaluated in the zone `tz`. `None` is v4's `Invalid Date` (a `toISOString()`
+/// that throws `RangeError: Invalid time value`).
+///
+/// ## Why this is not `now − retention_days × 86_400_000`
+///
+/// `getDate()`/`setDate()` are **local-time** accessors. The step keeps the local
+/// wall-clock time and moves the local day, so across a DST transition the UTC
+/// instant moves by 24h ± the offset change. Concretely, at
+/// `2026-03-15T17:00:00Z` in `America/Chicago` (12:00 CDT) with a 10-day window,
+/// v4's cutoff is `2026-03-05T18:00:00.000Z` (12:00 CST) where the naive
+/// subtraction gives `…T17:00:00.000Z` — an hour of logs on the wrong side of
+/// the line. Under `UTC` both forms agree, which is exactly why a UTC-only
+/// differential is structurally blind here (the P4.d26 lesson).
+///
+/// ## The ECMAScript steps, reproduced
+///
+/// `Date.prototype.setDate(d)` is `TimeClip(UTC(MakeDate(MakeDay(YearFromTime(t),
+/// MonthFromTime(t), d), TimeWithinDay(t))))` over the **local** time value `t`:
+///
+///   - `MakeDay` returns `NaN` for a non-finite `d` — so a non-finite
+///     `day − retentionDays` is `Invalid Date` *before* any truncation (which is
+///     why the finiteness check precedes [`f64::trunc`], `ToIntegerOrInfinity`'s
+///     truncate-toward-zero);
+///   - `d` is then used as a **day-of-month offset from the 1st**, so out-of-range
+///     values roll across month and year boundaries — plain day arithmetic on the
+///     local date, which is what `checked_add` does here;
+///   - `TimeWithinDay(t)` is the local time of day, carried over unchanged;
+///   - `UTC(…)` resolves a nonexistent or ambiguous local time using the offset in
+///     effect *before* the transition. jiff's `compatible` disambiguation is that
+///     same choice (the [`crate::day_references`] precedent, which documents it as
+///     V8's).
+///
+/// **A known, unreachable range divergence:** jiff's civil dates stop at year
+/// ±9999 where JS's Date range reaches year 275760, so an absurd window
+/// (`retention_days` in the millions) is `None` here and a valid Date there.
+/// `LLMLoggingSettingsSchema` bounds `retentionDays` to `0..=365`, and the
+/// handler's `<= 0` gate cuts the other end.
+///
+/// ⚠️ **Not to be confused with
+/// [`crate::services::queue_service::retention_cutoff_iso`]**, which ports v4's
+/// *other* retention cutoff (`retentionCutoff(days, now)`, the housekeeping
+/// sweep's) — that one really *is* `now − days × DAY_MS`, because v4 writes it
+/// that way. The two are different functions in v4 and must stay different here.
+pub fn llm_log_retention_cutoff_iso(now_ms: i64, retention_days: f64, tz: &str) -> Option<String> {
+    use jiff::civil;
+    use jiff::tz::TimeZone;
+
+    let zone = TimeZone::get(tz).ok()?;
+    let local = zone.to_datetime(jiff::Timestamp::from_millisecond(now_ms).ok()?);
+
+    // MakeDay's finiteness check runs on the raw argument, before
+    // ToIntegerOrInfinity's truncate-toward-zero.
+    let raw = f64::from(local.day()) - retention_days;
+    if !raw.is_finite() {
+        return None;
+    }
+    let offset_from_first = raw.trunc() - 1.0;
+    if offset_from_first.abs() > f64::from(i32::MAX) {
+        return None;
+    }
+
+    let shifted = civil::date(local.year(), local.month(), 1)
+        .checked_add(jiff::Span::new().days(offset_from_first as i32))
+        .ok()?;
+    let ts = zone
+        .to_ambiguous_timestamp(shifted.to_datetime(local.time()))
+        .compatible()
+        .ok()?;
+    Some(crate::clock::iso_from_unix_ms(ts.as_millisecond()))
+}
+
 /// Serialize an optional value to compact JSON text, or `None` for SQL NULL.
 fn opt_json<T: Serialize>(value: &Option<T>, label: &str) -> Result<Option<String>, DbError> {
     match value {
@@ -1142,5 +1285,181 @@ mod tests {
             repo.get_total_token_usage_since("u1", "2000-01-01T00:00:00.000Z"),
             TokenUsageTotals::default()
         );
+    }
+
+    // ── P4.24: the retention cutoff ────────────────────────────────────────
+
+    /// Every expectation below was produced by running v4's own expression under
+    /// Node 24 with the named `TZ`:
+    ///
+    /// ```text
+    /// TZ=<zone> node -e "const c=new Date('<now>');c.setDate(c.getDate()-<n>);console.log(c.toISOString())"
+    /// ```
+    ///
+    /// The Chicago rows are the reason this seam takes a zone at all: rows 2/3
+    /// straddle the 2026-03-08 spring-forward and row 5 the 2026-11-01
+    /// fall-back, so each differs by an hour from `now − n × 86_400_000`. The
+    /// Lord Howe row pins a **half-hour** transition, which an offset-rounding
+    /// shortcut would get wrong in a way a whole-hour zone hides.
+    #[test]
+    fn retention_cutoff_matches_js_set_date() {
+        const VECTORS: &[(&str, &str, f64, &str)] = &[
+            // Under UTC the calendar step and the naive subtraction agree — the
+            // blind spot a UTC-only differential would leave.
+            (
+                "UTC",
+                "2026-03-15T17:00:00.000Z",
+                10.0,
+                "2026-03-05T17:00:00.000Z",
+            ),
+            // …and the same window in Chicago crosses spring-forward: 12:00 CDT
+            // back to 12:00 CST, one hour later in UTC.
+            (
+                "America/Chicago",
+                "2026-03-15T17:00:00.000Z",
+                10.0,
+                "2026-03-05T18:00:00.000Z",
+            ),
+            (
+                "America/Chicago",
+                "2026-03-15T17:00:00.000Z",
+                30.0,
+                "2026-02-13T18:00:00.000Z",
+            ),
+            // `MakeDay` truncates toward zero: 15 − 0.5 = 14.5 → day 14.
+            (
+                "America/Chicago",
+                "2026-03-15T17:00:00.000Z",
+                0.5,
+                "2026-03-14T17:00:00.000Z",
+            ),
+            // Fall-back, the other direction: 12:00 CST back to 12:00 CDT.
+            (
+                "America/Chicago",
+                "2026-11-05T18:00:00.000Z",
+                7.0,
+                "2026-10-29T17:00:00.000Z",
+            ),
+            // Day-of-month underflow rolls across the year boundary.
+            (
+                "America/Chicago",
+                "2026-01-03T06:30:00.000Z",
+                5.0,
+                "2025-12-29T06:30:00.000Z",
+            ),
+            (
+                "UTC",
+                "2026-01-03T06:30:00.000Z",
+                400.0,
+                "2024-11-29T06:30:00.000Z",
+            ),
+            // A 30-minute DST transition (Lord Howe, 2026-04-05).
+            (
+                "Australia/Lord_Howe",
+                "2026-04-10T00:00:00.000Z",
+                8.0,
+                "2026-04-01T23:30:00.000Z",
+            ),
+            // Zero is a no-op here; the "keep forever" gate is the handler's.
+            (
+                "America/Chicago",
+                "2026-03-15T17:00:00.000Z",
+                0.0,
+                "2026-03-15T17:00:00.000Z",
+            ),
+        ];
+        for (tz, now, days, want) in VECTORS {
+            let now_ms = crate::clock::iso_to_ms(now).unwrap_or_else(|| panic!("parse {now}"));
+            assert_eq!(
+                llm_log_retention_cutoff_iso(now_ms, *days, tz).as_deref(),
+                Some(*want),
+                "cutoff for {tz} {now} −{days}d"
+            );
+        }
+    }
+
+    /// v4's `Invalid Date` arm — `toISOString()` throws, so the repo call errors
+    /// rather than deleting on a garbage cutoff. Unreachable through the handler
+    /// (Zod bounds retention to 0..=365); modeled so it cannot panic.
+    #[test]
+    fn retention_cutoff_none_for_unrepresentable() {
+        let now_ms = 1_773_594_000_000;
+        assert_eq!(llm_log_retention_cutoff_iso(now_ms, f64::NAN, "UTC"), None);
+        assert_eq!(
+            llm_log_retention_cutoff_iso(now_ms, f64::INFINITY, "UTC"),
+            None
+        );
+        assert_eq!(llm_log_retention_cutoff_iso(now_ms, 1e18, "UTC"), None);
+        // An unknown zone has no ambient fallback in core (the day_references seam).
+        assert_eq!(llm_log_retention_cutoff_iso(now_ms, 7.0, "Not/AZone"), None);
+    }
+
+    fn cleanup_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL).unwrap();
+        for (id, user, created) in [
+            ("l1", "u1", "2026-03-05T16:59:59.999Z"),
+            ("l2", "u1", "2026-03-05T17:00:00.000Z"),
+            ("l3", "u1", "2026-03-05T17:30:00.000Z"),
+            ("l4", "u1", "2026-03-05T18:00:00.000Z"),
+            ("l5", "u2", "2020-01-01T00:00:00.000Z"),
+        ] {
+            conn.execute(
+                "INSERT INTO llm_logs (id, userId, type, provider, modelName, request, \
+                 response, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'CHAT_MESSAGE', 'ANTHROPIC', 'm', '{}', '{}', ?3, ?3)",
+                params![id, user, created],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn surviving_ids(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("SELECT id FROM llm_logs ORDER BY id").unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+        rows.map(Result::unwrap).collect()
+    }
+
+    /// The `$lt` boundary is strict and the `userId` filter really filters: the
+    /// row AT the cutoff survives, and another user's ancient row is untouched.
+    #[test]
+    fn cleanup_deletes_strictly_older_rows_for_the_user_only() {
+        let conn = cleanup_conn();
+        let repo = LLMLogsRepository::new(&conn);
+        let now_ms = crate::clock::iso_to_ms("2026-03-15T17:00:00.000Z").unwrap();
+        assert_eq!(repo.cleanup_old_logs("u1", 10.0, now_ms, "UTC").unwrap(), 1);
+        assert_eq!(surviving_ids(&conn), ["l2", "l3", "l4", "l5"]);
+    }
+
+    /// The same window in a DST-crossing zone deletes MORE — the whole reason the
+    /// arithmetic is calendar-based. Break `llm_log_retention_cutoff_iso` back to
+    /// `now − n × 86_400_000` and this is the assertion that goes red.
+    #[test]
+    fn cleanup_cutoff_is_local_calendar_not_fixed_ms() {
+        let conn = cleanup_conn();
+        let repo = LLMLogsRepository::new(&conn);
+        let now_ms = crate::clock::iso_to_ms("2026-03-15T17:00:00.000Z").unwrap();
+        assert_eq!(
+            repo.cleanup_old_logs("u1", 10.0, now_ms, "America/Chicago")
+                .unwrap(),
+            3
+        );
+        assert_eq!(surviving_ids(&conn), ["l4", "l5"]);
+    }
+
+    /// v4's `< 0` guard: warn, return 0, delete nothing. Note it is `< 0`, so a
+    /// retention of exactly 0 would delete everything older than now — the
+    /// "keep forever" reading of 0 belongs to the handler.
+    #[test]
+    fn cleanup_negative_retention_is_a_no_op() {
+        let conn = cleanup_conn();
+        let repo = LLMLogsRepository::new(&conn);
+        let now_ms = crate::clock::iso_to_ms("2026-03-15T17:00:00.000Z").unwrap();
+        assert_eq!(repo.cleanup_old_logs("u1", -1.0, now_ms, "UTC").unwrap(), 0);
+        assert_eq!(surviving_ids(&conn), ["l1", "l2", "l3", "l4", "l5"]);
+
+        assert_eq!(repo.cleanup_old_logs("u1", 0.0, now_ms, "UTC").unwrap(), 4);
+        assert_eq!(surviving_ids(&conn), ["l5"]);
     }
 }
