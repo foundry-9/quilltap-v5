@@ -48393,3 +48393,64 @@ from `~/source/quilltap-server` at `c4d4b0de`, `npx tsx <script>` under Node
 `evaluateExpression(expr, name => REFS[name])` / `formatValue` over each
 source and emitting `{kind,id,source,ok,reason,refs|value}`. The `REFS` table
 in the spec IS the captured contract, not a convenience.
+
+## Lane record — P4.D36 unit 2: chipLabel + effects in the browser schema twin (2026-08-01)
+
+`custom-tool-types.ts` — the SPA's hand-ported slice of Zod 4.4.3 gains v4
+`c4d4b0de`'s schema additions, Zod-faithfully: `MAX_CHIP_LABEL_LENGTH` /
+`MAX_EFFECTS` / `MAX_EFFECT_TARGET_LENGTH`, the `chipLabel` top-level key
+(between `title` and `description`), `EffectWhenSchema`'s twin
+(`parseEffectWhen` — the outcome-row comparator language plus the `outcome`
+subject, with its own nested refine), `CustomToolEffectSchema`'s twin, the
+`effects` array key (between `llm` and `outcomes`, with the authored
+`at most 16 effects` check), `parseEffectTarget`, and the two
+`KNOWN_TOP_LEVEL_KEYS` entries.
+
+The outcome-row subject walk was EXTRACTED to `validateWhenSubjects` exactly
+as v4 extracts it, so effect conditions and outcome rows are checked by one
+body rather than two copies that drift; `validateEffects` is the fourth
+superRefine, after `validateGates`.
+
+**`parsePath` is transcribed, not imported.** v4's `parseEffectTarget` pulls
+`parsePath` from `@/lib/state/state-paths`; the SPA has no state-path module
+(the state tool and cascade resolver are server-side), so the one function is
+carried into `custom-tool-types.ts` as `parseStatePath` — v4's regex verbatim,
+including its documented limitation that `\w+` segments make keys with spaces
+or dots unreachable via a path string.
+
+**Teeth** — `custom-tool-types.effects.spec.ts`, 82 tests over 81 CAPTURED
+rows (67 `definition` + 14 `target`), driven through v4's REAL
+`QtapCustomToolSchema.safeParse` / `formatDefinitionIssues` /
+`collectUnknownKeys` / `parseEffectTarget` at `c4d4b0de` and byte-compared —
+verdict, parsed data via `JSON.stringify` (key ORDER pinned), unknown-key
+report, full rejection sentence. Same stand-in shape as the `.state` / `.llm` /
+`.gate` spec files, for the same reason: the committed §C corpus is P4.D35's
+to regenerate.
+
+**Three behaviours the capture established** (empirical, now pinned):
+- an empty `target` collects BOTH `Too small: expected string to have >=1
+  characters` (Zod's check, continuable) and the superRefine's `target must
+  start with "state." or "metadata."` — the superRefine still runs because
+  nothing aborted. Same doubling for an empty or over-long `value`.
+- `effects: at most 16 effects` fires ALONGSIDE per-effect superRefine
+  complaints: a bad target is not a shape failure, so the array check is only
+  skipped when an ELEMENT aborts.
+- the `value` union reports all three branch failures joined by ` — or — ` for
+  null/object/array, but an EMPTY string hoists the string branch's own
+  `Too small` alone (exactly one non-aborted branch).
+
+**Mutation proof (the D24 rule)** — the suite was green on its first run.
+Four deliberate breaks (a reworded underscore-guard sentence, the `value`
+union re-ordered boolean-before-number, the effects cap disabled, and the
+`llm`/`outcome` emission order swapped) took 8 rows red. The ORDER mutation
+initially passed, which exposed a real gap: no captured row carried both
+`llm` and `outcome` in one condition. Two rows were added — one testing every
+subject at once, one writing them in REVERSE source order — and the mutation
+then took both red, so the declaration-order re-serialization is now pinned
+rather than assumed.
+
+**Regen recipe**: from `~/source/quilltap-server` at `c4d4b0de`, `npx tsx
+<script>` under Node 24, `QtapCustomToolSchema.safeParse(JSON.parse(inputJson))`
++ `formatDefinitionIssues` + `collectUnknownKeys`, emitting
+`{kind,id,inputJson,success,reason,data,unknownKeys}`; the `target` rows drive
+`parseEffectTarget` directly and serialize the parsed target.

@@ -72,6 +72,15 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Taught the browser's copy of the custom-tool format about the two new
+things a tool may declare: a per-run label for its result chip, and a list
+of side effects — small writes a roll records once the dice have settled.
+The browser now accepts, refuses, and explains exactly what the server
+does for the same file, including the trap that catches every author once:
+a bare phrase where a quoted one was meant. Checked against eighty-one
+verdicts recorded from the reference app, compared down to the wording and
+the order of the keys.
+
 Taught the browser to read the new side-effect expression language for
 itself. Custom tools can now carry small formulas — arithmetic, text
 joining, parentheses, and references to the run's own numbers — and the
