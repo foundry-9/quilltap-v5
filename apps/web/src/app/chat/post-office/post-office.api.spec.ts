@@ -17,7 +17,7 @@ function coreStub(data: unknown): { core: CoreClient; dispatchData: ReturnType<t
 }
 
 describe('post-office.api — the §1 requests', () => {
-  it('chatAnnouncementPost sends exactly the three frozen fields', async () => {
+  it('chatAnnouncementPost sends exactly the four frozen fields, targetParticipantIds null by default', async () => {
     const { core, dispatchData } = coreStub({ success: true });
     await postAnnouncement(core, {
       chatId: 'chat-1',
@@ -29,6 +29,20 @@ describe('post-office.api — the §1 requests', () => {
       chatId: 'chat-1',
       contentMarkdown: 'The airship departs at dawn.',
       sender: { kind: 'staff', staffId: 'host' },
+      targetParticipantIds: null,
+    });
+  });
+
+  it('chatAnnouncementPost carries a populated whisper audience through', async () => {
+    const { core, dispatchData } = coreStub({ success: true });
+    await postAnnouncement(core, {
+      chatId: 'chat-1',
+      contentMarkdown: 'A private word.',
+      sender: { kind: 'staff', staffId: 'host' },
+      targetParticipantIds: ['p-1', 'p-2'],
+    });
+    expect(dispatchData.mock.calls[0]![0]).toMatchObject({
+      targetParticipantIds: ['p-1', 'p-2'],
     });
   });
 
@@ -67,6 +81,21 @@ describe('post-office.api — the §1 requests', () => {
       seedMarkdown: 'seed',
       characterId: 'char-7',
       connectionProfileId: 'prof-1',
+      targetParticipantIds: null,
+    });
+  });
+
+  it('chatAnnouncementPreview carries a populated whisper audience through', async () => {
+    const { core, dispatchData } = coreStub({ proposedMarkdown: 'ahoy' });
+    await previewAnnouncement(core, {
+      chatId: 'chat-1',
+      seedMarkdown: 'seed',
+      characterId: 'char-7',
+      connectionProfileId: 'prof-1',
+      targetParticipantIds: ['p-1'],
+    });
+    expect(dispatchData.mock.calls[0]![0]).toMatchObject({
+      targetParticipantIds: ['p-1'],
     });
   });
 

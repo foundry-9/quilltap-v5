@@ -43,6 +43,7 @@ import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
+import type { AudienceCandidate } from '../../chat/post-office/post-office.api';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
 import { AddCharacterDialog } from '../../chat/cast/add-character-dialog';
 import { BulkCharacterReplaceModal } from '../../chat/bulk-character-replace-modal';
@@ -500,6 +501,7 @@ interface CascadePrompt {
       <qt-insert-announcement-dialog
         [chatId]="id"
         [participantCharacterIds]="participantCharacterIds()"
+        [audienceCandidates]="audienceCandidates()"
         (posted)="onAnnouncementPosted()"
         (close)="showAnnouncement.set(false)"
       />
@@ -1295,6 +1297,26 @@ export class SalonConversation {
       .filter((p) => p.type === 'CHARACTER' && !p.removedAt)
       .map((p) => p.character?.id)
       .filter((id): id is string => !!id),
+  );
+
+  /**
+   * The chat's current participants, offered to Insert Announcement as
+   * optional whisper targets (v4 `ChatModals.tsx:325-332`, `a163862c`). Unlike
+   * `participantCharacterIds` above, this keeps a SOFT-REMOVED participant
+   * OUT via `status !== 'removed'` rather than `!removedAt` — v4 filters both,
+   * and a character can be soft-removed (`removedAt` unset, `status:
+   * 'removed'`) without having formally left the scene.
+   */
+  protected readonly audienceCandidates = computed<AudienceCandidate[]>(() =>
+    (this.chat()?.participants ?? [])
+      .filter((p) => p.type === 'CHARACTER' && !p.removedAt && p.status !== 'removed' && p.character)
+      .map((p) => ({
+        participantId: p.id,
+        name: p.character!.name,
+        controlledBy: p.controlledBy === 'user' ? ('user' as const) : ('llm' as const),
+        avatarUrl: p.character!.avatarUrl ?? null,
+        status: p.status,
+      })),
   );
 
   /**

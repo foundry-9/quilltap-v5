@@ -165,17 +165,28 @@ export type AnnouncerSenderWire =
 /**
  * v4 `POST /api/v1/chats/[id]?action=announcement` — post an ad-hoc
  * announcement bubble. 201 on success.
+ *
+ * `targetParticipantIds` (P4.D38's addition, mirroring `api/types.rs`'
+ * `ChatAnnouncementPost`) is the whisper audience: omitted or empty means
+ * public, one or more chat participant ids makes it a whisper only those
+ * participants' contexts include (v4 `a163862c`).
  */
 export interface ChatAnnouncementPostRequest {
   type: 'chatAnnouncementPost';
   chatId: string;
   contentMarkdown: string;
   sender: AnnouncerSenderWire;
+  targetParticipantIds?: string[] | null;
 }
 
 /**
  * v4 `POST /api/v1/chats/[id]?action=announcement-preview` — generate an
  * in-character rewrite. Persists nothing.
+ *
+ * `targetParticipantIds` (P4.D38's addition, mirroring `api/types.rs`'
+ * `ChatAnnouncementPreview`) — see `ChatAnnouncementPostRequest`. The
+ * in-character rewrite is told the audience so it can write to them by name
+ * rather than to the room (v4 `a163862c`).
  */
 export interface ChatAnnouncementPreviewRequest {
   type: 'chatAnnouncementPreview';
@@ -184,6 +195,7 @@ export interface ChatAnnouncementPreviewRequest {
   characterId: string;
   connectionProfileId: string;
   systemPromptId?: string | null;
+  targetParticipantIds?: string[] | null;
 }
 
 /**

@@ -1050,3 +1050,56 @@ describe('SalonConversation — the Speaking-As override does not outlive its ro
     expect(inst.activeSpeakerId()).toBe('pu');
   });
 });
+
+describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
+  interface AnnouncementHost {
+    showAnnouncement: { set(v: boolean): void };
+    audienceCandidates(): ReadonlyArray<{ participantId: string; name: string; status?: string }>;
+  }
+
+  it('excludes non-characters, hard-removed, and soft-removed participants; includes silent/absent', async () => {
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      participants: [
+        participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p-active', character: { id: 'c-active', name: 'Aria', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        participant({ id: 'p-silent', status: 'silent', character: { id: 'c-silent', name: 'Dax', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        // Hard-removed: removedAt set. Excluded by `!p.removedAt`.
+        participant({ id: 'p-hard-removed', removedAt: '2024-01-02T00:00:00.000Z', character: { id: 'c-gone', name: 'Ghost', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+        // Soft-removed: status is 'removed' but removedAt is unset. Excluded by
+        // `status !== 'removed'` — the filter v4 carries and v5 had been
+        // missing until the sibling P4.9E1B cast-walk beat caught it.
+        participant({ id: 'p-soft-removed', status: 'removed', character: { id: 'c-soft', name: 'Shade', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      ],
+    };
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as AnnouncementHost;
+
+    const names = inst.audienceCandidates().map((c) => c.name).sort();
+    // The human's own participant (`type: 'CHARACTER'`, `controlledBy: 'user'`)
+    // IS a valid candidate in v4 too — nothing excludes it.
+    expect(names).toEqual(['Aria', 'Bertie', 'Dax']);
+    expect(inst.audienceCandidates().find((c) => c.name === 'Dax')?.status).toBe('silent');
+  });
+
+  it('threads the same candidates into the Insert Announcement dialog', async () => {
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      participants: [
+        participant({ id: 'p-active', character: { id: 'c-active', name: 'Aria', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      ],
+    };
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as AnnouncementHost;
+    inst.showAnnouncement.set(true);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain('Who hears it');
+    expect(text).toContain('Aria');
+  });
+});

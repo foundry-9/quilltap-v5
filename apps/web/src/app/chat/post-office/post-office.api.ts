@@ -58,6 +58,20 @@ export interface AnnouncementProfile {
   isDefault: boolean;
 }
 
+/**
+ * A current chat participant, offered as an optional whisper target (v4
+ * `AudienceCandidate`, `InsertAnnouncementDialog.tsx:62-69`). `participantId`
+ * is the CHAT PARTICIPANT id — what gets persisted as a whisper target, not the
+ * workspace character id.
+ */
+export interface AudienceCandidate {
+  participantId: string;
+  name: string;
+  controlledBy: 'llm' | 'user';
+  avatarUrl?: string | null;
+  status?: 'active' | 'silent' | 'absent' | 'removed';
+}
+
 /** v4 `queryKeys.mailbox.byCharacter(chatId, characterId)` (`ComposeMailDialog:120`). */
 export const mailboxKeys = {
   all: ['mailbox'] as const,
@@ -93,16 +107,28 @@ export async function fetchAnnouncementProfiles(
   }));
 }
 
-/** §1 `ChatAnnouncementPost` — post the approved bubble (v4 `:232-239`). */
+/**
+ * §1 `ChatAnnouncementPost` — post the approved bubble (v4 `:232-239`).
+ *
+ * `targetParticipantIds`: the caller passes `audience.length > 0 ? audience :
+ * null` (v4's own normalization, `:236`) — an empty array is never sent, only
+ * `null` or a populated list.
+ */
 export async function postAnnouncement(
   core: CoreClient,
-  args: { chatId: string; contentMarkdown: string; sender: AnnouncerSenderWire },
+  args: {
+    chatId: string;
+    contentMarkdown: string;
+    sender: AnnouncerSenderWire;
+    targetParticipantIds?: string[] | null;
+  },
 ): Promise<void> {
   await core.dispatchData({
     type: 'chatAnnouncementPost',
     chatId: args.chatId,
     contentMarkdown: args.contentMarkdown,
     sender: args.sender,
+    targetParticipantIds: args.targetParticipantIds ?? null,
   });
 }
 
@@ -113,6 +139,7 @@ export async function postAnnouncement(
  *
  * v4 sends `systemPromptId: systemPromptId || undefined`, i.e. an absent key
  * rather than a null, so the empty-string case is dropped here too.
+ * `targetParticipantIds` follows `postAnnouncement`'s empty→null normalization.
  */
 export async function previewAnnouncement(
   core: CoreClient,
@@ -122,6 +149,7 @@ export async function previewAnnouncement(
     characterId: string;
     connectionProfileId: string;
     systemPromptId?: string | null;
+    targetParticipantIds?: string[] | null;
   },
 ): Promise<string> {
   const data = await core.dispatchData({
@@ -131,6 +159,7 @@ export async function previewAnnouncement(
     characterId: args.characterId,
     connectionProfileId: args.connectionProfileId,
     ...(args.systemPromptId ? { systemPromptId: args.systemPromptId } : {}),
+    targetParticipantIds: args.targetParticipantIds ?? null,
   });
   // v4 `:284` — trims, and treats a blank rewrite as a failure at the call site.
   return String(data['proposedMarkdown'] ?? '').trim();

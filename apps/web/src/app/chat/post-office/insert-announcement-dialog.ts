@@ -21,6 +21,7 @@ import {
   fetchAnnouncementProfiles,
   postAnnouncement,
   previewAnnouncement,
+  type AudienceCandidate,
 } from './post-office.api';
 import { ToastService } from '../../ui/toast.service';
 
@@ -44,6 +45,15 @@ const AS_IS = 'as-is';
  * editable, "Edit seed" returns to the original, and "Regenerate" asks again.
  * That approve/edit/regenerate loop is the whole point: an LLM writes the line,
  * a human signs it.
+ *
+ * An announcement is public by default — every current chat participant hears
+ * it. Checking one or more names in "Who hears it" (v4 `a163862c`) turns it
+ * into a whisper: only those participants' contexts include it, the collapsed
+ * chip wears the whisper border and an audience tag, and the in-character
+ * rewrite is told the audience by name rather than the whole room. Changing
+ * the audience invalidates any proposal already on screen, same as changing
+ * the sender or mode — a private aside is phrased differently from a
+ * proclamation.
  *
  * Two divergences from v4's component, both forced and both v5 precedent:
  *
@@ -241,11 +251,82 @@ const AS_IS = 'as-is';
         }
       </div>
 
+      <!-- Audience — public by default; naming anyone makes it a whisper (v4 :529-587). -->
+      @if (audienceCandidates().length > 0) {
+        <div class="mb-4">
+          <label class="block text-sm qt-text-primary mb-2" id="announce-audience-label">
+            Who hears it
+          </label>
+          <div
+            role="group"
+            aria-labelledby="announce-audience-label"
+            class="qt-border-primary border rounded max-h-40 overflow-y-auto"
+          >
+            @for (p of audienceCandidates(); track p.participantId) {
+              <label
+                [class]="
+                  'w-full px-3 py-2 text-sm flex items-center gap-3 cursor-pointer ' +
+                  (isAudienceChecked(p.participantId) ? 'qt-bg-primary/20' : 'hover:qt-bg-primary/10')
+                "
+              >
+                <input
+                  type="checkbox"
+                  class="qt-checkbox flex-shrink-0"
+                  [checked]="isAudienceChecked(p.participantId)"
+                  [disabled]="isPosting() || stage() === 'generating'"
+                  (change)="toggleAudience(p.participantId)"
+                />
+                @if (p.avatarUrl) {
+                  <img
+                    [src]="p.avatarUrl"
+                    alt=""
+                    class="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                  />
+                } @else {
+                  <div class="w-6 h-6 rounded-full qt-bg-secondary flex-shrink-0"></div>
+                }
+                <span class="min-w-0 truncate">{{ p.name }}</span>
+                @if (p.controlledBy === 'user') {
+                  <span class="qt-text-xs flex-shrink-0">(you)</span>
+                }
+                @if (p.status === 'silent' || p.status === 'absent') {
+                  <span class="qt-text-xs flex-shrink-0">({{ p.status }})</span>
+                }
+              </label>
+            }
+          </div>
+          <div class="qt-text-xs mt-1">
+            @if (audience().length === 0) {
+              Everyone present hears this — it is posted as a public announcement.
+            } @else {
+              Whispered to {{ selectedAudienceNames().join(', ') }}. No other character receives
+              it in their context.
+              <button
+                type="button"
+                class="qt-text-link underline"
+                [disabled]="isPosting() || stage() === 'generating'"
+                (click)="makePublic()"
+              >
+                Make it public
+              </button>
+            }
+          </div>
+        </div>
+      }
+
       <!-- Seed editor (v4 :535-558) -->
       <div class="mb-4">
         <div class="flex items-center justify-between mb-2">
           <label class="block text-sm qt-text-primary">
-            {{ willRewrite() ? 'What you want the character to announce' : 'Announcement' }}
+            {{
+              willRewrite()
+                ? isWhisper()
+                  ? 'What you want the character to say privately'
+                  : 'What you want the character to announce'
+                : isWhisper()
+                  ? 'Whisper'
+                  : 'Announcement'
+            }}
           </label>
           @if (willRewrite() && stage() === 'review') {
             <button
@@ -330,6 +411,8 @@ export class InsertAnnouncementDialog {
   readonly chatId = input.required<string>();
   /** Character ids already in the chat — filtered OUT of the off-scene picker. */
   readonly participantCharacterIds = input<readonly string[]>([]);
+  /** Current chat participants, offered as optional whisper targets (v4 `:76`). */
+  readonly audienceCandidates = input<readonly AudienceCandidate[]>([]);
 
   readonly close = output<void>();
   /** A bubble landed — the salon refetches the chat (v4 `onPosted`). */
@@ -352,6 +435,11 @@ export class InsertAnnouncementDialog {
   protected readonly stage = signal<Stage>('compose');
   protected readonly proposedMarkdown = signal('');
   protected readonly isPosting = signal(false);
+  /**
+   * The whisper audience: chat participant ids. Empty means public — the
+   * default and the historical behavior (v4 `:114-117`).
+   */
+  protected readonly audience = signal<string[]>([]);
 
   /**
    * Explicit user choices for the in-character rewrite. Null means "use the
@@ -436,6 +524,17 @@ export class InsertAnnouncementDialog {
     () => this.mode() === 'character' && this.profileId() !== AS_IS,
   );
 
+  /** v4 `isWhisper` (`:317`) — naming anyone in the audience makes it a whisper. */
+  protected readonly isWhisper = computed(() => this.audience().length > 0);
+
+  /** v4 `selectedAudienceNames` (`:242-248`). */
+  protected readonly selectedAudienceNames = computed(() => {
+    const candidates = this.audienceCandidates();
+    return this.audience()
+      .map((id) => candidates.find((p) => p.participantId === id)?.name)
+      .filter((name): name is string => !!name);
+  });
+
   /** v4 gates the prompt picker on MORE THAN ONE prompt (`:325-329`). */
   protected readonly showSystemPromptPicker = computed(() => {
     const sel = this.selectedCharacter();
@@ -462,13 +561,16 @@ export class InsertAnnouncementDialog {
     return false;
   });
 
+  /** v4 `postLabel` (`:318`) — flips when the audience makes it a whisper. */
+  protected readonly postLabel = computed(() => (this.isWhisper() ? 'Post Whisper' : 'Post Announcement'));
+
   /** v4 `primaryLabel` (`:317-323`). */
   protected readonly primaryLabel = computed(() => {
     if (this.stage() === 'generating') return 'Generating…';
     if (this.isPosting()) return 'Posting…';
-    if (this.mode() === 'character' && this.stage() === 'review') return 'Post Announcement';
+    if (this.mode() === 'character' && this.stage() === 'review') return this.postLabel();
     if (this.willRewrite() && this.stage() === 'compose') return 'Preview in character';
-    return 'Post Announcement';
+    return this.postLabel();
   });
 
   /** v4 `dialogClose` (`:331`) — the ✕/backdrop are inert while work is in flight. */
@@ -504,6 +606,34 @@ export class InsertAnnouncementDialog {
     this.proposedMarkdown.set('');
   }
 
+  protected isAudienceChecked(participantId: string): boolean {
+    return this.audience().includes(participantId);
+  }
+
+  /**
+   * v4 `toggleAudience` (`:214-222`) — the audience reaches the in-character
+   * rewrite (a private aside is phrased differently from a proclamation), so
+   * changing it invalidates any proposal already on screen and drops back to
+   * compose.
+   */
+  protected toggleAudience(participantId: string): void {
+    const current = this.audience();
+    this.audience.set(
+      current.includes(participantId)
+        ? current.filter((id) => id !== participantId)
+        : [...current, participantId],
+    );
+    this.stage.set('compose');
+    this.proposedMarkdown.set('');
+  }
+
+  /** v4's "Make it public" reset (`:566-572`). */
+  protected makePublic(): void {
+    this.audience.set([]);
+    this.stage.set('compose');
+    this.proposedMarkdown.set('');
+  }
+
   /** v4 `handlePrimary` (`:299-310`) — review posts the proposal, compose previews or posts. */
   protected onPrimary(): void {
     if (!this.canSubmit()) return;
@@ -530,6 +660,7 @@ export class InsertAnnouncementDialog {
         characterId: this.characterId(),
         connectionProfileId: this.profileId(),
         systemPromptId: this.systemPromptId(),
+        targetParticipantIds: this.audience().length > 0 ? this.audience() : null,
       });
       if (!proposed) {
         this.toasts.showError('The LLM returned no content. Try again or use as-is.');
@@ -559,8 +690,9 @@ export class InsertAnnouncementDialog {
         chatId: this.chatId(),
         contentMarkdown: textToPost.trim(),
         sender,
+        targetParticipantIds: this.audience().length > 0 ? this.audience() : null,
       });
-      this.toasts.showSuccess('Announcement posted');
+      this.toasts.showSuccess(this.isWhisper() ? 'Whispered announcement posted' : 'Announcement posted');
       this.posted.emit();
       this.close.emit();
     } catch (err) {

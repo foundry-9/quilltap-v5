@@ -7,7 +7,19 @@ import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { RichEditor } from '../../editor/rich-editor';
 import { InsertAnnouncementDialog } from './insert-announcement-dialog';
+import type { AudienceCandidate } from './post-office.api';
 import { ToastService } from '../../ui/toast.service';
+
+function audienceCandidate(over: Partial<AudienceCandidate> = {}): AudienceCandidate {
+  return {
+    participantId: 'p-cleo',
+    name: 'Cleo',
+    controlledBy: 'llm',
+    avatarUrl: null,
+    status: 'active',
+    ...over,
+  };
+}
 
 function character(over: Partial<CharacterListItem> = {}): CharacterListItem {
   return {
@@ -85,6 +97,7 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 async function mount(
   s: Stub,
   participantCharacterIds: string[] = [],
+  audienceCandidates: AudienceCandidate[] = [],
 ): Promise<ComponentFixture<InsertAnnouncementDialog>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -97,6 +110,7 @@ async function mount(
   const fixture = TestBed.createComponent(InsertAnnouncementDialog);
   fixture.componentRef.setInput('chatId', 'chat-1');
   fixture.componentRef.setInput('participantCharacterIds', participantCharacterIds);
+  fixture.componentRef.setInput('audienceCandidates', audienceCandidates);
   fixture.detectChanges();
   await settle(fixture);
   return fixture;
@@ -362,5 +376,196 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     fixture.detectChanges();
     await settle(fixture);
     expect(fixture.nativeElement.querySelector('#announce-prompt')).toBeNull();
+  });
+
+  describe('the "Who hears it" audience (v4 `a163862c`)', () => {
+    function checkbox(fixture: ComponentFixture<unknown>, name: string): HTMLInputElement {
+      const labels = [
+        ...fixture.nativeElement.querySelectorAll('[role="group"] label'),
+      ] as HTMLLabelElement[];
+      const label = labels.find((l) => (l.textContent ?? '').includes(name))!;
+      return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    }
+
+    it('renders no audience section when there are no candidates', async () => {
+      const fixture = await mount(stub({}));
+      expect(fixture.nativeElement.querySelector('[role="group"]')).toBeNull();
+    });
+
+    it('shows every candidate with a (you) tag and a status tag when present', async () => {
+      const fixture = await mount(stub({}), [], [
+        audienceCandidate({ participantId: 'p-cleo', name: 'Cleo', controlledBy: 'user' }),
+        audienceCandidate({ participantId: 'p-dax', name: 'Dax', status: 'silent' }),
+        audienceCandidate({ participantId: 'p-aria', name: 'Aria', status: 'active' }),
+      ]);
+      expect(text(fixture)).toContain('Who hears it');
+      expect(checkbox(fixture, 'Cleo').closest('label')!.textContent).toContain('(you)');
+      expect(checkbox(fixture, 'Dax').closest('label')!.textContent).toContain('(silent)');
+      expect(checkbox(fixture, 'Aria').closest('label')!.textContent).not.toContain('(');
+    });
+
+    it('is public by default: helper text says so, and no targetParticipantIds key changes anything', async () => {
+      const fixture = await mount(stub({}), [], [audienceCandidate()]);
+      expect(text(fixture)).toContain('Everyone present hears this');
+      expect(primary(fixture).textContent?.trim()).toBe('Post Announcement');
+    });
+
+    it('checking a name turns it into a whisper — label flips, audience sent, distinct toast', async () => {
+      const s = stub({});
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      expect(text(fixture)).toContain('Whispered to Cleo');
+      expect(primary(fixture).textContent?.trim()).toBe('Post Whisper');
+      await setEditor(fixture, 'A private word.');
+      fixture.detectChanges();
+      primary(fixture).click();
+      await settle(fixture);
+      expect(s.calls.find((c) => c['type'] === 'chatAnnouncementPost')).toMatchObject({
+        targetParticipantIds: ['p-cleo'],
+      });
+      expect(toasts()).toEqual([{ type: 'success', message: 'Whispered announcement posted' }]);
+    });
+
+    it('checking two names collects both, in check order', async () => {
+      const s = stub({});
+      const fixture = await mount(s, [], [
+        audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' }),
+        audienceCandidate({ participantId: 'p-dax', name: 'Dax' }),
+      ]);
+      checkbox(fixture, 'Dax').click();
+      fixture.detectChanges();
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      await setEditor(fixture, 'notice');
+      fixture.detectChanges();
+      primary(fixture).click();
+      await settle(fixture);
+      expect(s.calls.find((c) => c['type'] === 'chatAnnouncementPost')).toMatchObject({
+        targetParticipantIds: ['p-dax', 'p-cleo'],
+      });
+    });
+
+    it('unchecking a name removes it from the audience', async () => {
+      const s = stub({});
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      expect(text(fixture)).toContain('Everyone present hears this');
+      await setEditor(fixture, 'notice');
+      fixture.detectChanges();
+      primary(fixture).click();
+      await settle(fixture);
+      expect(s.calls.find((c) => c['type'] === 'chatAnnouncementPost')).toMatchObject({
+        targetParticipantIds: null,
+      });
+    });
+
+    it('"Make it public" clears the audience and returns to compose', async () => {
+      const s = stub({
+        characters: [character({ id: 'c-bram', name: 'Bram' })],
+        profiles: [{ id: 'p1', name: 'Cheap', provider: 'openai', modelName: 'm', isDefault: true }],
+      });
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      const link = [...fixture.nativeElement.querySelectorAll('button')].find(
+        (b: HTMLButtonElement) => b.textContent?.trim() === 'Make it public',
+      ) as HTMLButtonElement;
+      link.click();
+      fixture.detectChanges();
+      expect(text(fixture)).toContain('Everyone present hears this');
+      expect(primary(fixture).textContent?.trim()).toBe('Post Announcement');
+    });
+
+    it('toggling the audience while reviewing an in-character proposal invalidates it and returns to compose', async () => {
+      const s = stub({
+        characters: [character({ id: 'c-bram', name: 'Bram' })],
+        profiles: [{ id: 'p1', name: 'Cheap', provider: 'openai', modelName: 'm', isDefault: true }],
+      });
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      tab(fixture, 'Off-scene character').click();
+      fixture.detectChanges();
+      await settle(fixture);
+      (fixture.nativeElement.querySelector('.max-h-40 button') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await setEditor(fixture, 'The ridge is clear.');
+      fixture.detectChanges();
+      primary(fixture).click();
+      await settle(fixture);
+      expect(text(fixture)).toContain('What Bram will say');
+
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      expect(text(fixture)).not.toContain('What Bram will say');
+      expect(primary(fixture).textContent?.trim()).toBe('Preview in character');
+      expect(s.calls.some((c) => c['type'] === 'chatAnnouncementPost')).toBe(false);
+    });
+
+    it('the seed-editor label carries all four v4 combinations of willRewrite × isWhisper', async () => {
+      function seedLabel(fixture: ComponentFixture<unknown>): string {
+        const labels = [...fixture.nativeElement.querySelectorAll('label')] as HTMLLabelElement[];
+        // The seed label is the last plain `qt-text-primary` label before the
+        // editor — the audience checkbox labels don't carry that class alone,
+        // and this excludes "Sender"/"Staff member"/"Who hears it" by content.
+        return (
+          labels.find((l) =>
+            ['Announcement', 'Whisper', 'What you want the character to announce',
+             'What you want the character to say privately'].includes((l.textContent ?? '').trim()),
+          )?.textContent ?? ''
+        ).trim();
+      }
+
+      const s = stub({
+        characters: [character({ id: 'c-bram', name: 'Bram' })],
+        profiles: [{ id: 'p1', name: 'Cheap', provider: 'openai', modelName: 'm', isDefault: true }],
+      });
+      // Staff + public → "Announcement".
+      const publicStaff = await mount(stub({}), [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      expect(seedLabel(publicStaff)).toBe('Announcement');
+
+      // Staff + whisper → "Whisper".
+      checkbox(publicStaff, 'Cleo').click();
+      publicStaff.detectChanges();
+      expect(seedLabel(publicStaff)).toBe('Whisper');
+
+      // Character (will rewrite) + public → "What you want the character to announce".
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      tab(fixture, 'Off-scene character').click();
+      fixture.detectChanges();
+      await settle(fixture);
+      (fixture.nativeElement.querySelector('.max-h-40 button') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(seedLabel(fixture)).toBe('What you want the character to announce');
+
+      // Character (will rewrite) + whisper → "What you want the character to say privately".
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      expect(seedLabel(fixture)).toBe('What you want the character to say privately');
+    });
+
+    it('preview-in-character carries the audience to chatAnnouncementPreview', async () => {
+      const s = stub({
+        characters: [character({ id: 'c-bram', name: 'Bram' })],
+        profiles: [{ id: 'p1', name: 'Cheap', provider: 'openai', modelName: 'm', isDefault: true }],
+      });
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      tab(fixture, 'Off-scene character').click();
+      fixture.detectChanges();
+      await settle(fixture);
+      (fixture.nativeElement.querySelector('.max-h-40 button') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      checkbox(fixture, 'Cleo').click();
+      fixture.detectChanges();
+      await setEditor(fixture, 'The ridge is clear.');
+      fixture.detectChanges();
+      primary(fixture).click();
+      await settle(fixture);
+      expect(s.calls.find((c) => c['type'] === 'chatAnnouncementPreview')).toMatchObject({
+        targetParticipantIds: ['p-cleo'],
+      });
+    });
   });
 });

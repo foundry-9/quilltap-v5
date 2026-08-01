@@ -160,6 +160,14 @@ itself stays forgiving: a stale name there simply drops out of the audience
 rather than failing the preview. Verified against the reference app's real
 code across fifty-six compared cases, with deliberate breakages proving
 each new check can actually fail.
+The Insert Announcement dialog can now whisper. A new "Who hears it" section
+lists the chat's current participants with a checkbox each — leave every box
+unchecked and the announcement posts publicly exactly as before, or check one
+or more names and it becomes a whisper only those participants' contexts
+include. The collapsed chip and the composer both say who a whisper went to,
+and changing who hears it invalidates any in-character rewrite already on
+screen, since a private aside reads differently than a public proclamation.
+
 The operator now keeps seeing their own private asides no matter who they're
 signed as, and Prospero's busiest whisper — telling one character which group
 shelves it may read — finally stays hidden behind the All Whispers toggle

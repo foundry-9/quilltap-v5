@@ -48985,3 +48985,70 @@ whisper-label-fg untouched by either v4 commit). v5 has no theme-package
 `dist/` build step (themes are served straight from
 `apps/web/public/themes/*`), so the order's "never hand-edit dist/"
 caution doesn't apply here — noted for completeness.
+
+## Lane record — P4.D38 unit 3: the "Who hears it" audience (dialog + wire + wiring)
+
+The §1 wire mirror: `core-contract.ts`'s `ChatAnnouncementPostRequest` /
+`ChatAnnouncementPreviewRequest` both gain `targetParticipantIds?: string[]
+| null`, matching the sibling P4.D37's `api/types.rs` addition byte-for-byte
+(field name, optionality, semantics) — verified against the order's binding
+§1 text since D37's `crates/quilltap-core/src/api/types.rs:2398/2406`
+additions are not yet on this branch (parallel lane; the unifier's
+name-for-name diff is the real proof).
+
+`post-office.api.ts`'s `postAnnouncement`/`previewAnnouncement` both gain a
+`targetParticipantIds?: string[] | null` arg, normalized to `?? null` before
+the dispatch — so the wire ALWAYS carries the key (never omitted), matching
+v4's own empty→null normalization at the call site rather than the server's
+`skip_serializing_if`. New `AudienceCandidate` interface (v4
+`InsertAnnouncementDialog.tsx:62-69`, field-for-field: `participantId` is
+explicitly documented as the CHAT PARTICIPANT id, not the character id).
+
+`insert-announcement-dialog.ts`: the "Who hears it" checkbox group (v4
+`:529-587`) — public by default, avatar-or-placeholder + name + "(you)" for
+`controlledBy: 'user'` + "(silent)"/"(absent)" status tags, rendered only
+when `audienceCandidates().length > 0`. `toggleAudience` resets `stage` to
+`'compose'` and clears `proposedMarkdown` on every check/uncheck (v4's
+audience-changes-the-in-character-voice rule), and so does "Make it public".
+Both `postLabel`/`primaryLabel` and the seed-editor label flip on
+`isWhisper()` exactly per v4's four combinations (staff/character ×
+public/whisper); the success toast reads "Whispered announcement posted"
+when the audience is non-empty. Both API calls now carry
+`targetParticipantIds: audience().length > 0 ? audience() : null`.
+
+`salon-conversation.ts`'s new `audienceCandidates` computed builds v4's
+`ChatModals.tsx:325-332` filter exactly: `type === 'CHARACTER' &&
+!removedAt && status !== 'removed' && character` — the SAME two-part
+removal check the order's survey flagged as `participantCharacterIds`'
+already-fixed precedent (P4.9E1B), applied fresh here since this is a
+DIFFERENT computed with its own filter, not a shared one. Wired into the
+dialog's new `[audienceCandidates]` input alongside the existing
+`[participantCharacterIds]`.
+
+**Mutation-proven** (both, reverted after):
+- `toggleAudience`'s stage/proposedMarkdown reset — removing it left the
+  "toggling the audience while reviewing an in-character proposal
+  invalidates it" spec red (the proposal stayed on screen).
+- `audienceCandidates`' `status !== 'removed'` clause — removing it let a
+  soft-removed participant ("Shade") back into the candidate list, redding
+  the exclusion spec.
+
+**New coverage**: `insert-announcement-dialog.spec.ts` grew a
+`'the "Who hears it" audience'` describe block (10 cases: no-candidates
+renders nothing, status/you tags, public-by-default helper text, single and
+multi whisper posting with the exact `targetParticipantIds` array in call
+order, uncheck removes, Make-it-public reset, the toggle-during-review
+invalidation, all four seed-label combinations, and the preview call
+carrying the audience). `post-office.api.spec.ts`'s two "frozen fields"
+tests updated for the new key (both now assert `targetParticipantIds:
+null` by default) plus two new populated-audience cases.
+`salon-conversation.spec.ts` grew an `'audienceCandidates'` describe block
+(2 cases: the exclusion matrix incl. hard- vs soft-removed, and a
+DOM-level check that the dialog actually receives the candidates).
+
+Gate for this unit: `npx ng test --watch=false --include=
+'src/app/chat/post-office/**/*.spec.ts'` (53/53) and `--include=
+'src/app/screens/salon/salon-conversation.spec.ts'` (35/35), both green;
+`node_modules` symlinked from the main worktree (identical `package.json`
+dependency sections, confirmed by diff) since this worktree had none
+installed.
