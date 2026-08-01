@@ -555,6 +555,72 @@ describe('CustomToolRunDialog — the reference panel', () => {
     expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(1);
   });
 
+  it('says what the tool may WRITE, in its own sentence (v4 c4d4b0de)', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...UNLOCK,
+            references: {
+              ...UNLOCK.references!,
+              stateWrites: ['encounter.count'],
+              metadataWrites: ['lockpick'],
+            },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    const body = text(fixture);
+    expect(body).toContain('When it runs, this tool may also write:');
+    expect(body).toContain('state.encounter.count');
+    expect(body).toContain('metadata.lockpick');
+    expect(body).toContain('The record of what actually changed rides with the roll itself.');
+  });
+
+  it('opens the panel for a tool that quotes nothing but writes something', async () => {
+    // The panel's gate is reads OR writes: a tool with no placeholders at all
+    // still has something to declare if it changes the world.
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...WHEEL,
+            references: {
+              value: false,
+              roll: false,
+              dice: false,
+              llm: false,
+              params: [],
+              metadata: [],
+              state: [],
+              stateWrites: ['wheel.spins'],
+            },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Spin the Wheel')[0]);
+
+    expect(text(fixture)).toContain('What this tool can quote');
+    expect(text(fixture)).toContain('state.wheel.spins');
+  });
+
+  it('reads a roster without the write vocabulary as "writes nothing"', async () => {
+    // Older servers send neither key; that must read as silence, not an error.
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    expect(text(fixture)).toContain('What this tool can quote');
+    expect(text(fixture)).not.toContain('may also write');
+  });
+
   it('gives a string parameter a textarea, and a number parameter a number input', async () => {
     const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
     await open(fixture);

@@ -48525,3 +48525,35 @@ One trap worth the comment it now carries: `not.toContain('would write')` is
 NOT a safe negative in the bench, because the JSON-preview card's own hint says
 "What Save would write". The assertion tests `'(would write)'` with its
 parentheses.
+
+## Lane record — P4.D36 units 5–7: the run dialog, the chip precedence, the wire (2026-08-01)
+
+**Unit 5 — the run dialog's "may write" panel** (v4 `CustomToolRunDialog.tsx`
++29). `custom-tools.api.ts`'s `CustomToolReferences` gains the two optional
+write lists; `custom-tools-popup.ts` builds `state.<path>` / `metadata.<key>`
+targets from them, opens the reference panel when a tool quotes NOTHING but
+writes something (the gate is now reads OR writes), and renders v4's sentence
+verbatim: "When it runs, this tool may also write: … The record of what
+actually changed rides with the roll itself." Writes get their own sentence
+rather than joining the quote table, because "consults the encounter count" and
+"changes it" must not blur together. A roster from a server without the write
+vocabulary carries neither key, which reads as "writes nothing" — the same
+silence the absent `references` already means. Three new popup spec cases,
+including that quotes-nothing-but-writes-something case.
+
+**Unit 6 — the chip label precedence.** `system-message-labels.ts` now reads
+`chipLabel → toolTitle → tool`, all three off `pascalMeta`, never the body; v4's
+two new test cases ported (prefers the rendered label; a blank label is ignored
+rather than shown as an empty chip). **No CSS change and no
+`announcement-group.ts` edit was needed** — the Salon chip already ellipsises
+via `.qt-chat-system-bar-kind`, and the announcement heading reads the same
+function, so P4.D38's files were not touched.
+
+**Unit 7 — the wire and the asset.** `core-contract.ts` gains this lane's two
+named `pascalMeta` additions, in v4's positions: `chipLabel?` after `toolTitle`,
+`effects?` after `llm` and before `invokedBy`, with the tier enum. The doc
+comment names the distinction the two effect shapes carry (applied vs resolved)
+so neither can be read as the other. `public/schemas/qtap-custom-tool.schema.json`
+is re-copied BYTE-FOR-BYTE from v4 at `c4d4b0de` (+90: `chipLabel`, `effects`,
+`$defs/Effect`, `$defs/EffectWhen`) — verified `diff -q` identical against the
+v4 checkout. The stale `dist/` copy is gitignored and does not ship.

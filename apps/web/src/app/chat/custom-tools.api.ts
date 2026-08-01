@@ -47,6 +47,10 @@ export interface CustomToolReferences {
   metadata: string[];
   /** Paths into the merged persistent state this tool reads. */
   state: string[];
+  /** State paths this tool's effects may WRITE. Absent on rosters from an older server. */
+  stateWrites?: string[];
+  /** Metadata keys this tool's effects may WRITE on the rolling character. Absent on older servers. */
+  metadataWrites?: string[];
 }
 
 /** A roster entry, plus §1's `references` (absent on a roster from an older server). */

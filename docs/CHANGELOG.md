@@ -72,6 +72,16 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Told the reader what a tool may change, and named each run by its own
+label. The Run Tool dialog now lists the places a tool may write when it
+runs — kept as a separate sentence from the list of things it quotes,
+since consulting a number and changing it are different claims — and shows
+that panel even for a tool that quotes nothing at all but does change
+something. In the conversation, a roll's chip is now labelled by the
+run's own rendered label when it has one, falling back to the tool's title
+and then its name. Rosters from an older server, which say nothing about
+writes, are read as writing nothing rather than as an error.
+
 Gave the tool workbench the two controls the new format needs: a chip-label
 field beside the title, and a Side Effects card between the form and the
 outcome table where a roll's consequences are written down. A condition too

@@ -44,6 +44,31 @@ describe('system-message-labels — Pascal (P4.6ba)', () => {
     expect(label).toBe('Scan Hawking Radiation');
   });
 
+  it('prefers the rendered chip label over the title — the per-run name of the deal', () => {
+    // v4 `system-message-labels.test.ts` (c4d4b0de), case for case.
+    expect(
+      getSystemKindDisplayLabel(
+        staff({
+          pascalMeta: pascalMeta({
+            tool: 'agent_lambda',
+            toolTitle: 'Agent lambda',
+            chipLabel: 'Agent lambda — Jackie',
+          }),
+        }),
+      ),
+    ).toBe('Agent lambda — Jackie');
+  });
+
+  it('ignores a blank chip label rather than showing an empty chip', () => {
+    expect(
+      getSystemKindDisplayLabel(
+        staff({
+          pascalMeta: pascalMeta({ tool: 'unlock', toolTitle: 'Force the Lock', chipLabel: '   ' }),
+        }),
+      ),
+    ).toBe('Force the Lock');
+  });
+
   it('falls back to the declaration name when a legacy row has no toolTitle', () => {
     const label = getSystemKindDisplayLabel(staff({ pascalMeta: pascalMeta({ toolTitle: undefined }) }));
     expect(label).toBe('scan_hawking_radiation');

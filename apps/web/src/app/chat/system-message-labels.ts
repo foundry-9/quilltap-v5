@@ -172,12 +172,19 @@ export function getSystemKindDisplayLabel(message: StaffFields): string {
   const raw = resolveRawKind(message);
   if (!raw) return '';
 
-  // A roll outcome names the TOOL, not the kind: "Scan Hawking Radiation", not
-  // "roll outcome" (v4 system-message-labels `:183-186`). `toolTitle ?? tool` —
-  // the display title when the row carries one, else the declaration name, which
-  // every roll record has. Both come from `pascalMeta`, never from the body.
+  // A roll outcome names the RUN, not the kind: "Scan Hawking Radiation", not
+  // "roll outcome" (v4 system-message-labels `:169-176`).
+  // `chipLabel ?? toolTitle ?? tool` — the definition's rendered per-run label
+  // when the roll carries one ("Agent lambda — Jackie"), else the display title,
+  // else the declaration name, which every roll record has. All three come from
+  // `pascalMeta`, never from the body. Long rendered labels are the chip CSS's
+  // problem (`.qt-chat-system-bar-kind` already ellipsises), not this
+  // function's.
   if (raw === 'custom-tool-result') {
-    const named = message.pascalMeta?.toolTitle?.trim() || message.pascalMeta?.tool?.trim();
+    const named =
+      message.pascalMeta?.chipLabel?.trim() ||
+      message.pascalMeta?.toolTitle?.trim() ||
+      message.pascalMeta?.tool?.trim();
     if (named) return named;
   }
 

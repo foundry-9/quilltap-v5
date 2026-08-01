@@ -191,7 +191,7 @@ interface ReferenceRow {
 
               <!-- A tool that quotes nothing gets no panel. An empty list under a
                    heading promising a list is worse than the heading's absence. -->
-              @if (referenceRows().length > 0) {
+              @if (referenceRows().length > 0 || writeTargets().length > 0) {
                 <details class="rounded-lg qt-border p-5" open>
                   <summary
                     class="text-sm font-medium qt-text cursor-pointer list-none flex items-center gap-2"
@@ -220,6 +220,18 @@ interface ReferenceRow {
 
                   @if (missingPlaceholderNote(); as note) {
                     <p class="text-xs qt-text-secondary mt-4 leading-relaxed">{{ note }}</p>
+                  }
+
+                  @if (writeTargets().length > 0) {
+                    <p class="text-xs qt-text-secondary mt-4 leading-relaxed">
+                      When it runs, this tool may also write:
+                      @for (target of writeTargets(); track target; let i = $index) {
+                        <span
+                          >@if (i > 0) {, }<code class="font-mono qt-text">{{ target }}</code></span
+                        >
+                      }
+                      . The record of what actually changed rides with the roll itself.
+                    </p>
                   }
                 </details>
               }
@@ -673,6 +685,23 @@ export class CustomToolsPopup {
     }
 
     return rows;
+  });
+
+  /**
+   * What the tool may WRITE, once the deal is done — a different claim from
+   * what it quotes, and so a sentence of its own: "consults the encounter
+   * count" and "changes it" must not blur together.
+   *
+   * A roster from a server without the write vocabulary carries neither key,
+   * which reads as "writes nothing" rather than as an error, exactly as the
+   * absent `references` reads as "quotes nothing".
+   */
+  protected readonly writeTargets = computed<string[]>(() => {
+    const refs = this.selectedTool()?.references;
+    return [
+      ...(refs?.stateWrites ?? []).map((path) => `state.${path}`),
+      ...(refs?.metadataWrites ?? []).map((key) => `metadata.${key}`),
+    ];
   });
 
   /** v4's closing note: a placeholder whose source is missing simply stands. */

@@ -2357,6 +2357,14 @@ export interface PascalMeta {
   /** The tool's display title at the moment it ran (`displayTitle()`). Absent on
    *  rows posted before this field existed — the UI falls back to `tool`. */
   toolTitle?: string;
+  /**
+   * The definition's `chipLabel` template, rendered at roll time with the run's
+   * own subjects — the per-run name of the deal ("Agent lambda — Jackie"). The
+   * Salon chip and the bubble heading both read this one string. Absent on rows
+   * from before the field existed and on tools that declare no label; readers
+   * fall back to `toolTitle`, then `tool`.
+   */
+  chipLabel?: string;
   definitionTier: 'character' | 'participant' | 'group' | 'project' | 'global';
   definitionMountId: string;
   params: Record<string, number | string | boolean>;
@@ -2386,6 +2394,24 @@ export interface PascalMeta {
    * so the consult surfaces through the Inspector alone (verified parity).
    */
   llm?: LlmConsultRecord;
+  /**
+   * The side effects this run actually applied — the audit trail of the
+   * definition's `effects` array. Each entry names the raw target
+   * ("state.encounter.count" / "metadata.lockpick"), what the store held before
+   * (absent when it held nothing), what was written, and — for state targets
+   * only — which tier the write landed in. The Salon body shows none of this;
+   * the bubble stays the author's message. Absent when the run declared or
+   * applied no effects.
+   *
+   * NOT the Workbench bench's `DryEffect` shape: the bench records what it
+   * RESOLVED (a structured target, no `previous`), because it never applies.
+   */
+  effects?: Array<{
+    target: string;
+    previous?: unknown;
+    next: unknown;
+    tier?: 'chat' | 'project' | 'group' | 'general';
+  }>;
   /** A model's reach for the tool vs a user's own Run-Tool. */
   invokedBy: 'llm' | 'user';
   callerParticipantId?: string;
