@@ -32,6 +32,16 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * Voyage" has two, so it is the negative case for the whisper gate.
  */
 
+/**
+ * P4.D38's whisper-audience beat needs P4.D37's `targetParticipantIds` wire on
+ * `ChatAnnouncementPost`/`Preview` (`api/types.rs`), a sibling lane not on this
+ * branch. `chatAnnouncementPost` itself is already live on main (the staff
+ * beat below proves it), so a capability probe on the VERB can't distinguish
+ * "landed" from "landed without the new field" — it would always read true and
+ * activate this beat into a false pass. Gated by name instead, per the order.
+ */
+const ANNOUNCEMENT_WHISPER_LANDED = false;
+
 /** Is a §1 Post Office verb on the server yet? (One dispatch, no side effects.) */
 async function postOfficeVerbsLive(page: Page): Promise<boolean> {
   const resp = await page.request.post('/api/dispatch', {
@@ -265,6 +275,66 @@ test.describe('P4.9E2B — the in-chat Post Office', () => {
     await expect(chip).toBeVisible({ timeout: 15_000 });
     await chip.click();
     await expect(page.locator('.qt-chat-messages-list')).toContainText(line, { timeout: 15_000 });
+  });
+
+  /**
+   * P4.D38 — the "Who hears it" whisper audience (v4 `a163862c`).
+   * ACTIVATE-AT-UNIFY: needs P4.D37's `targetParticipantIds` field on the §1
+   * announcement verbs, gated by {@link ANNOUNCEMENT_WHISPER_LANDED} (a
+   * capability probe on the verb can't see this — see the constant's comment).
+   */
+  test('a whispered announcement shows its audience and survives All Whispers off', async ({
+    page,
+  }, testInfo) => {
+    test.skip(!ANNOUNCEMENT_WHISPER_LANDED, 'targetParticipantIds lands with P4.D37');
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+    await page.getByRole('button', { name: 'Insert announcement' }).click();
+
+    await expect(page.locator('#announce-staff')).toBeVisible();
+    await page.locator('#announce-staff').selectOption('librarian');
+
+    // "Who hears it" lists the scene's live cast — check Aria alone.
+    const audience = page.getByRole('group', { name: 'Who hears it' });
+    await expect(audience).toBeVisible({ timeout: 15_000 });
+    const ariaRow = audience.locator('label', { hasText: 'Aria' });
+    await expect(ariaRow).toBeVisible();
+    await ariaRow.locator('input[type="checkbox"]').check();
+    await expect(page.getByText('Whispered to Aria.')).toBeVisible();
+
+    const line = `A word for Aria alone ${Date.now()}.`;
+    await page.locator('.qt-markdown-field .qt-rich-editor-content').click();
+    await page.keyboard.type(line);
+
+    await footerButton(page, 'Post Whisper').click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Whispered announcement posted')).toBeVisible({ timeout: 15_000 });
+
+    // The chip carries the whisper border and the "to Aria" tag — visible
+    // without expanding, per a163862c.
+    const chip = page
+      .locator('.qt-chat-announcement-chip')
+      .filter({ hasText: 'The Librarian' })
+      .filter({ hasText: 'to Aria' })
+      .last();
+    await expect(chip).toBeVisible({ timeout: 15_000 });
+    await expect(chip).toHaveClass(/qt-chat-announcement-chip-whisper/);
+
+    // Turning "All Whispers" ON then OFF must not affect it either way — it is
+    // the operator's own writing, never overheard, never hidden (v4
+    // isOperatorAuthoredAnnouncement).
+    await openSidebarSection(page, 'Visibility');
+    const toggle = page.locator('button[aria-label="All Whispers"]');
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    await expect(chip).toBeVisible();
+    await toggle.click();
+    await expect(chip).toBeVisible();
+
+    await openSidebarSection(page, 'Participants'); // leaves the drawer as sibling beats expect
+    await page.getByRole('button', { name: 'Collapse chat sidebar' }).click();
   });
 
   /**

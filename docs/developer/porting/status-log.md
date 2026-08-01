@@ -49198,3 +49198,53 @@ Gate for this unit: `npx ng test --watch=false --include=
 'src/app/chat/message-row.spec.ts' --include=
 'src/app/chat/whisper-visibility.spec.ts' --include=
 'src/app/screens/salon/salon-conversation.spec.ts'` — 106/106 green.
+
+## Lane record — P4.D38 unit 6: the whisper-announcement e2e beat (ACTIVATE-AT-UNIFY)
+
+Added `'a whispered announcement shows its audience and survives All
+Whispers off'` to `salon-post-office-flow.spec.ts`, in ownership per the
+shared contract ("the post-office/announcement e2e specs" are P4.D38's).
+Gated by a NEW named constant, `ANNOUNCEMENT_WHISPER_LANDED = false`, per
+the order's explicit instruction — **not** the file's own pre-existing
+`postOfficeVerbsLive(page)` capability probe.
+
+**Why the probe was wrong for this beat, even though the file already uses
+it**: `postOfficeVerbsLive` distinguishes "the `chatAnnouncementPost` verb
+exists" from "it doesn't" — correct for the file's OTHER
+ACTIVATE-AT-UNIFY beats, which predate this lane and are now permanently
+`true` in practice (P4.9E2A unified onto main before this round started;
+the probe is vestigial there, not this lane's to clean up). But
+`chatAnnouncementPost` ALREADY EXISTS on main today — only P4.D37's NEW
+`targetParticipantIds` field on that same verb is missing (confirmed:
+`crates/quilltap-core/src/api/types.rs`'s `ChatAnnouncementPost`/`Preview`
+variants carry no such field on this branch). A verb-existence probe would
+read `true` immediately and self-activate the beat into a false pass — it
+would post successfully, just with the audience silently dropped (no
+`deny_unknown_fields` on the struct), and the chip/whisper-border
+assertions would fail for the wrong reason. The named constant is the only
+correct gate here.
+
+The beat covers the order's exact tier-1 item 6 script: open Insert
+Announcement, select Librarian, check ONE audience member (Aria) in "Who
+hears it", confirm the helper text flips to "Whispered to Aria. …", post,
+confirm the chip carries BOTH the `qt-chat-announcement-chip-whisper`
+class and "to Aria" in its text, then exercise the All-Whispers toggle
+ON→OFF (via the existing `openSidebarSection(page, 'Visibility')` helper +
+`button[aria-label="All Whispers"]`, both pre-existing e2e infrastructure)
+and assert the chip stays visible through both transitions — the
+operator-authored-announcement exemption this lane's unit 1 ported.
+
+**Cannot be live-verified from this lane** (the order's own caveat): the
+server half is a parallel sibling branch. Confirmed via `npx playwright
+test e2e/salon-post-office-flow.spec.ts --list` that the file parses and
+the new test is discovered (9 tests total, up from 8) — syntax/locator
+typos are the only class of bug this catches without a server, but the
+audience-section DOM (checkbox group, helper text, label flip) is the
+SAME markup unit 3's Angular component tests already exercise and
+mutation-prove, and the file's OTHER already-passing beats
+("Insert Announcement opens with the staff roster…", "post a staff
+announcement…") open the identical dialog against the same real
+"Group Expedition" cast (3 participants → `audienceCandidates().length >
+0` is always true there), so the full Playwright run this lane's gate
+requires exercises the audience section's rendering indirectly even while
+this specific beat stays skipped.
