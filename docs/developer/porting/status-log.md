@@ -47677,3 +47677,200 @@ a watcher. Chain work from the completion notification, never from a poll
 for the previous step's absence.
 
 **Versions after the review fix:** SPA 0.5.357; no crate touched.
+
+## Round planned — the `c4d4b0de` drift catch-up (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40), 2026-08-01
+
+Planned at /setupphase (`v4-drift`) against **v4 HEAD `c4d4b0de`**
+(2026-08-01 18:39 UTC, tree clean, SDK majors verified: openai 7.2.0,
+`@openrouter/sdk` 1.2.2). **v4 moved TEN commits past the `ff12f491`
+baseline in roughly two days** — the round absorbs all of them and moves
+the baseline to `c4d4b0de` at unification. Four both-sides surveys ran at
+planning (Pascal side-effects, whispers/announcements, wardrobe tri-tier,
+editor sub-lists); their file:line data is baked into the orders, and the
+material the orders reference back here follows below.
+
+### The ten commits, classified
+
+| Commit | What | Disposition |
+|---|---|---|
+| `e1be028b` | release packaging (Dockerfiles/README/versions/one build-script line) | **NO-PORT** (already dispositioned at the previous round) |
+| `a163862c` | whispered manual announcements (`targetParticipantIds` on announcement + preview, audience resolver, whispered persist, audience-aware rewrite, every-role whisper filter, dialog/chip SPA) | **P4.D37 (server/context) ∥ P4.D38 (SPA)** |
+| `0ec25bdd` | whisper-label WCAG AA, light mode (default theme + 5 bundled themes) | **P4.D38** (v5 carries the old failing values everywhere except Madman's Box) |
+| `424a7381` | announcement attribution in LLM context (`announcement-attribution.ts`, buildMessageContext both paths) + the sender→kind whisper-exemption narrowing (Prospero `group-context` follows All Whispers) | **P4.D37 (context) ∥ P4.D38 (whisper-visibility SPA)** |
+| `1c55110b` | whisper-label WCAG AA, dark mode (Earl Grey + Rains base blocks) | **P4.D38** |
+| `8bb1a958` | dress characters from all three wardrobe tiers at chat start (7 defects: merged pool, defaults, preview mounts, composite hydration, concurrent resolve/serial commit, 60s timeout, deliberate nudity) | **P4.D39** (survey: v5 shares the four design-time defects and lacks all three live-run fixes) |
+| `4f7e09fa` | React/TanStack flushSync-in-commit fix (deferred measurement) | **NO-PORT** — v5's measurement site (`apps/web/src/app/chat/virtual-row.ts:29`, `afterNextRender`) is already deferred past change detection, precisely the shape v4 moved to; Angular has no flushSync. P4.D38 records the disposition. |
+| `4f088e7c` | Markdown bridge destroying sub-lists (Lexical) | **P4.D40, PARTIAL** — v5 (CommonMark) never had the flattening bug but reflows any non-2-space document on first edit (no indent-unit detection/memory) and lacks Tab/Shift+Tab + toolbar indent entirely; the doubled-bullet CSS fix is Lexical-DOM-specific (NO-PORT). One parse-edge divergence (`1. a` + 2-col child: v4 nests, CommonMark makes siblings) pinned for a human ruling. |
+| `ae965a4e` | the pascal-custom-tool-enhancements spec doc | docs mirror, **P4.D35 rider** |
+| `c4d4b0de` | Pascal custom-tool chipLabel + two-block bubbles + effects (the closed eval-free expression parser, the tiered side-effects applier, vocabulary write-lists, Workbench UI) | **P4.D35 (server) ∥ P4.D36 (SPA)** |
+
+`generateDDL` untouched across all ten commits (verified) — no D23 re-dump.
+`docs/developer/DDL.md`'s edit is prose; `pascalMeta` is a JSON column.
+
+### The six orders
+
+- `work-orders/p4.d35-pascal-side-effects-server.md` — expressions.rs +
+  side_effects.rs (both greenfield), schema/validation additions, both
+  entrances, writer two-block, roster/vocabulary, PascalMetaIn, the
+  `pascal-run-custom-*` fixture REBUILD (the current fixture is blind to
+  the feature — every new arm passes vacuously without it), ~14 family
+  regens. The store-write substrate is the big non-1:1: v4 writes
+  project/group state as row updates; v5 goes through the overlay
+  writers.
+- `work-orders/p4.d36-pascal-side-effects-spa.md` — the client-safe
+  expressions TS twin (sentences byte-identical across all THREE copies),
+  custom-tool-types + tool-draft + corpus NDJSON re-commit (236 rows
+  today, grows), Workbench SideEffectsSection (new) + BuilderForm +
+  ProvingBench dry-run, the run dialog "may write" panel, the chip-label
+  precedence, the schema asset byte-copy, e2e beats.
+- `work-orders/p4.d37-whispered-announcements-server.md` — the audience
+  resolver (greenfield `audience.rs`), POST-400/preview-silent asymmetry,
+  empty-array→NULL persist, the audience-replaces-roster rewrite, the
+  every-role whisper filter, the attribution pass in
+  `build_message_context` (+ `WhisperMessage.custom_announcer`), the §1
+  additive field, post-office + six context-transitive family regens.
+- `work-orders/p4.d38-whispers-themes-spa.md` — the dialog "Who hears it"
+  section (audience change invalidates the proposal), the whisper tag on
+  BOTH render sites (v5 chips only Staff-signed announcements — a
+  documented divergence with two landing sites), the whisper-visibility
+  re-port with the legacy `!systemKind` arm, the theme WCAG table below,
+  the flushSync NO-PORT record. Inherits a pre-existing gap: the
+  overheard-dim predicate was never ported (`.qt-chat-message-whisper-
+  overheard` is dead CSS) — tier-2 port or loud deferral.
+- `work-orders/p4.d39-wardrobe-tri-tier.md` — `wearable-pool` +
+  `find_wearable_pool_for_character` (both greenfield), the
+  `outfit_selections.rs` rewrite (merged pools, deliberate-nudity
+  contract, concurrent-resolve/serial-commit via `join_all` on the create
+  spine's current-thread runtime, 60s `tokio::time::timeout`), composite
+  hydration in `wardrobe_shared.rs`, three call-site mount threads, the
+  `wardrobe_list` refactor, `sortForDefaultOutfit` server + SPA, two
+  label riders. ⚠ the merged-pool + deliberate-paragraph changes move the
+  PINNED PROMPT BYTES in `outfit_llm_choose_tier3`.
+- `work-orders/p4.d40-editor-sublist-indentation.md` — v4's pure
+  `list-indentation` functions ported (detect/apply/source transforms)
+  with a REAL-v4-module tier-1 differential, the unit-memory post-pass
+  wired through the ONE bridge, gated Tab/Shift+Tab, toolbar + source
+  indent controls, round-trip gate growth. (The gate is 38 hand-authored
+  entries today — CLAUDE.md's "28-entry" wording is stale; the unifier
+  should correct it with the baseline move.)
+
+**The binding shared-contract + ownership block is verbatim-identical in
+all six orders.** Headlines: `api/types.rs` FROZEN except P4.D37's one
+additive field (`target_participant_ids` on the two announcement verbs);
+`core-contract.ts` additive-only with two named additions (D38 mirrors the
+§1 field; D36 adds the pascalMeta `chipLabel`/`effects` types);
+`spine.rs` shared at named sites (D37 the preview-runner impl only, D39
+the outfit/create sites only); `_chat.css` append-only in two named
+sections (D38 whisper block, D40 button sizing); the pascal label
+precedence is D36's with a lane-record handoff if it needs
+`announcement-group.ts` (D38's file); version bumps per lane, unifier
+recounts; the baseline move is the unifier's alone.
+
+**Oracle regen rule for the round:** v4 is shipping same-day — every lane
+drift-checks at start and pins `/private/tmp/qt-v4-pin-c4d4b0de` on any
+movement or dirt (`oracle-regen-pinned-v4-worktree`, incl. the per-plugin
+symlinks). TZ pins stand. Committed-fixture families point oracles at the
+committed DBs; mutating recipes run against /tmp copies via
+`recipe_sweep.py --run`.
+
+**Deliberately left out of this round:** the still-owed dogfood pass (it
+GROWS: this round adds the whisper-announcement flow, live effects
+writes, tri-tier dressing on the Friday copy, and the editor
+4-space-file no-reflow proof to the owed list), the toast census's 15
+OPEN rows, the app-wide `renderingPatterns` template gap, the
+autonomous-rooms oracle rot, `p4.9h`, and the post-5.0 pools. None of
+them ride a drift round.
+
+### Survey material the orders reference
+
+**Theme WCAG values (P4.D38)** — v5 path:line, OLD (current) → NEW (v4):
+
+| File | Old | New | Commit |
+|---|---|---|---|
+| `apps/web/src/styles/qt-components/_variables.css:294` (light) | `#7c6fa0` | `#5c447e` (+ WCAG comment) | 0ec25bdd |
+| `_variables.css:855` (dark) | `#a89cc8` | `#b5a9d1` | 0ec25bdd |
+| `apps/web/public/themes/art-deco/styles.css:186` (light whisper-bg) | `color-mix(in srgb, var(--qt-chat-assistant-bg) 55%, hsl(270 35% 30%) 45%)` | `color-mix(in srgb, var(--qt-chat-assistant-bg) 65%, hsl(270 40% 55%) 35%)` (+ why-comment) | 0ec25bdd |
+| `art-deco/styles.css:188` (light label) | `hsl(270 30% 55%)` | `hsl(270 50% 22%)` | 0ec25bdd |
+| `earl-grey/styles.css:992` (light block) | `hsl(270 20% 55%)` | `hsl(270 25% 44%)` | 0ec25bdd |
+| `earl-grey/styles.css:430` (base block) | `hsl(270 15% 55%)` | `hsl(270 20% 70%)` | 1c55110b |
+| `great-estate/styles.css:190` (light) | `hsl(280 25% 50%)` | `hsl(280 35% 26%)` | 0ec25bdd |
+| `old-school/styles.css:151` (light) | `hsl(270 40% 48%)` | `hsl(270 45% 36%)` | 0ec25bdd |
+| `rains/styles.css:1042` (light block) | `hsl(240 12% 50%)` | `hsl(240 18% 43%)` | 0ec25bdd |
+| `rains/styles.css:457` (base block) | `hsl(240 18% 55%)` | `hsl(240 18% 68%)` | 1c55110b |
+
+theme.json bumps to v4's numbers: art-deco 1.0.11, earl-grey 1.3.7,
+great-estate 1.0.6, old-school 1.0.12, rains 1.3.10. Madman's Box
+unchanged (already passed at 5.84); art-deco/great-estate/old-school dark
+values already match v4. `dist/` is build output — never hand-edit.
+
+**Announcer/attribution pinned behaviors (P4.D37/D38 oracle-case
+inventory)** — from v4's `announcer-audience.test.ts` (202 lines):
+omitted/empty → public; resolves live participants and names them;
+collapses duplicates (order preserved); left-the-scene participant →
+unknown; foreign-chat id → unknown; unreadable character → named
+`'Someone'` rather than dropped; posts publicly when no audience; **stores
+NULL, never `[]`**; persists the named audience; keeps
+`systemKind: 'announcement'` on a whisper; whispers under a custom display
+name. From `announcement-attribution.test.ts` (109): names a character
+from the lookup; uses displayName for custom (no lookup); null for
+unresolvable/blank; collects referenced ids once each; tags character +
+custom announcements; leaves no-announcer and unresolvable messages
+untouched; **does not stack tags when run twice**; preserves every other
+field. From the final `whisper-visibility.test.ts` (P4.D38's spec
+inventory): public always shown; All-Whispers-on shows everything;
+commonplaceBook/carina/librarian/host whispers to a character hidden when
+off; pascal/custom-tool-result + prospero/{tool-run,custom-tool-error,
+carina-error} shown when off; prospero/group-context HIDDEN (shown with
+toggle); group-context addressed to the human shown; **legacy
+`systemKind: null` pascal row keeps the sender-level exemption**; Staff
+whisper targeted at the human shown regardless; human-authored whisper
+shown, character-to-character hidden; whispered announcement shown for
+Staff signers AND `systemSender: null`; `isOperatorAuthoredAnnouncement`
+true only for `'announcement'`.
+
+**Wardrobe pinned behaviors (P4.D39 oracle-case inventory)** — tiers
+(×9): General default equips when the vault is empty; personal + project +
+General defaults all layer, createdAt-ordered; shared `isDefault:true` +
+personal same-id `isDefault:false` → NOT equipped (the filter-then-merge
+tripwire); the reverse shadow equips; archived shared default excluded;
+the merged pool reaches `chooseLLMOutfit` for an empty-vault character;
+all-empty-unflagged LLM result → defaults fallback;
+`projectMountPointIds` reaches BOTH the pool fetch and the preview
+resolve; shared tiers read ONCE per batch. Concurrency (×9, Rust
+unit-side — the oracle can't observe interleaving): resolves all
+characters concurrently; bounded by the slowest; never two equipped
+writes at once; commits in caller order; one blow-up isolated;
+deliberate nudity honoured; unflagged empty falls back; the dialog told
+"chose to wear nothing"; stalled provider → timeout → defaults.
+Repository pool (×6): precedence character > project > general; last
+project mount wins; archived shared dropped; archived personal copy lets
+shared resurface; empty/absent mounts short-circuit before the project
+reader; a throwing project store swallowed. Parser (×12): shared id in
+pool accepted; id not in pool dropped; wrong `types` for the slot
+dropped; legacy scalar shape; per-slot dedupe; fence-stripping;
+non-object → empty; flagged empty → deliberate; unflagged empty → not;
+stringy `"true"` → not; picks + flag coexist; empty pool short-circuits
+without calling the model. Resolve-equipped (×3): composite with
+components neither equipped nor owned resolves to leaves; nested
+components hydrate level by level; hydration stops when a component is
+found nowhere.
+
+**Pascal pinned behaviors (P4.D35/D36)** — the five new v4 suites
+(`expressions` 213 / `custom-tools-effects` 231 / `side-effects` 245 /
+`custom-tool-definition` +213 / `tool-draft` +155) are enumerated in the
+orders' survey sections; the load-bearing clusters: the expression
+grammar's acceptance/rejection arms with byte-exact sentences (bare-word
+trap, caps accepted AT the cap, ÷0 fail-soft, `{{llm}}` never coerced),
+the side-effects tier matrix (default-chat, no-project-search without
+projectId, ambiguous-group shadowing at chat, one-write-per-store,
+sequential effects see each other, underscore re-check, metadata RMW +
+no-character skip, cascade-null keeps metadata effects, per-store failure
+isolation, vault-gone survival, all-skipped writes nothing), and the
+draft/validator wording arms.
+
+**Recommended execution:** all six lanes in parallel (ownership is
+disjoint; the two SPA-heavy pairs meet only at the named contract
+points). D35 and D39 are the heavy lanes — most capable model; D36/D37
+medium; D38/D40 lighter. D36's corpus/e2e units depend on D35's
+artifacts — its order sequences them last and carries the
+regenerate-yourself fallback.

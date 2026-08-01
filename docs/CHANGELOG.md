@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Planned the next porting round: the reference app moved ten commits in two
+days, and six work orders now cover absorbing all of it — the Pascal
+custom-tool side-effects feature (server and Workbench halves), whispered
+manual announcements with speaker attribution in model context (server and
+Salon halves), dressing characters from all three wardrobe tiers at chat
+start, and the editor's sub-list indentation contract — plus theme
+contrast corrections and two commits dispositioned as not applicable to
+this codebase with evidence recorded. Planning surveys ran against both
+codebases first, so each order carries verified file-and-line starting
+points, the shared wire contract, and the exact oracle families it must
+regenerate. Documents only; no application code changed.
+
 Deflaked the two end-to-end beats the last round's record flagged as
 full-suite-only intermittents (the Rename Chat automatic-naming revert and
 the auto-lock idle warning under a fake clock). Both shared one root: the
