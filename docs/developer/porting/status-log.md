@@ -46928,3 +46928,25 @@ Three rows moved once the v5 side was read closely:
   memory/enclave files and the two gallery/profile affordances in unit 7.
 
 **Revised tally: 106 files — 68 CONVERTED, 15 OPEN, 23 UNPORTED.**
+
+## Lane record — P4.25: the e2e files this lane touched (ownership note)
+
+Lane C's own new file is `apps/web/e2e/toast-flow.spec.ts`. Three EXISTING
+specs had assertions this lane's retirements moved, and each is named here per
+the round's ownership rule:
+
+- `e2e/profile-flow.spec.ts` — two `[data-testid="profile-status"]` reads → the
+  toast container.
+- `e2e/salon-dialogs-flow.spec.ts` — the rename dialog's `.qt-text-danger`
+  probe → the toast container. **⚠ Unifier: this filename begins `salon-`, and
+  lane D's ownership row claims "salon/announcement/post-office e2e specs whose
+  assertions its fixes move". This lane's edit is one line (the retired inline
+  error probe); if lane D also edited this file, take both edits — they are
+  disjoint.**
+- `e2e/wardrobe-flow.spec.ts` — the avatar-preview no-API-key banner
+  (`.qt-alert-error`) → the toast container.
+
+`e2e/support/env.ts` was TEMPORARILY moved off the default ports (4419 /
+45401) to run the gate while a sibling lane held 4319, per the
+`e2e-playwright-traps` recipe. **It is restored to 4319 / 45301 in the lane's
+final commit** — it is shared infra and must never land moved.
