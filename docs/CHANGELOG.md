@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Taught a custom-tool roll to work out its chip label and its side effects.
+The label is rendered once, after the outcome is chosen, so it can quote
+anything the outcome message can — including the answer of a mid-roll consult.
+The effects are worked out but not yet written anywhere: each one records
+either the value it would write and where, or the reason it was passed over —
+a condition that did not hold, a formula that could not be worked out, a
+reference that resolved to nothing. Nothing sinks a roll. Passed-over effects
+keep their place in the list rather than being dropped, so the audit trail
+shows what the tool declared, not just what fired. The table audit ignores
+both, as it should: an audit that wrote ten thousand times would not be an
+audit. Verified by 12 new differential cases and three deliberate breakages.
+
 Taught the custom-tool file format to declare side effects and a per-run chip
 label. A tool may now carry an `effects` list — up to sixteen conditional
 writes, each naming where it writes and what — and an optional label template

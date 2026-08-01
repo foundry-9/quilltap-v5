@@ -1070,6 +1070,19 @@ fn run_result_to_value(r: &CustomToolRunResult) -> Value {
     if let Some(llm) = &r.llm {
         m.insert("llm".into(), Value::Object(llm.to_wire()));
     }
+    // `chipLabel` then `effects` (v4 `c4d4b0de`), after `llm` — the declaration
+    // order of `CustomToolRunResult`, which IS the preview body's key order
+    // because `handlePreview` spreads the whole result. The bench shows the
+    // resolved effects as a DRY run and applies nothing; the audit ignores both.
+    if let Some(chip_label) = &r.chip_label {
+        m.insert("chipLabel".into(), json!(chip_label));
+    }
+    if let Some(effects) = &r.effects {
+        m.insert(
+            "effects".into(),
+            serde_json::to_value(effects).unwrap_or(Value::Null),
+        );
+    }
     Value::Object(m)
 }
 

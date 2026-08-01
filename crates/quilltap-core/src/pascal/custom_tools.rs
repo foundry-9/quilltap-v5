@@ -9,19 +9,23 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::state::paths::{get_at_path, parse_path};
+use crate::state::paths::{get_at_path, parse_path, PathKey};
 use regex::{Captures, Regex};
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 use std::sync::LazyLock;
 
 use super::custom_tool_types::{
-    is_state_ref_value, AnyOperand, CustomToolLlm, CustomToolParameter, LlmComparator,
-    MetadataComparator, NumberOrParamRef, NumericComparator, OutcomeState, ParamComparator,
-    ParameterType, QtapCustomTool, Roll, RollRange, StateRef, StateRefFallback, StringOperand,
-    Visibility, When, WhenObject, MAX_LLM_OUTPUT_LENGTH,
+    is_state_ref_value, parse_effect_target, AnyOperand, CustomToolLlm, CustomToolParameter,
+    EffectTarget, EffectValue, EffectWhen, LlmComparator, MetadataComparator, NumberOrParamRef,
+    NumericComparator, OutcomeState, ParamComparator, ParameterType, QtapCustomTool, Roll,
+    RollRange, StateRef, StateRefFallback, StringOperand, Visibility, When, WhenObject,
+    MAX_LLM_OUTPUT_LENGTH,
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
-use super::js_value::{json_stringify, number_to_string, to_js_string, to_number, to_precision};
+use super::expressions::{evaluate_expression, parse_expression};
+use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
 use crate::jsstr::{self, js_trim};
 
@@ -233,6 +237,17 @@ pub struct CustomToolRunResult {
     pub metadata_tested: Option<MetadataTested>,
     /// The LLM consult, when the definition declares one.
     pub llm: Option<LlmConsultResult>,
+    /// The rendered `chipLabel`, when the definition declares one — rendered
+    /// once, in [`execute_custom_tool`], after outcome selection, with the same
+    /// subjects as the message. Both entrances copy it into `pascalMeta`; the
+    /// Salon chip and the announcement header read the same string, so they can
+    /// never disagree.
+    pub chip_label: Option<String>,
+    /// The definition's effects, resolved (or skipped, with reasons) against
+    /// this run. Computed pure — the entrances apply them via
+    /// [`super::side_effects::apply_custom_tool_effects`]; the Proving Bench
+    /// only ever shows them. `None` when the definition declares none.
+    pub effects: Option<Vec<ResolvedEffect>>,
 }
 
 /// Validate and coerce caller-supplied parameters against the declarations.
@@ -969,7 +984,18 @@ pub fn matches_when(
         When::CatchAll(_) => return Ok(true),
         When::Object(w) => w,
     };
+    matches_when_object(when, subjects, tool_name)
+}
 
+/// The object form's body. Split out so an effect condition can delegate to it
+/// after peeling off its one extra subject — v4's `matchesEffectWhen` does the
+/// same thing by destructuring `outcome` off and passing the rest to
+/// `matchesWhen`, which is a free operation in JS and a clone here.
+fn matches_when_object(
+    when: &WhenObject,
+    subjects: &OutcomeSubjects,
+    tool_name: &str,
+) -> Result<bool, CustomToolRunError> {
     let params = subjects.params;
     // v4 `subjects.state ?? {}` — `None` behaves as the empty object, so every
     // `$state` operand falls to its own fallback.
@@ -1048,16 +1074,244 @@ pub fn matches_when(
     Ok(true)
 }
 
-/// Render a number for display: integers plain, floats to 4 significant digits.
-pub fn format_value(value: f64) -> String {
-    if value.is_finite() && value.fract() == 0.0 {
-        return number_to_string(value);
-    }
-    // `toPrecision` can hand back exponential form for extremes; Number() folds
-    // that back to the shortest faithful representation.
-    let rounded = to_precision(value, 4).parse::<f64>().unwrap_or(value);
-    number_to_string(rounded)
+/// The winning outcome, as an effect condition sees it — the one subject that
+/// exists only after the deal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WinningOutcome {
+    pub state: OutcomeState,
+    pub index: usize,
 }
+
+/// What an effect condition may be posed about: the run's subjects, plus the
+/// winning outcome (v4 `EffectSubjects extends OutcomeSubjects`).
+pub struct EffectSubjects<'a> {
+    pub base: OutcomeSubjects<'a>,
+    pub outcome: WinningOutcome,
+    /// Dice breakdown for `{{dice}}` in expressions — a string, `""` for Form A.
+    pub dice: &'a str,
+}
+
+/// Evaluate an effect's condition. Delegates the shared subjects to the same
+/// comparator chain outcome rows use, and adds the one subject only an effect
+/// can test — the winning outcome's semantic state.
+pub fn matches_effect_when(
+    when: Option<&EffectWhen>,
+    subjects: &EffectSubjects,
+    tool_name: &str,
+) -> Result<bool, CustomToolRunError> {
+    let Some(when) = when else { return Ok(true) };
+
+    if let Some(outcome) = &when.outcome {
+        if let Some(eq) = outcome.eq {
+            if subjects.outcome.state != eq {
+                return Ok(false);
+            }
+        }
+        if let Some(neq) = outcome.neq {
+            if subjects.outcome.state == neq {
+                return Ok(false);
+            }
+        }
+    }
+
+    matches_when_object(&when.base, &subjects.base, tool_name)
+}
+
+/// One effect, resolved by the pure core: either the value it would write, or
+/// the reason it was skipped. The entrances (and only they) apply the former;
+/// the Proving Bench shows both as a dry run.
+///
+/// Serialization is payload — the Workbench preview body spreads the whole run
+/// result — so the key order below is v4's object literals, not a convenience.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolvedEffect {
+    Applicable {
+        index: usize,
+        target: EffectTarget,
+        value: ResolvedValue,
+    },
+    Skipped {
+        index: usize,
+        reason: String,
+    },
+}
+
+impl ResolvedEffect {
+    /// True for a resolved effect that would actually write (v4
+    /// `isApplicableEffect`).
+    pub fn is_applicable(&self) -> bool {
+        matches!(self, ResolvedEffect::Applicable { .. })
+    }
+}
+
+impl Serialize for ResolvedEffect {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        match self {
+            ResolvedEffect::Applicable {
+                index,
+                target,
+                value,
+            } => {
+                m.serialize_entry("index", index)?;
+                m.serialize_entry("target", &effect_target_to_value(target))?;
+                m.serialize_entry("value", &value.to_value())?;
+            }
+            ResolvedEffect::Skipped { index, reason } => {
+                m.serialize_entry("index", index)?;
+                m.serialize_entry("skipped", reason)?;
+            }
+        }
+        m.end()
+    }
+}
+
+/// v4's `EffectTarget` object literals: `{ kind: 'state', path, raw }` and
+/// `{ kind: 'metadata', key, raw }`, in that key order. A path segment is a
+/// string or a number, exactly as `parsePath` produces it.
+fn effect_target_to_value(target: &EffectTarget) -> Value {
+    let mut m = Map::new();
+    match target {
+        EffectTarget::State { path, raw } => {
+            m.insert("kind".into(), Value::String("state".into()));
+            m.insert(
+                "path".into(),
+                Value::Array(
+                    path.iter()
+                        .map(|k| match k {
+                            PathKey::Prop(s) => Value::String(s.clone()),
+                            PathKey::Index(i) => Value::from(*i),
+                        })
+                        .collect(),
+                ),
+            );
+            m.insert("raw".into(), Value::String(raw.clone()));
+        }
+        EffectTarget::Metadata { key, raw } => {
+            m.insert("kind".into(), Value::String("metadata".into()));
+            m.insert("key".into(), Value::String(key.clone()));
+            m.insert("raw".into(), Value::String(raw.clone()));
+        }
+    }
+    Value::Object(m)
+}
+
+/// Resolve a definition's effects against a finished run. Pure — nothing is
+/// written here; the module's "no writes, no message posting" contract holds.
+///
+/// Failure semantics are the [`render_template`] doctrine: a condition that does
+/// not hold, or an expression that fails to evaluate (a division by zero, a
+/// reference that resolves to nothing), skips THAT effect with a debug log and
+/// a recorded reason — a broken effect never sinks a roll. Parse failures are
+/// load-time rejections and only reach here as regressions, handled the same
+/// fail-soft way.
+fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Vec<ResolvedEffect> {
+    // Mirrors `render_template`'s lookups exactly — the grammar admits no name
+    // the template does not already substitute.
+    let mut resolve_ref = |refname: &str| -> Option<ResolvedValue> {
+        match refname {
+            "value" => return Some(ResolvedValue::Number(subjects.base.value)),
+            "roll" => return Some(ResolvedValue::Number(subjects.base.roll)),
+            "dice" => return Some(ResolvedValue::String(subjects.dice.to_string())),
+            "llm" => {
+                return subjects
+                    .base
+                    .llm
+                    .map(|l| ResolvedValue::String(l.output.clone()))
+            }
+            _ => {}
+        }
+        if let Some(name) = refname.strip_prefix("params.") {
+            return lookup(subjects.base.params, name).cloned();
+        }
+        if let Some(name) = refname.strip_prefix("metadata.") {
+            return subjects
+                .base
+                .metadata
+                .and_then(|m| m.get(name))
+                .and_then(js_primitive);
+        }
+        if let Some(path) = refname.strip_prefix("state.") {
+            let empty = Value::Object(Map::new());
+            let state = subjects.base.state.unwrap_or(&empty);
+            return get_at_path(state, &parse_path(Some(path))).and_then(|v| js_primitive(&v));
+        }
+        None
+    };
+
+    let skipped = |index: usize, reason: String| -> ResolvedEffect {
+        tracing::debug!(
+            target: "quilltap::pascal",
+            tool = definition.name,
+            effect_index = index,
+            reason,
+            "Custom tool effect skipped",
+        );
+        ResolvedEffect::Skipped { index, reason }
+    };
+
+    definition
+        .effects
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(index, effect)| {
+            let holds = match matches_effect_when(effect.when.as_ref(), subjects, &definition.name)
+            {
+                Ok(h) => h,
+                // A comparator regression past load-time validation. An outcome
+                // row in this state fails the run; an effect never does — it
+                // just doesn't fire.
+                Err(e) => {
+                    return skipped(index, format!("condition could not be evaluated: {}", e.0))
+                }
+            };
+            if !holds {
+                return skipped(index, "condition did not hold".to_string());
+            }
+
+            let target = match parse_effect_target(&effect.target) {
+                Ok(t) => t,
+                Err(reason) => return skipped(index, format!("target {reason}")),
+            };
+
+            let EffectValue::Str(source) = &effect.value else {
+                let value = match &effect.value {
+                    EffectValue::Number(n) => ResolvedValue::Number(*n),
+                    EffectValue::Bool(b) => ResolvedValue::Bool(*b),
+                    EffectValue::Str(_) => unreachable!("handled by the let-else"),
+                };
+                return ResolvedEffect::Applicable {
+                    index,
+                    target,
+                    value,
+                };
+            };
+
+            let parsed = match parse_expression(source) {
+                Ok(p) => p,
+                Err(reason) => {
+                    return skipped(index, format!("expression did not parse: {reason}"))
+                }
+            };
+            match evaluate_expression(&parsed, &mut resolve_ref) {
+                Ok(value) => ResolvedEffect::Applicable {
+                    index,
+                    target,
+                    value,
+                },
+                Err(reason) => skipped(index, format!("expression did not evaluate: {reason}")),
+            }
+        })
+        .collect()
+}
+
+/// Render a number for display: integers plain, floats to 4 significant digits.
+///
+/// Lives in [`super::expressions`] since v4 `c4d4b0de` moved it there — one
+/// number-rendering convention for templates and effect expressions alike — and
+/// is re-exported here, as v4 re-exports it, for every existing importer.
+pub use super::expressions::format_value;
 
 static TEMPLATE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{\{([^}]+)\}\}").expect("template pattern compiles"));
@@ -1350,6 +1604,48 @@ pub async fn execute_custom_tool(
     );
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
 
+    // F1 — the chip label, rendered AFTER the outcome is chosen so it may quote
+    // everything the message may. This is the one render site; both entrances
+    // copy the result, so the chip and the bubble header can never drift.
+    let chip_label = definition.chip_label.as_ref().map(|template| {
+        render_template(
+            template,
+            &TemplateVars {
+                value,
+                roll: raw,
+                dice: &dice_breakdown,
+                params: &params,
+                metadata,
+                llm: llm_subject.as_ref(),
+                state,
+            },
+        )
+    });
+
+    // F3 — effects, resolved pure against the finished run. Nothing is written
+    // here; the entrances decide whether (and where) the writes land.
+    let effects = match &definition.effects {
+        Some(declared) if !declared.is_empty() => {
+            let effect_subjects = EffectSubjects {
+                base: OutcomeSubjects {
+                    value,
+                    roll: raw,
+                    params: &params,
+                    metadata,
+                    llm: llm_subject.as_ref(),
+                    state,
+                },
+                outcome: WinningOutcome {
+                    state: outcome.state,
+                    index: outcome_index,
+                },
+                dice: &dice_breakdown,
+            };
+            Some(resolve_effects(definition, &effect_subjects))
+        }
+        _ => None,
+    };
+
     let visibility = match private {
         Some(true) => Visibility::Whisper,
         Some(false) => Visibility::Public,
@@ -1371,6 +1667,8 @@ pub async fn execute_custom_tool(
         visibility,
         metadata_tested,
         llm,
+        chip_label,
+        effects,
     })
 }
 

@@ -203,6 +203,16 @@ fn result_to_json(r: &CustomToolRunResult) -> Value {
         }
         m.insert("llm".into(), Value::Object(lm));
     }
+    // `...(chipLabel !== undefined ? { chipLabel } : {})` then
+    // `...(effects ? { effects } : {})` — v4 `c4d4b0de`, in that order and last.
+    // The Workbench preview body spreads this whole object, so the placement is
+    // payload, not bookkeeping.
+    if let Some(chip_label) = &r.chip_label {
+        m.insert("chipLabel".into(), Value::String(chip_label.clone()));
+    }
+    if let Some(effects) = &r.effects {
+        m.insert("effects".into(), serde_json::to_value(effects).unwrap());
+    }
     Value::Object(m)
 }
 

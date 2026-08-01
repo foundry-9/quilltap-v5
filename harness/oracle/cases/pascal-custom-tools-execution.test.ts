@@ -978,6 +978,220 @@ describe('executeCustomTool', () => {
         {},
         undefined,
       ],
+
+      // ---- chipLabel (P4.D35, c4d4b0de) -----------------------------------
+      // Rendered ONCE, after the outcome is chosen, with the message's own
+      // subjects — so it may quote anything the message may, including the
+      // winning row's own numbers.
+      [
+        'chip-label-renders-with-message-subjects',
+        {
+          name: 'agent',
+          description: 'd',
+          chipLabel: 'Agent lambda — {{params.label}} ({{value}})',
+          parameters: { label: { type: 'string', default: 'Jackie' } },
+          roll: { min: 7, max: 7 },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // An unknown placeholder renders VERBATIM — there is no load-time
+      // reference rule on a chipLabel, only the renderTemplate doctrine.
+      [
+        'chip-label-unknown-placeholder-verbatim',
+        {
+          name: 'agent',
+          description: 'd',
+          chipLabel: 'x {{params.ghost}} y',
+          roll: { min: 1, max: 1 },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // The label may quote the consult, which has answered by the time it
+      // renders (the message's subjects include `llm`).
+      [
+        'chip-label-quotes-the-consult',
+        {
+          name: 'agent',
+          description: 'd',
+          chipLabel: 'says {{llm}}',
+          roll: { min: 1, max: 1 },
+          llm: { prompt: 'Answer.', errorMessage: 'The wire went dead.' },
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+        { answer: 'the West Door' },
+      ],
+      // Absent chipLabel → the key is absent from the result, not empty.
+      [
+        'chip-label-absent',
+        { name: 'agent', description: 'd', roll: { min: 1, max: 1 }, outcomes: [CATCH_ALL] },
+        {},
+        undefined,
+      ],
+
+      // ---- effects: resolution (still PURE — nothing is written here) ------
+      [
+        'effects-literals-and-expression',
+        {
+          name: 'lockpick',
+          description: 'd',
+          parameters: { scale: { type: 'number', default: 2 } },
+          roll: { min: 6, max: 6 },
+          effects: [
+            { target: 'state.encounter.count', value: 3 },
+            { target: 'metadata.lockBroken', value: true },
+            { target: 'metadata.lockpick', value: "'broken pick'" },
+            { target: 'state.tally', value: '{{state.tally}} + {{params.scale}}' },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { state: { tally: 10 } },
+      ],
+      // The `outcome` subject: one effect fires on the winner, one does not.
+      [
+        'effects-outcome-conditioned',
+        {
+          name: 'saving_throw',
+          description: 'd',
+          roll: { min: 18, max: 18 },
+          effects: [
+            { when: { outcome: { eq: 'success' } }, target: 'state.wins', value: 1 },
+            { when: { outcome: { eq: 'failure' } }, target: 'state.losses', value: 1 },
+            { when: { outcome: { neq: 'failure' } }, target: 'state.attempts', value: 1 },
+          ],
+          outcomes: [
+            { when: { gte: 15 }, message: 'made it', state: 'success' },
+            CATCH_ALL,
+          ],
+        },
+        {},
+        undefined,
+      ],
+      // Every skip reason the resolver can record, in one run: a condition that
+      // does not hold, an expression that cannot evaluate (a ref resolving to
+      // nothing, and a division by zero).
+      [
+        'effects-skip-reasons',
+        {
+          name: 'skips',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { when: { gte: 100 }, target: 'state.never', value: 1 },
+            { target: 'state.unresolved', value: '{{metadata.absent}} + 1' },
+            { target: 'state.divzero', value: '{{value}} / 0' },
+            { target: 'state.fine', value: '{{value}} + 1' },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // The other subjects an effect condition shares with an outcome row.
+      [
+        'effects-condition-over-shared-subjects',
+        {
+          name: 'shared',
+          description: 'd',
+          parameters: { scale: { type: 'number', default: 4 } },
+          roll: { min: 9, max: 9 },
+          effects: [
+            { when: { roll: { gte: 5 } }, target: 'state.bigRoll', value: true },
+            { when: { params: { scale: { gt: 3 } } }, target: 'state.scaled', value: true },
+            { when: { metadata: { clearance: { gte: 3 } } }, target: 'state.cleared', value: true },
+            { when: { metadata: { clearance: { gte: 99 } } }, target: 'state.never', value: true },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { metadata: { clearance: 5 } },
+      ],
+      // {{dice}} is a STRING subject in an expression — Form B supplies the
+      // breakdown, and concatenation is the only thing it can take part in.
+      [
+        'effects-dice-subject-is-a-string',
+        {
+          name: 'dicey',
+          description: 'd',
+          roll: '3d6',
+          effects: [
+            { target: 'state.lastRoll', value: "'rolled ' + {{dice}}" },
+            { target: 'state.arithmetic', value: '{{dice}} * 2' },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // An `llm` reference in an effect value, and an `llm` when-subject.
+      [
+        'effects-consult-subjects',
+        {
+          name: 'consulted',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          llm: { prompt: 'Answer.', errorMessage: 'The wire went dead.' },
+          effects: [
+            { target: 'metadata.verdict', value: '{{llm}}' },
+            { when: { llm: { ok: true } }, target: 'state.consulted', value: true },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+        { answer: 'the West Door' },
+      ],
+      // An empty `effects: []` array declares none, so the key is ABSENT from
+      // the result rather than an empty list.
+      [
+        'effects-empty-array-yields-no-key',
+        { name: 'none', description: 'd', roll: { min: 1, max: 1 }, effects: [], outcomes: [CATCH_ALL] },
+        {},
+        undefined,
+      ],
+      // Order is DECLARATION order, and each entry keeps its own index — a
+      // skipped entry does not renumber the ones after it.
+      [
+        'effects-indices-survive-skips',
+        {
+          name: 'indexed',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { when: { gte: 100 }, target: 'state.a', value: 1 },
+            { target: 'state.b', value: 2 },
+            { when: { gte: 100 }, target: 'state.c', value: 3 },
+            { target: 'state.d', value: 4 },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // A bracket-index target and a whole-key metadata target: the parsed
+      // `target` object rides out in the result, so its shape is pinned here.
+      [
+        'effects-target-shapes',
+        {
+          name: 'shapes',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { target: 'state.party[0].hp', value: 5 },
+            { target: 'metadata.ansible.tool', value: true },
+            { target: 'state.encounter._notes', value: "'deep underscore is fine'" },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
     ];
 
     let index = 0;

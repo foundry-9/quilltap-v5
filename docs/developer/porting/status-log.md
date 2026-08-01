@@ -48005,3 +48005,44 @@ rule, the deep-underscore allowance, bracket indices) is pinned by direct Rust
 unit tests, as v4 pins it by unit test: a definition row only echoes the raw
 target string, so no corpus row can see the path shape. Where the path actually
 lands is proven end-to-end by the route differential's state diff (unit 5).
+
+### Lane record — P4.D35 unit 3: the execution core (`chipLabel` + `resolveEffects`)
+
+Ported v4's `custom-tools.ts` execution additions: `EffectSubjects`,
+`matchesEffectWhen`, `ResolvedEffect` + `isApplicableEffect`, `resolveEffects`,
+the `chipLabel` render and the effects resolve inside `executeCustomTool`, and
+the two new `CustomToolRunResult` fields. `format_value` MOVED to
+`pascal::expressions` and is re-exported here, as v4 re-exports it — one
+number-rendering convention for templates and effect expressions alike.
+
+**`matches_when` gained an object-form inner (`matches_when_object`)** so an
+effect condition can delegate after peeling `outcome` off. v4 does this by
+destructuring, which is free in JS; splitting the body is the Rust equivalent
+and avoids cloning a `WhenObject` per effect per run.
+
+**`ResolvedEffect`'s serialization is payload, not bookkeeping.** The Workbench
+preview body spreads the whole run result (`handlePreview`'s `...result`), so
+`{index, target, value}` / `{index, skipped}` and the `EffectTarget` literals
+`{kind, path, raw}` / `{kind, key, raw}` are byte-pinned key orders. A state
+path serializes as v4's `Array<string | number>` — a bracket index rides as a
+NUMBER, which `effects-target-shapes` pins. `chipLabel` then `effects` append
+after `llm` in both `result_to_json` (harness) and `run_result_to_value`
+(the preview route), matching v4's declaration order.
+
+**Corpus growth: 12 new `executeCustomTool` cases** (execution family 260 → 272
+rows) — 4 chipLabel (subjects, verbatim unknown placeholder, quoting the
+consult, absent-key), 8 effects (literals + expression, the `outcome` subject
+both ways, every skip reason in one run, the shared subjects, `{{dice}}` as a
+STRING, consult subjects, the empty-array-yields-no-key rule, index survival
+across skips, and the three target shapes).
+
+**Mutation proofs (D24 — the new arms were green on the first run).** Each
+applied and reverted:
+
+1. Render `chipLabel` without the consult subject → RED at
+   `chip-label-quotes-the-consult` (`says {{llm}}` left verbatim).
+2. Drop skipped effects instead of recording them → RED at
+   `effects-outcome-conditioned` (index 1's `condition did not hold` vanishes).
+3. Treat `outcome.neq` as `eq` → RED at the same case.
+
+`simulate_outcomes` is untouched and so still ignores both, as v4's audit does.
