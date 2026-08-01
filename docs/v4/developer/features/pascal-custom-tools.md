@@ -38,6 +38,10 @@ Zod schema `QtapCustomToolSchema` in `lib/pascal/custom-tool.types.ts`, plus a p
                                                // Roleplay-facing, not mechanical ("Attempt to pick the lock,"
                                                // not "rolls 0–1 against thresholds"). Max 500 chars.
   "disabled": false,                     // optional. true = suppress this name at this tier and below.
+  "availableWhen": {                     // optional (4.8). Availability gate — see "Availability gates" below.
+    "metadata": { "toolAbilities": { "contains": "programmable" } }
+  },
+  "withheldWhen": { … },                 // optional (4.8). The mirror. At most one of the two per file.
   "revealOdds": true,                    // optional, default true. false = model sees name/description/parameters only, never the roll spec or outcome table.
   "defaultVisibility": "public",         // optional: "public" | "whisper". Default "public".
   "parameters": {                        // optional. Keyed by param name (same identifier rules as `name`). Max 8 params.
@@ -95,7 +99,7 @@ A dice-driven example:
 
 ### `roll` — the two forms
 
-**Form A — numeric range object.** Fields (all optional): `min` (default 0), `max` (default 1), `multiplier` (default 1), `offset` (default 0), `round` (default false). Each numeric field accepts a JSON number, a `{ "$param": "<name>" }` reference to a declared numeric parameter, or a `{ "$state": "<path>", "fallback": <number> }` reference into merged persistent state — **`$param` and `$state` are the two forms of indirection; no expression strings anywhere.** A `$state` roll field requires a **numeric** fallback (load-checked in `validateRollRefs`). Raw value = uniform float in `[min, max)` from **crypto-strength randomness** (`crypto.randomInt`/`randomBytes`-derived, not `Math.random`).
+**Form A — numeric range object.** Fields (all optional): `min` (default 0), `max` (default 1), `multiplier` (default 1), `offset` (default 0), `round` (default false). Each numeric field accepts a JSON number, a `{ "$param": "<name>" }` reference to a declared numeric parameter, or a `{ "$state": "<path>", "fallback": <number> }` reference into merged persistent state — **`$param` and `$state` are the two forms of indirection — roll fields and tests take no expression strings** (the one string grammar in the format is an effect's `value`; see [Security constraints](#security-constraints)). A `$state` roll field requires a **numeric** fallback (load-checked in `validateRollRefs`). Raw value = uniform float in `[min, max)` from **crypto-strength randomness** (`crypto.randomInt`/`randomBytes`-derived, not `Math.random`).
 
 **Form B — dice notation string.** A string like `"3d6+2"`, `"1d20"`, `"2d10-1"`. Parsed and rolled by the **existing dice system** in `lib/tools/rng-tool.ts` — extract its dice parser/roller into a shared module (`lib/pascal/dice.ts`) and have both `rng-tool` and `run_custom` consume it, rather than duplicating (single source of truth). Raw value = the dice total. Dice form does not accept `$param` references inside the notation string (v1); if parameterized dice are needed later, that is a v2 extension.
 
@@ -192,7 +196,7 @@ A definition may reach into the chat's persistent **state** — the four-tier ca
   - **LLM path** (`run_custom`, `lib/tools/handlers/run-custom-handler.ts`): `resolveStateCascade` with `{ kind: 'character', characterId }` — the responding character's own groups (Knowledge's rule). Fail-soft to `{}`.
   - **Manual popup** (`app/api/v1/chats/[id]/custom-tools/route.ts` `handleRun`): character scope when `asCharacterId` names a character, else `{ kind: 'none' }` — the same asymmetry the metadata rule uses (a run nobody made borrows no one's groups). Fail-soft to `{}`.
   - **Workbench** (`app/api/v1/custom-tools/route.ts` preview/audit): an optional mock `state` object on the request body, exactly like the mock `metadata`; `simulateOutcomes` takes it as a trailing `state` argument (default `{}`). The proving bench exposes a **Mock state** JSON field.
-- **`persist` stays deferred.** Writing state back from a roll (the reserved v2 `persist` key) remains out of scope; `$state` is read-only. The top-level schema still tolerates unknown keys so a future `persist` file won't break older builds.
+- **Writing state back shipped as `effects`.** `$state` references themselves stay read-only, but a roll can now record consequences through the tool-level `effects` array ([pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md)) — the reserved `persist` key, implemented under a better name. The top-level schema still tolerates unknown keys so future keys won't break older builds.
 
 ### Validation rules (load-time)
 
@@ -221,6 +225,18 @@ The roster for a chat is resolved through the existing five-tier pool (`characte
 - `"disabled": true` at a nearer tier suppresses the inherited tool of that name entirely.
 - A collision **within the same tier** (two mounts at the same tier both defining `unlock`) resolves deterministically by mount-point id (lexicographic), with a warning logged and an info badge in the UI popup.
 - **Perspective:** resolution is computed per invoker. When character X calls `run_custom`, X's character-tier mounts are the "character" tier. For the human user's composer popup, the roster is the union across all participants' perspectives: tools identical for everyone appear once; a tool whose definition differs per character (character-tier shadowing) appears once per variant, labeled with the character's name, and running it executes that character's variant.
+### Availability gates — `availableWhen` / `withheldWhen` (4.8)
+
+A tier decides *which* definition of a name an invoker gets. A gate decides whether they are offered one at all. Both clauses are optional, at most one may appear in a file (enforced at load, since they are not complements and the Workbench's single control cannot represent both), and a definition declaring neither is offered to everyone — which is every file written before 4.8.
+
+- **Subject: `metadata`, and only `metadata`.** The gate is answered *before* the deal, so there is no roll, no resolved parameters, and no consult to test. Operands are therefore literals: `$param` and `$state` are load-time rejections here, because neither has anything to refer to yet.
+- **Semantics are the outcome table's, verbatim.** `lib/pascal/metadata-match.ts` holds the one fail-soft comparison table; `matchesMetadataComparator` (roll time) and `evaluateToolGate` (roster time) are both thin wrappers over it, differing only in operand resolution and logging. A second copy of those rules would drift the moment either side gained a comparator.
+- **Fail-soft cuts opposite ways, which is why both clauses exist.** A key the character lacks never matches, so an empty sheet fails every `availableWhen` (fail-closed) and satisfies no `withheldWhen` (fail-open). `withheldWhen: {x: {eq: true}}` is therefore *not* `availableWhen: {x: {neq: true}}` — they differ precisely on the character with no `x`.
+- **A gated-out definition makes no claim on its name** — not even a tombstone — so a farther tier may still deal one. That is the useful arrangement: a character's vault holds the variant written for characters like them, the General store holds the plain fallback. Contrast `disabled`, which stays absolute. The gate is evaluated *before* `disabled` for this reason: a gated tombstone only tombstones for the characters it names.
+- **Enforcement is at roster resolution**, so a withheld tool is absent from the `run_custom` description, absent from `GET /api/v1/chats/[id]/custom-tools`, and unrunnable by name through either entrance (both re-resolve the roster before executing).
+- **The invoker's sheet** rides on `RosterContext.metadata`; every caller already holds it (the popup hydrates perspectives, the turn resolves a responding character). Absent, the roster fetches it — but lazily, and only if a gated definition actually turns up, so an ungated roster pays nothing. A vault that cannot be read degrades to `{}`, which is the same fail-closed/fail-open reading as an empty sheet.
+- **Vocabulary, not odds:** `collectToolVocabulary` reports a gate's metadata keys alongside the table's, so the run dialog says a tool reads `toolAbilities` — never what value opens the door. A gated-out tool never reaches a listing at all.
+
 ### Roster freshness — resolved per call, never cached across turns
 
 The roster is **re-resolved at every assembly point**, so it can never go stale:
@@ -277,9 +293,13 @@ New file `lib/tools/run-custom-tool.ts`, following the five-part chokepoint patt
 
 Constructed like Suparṇā's writer (`lib/services/suparna-notifications/writer.ts:90` is the template): `role: 'ASSISTANT'`, `participantId: null`, `systemSender: 'pascal'`, `systemKind: 'custom-tool-result'`, persisted via `repos.chats.addMessage`. New writer module: `lib/services/pascal/writer.ts`.
 
-`content` is the human/LLM-readable text, and it is the tool's title plus the author's own message — nothing else:
+`content` is the human/LLM-readable text, and it is a heading naming the run plus the author's own message as its own paragraph — nothing else:
 
-> 🎲 **Force the Lock** — The lock clicks open.
+> 🎲 **Force the Lock**
+>
+> The lock clicks open.
+
+The blank line makes the message its own Markdown block, so an outcome that begins with `- `/`#`/`1.`/`>`/a fence renders as written rather than gluing inline to the bold heading. (Messages posted before this change keep their original one-line bodies — content is frozen at post time.) When the definition declares a `chipLabel` ([pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md)), its rendered result replaces the title as the heading — the same string that labels the Salon chip, so transcript and chip never disagree.
 
 The tool is named by `displayTitle(definition)` — the author's `title`, or a title-cased `name` — never by the raw declaration name. `buildPascalResultContent` takes it as `toolTitle` for exactly that reason. The identity is not lost: `pascalMeta.tool` records `name`, which is what audit and shadowing resolve on. Because the title is interpolated at post time, no stored message changes when a `title` is later edited — the transcript keeps what was announced, which is correct for a record of what happened.
 
@@ -289,7 +309,7 @@ The tool is named by `displayTitle(definition)` — the author's `title`, or a t
 - **The `*(rolled 14)*` suffix.** What a roll says is the author's to decide: a table that wants its number read out puts `{{value}}` or `{{dice}}` in the `message`. Nothing is lost — the whole roll record still lives in `pascalMeta`, and the rolling model still gets `value`/`state` back from `run_custom`.
 - **The separate opaque body.** The spec first said `opaqueContent = content` (copying Suparṇā), then a correction made it a distinct neutral `System: …` body, because Pascal's framing would have leaked his name to an opaque character. With the framing gone the original answer is right again for the original reason: no persona in the body, nothing to strip. `opaqueContent === content`, both still populated in lockstep per the contract in `lib/schemas/chat.types.ts`.
 
-The remaining `🎲 **Title** —` prefix is a label, not a voice: it carries no Staff name and every part of it comes from the author's own JSON.
+The remaining `🎲 **Title**` heading is a label, not a voice: it carries no Staff name and every part of it comes from the author's own JSON — including the per-run `chipLabel`, when one is declared.
 
 **A manual run posts ONE message, not two.** The spec paired Pascal's outcome with a USER invocation line (`*I ran unlock (scale: 1)*`) so the model would attribute the roll to the operator. Its only unique contribution was to publish the operator's chosen parameters — precisely what a model must not see, since it is the human's hand on the scale and a character reading it can infer the roll was arranged. The line is gone; `?action=run` returns `messages: [pascalMessage]`.
 
@@ -372,7 +392,11 @@ The Pascal bubble renders the outcome with a state accent. Add semantic utilitie
 
 - `qt-pascal-result` (container), `qt-pascal-result--success`, `qt-pascal-result--partial` (warning treatment), `qt-pascal-result--failure` (danger treatment), `qt-pascal-result--info`.
 
+The same family is applied to the announcement bar/chip above the outcome (`AnnouncementChip.tsx`, `MessageRow.tsx`, via `getAnnouncementAccentClasses`), where it needs compound `.qt-chat-system-bar.qt-pascal-result*` / `.qt-chat-announcement-chip.qt-pascal-result*` selectors to outrank those wrappers' `border`/`padding` shorthands. The bar's importance dot is likewise replaced by `.qt-chat-announcement-dot-outcome-<state>` (solid `--qt-alert-*-fg`, since the `-border` tints are too thin at 8px).
+
 Per the standing rule, propagate additions to the stylebook and `packages/theme-storybook` (which triggers the packages hard-stop: bump version, then **stop and ask the human to `npm publish`**), and check the six bundled themes render the four states legibly. Keep the additions minimal — accent border/badge, not a new layout system.
+
+**Done in 4.8-dev** (`@quilltap/theme-storybook` 1.0.50): the storybook carries the `qt-pascal-result` family, the Staff-announcement bar/chip classes and their tokens, and a **Pascal Roll Outcomes** story showing all four states. Bundled themes need no work — the accent rides the `--qt-alert-*` families, which all six already define.
 
 ## Settings
 
@@ -386,7 +410,7 @@ Load-time validation failures do not error at run time; they simply keep the too
 
 ## Security constraints
 
-- **No expression evaluation anywhere.** Comparator objects and `$param` refs only. Reject on schema, don't sanitize.
+- **Outcome tests are comparator objects, never expressions.** Indirection in tests and roll fields is limited to the two closed reference forms (`$param`, `$state`). The **one** place a string grammar exists is an effect's `value` (added by [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md)), evaluated by the closed, eval-free parser in `lib/pascal/expressions.ts`: arithmetic, string concatenation, parentheses, literals, and `{{ref}}` substitution. There are no identifiers, no function calls, and no member access — the only names that grammar admits are the same `{{...}}` reference families `renderTemplate` already substitutes, so there is still nothing callable and nothing reachable beyond the run's own subjects. Reject on schema, don't sanitize.
 - Roster caps: max 64 tools per resolved roster (excess dropped with a logged warning and UI notice — no silent truncation), max 8 parameters and 32 outcomes per tool, message ≤ 1000 chars, description ≤ 500 chars.
 - Parameter values from the model/UI are validated against declared types and clamped to declared ranges before any use.
 - Crypto-strength RNG (`node:crypto`), never `Math.random`.
@@ -394,7 +418,7 @@ Load-time validation failures do not error at run time; they simply keep the too
 
 ## Deferred to v2 (schema room reserved)
 
-- **`persist` block** — `"persist": { "baseline": "{{value}}" }`: after each run, store the value as this chat's default for a parameter, backed by Pascal's existing state system (`lib/tools/state-tool.ts`). Enables self-ratcheting tools (each Hawking reading becomes the next floor) and counters ("third failed lockpick breaks the pick"). v1 ignores the key with a warning.
+- ~~**`persist` block**~~ — **Shipped as `effects`** (a better fit: the array describes consequences, not storage) by [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md): a tool-level list of conditional writes into tiered persistent state or the rolling character's metadata, applied server-side after the deal. Covers the ratcheting and counter use cases the reserved `persist` key was for.
 - Parameterized dice notation (`"{{params.n}}d6"`).
 - ~~Group-tier authoring UI (definitions are hand-authored JSON in v1; a form-based editor could come later).~~ Shipped as [Pascal's Workbench](complete/custom-tool-builder.md) — a full visual editor, library, and proving bench at `/custom-tools`.
 - Per-run seeds / deterministic replay.

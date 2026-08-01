@@ -48243,3 +48243,19 @@ hand-constructing a `ResolvedEffect` the loader would never have produced, and
 v5's unit test does exactly the same. It is a regression tripwire, not a live
 path — the same disposition `require_string` already carries in
 `custom_tools.rs`.
+
+### Lane record — P4.D35 tier-2 item 8: the v4 feature-doc mirror
+
+Mirrored under `docs/v4/developer/features/`: the NEW
+`pascal-custom-tool-enhancements.md` (v4 `ae965a4e`, the feature spec this whole
+lane implements) plus `c4d4b0de`'s edits to `pascal-custom-tools.md` (the
+doctrine amendment — the format's "no expression evaluation anywhere" line is
+now scoped to "the one place a string grammar exists is an effect's `value`")
+and `state-cascade.md` (the write-where-it-lives note).
+
+**The help-doc bank grows, with no v5 action:** `help/custom-tools.md` and
+`help/chat-state.md` both changed in `c4d4b0de`. v5 syncs help docs from disk at
+runtime, so these join the standing `p4.9i2` bank rather than needing a port —
+but note v5's shipped help text now describes a custom-tool format without
+`effects` or `chipLabel`, which is a user-visible staleness for that round to
+clear.

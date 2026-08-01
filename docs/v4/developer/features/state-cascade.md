@@ -57,7 +57,7 @@ The single merge implementation, replacing today's duplicated `mergeState` (`sta
 ### 5. API routes
 
 - **`app/api/v1/chats/[id]/actions/state.ts`**: rebuild `handleGetState` on the cascade (participants-union scope); delete local `mergeState`. Response stays compatible and gains `groupState?`, `generalState?`, `groupTier` (keep the "undefined when empty" convention). Set/reset untouched.
-- **New `app/api/v1/groups/[id]/actions/state.ts`**: reuse `createSetStateHandler`/`createResetStateHandler` (`lib/api/state-handlers.ts`) with `{ entityName:'Group', idLogKey:'groupId', selectRepo: r => r.groups, useOwnershipCheck: false }` — groups are instance-global, existence-only check (chat pattern, NOT project's `checkOwnership`). Bespoke `handleGetState` (no parent tier: `{ state: group.state ?? {} }`). Wire into the actions barrel + `handlers/{get,put,delete}.ts` dispatchers (`?action=get-state|set-state|reset-state`).
+- **New `app/api/v1/groups/[id]/actions/state.ts`**: reuse `createSetStateHandler`/`createResetStateHandler` (`lib/api/state-handlers.ts`) with `{ entityName:'Group', idLogKey:'groupId', selectRepo: r => r.groups }` — every entity gets the same existence-only check. Bespoke `handleGetState` (no parent tier: `{ state: group.state ?? {} }`). Wire into the actions barrel + `handlers/{get,put,delete}.ts` dispatchers (`?action=get-state|set-state|reset-state`).
 - **New `app/api/v1/settings/general-state/route.ts`** (bespoke — no entity row/repo): GET → `readGeneralState()`; PUT → `stateBodySchema` validation + `writeGeneralState`; DELETE → reset to `{}` returning `previousState`. Middleware/responses per house pattern; siblings `app/api/v1/settings/{chat,data-retention,text-replacements}`.
 - Update `__tests__/unit/app/api/v1/chats/[id]/actions/state-get.test.ts`; add group + general route tests. Update `docs/developer/API.md`.
 
@@ -82,12 +82,12 @@ Ref shape: `{ "$state": "<path>", "fallback": <number|string|boolean> }` — **f
 - `docs/developer/DDL.md`: document the general mount's root `state.json` + startup ensure (group store section already documents its `state.json`).
 - `public/schemas/qtap-export.schema.json`: chat/project/group state already exported. **Verify at implementation** whether the Quilltap General mount rides in the `documentStores` dump; record the outcome in the schema description either way.
 - `help/chat-state.md`: rewrite for four tiers (steampunk voice; keep `url` frontmatter + In-Chat Navigation matching). `help/custom-tools.md`: document `$state` + Workbench mock. Cross-check `help/groups.md`.
-- `docs/developer/features/pascal-custom-tools.md`: retire "only indirection", document `$state` and per-entrance cascade; note `persist` stays deferred.
+- `docs/developer/features/pascal-custom-tools.md`: retire "only indirection", document `$state` and per-entrance cascade. (The `persist` key noted here as deferred has since shipped as `effects` — see [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md).)
 - `docs/CHANGELOG.md`: terse plain-English entries.
 
 ## Known risks (accepted)
 
-- Whole-object replace on set → concurrent-write races now shared across chats via group/general tiers (pre-existing pattern; doc note only).
+- Whole-object replace on set → concurrent-write races now shared across chats via group/general tiers (pre-existing pattern; doc note only). Custom-tool `effects` ([pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md)) write through the same whole-object replaces, so the race is now likelier within a single turn; re-reading just before write stays rejected (the job child's no-read-your-writes contract).
 - `parsePath`'s `\w+` segments: keys with spaces/dots unreachable (pre-existing; document beside `$state`).
 - Merged fetch now costs membership lookups + hydrated group read + one general-doc read per call — acceptable; `findByIdRaw` + targeted state read is the escape hatch if ever needed.
 
