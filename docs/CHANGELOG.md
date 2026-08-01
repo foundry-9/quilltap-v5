@@ -51,6 +51,9 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Internal only: the end-to-end test suite's shared port setting is back to its
+default after a temporary move.
+
 Internal documentation only: four component notes that described the missing
 notification system have been corrected now that it exists.
 

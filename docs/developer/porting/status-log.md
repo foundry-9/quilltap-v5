@@ -46986,3 +46986,19 @@ surfaces this lane retired, in specs the lane therefore owns:
 **Both `toast-flow` beats passed on that run** (127 and 128), as did every
 converted surface's own spec — the Scriptorium, settings, wardrobe, workbench,
 document, terminal and destructive dialog walks.
+
+## Lane record — P4.25: the gate, green
+
+Re-run after the three assertion moves: **166 passed, 0 failed, zero skips
+(16.5 m), exit 0.** The five first-run failures all cleared, and the two beats
+that had timed out at 15.8 s now pass in 787 ms / 818 ms — the tell that they
+were assertion-target misses, not behaviour regressions.
+
+Full gate for the lane:
+- `ng test` — **264 files / 3,183 tests**, green (re-run after every unit).
+- `ng build` — clean.
+- **Playwright — 166/166, zero skips.**
+- **No Rust source changed**, so no cargo gate is owed (`git diff main...HEAD`
+  over `crates/`, `Cargo.toml`, `Cargo.lock` and `harness/` is empty). The
+  worktree's debug `quilltap-web`/`quilltap` were built only to run the gate.
+- `e2e/support/env.ts` restored to the default ports (4319 / 45301).

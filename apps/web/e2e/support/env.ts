@@ -25,13 +25,13 @@ export const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
  * write-lock refuses once the server holds the instance); the M4 spec starts
  * the mock on this port in-worker.
  */
-export const MOCK_LLM_PORT = 45401;
+export const MOCK_LLM_PORT = 45301;
 
 /** The passphrase the e2e locks the fixture behind, and the wrong one it tries. */
 export const E2E_PASSPHRASE = 'open sesame please';
 export const E2E_WRONG_PASSPHRASE = 'not the passphrase';
 
-export const PORT = 4419;
+export const PORT = 4319;
 export const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 /** The built quilltap-web binary (base-commit build — see the README prereq). */
