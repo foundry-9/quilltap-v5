@@ -95,27 +95,34 @@
 //! Timestamps on minted rows are placeholdered — EXCEPT on `conversation_chunks`,
 //! where both sides stamp the injected clock and so must agree exactly.
 //!
-//! Regenerate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
+//! Regenerate the oracle (Node 24, from the v4 checkout), against /tmp COPIES
+//! of the COMMITTED fixture — the oracle mutates the DBs it is pointed at, so
+//! never point it at the committed files (P4.D32's sweep hazard):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   mkdir -p /tmp/qt-er-oracle/cases /tmp/qt-er-oracle/fixtures /tmp/qt-er-oracle/db
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db  /tmp/qt-er-oracle/db/
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db /tmp/qt-er-oracle/db/
+//!   cp $V5W/harness/oracle/cases/embedding-remainder.test.ts /tmp/qt-er-oracle/cases/
+//!   cp $V5W/harness/oracle/fixtures/embedding-remainder.json  /tmp/qt-er-oracle/fixtures/
+//!   cp -R $V5W/harness/oracle/fixtures/help-sync              /tmp/qt-er-oracle/fixtures/
 //!   cd ~/source/quilltap-server
-//!   # (only when the corpus changes — the .db pair is COMMITTED)
-//!   QT_FIXTURE_OUT=/tmp/qt-er-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-er-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-remainder-fixture.ts
-//!   cp /tmp/qt-er-main.db  $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db
-//!   cp /tmp/qt-er-mount.db $V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db
-//!   mkdir -p /tmp/qt-er-oracle/cases /tmp/qt-er-oracle/fixtures
-//!   cp $V5/harness/oracle/cases/embedding-remainder.test.ts /tmp/qt-er-oracle/cases/
-//!   cp $V5/harness/oracle/fixtures/embedding-remainder.json  /tmp/qt-er-oracle/fixtures/
-//!   cp -R $V5/harness/oracle/fixtures/help-sync              /tmp/qt-er-oracle/fixtures/
 //!   TZ=UTC \
-//!   QT_FIXTURE_ER_MAIN=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-main.db \
-//!   QT_FIXTURE_ER_MOUNT=$V5/crates/quilltap-web/tests/fixtures/embedding-remainder-mount.db \
+//!   QT_FIXTURE_ER_MAIN=/tmp/qt-er-oracle/db/embedding-remainder-main.db \
+//!   QT_FIXTURE_ER_MOUNT=/tmp/qt-er-oracle/db/embedding-remainder-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-embedding-remainder.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=300000 \
 //!       --roots "$PWD" --roots /tmp/qt-er-oracle/cases -- embedding-remainder
 //! Run:
 //!   TZ=UTC QT_ORACLE_EMBEDDING_REMAINDER=/tmp/oracle-embedding-remainder.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_remainder_equivalence
+//!
+//! Rebuilding the COMMITTED fixture pair is a separate, DELIBERATE act — a
+//! rebuild mints fresh UUIDs and invalidates every family reading these DBs,
+//! so it re-runs every consumer. When (and only when) the fixture itself must
+//! change: `build-embedding-remainder-fixture.ts` writes fresh DBs to the
+//! paths in `QT_FIXTURE_OUT` / `QT_FIXTURE_MOUNT_OUT`; copy those over the
+//! committed `embedding-remainder-{main,mount}.db` and regenerate this
+//! family's oracle plus every sibling that reads them.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

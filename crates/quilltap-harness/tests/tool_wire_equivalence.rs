@@ -12,6 +12,12 @@
 //! provider is proven by `provider_registry_equivalence` (the `toolFormat` rows);
 //! `dispatch_is_uniform_within_tool_format` below re-confirms the Rust side keys
 //! purely on `toolFormat`.
+//!
+//! The corpus is committed
+//! (`harness/oracle/fixtures/tool-wire/tool-wire.recorded.ndjson`); no env var
+//! is needed to run — the family runs in every plain `cargo test`. Regenerate
+//! the corpus (Node 24, only after a v4 provider drift) with
+//! `harness/oracle/providers/regenerate-tool-wire.sh`.
 
 use quilltap_core::model::tool_wire::{
     detect_native_tool_calls, format_tools_for_provider, provider_has_text_markers,

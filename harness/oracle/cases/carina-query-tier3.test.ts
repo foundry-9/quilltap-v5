@@ -39,7 +39,7 @@
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   W=~/source/quilltap-v5/.claude/worktrees/carina-query-w4-5-a178ff
+ *   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
  *     $N/npx tsx $W/harness/oracle/fixtures/build-carina-query-fixture.ts

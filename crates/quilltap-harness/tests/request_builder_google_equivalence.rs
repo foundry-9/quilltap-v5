@@ -11,6 +11,13 @@
 //!     `tools` array as it lands ON THE WIRE (the SDK passes `functionDeclarations`
 //!     through faithfully), compared against the effective tools this builder
 //!     would send.
+//!
+//! The corpus is committed
+//! (`harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson`);
+//! no env var is needed to run — the family runs in every plain `cargo test`.
+//! Regenerate the corpus (Node 24, only after a v4 provider drift) with
+//! `harness/oracle/providers/regenerate-google-wire.sh` (which drives
+//! `record-google-request.mjs` against v4's REAL plugin).
 
 use quilltap_core::model::request_builder::google::{build_tools, format_messages_for_google};
 use quilltap_core::model::request_builder::{

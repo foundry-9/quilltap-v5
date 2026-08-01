@@ -31,7 +31,11 @@
 //!
 //! No oracle env is needed — this is a structural regression pin over shapes
 //! already pinned byte-exactly by `request_builder_equivalence`'s recorded
-//! corpus; it runs in every plain `cargo test`.
+//! corpus (the committed
+//! `harness/oracle/fixtures/request-envelopes/request-envelopes.recorded.ndjson`);
+//! it runs in every plain `cargo test`. That corpus regenerates (Node 24, only
+//! after a v4 provider drift) with
+//! `harness/oracle/providers/regenerate-request-envelopes.sh`.
 
 use std::sync::Mutex;
 

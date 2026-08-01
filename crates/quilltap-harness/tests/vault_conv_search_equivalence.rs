@@ -9,10 +9,18 @@
 //! (the boost VISIBLY reorders/rescores), unparsable/inverted windows (plain
 //! slice), limit 0, and the exclude filter.
 //!
-//! Generate (Node 24, from the v4 checkout; the fixture must be built first —
-//! see build-episodic-recall-fixture.ts):
-//!   TZ=UTC QT_FIXTURE_ER_MAIN=... QT_FIXTURE_ER_MOUNT=... \
-//!     $N/npx tsx $W/harness/oracle/cases/vault-conv-search.ts \
+//! Generate (Node 24, from the v4 checkout), against /tmp COPIES of the
+//! COMMITTED episodic-recall fixture — never point a regen at the committed
+//! `.db` files themselves, and never rebuild them: a rebuild mints fresh
+//! UUIDs and invalidates every episodic family (P4.D32's sweep hazard):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   mkdir -p /tmp/qt-vault-conv-db
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db  /tmp/qt-vault-conv-db/
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db /tmp/qt-vault-conv-db/
+//!   cd ~/source/quilltap-server
+//!   TZ=UTC QT_FIXTURE_ER_MAIN=/tmp/qt-vault-conv-db/episodic-recall-main.db \
+//!   QT_FIXTURE_ER_MOUNT=/tmp/qt-vault-conv-db/episodic-recall-mount.db \
+//!     $N/npx tsx $V5W/harness/oracle/cases/vault-conv-search.ts \
 //!     > /tmp/oracle-vault-conv.ndjson
 //! Run:
 //!   QT_ORACLE_VAULT_CONV=/tmp/oracle-vault-conv.ndjson \

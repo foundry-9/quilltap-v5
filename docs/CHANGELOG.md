@@ -32,6 +32,15 @@ untouched. A related oversight is fixed alongside: an older settings record
 that had never had its logging preferences written out was being skipped by the
 nightly sweep entirely, and is now swept on the same defaults everything else
 uses.
+Test-harness maintenance: every differential family's oracle-regeneration
+recipe now runs mechanically. A committed sweep driver
+(`harness/tools/recipe_sweep.py`) extracts, validates, and executes the
+recipes; twenty-odd broken headers were repaired (stale worktree paths,
+elided commands, recipes that rebuilt committed fixtures in place); and two
+sweep hazards are enforced as policy — no recipe may write inside the
+repository, and cross-family /tmp clobbering is prevented by per-family
+scratch paths and atomic regenerate-then-run execution.
+
 Repaired the terminal-tools differential oracle (test infrastructure only):
 the oracle case recorded v4's validator return value directly, which stopped
 being a boolean when v4's tool validators started returning the parsed input,

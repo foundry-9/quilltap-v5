@@ -23,7 +23,17 @@
  * binding + vector store past jest.setup).
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
- *   … QT_ORACLE_OUT=/tmp/oracle-salon-skip.ndjson npx jest -- salon-skip
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   TMPO=/tmp/qt-salon-skip-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp $V5W/harness/oracle/cases/salon-skip.test.ts "$TMPO/cases/"
+ *   cp $V5W/harness/oracle/fixtures/salon.json      "$TMPO/fixtures/"
+ *   cd ~/source/quilltap-server
+ *   QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db \
+ *   QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db \
+ *   QT_ORACLE_OUT=/tmp/oracle-salon-skip.ndjson \
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *       --roots "$PWD" --roots "$TMPO/cases" -- salon-skip
  */
 
 import * as fs from 'fs';

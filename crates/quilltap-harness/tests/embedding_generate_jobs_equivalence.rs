@@ -29,23 +29,32 @@
 //! pins that exactly one such row exists, so a port that reverted to the old
 //! silent no-op cannot pass by dumping one row fewer unnoticed.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; the /tmp
-//! mirror dodges jest's `/.claude/` testPathIgnorePatterns):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
+//! Generate the oracle (Node 24, from the v4 checkout; the /tmp mirror dodges
+//! jest's `/.claude/` testPathIgnorePatterns), against /tmp COPIES of the
+//! COMMITTED fixture — the oracle mutates the DBs it is pointed at, so never
+//! point it at the committed files (P4.D32's sweep hazard):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   mkdir -p /tmp/qt-eg-oracle/cases /tmp/qt-eg-oracle/fixtures /tmp/qt-eg-oracle/db
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/embedding-generate-main.db  /tmp/qt-eg-oracle/db/
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/embedding-generate-mount.db /tmp/qt-eg-oracle/db/
+//!   cp $V5W/harness/oracle/cases/embedding-generate-jobs.test.ts /tmp/qt-eg-oracle/cases/
+//!   cp $V5W/harness/oracle/fixtures/embedding-generate-jobs.json /tmp/qt-eg-oracle/fixtures/
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-eg-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-eg-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-generate-fixture.ts
-//!   cp /tmp/qt-eg-main.db  $V5/crates/quilltap-web/tests/fixtures/embedding-generate-main.db
-//!   cp /tmp/qt-eg-mount.db $V5/crates/quilltap-web/tests/fixtures/embedding-generate-mount.db
-//!   mkdir -p /tmp/qt-eg-oracle/cases /tmp/qt-eg-oracle/fixtures
-//!   cp $V5/harness/oracle/cases/embedding-generate-jobs.test.ts /tmp/qt-eg-oracle/cases/
-//!   cp $V5/harness/oracle/fixtures/embedding-generate-jobs.json /tmp/qt-eg-oracle/fixtures/
-//!   TZ=UTC QT_FIXTURE_EG_MAIN=/tmp/qt-eg-main.db QT_FIXTURE_EG_MOUNT=/tmp/qt-eg-mount.db \
+//!   TZ=UTC QT_FIXTURE_EG_MAIN=/tmp/qt-eg-oracle/db/embedding-generate-main.db \
+//!   QT_FIXTURE_EG_MOUNT=/tmp/qt-eg-oracle/db/embedding-generate-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-embedding-generate.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "/tmp/qt-eg-oracle/cases" -- embedding-generate-jobs
 //! Run (TZ pinned to match the oracle):
 //!   TZ=UTC QT_ORACLE_EG=/tmp/oracle-embedding-generate.ndjson \
 //!     cargo test -p quilltap-harness --test embedding_generate_jobs_equivalence
+//!
+//! Rebuilding the COMMITTED fixture family is a separate, DELIBERATE act — a
+//! rebuild mints fresh UUIDs and invalidates every family reading these DBs,
+//! so it re-runs every consumer. When (and only when) the fixture itself must
+//! change: `build-embedding-generate-fixture.ts` writes fresh DBs to the paths
+//! in `QT_FIXTURE_OUT` / `QT_FIXTURE_MOUNT_OUT`; copy those over the committed
+//! `embedding-generate-{main,mount}.db` and regenerate this family's oracle
+//! plus every sibling that reads them.
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 

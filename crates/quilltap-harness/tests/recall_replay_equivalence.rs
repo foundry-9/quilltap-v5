@@ -12,19 +12,24 @@
 //! Floats compare at 1e-12 (the TF-IDF vocab doubles come from the same JSON on
 //! both sides; cosines accumulate in doubles over the same stored f32 bits).
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout; STAGE the case
-//! outside `.claude/` — v4's jest ignores those paths):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
-//!   STAGE=/tmp/qt-oracle-stage
-//!   mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
-//!   cp $W/harness/oracle/cases/recall-replay.test.ts $STAGE/harness/oracle/cases/
-//!   cp $W/harness/oracle/fixtures/{recall-replay-cases,episodic-recall}.json \
-//!      $STAGE/harness/oracle/fixtures/
+//! Generate the oracle (Node 24, from the v4 checkout; STAGE the case outside
+//! `.claude/` — v4's jest ignores those paths), against /tmp COPIES of the
+//! COMMITTED episodic-recall fixture. Do NOT run
+//! `build-episodic-recall-fixture.ts` pointed at the committed `.db` files —
+//! that rebuilds them in place, mints fresh UUIDs, and invalidates every
+//! episodic family (exactly the P4.D32 sweep overwrite); a fixture rebuild is
+//! a deliberate act that re-runs every consumer, never part of oracle regen:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   STAGE=/tmp/qt-recall-replay-stage
+//!   mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures $STAGE/db
+//!   cp $V5W/harness/oracle/cases/recall-replay.test.ts $STAGE/harness/oracle/cases/
+//!   cp $V5W/harness/oracle/fixtures/recall-replay-cases.json $STAGE/harness/oracle/fixtures/
+//!   cp $V5W/harness/oracle/fixtures/episodic-recall.json $STAGE/harness/oracle/fixtures/
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db  $STAGE/db/
+//!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db $STAGE/db/
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_ER_MAIN=$W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db \
-//!   QT_FIXTURE_ER_MOUNT=$W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db \
-//!     $N/node --import tsx $W/harness/oracle/fixtures/build-episodic-recall-fixture.ts
-//!   TZ=UTC QT_FIXTURE_ER_MAIN=... QT_FIXTURE_ER_MOUNT=... \
+//!   TZ=UTC QT_FIXTURE_ER_MAIN=$STAGE/db/episodic-recall-main.db \
+//!   QT_FIXTURE_ER_MOUNT=$STAGE/db/episodic-recall-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-recall-replay.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
 //!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- recall-replay

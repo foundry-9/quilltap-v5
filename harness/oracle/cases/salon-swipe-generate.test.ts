@@ -23,8 +23,20 @@
  * `swipe_not_assistant` (a USER message → 400), `swipe_systemsender` (the Host
  * message → 400), `swipe_not_found` (a bad id → 404).
  *
- * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
- *   … QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson npx jest -- salon-swipe-generate
+ * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores
+ * .claude/). TZ=UTC is REQUIRED since P4.d26 — the distill TODAY line renders
+ * in the server-local zone, so this oracle is TZ-sensitive:
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   TMPO=/tmp/qt-salon-swipe-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp $V5W/harness/oracle/cases/salon-swipe-generate.test.ts "$TMPO/cases/"
+ *   cp $V5W/harness/oracle/fixtures/salon.json                "$TMPO/fixtures/"
+ *   cd ~/source/quilltap-server
+ *   TZ=UTC QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db \
+ *   QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db \
+ *   QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson \
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *       --roots "$PWD" --roots "$TMPO/cases" -- salon-swipe-generate
  */
 
 import * as fs from 'fs';

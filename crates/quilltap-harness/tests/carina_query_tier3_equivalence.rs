@@ -22,7 +22,7 @@
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   W=~/source/quilltap-v5/.claude/worktrees/carina-query-w4-5-a178ff
+//!   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
 //!     $N/npx tsx $W/harness/oracle/fixtures/build-carina-query-fixture.ts

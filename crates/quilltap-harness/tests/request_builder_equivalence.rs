@@ -26,6 +26,12 @@
 //! strip + profile params), plus the plain providers (z-ai, openrouter, ollama,
 //! grok). Google's genai-SDK wire framing is deferred to the transport; its request
 //! LOGIC is verified in `request_builder_google_equivalence`.
+//!
+//! The corpus is committed
+//! (`harness/oracle/fixtures/request-envelopes/request-envelopes.recorded.ndjson`);
+//! no env var is needed to run — the family runs in every plain `cargo test`.
+//! Regenerate the corpus (Node 24, only after a v4 provider drift) with
+//! `harness/oracle/providers/regenerate-request-envelopes.sh`.
 
 use quilltap_core::model::request_builder::{
     build_request, RequestInput, StreamMessage, ToolCallFunction, ToolCallPayload,

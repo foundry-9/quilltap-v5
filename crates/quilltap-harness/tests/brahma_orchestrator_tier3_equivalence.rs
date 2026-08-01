@@ -24,7 +24,7 @@
 //! Generate the oracle (Node 24, from the v4 checkout — the oracle lives under
 //! `.claude/`, which jest ignores, so mirror it to /tmp):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   W=~/source/quilltap-v5/.claude/worktrees/p4.9i1a-brahma-server
+//!   W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
 //!   cd ~/source/quilltap-server
 //!   mkdir -p /tmp/brahma-orch/cases /tmp/brahma-orch/fixtures
 //!   cp $W/harness/oracle/cases/brahma-orchestrator-tier3.test.ts /tmp/brahma-orch/cases/

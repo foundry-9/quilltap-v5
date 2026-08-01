@@ -46403,3 +46403,75 @@ is being asserted.
   (8 read, 2 validate, 2 list; zero SKIP). The read/list output nulls
   (`exitCode`/`label`) compare as untyped `Value` and matched — the
   only rot was the validator arm.
+
+### Unit 3 — recipe runnability: the driver + the re-derived list, every header fixed (2026-07-31)
+
+- **The driver is committed** (`harness/tools/recipe_sweep.py` + README —
+  tier 2 delivered): extracts each family header's shell block (`.rs` doc
+  comments across quilltap-harness / quilltap-web / quilltap-cli tests),
+  restores elided jest stages from the oracle case's own `/** … */` header
+  (P4.D32's "anchored restoration"), normalizes the placeholder vocabulary
+  (`$N` auto-prepended; `V5W=${V5W:-$HOME/source/quilltap-v5}` overridden
+  to the target checkout), and runs one family per invocation: delete the
+  oracle NDJSONs, regen, then `cargo test --test <family> -- --nocapture`
+  with a SKIP detector that FAILS the run (a family that silently skips
+  cannot masquerade as a green proof — that trap fired once during
+  development, on the run stage losing its env-prefix continuation lines,
+  and is now structurally closed by logical-command splitting).
+- **Both D32 hazards enforced as policy:** (1) `--run` refuses any recipe
+  whose cp/mv/redirect destination or fixture-BUILDER invocation lands in
+  the repo, and shields every `QT_FIXTURE*` env pointing at a repo `.db`
+  through a per-family /tmp copy; `DELIBERATE_REPO_WRITERS` names the one
+  designed exception (the hash-pinned uuid-remap corpus regen — still
+  refused by `--run`; regenerating a committed artifact is a lane
+  decision). (2) per-family scratch-dir suffixing + atomic regen-then-run
+  per family; `--collisions` reports the ~20 residual shared /tmp literals
+  (benign under atomic runs; shared mirror dirs span sibling families incl.
+  lane A's groups/projects headers, so they were NOT mass-renamed — new
+  headers use per-family names).
+- **The re-derived non-runnable list (the honest successor to D32's lost
+  28) — 15 families + 4 corpus headers, ALL fixed, none sibling-owned:**
+  - stale worktree paths (5): `brahma_console_tier3`,
+    `brahma_orchestrator_tier3`, `carina_memory_extraction_tier3`,
+    `carina_query_tier3` (.rs) + `brahma-console-routes.test.ts` — and the
+    same paths in the four mirrored `.ts` case headers.
+  - repo-write restructures (3): `embedding_generate_jobs` +
+    `embedding_remainder` (regen now runs against /tmp COPIES of the
+    committed DBs; the rebuild-the-committed-fixture flow demoted to an
+    explicit DELIBERATE-act note) and `recall_replay` (its regen invoked
+    `build-episodic-recall-fixture.ts` pointed AT the committed
+    episodic-recall DBs — the exact in-place overwrite D32 observed; now
+    /tmp copies, unique STAGE dir, and the `=...` elided env values
+    spelled out).
+  - elided-recipe completions (6): `salon-mutations`, `salon-skip`,
+    `salon-swipe-generate` (TZ=UTC pin carried), `image-profiles-routes`,
+    `mount-points-routes` `.ts` headers (their `.rs` headers said "see the
+    .ts header" and the .ts was itself elided — the recipe existed
+    NOWHERE); `vault_conv_search` (.rs `=...` env values + /tmp-copies
+    policy).
+  - committed-corpus pointers (4): `request_builder`,
+    `request_builder_google`, `tool_wire`, `tool_wire_call_site` now name
+    their corpus file + regen script (`regenerate-request-envelopes.sh` /
+    `regenerate-google-wire.sh` / `regenerate-tool-wire.sh`).
+- **Proof of runnability (tier-1 #4):** every fixed family executed
+  end-to-end via `--run` — 15 driver runs (salon_mutations + the 14-family
+  batch: salon_skip, salon_swipe_generate, image_profiles_routes,
+  mount_points_routes, vault_conv_search, recall_replay,
+  embedding_generate_jobs, embedding_remainder, brahma_console_routes,
+  brahma_console_tier3, brahma_orchestrator_tier3,
+  carina_memory_extraction_tier3, carina_query_tier3,
+  story_background_job_tier3) — all exit 0 with fresh oracles and real
+  (non-SKIP) cargo passes; the 4 corpus families green in plain
+  `cargo test` by name. Committed fixtures byte-untouched after all regens
+  (`git status` clean on both fixture trees).
+- **Final classification** (`--list`): 285 ok, 62 ok_restored, 11
+  committed_corpus, 6 exempt (the compile-time pins), 15 no_oracle (the
+  quilltap-web envelope arms + the CLI Tier R driver — no oracle exists,
+  nothing to regen), **0 non_extractable**.
+- **For the record / siblings:** no lane-A/B-owned header needed an edit —
+  `groups_routes` / `projects_routes` / the characters-WRITE arms and all
+  `quilltap-web/tests` families classify clean under restoration. D32's red
+  on `characters_reads` (see unit 1) and its "28 non-extractable" count
+  both reflect its driver's stricter/looser edges, not different repo
+  state; this list is driver-versioned and the driver is now committed, so
+  the next sweep reuses these exact rules.

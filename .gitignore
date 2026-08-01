@@ -29,3 +29,4 @@ fixtures/*.db
 
 # OS / editor
 .DS_Store
+__pycache__/
