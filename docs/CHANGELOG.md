@@ -265,6 +265,23 @@ character's opt-out from a shared default is itself an item, and filtering
 first would throw it away before it could do its job. The equip path, which
 needs archived garments so it can still name what someone is wearing, does not
 use this and says so.
+Wired list-indentation unit memory into the editor's Markdown bridge
+(P4.D40, tier 1 unit 2). Loading a document now records the nesting width it
+was written with, and every save re-indents to that same width instead of
+rewriting the whole list to a fixed two spaces — a two-space file stays
+two-space, a four-space file stays four-space, a single edit no longer
+reflows every nested line. The round-trip gate grew five entries covering
+four-space and tab-nested bullets, nested and wide ordered lists, and
+three-space bullets, plus two editor-integration specs proving the unit
+survives an in-editor Tab/toolbar indent, not just a plain parse-then-save.
+One divergence from the reference app is recorded and pinned rather than
+silently accepted: a two-column list item nested under a numbered parent
+(`1. a` / `  - b`) nests in the reference app but parses as two separate
+lists here, because Markdown's own CommonMark rules require at least three
+columns to continue a numbered item — the reference app's own output never
+produces this shape, so only hand-written input can hit it, and a human
+ruling is requested before building anything more invasive.
+
 Ported the reference app's list-indentation math for the editor's Markdown
 bridge (P4.D40, tier 1 unit 1). The reference app resolves how deeply a
 Markdown list item is nested from the document's own structure, not by

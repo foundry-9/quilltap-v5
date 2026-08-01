@@ -49656,3 +49656,53 @@ spec's 24 cases + the pre-existing editor suite). Not yet wired into
 `markdown-dialect.ts` or the editor — unit 2.
 
 SPA 0.5.358.
+
+### Unit record — P4.D40 unit 2: wire the unit-preserving post-pass into the bridge + grow the round-trip gate (2026-08-01)
+
+`parseMarkdown`/`serializeMarkdown` (`markdown-dialect.ts`) gain an optional
+`unitToken` parameter (v4's `LexicalEditor` analog, any stable object):
+`parseMarkdown` detects the document's own nesting unit and records it against
+the token; `serializeMarkdown` reads it back and runs `applyListIndentUnit` as
+a post-pass over the serializer output (v4's item (b)). Without a token both
+default to `DEFAULT_LIST_INDENT_UNIT` (2) — unchanged behavior for every
+existing caller, verified: `applyListIndentUnit` at unit 2 is idempotent on
+every pre-existing corpus entry (all either list-free or already 2-space; the
+serializer's native ordered-list marker-width delims already satisfy the
+(c) floor, so the post-pass is a no-op there too).
+
+**`markdown-round-trip.spec.ts`'s `roundTrip` helper now threads a fresh
+per-call token through both calls** — exercising the funnel exactly as a real
+editor session does, not just the pure functions (already covered by unit 1's
+oracle). Corpus growth (probed against the real port, not hand-guessed): 4
+new IDEMPOTENT entries (four-space nested bullets, nested ordered `1. a\n
+1. b`, wide-ordered `10. a\n    - b`, three-space bullets — tier-2 item 8) + 1
+new NORMALIZING entry (tab-nested bullets convert to their 4-column
+equivalent — v4's own `TAB_WIDTH` expansion, so the tab itself never survives
+the round trip, matching v4). Two new editor-integration specs: stability
+across three chained `roundTrip` calls at a non-default unit, and an
+end-to-end unit-memory proof — parse a 4-space document with a token, sink the
+last item via `prosemirror-schema-list`'s `sinkListItem` (the same command
+Tab/toolbar dispatch, unit 3), serialize with the SAME token, confirm the
+export stays 4-space (the default of 2 could not accidentally pass this).
+
+**Corpus count correction for the unifier:** the D17 gate is now 39
+IDEMPOTENT + 4 NORMALIZING = 43 hand-authored entries (was 36+2=38 before this
+unit; CLAUDE.md's stale "28-entry" wording predates even that — the baseline
+move is the unifier's, per the order).
+
+**Tier-2 item 7 — the (a)-edge divergence, pinned both directions:** `1. a\n
+  - b` (a 2-column child under an ordered parent) nests under v4's
+structure-only stack algorithm but parses as two SIBLING lists under
+CommonMark (probed: v5's actual output is `'1. a\n\n- b'`). v4 never WRITES
+these bytes itself — item (c) forces every child to at least the parent
+marker's width — so only hand-written/LLM input reaches it. Per the order:
+pinned in both directions (the `TABLE_DIVERGENCES` precedent — v5's bytes
+asserted, and a `.not.toBe()` on v4's recorded nesting so the block reads as
+stale, not silently passing, the day the divergence is resolved). **A human
+ruling is requested at unification**: does this warrant a v4-style structural
+pre-pass, or does v5 keep diverging on an input v4 itself never produces?
+
+Gate: `ng test --include='src/app/editor/**/*.spec.ts'` green (65 in
+`markdown-round-trip.spec.ts` alone, up from the prior ~54).
+
+SPA 0.5.359.

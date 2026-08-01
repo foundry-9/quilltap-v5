@@ -37,6 +37,14 @@
  *     import guards and its deliberately LOSSY export — see {@link qtTableRule}
  *     and the `table` serializer. Vectors recorded from v4's real transformer
  *     drive `markdown-round-trip.spec.ts`.
+ *  5. **Sub-list indentation (the `4f088e7c` re-port, P4.D40).** A document's
+ *     own nesting unit survives the round trip instead of reflowing to a
+ *     fixed width on the first edit: {@link parseMarkdown} detects the unit a
+ *     `unitToken` was loaded with and {@link serializeMarkdown} re-indents to
+ *     it as a post-pass ({@link list-indentation}, v4's `detectListIndentUnit`
+ *     / `applyListIndentUnit`). v5's CommonMark parser never had v4's
+ *     IMPORT-side flattening bug (nesting depth already comes from document
+ *     structure), so only the export-side half of v4's fix applies here.
  *
  * @module editor/markdown-dialect
  */
@@ -51,6 +59,14 @@ import {
   defaultMarkdownSerializer,
   schema as baseSchema,
 } from 'prosemirror-markdown';
+
+import {
+  applyListIndentUnit,
+  DEFAULT_LIST_INDENT_UNIT,
+  detectListIndentUnit,
+  getListIndentUnit,
+  setListIndentUnit,
+} from './list-indentation';
 
 const STAR = 0x2a; // '*'
 const UNDERSCORE = 0x5f; // '_'
@@ -644,16 +660,30 @@ export const dialectSerializer = new MarkdownSerializer(
   },
 );
 
-/** Parse a markdown string in the v4 dialect into a ProseMirror document. */
-export function parseMarkdown(text: string): PMNode {
+/**
+ * Parse a markdown string in the v4 dialect into a ProseMirror document.
+ *
+ * `unitToken` is the per-editor/field identity (v4's `LexicalEditor`
+ * analog — any stable object works, typically the owning component
+ * instance): when supplied, the document's list-indentation unit is
+ * detected and remembered against it, so a later {@link serializeMarkdown}
+ * call for the SAME token re-indents to the unit this document was loaded
+ * with rather than the default. Omit it for a one-shot parse that never
+ * needs its own export to preserve non-default nesting.
+ */
+export function parseMarkdown(text: string, unitToken?: object): PMNode {
+  if (unitToken) setListIndentUnit(unitToken, detectListIndentUnit(text));
   return dialectParser.parse(text);
 }
 
 /**
  * Serialize a ProseMirror document to a markdown string in the v4 dialect,
- * stripping the automatic escapes for `* _ \` ~` (v4's export post-pass).
+ * stripping the automatic escapes for `* _ \` ~` (v4's export post-pass), then
+ * re-indenting list nesting to `unitToken`'s remembered unit (or
+ * {@link DEFAULT_LIST_INDENT_UNIT} without one) — v4's `applyListIndentUnit`
+ * post-pass, so a two-space document stays two-space across every edit.
  */
-export function serializeMarkdown(doc: PMNode): string {
+export function serializeMarkdown(doc: PMNode, unitToken?: object): string {
   const raw = dialectSerializer.serialize(doc);
   const unpreserved = stripMarkdownEscapes(raw, PRESERVED_MARKDOWN_CHARS);
   // prosemirror-markdown's `esc()` also backslash-escapes `[`/`]` in text nodes;
@@ -661,5 +691,7 @@ export function serializeMarkdown(doc: PMNode): string {
   // (a `[note]` footnote, a `[` in prose). Strip those escapes too so brackets
   // survive byte-identically. Link syntax is emitted via the mark, not `esc`,
   // so this does not disturb real links.
-  return stripMarkdownEscapes(unpreserved, ['[', ']']);
+  const stripped = stripMarkdownEscapes(unpreserved, ['[', ']']);
+  const unit = unitToken ? getListIndentUnit(unitToken) : DEFAULT_LIST_INDENT_UNIT;
+  return applyListIndentUnit(stripped, unit);
 }

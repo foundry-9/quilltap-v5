@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import tableVectors from './__fixtures__/table-round-trip-vectors.json';
-import { parseMarkdown, serializeMarkdown } from './markdown-dialect';
+import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
+import { sinkListItem } from 'prosemirror-schema-list';
+import { EditorState, TextSelection } from 'prosemirror-state';
 
 /**
  * The D17 make-or-break gate: does a ProseMirror bridge round-trip v4's composer
@@ -18,10 +20,19 @@ import { parseMarkdown, serializeMarkdown } from './markdown-dialect';
  *
  * The spec IS this lane's differential (the dialect is v4's). Fix the port, not
  * the spec.
+ *
+ * Every call below threads a fresh per-document `unitToken` through BOTH
+ * `parseMarkdown` and `serializeMarkdown` — the P4.D40 sub-list-indentation
+ * wiring (v4 item (b)): a document's own nesting unit is detected on parse and
+ * re-applied on serialize, so a 2-space list stays 2-space and a 4-space list
+ * stays 4-space, rather than every document reflowing to a fixed width. Every
+ * entry below is either list-free or already 2-space, so this is a no-op for
+ * the pre-existing corpus; the new entries further down exercise non-default
+ * units end-to-end through the very same helper.
  */
-
 function roundTrip(input: string): string {
-  return serializeMarkdown(parseMarkdown(input));
+  const unitToken = {};
+  return serializeMarkdown(parseMarkdown(input, unitToken), unitToken);
 }
 
 /** Inputs already in v4-canonical form: byte-identical round-trip. */
@@ -192,6 +203,35 @@ const IDEMPOTENT: { name: string; md: string; trace: string }[] = [
     md: '- plain item\n- [x] done',
     trace: 'CHECK_LIST + UNORDERED_LIST in one list',
   },
+  // --- sub-list indentation (P4.D40, v4 `4f088e7c`) --------------------------
+  // v5's CommonMark parser never had v4's import-side flattening bug (nesting
+  // depth already comes from document structure), so these pin the EXPORT-side
+  // fix: a document's own nesting unit survives instead of reflowing to a
+  // fixed width. Each `roundTrip` call threads a fresh unit token through both
+  // `parseMarkdown` and `serializeMarkdown` (see the helper above), so these
+  // exercise `detectListIndentUnit` + `applyListIndentUnit` end-to-end, not
+  // just the pure functions (already differential-tested in
+  // `list-indentation.oracle.spec.ts`).
+  {
+    name: 'four-space nested bullets stay four-space',
+    md: '- a\n    - b\n        - c\n- d',
+    trace: 'detectListIndentUnit reads 4; applyListIndentUnit re-indents to 4, not the default 2',
+  },
+  {
+    name: 'nested ordered list',
+    md: '1. a\n   1. b\n2. c',
+    trace: 'detectListIndentUnit reads the 3-column ordered-parent step as the conventional 2-style; the marker-width floor keeps the child at 3',
+  },
+  {
+    name: 'wide-ordered parent keeps its child at four columns',
+    md: '10. a\n    - b',
+    trace: 'applyListIndentUnit: width = max(step, markerWidth("10.")) = max(2, 4) = 4',
+  },
+  {
+    name: 'three-space bullets stay three-space (tier 2 item 8)',
+    md: '- a\n   - b\n- c',
+    trace: 'detectListIndentUnit reads a literal 3-column bullet step as unit 3 (not the ordered-parent 3→2 special case)',
+  },
   {
     name: 'brackets in prose survive unescaped',
     md: 'see [note] and [1] below',
@@ -232,6 +272,13 @@ const NORMALIZING: { name: string; md: string; expected: string; trace: string }
     expected: 'line one\nline two',
     trace: 'Lexical exports a line break as `\\n`, dropping the two trailing spaces',
   },
+  {
+    name: 'tab-nested bullets normalize to the tab-equivalent four-space unit',
+    md: '- a\n\t- b',
+    expected: '- a\n    - b',
+    trace:
+      'detectListIndentUnit expands a tab to 4 columns (TAB_WIDTH), so applyListIndentUnit re-indents to 4 spaces — the output never contains a literal tab, matching v4',
+  },
 ];
 
 describe('D17 gate — v4 composer dialect round-trip', () => {
@@ -246,6 +293,83 @@ describe('D17 gate — v4 composer dialect round-trip', () => {
       expect(roundTrip(entry.md), entry.trace).toBe(entry.expected);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Sub-list indentation, editor-integration arms (P4.D40, v4 `4f088e7c`)
+// ---------------------------------------------------------------------------
+
+describe('D17 gate — sub-list indentation unit memory', () => {
+  it('is stable across repeated saves at a non-default unit', () => {
+    // v4 markdown-list-roundtrip.test.ts "is stable across repeated saves",
+    // widened to a 4-space document — each `roundTrip` call independently
+    // re-detects the SAME unit from the previous call's own output, so the
+    // chain converges rather than drifting toward the default.
+    const source = '- a\n    - b\n        - c';
+    expect(roundTrip(roundTrip(roundTrip(source)))).toBe(source);
+  });
+
+  it('exports an item indented IN the editor at the document unit, not the default', () => {
+    // v4 markdown-list-roundtrip.test.ts "exports an item indented in the
+    // editor at the document unit" (:98-141), ported to ProseMirror: load a
+    // 4-space document (so the default of 2 could not accidentally pass this
+    // test), sink the last top-level item the way Tab/the toolbar does, and
+    // confirm the export still uses the unit `parseMarkdown` detected — a
+    // SINGLE unit token threaded across the parse → edit → serialize
+    // sequence, the same token identity `RichEditor` uses across its own
+    // lifetime.
+    const unitToken = {};
+    const doc = parseMarkdown('- alpha\n    - beta\n- gamma', unitToken);
+    // "gamma" is the last content in the document — the caret at doc-end
+    // sits inside it, mirroring v4's `last.selectEnd()`.
+    const state = EditorState.create({
+      doc,
+      schema: dialectSchema,
+      selection: TextSelection.atEnd(doc),
+    });
+
+    let next = state;
+    sinkListItem(dialectSchema.nodes['list_item'])(state, (tr) => {
+      next = state.apply(tr);
+    });
+
+    expect(serializeMarkdown(next.doc, unitToken)).toBe(
+      ['- alpha', '    - beta', '    - gamma'].join('\n'),
+    );
+  });
+});
+
+/**
+ * P4.D40 tier-2 item 7 — the ONE recorded (a)-edge divergence: a 2-column
+ * child under an ordered parent. v4's stack algorithm resolves depth from
+ * structure alone (width 2 > parent width 0 → nest), so it reads `1. a\n  - b`
+ * as a sub-list. CommonMark requires a child to indent to at least the
+ * parent's CONTENT column (3, for `1. `) to continue the same list item — at
+ * 2 columns it is a new block, so v5 parses two SIBLING lists separated by a
+ * blank line.
+ *
+ * v4 never WRITES these bytes itself — (c) forces every child to at least the
+ * parent marker's width, so v4's own `applyListIndentUnit` could never
+ * produce a 2-column child under `1. `. Only hand-written or LLM-generated
+ * markdown can reach this input. Per the order: pin BOTH directions (the
+ * `TABLE_DIVERGENCES` precedent) and request a human ruling at unification —
+ * do NOT build a v4-style structural pre-pass without one, since that would
+ * fork v5 off CommonMark for an input v4 itself never produces.
+ */
+describe('D17 gate — the (a)-edge divergence: a 2-col child under an ordered parent', () => {
+  it('documents the divergence (human ruling requested at unification)', () => {
+    const input = '1. a\n  - b';
+    // v5's actual bytes, asserted so the divergence cannot silently drift.
+    expect(roundTrip(input), 'v5 parses two sibling lists, not one nested list').toBe(
+      '1. a\n\n- b',
+    );
+    // v4's recorded behavior (nesting), asserted to still be what v5 diverges
+    // FROM — if this ever passes, the divergence has been resolved and this
+    // whole block should be deleted, not updated.
+    expect(roundTrip(input), 'the divergence would be resolved — update the gate').not.toBe(
+      '1. a\n   - b',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
