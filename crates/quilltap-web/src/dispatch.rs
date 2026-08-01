@@ -26,6 +26,10 @@ fn status_for(resp: &Response) -> StatusCode {
             ErrorKind::Conflict => StatusCode::CONFLICT,
             ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+            // v4's deliberate contextful store-unavailable 503 (P4.23) — a
+            // SEPARATE kind from Locked so "vault locked" stays
+            // distinguishable from "store broken".
+            ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
             ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         },
         _ => StatusCode::OK,
@@ -89,6 +93,19 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
                     "pepperState".into(),
                     serde_json::to_value(e.pepper_state).unwrap_or(Value::Null),
                 );
+            }
+        }
+        // The store-unavailable 503 merges v4's contextful body keys
+        // (`{error: "<…> unavailable", "<entity>Id": <id>}` —
+        // context.ts:176-205) alongside the typed envelope, the same pattern
+        // as the Locked readiness body above (P4.23).
+        if e.kind == ErrorKind::Unavailable {
+            if let (Some(obj), Some(Value::Object(wire))) =
+                (body.as_object_mut(), e.unavailable_wire_body())
+            {
+                for (k, v) in wire {
+                    obj.insert(k, v);
+                }
             }
         }
     }

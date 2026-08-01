@@ -150,6 +150,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     },
                     RegenError::Db(_) => CoreError {
                         kind: ErrorKind::Internal,
@@ -157,6 +158,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     },
                 })
         })

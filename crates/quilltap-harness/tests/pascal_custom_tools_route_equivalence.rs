@@ -217,6 +217,8 @@ fn status_body(resp: Response) -> (u16, Value) {
                 ErrorKind::Unauthorized => 401,
                 ErrorKind::Unprocessable => 422,
                 ErrorKind::Locked => 503,
+                // The store-unavailable refusal (P4.23) — also 503 (context.ts:176-205).
+                ErrorKind::Unavailable => 503,
                 ErrorKind::Internal => 500,
             };
             (status, json!({ "error": e.message }))

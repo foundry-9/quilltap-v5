@@ -3174,6 +3174,10 @@ export type ErrorKind =
   | 'bad-request'
   | 'not-found'
   | 'locked'
+  // A store-backed entity's document store / character vault is broken —
+  // the server answers v4's deliberate contextful 503 (P4.23). Distinct from
+  // 'locked' (also 503): "vault locked" is not "store broken".
+  | 'unavailable'
   | 'internal'
   | 'unauthorized'
   // eslint-disable-next-line @typescript-eslint/ban-types
@@ -3184,6 +3188,14 @@ export interface CoreError {
   message: string;
   /** Present on readiness refusals so the router can redirect without a re-fetch. */
   pepperState?: PepperState;
+  /**
+   * The broken store's entity — present ONLY on `kind: 'unavailable'`
+   * (P4.23). `label` is the lowercase singular entity label
+   * ('project' | 'group' | 'character'); `id` the entity id. The HTTP wire
+   * body also carries v4's `{error, <label>Id}` pair merged alongside the
+   * typed envelope.
+   */
+  entity?: { label: string; id: string };
 }
 
 // ===========================================================================

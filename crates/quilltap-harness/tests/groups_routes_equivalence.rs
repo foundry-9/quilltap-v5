@@ -14,7 +14,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::groups;
-use quilltap_core::api::types::Response;
+use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+use quilltap_core::db::groups::find_official_mount_point_id_raw;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -387,6 +389,80 @@ fn groups_routes_match_oracle() {
         let resp = rt.block_on(groups::group_mount_point_unlink(&db, GAMMA, GAMMA_EXTRA_MP));
         check("mount_unlink", &response_data(&resp), &mut failed);
         check_tables("mount_unlink", &dump_group_tables(&db), &mut failed);
+    }
+
+    // --- P4.23: the corrupted-store 503 envelope arm ---
+    // Malformed bytes planted through the REAL write_database_document; the
+    // GET's hydrating find_by_id refuses and the api layer answers v4's
+    // deliberate contextful 503. Status AND body byte-compare against v4's
+    // REAL route (the middleware envelope, context.ts:176-205) — the body via
+    // raw to_string so KEY ORDER is pinned too (preserve_order both sides).
+    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Key`
+    // reds this arm on kind AND body.
+    {
+        let db = fresh_db(&spec, "corrupt");
+        let mp = db
+            .read_main(|main| find_official_mount_point_id_raw(main, GAMMA))
+            .expect("read gamma store fk")
+            .flatten()
+            .expect("gamma has an officialMountPointId");
+        rt.block_on(db.write(move |w| {
+            let mount = w
+                .mount_index()
+                .expect("fixture has a mount-index partition");
+            DocMountFileLinksRepository::new(mount.connection()).write_database_document(
+                &mp,
+                "properties.json",
+                "{",
+            )?;
+            Ok(())
+        }))
+        .expect("plant corrupt properties.json");
+
+        let want = &oracle["get_store_corrupt"];
+        assert_eq!(
+            want["status"].as_i64(),
+            Some(503),
+            "oracle corrupt arm did not answer 503 — did v4's middleware envelope move?"
+        );
+        match groups::group_get(&db, GAMMA) {
+            Response::Error(e) => {
+                if !matches!(e.kind, ErrorKind::Unavailable) {
+                    eprintln!(
+                        "[get_store_corrupt] kind {:?} (want Unavailable / HTTP 503)",
+                        e.kind
+                    );
+                    failed.push("get_store_corrupt_kind".into());
+                }
+                match e.unavailable_wire_body() {
+                    Some(got_body) => {
+                        let got = serde_json::to_string(&got_body).unwrap();
+                        let want_body = serde_json::to_string(&want["body"]).unwrap();
+                        if got != want_body {
+                            eprintln!(
+                                "[get_store_corrupt] MISMATCH:\n  GOT : {got}\n  WANT: {want_body}"
+                            );
+                            failed.push("get_store_corrupt".into());
+                        } else {
+                            eprintln!("[get_store_corrupt] OK.");
+                        }
+                    }
+                    None => {
+                        eprintln!(
+                            "[get_store_corrupt] refusal carries no entity (wire body absent)"
+                        );
+                        failed.push("get_store_corrupt_body".into());
+                    }
+                }
+            }
+            other => {
+                eprintln!(
+                    "[get_store_corrupt] expected the 503 refusal, got: {}",
+                    serde_json::to_string(&other).unwrap_or_default()
+                );
+                failed.push("get_store_corrupt_not_error".into());
+            }
+        }
     }
 
     assert!(failed.is_empty(), "groups-routes FAILED: {failed:?}");

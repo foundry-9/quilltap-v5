@@ -1079,6 +1079,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                entity: None,
             },
             RegenError::Db(_) => CoreError {
                 kind: ErrorKind::Internal,
@@ -1086,6 +1087,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                entity: None,
             },
         })
     }
@@ -1277,6 +1279,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 });
             }
         };
@@ -1453,6 +1456,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 })
             }
         }
@@ -1621,6 +1625,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         pepper_state: None,
         code: None,
         associations: None,
+        entity: None,
     }
 }
 
@@ -1686,6 +1691,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                entity: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -1700,6 +1706,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
@@ -1708,6 +1715,7 @@ where
                 pepper_state: None,
                 code: None,
                 associations: None,
+                entity: None,
             })?;
             Ok(w)
         };
@@ -1817,6 +1825,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1828,6 +1837,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 })
             })
         })
@@ -1885,6 +1895,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1896,6 +1907,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 })
             })
         })
@@ -1931,6 +1943,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1942,6 +1955,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 })
             })
         })
@@ -1978,6 +1992,7 @@ where
                         pepper_state: None,
                         code: None,
                         associations: None,
+                        entity: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1989,6 +2004,7 @@ where
                     pepper_state: None,
                     code: None,
                     associations: None,
+                    entity: None,
                 })
             })
         })

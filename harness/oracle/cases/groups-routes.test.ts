@@ -351,6 +351,30 @@ async function main(): Promise<void> {
         return { status, body, tables: await dumpGroupTables() };
       },
     },
+    // P4.23: the corrupted-store 503 envelope arm. Malformed bytes are planted
+    // into GAMMA's official store's properties.json through the REAL
+    // writeDatabaseDocument; the GET's hydrating findById then throws
+    // GroupStoreUnavailableError and the middleware answers the deliberate,
+    // contextful 503 (`context.ts:176-205`) — status AND body are recorded.
+    {
+      name: 'get_store_corrupt',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        const rows = (await rawQuery(
+          `SELECT officialMountPointId AS mp FROM groups WHERE id = '${GAMMA}'`,
+        )) as Array<{ mp: string | null }>;
+        const mp = rows[0]?.mp;
+        if (!mp) throw new Error('gamma has no officialMountPointId');
+        const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+        await writeDatabaseDocument(mp, 'properties.json', '{');
+        return respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).GET(
+            mockRequest(`${B}/${GAMMA}`),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        );
+      },
+    },
   ];
 
   const outLines: string[] = [];

@@ -114,6 +114,21 @@ pub enum DbError {
     /// A read/write targeted a sibling partition this instance was not opened
     /// with (see [`runtime::Db::read_mount_index`]).
     PartitionUnavailable(crate::write_partition::WriteDbTarget),
+    /// A store-backed entity's document store / character vault is broken —
+    /// [`document_store_overlay::OverlayError::Unavailable`] carried
+    /// structurally through the `DbError`-typed plumbing (P4.23), so the api
+    /// layer can answer v4's deliberate contextful 503
+    /// (`{"error": "<…> unavailable", "<entity>Id": <id>}`) instead of an
+    /// opaque 500. `message` is the full formatted unavailability message
+    /// (kept for the surfaces that still Display this as a plain error).
+    StoreUnavailable {
+        /// Lowercase singular label: `"project"` / `"group"` / `"character"`.
+        entity_label: &'static str,
+        /// The entity id (project/group/character id, not the mount point).
+        id: String,
+        /// The full formatted message (the `OverlayError::Unavailable` Display).
+        message: String,
+    },
 }
 
 impl std::fmt::Display for DbError {
@@ -126,6 +141,7 @@ impl std::fmt::Display for DbError {
             DbError::PartitionUnavailable(p) => {
                 write!(f, "partition not available: {}", p.as_str())
             }
+            DbError::StoreUnavailable { message, .. } => write!(f, "{message}"),
         }
     }
 }

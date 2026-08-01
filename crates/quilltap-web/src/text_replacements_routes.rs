@@ -48,12 +48,19 @@ pub(crate) fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
         ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
         ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+        // v4's deliberate contextful store-unavailable 503 (P4.23).
+        ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     };
+    // The store-unavailable refusal carries v4's exact `{error, <entity>Id}`
+    // body; every other kind keeps the plain `{error}` shape.
+    let body = e
+        .unavailable_wire_body()
+        .unwrap_or_else(|| json!({ "error": e.message }));
     (
         status,
         [("content-type", "application/json")],
-        json!({ "error": e.message }).to_string(),
+        body.to_string(),
     )
         .into_response()
 }

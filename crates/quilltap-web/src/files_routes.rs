@@ -495,8 +495,20 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
                 ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
                 ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
                 ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+                // v4's deliberate contextful store-unavailable 503 (P4.23).
+                ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
                 ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             };
+            // The store-unavailable refusal answers v4's exact
+            // `{error, <entity>Id}` body (P4.23).
+            if let Some(body) = e.unavailable_wire_body() {
+                return (
+                    status,
+                    [("content-type", "application/json")],
+                    body.to_string(),
+                )
+                    .into_response();
+            }
             let mut body = serde_json::Map::new();
             body.insert("error".to_string(), json!(e.message));
             if let Some(code) = e.code {

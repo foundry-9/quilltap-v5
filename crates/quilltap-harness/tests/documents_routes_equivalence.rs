@@ -152,6 +152,9 @@ fn status_of(kind: ErrorKind) -> u16 {
         ErrorKind::Conflict => 409,
         ErrorKind::Unprocessable => 422,
         ErrorKind::Locked => 423,
+        // The store-unavailable refusal (P4.23) — v4's deliberate
+        // contextful 503 (context.ts:176-205).
+        ErrorKind::Unavailable => 503,
         ErrorKind::Internal => 500,
     }
 }

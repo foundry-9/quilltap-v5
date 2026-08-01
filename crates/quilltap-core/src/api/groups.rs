@@ -35,7 +35,7 @@ use crate::db::{characters_read, DbError};
 use crate::services::image_job_common::with_both_conns;
 
 use super::scenarios as scenarios_api;
-use super::types::{ErrorKind, Response};
+use super::types::{db_error_response, ErrorKind, Response};
 
 // ===========================================================================
 // Shared helpers
@@ -116,17 +116,17 @@ pub fn group_list(db: &Db) -> Response {
     });
     match result {
         Ok(groups) => Response::Group(json!({ "groups": groups })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
 /// Bridge `OverlayError` into a `DbError` inside a read closure (the closures are
 /// `-> Result<_, DbError>`); an unavailable store becomes a `DbError::Key`.
 fn overlay_to_db(e: OverlayError) -> DbError {
-    match e {
-        OverlayError::Db(d) => d,
-        OverlayError::Unavailable { detail, .. } => DbError::Key(detail),
-    }
+    // Structure-preserving (P4.23): the `Unavailable` refusal survives as
+    // `DbError::StoreUnavailable` so the terminal arm can answer v4's
+    // contextful 503 instead of a 500 + leaked detail.
+    e.into_db()
 }
 
 // ===========================================================================
@@ -171,7 +171,7 @@ pub async fn group_create(
     .await;
     match out {
         Ok(group) => Response::Group(json!({ "group": group })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -195,7 +195,7 @@ pub fn group_get(db: &Db, group_id: &str) -> Response {
     match result {
         Ok(Some(group)) => Response::Group(json!({ "group": group })),
         Ok(None) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -224,7 +224,7 @@ pub fn group_members(db: &Db, group_id: &str) -> Response {
     match result {
         Ok(Some(members)) => Response::Group(json!({ "members": members })),
         Ok(None) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -251,7 +251,7 @@ pub async fn group_update(db: &Db, group_id: &str, patch: Value) -> Response {
     match out {
         Ok(Some(group)) => Response::Group(json!({ "group": group })),
         Ok(None) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -273,7 +273,7 @@ pub async fn group_delete(db: &Db, group_id: &str) -> Response {
     match out {
         Ok(true) => Response::Group(json!({ "success": true })),
         Ok(false) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -302,7 +302,7 @@ pub async fn group_member_add(db: &Db, group_id: &str, character_id: &str) -> Re
     match out {
         Ok(Ok(())) => Response::Group(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -323,7 +323,7 @@ pub async fn group_member_remove(db: &Db, group_id: &str, character_id: &str) ->
     match out {
         Ok(true) => Response::Group(json!({ "success": true })),
         Ok(false) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -354,7 +354,7 @@ pub fn group_mount_point_list(db: &Db, group_id: &str) -> Response {
     match result {
         Ok(Some(mps)) => Response::Group(json!({ "mountPoints": mps })),
         Ok(None) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -381,7 +381,7 @@ pub async fn group_mount_point_link(db: &Db, group_id: &str, mount_point_id: &st
             Response::Group(json!({ "link": link, "mountPoint": mount_point }))
         }
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -407,7 +407,7 @@ pub async fn group_mount_point_unlink(db: &Db, group_id: &str, mount_point_id: &
     match out {
         Ok(Ok(())) => Response::Group(json!({ "message": "Mount point unlinked from group" })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -476,7 +476,7 @@ pub async fn group_scenario_list(db: &Db, group_id: &str) -> Response {
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -497,7 +497,7 @@ pub async fn group_scenario_create(db: &Db, group_id: &str, bag: Value) -> Respo
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -522,7 +522,7 @@ pub async fn group_scenario_get(db: &Db, group_id: &str, scenario_path: &str) ->
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -554,7 +554,7 @@ pub async fn group_scenario_update(
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -585,7 +585,7 @@ pub async fn group_scenario_rename(
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -610,7 +610,7 @@ pub async fn group_scenario_delete(db: &Db, group_id: &str, scenario_path: &str)
     match out {
         Ok(Ok(body)) => Response::Group(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -703,7 +703,7 @@ pub async fn group_scenarios_union(db: &Db, character_ids: Vec<String>) -> Respo
 
     match out {
         Ok(entries) => Response::Group(json!({ "groupScenarios": entries })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -768,7 +768,7 @@ pub async fn group_state_set(db: &Db, group_id: &str, state: Value) -> Response 
     match out {
         Ok(Some(state)) => Response::State(json!({ "success": true, "state": state })),
         Ok(None) => not_found("Group"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 

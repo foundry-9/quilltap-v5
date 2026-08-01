@@ -486,8 +486,8 @@ fn tri_state_number(obj: &Map<String, Value>, key: &str) -> Option<Option<f64>> 
 /// Map an overlay error to a `DbError` (the projects repo returns its own error
 /// type; the listing surfaces it as a 500 like every other read failure).
 fn overlay_to_db(e: OverlayError) -> DbError {
-    match e {
-        OverlayError::Db(d) => d,
-        OverlayError::Unavailable { detail, .. } => DbError::Key(detail),
-    }
+    // Structure-preserving (P4.23): the `Unavailable` refusal survives as
+    // `DbError::StoreUnavailable` so the terminal arm can answer v4's
+    // contextful 503 instead of a 500 + leaked detail.
+    e.into_db()
 }

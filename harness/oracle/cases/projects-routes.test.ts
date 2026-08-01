@@ -341,6 +341,45 @@ async function main(): Promise<void> {
         return { status, body, tables: await dumpProjectTables() };
       },
     },
+    // P4.23: the corrupted-store 503 envelope arms. Malformed bytes planted
+    // into IOTA's official store's properties.json through the REAL
+    // writeDatabaseDocument; the hydrating findById then throws
+    // ProjectStoreUnavailableError and the middleware answers the deliberate,
+    // contextful 503 (`context.ts:176-205`). The PUT arm proves the WRITE
+    // route refuses on the same READ-path throw (it hydrates before writing).
+    {
+      name: 'get_store_corrupt',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        const rows = (await rawQuery(
+          `SELECT officialMountPointId AS mp FROM projects WHERE id = '${IOTA}'`,
+        )) as Array<{ mp: string | null }>;
+        const mp = rows[0]?.mp;
+        if (!mp) throw new Error('iota has no officialMountPointId');
+        const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+        await writeDatabaseDocument(mp, 'properties.json', '{');
+        return respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+      },
+    },
+    {
+      name: 'update_store_corrupt',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        const rows = (await rawQuery(
+          `SELECT officialMountPointId AS mp FROM projects WHERE id = '${IOTA}'`,
+        )) as Array<{ mp: string | null }>;
+        const mp = rows[0]?.mp;
+        if (!mp) throw new Error('iota has no officialMountPointId');
+        const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+        await writeDatabaseDocument(mp, 'properties.json', '{');
+        return respond(
+          await (await loadRoute(idRoute)).PUT(
+            mockRequest(`${B}/${IOTA}`, { name: 'Iota Should Not Rename' }),
+            p(IOTA),
+          ),
+        );
+      },
+    },
   ];
 
   const outLines: string[] = [];

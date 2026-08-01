@@ -15,6 +15,8 @@ use std::path::PathBuf;
 
 use quilltap_core::api::projects;
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+use quilltap_core::db::projects::find_official_mount_point_id_raw;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -42,6 +44,8 @@ fn http_for(kind: ErrorKind) -> i64 {
         ErrorKind::Conflict => 409,
         ErrorKind::Unprocessable => 422,
         ErrorKind::Locked => 503,
+        // The store-unavailable refusal (P4.23) — also 503 (context.ts:176-205).
+        ErrorKind::Unavailable => 503,
         ErrorKind::Internal => 500,
     }
 }
@@ -654,6 +658,116 @@ fn projects_routes_match_oracle() {
         let resp = rt.block_on(projects::project_file_remove(&db, LAMBDA, LAMBDA_FILE_1));
         check("remove_file", &response_data(&resp), false, &mut failed);
         check_tables("remove_file", &dump_project_tables(&db), &mut failed);
+    }
+
+    // --- P4.23: the corrupted-store 503 envelope arms ---
+    // Malformed bytes planted through the REAL write_database_document; the
+    // hydrating find_by_id refuses and the api layer answers v4's deliberate
+    // contextful 503. Status AND body byte-compare against v4's REAL route
+    // (the middleware envelope, context.ts:176-205) — the body via raw
+    // to_string so KEY ORDER is pinned too. The PUT arm proves the WRITE
+    // route refuses on the same read-path throw (it hydrates before writing).
+    // Mutation-proven: collapsing `overlay_to_db` back to `DbError::Key`
+    // reds these arms on kind AND body.
+    let plant_corrupt = |db: &Db| {
+        let mp = db
+            .read_main(|main| find_official_mount_point_id_raw(main, IOTA))
+            .expect("read iota store fk")
+            .flatten()
+            .expect("iota has an officialMountPointId");
+        rt.block_on(db.write(move |w| {
+            let mount = w
+                .mount_index()
+                .expect("fixture has a mount-index partition");
+            DocMountFileLinksRepository::new(mount.connection()).write_database_document(
+                &mp,
+                "properties.json",
+                "{",
+            )?;
+            Ok(())
+        }))
+        .expect("plant corrupt properties.json");
+    };
+    let check_unavailable = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        let want = &oracle[name];
+        assert_eq!(
+            want["status"].as_i64(),
+            Some(503),
+            "oracle {name} did not answer 503 — did v4's middleware envelope move?"
+        );
+        match resp {
+            Response::Error(e) => {
+                if !matches!(e.kind, ErrorKind::Unavailable) {
+                    eprintln!("[{name}] kind {:?} (want Unavailable / HTTP 503)", e.kind);
+                    failed.push(format!("{name}_kind"));
+                }
+                match e.unavailable_wire_body() {
+                    Some(got_body) => {
+                        let got = serde_json::to_string(&got_body).unwrap();
+                        let want_body = serde_json::to_string(&want["body"]).unwrap();
+                        if got != want_body {
+                            eprintln!("[{name}] MISMATCH:\n  GOT : {got}\n  WANT: {want_body}");
+                            failed.push(name.to_string());
+                        } else {
+                            eprintln!("[{name}] OK.");
+                        }
+                    }
+                    None => {
+                        eprintln!("[{name}] refusal carries no entity (wire body absent)");
+                        failed.push(format!("{name}_body"));
+                    }
+                }
+            }
+            other => {
+                eprintln!(
+                    "[{name}] expected the 503 refusal, got: {}",
+                    serde_json::to_string(other).unwrap_or_default()
+                );
+                failed.push(format!("{name}_not_error"));
+            }
+        }
+    };
+    {
+        // v4's project GET wraps its whole body in a LOCAL try/catch → a FIXED
+        // `serverError('Failed to fetch project')` — the middleware's 503
+        // never fires here, unlike the PUT below. The oracle measured it
+        // (500 + this exact body), and this arm pins v5 to the same.
+        let db = fresh_db(&spec, "corrupt_get");
+        plant_corrupt(&db);
+        let want = &oracle["get_store_corrupt"];
+        match projects::project_get(&db, IOTA) {
+            Response::Error(e) => {
+                let got_status = http_for(e.kind);
+                let got_body = serde_json::to_string(&json!({ "error": e.message })).unwrap();
+                let want_body = serde_json::to_string(&want["body"]).unwrap();
+                if Some(got_status) != want["status"].as_i64() || got_body != want_body {
+                    eprintln!(
+                        "[get_store_corrupt] MISMATCH:\n  GOT : {got_status} {got_body}\n  WANT: {} {want_body}",
+                        want["status"]
+                    );
+                    failed.push("get_store_corrupt".into());
+                } else {
+                    eprintln!("[get_store_corrupt] OK.");
+                }
+            }
+            other => {
+                eprintln!(
+                    "[get_store_corrupt] expected the local-catch 500, got: {}",
+                    serde_json::to_string(&other).unwrap_or_default()
+                );
+                failed.push("get_store_corrupt_not_error".into());
+            }
+        }
+    }
+    {
+        let db = fresh_db(&spec, "corrupt_put");
+        plant_corrupt(&db);
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "name": "Iota Should Not Rename" }),
+        ));
+        check_unavailable("update_store_corrupt", &resp, &mut failed);
     }
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");

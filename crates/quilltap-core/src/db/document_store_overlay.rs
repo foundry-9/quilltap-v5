@@ -156,14 +156,22 @@ impl OverlayError {
         matches!(self, OverlayError::Unavailable { .. })
     }
 
-    /// Collapse into the plain [`DbError`] surface for callers whose error type
-    /// predates the structured refusal (the `Unavailable` arm keeps its Display
-    /// message). Call sites that can answer v4's contextful 503 should match
-    /// the variants instead (`api/*`).
+    /// Collapse into the [`DbError`] surface for callers whose error type is
+    /// `DbError` (the closure plumbing). The `Unavailable` arm survives
+    /// STRUCTURALLY as [`DbError::StoreUnavailable`] (P4.23), so the api layer
+    /// can answer v4's contextful 503 — its Display is this error's full
+    /// message, so surfaces that only Display lose nothing.
     pub fn into_db(self) -> DbError {
+        let message = self.to_string();
         match self {
             OverlayError::Db(d) => d,
-            unavailable => DbError::Key(unavailable.to_string()),
+            OverlayError::Unavailable {
+                entity_label, id, ..
+            } => DbError::StoreUnavailable {
+                entity_label,
+                id,
+                message,
+            },
         }
     }
 }

@@ -36,7 +36,7 @@ use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 
 use super::scenarios as scenarios_api;
-use super::types::{ErrorKind, Response};
+use super::types::{db_error_response, ErrorKind, Response};
 
 // ===========================================================================
 // Shared helpers
@@ -62,10 +62,10 @@ pub fn not_available(action: &str) -> Response {
 }
 
 fn overlay_to_db(e: OverlayError) -> DbError {
-    match e {
-        OverlayError::Db(d) => d,
-        OverlayError::Unavailable { detail, .. } => DbError::Key(detail),
-    }
+    // Structure-preserving (P4.23): the `Unavailable` refusal survives as
+    // `DbError::StoreUnavailable` so the terminal arm can answer v4's
+    // contextful 503 instead of a 500 + leaked detail.
+    e.into_db()
 }
 
 fn read_both<T>(
@@ -145,7 +145,7 @@ pub fn project_list(db: &Db) -> Response {
     });
     match result {
         Ok(projects) => Response::Project(json!({ "projects": projects })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -205,7 +205,7 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
     .await;
     match out {
         Ok(project) => Response::Project(json!({ "project": project })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -285,7 +285,15 @@ pub fn project_get(db: &Db, project_id: &str) -> Response {
     match result {
         Ok(Some(project)) => Response::Project(json!({ "project": project })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        // v4's `handleGetProject` wraps its WHOLE body in a local try/catch →
+        // a FIXED `serverError('Failed to fetch project')` — so the middleware's
+        // store-unavailable 503 never fires on the project GET (the routes
+        // differential's `get_store_corrupt` arm pins this: 500 + this exact
+        // body, unlike the PUT, which propagates and answers the 503).
+        Err(e) => {
+            tracing::error!(error = %e, "project GET failed");
+            internal("Failed to fetch project")
+        }
     }
 }
 
@@ -309,7 +317,7 @@ pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response
     match out {
         Ok(Some(project)) => Response::Project(json!({ "project": project })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -342,7 +350,7 @@ pub async fn project_delete(db: &Db, project_id: &str) -> Response {
     match out {
         Ok(true) => Response::Project(json!({ "success": true })),
         Ok(false) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -377,7 +385,7 @@ pub fn project_character_list(db: &Db, project_id: &str) -> Response {
             Response::Project(json!({ "characters": chars, "count": count }))
         }
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -410,7 +418,7 @@ pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -440,7 +448,7 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
     match out {
         Ok(true) => Response::Project(json!({ "success": true })),
         Ok(false) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -563,7 +571,7 @@ pub fn project_chat_list(
     match result {
         Ok(Some(body)) => Response::Project(body),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -590,7 +598,7 @@ pub async fn project_chat_add(db: &Db, project_id: &str, chat_id: &str) -> Respo
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -614,7 +622,7 @@ pub async fn project_chat_remove(db: &Db, project_id: &str, chat_id: &str) -> Re
     match out {
         Ok(true) => Response::Project(json!({ "success": true })),
         Ok(false) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -635,7 +643,7 @@ pub fn project_state_get(db: &Db, project_id: &str) -> Response {
     match result {
         Ok(Some(state)) => Response::Project(json!({ "success": true, "state": state })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -661,7 +669,7 @@ pub async fn project_state_set(db: &Db, project_id: &str, state: Value) -> Respo
     match out {
         Ok(Some(state)) => Response::Project(json!({ "success": true, "state": state })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -685,7 +693,7 @@ pub async fn project_state_reset(db: &Db, project_id: &str) -> Response {
             Response::Project(json!({ "success": true, "previousState": previous }))
         }
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -729,7 +737,7 @@ pub async fn project_tool_settings_update(
             "defaultDisabledToolGroups": disabled_tool_groups,
         })),
         Ok(false) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -827,7 +835,7 @@ pub fn project_background_get(db: &Db, project_id: &str) -> Response {
     match result {
         Ok(Some(body)) => Response::Project(body),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -861,7 +869,7 @@ pub fn project_aesthetic_get(db: &Db, project_id: &str, kind: &str) -> Response 
     match result {
         Ok(Some(content)) => Response::Project(json!({ "content": content })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -899,7 +907,7 @@ pub async fn project_aesthetic_set(
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -928,7 +936,7 @@ pub fn project_mount_point_list(db: &Db, project_id: &str) -> Response {
     match result {
         Ok(Some(mps)) => Response::Project(json!({ "mountPoints": mps })),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -955,7 +963,7 @@ pub async fn project_mount_point_link(db: &Db, project_id: &str, mount_point_id:
             Response::Project(json!({ "link": link, "mountPoint": mount_point }))
         }
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -985,7 +993,7 @@ pub async fn project_mount_point_unlink(
     match out {
         Ok(Ok(())) => Response::Project(json!({ "message": "Mount point unlinked from project" })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1050,7 +1058,7 @@ pub fn project_wardrobe_list(db: &Db, project_id: &str) -> Response {
             Response::Project(json!({ "mountPointId": mp, "wardrobeItems": items }))
         }
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1141,7 +1149,7 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
             "wardrobeItems": items,
         })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1164,7 +1172,7 @@ pub fn project_wardrobe_get(db: &Db, project_id: &str, item_id: &str) -> Respons
         Ok(Some(Some(item))) => Response::Project(json!({ "wardrobeItem": item })),
         Ok(Some(None)) => not_found("Project wardrobe item"),
         Ok(None) => not_found("Project"),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1205,7 +1213,7 @@ pub async fn project_wardrobe_update(
     match out {
         Ok(Ok(item)) => Response::Project(json!({ "wardrobeItem": item })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1233,7 +1241,7 @@ pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1331,7 +1339,7 @@ pub async fn project_scenario_list(db: &Db, project_id: &str) -> Response {
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1352,7 +1360,7 @@ pub async fn project_scenario_create(db: &Db, project_id: &str, bag: Value) -> R
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1377,7 +1385,7 @@ pub async fn project_scenario_get(db: &Db, project_id: &str, scenario_path: &str
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1409,7 +1417,7 @@ pub async fn project_scenario_update(
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1440,7 +1448,7 @@ pub async fn project_scenario_rename(
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1465,7 +1473,7 @@ pub async fn project_scenario_delete(db: &Db, project_id: &str, scenario_path: &
     match out {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1616,7 +1624,7 @@ pub fn project_file_list(db: &Db, project_id: &str) -> Response {
     match result {
         Ok(Ok(body)) => Response::Project(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1648,7 +1656,7 @@ pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Respo
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1669,6 +1677,6 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }

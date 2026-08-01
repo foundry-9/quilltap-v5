@@ -3081,6 +3081,25 @@ impl Response {
             pepper_state: None,
             code: None,
             associations: None,
+            entity: None,
+        })
+    }
+
+    /// v4's store-unavailable refusal (P4.23): [`ErrorKind::Unavailable`] with
+    /// the entity carry, so the transport can answer the deliberate contextful
+    /// 503 body. `message` is v4's fixed error string for the entity (the
+    /// dispatch envelope's own `message` mirrors the wire body's `error`).
+    pub fn store_unavailable(label: &str, id: &str) -> Response {
+        Response::Error(CoreError {
+            kind: ErrorKind::Unavailable,
+            message: unavailable_error_string(label),
+            pepper_state: None,
+            code: None,
+            associations: None,
+            entity: Some(Box::new(UnavailableEntity {
+                label: label.to_string(),
+                id: id.to_string(),
+            })),
         })
     }
 
@@ -3097,6 +3116,7 @@ impl Response {
             pepper_state: None,
             code: Some(code.into()),
             associations: None,
+            entity: None,
         })
     }
 
@@ -3115,6 +3135,7 @@ impl Response {
             pepper_state: None,
             code: Some(code.into()),
             associations: Some(associations),
+            entity: None,
         })
     }
 
@@ -3128,6 +3149,7 @@ impl Response {
             pepper_state: Some(pepper_state),
             code: None,
             associations: None,
+            entity: None,
         })
     }
 }
@@ -3286,6 +3308,67 @@ pub struct CoreError {
     /// linked-file delete refusal, absent everywhere else.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub associations: Option<FileAssociations>,
+    /// The store-unavailable entity carry (P4.23): present ONLY on
+    /// [`ErrorKind::Unavailable`], absent everywhere else. Lets the transport
+    /// answer v4's deliberate contextful 503 body
+    /// (`{"error": "<…> unavailable", "<entity>Id": <id>}`) without parsing
+    /// the message — see [`CoreError::unavailable_wire_body`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity: Option<Box<UnavailableEntity>>,
+}
+
+/// The broken store's entity, carried on [`ErrorKind::Unavailable`] errors.
+/// `label` is the lowercase singular entity label (`"project"` / `"group"` /
+/// `"character"`); `id` the entity id.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnavailableEntity {
+    pub label: String,
+    pub id: String,
+}
+
+/// Map a [`crate::db::DbError`] surfacing at an api terminal arm to its
+/// `Response` (P4.23): the structured store-unavailable refusal answers v4's
+/// deliberate contextful 503; everything else stays the plain internal error
+/// (`internal(e)`'s exact behavior).
+pub(crate) fn db_error_response(e: crate::db::DbError) -> Response {
+    match e {
+        crate::db::DbError::StoreUnavailable {
+            entity_label, id, ..
+        } => Response::store_unavailable(entity_label, &id),
+        other => Response::error(ErrorKind::Internal, other.to_string()),
+    }
+}
+
+/// v4's fixed error string for a broken store, per entity
+/// (`lib/api/middleware/context.ts:176-205`): the character vault has its own
+/// wording; the store-backed entities share the document-store one.
+pub fn unavailable_error_string(label: &str) -> String {
+    match label {
+        "character" => "Character vault unavailable".to_string(),
+        _ => {
+            let (head, tail) = label.split_at(1);
+            format!("{}{} document store unavailable", head.to_uppercase(), tail)
+        }
+    }
+}
+
+impl CoreError {
+    /// v4's exact store-unavailable 503 body — `{"error": <fixed string>,
+    /// "<label>Id": <id>}`, in that key order (`preserve_order` makes insertion
+    /// order the wire order). `None` unless this error carries the entity.
+    pub fn unavailable_wire_body(&self) -> Option<serde_json::Value> {
+        let entity = self.entity.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "error".to_string(),
+            serde_json::Value::String(unavailable_error_string(&entity.label)),
+        );
+        body.insert(
+            format!("{}Id", entity.label),
+            serde_json::Value::String(entity.id.clone()),
+        );
+        Some(serde_json::Value::Object(body))
+    }
 }
 
 /// v4 `getFileAssociations` result (`lib/files/get-file-associations.ts`) — the
@@ -3338,6 +3421,14 @@ pub enum ErrorKind {
     /// the reason rather than pointing at the form.
     Unprocessable,
     Locked,
+    /// A store-backed entity's document store / character vault is broken
+    /// (P4.23): v4's middleware answers a deliberate, contextful **503** —
+    /// `{"error": "<…> unavailable", "<entity>Id": <id>}` — "so callers and
+    /// logs can tell store degradation apart from a generic crash"
+    /// (`context.ts:176-205`). A SEPARATE kind from [`ErrorKind::Locked`]
+    /// (also 503) on purpose: "vault locked" must stay distinguishable from
+    /// "store broken".
+    Unavailable,
     Internal,
 }
 

@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+A project, group, or character whose backing document store is broken now
+answers a deliberate, contextful "store unavailable" error (HTTP 503 naming
+the affected entity) instead of a generic server error that leaked an
+internal detail string. Callers and logs can now tell store degradation
+apart from a crash, matching the reference app's behavior — and one
+reference-app subtlety is carried faithfully: fetching a single project
+with a broken store still answers that route's own fixed "Failed to fetch
+project" error, because the reference app catches locally there.
+
 Editing a character whose vault `properties.json` has been corrupted now
 refuses the save with a clear error instead of silently and permanently
 resetting the character's pronouns, aliases, title, first message,

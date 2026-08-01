@@ -655,7 +655,9 @@ async fn set_default_image_id(db: &Db, character_id: &str, link_id: &str) {
         .await;
 }
 
-/// Map a dispatch `Response::Error` to its HTTP response ({error: message}).
+/// Map a dispatch `Response::Error` to its HTTP response ({error: message};
+/// the store-unavailable refusal answers v4's exact `{error, <entity>Id}`
+/// 503 body instead — P4.23).
 fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
     let status = match e.kind {
         ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
@@ -665,8 +667,17 @@ fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
         ErrorKind::Conflict => StatusCode::CONFLICT,
         ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+        ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     };
+    if let Some(body) = e.unavailable_wire_body() {
+        return (
+            status,
+            [("content-type", "application/json")],
+            body.to_string(),
+        )
+            .into_response();
+    }
     error_json(status, &e.message)
 }
 

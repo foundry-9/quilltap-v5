@@ -41,7 +41,7 @@ use crate::services::character_enrichment;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 
-use super::types::{ErrorKind, Response};
+use super::types::{db_error_response, ErrorKind, Response};
 
 // ===========================================================================
 // Shared helpers
@@ -95,7 +95,9 @@ fn require_character(
     match characters_read::find_by_id(main, mount, character_id) {
         Ok(Some(c)) => Ok(c),
         Ok(None) => Err(not_found("Character")),
-        Err(e) => Err(internal(e)),
+        // The absent-keystone vault refusal answers v4's contextful 503
+        // (P4.23); every other failure stays the plain internal error.
+        Err(e) => Err(db_error_response(e)),
     }
 }
 
@@ -160,7 +162,7 @@ pub fn character_list(
             let count = list.len();
             Response::Characters(json!({ "characters": list, "count": count }))
         }
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -183,7 +185,7 @@ pub fn character_get(db: &Db, _user_id: &str, character_id: &str) -> Response {
     match result {
         Ok(Ok(body)) => Response::Character(json!({ "character": body })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -204,7 +206,7 @@ pub fn character_default_partner(db: &Db, _user_id: &str, character_id: &str) ->
     match result {
         Ok(Ok(partner_id)) => Response::Character(json!({ "partnerId": partner_id })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -232,7 +234,7 @@ pub fn character_get_tags(db: &Db, _user_id: &str, character_id: &str) -> Respon
     match result {
         Ok(Ok(details)) => Response::Character(json!({ "tags": details })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -264,7 +266,7 @@ pub fn character_depiction_guidelines(db: &Db, _user_id: &str, character_id: &st
     match result {
         Ok(Ok(content)) => Response::Character(json!({ "content": content })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -318,7 +320,7 @@ pub async fn character_depiction_guidelines_update(
     match out {
         Ok(Ok(())) => Response::Character(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -423,7 +425,7 @@ pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response 
     match result {
         Ok(Ok(body)) => Response::Character(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -681,7 +683,7 @@ pub fn character_chats(
     match result {
         Ok(Ok(body)) => Response::Character(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -718,7 +720,7 @@ pub fn character_export(
     match result {
         Ok(Ok(card)) => Response::Character(card),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -755,7 +757,7 @@ fn sub_array_read(db: &Db, character_id: &str, field: &str, out_key: &str) -> Re
     match result {
         Ok(Ok(arr)) => Response::Character(json!({ out_key: arr })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -774,7 +776,7 @@ pub fn character_wardrobe_list(db: &Db, _user_id: &str, character_id: &str) -> R
     match result {
         Ok(Ok(items)) => Response::Character(json!({ "wardrobeItems": items })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -791,7 +793,7 @@ pub fn character_plugin_data_map(db: &Db, _user_id: &str, character_id: &str) ->
     match result {
         Ok(Ok(map)) => Response::Character(json!({ "pluginData": map })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -821,7 +823,7 @@ pub fn character_plugin_data_get(
     match result {
         Ok(Ok(entry)) => Response::Character(json!({ "pluginData": entry })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -923,7 +925,7 @@ fn merged_character_response(out: Result<Result<Value, Response>, DbError>) -> R
     match out {
         Ok(Ok(c)) => Response::Character(json!({ "character": c })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -976,7 +978,7 @@ pub async fn character_set_default_partner(
             "success": true,
         })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1043,7 +1045,7 @@ pub async fn character_avatar(
             Response::Character(json!({ "data": character }))
         }
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1092,7 +1094,7 @@ pub async fn character_add_tag(
     match out {
         Ok(Ok(tag)) => Response::Character(json!({ "success": true, "tag": tag })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1136,7 +1138,7 @@ pub async fn character_remove_tag(
     match out {
         Ok(Ok(())) => Response::Character(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1224,7 +1226,7 @@ pub async fn character_create(db: &Db, user_id: &str, body: Value) -> Response {
     .await;
     match out {
         Ok(c) => Response::Character(json!({ "character": c })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1276,7 +1278,7 @@ pub async fn character_quick_create(db: &Db, user_id: &str, name: &str) -> Respo
     .await;
     match out {
         Ok(c) => Response::Character(json!({ "character": c })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1363,7 +1365,7 @@ pub async fn character_import(db: &Db, user_id: &str, payload: Value) -> Respons
                 "_count": { "chats": chat_count },
             }
         })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1402,7 +1404,7 @@ pub fn character_photo_list(
     match result {
         Ok(Ok(body)) => Response::Character(body),
         Ok(Err(e)) => gallery_err(e),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1434,7 +1436,7 @@ pub async fn character_photo_remove(
             }
         }
         Ok(Err(e)) => gallery_err(e),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1489,7 +1491,7 @@ pub async fn character_photo_save_by_id(
     match out {
         Ok(Ok(v)) => Response::Character(v),
         Ok(Err(e)) => gallery_err(e),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1549,7 +1551,7 @@ pub fn character_cascade_preview(db: &Db, _user_id: &str, character_id: &str) ->
     match result {
         Ok(Ok(body)) => Response::Character(body),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1595,7 +1597,7 @@ pub async fn character_delete(
             }
         }
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1676,7 +1678,7 @@ pub async fn character_update(
     match out {
         Ok(Ok(c)) => Response::Character(json!({ "character": c })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -1935,7 +1937,7 @@ pub async fn character_scenario_delete(
     match out {
         Ok(Ok(())) => Response::Character(json!({ "message": "Scenario removed" })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2135,7 +2137,7 @@ pub fn character_wardrobe_get(
     match result {
         Ok(Ok(item)) => Response::Character(json!({ "wardrobeItem": item })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2303,7 +2305,7 @@ pub fn tag_list(db: &Db, _user_id: &str, search: Option<&str>) -> Response {
             let count = list.len();
             Response::Tags(json!({ "tags": list, "count": count }))
         }
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2325,7 +2327,7 @@ pub fn tag_get(db: &Db, _user_id: &str, tag_id: &str) -> Response {
     match result {
         Ok(Ok(tag)) => Response::Tag(json!({ "tag": tag })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2364,7 +2366,7 @@ pub async fn tag_create(db: &Db, user_id: &str, name: &str) -> Response {
         .await;
     match out {
         Ok(tag) => Response::Tag(json!({ "tag": tag })),
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2421,7 +2423,7 @@ pub async fn tag_update(db: &Db, user_id: &str, tag_id: &str, body: Value) -> Re
     match out {
         Ok(Ok(tag)) => Response::Tag(json!({ "tag": tag })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2446,7 +2448,7 @@ pub async fn tag_delete(db: &Db, _user_id: &str, tag_id: &str) -> Response {
     match out {
         Ok(Ok(())) => Response::Tag(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2468,7 +2470,7 @@ fn wrap_obj(out: Result<Result<Value, Response>, DbError>, key: &str) -> Respons
     match out {
         Ok(Ok(v)) => Response::Character(json!({ key: v })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }
 
@@ -2477,6 +2479,6 @@ fn success_or(out: Result<Result<(), Response>, DbError>) -> Response {
     match out {
         Ok(Ok(())) => Response::Character(json!({ "success": true })),
         Ok(Err(r)) => r,
-        Err(e) => internal(e),
+        Err(e) => db_error_response(e),
     }
 }

@@ -46002,3 +46002,118 @@ Gate at this commit: fmt clean; clippy both feature sets `-D warnings` clean;
 `cargo test --workspace --no-fail-fast` green with the CHARUPD env vars set
 (the extended family RAN, not skipped). Versions: core 0.0.428, harness
 0.0.370.
+
+## Lane record — P4.23: the store-unavailable 503 envelope
+
+**CLOSED on the lane branch (2026-07-31), second order of lane A (same branch
+as P4.22).** Every store-unavailable error on the groups / projects /
+characters surfaces now answers v4's deliberate, contextful **503**
+(`context.ts:176-205` — the P4.D29 lane record's `auth.ts` attribution was
+wrong, corrected by the order) instead of v5's previous 500 + leaked internal
+detail. End to end:
+
+- **`ErrorKind::Unavailable`** (additive, kebab-cased `unavailable`) → 503 at
+  EVERY web-edge kind→status match site (`dispatch.rs` `status_for`,
+  `characters_routes.rs` `response_error`, `files_routes.rs`,
+  `text_replacements_routes.rs` — the compiler found all four via the
+  exhaustive matches). Kept SEPARATE from `Locked` (also 503) so "vault
+  locked" stays distinguishable from "store broken".
+- **`CoreError.entity: Option<Box<UnavailableEntity>>`** ({label, id} —
+  Boxed because the unboxed field pushed `Result<_, Response>` over clippy's
+  `result_large_err` threshold across dozens of pre-existing fns).
+  `Response::store_unavailable(label, id)` + `unavailable_error_string` +
+  `CoreError::unavailable_wire_body()` build v4's exact per-entity body —
+  `{"error": "<X> unavailable", "<entity>Id": <id>}`, key NAME derived from
+  the label, key ORDER load-bearing (`preserve_order`).
+- **The structured carry through the `DbError` plumbing:** a new
+  `DbError::StoreUnavailable { entity_label, id, message }` variant (Display
+  = the full unavailability message, so Display-only surfaces lose nothing).
+  `OverlayError::into_db` (P4.22's collapse) now maps `Unavailable` into it
+  structure-preserved, which made the three api `overlay_to_db` fns
+  (`projects.rs` / `groups.rs` / `autonomous_rooms.rs`) one-line delegates —
+  the closure plumbing (50 `map_err(overlay_to_db)` sites) is untouched.
+- **The api terminal arms:** `Err(e) => internal(e)` →
+  `db_error_response(e)` (a shared helper in `api/types.rs`: StoreUnavailable
+  → the 503 response, everything else the old `internal`) across
+  `groups.rs` / `projects.rs` / `characters.rs`, plus the
+  `require_character` ownership-gate choke point (the vault read refusal's
+  actual path — found live by the web-edge test, which went red on 500
+  before this fix). `db/characters_read.rs`'s `find_by_id` collapse now
+  produces the structured variant (was `DbError::Key`).
+- **The edges:** REST-parity edges answer v4's exact two-key body verbatim;
+  the dispatch envelope MERGES the two v4 keys alongside the typed
+  `{"type":"error","data":{…}}` envelope — the established Locked-merge
+  pattern. The SPA mirror (`core-contract.ts`): `'unavailable'` in the
+  ErrorKind union + the optional `entity` carry, name-for-name;
+  `coreErrorMessage` needed no change (the envelope `message` already reads
+  as the v4 error string).
+
+**The differentials (all driving v4's REAL routes at `ff12f491` /
+HEAD `e1be028b`, re-verified clean at regen):**
+
+- `groups_routes_equivalence` grew `get_store_corrupt` (corrupt bytes
+  planted through the REAL `write_database_document`, then the GET):
+  v4's middleware answers **503 {error: 'Group document store unavailable',
+  groupId}** and v5's byte-compared wire body (raw `to_string`, key order
+  pinned) matches. 15 cases.
+- `projects_routes_equivalence` grew `get_store_corrupt` AND
+  `update_store_corrupt` — and the GET arm caught REAL v4 nuance the order
+  did not predict: **v4's project GET wraps its whole body in a local
+  try/catch → a FIXED 500 `{"error":"Failed to fetch project"}`; the
+  middleware 503 never fires there** (the PUT propagates and answers the
+  503). v5's `project_get` was made faithful (fixed local-catch message +
+  `tracing::error!`; it previously leaked the raw detail on a 500). 41
+  cases.
+- The NEW `store-unavailable-routes.test.ts` oracle (jest over the committed
+  characters fixture) + `crates/quilltap-web/tests/store_unavailable_envelope.rs`
+  (`QT_ORACLE_STORE_UNAVAILABLE`): boots the REAL server over a doctored
+  instance and drives the LIVE dispatch edge. The absent-keystone
+  `characterGet` is an EQUALITY (503; the merged `error`/`characterId` keys
+  equal v4's recorded body, whose shape is pinned to exactly those two
+  keys). The corrupt-vault `characterUpdate` is the **P4.22 deliberate
+  divergence at the edge**: v5 answers the vault 503 envelope; v4's recorded
+  route answer is asserted NOT to be the vault envelope — the arm goes red
+  the moment v4's #47 fix lands (RECLASSIFY then; P4.22's corpus pins the
+  same tripwire on the repo surface). The wire pin
+  (`store_unavailable_wire_pin`, always-on) asserts the exact serialized
+  bytes of all three envelope bodies incl. key order.
+- **Mutation-proven (D24):** collapsing `into_db` back to `DbError::Key`
+  reds the groups GET arm and the projects PUT arm on kind AND body;
+  reverting `project_get`'s local catch reds the projects GET arm on
+  status AND body. The web-edge arms went organically red (500, then a
+  missing `data.kind`) before the fixes landed — sensitivity demonstrated.
+
+**Findings + residuals (loud):**
+
+- **v4's corrupt-vault PUT under the jest oracle answers 500
+  `{"error":"Internal server error"}` AFTER clobbering** (the clobber is in
+  the post-state probe), where the live dogfood walk observed a silent
+  success. The 500's cause under jest was not run to ground (time-boxed);
+  the arm therefore pins only the unambiguous direction (v4's answer is NOT
+  the vault envelope) — correct under either reading, and the reclassify
+  tripwire fires on v4's fix regardless.
+- **Not every dispatch family maps the vault refusal yet:** surfaces outside
+  groups/projects/characters that read characters through `find_by_id`
+  (chats cast, etc.) still answer 500 via their own `internal(e)` terminals
+  — same class as the standing `DbError::Key` message-leak pool (tier 3,
+  out of scope by the order), now easier to close because the structured
+  variant already reaches them. The autonomous-rooms listing keeps its
+  fixed local-catch 500 — v4-faithful (v4's route catches locally).
+- v4 project/group verbs with LOCAL catches other than the two oracle-pinned
+  ones (delete, list-chats, members-state, mount-points, …) would answer
+  their fixed 500s where v5 now answers the 503 for the store-unavailable
+  class — unpinned residual, recorded; the previous behavior (500 + raw
+  detail) diverged from those fixed 500s too.
+- The spine.rs (quilltap-host, LANE B's file) took 16 mechanical
+  `entity: None,` one-liners forced by the additive CoreError field (the
+  `code`/`associations` precedent) — flagged for the unifier. Same for one
+  `salon_swipe_generate_equivalence.rs` literal (2 sites) and the
+  mechanical `ErrorKind::Unavailable` status-map arms across ~25 harness/web
+  test files, incl. `characters_actions_equivalence.rs` (LANE E's file — one
+  mechanical match arm, no behavior change).
+
+Regen recipes: the groups/projects routes oracles per their headers
+(jest /tmp mirror, committed `groups-projects-*.db` fixtures); the new
+store-unavailable oracle per its header (characters fixture). ⚠ /tmp proved
+volatile mid-lane (a wipe ate freshly-written NDJSON + fixture copies); the
+recipes' outputs are best pointed at a stable scratch dir.
