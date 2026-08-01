@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Deflaked the two end-to-end beats the last round's record flagged as
+full-suite-only intermittents (the Rename Chat automatic-naming revert and
+the auto-lock idle warning under a fake clock). Both shared one root: the
+test triggered a save, awaited the save's response, but never awaited the
+page's own follow-up fetch of the new state before its next step, so a slow
+round trip under full-suite load left the screen acting on stale data at
+exactly the asserted moment. Both races were first reproduced
+deterministically with injected network delays, then closed by making the
+tests wait for the follow-up fetch itself — no assertion was weakened and no
+application code changed. Verified with the injected-delay reproductions
+turning green and two consecutive fully green end-to-end runs.
+
 Unified the dogfood-debt and sweep-debt round onto the main line: five
 parallel lanes, six work orders, all closed. In one round the app gained a
 guard that refuses to save a character whose vault settings file is corrupt

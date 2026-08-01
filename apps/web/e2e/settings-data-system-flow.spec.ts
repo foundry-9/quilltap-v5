@@ -122,11 +122,35 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await maybeUnlock(page);
 
     // idleMinutes 2 ⇒ warning at 1 min, lock at 2 min. Enable via the card.
+    //
+    // ⚠ The provider learns each save via its OWN unlockState re-fetch over the
+    // real network, while fastForward's jump reschedules the ONE due idle tick
+    // to fire at the jump target — and after that tick no further fake time
+    // ever advances. So the tick checks whatever config the provider holds at
+    // that instant: if a re-fetch is still in flight, the tick sees a stale
+    // config (disabled, or the wrong minutes), returns silently, and the
+    // warning can never appear (the P4.26 / 2026-07-31 full-suite flake,
+    // reproduced deterministically with a 1.5 s unlockState delay). Each save
+    // below therefore awaits the provider's matching re-fetch RESPONSE before
+    // the beat moves on — which also serializes the two saves' re-fetches, so
+    // a late first response cannot overwrite the second's config.
     await page.goto('/settings?tab=system&section=auto-lock');
     const toggle = page.locator('qt-auto-lock-settings-card input[type="checkbox"]');
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     if (!(await toggle.isChecked())) {
+      // Enabling saves the bag; the provider re-fetches and, enabled, the
+      // response carries a NUMERIC autoLockMinutes (null while disabled).
+      const enabledSeen = page.waitForResponse(
+        async (r) => {
+          if (!r.url().includes('/api/dispatch')) return false;
+          if (!(r.request().postData() ?? '').includes('unlockState')) return false;
+          const text = await r.text().catch(() => '');
+          return /"autoLockMinutes":\d/.test(text);
+        },
+        { timeout: 15_000 },
+      );
       await toggle.check();
+      await enabledSeen;
     }
     const minutes = page.locator('qt-auto-lock-settings-card input[type="number"]');
     await expect(minutes).toBeVisible({ timeout: 15_000 });
@@ -136,9 +160,19 @@ test.describe('P4.9G2 — the Data & System tab', () => {
         (r.request().postData() ?? '').includes('autoLockSettings') &&
         (r.request().postData() ?? '').includes('"idleMinutes":2'),
     );
+    const providerRefetched = page.waitForResponse(
+      async (r) => {
+        if (!r.url().includes('/api/dispatch')) return false;
+        if (!(r.request().postData() ?? '').includes('unlockState')) return false;
+        const text = await r.text().catch(() => '');
+        return text.includes('"autoLockMinutes":2');
+      },
+      { timeout: 15_000 },
+    );
     await minutes.fill('2');
     await minutes.blur();
     await savedTwo;
+    await providerRefetched;
 
     // Advance past the 1-minute warning threshold (but short of the 2-minute
     // lock) with no interaction; the 60 s idle check fires the warning banner.

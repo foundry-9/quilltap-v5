@@ -47486,6 +47486,9 @@ spec's owner (a follow-up chip was spawned); and the
 `settings-data-system-flow` auto-lock fake-clock beat failed run 1 only —
 the SAME flake lane D chased, adjudicated not-theirs, and predicted would
 recur ("it belongs to the beat's owner"). It did; same chip.
+(Both beats have since been DEFLAKED — diagnosis, deterministic
+reproduction, and the hardened gestures are in "Follow-up — the two
+flake-prone beats deflaked" at the end of this log, 2026-07-31.)
 
 **Versions after the round:** core 0.0.433, harness 0.0.373, host 0.0.54,
 web 0.0.56, SPA 0.5.354 (+1 in the docs commit for the review fixes →
@@ -47499,3 +47502,81 @@ the autonomous-rooms oracle rot above; the v4-side #47 fix still URGENT
 and queued for the human (both P4.22 tripwires fire when it lands, by
 design); the `DbError::Key` message-leak pool (now cheaper to close — the
 structured variant reaches the terminals).
+
+## Follow-up — the two flake-prone beats deflaked (2026-07-31)
+
+The round record above documented two full-suite-only intermittents and
+spawned this follow-up. Both are now diagnosed, reproduced
+deterministically, and hardened. **No assertion was weakened** — both
+fixes are gesture-level synchronization inside the two specs; zero
+product code changed. And both flakes turn out to share one root: **a
+page-initiated round trip the beat triggered but never awaited.** In each
+case the spec awaited the dispatch RESPONSE that committed its action, but
+not the page's own downstream consumer of that action — a second fetch —
+and the next gesture raced it. Full-suite load is merely what let that
+fetch lose; nothing about the mechanisms is load-specific.
+
+**1. `salon-dialogs-flow.spec.ts` — P4.9E3C Rename Chat.** Two arms, both
+reproduced (6 s `page.route` delays on the respective dispatch verbs made
+the ORIGINAL gesture fail deterministically at exactly the assertion the
+unification saw):
+
+- The parent (`salon-conversation.onChatRenamed`) reacts to the dialog's
+  `renamed` output by invalidating the `['chat', id]` query — a page-side
+  `chatGet` refetch. The beat reopened the dialog immediately; with the
+  refetch still in flight the dialog re-opens over the STALE record
+  (`isManuallyRenamed: false`), renders the automatic-naming box TICKED,
+  and `expect(auto).not.toBeChecked()` loses within its 5 s default.
+- The failed-regenerate probe accepted ANY toast in the container. The
+  "Chat renamed" SUCCESS toast from ~2 s earlier lives 3 s
+  (`TOAST_DEFAULT_DURATION`), so the probe matched it instantly, and the
+  revert assertion inherited only its own 5 s default while the
+  regenerate round trip (mock LLM down → error envelope → revert) was
+  still out.
+
+Hardening: the beat now (a) registers a `waitForResponse` for the refetch
+whose BODY carries `"isManuallyRenamed":true` and awaits it before
+reopening; (b) ticks the box with `click()` — `check()`'s post-click
+verification can lose to the revert — and awaits the
+`chatRegenerateTitle` response; (c) requires the ERROR toast
+(`div.qt-toast-error`) specifically, which also means the revert has
+already happened by the time the probe passes (the toast and the revert
+are the same synchronous catch block).
+
+**2. `settings-data-system-flow.spec.ts` — P4.9G2 auto-lock fake clock.**
+The provider learns a save via its OWN `unlockState` re-fetch (the
+`autoLockSettingsChanged` signal effect) — a real HTTP round trip. Under
+`page.clock`, `fastForward('01:05')` reschedules every due timer's
+`callAt` to the JUMP TARGET and fires each at most once (Playwright 1.61
+`_innerFastForwardTo`), so the beat gets exactly ONE idle-check tick —
+and after it, no meaningful fake time ever advances again (the next tick
+sits ~60 real seconds out). If the re-fetch is still in flight at that
+tick, `checkIdle` runs against the stale config (`autoLockMinutes` null,
+or 15 from the enable-save), returns silently, and the warning can NEVER
+appear — the 15 s assertion then dies. The race is one protocol hop
+(fastForward's evaluate) against two-plus (the re-fetch round trip plus
+the page's microtasks), which is why only a loaded server loses it.
+Reproduced deterministically with a 1.5 s `unlockState` delay.
+
+Hardening: each save now awaits the provider's matching re-fetch RESPONSE
+before the beat proceeds — the enable-save waits for a NUMERIC
+`autoLockMinutes` in the body, the minutes-save for `"autoLockMinutes":2`
+— and only then advances the clock. Serializing the two re-fetches also
+closes a second-order hazard the provider (faithfully, as v4's) permits:
+two in-flight `unlockState` fetches resolving out of order would let the
+first save's response overwrite the second's config.
+
+**The proof.** A scratch spec (deleted after) injected the races via
+`page.route` delays: the ORIGINAL gestures failed 3/3 at exactly the
+predicted assertions; the HARDENED gestures passed 3/3 under the same
+delays. Two Playwright-internals facts worth keeping (now in the
+`e2e-playwright-traps` memory): `clock.install()` RESUMES real-time
+ticking (pausing would freeze rAF and with it zoneless Angular change
+detection), and `fill()`/`blur()` fire none of the idle tracker's
+activity events while `check()`/`click()` do.
+
+**Gate:** the FULL Playwright suite run twice over release binaries and a
+fresh dist — **168/168 (3.8 m) and 168/168 (4.2 m), zero skips both
+times** — plus a third margin run after the docs were written.
+
+**Versions:** SPA 0.5.355 → 0.5.356 (spec-only; no crate touched).

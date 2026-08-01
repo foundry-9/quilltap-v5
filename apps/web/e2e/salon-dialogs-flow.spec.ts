@@ -112,6 +112,22 @@ test.describe('P4.9E3C — Rename Chat', () => {
     expect((await readTitle(page, chatId)).title).toBe(before.title);
 
     await field.fill('  Solo Voyage, Revisited  ');
+    // The parent reacts to `renamed` by REFETCHING the chat (a page-side
+    // chatGet), and the dialog reopened below reads `isManuallyRenamed` off
+    // that refetched record. Await the refetch response that carries the flag
+    // before reopening: under full-suite load a slow round trip reopens the
+    // dialog on the STALE record, the box renders ticked, and the not-checked
+    // assertion below loses the race (the 2026-07-31 full-suite flake,
+    // reproduced deterministically with a 6 s chatGet delay).
+    const refetched = page.waitForResponse(
+      async (r) => {
+        if (!r.url().includes('/api/dispatch')) return false;
+        if (!(r.request().postData() ?? '').includes('"chatGet"')) return false;
+        const text = await r.text().catch(() => '');
+        return text.includes('"isManuallyRenamed":true');
+      },
+      { timeout: 15_000 },
+    );
     await save.click();
     await expect(page.getByText('Chat renamed')).toBeVisible({ timeout: 15_000 });
     // The trim is the assertion: v4 writes `title.trim()`, not what was typed,
@@ -120,6 +136,7 @@ test.describe('P4.9E3C — Rename Chat', () => {
       title: 'Solo Voyage, Revisited',
       isManuallyRenamed: true,
     });
+    await refetched;
 
     // The automatic-naming tick is the ONLY door to regenerate-title, in either
     // app. With no API key configured it must fail loudly and put itself back.
@@ -127,12 +144,26 @@ test.describe('P4.9E3C — Rename Chat', () => {
     await page.getByRole('button', { name: 'Rename' }).click();
     await expect(dialog.getByText('Rename Chat')).toBeVisible({ timeout: 10_000 });
     await expect(auto).not.toBeChecked();
-    await auto.check();
+    // `click`, not `check`: the failed regenerate REVERTS the box, and check()'s
+    // own post-click verification can lose to a fast revert. The response
+    // waiter is what proves the tick registered and the round trip completed.
+    const regenerated = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('chatRegenerateTitle'),
+      { timeout: 15_000 },
+    );
+    await auto.click();
+    await regenerated;
 
-    // v4 reports this failure as a toast and nothing else (P4.25).
-    await expect(
-      page.locator('[role="toast-container"] > div').filter({ hasText: /./ }).first(),
-    ).toBeVisible({ timeout: 15_000 });
+    // v4 reports this failure as a toast and nothing else (P4.25) — an ERROR
+    // toast, specifically: the success "Chat renamed" toast above lives 3 s and
+    // can still be on screen here, so an any-toast probe would match it early
+    // and start the revert assertion's clock before the regenerate has even
+    // answered (the flake's second arm, same repro).
+    await expect(page.locator('[role="toast-container"] > div.qt-toast-error').first()).toBeVisible(
+      { timeout: 15_000 },
+    );
     await expect(auto).not.toBeChecked();
     await expect(dialog.getByText('Rename Chat')).toBeVisible();
     // Nothing was renamed and nothing was spent.
@@ -281,9 +312,9 @@ test.describe('P4.9E3C — speaking as a character', () => {
     await expect(stop).toBeVisible({ timeout: 5_000 });
 
     await stop.click();
-    await expect(
-      page.locator(`qt-participant-card button[title="Speak as ${name}"]`),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(`qt-participant-card button[title="Speak as ${name}"]`)).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });
 
