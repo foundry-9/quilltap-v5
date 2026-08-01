@@ -48336,3 +48336,60 @@ each minimal and named here for the unifier:**
    (`dump_pascal_stores`), shared by the two route differentials.
 
 `api/types.rs`, `engine.rs`, and all of `apps/web/**` are untouched.
+## Lane record — P4.D36 unit 1: the client-safe expression parser (2026-08-01)
+
+**Branch** `claude/pascal-side-effects-spa-port-96bd95`. Drift check at lane
+start: `git log c4d4b0de..HEAD` in `~/source/quilltap-server` is EMPTY and the
+tree is clean, so oracles/captures run straight from the checkout (no pinned
+worktree needed this round).
+
+`apps/web/src/app/pascal/expressions.ts` — v4 `lib/pascal/expressions.ts`
+ported whole (tokenizer, recursive-descent parser, tree walk, `formatValue`).
+v4 marks the file client-safe by design and runs it in its own Workbench; v5
+needs it for the same reason (tool-draft validation and the schema's
+expression arm both evaluate in the browser). Every sentence is v4's byte for
+byte: `parseExpression`'s `reason` reaches an author through
+`formatDefinitionIssues` — which the SERVER also renders for the same file —
+so a differently-worded browser would be disagreeing with the server about one
+document.
+
+Two deliberate shape differences from v4, both behaviour-preserving:
+`fail()` is a module-level `never`-returning function rather than a closure
+per call (TS narrows the same either way), and the bare-word branch reads
+`match === null ? ch : match[0]` where v4 writes `match![0]` (the regex cannot
+miss — the guard already matched the first character).
+
+**Teeth** — `expressions.spec.ts`, 148 tests. Two halves:
+
+1. **96 CAPTURED rows** (`parse` 53 / `eval` 34 / `format` 9), driven through
+   v4's REAL `parseExpression` / `evaluateExpression` / `formatValue` at
+   `c4d4b0de` and byte-compared here — the same stand-in shape (and the same
+   bar) as `custom-tool-types.state.spec.ts` and `.llm.spec.ts`. The rejection
+   rows cover the parser's WHOLE error vocabulary: every `describeToken` arm,
+   both cap sentences, the bare-word quoting trap, the lone-brace/unclosed-ref
+   pair, the dangling backslash, `finiteOrFail` on `+` `*` `/`, and every
+   type-mismatch sentence. Census asserted by SHAPE (partition total, all
+   kinds non-empty, both verdicts present, ids unique), never by hand count.
+2. **v4's own 213-line suite, ported case-for-case.** It asserts fragments
+   where the rows assert bytes; both are kept, so a v4 rewording trips the
+   rows while the INTENT stays legible.
+
+**Two findings the capture surfaced** (recorded rather than inferred, both now
+pinned by rows): the grammar has **no exponent literal** — `1e0` tokenizes `1`
+then the bare word `e0` and fails with the quoting-trap sentence; and
+`parseExpression('   ')` reports `the expression is empty` from the TOKEN
+guard, not the length guard (whitespace-only source is non-empty but tokenizes
+to nothing).
+
+**Mutation proof (the D24 rule)** — the suite was green on its first run, so
+three deliberate breaks were injected into the evaluator: `toPrecision(4)` →
+`(5)`, one reworded sentence, and dropping the `name.length > prefix.length`
+guard in `isKnownRef`. 8 tests went red across all three row kinds; restored,
+148/148 green.
+
+**Regen recipe** — capture script is scratch, the ROWS are the artifact:
+from `~/source/quilltap-server` at `c4d4b0de`, `npx tsx <script>` under Node
+24 (`~/.nvm/versions/node/v24.13.1/bin`), driving `parseExpression` /
+`evaluateExpression(expr, name => REFS[name])` / `formatValue` over each
+source and emitting `{kind,id,source,ok,reason,refs|value}`. The `REFS` table
+in the spec IS the captured contract, not a convenience.

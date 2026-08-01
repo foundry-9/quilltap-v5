@@ -72,6 +72,16 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Taught the browser to read the new side-effect expression language for
+itself. Custom tools can now carry small formulas — arithmetic, text
+joining, parentheses, and references to the run's own numbers — and the
+editor has to judge them the moment they are typed rather than waiting for
+the server to refuse the file. The browser's copy of that reader reproduces
+the reference app's wording exactly, down to the sentence an author sees
+when they forget to quote a phrase, because the same complaint is also
+raised on the server about the same file and the two must not disagree.
+Verified against ninety-six results recorded from the reference app itself,
+plus its own test suite ported case for case.
 
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal
