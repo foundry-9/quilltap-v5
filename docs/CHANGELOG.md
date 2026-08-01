@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Ported the expression grammar that a custom tool's side effects will use to
+compute what they write: arithmetic, string joining, parentheses, literals,
+and the same `{{...}}` placeholders an outcome message already understands.
+There are no identifiers and no function calls, so there is nothing to call
+and nothing to reach beyond the roll's own values. A typo in a formula is
+reported when the tool file is read, not when someone rolls. Every error
+sentence is reproduced word for word against the reference app, including
+the character positions it reports, which count the way text is counted in a
+browser rather than in bytes. Verified with a new 125-case differential and
+three deliberate breakages to prove it catches them.
+
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal
 custom-tool side-effects feature (server and Workbench halves), whispered

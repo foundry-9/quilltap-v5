@@ -47874,3 +47874,67 @@ points). D35 and D39 are the heavy lanes — most capable model; D36/D37
 medium; D38/D40 lighter. D36's corpus/e2e units depend on D35's
 artifacts — its order sequences them last and carries the
 regenerate-yourself fallback.
+
+### Lane record — P4.D35 unit 1: `pascal/expressions.rs` (the effect grammar)
+
+**v4 baseline verified at lane start:** `git log c4d4b0de..HEAD` is EMPTY and
+`git status --short` is clean in `~/source/quilltap-server`, so oracles for
+this lane regenerate straight from the checkout — no pinned worktree needed.
+
+Ported v4's NEW `lib/pascal/expressions.ts` (436 lines) whole: the constants
+(`MAX_EFFECT_EXPRESSION_{LENGTH,TOKENS,DEPTH}` = 500 / 64 / 8), the tokenizer,
+the recursive-descent parser over the closed grammar, the evaluator, and
+`format_value` — which MOVED here with v4's own move out of `custom-tools.ts`
+and is re-exported there for existing importers (v5 mirrors the move next
+unit). `ExprValue` is v5's existing `ResolvedValue` (v4's `Primitive`) rather
+than a second copy of the same union.
+
+**The one shape decision worth recording: the tokenizer walks UTF-16 code
+units, not `char`s or bytes.** v4 indexes a JS string, so `at position N` in
+three of its error sentences counts UTF-16 units. A `chars()` port passes every
+ASCII row and silently mis-reports every position in an expression containing
+so much as an accented letter — and those sentences are user-visible payload
+(they reach `formatDefinitionIssues`, which the custom-tools GET route returns
+verbatim in `errors[]`). Implemented over `Vec<u16>` with `String::from_utf16_lossy`
+for the slices; the corpus carries accented AND astral rows to pin it.
+
+**New oracle family (additive, this lane's): `pascal_expressions_equivalence`**
+— `harness/oracle/cases/pascal-expressions.ts` → `QT_ORACLE_PASCAL_EXPRESSIONS`.
+125 rows in three kinds: `parse` (33 accepted / 33 rejected, the whole error
+vocabulary byte-compared, not fragment-matched as v4's own unit test does),
+`eval` (49 rows — arithmetic, precedence, concatenation, the no-truthiness
+refusals, unresolved refs), `format` (10 rows). It exists because the definition
+corpus can reach `parseExpression` but CANNOT reach `evaluateExpression` at all:
+evaluation happens only at run time inside `resolveEffects`, buried in one skip
+string per effect per run, so covering its error vocabulary that way would need
+a staged run per sentence.
+
+Regen recipe (v4 clean at `c4d4b0de`, Node 24):
+
+```
+cd ~/source/quilltap-server
+PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH" TZ=UTC npx tsx \
+  <V5W>/harness/oracle/cases/pascal-expressions.ts \
+  > /tmp/oracle-pascal-expressions.ndjson
+QT_ORACLE_PASCAL_EXPRESSIONS=/tmp/oracle-pascal-expressions.ndjson \
+  cargo test -p quilltap-harness --test pascal_expressions_equivalence
+```
+
+**Mutation proofs (the D24 rule — the family was green on its first run).**
+Three deliberate breakages, each reverted:
+
+1. Report a UTF-8 byte offset instead of the UTF-16 index → RED at
+   `position-after-accented-string` (8 vs 7).
+2. `to_precision(value, 4)` → `3` → RED at `concat-number-formatting`
+   (`"0.123"` vs `"0.1235"`).
+3. Drop the `refs` deduplication → **GREEN. The corpus was blind.** No accepted
+   row named the same ref twice, so a port that pushed every ref it walked
+   passed the whole family. Fixed by adding three repeat-naming rows
+   (`refs-repeated-deduped`, `refs-order-is-first-appearance`,
+   `refs-repeated-across-negation-and-parens`) plus a
+   `seen_repeated_ref_source` coverage assertion so the gap cannot silently
+   reopen; the mutation then went RED as it should.
+
+That third one is the lane's transferable finding: a corpus of *distinct*
+inputs cannot see a missing dedup, and "green on first run" is exactly when to
+look for it.

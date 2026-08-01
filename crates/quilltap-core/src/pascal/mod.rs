@@ -3,6 +3,7 @@
 pub mod custom_tool_types;
 pub mod custom_tools;
 pub mod dice;
+pub mod expressions;
 pub mod js_value;
 pub mod llm_consult;
 pub mod metadata_match;
