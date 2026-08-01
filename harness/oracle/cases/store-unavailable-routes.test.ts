@@ -29,7 +29,7 @@
  * REAL modules + the real cipher binding.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-store-unavailable-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/store-unavailable-routes.test.ts" "$TMPO/cases/"
@@ -37,7 +37,7 @@
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
  *   QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
- *   QT_ORACLE_OUT=<scratch>/oracle-store-unavailable.ndjson \
+ *   QT_ORACLE_OUT=/tmp/oracle-store-unavailable.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- store-unavailable-routes
  */

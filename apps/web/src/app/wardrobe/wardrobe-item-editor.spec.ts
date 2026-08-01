@@ -349,5 +349,7 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     await settle(fixture);
     expect(seen.at(-1)).toMatchObject({ type: 'characterWardrobeCreate', characterId: 'char-1' });
     expect(savedSpy).toHaveBeenCalledTimes(1);
+    // v4 `wardrobe-item-editor.tsx:383` — the create-mode success toast.
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Wardrobe item created' });
   });
 });

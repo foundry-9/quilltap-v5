@@ -2340,7 +2340,12 @@ export class SalonConversation {
    * reducer, so the reporting rides its state transitions instead.
    *
    *  - a `retrying` status stage → v4's warning toast, the server's own
-   *    sentence (`useSSEStreaming.ts:430-434`);
+   *    sentence (`useSSEStreaming.ts:430-434`). Two edge divergences from
+   *    riding transitions rather than events: v4 toasts on EVERY retrying
+   *    status event (repeats included) where this fires once per entry into
+   *    the stage, and an empty message is skipped where v4 would toast a
+   *    blank — both deliberate (the reducer coalesces repeats; a blank toast
+   *    informs no one);
    *  - a terminal `emptyResponse` → v4's error toast with the server's reason
    *    or its fallback (`:720-722`);
    *  - a recorded transport/stream error → v4's `:1024-1027` toast;

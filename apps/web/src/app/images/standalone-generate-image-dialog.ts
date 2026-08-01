@@ -48,7 +48,6 @@ interface EntityOption {
  *   reversed — `message || error` here (`:92`), `error || message` there
  *   (`:129`).
  *
- * v4's toasts become an inline notice (the `image-modal.ts` precedent).
  */
 @Component({
   selector: 'qt-standalone-generate-image-dialog',
@@ -340,6 +339,10 @@ export class StandaloneGenerateImageDialog implements OnInit {
         expandedPrompt?: string;
       };
       if (body.success && body.data && body.data.length > 0) {
+        // v4 `:100` — the success toast, before the emit.
+        this.toasts.showSuccess(
+          `Generated ${body.data.length} image(s) - attached to next message`,
+        );
         // v4 `:102` prefers the server's expanded prompt for the tool result.
         const finalPrompt = body.expandedPrompt || prompt;
         this.prompt.set('');

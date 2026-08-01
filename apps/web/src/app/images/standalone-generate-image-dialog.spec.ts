@@ -163,6 +163,8 @@ describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateIm
     await inner(fixture).onGenerate();
     expect(inner(fixture).prompt()).toBe('');
     expect(closed).toBe(1);
+    // v4 `:100` — the success toast, count included.
+    expect(lastToast()).toBe('Generated 1 image(s) - attached to next message');
   });
 
   it('requires success:true — a truthy payload without it is the empty arm (v4 :99)', async () => {

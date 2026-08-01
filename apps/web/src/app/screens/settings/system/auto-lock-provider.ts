@@ -35,11 +35,12 @@ interface AutoLockConfig {
  * minute out, and on timeout call the `lock` verb then hard-redirect to
  * `/unlock` (a full reboot: the health gate then shows the return-aware unlock
  * screen). Two pre-ruled divergences: the config comes from the `unlockState`
- * dispatch verb rather than a raw fetch, and the warning is an inline
- * `role="status"` banner instead of v4's toast. v4's call is
- * `showWarningToast()` with NO ARGUMENT (`auto-lock-provider.tsx:143`) — an
- * empty toast, a v4 bug — so the banner is kept and the row stays OPEN in the
- * P4.25 census rather than porting a blank notification.
+ * dispatch verb rather than a raw fetch. The warning banner is NOT a
+ * lib/toast site at all: v4's `showWarningToast` here is a LOCAL `useCallback`
+ * (`auto-lock-provider.tsx:76-100`, no `lib/toast` import — the P4.25 census's
+ * name-grep matched it as a false positive) that renders its own
+ * "Auto-Lock Warning" card with a Dismiss button and a 30 s auto-remove,
+ * which this banner reproduces. Keeping it IS the faithful port.
  */
 @Component({
   selector: 'qt-auto-lock-provider',

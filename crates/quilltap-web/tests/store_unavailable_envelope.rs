@@ -23,10 +23,10 @@
 //! Generate the oracle (Node 24 — see the .ts header for the full recipe):
 //!   QT_FIXTURE_CHARACTERS_MAIN=<repo>/crates/quilltap-web/tests/fixtures/characters-main.db \
 //!   QT_FIXTURE_CHARACTERS_MOUNT=<...>/characters-mount.db \
-//!   QT_ORACLE_OUT=<scratch>/oracle-store-unavailable.ndjson \
+//!   QT_ORACLE_OUT=/tmp/oracle-store-unavailable.ndjson \
 //!     npx jest … -- store-unavailable-routes
 //! Run:
-//!   QT_ORACLE_STORE_UNAVAILABLE=<scratch>/oracle-store-unavailable.ndjson \
+//!   QT_ORACLE_STORE_UNAVAILABLE=/tmp/oracle-store-unavailable.ndjson \
 //!     cargo test -p quilltap-web --test store_unavailable_envelope
 //!
 //! `store_unavailable_wire_pin` runs unconditionally: the exact serialized

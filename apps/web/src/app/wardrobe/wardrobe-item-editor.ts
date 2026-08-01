@@ -743,6 +743,8 @@ export class WardrobeItemEditor {
       await this.core.dispatchData(
         this.buildSaveRequest() as Parameters<CoreClient['dispatchData']>[0],
       );
+      // v4 `wardrobe-item-editor.tsx:383` — the success toast, before onSave.
+      this.toasts.showSuccess(this.isEditing() ? 'Wardrobe item updated' : 'Wardrobe item created');
       this.saved.emit();
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to save wardrobe item');

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 import { triggerUrlDownload } from '../../../core/download-utils';
 
 /**
@@ -69,6 +70,7 @@ import { triggerUrlDownload } from '../../../core/download-utils';
 })
 export class BackupDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
 
@@ -94,6 +96,8 @@ export class BackupDialog {
           ? err.message || 'Failed to create backup'
           : 'Failed to create backup';
       this.error.set(message);
+      // v4 `backup-dialog.tsx:53-58` does BOTH: the inline error AND the toast.
+      this.toasts.showError(message);
     } finally {
       this.loading.set(false);
     }

@@ -127,9 +127,14 @@ export class DataRetentionSettings {
       this.days = saved.staleChatDays;
       this.draft.set(String(saved.staleChatDays));
       this.toasts.showSuccess('Retention window saved');
-    } catch {
-      this.error.set('Failed to save data-retention settings');
-      this.toasts.showError('Failed to save data-retention settings');
+    } catch (err) {
+      // v4 (`DataRetentionSettings.tsx:76,83-85`) surfaces the server's own
+      // sentence (`data.error || fallback`); only a message-less failure gets
+      // the fixed line.
+      const msg =
+        (err instanceof Error && err.message) || 'Failed to save data-retention settings';
+      this.error.set(msg);
+      this.toasts.showError(msg);
       this.draft.set(String(this.days));
     } finally {
       this.saving.set(false);
