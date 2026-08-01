@@ -56,32 +56,47 @@
 //! so all three work on /tmp copies keyed by pid AND leg — the committed
 //! fixtures stay pristine and no two legs collide (D32's cross-family hazard).
 //!
-//! Build the fixture (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
+//! Rebuilding the COMMITTED fixture is a DELIBERATE act, never part of a regen
+//! (the recipe-sweep policy: a rebuild mints fresh UUIDs and invalidates every
+//! consumer). When a lane decides to rebuild:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_LLC_MAIN=/tmp/qt-llc-main.db QT_FIXTURE_LLC_LOGS=/tmp/qt-llc-llmlogs.db \
-//!     $N/node --import tsx $V5/harness/oracle/fixtures/build-llm-log-cleanup-fixture.ts
-//!   cp /tmp/qt-llc-main.db    $V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db
-//!   cp /tmp/qt-llc-llmlogs.db $V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-llm-log-cleanup-fixture.ts
+//!   # then, as the deliberate step: copy /tmp/qt-llc-{main,llmlogs}.db over
+//!   # crates/quilltap-web/tests/fixtures/llm-log-cleanup-{main,llmlogs}.db
+//!   # and regenerate ALL of this family's oracles against the new bytes.
 //!
-//! Generate the three oracles (the /tmp mirror dodges jest's `/.claude/`
-//! testPathIgnorePatterns; each leg gets its OWN clean invocation):
+//! Generate the three oracles against the COMMITTED fixtures (Node 24, from
+//! the v4 checkout; the /tmp mirror dodges jest's `/.claude/`
+//! testPathIgnorePatterns; each leg gets its OWN clean invocation; the oracle
+//! cases copy the DBs to per-pid /tmp scratch before mutating, so pointing at
+//! the committed files is safe):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-llm-log-cleanup-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp $V5W/harness/oracle/cases/llm-log-cleanup-jobs.test.ts    "$TMPO/cases/"
+//!   cp $V5W/harness/oracle/cases/llm-log-cleanup-enqueue.test.ts "$TMPO/cases/"
+//!   cp $V5W/harness/oracle/fixtures/llm-log-cleanup.json         "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
-//!   mkdir -p /tmp/qt-llc-oracle/cases /tmp/qt-llc-oracle/fixtures
-//!   cp $V5/harness/oracle/cases/llm-log-cleanup-jobs.test.ts    /tmp/qt-llc-oracle/cases/
-//!   cp $V5/harness/oracle/cases/llm-log-cleanup-enqueue.test.ts /tmp/qt-llc-oracle/cases/
-//!   cp $V5/harness/oracle/fixtures/llm-log-cleanup.json         /tmp/qt-llc-oracle/fixtures/
-//!   F="QT_FIXTURE_LLC_MAIN=$V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
-//!      QT_FIXTURE_LLC_LOGS=$V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db"
-//!   for LEG in UTC America/Chicago; do
-//!     SLUG=$(echo "$LEG" | tr '/' '-')
-//!     env TZ=$LEG QT_LLC_LEG=$LEG $F QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-$SLUG.ndjson \
-//!       $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!         --roots "$PWD" --roots /tmp/qt-llc-oracle/cases -- llm-log-cleanup-jobs
-//!   done
-//!   env TZ=UTC $F QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-enqueue.ndjson \
+//!   TZ=UTC QT_LLC_LEG=UTC \
+//!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
+//!   QT_FIXTURE_LLC_LOGS=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-UTC.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!       --roots "$PWD" --roots /tmp/qt-llc-oracle/cases -- llm-log-cleanup-enqueue
+//!       --roots "$PWD" --roots "$TMPO/cases" -- llm-log-cleanup-jobs
+//!   TZ=America/Chicago QT_LLC_LEG=America/Chicago \
+//!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
+//!   QT_FIXTURE_LLC_LOGS=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-America-Chicago.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- llm-log-cleanup-jobs
+//!   TZ=UTC \
+//!   QT_FIXTURE_LLC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db \
+//!   QT_FIXTURE_LLC_LOGS=$V5W/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-llm-log-cleanup-enqueue.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- llm-log-cleanup-enqueue
 //!
 //! Run (the harness passes the zone explicitly, so the process TZ does not
 //! matter here — unlike the oracle, which reads the ambient one):
