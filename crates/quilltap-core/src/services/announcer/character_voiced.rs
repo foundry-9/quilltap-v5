@@ -12,6 +12,11 @@
 //! result is returned to the caller for the operator to review, edit, regenerate,
 //! or post. **Nothing is persisted by this service.**
 //!
+//! When the operator has chosen a whisper audience, the roster is replaced by that
+//! audience and the character is told the remark is private. A line pitched to a
+//! full room reads wrong when only one person hears it, so the audience has to
+//! reach the rewrite rather than being applied after the fact.
+//!
 //! Every dependency was already ported; this is composition, not new subsystem
 //! work:
 //!
@@ -61,6 +66,11 @@ pub struct CharacterVoicedAnnouncementParams<'a> {
     pub seed_markdown: &'a str,
     pub system_prompt_id: Option<&'a str>,
     pub user_id: &'a str,
+    /// v4 `audienceNames` — display names of the whisper audience the operator
+    /// has chosen, already resolved and verified
+    /// ([`super::audience::resolve_announcement_audience`]). Empty means the
+    /// announcement is public and the character addresses the whole room.
+    pub audience_names: &'a [String],
     /// The injected `Date.now()` (ms) the memory blend's time-decay reads.
     pub now_ms: f64,
 }
@@ -192,6 +202,18 @@ fn build_selection(profile: &Value) -> CheapLlmSelection {
     }
 }
 
+/// v4 `formatNameList` — `"Alice"`, `"Alice and Bob"`, `"Alice, Bob, and Carol"`.
+/// (The zero-length case is unreachable: every call site guards on a non-empty
+/// audience, and v4's own `names[names.length - 1]` would be `undefined` there.)
+fn format_name_list(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [head @ .., last] => format!("{}, and {last}", head.join(", ")),
+    }
+}
+
 /// v4 `buildRoster` — the present-roster block from a chat's participants.
 /// Includes only participants whose status is `active` or `silent` (not `absent`
 /// or `removed`). The off-scene speaking character is filtered out in case they
@@ -279,6 +301,13 @@ where
     E: EmbeddingProvider,
 {
     let character_id = s(params.character, "id").unwrap_or_default();
+    // v4 `audienceNames?.filter(n => n.trim().length > 0) ?? []`.
+    let whisper_audience: Vec<String> = params
+        .audience_names
+        .iter()
+        .filter(|n| !js_trim(n).is_empty())
+        .cloned()
+        .collect();
     let selection = build_selection(params.profile);
 
     // System prompt: identity stack only — no roleplay template, no tools.
@@ -345,8 +374,16 @@ where
         Err(_) => { /* v4 logs a warning and proceeds without recall. */ }
     }
 
-    // Present roster — who's listening.
-    let roster = build_roster(db, params.chat_id, &character_id);
+    // Who's listening. A whisper's audience IS the audience — the room's wider
+    // roster is not merely irrelevant to it, it would mislead the rewrite into
+    // pitching a private aside at people who will never hear it. (v4 short-circuits
+    // the `&&`, so `buildRoster` is not even called for a whisper — no chat read,
+    // no character reads.)
+    let roster = if whisper_audience.is_empty() {
+        build_roster(db, params.chat_id, &character_id)
+    } else {
+        String::new()
+    };
 
     // Compose the user-role message.
     let seed_trimmed = js_trim(params.seed_markdown).to_string();
@@ -354,7 +391,15 @@ where
     if !recall_text.is_empty() {
         user_parts.push(recall_text);
     }
-    let presence_line = if roster.is_empty() {
+    let presence_line = if !whisper_audience.is_empty() {
+        // v4's whisper arm, carried byte-for-byte (incl. the em-dash and the
+        // singular/plural `them` / `those named` swap).
+        format!(
+            "You want to say something privately to {} — others are present in the chat, but this remark is for {} alone and no one else will hear it. Pitch it as a private aside, not a declaration to the room.",
+            format_name_list(&whisper_audience),
+            if whisper_audience.len() == 1 { "them" } else { "those named" },
+        )
+    } else if roster.is_empty() {
         PRESENCE_ALONE.to_string()
     } else {
         format!(
@@ -408,5 +453,26 @@ where
                     .unwrap_or_else(|| "The LLM returned no content.".to_string()),
             ),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v4 `formatNameList` — the Oxford comma is v4's, not ours.
+    #[test]
+    fn name_list_is_oxford_comma_joined() {
+        let n = |xs: &[&str]| -> Vec<String> { xs.iter().map(|s| s.to_string()).collect() };
+        assert_eq!(format_name_list(&n(&["Alice"])), "Alice");
+        assert_eq!(format_name_list(&n(&["Alice", "Bob"])), "Alice and Bob");
+        assert_eq!(
+            format_name_list(&n(&["Alice", "Bob", "Carol"])),
+            "Alice, Bob, and Carol"
+        );
+        assert_eq!(
+            format_name_list(&n(&["Alice", "Bob", "Carol", "Dan"])),
+            "Alice, Bob, Carol, and Dan"
+        );
     }
 }

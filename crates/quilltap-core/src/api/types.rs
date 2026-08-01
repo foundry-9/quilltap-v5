@@ -2399,6 +2399,12 @@ pub enum Request {
         chat_id: String,
         content_markdown: String,
         sender: AnnouncerSenderWire,
+        /// P4.D37 (v4 `a163862c`) — the whisper audience: CHAT PARTICIPANT ids
+        /// (not character ids). Omitted / null posts publicly, as it always has;
+        /// every id is re-verified against the chat's current participants
+        /// server-side and a dangling one is a 400.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_participant_ids: Option<Vec<String>>,
     },
     /// v4 `POST /api/v1/chats/[id]?action=announcement-preview` — generate an
     /// in-character rewrite. Persists nothing.
@@ -2409,6 +2415,12 @@ pub enum Request {
         character_id: String,
         connection_profile_id: String,
         system_prompt_id: Option<String>,
+        /// P4.D37 (v4 `a163862c`) — the audience the operator has chosen for the
+        /// eventual post, so the character's rewrite can be addressed to the right
+        /// people (and told the remark is private). Same shape as the post
+        /// action's field; the preview does NOT refuse dangling ids.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_participant_ids: Option<Vec<String>>,
     },
     /// v4 `POST /api/v1/chats/[id]?action=send-mail` — post a letter as one of the
     /// operator's player-characters. 201 on success.

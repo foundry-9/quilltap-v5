@@ -18,6 +18,23 @@
 //! Coverage is asserted by shape — every oracle case name must be driven here and
 //! vice versa (`harness-corpus-shape-constants-rot`).
 //!
+//! ## P4.D37 — the audience reaches the rewrite (v4 `a163862c`)
+//!
+//! Eight arms. Five drive the service with a resolved `audienceNames` (the whisper
+//! presence line REPLACING the roster block; singular `them` vs plural `those
+//! named`; the Oxford comma at three; a blank name filtered out before the branch;
+//! ALL names blank falling back to the roster arm). Three drive the ROUTE with
+//! participant ids — including the post/preview asymmetry: a removed participant
+//! does NOT refuse the rehearsal, it simply contributes no name.
+//!
+//! **What is NOT observable here:** v4 short-circuits `whisperAudience.length > 0
+//! ? '' : await buildRoster(...)`, so a whisper does no roster read at all. v5
+//! mirrors the short-circuit, but the diffed payload cannot see it — the roster is
+//! only ever *consumed* by the non-whisper presence line, so building it anyway
+//! changes no byte (verified: that mutation runs green). The output claim — the
+//! roster block is absent from a whisper's prompt — IS pinned, by the whisper arms
+//! themselves.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout, **TZ=UTC** — see the .ts
 //! header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-announcer-tier3.ndjson TZ=UTC npx jest -- announcer-tier3
@@ -208,6 +225,10 @@ struct Case {
     character_id: &'static str,
     profile_id: &'static str,
     seed_markdown: &'static str,
+    /// P4.D37: the resolved whisper audience, for the SERVICE-level arms.
+    audience_names: &'static [&'static str],
+    /// P4.D37: the requested audience, for the ROUTE-level arms (participant ids).
+    target_participant_ids: Option<&'static [&'static str]>,
 }
 
 const CONN: &str = "c0000001-0000-4000-8000-000000000001";
@@ -217,62 +238,117 @@ const DORIAN: &str = "a1000000-0000-4000-8000-000000000004";
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const MISSING_CHAT: &str = "99999999-9999-4999-8999-999999999999";
 
+const P_ARIA: &str = "e1000000-0000-4000-8000-000000000001";
+const P_BEA: &str = "e1000000-0000-4000-8000-000000000002";
+const P_CLIO: &str = "e1000000-0000-4000-8000-000000000003";
+const P_GONE: &str = "e1000000-0000-4000-8000-000000000005";
+const P_GHOST: &str = "e1000000-0000-4000-8000-000000000006";
+
+/// The default (public) case: no audience either way.
+const PUBLIC: Case = Case {
+    name: "",
+    via_route: false,
+    chat_id: CHAT,
+    character_id: DORIAN,
+    profile_id: CONN,
+    seed_markdown: "",
+    audience_names: &[],
+    target_participant_ids: None,
+};
+
 const CASES: &[Case] = &[
     Case {
         name: "rewrite_offscene_with_recall",
-        via_route: false,
-        chat_id: CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "  Tell them the lamps on the eastern quay are out and I am seeing to it.  ",
+        ..PUBLIC
     },
     Case {
         name: "rewrite_no_recall_hits",
-        via_route: false,
-        chat_id: CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "Zzyzx qwertyuiop.",
+        ..PUBLIC
     },
     Case {
         name: "rewrite_unknown_chat_no_roster",
-        via_route: false,
         chat_id: MISSING_CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "The lamps are out.",
+        ..PUBLIC
     },
     Case {
         name: "rewrite_speaker_is_participant",
-        via_route: false,
-        chat_id: CHAT,
         character_id: ARIA,
         profile_id: CONN_B,
         seed_markdown: "The lamps are out on the eastern quay.",
+        ..PUBLIC
     },
     Case {
         name: "rewrite_empty_completion",
-        via_route: false,
-        chat_id: CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "The lamps are out.",
+        ..PUBLIC
     },
     Case {
         name: "route_preview_ok",
         via_route: true,
-        chat_id: CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "Tell them the lamps on the eastern quay are out and I am seeing to it.",
+        ..PUBLIC
     },
     Case {
         name: "route_preview_failure",
         via_route: true,
-        chat_id: CHAT,
-        character_id: DORIAN,
-        profile_id: CONN,
         seed_markdown: "Tell them the lamps on the eastern quay are out and I am seeing to it.",
+        ..PUBLIC
+    },
+    // ── P4.D37 (a163862c): the audience reaches the rewrite ─────────────────
+    Case {
+        name: "rewrite_whisper_single",
+        seed_markdown: "The lamps are out.",
+        audience_names: &["Aria"],
+        ..PUBLIC
+    },
+    Case {
+        name: "rewrite_whisper_pair",
+        seed_markdown: "The lamps are out.",
+        audience_names: &["Aria", "Bea"],
+        ..PUBLIC
+    },
+    Case {
+        name: "rewrite_whisper_three_oxford_comma",
+        seed_markdown: "The lamps are out.",
+        audience_names: &["Aria", "Bea", "Clio"],
+        ..PUBLIC
+    },
+    Case {
+        name: "rewrite_whisper_blank_name_filtered",
+        seed_markdown: "The lamps are out.",
+        audience_names: &["   ", "Aria"],
+        ..PUBLIC
+    },
+    Case {
+        name: "rewrite_whisper_all_blank_falls_back_to_roster",
+        seed_markdown: "The lamps are out.",
+        audience_names: &["   ", ""],
+        ..PUBLIC
+    },
+    Case {
+        name: "route_preview_whisper_named",
+        via_route: true,
+        seed_markdown: "Tell them the lamps on the eastern quay are out and I am seeing to it.",
+        target_participant_ids: Some(&[P_ARIA, P_BEA]),
+        ..PUBLIC
+    },
+    Case {
+        // THE ASYMMETRY: the preview does NOT refuse dangling ids.
+        name: "route_preview_unknown_target_does_not_refuse",
+        via_route: true,
+        seed_markdown: "Tell them the lamps on the eastern quay are out and I am seeing to it.",
+        target_participant_ids: Some(&[P_GONE]),
+        ..PUBLIC
+    },
+    Case {
+        name: "route_preview_ghost_target_is_someone",
+        via_route: true,
+        seed_markdown: "Tell them the lamps on the eastern quay are out and I am seeing to it.",
+        target_participant_ids: Some(&[P_GHOST, P_CLIO]),
+        ..PUBLIC
     },
 ];
 
@@ -334,6 +410,8 @@ fn announcer_tier3_matches_oracle() {
             failed.push(format!("{}_MISSING_FROM_ORACLE", case.name));
             continue;
         };
+        let audience_names: Vec<String> =
+            case.audience_names.iter().map(|s| s.to_string()).collect();
 
         // Build the canned provider from the oracle's RECORDED calls.
         let mut canned = CannedCompletionProvider::new();
@@ -411,6 +489,9 @@ fn announcer_tier3_matches_oracle() {
                 case.character_id,
                 case.profile_id,
                 None,
+                case.target_participant_ids
+                    .map(|ids| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+                    .as_deref(),
             ));
             let (status, body) = status_body(&resp);
             let want_status = want["status"].as_u64().unwrap() as u16;
@@ -441,6 +522,7 @@ fn announcer_tier3_matches_oracle() {
                     seed_markdown: case.seed_markdown,
                     system_prompt_id: None,
                     user_id: USER,
+                    audience_names: &audience_names,
                     now_ms: NOW_MS as f64,
                 },
             ));

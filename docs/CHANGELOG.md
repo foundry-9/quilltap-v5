@@ -131,6 +131,20 @@ when they forget to quote a phrase, because the same complaint is also
 raised on the server about the same file and the two must not disagree.
 Verified against ninety-six results recorded from the reference app itself,
 plus its own test suite ported case for case.
+Manual announcements can now be whispered to specific people in a
+conversation instead of always being spoken to the room. The composer's
+audience is re-checked on the server against who is actually in the scene
+right now, so an announcement can never be addressed to someone who has
+left or to a stranger from another conversation — that is refused outright,
+because the alternative is filing a note nobody could ever be shown.
+Naming nobody posts publicly exactly as before. When the announcement is
+rewritten in a character's own voice, the character is now told privately
+who is listening and given those names in place of the room's roster, so a
+private aside is not pitched like a declaration to a crowd. The rehearsal
+itself stays forgiving: a stale name there simply drops out of the audience
+rather than failing the preview. Verified against the reference app's real
+code across fifty-six compared cases, with deliberate breakages proving
+each new check can actually fail.
 
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal

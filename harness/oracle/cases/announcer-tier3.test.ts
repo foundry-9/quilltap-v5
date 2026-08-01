@@ -54,6 +54,14 @@ const DORIAN = 'a1000000-0000-4000-8000-000000000004';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const CHAT = 'c1000000-0000-4000-8000-000000000001';
 const MISSING_CHAT = '99999999-9999-4999-8999-999999999999';
+// P4.D37 (a163862c): CHAT PARTICIPANT ids — the whisper audience's currency.
+// P_GONE carries `removedAt` (the preview resolves it away without failing);
+// P_GHOST is live but its character row is missing, so it names to 'Someone'.
+const P_ARIA = 'e1000000-0000-4000-8000-000000000001';
+const P_BEA = 'e1000000-0000-4000-8000-000000000002';
+const P_CLIO = 'e1000000-0000-4000-8000-000000000003';
+const P_GONE = 'e1000000-0000-4000-8000-000000000005';
+const P_GHOST = 'e1000000-0000-4000-8000-000000000006';
 
 /** The canned rewrite. The failure case returns an empty string instead. */
 const REWRITE =
@@ -221,6 +229,10 @@ interface CaseSpec {
   profileId: string;
   seedMarkdown: string;
   systemPromptId?: string;
+  /** P4.D37: the resolved whisper audience, for the SERVICE-level arms. */
+  audienceNames?: string[];
+  /** P4.D37: the requested audience, for the ROUTE-level arms (participant ids). */
+  targetParticipantIds?: string[];
 }
 
 function mockRequest(url: string, body?: unknown): unknown {
@@ -283,6 +295,9 @@ async function runCase(
           seedMarkdown: c.seedMarkdown,
           characterId: c.characterId,
           connectionProfileId: c.profileId,
+          ...(c.targetParticipantIds !== undefined
+            ? { targetParticipantIds: c.targetParticipantIds }
+            : {}),
         }),
         { params: Promise.resolve({ id: c.chatId }) },
       );
@@ -311,6 +326,7 @@ async function runCase(
       seedMarkdown: c.seedMarkdown,
       systemPromptId: c.systemPromptId,
       userId: spec.userId,
+      audienceNames: c.audienceNames,
     });
 
     return {
@@ -419,6 +435,86 @@ async function main(): Promise<void> {
       characterId: DORIAN,
       profileId: CONN,
       seedMarkdown: 'Tell them the lamps on the eastern quay are out and I am seeing to it.',
+    },
+    // ── P4.D37 (a163862c): the audience reaches the rewrite ─────────────────
+    // The assembled user message IS the evidence: the whisper presence line
+    // REPLACES the roster block (buildRoster is not even called), and the name
+    // list carries v4's singular/plural and Oxford-comma forms.
+    {
+      name: 'rewrite_whisper_single',
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'The lamps are out.',
+      audienceNames: ['Aria'],
+    },
+    {
+      name: 'rewrite_whisper_pair',
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'The lamps are out.',
+      audienceNames: ['Aria', 'Bea'],
+    },
+    {
+      name: 'rewrite_whisper_three_oxford_comma',
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'The lamps are out.',
+      audienceNames: ['Aria', 'Bea', 'Clio'],
+    },
+    {
+      // Blank names are filtered before the branch, so one real name is singular.
+      name: 'rewrite_whisper_blank_name_filtered',
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'The lamps are out.',
+      audienceNames: ['   ', 'Aria'],
+    },
+    {
+      // Filter everything away and the announcement is public again — the ROSTER
+      // arm, not an empty whisper line.
+      name: 'rewrite_whisper_all_blank_falls_back_to_roster',
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'The lamps are out.',
+      audienceNames: ['   ', ''],
+    },
+    // The route arms: participant ids in, resolved names out.
+    {
+      name: 'route_preview_whisper_named',
+      viaRoute: true,
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'Tell them the lamps on the eastern quay are out and I am seeing to it.',
+      targetParticipantIds: [P_ARIA, P_BEA],
+    },
+    {
+      // THE ASYMMETRY: the preview does NOT refuse dangling ids. A removed
+      // participant contributes no name, the audience resolves empty, and the
+      // rehearsal carries on with the room's roster.
+      name: 'route_preview_unknown_target_does_not_refuse',
+      viaRoute: true,
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'Tell them the lamps on the eastern quay are out and I am seeing to it.',
+      targetParticipantIds: [P_GONE],
+    },
+    {
+      // A live participant whose character row is missing: a valid target that
+      // cannot be named, so the rewrite is addressed to 'Someone'.
+      name: 'route_preview_ghost_target_is_someone',
+      viaRoute: true,
+      chatId: CHAT,
+      characterId: DORIAN,
+      profileId: CONN,
+      seedMarkdown: 'Tell them the lamps on the eastern quay are out and I am seeing to it.',
+      targetParticipantIds: [P_GHOST, P_CLIO],
     },
   ];
 

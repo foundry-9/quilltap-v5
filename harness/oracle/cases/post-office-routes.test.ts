@@ -69,6 +69,13 @@ const CHAT = 'c1000000-0000-4000-8000-000000000001';
 // Also the GHOST participant's characterId: a played participant whose character
 // row does not exist, so the arms BEHIND the auth gate are reachable.
 const MISSING_ID = '99999999-9999-4999-8999-999999999999';
+// P4.D37: CHAT PARTICIPANT ids (not character ids) — the whisper audience's
+// currency. P_GONE carries `removedAt`; P_GHOST is live but points at a character
+// row that does not exist.
+const P_ARIA = 'e1000000-0000-4000-8000-000000000001';
+const P_BEA = 'e1000000-0000-4000-8000-000000000002';
+const P_GONE = 'e1000000-0000-4000-8000-000000000005';
+const P_GHOST = 'e1000000-0000-4000-8000-000000000006';
 
 // Shared frozen clock (matches NOW_MS in the Rust test).
 const NOW_MS = 1_777_939_200_000; // 2026-05-05T00:00:00.000Z
@@ -443,6 +450,140 @@ async function main(): Promise<void> {
           await post(CHAT, 'announcement', {
             contentMarkdown: 'Who?',
             sender: { kind: 'staff', staffId: 'quartermaster' },
+          }),
+        ),
+    },
+
+    // ── P4.D37 (a163862c): the whisper audience ─────────────────────────────
+    // The persisted row IS the evidence — `targetParticipantIds` on the message
+    // dump — plus the two 400 arms the resolver exists to produce.
+    {
+      name: 'announcement_whisper_named',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Only the two of you need hear this.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [P_ARIA, P_BEA],
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // An explicit `null` is the same as omitting it: public.
+      name: 'announcement_whisper_null_is_public',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Everyone hears this one.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: null,
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // An empty array normalizes to NULL on the row — "public" gets exactly one
+      // representation, rather than a stored `[]` meaning "whispered to nobody".
+      name: 'announcement_whisper_empty_array_is_null',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Nobody named.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [],
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // Duplicates collapse; first appearance wins the order.
+      name: 'announcement_whisper_duplicate_ids',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Said once.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [P_BEA, P_ARIA, P_BEA],
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // A participant who has left the scene is not a valid target — whispering
+      // to them is the dangling case the resolver guards against.
+      name: 'announcement_whisper_removed_participant',
+      run: async () =>
+        respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'For someone who left.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [P_GONE],
+          }),
+        ),
+    },
+    {
+      // A live target plus an id belonging to no participant of this chat: the
+      // whole post is refused, and only the unknown id is named.
+      name: 'announcement_whisper_foreign_id',
+      run: async () =>
+        respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'For a stranger.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [P_ARIA, MISSING_ID],
+          }),
+        ),
+    },
+    {
+      // A participant whose CHARACTER ROW is missing is still a live participant
+      // — the target resolves (it is only the NAME that falls back to 'Someone').
+      name: 'announcement_whisper_ghost_participant',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'For the unnameable.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: [P_GHOST],
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // A custom display name whispers just as happily — the sender union and the
+      // audience are independent.
+      name: 'announcement_whisper_custom_sender',
+      freezeClock: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Psst.',
+            sender: { kind: 'custom', displayName: 'A Distant Bell' },
+            targetParticipantIds: [P_ARIA],
+          }),
+        );
+        return { status, body, tables: { messages: await readMessages(CHAT) } };
+      },
+    },
+    {
+      // `z.array(z.uuid())` — a non-uuid never reaches the resolver.
+      name: 'announcement_whisper_invalid_uuid',
+      run: async () =>
+        respond(
+          await post(CHAT, 'announcement', {
+            contentMarkdown: 'Malformed audience.',
+            sender: { kind: 'staff', staffId: 'host' },
+            targetParticipantIds: ['not-a-uuid'],
           }),
         ),
     },

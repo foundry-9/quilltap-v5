@@ -910,6 +910,7 @@ impl CoreEngine {
                 chat_id,
                 content_markdown,
                 sender,
+                target_participant_ids,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_post_office::chat_announcement_post(
@@ -917,6 +918,7 @@ impl CoreEngine {
                         &chat_id,
                         &content_markdown,
                         &sender,
+                        target_participant_ids.as_deref(),
                     )
                     .await
                 }
@@ -928,6 +930,7 @@ impl CoreEngine {
                 character_id,
                 connection_profile_id,
                 system_prompt_id,
+                target_participant_ids,
             } => match self.ready_db_and_announcement_preview() {
                 Ok((db, driver)) => {
                     super::chat_post_office::chat_announcement_preview(
@@ -939,6 +942,7 @@ impl CoreEngine {
                         &character_id,
                         &connection_profile_id,
                         system_prompt_id.as_deref(),
+                        target_participant_ids.as_deref(),
                     )
                     .await
                 }

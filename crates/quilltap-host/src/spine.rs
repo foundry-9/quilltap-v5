@@ -590,6 +590,7 @@ where
                         seed_markdown: &input.seed_markdown,
                         system_prompt_id: input.system_prompt_id.as_deref(),
                         user_id: &input.user_id,
+                        audience_names: &input.audience_names,
                         now_ms: quilltap_core::clock::now_unix_ms() as f64,
                     },
                 )

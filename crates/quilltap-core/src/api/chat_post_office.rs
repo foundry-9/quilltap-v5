@@ -55,6 +55,7 @@ use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::db::{characters_read, chats_read};
 use crate::post_office::deliver::{compose_and_deliver_letter, ComposeAndDeliverResult};
 use crate::post_office::mailbox::list_mailbox;
+use crate::services::announcer::audience::resolve_announcement_audience;
 use crate::services::announcer::writer::{
     post_adhoc_announcement, AdhocAnnouncementParams, AnnouncerSender, StaffSender,
 };
@@ -217,11 +218,18 @@ fn load_chat(db: &Db, chat_id: &str) -> Result<Option<Value>, crate::db::DbError
 /// v4 `POST /api/v1/chats/[id]?action=announcement`. The POST wrapper resolves
 /// the chat before dispatching (`handlers/post.ts:114`), so an unknown chat is a
 /// `notFound('Chat')` here too.
+///
+/// `target_participant_ids` is the operator's chosen whisper audience (CHAT
+/// PARTICIPANT ids). Omitted / empty posts publicly, exactly as it always has;
+/// every id is re-verified against the chat's CURRENT participants and a dangling
+/// one is a 400 — the alternative is persisting a message no filter would ever
+/// surface.
 pub async fn chat_announcement_post(
     db: &Db,
     chat_id: &str,
     content_markdown: &str,
     sender: &AnnouncerSenderWire,
+    target_participant_ids: Option<&[String]>,
 ) -> Response {
     match load_chat(db, chat_id) {
         Ok(Some(_)) => {}
@@ -236,6 +244,10 @@ pub async fn chat_announcement_post(
     let Some(sender) = lower_sender(sender) else {
         return validation_error();
     };
+    // `targetParticipantIds: z.array(z.uuid()).nullable().optional()`.
+    if target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !is_uuid(id))) {
+        return validation_error();
+    }
 
     // For the 'character' branch, verify the referenced character actually
     // exists so we fail fast with a clear error rather than persisting a
@@ -251,12 +263,23 @@ pub async fn chat_announcement_post(
         }
     }
 
+    // A whisper audience is only meaningful if every id is a live participant of
+    // this chat — otherwise we'd persist a message nobody can ever be shown.
+    let audience = resolve_announcement_audience(db, chat_id, target_participant_ids);
+    if !audience.unknown_ids.is_empty() {
+        return bad_request(format!(
+            "Unknown whisper target(s) for this chat: {}",
+            audience.unknown_ids.join(", ")
+        ));
+    }
+
     let message = post_adhoc_announcement(
         db,
         &AdhocAnnouncementParams {
             chat_id: chat_id.to_string(),
             content_markdown: content_markdown.to_string(),
             sender,
+            target_participant_ids: audience.target_participant_ids,
         },
     )
     .await;
@@ -296,6 +319,10 @@ pub struct CharacterVoicedRequest {
     pub seed_markdown: String,
     pub system_prompt_id: Option<String>,
     pub user_id: String,
+    /// Display names of the whisper audience the operator has chosen, already
+    /// resolved and verified. Empty means the announcement is public and the
+    /// character addresses the whole room.
+    pub audience_names: Vec<String>,
 }
 
 /// v4 `CharacterVoicedAnnouncementResult`.
@@ -345,6 +372,7 @@ where
                         seed_markdown: &input.seed_markdown,
                         system_prompt_id: input.system_prompt_id.as_deref(),
                         user_id: &input.user_id,
+                        audience_names: &input.audience_names,
                         now_ms: self
                             .now_ms
                             .unwrap_or_else(|| crate::clock::now_unix_ms() as f64),
@@ -371,6 +399,7 @@ pub async fn chat_announcement_preview(
     character_id: &str,
     connection_profile_id: &str,
     system_prompt_id: Option<&str>,
+    target_participant_ids: Option<&[String]>,
 ) -> Response {
     match load_chat(db, chat_id) {
         Ok(Some(_)) => {}
@@ -383,6 +412,7 @@ pub async fn chat_announcement_preview(
         || !is_uuid(character_id)
         || !is_uuid(connection_profile_id)
         || system_prompt_id.is_some_and(|s| !is_uuid(s))
+        || target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !is_uuid(id)))
     {
         return validation_error();
     }
@@ -403,6 +433,11 @@ pub async fn chat_announcement_preview(
         Err(e) => return internal(e),
     };
 
+    // Nothing is persisted here, so an unresolvable target is not worth failing
+    // the rehearsal over — it simply doesn't contribute a name to the audience.
+    // The post action is the gate that refuses dangling ids.
+    let audience = resolve_announcement_audience(db, chat_id, target_participant_ids);
+
     let Some(driver) = driver else {
         return internal(
             "chatAnnouncementPreview is not available: the host has not assembled an \
@@ -419,6 +454,7 @@ pub async fn chat_announcement_preview(
             seed_markdown: seed_markdown.to_string(),
             system_prompt_id: system_prompt_id.map(str::to_string),
             user_id: user_id.to_string(),
+            audience_names: audience.target_names,
         })
         .await;
 

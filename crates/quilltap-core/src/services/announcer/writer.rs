@@ -6,11 +6,19 @@
 //!   - a workspace character not currently in this chat, or
 //!   - a free-text custom display name (placeholder avatar).
 //!
-//! The result is persisted to `chat_messages` as a broadcast
+//! By default the result is persisted to `chat_messages` as a broadcast
 //! (`targetParticipantIds = null`), indistinguishable in behaviour from an
 //! automated Staff announcement: visible to all participants (present and
 //! silent), and included verbatim in every character's LLM transcript via normal
 //! message history.
+//!
+//! When the operator names an audience, the same bubble is persisted as a
+//! *whisper* — `targetParticipantIds` carries the chosen participant ids and the
+//! ordinary whisper machinery takes over: only those participants' LLM contexts
+//! include it (`filter_whisper_messages`), and the Salon shows it to the operator
+//! with the usual whisper chrome. Callers must have already verified that every id
+//! is a current participant of this chat
+//! ([`super::audience::resolve_announcement_audience`]).
 
 use serde_json::{json, Value};
 
@@ -71,6 +79,10 @@ pub struct AdhocAnnouncementParams {
     /// Plain Markdown body of the announcement bubble.
     pub content_markdown: String,
     pub sender: AnnouncerSender,
+    /// Participant ids the announcement is whispered to. `None` / empty posts a
+    /// public broadcast (the historical behaviour). Every id must already have
+    /// been verified as a current participant of this chat by the caller.
+    pub target_participant_ids: Option<Vec<String>>,
 }
 
 /// Assemble the announcement `MessageEvent` (v4's object literal, in its
@@ -86,6 +98,14 @@ fn build_announcement_message(
     message_id: &str,
     now_iso: &str,
 ) -> Option<(ChatEventInput, Value)> {
+    // Normalize an empty audience to null so "public" has exactly one
+    // representation on the row — every whisper check downstream tests for a
+    // non-empty array, and a stored `[]` would read as "whispered to nobody".
+    let targets: Value = match &params.target_participant_ids {
+        Some(ids) if !ids.is_empty() => json!(ids),
+        _ => Value::Null,
+    };
+
     let message = json!({
         "type": "message",
         "id": message_id,
@@ -95,7 +115,7 @@ fn build_announcement_message(
         "createdAt": now_iso,
         "participantId": null,
         "systemKind": "announcement",
-        "targetParticipantIds": null,
+        "targetParticipantIds": targets,
         "systemSender": match &params.sender {
             AnnouncerSender::Staff { staff_id } => Value::String(staff_id.as_str().to_string()),
             _ => Value::Null,
@@ -185,18 +205,21 @@ mod tests {
         );
     }
 
+    fn build(sender: AnnouncerSender, targets: Option<Vec<String>>) -> Value {
+        let params = AdhocAnnouncementParams {
+            chat_id: "chat".into(),
+            content_markdown: "  body  ".into(),
+            sender,
+            target_participant_ids: targets,
+        };
+        build_announcement_message(&params, "body", "mid", "2026-01-01T00:00:00.000Z")
+            .expect("validates")
+            .1
+    }
+
     #[test]
     fn message_shape_per_sender_branch() {
-        let mk = |sender: AnnouncerSender| {
-            let params = AdhocAnnouncementParams {
-                chat_id: "chat".into(),
-                content_markdown: "  body  ".into(),
-                sender,
-            };
-            build_announcement_message(&params, "body", "mid", "2026-01-01T00:00:00.000Z")
-                .expect("validates")
-                .1
-        };
+        let mk = |sender: AnnouncerSender| build(sender, None);
 
         let staff = mk(AnnouncerSender::Staff {
             staff_id: StaffSender::CommonplaceBook,
@@ -224,6 +247,49 @@ mod tests {
         assert_eq!(
             custom["customAnnouncer"],
             json!({ "kind": "custom", "displayName": "The Night Porter" })
+        );
+    }
+
+    /// v4's `postAdhocAnnouncement` audience suite
+    /// (`announcer-audience.test.ts`), at the one place the audience touches the
+    /// row. An empty array must store NULL, not `[]`: every downstream visibility
+    /// check treats `[]` as public anyway, but only by accident.
+    #[test]
+    fn empty_audience_stores_null_and_a_whisper_keeps_its_marker() {
+        let staff = AnnouncerSender::Staff {
+            staff_id: StaffSender::Host,
+        };
+        assert_eq!(
+            build(staff.clone(), None)["targetParticipantIds"],
+            Value::Null
+        );
+        assert_eq!(
+            build(staff.clone(), Some(vec![]))["targetParticipantIds"],
+            Value::Null
+        );
+
+        let whispered = build(staff, Some(vec!["p-alice".into(), "p-bob".into()]));
+        assert_eq!(
+            whispered["targetParticipantIds"],
+            json!(["p-alice", "p-bob"])
+        );
+        // The operator-authored marker must survive a whisper — it is what tells
+        // the Salon the human wrote this and must always see it.
+        assert_eq!(whispered["systemKind"], json!("announcement"));
+        assert_eq!(whispered["participantId"], Value::Null);
+
+        // A custom display name whispers just as happily.
+        let custom = build(
+            AnnouncerSender::Custom {
+                display_name: "A Distant Bell".into(),
+            },
+            Some(vec!["p-alice".into()]),
+        );
+        assert_eq!(custom["targetParticipantIds"], json!(["p-alice"]));
+        assert_eq!(custom["systemSender"], Value::Null);
+        assert_eq!(
+            custom["customAnnouncer"],
+            json!({ "kind": "custom", "displayName": "A Distant Bell" })
         );
     }
 }

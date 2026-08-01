@@ -48636,3 +48636,136 @@ No CSS change either: `.qt-chat-system-bar-kind` already sets
 `overflow:hidden; text-overflow:ellipsis; white-space:nowrap` (`_chat.css:271`)
 with a 22ch cap on the announcement chip (`:364`), which is where a long
 rendered label belongs.
+---
+
+## Lane record — P4.D37 unit 1: the whisper audience (server)
+
+**Branch** `claude/p4-d37-whispered-announcements-dec704`. **v4 baseline
+`c4d4b0de`**, drift-checked at lane start: `git log c4d4b0de..HEAD` empty and
+`git status --short` clean, so every oracle in this lane regenerated straight
+from `~/source/quilltap-server` (no pinned worktree needed).
+
+Ports the SERVER half of v4 `a163862c` ("whisper manual announcements to
+specific characters"):
+
+- **`services/announcer/audience.rs` (NEW)** — `resolve_announcement_audience`,
+  the greenfield resolver. Every v4 arm: omitted/empty → PUBLIC; chat not found →
+  all requested ids reported unknown (deduped); live participants filtered
+  `!removedAt && status !== 'removed'` and keyed by PARTICIPANT id; the request
+  iterated as `new Set(...)` so duplicates collapse and first appearance wins;
+  names via the vault-overlay `characters_read::find_by_id` with v4's three
+  `'Someone'` fallbacks (no `characterId`, no character row, a THROWING read);
+  the return normalizing `length > 0 ? ids : null`.
+- **`services/announcer/writer.rs`** — `AdhocAnnouncementParams.
+  target_participant_ids`, the empty-array→NULL normalization, and the one
+  persisted column. `participantId: null`, `systemKind: 'announcement'`,
+  `systemSender` and `customAnnouncer` are untouched, which is what keeps a
+  whispered announcement's operator-authored marker.
+- **`services/announcer/character_voiced.rs`** — `audience_names`, v4's
+  `format_name_list` (Oxford comma), the roster REPLACEMENT (v4 short-circuits,
+  so `buildRoster` is not called at all for a whisper), and the whisper presence
+  line carried byte-for-byte including the singular `them` / plural `those
+  named` swap.
+- **`api/chat_post_office.rs`** — POST resolves after the character-existence
+  check and 400s with v4's exact `` `Unknown whisper target(s) for this chat:
+  ${ids.join(', ')}` `` (a plain `badRequest`, NOT a Zod-details envelope);
+  PREVIEW resolves silently and threads `audienceNames` through
+  `CharacterVoicedRequest`. **The post/preview asymmetry is behavioral and is an
+  oracle case on both arms.** Both verbs enforce `z.array(z.uuid())`.
+
+**§1 (the order's one named `api/types.rs` addition):**
+`target_participant_ids: Option<Vec<String>>` (serde `targetParticipantIds`,
+`skip_serializing_if`) on `ChatAnnouncementPost` AND `ChatAnnouncementPreview`.
+**`engine.rs` was touched at exactly the two arms that destructure those
+variants** (they name every field, so the addition does not compile without
+it) and `quilltap-host/src/spine.rs` at the named
+`HostAnnouncementPreviewRunner` site only — both are the minimum the §1
+addition forces, per the order's shared contract.
+
+### Differentials — both families, fresh at `c4d4b0de`, zero SKIP
+
+- **`post_office_routes_equivalence` 32 → 41 cases.** Nine new
+  `announcement_whisper_*` arms: named audience persisted, explicit-null,
+  empty-array→NULL, duplicate collapse (order preserved), a live participant
+  whose character row is missing (a VALID target), a custom sender whispering,
+  the removed-participant 400, the foreign-id 400 (naming only the unknown id),
+  and the array-of-uuid rejection. Six join `V4_CREATED_CASES` (v4 201 vs
+  dispatch 200) and one joins `VALIDATION_DETAILS_GAP`. The oracle case gained
+  the participant-id constants; **no fixture changed** — the committed
+  `post-office-{main,mount}.db` chat already carries six participants including
+  a removed one and a live one with no character row, which is the whole matrix.
+- **`announcer_tier3_equivalence` 7 → 15 cases.** Five service-level arms
+  (singular / pair / Oxford comma at three / a blank name filtered out / ALL
+  names blank falling back to the roster) and three route-level arms
+  (participant ids resolved to names; **the asymmetry — a removed participant
+  does not refuse the rehearsal**; a ghost participant addressed as `Someone`).
+  The assembled system prompt + user message are the diffed evidence.
+
+Both ran GREEN on the first execution, so per the D24 rule each new arm was
+mutation-proven. Ten mutations; **eight turned the expected cases red**
+(duplicates kept; removed participants treated as live; `'Someone'` blanked;
+singular/plural swapped; blank audience names unfiltered; the preview made to
+refuse; the Oxford comma dropped; the writer's empty→NULL removed → the
+`writer.rs` unit test). **Two ran green and are recorded as coverage limits,
+not defects:**
+
+1. *Dropping the writer's empty-array→NULL alone changes nothing observable at
+   the route.* v4 and v5 both normalize an empty audience TWICE — the resolver
+   returns PUBLIC and the writer collapses `[]` → NULL — so
+   `announcement_whisper_empty_array_is_null` is a COMPOSED pin. The writer's
+   own site is pinned directly by the `empty_audience_stores_null_…` unit test,
+   which mirrors v4's own jest case (`announcer-audience.test.ts` calls
+   `postAdhocAnnouncement` with `targetParticipantIds: []`) and IS sensitive.
+2. *Building the roster for a whisper anyway changes no byte.* The roster is
+   only ever consumed by the non-whisper presence line, so v4's short-circuit is
+   an efficiency property with no differential surface. The OUTPUT claim — no
+   roster block in a whisper's prompt — is pinned by the whisper arms.
+
+Both limits are recorded in the two differential headers so the next reader
+does not mistake the green for coverage.
+
+**Disposition — v4's `public/schemas/qtap-export.schema.json` hunk: NO-PORT.**
+v5 has no copy of that published schema, and v5's `.qtap` writer already emits
+`targetParticipantIds` (`services/qtap_export/schema-key-order.json:176`), so
+both halves of v4's schema change are no-ops here.
+
+**Banked for `p4.9i2`:** `help/insert-announcement.md` (rewritten by both
+`a163862c` and `424a7381`) and `help/chat-participants.md` (`424a7381`) —
+v5 has no help surface yet.
+
+**Gate at this commit:** `cargo fmt --all --check`; clippy on BOTH feature sets
+with `-D warnings`; `cargo test --workspace --no-fail-fast` with
+`QT_ORACLE_POST_OFFICE` + `QT_ORACLE_ANNOUNCER_TIER3` set — **407 test
+binaries / 1,749 tests / 0 failed**, both families by name with `--nocapture`
+and zero SKIP. Versions: core 0.0.434, harness 0.0.374, host 0.0.55.
+
+**Regen recipes** (v4 clean at the baseline, so straight from the checkout):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-po-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/post-office-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/post-office-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_PO_MAIN=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db \
+QT_FIXTURE_PO_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/post-office-mount.db \
+QT_FIXTURE_PO_META=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db.meta.json \
+QT_ORACLE_OUT=/tmp/oracle-post-office.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- post-office-routes
+```
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-ann-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/announcer-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/post-office-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_PO_MAIN=$V5W/crates/quilltap-web/tests/fixtures/post-office-main.db \
+QT_FIXTURE_PO_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/post-office-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-announcer-tier3.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- announcer-tier3
+```

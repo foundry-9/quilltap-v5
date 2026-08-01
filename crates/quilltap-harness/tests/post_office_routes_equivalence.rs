@@ -36,6 +36,24 @@
 //! `chunkCount` in `recipientShape` is now part of the ordinary equality diff —
 //! nothing is plucked out, and the two sides agree.
 //!
+//! ## P4.D37 — the whisper audience (v4 `a163862c`)
+//!
+//! Nine `announcement_whisper_*` arms: the persisted `targetParticipantIds` on the
+//! message dump IS the evidence (named audience, explicit-null, empty-array,
+//! duplicate collapse, a live participant whose character row is missing, a custom
+//! sender), plus the two 400s the resolver exists to produce (a removed
+//! participant, an id from another chat) and the Zod array-of-uuid rejection.
+//!
+//! **One arm is a COMPOSED pin, not a single-site one.**
+//! `announcement_whisper_empty_array_is_null` cannot be turned red by mutating
+//! either normalization alone, because v4 and v5 both collapse an empty audience
+//! TWICE — once in the resolver (`[]` → PUBLIC) and again in the writer (`[]` →
+//! NULL on the row). The writer's own site is pinned directly by
+//! `services::announcer::writer`'s `empty_audience_stores_null_…` unit test, which
+//! mirrors v4's own jest case (`announcer-audience.test.ts` calls
+//! `postAdhocAnnouncement` with `targetParticipantIds: []` directly) and was
+//! mutation-proven sensitive.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-post-office.ndjson npx jest -- post-office-routes
 //! Run:
@@ -60,6 +78,13 @@ const GONE: &str = "a1000000-0000-4000-8000-000000000006";
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CONN: &str = "c0000001-0000-4000-8000-000000000001";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
+// P4.D37: CHAT PARTICIPANT ids (not character ids) — the whisper audience's
+// currency. P_GONE carries `removedAt`; P_GHOST is live but points at a character
+// row that does not exist (so it resolves as a target and names to 'Someone').
+const P_ARIA: &str = "e1000000-0000-4000-8000-000000000001";
+const P_BEA: &str = "e1000000-0000-4000-8000-000000000002";
+const P_GONE: &str = "e1000000-0000-4000-8000-000000000005";
+const P_GHOST: &str = "e1000000-0000-4000-8000-000000000006";
 const NOW_MS: i64 = 1_777_939_200_000; // 2026-05-05T00:00:00.000Z
 
 /// Cases where v4 answers 201 and the dispatch boundary answers 200 (see the
@@ -69,6 +94,12 @@ const V4_CREATED_CASES: &[&str] = &[
     "announcement_staff_pascal",
     "announcement_character",
     "announcement_custom",
+    "announcement_whisper_named",
+    "announcement_whisper_null_is_public",
+    "announcement_whisper_empty_array_is_null",
+    "announcement_whisper_duplicate_ids",
+    "announcement_whisper_ghost_participant",
+    "announcement_whisper_custom_sender",
     "send_mail_ok",
     "send_mail_reply",
 ];
@@ -79,6 +110,7 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "announcement_empty_content",
     "announcement_display_name_too_long",
     "announcement_unknown_staff",
+    "announcement_whisper_invalid_uuid",
     "preview_empty_seed",
     "send_mail_empty_body",
 ];
@@ -431,10 +463,17 @@ fn post_office_routes_match_oracle() {
                             chat: &str,
                             content: &str,
                             sender: AnnouncerSenderWire,
+                            targets: Option<&[&str]>,
                             dump: bool| {
+        let targets: Option<Vec<String>> =
+            targets.map(|t| t.iter().map(|s| s.to_string()).collect());
         let db = fresh_db(&spec, tag);
         let r = rt.block_on(chat_post_office::chat_announcement_post(
-            &db, chat, content, &sender,
+            &db,
+            chat,
+            content,
+            &sender,
+            targets.as_deref(),
         ));
         let tables = dump.then(|| json!({ "messages": dump_messages(&db, CHAT) }));
         check(name, &r, tables);
@@ -445,6 +484,7 @@ fn post_office_routes_match_oracle() {
         CHAT,
         "  The Lantern is lit; the evening post departs at eight.  ",
         staff(StaffSenderWire::Lantern),
+        None,
         true,
     );
     announcement(
@@ -453,6 +493,7 @@ fn post_office_routes_match_oracle() {
         CHAT,
         "The table is open.",
         staff(StaffSenderWire::Pascal),
+        None,
         true,
     );
     announcement(
@@ -463,6 +504,7 @@ fn post_office_routes_match_oracle() {
         AnnouncerSenderWire::Character {
             character_id: DORIAN.to_string(),
         },
+        None,
         true,
     );
     announcement(
@@ -473,6 +515,7 @@ fn post_office_routes_match_oracle() {
         AnnouncerSenderWire::Custom {
             display_name: "The Night Porter".to_string(),
         },
+        None,
         true,
     );
     announcement(
@@ -483,6 +526,7 @@ fn post_office_routes_match_oracle() {
         AnnouncerSenderWire::Character {
             character_id: MISSING_ID.to_string(),
         },
+        None,
         false,
     );
     announcement(
@@ -491,6 +535,7 @@ fn post_office_routes_match_oracle() {
         MISSING_ID,
         "Into the void.",
         staff(StaffSenderWire::Host),
+        None,
         false,
     );
     announcement(
@@ -499,6 +544,7 @@ fn post_office_routes_match_oracle() {
         CHAT,
         "",
         staff(StaffSenderWire::Host),
+        None,
         false,
     );
     announcement(
@@ -507,6 +553,7 @@ fn post_office_routes_match_oracle() {
         CHAT,
         "   \n\t  ",
         staff(StaffSenderWire::Host),
+        None,
         true,
     );
     announcement(
@@ -517,8 +564,94 @@ fn post_office_routes_match_oracle() {
         AnnouncerSenderWire::Custom {
             display_name: "x".repeat(121),
         },
+        None,
         false,
     );
+    // ── P4.D37 (a163862c): the whisper audience ─────────────────────────────
+    announcement(
+        "annw1",
+        "announcement_whisper_named",
+        CHAT,
+        "Only the two of you need hear this.",
+        staff(StaffSenderWire::Host),
+        Some(&[P_ARIA, P_BEA]),
+        true,
+    );
+    announcement(
+        "annw2",
+        "announcement_whisper_null_is_public",
+        CHAT,
+        "Everyone hears this one.",
+        staff(StaffSenderWire::Host),
+        None,
+        true,
+    );
+    announcement(
+        "annw3",
+        "announcement_whisper_empty_array_is_null",
+        CHAT,
+        "Nobody named.",
+        staff(StaffSenderWire::Host),
+        Some(&[]),
+        true,
+    );
+    announcement(
+        "annw4",
+        "announcement_whisper_duplicate_ids",
+        CHAT,
+        "Said once.",
+        staff(StaffSenderWire::Host),
+        Some(&[P_BEA, P_ARIA, P_BEA]),
+        true,
+    );
+    announcement(
+        "annw5",
+        "announcement_whisper_removed_participant",
+        CHAT,
+        "For someone who left.",
+        staff(StaffSenderWire::Host),
+        Some(&[P_GONE]),
+        false,
+    );
+    announcement(
+        "annw6",
+        "announcement_whisper_foreign_id",
+        CHAT,
+        "For a stranger.",
+        staff(StaffSenderWire::Host),
+        Some(&[P_ARIA, MISSING_ID]),
+        false,
+    );
+    announcement(
+        "annw7",
+        "announcement_whisper_ghost_participant",
+        CHAT,
+        "For the unnameable.",
+        staff(StaffSenderWire::Host),
+        Some(&[P_GHOST]),
+        true,
+    );
+    announcement(
+        "annw8",
+        "announcement_whisper_custom_sender",
+        CHAT,
+        "Psst.",
+        AnnouncerSenderWire::Custom {
+            display_name: "A Distant Bell".to_string(),
+        },
+        Some(&[P_ARIA]),
+        true,
+    );
+    announcement(
+        "annw9",
+        "announcement_whisper_invalid_uuid",
+        CHAT,
+        "Malformed audience.",
+        staff(StaffSenderWire::Host),
+        Some(&["not-a-uuid"]),
+        false,
+    );
+
     // `announcement_unknown_staff` — v4 rejects `staffId: 'quartermaster'` at the
     // enum. The typed boundary makes an unknown staff id unrepresentable, so the
     // rejection happens one layer earlier (dispatch deserialization): assert THAT,
@@ -554,6 +687,7 @@ fn post_office_routes_match_oracle() {
                 seed,
                 character,
                 profile,
+                None,
                 None,
             ));
             check(name, &r, None);
