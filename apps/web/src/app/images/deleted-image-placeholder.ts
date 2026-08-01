@@ -22,9 +22,7 @@ import { ToastService } from '../ui/toast.service';
  * surface is a LOUD REFUSAL (the P4.9a2 deferral — v4's orphan-cleanup DELETE
  * handler is unported; the web edge answers "recognized but not yet
  * available"), so the live button surfaces the refusal message through the
- * error line. v4 shows errors via `showErrorToast`; the SPA has no toast
- * service yet, so the message renders inline (the established `image-modal.ts`
- * divergence).
+ * toast, exactly as v4 does (`DeletedImagePlaceholder.tsx:45`).
  */
 @Component({
   selector: 'qt-deleted-image-placeholder',

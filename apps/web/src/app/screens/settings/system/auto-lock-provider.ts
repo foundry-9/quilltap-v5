@@ -36,8 +36,10 @@ interface AutoLockConfig {
  * `/unlock` (a full reboot: the health gate then shows the return-aware unlock
  * screen). Two pre-ruled divergences: the config comes from the `unlockState`
  * dispatch verb rather than a raw fetch, and the warning is an inline
- * `role="status"` banner (v5 has no toast bus — `p4.9m`) instead of v4's
- * imperatively-built toast.
+ * `role="status"` banner instead of v4's toast. v4's call is
+ * `showWarningToast()` with NO ARGUMENT (`auto-lock-provider.tsx:143`) — an
+ * empty toast, a v4 bug — so the banner is kept and the row stays OPEN in the
+ * P4.25 census rather than porting a blank notification.
  */
 @Component({
   selector: 'qt-auto-lock-provider',

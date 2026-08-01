@@ -66,9 +66,9 @@ import { ToastService } from '../ui/toast.service';
  * the placeholders the definition quotes — which the reference panel lists so a
  * user can see what the tool reads about their character. Vocabulary, not odds.
  *
- * v5 divergence, unchanged from before: v4 reports a failed run through a toast
- * and v5 has no toast system, so the server's message renders inline as a
- * `role="alert"` line in the form.
+ * A failed run is reported through the toast, as v4 does
+ * (`CustomToolRunDialog.tsx:202`); the inline `role="alert"` line in the picker
+ * is v4's own ROSTER-load error (`:368`), a different surface.
  */
 
 /** Above this many tools, the picker earns a search box. */

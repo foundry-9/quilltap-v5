@@ -46950,3 +46950,16 @@ the round's ownership rule:
 45401) to run the gate while a sibling lane held 4319, per the
 `e2e-playwright-traps` recipe. **It is restored to 4319 / 45301 in the lane's
 final commit** — it is shared infra and must never land moved.
+
+## Lane record — P4.25: the stale "v5 has no toast system" comment sweep
+
+Four class docs still described the absent subsystem as a standing divergence
+and were corrected: `custom-tools-popup` (its inline line is v4's ROSTER error,
+not a substitute), `deleted-image-placeholder`, `backup-dialog` (v4's
+"Backup downloaded successfully" is still OWED — the download is an anchor
+click with no completion signal, an OPEN census row), and `auto-lock-provider`
+(**v4's call is `showWarningToast()` with NO ARGUMENT — an empty toast, a v4
+bug — so the inline banner is deliberately kept rather than porting a blank
+notification**). Two comments that stayed are accurate: v4 genuinely says
+nothing on an image-download failure, and the Brahma console has no toast
+plumbing to add.

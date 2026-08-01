@@ -11,7 +11,9 @@ import { triggerUrlDownload } from '../../../core/download-utils';
  * filename?}`) then streams the single-use zip via `GET /system/backup/{id}`
  * (a web-edge leg, reached with an anchor-click through `apiUrl()`). v4's create
  * response has no `filename`, so the client fallback always runs (`:40`). v4's
- * success toast is dropped (no toast bus, `p4.9m`); the dialog just closes.
+ * success toast ("Backup downloaded successfully") is still OWED — the download
+ * leg is an anchor click with no completion signal to hang it on; recorded as
+ * an OPEN census row (P4.25).
  */
 @Component({
   selector: 'qt-backup-dialog',
