@@ -47214,6 +47214,7 @@ mechanically verified), and the verdict.
 | Prospero | `tool-run` | tool run | low | CHIP — bar contents MATCH after the kind-span + aria-hidden + tooltip fixes; body FIXED (assistant bubble, not the system slab). |
 | Prospero | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
 | Suparṇā | `mail-delivery` | mail delivery | high | DIVERGED — v4 renders the letter FULL; v5 chipped it. FIXED (kind-scoped exemption + bar + portrait). |
+| Suparṇā | *(none — legacy row)* | inferred from the body | inferred | DIVERGED — v5 showed a blank kind and the `*` dot. FIXED (`inferKindFromContent` ported). |
 
 ### Commits
 
