@@ -5,9 +5,9 @@ import {
   textblockTypeInputRule,
   wrappingInputRule,
 } from 'prosemirror-inputrules';
-import type { MarkType, Schema } from 'prosemirror-model';
+import type { MarkType, ResolvedPos, Schema } from 'prosemirror-model';
 import { liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list';
-import { type Command, type Plugin } from 'prosemirror-state';
+import { type Command, type EditorState, type Plugin } from 'prosemirror-state';
 
 /**
  * Markdown input shortcuts + the formatting command set for the dialect editor
@@ -109,6 +109,12 @@ export function dialectInputRules(schema: Schema): Plugin {
  * The formatting command keybindings (v4 `FormattingCommandPlugin`): bold /
  * italic / inline code toggles, headings, lists, blockquote, and list
  * indent/outdent. Merged into the editor's keymap.
+ *
+ * `Mod-[`/`Mod-]` (list lift/sink) are a v5-only addition — v4 has no
+ * keybinding for `INDENT_LIST_ITEM_COMMAND`/`OUTDENT_LIST_ITEM_COMMAND`
+ * outside its toolbar and Tab. Kept: they're additive (no v4 binding to
+ * collide with) and match the same commands Tab now reaches
+ * ({@link dialectListNavigationKeymap}). Recorded per the P4.D40 order.
  */
 export function dialectFormattingKeymap(schema: Schema): Record<string, Command> {
   const keys: Record<string, Command> = {
@@ -126,4 +132,60 @@ export function dialectFormattingKeymap(schema: Schema): Record<string, Command>
     keys[`Shift-Ctrl-${level}`] = setBlockType(schema.nodes['heading'], { level });
   }
   return keys;
+}
+
+/**
+ * True when a resolved position sits inside a list item at any depth —
+ * walking `$pos.node(depth)` covers every shape a ProseMirror selection
+ * endpoint can take (a text point, an empty item's element point, a point at
+ * either boundary of a non-empty item), so unlike v4's Lexical analog
+ * (`$selectionIsInListItem`, whose `getNodes()`-only check went blind on a
+ * collapsed *element* point) there is no separate ambiguous-caret case to
+ * special-case here — ProseMirror always resolves a position's full ancestor
+ * chain.
+ */
+function resolvedPosInListItem($pos: ResolvedPos, schema: Schema): boolean {
+  const listItem = schema.nodes['list_item'];
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    if ($pos.node(depth).type === listItem) return true;
+  }
+  return false;
+}
+
+/**
+ * True when the current selection touches a list item — at either endpoint,
+ * so a selection spanning several items (or from just outside one into it)
+ * still counts (v4 `$selectionIsInListItem`, item (e)). Confining
+ * indent/outdent to lists is deliberate: Markdown has no notion of an
+ * indented paragraph, so indenting one would vanish silently on the next
+ * save.
+ */
+export function selectionInListItem(state: EditorState): boolean {
+  const { $from, $to } = state.selection;
+  return resolvedPosInListItem($from, state.schema) || resolvedPosInListItem($to, state.schema);
+}
+
+/**
+ * Tab nests the selected list item(s), Shift-Tab lifts them — confined to
+ * list items so Tab still moves focus everywhere else (v4
+ * `FormattingCommandPlugin`'s `KEY_TAB_COMMAND` handler, item (e)). Within a
+ * list, Tab/Shift-Tab are ALWAYS treated as handled (default prevented) even
+ * when sinking/lifting has nothing to do — e.g. Tab on a list's first item —
+ * matching v4's unconditional `return true` once the selection is confirmed
+ * to be inside a list.
+ */
+export function dialectListNavigationKeymap(schema: Schema): Record<string, Command> {
+  const listItem = schema.nodes['list_item'];
+  return {
+    Tab: (state, dispatch, view) => {
+      if (!selectionInListItem(state)) return false;
+      sinkListItem(listItem)(state, dispatch, view);
+      return true;
+    },
+    'Shift-Tab': (state, dispatch, view) => {
+      if (!selectionInListItem(state)) return false;
+      liftListItem(listItem)(state, dispatch, view);
+      return true;
+    },
+  };
 }

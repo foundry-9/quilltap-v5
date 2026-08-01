@@ -19,7 +19,7 @@ import { splitListItem } from 'prosemirror-schema-list';
 import { EditorState, Plugin, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 
-import { dialectFormattingKeymap, dialectInputRules } from './editing-commands';
+import { dialectFormattingKeymap, dialectInputRules, dialectListNavigationKeymap } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 import { textReplacementPlugin, type CompiledRules } from './text-replacement';
 
@@ -134,7 +134,7 @@ export class RichEditor {
   }
 
   getMarkdown(): string {
-    return this.view ? serializeMarkdown(this.view.state.doc) : this.value();
+    return this.view ? serializeMarkdown(this.view.state.doc, this) : this.value();
   }
 
   setMarkdown(text: string): void {
@@ -144,7 +144,7 @@ export class RichEditor {
   /** Insert `text` above the current content (v4 prependText — outfit notices). */
   prependText(text: string): void {
     if (!this.view) return;
-    const current = serializeMarkdown(this.view.state.doc);
+    const current = serializeMarkdown(this.view.state.doc, this);
     const combined = current ? `${text}\n\n${current}` : text;
     this.replaceContent(combined, true);
   }
@@ -164,8 +164,8 @@ export class RichEditor {
   // --- view lifecycle -------------------------------------------------------
 
   private createView(): void {
-    const doc = parseMarkdown(this.value());
-    const norm = serializeMarkdown(doc);
+    const doc = parseMarkdown(this.value(), this);
+    const norm = serializeMarkdown(doc, this);
     this.lastEmitted = norm;
 
     const state = EditorState.create({ doc, plugins: this.buildPlugins() });
@@ -187,7 +187,7 @@ export class RichEditor {
         this.view.updateState(this.view.state.apply(tr));
         this.inCodeBlock.set(this.computeInCodeBlock());
         if (tr.docChanged) {
-          const md = serializeMarkdown(this.view.state.doc);
+          const md = serializeMarkdown(this.view.state.doc, this);
           this.lastEmitted = md;
           this.contentChange.emit(md);
         }
@@ -209,8 +209,8 @@ export class RichEditor {
    */
   private replaceContent(markdown: string, emit: boolean): void {
     if (!this.view) return;
-    const doc = parseMarkdown(markdown);
-    const norm = serializeMarkdown(doc);
+    const doc = parseMarkdown(markdown, this);
+    const norm = serializeMarkdown(doc, this);
     this.view.updateState(EditorState.create({ doc, plugins: this.buildPlugins() }));
     this.lastEmitted = norm;
     // Defer the post-load emit off the current change-detection pass. This is
@@ -270,6 +270,10 @@ export class RichEditor {
         'Shift-Enter': insertBreak,
       }),
       keymap(dialectFormattingKeymap(dialectSchema)),
+      // Tab/Shift-Tab, confined to list items (v4 item (e)) — above the base
+      // keymap so it wins the plain Tab that would otherwise fall through to
+      // the browser's own focus-move default.
+      keymap(dialectListNavigationKeymap(dialectSchema)),
       keymap(baseKeymap),
       this.placeholderPlugin(),
     ];

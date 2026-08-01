@@ -1,7 +1,9 @@
 import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TextSelection } from 'prosemirror-state';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import './jsdom-range-shim';
 import { RichEditor } from './rich-editor';
 
 @Component({
@@ -42,6 +44,14 @@ function pressEnter(fixture: ComponentFixture<Host>, mods: KeyboardEventInit = {
   const el = fixture.nativeElement.querySelector('.qt-rich-editor-content') as HTMLElement;
   el.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...mods }),
+  );
+}
+
+/** Dispatch a Tab (or Shift-Tab) keydown on the ProseMirror content element. */
+function pressTab(fixture: ComponentFixture<Host>, mods: KeyboardEventInit = {}): void {
+  const el = fixture.nativeElement.querySelector('.qt-rich-editor-content') as HTMLElement;
+  el.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true, ...mods }),
   );
 }
 
@@ -115,6 +125,61 @@ describe('RichEditor — the ProseMirror handle', () => {
     fixture.detectChanges();
     pressEnter(fixture, IS_MAC ? { metaKey: true } : { ctrlKey: true });
     expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+});
+
+/**
+ * Tab/Shift-Tab sub-list indentation (P4.D40, v4 item (e)+(b)) — driven
+ * through the REAL component with real DOM keydown events, so this proves the
+ * whole wire: `keymap()` → {@link dialectListNavigationKeymap} →
+ * `selectionInListItem` → `sinkListItem`/`liftListItem` →
+ * `dispatchTransaction` → `serializeMarkdown` re-indenting to the SAME unit
+ * token {@link RichEditor} threads across its lifetime.
+ */
+describe('RichEditor — Tab/Shift-Tab list indentation', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /** Move the caret to the end of the document (mirrors v4's `selectEnd()`). */
+  function caretAtEnd(fixture: ComponentFixture<Host>): void {
+    fixture.componentInstance.editor().runCommand((state, dispatch) => {
+      if (dispatch) dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+      return true;
+    });
+  }
+
+  it('nests the item the caret sits in, then lifts it back out', async () => {
+    const fixture = await render();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('- alpha\n- beta');
+    caretAtEnd(fixture);
+
+    pressTab(fixture);
+    expect(editor.getMarkdown()).toBe('- alpha\n  - beta');
+
+    pressTab(fixture, { shiftKey: true });
+    expect(editor.getMarkdown()).toBe('- alpha\n- beta');
+  });
+
+  it('preserves the document\'s own 4-space unit across a Tab-driven edit', async () => {
+    // The default unit (2) could not accidentally pass this — the document was
+    // loaded at 4-space nesting, and the export after Tab must stay 4-space.
+    const fixture = await render();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('- alpha\n    - beta\n- gamma');
+    caretAtEnd(fixture);
+
+    pressTab(fixture);
+    expect(editor.getMarkdown()).toBe('- alpha\n    - beta\n    - gamma');
+  });
+
+  it('does not indent outside a list (Tab falls through)', async () => {
+    const fixture = await render();
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('Just prose.\n\n- alpha');
+    // Default caret after setMarkdown sits at the start of the document — in
+    // the paragraph, not the list.
+    pressTab(fixture);
+    expect(editor.getMarkdown()).toBe('Just prose.\n\n- alpha');
   });
 });
 

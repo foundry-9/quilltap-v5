@@ -49706,3 +49706,53 @@ Gate: `ng test --include='src/app/editor/**/*.spec.ts'` green (65 in
 `markdown-round-trip.spec.ts` alone, up from the prior ~54).
 
 SPA 0.5.359.
+
+### Unit record — P4.D40 unit 3: Tab/Shift-Tab list navigation (2026-08-01)
+
+v4's item (e) (`FormattingCommandPlugin`'s `KEY_TAB_COMMAND` handler +
+`$selectionIsInListItem`) ported to ProseMirror in `editing-commands.ts`:
+`selectionInListItem(state)` walks both selection endpoints' `$pos.node(depth)`
+ancestor chain for a `list_item` type, and `dialectListNavigationKeymap(schema)`
+binds `Tab`/`Shift-Tab` to `sinkListItem`/`liftListItem`, gated on it — false
+outside a list (so the browser's own focus-move fires), unconditionally `true`
+(handled) inside one even when sinking/lifting has nothing to do (v4's
+first-item case). Wired into `rich-editor.ts`'s `buildPlugins`, above the base
+keymap.
+
+**v4's caret-ambiguity bug has no PM analog, structurally, not by luck.** v4's
+`getNodes()`-only check went blind on a Lexical *element* point (the shape a
+plain click can produce); ProseMirror's `$pos.node(depth)` always resolves the
+full ancestor chain for ANY selection endpoint — text point, element boundary,
+or NodeSelection — so there is no separate ambiguous-caret arm to special-case.
+Proved rather than assumed: `editing-commands.spec.ts` ports v4's
+`list-item-selection.test.ts` case-for-case (caret at start/mid/end of text,
+inside either of an item's inline runs, on an empty item, spanning several
+items, false outside a list) plus the Tab/Shift-Tab dispatch itself (nest,
+lift, first-item-still-handled, falls-through-outside-a-list ×2) — 14 new
+specs, all green without any special-casing.
+
+**`rich-editor.spec.ts` proves the whole wire with real DOM `keydown` events**
+dispatched at the mounted component (not just the bare command functions):
+nest-then-lift round-trips a plain list, a 4-space document's Tab-driven
+indent stays 4-space (not the default 2 — the same per-instance `unitToken`
+threading from unit 2, `this` as the token, across the whole component
+lifetime), and Tab outside a list is a true no-op.
+
+**A pre-existing jsdom gap surfaced and was fixed (not a v5 port bug):**
+`sinkListItem`/`liftListItem` (and the pre-existing Shift-Enter `insertBreak`,
+never previously exercised by a test) call `.scrollIntoView()` on their
+transaction; `prosemirror-view`'s `coordsAtPos`/`singleRect` then calls
+`target.getClientRects()` on a `Range`, which jsdom implements for `Element`
+but NOT `Range` — an uncaught exception that failed `ng test`'s exit code
+despite every assertion passing (`Errors 3 errors` alongside `198 passed`).
+New `jsdom-range-shim.ts` (imported for its side effect by both
+`rich-editor.spec.ts` and unit 4's `markdown-field.spec.ts`) stubs both
+`Range.prototype.getClientRects`/`getBoundingClientRect` to jsdom's own
+zeroed-rect shape — a real browser's non-empty Range answers both, so this
+only fills a test-environment gap, no product code is affected.
+
+Gate: `ng test --include='src/app/editor/**/*.spec.ts'` — 7 files / 198 passed,
+zero unhandled errors (post-shim; pre-shim reproduced the 3-error failure and
+confirmed exit code 1).
+
+SPA 0.5.360.

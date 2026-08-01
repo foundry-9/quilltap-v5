@@ -1,7 +1,13 @@
+import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, TextSelection, type Command } from 'prosemirror-state';
 import { describe, expect, it } from 'vitest';
 
-import { dialectFormattingKeymap, dialectInputRules } from './editing-commands';
+import {
+  dialectFormattingKeymap,
+  dialectInputRules,
+  dialectListNavigationKeymap,
+  selectionInListItem,
+} from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 
 const keys = dialectFormattingKeymap(dialectSchema);
@@ -158,5 +164,154 @@ describe('dialectInputRules — emphasis-on-type (v4 MarkdownShortcut)', () => {
 
   it('formats mid-line, after existing prose (`say **now**`)', () => {
     expect(typeClosing('say **now*', '*')).toBe('say **now**');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectionInListItem + Tab/Shift-Tab (v4 `$selectionIsInListItem` +
+// `FormattingCommandPlugin`'s `KEY_TAB_COMMAND`, list-item-selection.test.ts
+// and item (e) of the P4.D40 order)
+// ---------------------------------------------------------------------------
+
+/** The offset just past the first occurrence of `text` in the document. */
+function textPos(doc: PMNode, text: string): number {
+  let found = -1;
+  doc.descendants((node, pos) => {
+    if (found !== -1) return false;
+    if (node.isText) {
+      const at = node.text?.indexOf(text) ?? -1;
+      if (at !== -1) found = pos + at;
+    }
+    return true;
+  });
+  if (found === -1) throw new Error(`text not found: ${text}`);
+  return found;
+}
+
+function stateFor(md: string): EditorState {
+  return EditorState.create({ doc: parseMarkdown(md), schema: dialectSchema });
+}
+
+describe('selectionInListItem (v4 $selectionIsInListItem)', () => {
+  it.each([
+    ['at the start of the text', 0],
+    ['mid-word', 2],
+    ['at the end of the text', 4],
+  ])('is true with the caret %s', (_label, into) => {
+    const state = stateFor('- alpha\n- beta');
+    const pos = textPos(state.doc, 'beta') + into;
+    const next = state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+    expect(selectionInListItem(next)).toBe(true);
+  });
+
+  it("is true inside any of an item's inline runs", () => {
+    // "**Jackie** (3 nodes)" is a bold run followed by a plain one; the caret
+    // must count as "in a list item" in either.
+    const state = stateFor('- alpha\n- **Jackie** (3 nodes)');
+    const inBold = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'Jackie') + 2)),
+    );
+    expect(selectionInListItem(inBold)).toBe(true);
+
+    const inPlain = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'nodes') + 2)),
+    );
+    expect(selectionInListItem(inPlain)).toBe(true);
+  });
+
+  it('is true when the caret sits on an empty list item', () => {
+    const state = stateFor('- alpha\n- ');
+    const list = state.doc.firstChild!;
+    const empty = list.lastChild!;
+    expect(empty.textContent).toBe('');
+    const next = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+    expect(selectionInListItem(next)).toBe(true);
+  });
+
+  it('is true for a selection spanning several list items', () => {
+    const state = stateFor('- alpha\n- beta\n- gamma');
+    const from = textPos(state.doc, 'alpha') + 1;
+    const to = textPos(state.doc, 'gamma') + 2;
+    const next = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+    expect(selectionInListItem(next)).toBe(true);
+  });
+
+  it('is false in a paragraph', () => {
+    const state = stateFor('Just prose.\n\n- alpha');
+    const next = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'prose') + 3)),
+    );
+    expect(selectionInListItem(next)).toBe(false);
+  });
+});
+
+describe('dialectListNavigationKeymap (v4 KEY_TAB_COMMAND)', () => {
+  const nav = dialectListNavigationKeymap(dialectSchema);
+
+  it('Tab nests the item the caret sits in', () => {
+    const state = stateFor('- alpha\n- beta');
+    const at = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'beta') + 2)),
+    );
+    let next = at;
+    const handled = (nav['Tab'] as Command)(at, (tr) => {
+      next = at.apply(tr);
+    });
+    expect(handled).toBe(true);
+    expect(serializeMarkdown(next.doc)).toBe('- alpha\n  - beta');
+  });
+
+  it('Shift-Tab lifts the item back out', () => {
+    const state = stateFor('- alpha\n  - beta');
+    const at = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'beta') + 2)),
+    );
+    let next = at;
+    const handled = (nav['Shift-Tab'] as Command)(at, (tr) => {
+      next = at.apply(tr);
+    });
+    expect(handled).toBe(true);
+    expect(serializeMarkdown(next.doc)).toBe('- alpha\n- beta');
+  });
+
+  it('Tab on a list item that cannot sink is still handled (no focus change)', () => {
+    // v4's Tab handler unconditionally confirms/handles once the selection is
+    // in a list — even when indenting has nothing to do (the first item of a
+    // list has no earlier sibling to nest under).
+    const state = stateFor('- alpha\n- beta');
+    const at = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'alpha') + 2)),
+    );
+    let dispatched = false;
+    const handled = (nav['Tab'] as Command)(at, () => {
+      dispatched = true;
+    });
+    expect(handled).toBe(true);
+    // sinkListItem has nothing to do for a first item — no transaction fires.
+    expect(dispatched).toBe(false);
+  });
+
+  it('Tab outside a list falls through (browser moves focus)', () => {
+    const state = stateFor('Just prose.\n\n- alpha');
+    const at = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'prose') + 3)),
+    );
+    let dispatched = false;
+    const handled = (nav['Tab'] as Command)(at, () => {
+      dispatched = true;
+    });
+    expect(handled).toBe(false);
+    expect(dispatched).toBe(false);
+  });
+
+  it('Shift-Tab outside a list falls through', () => {
+    const state = stateFor('Just prose.');
+    const at = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, textPos(state.doc, 'prose') + 3)),
+    );
+    const handled = (nav['Shift-Tab'] as Command)(at, () => {
+      throw new Error('should not dispatch outside a list');
+    });
+    expect(handled).toBe(false);
   });
 });

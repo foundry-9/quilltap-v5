@@ -265,6 +265,27 @@ character's opt-out from a shared default is itself an item, and filtering
 first would throw it away before it could do its job. The equip path, which
 needs archived garments so it can still name what someone is wearing, does not
 use this and says so.
+Gave the editor Tab/Shift+Tab list indent and outdent, confined to list items
+(P4.D40, tier 1 unit 3) — Markdown has no way to represent an indented
+paragraph, so pressing Tab anywhere else still moves focus like a normal
+textbox. A ProseMirror caret always knows its full ancestor chain, so unlike
+the reference app the check needed no special case for an ambiguous caret
+position; it is simply true whenever either end of the selection sits inside
+a list item. Tab nests the item under its previous sibling and Shift+Tab
+lifts it back out, both dispatched through the standard ProseMirror list
+commands, and — matching the reference app — pressing Tab on an item that
+has nothing to nest under (the first item in a list) still counts as
+handled rather than falling through to focus-move. Verified with real DOM
+keydown events dispatched at the live editor component, including a
+4-space document proving the indent still preserves that document's own
+nesting width rather than the two-space default. Also fixes a latent gap
+this uncovered: jsdom implements `Element.getClientRects`/
+`getBoundingClientRect` but not `Range`'s, so any editor command that asks
+the browser to scroll a change into view (already true of the pre-existing
+Shift+Enter line break, just never previously exercised by a test) threw
+under the test environment; a small shared stub answers both the way a
+real browser's Range would.
+
 Wired list-indentation unit memory into the editor's Markdown bridge
 (P4.D40, tier 1 unit 2). Loading a document now records the nesting width it
 was written with, and every save re-indents to that same width instead of
