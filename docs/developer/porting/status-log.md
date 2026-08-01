@@ -46908,3 +46908,23 @@ Plus the two copy affordances where v4 keeps its own tick AND toasts: the
 Document pane's "Document URL copied" (`DocumentPane.tsx:553`) and the terminal
 popout's kill failure (`TerminalPopoutPageClient.tsx:26,29` — v4 raises the same
 line from both arms).
+
+## Lane record — P4.25: census corrections after the later units
+
+Three rows moved once the v5 side was read closely:
+
+- `components/settings/connection-profiles/index.tsx` (3) — **UNPORTED, not
+  OPEN**: v5's `connection-profiles-card` has no auto-configure affordance at
+  all, so there is nothing to attach v4's three sentences to.
+- `components/settings/api-keys/ApiKeyModal.tsx` (1) — **OPEN, needs a read
+  first**: v4 raises one 4000 ms toast PER auto-association returned on the
+  create reply (`:107`); v5's modal never reads `associations`, so the toast
+  needs that field wired before it can be raised.
+- `app/salon/[id]/components/DocumentPane.tsx` (1) and
+  `app/salon/[id]/terminal/[sessionId]/TerminalPopoutPageClient.tsx` (2) moved
+  from OPEN to **CONVERTED** in unit 8, along with the six settings cards
+  (`memory-backfill`, `memory-recall`, `memory-regenerate`,
+  `memory-housekeeping`, `DataRetentionSettings`, `delete-data`), the four
+  memory/enclave files and the two gallery/profile affordances in unit 7.
+
+**Revised tally: 106 files — 68 CONVERTED, 15 OPEN, 23 UNPORTED.**
