@@ -48454,3 +48454,31 @@ rather than assumed.
 + `formatDefinitionIssues` + `collectUnknownKeys`, emitting
 `{kind,id,inputJson,success,reason,data,unknownKeys}`; the `target` rows drive
 `parseEffectTarget` directly and serialize the parsed target.
+
+## Lane record — P4.D36 unit 3: the draft layer (2026-08-01)
+
+`tool-draft.ts` — v4 `c4d4b0de`'s +212 lines ported: `DraftEffect` (the
+three-armed `when`: always / outcome-state / verbatim), `ToolDraft.chipLabel`
+and `.effects`, `newDraft`'s two new defaults, `isPlainOutcomeEq` (exactly one
+defined key, `outcome.eq` set, no `neq` — the one shape besides Always the form
+authors), the `effectToDraft`/`effectFromDraft` round trip, the two
+`KNOWN_KEY_ORDER` entries (`chipLabel` after `title`, `effects` after `llm`),
+`definitionFromDraft`'s two conditional emissions, `DraftIssue.where`'s
+`field:'chipLabel'` and `{section:'effect', id}` arms, and the two new
+validators (`validateChipLabelPlaceholders` — WARNINGS only, since an unknown
+placeholder renders as written and the schema imposes no reference rule on a
+label; `validateDraftEffects` — the load-time rules said beside the row).
+
+A hand-written richer condition rides VERBATIM behind a read-only badge: the
+established `$state`-default precedent, where the builder round-trips what it
+cannot author.
+
+**Teeth** — v4's two new suites (`tool-draft.test.ts` +155) ported
+case-for-case into `tool-draft.spec.ts`; 75 tests total in the file. The
+round-trip cases go through the SAME `expectRoundTrip` helper the rest of the
+suite uses, so an effect that failed to survive the bijection is a deep-equal
+failure rather than a silent drop.
+
+**Mutation proof** — the two new round-trip cases were green on the first run,
+so `definitionFromDraft`'s `chipLabel` and `effects` emissions were each
+disabled in turn: both went red, restored green.

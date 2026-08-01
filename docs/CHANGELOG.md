@@ -72,6 +72,15 @@ sentence is reproduced word for word against the reference app, including
 the character positions it reports, which count the way text is counted in a
 browser rather than in bytes. Verified with a new 125-case differential and
 three deliberate breakages to prove it catches them.
+Extended the tool builder's working model to hold a chip label and a list
+of side effects, and to hand them back unchanged when the file is saved
+again. A condition richer than the form can draw — the kind a person writes
+by hand in the raw file — is carried through untouched behind a read-only
+badge rather than quietly dropped. Both new fields are audited as they are
+typed: an unknown placeholder in the label is a gentle warning, while a
+target that names nowhere writable, or a formula that will not parse, is a
+blocking error said beside the row that caused it.
+
 Taught the browser's copy of the custom-tool format about the two new
 things a tool may declare: a per-run label for its result chip, and a list
 of side effects — small writes a roll records once the dice have settled.
