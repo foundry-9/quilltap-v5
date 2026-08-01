@@ -8,6 +8,7 @@ pub mod js_value;
 pub mod llm_consult;
 pub mod metadata_match;
 pub mod roster;
+pub mod side_effects;
 pub mod tool_gate;
 pub mod tool_vocabulary;
 pub mod workbench;

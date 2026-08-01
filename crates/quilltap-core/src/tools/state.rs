@@ -645,7 +645,7 @@ fn is_underscore_key(parsed_path: &[PathKey]) -> bool {
 }
 
 /// Write the chat's `state` column (`repos.chats.update(chatId, { state })`).
-fn write_chat_state(
+pub(crate) fn write_chat_state(
     writers: &mut crate::db::runtime::WriterSet,
     chat_id: &str,
     new_state: &Value,
@@ -659,7 +659,7 @@ fn write_chat_state(
 }
 
 /// Write the project's `state.json` overlay (`repos.projects.update(id, { state })`).
-fn write_project_state(
+pub(crate) fn write_project_state(
     writers: &mut crate::db::runtime::WriterSet,
     project_id: &str,
     new_state: &Value,
@@ -678,7 +678,7 @@ fn write_project_state(
 }
 
 /// Write the group's `state.json` overlay (`repos.groups.update(id, { state })`).
-fn write_group_state(
+pub(crate) fn write_group_state(
     writers: &mut crate::db::runtime::WriterSet,
     group_id: &str,
     new_state: &Value,

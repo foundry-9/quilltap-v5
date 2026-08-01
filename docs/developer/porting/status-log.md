@@ -48046,3 +48046,48 @@ applied and reverted:
 3. Treat `outcome.neq` as `eq` → RED at the same case.
 
 `simulate_outcomes` is untouched and so still ignores both, as v4's audit does.
+
+### Lane record — P4.D35 unit 4: `pascal/side_effects.rs` (the applier)
+
+Ported v4's NEW `lib/pascal/side-effects.ts` (227 lines): `AppliedEffect`,
+`EffectTier`, `apply_custom_tool_effects`, `resolve_tier`. Faithful to the
+pipeline: filter applicable → local working copies of the four cascade tiers +
+a lazy `metadata_next` → per-effect metadata/state branch (characterId gate,
+underscore RE-CHECK, "write where it lives", `get_at_path` previous,
+`set_at_path`) → commit in the fixed order chat → project → group → general →
+metadata, ONE write per touched store, each individually caught → applied list
+in EFFECT order with a failed store's entries dropped.
+
+**The big non-1:1, and how it was expressed.** v4 awaits five uniform
+`repos.*.update` calls through its buffered proxy. v5's four state paths are
+heterogeneous — the chat tier is a real column, project and group state go
+through the document-store overlay writers, general state is the mount-root
+document, character metadata is the `metadata.json` whole-object replace — so
+the applier is SYNCHRONOUS over a borrowed `WriterSet`, run inside the one
+`Db::write` closure each entrance opens. `Db::write` wraps nothing in a
+transaction, so v4's per-store `try/catch` maps directly onto per-store
+`Result` handling with no partial-transaction hazard. The three tier writers are
+`crate::tools::state::write_{chat,project,group}_state`, made `pub(crate)`
+rather than re-implemented — v4 and v5 both have exactly one way to write each
+tier, and a second copy here would drift.
+
+**Two details the port had to get right explicitly.**
+
+- `previous` distinguishes ABSENT from `null`. `Option<Value>`: `None` is v4's
+  `undefined` and serializes to nothing; `Some(Value::Null)` is a stored null
+  and DOES serialize. Both `Map::get` and `get_at_path` already return
+  `Some(Null)` for a stored null, so this fell out — but it is asserted, because
+  `pascalMeta.effects` is persisted payload.
+- `resolve_tier` uses `hasOwnProperty`, NOT truthiness: a key holding
+  `null`/`0`/`false`/`""` still pins its tier. Unit-asserted over all four.
+
+**Tier-2 item 9 — where v4's `side-effects.test.ts` matrix is pinned.** v4 mocks
+its repositories, so all 17 of its arms run in one unit file. v5's applier takes
+real writer connections, so the matrix splits: the pure SEARCH (7 unit tests
+here — every tier, the nowhere-default, the chat-wins precedence, the
+no-projectId skip, the ambiguous-group shadowing consequence, falsy-value
+presence, and the `AppliedEffect` key order) is pinned unit-side; the WRITES
+(batching, sequential effects seeing each other, metadata RMW, cascade-null,
+per-store failure isolation, the underscore re-check) are pinned end-to-end by
+the two route differentials over the rebuilt fixture in unit 6. Nothing is
+hand-inserted.

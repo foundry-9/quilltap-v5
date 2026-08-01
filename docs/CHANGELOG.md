@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Added the part that actually performs a custom tool's side effects. A write
+lands in the store where its key already lives — the conversation first, then
+the project, then the group, then the shared store — and a brand-new key goes
+to the conversation, the most local place with the least reach. Each store is
+written at most once no matter how many effects touch it, in a fixed order, and
+each write is caught on its own: if one store refuses, only its own effects are
+dropped and the rest still land. A run nobody made writes to nobody's character
+sheet. The user-only underscore keys are refused a second time here, behind the
+refusal that already happens when the file is read. Nothing here can fail a
+roll that already happened.
+
 Taught a custom-tool roll to work out its chip label and its side effects.
 The label is rendered once, after the outcome is chosen, so it can quote
 anything the outcome message can — including the answer of a mid-roll consult.
