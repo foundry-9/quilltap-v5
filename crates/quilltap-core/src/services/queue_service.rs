@@ -968,19 +968,24 @@ pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbErr
 /// `LLM_LOG_CLEANUP` job (`{ userId, retentionDays }`). Returns `(usersProcessed,
 /// jobsEnqueued)`. The host driver calls this on the daily cadence (v4 runs it
 /// immediately on startup — no grace).
+///
+/// ⚠️ **The bag defaults are load-bearing** (P4.24). v4's `findAll` Zod-parses
+/// every row, so a `chat_settings` row whose `llmLoggingSettings` cell is SQL
+/// NULL arrives as `LLMLoggingSettingsSchema`'s default —
+/// `{ enabled: true, retentionDays: 30 }` — and IS swept. This function used to
+/// read a NULL cell as "not configured" and `continue`, which silently dropped
+/// such a user from the daily sweep forever; the first differential ever pointed
+/// at this enqueuer caught it. Both this and the handler resolve the bag through
+/// [`llm_logging_settings_defaults`] so they cannot drift apart again.
 pub async fn run_scheduled_cleanup(db: &Db) -> Result<(usize, usize), DbError> {
     let settings = db.read_main(crate::db::chat_settings::find_all_scheduler_settings)?;
     let mut users_processed = 0usize;
     let mut jobs_enqueued = 0usize;
     for s in &settings {
-        let Some(llm) = &s.llm_logging_settings else {
-            continue;
-        };
-        let enabled = llm.get("enabled").and_then(Value::as_bool).unwrap_or(false);
-        let retention_days = llm
-            .get("retentionDays")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0);
+        let (enabled, retention_days) =
+            crate::services::llm_log_cleanup_job::llm_logging_settings_defaults(
+                s.llm_logging_settings.as_ref(),
+            );
         if !enabled || retention_days <= 0.0 {
             continue;
         }

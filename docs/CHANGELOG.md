@@ -28,7 +28,10 @@ growing. The retention window you set under Settings → Chat is honoured once
 more, counted in whole local calendar days so the boundary does not drift by an
 hour when daylight saving comes or goes. Setting the window to zero still means
 "keep everything", and switching logging off leaves what you already have
-untouched.
+untouched. A related oversight is fixed alongside: an older settings record
+that had never had its logging preferences written out was being skipped by the
+nightly sweep entirely, and is now swept on the same defaults everything else
+uses.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper

@@ -46218,3 +46218,90 @@ differential contract).
 
 Still unregistered at this commit — the handler exists but nothing runs it; the
 spine registration is unit 4, and the differential drives the handler directly.
+
+## Lane record — P4.24 unit 3 (the `llm_log_cleanup` differential family)
+
+New committed fixture family `llm-log-cleanup-{main,llmlogs}.db` (nine users,
+eight `chat_settings` rows, eight pinned PENDING jobs, twenty log rows), its
+builder, two oracle cases, and
+`crates/quilltap-harness/tests/llm_log_cleanup_equivalence.rs` — **four tests
+across three legs**, all green over oracles generated fresh at `ff12f491`.
+
+**Two timezone legs, because one would have been blind.** v4's cutoff is local
+calendar-day arithmetic, which agrees with `now − N × 86_400_000` under UTC and
+differs by an hour across a DST transition. The corpus pins the clock at
+`2026-03-15T17:00:00Z` — a week after the 2026-03-08 spring-forward — and places
+log rows AT each leg's cutoff and inside the one-hour gap between them. Measured
+result: the UTC leg leaves 16 rows, the Chicago leg 12. A third test,
+`legs_disagree_on_the_dst_hour`, compares the two ORACLES directly and fails if
+they ever stop disagreeing — so a corpus that quietly drifts off the DST
+boundary is a red, not a silently weaker family.
+
+**Mutation-proven (the D24 rule), six deliberate breaks, each rebuilt from
+scratch and each red where it should be:**
+
+| break | result |
+|---|---|
+| zone forced to `UTC`, calendar step intact | UTC **green**, Chicago **red** |
+| cutoff → `now − N × 86_400_000` | both legs red |
+| step-4 `enabled` gate dropped | both legs red |
+| step 4 bails on a missing settings row | both legs red |
+| step-3 gate `<= 0` → `< 0` | both legs red |
+| enqueuer skips a NULL `llmLoggingSettings` cell | enqueue leg red |
+
+The first row is the one worth keeping: a zone-blind port really would have
+sailed through a UTC-only family.
+
+**The enqueuer leg found a second bug, and it was the worse one.**
+`run_scheduled_cleanup` has shipped since P4.1d with no differential at all —
+which is how finding #41 (`retentionDays` serialized `7.0`) shipped. Pointing
+one at it immediately turned up: a `chat_settings` row whose
+`llmLoggingSettings` cell is SQL **NULL** is Zod-defaulted by v4's `findAll` to
+`{ enabled: true, retentionDays: 30 }` and IS swept, where v5 read the NULL as
+"not configured" and `continue`d — dropping that user from the daily sweep
+**forever**, silently. Fixed by routing both the enqueuer and the handler
+through one `llm_logging_settings_defaults`, so they cannot drift apart again.
+The leg diffs the minted `background_jobs` rows INCLUDING payload bytes, which
+is what now pins #41's `10`-not-`10.0` and `0.5` renderings at the differential
+level. Its shape guard names the four arms that must enqueue, so a corpus that
+stops covering a branch of v4's `enabled && retentionDays > 0` filter fails
+rather than shrinking quietly.
+
+**Checked and NOT a bug:** the sibling `run_scheduled_maintenance` reads
+`autoHousekeepingSettings` the same way, but that schema's `enabled` defaults
+**false**, so v5's `None → skip` happens to agree with v4 for a NULL cell.
+Recorded so the next reader does not have to re-derive it.
+
+**Two arms deliberately left out of the corpus**, both unreachable from either
+app and both recorded rather than modeled at the differential level:
+
+- The repository's `retentionDays < 0` warn-and-return-zero guard, which the
+  handler's `<= 0` gate makes unreachable through the job. Covered by unit-1
+  unit tests instead.
+- v4's `Invalid Date` → `RangeError: Invalid time value` throw. `retentionDays`
+  is Zod-bounded `0..=365` and the enqueuer mints it from that number, so no
+  payload either app produces can reach it. v5 returns
+  `DbError::Key("Invalid time value")`, whose `Display` prefixes
+  `key derivation failed: ` — a message-text divergence in an arm neither app
+  can reach, left alone rather than widening `DbError` for it.
+
+Consequently **every job in the corpus COMPLETES**; the handler has no reachable
+failure arm, so the `background_jobs` diff pins status/attempts/`completedAt`
+shape rather than a FAILED→DEAD walk. Said plainly here so a future reader does
+not mistake the absence for an untested path.
+
+v4's own jest coverage was checked (tier-2 item 7): it exists —
+`__tests__/unit/background-jobs/llm-log-cleanup.test.ts`, five cases over
+fully-mocked repositories (retention 0, logging disabled, the settings window,
+the payload override, and a missing settings row). Every one of those arms is
+covered here against the REAL repository over a real encrypted partition, so
+they were not re-created as weaker Rust mirrors.
+
+**⚠️ Environment gotcha worth carrying:** the oracle NDJSONs vanished from
+`/tmp` mid-lane — a sibling lane in this same round evidently sweeps
+`/tmp/oracle-*.ndjson`. The symptom is not a clean "file not found" but a
+confusing run where some legs pass and others fail depending on when the file
+disappeared. During a parallel round, generate oracles into a lane-private
+directory and treat any mid-run change in which tests fail as suspect until the
+NDJSONs are re-checked. (The committed recipe keeps the repo-wide `/tmp`
+convention.)

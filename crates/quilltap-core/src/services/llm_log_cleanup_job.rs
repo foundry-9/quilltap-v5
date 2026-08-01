@@ -79,13 +79,22 @@ impl LlmLogCleanupPayload {
 }
 
 /// v4 `LLMLoggingSettingsSchema` materialized over a stored `llmLoggingSettings`
-/// cell: `enabled` defaults `true`, `retentionDays` defaults `30`. A NULL cell
-/// (or an absent key) is v4's `undefined`, which the outer
-/// `.default({ enabled: true, verboseMode: false, retentionDays: 30 })` fills in
-/// — which is also why the handler's `?? 30` is unreachable in v4 and is ported
-/// as the equivalent default rather than as a second fallback.
-fn llm_logging_bag(settings: &Value) -> (bool, f64) {
-    let bag = settings.get("llmLoggingSettings");
+/// cell — `(enabled, retentionDays)`, defaulting `true` / `30`.
+///
+/// A NULL cell (or an absent key) is v4's `undefined`, which the outer
+/// `.default({ enabled: true, verboseMode: false, retentionDays: 30 })` fills in.
+/// That is why the handler's `?? 30` is unreachable in v4 and is ported as the
+/// equivalent default rather than as a second fallback — and it is not a
+/// harmless detail: the **enqueuer** consults the same bag, so reading a NULL
+/// cell as "not configured" silently drops that user from the daily sweep
+/// forever. Both callers go through this one function for exactly that reason.
+///
+/// One boundary this does not reproduce (recorded, not widened): a *malformed*
+/// bag — a wrong-typed field, not an absent one — makes v4's Zod parse throw,
+/// which its `safeQuery` turns into `null` for `findByUserId` and into an empty
+/// list for `findAll`. Here it degrades to the defaults instead. No v4 write
+/// produces such a cell.
+pub fn llm_logging_settings_defaults(bag: Option<&Value>) -> (bool, f64) {
     let enabled = bag
         .and_then(|b| b.get("enabled"))
         .and_then(Value::as_bool)
@@ -95,6 +104,11 @@ fn llm_logging_bag(settings: &Value) -> (bool, f64) {
         .and_then(Value::as_f64)
         .unwrap_or(30.0);
     (enabled, retention_days)
+}
+
+/// [`llm_logging_settings_defaults`] over a whole `chat_settings` object.
+fn llm_logging_bag(settings: &Value) -> (bool, f64) {
+    llm_logging_settings_defaults(settings.get("llmLoggingSettings"))
 }
 
 /// v4's `findByUserId` under its `null`-fallback `safeQuery`: a read failure is
