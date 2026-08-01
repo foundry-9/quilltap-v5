@@ -48906,3 +48906,50 @@ cd ~/source/quilltap-server
 QT_ORACLE_ANNOUNCEMENT_ATTRIBUTION=/tmp/oracle-announcement-attribution.ndjson \
   cargo test -p quilltap-harness --test announcement_attribution_equivalence
 ```
+## Lane record — P4.D38 unit 1: `whisper-visibility.ts` re-port (both commits)
+
+`apps/web/src/app/chat/whisper-visibility.ts` ported v4's fully-drifted
+`app/salon/[id]/whisper-visibility.ts` at the `c4d4b0de` pin — both
+`a163862c` and `424a7381` folded together, since v5 had only the
+pre-drift `OPERATOR_FACING_WHISPER_SENDERS` set (a re-port that predates
+this round).
+
+- **`OPERATOR_FACING_WHISPER_SENDERS` (a `Set<SystemSender>`) is DELETED**,
+  replaced by `OPERATOR_FACING_WHISPER_KINDS: ReadonlyMap<SystemSender,
+  ReadonlySet<string>>` — `pascal → {'custom-tool-result'}`, `prospero →
+  {'tool-run','custom-tool-error','carina-error'}` — keyed on sender AND
+  kind rather than sender alone. This closes a real v5 leak: Prospero's
+  `group-context` whisper (one character learning which group shelves it
+  may read — the highest-volume whisper in the app) was previously shown
+  to the operator with the toggle off, exactly the leak v4's own commit
+  message describes.
+- `isOperatorFacingStaffWhisper` (private): no `systemSender` → false;
+  sender not in the map → false; **`!msg.systemKind` → true** (the legacy
+  arm — a pre-column row keeps the old sender-level exemption rather than
+  vanishing); else `kinds.has(msg.systemKind)`.
+- `isOperatorAuthoredAnnouncement(msg)` (new export) = `msg.systemKind ===
+  'announcement'`. `isMessageVisibleToOperator` checks it right after the
+  All-Whispers gate — a whispered Insert-Announcement bubble has no
+  `participantId` to match its author against, so without this arm it
+  would vanish the instant the operator posted it.
+- `whisper-visibility.spec.ts` grown from 5 pre-drift cases to the full
+  20-case v4 inventory (`__tests__/unit/app/salon/whisper-visibility.test.ts`
+  at the pin, ported case-for-case, same describe/it structure): the
+  group-context hide-then-show pair, the legacy-row arm, the four
+  operator-machinery arms (`pascal/custom-tool-result`,
+  `prospero/{tool-run,custom-tool-error,carina-error}`), the three
+  whispered-announcement arms (three Staff signers + the `systemSender:
+  null` custom-name arm), and the standalone
+  `isOperatorAuthoredAnnouncement` unit.
+- **Mutation-proven**: flipped `if (!msg.systemKind) return true` to
+  `return false` — exactly one spec failed ("keeps sender-level behaviour
+  for legacy rows with no stored kind"), the other 19 stayed green,
+  confirming the spec's sensitivity to that one line. Reverted before
+  committing.
+- No other consumer referenced the deleted set (grepped
+  `OPERATOR_FACING_WHISPER_SENDERS` across `apps/web/src`); the sole
+  consumer, `salon-conversation.ts`, imports only `isMessageVisibleToOperator`.
+
+Gate for this unit: `npx vitest run src/app/chat/whisper-visibility.spec.ts`
+— 20/20 green (full workspace `ng test` deferred to the lane's closing
+commit).

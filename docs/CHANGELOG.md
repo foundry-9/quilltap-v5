@@ -160,6 +160,17 @@ itself stays forgiving: a stale name there simply drops out of the audience
 rather than failing the preview. Verified against the reference app's real
 code across fifty-six compared cases, with deliberate breakages proving
 each new check can actually fail.
+The operator now keeps seeing their own private asides no matter who they're
+signed as, and Prospero's busiest whisper — telling one character which group
+shelves it may read — finally stays hidden behind the All Whispers toggle
+instead of leaking into the main flow. The visibility rule that decides which
+whispers the operator sees even with the toggle off is now keyed on the exact
+kind of whisper (a private dice roll, a private tool run and its errors)
+rather than on the sender alone, and a whisper posted through Insert
+Announcement is now recognized as the operator's own writing and never
+hidden or dimmed, whichever Staff member or invented name it's signed as. A
+legacy row with no recorded kind keeps its old behavior rather than
+disappearing from a view the operator is used to.
 
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal

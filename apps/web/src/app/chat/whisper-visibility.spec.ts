@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
-import { isMessageVisibleToOperator } from './whisper-visibility';
+import { isMessageVisibleToOperator, isOperatorAuthoredAnnouncement } from './whisper-visibility';
 
 /**
  * Case-for-case from v4 `__tests__/unit/app/salon/whisper-visibility.test.ts`
- * (the `8e4b00d4` re-port).
+ * at the `c4d4b0de` pin (the `a163862c` + `424a7381` re-port).
  */
 
 const USER_PARTICIPANT = 'user-participant-id';
@@ -17,10 +17,14 @@ const audience = (showAllWhispers: boolean) => ({
   userParticipantIds: new Set([USER_PARTICIPANT]),
 });
 
-type FilterInput = Pick<MessageDto, 'systemSender' | 'participantId' | 'targetParticipantIds'>;
+type FilterInput = Pick<
+  MessageDto,
+  'systemSender' | 'systemKind' | 'participantId' | 'targetParticipantIds'
+>;
 
 const message = (overrides: Partial<FilterInput> = {}): FilterInput => ({
   systemSender: null,
+  systemKind: null,
   participantId: CHARACTER_A,
   targetParticipantIds: null,
   ...overrides,
@@ -63,17 +67,57 @@ describe('isMessageVisibleToOperator', () => {
     },
   );
 
-  it.each(['pascal', 'prospero'] as const satisfies readonly SystemSender[])(
-    'shows %s private runs even when the toggle is off — they are operator machinery',
-    (sender) => {
+  it.each([
+    ['pascal', 'custom-tool-result'],
+    ['prospero', 'tool-run'],
+    ['prospero', 'custom-tool-error'],
+    ['prospero', 'carina-error'],
+  ] as const satisfies ReadonlyArray<readonly [SystemSender, string]>)(
+    'shows %s/%s even when the toggle is off — that is operator machinery',
+    (sender, kind) => {
       const run = message({
         systemSender: sender,
+        systemKind: kind,
         participantId: null,
         targetParticipantIds: [CHARACTER_A],
       });
       expect(isMessageVisibleToOperator(run, audience(false))).toBe(true);
     },
   );
+
+  it('hides Prospero group-context whispers — scene machinery addressed to a character', () => {
+    // Prospero telling ONE character which group shelves they may read. Exempting
+    // Prospero by sender leaked these, and they are the highest-volume whisper in
+    // the app, so the leak was not subtle.
+    const groupContext = message({
+      systemSender: 'prospero',
+      systemKind: 'group-context',
+      participantId: null,
+      targetParticipantIds: [CHARACTER_A],
+    });
+    expect(isMessageVisibleToOperator(groupContext, audience(false))).toBe(false);
+    expect(isMessageVisibleToOperator(groupContext, audience(true))).toBe(true);
+  });
+
+  it('still shows a group-context whisper addressed to the human', () => {
+    const toUser = message({
+      systemSender: 'prospero',
+      systemKind: 'group-context',
+      participantId: null,
+      targetParticipantIds: [USER_PARTICIPANT],
+    });
+    expect(isMessageVisibleToOperator(toUser, audience(false))).toBe(true);
+  });
+
+  it('keeps sender-level behaviour for legacy rows with no stored kind', () => {
+    const legacy = message({
+      systemSender: 'pascal',
+      systemKind: null,
+      participantId: null,
+      targetParticipantIds: [CHARACTER_A],
+    });
+    expect(isMessageVisibleToOperator(legacy, audience(false))).toBe(true);
+  });
 
   it('shows Staff whispers addressed to the human regardless of sender', () => {
     const toUser = message({
@@ -95,5 +139,36 @@ describe('isMessageVisibleToOperator', () => {
     });
     expect(isMessageVisibleToOperator(fromUser, audience(false))).toBe(true);
     expect(isMessageVisibleToOperator(betweenCharacters, audience(false))).toBe(false);
+  });
+
+  it.each(['host', 'librarian', 'commonplaceBook'] as const satisfies readonly SystemSender[])(
+    'shows a whispered ad-hoc announcement signed by %s — the operator wrote it',
+    (sender) => {
+      const ownAside = message({
+        systemSender: sender,
+        systemKind: 'announcement',
+        participantId: null,
+        targetParticipantIds: [CHARACTER_A],
+      });
+      expect(isMessageVisibleToOperator(ownAside, audience(false))).toBe(true);
+    },
+  );
+
+  it('shows a whispered announcement posted under a custom name (no systemSender)', () => {
+    const narrator = message({
+      systemSender: null,
+      systemKind: 'announcement',
+      participantId: null,
+      targetParticipantIds: [CHARACTER_B],
+    });
+    expect(isMessageVisibleToOperator(narrator, audience(false))).toBe(true);
+  });
+});
+
+describe('isOperatorAuthoredAnnouncement', () => {
+  it('recognizes only the ad-hoc announcer kind', () => {
+    expect(isOperatorAuthoredAnnouncement({ systemKind: 'announcement' })).toBe(true);
+    expect(isOperatorAuthoredAnnouncement({ systemKind: 'memory-recap' })).toBe(false);
+    expect(isOperatorAuthoredAnnouncement({ systemKind: null })).toBe(false);
   });
 });
