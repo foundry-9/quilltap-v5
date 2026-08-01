@@ -196,6 +196,15 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Fixed an outfit made of shared parts resolving to nothing. A composite garment
+— a livery, a dress uniform, anything that bundles other pieces — used to be
+unpacked using only the wearer's own wardrobe, so when the bundle lived in a
+project store or Quilltap General its pieces were invisible and the whole
+outfit quietly came out empty. The pieces are now fetched a level at a time,
+one lookup per level, as deep as the unpacking itself will go. Listing a
+character's wardrobe now asks the shared pool for its answer instead of
+repeating the merge by hand.
+
 Gave the wardrobe one place to answer "what can this character actually wear?".
 The answer folds the shared tiers — Quilltap General plus any of the project's
 own stores — underneath the character's own vault, so a character's private

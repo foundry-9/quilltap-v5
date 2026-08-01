@@ -9,10 +9,9 @@ use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::db::archetype_wardrobe::find_archetypes;
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::wardrobe_read::find_by_character_id;
+use crate::db::wardrobe_read::find_wearable_pool_for_character;
 use crate::db::DbError;
 
 use super::wardrobe_shared::{find_equipped_slots, resolve_project_mount_point_ids_for_chat};
@@ -121,10 +120,6 @@ fn component_ids_of(item: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn is_archived(item: &Value) -> bool {
-    matches!(item.get("archivedAt"), Some(Value::String(s)) if !s.is_empty())
-}
-
 /// Execute `wardrobe_list` (v4 `executeWardrobeListTool`).
 pub fn execute(
     main: &Connection,
@@ -162,30 +157,13 @@ fn run(
     input: &ListInput,
 ) -> Result<WardrobeListToolOutput, DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
+    // The character's own wardrobe merged under the shared archetypes (project +
+    // Quilltap General). Character items win on id collision so a personal
+    // override masks the shared item. (The group tier is a tracked follow-up —
+    // the repo doesn't accept group mounts yet.)
     let project_mount_point_ids = resolve_project_mount_point_ids_for_chat(main, mount, chat_id);
-    let own_raw = find_by_character_id(main, &docs, character_id, false)?;
-    let archetypes_raw = find_archetypes(main, &docs, false, &project_mount_point_ids)?;
-
-    // Merge: archetypes first, then the character's own items override on id.
-    // `serde_json::Map` (preserve_order = IndexMap) matches v4's `Map.set`
-    // insertion-order semantics (an override keeps the original position).
-    let mut by_id: serde_json::Map<String, Value> = serde_json::Map::new();
-    for item in archetypes_raw {
-        if let Some(id) = item.get("id").and_then(Value::as_str) {
-            by_id.insert(id.to_string(), item);
-        }
-    }
-    for item in own_raw {
-        if let Some(id) = item.get("id").and_then(Value::as_str) {
-            by_id.insert(id.to_string(), item);
-        }
-    }
-
-    let all_items: Vec<Value> = by_id
-        .into_iter()
-        .map(|(_, v)| v)
-        .filter(|item| !is_archived(item))
-        .collect();
+    let all_items =
+        find_wearable_pool_for_character(main, &docs, character_id, &project_mount_point_ids)?;
 
     let equipped = ChatOutfitsRepository::new(main)
         .get_equipped_outfit_for_character(chat_id, character_id)?;

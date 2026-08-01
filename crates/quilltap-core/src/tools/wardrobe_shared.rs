@@ -29,7 +29,8 @@ use crate::db::wardrobe_read::{
 };
 use crate::db::DbError;
 use crate::wardrobe::{
-    describe_outfit, expand_composites, OutfitSlotValues, Slots, WARDROBE_SLOT_TYPES,
+    describe_outfit, expand_composites, OutfitSlotValues, Slots, COMPOSITE_MAX_DEPTH,
+    WARDROBE_SLOT_TYPES,
 };
 
 /// v4 `resolveProjectMountPointIds(projectId)` — the project tier for a project
@@ -328,18 +329,24 @@ pub struct LeafItemsBySlot {
     pub accessories: Vec<Value>,
 }
 
-/// v4 `resolveEquippedOutfitForCharacter` — the `leafItemsBySlot` half. Loads the
-/// character's wardrobe (so composites resolve), fills missing equipped ids from
-/// the archetype tiers, expands each slot's composites into leaves (deduped in
-/// first-seen order), and routes each leaf ITEM into every output slot its own
-/// `types` declare.
-pub fn resolve_equipped_outfit_leaf_values(
+/// The shared first half of v4 `resolveEquippedOutfitForCharacter`: build the
+/// `itemsById` map (own wardrobe → equipped-id fallback → composite-component
+/// hydration), then expand every input slot's composites into leaves, deduped in
+/// first-seen order.
+///
+/// v5 renders the result two ways — [`resolve_equipped_outfit_leaf_values`]
+/// routes whole items per slot, [`resolve_equipped_leaf_items_by_slot`] routes
+/// the flattened image-generation shape — so the ONE resolution lives here.
+/// (v4 has one function with one shape; splitting the tail was v5's choice, and
+/// duplicating the head was v5's bug: `8bb1a958`'s hydration loop would
+/// otherwise have to be written twice and stay written twice.)
+fn resolve_equipped_leaves(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     slots: &Slots,
     project_mount_point_ids: &[String],
-) -> Result<LeafItemsBySlot, DbError> {
+) -> Vec<Value> {
     // Unique equipped ids across all four input slots.
     let mut equipped_ids: Vec<String> = Vec::new();
     let mut seen_id: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -356,7 +363,7 @@ pub fn resolve_equipped_outfit_leaf_values(
         }
     }
     if equipped_ids.is_empty() {
-        return Ok(LeafItemsBySlot::default());
+        return Vec::new();
     }
 
     // Pull the character's own wardrobe (v4 try/catch → []) for composite resolution.
@@ -386,16 +393,79 @@ pub fn resolve_equipped_outfit_leaf_values(
         }
     }
 
-    // First pass: expand each slot's composites, dedup leaves in first-seen order.
+    // A composite may bundle components the character doesn't own and that aren't
+    // equipped in their own right — the canonical case is a shared "House Livery"
+    // whose coat, waistcoat and boots all live in Quilltap General or a project
+    // store. Without those components in `items_by_id`, `expand_composites` emits
+    // each one as an unknown leaf and the routing pass below drops it, resolving
+    // the whole outfit to nothing.
+    //
+    // Walk the component graph a level at a time, one bulk query per level,
+    // bounded by the same depth `expand_composites` will walk. Bulk matters: this
+    // path is on hot paths (avatar generation, story backgrounds, scene state).
+    let mut requested_component_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for _depth in 0..COMPOSITE_MAX_DEPTH {
+        let mut wanted: Vec<String> = Vec::new();
+        for item in items_by_id.values() {
+            let components = item
+                .get("componentItemIds")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            for component in components {
+                let Some(component_id) = component.as_str() else {
+                    continue;
+                };
+                if items_by_id.contains_key(component_id) {
+                    continue;
+                }
+                if !requested_component_ids.insert(component_id.to_string()) {
+                    continue;
+                }
+                wanted.push(component_id.to_string());
+            }
+        }
+        if wanted.is_empty() {
+            break;
+        }
+        // v4 warns and breaks on a failed level; v5's read returns `Err` where
+        // v4 throws, so the same shape falls out of the match.
+        let components = match find_by_ids_for_character(
+            main,
+            docs,
+            character_id,
+            &wanted,
+            project_mount_point_ids,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    character_id, depth = _depth, wanted_count = wanted.len(), error = %e,
+                    "[resolveEquippedOutfitForCharacter] composite component hydration failed"
+                );
+                break;
+            }
+        };
+        if components.is_empty() {
+            break;
+        }
+        for it in components {
+            if let Some(id) = it.get("id").and_then(Value::as_str) {
+                items_by_id.insert(id.to_string(), it);
+            }
+        }
+    }
+
+    // Expand each slot's composites, dedup leaves in first-seen order.
     let mut seen_leaf: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut ordered_leaves: Vec<Value> = Vec::new();
-    let slot_arrays = [
+    for slot in [
         &slots.top,
         &slots.bottom,
         &slots.footwear,
         &slots.accessories,
-    ];
-    for slot in slot_arrays {
+    ] {
         let expanded = expand_composites(slot, &items_by_id, None);
         for id in expanded.leaf_ids {
             if seen_leaf.contains(&id) {
@@ -408,6 +478,23 @@ pub fn resolve_equipped_outfit_leaf_values(
             ordered_leaves.push(item.clone());
         }
     }
+    ordered_leaves
+}
+
+/// v4 `resolveEquippedOutfitForCharacter` — the `leafItemsBySlot` half. Loads the
+/// character's wardrobe (so composites resolve), fills missing equipped ids from
+/// the archetype tiers, hydrates composite components that live in a shared tier,
+/// expands each slot's composites into leaves (deduped in first-seen order), and
+/// routes each leaf ITEM into every output slot its own `types` declare.
+pub fn resolve_equipped_outfit_leaf_values(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    slots: &Slots,
+    project_mount_point_ids: &[String],
+) -> Result<LeafItemsBySlot, DbError> {
+    let ordered_leaves =
+        resolve_equipped_leaves(main, docs, character_id, slots, project_mount_point_ids);
 
     // Second pass: route each leaf ITEM into every output slot its `types` declare.
     let mut out = LeafItemsBySlot::default();
@@ -449,9 +536,10 @@ pub struct EquippedLeafItem {
 /// `description` + `imagePrompt` per leaf, which the title-only
 /// [`resolve_equipped_outfit_values`] discards.
 ///
-/// Shares the exact first-two-pass logic: expand each input slot's composites
-/// (dedup by leaf id in first-seen order), then route each leaf into every output
-/// slot its own `types` declare.
+/// Shares the exact resolution head with its sibling via
+/// [`resolve_equipped_leaves`] (own wardrobe → equipped fallback → component
+/// hydration → composite expansion), then routes each leaf into every output slot
+/// its own `types` declare.
 pub fn resolve_equipped_leaf_items_by_slot(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -459,70 +547,8 @@ pub fn resolve_equipped_leaf_items_by_slot(
     slots: &Slots,
     project_mount_point_ids: &[String],
 ) -> Result<Vec<EquippedLeafItem>, DbError> {
-    let mut equipped_ids: Vec<String> = Vec::new();
-    let mut seen_id: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for slot in [
-        &slots.top,
-        &slots.bottom,
-        &slots.footwear,
-        &slots.accessories,
-    ] {
-        for id in slot {
-            if seen_id.insert(id.clone()) {
-                equipped_ids.push(id.clone());
-            }
-        }
-    }
-    if equipped_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let char_items = find_by_character_id(main, docs, character_id, true).unwrap_or_default();
-    let mut items_by_id: std::collections::HashMap<String, Value> =
-        std::collections::HashMap::new();
-    for it in char_items {
-        if let Some(id) = it.get("id").and_then(Value::as_str) {
-            items_by_id.insert(id.to_string(), it);
-        }
-    }
-
-    let missing: Vec<String> = equipped_ids
-        .iter()
-        .filter(|id| !items_by_id.contains_key(*id))
-        .cloned()
-        .collect();
-    if !missing.is_empty() {
-        let fallback =
-            find_by_ids_for_character(main, docs, character_id, &missing, project_mount_point_ids)
-                .unwrap_or_default();
-        for it in fallback {
-            if let Some(id) = it.get("id").and_then(Value::as_str) {
-                items_by_id.insert(id.to_string(), it);
-            }
-        }
-    }
-
-    // First pass: expand each input slot's composites, dedup leaves in first-seen order.
-    let mut seen_leaf: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered_leaves: Vec<Value> = Vec::new();
-    for slot in [
-        &slots.top,
-        &slots.bottom,
-        &slots.footwear,
-        &slots.accessories,
-    ] {
-        let expanded = expand_composites(slot, &items_by_id, None);
-        for id in expanded.leaf_ids {
-            if seen_leaf.contains(&id) {
-                continue;
-            }
-            let Some(item) = items_by_id.get(&id) else {
-                continue;
-            };
-            seen_leaf.insert(id);
-            ordered_leaves.push(item.clone());
-        }
-    }
+    let ordered_leaves =
+        resolve_equipped_leaves(main, docs, character_id, slots, project_mount_point_ids);
 
     // Second pass: route each leaf into every output slot its `types` declare.
     let mut out: Vec<EquippedLeafItem> = Vec::new();

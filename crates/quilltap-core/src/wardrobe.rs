@@ -209,7 +209,13 @@ pub struct ExpandResult {
     pub truncated: bool,
 }
 
-const DEFAULT_MAX_DEPTH: usize = 4;
+/// v4 `COMPOSITE_MAX_DEPTH` — the default recursion bound for composite
+/// expansion. Exported so callers that hydrate the component graph ahead of
+/// expansion (see [`crate::tools::wardrobe_shared`]) fetch exactly as many levels
+/// as expansion will actually walk.
+pub const COMPOSITE_MAX_DEPTH: usize = 4;
+
+const DEFAULT_MAX_DEPTH: usize = COMPOSITE_MAX_DEPTH;
 
 /// The `componentItemIds` of an item id (`[]` for a leaf or an unknown id).
 fn component_ids_of(
