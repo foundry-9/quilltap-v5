@@ -49248,3 +49248,136 @@ announcement…") open the identical dialog against the same real
 0` is always true there), so the full Playwright run this lane's gate
 requires exercises the audience section's rendering indirectly even while
 this specific beat stays skipped.
+
+## Lane record — P4.D38 unit 7: the `4f7e09fa` flushSync disposition — NO-PORT, evidence in hand
+
+v4's `4f7e09fa` moves `VirtualizedMessageList`'s `ref={virtualizer.
+measureElement}` off the synchronous ref-callback path onto a microtask
+(`useDeferredMeasureRef`), because React's ref callbacks run during the
+commit phase where `flushSync` is illegal — TanStack Virtual's scroll
+correction was silently downgraded to an async update every time a row
+above the fold measured differently from the 150px estimate, and the
+console carried a permanent "flushSync was called from inside a lifecycle
+method" warning that bought nothing.
+
+**v5 has no equivalent bug to fix, and never could.** v5 measures through
+`virtual-row.ts`'s `VirtualRow` directive (`apps/web/src/app/chat/
+virtual-row.ts:29`):
+
+```ts
+constructor() {
+  afterNextRender(() => this.virtualizer().measureElement(this.el.nativeElement));
+  inject(DestroyRef).onDestroy(() => this.virtualizer().measureElement(null));
+}
+```
+
+`afterNextRender` is Angular's own primitive for "run this after the
+current render/change-detection cycle has fully committed, before the next
+paint" — precisely the timing v4 had to hand-build a microtask deferral to
+reach. React has no direct equivalent (a plain ref callback fires
+mid-commit; `useEffect` fires after paint, too late for a same-frame scroll
+correction), which is WHY v4 needed `4f7e09fa` at all. Angular's
+`afterNextRender` was already the right primitive when the row-measurement
+directive was first ported, well before this drift landed — v5 arrived at
+v4's destination by construction, not by inheriting the bug and later
+fixing it.
+
+The detach path (`measureElement(null)` on `DestroyRef.onDestroy`) is
+synchronous, matching v4's `ref(null)` staying synchronous in `4f7e09fa`
+for the same reason: it is pure cache-pruning inside the virtualizer, never
+a re-render trigger, so deferring it would let the element cache outlive
+the destroyed DOM node.
+
+**No code changed, no test added** — there is nothing here for a spec to
+pin; the equivalence is architectural (Angular's own scheduling primitive
+vs. React's absence of one), not a behavior a fixture could exercise
+differently before and after. No natural comment anchor needed one either:
+`virtual-row.ts`'s existing docstring already explains WHY `afterNextRender`
+is used, which is the fact that makes this NO-PORT correct.
+
+**Round bullet wording for the unifier** (per the order's ask): *"The
+`4f7e09fa` flushSync commit is NO-PORT — v5's `virtual-row.ts` already uses
+Angular's `afterNextRender` for row measurement, which is the primitive v4
+had to hand-build a microtask deferral to reach (React ref callbacks fire
+mid-commit, where `flushSync` is illegal; `afterNextRender` fires after
+commit, before paint — no equivalent gap existed in v5 to begin with)."*
+
+## Lane record — P4.D38: the full Playwright gate caught a real class collision
+
+The first full-suite run (168 pre-existing beats + this lane's new
+skipped one) reproduced [[e2e-playwright-traps]] §5 exactly: a new
+affordance breaks a sibling spec that never touched it. `insert-
+announcement-dialog.spec.ts:149` — a PRE-EXISTING v4-fidelity assertion
+("Insert Announcement opens with the staff roster and the off-scene
+picker") — failed for the first time ever, on a beat this lane's diff
+never modified.
+
+**Root cause**: the audience checkbox group (unit 3, this lane) reused
+v4's literal `max-h-40` class verbatim from `InsertAnnouncementDialog.tsx`
+— but v4's own off-scene character picker ALSO carries `max-h-40`, and in
+v4 the two never coexist in the DOM at once (different components,
+different scroll regions of the same page). v5's `audienceCandidates`
+section is unconditional on `mode`, so with a real chat's cast (Group
+Expedition: Aria, Bram, Cleo) it renders on EVERY tab, including "Off-scene
+character" — meaning both `.max-h-40` elements are now simultaneously
+present the instant a real chat is open. The pre-existing beat's `dialog.
+locator('.max-h-40')` had been unambiguous by construction until this
+lane; it silently became a 2-element match, and `picker.getByText('Aria',
+{exact:true})).toHaveCount(0)` failed because Aria genuinely appears in
+ONE of the two matched elements (the audience list) even though the OTHER
+element (the actual off-scene picker) correctly excludes her.
+
+**Fix**: `insert-announcement-dialog.ts`'s audience container swaps
+`max-h-40` for Tailwind's arbitrary-value equivalent, `max-h-[10rem]`
+(10rem is `max-h-40`'s literal value on Tailwind's default scale) —
+pixel-identical rendering, distinct class token, zero collision. Fixed the
+component per the traps doc's rule ("fix the component, not the sibling
+spec"), not the pre-existing test, since the ambiguity was this lane's
+markup choice, not a flaw in the older assertion.
+
+**New regression coverage + mutation proof** (reverted after):
+`insert-announcement-dialog.spec.ts` gained `'the audience group and the
+off-scene picker never share a \`.max-h-40\` match'` — mounts BOTH
+candidate sets, switches to the character tab, asserts exactly one
+`.max-h-40` element. Reverting the fix (swapping `max-h-[10rem]` back to
+`max-h-40`) reproduced the EXACT e2e failure shape at the unit level
+(`querySelectorAll('.max-h-40')` → length 2, not 1) before the fix was
+restored — the same bug, caught two ways.
+
+**The recipe that found it** (per [[e2e-playwright-traps]] §8's binary
+trap and the disk-budget notes): this lane touched zero Rust source, so
+rather than a full `cargo build --release` in-worktree, `target/release/
+quilltap-web` and `target/release/quilltap` were **symlinked from
+main's own release build** — verified safe first (`git merge-base HEAD
+main` equals main's HEAD, and `git diff --stat main -- crates/` is empty,
+so main's binaries are byte-identical to what this branch would produce).
+`ng build` supplied the dist. Two sibling lanes from this SAME round were
+mid-Playwright-run on the default port 4319 at the time
+([[e2e-playwright-traps]] §6's THIRD symptom, but from expected same-round
+siblings rather than an orphan) — ran on private ports (`PORT=4419`,
+`MOCK_LLM_PORT=45401` in `e2e/support/env.ts`, reverted via `git checkout
+--` immediately after, never committed) exactly per that note's
+workaround. A `run_in_background` Bash call for the first attempt exited
+144 with an empty log for reasons that never surfaced (possibly a
+transient harness hiccup); routing around it via `nohup … & disown` was a
+**worse** mistake — the detached process died silently the moment the
+launching tool call returned (the process group was reaped despite
+`disown`), leaving a second background watcher polling a log file that
+would never update again — the same "wait on a corpse forever" failure
+class CLAUDE.md's pgrep rule warns about, reached by a different
+mechanism. Recovered by stopping the dead watcher task, killing the
+orphaned `quilltap-web` it had left bound to port 4419, and re-launching
+the Playwright command directly through `run_in_background` (no wrapper,
+no escape hatch) — which then ran to a real, trackable completion both
+times. **Lesson for the next lane**: don't route around a suspicious
+`run_in_background` exit with a shell-level detach trick; retry
+`run_in_background` itself first, since the sandbox does not reliably
+honor `nohup`/`disown` past the tool call boundary.
+
+**Final gate, this lane's own worktree**: `cargo` untouched (zero Rust
+diff); `ng test --watch=false` — 264 files / 3,251 tests / 0 failed; `ng
+build` clean; full `npx playwright test` — **168 passed, 1 skipped (this
+lane's ACTIVATE-AT-UNIFY beat), 0 failed**, 4.2 minutes. `target/`
+symlinks and the `apps/web/node_modules` symlink (from main, since this
+worktree had neither installed) are local-only, never committed; both
+removed as part of this lane's close-out per the order's cleanup step.

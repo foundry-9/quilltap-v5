@@ -204,6 +204,27 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     expect(names).toEqual(['Bram', 'Dax']);
   });
 
+  /**
+   * Regression (caught by the real e2e run, not this suite): the audience
+   * checkbox group and the off-scene character picker both wore v4's literal
+   * `max-h-40` class, so with BOTH visible at once — the common case, since
+   * `audienceCandidates` renders independent of `mode` — a `.max-h-40`
+   * locator (`salon-post-office-flow.spec.ts`'s pre-existing off-scene-picker
+   * beat) resolved to two elements and picked up "Aria" from the audience
+   * list instead of the picker it meant to scope to.
+   */
+  it('the audience group and the off-scene picker never share a `.max-h-40` match', async () => {
+    const fixture = await mount(
+      stub({ characters: [character({ id: 'c-dax', name: 'Dax' })] }),
+      [],
+      [audienceCandidate({ participantId: 'p-aria', name: 'Aria' })],
+    );
+    tab(fixture, 'Off-scene character').click();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelectorAll('.max-h-40')).toHaveLength(1);
+  });
+
   it('the primary button posts verbatim for Staff — no preview round-trip', async () => {
     const s = stub({});
     const fixture = await mount(s);

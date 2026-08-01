@@ -260,7 +260,7 @@ const AS_IS = 'as-is';
           <div
             role="group"
             aria-labelledby="announce-audience-label"
-            class="qt-border-primary border rounded max-h-40 overflow-y-auto"
+            class="qt-border-primary border rounded max-h-[10rem] overflow-y-auto"
           >
             @for (p of audienceCandidates(); track p.participantId) {
               <label
