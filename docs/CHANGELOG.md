@@ -97,6 +97,14 @@ failures that were silent, such as a tool list that would not load, now say so.
 Quilltap has notifications again. A short message appears in the bottom-right
 corner when something finishes or fails, and clears itself after three seconds,
 the way the previous version did.
+Opening an announcement in a conversation now shows its text as an ordinary
+message. It had been rendering as small, italic, centred grey type on a muted
+slab — a style no other message uses, and one v4 never applied to an
+announcement either. Pictures inside an announcement body resolve too.
+
+An announcement chip with no kind to show no longer leaves a gap where the
+label would have been.
+
 Announcements written before Quilltap recorded what kind of announcement they
 were now show their kind again — "file saved", "arrived", "time" — and the
 coloured dot beside them goes back to grading them by importance. Older

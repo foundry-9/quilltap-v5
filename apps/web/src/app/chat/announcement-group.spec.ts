@@ -166,3 +166,46 @@ describe('AnnouncementGroup — Pascal outcome accent (P4.d21)', () => {
     expect(button.getAttribute('data-message-id')).toBe('abc123');
   });
 });
+
+/**
+ * P4.26 — the bar contents and the expanded body, adjudicated against v4
+ * `AnnouncementBarContents` + `MessageRow`'s expanded block (`ff12f491`).
+ */
+describe('AnnouncementGroup — v4 bar/body parity (P4.26)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('omits the kind span entirely when the row resolves to no kind', () => {
+    // v4 renders `{kindLabel && <span …>}`. An always-present span spends the
+    // chip's 0.5rem flex gap on nothing, so the sender drifts off its timestamp.
+    const button = render([chip({ kind: '' })]).nativeElement.querySelector(
+      '.qt-chat-announcement-chip',
+    );
+    expect(button.querySelector('.qt-chat-system-bar-kind')).toBeNull();
+    expect(button.querySelector('.qt-chat-system-bar-sender')).not.toBeNull();
+    expect(button.querySelector('.qt-chat-system-bar-time')).not.toBeNull();
+  });
+
+  it('hides the importance dot from assistive tech, as v4 does', () => {
+    const dot = render([chip()]).nativeElement.querySelector('.qt-chat-announcement-dot');
+    expect(dot.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('carries no tooltip — v4’s chip has none', () => {
+    const button = render([chip()]).nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.getAttribute('title')).toBeNull();
+  });
+
+  it('renders an expanded body as an ordinary assistant bubble, never the system slab', () => {
+    const fixture = render([chip()]);
+    fixture.nativeElement.querySelector('.qt-chat-announcement-chip').click();
+    fixture.detectChanges();
+
+    const bubble = fixture.nativeElement.querySelector('.qt-chat-message-row .qt-chat-message');
+    expect(bubble).not.toBeNull();
+    expect(bubble.classList.contains('qt-chat-message-assistant')).toBe(true);
+    // THE GUARD: `.qt-chat-message-system` is `text-sm italic text-center py-2`
+    // on a muted slab. v4's stylesheet defines it; no v4 markup wears it.
+    expect(bubble.classList.contains('qt-chat-message-system')).toBe(false);
+    expect(fixture.nativeElement.querySelector('qt-message-content')).not.toBeNull();
+  });
+});

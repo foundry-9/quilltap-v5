@@ -38,12 +38,11 @@ import { ToolMessage } from './tool-message';
           [class]="accentClasses(chip)"
           [id]="'message-' + chip.id"
           [attr.data-message-id]="chip.id"
-          [title]="chip.sender + ' · ' + chip.kind"
           [attr.aria-expanded]="isExpanded(chip.id)"
           [attr.aria-label]="chipLabel(chip)"
           (click)="toggle(chip.id)"
         >
-          <span class="qt-chat-announcement-dot" [class]="dotClass(chip)"></span>
+          <span class="qt-chat-announcement-dot" [class]="dotClass(chip)" aria-hidden="true"></span>
           <span class="qt-chat-system-bar-sender">{{ chip.sender }}</span>
           <!-- The state is carried by colour alone in the bar; name it for readers
                who can't see the accent (and for anyone skimming with a screen
@@ -51,7 +50,13 @@ import { ToolMessage } from './tool-message';
           @if (outcomeState(chip); as state) {
             <span class="sr-only">{{ state }}</span>
           }
-          <span class="qt-chat-system-bar-kind">{{ chip.kind }}</span>
+          <!-- v4 AnnouncementBarContents renders the kind span only when there
+               IS a kind label. An unconditional span costs a kindless row the
+               chip's 0.5rem flex gap twice over, so the sender floats away from
+               its timestamp. -->
+          @if (chip.kind) {
+            <span class="qt-chat-system-bar-kind">{{ chip.kind }}</span>
+          }
           <span class="qt-chat-system-bar-time">{{ time(chip.createdAt) }}</span>
           <!-- class on qt-icon is an INPUT applied to the inner span, so the
                modifier has to be composed into that string; a per-class host
@@ -73,8 +78,20 @@ import { ToolMessage } from './tool-message';
       } @else {
         <div class="qt-chat-message-row qt-chat-message-row-assistant">
           <div class="qt-chat-message-body">
-            <div class="qt-chat-message qt-chat-message-system">
-              <qt-message-content [content]="chip.message.content" />
+            <!-- v4 renders an EXPANDED announcement's body through the ordinary
+                 message block — chat-message qt-chat-message-assistant
+                 (MessageRow.tsx:294-300; a Staff row is written role ASSISTANT,
+                 so the USER arm never applies). .qt-chat-message-system exists
+                 in v4's stylesheet but NO v4 markup wears it — the only use in
+                 the whole checkout is the theme storybook's catalogue page. v5
+                 had reached for it here, so every expanded announcement came out
+                 text-sm italic text-center py-2 on a muted slab while every
+                 other message rendered as a normal bubble (P4.26). -->
+            <div class="qt-chat-message qt-chat-message-assistant">
+              <qt-message-content
+                [content]="chip.message.content"
+                [blobMountPointId]="blobMountPointId()"
+              />
               @if (terminalSessionId(chip); as sid) {
                 <div class="mt-2">
                   <qt-terminal-embed [sessionId]="sid" [chatId]="chatId()" />
@@ -93,6 +110,14 @@ export class AnnouncementGroup {
   readonly chatId = input.required<string>();
   /** The parent chat — threaded to an expanded TOOL chip's card for author resolution. */
   readonly chat = input.required<ChatDetail>();
+
+  /**
+   * The chat's blob mount point, threaded to the expanded body's markdown img
+   * rewrite exactly as `MessageRow` threads it to an ordinary bubble. Without it
+   * a Librarian announcement carrying a relative image ref renders a broken
+   * image where the same ref in a character's line resolves (P4.26).
+   */
+  protected readonly blobMountPointId = computed(() => this.chat().blobMountPointId ?? null);
 
   /**
    * The bound terminal session for an Ariel session-opened chip (v4 `MessageRow`
