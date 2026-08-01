@@ -1,16 +1,22 @@
 import type { FormatAction } from './formatting-toolbar';
+import { detectListIndentUnit, indentSourceLines, outdentSourceLines } from './list-indentation';
 
 /**
  * The source-mode text transforms — what a toolbar button does to the raw
  * markdown `<textarea>` when {@link markdown-field} is in source mode.
  *
- * Ported from two v4 sites, because v4 splits the behavior across them:
+ * Ported from three v4 sites, because v4 splits the behavior across them:
  *
  *  - `lib/chat/text-transforms.ts` — the pure `toggleWrap` (:37-59).
  *  - `components/chat/FormattingToolbar.tsx` — `sourcePrefixLines` (:150-165)
- *    and the two dispatch branches, `handleMarkdownClick` (:174-205) and
- *    `handleCodeBlockClick` (:254-275). Those are component-internal closures
- *    in v4; here they are pure functions, so the field stays presentation-only.
+ *    and the three dispatch branches, `handleMarkdownClick` (:174-205),
+ *    `handleCodeBlockClick` (:254-275), and `handleIndentClick`'s source arm
+ *    (:315-331). Those are component-internal closures in v4; here they are
+ *    pure functions, so the field stays presentation-only.
+ *  - `components/chat/lexical/transformers/list-indentation.ts` —
+ *    `detectListIndentUnit`/`indentSourceLines`/`outdentSourceLines`, ported
+ *    to `editor/list-indentation.ts` (the P4.D40 sub-list-indentation lane)
+ *    and dispatched here for the `indent`/`outdent` actions.
  *
  * v4's `sourceApply` (:123-134) has no analogue: it writes `textarea.value`,
  * calls `setInput`, and restores the cursor in a `requestAnimationFrame`. That
@@ -151,5 +157,15 @@ export function applySourceFormat(state: TextState, action: FormatAction): TextR
       return state.value.slice(state.start, state.end)
         ? toggleWrap(state, '`', '`')
         : insertCodeFence(state);
+    case 'outdent':
+    case 'indent': {
+      // v4 `handleIndentClick`'s source branch (`FormattingToolbar.tsx:315-331`):
+      // detect the document's own nesting unit and shift only the selected list
+      // lines by it (item (f)).
+      const unit = detectListIndentUnit(state.value);
+      return action.kind === 'indent'
+        ? indentSourceLines(state, unit)
+        : outdentSourceLines(state, unit);
+    }
   }
 }

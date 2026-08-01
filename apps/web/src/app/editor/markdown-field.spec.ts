@@ -1,8 +1,11 @@
 import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TextSelection } from 'prosemirror-state';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import './jsdom-range-shim';
 import { MarkdownField } from './markdown-field';
+import type { RichEditor } from './rich-editor';
 
 @Component({
   imports: [MarkdownField],
@@ -56,11 +59,14 @@ function button(fixture: ComponentFixture<Host>, typeClass: string): HTMLButtonE
   return fixture.nativeElement.querySelector(`.qt-formatting-button-${typeClass}`) as HTMLButtonElement;
 }
 
+/** The field's `RichEditor` handle (a `protected viewChild`, cast for the test). */
+function richEditor(fixture: ComponentFixture<Host>): RichEditor {
+  return (fixture.componentInstance.field() as unknown as { editor: () => RichEditor }).editor();
+}
+
 /** The RichEditor content markdown, read via the field's editor handle. */
 function markdown(fixture: ComponentFixture<Host>): string {
-  return (fixture.componentInstance.field() as unknown as { editor: () => { getMarkdown(): string } })
-    .editor()
-    .getMarkdown();
+  return richEditor(fixture).getMarkdown();
 }
 
 describe('MarkdownField — shared form-field editor', () => {
@@ -68,9 +74,17 @@ describe('MarkdownField — shared form-field editor', () => {
 
   it('renders the toolbar button inventory (v4 MARKDOWN_FORMATS + code block)', async () => {
     const fixture = await render('body');
-    for (const t of ['bold', 'italic', 'h1', 'h2', 'h3', 'blockquote', 'code-block']) {
+    for (const t of ['bold', 'italic', 'h1', 'h2', 'h3', 'blockquote', 'code-block', 'indent', 'outdent']) {
       expect(button(fixture, t), t).not.toBeNull();
     }
+  });
+
+  it('carries v4\'s indent/outdent titles verbatim (FormattingToolbar.tsx:437-449)', async () => {
+    const fixture = await render('body');
+    expect(button(fixture, 'outdent').getAttribute('title')).toBe('Outdent list item (Shift+Tab)');
+    expect(button(fixture, 'outdent').getAttribute('aria-label')).toBe('Outdent list item');
+    expect(button(fixture, 'indent').getAttribute('title')).toBe('Indent list item (Tab)');
+    expect(button(fixture, 'indent').getAttribute('aria-label')).toBe('Indent list item');
   });
 
   it('H2 button converts the block at the cursor to a heading', async () => {
@@ -132,6 +146,43 @@ describe('MarkdownField — shared form-field editor', () => {
     fixture.detectChanges();
     expect(editorEl(fixture).style.minHeight).toBe('10rem');
     expect(markdown(fixture)).toBe('body');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// List indent/outdent toolbar buttons (P4.D40, v4 item (f))
+// ---------------------------------------------------------------------------
+
+describe('MarkdownField — list indent/outdent buttons', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('the indent button nests the last item, the outdent button lifts it back (rich-text mode)', async () => {
+    const fixture = await render('- alpha\n- beta\n- gamma');
+    // Move the caret into the last item, the way a real caret placement would.
+    richEditor(fixture).runCommand((state, dispatch) => {
+      if (dispatch) dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+      return true;
+    });
+
+    button(fixture, 'indent').click();
+    fixture.detectChanges();
+    expect(markdown(fixture)).toBe('- alpha\n- beta\n  - gamma');
+
+    button(fixture, 'outdent').click();
+    fixture.detectChanges();
+    expect(markdown(fixture)).toBe('- alpha\n- beta\n- gamma');
+  });
+
+  it('a toolbar indent click in source mode shifts the raw list line (v4 source branch)', async () => {
+    const fixture = await render('- a\n- b');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+    ta.setSelectionRange(ta.value.length, ta.value.length); // caret on "- b"
+
+    button(fixture, 'indent').click();
+    fixture.detectChanges();
+    expect(sourceArea(fixture)!.value).toBe('- a\n  - b');
+    expect(fixture.componentInstance.last()).toBe('- a\n  - b');
   });
 });
 

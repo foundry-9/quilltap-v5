@@ -265,6 +265,18 @@ character's opt-out from a shared default is itself an item, and filtering
 first would throw it away before it could do its job. The equip path, which
 needs archived garments so it can still name what someone is wearing, does not
 use this and says so.
+Added list indent/outdent buttons to the editor's formatting toolbar and its
+raw-Markdown source mode (P4.D40, tier 1 unit 6, closing the sub-list
+indentation feature). The two new buttons carry the reference app's exact
+arrow glyphs, titles, and keyboard-shortcut hints, sit between the list/
+blockquote buttons and the code-block toggle exactly where the reference
+app places them, and dispatch the same sink/lift commands Tab already
+reaches in rich-text mode. In source mode they read the raw text's own
+indentation width — never a fixed default — and shift only the selected
+list lines by it, matching the reference app's toolbar behavior line for
+line. The button-sizing CSS rule (arrow glyphs at a slightly larger size to
+match the text-label buttons) is copied over unchanged.
+
 Gave the editor Tab/Shift+Tab list indent and outdent, confined to list items
 (P4.D40, tier 1 unit 3) — Markdown has no way to represent an indented
 paragraph, so pressing Tab anywhere else still moves focus like a normal

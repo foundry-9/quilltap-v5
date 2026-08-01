@@ -49756,3 +49756,63 @@ zero unhandled errors (post-shim; pre-shim reproduced the 3-error failure and
 confirmed exit code 1).
 
 SPA 0.5.360.
+
+### Unit record — P4.D40 unit 4: toolbar + source-mode indent/outdent (2026-08-01)
+
+v4's item (f) — `FormattingToolbar.tsx`'s `⇤`/`⇥` buttons + `handleIndentClick`'s
+two branches. `FormatAction` gains `'indent'`/`'outdent'` kinds;
+`formatting-toolbar.ts` adds the two buttons in v4's exact JSX position
+(between the mapped `MARKDOWN_FORMATS` buttons and the code-block toggle),
+carrying v4's titles/aria-labels verbatim (`"Outdent list item (Shift+Tab)"` /
+`"Indent list item (Tab)"`) and glyphs (`⇤`/`⇥`, literal characters, not HTML
+entities — matches v4 and avoids any Angular-template entity-decoding
+uncertainty). `markdown-field.ts`'s `commandFor` gains `liftListItem`/
+`sinkListItem` arms for rich-text mode (dispatched through the SAME
+`RichEditor.runCommand` path every other toolbar button already uses).
+`source-transforms.ts`'s `applySourceFormat` gains an `indent`/`outdent` case
+that detects the unit off `state.value` itself
+(`detectListIndentUnit(state.value)`, v4's `handleIndentClick`'s exact call)
+and dispatches to unit 1's `indentSourceLines`/`outdentSourceLines` — v4 splits
+this behavior across two component-internal closures; here it's dispatch over
+already-oracle-tested pure functions, so the new specs pin the WIRING (unit
+read off the live document, not a hardcoded default) rather than re-testing
+the transforms themselves.
+
+`_chat.css` gains v4's `.qt-formatting-button-indent/-outdent` sizing rule
+(`font-size: 1.05rem; line-height: 1`) in the SAME position v4's stylesheet
+has it (between the code-block rule and the source-toggle rule) — the order's
+one named append-only `_chat.css` section.
+
+**(g), the doubled-bullet CSS fix — confirmed NO-PORT.** Grepped
+`qt-lexical-li-nested` across `apps/web/**`: zero hits. v5's list markup is
+standard nested `<li><p><ul>`, no Lexical wrapper-`<li>` DOM to patch.
+
+**Tier-3 deferrals, verified and recorded (not built):**
+- The chat composer (`chat/chat-composer.ts`) has no formatting toolbar in
+  either app — unchanged; the composer toolbar is `p4.9l`, not this order's.
+- The Document Mode pane: grepped `FormattingToolbar` across v4's
+  `components/**` — its only consumers are the composer plugin wiring and
+  `MarkdownLexicalEditor.tsx` (the form-field surface `qt-markdown-field`
+  already ports). v4's Document Mode pane has NO formatting toolbar of its
+  own to port; v5's `document-pane.ts` correctly has none either.
+- **v5's frontmatter parse mangling — probed, confirmed pre-existing and
+  whole-dialect, NOT fixed.** `roundTrip('---\ntags:\n  - alpha\n  - beta\n
+  ---\n\n# Title\n\nBody text.')` (a token-threaded round trip through the real
+  bridge) returns `'---\n\ntags:\n\n- alpha\n- beta\n\n---\n\n# Title\n\nBody
+  text.'` — CommonMark has no frontmatter block concept, so the `---` fences
+  and their content get parsed as ordinary blocks (thematic breaks / a list)
+  with blank-line separation, well before `list-indentation.ts`'s own
+  frontmatter guard (in `mapListLines`, ported in unit 1 and correctly
+  inert on already-mangled input) would ever see it. Fixing this means
+  changing the whole dialect's block model — out of this order's scope by its
+  own text; the guard is there, ready, for whenever that lands.
+
+Gate: `ng test --include='src/app/editor/**/*.spec.ts'` — 7 files / 204 passed.
+`ng build` clean.
+
+**This closes P4.D40's tier-1 mandate (units 1-2, must-land deliverables 1-6)
+and tier-2 (item 7 pinned + ruling requested, item 8 folded into unit 2's
+corpus growth).** Full-workspace gate + Playwright verification recorded in
+the closing lane record below.
+
+SPA 0.5.361.

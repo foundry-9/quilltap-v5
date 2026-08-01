@@ -40,3 +40,32 @@ describe('source-mode transforms — v4 recorded-vector parity', () => {
     );
   });
 });
+
+/**
+ * The `indent`/`outdent` dispatch wiring (P4.D40, v4 `handleIndentClick`'s
+ * source arm, `FormattingToolbar.tsx:315-331`). The underlying
+ * `detectListIndentUnit`/`indentSourceLines`/`outdentSourceLines` functions
+ * are already differential-tested against v4's real module
+ * (`list-indentation.oracle.spec.ts`); these cases pin the WIRING —
+ * `applySourceFormat` reads the unit off `state.value` itself, not a fixed
+ * default, matching v4's `detectListIndentUnit(textarea.value)` call.
+ */
+describe('source-mode transforms — indent/outdent wiring', () => {
+  it('indents the caret line at the document\'s own (non-default) unit', () => {
+    const value = '- a\n   - b\n- c'; // 3-space document
+    const result = applySourceFormat({ value, start: 12, end: 12 }, { kind: 'indent' });
+    expect(result.value).toBe('- a\n   - b\n   - c');
+  });
+
+  it('outdents the caret line at the document\'s own (non-default) unit', () => {
+    const value = '- a\n    - b\n        - c'; // 4-space document, two levels deep
+    const result = applySourceFormat({ value, start: 20, end: 20 }, { kind: 'outdent' });
+    expect(result.value).toBe('- a\n    - b\n    - c');
+  });
+
+  it('leaves a non-list line alone on indent', () => {
+    const value = 'prose\n- a';
+    const result = applySourceFormat({ value, start: 0, end: 0 }, { kind: 'indent' });
+    expect(result.value).toBe(value);
+  });
+});

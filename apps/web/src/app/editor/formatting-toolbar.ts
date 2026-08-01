@@ -13,7 +13,9 @@ export type FormatAction =
   | { kind: 'ul' }
   | { kind: 'ol' }
   | { kind: 'blockquote' }
-  | { kind: 'codeBlock' };
+  | { kind: 'codeBlock' }
+  | { kind: 'outdent' }
+  | { kind: 'indent' };
 
 interface ButtonConfig {
   label: string;
@@ -76,6 +78,28 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
             {{ btn.label }}
           </button>
         }
+        <button
+          type="button"
+          class="qt-formatting-button qt-formatting-button-outdent"
+          title="Outdent list item (Shift+Tab)"
+          aria-label="Outdent list item"
+          [disabled]="disabled()"
+          (mousedown)="$event.preventDefault()"
+          (click)="action.emit({ kind: 'outdent' })"
+        >
+          ⇤
+        </button>
+        <button
+          type="button"
+          class="qt-formatting-button qt-formatting-button-indent"
+          title="Indent list item (Tab)"
+          aria-label="Indent list item"
+          [disabled]="disabled()"
+          (mousedown)="$event.preventDefault()"
+          (click)="action.emit({ kind: 'indent' })"
+        >
+          ⇥
+        </button>
         <button
           type="button"
           class="qt-formatting-button qt-formatting-button-code-block"

@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { setBlockType, toggleMark, wrapIn } from 'prosemirror-commands';
 import type { Command } from 'prosemirror-state';
-import { wrapInList } from 'prosemirror-schema-list';
+import { liftListItem, sinkListItem, wrapInList } from 'prosemirror-schema-list';
 
 import { dialectSchema } from './markdown-dialect';
 import { FormattingToolbar, type FormatAction } from './formatting-toolbar';
@@ -280,6 +280,10 @@ export class MarkdownField {
         return this.inCodeBlock()
           ? setBlockType(schema.nodes['paragraph'])
           : setBlockType(schema.nodes['code_block']);
+      case 'outdent':
+        return liftListItem(schema.nodes['list_item']);
+      case 'indent':
+        return sinkListItem(schema.nodes['list_item']);
     }
   }
 }
