@@ -46305,3 +46305,35 @@ disappeared. During a parallel round, generate oracles into a lane-private
 directory and treat any mid-run change in which tests fail as suspect until the
 NDJSONs are re-checked. (The committed recipe keeps the repo-wide `/tmp`
 convention.)
+
+## Lane record — P4.24 unit 4 (the spine registration, and the pin that guards it)
+
+`LlmLogCleanupJobHandler` in `quilltap-host`'s `ProductionSpineFactory` — a
+payload decode around the differential-verified handler, supplying the host's
+wall clock and its configured IANA zone per job (core reads no ambient clock,
+and the retention cutoff is local calendar-day arithmetic). With it registered,
+the "recognized but not yet available" arm is unreachable for this type and
+**dogfood finding #40 is closed**: `LLM_LOG_CLEANUP` was the last entry in
+`KNOWN_JOB_TYPES` without a handler, and the enqueuer has been live on the daily
+cadence AND at boot since P4.1d, so every start-up minted a job that burned
+three attempts and died while v4 quietly kept the real instance's retention
+window for us.
+
+The differential drives the handler directly, which means it is structurally
+incapable of noticing that nothing calls it — precisely the gap finding #40 sat
+in for months. So the registration gets its own integration test,
+`crates/quilltap-host/tests/host_llm_log_cleanup.rs`: a real `Host` boots over a
+real encrypted two-partition instance with the real `ProductionSpineFactory`,
+one PENDING job is seeded, and the test asserts it reaches COMPLETED **and** that
+the over-age log row is gone while a fresh one survives. No provider is touched —
+this handler's only outbound work is a DELETE.
+
+Mutation-proven: deleting the one registration line turns it red with
+`lastError = "Job type \"LLM_LOG_CLEANUP\" is recognized but its handler is not
+yet available in the native runner"` — the exact failure the real instance was
+producing at every boot. The assertion message names that string, so the next
+reader diagnosing a red does not have to work backwards to the cause.
+
+The test's config pushes `cleanup_interval_ms` out of the way along with every
+other cadence: the boot tick would otherwise enqueue a SECOND job and blur what
+is being asserted.

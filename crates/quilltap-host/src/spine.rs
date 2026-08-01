@@ -133,6 +133,9 @@ use quilltap_core::services::file_storage::{
 use quilltap_core::services::housekeeping::{run_housekeeping, HousekeepingOptions};
 use quilltap_core::services::housekeeping_outcome_cache::record_housekeeping_outcome;
 use quilltap_core::services::job_runner::{JobFuture, JobHandler, JobOutcome};
+// === P4.24 ===
+use quilltap_core::services::llm_log_cleanup_job::{handle_llm_log_cleanup, LlmLogCleanupPayload};
+// === end P4.24 ===
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_extraction_job::{
     handle_memory_extraction, limits_from_value, MemoryExtractionPayload,
@@ -2599,6 +2602,39 @@ impl JobHandler for EmbeddingGenerateJobHandler {
 }
 // === end P4.6BL ===
 
+// === P4.24 ===
+/// `LLM_LOG_CLEANUP` — a payload decode around the differential-verified
+/// [`handle_llm_log_cleanup`](quilltap_core::services::llm_log_cleanup_job::handle_llm_log_cleanup),
+/// with the host's wall clock and configured zone supplied per job (core reads
+/// no ambient clock, and the retention cutoff is LOCAL calendar-day arithmetic —
+/// see `db::llm_logs::llm_log_retention_cutoff_iso`).
+///
+/// This was the LAST type in `KNOWN_JOB_TYPES` without a handler. The enqueuer
+/// runs on the daily cadence AND immediately at boot, so until this registration
+/// every start-up minted a job that burned three attempts against the
+/// "recognized but not yet available" arm and died — while the retention window
+/// on the real instance was quietly being maintained by v4 (dogfood finding
+/// #40).
+pub struct LlmLogCleanupJobHandler {
+    pub tz: String,
+}
+
+impl JobHandler for LlmLogCleanupJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            let decoded = LlmLogCleanupPayload::from_json(&payload);
+            let now_ms = quilltap_core::clock::now_unix_ms();
+            // v4 reads `job.userId`, the row's own value — not the payload's.
+            match handle_llm_log_cleanup(db, &job.user_id, &decoded, now_ms, &self.tz).await {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+// === end P4.24 ===
+
 /// `CHARACTER_AVATAR_GENERATION` — constructs the core 7-generic handler per
 /// job (the core handler pins `now_ms` at construction; production wants the
 /// wall clock at job time).
@@ -2966,6 +3002,14 @@ impl SpineFactory for ProductionSpineFactory {
                 Box::new(EmbeddingGenerateJobHandler),
             ),
             // === end P4.6BL ===
+            // === P4.24 ===
+            (
+                "LLM_LOG_CLEANUP".to_string(),
+                Box::new(LlmLogCleanupJobHandler {
+                    tz: self.tz.clone(),
+                }),
+            ),
+            // === end P4.24 ===
         ];
 
         // The provider wire-actions driver (the P4.6 unification wire): the
