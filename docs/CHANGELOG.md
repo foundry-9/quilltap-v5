@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Taught the custom-tool file format to declare side effects and a per-run chip
+label. A tool may now carry an `effects` list — up to sixteen conditional
+writes, each naming where it writes and what — and an optional label template
+for the result chip. Both are checked when the file is read, not when someone
+rolls: a target that names nowhere writable, a formula that does not parse, a
+reference to a parameter the tool never declared, and the underscore-guarded
+state keys that belong to the user alone are all refused up front, in the
+reference app's exact words. The check that walks an outcome row's subjects is
+now shared with effect conditions rather than copied. Verified by growing the
+format's differential corpus by 63 cases, with three deliberate breakages
+proving the new key positions and the order rules are really being compared.
+
 Ported the expression grammar that a custom tool's side effects will use to
 compute what they write: arithmetic, string joining, parentheses, literals,
 and the same `{{...}}` placeholders an outcome message already understands.

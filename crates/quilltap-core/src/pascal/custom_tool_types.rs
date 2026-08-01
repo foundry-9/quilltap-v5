@@ -58,6 +58,8 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use super::dice::{parse_dice_notation, MAX_DIE_SIDES, MIN_DIE_SIDES};
+use super::expressions::parse_expression;
+use crate::state::paths::{parse_path, PathKey};
 
 /// Well-known folder, at a store's root, holding custom-tool definitions.
 pub const TOOLS_FOLDER: &str = "Tools";
@@ -82,6 +84,22 @@ pub const MAX_DESCRIPTION_LENGTH: usize = 500;
 
 /// Cap on a tool's display title, in characters.
 pub const MAX_TITLE_LENGTH: usize = 80;
+
+/// Cap on a `chipLabel` TEMPLATE's text, in characters. The rendered result is
+/// uncapped here — the UI truncates it via CSS, which is where display concerns
+/// belong.
+pub const MAX_CHIP_LABEL_LENGTH: usize = 160;
+
+/// Cap on effects per tool.
+pub const MAX_EFFECTS: usize = 16;
+
+/// Cap on an effect's `target` string, in characters.
+pub const MAX_EFFECT_TARGET_LENGTH: usize = 200;
+
+/// Re-exported for the same reason v4 re-exports it here: the effect `value`
+/// cap belongs to the format, and the format's importers should not have to
+/// know that the grammar module owns the number.
+pub use super::expressions::MAX_EFFECT_EXPRESSION_LENGTH;
 
 /// Cap on an LLM consult prompt, in characters (measured before templating).
 pub const MAX_LLM_PROMPT_LENGTH: usize = 4000;
@@ -708,6 +726,124 @@ pub struct CustomToolOutcome {
     pub state: OutcomeState,
 }
 
+/// An effect condition's one new subject: the WINNING outcome's semantic state.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OutcomeTest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq: Option<OutcomeState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub neq: Option<OutcomeState>,
+}
+
+/// An effect's condition. The outcome-row `when` comparator language plus ONE
+/// new subject — `outcome`, the winning row's semantic state — because an effect
+/// is evaluated after the table has dealt, when there finally IS a winning
+/// outcome to test.
+///
+/// A separate schema rather than a widened [`WhenObject`] on purpose: an
+/// `outcome` subject inside an outcome row would be a self-referential dead
+/// branch (the row cannot test a verdict it has not yet won), and keeping the
+/// shapes separate leaves [`super::custom_tools::matches_when`] untouched.
+///
+/// v5 models the shared half as an embedded [`WhenObject`] — v4's
+/// `matchesEffectWhen` destructures `outcome` off and delegates the rest to
+/// `matchesWhen`, which is exactly this composition. `Serialize` flattens it
+/// back, so the definition serializes with v4's shape (the vocabulary's
+/// `$state` walk reads that serialization).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EffectWhen {
+    #[serde(flatten)]
+    pub base: WhenObject,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<OutcomeTest>,
+}
+
+/// What an effect writes: a literal number or boolean, or a string that is
+/// ALWAYS an expression (see [`CustomToolEffect`]).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum EffectValue {
+    Number(#[serde(serialize_with = "ser_js_number")] f64),
+    Bool(bool),
+    Str(String),
+}
+
+/// One side effect: a write the run records after the table has dealt.
+///
+/// `value` discrimination is the one ergonomic trap in the format: a JSON number
+/// or boolean is a literal, stored as-is, but a JSON **string is always an
+/// expression** — so literal prose must be quoted INSIDE the expression
+/// (`"value": "'broken pick'"`, not `"value": "broken pick"`; the bare form is a
+/// load-time parse error, and a loud one).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CustomToolEffect {
+    /// Condition for this effect. Omitted = fires on every run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<EffectWhen>,
+    pub target: String,
+    pub value: EffectValue,
+}
+
+/// A parsed effect target, with the raw text kept for records and messages.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EffectTarget {
+    State { path: Vec<PathKey>, raw: String },
+    Metadata { key: String, raw: String },
+}
+
+impl EffectTarget {
+    /// The target exactly as the author wrote it — what `pascalMeta.effects`
+    /// records and what the skip reasons quote.
+    pub fn raw(&self) -> &str {
+        match self {
+            EffectTarget::State { raw, .. } | EffectTarget::Metadata { raw, .. } => raw,
+        }
+    }
+}
+
+/// Parse an effect's `target`. The single parser for the syntax — validation,
+/// the applier, and the Workbench all come through here, so "what counts as a
+/// writable target" is decided exactly once.
+///
+/// - `state.<path>` — the remainder is a state path ([`parse_path`]'s
+///   dot/bracket syntax). An empty path is rejected, and so is a first segment
+///   starting with `_`: those keys are the user's own (the `state` tool's
+///   underscore guard), and no AI-adjacent path may write them.
+/// - `metadata.<key>` — the remainder is taken WHOLE as the key. Metadata keys
+///   are the user's vocabulary, so dots inside the key are fine precisely
+///   because it is not path-parsed.
+///
+/// `Err` carries v4's `reason` string verbatim.
+pub fn parse_effect_target(target: &str) -> Result<EffectTarget, String> {
+    if let Some(rest) = target.strip_prefix("state.") {
+        let path = parse_path(Some(rest));
+        if path.is_empty() {
+            return Err("names no state path after \"state.\"".to_string());
+        }
+        if matches!(path.first(), Some(PathKey::Prop(s)) if s.starts_with('_')) {
+            return Err(format!(
+                "writes \"{rest}\" — state keys starting with an underscore are user-only, and no tool may write them"
+            ));
+        }
+        return Ok(EffectTarget::State {
+            path,
+            raw: target.to_string(),
+        });
+    }
+
+    if let Some(key) = target.strip_prefix("metadata.") {
+        if key.is_empty() {
+            return Err("names no metadata key after \"metadata.\"".to_string());
+        }
+        return Ok(EffectTarget::Metadata {
+            key: key.to_string(),
+            raw: target.to_string(),
+        });
+    }
+
+    Err("must start with \"state.\" or \"metadata.\"".to_string())
+}
+
 /// The custom-tool definition.
 ///
 /// Unknown TOP-LEVEL keys are tolerated, which reserves room for v2 keys —
@@ -729,6 +865,11 @@ pub struct QtapCustomTool {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Templated label for the outcome chip and the announcement header. Same
+    /// placeholders as an outcome message; rendered ONCE, after the outcome is
+    /// chosen. Blank/absent = the title labels the chip.
+    #[serde(rename = "chipLabel", skip_serializing_if = "Option::is_none")]
+    pub chip_label: Option<String>,
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disabled: Option<bool>,
@@ -755,6 +896,10 @@ pub struct QtapCustomTool {
     /// it and messages may render it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<CustomToolLlm>,
+    /// Side effects applied after the run: writes into tiered persistent state
+    /// or the rolling character's metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effects: Option<Vec<CustomToolEffect>>,
     pub outcomes: Vec<CustomToolOutcome>,
 }
 
@@ -1751,6 +1896,29 @@ fn parse_roll(input: Option<&Value>) -> Res<Roll> {
 }
 
 fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
+    let r = parse_when_like(input, false);
+    Res {
+        value: r.value.map(|(base, _)| base),
+        issues: r.issues,
+    }
+}
+
+/// v4 `EffectWhenSchema` — `WhenObjectSchema`'s shape with `outcome` appended,
+/// and the refine widened by that one subject.
+fn parse_effect_when(input: Option<&Value>) -> Res<EffectWhen> {
+    let r = parse_when_like(input, true);
+    Res {
+        value: r.value.map(|(base, outcome)| EffectWhen { base, outcome }),
+        issues: r.issues,
+    }
+}
+
+/// The shared body of `WhenObjectSchema` and `EffectWhenSchema`. v4 spreads
+/// `NUMERIC_COMPARATOR_SHAPE` into both and repeats the four subject keys; the
+/// two differ only in the trailing `outcome` key, the strict-object key list,
+/// and the refine's message and disjunct. Parametrised rather than copied,
+/// because Zod's shape order IS the issue order and two copies would drift.
+fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Option<OutcomeTest>)> {
     let obj = match as_object(input) {
         Ok(o) => o,
         Err(e) => {
@@ -1824,8 +1992,24 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
         out.llm = r.value;
     }
 
+    // `outcome` closes the effect shape — the one subject an outcome row cannot
+    // carry, because a row cannot test a verdict it has not yet won.
+    let mut outcome: Option<OutcomeTest> = None;
+    let mut outcome_present = false;
+    if effect {
+        if let Some(v) = obj.get("outcome") {
+            outcome_present = true;
+            let r = parse_outcome_test(Some(v));
+            issues.extend(prefix("outcome", r.issues));
+            outcome = r.value;
+        }
+    }
+
     let mut known: Vec<&str> = NUMERIC_COMPARATOR_KEYS.to_vec();
     known.extend_from_slice(&["roll", "params", "metadata", "llm"]);
+    if effect {
+        known.push("outcome");
+    }
     issues.extend(unrecognized_keys(obj, &known));
 
     if aborted(&issues) {
@@ -1839,14 +2023,153 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
     let has_comparator = COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
     let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
-    if !has_comparator && out.roll.is_none() && !llm_present && !has_params && !has_metadata {
+    if !has_comparator
+        && out.roll.is_none()
+        && !llm_present
+        && !outcome_present
+        && !has_params
+        && !has_metadata
+    {
+        issues.push(Issue::check(if effect {
+            "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, or a non-empty `metadata`"
+        } else {
+            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`"
+        }));
+    }
+    Res {
+        value: Some((out, outcome)),
+        issues,
+    }
+}
+
+/// v4's inline `outcome` schema: a strict object of two optional outcome
+/// states, with its own refine.
+fn parse_outcome_test(input: Option<&Value>) -> Res<OutcomeTest> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut out = OutcomeTest {
+        eq: None,
+        neq: None,
+    };
+    for (key, slot) in [("eq", 0usize), ("neq", 1usize)] {
+        if let Some(v) = obj.get(key) {
+            let r = parse_enum(
+                Some(v),
+                &[
+                    ("success", OutcomeState::Success),
+                    ("partial", OutcomeState::Partial),
+                    ("failure", OutcomeState::Failure),
+                    ("info", OutcomeState::Info),
+                ],
+            );
+            issues.extend(prefix(key, r.issues));
+            if slot == 0 {
+                out.eq = r.value;
+            } else {
+                out.neq = r.value;
+            }
+        }
+    }
+
+    issues.extend(unrecognized_keys(obj, &["eq", "neq"]));
+
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+
+    if out.eq.is_none() && out.neq.is_none() {
         issues.push(Issue::check(
-            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`",
+            "must test something: `eq` or `neq` against an outcome state",
         ));
     }
     Res {
         value: Some(out),
         issues,
+    }
+}
+
+/// v4 `CustomToolEffectSchema`.
+fn parse_custom_tool_effect(input: Option<&Value>) -> Res<CustomToolEffect> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+
+    let when = match obj.get("when") {
+        Some(v) => {
+            let r = parse_effect_when(Some(v));
+            issues.extend(prefix("when", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    let target = parse_string(
+        obj.get("target"),
+        Some(1),
+        Some(MAX_EFFECT_TARGET_LENGTH),
+        false,
+    );
+    issues.extend(prefix("target", target.issues));
+
+    // `z.union([z.number().finite(), z.boolean(), z.string().min(1).max(500)])`.
+    let value = {
+        let raw = obj.get("value");
+        let number = parse_finite_number(raw);
+        let boolean = parse_bool(raw);
+        let string = parse_string(raw, Some(1), Some(MAX_EFFECT_EXPRESSION_LENGTH), false);
+        let r = union(vec![
+            Res {
+                value: number.value.map(EffectValue::Number),
+                issues: number.issues,
+            },
+            Res {
+                value: boolean.value.map(EffectValue::Bool),
+                issues: boolean.issues,
+            },
+            Res {
+                value: string.value.map(EffectValue::Str),
+                issues: string.issues,
+            },
+        ]);
+        issues.extend(prefix("value", r.issues));
+        r.value
+    };
+
+    issues.extend(unrecognized_keys(obj, &["when", "target", "value"]));
+
+    match (target.value, value) {
+        (Some(target), Some(value)) if !aborted(&issues) => Res {
+            value: Some(CustomToolEffect {
+                when,
+                target,
+                value,
+            }),
+            issues,
+        },
+        _ => Res {
+            value: None,
+            issues,
+        },
     }
 }
 
@@ -1949,6 +2272,18 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
 
+    // Positioned between `title` and `description`, which is where v4's shape
+    // declares it — Zod walks a shape in declaration order, so this is the issue
+    // ORDER contract as much as the key order.
+    let chip_label = match obj.get("chipLabel") {
+        Some(v) => {
+            let r = parse_string(Some(v), Some(1), Some(MAX_CHIP_LABEL_LENGTH), false);
+            issues.extend(prefix("chipLabel", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
     let description = parse_string(
         obj.get("description"),
         Some(1),
@@ -2042,6 +2377,41 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
 
+    // Between `llm` and `outcomes`, per v4's shape.
+    let effects = match obj.get("effects") {
+        Some(Value::Array(items)) => {
+            let mut list = Vec::new();
+            let mut arr_issues = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                let r = parse_custom_tool_effect(Some(item));
+                arr_issues.extend(prefix(&i.to_string(), r.issues));
+                if let Some(e) = r.value {
+                    list.push(e);
+                }
+            }
+            // `.max(MAX_EFFECTS, …)` is a check with an authored message, so it
+            // is skipped once an element aborted.
+            if !aborted(&arr_issues) && items.len() > MAX_EFFECTS {
+                arr_issues.push(Issue::check(format!("at most {MAX_EFFECTS} effects")));
+            }
+            let ok = !aborted(&arr_issues);
+            issues.extend(prefix("effects", arr_issues));
+            if ok {
+                Some(list)
+            } else {
+                None
+            }
+        }
+        Some(v) => {
+            issues.extend(prefix(
+                "effects",
+                vec![Issue::hard(invalid_type("array", Some(v)))],
+            ));
+            None
+        }
+        None => None,
+    };
+
     let outcomes = match obj.get("outcomes") {
         Some(Value::Array(items)) => {
             let mut list = Vec::new();
@@ -2093,6 +2463,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         schema,
         name,
         title,
+        chip_label,
         description,
         disabled,
         available_when,
@@ -2102,6 +2473,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         parameters,
         roll,
         llm,
+        effects,
         outcomes,
     };
 
@@ -2109,6 +2481,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     validate_outcome_ordering(&tool.outcomes, &mut issues);
     validate_references(&tool, &mut issues);
     validate_gates(&tool, &mut issues);
+    validate_effects(&tool, &mut issues);
 
     if issues.is_empty() {
         Ok(tool)
@@ -2220,12 +2593,31 @@ fn validate_references(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
         let When::Object(when) = &outcome.when else {
             continue;
         };
-        let path = |rest: Vec<String>| {
-            let mut p = vec!["outcomes".to_string(), i.to_string(), "when".to_string()];
-            p.extend(rest);
-            p
-        };
+        validate_when_subjects(
+            tool,
+            when,
+            issues,
+            &["outcomes".to_string(), i.to_string(), "when".to_string()],
+        );
+    }
+}
 
+/// The shared walk over one `when` object's subjects — outcome rows and effect
+/// conditions carry the same comparator language, so they are checked by the
+/// same code rather than two copies that drift.
+fn validate_when_subjects(
+    tool: &QtapCustomTool,
+    when: &WhenObject,
+    issues: &mut Vec<Issue>,
+    base: &[String],
+) {
+    let path = |rest: Vec<String>| {
+        let mut p = base.to_vec();
+        p.extend(rest);
+        p
+    };
+
+    {
         // Bare comparator keys, and `roll`, both address a number.
         let bare = NumericComparator {
             gt: when.gt.clone(),
@@ -2303,6 +2695,65 @@ fn validate_references(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
                 issues,
                 &path(vec!["metadata".into(), key.clone()]),
             );
+        }
+    }
+}
+
+/// Rule: every effect must be applicable. The target parses (including the
+/// underscore guard), a string `value` parses as an expression, every
+/// `params.x` reference names a declared parameter, and an `{{llm}}` reference
+/// or an `llm` `when`-subject requires an `llm` block — the same rule outcome
+/// rows follow.
+///
+/// Parse failure here is the dice-notation doctrine: syntax errors are typos,
+/// caught in the Workbench and at discovery, never at the table.
+fn validate_effects(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
+    for (i, effect) in tool.effects.iter().flatten().enumerate() {
+        let base = vec!["effects".to_string(), i.to_string()];
+        let at = |rest: &str| {
+            let mut p = base.clone();
+            p.push(rest.to_string());
+            p
+        };
+
+        if let Err(reason) = parse_effect_target(&effect.target) {
+            issues.push(issue_at(format!("target {reason}"), &at("target")));
+        }
+
+        // A JSON string value is ALWAYS an expression — the quoting trap. The
+        // bare prose an author meant as a literal fails to parse right here,
+        // loudly.
+        if let EffectValue::Str(source) = &effect.value {
+            match parse_expression(source) {
+                Err(reason) => issues.push(issue_at(
+                    format!("value is not a valid expression: {reason}"),
+                    &at("value"),
+                )),
+                Ok(parsed) => {
+                    for r in &parsed.refs {
+                        if let Some(name) = r.strip_prefix("params.") {
+                            if tool.parameter(name).is_none() {
+                                issues.push(issue_at(
+                                    format!("value references undeclared parameter \"{name}\""),
+                                    &at("value"),
+                                ));
+                            }
+                        } else if r == "llm" && tool.llm.is_none() {
+                            issues.push(issue_at(
+                                "value references {{llm}}, but the tool declares no `llm` block"
+                                    .into(),
+                                &at("value"),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(when) = &effect.when {
+            let mut p = base.clone();
+            p.push("when".to_string());
+            validate_when_subjects(tool, &when.base, issues, &p);
         }
     }
 }
@@ -2663,10 +3114,11 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 }
 
 /// Top-level keys the v1 format knows about. Anything else is reserved for v2.
-const KNOWN_TOP_LEVEL_KEYS: [&str; 13] = [
+const KNOWN_TOP_LEVEL_KEYS: [&str; 15] = [
     "$schema",
     "name",
     "title",
+    "chipLabel",
     "description",
     "disabled",
     "availableWhen",
@@ -2676,6 +3128,7 @@ const KNOWN_TOP_LEVEL_KEYS: [&str; 13] = [
     "parameters",
     "roll",
     "llm",
+    "effects",
     "outcomes",
 ];
 
@@ -2690,5 +3143,76 @@ pub fn collect_unknown_keys(raw: &Value) -> Vec<String> {
             .cloned()
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ACCEPT half of `parseEffectTarget`. The rejection sentences are
+    /// byte-pinned by the definition differential (they surface verbatim as
+    /// `target <reason>`), but a successful parse produces a PATH, and no
+    /// definition row can see that shape — the parsed definition only echoes
+    /// the raw string. Where the path lands is proven end-to-end by the route
+    /// differential's state diff; this is the table v4 pins by unit test too.
+    #[test]
+    fn parse_effect_target_accepts() {
+        let state = parse_effect_target("state.encounter.count").unwrap();
+        assert_eq!(
+            state,
+            EffectTarget::State {
+                path: vec![
+                    PathKey::Prop("encounter".into()),
+                    PathKey::Prop("count".into())
+                ],
+                raw: "state.encounter.count".into(),
+            }
+        );
+
+        // A metadata key is taken WHOLE — dots inside it are part of the key,
+        // because metadata keys are the user's own vocabulary, not a path.
+        assert_eq!(
+            parse_effect_target("metadata.ansible.tool").unwrap(),
+            EffectTarget::Metadata {
+                key: "ansible.tool".into(),
+                raw: "metadata.ansible.tool".into(),
+            }
+        );
+
+        // The underscore guard is on the FIRST segment only.
+        assert!(parse_effect_target("state.encounter._notes").is_ok());
+
+        // Bracket indices parse like any other state path.
+        assert_eq!(
+            parse_effect_target("state.party[0].hp").unwrap(),
+            EffectTarget::State {
+                path: vec![
+                    PathKey::Prop("party".into()),
+                    PathKey::Index(0),
+                    PathKey::Prop("hp".into())
+                ],
+                raw: "state.party[0].hp".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_effect_target_rejects() {
+        assert_eq!(
+            parse_effect_target("encounter.count").unwrap_err(),
+            "must start with \"state.\" or \"metadata.\""
+        );
+        assert_eq!(
+            parse_effect_target("state.").unwrap_err(),
+            "names no state path after \"state.\""
+        );
+        assert_eq!(
+            parse_effect_target("metadata.").unwrap_err(),
+            "names no metadata key after \"metadata.\""
+        );
+        assert!(parse_effect_target("state._secrets.combo")
+            .unwrap_err()
+            .contains("user-only"));
     }
 }

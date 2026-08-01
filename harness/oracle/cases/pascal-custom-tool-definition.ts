@@ -62,7 +62,11 @@ import {
   collectUnknownKeys,
   displayTitle,
   formatDefinitionIssues,
+  MAX_CHIP_LABEL_LENGTH,
   MAX_DESCRIPTION_LENGTH,
+  MAX_EFFECTS,
+  MAX_EFFECT_EXPRESSION_LENGTH,
+  MAX_EFFECT_TARGET_LENGTH,
   MAX_MESSAGE_LENGTH,
   MAX_OUTCOMES,
   MAX_TITLE_LENGTH,
@@ -110,6 +114,15 @@ function withWhen(when: unknown, extra: Record<string, unknown> = {}) {
 const LLM_BLOCK = {
   llm: { prompt: 'Answer YES or NO: is {{value}} auspicious?', errorMessage: 'The wire went dead.' },
 };
+
+/**
+ * A definition carrying `effects` (P4.D35, v4 `c4d4b0de`), with the trailing
+ * catch-all `BASE` already supplies. `effects` rides as `unknown` so the corpus
+ * can pose a non-array and a non-object element too.
+ */
+function withEffects(effects: unknown, extra: Record<string, unknown> = {}) {
+  return { ...BASE, ...extra, effects };
+}
 
 const NUM_PARAM = { parameters: { scale: { type: 'number', default: 1 } } };
 const INT_PARAM = { parameters: { steps: { type: 'integer', default: 2 } } };
@@ -451,6 +464,94 @@ const corpus: Array<[string, unknown]> = [
   ['gate-ordering-boolean-operand', { ...BASE, availableWhen: { metadata: { clearance: { lt: true } } } }],
   ['gate-contains-number-operand', { ...BASE, availableWhen: { metadata: { faction: { contains: 42 } } } }],
   ['gate-eq-object-operand', { ...BASE, availableWhen: { metadata: { rank: { eq: { a: 1 } } } } }],
+
+  // ---- chipLabel (P4.D35, v4 `c4d4b0de`) ----------------------------------
+  // A template, not a reference site: there is deliberately NO load-time rule
+  // that its placeholders resolve — an unknown one renders verbatim, exactly as
+  // in an outcome message (the `renderTemplate` doctrine). The Workbench warns;
+  // the loader does not.
+  ['chip-label-templated', { ...BASE, chipLabel: 'Agent lambda — {{params.label}}' }],
+  ['chip-label-at-cap', { ...BASE, chipLabel: 'x'.repeat(MAX_CHIP_LABEL_LENGTH) }],
+  ['chip-label-unknown-placeholder-tolerated', { ...BASE, chipLabel: '{{params.never_declared}}' }],
+  ['chip-label-empty', { ...BASE, chipLabel: '' }],
+  ['chip-label-over-cap', { ...BASE, chipLabel: 'x'.repeat(MAX_CHIP_LABEL_LENGTH + 1) }],
+  ['chip-label-not-a-string', { ...BASE, chipLabel: 7 }],
+  ['chip-label-null', { ...BASE, chipLabel: null }],
+
+  // ---- effects: accepted --------------------------------------------------
+  ['effect-literal-number', withEffects([{ target: 'state.encounter.count', value: 3 }])],
+  ['effect-literal-negative-number', withEffects([{ target: 'state.debt', value: -12.5 }])],
+  ['effect-literal-boolean', withEffects([{ target: 'metadata.lockBroken', value: true }])],
+  ['effect-quoted-string-expression', withEffects([{ target: 'metadata.lockpick', value: "'broken pick'" }])],
+  ['effect-expression-over-subjects', withEffects([{ target: 'state.tally', value: '{{state.tally}} + {{params.scale}}' }], NUM_PARAM)],
+  ['effect-outcome-condition-eq', withEffects([{ when: { outcome: { eq: 'success' } }, target: 'state.wins', value: 1 }])],
+  ['effect-outcome-condition-neq', withEffects([{ when: { outcome: { neq: 'failure' } }, target: 'state.attempts', value: 1 }])],
+  ['effect-outcome-condition-both', withEffects([{ when: { outcome: { eq: 'success', neq: 'failure' } }, target: 'state.wins', value: 1 }])],
+  ['effect-outcome-anded-with-value-test', withEffects([{ when: { gt: 0.5, outcome: { neq: 'failure' } }, target: 'state.x', value: 1 }])],
+  ['effect-metadata-condition', withEffects([{ when: { metadata: { hasKey: { eq: true } } }, target: 'state.opened', value: true }])],
+  ['effect-roll-condition', withEffects([{ when: { roll: { gte: 10 } }, target: 'state.big', value: true }])],
+  ['effect-params-condition', withEffects([{ when: { params: { scale: { gt: 1 } } }, target: 'state.x', value: 1 }], NUM_PARAM)],
+  ['effect-llm-reference-with-block', withEffects([{ target: 'metadata.verdict', value: '{{llm}}' }], LLM_BLOCK)],
+  ['effect-llm-when-subject-with-block', withEffects([{ when: { llm: { ok: true } }, target: 'state.x', value: 1 }], LLM_BLOCK)],
+  ['effect-metadata-key-taken-whole', withEffects([{ target: 'metadata.ansible.tool', value: true }])],
+  ['effect-deep-underscore-allowed', withEffects([{ target: 'state.encounter._notes', value: "'ok'" }])],
+  ['effect-bracket-index-path', withEffects([{ target: 'state.party[0].hp', value: 1 }])],
+  ['effect-value-string-at-cap', withEffects([{ target: 'state.x', value: `'${'x'.repeat(MAX_EFFECT_EXPRESSION_LENGTH - 2)}'` }])],
+  ['effects-at-cap', withEffects(Array.from({ length: MAX_EFFECTS }, (_, i) => ({ target: `state.k${i}`, value: 1 })))],
+  ['effects-empty-array', withEffects([])],
+  ['effect-state-ref-operand-in-condition', withEffects([{ when: { gte: { $state: 'threshold', fallback: 0.5 } }, target: 'state.x', value: 1 }])],
+
+  // ---- effects: rejected --------------------------------------------------
+  // The quoting trap and the whole `parseEffectTarget` rejection vocabulary.
+  // Each of these renders its reason at an `effects.N.*` path, and the reason
+  // is the parser's own sentence spliced in — so this is where the expression
+  // grammar's error strings become user-visible payload.
+  ['effect-bare-prose-value', withEffects([{ target: 'metadata.lockpick', value: 'broken pick' }])],
+  ['effect-target-no-prefix', withEffects([{ target: 'somewhere.else', value: 1 }])],
+  ['effect-target-empty-state-path', withEffects([{ target: 'state.', value: 1 }])],
+  ['effect-target-empty-metadata-key', withEffects([{ target: 'metadata.', value: 1 }])],
+  ['effect-target-underscore-guard', withEffects([{ target: 'state._secrets.combo', value: 1 }])],
+  ['effect-target-empty-string', withEffects([{ target: '', value: 1 }])],
+  ['effect-target-over-cap', withEffects([{ target: `state.${'x'.repeat(MAX_EFFECT_TARGET_LENGTH)}`, value: 1 }])],
+  ['effect-target-missing', withEffects([{ value: 1 }])],
+  ['effect-target-not-a-string', withEffects([{ target: 7, value: 1 }])],
+  ['effect-value-missing', withEffects([{ target: 'state.x' }])],
+  ['effect-value-empty-string', withEffects([{ target: 'state.x', value: '' }])],
+  ['effect-value-over-cap', withEffects([{ target: 'state.x', value: `'${'x'.repeat(MAX_EFFECT_EXPRESSION_LENGTH)}'` }])],
+  ['effect-value-null', withEffects([{ target: 'state.x', value: null }])],
+  ['effect-value-object', withEffects([{ target: 'state.x', value: { a: 1 } }])],
+  ['effect-value-array', withEffects([{ target: 'state.x', value: [1] }])],
+  ['effect-expression-undeclared-param', withEffects([{ target: 'state.x', value: '{{params.ghost}} + 1' }])],
+  ['effect-llm-reference-no-block', withEffects([{ target: 'metadata.verdict', value: '{{llm}}' }])],
+  ['effect-llm-when-subject-no-block', withEffects([{ when: { llm: { ok: true } }, target: 'state.x', value: 1 }])],
+  ['effect-when-undeclared-param', withEffects([{ when: { params: { ghost: { gt: 1 } } }, target: 'state.x', value: 1 }])],
+  ['effect-when-empty', withEffects([{ when: {}, target: 'state.x', value: 1 }])],
+  ['effect-when-empty-outcome', withEffects([{ when: { outcome: {} }, target: 'state.x', value: 1 }])],
+  ['effect-when-unknown-outcome-state', withEffects([{ when: { outcome: { eq: 'triumph' } }, target: 'state.x', value: 1 }])],
+  ['effect-when-unknown-outcome-key', withEffects([{ when: { outcome: { is: 'success' } }, target: 'state.x', value: 1 }])],
+  ['effect-when-outcome-not-an-object', withEffects([{ when: { outcome: 'success' }, target: 'state.x', value: 1 }])],
+  ['effect-when-unknown-subject-key', withEffects([{ when: { outcome: { eq: 'success' }, bogus: 1 }, target: 'state.x', value: 1 }])],
+  ['effect-when-not-an-object', withEffects([{ when: 'always', target: 'state.x', value: 1 }])],
+  ['effect-unknown-key', withEffects([{ target: 'state.x', value: 1, bogus: true }])],
+  ['effect-not-an-object', withEffects(['state.x'])],
+  ['effects-not-an-array', withEffects({ target: 'state.x', value: 1 })],
+  ['effects-over-cap', withEffects(Array.from({ length: MAX_EFFECTS + 1 }, (_, i) => ({ target: `state.k${i}`, value: 1 })))],
+  // Two bad effects: the issue ORDER across array elements, and that a check
+  // (`at most N effects`) is skipped once an element aborted.
+  ['effects-two-bad-elements', withEffects([{ target: 'nowhere', value: 1 }, { target: 'state.x', value: 'bare prose' }])],
+  // An effect issue and an OUTCOME issue together — validateEffects runs LAST
+  // in the superRefine, so its sentences trail the others.
+  ['effect-and-outcome-issue', { ...BASE, outcomes: [{ when: { params: { ghost: { gt: 1 } } }, message: '-', state: 'info' }, CATCH_ALL], effects: [{ target: 'nowhere', value: 1 }] }],
+
+  // ---- where the two new keys sit in the SHAPE ----------------------------
+  // Zod walks a shape in declaration order, so the shape position of
+  // `chipLabel` (after `title`, before `description`) and of `effects` (after
+  // `llm`, before `outcomes`) is an ISSUE-ORDER contract, not just a key order.
+  // Only a row that fails at several of those keys at once can see it — every
+  // other effects row above would pass with the keys parsed in any order.
+  ['shape-order-title-chip-description', { name: 'probe', title: 5, chipLabel: 5, description: 5, outcomes: [{ when: true, message: '-', state: 'info' }] }],
+  ['shape-order-llm-effects-outcomes', { ...BASE, llm: 5, effects: 5, outcomes: 5 }],
+  ['shape-order-chip-and-effects', { ...BASE, chipLabel: 5, effects: 5 }],
 
   // ---- shape / non-object -------------------------------------------------
   ['not-an-object', 'nope'],

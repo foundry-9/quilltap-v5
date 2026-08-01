@@ -47938,3 +47938,70 @@ Three deliberate breakages, each reverted:
 That third one is the lane's transferable finding: a corpus of *distinct*
 inputs cannot see a missing dedup, and "green on first run" is exactly when to
 look for it.
+
+### Lane record — P4.D35 unit 2: the definition schema (`effects` + `chipLabel`)
+
+Ported v4's `custom-tool.types.ts` additions: `MAX_CHIP_LABEL_LENGTH` (160),
+`MAX_EFFECTS` (16), `MAX_EFFECT_TARGET_LENGTH` (200) + the
+`MAX_EFFECT_EXPRESSION_LENGTH` re-export; `EffectWhenSchema` (the outcome-row
+comparator language plus the `outcome` subject, with its own inner refine);
+`CustomToolEffectSchema`; `parse_effect_target`; `validate_effects`; the
+`chipLabel` key; `KNOWN_TOP_LEVEL_KEYS` 13 → 15; and the per-outcome subject
+walk factored out as the shared `validate_when_subjects`, which outcome rows and
+effect conditions now both use (v4's own factoring — two copies would drift).
+
+**Shape choices worth recording.**
+
+- `EffectWhen` is `{ base: WhenObject, outcome: Option<OutcomeTest> }` with
+  `#[serde(flatten)]`, not a widened `WhenObject`. v4's `matchesEffectWhen`
+  destructures `outcome` off and delegates the rest to `matchesWhen`; that IS
+  this composition, and it keeps `matches_when` untouched. The flatten also
+  keeps the definition's serialization v4-shaped, which matters because the
+  vocabulary's `$state` walk reads that serialization.
+- `parse_when_object` was refactored into a shared `parse_when_like(input,
+  effect)` rather than copied. v4 spreads `NUMERIC_COMPARATOR_SHAPE` into both
+  schemas; the two differ only in the trailing `outcome` key, the strict-object
+  key list, and the refine's message and disjunct. **Zod's shape order is the
+  issue order**, so a second copy is a drift hazard, not a convenience.
+
+**Corpus growth: the §C definition family 236 → 299 rows** (63 new), all as the
+existing `definition` kind — deliberately NOT a fourth kind, so P4.D36's census
+partition assertion in `custom-tool-types.corpus.spec.ts` does not fire and the
+two committed copies stay trivially `diff -q` comparable. New arms: 7 chipLabel,
+21 accepted effects, 32 rejected effects (the whole `parseEffectTarget`
+rejection vocabulary and the expression grammar's parse reasons, both spliced
+verbatim into the user-visible sentence), and 3 shape-order rows.
+
+**Fresh corpus census for P4.D36 and the unifier** (fresh at `c4d4b0de`,
+`/tmp/oracle-pascal-definition.ndjson`): **299 rows total — 10 `title` + 258
+`definition` + 31 `gate`** (was 236 = 10 + 195 + 31). Regen:
+
+```
+cd ~/source/quilltap-server
+PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH" TZ=UTC npx tsx \
+  <V5W>/harness/oracle/cases/pascal-custom-tool-definition.ts \
+  > /tmp/oracle-pascal-definition.ndjson
+```
+
+**The three shape-order rows are the unit's own finding.** Every other effects
+row would have passed with `chipLabel` and `effects` parsed at any position —
+their issues are single. Only a row failing at several shape keys at once can
+see that Zod walks the shape in declaration order, so
+`shape-order-title-chip-description`, `shape-order-llm-effects-outcomes` and
+`shape-order-chip-and-effects` were added specifically to pin where the two new
+keys sit.
+
+**Mutation proofs (D24 — all 63 arms were green on the first run).** Each
+applied and reverted:
+
+1. Parse `chipLabel` after `description` → RED at
+   `shape-order-title-chip-description` (issue order).
+2. Run `validate_effects` first in the superRefine instead of last → RED at
+   `effect-and-outcome-issue`.
+3. Move the underscore guard from the first path segment to the last → RED.
+
+`parse_effect_target`'s ACCEPT table (the parsed path, the whole-metadata-key
+rule, the deep-underscore allowance, bracket indices) is pinned by direct Rust
+unit tests, as v4 pins it by unit test: a definition row only echoes the raw
+target string, so no corpus row can see the path shape. Where the path actually
+lands is proven end-to-end by the route differential's state diff (unit 5).
