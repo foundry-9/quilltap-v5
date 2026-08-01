@@ -46475,3 +46475,28 @@ is being asserted.
   both reflect its driver's stricter/looser edges, not different repo
   state; this list is driver-versioned and the driver is now committed, so
   the next sweep reuses these exact rules.
+
+### Lane E verification gate + close (2026-07-31)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (default +
+  `quilltap-core/native-transport`).
+- `cargo test --workspace --no-fail-fast` with the lane's seven env vars
+  (charread ×3, characters-reads, characters-actions, termtools ×2):
+  **404 test binaries, all ok, cargo exit 0** (run at each of the lane's
+  three commits; final run on 7fd63719).
+- The four ordered families re-run BY NAME with `--nocapture`, zero SKIP,
+  over oracles regenerated fresh at `ff12f491` and marker-grepped
+  (`canChooseOutfit` present in all three characters NDJSONs;
+  `"valid":false` — the repaired boolean verdict — in the termtools
+  NDJSON): all green.
+- Committed fixtures byte-untouched at lane close: `git status` clean on
+  `crates/quilltap-web/tests/fixtures` and `harness/oracle/fixtures`
+  after all 19 proof regens (the driver's fixture shield ran the
+  committed-DB-pointing regens against /tmp copies).
+- **No `apps/web` change anywhere in the lane — no SPA gate owed.**
+- v4 remained at `e1be028b` (tree clean) throughout; the finding-#47
+  vault fix did NOT land mid-lane, so no lane-A oracle coordination was
+  triggered.
+- Versions: core 0.0.428, harness 0.0.370 (this lane's bumps; unifier
+  recounts per the playbook).
