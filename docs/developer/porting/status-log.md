@@ -49130,3 +49130,71 @@ row).
 Gate for this unit: `npx ng test --watch=false --include=
 'src/app/chat/announcement-group.spec.ts' --include=
 'src/app/chat/message-row.spec.ts'` — 47/47 green.
+
+## Lane record — P4.D38 tier 2: the overheard-dim predicate, PORTED (not deferred)
+
+The order flagged `.qt-chat-message-whisper-overheard` (`_chat.css:79-81`)
+as a pre-existing gap — zero TS appliers — and offered either porting it or
+deferring loudly. Ported: the gap was small enough to close cleanly and it's
+directly adjacent to this unit's other whisper-visibility work.
+
+**New export** `isOverheardWhisper(msg, userParticipantIds)` in
+`whisper-visibility.ts` (v4 `VirtualizedMessageList.tsx:358-373`, inline JSX
+in v4 — no `whisper-visibility.ts` home there; v5 gives it one since v5's
+architecture separates the pure predicate from its render site). Six
+clauses collapsed to five in the port: v4's expression carries a redundant
+`!!userParticipantIdSet` truthiness check (the set is never absent by
+construction in v4's own call site) that the port drops as dead weight —
+recorded here rather than silently, since the order asked for the
+predicate ported, not necessarily every clause of v4's specific expression
+shape.
+
+**The load-bearing insight, not obvious from the six clauses alone**: this
+function needs NO `showAllWhispers` parameter, even though v4's comment
+frames the dim as "the toggle is on". `isMessageVisibleToOperator` already
+filtered the render list BEFORE any row reaches this predicate — a message
+that is a whisper, carries no `systemSender`, isn't the operator's own
+announcement, and isn't from/to the operator could only have survived that
+upstream filter because the toggle was on. The predicate's five clauses are
+exactly `isMessageVisibleToOperator`'s "was this shown on purpose" tests,
+negated; documented inline so a future reader doesn't try to thread the
+toggle through a second time.
+
+**Threading** (three files, none of them owning the computation): `salon-
+conversation.ts`'s existing `userParticipantIdSet` (widened from `private`
+to `protected` — the ONLY visibility change, no new computed) → new
+`[userParticipantIds]` input on `message-list.ts` → its new `overheard(message)`
+method (the only call site, applied only to the canonical virtualized row,
+never the stream-accumulated bubbles — matching v4, which only computes it
+in the same branch) → new `[isOverheardWhisper]` input on `qt-message-row` →
+a `[class.qt-chat-message-whisper-overheard]` binding alongside the existing
+`bubbleClass()` binding on the message bubble div. `message-row.ts` itself
+computes nothing — it only applies the class the list computed, matching the
+order's file-ownership note that `message-list.ts` isn't just message
+grouping, it's also where v4's per-row derived props (`isOverheardWhisper`,
+`participantNames`) get computed once per render pass.
+
+**Trap**: an HTML template comment containing backticked identifiers breaks
+the Angular compiler exactly as unit 4 found — hit AGAIN while drafting this
+unit's `message-row.ts`/`message-list.ts` doc comments (both regular TSDoc
+outside any `template:` string, so backticks were fine there; the danger is
+strictly inside the template literal).
+
+**New coverage + mutation proof** (both reverted after): `whisper-visibility.spec.ts`
+gained a 6-case `'isOverheardWhisper'` describe (public message, character-
+to-character whisper the operator has no part in, operator-authored,
+operator-targeted, any Staff row, the operator's own announcement).
+Mutated the function to drop its last two clauses (participant-id and
+target-id exclusion) — reds exactly the two cases those clauses guard,
+leaving all four others green. `message-list.spec.ts` gained a 3-case
+`'the overheard-whisper dim'` describe exercising the real virtualized
+render path (the `beforeAll` `offsetHeight` stub this file already
+carries). `message-row.spec.ts` gained a 1-case unit test that the row
+purely reflects its `isOverheardWhisper` input, and that dimming doesn't
+disturb the whisper variant/label/border.
+
+Gate for this unit: `npx ng test --watch=false --include=
+'src/app/chat/message-list.spec.ts' --include=
+'src/app/chat/message-row.spec.ts' --include=
+'src/app/chat/whisper-visibility.spec.ts' --include=
+'src/app/screens/salon/salon-conversation.spec.ts'` — 106/106 green.

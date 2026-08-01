@@ -22,6 +22,7 @@ import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-
 import { MessageRow, type ImageClickEvent } from './message-row';
 import { StreamingMessage } from './streaming-message';
 import { ToolMessage } from './tool-message';
+import { isOverheardWhisper } from './whisper-visibility';
 import { Icon } from '../ui/icon';
 import { VirtualRow } from './virtual-row';
 
@@ -76,6 +77,7 @@ import { VirtualRow } from './virtual-row';
                     [showAvatar]="showAvatars()"
                     [editing]="item.message.id === editingId()"
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
+                    [isOverheardWhisper]="overheard(item.message)"
                     (viewLlmLogs)="viewLlmLogs.emit($event)"
                     (copy)="copy.emit($event)"
                     (edit)="edit.emit($event)"
@@ -165,6 +167,11 @@ export class MessageList {
    * its canonical row (which does) on the reconcile refetch.
    */
   readonly messagesWithLogs = input<ReadonlySet<string>>(new Set<string>());
+  /**
+   * The participant ids the human controls (v4 SalonView `userParticipantIdSet`),
+   * for the overheard-whisper dim (v4 `VirtualizedMessageList.tsx:358-373`).
+   */
+  readonly userParticipantIds = input<ReadonlySet<string>>(new Set<string>());
 
   readonly copy = output<MessageDto>();
   readonly edit = output<MessageDto>();
@@ -270,6 +277,10 @@ export class MessageList {
 
   protected swipeFor(message: MessageDto): SwipeState | null {
     return message.swipeGroupId ? (this.swipeStates()[message.swipeGroupId] ?? null) : null;
+  }
+
+  protected overheard(message: MessageDto): boolean {
+    return isOverheardWhisper(message, this.userParticipantIds());
   }
 
   protected itemKey(item: ReturnType<typeof buildRenderItems>[number]): string {

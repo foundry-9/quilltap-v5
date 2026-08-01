@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
-import { isMessageVisibleToOperator, isOperatorAuthoredAnnouncement } from './whisper-visibility';
+import {
+  isMessageVisibleToOperator,
+  isOperatorAuthoredAnnouncement,
+  isOverheardWhisper,
+} from './whisper-visibility';
 
 /**
  * Case-for-case from v4 `__tests__/unit/app/salon/whisper-visibility.test.ts`
@@ -170,5 +174,62 @@ describe('isOperatorAuthoredAnnouncement', () => {
     expect(isOperatorAuthoredAnnouncement({ systemKind: 'announcement' })).toBe(true);
     expect(isOperatorAuthoredAnnouncement({ systemKind: 'memory-recap' })).toBe(false);
     expect(isOperatorAuthoredAnnouncement({ systemKind: null })).toBe(false);
+  });
+});
+
+/**
+ * v4 `VirtualizedMessageList.tsx:358-373` (`isOverheardWhisper`, the tier-2
+ * overheard-dim gap this lane closes). No v4 test file covers this predicate
+ * directly (it's inline JSX, not an exported function) — these cases are
+ * derived from the six-clause expression at the pin.
+ */
+describe('isOverheardWhisper', () => {
+  const userIds = new Set([USER_PARTICIPANT]);
+
+  it('is false for public messages', () => {
+    expect(isOverheardWhisper(message(), userIds)).toBe(false);
+  });
+
+  it('is true for a character-to-character whisper the human is no part of', () => {
+    const whisper = message({
+      participantId: CHARACTER_A,
+      targetParticipantIds: [CHARACTER_B],
+    });
+    expect(isOverheardWhisper(whisper, userIds)).toBe(true);
+  });
+
+  it('is false when the human authored it', () => {
+    const fromUser = message({
+      participantId: USER_PARTICIPANT,
+      targetParticipantIds: [CHARACTER_A],
+    });
+    expect(isOverheardWhisper(fromUser, userIds)).toBe(false);
+  });
+
+  it('is false when the human is a target', () => {
+    const toUser = message({
+      participantId: CHARACTER_A,
+      targetParticipantIds: [USER_PARTICIPANT],
+    });
+    expect(isOverheardWhisper(toUser, userIds)).toBe(false);
+  });
+
+  it('is false for any Staff row — the whisper border already carries the signal', () => {
+    const staffWhisper = message({
+      systemSender: 'commonplaceBook',
+      participantId: null,
+      targetParticipantIds: [CHARACTER_A],
+    });
+    expect(isOverheardWhisper(staffWhisper, userIds)).toBe(false);
+  });
+
+  it('is false for the operator’s own whispered announcement', () => {
+    const ownAside = message({
+      systemSender: null,
+      systemKind: 'announcement',
+      participantId: null,
+      targetParticipantIds: [CHARACTER_A],
+    });
+    expect(isOverheardWhisper(ownAside, userIds)).toBe(false);
   });
 });

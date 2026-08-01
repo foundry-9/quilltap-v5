@@ -132,7 +132,11 @@ export interface ImageClickEvent {
           </div>
         }
 
-        <div class="qt-chat-message" [class]="bubbleClass()">
+        <div
+          class="qt-chat-message"
+          [class]="bubbleClass()"
+          [class.qt-chat-message-whisper-overheard]="isOverheardWhisper()"
+        >
           @if (variant() === 'whisper') {
             <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}</div>
           } @else if (variant() === 'silent') {
@@ -356,6 +360,14 @@ export class MessageRow {
    * from `messagesWithLogs.has(message.id)`).
    */
   readonly hasLlmLogs = input(false);
+  /**
+   * Whether this whisper is being shown only because "All Whispers" is on and
+   * the operator is neither its author nor a target (v4 `isOverheardWhisper`,
+   * `VirtualizedMessageList.tsx:358-373`) — dims the bubble to 0.6 opacity
+   * while keeping the whisper border/label legible. The list computes it
+   * (`message-list.ts`'s `overheard()`); this row only applies the class.
+   */
+  readonly isOverheardWhisper = input(false);
 
   readonly copy = output<MessageDto>();
   readonly edit = output<MessageDto>();

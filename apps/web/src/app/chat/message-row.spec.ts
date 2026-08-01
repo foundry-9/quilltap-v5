@@ -474,6 +474,22 @@ describe('MessageRow — whisper label (P4.17 unit 3)', () => {
     const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
     expect(label.textContent.trim()).toBe('whispered to Lorian, unknown');
   });
+
+  /** P4.D38 tier 2 (v4 `isOverheardWhisper`) — the row only APPLIES the class;
+   *  the list computes it (see `message-list.spec.ts`). */
+  it('applies the overheard-dim class only when the input is set', () => {
+    const fixture = render(message({ targetParticipantIds: ['p1'] }));
+    const bubble = () => fixture.nativeElement.querySelector('.qt-chat-message');
+    expect(bubble().classList.contains('qt-chat-message-whisper-overheard')).toBe(false);
+
+    fixture.componentRef.setInput('isOverheardWhisper', true);
+    fixture.detectChanges();
+    expect(bubble().classList.contains('qt-chat-message-whisper-overheard')).toBe(true);
+    // The whisper border/label stay — dimming is opacity only, not a
+    // replacement for the whisper variant.
+    expect(bubble().classList.contains('qt-chat-message-whisper')).toBe(true);
+    expect(fixture.nativeElement.querySelector('.qt-chat-whisper-label')).not.toBeNull();
+  });
 });
 
 /**

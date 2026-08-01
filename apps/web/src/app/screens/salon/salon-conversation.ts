@@ -341,6 +341,7 @@ interface CascadePrompt {
           [stream]="stream()"
           [editingId]="editingId()"
           [messagesWithLogs]="messagesWithLogs()"
+          [userParticipantIds]="userParticipantIdSet()"
           (viewLlmLogs)="onViewLlmLogs($event)"
           (copy)="onCopy($event)"
           (edit)="onEdit($event)"
@@ -1482,7 +1483,7 @@ export class SalonConversation {
    * — `controlledBy: 'user'`), so the whisper filter shows the operator their
    * own whispers whatever the toggle says.
    */
-  private readonly userParticipantIdSet = computed<ReadonlySet<string>>(
+  protected readonly userParticipantIdSet = computed<ReadonlySet<string>>(
     () =>
       new Set(
         (this.chat()?.participants ?? [])

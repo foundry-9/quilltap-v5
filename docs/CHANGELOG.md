@@ -173,6 +173,11 @@ say who it went to, the same "to Alice, Bob" tag either way, and the chip
 wears the whisper's border color so a private aside is distinguishable from
 a public proclamation before it's ever expanded.
 
+Turning on "All Whispers" now visibly dims the whispers that weren't meant
+for the operator, instead of showing every one of them at full strength.
+The dim keeps the whisper's border and label legible, so the operator can
+still tell it's a whisper — just not one addressed to them.
+
 The operator now keeps seeing their own private asides no matter who they're
 signed as, and Prospero's busiest whisper — telling one character which group
 shelves it may read — finally stays hidden behind the All Whispers toggle

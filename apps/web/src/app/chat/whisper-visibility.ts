@@ -107,3 +107,32 @@ export function isMessageVisibleToOperator(
 
   return false;
 }
+
+/**
+ * Whether a rendered whisper is being read only because "All Whispers" is
+ * on — the operator is neither its author nor one of its targets (v4
+ * `VirtualizedMessageList.tsx:358-373`). Dimmed to 0.6 opacity in the
+ * stylesheet while keeping the whisper border and label legible, so the
+ * privacy status stays visible without the reader mistaking it for a line
+ * addressed to them.
+ *
+ * Staff whispers kept visible by {@link isOperatorFacingStaffWhisper} (a
+ * private roll, a private tool run) and the operator's own authored
+ * announcements are NEVER overheard — dimming what was deliberately shown
+ * would undercut the reason it was shown. Since only a message
+ * {@link isMessageVisibleToOperator} lets through ever reaches a row, a
+ * message failing every "shown on purpose" test below can only be here
+ * because the toggle is on; this function needs no `showAllWhispers`
+ * parameter of its own.
+ */
+export function isOverheardWhisper(
+  msg: Pick<MessageDto, 'systemSender' | 'systemKind' | 'participantId' | 'targetParticipantIds'>,
+  userParticipantIds: ReadonlySet<string>,
+): boolean {
+  if (!msg.targetParticipantIds || msg.targetParticipantIds.length === 0) return false;
+  if (msg.systemSender) return false;
+  if (isOperatorAuthoredAnnouncement(msg)) return false;
+  if (msg.participantId && userParticipantIds.has(msg.participantId)) return false;
+  if (msg.targetParticipantIds.some((id) => userParticipantIds.has(id))) return false;
+  return true;
+}

@@ -176,7 +176,11 @@ describe('buildStreamRenderItems (dogfood finding #7)', () => {
 });
 
 describe('MessageList — chained stream render in the DOM', () => {
-  function render(messages: MessageDto[], stream: ChatStreamState | null): ComponentFixture<MessageList> {
+  function render(
+    messages: MessageDto[],
+    stream: ChatStreamState | null,
+    userParticipantIds?: ReadonlySet<string>,
+  ): ComponentFixture<MessageList> {
     TestBed.configureTestingModule({
       imports: [MessageList],
       providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } } }],
@@ -185,6 +189,7 @@ describe('MessageList — chained stream render in the DOM', () => {
     fixture.componentRef.setInput('messages', messages);
     fixture.componentRef.setInput('chat', chatDetail());
     fixture.componentRef.setInput('stream', stream);
+    if (userParticipantIds) fixture.componentRef.setInput('userParticipantIds', userParticipantIds);
     fixture.detectChanges();
     return fixture;
   }
@@ -208,5 +213,69 @@ describe('MessageList — chained stream render in the DOM', () => {
     expect(text).not.toContain('Hi, I am Ada.');
     // m11 has no canonical copy yet, so it still shows from the stream.
     expect(text).toContain('And I am Bob.');
+  });
+});
+
+/**
+ * P4.D38 tier 2 — the overheard-dim wiring (v4 `VirtualizedMessageList.tsx
+ * :358-373`). `userParticipantIds` is threaded straight to `isOverheardWhisper`
+ * per message; the pure function's own case inventory lives in
+ * `whisper-visibility.spec.ts`.
+ */
+describe('MessageList — the overheard-whisper dim (P4.D38 tier 2)', () => {
+  function render(
+    messages: MessageDto[],
+    userParticipantIds: ReadonlySet<string>,
+  ): ComponentFixture<MessageList> {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } } }],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', messages);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('userParticipantIds', userParticipantIds);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('dims a character-to-character whisper the operator has no part in', () => {
+    const fixture = render(
+      [
+        message({
+          id: 'w1',
+          participantId: 'p1',
+          targetParticipantIds: ['p2'],
+          content: 'psst, only for Bob',
+        }),
+      ],
+      new Set(['p3']),
+    );
+    const bubble = fixture.nativeElement.querySelector('.qt-chat-message-whisper-overheard');
+    expect(bubble).not.toBeNull();
+    expect(bubble.textContent).toContain('psst, only for Bob');
+  });
+
+  it('does not dim a whisper the operator authored', () => {
+    const fixture = render(
+      [
+        message({
+          id: 'w1',
+          participantId: 'p1',
+          targetParticipantIds: ['p2'],
+          content: 'from me',
+        }),
+      ],
+      new Set(['p1']),
+    );
+    expect(fixture.nativeElement.querySelector('.qt-chat-message-whisper-overheard')).toBeNull();
+  });
+
+  it('does not dim an ordinary public message', () => {
+    const fixture = render(
+      [message({ id: 'm1', participantId: 'p1', content: 'in the open' })],
+      new Set(['p3']),
+    );
+    expect(fixture.nativeElement.querySelector('.qt-chat-message-whisper-overheard')).toBeNull();
   });
 });
