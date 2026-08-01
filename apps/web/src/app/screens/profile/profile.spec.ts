@@ -7,6 +7,7 @@ import { CoreClient } from '../../core/core-client';
 import { formatDateTime, formatProfileDate } from '../../shared/format-date';
 import { ProfilePage } from './profile-page';
 import { fetchProfile, setProfileAvatar, updateProfile } from './profile.api';
+import { ToastService } from '../../ui/toast.service';
 
 interface DispatchReq {
   type: string;
@@ -54,6 +55,13 @@ const DATA_DIR = {
   canOpen: true,
   hostPath: '/tmp/instance',
 };
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 describe('profile.api (v4 app/api/v1/user/profile/route.ts + ProfileView.tsx)', () => {
   it('tolerates both the {profile} envelope and a bare profile object', async () => {
@@ -218,8 +226,7 @@ describe('ProfilePage (v4 app/profile/ProfileView.tsx)', () => {
     expect(seen.some((r) => r.type === 'userProfileUpdate' && r['name'] === 'Reginald Jeeves')).toBe(
       true,
     );
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('Profile updated successfully');
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Profile updated successfully' });
   });
 
   it('keeps Save disabled until something actually changed (v4 hasChanges)', async () => {

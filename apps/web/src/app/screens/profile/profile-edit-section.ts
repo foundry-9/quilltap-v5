@@ -16,6 +16,7 @@ import { CoreDispatchError } from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
 import { AvatarPicker } from './avatar-picker';
 import { setProfileAvatar, updateProfile, type UserProfile } from './profile.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The editable profile block (v4 `components/profile/ProfileEditSection.tsx`):
@@ -40,8 +41,7 @@ import { setProfileAvatar, updateProfile, type UserProfile } from './profile.api
  * failure. The server keeps v4's rejection verbatim (see the differential's
  * `put_explicit_nulls`); it is the CLIENT that stops walking into it.
  *
- * v5 has no toast system, so v4's `showSuccessToast`/`showErrorToast` become
- * inline status text (the established v5 substitute).
+ * Both outcomes are v4's own toasts (`ProfileEditSection.tsx:54,58,82,86`).
  */
 @Component({
   selector: 'qt-profile-edit-section',
@@ -124,12 +124,6 @@ import { setProfileAvatar, updateProfile, type UserProfile } from './profile.api
           </p>
         </div>
 
-        @if (status(); as message) {
-          <p class="qt-text-secondary text-sm" data-testid="profile-status">{{ message }}</p>
-        }
-        @if (error(); as message) {
-          <p class="qt-text-destructive text-sm" data-testid="profile-error">{{ message }}</p>
-        }
 
         <!-- Save -->
         <div class="flex justify-end pt-4 border-t qt-border-default">
@@ -156,6 +150,7 @@ import { setProfileAvatar, updateProfile, type UserProfile } from './profile.api
 })
 export class ProfileEditSection {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly profile = input.required<UserProfile>();
   /** Emitted after any successful write so the page can refetch (v4's `onProfileUpdate`). */
@@ -164,8 +159,6 @@ export class ProfileEditSection {
   protected readonly name = signal('');
   protected readonly email = signal('');
   protected readonly saving = signal(false);
-  protected readonly status = signal<string | null>(null);
-  protected readonly error = signal<string | null>(null);
   protected readonly pickerOpen = signal(false);
   /** v4's `avatarRefreshKey` (`:31`) — the cache-bust counter. */
   protected readonly avatarRefreshKey = signal(0);
@@ -210,33 +203,29 @@ export class ProfileEditSection {
 
   protected async save(): Promise<void> {
     this.saving.set(true);
-    this.status.set(null);
-    this.error.set(null);
     try {
       const updated = await updateProfile(this.core, {
         name: this.name(),
         email: this.email(),
       });
       this.profileUpdated.emit(updated);
-      this.status.set('Profile updated successfully');
+      this.toasts.showSuccess('Profile updated successfully');
     } catch (err) {
-      this.error.set(this.message(err, 'Failed to update profile'));
+      this.toasts.showError(this.message(err, 'Failed to update profile'));
     } finally {
       this.saving.set(false);
     }
   }
 
   protected async setAvatar(imageId: string | null): Promise<void> {
-    this.status.set(null);
-    this.error.set(null);
     try {
       const updated = await setProfileAvatar(this.core, imageId);
       this.profileUpdated.emit(updated);
       this.avatarRefreshKey.update((k) => k + 1);
       this.pickerOpen.set(false);
-      this.status.set('Avatar updated successfully');
+      this.toasts.showSuccess('Avatar updated successfully');
     } catch (err) {
-      this.error.set(this.message(err, 'Failed to update avatar'));
+      this.toasts.showError(this.message(err, 'Failed to update avatar'));
     }
   }
 

@@ -18,6 +18,7 @@ import {
   type TransferDestinationsPayload,
   type WardrobeTransferScope,
 } from './wardrobe.api';
+import { ToastService } from '../ui/toast.service';
 
 export type TransferMode = 'move' | 'copy';
 
@@ -53,9 +54,8 @@ export function decodeDestination(value: string): DestinationValue | null {
  * `wardrobeTransferDestinations` / `wardrobeTransferApply` verbs (v4
  * `GET|POST /api/v1/wardrobe/transfers`, `:73`/`:104`).
  *
- * DIVERGENCE (deliberate): v4's success/error toasts become the inline
- * `qt-alert-error` (no toast system in v5); success closes via
- * `transferred`, which the parent answers by reloading items.
+ * Success raises v4's sentence and closes via `transferred`, which the parent
+ * answers by reloading items.
  */
 @Component({
   selector: 'qt-wardrobe-transfer-dialog',
@@ -74,9 +74,6 @@ export function decodeDestination(value: string): DestinationValue | null {
           <span class="font-medium">"{{ item().title }}"</span> to:
         </p>
 
-        @if (error(); as msg) {
-          <div class="qt-alert-error text-sm" role="alert">{{ msg }}</div>
-        }
 
         @if (loadingDestinations()) {
           <p class="qt-text-sm qt-text-secondary">Loading destinations…</p>
@@ -182,6 +179,7 @@ export function decodeDestination(value: string): DestinationValue | null {
 })
 export class WardrobeTransferDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly mode = input.required<TransferMode>();
   readonly item = input.required<WardrobeItemDto>();
@@ -197,7 +195,6 @@ export class WardrobeTransferDialog {
   protected readonly destinations = signal<TransferDestinationsPayload | null>(null);
   protected readonly selectedDestination = signal('');
   protected readonly working = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   private loaded = false;
 
@@ -222,7 +219,7 @@ export class WardrobeTransferDialog {
         this.selectedDestination.set(this.generalValue);
       }
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
+      this.toasts.showError(err instanceof Error ? err.message : String(err));
     } finally {
       this.loadingDestinations.set(false);
     }
@@ -265,7 +262,6 @@ export class WardrobeTransferDialog {
     const selection = this.selection();
     if (!selection) return;
     this.working.set(true);
-    this.error.set(null);
     try {
       await dispatchWardrobe(this.core, {
         type: 'wardrobeTransferApply',
@@ -278,9 +274,13 @@ export class WardrobeTransferDialog {
           ...(selection.id ? { id: selection.id } : {}),
         },
       });
+      // v4 `:122` — the sentence names the mode and the item.
+      this.toasts.showSuccess(
+        this.mode() === 'move' ? `Moved "${this.item().title}"` : `Copied "${this.item().title}"`,
+      );
       this.transferred.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
+      this.toasts.showError(err instanceof Error ? err.message : String(err));
     } finally {
       this.working.set(false);
     }

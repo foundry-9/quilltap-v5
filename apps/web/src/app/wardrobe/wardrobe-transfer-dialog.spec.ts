@@ -9,6 +9,7 @@ import {
   encodeDestination,
   WardrobeTransferDialog,
 } from './wardrobe-transfer-dialog';
+import { ToastService } from '../ui/toast.service';
 
 type AnyRequest = CoreRequest & Record<string, unknown>;
 
@@ -68,6 +69,13 @@ async function render(
   fixture.detectChanges();
   await settle(fixture);
   return { fixture, seen };
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('destination encoding (v4 WardrobeTransferDialog.tsx:38-50)', () => {
@@ -135,9 +143,8 @@ describe('WardrobeTransferDialog (v4 WardrobeTransferDialog.tsx)', () => {
     });
   });
 
-  it('a failed load surfaces the error inline (pre-unify: lane P4.9f1 not landed)', async () => {
-    const { fixture } = await render('move', () => new Error('unknown request type'));
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('unknown request type');
+  it('a failed load surfaces the error as v4\'s toast', async () => {
+    await render('move', () => new Error('unknown request type'));
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'unknown request type' });
   });
 });

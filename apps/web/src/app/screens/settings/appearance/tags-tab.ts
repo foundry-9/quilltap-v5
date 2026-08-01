@@ -3,7 +3,6 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../core/core-client';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
-import { ErrorAlert } from '../../../ui/error-alert';
 import {
   DEFAULT_TAG_STYLE,
   deleteTag,
@@ -15,6 +14,7 @@ import {
   type SettingsTag,
   type TagVisualStyle,
 } from './tags.api';
+import { ToastService } from '../../../ui/toast.service';
 
 /** v4 debounces the color pickers to avoid a save per drag frame (`:114,:141`). */
 const COLOR_DEBOUNCE_MS = 500;
@@ -37,15 +37,12 @@ const COLOR_DEBOUNCE_MS = 500;
  * "list/create/edit/delete" phrasing overstates v4; v4 is the oracle, so the
  * port follows v4.
  *
- * Divergence — feedback. v4 fires `showSuccessToast` on every save and
- * `showErrorToast` on failure. v5 has no toast system; the established v5
- * idiom (`defaults-tab.ts:460-463`) is a surface-level alert for failures and
- * silence on success, and that is what this card does.
+ * Feedback is v4's: a toast on every save and on every failure, with v4's
+ * copy (`tags-tab.tsx:85,87,189,192,209,219`).
  */
 @Component({
   selector: 'qt-settings-tags',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ErrorAlert],
   template: `
     @if (tagsQuery.isPending()) {
       <div class="flex items-center justify-center py-8">
@@ -53,10 +50,6 @@ const COLOR_DEBOUNCE_MS = 500;
       </div>
     } @else {
       <div class="space-y-6">
-        @if (error(); as msg) {
-          <qt-error-alert [message]="msg" />
-        }
-
         <!-- Section A — Tag Appearance -->
         <div>
           <h2 class="text-xl font-semibold mb-4">Tag Appearance</h2>
@@ -298,6 +291,7 @@ const COLOR_DEBOUNCE_MS = 500;
 })
 export class SettingsTagsCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
 
@@ -308,7 +302,6 @@ export class SettingsTagsCard {
   protected readonly selectedTagId = signal('');
   protected readonly deleteConfirming = signal<string | null>(null);
   protected readonly deleting = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   /** v4 `colorDebounceTimers` (`:43`) — one pending save per tag. */
   private readonly colorTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -420,12 +413,13 @@ export class SettingsTagsCard {
    */
   private async saveVisualStyle(tagId: string, style: TagVisualStyle | null): Promise<void> {
     this.tagSaving.set(tagId);
-    this.error.set(null);
     try {
       const saved = await updateTagVisualStyle(this.core, tagId, style);
       this.patchLocal(tagId, saved.visualStyle ?? null);
+      this.toasts.showSuccess('Tag style saved');
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to update tag style');
+      // v4's fallback here is its generic one (`:87`), not the action's name.
+      this.toasts.showError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       this.tagSaving.set(null);
     }
@@ -440,13 +434,13 @@ export class SettingsTagsCard {
   protected async onQuickHideToggle(tag: SettingsTag, event: Event): Promise<void> {
     const next = (event.target as HTMLInputElement).checked;
     this.quickHideSavingId.set(tag.id);
-    this.error.set(null);
     try {
       const saved = await updateTagQuickHide(this.core, tag.id, next);
       this.patchQuickHideLocal(tag.id, !!saved.quickHide);
       await this.quickHide.refresh();
+      this.toasts.showSuccess('Quick-hide setting saved');
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to update quick-hide');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update quick-hide');
     } finally {
       // v4's functional guard (`:194`): a slow response must not clear a
       // NEWER row's saving id.
@@ -460,7 +454,6 @@ export class SettingsTagsCard {
    */
   protected async confirmDelete(tag: SettingsTag): Promise<void> {
     this.deleting.set(true);
-    this.error.set(null);
     try {
       await deleteTag(this.core, tag.id);
       this.deleteConfirming.set(null);
@@ -468,9 +461,10 @@ export class SettingsTagsCard {
         this.queryClient.invalidateQueries({ queryKey: settingsTagKeys.list }),
         this.quickHide.refresh(),
       ]);
+      this.toasts.showSuccess('Tag deleted');
     } catch (err) {
       // v4 leaves the popover open on failure.
-      this.error.set(err instanceof Error ? err.message : 'Failed to delete tag');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete tag');
     } finally {
       this.deleting.set(false);
     }

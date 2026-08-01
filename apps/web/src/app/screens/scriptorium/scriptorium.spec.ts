@@ -11,6 +11,7 @@ import { FileTable } from './file-table';
 import { ScriptoriumList } from './scriptorium-list';
 import { ScriptoriumStore } from './scriptorium.store';
 import type { DocumentStoreFile } from './scriptorium.api';
+import { ToastService } from '../../ui/toast.service';
 
 interface DispatchReq {
   type: string;
@@ -85,6 +86,13 @@ function file(over: Partial<DocumentStoreFile> = {}): DocumentStoreFile {
 // ---------------------------------------------------------------------------
 // ScriptoriumStore — the patch-not-refetch shape + loud refusal surfacing.
 // ---------------------------------------------------------------------------
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('ScriptoriumStore', () => {
   function make(client: Partial<CoreClient>): ScriptoriumStore {
     TestBed.configureTestingModule({
@@ -105,7 +113,10 @@ describe('ScriptoriumStore', () => {
     const created = await s.createStore({ name: 'B', mountType: 'database' });
     expect(created?.id).toBe('b');
     expect(s.stores().map((x) => x.id)).toEqual(['b', 'a']); // prepended
-    expect(s.flash()).toEqual({ kind: 'success', message: 'Document store created successfully!' });
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'Document store created successfully!',
+    });
   });
 
   it('create surfaces the verifyBasePath warning as an error flash', async () => {
@@ -117,7 +128,7 @@ describe('ScriptoriumStore', () => {
       ),
     );
     await s.createStore({ name: 'B', mountType: 'filesystem', basePath: '/nope' });
-    expect(s.flash()).toEqual({ kind: 'error', message: 'Base path not accessible.' });
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Base path not accessible.' });
   });
 
   it('scan optimistically marks scanning, then re-GETs the ONE store and splices it', async () => {
@@ -152,8 +163,8 @@ describe('ScriptoriumStore', () => {
     await s.fetchStores();
     const ok = await s.convertStore('a');
     expect(ok).toBe(false);
-    expect(s.flash()?.kind).toBe('error');
-    expect(s.flash()?.message).toContain('not available');
+    expect(toasts().at(-1)?.type).toBe('error');
+    expect(toasts().at(-1)?.message).toContain('not available');
     expect(s.stores()[0].conversionStatus).toBe('error');
   });
 });

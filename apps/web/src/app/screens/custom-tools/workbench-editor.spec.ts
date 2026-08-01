@@ -7,6 +7,7 @@ import { CoreDispatchError } from '../../core/core-contract';
 import { CustomToolsPage } from './custom-tools-page';
 import { DestinationPicker } from './destination-picker';
 import { WorkbenchEditor } from './workbench-editor';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * WorkbenchEditor + DestinationPicker + the route shell — asserted against v4's
@@ -118,6 +119,13 @@ function text(fixture: ComponentFixture<unknown>): string {
 }
 
 const SOURCE = { mountPointId: 'm1', path: 'Tools/unlock.tool.json' };
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
   afterEach(() => TestBed.resetTestingModule());
@@ -253,7 +261,10 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     expect(editor.location()).toEqual(SOURCE);
     expect(editor.loadedName()).toBe('unlock');
     expect(editor.dirty()).toBe(false);
-    expect(editor.flash()).toBe('Pascal has filed the contrivance.');
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'Pascal has filed the contrivance.',
+    });
   });
 
   it('a CONFLICT opens the reconcile dialog rather than reporting an error', async () => {
@@ -267,7 +278,7 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     fixture.detectChanges();
 
     expect(editor.conflictContent()).not.toBeNull();
-    expect(editor.saveError()).toBeNull();
+    expect(toasts().filter((t) => t.type === 'error')).toEqual([]);
     expect(text(fixture)).toContain('The file has moved under your hand');
     expect(text(fixture)).toContain('Reload theirs');
     expect(text(fixture)).toContain('Overwrite with mine');
@@ -309,7 +320,7 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     await fixture.componentInstance.save(SOURCE);
 
     expect(fixture.componentInstance.conflictContent()).toBeNull();
-    expect(fixture.componentInstance.saveError()).toBe('disk full');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'disk full' });
   });
 
   it('a save with no location opens the picker instead of writing', async () => {
@@ -333,9 +344,10 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     // The existence probe succeeds → the path is taken.
     await fixture.componentInstance.saveToStore({ mountPointId: 'm9', mountName: 'General' });
 
-    expect(fixture.componentInstance.saveError()).toBe(
-      'General already holds Tools/unlock.tool.json — rename this contrivance first.',
-    );
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'General already holds Tools/unlock.tool.json — rename this contrivance first.',
+    });
     expect(seen.some((r) => r.type === 'mountFileWrite')).toBe(false);
   });
 

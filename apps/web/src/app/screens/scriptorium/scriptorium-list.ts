@@ -79,22 +79,6 @@ import type {
           </button>
         </div>
 
-        @if (store.flash(); as flash) {
-          <div
-            class="mt-4"
-            [class.qt-alert-success]="flash.kind === 'success'"
-            [class.qt-alert-error]="flash.kind === 'error'"
-            role="status"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <span>{{ flash.message }}</span>
-              <button type="button" class="qt-button-ghost qt-button-sm" (click)="store.clearFlash()">
-                Dismiss
-              </button>
-            </div>
-          </div>
-        }
-
         @if (store.isEmpty()) {
           <div
             class="mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"

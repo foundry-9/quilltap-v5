@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import { ToastService } from '../../ui/toast.service';
 import { notifyQueueChange } from '../../layout/queue-status.logic';
 import * as api from './scriptorium.api';
 import type {
@@ -9,39 +10,28 @@ import type {
   UpdateDocumentStoreData,
 } from './scriptorium.api';
 
-/** A transient success/error notice (the SPA stand-in for v4's toasts). */
-export interface Flash {
-  kind: 'success' | 'error';
-  message: string;
-}
-
 /**
  * The Scriptorium list store (v4 `useDocumentStores`): the `stores` array +
  * loading/error, with the v4 patch-not-refetch shape — create PREPENDS,
  * update REPLACES, delete FILTERS, and scan/convert/deconvert re-GET the ONE
  * store and splice it back (a full-list refetch would be a behavior change).
- * Success/failure surface through {@link flash} (v4's toast calls). Provided at
+ * Success/failure surface as toasts, exactly where v4 raises them. Provided at
  * the list component so its state is per-screen.
  */
 @Injectable()
 export class ScriptoriumStore {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   private readonly _stores = signal<DocumentStore[]>([]);
   private readonly _loading = signal(true);
   private readonly _error = signal<string | null>(null);
-  private readonly _flash = signal<Flash | null>(null);
 
   readonly stores = this._stores.asReadonly();
   readonly loading = this._loading.asReadonly();
   readonly error = this._error.asReadonly();
-  readonly flash = this._flash.asReadonly();
 
   readonly isEmpty = computed(() => this._stores().length === 0);
-
-  clearFlash(): void {
-    this._flash.set(null);
-  }
 
   async fetchStores(): Promise<void> {
     this._loading.set(true);
@@ -60,13 +50,13 @@ export class ScriptoriumStore {
       const result = await api.createStore(this.core, data);
       this._stores.update((prev) => [result.mountPoint, ...prev]);
       if (result.warning) {
-        this._flash.set({ kind: 'error', message: result.warning });
+        this.toasts.showError(result.warning);
       } else {
-        this._flash.set({ kind: 'success', message: 'Document store created successfully!' });
+        this.toasts.showSuccess('Document store created successfully!');
       }
       return result.mountPoint;
     } catch (err) {
-      this._flash.set({ kind: 'error', message: message(err, 'Failed to create document store') });
+      this.toasts.showError(message(err, 'Failed to create document store'));
       return null;
     }
   }
@@ -78,10 +68,10 @@ export class ScriptoriumStore {
     try {
       const mountPoint = await api.updateStore(this.core, id, data);
       this._stores.update((prev) => prev.map((s) => (s.id === id ? mountPoint : s)));
-      this._flash.set({ kind: 'success', message: 'Document store updated successfully!' });
+      this.toasts.showSuccess('Document store updated successfully!');
       return mountPoint;
     } catch (err) {
-      this._flash.set({ kind: 'error', message: message(err, 'Failed to update document store') });
+      this.toasts.showError(message(err, 'Failed to update document store'));
       return null;
     }
   }
@@ -90,10 +80,10 @@ export class ScriptoriumStore {
     try {
       await api.deleteStore(this.core, id);
       this._stores.update((prev) => prev.filter((s) => s.id !== id));
-      this._flash.set({ kind: 'success', message: 'Document store deleted successfully!' });
+      this.toasts.showSuccess('Document store deleted successfully!');
       return true;
     } catch (err) {
-      this._flash.set({ kind: 'error', message: message(err, 'Failed to delete document store') });
+      this.toasts.showError(message(err, 'Failed to delete document store'));
       return false;
     }
   }
@@ -103,10 +93,9 @@ export class ScriptoriumStore {
     try {
       const result = await api.scanStore(this.core, id);
       await this.regetAndSplice(id);
-      this._flash.set({
-        kind: 'success',
-        message: `Scan complete: ${result.scanResult.filesScanned} files scanned, ${result.embeddingJobsEnqueued} embedding jobs queued`,
-      });
+      this.toasts.showSuccess(
+        `Scan complete: ${result.scanResult.filesScanned} files scanned, ${result.embeddingJobsEnqueued} embedding jobs queued`,
+      );
       // v4 wakes the queue badges when a scan enqueued embedding jobs
       // (useDocumentStores:141 / useDocumentStoreDetail:126 — v5's one shared
       // store covers both call sites), guarded on the count exactly as v4 is.
@@ -115,7 +104,7 @@ export class ScriptoriumStore {
       }
       return true;
     } catch (err) {
-      this._flash.set({ kind: 'error', message: message(err, 'Failed to scan document store') });
+      this.toasts.showError(message(err, 'Failed to scan document store'));
       this.patch(id, { scanStatus: 'error' });
       return false;
     }
@@ -126,11 +115,11 @@ export class ScriptoriumStore {
     try {
       await api.convertStore(this.core, id);
       await this.regetAndSplice(id);
-      this._flash.set({ kind: 'success', message: 'Converted to database.' });
+      this.toasts.showSuccess('Converted to database.');
       return true;
     } catch (err) {
       const msg = message(err, 'Failed to convert document store');
-      this._flash.set({ kind: 'error', message: msg });
+      this.toasts.showError(msg);
       this.patch(id, { conversionStatus: 'error', conversionError: msg });
       return false;
     }
@@ -141,14 +130,13 @@ export class ScriptoriumStore {
     try {
       await api.deconvertStore(this.core, id, targetPath);
       await this.regetAndSplice(id);
-      this._flash.set({
-        kind: 'success',
-        message: `Deconverted to filesystem: written to ${targetPath}`,
-      });
+      this.toasts.showSuccess(
+        `Deconverted to filesystem: written to ${targetPath}`,
+      );
       return true;
     } catch (err) {
       const msg = message(err, 'Failed to deconvert document store');
-      this._flash.set({ kind: 'error', message: msg });
+      this.toasts.showError(msg);
       this.patch(id, { conversionStatus: 'error', conversionError: msg });
       return false;
     }

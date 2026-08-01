@@ -42,6 +42,7 @@ import {
   loadCharacterWardrobeItems,
   toggleItemDefault,
 } from './wardrobe.api';
+import { ToastService } from '../ui/toast.service';
 
 interface CharacterSummary {
   id: string;
@@ -77,7 +78,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
  * DIVERGENCES (deliberate, recorded): v4's imperative `showConfirmation` is
  * `window.confirm` (the character-edit precedent) — being synchronous and
  * native-modal it also collapses v4's `confirming` click-outside suspension
- * (`:213-225`); toasts become inline notices. The "Import from image" button
+ * (`:213-225`). The "Import from image" button
  * is NOT shipped (tier 3 — its `analyze-image` verb is refusal-armed in lane
  * P4.9f1 per §4; a dead button is worse than an absent one).
  *
@@ -157,10 +158,6 @@ type EditorIntent = 'create-single' | 'create-bundle';
     <!-- The shared dialog body (v4 WardrobeShell children): the flush notice,
          character selector, and the wardrobe/builder grid. -->
     <ng-template #body>
-          @if (flushError(); as msg) {
-            <div class="qt-alert-error text-sm mb-3" role="alert">{{ msg }}</div>
-          }
-
           <!-- Character selector (v4 :887-918) -->
           <div class="flex flex-col gap-3 mb-3">
             <div class="flex items-center gap-2">
@@ -433,11 +430,6 @@ type EditorIntent = 'create-single' | 'create-bundle';
                 }
 
                 @if (rightTab() === 'builder') {
-                  @if (generateNotice(); as notice) {
-                    <p class="qt-text-xs qt-text-secondary px-1 mb-1" role="status">
-                      {{ notice }}
-                    </p>
-                  }
                   <qt-avatar-generation-pane
                     [selectedCharacterName]="selectedCharacter()?.name ?? ''"
                     [imageProfiles]="imageProfiles()"
@@ -492,6 +484,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
 })
 export class WardrobeControlDialogInner {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly initialCharacterId = input.required<string | null>();
   readonly chatId = input.required<string | null>();
@@ -528,8 +521,6 @@ export class WardrobeControlDialogInner {
   protected readonly generating = signal(false);
   protected readonly previewUrl = signal<string | null>(null);
   protected readonly previewFilename = signal<string | null>(null);
-  protected readonly generateNotice = signal<string | null>(null);
-  protected readonly flushError = signal<string | null>(null);
 
   /** Fitting room — transient; never hits the equip API (v4 :196-202). */
   protected readonly fittingSlots = signal<EquippedSlots>(freshSlots());
@@ -743,7 +734,7 @@ export class WardrobeControlDialogInner {
       await toggleItemDefault(this.core, item);
       await this.reloadCurrentItems();
     } catch (err) {
-      this.flushError.set(err instanceof Error ? err.message : 'Failed to update item');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
     } finally {
       this.updatingDefaultId.set(null);
     }
@@ -756,9 +747,10 @@ export class WardrobeControlDialogInner {
     try {
       await deleteWardrobeItem(this.core, item);
     } catch (err) {
-      this.flushError.set(err instanceof Error ? err.message : 'Failed to delete item');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete item');
       return;
     }
+    this.toasts.showSuccess(`Deleted "${item.title}"`);
     await this.reloadCurrentItems();
     if (this.isInChat) {
       this.outfit.invalidateWardrobe(characterId);
@@ -776,9 +768,10 @@ export class WardrobeControlDialogInner {
     try {
       await duplicateWardrobeItem(this.core, characterId, item, title);
     } catch (err) {
-      this.flushError.set(err instanceof Error ? err.message : 'Failed to duplicate item');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to duplicate item');
       return;
     }
+    this.toasts.showSuccess(`Duplicated "${item.title}"`);
     await this.reloadCurrentItems();
     if (this.isInChat) {
       this.outfit.invalidateWardrobe(characterId);
@@ -974,7 +967,7 @@ export class WardrobeControlDialogInner {
         this.outfit.invalidateWardrobe(characterId);
         this.liveBaselineByChar[characterId] = cloneSlots(slots);
       } catch (err) {
-        this.flushError.set(err instanceof Error ? err.message : 'Failed to update outfit');
+        this.toasts.showError(err instanceof Error ? err.message : 'Failed to update outfit');
         allOk = false;
       }
     }
@@ -1008,9 +1001,10 @@ export class WardrobeControlDialogInner {
         slots: this.fittingSlots(),
       });
     } catch (err) {
-      this.flushError.set(err instanceof Error ? err.message : 'Failed to wear this outfit');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to wear this outfit');
       return;
     }
+    this.toasts.showSuccess('Worn!');
     this.outfit.invalidateWardrobe(characterId);
     await this.outfit.refreshOutfit();
     this.closed.emit();
@@ -1051,7 +1045,6 @@ export class WardrobeControlDialogInner {
     if (!characterId) return;
     this.previewUrl.set(null);
     this.previewFilename.set(null);
-    this.generateNotice.set(null);
     this.generating.set(true);
 
     try {
@@ -1069,13 +1062,11 @@ export class WardrobeControlDialogInner {
               ? { imageProfileId: this.selectedImageProfileId()! }
               : {}),
           });
-          this.generateNotice.set(
+          this.toasts.showSuccess(
             'Avatar generation queued — the new portrait will appear shortly.',
           );
         } catch (err) {
-          this.flushError.set(
-            err instanceof Error ? err.message : 'Failed to queue avatar generation',
-          );
+          this.toasts.showError(err instanceof Error ? err.message : 'Failed to queue avatar generation');
         }
       } else {
         try {
@@ -1096,7 +1087,7 @@ export class WardrobeControlDialogInner {
             `${character?.name.replace(/[^a-zA-Z0-9]/g, '_') ?? 'avatar'}_preview.webp`,
           );
         } catch (err) {
-          this.flushError.set(err instanceof Error ? err.message : 'Failed to generate preview');
+          this.toasts.showError(err instanceof Error ? err.message : 'Failed to generate preview');
         }
       }
     } finally {

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { GenerateImagePage, type GeneratedImage } from './generate-image-page';
 import { insertPlaceholderAt } from './placeholder-insert';
+import { ToastService } from '../../ui/toast.service';
 
 interface Recorder {
   calls: Record<string, unknown>[];
@@ -92,6 +93,13 @@ type Inner = GenerateImagePage & {
 
 function inner(fixture: ComponentFixture<GenerateImagePage>): Inner {
   return fixture.componentInstance as unknown as Inner;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('insertPlaceholderAt (v4 GenerateImageView.tsx:71-89)', () => {
@@ -183,8 +191,8 @@ describe('GenerateImagePage (v4 app/generate-image/GenerateImageView.tsx)', () =
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).notice()).toEqual({
-      kind: 'error',
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
       message: 'No images were generated',
     });
   });
@@ -194,7 +202,7 @@ describe('GenerateImagePage (v4 app/generate-image/GenerateImageView.tsx)', () =
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).notice()!.message).toBe('no api key');
+    expect(toasts().at(-1)?.message).toBe('no api key');
   });
 
   it('reports the plural count on success (v4 :138)', async () => {
@@ -204,7 +212,7 @@ describe('GenerateImagePage (v4 app/generate-image/GenerateImageView.tsx)', () =
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).notice()).toEqual({ kind: 'success', message: 'Generated 2 images' });
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Generated 2 images' });
   });
 
   it('reports the singular count on success (v4 :138)', async () => {
@@ -212,7 +220,7 @@ describe('GenerateImagePage (v4 app/generate-image/GenerateImageView.tsx)', () =
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).notice()).toEqual({ kind: 'success', message: 'Generated 1 image' });
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Generated 1 image' });
   });
 
   it('offers exactly the counts 1-4 (v4 :270)', async () => {

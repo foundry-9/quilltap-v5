@@ -17,6 +17,7 @@ import { fileUrl } from '../../images/image-urls';
 import { Icon } from '../../ui/icon';
 import { fetchCharacterList } from '../characters/characters.api';
 import { insertPlaceholderAt, type PlaceholderInsert } from './placeholder-insert';
+import { ToastService } from '../../ui/toast.service';
 
 /** One generated image (v4 `GenerateImageView` `GeneratedImage`, `:27-34`). */
 export interface GeneratedImage {
@@ -58,8 +59,8 @@ interface EntityOption {
  *   `imageProfileGenerate` narrowing (`imageProfileId`/`prompt`/`chatId`/`count`)
  *   therefore covers this screen exactly. No cost display, in v4 or here.
  *
- * v4's toasts become an inline notice — the SPA still has no toast service (the
- * `image-modal.ts` precedent).
+ * Every outcome is v4's own toast, with v4's copy
+ * (`GenerateImageView.tsx:103-164`).
  *
  * **One byte-path divergence from v4, deliberate.** v4 renders, previews and
  * downloads straight from `image.filepath` because in v4 that string is a public
@@ -185,17 +186,6 @@ interface EntityOption {
             </select>
           </div>
 
-          @if (notice(); as n) {
-            <div
-              class="text-sm"
-              [class.qt-alert-error]="n.kind === 'error'"
-              [class.qt-alert-success]="n.kind === 'success'"
-              role="alert"
-            >
-              {{ n.message }}
-            </div>
-          }
-
           <!-- Generate (v4 :279-300) -->
           <div class="pt-2">
             <button
@@ -288,6 +278,7 @@ interface EntityOption {
 })
 export class GenerateImagePage implements OnInit {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   private readonly promptRef = viewChild<ElementRef<HTMLTextAreaElement>>('promptRef');
   private readonly dropdownRef = viewChild<ElementRef<HTMLElement>>('dropdownRef');
@@ -304,7 +295,6 @@ export class GenerateImagePage implements OnInit {
   protected readonly searchTerm = signal('');
   protected readonly dropdownOpen = signal(false);
   protected readonly previewImage = signal<{ src: string; filename: string } | null>(null);
-  protected readonly notice = signal<{ kind: 'error' | 'success'; message: string } | null>(null);
 
   /** v4 `:282`: disabled while generating, or without both a profile and a prompt. */
   protected readonly canGenerate = computed(
@@ -378,17 +368,16 @@ export class GenerateImagePage implements OnInit {
   protected async onGenerate(): Promise<void> {
     const imageProfileId = this.selectedProfileId();
     if (!imageProfileId) {
-      this.notice.set({ kind: 'error', message: 'Please select an image profile' });
+      this.toasts.showError('Please select an image profile');
       return;
     }
     const prompt = this.prompt().trim();
     if (!prompt) {
-      this.notice.set({ kind: 'error', message: 'Please enter a prompt' });
+      this.toasts.showError('Please enter a prompt');
       return;
     }
 
     this.generating.set(true);
-    this.notice.set(null);
     try {
       // v4 `:115-124` sends prompt + count and NO chatId — that omission is what
       // makes the run standalone (no chat notification, no album association).
@@ -405,19 +394,13 @@ export class GenerateImagePage implements OnInit {
       if (images.length > 0) {
         // v4 `:137` prepends, newest first.
         this.generatedImages.update((prev) => [...images, ...prev]);
-        this.notice.set({
-          kind: 'success',
-          message: `Generated ${images.length} image${images.length > 1 ? 's' : ''}`,
-        });
+        this.toasts.showSuccess(`Generated ${images.length} image${images.length > 1 ? 's' : ''}`);
       } else {
         // v4 `:140` — a 200 carrying nothing is still an error to the user.
-        this.notice.set({ kind: 'error', message: 'No images were generated' });
+        this.toasts.showError('No images were generated');
       }
     } catch (err) {
-      this.notice.set({
-        kind: 'error',
-        message: err instanceof Error && err.message ? err.message : 'Failed to generate image',
-      });
+      this.toasts.showError(err instanceof Error && err.message ? err.message : 'Failed to generate image');
     } finally {
       this.generating.set(false);
     }
@@ -445,7 +428,7 @@ export class GenerateImagePage implements OnInit {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      this.notice.set({ kind: 'error', message: 'Failed to download image' });
+      this.toasts.showError('Failed to download image');
     }
   }
 }

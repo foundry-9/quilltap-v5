@@ -46670,3 +46670,37 @@ Salon LIST's re-extract / re-render actions and `lib/chat-utils.ts`'s chat
 deletion have no v5 caller (v5's salon list is the slim port and nothing
 deletes a chat), and the character Conversations tab's per-card delete /
 re-extract / re-render were already a documented deferral of that vertical.
+
+## Lane record — P4.25 unit 5: Scriptorium, wardrobe, workbench, profile, tags
+
+Eleven more files, all the same shape: an invented inline surface where v4's
+file has none (checked per file — none of `wardrobe-control-dialog`,
+`wardrobe-item-editor`, `WardrobeTransferDialog`, `WorkbenchEditor`,
+`tags-tab.tsx`, `ProfileEditSection`, `GenerateImageView` carries inline error
+markup in v4).
+
+- **`ScriptoriumStore`'s `Flash` type is GONE** — the store raised a
+  success/error record the list rendered as a dismissible bar; all thirteen v4
+  toasts now go to the toast.
+- **The wardrobe trio**: the control dialog's `flushError` + `generateNotice`,
+  the item editor's `saveError`, the transfer dialog's `error`. Three v4 success
+  toasts v5 had never raised are now live: `Deleted "<item>"`,
+  `Duplicated "<item>"`, `Worn!`, plus the transfer's `Moved "…"`/`Copied "…"`.
+- **The Workbench**: the editor's `saveError`/`flash` pair and the library's two
+  ACTION failures. The library's LOAD error stays inline — v4 renders that one
+  (`WorkbenchLibrary.tsx:352-356`), which is exactly the "keep inline where v4
+  has it" rule.
+- **Profile + tags + the standalone Generate Image screen**: all three had
+  written their own two-tone status line; all three now raise v4's copy, and
+  `tags-tab`'s three success toasts (which v5 dropped entirely, by an explicit
+  recorded divergence) are back.
+
+**A pre-existing string divergence recorded, NOT fixed** (it needs response
+fields v5 does not carry): v4's convert/deconvert successes name the converted
+parts — `Converted to database: ${parts}${suffix}` and
+`Deconverted to filesystem: ${parts} written to ${targetPath}` — where v5 says
+`Converted to database.` / `Deconverted to filesystem: written to <path>`.
+
+**e2e file touched (ownership note):** `e2e/profile-flow.spec.ts` — its two
+`[data-testid="profile-status"]` assertions now read the toast container. It is
+the only e2e spec this unit moves.

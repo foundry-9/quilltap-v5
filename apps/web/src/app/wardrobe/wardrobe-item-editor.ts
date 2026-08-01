@@ -21,6 +21,7 @@ import { GROUP_ORDER, getCandidateGroup } from './item-editor/constants';
 import type { CandidateGroup, CandidateItem } from './item-editor/types';
 import { WardrobeComponentPicker } from './item-editor/wardrobe-component-picker';
 import { WardrobeModeChangePrompt } from './item-editor/wardrobe-mode-change-prompt';
+import { ToastService } from '../ui/toast.service';
 
 type EditorMode = 'single' | 'bundle';
 
@@ -45,8 +46,7 @@ function charCountClass(current: number, max: number): string {
  *
  * Stacks above the wardrobe control dialog (v4 z-[70]/z-[80], `:399/:407`).
  *
- * DIVERGENCES (deliberate, recorded): v4's success/error toasts become the
- * inline `qt-alert-error` + the parent's reload (v5 has no toast system — the
+ * DIVERGENCES (deliberate, recorded): the parent reloads on success (the
  * `project-wardrobe-manager` precedent); the description markdown editor is
  * the shared `qt-markdown-field` (v4 `MarkdownLexicalEditor`,
  * `minHeight="10rem"` carried, `:679`) whose absorb-once seam keeps the
@@ -90,10 +90,6 @@ function charCountClass(current: number, max: number): string {
         </div>
 
         <div class="qt-dialog-body space-y-4 flex-1">
-          @if (saveError(); as msg) {
-            <div class="qt-alert-error text-sm" role="alert">{{ msg }}</div>
-          }
-
           <!-- Destination scope — only when creating. Editing keeps an item in
                its existing tier (v4 :429-468). -->
           @if (!isEditing()) {
@@ -351,6 +347,7 @@ function charCountClass(current: number, max: number): string {
 })
 export class WardrobeItemEditor {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
   readonly item = input<WardrobeItemDto | null>(null);
@@ -415,7 +412,6 @@ export class WardrobeItemEditor {
 
   protected readonly showKeepResetPrompt = signal(false);
   protected readonly saving = signal(false);
-  protected readonly saveError = signal<string | null>(null);
 
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
   private seededFor: WardrobeItemDto | null | undefined = undefined;
@@ -726,31 +722,30 @@ export class WardrobeItemEditor {
   protected async handleSave(): Promise<void> {
     this.submitAttempted.set(true);
     if (!this.title().trim()) {
-      this.saveError.set('Enter a title');
+      this.toasts.showError('Enter a title');
       return;
     }
     if (!this.isBundle() && this.selectedTypes().length === 0) {
-      this.saveError.set('Select at least one type');
+      this.toasts.showError('Select at least one type');
       return;
     }
     if (this.isBundle() && this.componentItemIds().length === 0) {
-      this.saveError.set('Add at least one component');
+      this.toasts.showError('Add at least one component');
       return;
     }
     if (this.isBundle() && this.computedTypes().length === 0) {
-      this.saveError.set('Selected components do not cover any slots');
+      this.toasts.showError('Selected components do not cover any slots');
       return;
     }
 
     this.saving.set(true);
-    this.saveError.set(null);
     try {
       await this.core.dispatchData(
         this.buildSaveRequest() as Parameters<CoreClient['dispatchData']>[0],
       );
       this.saved.emit();
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to save wardrobe item');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save wardrobe item');
     } finally {
       this.saving.set(false);
     }

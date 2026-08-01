@@ -15,6 +15,7 @@ import type { CustomToolLibraryError, MountAttachment } from '../../core/core-co
 import { MAX_ROSTER_SIZE } from '../../pascal/custom-tool-types';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * WorkbenchLibrary — the landing surface of Pascal's Workbench (v4
@@ -318,6 +319,7 @@ interface OverCapStore {
 })
 export class WorkbenchLibrary {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   /** Drill into one definition (valid → form mode; broken → repair mode). */
   readonly open = output<{ mountPointId: string; path: string }>();
@@ -332,7 +334,6 @@ export class WorkbenchLibrary {
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly deleting = signal(false);
-  readonly flash = signal<string | null>(null);
 
   private readonly _tools = signal<api.GatedLibraryEntry[]>([]);
   private readonly _errors = signal<CustomToolLibraryError[]>([]);
@@ -438,7 +439,7 @@ export class WorkbenchLibrary {
       const file = await api.readDefinitionFile(this.core, tool.mountPointId, tool.definitionPath);
       this.duplicateTemplate.emit(file.content);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'The definition could not be read.');
+      this.toasts.showError(err instanceof Error ? err.message : 'The definition could not be read.');
     }
   }
 
@@ -451,10 +452,10 @@ export class WorkbenchLibrary {
     this.deleting.set(true);
     try {
       await api.deleteDefinitionFile(this.core, mountPointId, path);
-      this.flash.set(`${title} has been cleared from the table.`);
+      this.toasts.showSuccess(`${title} has been cleared from the table.`);
       await this.reload();
     } catch (err) {
-      this.error.set(
+      this.toasts.showError(
         err instanceof Error ? err.message : 'The contrivance would not be removed.',
       );
     } finally {

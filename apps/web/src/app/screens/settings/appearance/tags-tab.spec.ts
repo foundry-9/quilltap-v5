@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../../core/core-client';
 import { SettingsTagsCard } from './tags-tab';
 import { DEFAULT_TAG_STYLE, mergeWithDefaultTagStyle, type SettingsTag } from './tags.api';
+import { ToastService } from '../../../ui/toast.service';
 
 /**
  * The global Tags card (v4 `components/settings/tags-tab.tsx`). The copy, the
@@ -71,6 +72,13 @@ function buttonByText(fixture: ComponentFixture<unknown>, label: string): HTMLBu
 }
 
 // ---------------------------------------------------------------------------
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 describe('mergeWithDefaultTagStyle (v4 lib/tags/styles.ts:13-27)', () => {
   it('returns the defaults for a nullish style (v4 :14-16)', () => {
@@ -227,7 +235,7 @@ describe('SettingsTagsCard', () => {
       quickHideBox(fixture).click();
       await new Promise((r) => setTimeout(r, 0));
       fixture.detectChanges();
-      expect(text(fixture)).toContain('boom');
+      expect(toasts().at(-1)).toEqual({ type: 'error', message: 'boom' });
     });
   });
 

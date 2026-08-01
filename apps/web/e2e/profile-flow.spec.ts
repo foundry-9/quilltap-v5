@@ -90,9 +90,9 @@ test.describe('P4.9c — About + Profile', () => {
     const save = page.getByRole('button', { name: 'Save Changes' });
     await expect(save).toBeEnabled();
     await save.click();
-    await expect(page.locator('[data-testid="profile-status"]')).toHaveText(
-      'Profile updated successfully',
-    );
+    await expect(
+      page.locator('[role="toast-container"]').getByText('Profile updated successfully'),
+    ).toBeVisible();
 
     // The persistence claim: a full reload re-reads from the database.
     await page.reload();
@@ -102,8 +102,8 @@ test.describe('P4.9c — About + Profile', () => {
     // Restore, so the shared fixture is left as it was found.
     await page.locator('#profile-name').fill(original);
     await page.getByRole('button', { name: 'Save Changes' }).click();
-    await expect(page.locator('[data-testid="profile-status"]')).toHaveText(
-      'Profile updated successfully',
-    );
+    await expect(
+      page.locator('[role="toast-container"]').getByText('Profile updated successfully'),
+    ).toBeVisible();
   });
 });

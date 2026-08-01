@@ -34,6 +34,7 @@ import { DestinationPicker, type PickedDestination } from './destination-picker'
 import { OutcomesSection } from './outcomes-section';
 import { ProvingBench } from './proving-bench';
 import * as api from './workbench.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * WorkbenchEditor — the single-definition editor of Pascal's Workbench (v4
@@ -191,12 +192,6 @@ function extractErrorMessage(err: unknown): string {
             </div>
           }
 
-          @if (saveError(); as message) {
-            <p class="text-sm qt-text-destructive">{{ message }}</p>
-          }
-          @if (flash(); as message) {
-            <p class="text-sm qt-text-secondary" role="status">{{ message }}</p>
-          }
 
           <!-- Body -->
           <div class="flex gap-4 items-start">
@@ -306,6 +301,7 @@ function extractErrorMessage(err: unknown): string {
 })
 export class WorkbenchEditor {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   /** Edit an existing file. */
   readonly source = input<{ mountPointId: string; path: string } | null>(null);
@@ -335,8 +331,6 @@ export class WorkbenchEditor {
   readonly loading = signal(false);
   readonly loadError = signal<string | null>(null);
   readonly saving = signal(false);
-  readonly saveError = signal<string | null>(null);
-  readonly flash = signal<string | null>(null);
 
   /** The 300ms-debounced mirror of {@link jsonText}. */
   private readonly debouncedJson = signal('');
@@ -575,7 +569,6 @@ export class WorkbenchEditor {
     if (content === null) return;
 
     this.saving.set(true);
-    this.saveError.set(null);
     const here = this.location();
     const sameFile =
       here?.path === destination.path && here?.mountPointId === destination.mountPointId;
@@ -593,7 +586,7 @@ export class WorkbenchEditor {
       this.loadedName.set(this.currentName());
       this.dirty.set(false);
       this.conflictContent.set(null);
-      this.flash.set('Pascal has filed the contrivance.');
+      this.toasts.showSuccess('Pascal has filed the contrivance.');
       this.saved.emit();
     } catch (err) {
       if (isConflict(err)) {
@@ -601,9 +594,7 @@ export class WorkbenchEditor {
         this.conflictContent.set(content);
         return;
       }
-      this.saveError.set(
-        extractErrorMessage(err),
-      );
+      this.toasts.showError(extractErrorMessage(err));
     } finally {
       this.saving.set(false);
     }
@@ -626,15 +617,11 @@ export class WorkbenchEditor {
       const fileName = `${TOOLS_FOLDER}/${name ?? 'contrivance'}${TOOL_FILE_SUFFIX}`;
       try {
         if (await api.definitionFileExists(this.core, store.mountPointId, fileName)) {
-          this.saveError.set(
-            `${store.mountName} already holds ${fileName} — rename this contrivance first.`,
-          );
+          this.toasts.showError(`${store.mountName} already holds ${fileName} — rename this contrivance first.`);
           return;
         }
       } catch (err) {
-        this.saveError.set(
-          extractErrorMessage(err),
-        );
+        this.toasts.showError(extractErrorMessage(err));
         return;
       }
       this.pickerOpen.set(null);
@@ -673,9 +660,7 @@ export class WorkbenchEditor {
       if (renameFile) {
         try {
           if (await api.definitionFileExists(this.core, here.mountPointId, expectedFileName)) {
-            this.saveError.set(
-              `${expectedFileName} already exists in this store; the file keeps its name.`,
-            );
+            this.toasts.showError(`${expectedFileName} already exists in this store; the file keeps its name.`);
           } else {
             const content = this.contentToWrite();
             if (content === null) return;
@@ -691,14 +676,12 @@ export class WorkbenchEditor {
             this.mtime.set(result.mtime);
             this.loadedName.set(name);
             this.dirty.set(false);
-            this.flash.set('Filed under its new name.');
+            this.toasts.showSuccess('Filed under its new name.');
             this.saved.emit();
             return;
           }
         } catch (err) {
-          this.saveError.set(
-            extractErrorMessage(err),
-          );
+          this.toasts.showError(extractErrorMessage(err));
           return;
         }
       }
@@ -715,9 +698,7 @@ export class WorkbenchEditor {
       this.initializeFromContent(fresh.content, fresh.mtime);
       this.conflictContent.set(null);
     } catch (err) {
-      this.saveError.set(
-        extractErrorMessage(err),
-      );
+      this.toasts.showError(extractErrorMessage(err));
     }
   }
 

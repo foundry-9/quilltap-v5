@@ -51,6 +51,11 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Document stores, wardrobe items, custom tools, tags, your profile and the
+Generate Image screen report through the same notification corner as everything
+else. Deleting or duplicating a wardrobe item, wearing an outfit, and saving a
+tag setting say so again — they had gone quiet.
+
 Actions in a conversation that used to happen in silence now say what they did:
 copying a message, editing or deleting one, regenerating a reply, speaking as a
 character and handing them back, pausing, attaching a file and resolving a

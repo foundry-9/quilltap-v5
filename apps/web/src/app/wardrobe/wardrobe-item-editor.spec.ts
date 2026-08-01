@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
 import { WardrobeItemEditor } from './wardrobe-item-editor';
+import { ToastService } from '../ui/toast.service';
 
 type AnyRequest = CoreRequest & Record<string, unknown>;
 
@@ -80,6 +81,13 @@ async function render(
   fixture.detectChanges();
   await settle(fixture);
   return { fixture, component: fixture.componentInstance, seen };
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
@@ -319,10 +327,10 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     };
     const baseline = seen.length;
     await c.handleSave();
-    expect(c.saveError()).toBe('Enter a title');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Enter a title' });
     c.title.set('Hat');
     await c.handleSave();
-    expect(c.saveError()).toBe('Select at least one type');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Select at least one type' });
     expect(seen.length).toBe(baseline);
   });
 
