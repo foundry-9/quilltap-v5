@@ -49381,3 +49381,231 @@ lane's ACTIVATE-AT-UNIFY beat), 0 failed**, 4.2 minutes. `target/`
 symlinks and the `apps/web/node_modules` symlink (from main, since this
 worktree had neither installed) are local-only, never committed; both
 removed as part of this lane's close-out per the order's cleanup step.
+---
+
+## Lane record — P4.D39 (dress characters from all three tiers at chat start)
+
+**Branch:** `claude/p4-wardrobe-tri-tier-2e1581`. **v4 baseline `c4d4b0de`,
+verified clean at lane start** (`git log c4d4b0de..HEAD` empty, tree clean), so
+every oracle in this record was regenerated straight from
+`~/source/quilltap-server` — no pinned worktree was needed.
+
+**Status: the order's tier 1 and tier 2 are COMPLETE. One tier-3 deferral, named
+below, is unchanged from the order.** All seven of v4 `8bb1a958`'s defects are
+re-ported and differential-verified.
+
+### Commits (7)
+
+1. `dd663931` — the pool: `wearable_pool::{merge_wearable_pool,is_archived_truthy}`,
+   `db::wardrobe_read::find_wearable_pool_for_character` (with v4's
+   do-NOT-simplify comment), `wardrobe::sort_for_default_outfit`,
+   `tools::wardrobe_shared::resolve_project_mount_point_ids`, the
+   `read_project_wardrobe` comment fix. 5 unit tests.
+2. `29499dbd` — `resolve_equipped` component hydration + `COMPOSITE_MAX_DEPTH`
+   export + the `wardrobe_list` refactor onto the pool.
+3. `e098d6b9` — the `outfit_selections` rewrite + all four call sites (units 3
+   and 4 together — see "Why 3 and 4 are one commit"). 15 unit tests.
+4. `970987b1` — the SPA riders + the `docs/v4` feature-doc mirror.
+5. `c8e87639` — the chat-cast fixture's shared tier + 2 new cases; the nine
+   neutrality families.
+6. `86e220ec` — the chat-dialogs shared tier + 5 new llm_choose cases; all five
+   committed-fixture consumers regenerated.
+7. `26976d5b` — the capstone's three-tier wardrobe + 2 new cases.
+
+### Why units 3 and 4 are one commit
+
+`OutfitContext.project_mount_point_ids` is REQUIRED — that is v4's stated design
+("so a future call site that forgets it fails to compile instead of silently
+dressing characters from one tier"). Adding it therefore breaks every call site
+in the same edit. Splitting the units would have meant landing a tree that does
+not build. The `Default` derive was dropped from `OutfitContext` for the same
+reason: `..Default::default()` would hand the guarantee straight back.
+
+### The concurrency mapping, as built
+
+`futures_util::future::join_all` over per-character resolve futures on the
+caller's existing current-thread runtime (the order's design point, taken as
+written). New direct dep `futures-util` (default-features off, `alloc` only) —
+the futures joined here deliberately are NOT `Send` (they hold `&Connection`),
+which `join_all` accepts and a hand-rolled poll loop would be easy to get subtly
+wrong about. Commit is a plain `for` loop after the join, in caller order.
+
+**The pool memo is race-free by construction, and that is worth keeping.** v4
+memoizes *promises* because a JS `await` can interleave two callers into a double
+read. Every read in `PoolCache` is synchronous rusqlite, so no `.await` can
+interleave inside a fetch and a plain `RefCell` check-then-fetch cannot race.
+Anyone tempted to "make it async" would reintroduce exactly the hazard v4's
+promise memo exists to prevent.
+
+**The 60 s timeout** is `tokio::time::timeout` inside `choose_llm_outfit` rather
+than at the `apply_outfit_selections` layer where v4 races it, because all THREE
+v5 entrances (create / add-participant / merge) funnel through that one function
+where v4's funnel is one layer up. Observably identical: a timeout falls back to
+the default outfit with the consult still counted as announced. `tokio` gained
+the `time` feature; the timer DRIVER still comes from the caller's runtime, and
+every runtime in the tree is built `enable_all` (verified: `spine.rs` ×7,
+`#[tokio::test]`).
+
+**The timeout and concurrency are pinned by Rust unit tests, not the
+differential** — and that is not a shortfall, it is the shape of the claim. An
+oracle diff observes the outfits that land, never the interleaving that produced
+them, and the harness's canned runners resolve instantly so the timer never
+fires there. v4 pins the same two arms with fake timers and instrumented fakes.
+Both v5 pins were mutation-checked: serializing the batch and moving the bound
+each turn them red. The literal `60_000` is spelled out in the assertion rather
+than read back from the constant, so moving the bound has to be a deliberate
+edit in two places.
+
+### Fixture extensions (all through v4's REAL writers, at the pin)
+
+Three fixtures gained a shared wardrobe tier, because **none of them had one and
+the tri-tier merge was structurally unmeasurable in all three** — the blind-spot
+class this port keeps rediscovering (P4.11's one-mode corpus, P4.D31's
+`<minted-N>` normalizer, P4.D24's stored-order corpus).
+
+| fixture | what was added | dependent families regenerated |
+|---|---|---|
+| `chat-cast-{main,mount}.db` (committed) | Quilltap General + 3 shared defaults, staggered `createdAt`; ERIS gains a NOT-default copy of the shared livery | `chat_cast_routes` (its only consumer) |
+| `chat-dialogs-{main,mount}.db` (committed) | Quilltap General + 2 shared items (one plain, one default) | ALL FIVE: `outfit_llm_choose_tier3`, `chat_export`, `message_reattribute`, `search_replace`, `tools_inventory` |
+| chat-create capstone (/tmp-built) | General (default shirt + a COMPOSITE whose two components also live in General) + a store-backed project with a project-wide default + one character-owned jacket | `chat_create_capstone` (its only consumer) |
+
+`createdAt` is staggered deliberately in all three: layer order within a slot is
+`createdAt` ascending, and with one shared timestamp the ordering claim would be
+unfalsifiable.
+
+### The nine new differential cases
+
+`chat_cast_routes` (+2, and one pre-existing case moved from vault-only to
+tri-tier on its own):
+- empty-vault character joins wearing the whole shared tier (before: undressed);
+- shared default layers INSIDE a character's own, newer one;
+- ERIS's unmarked copy shadows the shared livery by id, so she alone goes
+  without it — the arm that exists ONLY because tiers merge on the FULL pools
+  and `isDefault` is filtered last.
+
+`outfit_llm_choose_tier3` (+5, over the REGENERATED prompt bytes):
+- **the guard fix**: WREN owns no wardrobe, so before the fix she failed the
+  non-empty guard and the model was never consulted — zero recorded
+  conversations. Now: one consult, two shared candidates, and she wears her pick;
+- a character WITH a vault picks a SHARED id (the validator used to drop it);
+  her candidate list is 6 items across both tiers;
+- deliberate nudity honoured / unflagged empty falls back / stringy `"true"`
+  falls back. Both fallbacks land on a TRI-TIER default (her own coat plus the
+  SHARED apron), so the tiers and the flag are proven in one row.
+
+`chat_create_capstone` (+2):
+- two characters, one project: shared shirt + own jacket layered by `createdAt`
+  + the PROJECT sash — the project tier reaching chat-start dressing at all;
+- the model picks the shared composite: the chat stores the composite and the
+  `wardrobe-result` frame names its LEAVES ("Livery coat", "Livery boots"),
+  which live in General, are owned by nobody and are separately equipped by
+  nobody. That single frame is v4 defect 4's whole story, and defect 3's (the
+  preview resolving with the project tier threaded) in the same row.
+
+### Mutation proofs (the D24 rule — every new arm was first-run green)
+
+| mutation | result |
+|---|---|
+| pool read → vault-only | `chat_cast_routes`: 8 cases red (the five plain add cases inherit it — every one writes a default outfit) |
+| runner candidate list → vault-only | `outfit_llm_choose_tier3`: EVERY case's recorded conversation red; both shared-pick outfits red |
+| `declared_bare` → always false | `outfit_llm_choose_tier3`: exactly ONE case red, the right one |
+| hydration loop bound → 0 | `chat_create_capstone`: exactly one SECTION of one case red — the composite case's frames |
+| `join_all` → sequential loop | the bounded-by-slowest unit test red |
+| `OUTFIT_LLM_TIMEOUT_MS` 60s → 90s | the timeout unit test red |
+
+### Deferred, loud, unchanged from the order
+
+**Defect 2's CLIENT half.** v4 fixed a client↔server disagreement: the composer
+decided "has a usable default" over the merged list while the server resolved
+from the vault. v5's server half is now correct, but there is **no v5 client
+half to bring into agreement** — `outfit-selector.ts` is the REDUCED stub of the
+deferred new-chat wardrobe-composer family and loads no wardrobes at all. The
+drift cannot be fully mirrored client-side until that family lands; it should be
+picked up with it. Nothing refuses at runtime — the affordance simply is not
+built yet.
+
+### Recorded, not taken
+
+- **`sort_for_default_outfit`'s unparseable-`createdAt` arm.** v4 maps a MISSING
+  `createdAt` to `+Infinity` and an UNPARSEABLE one to `NaN` (whose comparator
+  reads as 0, leaving the pair's order alone). v5 maps both to `i64::MAX`. This
+  is pre-existing (it was the inline sort's behavior before this lane), agrees
+  with v4 on the only shape Quilltap data holds, and keeps the comparator a
+  total order — which Rust's stable `sort_by` requires and P4.14 ruled about.
+  Documented at the function.
+- **The `wardrobe-transfers` regen recipe was broken for worktree runs** and is
+  FIXED in commit 5: it omitted the spec-JSON copy, and jest ignores `.claude/`
+  paths, so `--roots "$V5/harness/oracle/cases"` found no tests at all. Found by
+  running it (the `harness-recipes-are-runnable` rule earning its keep).
+- **v5 had TWO copies of v4's one `resolveEquippedOutfitForCharacter` head**
+  (`resolve_equipped_outfit_leaf_values` / `resolve_equipped_leaf_items_by_slot`
+  differ only in how they render the tail). The hydration loop would have had to
+  be written twice and STAY written twice; the head is now one private
+  `resolve_equipped_leaves`.
+
+### 💸 For the round record
+
+The merged-pool `llm_choose` still costs one cheap-LLM call per pick in
+production, and it now fires in cases where it previously did not — a character
+whose wardrobe is entirely shared used to skip the model silently. **The
+tri-tier dressing's live proof joins the owed dogfood pass**: a chat opened on
+the Friday copy with characters who wear project-store and Quilltap General
+garments, and one whose outfit is a shared composite.
+
+### Gate (run in this worktree, at `c4d4b0de`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the lane's 33 env vars: **exit 0,
+  407 test binaries, 1,763 tests, 0 failed, ZERO `SKIP:` lines** — every one of
+  the 17 families below ran for real, verified by name in the log.
+- The 17 families, all regenerated fresh at `c4d4b0de` and green:
+  `wardrobe_tools`, `wardrobe_routes` (74 checks — the equip-path neutrality
+  proof that the equip path did NOT move onto the pool, which v4's own
+  doc-comment forbids), `chats_outfits_tier2`, `wardrobe_tier2`,
+  `wardrobe_transfers_tier2`, `vault_wardrobe_read`, `vault_wardrobe_write`,
+  `vault_wardrobe_public`, `wardrobe_public_read`, `chat_admin_routes` (the
+  merge path), `chat_cast_routes`, `outfit_llm_choose_tier3`,
+  `chat_create_capstone`, `chat_export`, `message_reattribute`,
+  `search_replace`, `tools_inventory`.
+- SPA (this lane touches `apps/web`): `ng test` 264 files / 3,214 passed;
+  `ng build` clean. No Playwright run: this lane added no e2e beat and changed
+  no screen behavior beyond three label strings and a sort.
+- `api/types.rs` NEVER OPENED — nothing here changes the wire, as the order
+  predicted.
+
+### Versions after the lane
+
+core **0.0.436**, harness **0.0.376**, host **0.0.55**, SPA **0.5.358**;
+web 0.0.56, cli 0.0.4, quilltap-tauri 0.0.5 unchanged.
+
+### For the unifier — the baseline-move wording slice
+
+This lane's families all regenerated at `c4d4b0de`; v4's tree was clean there
+and no pinned worktree was used. Suggested wording for the baseline paragraph:
+"Seventeen families regenerated at `c4d4b0de` by P4.D39 — the whole
+wardrobe/outfit set plus every consumer of the `chat-dialogs-*` and
+`chat-cast-*` fixtures, both of which the lane extended with a Quilltap General
+tier." Note for future rounds: the `chat-dialogs-*` fixture now has FIVE oracle
+consumers and a General wardrobe tier; extending it again means regenerating all
+five.
+
+### Regen recipes
+
+Every family's recipe is in its own test header and runs verbatim through
+`python3 harness/tools/recipe_sweep.py --run <family>`. The three fixture
+rebuilds (which the sweep deliberately refuses, since they write into the repo)
+are in the builders' own headers:
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree> ; cd ~/source/quilltap-server
+TZ=UTC QT_FIXTURE_CAST_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-cast-main.db \
+       QT_FIXTURE_CAST_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-cast-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-chat-cast-fixture.ts
+TZ=UTC QT_FIXTURE_CD_MAIN=$W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
+       QT_FIXTURE_CD_MOUNT=$W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-chat-dialogs-fixture.ts
+```
+
+(The capstone's fixture is /tmp-built and its rebuild is already stage 1 of
+`recipe_sweep.py --run chat_create_capstone_equivalence`.)
