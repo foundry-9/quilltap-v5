@@ -46172,3 +46172,49 @@ offset-rounding shortcut would get wrong in a way a whole-hour zone hides).
 The full oracle differential against v4's real repository arrives in this lane's
 unit 3 (`llm_log_cleanup_*`); until then the port's proof is those v4-derived
 vectors plus the boundary/user-filter tests.
+
+## Lane record — P4.24 unit 2 (the `LLM_LOG_CLEANUP` handler)
+
+`crates/quilltap-core/src/services/llm_log_cleanup_job.rs` ports v4's
+`lib/background-jobs/handlers/llm-log-cleanup.ts` (73 LOC), all five arms in
+v4's order. Two of them read like bugs and are not:
+
+- **Step 3's `retentionDays <= 0` is where "0 means keep forever" lives** — the
+  repository's own guard is `< 0`. Splitting it that way is v4's shape; a port
+  that "tidied" either side would silently delete a keep-forever user's history.
+- **Step 4's second settings fetch runs unconditionally**, even when the payload
+  carried `retentionDays` and step 2 never ran — and its missing-row behavior is
+  the OPPOSITE of step 2's. Step 2 bails on a missing settings row; step 4's
+  `chatSettings && !enabled` short-circuits, so a missing row lets cleanup
+  proceed. Both halves are pinned by the unit-3 differential (a
+  payload-carrying job for a user with no settings row DOES delete).
+
+The payload decode uses JS `Number()` semantics via `pascal::js_value::to_number`
+rather than a bare `as_f64`, which keeps every present-but-odd shape landing
+where JS lands: `null` → `0` returns at step 3 exactly as `null <= 0` does, and
+a non-numeric string → `NaN`, which fails `<= 0` and reaches the repository's
+unrepresentable-cutoff error exactly as v4's `Invalid Date` does. Only an
+ABSENT key is `undefined`, and only `undefined` sends step 2 to the settings row.
+
+`llm_logging_bag` materializes `LLMLoggingSettingsSchema`'s defaults
+(`enabled` true, `retentionDays` 30) over the stored cell. That makes v4's
+`llmLoggingSettings?.retentionDays ?? 30` **unreachable in v4 itself**: the cell
+is Zod-parsed on read, so a NULL/absent cell arrives as the full default object
+and `retentionDays` is always present. Ported as the equivalent default, with
+the reasoning recorded rather than as a second fallback nobody can reach.
+
+**One inherited modeling boundary, recorded not widened:** v4's `findByUserId`
+Zod-parses the whole row under the `null`-fallback `safeQuery` overload, so a
+row whose `llmLoggingSettings` cell is *malformed* (wrong-typed field, not just
+absent) reads back as `null` and takes step 2's missing-settings arm; v5's
+`find_by_user_id` marshals what is stored and degrades to the schema defaults
+instead. That is the repo-wide choice v5 made long before this handler — every
+shape a v4 `create` can write agrees on both sides, which is what the unit-3
+fixture exercises.
+
+Clock and zone are parameters (the unit-1 seam). v4's `logger.*` lines are
+`tracing` events (the P4.18 ruling: log output is operator output, outside the
+differential contract).
+
+Still unregistered at this commit — the handler exists but nothing runs it; the
+spine registration is unit 4, and the differential drives the handler directly.

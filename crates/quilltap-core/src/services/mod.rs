@@ -105,6 +105,7 @@ pub mod knowledge_injector;
 pub mod lantern_notifications;
 pub mod librarian_notifications;
 pub mod llm_errors;
+pub mod llm_log_cleanup_job;
 pub mod llm_logging;
 pub mod maintenance;
 pub mod memory_extraction_job;

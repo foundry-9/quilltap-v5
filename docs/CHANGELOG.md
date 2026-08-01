@@ -26,7 +26,9 @@ task was scheduled but had no one to carry it out, so every start-up quietly
 minted a job that failed three times and gave up, and the log store simply kept
 growing. The retention window you set under Settings → Chat is honoured once
 more, counted in whole local calendar days so the boundary does not drift by an
-hour when daylight saving comes or goes.
+hour when daylight saving comes or goes. Setting the window to zero still means
+"keep everything", and switching logging off leaves what you already have
+untouched.
 
 Planned the next round of porting work (documentation only): five parallel
 work orders covering the character-vault save guard and its proper
