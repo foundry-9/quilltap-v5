@@ -16,6 +16,7 @@ import { ErrorAlert } from '../../ui/error-alert';
 import { GroupCard } from './group-card';
 import { GroupCreateDialog } from './group-create-dialog';
 import { deleteGroup, fetchGroups, groupKeys, type GroupCardModel } from './groups.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The Groups section at the top of the Characters page (v4 `AuroraView.tsx`
@@ -32,9 +33,6 @@ import { deleteGroup, fetchGroups, groupKeys, type GroupCardModel } from './grou
     <div class="mt-8">
       <h2 class="qt-heading-2 mb-6 text-foreground">Groups</h2>
 
-      @if (deleteError(); as msg) {
-        <qt-error-alert [message]="msg" class="mb-4" />
-      }
 
       @if (groups().length === 0) {
         <div
@@ -70,6 +68,7 @@ import { deleteGroup, fetchGroups, groupKeys, type GroupCardModel } from './grou
 })
 export class GroupsSection {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
   /** Non-null ⇒ hosted; a group opens via the `openGroup` output for in-tab drill. */
@@ -79,7 +78,6 @@ export class GroupsSection {
   readonly openGroup = output<string>();
 
   protected readonly createOpen = signal(false);
-  protected readonly deleteError = signal<string | null>(null);
 
   protected readonly groupsQuery = injectQuery(() => ({
     queryKey: groupKeys.list(),
@@ -113,7 +111,6 @@ export class GroupsSection {
 
   protected async onDelete(id: string): Promise<void> {
     // v4: immediate delete, NO confirm dialog. Optimistically drop the card.
-    this.deleteError.set(null);
     const key = groupKeys.list();
     const previous = this.queryClient.getQueryData<GroupCardModel[]>(key);
     this.queryClient.setQueryData<GroupCardModel[]>(key, (prev) =>
@@ -121,9 +118,10 @@ export class GroupsSection {
     );
     try {
       await deleteGroup(this.core, id);
+      this.toasts.showSuccess('Group deleted successfully!');
     } catch (err) {
       this.queryClient.setQueryData<GroupCardModel[]>(key, previous);
-      this.deleteError.set(err instanceof Error ? err.message : 'Failed to delete group');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete group');
     } finally {
       await this.queryClient.invalidateQueries({ queryKey: key });
     }

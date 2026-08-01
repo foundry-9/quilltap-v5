@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterDetail, CharacterListItem } from '../../../../core/core-contract';
 import { CharacterDefaultsTab } from './defaults-tab';
+import { ToastService } from '../../../../ui/toast.service';
 
 function character(over: Partial<CharacterDetail> = {}): CharacterDetail {
   return {
@@ -131,6 +132,13 @@ async function render(
   await new Promise((r) => setTimeout(r, 0));
   fixture.detectChanges();
   return fixture;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('CharacterDefaultsTab (autosave contract)', () => {
@@ -309,7 +317,7 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     expect(select.value).toBe('p1');
   });
 
-  it('surfaces a rejected save in the tab alert instead of swallowing it (finding #6)', async () => {
+  it('surfaces a rejected save as v4’s toast instead of swallowing it (finding #6)', async () => {
     const failing: Partial<CoreClient> = {
       dispatchData: (async () => {
         throw new Error('overlay write failed: vault unavailable');
@@ -319,9 +327,10 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     change(selectByFirstOptionText(fixture, 'Inherit from global settings'), 'enabled');
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
-    const alert = fixture.nativeElement.querySelector('.qt-alert-error') as HTMLElement;
-    expect(alert).toBeTruthy();
-    expect(alert.textContent).toContain('overlay write failed: vault unavailable');
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'overlay write failed: vault unavailable',
+    });
   });
 
   it('falls back to the v4 toast microcopy when the rejection carries no message', async () => {
@@ -334,8 +343,7 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     change(selectByFirstOptionText(fixture, 'Inherit from global settings'), 'enabled');
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
-    const alert = fixture.nativeElement.querySelector('.qt-alert-error') as HTMLElement;
-    expect(alert.textContent).toContain('Failed to update agent mode');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to update agent mode' });
   });
 
   it('dispatches characterUpdate {defaultTimestampConfig: null} when the timestamp mode is Disabled', async () => {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { CharacterChooseOutfitCard } from './choose-outfit-card';
+import { ToastService } from '../../ui/toast.service';
 
 function render(
   dispatchData: (req: unknown) => Promise<Record<string, unknown>>,
@@ -23,6 +24,13 @@ function checkbox(el: HTMLElement): HTMLInputElement {
 
 async function flush(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('CharacterChooseOutfitCard (v4 8bf3cb5f Wardrobe-tab checkbox)', () => {
@@ -63,7 +71,7 @@ describe('CharacterChooseOutfitCard (v4 8bf3cb5f Wardrobe-tab checkbox)', () => 
     });
   });
 
-  it('surfaces a failed save inline (v4 toast affordance has no v5 analogue here)', async () => {
+  it('surfaces a failed save as v4’s toast', async () => {
     const dispatchData = vi.fn(async () => {
       throw new Error('nope');
     });
@@ -76,6 +84,6 @@ describe('CharacterChooseOutfitCard (v4 8bf3cb5f Wardrobe-tab checkbox)', () => 
     await flush();
     fixture.detectChanges();
 
-    expect(el.textContent).toContain('nope');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'nope' });
   });
 });

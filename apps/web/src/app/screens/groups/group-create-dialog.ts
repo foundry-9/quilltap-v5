@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 
 import { CoreClient } from '../../core/core-client';
-import { ErrorAlert } from '../../ui/error-alert';
 import { Modal } from '../../ui/modal';
 import { createGroup } from './groups.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The Create Group dialog (v4 `AuroraView.tsx` inline dialog): name* + optional
@@ -14,13 +14,10 @@ import { createGroup } from './groups.api';
 @Component({
   selector: 'qt-group-create-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Modal, ErrorAlert],
+  imports: [FormsModule, Modal],
   template: `
     <qt-modal title="Create Group" maxWidth="md" (close)="close.emit()">
       <form id="qt-group-create-form" (ngSubmit)="submit()">
-        @if (error(); as msg) {
-          <qt-error-alert [message]="msg" class="mb-4" />
-        }
         <div class="mb-4">
           <label class="mb-2 block text-sm font-medium text-foreground" for="qt-group-name">
             Group Name *
@@ -73,6 +70,7 @@ import { createGroup } from './groups.api';
 })
 export class GroupCreateDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
   readonly created = output<string>();
@@ -80,7 +78,6 @@ export class GroupCreateDialog {
   protected readonly name = signal('');
   protected readonly description = signal('');
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected async submit(): Promise<void> {
     const name = this.name().trim();
@@ -88,12 +85,12 @@ export class GroupCreateDialog {
       return;
     }
     this.saving.set(true);
-    this.error.set(null);
     try {
       const group = await createGroup(this.core, name, this.description() || null);
+      this.toasts.showSuccess('Group created successfully!');
       this.created.emit(group.id);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to create group');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to create group');
     } finally {
       this.saving.set(false);
     }

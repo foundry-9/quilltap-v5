@@ -11,6 +11,7 @@ import type {
 } from '../../../../core/core-contract';
 import { fetchImageProfiles, imageProfileKeys } from '../../../settings/images/image-profiles.api';
 import { characterKeys } from '../../characters.api';
+import { ToastService } from '../../../../ui/toast.service';
 
 /** v4 `lib/constants/character.ts` — the virtual "User Acts As Character" profile id. */
 const USER_CONTROLLED_PROFILE_ID = '__user_controlled__';
@@ -66,10 +67,6 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
   imports: [RouterLink],
   template: `
     <div class="space-y-8">
-      @if (error()) {
-        <div class="qt-alert-error">{{ error() }}</div>
-      }
-
       <!-- Connection Profile -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Default Connection Profile</h2>
@@ -410,6 +407,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
 })
 export class CharacterDefaultsTab {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   protected readonly userControlledProfileId = USER_CONTROLLED_PROFILE_ID;
@@ -457,11 +455,6 @@ export class CharacterDefaultsTab {
     return label;
   }
 
-  /** v4 surfaces every failed save via `showErrorToast`; v5's affordance is
-   *  the tab-level alert. Without this, a server-rejected save silently snaps
-   *  the control back and reads as "the tab doesn't accept edits". */
-  protected readonly error = signal<string | null>(null);
-
   protected readonly isUserControlled = computed(() => this.character().controlledBy === 'user');
 
   protected readonly otherUserControlled = computed(() =>
@@ -500,22 +493,26 @@ export class CharacterDefaultsTab {
     return value === 'inherit' ? null : value === 'enabled';
   }
 
-  /** `fallback` = v4's `showErrorToast` fallback microcopy for this control. */
+  /**
+   * `success` / `fallback` are v4's own toast sentences for this control
+   * (`useCharacterView.ts` — each handler has its own pair).
+   */
   private async save(
     field: keyof SavingState,
     body: Record<string, unknown>,
     fallback: string,
+    success: string,
   ): Promise<void> {
     this.saving.update((s) => ({ ...s, [field]: true }));
-    this.error.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterUpdate',
         characterId: this.characterId(),
         character: body,
       });
+      this.toasts.showSuccess(success);
     } catch (err) {
-      this.error.set(err instanceof Error && err.message ? err.message : fallback);
+      this.toasts.showError(err instanceof Error && err.message ? err.message : fallback);
     } finally {
       this.saving.update((s) => ({ ...s, [field]: false }));
       await this.queryClient.invalidateQueries({
@@ -529,20 +526,27 @@ export class CharacterDefaultsTab {
       value === USER_CONTROLLED_PROFILE_ID
         ? { controlledBy: 'user' as const, defaultConnectionProfileId: undefined }
         : { controlledBy: 'llm' as const, defaultConnectionProfileId: value || undefined };
-    void this.save('connectionProfile', body, 'Failed to update connection profile');
+    void this.save(
+      'connectionProfile',
+      body,
+      'Failed to update connection profile',
+      value === USER_CONTROLLED_PROFILE_ID
+        ? 'Character set to user-controlled'
+        : 'Connection profile updated',
+    );
   }
 
   protected async onPartnerChange(value: string): Promise<void> {
     this.saving.update((s) => ({ ...s, partner: true }));
-    this.error.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterSetDefaultPartner',
         characterId: this.characterId(),
         partnerId: value || null,
       });
+      this.toasts.showSuccess(value ? 'Default partner updated' : 'Default partner removed');
     } catch (err) {
-      this.error.set(
+      this.toasts.showError(
         err instanceof Error && err.message ? err.message : 'Failed to update partner',
       );
     } finally {
@@ -561,6 +565,7 @@ export class CharacterDefaultsTab {
       'systemPrompt',
       { defaultSystemPromptId: value || null },
       'Failed to update default system prompt',
+      value ? 'Default system prompt updated' : 'Default system prompt cleared',
     );
   }
 
@@ -569,6 +574,7 @@ export class CharacterDefaultsTab {
       'imageProfile',
       { defaultImageProfileId: value || null },
       'Failed to update image profile',
+      value ? 'Image profile updated' : 'Image profile removed',
     );
   }
 
@@ -577,6 +583,7 @@ export class CharacterDefaultsTab {
       'scenario',
       { defaultScenarioId: value || null },
       'Failed to update default scenario',
+      value ? 'Default scenario updated' : 'Default scenario cleared',
     );
   }
 
@@ -585,6 +592,11 @@ export class CharacterDefaultsTab {
       'agentMode',
       { defaultAgentModeEnabled: this.fromTri(value) },
       'Failed to update agent mode',
+      value === 'inherit'
+        ? 'Agent mode set to inherit from global'
+        : value === 'enabled'
+          ? 'Agent mode enabled by default'
+          : 'Agent mode disabled by default',
     );
   }
 
@@ -593,6 +605,11 @@ export class CharacterDefaultsTab {
       'helpTools',
       { defaultHelpToolsEnabled: this.fromTri(value) },
       'Failed to update help tools',
+      value === 'inherit'
+        ? 'Help tools set to inherit from global (disabled)'
+        : value === 'enabled'
+          ? 'Help tools enabled'
+          : 'Help tools disabled',
     );
   }
 
@@ -601,6 +618,11 @@ export class CharacterDefaultsTab {
       'canDressThemselves',
       { canDressThemselves: this.fromTri(value) },
       'Failed to update self-dressing setting',
+      value === 'inherit'
+        ? 'Wardrobe self-dressing set to inherit from global (enabled)'
+        : value === 'enabled'
+          ? 'Wardrobe self-dressing enabled'
+          : 'Wardrobe self-dressing disabled',
     );
   }
 
@@ -609,6 +631,11 @@ export class CharacterDefaultsTab {
       'canCreateOutfits',
       { canCreateOutfits: this.fromTri(value) },
       'Failed to update outfit creation setting',
+      value === 'inherit'
+        ? 'Outfit creation set to inherit from global (enabled)'
+        : value === 'enabled'
+          ? 'Outfit creation enabled'
+          : 'Outfit creation disabled',
     );
   }
 
@@ -636,6 +663,7 @@ export class CharacterDefaultsTab {
       'timestampConfig',
       { defaultTimestampConfig: value },
       'Failed to update timestamp config',
+      value ? 'Timestamp settings updated' : 'Timestamps disabled',
     );
   }
 }

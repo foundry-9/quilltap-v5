@@ -46704,3 +46704,41 @@ parts — `Converted to database: ${parts}${suffix}` and
 **e2e file touched (ownership note):** `e2e/profile-flow.spec.ts` — its two
 `[data-testid="profile-status"]` assertions now read the toast container. It is
 the only e2e spec this unit moves.
+
+## Lane record — P4.25 unit 6: characters, groups, projects + the e2e beat
+
+**The characters vertical.** `defaults-tab`'s shared `save()` helper already
+carried v4's per-control ERROR fallback; it now carries v4's per-control
+SUCCESS sentence too, so all nine controls report what they did in v4's words —
+including the three-way inherit/enabled/disabled wordings v4 computes
+(`useCharacterView.ts:383-527`: agent mode, help tools, self-dressing, outfit
+creation) and the pair sentences (partner, image profile, scenario, system
+prompt, connection profile). `choose-outfit-card` gained v4's two-arm
+opening-outfit sentence. Both had rendered a tab-level `qt-alert-error` that v4
+does not have.
+
+**Groups + projects.** The create dialogs and the two delete arms: v4's four
+`…successfully!` sentences (`useGroups.ts:61,78`, `useProjects.ts:65,82`) and
+their failure arms, replacing the `deleteError` alerts.
+
+**⚠ v5 files where v4 DOES carry an inline error, left alone:**
+`aurora/AuroraView.tsx:377` (the list-load error page),
+`NewCharacterView.tsx:260` and `CharacterEditView.tsx:300` (both render an
+inline block AND toast) — so `characters-list`, `new-character` and
+`character-edit` keep their alerts, and the toasts they are still missing are
+recorded in the census as OPEN, not converted away.
+
+**The e2e beat — `apps/web/e2e/toast-flow.spec.ts` (new, lane C's own file).**
+Two live walks on the real server: a Profile save raising v4's
+`Profile updated successfully` inside `[role="toast-container"]` with the
+`qt-toast-success` class, NO dismiss control (v4 has none), and expiring by
+itself; and a route-intercepted refusal of `userProfileUpdate` alone raising the
+server's sentence as `qt-toast-error`, with a reload proving nothing was
+written. The interception is scoped to the one verb per the order's guidance —
+breaking fixture state to see a failure would leak into every later spec.
+
+**Two SIBLING e2e specs whose assertions this lane moved** (named per the
+ownership rule): `e2e/salon-dialogs-flow.spec.ts` (the rename dialog's
+`.qt-text-danger` probe) and `e2e/wardrobe-flow.spec.ts` (the avatar-preview
+no-API-key banner). Both now read the toast container. Plus
+`e2e/profile-flow.spec.ts` from unit 5.

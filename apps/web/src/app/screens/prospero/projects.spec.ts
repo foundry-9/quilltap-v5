@@ -15,6 +15,7 @@ import { ProjectImageGenerationCard } from './cards/project-image-generation-car
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
 import { ProjectDetailScreen } from './project-detail';
 import { ProsperoList } from './prospero-list';
+import { ToastService } from '../../ui/toast.service';
 
 interface DispatchReq {
   type: string;
@@ -67,6 +68,13 @@ function project(over: Partial<ProjectDetail> = {}): ProjectDetail {
   };
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('ProsperoList', () => {
   async function render(client: Partial<CoreClient>): Promise<ComponentFixture<ProsperoList>> {
     TestBed.configureTestingModule({
@@ -117,7 +125,7 @@ describe('ProsperoList', () => {
     expect(fixture.nativeElement.querySelector('a[href="/prospero/p1"]')).toBeTruthy();
   });
 
-  it('delete goes through the confirm dialog and surfaces an alert on failure', async () => {
+  it('delete goes through the confirm dialog and toasts on failure', async () => {
     const projects = [
       {
         id: 'p1',
@@ -151,8 +159,7 @@ describe('ProsperoList', () => {
     expect(confirm).toBeTruthy();
     confirm.click();
     await settle(fixture);
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Failed to delete project');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to delete project' });
   });
 });
 

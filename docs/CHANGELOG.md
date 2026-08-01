@@ -51,6 +51,11 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Character defaults, groups and projects say what they changed. Every control on
+a character's Defaults tab now confirms the setting it wrote, and creating or
+deleting a group or project reports the result instead of leaving a red bar
+behind on failure.
+
 Document stores, wardrobe items, custom tools, tags, your profile and the
 Generate Image screen report through the same notification corner as everything
 else. Deleting or duplicating a wardrobe item, wearing an outfit, and saving a

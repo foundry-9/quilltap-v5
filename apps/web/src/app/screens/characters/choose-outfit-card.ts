@@ -3,6 +3,7 @@ import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
 import { characterKeys } from './characters.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The "let this character choose their opening outfit" checkbox card (v4
@@ -43,14 +44,12 @@ import { characterKeys } from './characters.api';
           <span class="h-4 w-4 mt-1 animate-spin rounded-full qt-spinner shrink-0"></span>
         }
       </label>
-      @if (error(); as message) {
-        <p class="mt-2 qt-text-small qt-text-error">{{ message }}</p>
-      }
     </div>
   `,
 })
 export class CharacterChooseOutfitCard {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   /** Null while the character is still loading (v4's `disabled={... || !character}`). */
@@ -58,21 +57,25 @@ export class CharacterChooseOutfitCard {
   readonly canChooseOutfit = input(false);
 
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected async onChange(enabled: boolean): Promise<void> {
     const id = this.characterId();
     if (id === null) return;
     this.saving.set(true);
-    this.error.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterUpdate',
         characterId: id,
         character: { canChooseOutfit: enabled },
       });
+      // v4 `handleSaveCanChooseOutfit` (`useCharacterView.ts:513-517`).
+      this.toasts.showSuccess(
+        enabled
+          ? 'New chats will let this character choose their own opening outfit'
+          : 'New chats will use this character’s default opening outfit',
+      );
     } catch (err) {
-      this.error.set(
+      this.toasts.showError(
         err instanceof Error && err.message ? err.message : 'Failed to update outfit-choice setting',
       );
     } finally {

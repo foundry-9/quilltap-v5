@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { FormsModule } from '@angular/forms';
 
 import { CoreClient } from '../../core/core-client';
-import { ErrorAlert } from '../../ui/error-alert';
 import { Modal } from '../../ui/modal';
 import { createProject } from './projects.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The Create Project dialog (v4 `CreateProjectDialog.tsx`): name* (max 100) +
@@ -14,13 +14,10 @@ import { createProject } from './projects.api';
 @Component({
   selector: 'qt-project-create-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Modal, ErrorAlert],
+  imports: [FormsModule, Modal],
   template: `
     <qt-modal title="Create Project" maxWidth="md" (close)="close.emit()">
       <form id="qt-project-create-form" (ngSubmit)="submit()">
-        @if (error(); as msg) {
-          <qt-error-alert [message]="msg" class="mb-4" />
-        }
         <div class="mb-4">
           <label class="qt-label mb-2 block" for="qt-project-name">Name</label>
           <input
@@ -73,6 +70,7 @@ import { createProject } from './projects.api';
 })
 export class ProjectCreateDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
   readonly created = output<string>();
@@ -80,7 +78,6 @@ export class ProjectCreateDialog {
   protected readonly name = signal('');
   protected readonly description = signal('');
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected async submit(): Promise<void> {
     const name = this.name().trim();
@@ -88,12 +85,12 @@ export class ProjectCreateDialog {
       return;
     }
     this.saving.set(true);
-    this.error.set(null);
     try {
       const project = await createProject(this.core, name, this.description() || null);
+      this.toasts.showSuccess('Project created successfully!');
       this.created.emit(project.id);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to create project');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       this.saving.set(false);
     }

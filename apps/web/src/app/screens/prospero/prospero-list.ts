@@ -20,6 +20,7 @@ import { ProjectCreateDialog } from './project-create-dialog';
 import { ProjectDeleteDialog } from './project-delete-dialog';
 import { ProjectDetailScreen } from './project-detail';
 import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from './projects.api';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The Projects (Prospero) list (v4 `app/prospero/ProsperoView.tsx`): a title +
@@ -72,9 +73,6 @@ import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from
           (retry)="projectsQuery.refetch()"
         />
       } @else {
-        @if (deleteError(); as msg) {
-          <qt-error-alert [message]="msg" class="mt-6" />
-        }
         @if (projects().length === 0) {
           <div
             class="mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"
@@ -115,6 +113,7 @@ import { deleteProject, fetchProjects, projectKeys, type ProjectCardModel } from
 })
 export class ProsperoList {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
   /** Non-null ⇒ hosted as a workspace tab; drill in place instead of routing. */
@@ -143,7 +142,6 @@ export class ProsperoList {
 
   protected readonly createOpen = signal(false);
   protected readonly deleteTarget = signal<string | null>(null);
-  protected readonly deleteError = signal<string | null>(null);
 
   protected readonly projectsQuery = injectQuery(() => ({
     queryKey: projectKeys.list(),
@@ -180,7 +178,6 @@ export class ProsperoList {
     if (!id) {
       return;
     }
-    this.deleteError.set(null);
     const key = projectKeys.list();
     const previous = this.queryClient.getQueryData<ProjectCardModel[]>(key);
     this.queryClient.setQueryData<ProjectCardModel[]>(key, (prev) =>
@@ -189,9 +186,10 @@ export class ProsperoList {
     this.deleteTarget.set(null);
     try {
       await deleteProject(this.core, id);
+      this.toasts.showSuccess('Project deleted successfully!');
     } catch (err) {
       this.queryClient.setQueryData<ProjectCardModel[]>(key, previous);
-      this.deleteError.set(err instanceof Error ? err.message : 'Failed to delete project');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete project');
     } finally {
       await this.queryClient.invalidateQueries({ queryKey: key });
     }

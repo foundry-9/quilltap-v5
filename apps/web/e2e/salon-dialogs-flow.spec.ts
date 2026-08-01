@@ -129,7 +129,10 @@ test.describe('P4.9E3C — Rename Chat', () => {
     await expect(auto).not.toBeChecked();
     await auto.check();
 
-    await expect(dialog.locator('.qt-text-danger')).toBeVisible({ timeout: 15_000 });
+    // v4 reports this failure as a toast and nothing else (P4.25).
+    await expect(
+      page.locator('[role="toast-container"] > div').filter({ hasText: /./ }).first(),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(auto).not.toBeChecked();
     await expect(dialog.getByText('Rename Chat')).toBeVisible();
     // Nothing was renamed and nothing was spent.

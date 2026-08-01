@@ -238,12 +238,13 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await preview.click();
 
     // v4 `preview-avatar/route.ts`: `!imageProfile.apiKeyId` →
-    // badRequest('Selected image profile has no API key configured'). The
-    // dialog surfaces the dispatch error in its `.qt-alert-error` banner.
-    await expect(dialog.locator('.qt-alert-error')).toHaveText(
-      'Selected image profile has no API key configured',
-      { timeout: 15_000 },
-    );
+    // badRequest('Selected image profile has no API key configured'). v4 reports
+    // it as a toast and the dialog carries no banner (P4.25).
+    await expect(
+      page
+        .locator('[role="toast-container"] > div')
+        .filter({ hasText: 'Selected image profile has no API key configured' }),
+    ).toBeVisible({ timeout: 15_000 });
 
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();

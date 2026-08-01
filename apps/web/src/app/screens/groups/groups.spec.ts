@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { GroupEditor } from './group-editor';
 import { GroupsSection } from './groups-section';
+import { ToastService } from '../../ui/toast.service';
 
 interface DispatchReq {
   type: string;
@@ -31,6 +32,13 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 8): Promise<vo
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
   }
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('GroupsSection', () => {
@@ -83,7 +91,7 @@ describe('GroupsSection', () => {
     expect(edit).toBeTruthy();
   });
 
-  it('deletes immediately (no confirm) and surfaces an alert when the delete fails', async () => {
+  it('deletes immediately (no confirm) and toasts when the delete fails', async () => {
     const groups = [
       {
         id: 'g1',
@@ -111,8 +119,7 @@ describe('GroupsSection', () => {
     trash.click();
     await settle(fixture);
     // The failed delete rolls back and surfaces the fallback microcopy.
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Failed to delete group');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to delete group' });
   });
 });
 
