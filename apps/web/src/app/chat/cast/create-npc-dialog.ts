@@ -14,6 +14,7 @@ import type { ConnectionProfileDto } from '../../core/core-contract';
 import { MarkdownField } from '../../editor/markdown-field';
 import { uploadCharacterPhoto } from '../../screens/characters/characters.api';
 import { Icon } from '../../ui/icon';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * Create Ad-hoc NPC (v4 `components/chat/CreateNPCDialog.tsx`, 482 LOC), nested
@@ -73,10 +74,6 @@ import { Icon } from '../../ui/icon';
         </div>
 
         <div class="qt-dialog-body flex-1 overflow-y-auto">
-          @if (error(); as message) {
-            <div class="qt-alert-error mb-4" role="alert">{{ message }}</div>
-          }
-
           <div class="space-y-4">
             <div>
               <label for="npc-name" class="block text-sm qt-text-primary mb-2">
@@ -243,6 +240,7 @@ import { Icon } from '../../ui/icon';
 })
 export class CreateNpcDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
   /** The new character's id — v4 `onNPCCreated(characterId)`. */
@@ -256,7 +254,6 @@ export class CreateNpcDialog {
   protected readonly connectionProfileId = signal<string | null>(null);
   protected readonly avatarFile = signal<File | null>(null);
   protected readonly creating = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connection-profiles'] as const,
@@ -299,10 +296,9 @@ export class CreateNpcDialog {
     const file = input.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      this.error.set('Please select an image file');
+      this.toasts.showError('Please select an image file');
       return;
     }
-    this.error.set(null);
     this.avatarFile.set(file);
   }
 
@@ -312,20 +308,19 @@ export class CreateNpcDialog {
     const description = this.description().trim();
     const profileId = this.connectionProfileId();
     if (!name) {
-      this.error.set('Please enter a name for the NPC');
+      this.toasts.showError('Please enter a name for the NPC');
       return;
     }
     if (!description) {
-      this.error.set('Please enter a description for the NPC');
+      this.toasts.showError('Please enter a description for the NPC');
       return;
     }
     if (!profileId) {
-      this.error.set('Please select a connection profile');
+      this.toasts.showError('Please select a connection profile');
       return;
     }
 
     this.creating.set(true);
-    this.error.set(null);
     try {
       const now = new Date().toISOString();
       const character: Record<string, unknown> = {
@@ -394,10 +389,11 @@ export class CreateNpcDialog {
         }
       }
 
+      this.toasts.showSuccess(`NPC "${name}" created successfully`);
       this.created.emit(characterId);
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to create NPC');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to create NPC');
     } finally {
       this.creating.set(false);
     }

@@ -13,6 +13,7 @@ import {
 import { CoreClient } from '../core/core-client';
 import type { ParticipantDetail } from '../core/core-contract';
 import { Modal } from '../ui/modal';
+import { ToastService } from '../ui/toast.service';
 
 /** A generated image (v4 `?action=generate` `data[]`). */
 export interface GeneratedImage {
@@ -92,9 +93,6 @@ export interface GeneratedImage {
           ></textarea>
         </div>
 
-        @if (error(); as e) {
-          <div class="qt-alert-error text-sm" role="alert">{{ e }}</div>
-        }
       </div>
 
       <div qt-modal-footer class="flex justify-end gap-2">
@@ -115,6 +113,7 @@ export interface GeneratedImage {
 })
 export class GenerateImageDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly imageProfileId = input<string | null>(null);
@@ -127,7 +126,6 @@ export class GenerateImageDialog {
 
   protected readonly prompt = signal('');
   protected readonly generating = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   /** The chat's character names (v4's quick-insert buttons; user char included). */
   protected readonly characterNames = computed(() =>
@@ -164,7 +162,6 @@ export class GenerateImageDialog {
     const prompt = this.prompt();
     if (!imageProfileId || !prompt.trim()) return;
     this.generating.set(true);
-    this.error.set(null);
     try {
       const resp = await this.core.dispatch({
         type: 'imageProfileGenerate',
@@ -185,10 +182,10 @@ export class GenerateImageDialog {
         this.generated.emit({ images: body.data, prompt: body.expandedPrompt || prompt });
         this.close.emit();
       } else {
-        this.error.set('No images were generated.');
+        this.toasts.showError('No images generated');
       }
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to generate image.');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to generate image');
     } finally {
       this.generating.set(false);
     }

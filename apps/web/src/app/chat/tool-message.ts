@@ -1,10 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { resolveMessageAuthor } from './chat-view-model';
 import { getSystemSenderDisplayName } from './system-message-labels';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The parsed tool-result envelope (v4 `ToolMessage.tsx:55-75`, `ToolResult`).
@@ -201,11 +209,6 @@ function formatResultContent(toolData: ToolResult): string {
  *   collapsed preview still reports `N image(s)` for a `generate_image` row that
  *   carries attachments but no text result, matching v4's `:529-533`. This is
  *   the order's tier-3 deferral; it is enumerated in the lane report.
- * - **Copy feedback is an inline status line, not a toast.** v5 has no toast
- *   system (the established substitute — `chat/sidebar/chat-section.ts` §2); v4's
- *   toast copy ("Request copied to clipboard" / "Response copied to clipboard" /
- *   "Failed to copy to clipboard") is carried verbatim into a `role="status"`
- *   aria-live line.
  */
 @Component({
   selector: 'qt-tool-message',
@@ -356,9 +359,6 @@ function formatResultContent(toolData: ToolResult): string {
               </div>
             }
 
-            @if (copyStatus()) {
-              <div class="qt-text-xs mt-2" role="status" aria-live="polite">{{ copyStatus() }}</div>
-            }
 
             <!-- Timestamp -->
             <div class="qt-text-xs mt-2">{{ timestamp() }}</div>
@@ -369,14 +369,13 @@ function formatResultContent(toolData: ToolResult): string {
   `,
 })
 export class ToolMessage {
+  private readonly toasts = inject(ToastService);
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();
   readonly embedded = input(false);
 
   protected readonly showRequest = signal(false);
   protected readonly showResponse = signal(false);
-  /** The last copy outcome (v4's toast copy, verbatim), cleared after a beat. */
-  protected readonly copyStatus = signal('');
 
   /**
    * Parse `message.content` into the `ToolResult` shape (v4 :216-232), handling
@@ -496,17 +495,13 @@ export class ToolMessage {
     void this.copy(this.responseContent(), 'Response copied to clipboard');
   }
 
-  /**
-   * Copy to the clipboard, surfacing v4's toast copy on the inline status line.
-   * v5 has no toast system, so the message rides a `role="status"` region
-   * (chat-section §2 precedent).
-   */
+  /** v4 `:337-349` — both arms are toasts. */
   private async copy(text: string, successMessage: string): Promise<void> {
     try {
       await navigator.clipboard?.writeText(text);
-      this.copyStatus.set(successMessage);
+      this.toasts.showSuccess(successMessage);
     } catch {
-      this.copyStatus.set('Failed to copy to clipboard');
+      this.toasts.showError('Failed to copy to clipboard');
     }
   }
 }

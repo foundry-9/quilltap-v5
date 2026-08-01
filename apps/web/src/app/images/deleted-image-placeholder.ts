@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output, si
 
 import { apiUrl } from '../core/api-url';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The deleted-image placeholder — a port of v4
@@ -54,15 +55,11 @@ import { Icon } from '../ui/icon';
       >
         Remove
       </button>
-      @if (error(); as msg) {
-        <p class="qt-text-xs qt-text-destructive text-center mt-1 break-words max-w-full">
-          {{ msg }}
-        </p>
-      }
     </div>
   `,
 })
 export class DeletedImagePlaceholder {
+  private readonly toasts = inject(ToastService);
   readonly imageId = input.required<string>();
   readonly filename = input.required<string>();
   /** v4 `width = 400` (`:20`). */
@@ -75,7 +72,6 @@ export class DeletedImagePlaceholder {
   /** v4 `onCleanup?.()` — emitted after a successful reference delete. */
   readonly cleanup = output<void>();
 
-  protected readonly error = signal<string | null>(null);
 
   /** v4 `:50` — only apply width/height if not using a fill class. */
   private readonly shouldApplyDimensions = computed(
@@ -107,7 +103,7 @@ export class DeletedImagePlaceholder {
       }
       this.cleanup.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to remove image reference');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove image reference');
     }
   }
 }

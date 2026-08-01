@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * v4 `__tests__/unit/deleted-image-placeholder.test.tsx` (272 lines) ported
@@ -10,6 +11,13 @@ import { DeletedImagePlaceholder } from './deleted-image-placeholder';
  * divergence), so those assertions target the confirm spy and the rendered
  * error text.
  */
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('DeletedImagePlaceholder', () => {
   const mockImageId = 'test-image-id';
   const mockFilename = 'test-image.png';
@@ -145,7 +153,7 @@ describe('DeletedImagePlaceholder', () => {
       removeButton(fixture).click();
       await flush(fixture);
 
-      expect(fixture.nativeElement.textContent).toContain('Failed to delete image');
+      expect(toasts()).toEqual([{ type: 'error', message: 'Failed to delete image' }]);
       expect(cleanups.length).toBe(0);
     });
 
@@ -163,7 +171,7 @@ describe('DeletedImagePlaceholder', () => {
       removeButton(fixture).click();
       await flush(fixture);
 
-      expect(fixture.nativeElement.textContent).toContain('Network error');
+      expect(toasts()).toEqual([{ type: 'error', message: 'Network error' }]);
       expect(cleanups.length).toBe(0);
     });
 

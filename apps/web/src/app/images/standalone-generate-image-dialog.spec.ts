@@ -5,6 +5,7 @@ import { CoreClient } from '../core/core-client';
 import type { ParticipantDetail } from '../core/core-contract';
 import type { GeneratedImage } from './generate-image-dialog';
 import { StandaloneGenerateImageDialog } from './standalone-generate-image-dialog';
+import { ToastService } from '../ui/toast.service';
 
 interface Recorder {
   calls: Record<string, unknown>[];
@@ -90,6 +91,12 @@ function inner(fixture: ComponentFixture<StandaloneGenerateImageDialog>): Inner 
   return fixture.componentInstance as unknown as Inner;
 }
 
+/** The message of the last toast this render raised. */
+function lastToast(): string | undefined {
+  const list = TestBed.inject(ToastService).toasts();
+  return list.at(-1)?.message;
+}
+
 describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateImageDialog.tsx)', () => {
   it('sends prompt + chatId + count (v4 :83-87)', async () => {
     const rec: Recorder = { calls: [] };
@@ -163,7 +170,7 @@ describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateIm
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).error()).toBe('No images generated');
+    expect(lastToast()).toBe('No images generated');
   });
 
   it('uses v4\'s dialog wording — "No images generated", not the screen\'s (v4 :112)', async () => {
@@ -171,22 +178,22 @@ describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateIm
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).error()).toBe('No images generated');
-    expect(inner(fixture).error()).not.toBe('No images were generated');
+    expect(lastToast()).toBe('No images generated');
+    expect(lastToast()).not.toBe('No images were generated');
   });
 
   it('checks the prompt BEFORE the profile — v4 reverses the screen (v4 :65,:70)', async () => {
     const fixture = await render(stubClient({}));
     // Neither set: the prompt complaint wins here, the profile one on the page.
     await inner(fixture).onGenerate();
-    expect(inner(fixture).error()).toBe('Please enter a prompt');
+    expect(lastToast()).toBe('Please enter a prompt');
   });
 
   it('complains about the profile once a prompt is present (v4 :70-73)', async () => {
     const fixture = await render(stubClient({}));
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).error()).toBe('Please select an image profile');
+    expect(lastToast()).toBe('Please select an image profile');
   });
 
   it('surfaces a server error (v4 :90-95)', async () => {
@@ -194,7 +201,7 @@ describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateIm
     inner(fixture).selectedProfileId.set('p1');
     inner(fixture).prompt.set('a cat');
     await inner(fixture).onGenerate();
-    expect(inner(fixture).error()).toBe('the kiln is cold');
+    expect(lastToast()).toBe('the kiln is cold');
   });
 
   it('offers the user character as a {{me}} quick insert labelled by name (v4 :172-181)', async () => {

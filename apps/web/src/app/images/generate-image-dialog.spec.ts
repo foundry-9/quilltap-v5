@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import type { CoreResponse, ParticipantDetail } from '../core/core-contract';
 import { GenerateImageDialog } from './generate-image-dialog';
+import { ToastService } from '../ui/toast.service';
 
 function participant(name: string, over: Partial<ParticipantDetail> = {}): ParticipantDetail {
   return {
@@ -70,6 +71,13 @@ async function settle(fixture: ComponentFixture<GenerateImageDialog>): Promise<v
   }
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('GenerateImageDialog', () => {
   afterEach(() => TestBed.resetTestingModule());
 
@@ -131,6 +139,8 @@ describe('GenerateImageDialog', () => {
     typePrompt(fixture, 'a picture');
     generateButton(fixture).click();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('Image generation is not available yet.');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Image generation is not available yet.' },
+    ]);
   });
 });

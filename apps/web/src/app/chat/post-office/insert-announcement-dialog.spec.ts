@@ -7,6 +7,7 @@ import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { RichEditor } from '../../editor/rich-editor';
 import { InsertAnnouncementDialog } from './insert-announcement-dialog';
+import { ToastService } from '../../ui/toast.service';
 
 function character(over: Partial<CharacterListItem> = {}): CharacterListItem {
   return {
@@ -132,6 +133,13 @@ async function setEditor(
   const editors = fixture.debugElement.queryAll(By.directive(RichEditor));
   (editors[0]!.componentInstance as RichEditor).setMarkdown(value);
   await settle(fixture);
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.tsx)', () => {
@@ -281,7 +289,9 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     fixture.detectChanges();
     primary(fixture).click();
     await settle(fixture);
-    expect(text(fixture)).toContain('The LLM returned no content. Try again or use as-is.');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'The LLM returned no content. Try again or use as-is.' },
+    ]);
     expect(primary(fixture).textContent?.trim()).toBe('Preview in character');
     expect(s.calls.some((c) => c['type'] === 'chatAnnouncementPost')).toBe(false);
   });
@@ -318,7 +328,7 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     fixture.detectChanges();
     primary(fixture).click();
     await settle(fixture);
-    expect(text(fixture)).toContain('empty content or unknown chat');
+    expect(toasts().at(-1)?.message).toContain('empty content or unknown chat');
     expect(closed).not.toHaveBeenCalled();
   });
 

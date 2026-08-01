@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { ToolMessage } from './tool-message';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * Byte-fidelity component spec for {@link ToolMessage} — the SPA analog of the
@@ -95,6 +96,13 @@ function toolContent(extra: Record<string, unknown> = {}): string {
     arguments: { type: 6 },
     ...extra,
   });
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
@@ -330,9 +338,7 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
       await Promise.resolve();
       fixture.detectChanges();
       expect(writes).toEqual(['roll']);
-      expect(el(fixture).querySelector('[role="status"]')!.textContent).toContain(
-        'Request copied to clipboard',
-      );
+      expect(toasts()).toEqual([{ type: 'success', message: 'Request copied to clipboard' }]);
     });
   });
 });

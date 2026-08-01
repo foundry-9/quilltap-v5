@@ -23,6 +23,7 @@ import {
   type DetailCharacter,
   type ImageData,
 } from './images.api';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The deep image-detail modal — a port of v4
@@ -42,9 +43,7 @@ import {
  * `'Character'` (`useImageActions.ts:34`, `:61`, `:67`), and the Avatar badge
  * does not move after Set Avatar until the panel reloads. Reproduced, not
  * repaired — a repair would be silent divergence.
- *
- * v4's toasts render as the transient inline notice (the `image-modal.ts`
- * divergence — the SPA has no toast service).
+
  */
 @Component({
   selector: 'qt-image-detail-modal',
@@ -104,13 +103,6 @@ import {
         }
       </div>
 
-      @if (notice(); as n) {
-        <div
-          class="absolute top-4 left-1/2 -translate-x-1/2 qt-text-overlay text-sm qt-bg-overlay-caption px-3 py-1 rounded"
-        >
-          {{ n }}
-        </div>
-      }
 
       <!-- Filename at bottom -->
       <div
@@ -123,6 +115,7 @@ import {
 })
 export class ImageDetailModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly image = input.required<ImageData>();
   /** Conditionally `undefined` at the ends of the host's list (the arrow idiom). */
@@ -140,7 +133,6 @@ export class ImageDetailModal {
   protected readonly savingToGalleryFor = signal<ReadonlySet<string>>(new Set());
   protected readonly settingAvatar = signal<ReadonlySet<string>>(new Set());
   protected readonly savingToGallery = signal(false);
-  protected readonly notice = signal<string | null>(null);
 
   /**
    * The v4 hook's mount-time roster snapshot (`useImageActions.ts:34`) — stays
@@ -235,9 +227,9 @@ export class ImageDetailModal {
           linkId: data.linkId ?? '',
         },
       ]);
-      this.flash(`Saved to ${character?.name ?? 'character'}'s photo album`);
+      this.toasts.showSuccess(`Saved to ${character?.name ?? 'character'}'s photo album`);
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to save to photo album');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save to photo album');
     } finally {
       this.mutateSet(this.savingToGalleryFor, (s) => s.delete(characterId));
     }
@@ -260,9 +252,9 @@ export class ImageDetailModal {
       this.characterGalleryLinks.update((prev) =>
         prev.filter((l) => l.characterId !== characterId),
       );
-      this.flash(`Removed from ${link.characterName}'s photo album`);
+      this.toasts.showSuccess(`Removed from ${link.characterName}'s photo album`);
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to remove from photo album');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove from photo album');
     } finally {
       this.mutateSet(this.savingToGalleryFor, (s) => s.delete(characterId));
     }
@@ -286,10 +278,10 @@ export class ImageDetailModal {
       this.internalCharacters.update((prev) =>
         prev.map((c) => (c.id === characterId ? { ...c, defaultImageId: this.image().id } : c)),
       );
-      this.flash('Set as avatar for character');
+      this.toasts.showSuccess('Set as avatar for character');
       this.avatarSet.emit();
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to set avatar');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to set avatar');
     } finally {
       this.mutateSet(this.settingAvatar, (s) => s.delete(key));
     }
@@ -324,9 +316,9 @@ export class ImageDetailModal {
       if (resp.type === 'error') {
         throw new Error(resp.data.message || 'Failed to save to gallery');
       }
-      this.flash('Saved to your gallery');
+      this.toasts.showSuccess('Saved to your gallery');
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to save to gallery');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save to gallery');
     } finally {
       this.savingToGallery.set(false);
     }
@@ -338,9 +330,9 @@ export class ImageDetailModal {
       const response = await fetch(this.imageSrc());
       const blob = await response.blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      this.flash('Image copied to clipboard');
+      this.toasts.showSuccess('Image copied to clipboard');
     } catch {
-      this.flash('Failed to copy image to clipboard');
+      this.toasts.showError('Failed to copy image to clipboard');
     }
   }
 
@@ -353,8 +345,4 @@ export class ImageDetailModal {
     target.set(next);
   }
 
-  private flash(message: string): void {
-    this.notice.set(message);
-    setTimeout(() => this.notice.set(null), 2500);
-  }
 }

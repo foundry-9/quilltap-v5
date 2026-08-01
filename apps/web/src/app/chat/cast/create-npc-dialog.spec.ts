@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 
 import { CreateNpcDialog } from './create-npc-dialog';
+import { ToastService } from '../../ui/toast.service';
 
 function profile(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -94,6 +95,13 @@ function footerPrimary(fixture: ComponentFixture<unknown>): HTMLButtonElement {
 
 function text(fixture: ComponentFixture<unknown>): string {
   return (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('CreateNpcDialog (v4 components/chat/CreateNPCDialog.tsx)', () => {
@@ -308,7 +316,10 @@ describe('CreateNpcDialog (v4 components/chat/CreateNPCDialog.tsx)', () => {
     fixture.detectChanges();
     footerPrimary(fixture).click();
     await settle(fixture);
-    expect(text(fixture)).toContain('A character named Barkeep already exists');
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'A character named Barkeep already exists',
+    });
     expect(closed).toBe(0);
   });
 
@@ -322,7 +333,7 @@ describe('CreateNpcDialog (v4 components/chat/CreateNPCDialog.tsx)', () => {
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
     input.dispatchEvent(new Event('change'));
     fixture.detectChanges();
-    expect(text(fixture)).toContain('Please select an image file');
+    expect(toasts()).toEqual([{ type: 'error', message: 'Please select an image file' }]);
     expect(text(fixture)).toContain('No image selected');
   });
 

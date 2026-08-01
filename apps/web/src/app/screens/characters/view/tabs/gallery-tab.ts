@@ -15,7 +15,6 @@ import type { CharacterPhoto } from '../../../../core/core-contract';
 import { apiUrl } from '../../../../core/api-url';
 import { Icon } from '../../../../ui/icon';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
-import { ErrorAlert } from '../../../../ui/error-alert';
 import { LoadingState } from '../../../../ui/loading-state';
 import { ImageDetailModal } from '../../../../images/image-detail-modal';
 import type { ImageData } from '../../../../images/images.api';
@@ -25,6 +24,7 @@ import {
   fetchCharacterPhotos,
   uploadCharacterPhoto,
 } from '../../characters.api';
+import { ToastService } from '../../../../ui/toast.service';
 
 /** v4 `EmbeddedPhotoGallery` THUMBNAIL_SIZES / DEFAULT_THUMBNAIL_INDEX (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
@@ -48,12 +48,12 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
  * self-contained so the host screen is untouched.
  *
  * Upload keeps the lane-C multipart route (the byte leg dispatch can't
- * carry); v4's toasts render as inline notices (no toast service).
+ * express), and reports through the toast, as v4's `useGalleryData` does.
  */
 @Component({
   selector: 'qt-character-gallery-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ErrorAlert, LoadingState, ImageDetailModal],
+  imports: [Icon, LoadingState, ImageDetailModal],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -116,12 +116,6 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
         />
       </div>
 
-      @if (uploadError(); as msg) {
-        <qt-error-alert [message]="msg" />
-      }
-      @if (notice(); as msg) {
-        <p class="qt-text-small qt-text-secondary">{{ msg }}</p>
-      }
 
       @if (photosQuery.isPending()) {
         <qt-loading-state message="Loading photos..." />
@@ -230,6 +224,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
 })
 export class CharacterGalleryTab {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   readonly characterId = input.required<string>();
@@ -244,8 +239,6 @@ export class CharacterGalleryTab {
   /** v4 `confirmDelete` — armed tile id; disarms after 3 s (`:47-52`). */
   protected readonly confirmDelete = signal<string | null>(null);
   protected readonly uploading = signal(false);
-  protected readonly uploadError = signal<string | null>(null);
-  protected readonly notice = signal<string | null>(null);
 
   protected readonly photosQuery = injectQuery(() => ({
     queryKey: characterKeys.photos(this.characterId()),
@@ -325,9 +318,9 @@ export class CharacterGalleryTab {
         throw new Error(resp.data.message || 'Failed to set avatar');
       }
       await this.refreshCharacter();
-      this.flash('Avatar updated!');
+      this.toasts.showSuccess('Avatar updated!');
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to set avatar');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to set avatar');
     } finally {
       this.settingAvatar.set(null);
     }
@@ -346,9 +339,9 @@ export class CharacterGalleryTab {
         throw new Error(resp.data.message || 'Failed to clear avatar');
       }
       await this.refreshCharacter();
-      this.flash('Avatar cleared!');
+      this.toasts.showSuccess('Avatar cleared!');
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to clear avatar');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to clear avatar');
     }
   }
 
@@ -378,9 +371,9 @@ export class CharacterGalleryTab {
       await this.queryClient.invalidateQueries({
         queryKey: characterKeys.photos(this.characterId()),
       });
-      this.flash('Image deleted');
+      this.toasts.showSuccess('Image deleted');
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to delete image');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete image');
     } finally {
       this.deletingImage.set(null);
     }
@@ -402,14 +395,14 @@ export class CharacterGalleryTab {
       return;
     }
     this.uploading.set(true);
-    this.uploadError.set(null);
     try {
       await uploadCharacterPhoto(this.characterId(), file);
+      this.toasts.showSuccess('Image uploaded');
       await this.queryClient.invalidateQueries({
         queryKey: characterKeys.photos(this.characterId()),
       });
     } catch (err) {
-      this.uploadError.set(err instanceof Error ? err.message : 'Failed to upload photo');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to upload image');
     } finally {
       this.uploading.set(false);
     }
@@ -421,8 +414,4 @@ export class CharacterGalleryTab {
     });
   }
 
-  private flash(message: string): void {
-    this.notice.set(message);
-    setTimeout(() => this.notice.set(null), 2500);
-  }
 }

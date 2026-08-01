@@ -18,6 +18,7 @@ import { ImageProfilePicker } from './image-profile-picker';
 import { fetchCharacterList } from '../screens/characters/characters.api';
 import { insertPlaceholderAt } from '../screens/generate-image/placeholder-insert';
 import type { GeneratedImage } from './generate-image-dialog';
+import { ToastService } from '../ui/toast.service';
 
 /** One insertable character (v4 `useEntitySearch` `EntityOption`, `:9-13`). */
 interface EntityOption {
@@ -163,9 +164,6 @@ interface EntityOption {
           </div>
         </div>
 
-        @if (error(); as e) {
-          <div class="qt-alert-error text-sm" role="alert">{{ e }}</div>
-        }
       </div>
 
       <!-- Footer (v4 :232-280) -->
@@ -207,6 +205,7 @@ interface EntityOption {
 })
 export class StandaloneGenerateImageDialog implements OnInit {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly participants = input<ParticipantDetail[]>([]);
@@ -225,7 +224,6 @@ export class StandaloneGenerateImageDialog implements OnInit {
   protected readonly prompt = signal('');
   protected readonly imageCount = signal(1);
   protected readonly generating = signal(false);
-  protected readonly error = signal<string | null>(null);
   protected readonly allEntities = signal<EntityOption[]>([]);
   protected readonly searchTerm = signal('');
   protected readonly dropdownOpen = signal(false);
@@ -312,17 +310,16 @@ export class StandaloneGenerateImageDialog implements OnInit {
     // v4 checks the prompt FIRST here (`:65`), the profile second (`:70`) —
     // the reverse of the /generate-image screen. The messages differ too.
     if (!prompt.trim()) {
-      this.error.set('Please enter a prompt');
+      this.toasts.showError('Please enter a prompt');
       return;
     }
     const imageProfileId = this.selectedProfileId();
     if (!imageProfileId) {
-      this.error.set('Please select an image profile');
+      this.toasts.showError('Please select an image profile');
       return;
     }
 
     this.generating.set(true);
-    this.error.set(null);
     try {
       const resp = await this.core.dispatch({
         type: 'imageProfileGenerate',
@@ -333,7 +330,7 @@ export class StandaloneGenerateImageDialog implements OnInit {
         count: this.imageCount(),
       });
       if (resp.type === 'error') {
-        this.error.set(resp.data.message || 'Failed to generate image');
+        this.toasts.showError(resp.data.message || 'Failed to generate image');
         return;
       }
 
@@ -350,10 +347,10 @@ export class StandaloneGenerateImageDialog implements OnInit {
         this.close.emit();
       } else {
         // v4 `:112` — note the wording differs from the screen's.
-        this.error.set('No images generated');
+        this.toasts.showError('No images generated');
       }
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to generate image');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to generate image');
     } finally {
       this.generating.set(false);
     }

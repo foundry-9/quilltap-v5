@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { ImageDetailModal } from './image-detail-modal';
 import type { ImageData } from './images.api';
+import { ToastService } from '../ui/toast.service';
 
 function imageData(over: Partial<ImageData>): ImageData {
   return {
@@ -85,6 +86,13 @@ async function flush(fixture: ComponentFixture<ImageDetailModal>): Promise<void>
  * `useImageActions.ts` — every case pins a transcribed behavior by
  * `file:line` (the only fidelity record these components have).
  */
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('ImageDetailModal', () => {
   afterEach(() => {
     document.body.style.overflow = '';
@@ -243,7 +251,7 @@ describe('ImageDetailModal', () => {
       type: 'photoGallerySave',
       fileId: 'file-3',
     });
-    expect(fixture.nativeElement.textContent).toContain('Saved to your gallery');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Saved to your gallery' }]);
   });
 
   // ImageDetailModal.tsx:72-78 — Escape closes; ArrowRight fires the

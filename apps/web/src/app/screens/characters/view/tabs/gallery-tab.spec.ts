@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterPhoto } from '../../../../core/core-contract';
 import { CharacterGalleryTab } from './gallery-tab';
+import { ToastService } from '../../../../ui/toast.service';
 
 /** A gallery entry in the pinned P4.6i shape (`listCharacterGallery`). */
 function entry(overrides: Partial<CharacterPhoto>): CharacterPhoto {
@@ -84,6 +85,13 @@ async function flush(fixture: ComponentFixture<CharacterGalleryTab>): Promise<vo
  * by `file:line` (`EmbeddedPhotoGallery.tsx`, `GalleryImage.tsx`,
  * `GalleryControls.tsx`, `GalleryEmpty.tsx`, `useGalleryData.ts`).
  */
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
   afterEach(() => {
     document.body.style.overflow = '';
@@ -280,7 +288,7 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
       await new Promise((r) => setTimeout(r, 0));
       fixture.detectChanges();
     }
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Unsupported MIME type');
+    expect(toasts().at(-1)?.type).toBe('error');
+    expect(toasts().at(-1)?.message).toContain('Unsupported MIME type');
   });
 });

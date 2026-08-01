@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 
 import { apiUrl } from '../core/api-url';
 import { Icon } from '../ui/icon';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
+import { ToastService } from '../ui/toast.service';
 import type { ImageData } from './images.api';
 
 /**
@@ -97,12 +98,11 @@ import type { ImageData } from './images.api';
         }
       </div>
     }
-    @if (deleteError(); as msg) {
-      <p class="qt-text-xs qt-text-destructive mt-2">{{ msg }}</p>
-    }
   `,
 })
 export class ImageGallery {
+  private readonly toasts = inject(ToastService);
+
   readonly images = input.required<ImageData[]>();
   readonly loading = input(false);
   readonly error = input<string | null>(null);
@@ -116,7 +116,6 @@ export class ImageGallery {
   readonly reloadImages = output<void>();
 
   protected readonly missingImages = signal<ReadonlySet<string>>(new Set());
-  protected readonly deleteError = signal<string | null>(null);
 
   protected srcFor(image: ImageData): string {
     const raw = image.url || (image.filepath.startsWith('/') ? image.filepath : `/${image.filepath}`);
@@ -147,8 +146,7 @@ export class ImageGallery {
       }
       this.reloadImages.emit();
     } catch (err) {
-      // v4 `showErrorToast`; the SPA has no toast service — inline (divergence).
-      this.deleteError.set(err instanceof Error ? err.message : 'Failed to delete image');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete image');
     }
   }
 }

@@ -33,11 +33,11 @@ import {
   type PickerGalleryEntry,
   type PickerStoreSummary,
 } from './library-picker.model';
+import { ToastService } from '../../ui/toast.service';
 
-/** A legacy library file linked to the chat, with v4's toast sentence. */
+/** A legacy library file linked to the chat. */
 export interface LinkedLibraryFile {
   file: UploadedChatFile;
-  message: string;
 }
 
 type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
@@ -67,10 +67,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
  *
  * ## v5 divergences, both deliberate
  *
- * - **No toasts.** v5 has no toast system (the custom-tools-popup precedent), so
- *   v4's two success sentences ride the completion outputs and the Salon shows
- *   them as its chat flash; a failure renders inline in the dialog rather than
- *   vanishing after a few seconds.
+ * - **The browse panel is read-only** — see below.
  * - **The browse panel is read-only** — see `library-browse-panel.ts`'s header
  *   for the full reasoning and what it deliberately drops.
  *
@@ -90,9 +87,6 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
       [closeOnBackdrop]="!linking()"
       (close)="onClose()"
     >
-      @if (error(); as message) {
-        <div class="qt-alert-error text-sm mb-3" role="alert">{{ message }}</div>
-      }
 
       @switch (step()) {
         @case ('scope') {
@@ -255,6 +249,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
 })
 export class LibraryFilePickerModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
 
@@ -265,7 +260,7 @@ export class LibraryFilePickerModal {
    * hand-off: the parent refetches the chat so the announcement appears. Carries
    * v4's toast sentence.
    */
-  readonly mountFileAttached = output<string>();
+  readonly mountFileAttached = output<void>();
   readonly close = output<void>();
 
   protected readonly generalIcon = '\u{1F4C1}';
@@ -276,7 +271,6 @@ export class LibraryFilePickerModal {
 
   protected readonly step = signal<Step>('scope');
   protected readonly linking = signal(false);
-  protected readonly error = signal<string | null>(null);
   private readonly selectedScopeName = signal('General');
   private readonly selectedProjectId = signal<string | null>(null);
   private readonly selectedMount = signal<PickerStoreSummary | null>(null);
@@ -407,7 +401,6 @@ export class LibraryFilePickerModal {
   protected onBack(): void {
     this.step.set('scope');
     this.selectedMount.set(null);
-    this.error.set(null);
   }
 
   protected onClose(): void {
@@ -428,17 +421,17 @@ export class LibraryFilePickerModal {
     const mountFile = isMountFile(file);
 
     this.linking.set(true);
-    this.error.set(null);
     try {
       if (mountFile) {
         await this.attach(file.mountPointId!, file.relativePath!, filename);
         return;
       }
       const linked = await linkLibraryFile(this.chatId(), file.id);
-      this.fileLinked.emit({ file: linked, message: `Linked "${filename}" to chat` });
+      this.toasts.showSuccess(`Linked "${filename}" to chat`);
+      this.fileLinked.emit({ file: linked });
       this.close.emit();
     } catch (err) {
-      this.error.set(errorText(err) || 'Failed to attach file');
+      this.toasts.showError(errorText(err) || 'Failed to attach file');
     } finally {
       this.linking.set(false);
     }
@@ -449,11 +442,10 @@ export class LibraryFilePickerModal {
     if (this.linking()) return;
     const displayName = entry.caption || entry.fileName;
     this.linking.set(true);
-    this.error.set(null);
     try {
       await this.attach(entry.mountPointId, entry.relativePath, displayName);
     } catch (err) {
-      this.error.set(errorText(err) || 'Failed to attach photo');
+      this.toasts.showError(errorText(err) || 'Failed to attach photo');
     } finally {
       this.linking.set(false);
     }
@@ -465,7 +457,8 @@ export class LibraryFilePickerModal {
     displayName: string,
   ): Promise<void> {
     await attachMountFile(this.chatId(), mountPointId, relativePath);
-    this.mountFileAttached.emit(`Attached "${displayName}" — the Librarian has noted it`);
+    this.toasts.showSuccess(`Attached "${displayName}" — the Librarian has noted it`);
+    this.mountFileAttached.emit();
     this.close.emit();
   }
 }

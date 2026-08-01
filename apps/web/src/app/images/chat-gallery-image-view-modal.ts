@@ -15,6 +15,7 @@ import { Icon } from '../ui/icon';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
 import { applyImageNavigation } from './image-navigation';
 import { fetchCharacterGalleryLinks } from './images.api';
+import { ToastService } from '../ui/toast.service';
 
 /** The chat-file slice the modal reads (v4 `ChatGalleryImageViewModal.tsx:13-22`). */
 export interface ChatGalleryFile {
@@ -34,8 +35,7 @@ export interface ChatGalleryFile {
  * it these buttons were write-only).
  *
  * `onPrev`/`onNext` are the conditionally-`undefined` function inputs (the
- * arrow idiom); keyboard rides `applyImageNavigation`. v4's toasts render as
- * the transient inline notice (the established divergence).
+ * arrow idiom); keyboard rides `applyImageNavigation`.
  */
 @Component({
   selector: 'qt-chat-gallery-image-view-modal',
@@ -172,13 +172,6 @@ export interface ChatGalleryFile {
         }
       </div>
 
-      @if (notice(); as n) {
-        <div
-          class="absolute top-16 left-1/2 -translate-x-1/2 qt-text-overlay text-sm qt-bg-overlay-caption px-3 py-1 rounded"
-        >
-          {{ n }}
-        </div>
-      }
 
       <!-- Filename at bottom (v4 :356-358) -->
       <div
@@ -191,6 +184,7 @@ export interface ChatGalleryFile {
 })
 export class ChatGalleryImageViewModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly file = input.required<ChatGalleryFile>();
   readonly onPrev = input<(() => void) | undefined>(undefined);
@@ -211,7 +205,6 @@ export class ChatGalleryImageViewModal {
   protected readonly isSaving = signal(false);
   protected readonly checkingGallery = signal(true);
   protected readonly imageMissing = signal(false);
-  protected readonly notice = signal<string | null>(null);
 
   constructor() {
     // v4 `:58-90` — the already-saved check over `imageInfoGet`, re-run when
@@ -308,7 +301,7 @@ export class ChatGalleryImageViewModal {
         }
         inGallery.set(false);
         linkId.set(null);
-        this.flash(`Removed from ${label}'s photo album`);
+        this.toasts.showSuccess(`Removed from ${label}'s photo album`);
       } else {
         const resp = await this.core.dispatch({
           type: 'characterPhotoSaveById',
@@ -321,10 +314,10 @@ export class ChatGalleryImageViewModal {
         const data = resp.data as { linkId?: string };
         inGallery.set(true);
         linkId.set(data.linkId ?? null);
-        this.flash(`Saved to ${label}'s photo album`);
+        this.toasts.showSuccess(`Saved to ${label}'s photo album`);
       }
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to update photo album');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update photo album');
     } finally {
       this.isSaving.set(false);
     }
@@ -354,9 +347,9 @@ export class ChatGalleryImageViewModal {
       const response = await fetch(this.file().url);
       const blob = await response.blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      this.flash('Image copied to clipboard');
+      this.toasts.showSuccess('Image copied to clipboard');
     } catch {
-      this.flash('Failed to copy image to clipboard');
+      this.toasts.showError('Failed to copy image to clipboard');
     }
   }
 
@@ -367,8 +360,4 @@ export class ChatGalleryImageViewModal {
     }
   }
 
-  private flash(message: string): void {
-    this.notice.set(message);
-    setTimeout(() => this.notice.set(null), 2500);
-  }
 }

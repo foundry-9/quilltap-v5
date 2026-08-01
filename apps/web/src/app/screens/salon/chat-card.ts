@@ -1,9 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import type { EnrichedChatSummary } from '../../core/core-contract';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * One conversation card in the Salon list — a slim port of v4
@@ -128,6 +137,7 @@ import { Icon } from '../../ui/icon';
   `,
 })
 export class ChatCard {
+  private readonly toasts = inject(ToastService);
   readonly chat = input.required<EnrichedChatSummary>();
   /** v4 `actionType="remove"` — overlay an X that disassociates from the project. */
   readonly removable = input(false);
@@ -176,9 +186,14 @@ export class ChatCard {
     event.stopPropagation();
     const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
     const url = `${origin}/salon/${this.chat().id}`;
-    void navigator.clipboard?.writeText(url).then(() => {
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 1500);
-    });
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => {
+        // v4 keeps BOTH: the 1.5s check icon AND the toast (`ChatCard.tsx:160-164`).
+        this.copied.set(true);
+        this.toasts.showSuccess('Link copied to clipboard');
+        setTimeout(() => this.copied.set(false), 1500);
+      })
+      .catch(() => this.toasts.showError('Failed to copy link'));
   }
 }

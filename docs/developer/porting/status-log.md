@@ -46588,3 +46588,42 @@ the unifier.
 instead of the retired markup, asserting type AND message. Full suite green
 (264 files / 3,183 tests) — the sole intermediate red was a parallel-run flake
 in `courier-bubble.spec.ts` that passed 8/8 in isolation and did not recur.
+
+## Lane record — P4.25 unit 3: images, the Post Office, the cast, the picker
+
+Sixteen more files. Three v5-invented surfaces retired wholesale:
+
+- **The `flash()` ersatz-toast** — a 2500 ms self-clearing inline notice, in
+  `images/image-modal`, `images/chat-gallery-image-view-modal`,
+  `images/image-detail-modal` and `screens/characters/view/tabs/gallery-tab`.
+  It could not tell a success from a failure; v4 always could, and now v5 does.
+- **The inline `qt-alert-error`** in `add-character-dialog`, `create-npc-dialog`,
+  `insert-announcement-dialog`, `library-file-picker-modal`, both generate-image
+  dialogs, and `custom-tools-popup`'s RUN error (v4's inline error there is the
+  ROSTER-load error, a different surface, and stays).
+- **`tool-message`'s `role="status"` copy line** and `image-gallery`'s
+  `deleteError` paragraph.
+
+**Two genuine "v4 has both" cases, kept as both:** `ComposeMailDialog` sets its
+inline `ErrorAlert` AND toasts the same message (`:150-153`), and `ChatCard`
+keeps its 1.5-second check icon AND toasts (`:160-164`).
+
+**v4 toasts v5 had never raised, now live:** `Image deleted` in the chat image
+modal, `Image uploaded` in the character gallery, `Pascal has settled <tool>.`
+after a composer custom-tool run, `<name> has joined the chat` and
+`NPC "<name>" created successfully` (both had been raised by the PARENT off an
+output payload, which is not where v4 raises them), `Announcement posted`, the
+Post Office delivery notice, and both library-picker sentences.
+
+**One invented toast removed:** `image-modal`'s "Failed to download image" —
+v4's `handleDownload` (`ImageModal.tsx:57-64`) logs and tells the operator
+nothing.
+
+**Two drifted strings corrected to v4's bytes:** the chat generate-image
+dialog's `No images were generated.` → `No images generated` and
+`Failed to generate image.` → `Failed to generate image`
+(`GenerateImageDialog.tsx:146,154`).
+
+Outputs that existed only to carry a sentence to the parent are now `void`:
+`mountFileAttached`, `added`, `LinkedLibraryFile.message`. Full suite green
+(264 files / 3,183).

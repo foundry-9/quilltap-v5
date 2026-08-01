@@ -51,6 +51,12 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Saving a picture to an album, copying an image or a tool's request, uploading a
+photo, adding a character, creating an NPC, posting an announcement, sending
+mail, and attaching a library file all report themselves in the notification
+corner now, instead of a note tucked into the dialog that could not tell a
+success from a failure.
+
 Chat actions report themselves again. Renaming a chat, filing it in a project,
 re-attributing a message, merging a conversation, running a tool, changing a
 sidebar setting, and the rest now raise a notification the way the previous

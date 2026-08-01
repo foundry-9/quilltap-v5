@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { LibraryFilePickerModal, type LinkedLibraryFile } from './library-file-picker-modal';
+import { ToastService } from '../../ui/toast.service';
 
 interface Dispatched {
   type: string;
@@ -157,6 +158,13 @@ function clickByText(fixture: ComponentFixture<unknown>, text: string): void {
   fixture.detectChanges();
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('qt-library-file-picker-modal — the scope step', () => {
   it('always offers General and the gallery, and titles the step v4’s way', async () => {
     const fixture = await render();
@@ -226,10 +234,10 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
       });
     const fixture = await render();
     const linked: LinkedLibraryFile[] = [];
-    const attached: string[] = [];
+    let attached = 0;
     let closed = 0;
     fixture.componentInstance.fileLinked.subscribe((f) => linked.push(f));
-    fixture.componentInstance.mountFileAttached.subscribe((m) => attached.push(m));
+    fixture.componentInstance.mountFileAttached.subscribe(() => attached++);
     fixture.componentInstance.close.subscribe(() => closed++);
 
     clickByText(fixture, 'General');
@@ -242,18 +250,18 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
     expect(fetchCalls[0].body).toEqual({ fileId: 'file-1' });
     expect(linked).toHaveLength(1);
     expect(linked[0].file.filename).toBe('note.txt');
-    expect(linked[0].message).toBe('Linked "note.txt" to chat');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Linked "note.txt" to chat' }]);
     // The tray hand-off is the legacy leg's ALONE.
-    expect(attached).toEqual([]);
+    expect(attached).toBe(0);
     expect(closed).toBe(1);
   });
 
   it('ATTACHES a document-store file — no tray hand-off, the announcement stands', async () => {
     const fixture = await render();
     const linked: LinkedLibraryFile[] = [];
-    const attached: string[] = [];
+    let attached = 0;
     fixture.componentInstance.fileLinked.subscribe((f) => linked.push(f));
-    fixture.componentInstance.mountFileAttached.subscribe((m) => attached.push(m));
+    fixture.componentInstance.mountFileAttached.subscribe(() => attached++);
 
     clickByText(fixture, 'Research');
     await settle(fixture);
@@ -263,7 +271,10 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].url).toBe('/api/v1/chats/chat-1/files?action=attach-mount-file');
     expect(fetchCalls[0].body).toEqual({ mountPointId: 'store-1', relativePath: 'plan.md' });
-    expect(attached).toEqual(['Attached "plan.md" — the Librarian has noted it']);
+    expect(attached).toBe(1);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Attached "plan.md" — the Librarian has noted it' },
+    ]);
     expect(linked).toEqual([]);
   });
 
@@ -282,8 +293,8 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
         ],
       },
     });
-    const attached: string[] = [];
-    fixture.componentInstance.mountFileAttached.subscribe((m) => attached.push(m));
+    let attached = 0;
+    fixture.componentInstance.mountFileAttached.subscribe(() => attached++);
 
     clickByText(fixture, "Riya's Photos");
     await settle(fixture);
@@ -296,8 +307,9 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
       mountPointId: 'mp-persona',
       relativePath: 'photos/dawn.webp',
     });
-    expect(attached).toEqual([
-      'Attached "Dawn over the rooftops" — the Librarian has noted it',
+    expect(attached).toBe(1);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Attached "Dawn over the rooftops" — the Librarian has noted it' },
     ]);
   });
 
@@ -353,7 +365,7 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
     clickByText(fixture, 'plan.md');
     await settle(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('Mount-point file not found');
+    expect(toasts().at(-1)?.message).toContain('Mount-point file not found');
     expect(closed).toBe(0);
   });
 });

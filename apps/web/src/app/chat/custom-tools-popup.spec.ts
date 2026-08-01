@@ -6,6 +6,7 @@ import { CoreClient } from '../core/core-client';
 import { CoreDispatchError } from '../core/core-contract';
 import { CustomToolsPopup } from './custom-tools-popup';
 import type { CustomToolRosterEntry, CustomToolsRoster } from './custom-tools.api';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The composer's wand and its two-phase run dialog. The v5-specific cases
@@ -169,6 +170,13 @@ async function click(fixture: ComponentFixture<CustomToolsPopup>, el: HTMLElemen
   el.click();
   fixture.detectChanges();
   await settle(fixture);
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('CustomToolsPopup — the wand and its gating', () => {
@@ -473,8 +481,7 @@ describe('CustomToolRunDialog — what it remembers', () => {
     await click(fixture, buttons(fixture, 'Pick Lock')[0]);
     await click(fixture, buttons(fixture, 'Run Pick Lock')[0]);
 
-    const alert = fixture.nativeElement.querySelector('[role="alert"]');
-    expect(alert.textContent).toContain('Unknown custom tool "pick_lock".');
+    expect(toasts()).toEqual([{ type: 'error', message: 'Unknown custom tool "pick_lock".' }]);
     expect(ranCount).toBe(0);
     // The dialog stayed open so the operator can see the failure.
     expect(dialog(fixture)).not.toBeNull();

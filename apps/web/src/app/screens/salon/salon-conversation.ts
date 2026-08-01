@@ -491,7 +491,7 @@ interface CascadePrompt {
       <qt-library-file-picker-modal
         [chatId]="id"
         (fileLinked)="onLibraryFileLinked($event)"
-        (mountFileAttached)="onLibraryMountFileAttached($event)"
+        (mountFileAttached)="onLibraryMountFileAttached()"
         (close)="showLibraryPicker.set(false)"
       />
     }
@@ -518,7 +518,7 @@ interface CascadePrompt {
       <qt-add-character-dialog
         [chatId]="id"
         [existingCharacterIds]="castCharacterIds()"
-        (added)="onCharacterAdded($event)"
+        (added)="onCharacterAdded()"
         (close)="showAddCharacter.set(false)"
       />
     }
@@ -1356,12 +1356,10 @@ export class SalonConversation {
   /**
    * The picker linked a legacy library file (v4 `ChatModals.tsx:250-261`): push it
    * into the composer's pending-attachment tray so the next send carries it. The
-   * message is v4's own toast sentence — v5 has no toasts, so it lands as the
-   * chat flash.
+   * picker raises v4's sentence itself.
    */
   protected onLibraryFileLinked(linked: LinkedLibraryFile): void {
     this.composer()?.addAttachedFile(linked.file);
-    this.toasts.showSuccess(linked.message);
   }
 
   /**
@@ -1369,22 +1367,17 @@ export class SalonConversation {
    * is NO tray hand-off — the Librarian announcement is already in the transcript
    * — so this only refetches the chat, exactly as v4's `fetchChat()` does.
    */
-  protected async onLibraryMountFileAttached(message: string): Promise<void> {
-    this.toasts.showSuccess(message);
+  protected async onLibraryMountFileAttached(): Promise<void> {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   protected async onAnnouncementPosted(): Promise<void> {
-    this.toasts.showSuccess('Announcement posted');
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
-  /** v4's own success copy, verbatim (`ComposeMailDialog.tsx:143`). */
+  /** The dialog raises v4's delivery notice itself (`ComposeMailDialog.tsx:143`). */
   protected async onMailPosted(): Promise<void> {
-    this.toasts.showSuccess(
-      'Suparṇā has the letter and is already aloft.',
-      );
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
@@ -1788,9 +1781,8 @@ export class SalonConversation {
       .filter((id): id is string => !!id),
   );
 
-  /** v4 `onCharacterAdded` — refetch the chat, and say who joined. */
-  protected async onCharacterAdded(joined: { characterId: string; name: string }): Promise<void> {
-    this.toasts.showSuccess(`${joined.name} has joined the chat`);
+  /** v4 `onCharacterAdded` — refetch the chat (the dialog says who joined). */
+  protected async onCharacterAdded(): Promise<void> {
     await this.onChatUpdated();
   }
 

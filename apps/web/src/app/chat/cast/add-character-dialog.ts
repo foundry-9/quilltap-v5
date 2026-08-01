@@ -24,6 +24,7 @@ import { Avatar } from '../../ui/avatar';
 import { Icon } from '../../ui/icon';
 import { ProviderModelBadge } from '../sidebar/provider-model-badge';
 import { CreateNpcDialog } from './create-npc-dialog';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * v4's sentinel for "the human types for this character" in the Controlled-By
@@ -94,10 +95,6 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
         </div>
 
         <div class="qt-dialog-body flex-1 overflow-y-auto">
-          @if (error(); as message) {
-            <div class="qt-alert-error mb-4" role="alert">{{ message }}</div>
-          }
-
           @if (charactersQuery.isPending()) {
             <div class="flex items-center justify-center py-12 qt-text-small">
               Loading characters...
@@ -389,6 +386,7 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
 })
 export class AddCharacterDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   /** Characters already in the chat — v4 filters them out of the roster. */
@@ -408,7 +406,6 @@ export class AddCharacterDialog {
   protected readonly joinScenario = signal('');
   protected readonly outfitSelection = signal<ChatCreateOutfitSelectionInput | null>(null);
   protected readonly adding = signal(false);
-  protected readonly error = signal<string | null>(null);
   protected readonly createNpcOpen = signal(false);
   protected readonly summonRefused = signal(false);
 
@@ -556,7 +553,7 @@ export class AddCharacterDialog {
     const characterId = this.selectedCharacterId();
     const profileValue = this.selectedProfileValue();
     if (!characterId || !profileValue) {
-      this.error.set('Please select a character and connection profile');
+      this.toasts.showError('Please select a character and connection profile');
       return;
     }
     const isUser = profileValue === USER_IMPERSONATION_VALUE;
@@ -564,7 +561,6 @@ export class AddCharacterDialog {
     const outfit = this.outfitSelection();
 
     this.adding.set(true);
-    this.error.set(null);
     try {
       await addParticipant(this.core, chatId, {
         characterId,
@@ -577,13 +573,14 @@ export class AddCharacterDialog {
         // Absent → the server applies the character's default wardrobe.
         ...(outfit ? { outfitSelection: outfit } : {}),
       });
+      this.toasts.showSuccess(`${this.selectedCharacter()?.name ?? 'Character'} has joined the chat`);
       this.added.emit({
         characterId,
         name: this.selectedCharacter()?.name ?? 'Character',
       });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to add character');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to add character');
     } finally {
       this.adding.set(false);
     }

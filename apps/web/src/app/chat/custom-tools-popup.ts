@@ -27,6 +27,7 @@ import {
   runCustomTool,
   type CustomToolRosterEntry,
 } from './custom-tools.api';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The composer's wand and the two-phase modal it opens — a port of v4
@@ -143,9 +144,6 @@ interface ReferenceRow {
                 }
               </div>
 
-              @if (runError(); as msg) {
-                <div class="text-xs qt-text-destructive px-1" role="alert">{{ msg }}</div>
-              }
 
               <section class="rounded-lg qt-border p-5">
                 <h4 class="text-sm font-medium qt-text mb-4">
@@ -412,6 +410,7 @@ interface ReferenceRow {
 })
 export class CustomToolsPopup {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
   /** Hosted as a workspace tab ⇒ open the Workbench as a tab (v4 redirectToWorkspaceTab). */
   private readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });
@@ -427,7 +426,6 @@ export class CustomToolsPopup {
 
   protected readonly isOpen = signal(false);
   protected readonly running = signal(false);
-  protected readonly runError = signal<string | null>(null);
   protected readonly search = signal('');
 
   /** All three survive a close on purpose — see the class header. */
@@ -514,7 +512,6 @@ export class CustomToolsPopup {
 
   protected openDialog(): void {
     if (this.disabled()) return;
-    this.runError.set(null);
     this.isOpen.set(true);
     // Refetch fresh on open — definitions live in stores the user edits mid-chat.
     void this.rosterQuery.refetch();
@@ -526,7 +523,6 @@ export class CustomToolsPopup {
   }
 
   protected backToPicker(): void {
-    this.runError.set(null);
     this.selectedKey.set(null);
   }
 
@@ -541,7 +537,6 @@ export class CustomToolsPopup {
   /** Choose a tool, seeding its form + privacy default the first time it opens. */
   protected select(tool: CustomToolRosterEntry): void {
     const key = this.keyOf(tool);
-    this.runError.set(null);
     this.formValues.update((prev) =>
       key in prev ? prev : { ...prev, [key]: initialParamValues(tool.parameters) },
     );
@@ -597,7 +592,6 @@ export class CustomToolsPopup {
     if (this.disabled() || this.running()) return;
     const key = this.keyOf(tool);
     this.running.set(true);
-    this.runError.set(null);
     try {
       await runCustomTool(this.core, this.chatId(), {
         tool: tool.name,
@@ -606,13 +600,14 @@ export class CustomToolsPopup {
         asCharacterId: tool.asCharacterId,
       });
       // Pascal's outcome is posted server-side; close and let the salon refetch.
+      this.toasts.showSuccess(`Pascal has settled ${tool.title}.`);
       this.close();
       this.ran.emit();
     } catch (err) {
-      // The 400 arm's server message (v4 shows a toast; v5 has none). A Prospero
-      // error was also posted server-side and arrives as a message on the next
-      // refetch — this inline line is a different surface, so no double-render.
-      this.runError.set(coreErrorMessage(err, 'The tool could not be run.'));
+      // v4 `CustomToolRunDialog.tsx:202` — the 400 arm's server message. A
+      // Prospero error is ALSO posted server-side and arrives as a message on
+      // the next refetch; the toast is a different surface, so no double-render.
+      this.toasts.showError(coreErrorMessage(err, 'The tool could not be run.'));
     } finally {
       this.running.set(false);
     }

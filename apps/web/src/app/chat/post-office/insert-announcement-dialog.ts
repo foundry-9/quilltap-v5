@@ -22,6 +22,7 @@ import {
   postAnnouncement,
   previewAnnouncement,
 } from './post-office.api';
+import { ToastService } from '../../ui/toast.service';
 
 type Mode = 'staff' | 'character' | 'custom';
 type Stage = 'compose' | 'generating' | 'review';
@@ -71,9 +72,6 @@ const AS_IS = 'as-is';
       [closeOnBackdrop]="!blocking()"
       (close)="onDialogClose()"
     >
-      @if (error(); as msg) {
-        <div class="qt-alert-error text-sm mb-4" role="alert">{{ msg }}</div>
-      }
 
       <!-- Mode selector (v4 :347-381) -->
       <div class="mb-4">
@@ -327,6 +325,7 @@ const AS_IS = 'as-is';
 })
 export class InsertAnnouncementDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   /** Character ids already in the chat — filtered OUT of the off-scene picker. */
@@ -353,8 +352,6 @@ export class InsertAnnouncementDialog {
   protected readonly stage = signal<Stage>('compose');
   protected readonly proposedMarkdown = signal('');
   protected readonly isPosting = signal(false);
-  /** v4 surfaces failures as toasts; v5 has no toast bus, so an inline alert. */
-  protected readonly error = signal<string | null>(null);
 
   /**
    * Explicit user choices for the in-character rewrite. Null means "use the
@@ -526,7 +523,6 @@ export class InsertAnnouncementDialog {
     if (!this.characterId() || this.profileId() === AS_IS) return;
     this.stage.set('generating');
     this.proposedMarkdown.set('');
-    this.error.set(null);
     try {
       const proposed = await previewAnnouncement(this.core, {
         chatId: this.chatId(),
@@ -536,14 +532,14 @@ export class InsertAnnouncementDialog {
         systemPromptId: this.systemPromptId(),
       });
       if (!proposed) {
-        this.error.set('The LLM returned no content. Try again or use as-is.');
+        this.toasts.showError('The LLM returned no content. Try again or use as-is.');
         this.stage.set('compose');
         return;
       }
       this.proposedMarkdown.set(proposed);
       this.stage.set('review');
     } catch (err) {
-      this.error.set(this.message(err, 'Failed to generate in-character announcement'));
+      this.toasts.showError(this.message(err, 'Failed to generate in-character announcement'));
       this.stage.set('compose');
     }
   }
@@ -558,17 +554,17 @@ export class InsertAnnouncementDialog {
           : { kind: 'custom', displayName: this.customName().trim() };
 
     this.isPosting.set(true);
-    this.error.set(null);
     try {
       await postAnnouncement(this.core, {
         chatId: this.chatId(),
         contentMarkdown: textToPost.trim(),
         sender,
       });
+      this.toasts.showSuccess('Announcement posted');
       this.posted.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(this.message(err, 'Failed to post announcement'));
+      this.toasts.showError(this.message(err, 'Failed to post announcement'));
     } finally {
       this.isPosting.set(false);
     }

@@ -11,6 +11,7 @@ import {
 
 import { CoreClient } from '../core/core-client';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * The in-chat image lightbox — a port of v4 `components/chat/ImageModal.tsx`.
@@ -20,8 +21,7 @@ import { Icon } from '../ui/icon';
  *
  * v4 rendered through a React portal at document.body to escape stacking
  * contexts; the Angular host places this modal at the conversation's top level,
- * so the `fixed inset-0 z-[100]` overlay already covers the viewport. v4's
- * toasts become a transient inline notice (the SPA has no toast service yet).
+ * so the `fixed inset-0 z-[100]` overlay already covers the viewport.
  */
 @Component({
   selector: 'qt-image-modal',
@@ -104,13 +104,6 @@ import { Icon } from '../ui/icon';
         <img [src]="src()" [alt]="filename()" class="max-w-full max-h-[90vh] w-auto h-auto object-contain" />
       </div>
 
-      @if (notice(); as n) {
-        <div
-          class="absolute top-4 left-1/2 -translate-x-1/2 qt-text-overlay text-sm qt-bg-overlay-caption px-3 py-1 rounded"
-        >
-          {{ n }}
-        </div>
-      }
 
       <div
         class="absolute bottom-4 left-1/2 -translate-x-1/2 qt-text-overlay-muted text-sm qt-bg-overlay-caption px-3 py-1 rounded"
@@ -122,6 +115,7 @@ import { Icon } from '../ui/icon';
 })
 export class ImageModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly src = input.required<string>();
   readonly filename = input.required<string>();
@@ -137,7 +131,6 @@ export class ImageModal {
 
   protected readonly tagging = signal(false);
   protected readonly deleting = signal(false);
-  protected readonly notice = signal<string | null>(null);
 
   protected readonly canSaveToCharacter = computed(() => !!this.fileId() && !!this.characterId());
   protected readonly canSaveToUserCharacter = computed(
@@ -187,9 +180,9 @@ export class ImageModal {
         fileId,
       });
       if (resp.type === 'error') throw new Error(resp.data.message);
-      this.flash(`Saved to ${label}'s photo album`);
+      this.toasts.showSuccess(`Saved to ${label}'s photo album`);
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to save to photo album');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save to photo album');
     } finally {
       this.tagging.set(false);
     }
@@ -209,7 +202,7 @@ export class ImageModal {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      this.flash('Failed to download image');
+      // v4 `handleDownload` (:57-64) logs and says nothing to the operator.
     }
   }
 
@@ -219,9 +212,9 @@ export class ImageModal {
       const response = await fetch(this.src());
       const blob = await response.blob();
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      this.flash('Image copied to clipboard');
+      this.toasts.showSuccess('Image copied to clipboard');
     } catch {
-      this.flash('Failed to copy image to clipboard');
+      this.toasts.showError('Failed to copy image to clipboard');
     }
   }
 
@@ -239,17 +232,14 @@ export class ImageModal {
     try {
       const resp = await this.core.dispatch({ type: 'chatFileDelete', fileId });
       if (resp.type === 'error') throw new Error(resp.data.message);
+      this.toasts.showSuccess('Image deleted');
       this.deleted.emit();
       this.close.emit();
     } catch (err) {
-      this.flash(err instanceof Error ? err.message : 'Failed to delete image');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete image');
     } finally {
       this.deleting.set(false);
     }
   }
 
-  private flash(message: string): void {
-    this.notice.set(message);
-    setTimeout(() => this.notice.set(null), 2500);
-  }
 }

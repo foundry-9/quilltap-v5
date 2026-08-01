@@ -16,6 +16,7 @@ import { characterKeys, fetchCharacterList } from '../../screens/characters/char
 import { formatDate } from '../../shared/format-date';
 import { Modal } from '../../ui/modal';
 import { fetchMailbox, mailboxKeys, sendMail } from './post-office.api';
+import { ToastService } from '../../ui/toast.service';
 
 /** One character in the scene, as the salon hands them over (v4 `ComposeMailParticipant`). */
 export interface ComposeMailParticipant {
@@ -181,6 +182,7 @@ const NO_REPLY = '';
 })
 export class ComposeMailDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   /** The chat's active CHARACTER participants (character id + name + controlledBy). */
@@ -287,12 +289,14 @@ export class ComposeMailDialog {
         bodyMarkdown: this.body().trim(),
         inReplyToPath: this.inReplyToPath() === NO_REPLY ? null : this.inReplyToPath(),
       });
+      this.toasts.showSuccess('Suparṇā has the letter and is already aloft.');
       this.posted.emit();
       this.close.emit();
     } catch (err) {
-      this.errorMessage.set(
-        coreErrorMessage(err, 'The letter could not be posted.'),
-      );
+      // v4 shows BOTH here (`:150-153`): the inline alert AND the toast.
+      const message = coreErrorMessage(err, 'The letter could not be posted.');
+      this.errorMessage.set(message);
+      this.toasts.showError(message);
     } finally {
       this.isSending.set(false);
     }

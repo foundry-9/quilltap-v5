@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { AddCharacterDialog, USER_IMPERSONATION_VALUE } from './add-character-dialog';
+import { ToastService } from '../../ui/toast.service';
 
 function character(over: Partial<CharacterListItem> = {}): CharacterListItem {
   return {
@@ -126,6 +127,13 @@ function footerPrimary(fixture: ComponentFixture<unknown>): HTMLButtonElement {
 
 function addCall(s: Stub): Record<string, unknown> | undefined {
   return s.calls.find((c) => c['type'] === 'chatAddParticipant');
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('AddCharacterDialog (v4 components/chat/AddCharacterDialog.tsx)', () => {
@@ -345,7 +353,10 @@ describe('AddCharacterDialog (v4 components/chat/AddCharacterDialog.tsx)', () =>
     await settle(fixture);
     footerPrimary(fixture).click();
     await settle(fixture);
-    expect(text(fixture)).toContain('Character is already a participant');
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'Character is already a participant',
+    });
     expect(closed).toBe(0);
   });
 
