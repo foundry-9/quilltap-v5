@@ -139,7 +139,12 @@ test.describe('P4.9G2 — the Data & System tab', () => {
     await expect(toggle).toBeVisible({ timeout: 15_000 });
     if (!(await toggle.isChecked())) {
       // Enabling saves the bag; the provider re-fetches and, enabled, the
-      // response carries a NUMERIC autoLockMinutes (null while disabled).
+      // response carries a NUMERIC autoLockMinutes. While disabled the key is
+      // ABSENT, not null — `UnlockStateDto.auto_lock_minutes` is an
+      // `Option<f64>` under `skip_serializing_if` (`api/types.rs`), which is
+      // also why this and the sibling waiter below match the number as a
+      // PREFIX: an f64 can reach the wire as `2.0`. Do not "tighten" either
+      // predicate with a trailing `[,}]` — that would break on the decimal.
       const enabledSeen = page.waitForResponse(
         async (r) => {
           if (!r.url().includes('/api/dispatch')) return false;
@@ -165,6 +170,7 @@ test.describe('P4.9G2 — the Data & System tab', () => {
         if (!r.url().includes('/api/dispatch')) return false;
         if (!(r.request().postData() ?? '').includes('unlockState')) return false;
         const text = await r.text().catch(() => '');
+        // Prefix match, deliberately — see the note on `enabledSeen` above.
         return text.includes('"autoLockMinutes":2');
       },
       { timeout: 15_000 },
