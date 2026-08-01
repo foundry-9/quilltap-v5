@@ -78,6 +78,8 @@ const V4_CREATED_CASES: &[&str] = &[
     "add_outfit_manual",
     "add_user_controlled",
     "add_stale_profile_falls_back",
+    "add_outfit_default_empty_vault_wears_shared",
+    "add_outfit_default_layers_shared_under_own",
 ];
 
 /// Cases whose 400 body carries v4's Zod `details` array.
@@ -641,6 +643,33 @@ fn chat_cast_routes_match_oracle() {
                 "type": "CHARACTER",
                 "characterId": id("dora"),
                 "connectionProfileId": missing,
+            }),
+            true,
+        );
+        // P4.D39 / v4 `8bb1a958` — `default` mode spans all three tiers.
+        // GAIL owns no wardrobe at all: before the fix she joined undressed;
+        // now she wears the whole shared tier, layered by `createdAt`.
+        add(
+            "a7b",
+            "add_outfit_default_empty_vault_wears_shared",
+            &chat_quiet,
+            json!({
+                "type": "CHARACTER",
+                "characterId": id("gail"),
+                "outfitSelection": { "characterId": id("gail"), "mode": "default" },
+            }),
+            true,
+        );
+        // DORA owns two defaults; the shared coat is older than both, so it
+        // layers innermost, and the shared hat fills a slot she owns nothing in.
+        add(
+            "a7c",
+            "add_outfit_default_layers_shared_under_own",
+            &chat_quiet,
+            json!({
+                "type": "CHARACTER",
+                "characterId": id("dora"),
+                "outfitSelection": { "characterId": id("dora"), "mode": "default" },
             }),
             true,
         );

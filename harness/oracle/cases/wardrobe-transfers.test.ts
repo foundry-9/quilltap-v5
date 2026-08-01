@@ -17,15 +17,21 @@
  * scenarios are independent), calls POST, then dumps the mount-index tables. Emits
  * one NDJSON line per scenario: { name, ok, status, body, tables }.
  *
- * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/
+ * paths, so a WORKTREE `--roots` finds no tests, and this case reads its spec
+ * from `../fixtures/` so the mirror needs BOTH directories):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this checkout>
+ *   TMPO=/tmp/qt-wtr-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp "$V5/harness/oracle/cases/wardrobe-transfers.test.ts" "$TMPO/cases/"
+ *   cp "$V5/harness/oracle/fixtures/wardrobe-transfers-tier2.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_WTR_MAIN=/tmp/qt-wtr-main.db QT_FIXTURE_WTR_MOUNT=/tmp/qt-wtr-mount.db \
  *     $N/npx tsx $V5/harness/oracle/fixtures/build-wardrobe-transfers-fixture.ts
  *   QT_FIXTURE_WTR_MAIN=/tmp/qt-wtr-main.db QT_FIXTURE_WTR_MOUNT=/tmp/qt-wtr-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-wtr.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- wardrobe-transfers
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *       --roots "$PWD" --roots "$TMPO/cases" -- wardrobe-transfers
  */
 
 import * as fs from 'fs';

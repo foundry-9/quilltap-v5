@@ -401,7 +401,28 @@ async function main(): Promise<void> {
       characterId: I.dora,
       connectionProfileId: I.missing,
     }),
+    // ── P4.D39 / v4 `8bb1a958`: `default` mode spans all three tiers ──────
+    // GAIL owns no wardrobe at all. Before the fix she joined undressed; now
+    // she wears the whole shared tier (G_COAT + G_LIVERY in top, G_HAT in
+    // accessories), layered by `createdAt`.
+    addCase('add_outfit_default_empty_vault_wears_shared', I.chatQuiet, {
+      type: 'CHARACTER',
+      characterId: I.gail,
+      outfitSelection: { characterId: I.gail, mode: 'default' },
+    }),
+    // DORA owns two defaults. The shared coat is OLDER than both, so it layers
+    // innermost; her own coat follows; the shared hat fills a slot she owns
+    // nothing in; her boots stand alone.
+    addCase('add_outfit_default_layers_shared_under_own', I.chatQuiet, {
+      type: 'CHARACTER',
+      characterId: I.dora,
+      outfitSelection: { characterId: I.dora, mode: 'default' },
+    }),
     addCase('add_reactivates_removed', I.chatMain, { type: 'CHARACTER', characterId: I.eris }),
+    // ERIS holds a NOT-default copy of the shared livery: it shadows the shared
+    // item by id, so she wears the shared coat + hat and her own cape but NOT
+    // the livery. The arm that only exists because tiers merge on the FULL
+    // pools and `isDefault` is filtered last.
     addCase('add_reactivates_removed_with_outfit', I.chatMain, {
       type: 'CHARACTER',
       characterId: I.eris,

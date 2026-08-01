@@ -196,6 +196,13 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Proved the tri-tier dressing against the reference app on the add-a-character
+path: a character who owns no clothes at all now joins wearing the shared
+collection, shared and personal defaults layer in the order they were created,
+and a character who keeps their own unmarked copy of a shared garment goes
+without it. The test fixture had no shared wardrobe in it before, so none of
+this was measurable there.
+
 Layered default outfits now appear in the same order in the composer's preview
 and in the chat that opens, and the "default" checkbox says what it will
 actually do. Marking a garment default in a project store or in the shared

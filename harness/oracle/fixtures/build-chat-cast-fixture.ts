@@ -34,7 +34,12 @@
  *                  (so the add path's chat-tag merge fires) and TWO default
  *                  wardrobe items (so `mode:'default'` writes a real outfit).
  *        - ERIS  — a SOFT-REMOVED participant of CHAT_MAIN: the reactivation
- *                  branch. Also carries a default wardrobe item.
+ *                  branch. Also carries a default wardrobe item, plus a
+ *                  NOT-default copy of the shared livery (the opt-out arm).
+ *        - GAIL  — owns NO wardrobe at all: the empty-vault character who is
+ *                  dressed entirely from the shared tier (P4.D39).
+ *      Plus QUILLTAP GENERAL (`instance_settings.generalMountPointId`) holding
+ *      three shared defaults, so the tri-tier merge is observable here.
  *   4. Two legacy `files` rows — the `resolveCharacterAvatar` fallback branch.
  *      (`FileEntrySchema.sha256` is `z.string().length(64)`, i.e. REQUIRED, so a
  *      sha-less legacy file is unrepresentable and `linkSummary: null` is
@@ -171,8 +176,10 @@ async function main(): Promise<void> {
   // doc_mount_blobs has hand-written DDL (BLOB column) — trigger the CREATE via a read.
   await repos.docMountBlobs.listByMountPoint('00000000-0000-4000-8000-000000000000');
   // `instance_settings` is lazily created in v4 and read by the wardrobe
-  // resolvers; materialize it EMPTY so both sides read the same schema (v4
-  // tolerates the missing table and logs, v5 has no lazy CREATE).
+  // resolvers; materialize it so both sides read the same schema (v4 tolerates
+  // the missing table and logs, v5 has no lazy CREATE). P4.D39 fills in the
+  // `generalMountPointId` key below — before that this table stayed EMPTY and
+  // the shared wardrobe tier was structurally invisible to this family.
   await rawQuery(
     'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
   );
@@ -296,13 +303,19 @@ async function main(): Promise<void> {
     description: 'A signaller who left and may yet return.',
   });
 
-  // 3. Two default wardrobe items for DORA and one for ERIS, so `mode:'default'`
-  //    writes a real outfit rather than four empty slots.
+  // 3. Wardrobe, across TWO tiers, so `mode:'default'` writes a real outfit and
+  //    the tri-tier merge (P4.D39 / v4 `8bb1a958`) is observable here at all.
+  //
+  //    `createdAt` is deliberately staggered: layer order within a slot is
+  //    `createdAt` ascending, and with every item sharing one timestamp the
+  //    ordering claim would be unfalsifiable.
   const seedItem = async (
-    characterId: string,
+    characterId: string | null,
     id: string,
     title: string,
     types: string[],
+    extra: Record<string, unknown> = {},
+    createdAt: string = TS,
   ): Promise<void> => {
     await repos.wardrobe.create(
       {
@@ -317,13 +330,57 @@ async function main(): Promise<void> {
         replace: false,
         migratedFromClothingRecordId: null,
         archivedAt: null,
+        ...extra,
       } as never,
-      { id, createdAt: TS, updatedAt: TS } as never,
+      { id, createdAt, updatedAt: TS } as never,
     );
   };
+
+  // 3a. Quilltap General (an ordinary documents store + the instance_settings
+  //     key — the wardrobe-routes fixture's recipe).
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: I.generalMountPointId, createdAt: TS, updatedAt: TS },
+  );
+  await rawQuery('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+    'generalMountPointId',
+    I.generalMountPointId,
+  ]);
+
+  // 3b. The shared tier. G_COAT is the OLDEST default in the fixture, so it must
+  //     layer INSIDE every character's own top. G_HAT reaches a slot nobody owns
+  //     anything in. G_LIVERY exists to be opted out of (see ERIS below).
+  await seedItem(null, I.gCoat, 'House greatcoat', ['top'], {}, '2026-01-01T00:00:00.000Z');
+  await seedItem(null, I.gHat, 'House topper', ['accessories'], {}, '2026-01-02T00:00:00.000Z');
+  await seedItem(null, I.gLivery, 'House livery', ['top'], {}, '2026-01-03T00:00:00.000Z');
+
+  // 3c. The character vaults.
   await seedItem(I.dora, I.wDoraTop, 'Quartermaster’s coat', ['top']);
   await seedItem(I.dora, I.wDoraBoots, 'Deck boots', ['footwear']);
   await seedItem(I.eris, I.wErisCoat, 'Signaller’s cape', ['top']);
+  // ERIS's opt-out: her own copy of the shared livery, marked NOT default. It
+  // shadows the General item by id, so she alone goes without it — the arm that
+  // only survives because tiers merge on the FULL pools and `isDefault` is
+  // filtered last.
+  await seedItem(I.eris, I.gLivery, 'House livery (Eris’s own)', ['top'], { isDefault: false });
+  // GAIL owns NOTHING: the empty-vault character whose whole outfit comes from
+  // the shared tier. Before `8bb1a958` she opened every chat undressed.
 
   // 4. Two files: one WITH a sha256, one without.
   const filesCol = await getCollection('files');
