@@ -35,7 +35,7 @@ import { ToolMessage } from './tool-message';
         <button
           type="button"
           class="qt-chat-announcement-chip"
-          [class]="accentClasses(chip)"
+          [class]="chipClasses(chip)"
           [id]="'message-' + chip.id"
           [attr.data-message-id]="chip.id"
           [attr.aria-expanded]="isExpanded(chip.id)"
@@ -56,6 +56,14 @@ import { ToolMessage } from './tool-message';
                its timestamp. -->
           @if (chip.kind) {
             <span class="qt-chat-system-bar-kind">{{ chip.kind }}</span>
+          }
+          <!-- The whisper audience ("to Alice, Bob"), or nothing when public
+               (v4 WhisperTag, a163862c). -->
+          @if (whisperNames(chip); as names) {
+            <span class="qt-chat-system-bar-whisper" [title]="'Whispered to ' + names">
+              <span class="sr-only">whispered </span>
+              to {{ names }}
+            </span>
           }
           <span class="qt-chat-system-bar-time">{{ time(chip.createdAt) }}</span>
           <!-- class on qt-icon is an INPUT applied to the inner span, so the
@@ -186,9 +194,36 @@ export class AnnouncementGroup {
       : `qt-chat-announcement-dot-${chip.importance}`;
   }
 
-  /** The `qt-pascal-result` accent for a roll's chip wrapper, else `''`. */
-  protected accentClasses(chip: AnnouncementChip): string {
-    return getAnnouncementAccentClasses(chip.message);
+  /**
+   * The chip's modifier classes: the `qt-pascal-result` accent for a roll's
+   * chip wrapper, plus `qt-chat-announcement-chip-whisper` when the
+   * announcement is a whisper (v4 `AnnouncementChip.tsx`'s `isWhisper`,
+   * `a163862c`) — the whisper border color, so a private aside is
+   * distinguishable from a public one before it's ever expanded.
+   */
+  protected chipClasses(chip: AnnouncementChip): string {
+    const accent = getAnnouncementAccentClasses(chip.message);
+    const whisper = this.isWhisperChip(chip) ? 'qt-chat-announcement-chip-whisper' : '';
+    return [accent, whisper].filter(Boolean).join(' ');
+  }
+
+  protected isWhisperChip(chip: AnnouncementChip): boolean {
+    return !!chip.message.targetParticipantIds?.length;
+  }
+
+  /**
+   * The whisper audience, "Alice, Bob" — or null when the announcement is
+   * public (v4 `WhisperTag`, `a163862c`). Participant ids resolve against the
+   * group's own `chat` input, the same source `message-row.ts`'s
+   * `whisperTargets` reads.
+   */
+  protected whisperNames(chip: AnnouncementChip): string | null {
+    const ids = chip.message.targetParticipantIds;
+    if (!ids || ids.length === 0) return null;
+    const participants = this.chat().participants;
+    return ids
+      .map((id) => participants.find((p) => p.id === id)?.character?.name || 'unknown')
+      .join(', ');
   }
 
   protected time(iso: string): string {

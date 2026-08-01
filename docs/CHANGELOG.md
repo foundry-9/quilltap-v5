@@ -168,6 +168,11 @@ include. The collapsed chip and the composer both say who a whisper went to,
 and changing who hears it invalidates any in-character rewrite already on
 screen, since a private aside reads differently than a public proclamation.
 
+A whispered announcement's collapsed chip and its full-row Staff header now
+say who it went to, the same "to Alice, Bob" tag either way, and the chip
+wears the whisper's border color so a private aside is distinguishable from
+a public proclamation before it's ever expanded.
+
 The operator now keeps seeing their own private asides no matter who they're
 signed as, and Prospero's busiest whisper — telling one character which group
 shelves it may read — finally stays hidden behind the All Whispers toggle

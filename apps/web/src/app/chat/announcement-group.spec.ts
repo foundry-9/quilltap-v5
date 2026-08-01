@@ -69,13 +69,17 @@ function chip(over: Partial<AnnouncementChip> = {}): AnnouncementChip {
   };
 }
 
-function render(chips: AnnouncementChip[]): ComponentFixture<AnnouncementGroup> {
+function render(
+  chips: AnnouncementChip[],
+  chat: ChatDetail = {} as ChatDetail,
+): ComponentFixture<AnnouncementGroup> {
   TestBed.configureTestingModule({ imports: [AnnouncementGroup] });
   const fixture = TestBed.createComponent(AnnouncementGroup);
   fixture.componentRef.setInput('chips', chips);
   fixture.componentRef.setInput('chatId', 'chat-1');
-  // Read only by an expanded TOOL chip's card; nothing here expands.
-  fixture.componentRef.setInput('chat', {} as ChatDetail);
+  // Read only by an expanded TOOL chip's card, and by the whisper-tag name
+  // lookup; neither runs unless a test needs it.
+  fixture.componentRef.setInput('chat', chat);
   fixture.detectChanges();
   return fixture;
 }
@@ -207,5 +211,66 @@ describe('AnnouncementGroup — v4 bar/body parity (P4.26)', () => {
     // on a muted slab. v4's stylesheet defines it; no v4 markup wears it.
     expect(bubble.classList.contains('qt-chat-message-system')).toBe(false);
     expect(fixture.nativeElement.querySelector('qt-message-content')).not.toBeNull();
+  });
+});
+
+/** P4.D38 (v4 `WhisperTag`, `a163862c`) — the chip's whisper audience tag. */
+describe('AnnouncementGroup — whisper tag', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const chatWithParticipants = (): ChatDetail =>
+    ({
+      participants: [
+        { id: 'p-cleo', character: { name: 'Cleo' } },
+        { id: 'p-dax', character: { name: 'Dax' } },
+      ],
+    }) as unknown as ChatDetail;
+
+  it('renders no whisper tag or border class on a public announcement', () => {
+    const button = render([chip()], chatWithParticipants()).nativeElement.querySelector(
+      '.qt-chat-announcement-chip',
+    );
+    expect(button.querySelector('.qt-chat-system-bar-whisper')).toBeNull();
+    expect(button.classList.contains('qt-chat-announcement-chip-whisper')).toBe(false);
+  });
+
+  it('shows "to <name>" for a single-target whisper, and the whisper border class', () => {
+    const button = render(
+      [chip({ message: message({ targetParticipantIds: ['p-cleo'] }) })],
+      chatWithParticipants(),
+    ).nativeElement.querySelector('.qt-chat-announcement-chip');
+    const tag = button.querySelector('.qt-chat-system-bar-whisper');
+    expect(tag.textContent.replace(/\s+/g, ' ').trim()).toBe('whispered to Cleo');
+    expect(tag.getAttribute('title')).toBe('Whispered to Cleo');
+    expect(button.classList.contains('qt-chat-announcement-chip-whisper')).toBe(true);
+  });
+
+  it('comma-joins multiple targets, in targetParticipantIds order', () => {
+    const button = render(
+      [chip({ message: message({ targetParticipantIds: ['p-dax', 'p-cleo'] }) })],
+      chatWithParticipants(),
+    ).nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.querySelector('.qt-chat-system-bar-whisper').textContent).toContain(
+      'to Dax, Cleo',
+    );
+  });
+
+  it('falls back to "unknown" for a target id absent from the chat roster', () => {
+    const button = render(
+      [chip({ message: message({ targetParticipantIds: ['p-ghost'] }) })],
+      chatWithParticipants(),
+    ).nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.querySelector('.qt-chat-system-bar-whisper').textContent).toContain(
+      'to unknown',
+    );
+  });
+
+  it('carries an sr-only "whispered" prefix ahead of the visible tag', () => {
+    const button = render(
+      [chip({ message: message({ targetParticipantIds: ['p-cleo'] }) })],
+      chatWithParticipants(),
+    ).nativeElement.querySelector('.qt-chat-announcement-chip');
+    const srOnly = button.querySelector('.qt-chat-system-bar-whisper .sr-only');
+    expect(srOnly.textContent).toBe('whispered ');
   });
 });

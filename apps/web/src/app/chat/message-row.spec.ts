@@ -527,4 +527,32 @@ describe('MessageRow — the Staff header bar (P4.26)', () => {
     expect(fixture.nativeElement.querySelector('.qt-chat-system-bar')).toBeNull();
     expect(fixture.nativeElement.querySelector('.qt-chat-message-header')).not.toBeNull();
   });
+
+  /**
+   * P4.D38 (v4 `AnnouncementBarContents`'s `WhisperTag`, `a163862c`) — a
+   * targeted Carina answer or Suparṇā letter carries the same compact
+   * whisper tag the collapsed chip does, since v4 shares one component
+   * between the bar and the chip.
+   */
+  it('shows the compact whisper tag on a targeted Carina answer', () => {
+    const bar = render(
+      message({
+        systemSender: 'carina',
+        systemKind: 'carina-response',
+        participantId: null,
+        targetParticipantIds: ['p1'],
+        content: 'Eighteen ninety-three.',
+        carinaMeta: { answererId: 'char1', question: 'What year is it?' },
+      }),
+    ).nativeElement.querySelector('.qt-chat-system-bar');
+    const tag = bar.querySelector('.qt-chat-system-bar-whisper');
+    expect(tag.textContent.replace(/\s+/g, ' ').trim()).toBe('whispered to Lorian');
+  });
+
+  it('omits the whisper tag on a public Staff row', () => {
+    const bar = render(
+      message({ systemSender: 'suparna', systemKind: 'mail-delivery', participantId: null }),
+    ).nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar.querySelector('.qt-chat-system-bar-whisper')).toBeNull();
+  });
 });

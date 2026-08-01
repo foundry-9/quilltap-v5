@@ -111,6 +111,16 @@ export interface ImageClickEvent {
             @if (staffKind()) {
               <span class="qt-chat-system-bar-kind">{{ staffKind() }}</span>
             }
+            <!-- The whisper audience, when this Staff row (a Carina reference
+                 answer, a Suparṇā letter) is targeted rather than public — v4
+                 renders WhisperTag here too, since it shares
+                 AnnouncementBarContents with the collapsed chip (a163862c). -->
+            @if (staffWhisperNames(); as names) {
+              <span class="qt-chat-system-bar-whisper" [title]="'Whispered to ' + names">
+                <span class="sr-only">whispered </span>
+                to {{ names }}
+              </span>
+            }
             <span class="qt-chat-system-bar-time">{{ timestamp() }}</span>
           </div>
         } @else {
@@ -554,6 +564,17 @@ export class MessageRow {
     return ids
       .map((id) => participants.find((p) => p.id === id)?.character?.name || 'unknown')
       .join(', ');
+  });
+
+  /**
+   * The Staff header bar's compact whisper tag (v4 `WhisperTag`, `a163862c`) —
+   * null when this Staff row is public. Same names as `whisperTargets` above;
+   * this one is null-guarded for the `@if` rather than joining an empty array
+   * to `''`.
+   */
+  protected readonly staffWhisperNames = computed(() => {
+    const ids = this.message().targetParticipantIds;
+    return ids && ids.length > 0 ? this.whisperTargets() : null;
   });
 
   protected readonly reasoningBlocks = computed(() => {

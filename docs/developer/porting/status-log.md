@@ -49052,3 +49052,81 @@ Gate for this unit: `npx ng test --watch=false --include=
 `node_modules` symlinked from the main worktree (identical `package.json`
 dependency sections, confirmed by diff) since this worktree had none
 installed.
+
+## Lane record — P4.D38 unit 4: the whisper tag on both render sites + the a163862c CSS block
+
+**The "two render sites" the order flagged, resolved by SURVEY, not by
+symmetric code:**
+
+- `isAnnouncementChip` (`chat-view-model.ts:299-305`) requires
+  `systemSender != null`, so EVERY staff-signed announcement posted through
+  Insert Announcement (`systemKind: 'announcement'`, never one of the three
+  chip exemptions — `carina`, `suparna`/`mail-delivery`,
+  `pascal`/`custom-tool-result`) collapses to a chip. `announcement-group.ts`
+  is where the compact tag had to land for THIS feature: `chipClasses(chip)`
+  (renamed from `accentClasses`) adds `qt-chat-announcement-chip-whisper`
+  when `isWhisperChip`, and a new `whisperNames(chip)` span sits between the
+  kind and time spans, matching v4's `WhisperTag` (`a163862c`) placement in
+  `AnnouncementBarContents` exactly (icon markup, `sr-only` "whispered "
+  prefix, `title` attribute).
+- `message-row.ts`'s ORDINARY whisper label (`.qt-chat-whisper-label`,
+  `variant() === 'whisper'`) already handles the character/custom-announcer
+  path — it's gated purely on `targetParticipantIds`, never on
+  `systemSender`, so it already showed the audience names via the existing
+  `whisperTargets` computed (P4.17 unit 3). **Verified, not changed** — see
+  the mechanical proof below.
+- **A third site the order's survey undersold**: v4's `AnnouncementBarContents`
+  is ALSO reused in `MessageRow.tsx:277-297`'s expanded Staff header bar —
+  the same component v5's `isStaffRow` block ports. This bar is reachable by
+  a targeted Carina reference answer or a targeted Suparṇā letter (both DO
+  carry `targetParticipantIds` in production — a private answer to one
+  character, a letter delivered to one participant), so `message-row.ts`
+  gained the identical whisper-tag span in its `isStaffRow` header, wired to
+  a new `staffWhisperNames` computed (null-guarded reuse of the existing
+  `whisperTargets`).
+
+**The mechanical proof for the "verify, don't change" claim**: v4's own
+`MessageRow.tsx` renders BOTH the compact header-bar `WhisperTag` (line
+294-298 area) AND the ordinary body `.qt-chat-whisper-label` (line 334-341)
+for a targeted Staff row that isn't collapsed to a chip — confirmed by
+reading v4's source directly, not inferred. v5 already had the second; this
+unit added the first where it was missing (the chip and the Staff header
+bar) and left the second untouched.
+
+**Trap caught by the Angular compiler, not by review**: an HTML comment
+*inside* a component's `template: \`...\`` string cannot contain backticks
+— they close the outer TS template literal early. Both new comments (in
+`announcement-group.ts` and `message-row.ts`) originally quoted
+`WhisperTag`/`AnnouncementBarContents`/`a163862c` in backticks (the
+convention used everywhere OUTSIDE a template string in this codebase) and
+the build failed with a cascade of unrelated-looking `NG1002`/`TS2349`/
+`TS1005` errors. Fixed by dropping the backticks inside both template
+comments; unaffected everywhere else in the file (regular TSDoc comments
+keep backticks freely).
+
+`_chat.css` gains the named P4.D38 append (three rules, byte-diffed against
+v4's real `app/styles/qt-components/_chat.css` at the pin):
+`.qt-chat-system-bar-whisper` (placed next to the existing `-kind`/`-time`
+rules it's styled like), `.qt-chat-announcement-chip
+.qt-chat-system-bar-whisper { max-width: 18ch }`, and
+`.qt-chat-announcement-chip-whisper { border-color:
+var(--qt-chat-whisper-label-fg) }` (both placed next to the existing
+`.qt-chat-announcement-chip .qt-chat-system-bar-kind` cap they mirror). No
+existing rule edited — additions only, inside the same `@layer components`
+block the rules they're styled after already live in.
+
+**New coverage + mutation proof** (both reverted after): `announcement-group.spec.ts`
+gained a 5-case `'whisper tag'` describe (no-tag-when-public, single target,
+multi-target comma-join in array order, unresolved-id fallback to
+"unknown", the `sr-only` prefix); `render()` grew an optional `chat`
+override so a whisper test can supply a real participant roster without
+touching the file's other ~14 pre-existing cases. Mutated `isWhisperChip`
+to always return `false` — reds exactly the border-class assertion, as
+designed. `message-row.spec.ts` gained two cases in the existing "Staff
+header bar" describe (the tag appears on a targeted Carina answer using the
+fixture's existing "Lorian" participant; it's absent on a public Suparṇā
+row).
+
+Gate for this unit: `npx ng test --watch=false --include=
+'src/app/chat/announcement-group.spec.ts' --include=
+'src/app/chat/message-row.spec.ts'` — 47/47 green.
