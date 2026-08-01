@@ -97,6 +97,7 @@ import type {
 } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
+import { ToastService } from '../../ui/toast.service';
 import { SalonModePanes } from './salon-mode-panes';
 import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
@@ -330,26 +331,6 @@ interface CascadePrompt {
         (toggleInspector)="toggleInspector()"
       />
 
-      @if (chatFlash(); as flash) {
-        <div
-          class="mx-4 mt-2"
-          [class.qt-alert-success]="flash.kind === 'success'"
-          [class.qt-alert-error]="flash.kind === 'error'"
-          role="status"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <span>{{ flash.message }}</span>
-            <button
-              type="button"
-              class="qt-button-ghost qt-button-sm flex-shrink-0"
-              (click)="chatFlash.set(null)"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      }
-
       <div class="qt-chat-messages-viewport">
         <qt-message-list
           [messages]="displayMessages()"
@@ -382,7 +363,6 @@ interface CascadePrompt {
         [isPaused]="chat()!.isPaused"
         [userTurnName]="userTurnName()"
         [mustSpeak]="mustSpeak()"
-        [skipError]="skipError()"
         [nudgeTargetName]="nudgeTargetName()"
         (selectSpeaker)="onSelectSpeaker($event)"
         (skipUserTurn)="onSkipUserTurn()"
@@ -623,7 +603,7 @@ interface CascadePrompt {
       <qt-merge-conversation-modal
         [targetChatId]="c.id"
         [existingCharacterIds]="castCharacterIds()"
-        (merged)="onConversationMerged($event)"
+        (merged)="onConversationMerged()"
         (close)="showMerge.set(false)"
       />
     }
@@ -643,7 +623,7 @@ interface CascadePrompt {
         [messageId]="target.id"
         [currentParticipantId]="target.participantId"
         [participants]="chat()!.participants"
-        (reattributed)="onMessageReattributed($event)"
+        (reattributed)="onMessageReattributed()"
         (close)="reattributeTarget.set(null)"
       />
     }
@@ -653,7 +633,7 @@ interface CascadePrompt {
         [chatId]="c.id"
         [projectId]="c.projectId"
         [projectName]="c.projectName"
-        (assigned)="onProjectAssigned($event)"
+        (assigned)="onProjectAssigned()"
         (close)="showProject.set(false)"
       />
     }
@@ -663,7 +643,7 @@ interface CascadePrompt {
         [chatId]="c.id"
         [participants]="c.participants"
         [messages]="c.messages"
-        (reattributed)="onBulkReattributed($event)"
+        (reattributed)="onBulkReattributed()"
         (close)="showBulkReplace.set(false)"
       />
     }
@@ -673,7 +653,7 @@ interface CascadePrompt {
         [chatId]="c.id"
         [currentTitle]="c.title || ''"
         [isManuallyRenamed]="c.isManuallyRenamed"
-        (renamed)="onChatRenamed($event)"
+        (renamed)="onChatRenamed()"
         (close)="showRename.set(false)"
       />
     }
@@ -720,6 +700,7 @@ interface CascadePrompt {
 export class SalonConversation {
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
   /** Terminal Mode state for this conversation (v4 `useTerminalMode`). */
@@ -972,14 +953,6 @@ export class SalonConversation {
   private readonly poller = new StoryBackgroundPoller();
   /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
   private readonly _pollerTeardown = this.destroyRef.onDestroy(() => this.poller.stop());
-  /**
-   * v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in.
-   * Shared by every in-chat action that v4 answers with a toast (the background
-   * regeneration below, and the Post Office's delivery notice).
-   */
-  protected readonly chatFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
-    null,
-  );
   protected readonly regeneratingBackground = signal(false);
 
   /**
@@ -1013,12 +986,11 @@ export class SalonConversation {
     const chatId = this.chatId();
     if (!chatId) return;
     this.regeneratingBackground.set(true);
-    this.chatFlash.set(null);
     try {
       const result = await regenerateChatBackground(this.core, chatId);
       // Both §2 success arms are shown verbatim: "…queued" and "…already in
       // progress" are distinct states the user should be able to tell apart.
-      this.chatFlash.set({ kind: 'success', message: result.message });
+      this.toasts.showSuccess(result.message);
       // v4 `useChatControls` (:410) wakes the queue badges — the regeneration
       // rides the STORY_BACKGROUND_GENERATION queue.
       notifyQueueChange();
@@ -1032,10 +1004,9 @@ export class SalonConversation {
       // the §2 badRequest strings ("Story backgrounds are not enabled. …") reach
       // the user — falling back to its generic copy.
       const message = error instanceof Error ? error.message : String(error);
-      this.chatFlash.set({
-        kind: 'error',
-        message: message || 'Failed to regenerate background',
-      });
+      this.toasts.showError(
+        message || 'Failed to regenerate background',
+        );
     } finally {
       this.regeneratingBackground.set(false);
     }
@@ -1242,13 +1213,11 @@ export class SalonConversation {
 
   /** v4 patches its local chat (`ChatModals.tsx:394-400`); v5 refetches. */
   protected async onToolSettingsSaved(): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message: 'Tool settings saved' });
     await this.onChatUpdated();
   }
 
   /** v4 `onMerged` → `fetchChat` (`SalonView.tsx:1594`). */
-  protected async onConversationMerged(message: string): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message });
+  protected async onConversationMerged(): Promise<void> {
     await this.onChatUpdated();
   }
   /** v4 `reattributeDialogState`, opened from a message's action bar. */
@@ -1264,10 +1233,9 @@ export class SalonConversation {
    * scroll the message back into view after a beat — the list re-renders around
    * the moved row, so v4 waits 100ms before looking for it.
    */
-  protected async onMessageReattributed(message: string): Promise<void> {
+  protected async onMessageReattributed(): Promise<void> {
     const target = this.reattributeTarget();
     this.reattributeTarget.set(null);
-    this.chatFlash.set({ kind: 'success', message });
     await this.onChatUpdated();
     if (!target) return;
     setTimeout(() => {
@@ -1277,26 +1245,22 @@ export class SalonConversation {
     }, 100);
   }
 
-  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:193`); the sentence is v4's. */
-  protected async onProjectAssigned(message: string): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message });
+  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:193`). */
+  protected async onProjectAssigned(): Promise<void> {
     await this.onChatUpdated();
   }
 
-  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:265`); the counts are v4's copy. */
-  protected async onBulkReattributed(message: string): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message });
+  /** v4 `onSuccess` → `fetchChat` (`ChatModals.tsx:265`). */
+  protected async onBulkReattributed(): Promise<void> {
     await this.onChatUpdated();
   }
 
   /**
    * v4 `onSuccess` patches its local chat object in place
    * (`ChatModals.tsx:202-206`); v5 holds the chat in a query, so the equivalent
-   * is a refetch. The sentence is the dialog's own — v4's toast copy, raised
-   * here because the dialog closes before it could be read.
+   * is a refetch. The dialog raises its own toast, as v4's does.
    */
-  protected async onChatRenamed(result: { message: string }): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message: result.message });
+  protected async onChatRenamed(): Promise<void> {
     await this.onChatUpdated();
   }
 
@@ -1397,7 +1361,7 @@ export class SalonConversation {
    */
   protected onLibraryFileLinked(linked: LinkedLibraryFile): void {
     this.composer()?.addAttachedFile(linked.file);
-    this.chatFlash.set({ kind: 'success', message: linked.message });
+    this.toasts.showSuccess(linked.message);
   }
 
   /**
@@ -1406,22 +1370,21 @@ export class SalonConversation {
    * — so this only refetches the chat, exactly as v4's `fetchChat()` does.
    */
   protected async onLibraryMountFileAttached(message: string): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message });
+    this.toasts.showSuccess(message);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   protected async onAnnouncementPosted(): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message: 'Announcement posted' });
+    this.toasts.showSuccess('Announcement posted');
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
   /** v4's own success copy, verbatim (`ComposeMailDialog.tsx:143`). */
   protected async onMailPosted(): Promise<void> {
-    this.chatFlash.set({
-      kind: 'success',
-      message: 'Suparṇā has the letter and is already aloft.',
-    });
+    this.toasts.showSuccess(
+      'Suparṇā has the letter and is already aloft.',
+      );
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
@@ -1572,8 +1535,6 @@ export class SalonConversation {
    * bubble to a character the user is no longer playing.
    */
   private readonly activeSpeakerOverride = signal<string | null>(null);
-  /** A rejected-skip message (v4's all-others-skipped copy). */
-  protected readonly skipError = signal<string | null>(null);
 
   /** Re-query the next speaker whenever the chat settles and no turn is running. */
   private readonly _turnEffect = effect(() => {
@@ -1724,7 +1685,6 @@ export class SalonConversation {
     const chatId = this.chatId();
     const target = this.nextSpeaker();
     if (!chatId || !target) return;
-    this.skipError.set(null);
     const resp = await this.core.dispatch({
       type: 'chatTurnAction',
       chatId,
@@ -1732,7 +1692,11 @@ export class SalonConversation {
       participantId: target.id,
     });
     if (resp.type === 'error') {
-      this.skipError.set(resp.data.message);
+      // v4 `handleSkipUserTurn` (:212-215): `callTurnAction` swallows the
+      // server's sentence into a console.error and the operator is told this
+      // fixed line. v5's inline skip banner — which showed the server message —
+      // was an invention of the no-toast era and goes with it.
+      this.toasts.showError('Failed to skip turn. Please try again.');
       return;
     }
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
@@ -1826,7 +1790,7 @@ export class SalonConversation {
 
   /** v4 `onCharacterAdded` — refetch the chat, and say who joined. */
   protected async onCharacterAdded(joined: { characterId: string; name: string }): Promise<void> {
-    this.chatFlash.set({ kind: 'success', message: `${joined.name} has joined the chat` });
+    this.toasts.showSuccess(`${joined.name} has joined the chat`);
     await this.onChatUpdated();
   }
 
@@ -1895,13 +1859,12 @@ export class SalonConversation {
     if (!chatId) return;
     try {
       await rebuildSystemPrompt(this.core, chatId, participantId);
-      this.chatFlash.set({ kind: 'success', message: 'System prompt rebuilt' });
+      this.toasts.showSuccess('System prompt rebuilt');
       await this.onChatUpdated();
     } catch (err) {
-      this.chatFlash.set({
-        kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to rebuild system prompt',
-      });
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to rebuild system prompt',
+        );
     }
   }
 
@@ -1965,10 +1928,9 @@ export class SalonConversation {
     const participant = (this.chat()?.participants ?? []).find((p) => p.id === participantId);
     const name = participant?.character?.name ?? 'This character';
     if (this.busy() && this.turnState().lastSpeakerId === participantId) {
-      this.chatFlash.set({
-        kind: 'error',
-        message: `Cannot remove ${name} while they are generating a response. Please wait for them to finish.`,
-      });
+      this.toasts.showError(
+        `Cannot remove ${name} while they are generating a response. Please wait for them to finish.`,
+        );
       return;
     }
     this.removeTarget.set({ participantId, name });
@@ -1981,10 +1943,9 @@ export class SalonConversation {
     this.removing.set(true);
     try {
       await removeParticipant(this.core, chatId, target.participantId);
-      this.chatFlash.set({
-        kind: 'success',
-        message: `${target.name} has been removed from the chat`,
-      });
+      this.toasts.showSuccess(
+        `${target.name} has been removed from the chat`,
+        );
       this.turnState.update((prev) => removeFromQueue(prev, target.participantId));
       this.removeTarget.set(null);
       await this.onChatUpdated();
@@ -1993,16 +1954,14 @@ export class SalonConversation {
           p.type === 'CHARACTER' && p.isActive && p.id !== target.participantId,
       );
       if (remaining.length === 0) {
-        this.chatFlash.set({
-          kind: 'error',
-          message: 'All characters have been removed. Add a character to continue the conversation.',
-        });
+        this.toasts.showError(
+          'All characters have been removed. Add a character to continue the conversation.',
+          );
       }
     } catch (err) {
-      this.chatFlash.set({
-        kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to remove character',
-      });
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to remove character',
+        );
     } finally {
       this.removing.set(false);
     }
@@ -2041,10 +2000,10 @@ export class SalonConversation {
     if (!chatId) return;
     try {
       await updateParticipant(this.core, chatId, participantId, patch);
-      if (success) this.chatFlash.set({ kind: 'success', message: success });
+      if (success) this.toasts.showSuccess(success);
       await this.onChatUpdated();
     } catch (err) {
-      this.chatFlash.set({ kind: 'error', message: err instanceof Error ? err.message : failure });
+      this.toasts.showError(err instanceof Error ? err.message : failure);
     }
   }
 
@@ -2057,7 +2016,13 @@ export class SalonConversation {
   protected async onSidebarNudge(participantId: string): Promise<void> {
     const chat = this.chat();
     const participant = (chat?.participants ?? []).find((p) => p.id === participantId);
-    if (!participant || participant.controlledBy === 'user') return;
+    if (participant?.controlledBy === 'user') {
+      this.toasts.showError(
+        'User-controlled characters cannot be nudged for AI response. Use Queue instead.',
+      );
+      return;
+    }
+    if (!participant) return;
     if (chat?.isPaused) {
       await this.onTogglePause();
     }
@@ -2100,17 +2065,28 @@ export class SalonConversation {
    */
   protected async onSidebarSkip(): Promise<void> {
     const chatId = this.chatId();
-    if (!chatId || !this.hasActiveCharacters()) return;
+    if (!chatId) return;
+    // v4 `handleContinue`'s three arms, each with its own toast (:179-202).
+    if (!this.hasActiveCharacters()) {
+      this.toasts.showError('No characters available. Add a character to continue.');
+      return;
+    }
     const resp = await this.core.dispatch({ type: 'chatTurnAction', chatId, action: 'query' });
-    if (resp.type !== 'turnAction') return;
+    if (resp.type !== 'turnAction') {
+      this.toasts.showError('Failed to determine next speaker. Please try again.');
+      return;
+    }
     this.applyTurnResponse(resp.data);
     const turn = (resp.data as { turn?: TurnInfo }).turn;
-    if (
-      turn?.nextSpeakerId &&
-      turn.nextSpeakerId !== this.userParticipantId() &&
-      turn.nextSpeakerControlledBy !== 'user'
-    ) {
+    if (turn?.nextSpeakerId && turn.nextSpeakerId !== this.userParticipantId()) {
+      // v4 returns silently when the next speaker is the operator's own
+      // character — there is nothing to generate and nothing to report.
+      if (turn.nextSpeakerControlledBy === 'user') return;
       await this.runTurn({ continueMode: true, respondingParticipantId: turn.nextSpeakerId });
+    } else {
+      this.toasts.showInfo(
+        'No characters available to speak. Try adding or activating a character.',
+      );
     }
   }
 
@@ -2187,13 +2163,12 @@ export class SalonConversation {
       });
       this.impersonatingLocal.set(readImpersonatingIds(data, []));
     } catch (err) {
-      this.chatFlash.set({
-        kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to assign LLM profile',
-      });
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to assign LLM profile',
+        );
       return;
     }
-    this.chatFlash.set({ kind: 'success', message: `${name} is now controlled by AI` });
+    this.toasts.showSuccess(`${name} is now controlled by AI`);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 

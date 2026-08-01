@@ -11,6 +11,7 @@ import {
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
+import { ToastService } from '../../ui/toast.service';
 import type { ParticipantDetail } from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
 import { Modal } from '../../ui/modal';
@@ -218,9 +219,6 @@ export function categoryInfo(category: string): { label: string; icon: string } 
             <p class="text-sm qt-text-secondary italic">This tool requires no parameters.</p>
           }
 
-          @if (error(); as message) {
-            <p class="text-sm qt-text-danger" role="status">{{ message }}</p>
-          }
         </div>
       }
 
@@ -264,6 +262,7 @@ export function categoryInfo(category: string): { label: string; icon: string } 
 })
 export class RunToolModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly participants = input.required<ParticipantDetail[]>();
@@ -279,7 +278,6 @@ export class RunToolModal {
   protected readonly executing = signal(false);
   protected readonly isPrivate = signal(false);
   protected readonly characterId = signal<string | null>(null);
-  protected readonly error = signal<string | null>(null);
 
   protected readonly toolsQuery = injectQuery(() => ({
     queryKey: ['tools', this.chatId(), 'schemas'],
@@ -297,6 +295,12 @@ export class RunToolModal {
   );
 
   constructor() {
+    // v4 answers a failed tool-inventory load with a toast.
+    effect(() => {
+      if (this.toolsQuery.isError()) {
+        this.toasts.showError('Failed to load available tools');
+      }
+    });
     // v4 seeds the character select to the first active character (`:67,77`).
     effect(() => {
       const first = this.activeCharacters()[0]?.character?.id ?? null;
@@ -370,7 +374,6 @@ export class RunToolModal {
   protected async execute(): Promise<void> {
     const tool = this.selected();
     if (!tool) return;
-    this.error.set(null);
     this.executing.set(true);
     try {
       await runTool(this.core, {
@@ -384,7 +387,7 @@ export class RunToolModal {
       this.executed.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to execute tool');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to execute tool');
     } finally {
       this.executing.set(false);
     }

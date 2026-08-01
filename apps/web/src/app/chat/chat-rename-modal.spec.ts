@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { ToastService } from '../ui/toast.service';
 import { ChatRenameModal } from './chat-rename-modal';
 
 /**
@@ -52,7 +53,7 @@ function stubClient(): Partial<CoreClient> {
 class Host {
   readonly currentTitle = signal('An Evening at Sea');
   readonly isManuallyRenamed = signal(true);
-  readonly renamed: { title: string; isManuallyRenamed: boolean; message: string }[] = [];
+  readonly renamed: { title: string; isManuallyRenamed: boolean }[] = [];
   closed = 0;
 }
 
@@ -67,6 +68,14 @@ async function render(): Promise<ComponentFixture<Host>> {
   await fixture.whenStable();
   fixture.detectChanges();
   return fixture;
+}
+
+/** The toast stack this render raised, newest last (v4 answers all of these
+ *  with `showSuccessToast`/`showErrorToast`). */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 function titleField(fixture: ComponentFixture<Host>): HTMLInputElement {
@@ -124,8 +133,9 @@ describe('ChatRenameModal', () => {
 
     expect(sent).toEqual([{ type: 'chatRegenerateTitle', chatId: 'chat-1' }]);
     expect(fixture.componentInstance.renamed).toEqual([
-      { title: 'A Fresh Coat of Paint', isManuallyRenamed: false, message: 'Title regenerated' },
+      { title: 'A Fresh Coat of Paint', isManuallyRenamed: false },
     ]);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Title regenerated' }]);
     expect(fixture.componentInstance.closed).toBe(1);
   });
 
@@ -147,7 +157,7 @@ describe('ChatRenameModal', () => {
 
     expect(autoBox(fixture).checked).toBe(false);
     expect(fixture.componentInstance.closed).toBe(0);
-    expect(fixture.nativeElement.textContent).toContain('the naming clerk is out to lunch');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the naming clerk is out to lunch' }]);
   });
 
   it('saves the trimmed title with the manual-rename flag', async () => {
@@ -166,7 +176,7 @@ describe('ChatRenameModal', () => {
         chat: { title: 'A Longer Evening', isManuallyRenamed: true },
       },
     ]);
-    expect(fixture.componentInstance.renamed[0].message).toBe('Chat renamed');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Chat renamed' }]);
     expect(fixture.componentInstance.closed).toBe(1);
   });
 
@@ -182,7 +192,7 @@ describe('ChatRenameModal', () => {
     fixture.detectChanges();
 
     expect(sent).toEqual([]);
-    expect(fixture.nativeElement.textContent).toContain('Title cannot be empty');
+    expect(toasts()).toEqual([{ type: 'error', message: 'Title cannot be empty' }]);
   });
 
   it('closes without writing when neither the title nor the flag would move', async () => {
@@ -226,7 +236,7 @@ describe('ChatRenameModal', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('the registry is closed');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the registry is closed' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 

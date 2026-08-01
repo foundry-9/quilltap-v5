@@ -7,6 +7,7 @@ import { CoreClient } from '../../core/core-client';
 import type { ParticipantDetail } from '../../core/core-contract';
 import { cleanArguments, categoryInfo, RunToolModal } from './run-tool-modal';
 import type { AvailableTool } from './tool-settings';
+import { ToastService } from '../../ui/toast.service';
 
 /** Run Tool (v4 `RunToolModal.tsx`). */
 
@@ -98,6 +99,13 @@ function runButton(fixture: ComponentFixture<Host>): HTMLButtonElement {
   return (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
     (b) => b.textContent!.trim() === 'Run Tool' || b.textContent!.trim() === 'Running...',
   )!;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('cleanArguments', () => {
@@ -240,7 +248,7 @@ describe('RunToolModal', () => {
     runButton(fixture).click();
     await settle(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('the tool declined');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the tool declined' }]);
     expect(fixture.componentInstance.ran).toBe(0);
     expect(fixture.componentInstance.closed).toBe(0);
   });

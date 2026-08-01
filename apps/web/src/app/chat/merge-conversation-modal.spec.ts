@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { ToastService } from '../ui/toast.service';
 import type { EnrichedChatSummary } from '../core/core-contract';
 import { MergeConversationModal, presentCharacters } from './merge-conversation-modal';
 
@@ -76,14 +77,14 @@ function stubClient(): Partial<CoreClient> {
     <qt-merge-conversation-modal
       [targetChatId]="'chat-here'"
       [existingCharacterIds]="existing()"
-      (merged)="reported.push($event)"
+      (merged)="emitted = emitted + 1"
       (close)="closed = closed + 1"
     />
   `,
 })
 class Host {
   readonly existing = signal<string[]>(['c1']);
-  readonly reported: string[] = [];
+  emitted = 0;
   closed = 0;
 }
 
@@ -119,6 +120,13 @@ function mergeButton(fixture: ComponentFixture<Host>): HTMLButtonElement | undef
   return (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
     (b) => b.textContent!.trim().startsWith('Merge In'),
   );
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('presentCharacters', () => {
@@ -239,8 +247,9 @@ describe('MergeConversationModal', () => {
     await settle(fixture);
     mergeButton(fixture)!.click();
     await settle(fixture);
-    expect(fixture.componentInstance.reported).toEqual([
-      'Merged 2 characters from “The Long Voyage”',
+    expect(fixture.componentInstance.emitted).toBe(1);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Merged 2 characters from “The Long Voyage”' },
     ]);
 
     mergeAnswer = {};
@@ -251,8 +260,8 @@ describe('MergeConversationModal', () => {
     await settle(second);
     mergeButton(second)!.click();
     await settle(second);
-    expect(second.componentInstance.reported).toEqual([
-      'Merged 1 character from “The Long Voyage”',
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Merged 1 character from “The Long Voyage”' },
     ]);
   });
 
@@ -263,7 +272,7 @@ describe('MergeConversationModal', () => {
     await settle(fixture);
     mergeButton(fixture)!.click();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('the two ledgers will not meet');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the two ledgers will not meet' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 });

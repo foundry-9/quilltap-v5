@@ -13,6 +13,7 @@ import type { ParticipantDetail } from '../core/core-contract';
 import { Avatar } from '../ui/avatar';
 import { normalizeAvatarSrc } from '../ui/avatar-stack';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 import { reattributeMessage } from './chat-admin.api';
 
 /**
@@ -109,9 +110,6 @@ import { reattributeMessage } from './chat-admin.api';
                 }
               </div>
 
-              @if (error(); as message) {
-                <p class="text-sm qt-text-danger" role="status">{{ message }}</p>
-              }
             </div>
           }
         </div>
@@ -140,18 +138,18 @@ import { reattributeMessage } from './chat-admin.api';
 })
 export class ReattributeMessageDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly messageId = input.required<string>();
   readonly currentParticipantId = input<string | null>(null);
   readonly participants = input.required<ParticipantDetail[]>();
 
   /** v4 `onReattributed()` — the parent refetches and scrolls the message back. */
-  readonly reattributed = output<string>();
+  readonly reattributed = output<void>();
   readonly close = output<void>();
 
   protected readonly selected = signal<string | null>(null);
   protected readonly submitting = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   /** v4 `availableParticipants` (:69-71). */
   protected readonly available = computed(() =>
@@ -175,27 +173,25 @@ export class ReattributeMessageDialog {
   protected async onSubmit(): Promise<void> {
     const target = this.selected();
     if (!target) {
-      this.error.set('Please select a participant');
+      this.toasts.showError('Please select a participant');
       return;
     }
 
-    this.error.set(null);
     this.submitting.set(true);
     try {
       const result = await reattributeMessage(this.core, this.messageId(), target);
       const name =
         this.participants().find((p) => p.id === target)?.character?.name || 'participant';
-      this.reattributed.emit(
+      this.toasts.showSuccess(
         result.memoriesDeleted > 0
           ? `Message re-attributed to ${name}. ${result.memoriesDeleted} ` +
               `${result.memoriesDeleted === 1 ? 'memory' : 'memories'} deleted.`
           : `Message re-attributed to ${name}.`,
       );
+      this.reattributed.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(
-        err instanceof Error ? err.message : 'Failed to re-attribute message',
-      );
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to re-attribute message');
     } finally {
       this.submitting.set(false);
     }

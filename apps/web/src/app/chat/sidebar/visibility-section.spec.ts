@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { VisibilitySection, type VisibilityState } from './visibility-section';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The Visibility section's writes (v4 `VisibilitySection` + the
@@ -97,6 +98,13 @@ async function click(fixture: ComponentFixture<Host>, el: HTMLElement): Promise<
   fixture.detectChanges();
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('VisibilitySection', () => {
   beforeEach(() => {
     sent.length = 0;
@@ -116,9 +124,12 @@ describe('VisibilitySection', () => {
     expect(sent).toEqual([
       { type: 'chatUpdate', chatId: 'chat-1', chat: { allowCrossCharacterVaultReads: true } },
     ]);
-    expect(fixture.nativeElement.textContent).toContain(
-      'Shared vault reads enabled — characters may peek at each other’s dossiers',
-    );
+    expect(toasts()).toEqual([
+      {
+        type: 'success',
+        message: 'Shared vault reads enabled — characters may peek at each other’s dossiers',
+      },
+    ]);
     expect(control(fixture, 'Shared Vaults').getAttribute('aria-checked')).toBe('true');
   });
 
@@ -127,7 +138,9 @@ describe('VisibilitySection', () => {
     failNext = true;
     await click(fixture, control(fixture, 'Shared Vaults'));
     expect(control(fixture, 'Shared Vaults').getAttribute('aria-checked')).toBe('false');
-    expect(fixture.nativeElement.textContent).toContain('Could not update shared-vault setting');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Could not update shared-vault setting' },
+    ]);
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 

@@ -13,6 +13,7 @@ import {
 
 import { CoreClient } from '../core/core-client';
 import { Modal } from '../ui/modal';
+import { ToastService } from '../ui/toast.service';
 import { regenerateChatTitle } from './chat-admin.api';
 
 /**
@@ -43,11 +44,6 @@ import { regenerateChatTitle } from './chat-admin.api';
  * that name anywhere — so until this dialog landed, v5's live `chatRegenerateTitle`
  * verb was unreachable from the UI (dogfood walk 2026-07-27). It spends a real
  * cheap-LLM call per tick.
- *
- * **One substitution, the house one:** v5 has no toast system, so v4's
- * `showSuccessToast` / `showErrorToast` copy lands verbatim in an inline status
- * line. The success cases close the dialog, so in practice only the failures are
- * read here; the parent reports the successes.
  */
 @Component({
   selector: 'qt-chat-rename-modal',
@@ -100,10 +96,6 @@ import { regenerateChatTitle } from './chat-admin.api';
         </div>
       }
 
-      @if (error(); as message) {
-        <p class="qt-text-xs mt-3 qt-text-danger" role="status">{{ message }}</p>
-      }
-
       <div qt-modal-footer class="flex justify-end gap-2">
         <button
           type="button"
@@ -129,27 +121,20 @@ import { regenerateChatTitle } from './chat-admin.api';
 })
 export class ChatRenameModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly currentTitle = input.required<string>();
   readonly isManuallyRenamed = input.required<boolean>();
 
-  /**
-   * v4 `onSuccess(newTitle, isManuallyRenamed)` — the parent refetches.
-   *
-   * `message` carries v4's own toast copy ("Chat renamed" :116 / "Title
-   * regenerated" :63). v4 raises it from inside the modal, but the modal closes
-   * in the same breath, so in v5 — which answers a toast with an inline line —
-   * the sentence has to be handed to the surface that outlives the dialog.
-   */
-  readonly renamed = output<{ title: string; isManuallyRenamed: boolean; message: string }>();
+  /** v4 `onSuccess(newTitle, isManuallyRenamed)` — the parent refetches. */
+  readonly renamed = output<{ title: string; isManuallyRenamed: boolean }>();
   readonly close = output<void>();
 
   protected readonly title = signal('');
   protected readonly useAutoRename = signal(false);
   protected readonly saving = signal(false);
   protected readonly regenerating = signal(false);
-  protected readonly error = signal<string | null>(null);
   protected readonly loading = computed(() => this.saving() || this.regenerating());
 
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
@@ -186,19 +171,15 @@ export class ChatRenameModal {
     this.useAutoRename.set(enabled);
     if (!enabled) return;
 
-    this.error.set(null);
     this.regenerating.set(true);
     try {
       const newTitle = await regenerateChatTitle(this.core, this.chatId());
       this.title.set(newTitle);
-      this.renamed.emit({
-        title: newTitle,
-        isManuallyRenamed: false,
-        message: 'Title regenerated',
-      });
+      this.toasts.showSuccess('Title regenerated');
+      this.renamed.emit({ title: newTitle, isManuallyRenamed: false });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to regenerate title');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to regenerate title');
       // v4 "Revert toggle on error" (:76) — always to false, not to the prior value.
       this.useAutoRename.set(false);
       box.checked = false;
@@ -211,7 +192,7 @@ export class ChatRenameModal {
   protected async onSave(): Promise<void> {
     const trimmed = this.title().trim();
     if (!trimmed) {
-      this.error.set('Title cannot be empty');
+      this.toasts.showError('Title cannot be empty');
       return;
     }
     if (trimmed === this.currentTitle() && !this.useAutoRename() === this.isManuallyRenamed()) {
@@ -219,7 +200,6 @@ export class ChatRenameModal {
       return;
     }
 
-    this.error.set(null);
     this.saving.set(true);
     try {
       const resp = await this.core.dispatch({
@@ -230,14 +210,11 @@ export class ChatRenameModal {
       if (resp.type === 'error') {
         throw new Error(resp.data.message || 'Failed to rename chat');
       }
-      this.renamed.emit({
-        title: trimmed,
-        isManuallyRenamed: !this.useAutoRename(),
-        message: 'Chat renamed',
-      });
+      this.toasts.showSuccess('Chat renamed');
+      this.renamed.emit({ title: trimmed, isManuallyRenamed: !this.useAutoRename() });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to rename chat');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to rename chat');
     } finally {
       this.saving.set(false);
     }

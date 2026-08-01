@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { ToastService } from '../ui/toast.service';
 import { ChatProjectModal } from './chat-project-modal';
 
 /** Assign to Project (v4 `ChatProjectModal.tsx`). */
@@ -39,7 +40,7 @@ function stubClient(): Partial<CoreClient> {
       [chatId]="'chat-1'"
       [projectId]="projectId()"
       [projectName]="projectName()"
-      (assigned)="reported.push($event)"
+      (assigned)="emitted = emitted + 1"
       (close)="closed = closed + 1"
     />
   `,
@@ -47,7 +48,7 @@ function stubClient(): Partial<CoreClient> {
 class Host {
   readonly projectId = signal<string | null>(null);
   readonly projectName = signal<string | null>(null);
-  readonly reported: string[] = [];
+  emitted = 0;
   closed = 0;
 }
 
@@ -91,6 +92,13 @@ async function choose(fixture: ComponentFixture<Host>, value: string): Promise<v
   fixture.detectChanges();
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('ChatProjectModal', () => {
   beforeEach(() => {
     sent.length = 0;
@@ -128,7 +136,8 @@ describe('ChatProjectModal', () => {
     expect(sent).toEqual([
       { type: 'chatUpdate', chatId: 'chat-1', chat: { projectId: 'p1' } },
     ]);
-    expect(fixture.componentInstance.reported).toEqual(['Chat moved to "The Long Voyage"']);
+    expect(fixture.componentInstance.emitted).toBe(1);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Chat moved to "The Long Voyage"' }]);
     expect(fixture.componentInstance.closed).toBe(1);
   });
 
@@ -143,7 +152,7 @@ describe('ChatProjectModal', () => {
     fixture.detectChanges();
 
     expect(sent).toEqual([{ type: 'chatUpdate', chatId: 'chat-1', chat: { projectId: null } }]);
-    expect(fixture.componentInstance.reported).toEqual(['Chat removed from project']);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Chat removed from project' }]);
   });
 
   it('closes without writing when the choice is the chat’s current project', async () => {
@@ -164,7 +173,7 @@ describe('ChatProjectModal', () => {
     save(fixture).click();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('the filing cabinet is locked');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the filing cabinet is locked' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 });

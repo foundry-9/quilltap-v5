@@ -11,6 +11,7 @@ import {
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
+import { ToastService } from '../../ui/toast.service';
 import { Modal } from '../../ui/modal';
 import { listTools } from '../chat-admin.api';
 import { ToolSettingsContent } from './tool-settings-content';
@@ -81,9 +82,6 @@ import { ToolSettingsContent } from './tool-settings-content';
         (disabledGroupsChange)="localGroups.set($event)"
       />
 
-      @if (error(); as message) {
-        <p class="text-xs qt-text-danger mt-3" role="status">{{ message }}</p>
-      }
 
       <div qt-modal-footer class="flex justify-end gap-2">
         <button
@@ -108,6 +106,7 @@ import { ToolSettingsContent } from './tool-settings-content';
 })
 export class ChatToolSettingsModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly disabledTools = input.required<string[]>();
@@ -122,7 +121,6 @@ export class ChatToolSettingsModal {
   protected readonly localTools = signal<ReadonlySet<string>>(new Set());
   protected readonly localGroups = signal<ReadonlySet<string>>(new Set());
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected readonly toolsQuery = injectQuery(() => ({
     queryKey: ['tools', this.chatId()],
@@ -131,6 +129,12 @@ export class ChatToolSettingsModal {
   protected readonly tools = computed(() => this.toolsQuery.data() ?? []);
 
   constructor() {
+    // v4 answers a failed tool-inventory load with a toast.
+    effect(() => {
+      if (this.toolsQuery.isError()) {
+        this.toasts.showError('Failed to load available tools');
+      }
+    });
     // v4's re-sync effect (`:68-72`).
     effect(() => {
       this.localTools.set(new Set(this.disabledTools()));
@@ -151,7 +155,6 @@ export class ChatToolSettingsModal {
 
   /** v4 `handleSave` (`:75-102`). */
   protected async onSave(): Promise<void> {
-    this.error.set(null);
     this.saving.set(true);
     const disabledTools = [...this.localTools()];
     const disabledToolGroups = [...this.localGroups()];
@@ -162,12 +165,11 @@ export class ChatToolSettingsModal {
         disabledTools,
         disabledToolGroups,
       });
+      this.toasts.showSuccess('Tool settings saved');
       this.saved.emit({ disabledTools, disabledToolGroups });
       this.close.emit();
     } catch (err) {
-      this.error.set(
-        err instanceof Error ? err.message : 'Failed to save tool settings',
-      );
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save tool settings');
     } finally {
       this.saving.set(false);
     }

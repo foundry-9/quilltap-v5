@@ -15,6 +15,7 @@ import type { ConnectionProfileDto } from '../core/core-contract';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * Hand Off Character to AI (v4 `components/chat/SelectLLMProfileDialog.tsx`,
@@ -112,9 +113,6 @@ import { Modal } from '../ui/modal';
           in the chat settings.
         </p>
 
-        @if (error(); as message) {
-          <p class="qt-text-xs qt-text-danger" role="status">{{ message }}</p>
-        }
       </div>
 
       <div qt-modal-footer class="flex justify-end gap-2">
@@ -135,6 +133,7 @@ import { Modal } from '../ui/modal';
 })
 export class SelectLlmProfileDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly characterName = input.required<string>();
   readonly characterAvatarUrl = input<string | null>(null);
@@ -147,7 +146,6 @@ export class SelectLlmProfileDialog {
   readonly cancel = output<void>();
 
   protected readonly selected = signal<string | null>(null);
-  protected readonly error = signal<string | null>(null);
 
   private readonly profilesQuery = injectQuery(() => ({
     queryKey: ['connection-profiles'],
@@ -160,6 +158,13 @@ export class SelectLlmProfileDialog {
   protected readonly loading = computed(() => this.profilesQuery.isLoading());
 
   constructor() {
+    // v4 answers a failed profile load with a toast (:84) and leaves the dialog
+    // open on an empty list.
+    effect(() => {
+      if (this.profilesQuery.isError()) {
+        this.toasts.showError('Failed to load connection profiles');
+      }
+    });
     // v4's preselection, in v4's order (:74-79).
     effect(() => {
       const list = this.profiles();
@@ -175,7 +180,7 @@ export class SelectLlmProfileDialog {
   protected onConfirm(): void {
     const profileId = this.selected();
     if (!profileId) {
-      this.error.set('Please select a connection profile');
+      this.toasts.showError('Please select a connection profile');
       return;
     }
     this.confirm.emit(profileId);

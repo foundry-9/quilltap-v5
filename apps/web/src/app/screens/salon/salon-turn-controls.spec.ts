@@ -14,6 +14,7 @@ import type {
   ScopedEvent,
 } from '../../core/core-contract';
 import { SalonConversation } from './salon-conversation';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * Deliverable 9: the tier-2 Salon controls (Skip banner, Speaking-As,
@@ -222,6 +223,13 @@ function calls(dispatch: ReturnType<typeof vi.fn>, type: string): CoreRequest[] 
   return dispatch.mock.calls.map((c) => c[0] as CoreRequest).filter((r) => r.type === type);
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('Salon turn controls', () => {
   it('shows the user-turn banner + Skip when it is a user-controlled turn', async () => {
     const { client, dispatch } = stubClient(groupChat(), {
@@ -309,7 +317,11 @@ describe('Salon turn controls', () => {
     expect(cardSkip.disabled).toBe(true);
   });
 
-  it('surfaces the server refusal copy when a skip is rejected', async () => {
+  // v4's `callTurnAction` swallows the server's sentence into a console.error
+  // and toasts a fixed line (`useTurnManagement.ts:212-215`); v5's inline skip
+  // banner, which showed the server message, was an invention of the no-toast
+  // era and is retired with it.
+  it('reports v4’s fixed refusal line when a skip is rejected', async () => {
     const { client } = stubClient(groupChat(), {
       query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
       skip: { error: 'Everyone else has passed — it falls to Bertie to say something.' },
@@ -323,8 +335,9 @@ describe('Salon turn controls', () => {
       await new Promise((r) => setTimeout(r, 0));
       fixture.detectChanges();
     }
-    const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('Everyone else has passed — it falls to Bertie to say something.');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Failed to skip turn. Please try again.' },
+    ]);
   });
 
   it('renders the Speaking-As selector with two user-controlled characters', async () => {

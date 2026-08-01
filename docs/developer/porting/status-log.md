@@ -46544,3 +46544,47 @@ type classes, and node removal on expiry. **Mutation-proven** (the D24 rule):
 5 of the 9 RED; reverted, 9/9 green.
 
 **No Rust changed** — no cargo gate owed by this unit.
+
+## Lane record — P4.25 unit 2: the Salon + chat-dialog family
+
+Thirteen call-site files converted, plus their parent. The pattern throughout:
+v5's dialogs answered v4's toasts with an inline `qt-text-danger` paragraph and
+handed the SUCCESS sentence up to the parent as an output payload, so the
+parent could render it in an alert bar that v4 does not have. Both halves are
+retired — the dialog raises its own toast exactly where v4 does, and the output
+carries only the "refetch now" signal v4's `onSuccess` carries.
+
+- **`screens/salon/salon-conversation.ts`** — the `chatFlash` alert (a
+  self-described "the scriptorium flash idiom stands in" stopgap) is GONE, with
+  all 27 of its call sites now `showSuccess`/`showError`. Strings unchanged.
+- **Dialogs** (v4 has NO inline error surface in any of them — checked
+  file-by-file): `chat-rename-modal`, `chat-project-modal`,
+  `reattribute-message-dialog`, `bulk-character-replace-modal`,
+  `merge-conversation-modal`, `select-llm-profile-dialog`,
+  `tools/run-tool-modal`, `tools/chat-tool-settings-modal`,
+  `screens/prospero/project-tool-settings-modal`.
+- **Sidebar sections** `chat-section` + `visibility-section`: the two-tone
+  `status` flash line retired for toasts; v4's copy unchanged.
+- **Three v4 toasts v5 had never raised at all** are now live: the failed
+  connection-profile load (`SelectLLMProfileDialog.tsx:84`) and the failed
+  tool-inventory load in BOTH tool dialogs (`RunToolModal.tsx:91`,
+  `ChatToolSettingsModal.tsx:57`) — v5 had a loading arm but no failure arm.
+- **v4's turn-management toasts, four of which v5 had silently swallowed**:
+  `handleContinue`'s three arms (no active characters / query failed / nobody to
+  speak — the last is v4's only `showInfoToast` in the family) and
+  `handleNudge`'s user-controlled refusal.
+
+**One deliberate information loss, and it is fidelity.** v5's `skipError` banner
+(`turn-controls.ts` + the `skipError` signal) showed the SERVER's refusal
+sentence. v4 cannot: `callTurnAction` swallows the body into a `console.error`
+and returns null, so `handleSkipUserTurn` toasts the fixed line "Failed to skip
+turn. Please try again." (`useTurnManagement.ts:212-215`). The banner was an
+invention of the no-toast era and is retired with the rest; the spec now pins
+v4's line and says why. The now-unused `.qt-chat-turn-error` rule lives in
+`_chat.css`, which is **lane D's file this round** — left in place, flagged for
+the unifier.
+
+**Specs:** every affected spec reads `TestBed.inject(ToastService).toasts()`
+instead of the retired markup, asserting type AND message. Full suite green
+(264 files / 3,183 tests) — the sole intermediate red was a parallel-run flake
+in `courier-bubble.spec.ts` that passed 8/8 in isolation and did not recur.

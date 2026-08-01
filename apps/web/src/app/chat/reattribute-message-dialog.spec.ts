@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { ToastService } from '../ui/toast.service';
 import type { ParticipantDetail } from '../core/core-contract';
 import { ReattributeMessageDialog } from './reattribute-message-dialog';
 
@@ -49,7 +50,7 @@ function participant(id: string, name: string, title: string | null = null): Par
       [messageId]="'msg-1'"
       [currentParticipantId]="current()"
       [participants]="participants()"
-      (reattributed)="reported.push($event)"
+      (reattributed)="emitted = emitted + 1"
       (close)="closed = closed + 1"
     />
   `,
@@ -60,7 +61,7 @@ class Host {
     participant('p1', 'Lorian'),
     participant('p2', 'Riya', 'Quartermaster'),
   ]);
-  readonly reported: string[] = [];
+  emitted = 0;
   closed = 0;
 }
 
@@ -87,6 +88,13 @@ function submit(fixture: ComponentFixture<Host>): HTMLButtonElement {
   return (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
     (b) => b.textContent!.trim().startsWith('Re-attribut'),
   )!;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('ReattributeMessageDialog', () => {
@@ -120,8 +128,9 @@ describe('ReattributeMessageDialog', () => {
     expect(sent).toEqual([
       { type: 'messageReattribute', messageId: 'msg-1', newParticipantId: 'p2' },
     ]);
-    expect(fixture.componentInstance.reported).toEqual([
-      'Message re-attributed to Riya. 2 memories deleted.',
+    expect(fixture.componentInstance.emitted).toBe(1);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Message re-attributed to Riya. 2 memories deleted.' },
     ]);
     expect(fixture.componentInstance.closed).toBe(1);
   });
@@ -133,7 +142,7 @@ describe('ReattributeMessageDialog', () => {
     fixture.detectChanges();
     submit(fixture).click();
     await fixture.whenStable();
-    expect(fixture.componentInstance.reported).toEqual(['Message re-attributed to Riya.']);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Message re-attributed to Riya.' }]);
 
     answer = { memoriesDeleted: 1 };
     const second = await render();
@@ -141,8 +150,8 @@ describe('ReattributeMessageDialog', () => {
     second.detectChanges();
     submit(second).click();
     await second.whenStable();
-    expect(second.componentInstance.reported).toEqual([
-      'Message re-attributed to Riya. 1 memory deleted.',
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Message re-attributed to Riya. 1 memory deleted.' },
     ]);
   });
 
@@ -162,7 +171,7 @@ describe('ReattributeMessageDialog', () => {
     submit(fixture).click();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('the clerk refuses');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the clerk refuses' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 });

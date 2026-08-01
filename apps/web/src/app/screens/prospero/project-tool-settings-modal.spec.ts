@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import type { AvailableTool } from '../../chat/tools/tool-settings';
 import { ProjectToolSettingsModal } from './project-tool-settings-modal';
+import { ToastService } from '../../ui/toast.service';
 
 function tool(over: Partial<AvailableTool> & { name: string }): AvailableTool {
   return {
@@ -65,6 +66,13 @@ function saveButton(fixture: ComponentFixture<unknown>): HTMLButtonElement {
   return Array.from(
     fixture.nativeElement.querySelectorAll('[qt-modal-footer] button') as NodeListOf<HTMLButtonElement>,
   ).find((b) => b.textContent?.includes('Save'))!;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('qt-project-tool-settings-modal (v4 ProjectToolSettingsModal)', () => {
@@ -149,7 +157,7 @@ describe('qt-project-tool-settings-modal (v4 ProjectToolSettingsModal)', () => {
     saveButton(fixture).click();
     await settle(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('Failed to save tool settings');
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to save tool settings' }]);
     expect(closed).toBe(0);
   });
 });

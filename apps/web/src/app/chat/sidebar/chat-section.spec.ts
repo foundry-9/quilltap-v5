@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { ChatSection, type ChatSectionState } from './chat-section';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The sidebar's Chat section — above all **the Story's Clock**: the copy
@@ -135,6 +136,13 @@ async function choose(
   fixture.detectChanges();
 }
 
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('ChatSection — the Story’s Clock', () => {
   beforeEach(() => {
     sent.length = 0;
@@ -180,7 +188,10 @@ describe('ChatSection — the Story’s Clock', () => {
     // The chat GET never returns the column (a v4 route gap ported faithfully),
     // so the select would snap back without the local adoption.
     expect(clockSelect(fixture).value).toBe('narrative');
-    expect(fixture.nativeElement.textContent).toContain('The story now keeps its own hours');
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'The story now keeps its own hours',
+    });
 
     await choose(fixture, clockSelect(fixture), 'realtime');
     expect(sent[1]).toEqual({
@@ -189,9 +200,10 @@ describe('ChatSection — the Story’s Clock', () => {
       chat: { timelineMode: 'realtime' },
     });
     expect(clockSelect(fixture).value).toBe('realtime');
-    expect(fixture.nativeElement.textContent).toContain(
-      'The story is back on the clock on the wall',
-    );
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'The story is back on the clock on the wall',
+    });
   });
 
   it('keeps the previous clock and shows the error when the write fails', async () => {
@@ -201,7 +213,7 @@ describe('ChatSection — the Story’s Clock', () => {
 
     expect(fixture.componentInstance.refetched).toBe(0);
     expect(clockSelect(fixture).value).toBe('realtime');
-    expect(fixture.nativeElement.textContent).toContain('the clock is stuck');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the clock is stuck' }]);
   });
 });
 
@@ -230,9 +242,10 @@ describe('ChatSection — the other per-chat controls', () => {
       { type: 'chatUpdate', chatId: 'chat-1', chat: { imageProfileId: null } },
       { type: 'chatUpdate', chatId: 'chat-1', chat: { alertCharactersOfLanternImages: false } },
     ]);
-    expect(fixture.nativeElement.textContent).toContain(
-      'Lantern images will stay silent for this chat',
-    );
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'Lantern images will stay silent for this chat',
+    });
   });
 
   /**
@@ -283,14 +296,14 @@ describe('ChatSection — the other per-chat controls', () => {
     expect(sentData.filter((r) => r['type'] === 'chatToggleAvatarGeneration')).toEqual([
       { type: 'chatToggleAvatarGeneration', chatId: 'chat-1' },
     ]);
-    expect(fixture.nativeElement.textContent).toContain('Avatar generation enabled');
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Avatar generation enabled' });
     expect(fixture.componentInstance.refetched).toBe(1);
 
     toggleAnswer = { avatarGenerationEnabled: false };
     avatarBox(fixture).dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Avatar generation disabled');
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Avatar generation disabled' });
   });
 
   it('reports a failed toggle and does not ask for a refetch', async () => {
@@ -299,7 +312,7 @@ describe('ChatSection — the other per-chat controls', () => {
     avatarBox(fixture).dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('unknown variant');
+    expect(toasts()).toEqual([{ type: 'error', message: 'unknown variant' }]);
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 
@@ -367,7 +380,7 @@ describe('ChatSection — the agent-mode badge', () => {
 
     expect(sentData.find((r) => r.type === 'chatToggleAgentMode')!['enabled']).toBe(false);
     expect(badge(fixture).textContent).toContain('Agent Off');
-    expect(fixture.nativeElement.textContent).toContain('Agent mode disabled');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Agent mode disabled' }]);
   });
 
   it('adopts `agentModeEnabled` when the server drops the resolved key', async () => {
@@ -381,7 +394,7 @@ describe('ChatSection — the agent-mode badge', () => {
     expect(badge(fixture).textContent).toContain('Agent On');
     // v4 computes the wording from `resolvedAgentModeEnabled` ALONE, so an
     // absent resolved key reads as "set to inherit" even though the badge lit.
-    expect(fixture.nativeElement.textContent).toContain('Agent mode set to inherit');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Agent mode set to inherit' }]);
   });
 
   it('leaves the badge where it was when the toggle fails', async () => {
@@ -391,7 +404,7 @@ describe('ChatSection — the agent-mode badge', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(badge(fixture).textContent).toContain('Agent Off');
-    expect(fixture.nativeElement.textContent).toContain('the switchboard is out');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the switchboard is out' }]);
   });
 });
 

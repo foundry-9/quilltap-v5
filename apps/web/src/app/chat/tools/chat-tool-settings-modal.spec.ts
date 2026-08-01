@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { CoreClient } from '../../core/core-client';
 import { ChatToolSettingsModal } from './chat-tool-settings-modal';
 import type { AvailableTool } from './tool-settings';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * LLM Tool Settings (v4 `ChatToolSettingsModal.tsx` + `ToolSettingsContent.tsx`).
@@ -86,6 +87,13 @@ function save(fixture: ComponentFixture<Host>): HTMLButtonElement {
   return (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
     (b) => b.textContent!.trim() === 'Save' || b.textContent!.trim() === 'Saving...',
   )!;
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('ChatToolSettingsModal', () => {
@@ -221,7 +229,7 @@ describe('ChatToolSettingsModal', () => {
     fixture.detectChanges();
     save(fixture).click();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('the cabinet is jammed');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the cabinet is jammed' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 });

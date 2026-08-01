@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * The per-chat visibility overrides this section edits. `null` ⇒ inherit.
@@ -209,22 +210,12 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
           </select>
         </div>
       </div>
-
-      @if (status(); as flash) {
-        <p
-          class="text-xs"
-          [class.qt-text-secondary]="flash.kind === 'success'"
-          [class.qt-text-danger]="flash.kind === 'error'"
-          role="status"
-        >
-          {{ flash.message }}
-        </p>
-      }
     </div>
   `,
 })
 export class VisibilitySection {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly state = input.required<VisibilityState>();
@@ -237,7 +228,6 @@ export class VisibilitySection {
   readonly chatUpdated = output<void>();
 
   protected readonly intervalOptions = CORE_WHISPER_INTERVAL_OPTIONS;
-  protected readonly status = signal<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   private readonly localSharedVaults = signal(false);
   private readonly localCoreWhisper = signal<boolean | null>(null);
@@ -380,7 +370,6 @@ export class VisibilitySection {
     failureMessage: string,
     revert: () => void,
   ): Promise<void> {
-    this.status.set(null);
     try {
       const resp = await this.core.dispatch({
         type: 'chatUpdate',
@@ -391,12 +380,12 @@ export class VisibilitySection {
         throw new Error(failureMessage);
       }
       if (successMessage) {
-        this.status.set({ kind: 'success', message: successMessage });
+        this.toasts.showSuccess(successMessage);
       }
       this.chatUpdated.emit();
     } catch {
       revert();
-      this.status.set({ kind: 'error', message: failureMessage });
+      this.toasts.showError(failureMessage);
     }
   }
 }

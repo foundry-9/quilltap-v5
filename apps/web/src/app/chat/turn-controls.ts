@@ -49,9 +49,6 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
             </button>
           }
         </div>
-        @if (skipError(); as err) {
-          <div class="qt-chat-turn-error px-4 py-1 text-sm qt-text-danger">{{ err }}</div>
-        }
       }
 
       <div class="qt-chat-turn-controls-row flex items-center gap-2 px-4 py-2">
@@ -95,7 +92,6 @@ export class TurnControls {
   /** When true, the responder must speak (everyone else passed) — no Skip. */
   readonly mustSpeak = input(false);
   /** A refusal message from a rejected skip (v4's exact copy), or null. */
-  readonly skipError = input<string | null>(null);
   /** The next LLM speaker's name, or null to hide the Nudge button. */
   readonly nudgeTargetName = input<string | null>(null);
 

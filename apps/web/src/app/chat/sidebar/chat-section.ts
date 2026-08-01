@@ -8,6 +8,7 @@ import type { ApiKeyDto, ImageProfileDto, RoleplayTemplateDto } from '../../core
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon } from '../../ui/icon';
+import { ToastService } from '../../ui/toast.service';
 
 /** The chat-record fields this section edits. `null` ⇒ not set / inherit. */
 export interface ChatSectionState {
@@ -58,9 +59,8 @@ export interface ChatSectionState {
  * neither client can read the column back. The gap is a v4-side bug and is
  * reported as such; v5 does not "fix" it by inventing a projection field.
  *
- * **2. No toast system in v5.** v4's `showSuccessToast` / `showErrorToast` copy
- * is carried verbatim into the inline status line under the selects (the
- * established v5 substitute).
+ * **2. The outcomes are toasts**, v4's own (`ChatSidebar.tsx:950-1081`), with
+ * v4's copy verbatim.
  *
  * **3. Every write goes through the `chat` bag.** v4 posts the template /
  * image-profile / announce writes as TOP-LEVEL keys (`{roleplayTemplateId}`)
@@ -259,22 +259,12 @@ export interface ChatSectionState {
           <span>Regenerate Background</span>
         </button>
       }
-
-      @if (status(); as flash) {
-        <p
-          class="text-xs"
-          [class.qt-text-secondary]="flash.kind === 'success'"
-          [class.qt-text-danger]="flash.kind === 'error'"
-          role="status"
-        >
-          {{ flash.message }}
-        </p>
-      }
     </div>
   `,
 })
 export class ChatSection {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly state = input.required<ChatSectionState>();
@@ -324,16 +314,14 @@ export class ChatSection {
    */
   protected async onAgentModeToggle(): Promise<void> {
     this.agentModeSaving.set(true);
-    this.status.set(null);
     try {
       const result = await toggleAgentMode(this.core, this.chatId(), this.localAgentMode());
       this.localAgentMode.set(result.enabled);
-      this.status.set({ kind: 'success', message: `Agent mode ${result.status}` });
+      this.toasts.showSuccess(`Agent mode ${result.status}`);
     } catch (error) {
-      this.status.set({
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Failed to toggle agent mode',
-      });
+      this.toasts.showError(
+        error instanceof Error ? error.message : 'Failed to toggle agent mode',
+      );
     } finally {
       this.agentModeSaving.set(false);
     }
@@ -343,17 +331,14 @@ export class ChatSection {
     this.avatarGenSaving.set(true);
     try {
       const enabled = await toggleAvatarGeneration(this.core, this.chatId());
-      this.status.set({
-        kind: 'success',
-        message:
-          enabled === false ? 'Avatar generation disabled' : 'Avatar generation enabled',
-      });
+      this.toasts.showSuccess(
+        enabled === false ? 'Avatar generation disabled' : 'Avatar generation enabled',
+      );
       this.chatUpdated.emit();
     } catch (err) {
-      this.status.set({
-        kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to toggle avatar generation',
-      });
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to toggle avatar generation',
+      );
     } finally {
       this.avatarGenSaving.set(false);
     }
@@ -363,7 +348,6 @@ export class ChatSection {
   protected readonly imageProfileSaving = signal(false);
   protected readonly alertImagesSaving = signal(false);
   protected readonly timelineModeSaving = signal(false);
-  protected readonly status = signal<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   /**
    * The operator's current choice per control. Seeded from the chat record and
@@ -537,7 +521,6 @@ export class ChatSection {
     revert: () => void,
   ): Promise<void> {
     saving.set(true);
-    this.status.set(null);
     try {
       const resp = await this.core.dispatch({
         type: 'chatUpdate',
@@ -547,12 +530,12 @@ export class ChatSection {
       if (resp.type === 'error') {
         throw new Error(resp.data.message || fallbackError);
       }
-      this.status.set({ kind: 'success', message: successMessage });
+      this.toasts.showSuccess(successMessage);
       this.chatUpdated.emit();
     } catch (error) {
       revert();
       const msg = error instanceof Error ? error.message : String(error);
-      this.status.set({ kind: 'error', message: msg || fallbackError });
+      this.toasts.showError(msg || fallbackError);
     } finally {
       saving.set(false);
     }

@@ -11,6 +11,7 @@ import {
 import { CoreClient } from '../core/core-client';
 import type { MessageDto, ParticipantDetail } from '../core/core-contract';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 import { bulkReattribute, type RoleFilter } from './chat-admin.api';
 
 /**
@@ -155,9 +156,6 @@ export const UNASSIGNED_USER = '__UNASSIGNED__';
             }
           }
 
-          @if (error(); as message) {
-            <p class="text-sm qt-text-danger" role="status">{{ message }}</p>
-          }
         </div>
 
         <div class="qt-dialog-footer flex justify-end gap-2">
@@ -184,13 +182,14 @@ export const UNASSIGNED_USER = '__UNASSIGNED__';
 })
 export class BulkCharacterReplaceModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly participants = input.required<ParticipantDetail[]>();
   readonly messages = input.required<MessageDto[]>();
 
   /** v4 `onSuccess()` — the parent refetches and reports the counts. */
-  readonly reattributed = output<string>();
+  readonly reattributed = output<void>();
   readonly close = output<void>();
 
   protected readonly unassigned = UNASSIGNED_USER;
@@ -205,7 +204,6 @@ export class BulkCharacterReplaceModal {
   protected readonly target = signal('');
   protected readonly roleFilter = signal<RoleFilter>('both');
   protected readonly submitting = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   /** v4 `hasUnassignedMessages` (:70) — gates the sentinel option. */
   protected readonly hasUnassignedMessages = computed(() =>
@@ -268,15 +266,14 @@ export class BulkCharacterReplaceModal {
   /** v4 `handleSubmit` (:136-188). */
   protected async onSubmit(): Promise<void> {
     if (!this.source() || !this.target()) {
-      this.error.set('Please select both source and target participants');
+      this.toasts.showError('Please select both source and target participants');
       return;
     }
     if (this.affectedCount() === 0) {
-      this.error.set('No messages match the selected criteria');
+      this.toasts.showError('No messages match the selected criteria');
       return;
     }
 
-    this.error.set(null);
     this.submitting.set(true);
     try {
       const result = await bulkReattribute(this.core, {
@@ -297,12 +294,11 @@ export class BulkCharacterReplaceModal {
           ` ${result.memoriesDeleted} ` +
           `${result.memoriesDeleted === 1 ? 'memory' : 'memories'} deleted.`;
       }
-      this.reattributed.emit(message);
+      this.toasts.showSuccess(message);
+      this.reattributed.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(
-        err instanceof Error ? err.message : 'Failed to re-attribute messages',
-      );
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to re-attribute messages');
     } finally {
       this.submitting.set(false);
     }

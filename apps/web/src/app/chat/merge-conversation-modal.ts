@@ -17,6 +17,7 @@ import {
 } from '../screens/new-chat/outfit-selector';
 import { formatRelativeDate } from '../screens/settings/system/tasks-queue.api';
 import { Icon } from '../ui/icon';
+import { ToastService } from '../ui/toast.service';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';
 
 /** v4 `presentCharacters` (`MergeConversationModal.tsx:63-74`). */
@@ -186,9 +187,6 @@ export function presentCharacters(chat: EnrichedChatSummary): { id: string; name
                 }
               }
 
-              @if (error(); as message) {
-                <p class="text-sm qt-text-danger" role="status">{{ message }}</p>
-              }
             </div>
           }
         </div>
@@ -233,6 +231,7 @@ export function presentCharacters(chat: EnrichedChatSummary): { id: string; name
 })
 export class MergeConversationModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
   /** The chat being merged INTO. */
@@ -241,13 +240,12 @@ export class MergeConversationModal {
   readonly existingCharacterIds = input.required<string[]>();
 
   /** v4 `onMerged()` — the parent refetches; the sentence is v4's toast copy. */
-  readonly merged = output<string>();
+  readonly merged = output<void>();
   readonly close = output<void>();
 
   protected readonly step = signal<'pick' | 'configure'>('pick');
   protected readonly search = signal('');
   protected readonly merging = signal(false);
-  protected readonly error = signal<string | null>(null);
   protected readonly outfitSelections = signal<ChatCreateOutfitSelectionInput[]>([]);
   private readonly source = signal<EnrichedChatSummary | null>(null);
   private readonly includedIds = signal<Set<string>>(new Set());
@@ -354,7 +352,6 @@ export class MergeConversationModal {
     if (!src || characters.length === 0) return;
 
     const includedIds = new Set(characters.map((c) => c.id));
-    this.error.set(null);
     this.merging.set(true);
     try {
       const count = await mergeConversation(this.core, {
@@ -365,15 +362,16 @@ export class MergeConversationModal {
         outfitSelections: this.outfitSelections().filter((s) => includedIds.has(s.characterId)),
       });
       const merged = count ?? characters.length;
-      this.merged.emit(
+      this.toasts.showSuccess(
         merged === 1
           ? `Merged 1 character from “${src.title}”`
           : `Merged ${merged} characters from “${src.title}”`,
       );
+      this.merged.emit();
       await this.queryClient.invalidateQueries({ queryKey: ['chats'] });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to merge conversation');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to merge conversation');
     } finally {
       this.merging.set(false);
     }

@@ -36,6 +36,7 @@ import {
   type WorkspaceBackdropRegistry,
 } from '../../workspace/workspace-contract';
 import { SalonConversation } from './salon-conversation';
+import { ToastService } from '../../ui/toast.service';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
   return {
@@ -191,6 +192,13 @@ async function render(client: Partial<CoreClient>): Promise<ComponentFixture<Sal
  * the tool-result subscription) defers to a one-shot effect until the input
  * resolves. The read path must render identically.
  */
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
+
 describe('SalonConversation (workspace-tab mode)', () => {
   async function renderTab(
     client: Partial<CoreClient>,
@@ -520,9 +528,9 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
     await settle(fixture);
 
     expect(s.calls).toContain('chatRegenerateBackground');
-    const flash = fixture.nativeElement.querySelector('.qt-alert-success');
-    expect(flash).not.toBeNull();
-    expect(flash.textContent).toContain('Story background regeneration queued');
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Story background regeneration queued' },
+    ]);
   });
 
   it('flashes the "already in progress" arm verbatim too (both §2 arms are successes)', async () => {
@@ -539,8 +547,9 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
     regenEntry(fixture)!.click();
     await settle(fixture);
 
-    const flash = fixture.nativeElement.querySelector('.qt-alert-success');
-    expect(flash.textContent).toContain('Story background generation already in progress');
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Story background generation already in progress' },
+    ]);
   });
 
   it('surfaces the server error verbatim (the §2 badRequest strings)', async () => {
@@ -555,9 +564,9 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
     regenEntry(fixture)!.click();
     await settle(fixture);
 
-    const flash = fixture.nativeElement.querySelector('.qt-alert-error');
-    expect(flash).not.toBeNull();
-    expect(flash.textContent).toContain('No characters in chat to generate background for.');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'No characters in chat to generate background for.' },
+    ]);
   });
 
   it('keeps DISPLAYING a background while generation is switched off (display is unconditional)', async () => {

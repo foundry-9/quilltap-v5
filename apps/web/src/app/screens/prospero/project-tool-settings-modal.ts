@@ -11,6 +11,7 @@ import {
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
+import { ToastService } from '../../ui/toast.service';
 import { listTools } from '../../chat/chat-admin.api';
 import { ToolSettingsContent } from '../../chat/tools/tool-settings-content';
 import { Modal } from '../../ui/modal';
@@ -55,9 +56,6 @@ import { Modal } from '../../ui/modal';
         (disabledGroupsChange)="localGroups.set($event)"
       />
 
-      @if (error(); as message) {
-        <p class="text-xs qt-text-danger mt-3" role="status">{{ message }}</p>
-      }
 
       <div qt-modal-footer class="flex justify-end gap-2">
         <button
@@ -82,6 +80,7 @@ import { Modal } from '../../ui/modal';
 })
 export class ProjectToolSettingsModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly projectId = input.required<string>();
   readonly disabledTools = input.required<string[]>();
@@ -94,7 +93,6 @@ export class ProjectToolSettingsModal {
   protected readonly localTools = signal<ReadonlySet<string>>(new Set());
   protected readonly localGroups = signal<ReadonlySet<string>>(new Set());
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   /**
    * The inventory with NO `chatId` — v4 asks for the bare `/api/v1/tools` here
@@ -128,7 +126,6 @@ export class ProjectToolSettingsModal {
 
   /** v4 `handleSave` (`:56-81`). */
   protected async onSave(): Promise<void> {
-    this.error.set(null);
     this.saving.set(true);
     const defaultDisabledTools = [...this.localTools()];
     const defaultDisabledToolGroups = [...this.localGroups()];
@@ -139,13 +136,14 @@ export class ProjectToolSettingsModal {
         defaultDisabledTools,
         defaultDisabledToolGroups,
       });
+      this.toasts.showSuccess('Default tool settings saved');
       this.saved.emit({
         disabledTools: defaultDisabledTools,
         disabledToolGroups: defaultDisabledToolGroups,
       });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to save tool settings');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save tool settings');
     } finally {
       this.saving.set(false);
     }

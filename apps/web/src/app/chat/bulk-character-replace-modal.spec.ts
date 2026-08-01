@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { ToastService } from '../ui/toast.service';
 import type { MessageDto, ParticipantDetail } from '../core/core-contract';
 import { BulkCharacterReplaceModal, UNASSIGNED_USER } from './bulk-character-replace-modal';
 
@@ -65,7 +66,7 @@ function message(id: string, role: string, participantId: string | null): Messag
       [chatId]="'chat-1'"
       [participants]="participants()"
       [messages]="messages()"
-      (reattributed)="reported.push($event)"
+      (reattributed)="emitted = emitted + 1"
       (close)="closed = closed + 1"
     />
   `,
@@ -81,7 +82,7 @@ class Host {
     message('m3', 'USER', 'p2'),
     message('m4', 'USER', null),
   ]);
-  readonly reported: string[] = [];
+  emitted = 0;
   closed = 0;
 }
 
@@ -117,6 +118,13 @@ function submit(fixture: ComponentFixture<Host>): HTMLButtonElement {
 
 function options(fixture: ComponentFixture<Host>, id: string): string[] {
   return Array.from(select(fixture, id).options).map((o) => o.value);
+}
+
+/** The toast stack this render raised, newest last. */
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
 }
 
 describe('BulkCharacterReplaceModal', () => {
@@ -210,8 +218,9 @@ describe('BulkCharacterReplaceModal', () => {
     choose(fixture, 'qt-bulk-target', 'p2');
     submit(fixture).click();
     await fixture.whenStable();
-    expect(fixture.componentInstance.reported).toEqual([
-      '3 messages re-attributed to Riya. 2 memories deleted.',
+    expect(fixture.componentInstance.emitted).toBe(1);
+    expect(toasts()).toEqual([
+      { type: 'success', message: '3 messages re-attributed to Riya. 2 memories deleted.' },
     ]);
 
     const second = await render();
@@ -220,7 +229,9 @@ describe('BulkCharacterReplaceModal', () => {
     choose(second, 'qt-bulk-target', 'p2');
     submit(second).click();
     await second.whenStable();
-    expect(second.componentInstance.reported).toEqual(['1 message re-attributed to Riya.']);
+    expect(toasts()).toEqual([
+      { type: 'success', message: '1 message re-attributed to Riya.' },
+    ]);
   });
 
   it('refuses the whole dialog when there is nothing it could move', async () => {
@@ -240,7 +251,7 @@ describe('BulkCharacterReplaceModal', () => {
     submit(fixture).click();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('the ledger is jammed');
+    expect(toasts()).toEqual([{ type: 'error', message: 'the ledger is jammed' }]);
     expect(fixture.componentInstance.closed).toBe(0);
   });
 });

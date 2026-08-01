@@ -51,6 +51,12 @@ A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it
 missing entirely.
+Chat actions report themselves again. Renaming a chat, filing it in a project,
+re-attributing a message, merging a conversation, running a tool, changing a
+sidebar setting, and the rest now raise a notification the way the previous
+version did, instead of a line of text tucked inside the dialog — and several
+failures that were silent, such as a tool list that would not load, now say so.
+
 Quilltap has notifications again. A short message appears in the bottom-right
 corner when something finishes or fails, and clears itself after three seconds,
 the way the previous version did.

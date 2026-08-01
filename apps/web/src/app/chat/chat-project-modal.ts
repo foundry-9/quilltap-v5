@@ -13,6 +13,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../core/core-client';
 import { fetchProjects, projectKeys } from '../screens/prospero/projects.api';
 import { Modal } from '../ui/modal';
+import { ToastService } from '../ui/toast.service';
 
 /**
  * Assign to Project (v4 `components/chat/ChatProjectModal.tsx`, 180 LOC) —
@@ -81,9 +82,6 @@ import { Modal } from '../ui/modal';
           project.
         </p>
 
-        @if (error(); as message) {
-          <p class="qt-text-xs qt-text-danger" role="status">{{ message }}</p>
-        }
       </div>
 
       <div qt-modal-footer class="flex justify-end gap-2">
@@ -109,18 +107,18 @@ import { Modal } from '../ui/modal';
 })
 export class ChatProjectModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly chatId = input.required<string>();
   readonly projectId = input<string | null>(null);
   readonly projectName = input<string | null>(null);
 
-  /** v4 `onSuccess` → `fetchChat`; the sentence is v4's own toast copy. */
-  readonly assigned = output<string>();
+  /** v4 `onSuccess` → `fetchChat`. */
+  readonly assigned = output<void>();
   readonly close = output<void>();
 
   protected readonly selected = signal<string | null>(null);
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   private readonly projectsQuery = injectQuery(() => ({
     queryKey: projectKeys.list(),
@@ -142,7 +140,6 @@ export class ChatProjectModal {
       return;
     }
 
-    this.error.set(null);
     this.saving.set(true);
     try {
       const resp = await this.core.dispatch({
@@ -154,10 +151,11 @@ export class ChatProjectModal {
         throw new Error(resp.data.message || 'Failed to update project');
       }
       const name = next ? this.projects().find((p) => p.id === next)?.name : null;
-      this.assigned.emit(next ? `Chat moved to "${name}"` : 'Chat removed from project');
+      this.toasts.showSuccess(next ? `Chat moved to "${name}"` : 'Chat removed from project');
+      this.assigned.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to update project');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update project');
     } finally {
       this.saving.set(false);
     }
