@@ -47269,3 +47269,18 @@ touch are not in that list and are owned by **no** lane: `chat-view-model.ts`
 order's tier-1 item 2 requires auditing — and `apps/web/public/images/avatars/`
 (new, 11 files copied byte-identical from v4). Lane C converts toast call
 sites and neither file has one. `message-list.ts` was NOT touched.
+
+#### Addendum — a sixth divergence, found while auditing the expanded-chip paths
+
+A `systemSender` TOOL row (a user-initiated Prospero run) is a collapsed
+announcement chip on both sides, and opening it renders the tool card. v4's
+card header carries `getMessageAvatar`'s whole result — Prospero's portrait
+included (`VirtualizedMessageList.tsx:240-247`); v5's `tool-message.ts` had
+special-cased a Staff sender to the display name with a hardcoded
+`avatarUrl: null`, which was the honest thing to do while
+`resolveMessageAuthor` had no Staff arm. With the arm in place the special
+case is gone (`b76c42be`), and the audit table's verdicts hold for the
+TOOL-row form of every pair as well as the message form.
+
+`tool-message.ts` is the third file outside the order's named lane-D list;
+like the other two it is owned by no lane (it has no toast call site).
