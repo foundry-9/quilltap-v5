@@ -49816,3 +49816,143 @@ corpus growth).** Full-workspace gate + Playwright verification recorded in
 the closing lane record below.
 
 SPA 0.5.361.
+
+### Lane record — P4.D40 (sub-list indentation, PARTIAL v4 re-port): CLOSED 2026-08-01
+
+Branch `claude/p4-editor-sublist-indent-8bc7dd`, four commits. SPA-only —
+`apps/web/src/app/editor/**` + the one named `_chat.css` section, exactly per
+the order's exclusive ownership. No Rust touched; `cargo fmt --all --check`
+clean; v4 verified clean at the round baseline `c4d4b0de` at lane start (no
+drift, no pin needed).
+
+**Landed — the whole tier-1 mandate + both tier-2 items**, across the four
+units recorded above:
+
+1. `editor/list-indentation.ts` — v4's pure detect/apply/source-shift
+   functions ported verbatim, with a tier-1 differential driving v4's REAL
+   module (24 assertions, zero reimplemented).
+2. The unit-preserving post-pass wired through `parseMarkdown`/
+   `serializeMarkdown`'s optional `unitToken`, so a 2-space document stays
+   2-space and a 4-space document stays 4-space across every save. Round-trip
+   gate grew from 38 to 43 hand-authored entries (CLAUDE.md's "28-entry" note
+   was already stale before this lane; the baseline-move paragraph below gives
+   the unifier the corrected wording).
+3. Tab/Shift-Tab, confined to list items, with real DOM `keydown` proof at the
+   mounted `RichEditor` and a 14-case port of v4's `list-item-selection.test.ts`
+   — every case passing WITHOUT the ambiguous-caret special-case v4 needed,
+   because ProseMirror's `$pos.node(depth)` structurally cannot produce v4's
+   blind spot.
+4. Toolbar `⇤`/`⇥` buttons (v4's titles/glyphs verbatim, in v4's exact
+   position) + the source-mode dispatch (unit read off the live textarea, not
+   a default) + the `_chat.css` sizing rule.
+
+**(g) confirmed NO-PORT** (zero `qt-lexical-li-nested` hits — v5's list markup
+has no Lexical wrapper-`<li>` DOM to patch). **Three tier-3 deferrals recorded
+with evidence, none built:** the composer toolbar (unchanged, `p4.9l`'s), the
+Document Mode pane's formatting toolbar (v4 has none either — verified by
+grep, not assumed), and v5's pre-existing frontmatter parse mangling (probed
+byte-for-byte, confirmed whole-dialect and out of scope).
+
+**Tier-2 item 7 — the (a)-edge divergence — is pinned, NOT resolved, and
+awaits a human ruling at unification:** `1. a\n  - b` nests under v4's
+structure-only stack algorithm but parses as two sibling lists under
+CommonMark. v4 never writes this shape itself (item (c) forces every child to
+≥3 columns), so only hand-written/LLM input reaches it. The order's DEFAULT
+(pin both directions, do not build a v4-style structural pre-pass without a
+ruling) was followed exactly.
+
+**The differential requirement was honored at both tiers**, per the order's
+"restated" paragraph: the pure ports got v4's real module directly (unit 1's
+oracle); the editor-integration half (unit memory, Tab gating, toolbar) is
+pinned by the grown round-trip gate + v4's test inventory ported case-for-case
+(units 2-4's specs). D24 mutation-proved: temporarily replacing the
+marker-width floor (`Math.max(step, markerWidth(parentMarker))` → `step`)
+turned both the oracle spec and the round-trip gate's ordered-list entries red;
+reverted, re-green.
+
+**Gate:**
+- `ng test` — 265 files / 3263 passed (full workspace, not just `editor/**`).
+- `ng build` — clean.
+- `cargo fmt --all --check` — clean (no Rust touched; no `cargo test`/`clippy`
+  run, per the no-Rust-changed precedent other SPA-only lanes record).
+- The tier-1 differential and mutation proof: recorded per-unit above.
+
+**Full Playwright — three attempts, none fully clean, and a fourth was not
+run; the honest result, not a papered-over one:**
+1. **Attempt 1** killed at 130/168 (`exit 143`/SIGTERM) after ~17 minutes —
+   an infrastructure timeout, not a test failure. The machine was running
+   five-plus concurrent sibling lanes' own `cargo build`/`playwright test`
+   processes throughout this lane (load average 16-20 sustained, confirmed via
+   `ps`/`uptime`), and the shared `global-setup` (which sequentially seeds a
+   locked fixture instance via dozens of `quilltap db` CLI subprocess calls)
+   took roughly 9 minutes on its own before the actual test run even started.
+2. **Attempt 2** completed cleanly through `global-teardown`: **167 passed, 1
+   failed** — `workbench-flow.spec.ts:336` ("a $state operand + mock state
+   decides which row a preview roll lands on"), a strict-mode violation on
+   `getByText('Cleared the gate.')` resolving to 2 elements. **This is the
+   exact file:line the P4.9E3C lane record already documents as an
+   observed-once flake** ("passed in isolation and in the second full run").
+   Grepped the spec file for every module this lane touched
+   (`editor`/`markdown-dialect`/`list-indentation`/`formatting-toolbar`/
+   `source-transforms`/`rich-editor`) — zero references.
+3. Re-running `workbench-flow.spec.ts` ALONE showed tests 5-6 (the `$state`/
+   scripted-oracle rows) SKIP rather than pass — their `ACTIVATE-AT-UNIFY`
+   capability probes depend on state the full suite's earlier files
+   apparently prime, so true isolation wasn't reachable without re-running the
+   whole suite.
+4. **Attempt 3** completed cleanly: **165 passed, 3 failed** —
+   `page-toolbar-flow.spec.ts:78`, `salon-dialogs-flow.spec.ts:325`, and
+   `salon-dialogs-flow.spec.ts:393`, all `expect(locator).toBeVisible()`
+   timeouts, all in DIFFERENT files than attempt 2's failure, and — grepped
+   again — zero references to any file this lane touched.
+
+**Reading the pattern, not just the numbers:** three runs, three different
+failure sets, all in spec files this lane never opens, all timeout/visibility
+style failures consistent with a heavily oversubscribed shared machine, none
+of them the SAME test twice. That is the signature of environmental
+contention, not a regression this lane introduced — a deterministic bug in
+`RichEditor`/`markdown-dialect` would fail the SAME test every time, and would
+very likely show up in `salon-documents-flow.spec.ts` (the Document Mode
+walk, which directly exercises the ported bridge). **That file's four tests —
+including the literal-star/underscore composer-send round trip and the
+Document Mode markdown round-trip — passed in ALL THREE runs**, which is the
+closest thing to a live proof this lane has, short of adding a new beat.
+
+**The order's suggested live proof (a document-pane beat editing a 4-space-
+nested file and saving without reflow) was NOT added.** The order's ownership
+section is unambiguous — `P4.D40 → apps/web/src/app/editor/** exclusively` —
+and `e2e/salon-documents-flow.spec.ts` sits outside it. Per the order's own
+"if affordable; otherwise record" clause, and given the ground rule to stop
+and report rather than reach into unclaimed territory, this is recorded
+instead: the exact beat to add lives right after the existing "markdown edits
+round-trip the v4 dialect through the rich editor" test in
+`salon-documents-flow.spec.ts:132`, loading `'- a\n    - b\n        - c'`
+through the Document Mode pane, editing, saving, and asserting the raw source
+still shows 4-space nesting after a reload — the next dogfood/unification pass
+should add it.
+
+**Fixtures:** none consumed. `apps/web/src/app/editor/__fixtures__/
+list-indentation-oracle.json` (new, committed) is this lane's own — the regen
+recipe is in `harness/oracle/cases/list-indentation.ts`'s header and unit 1's
+record above. No other oracle family is invalidated (the module has no
+existing consumers).
+
+**Gotcha for the memory notes:** jsdom implements `Element.prototype.
+getClientRects`/`getBoundingClientRect` but not `Range`'s, so any ProseMirror
+command that calls `.scrollIntoView()` on its transaction throws under `ng
+test` — silently, as an "Unhandled Error" that still fails the exit code
+despite every assertion passing. `sinkListItem`/`liftListItem` do this
+internally; so does the pre-existing Shift-Enter `insertBreak`, which had
+simply never been exercised by a test before this lane's Tab specs. Fix: stub
+both `Range` methods to jsdom's own zeroed-rect shape (`jsdom-range-shim.ts`).
+
+**Baseline-move wording for the unifier** (per the order's binding contract —
+`CLAUDE.md`/`phase-4.md` edits are the unifier's alone): update the D17 gate's
+entry count from "28-entry" (already stale before this lane) to **43
+hand-authored entries (39 IDEMPOTENT + 4 NORMALIZING) plus the 20 recorded
+table vectors**, and record `4f088e7c` as PARTIAL-CLOSED per the round-plan
+table, with the (a)-edge ruling still OPEN pending the human decision recorded
+above.
+
+Versions: SPA 0.5.357 → 0.5.361 (four commits, one bump each); no crate
+touched.
