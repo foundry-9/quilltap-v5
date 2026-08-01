@@ -48259,3 +48259,42 @@ runtime, so these join the standing `p4.9i2` bank rather than needing a port —
 but note v5's shipped help text now describes a custom-tool format without
 `effects` or `chipLabel`, which is a user-visible staleness for that round to
 clear.
+
+### P4.D35 — the baseline-wording slice for the unifier
+
+The lane did NOT edit `CLAUDE.md` or `phase-4.md` (the baseline move is the
+unifier's). Replacement wording for the oracle-baseline paragraph, from this
+lane's half of the round:
+
+> **Oracle baseline: `c4d4b0de` (v4 HEAD, 2026-08-01).** v4's tree was CLEAN at
+> `c4d4b0de` throughout P4.D35, so its oracles regenerated straight from
+> `~/source/quilltap-server`; pin a detached worktree only on drift/dirty.
+> P4.D35 regenerated the whole pascal/tool/workbench family there — the NEW
+> `pascal_expressions` (`QT_ORACLE_PASCAL_EXPRESSIONS`), definition, execution,
+> both route families, definition-reader, run-custom description,
+> `tool_definitions` (+ `_canonical`), vocabulary, writers, workbench-route —
+> plus the neutrality set (`pascal_simulate`, `pascal_roster`,
+> `pascal_workbench`, `pascal_llm_consult`, `chats_messages_ops_tier2`,
+> `state_routes`, `state_cascade`). **The `pascal-run-custom-{main,mount}.db`
+> fixture was REBUILT** (new vault ids in the committed `.meta.json` sidecar),
+> so every family reading it dates to this round.
+
+Env vars this lane's gate needs (the new one is first):
+
+```
+QT_ORACLE_PASCAL_EXPRESSIONS      QT_ORACLE_PASCAL_DEFINITION
+QT_ORACLE_PASCAL_EXECUTION        QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE
+QT_ORACLE_PASCAL_RUN_CUSTOM_HANDLER  QT_ORACLE_PASCAL_DEFINITION_READER
+QT_ORACLE_PASCAL_RUN_CUSTOM       QT_ORACLE_TOOL_DEFINITIONS(+_CANONICAL)
+QT_ORACLE_PASCAL_VOCABULARY       QT_ORACLE_PASCAL_WRITERS
+QT_ORACLE_PASCAL_WORKBENCH_ROUTE  QT_ORACLE_PASCAL_SIMULATE
+QT_ORACLE_PASCAL_DISCOVERY        QT_ORACLE_PASCAL_WORKBENCH
+QT_ORACLE_PASCAL_LLM_CONSULT      QT_ORACLE_CHATSMSGOPS + QT_FIXTURE_CHATSMSGOPS
+QT_ORACLE_STATE_CASCADE           QT_ORACLE_STATE_ROUTES
+QT_FIXTURE_TMP_{MAIN,MOUNT,LLM}
+```
+
+Two regen recipes needed a mirrored `harness/oracle/fixtures/` directory
+alongside the staged `cases/` (the case files read their spec JSON with a
+`join(here, '..', 'fixtures', …)`), which the committed headers do not mention;
+the P4.D35 records above spell the working invocations out.
