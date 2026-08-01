@@ -47580,3 +47580,100 @@ fresh dist — **168/168 (3.8 m) and 168/168 (4.2 m), zero skips both
 times** — plus a third margin run after the docs were written.
 
 **Versions:** SPA 0.5.355 → 0.5.356 (spec-only; no crate touched).
+
+### Unification review (2026-08-01) — what §3 checked, and the one fix
+
+Single-lane round, so there were no cross-lane wires to close (§4 is
+empty by construction) and **no oracle family is affected** — the diff
+touches `apps/web/e2e/*.spec.ts`, the SPA version, and docs; zero Rust
+source, zero oracle case, zero fixture. Nothing was regenerated, and
+that is the honest disposition rather than a skipped step.
+
+**Read the 1,746 correctly.** No `QT_ORACLE_*` var was set, so all 285
+env-guarded differential files took their skip arm — and that arm is an
+`eprintln!("SKIP: …")` + `return`, which `cargo test` swallows for a
+passing test. Those families therefore **counted as passed while
+asserting nothing**. That is the same disposition every round uses (a
+round sets only the vars for the families it touched; here that set is
+empty, because no family's inputs moved), but the number must not be
+read as differential coverage. The differential claim this round rests
+on is structural, not executed: the Rust tree is byte-identical to
+main's, so those families would return exactly what they returned at
+the `ff12f491` round's green gate.
+
+Every load-bearing claim in the diff's comments was checked against the
+code rather than taken on trust, and all of them held:
+
+- `qt-toast-error` is the real class (`ui/toast-container.ts` `TYPE_CLASS`)
+  and the toast IS a direct `div` child of `[role="toast-container"]`, so
+  the tightened `> div.qt-toast-error` selector matches.
+- The claim that requiring the ERROR toast also proves the revert is
+  **true and structural**: `chat-rename-modal.ts:181-185` shows
+  `showError` and `useAutoRename.set(false)` / `box.checked = false` in
+  ONE synchronous catch block.
+- The diagnosed refetch is real: `salon-conversation.ts:656`
+  `(renamed)="onChatRenamed()"` → `invalidateQueries(['chat', id])`.
+- `check()` → `click()` is not a weakened assertion: `check()`'s own
+  post-click verification genuinely races that synchronous revert, and
+  the `chatRegenerateTitle` response waiter that replaces it is a
+  STRONGER proof the tick registered. The toast probe likewise got
+  strictly stronger (any non-empty toast → the error toast specifically).
+- The out-of-order `unlockState` overwrite the spec's comment describes
+  is **v4-faithful, and correctly NOT fixed unilaterally**: v4's
+  `components/providers/auto-lock-provider.tsx` `fetchConfig` is a plain
+  uncancelled `fetch` with no sequence guard. Papering over it in the
+  spec is the right call for a port.
+- The waiter cannot be satisfied by the beat's own bookkeeping:
+  `readTitle` issues its `chatGet` through `page.request` (an
+  APIRequestContext, dispatched from Node), which produces no page
+  network event. The lane's own repro is the proof — a `page.route`
+  delay reaches only page requests, and the hardened gesture still
+  waited.
+
+**The one finding, fixed on the unify branch** (`apps/web/e2e/
+settings-data-system-flow.spec.ts`, its own commit): the new comment
+said `autoLockMinutes` is "null while disabled". It is not — the field
+is `Option<f64>` under `#[serde(skip_serializing_if = "Option::is_none")]`
+(`api/types.rs:3194`), so while disabled the key is **absent**, and
+while enabled it is an **f64** that can reach the wire as `2.0`. Both
+new predicates therefore match the number as a PREFIX
+(`/"autoLockMinutes":\d/` and `.includes('"autoLockMinutes":2')`), and
+that looseness is load-bearing, not sloppiness: a maintainer
+"tightening" either one to a trailing `[,}]` would break it on the
+decimal. Nothing was behaviourally wrong — but a deflaking commit whose
+comments mis-describe the wire invites exactly the re-flake it was
+written to prevent, so the note now records the omitted-key shape and
+pins the prefix match as deliberate.
+
+**Nothing else blocked.** No scratch spec survived the lane, the
+`e2e-playwright-traps` memory had already been extended with the two
+Playwright-internals facts, and the SPA's own `ng build` NG8113 warning
+(`GroupsSection`'s unused `ErrorAlert` import) predates the lane and is
+untouched by it.
+
+**Gate (the unification's own, 2026-08-01):** `cargo fmt --all --check`;
+clippy `--workspace --all-targets -D warnings` **both** plain and with
+`--features quilltap-core/native-transport`; `cargo build --release`;
+`cargo test --workspace --no-fail-fast` → **407 test binaries / 1,746
+passed / 0 failed / 0 ignored**; `ng test` **3,210**; `ng build`;
+and the **FULL Playwright suite over release binaries and a fresh dist —
+168/168 in 3.9 m, zero skips**, both deflaked beats green. The suite ran
+with v4's own dev server live on the machine, so it is a green under
+load rather than on a quiet box — the condition the flakes needed.
+
+**Process note, recorded because it cost real time.** This unification
+lost roughly an hour to `until ! pgrep -f "<cmd>"` waiter loops that
+match their OWN command line and so never exit — the failure the
+`pgrep-until-loops-match-themselves` memory already described in full.
+The memory did not prevent it, so **the rule now lives in `CLAUDE.md`**
+(Standing rules → "NEVER wait on a long job with a `pgrep`/`grep` poll
+loop"). The severity is not the wasted watchers: a **gate step had been
+chained behind one**, so the Playwright suite *never started* while the
+transcript reported it running — an unrun gate is indistinguishable from
+a slow one. A second-order variant appeared too (watchers greping other
+watchers' output files, which outlive a fix aimed only at `pgrep` and
+then wait on a killed process forever), so the rule also forbids watching
+a watcher. Chain work from the completion notification, never from a poll
+for the previous step's absence.
+
+**Versions after the review fix:** SPA 0.5.357; no crate touched.

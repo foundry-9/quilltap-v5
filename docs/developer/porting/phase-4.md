@@ -3666,6 +3666,17 @@ The §3 unification review caught two CONVERTED-marked census rows missing
 v4's success toasts (fixed with spec pins) — full round record in
 `status-log.md`; gate numbers there and in the CHANGELOG.
 
+**Follow-up, CLOSED (2026-08-01):** the two full-suite-only Playwright
+intermittents this round's record flagged and spawned a chip for (the
+Rename Chat automatic-naming revert and the auto-lock idle warning under
+the fake clock) are **deflaked** — both were one shape, a page-initiated
+refetch the beat triggered but never awaited; both reproduced
+deterministically with injected delays before being hardened; no
+assertion weakened and no product code changed. The suite is
+**168/168, zero skips**. Nothing on the candidate list below moved.
+Record: `status-log.md` → "Follow-up — the two flake-prone beats
+deflaked" and its unification-review subsection.
+
 **Next candidates, in rough value order:**
 
 1. **A dogfood pass over this round's live surfaces** — the toast walk

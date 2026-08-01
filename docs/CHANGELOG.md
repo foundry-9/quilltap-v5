@@ -14,6 +14,20 @@ tests wait for the follow-up fetch itself — no assertion was weakened and no
 application code changed. Verified with the injected-delay reproductions
 turning green and two consecutive fully green end-to-end runs.
 
+Unified that deflake onto the main line. The review before merging checked
+each of the change's stated reasons against the actual application code
+rather than taking them on trust; all of them held, including the finding
+that one race the tests now step around is a faithful copy of how the old
+app behaves and so was correctly left alone rather than "fixed" into a
+difference. One correction was made: a new comment described a field as
+being sent as empty when the feature is off, when in fact the field is
+omitted entirely and is a decimal number when on — which is why the tests
+match it loosely on purpose. Left uncorrected, the next person to tidy
+that match would have reintroduced the very flake this work removed.
+Gate: formatting, both lint configurations, a release build, the full
+workspace test run, the unit suite (3,210), a production bundle, and the
+complete end-to-end suite — 168 of 168, no skips.
+
 Unified the dogfood-debt and sweep-debt round onto the main line: five
 parallel lanes, six work orders, all closed. In one round the app gained a
 guard that refuses to save a character whose vault settings file is corrupt

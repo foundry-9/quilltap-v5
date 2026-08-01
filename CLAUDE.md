@@ -127,6 +127,43 @@ the **differential oracle diff** (which imports v4's real `lib/` from the
 passes" — is not enough there; flag when a change still awaits the real-data /
 oracle proof, and flag version-specific crate API risks explicitly.
 
+### ⛔ NEVER wait on a long job with a `pgrep`/`grep` poll loop
+
+**This has cost the human hours at a time, repeatedly.** The gates here run
+long (`cargo test --workspace` = 400+ test binaries; the Playwright suite;
+release builds), and the temptation is to write
+`until ! pgrep -f "cargo test --workspace"; do sleep 30; done` and chain the
+next step behind it. **That loop can never exit: the watcher shell's OWN
+command line contains the pattern, so `pgrep -f` matches itself.** Launch
+several and they match each other too. The real job finishes in minutes and
+the watchers spin until timeout — and anything chained behind one (a
+Playwright run, a gate step) *never starts at all*, while the transcript
+still says "running". That is the worst failure mode available: silent,
+invisible, and indistinguishable from slow.
+
+- **Use `run_in_background: true` and wait for the completion
+  notification.** It fires exactly once, when the command actually exits,
+  and it carries the exit code. This is the mechanism for "tell me when X
+  finishes" AND for "run B after A" — chain by starting B *from the
+  notification*, never by polling for A's absence.
+- **Do not launch a second watcher for a job you are already watching**,
+  and **never watch a watcher.** One job, one background command, one
+  notification. A watcher that greps another watcher's output file is the
+  same bug wearing a disguise — it survives a fix aimed at `pgrep`, and
+  killing the root leaves it waiting on a corpse forever. Chains die
+  silently from the head down.
+- **Never pipe a gate through `tail -N`.** It discards the per-binary
+  `test result:` lines the round record needs; capture the full output (or
+  `grep -E "^test result|FAILED"`) and read the file.
+- If a process check is genuinely unavoidable: prefer a **sentinel file**
+  the job writes on exit and test for that; failing that match the binary
+  itself (`pgrep -x quilltap-web`), never a substring of your own command.
+  A `pgrep -f` whose pattern could appear in the watcher is always wrong.
+- **Symptom to recognize instantly:** several background tasks "still
+  running" long after the work must have finished, and `pgrep -fl <pat>`
+  shows only `/bin/zsh -c … eval 'until ! pgrep -f <pat>…'` shells. Kill
+  them and re-run the real command in the background.
+
 ### Architectural invariants to preserve from v4
 
 - **Single writer.** v4's parent-is-sole-DB-writer rule (forked child + buffered
@@ -1739,6 +1776,14 @@ records THERE. Update this summary only when a phase or round completes.
   OPEN rows, the app-wide renderingPatterns template gap (P4.26's banked
   finding), `p4.9h` — see phase-4.md. Versions: core 0.0.433, harness
   0.0.373, host 0.0.54, web 0.0.56, SPA 0.5.355; cli/tauri unchanged.
+  **The round's two full-suite-only Playwright intermittents are CLOSED
+  (2026-08-01, a spec-only follow-up):** both were one shape — a
+  page-initiated refetch the beat triggered but never awaited — each
+  reproduced deterministically with injected delays, then hardened with
+  no assertion weakened and no product code changed. Suite 168/168 zero
+  skips; SPA → 0.5.357, no crate touched. Nothing on the candidate list
+  moved. Record: `status-log.md` → "Follow-up — the two flake-prone
+  beats deflaked".
 - **Oracle baseline: `ff12f491` (v4 4.8.0-dev.135, 2026-07-31), adopted at
   the `ff12f491` drift-round unification — NO v4 lib drift debt remains.**
   The nineteen commits past `dcd9440a` are all absorbed or dispositioned
