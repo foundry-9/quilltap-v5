@@ -102,12 +102,29 @@ export function wearItemIntoSlots(currentSlots: EquippedSlots, item: WearableIte
 }
 
 /**
+ * Deterministic layer order for a default outfit: oldest first, items lacking
+ * `createdAt` last (v4 `default-outfit.ts` `sortForDefaultOutfit`).
+ *
+ * Ordering is observable now that personal and shared defaults can occupy the
+ * same slot — slot arrays are read inner-to-outer. Both sides of the wire apply
+ * this (the server's `sort_for_default_outfit`) so the composer's preview and
+ * the chat that opens agree.
+ */
+export function sortForDefaultOutfit(items: WardrobeItemDto[]): WardrobeItemDto[] {
+  return [...items].sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.POSITIVE_INFINITY;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : Number.POSITIVE_INFINITY;
+    return aTime - bTime;
+  });
+}
+
+/**
  * Build a per-slot snapshot from the items marked `isDefault: true`, skipping
  * archived ones (v4 `default-outfit.ts:13-20`).
  */
 export function buildDefaultOutfit(items: WardrobeItemDto[]): EquippedSlots {
   const next = freshSlots();
-  for (const item of items) {
+  for (const item of sortForDefaultOutfit(items)) {
     if (!item.isDefault || item.archivedAt) continue;
     for (const slot of item.types) next[slot].push(item.id);
   }

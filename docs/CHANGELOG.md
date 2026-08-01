@@ -196,6 +196,13 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Layered default outfits now appear in the same order in the composer's preview
+and in the chat that opens, and the "default" checkbox says what it will
+actually do. Marking a garment default in a project store or in the shared
+collection puts it on every character who can reach it, which is a much larger
+promise than "part of this character's default outfit" — so the label now
+depends on where the item is headed.
+
 Characters are now dressed from all three wardrobe tiers when a chat opens.
 Until now the two paths that dress everyone at the start — creating a chat and
 adding someone to one — looked only in that character's own vault, so a

@@ -10,6 +10,7 @@ import {
   freshSlots,
   groupEquippedSlots,
   nextCopyTitle,
+  sortForDefaultOutfit,
   takeOffBundleFromSlots,
   unionTypes,
   wearItemIntoSlots,
@@ -84,6 +85,46 @@ describe('buildDefaultOutfit (v4 default-outfit.ts:13-20)', () => {
     expect(out.top).toEqual(['shirt', 'dress']);
     expect(out.bottom).toEqual(['dress']);
     expect(out.accessories).toEqual([]);
+  });
+
+  it('layers defaults oldest-createdAt first regardless of input order', () => {
+    // The list arrives shared-tier-first from the merge, but the layer order is
+    // createdAt's to decide (v4 sortForDefaultOutfit) — the server applies the
+    // same sort, so the preview and the chat that opens agree.
+    const items = [
+      item({ id: 'own-jacket', isDefault: true, createdAt: '2026-01-01T00:00:03.000Z' }),
+      item({ id: 'general-shirt', isDefault: true, createdAt: '2026-01-01T00:00:01.000Z' }),
+      item({ id: 'project-waistcoat', isDefault: true, createdAt: '2026-01-01T00:00:02.000Z' }),
+    ];
+    expect(buildDefaultOutfit(items).top).toEqual([
+      'general-shirt',
+      'project-waistcoat',
+      'own-jacket',
+    ]);
+  });
+
+  it('puts an item with no createdAt last', () => {
+    // The DTO types `createdAt` as required, so this shape is only reachable
+    // from the wire (a partial payload) — which is exactly why v4's sort guards
+    // it. Cast through `unknown` to reach the runtime arm.
+    const undated = { ...item({ id: 'undated', isDefault: true }), createdAt: undefined };
+    const items = [
+      undated as unknown as WardrobeItemDto,
+      item({ id: 'dated', isDefault: true, createdAt: '2026-01-01T00:00:05.000Z' }),
+    ];
+    expect(buildDefaultOutfit(items).top).toEqual(['dated', 'undated']);
+  });
+});
+
+describe('sortForDefaultOutfit (v4 default-outfit.ts sortForDefaultOutfit)', () => {
+  it('does not mutate the input', () => {
+    const items = [
+      item({ id: 'b', createdAt: '2026-01-02T00:00:00.000Z' }),
+      item({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
+    ];
+    const sorted = sortForDefaultOutfit(items);
+    expect(sorted.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(items.map((i) => i.id)).toEqual(['b', 'a']);
   });
 });
 

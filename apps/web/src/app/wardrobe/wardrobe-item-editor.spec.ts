@@ -352,4 +352,31 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     // v4 `wardrobe-item-editor.tsx:383` — the create-mode success toast.
     expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Wardrobe item created' });
   });
+  // v4 `8bb1a958` — the default checkbox's promise depends on where the item is
+  // headed, because a default garment is worn by every character that can reach
+  // it. On edit only "shared vs not" is knowable (General vs project isn't
+  // recorded on the item), so that copy stays broad.
+  it('varies the default-outfit label by destination scope', async () => {
+    const create = await render();
+    const c = create.component as unknown as {
+      defaultOutfitLabel: () => string;
+      createScope: { set(v: 'character' | 'project' | 'global'): void };
+    };
+    expect(c.defaultOutfitLabel()).toBe("Part of this character's default outfit");
+    c.createScope.set('project');
+    expect(c.defaultOutfitLabel()).toBe('Worn by default by every character in this project');
+    c.createScope.set('global');
+    expect(c.defaultOutfitLabel()).toBe('Worn by default by every character');
+
+    const editOwn = await render({ item: item() });
+    expect(
+      (editOwn.component as unknown as { defaultOutfitLabel: () => string }).defaultOutfitLabel(),
+    ).toBe("Part of this character's default outfit");
+
+    const editShared = await render({ item: item({ characterId: null }) });
+    expect(
+      (editShared.component as unknown as { defaultOutfitLabel: () => string })
+        .defaultOutfitLabel(),
+    ).toBe('Worn by default by every character who can reach this item');
+  });
 });

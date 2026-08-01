@@ -157,7 +157,7 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
                 [checked]="draft().isDefault"
                 (change)="patch({ isDefault: $any($event.target).checked })"
               />
-              Default item
+              Worn by default by every character in this project
             </label>
             <label class="flex items-center gap-1.5 qt-text-small">
               <input

@@ -242,9 +242,7 @@ function charCountClass(current: number, max: number): string {
                 (change)="isDefault.set($any($event.target).checked)"
                 class="qt-checkbox mt-0.5"
               />
-              <span class="text-sm text-foreground">
-                Part of this character's default outfit
-              </span>
+              <span class="text-sm text-foreground">{{ defaultOutfitLabel() }}</span>
             </label>
           </div>
 
@@ -379,6 +377,28 @@ export class WardrobeItemEditor {
 
   /** Destination for a NEW item (v4 `:63-68`). */
   protected readonly createScope = signal<WardrobeCreateScope>('character');
+
+  /**
+   * A default garment is put on at the start of every chat by every character
+   * that can reach it — so the checkbox's promise depends on where the item is
+   * headed. On edit we know only that the item is shared (General vs project
+   * isn't recorded on the item itself), so that copy stays deliberately broad.
+   */
+  protected readonly defaultOutfitLabel = computed(() => {
+    if (this.isEditing()) {
+      return this.isShared()
+        ? 'Worn by default by every character who can reach this item'
+        : "Part of this character's default outfit";
+    }
+    switch (this.createScope()) {
+      case 'global':
+        return 'Worn by default by every character';
+      case 'project':
+        return 'Worn by default by every character in this project';
+      default:
+        return "Part of this character's default outfit";
+    }
+  });
 
   // Form state (v4 useFormState, :70-76).
   protected readonly title = signal('');
