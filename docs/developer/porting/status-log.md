@@ -47285,3 +47285,32 @@ TOOL-row form of every pair as well as the message form.
 
 `tool-message.ts` is the third file outside the order's named lane-D list;
 like the other two it is owned by no lane (it has no toast call site).
+
+#### Addendum — an e2e trap worth carrying: announcement chips are keyed by SENDER
+
+The first full-suite run reddened `salon-post-office-flow`'s own "post a staff
+announcement into the scene" beat. It reproduced deterministically with the two
+files run together and passed with either alone, so it was this lane's doing —
+but not a product regression.
+
+An announcement chip's whole visible text is `<sender> <kind> <time>`; the body
+it hides is the only place the posted line appears. So every spec that wants
+"the announcement I just posted" reaches for
+`.filter({ hasText: <sender> }).last()` — and in a virtualized list that
+resolves the moment ANY matching chip is visible, which can be an older chip
+from an earlier spec if the new one has not painted yet. This lane's beats
+posted as the Librarian, so the post-office beat expanded THIS file's chip and
+then waited for a line that was never going to appear.
+
+Fixed on this lane's side (the post-office file belongs to no lane this round
+and its toast assertion makes it likely lane C territory): the beats now post
+as Aurora and The Commonplace Book, senders no other spec filters on, and the
+group assertion is by membership rather than count. The reason is written into
+the new spec's header so the next beat that needs an announcement picks a free
+sender instead of rediscovering this.
+
+Note for the unifier: `salon-library-picker-flow` uses the same `.last()`
+Librarian gesture and carries its own comment about the fragility; it stayed
+green throughout. The senders currently spoken for are **the Librarian**
+(post-office + library-picker), **Prospero** (tool-message, in Solo Voyage) and
+**Ariel** (terminal-flow).
