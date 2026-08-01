@@ -46963,3 +46963,26 @@ bug — so the inline banner is deliberately kept rather than porting a blank
 notification**). Two comments that stayed are accurate: v4 genuinely says
 nothing on an image-download failure, and the Brahma console has no toast
 plumbing to add.
+
+## Lane record — P4.25: the Playwright gate's first run, and the three assertions it moved
+
+First full run: **161 passed, 5 failed (20.3 m)**. All five were assertions on
+surfaces this lane retired, in specs the lane therefore owns:
+
+- `e2e/salon-cast-flow.spec.ts` ×2 — "X has joined the chat" / "X has been
+  removed from the chat" / "Avatar generation enabled|disabled" were asserted
+  INSIDE `.qt-chat-main` and `qt-chat-sidebar` (the retired `chatFlash` bar and
+  `status` line). They now read `[role="toast-container"]`.
+- `e2e/salon-post-office-flow.spec.ts` ×2 — **collateral, not a second bug**:
+  the cast beat failed mid-walk *after* adding a participant, so its removal
+  never ran, and the Post Office beats then found that character in-scene when
+  they expect them off-scene. The e2e run-order dependency, exactly as
+  `e2e-playwright-traps` §3 describes.
+- `e2e/scriptorium-flow.spec.ts` ×1 — asserted `getByRole('status')`, which was
+  the retired flash div's role. v4's toast carries NO role attribute, so the
+  port carries none either; the beat now locates
+  `[role="toast-container"] > .qt-toast-error`.
+
+**Both `toast-flow` beats passed on that run** (127 and 128), as did every
+converted surface's own spec — the Scriptorium, settings, wardrobe, workbench,
+document, terminal and destructive dialog walks.

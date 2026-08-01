@@ -243,7 +243,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await expect(createDialog).toBeHidden({ timeout: 15_000 });
 
     // Convert the filesystem store → confirm → the server refuses (P4.6y), and
-    // the error surfaces in the flash banner.
+    // the error surfaces as the toast v4 raises (P4.25 retired the flash banner).
     const card = page.locator('qt-store-card', { hasText: storeName });
     await expect(card).toBeVisible({ timeout: 15_000 });
     await card.getByRole('button', { name: 'Convert', exact: false }).click();
@@ -251,8 +251,10 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await expect(convertDialog).toBeVisible();
     await convertDialog.getByRole('button', { name: 'Convert', exact: true }).click();
 
-    // The typed refusal lands in the (error) flash — a loud, visible notice.
-    await expect(page.getByRole('status')).toBeVisible({ timeout: 15_000 });
+    // The typed refusal lands in the error toast — a loud, visible notice.
+    await expect(page.locator('[role="toast-container"] > .qt-toast-error')).toBeVisible({
+      timeout: 15_000,
+    });
 
     await deleteStoreFromList(page, storeName);
   });

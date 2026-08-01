@@ -123,11 +123,12 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await expect(add).toBeEnabled();
     await add.click();
 
-    // The dialog closes, the Salon says who joined, and the cast grows by one.
+    // The dialog closes, the Salon says who joined — through the toast v4 raises
+    // from inside the dialog (P4.25) — and the cast grows by one.
     await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.locator('.qt-chat-main')).toContainText(`${joinerName} has joined the chat`, {
-      timeout: 15_000,
-    });
+    await expect(
+      page.locator('[role="toast-container"]').getByText(`${joinerName} has joined the chat`),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(castNames).toHaveCount(before + 1, { timeout: 15_000 });
     await expect(castNames.filter({ hasText: joinerName })).toHaveCount(1);
 
@@ -138,10 +139,11 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
 
     await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.locator('.qt-chat-main')).toContainText(
-      `${joinerName} has been removed from the chat`,
-      { timeout: 15_000 },
-    );
+    await expect(
+      page
+        .locator('[role="toast-container"]')
+        .getByText(`${joinerName} has been removed from the chat`),
+    ).toBeVisible({ timeout: 15_000 });
 
     // NOTE: there is deliberately no card-count assertion here. v4's remove is a
     // SOFT remove (`status: 'removed'`, `isActive: false`,
@@ -220,10 +222,11 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     const box = page.getByLabel('Auto-generate character avatars');
     const wasOn = await box.isChecked();
     await box.click();
-    await expect(page.locator('qt-chat-sidebar')).toContainText(
-      wasOn ? 'Avatar generation disabled' : 'Avatar generation enabled',
-      { timeout: 15_000 },
-    );
+    await expect(
+      page
+        .locator('[role="toast-container"]')
+        .getByText(wasOn ? 'Avatar generation disabled' : 'Avatar generation enabled'),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(box).toBeChecked({ checked: !wasOn, timeout: 15_000 });
 
     // Put it back, so the shared server ends as it started.
