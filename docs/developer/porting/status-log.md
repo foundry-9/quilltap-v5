@@ -48298,3 +48298,41 @@ Two regen recipes needed a mirrored `harness/oracle/fixtures/` directory
 alongside the staged `cases/` (the case files read their spec JSON with a
 `join(here, '..', 'fixtures', …)`), which the committed headers do not mention;
 the P4.D35 records above spell the working invocations out.
+
+### P4.D35 — the lane's verification gate (green)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH feature
+  sets (plain and `--features quilltap-core/native-transport`).
+- `cargo build --release` clean.
+- `cargo test --workspace --no-fail-fast` with the lane's 22 env vars:
+  **408 test binaries / 1,774 tests / 0 failed, and ZERO `SKIP:` lines in the
+  whole run** — every differential in the workspace had its oracle.
+- The 20 named families re-run BY NAME with `--nocapture`: all green, zero SKIP.
+- Every regenerated NDJSON grepped for a marker only `c4d4b0de` can produce
+  (the silent-stale-pass trap): the bare-word trap sentence, the `effect-*`
+  definition arms, `chipLabel` execution rows, the `stores` dumps on all three
+  route families, the `Side effects: writes` line, the new preamble sentence in
+  the tool catalogue, `stateWrites` in every vocabulary row, and the blank line
+  in all 19 `pascalBody` rows.
+- **No SPA gate owed** — `git diff main..HEAD -- apps/web/` is EMPTY; this lane
+  touched no Angular source, per its ownership.
+- **v4 re-checked at lane end: HEAD is still exactly `c4d4b0de` with a clean
+  tree.** No drift across the whole lane, so every oracle regenerated straight
+  from `~/source/quilltap-server` and no pinned worktree was needed.
+
+**Three files touched that are outside the order's explicit ownership list,
+each minimal and named here for the unifier:**
+
+1. `crates/quilltap-core/src/tools/state.rs` — three `fn` → `pub(crate) fn`
+   visibility changes only (`write_{chat,project,group}_state`), so the applier
+   reuses the ONE way v5 writes each tier instead of carrying a second copy. No
+   behavior change, no other lane names this file.
+2. `crates/quilltap-core/src/tools/definitions/data.rs` — one line, the
+   `run_custom` catalogue description, updated byte-exactly for the new preamble
+   sentence. The order predicted this ("update the pin byte-exactly and
+   regenerate `tool_definitions`") without naming the file.
+3. `crates/quilltap-harness/tests/common/mod.rs` — additive only
+   (`dump_pascal_stores`), shared by the two route differentials.
+
+`api/types.rs`, `engine.rs`, and all of `apps/web/**` are untouched.
