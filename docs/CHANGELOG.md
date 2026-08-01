@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Unified the dogfood-debt and sweep-debt round onto the main line: five
+parallel lanes, six work orders, all closed. In one round the app gained a
+guard that refuses to save a character whose vault settings file is corrupt
+(instead of silently wiping six fields), proper "service degraded" responses
+when a document store is broken, automatic pruning of old LLM logs, a real
+notification system with over a hundred screens' worth of messages restored,
+and announcements that finally look the way they always should have. The
+unification's own code review caught two dialogs that still finished
+silently where they should have announced success, and the full end-to-end
+run caught the new log-pruning job sweeping the test suite's own seeded
+inspector entries — both fixed before landing. Full verification: formatting,
+lints on both feature sets, a release build, 407 test binaries with 1,746
+tests and no failures, ten differential families re-proven against freshly
+generated v4 oracles, 3,210 front-end unit tests, a clean production build,
+and a fully green 168-beat end-to-end run.
+
 A project, group, or character whose backing document store is broken now
 answers a deliberate, contextful "store unavailable" error (HTTP 503 naming
 the affected entity) instead of a generic server error that leaked an

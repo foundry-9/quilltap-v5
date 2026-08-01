@@ -3645,3 +3645,58 @@ CLAUDE.md's Status bullet.
 **Standing regen note:** v4 HEAD `e1be028b` is lib-inert past the
 `ff12f491` baseline — oracles may regenerate straight from the checkout
 until v4 moves again; drift-check before every round.
+
+### Round outcome (2026-07-31) — the dogfood-debt + sweep-debt round, UNIFIED
+
+**P4.22 → P4.23 ∥ P4.24 ∥ P4.25 ∥ P4.26 ∥ P4.27 — ALL SIX ORDERS CLOSED**
+(orders `work-orders/p4.22-character-vault-properties-clobber.md` /
+`p4.23-store-unavailable-503-envelope.md` / `p4.24-llm-log-cleanup.md` /
+`p4.25-toast-subsystem.md` / `p4.26-announcement-rendering-audit.md` /
+`p4.27-sweep-debt-maintenance.md`). The oracle baseline STAYS `ff12f491`
+(v4 HEAD `e1be028b`, NO-PORT). Dogfood **#40 CLOSED** (the last unhandled
+job type — LLM-log retention is live), **#42's toast subsystem LANDED**
+(106-file census: 68 converted / 15 open / 23 unported), **#43's
+announcement audit ran** (91 rows; the headline: v5-invented system-slab
+styling on every expanded announcement, plus five more structural
+divergences, all fixed), **#47's clobber guard LANDED** (deliberate
+divergence; the v4-side fix stays URGENT with the human), the P4.D29 503
+escalation CLOSED, and D32's sweep debt cleared (`canChooseOutfit`,
+`terminal_tools`, recipe runnability + the committed sweep driver).
+The §3 unification review caught two CONVERTED-marked census rows missing
+v4's success toasts (fixed with spec pins) — full round record in
+`status-log.md`; gate numbers there and in the CHANGELOG.
+
+**Next candidates, in rough value order:**
+
+1. **A dogfood pass over this round's live surfaces** — the toast walk
+   (successes AND failures now speak), the announcement rendering on the
+   Friday copy (the human's own complaint — verify it reads fixed on real
+   history, incl. legacy kind inference), the first boot where
+   `LLM_LOG_CLEANUP` completes (watch the llm-logs partition actually
+   shrink to the window), a corrupt-vault edit refusing loudly — plus
+   everything the standing dogfood list already owes (walk Parts G/H, the
+   P4.D31 restore-memory-id proof, P4.21's vision proof if still unproven).
+2. **The toast census's 15 OPEN rows** (the P4.25 lane record enumerates
+   each with its owed sentences — `useProjectDetail`'s 20, the files
+   family's 13, `useNewChat`'s 9, AuroraView, character edit/new) — a
+   natural single SPA lane.
+3. **The app-wide `renderingPatterns`/`dialogueDetection` template gap**
+   (P4.26's banked finding): v5 never fetches the chat's roleplay
+   template, so EVERY message renders with the defaults where v4 threads
+   `template.renderingPatterns` into every row — a Salon-wide fidelity
+   gap wanting its own order.
+4. **The autonomous-rooms oracle rot** (new sweep debt, round record):
+   v4's forked job child dies under jest outside the pinned worktree —
+   diagnose and repair the case (or suppress the fork) so the family can
+   regenerate again.
+5. **`p4.9h`** (prompt library + embedding-profiles management + the
+   banked PUT trigger matrix), the workspace per-tab toolbar bridge, the
+   Zod format-validator gap, `p4.9i2`, `p4.9o`, and the standing pools
+   (the `DbError::Key` message-leak class is now cheaper to close — the
+   structured store-unavailable variant already reaches the terminals).
+
+**Standing regen note:** unchanged — v4 HEAD `e1be028b` is lib-inert past
+the `ff12f491` baseline; oracles regenerate straight from the checkout;
+drift-check before every round. Recipe regens should go through
+`harness/tools/recipe_sweep.py --run <family>` (atomic regen-then-run, the
+fixture shield, the SKIP detector).

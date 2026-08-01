@@ -1705,6 +1705,40 @@ records THERE. Update this summary only when a phase or round completes.
   a real key) joins P4.21's vision proof and the toolbar/search walk.
   Versions: core 0.0.425, harness 0.0.368, cli 0.0.4, host 0.0.52, SPA
   0.5.331; web/tauri unchanged. Round record: `status-log.md`.
+- **The dogfood-debt + sweep-debt round (P4.22→P4.23 ∥ P4.24 ∥ P4.25 ∥
+  P4.26 ∥ P4.27): UNIFIED on main (2026-07-31) — ALL SIX ORDERS CLOSED;
+  the baseline STAYS `ff12f491`.** The character-vault
+  present-but-unparseable write refusal (finding #47 — a DELIBERATE
+  DIVERGENCE pinned in BOTH directions; the corpus arms go red the moment
+  v4 lands its own fix, and **the v4-side fix remains URGENT with the
+  human**) + the store-unavailable contextful 503 end-to-end
+  (`ErrorKind::Unavailable`, the `CoreError` entity carry, v4's exact
+  two-key bodies, SPA mirror — the P4.D29 escalation CLOSED) ∥ LLM-log
+  retention LIVE (the last unhandled job type — finding #40 CLOSED;
+  ECMAScript calendar-day cutoff with UTC + DST-Chicago legs; the
+  enqueuer's first differential caught a second bug — a SQL-NULL settings
+  cell dropped that user from the sweep forever, fixed) ∥ the toast
+  subsystem + the 106-file census (68 converted / 15 OPEN / 23 unported —
+  finding #42; the OPEN rows are the follow-up worklist) ∥ the 91-row
+  announcement audit (finding #43 — the ordered lead REFUTED; the real
+  cause was v5-invented system-slab styling on every expanded
+  announcement; six structural divergences fixed incl. legacy kind
+  inference and the Staff author/portrait arm) ∥ D32's sweep debt cleared
+  (`canChooseOutfit` — the omitting reader was a FIFTH site;
+  `terminal_tools` case rot repaired; the committed
+  `harness/tools/recipe_sweep.py` driver, 0 non_extractable). **The §3
+  unification review caught two CONVERTED-marked census rows missing v4's
+  success toasts** (the round's own bug class; fixed with spec pins) +
+  four smaller edges. Gate: 407 test binaries / 1,746 / 0 (cargo exit 0)
+  with the round's eleven oracle env vars; ten families by name fresh at
+  `ff12f491` zero SKIP; clippy both feature sets; release build; ng 264
+  files / 3,210; full Playwright green (numbers in the round record).
+  New sweep debt recorded: the autonomous-rooms oracle's jest child-fork
+  rot (pre-existing, diagnosed, next maintenance pass). Next candidates:
+  a dogfood pass over the round's live surfaces, the toast census's 15
+  OPEN rows, the app-wide renderingPatterns template gap (P4.26's banked
+  finding), `p4.9h` — see phase-4.md. Versions: core 0.0.433, harness
+  0.0.373, host 0.0.54, web 0.0.56, SPA 0.5.355; cli/tauri unchanged.
 - **Oracle baseline: `ff12f491` (v4 4.8.0-dev.135, 2026-07-31), adopted at
   the `ff12f491` drift-round unification — NO v4 lib drift debt remains.**
   The nineteen commits past `dcd9440a` are all absorbed or dispositioned

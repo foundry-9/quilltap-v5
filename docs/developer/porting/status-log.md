@@ -47340,3 +47340,162 @@ unifier: if it recurs, it belongs to the beat's owner, not to P4.26.
 (For contrast, the post-office red earlier in this lane WAS ours, reproduced
 deterministically from a two-file pair, and was fixed — see the sender-
 contention addendum above. That is the difference between the two.)
+
+## Round record — the dogfood-debt + sweep-debt round (P4.22→P4.23 ∥ P4.24 ∥ P4.25 ∥ P4.26 ∥ P4.27), UNIFIED 2026-07-31
+
+Five lanes, six orders, ALL CLOSED. Branch `unify/dogfood-sweep-debt`,
+cherry-picked A → B → E → C → D (overlapping files adjacent), version bumps
+recounted per the playbook (take-theirs collapsed them, every lane's version
+files verified version-only first). v4 verified still at `e1be028b` (one
+NO-PORT release-infra commit past the `ff12f491` baseline) at survey AND at
+oracle regen — **the baseline does not move**, and the #47 v4-side fix did
+NOT land mid-round, so P4.22's divergence classification stands.
+
+**What landed** (details in each order's status header + lane records above):
+
+- **Lane A (P4.22 → P4.23, one branch):** the character-vault
+  present-but-unparseable write refusal (deliberate divergence, both
+  directions pinned; the corpus arm goes red when v4 fixes its half) and the
+  store-unavailable 503 envelope end-to-end (`ErrorKind::Unavailable`, the
+  `CoreError` entity carry, `DbError::StoreUnavailable` through the plumbing,
+  v4's exact two-key bodies at every edge, the SPA mirror, three extended/new
+  differentials + the always-on wire pin).
+- **Lane B (P4.24):** LLM-log retention live end-to-end — `cleanup_old_logs`
+  (the ECMAScript calendar-day cutoff reproduced, Lord-Howe-grade), the
+  five-arm handler, spine registration with a mutation-proven host
+  integration test, the new committed `llm-log-cleanup-{main,llmlogs}.db`
+  family with UTC + DST-straddling Chicago legs, and the enqueuer's
+  first-ever differential — which caught and fixed a second bug (a SQL-NULL
+  `llmLoggingSettings` cell dropped that user from the sweep forever; both
+  callers now share one defaults helper). Dogfood #40 CLOSED; #41 pinned.
+- **Lane C (P4.25):** the toast subsystem + the 106-file census (68
+  CONVERTED / 15 OPEN / 23 UNPORTED — the census table in the lane record is
+  the follow-up round's worklist), every invented inline surface on a
+  converted screen retired, the silent half speaking v4's exact strings.
+- **Lane D (P4.26):** the 91-row announcement audit. The ordered lead
+  REFUTED (the pattern pass runs; v4's `renderedHtml` is dead in v4);
+  the real cause was v5 dressing every expanded announcement in
+  `.qt-chat-message-system` — a class v4 uses only in its theme storybook.
+  Six structural divergences fixed (system slab, legacy kind inference,
+  kind span, kind-scoped chip exemptions, the Staff author/portrait arm,
+  the Staff tool-card portrait), all mutation-proven; label/importance
+  tables proven identical mechanically.
+- **Lane E (P4.27):** the `canChooseOutfit` projection (the omitting reader
+  was a FIFTH site — `characters_read.rs::marshal_row`), the
+  `terminal_tools` oracle repair (case rot from v4 `e3593f75`'s
+  validator-returns-the-parse), and the recipe-runnability pass with the
+  committed `harness/tools/recipe_sweep.py` driver (0 non_extractable).
+
+**The §3 unification review — what it caught** (all fixed on the unify
+branch, commit "Fix what the unification review caught"):
+
+1. **Two census rows marked CONVERTED were missing v4's SUCCESS toast** —
+   the standalone Generate Image dialog (`Generated N image(s) - attached
+   to next message`, v4 :100) and the wardrobe item editor
+   (`Wardrobe item updated`/`created`, v4 :383). The round's own bug class
+   (silent success), shipped by the lane that existed to fix it; caught by
+   sampling conversions against v4's real files; both now raised at v4's
+   position and pinned by specs.
+2. The backup dialog kept its inline error but dropped v4's error TOAST
+   (v4 does both) — fixed.
+3. The data-retention card always toasted the fixed fallback where v4
+   surfaces the server's own sentence — fixed.
+4. The auto-lock provider's comment claimed a v4 bug that does not exist:
+   v4's `showWarningToast` there is a LOCAL function (no `lib/toast`
+   import) rendering a card the v5 banner reproduces — a census name-grep
+   false positive. Comment corrected; the banner IS the faithful port.
+5. Two documented-divergence comments tightened (the retrying-toast
+   transition semantics; the removed stale "toasts become an inline
+   notice" claim).
+6. The announcement-side review pass verified every helper branch-for-branch
+   against v4 (inferKind, exemptions, the Carina answerer chain, the 11
+   avatar assets byte-compared) — **no blocking findings**; one pre-existing
+   note recorded: v5's ToolMessage lacks v4's backward participant-walk for
+   legacy TOOL rows with neither `systemSender` nor `participantId`
+   (`VirtualizedMessageList.tsx:223-239`) — on main before this round.
+
+**Unification wires:**
+
+- The §1 contract mirror diffed name-for-name: `'unavailable'` +
+  `entity?: {label, id}` present in `core-contract.ts`, kebab/name-exact.
+- **The parallel-lane recipe-policy collision, closed:** lane B's new
+  family header classified `non_extractable (repo_write)` under lane E's
+  driver (fixture-install cps in the regen flow; written before E's policy
+  existed) — restructured to the policy (rebuild demoted to a
+  deliberate-act note; regen against the committed DBs; the TZ-legged loop
+  unrolled driver-friendly). Lane A's new store-unavailable recipe carried
+  literal `<scratch>` placeholders — made concrete. Both re-proven via
+  `--run`; the union classifies **0 non_extractable**.
+- Lane C's flagged `.qt-chat-turn-error` orphan: NO CSS rule ever existed
+  (the class was template-only and its only use was removed) — nothing to
+  clean; the lane-record claim corrected here.
+- C/D e2e file partition verified disjoint; the C∩D `tool-message.ts`
+  auto-merge verified coherent by the review (both halves present, zero
+  remnants).
+
+**New sweep debt, discovered at the gate:** the
+`autonomous-rooms-routes.test.ts` oracle FAILS at `ff12f491`/`e1be028b` —
+v4's forked background-jobs child dies under jest on the `@/` path alias
+(`ERR_MODULE_NOT_FOUND` from `child-entry.ts`) and a mid-list case then
+reads an empty DB (`no such table: chats`). Deterministic today (three
+runs, shield and manual), green in D32's pinned-worktree sweep yesterday —
+pre-existing environment/case rot, NOT round-caused (no round artifact is
+an input to that jest run). The v5-side `overlay_to_db` change in
+`api/autonomous_rooms.rs` is the same one-line delegate as groups/projects,
+whose regenerated families are green; its Unavailable arm has no case in
+the autonomous family either way. **Owed to the next maintenance pass:**
+diagnose whether the child fork was ever sound under jest outside the pin
+worktree, and either suppress the fork in the oracle or fix the case.
+
+**Gate (all on the unify branch, oracles fresh from
+`~/source/quilltap-server` at `e1be028b`, marker-checked by the driver's
+regen-then-run):** `cargo fmt` clean; clippy `-D warnings` clean on BOTH
+feature sets; release build clean; `cargo test --workspace --no-fail-fast`
+with the round's eleven oracle env vars — **407 test binaries / 1,746
+tests / 0 failed (cargo exit 0)**; the round's ten families re-run BY NAME
+with `--nocapture` via `recipe_sweep.py --run` (atomic regen-then-run, SKIP
+detector armed): characters_update_tier2 (1), groups_routes (1),
+projects_routes (1), llm_log_cleanup (4), characters_read (1),
+characters_reads (1), characters_actions (1), terminal_tools (1),
+store_unavailable_envelope (2) — all green; autonomous_rooms_routes
+excluded per the sweep-debt note above. SPA: `ng test` **264 files / 3,210
+tests** green; `ng build` clean; **full Playwright: 168 passed / 0 failed
+/ 0 skipped, exit 0** (the deciding run, against the fresh dist + debug
+bins on the restored default ports).
+
+**The Playwright gate earned its keep — the first full run caught a REAL
+cross-lane break no lane could see:** with `LLM_LOG_CLEANUP` registered
+(lane B), the e2e boot tick's cleanup job RAN for the first time and swept
+the Inspector beats' three seeded rows (dated `2026-02-01` — 180 days old)
+under the schema default (enabled, 30 days) before the first beat — both
+LLM-Inspector beats failed with 0 of 3 entries. Lane B owed no SPA gate;
+lanes C/D ran Playwright without the registration; only the union showed
+it. Fixed on the unify branch (commit "Keep the Inspector's seeded logs
+out of the newly live retention sweep"): the e2e user's
+`llmLoggingSettings` is pinned to v4's **"0 = keep forever"** arm — the
+enqueuer's `enabled && retentionDays > 0` filter then mints no cleanup job
+at all, logging stays enabled for the LIVE Inspector walk, and the zero
+arm is exercised live at every e2e boot.
+
+**Two flake-prone beats observed across the gate's four full runs, neither
+a round regression:** the `salon-dialogs-flow` Rename-Chat
+automatic-naming-revert beat failed runs 2 and 3 and passed runs 1 and 4,
+isolation (8/8), the inspector pairing (11/11), and lane C's own full
+gate — a full-suite-only intermittent whose deflaking is owed to the
+spec's owner (a follow-up chip was spawned); and the
+`settings-data-system-flow` auto-lock fake-clock beat failed run 1 only —
+the SAME flake lane D chased, adjudicated not-theirs, and predicted would
+recur ("it belongs to the beat's owner"). It did; same chip.
+
+**Versions after the round:** core 0.0.433, harness 0.0.373, host 0.0.54,
+web 0.0.56, SPA 0.5.354 (+1 in the docs commit for the review fixes →
+0.5.355); cli 0.0.4, quilltap-tauri 0.0.5 unchanged.
+
+**Standing after the round:** the P4.25 census's 15 OPEN rows (enumerated
+in the lane record — the natural toast follow-up); the app-wide
+`renderingPatterns`/`dialogueDetection` template gap (P4.26's banked
+finding — every message renders with the defaults; wants its own order);
+the autonomous-rooms oracle rot above; the v4-side #47 fix still URGENT
+and queued for the human (both P4.22 tripwires fire when it lands, by
+design); the `DbError::Key` message-leak pool (now cheaper to close — the
+structured variant reaches the terminals).
