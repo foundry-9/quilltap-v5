@@ -32,6 +32,12 @@ untouched. A related oversight is fixed alongside: an older settings record
 that had never had its logging preferences written out was being skipped by the
 nightly sweep entirely, and is now swept on the same defaults everything else
 uses.
+Repaired the terminal-tools differential oracle (test infrastructure only):
+the oracle case recorded v4's validator return value directly, which stopped
+being a boolean when v4's tool validators started returning the parsed input,
+so the recorded verdict rotted to object-or-null and the harness could no
+longer read it. The case now records the boolean verdict.
+
 A character's raw database record now reports whether the character may choose
 their own outfit, matching v4: the flag was stored and saved correctly but
 omitted from one read path, so anything reading the un-overlaid record saw it

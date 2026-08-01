@@ -46382,3 +46382,24 @@ is being asserted.
     here too); 24 + 11 cases, `canChooseOutfit` present in both NDJSONs.
 - Committed `.db` fixtures byte-untouched (`git status` clean of
   fixtures). Versions: core 0.0.428.
+
+### Unit 2 — the `terminal_tools` oracle repair (2026-07-31)
+
+- **Rot class (a): the CASE rotted.** The recipe itself runs clean in
+  isolation (so D32's "did not survive regeneration" was the case's
+  OUTPUT, not the invocation). v4 `e3593f75` ("tool validators return
+  the parse") changed `validateTerminalReadInput` /
+  `validateTerminalListInput` from boolean-returning to
+  `TerminalReadInput | null`; the oracle case recorded the raw return
+  (`valid: validateTerminalReadInput(c.args)`), so the NDJSON's `valid`
+  field rotted to object-or-null and the harness's typed `valid: bool`
+  parse failed (`invalid type: null, expected a boolean`). The P4.d5
+  round absorbed that drift in the ported tool surface — v5's
+  `validate_terminal_read_input` already returns `Option<TerminalReadInput>`
+  and the harness compares `is_some()` — but this CASE was missed.
+- **Fix (case-side only, zero Rust):** the case records the VERDICT
+  (`!== null`) for both validators; header comment documents the drift.
+  Fresh oracle at `ff12f491`; family GREEN from its own header recipe
+  (8 read, 2 validate, 2 list; zero SKIP). The read/list output nulls
+  (`exitCode`/`label`) compare as untyped `Value` and matched — the
+  only rot was the validator arm.

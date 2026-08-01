@@ -17,8 +17,11 @@
  * `terminal_read` throw cases (session-not-found / wrong-chat): the handler
  * throws `TerminalToolError`; we capture `err.message`. Validator cases: the
  * dispatcher gates on `validate*` BEFORE execute and returns a fixed error
- * string; we record the validator's boolean so the Rust side proves the same
- * gate decision.
+ * string; we record the validator's VERDICT as a boolean so the Rust side
+ * proves the same gate decision. (Since v4 `e3593f75` the validators return
+ * the parse — `TerminalReadInput | null` — not a boolean, so the verdict is
+ * `!== null`; recording the raw return here rotted the oracle's `valid`
+ * field to object/null and broke the harness parse.)
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -110,7 +113,7 @@ async function main(): Promise<void> {
 
   const readValidateResults = spec.readValidateCases.map((c) => ({
     name: c.name,
-    valid: validateTerminalReadInput(c.args),
+    valid: validateTerminalReadInput(c.args) !== null,
   }));
 
   const listResults: Array<{ name: string; valid: boolean; output: unknown; formatted: string }> =
@@ -118,7 +121,7 @@ async function main(): Promise<void> {
   for (const c of spec.listCases) {
     const ctx = { userId: undefined, chatId: c.chatId, config: {} };
     // The list validator gates on the (empty) arguments object.
-    const valid = validateTerminalListInput({});
+    const valid = validateTerminalListInput({}) !== null;
     const output = await executeTerminalListTool({} as never, ctx as never);
     const formatted = formatTerminalListResults(output);
     listResults.push({ name: c.name, valid, output, formatted });
