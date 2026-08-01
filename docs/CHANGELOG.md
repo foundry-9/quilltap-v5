@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Connected the custom-tool side effects to the two places a tool can be rolled —
+a character reaching for it and the operator reaching for it from the composer.
+The writes land before the result is announced, so if the announcement fails the
+writes still stand; and an operator roll made as nobody edits nobody's character
+sheet. The result bubble now puts the roll's name on its own line with the
+message as a separate paragraph below, so an outcome that opens with a list, a
+heading, a quotation or a code block renders as what its author wrote instead of
+running into the heading. Messages posted before this change keep their old
+one-line shape — a record is not rewritten. A tool that writes now says which
+places it writes to, in the tool listing the model reads and in the panel a
+person reads, without disclosing what it writes or when. Tools that keep their
+odds secret keep their consequences secret too.
+
 Added the part that actually performs a custom tool's side effects. A write
 lands in the store where its key already lives — the conversation first, then
 the project, then the group, then the shared store — and a brand-new key goes

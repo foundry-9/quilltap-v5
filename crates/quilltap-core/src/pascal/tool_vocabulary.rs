@@ -31,7 +31,9 @@ use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::custom_tool_types::{is_state_ref_value, QtapCustomTool, When};
+use super::custom_tool_types::{
+    is_state_ref_value, parse_effect_target, EffectTarget, EffectValue, QtapCustomTool, When,
+};
 use crate::collation::locale_compare;
 
 /// The placeholder families `render_template` understands.
@@ -73,6 +75,15 @@ pub struct ToolVocabulary {
     /// Paths into the merged persistent state this tool reads — from `$state`
     /// references and from `{{state.path}}` placeholders. Sorted.
     pub state: Vec<String>,
+    /// State paths this tool's effects may WRITE. A write is a different claim
+    /// than a read — "this tool consults the encounter count" and "this tool
+    /// changes it" deserve different sentences — so writes get their own list
+    /// rather than folding into `state`. Sorted.
+    #[serde(rename = "stateWrites")]
+    pub state_writes: Vec<String>,
+    /// Metadata keys this tool's effects may WRITE on the rolling character. Sorted.
+    #[serde(rename = "metadataWrites")]
+    pub metadata_writes: Vec<String>,
 }
 
 /// True when a tool quotes nothing at all, and so has no vocabulary to show.
@@ -84,6 +95,8 @@ pub fn is_empty_vocabulary(vocabulary: &ToolVocabulary) -> bool {
         && vocabulary.params.is_empty()
         && vocabulary.metadata.is_empty()
         && vocabulary.state.is_empty()
+        && vocabulary.state_writes.is_empty()
+        && vocabulary.metadata_writes.is_empty()
 }
 
 /// The mutable accumulator v4 calls `found` — insertion-ordered lists standing
@@ -98,6 +111,8 @@ struct Found {
     params: Vec<String>,
     metadata: Vec<String>,
     state: Vec<String>,
+    state_writes: Vec<String>,
+    metadata_writes: Vec<String>,
 }
 
 fn add(into: &mut Vec<String>, name: &str) {
@@ -143,6 +158,36 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         collect_placeholders(&llm.prompt, &declared, &mut found);
     }
 
+    // The chip label is a rendered string like any outcome message.
+    if let Some(chip_label) = definition.chip_label.as_ref() {
+        collect_placeholders(chip_label, &declared, &mut found);
+    }
+
+    // Effects: an expression's `{{ref}}`s are the outcome-message vocabulary
+    // verbatim, so the one placeholder scanner reads them too; a condition's
+    // metadata keys are reads like an outcome row's; and each target is a WRITE,
+    // reported on its own lists because it is a different claim than a read.
+    for effect in definition.effects.iter().flatten() {
+        if let EffectValue::Str(source) = &effect.value {
+            collect_placeholders(source, &declared, &mut found);
+        }
+        for when in effect.when.iter() {
+            for (key, _) in when.base.metadata.iter().flatten() {
+                add(&mut found.metadata, key);
+            }
+        }
+
+        let Ok(target) = parse_effect_target(&effect.target) else {
+            continue; // load-rejected; nothing honest to report
+        };
+        match &target {
+            EffectTarget::State { raw, .. } => {
+                add(&mut found.state_writes, &raw[STATE_PREFIX.len()..]);
+            }
+            EffectTarget::Metadata { key, .. } => add(&mut found.metadata_writes, key),
+        }
+    }
+
     // Every `$state` reference, wherever it sits — a parameter default, a roll
     // field, a comparator operand. Walked rather than enumerated: the schema is
     // free to grow new sites, and a list of them here would silently fall behind.
@@ -165,6 +210,8 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         params: sorted(found.params),
         metadata: sorted(found.metadata),
         state: sorted(found.state),
+        state_writes: sorted(found.state_writes),
+        metadata_writes: sorted(found.metadata_writes),
     }
 }
 

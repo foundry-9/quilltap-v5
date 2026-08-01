@@ -28,7 +28,7 @@ import {
 const rows: unknown[] = [];
 
 // -------------------------------------------------------- buildPascalResultContent
-const pascalCases: Array<[string, string, string]> = [
+const pascalCases: Array<[string, string, string, (string | undefined)?]> = [
   ['plain', 'Scan Hawking Radiation', 'The needle trembles at 12.'],
   ['message-leading-trailing-space', 'Unlock', '   the tumblers fall into place   '],
   ['message-inner-newline', 'Force The Lock', 'first line\nsecond line'],
@@ -37,10 +37,34 @@ const pascalCases: Array<[string, string, string]> = [
   ['title-with-markdown-chars', 'A *Bold* Title', 'rolled {{value}}'],
   ['unicode', 'Café Roll', 'the café 🎲 opens'],
   ['message-with-value-token-verbatim', 'Saving Throw', 'you rolled {{value}} — {{dice}}'],
+  // The c4d4b0de two-block body: the blank line makes the message its OWN
+  // Markdown block, so an outcome opening with a list / heading / quote / fence
+  // renders as what its author wrote instead of gluing inline to the heading.
+  ['message-opens-with-list', 'Loot', '- a brass key\n- a folded note'],
+  ['message-opens-with-heading', 'Loot', '# The Vault\nempty'],
+  ['message-opens-with-quote', 'Loot', '> nothing here'],
+  ['message-opens-with-fence', 'Loot', '```\nx = 1\n```'],
+  ['message-opens-with-ordered-list', 'Loot', '1. first\n2. second'],
+  // The c4d4b0de chipLabel heading: it REPLACES the title when present, and
+  // falls back when blank/whitespace-only (`chipLabel?.trim() || toolTitle`).
+  ['chip-label-replaces-title', 'Agent Lambda', 'the drop is made', 'Agent lambda — Jackie'],
+  ['chip-label-trimmed', 'Agent Lambda', 'the drop is made', '   Agent lambda — Jackie   '],
+  ['chip-label-blank-falls-back', 'Agent Lambda', 'the drop is made', ''],
+  ['chip-label-whitespace-falls-back', 'Agent Lambda', 'the drop is made', '   \t '],
+  ['chip-label-with-markdown-chars', 'Plain', 'ok', '**already bold**'],
+  ['chip-label-unicode', 'Plain', 'ok', 'Café 🎲 Roll'],
 ];
-for (const [id, toolTitle, message] of pascalCases) {
-  const out = buildPascalResultContent({ toolTitle, message });
-  rows.push({ kind: 'pascalBody', id, toolTitle, message, content: out.content, opaqueContent: out.opaqueContent });
+for (const [id, toolTitle, message, chipLabel] of pascalCases) {
+  const out = buildPascalResultContent({ toolTitle, ...(chipLabel !== undefined ? { chipLabel } : {}), message });
+  rows.push({
+    kind: 'pascalBody',
+    id,
+    toolTitle,
+    chipLabel: chipLabel ?? null,
+    message,
+    content: out.content,
+    opaqueContent: out.opaqueContent,
+  });
 }
 
 // -------------------------------------------- custom-tool-error body + normalization

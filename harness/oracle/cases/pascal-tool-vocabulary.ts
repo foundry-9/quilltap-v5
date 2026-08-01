@@ -49,6 +49,11 @@ const TWO_PARAMS = {
 };
 const LLM = { llm: { prompt: 'Answer about {{value}}.', errorMessage: 'The wire went dead.' } };
 
+/** A definition carrying `effects` (P4.D35, c4d4b0de). */
+function withEffects(effects: unknown[], extra: Record<string, unknown> = {}) {
+  return def({ ...extra, effects });
+}
+
 const corpus: Array<[string, Record<string, unknown>]> = [
   // ---- the empty vocabulary: the case that renders no panel at all ---------
   ['quotes-nothing', def({})],
@@ -152,6 +157,29 @@ const corpus: Array<[string, Record<string, unknown>]> = [
       alpha: { type: 'string', default: 'a' },
     },
   })],
+  // ---- the c4d4b0de write lists + the chipLabel scan ----------------------
+  // A target is a WRITE, on its own list; the state prefix is stripped, the
+  // metadata key is taken whole. An expression's {{ref}}s and a chipLabel's
+  // placeholders are READS, on the existing lists, via the one scanner.
+  ['effect-state-write', withEffects([{ target: 'state.encounter.count', value: 1 }])],
+  ['effect-metadata-write', withEffects([{ target: 'metadata.lockBroken', value: true }])],
+  ['effect-metadata-write-dotted-key', withEffects([{ target: 'metadata.ansible.tool', value: true }])],
+  ['effect-nested-state-write', withEffects([{ target: 'state.party[0].hp', value: 1 }])],
+  ['effect-expression-refs-are-reads', withEffects([{ target: 'state.tally', value: '{{state.tally}} + {{value}} + {{roll}} + {{dice}}' }])],
+  ['effect-condition-metadata-is-a-read', withEffects([{ when: { metadata: { hasKey: { eq: true } } }, target: 'state.opened', value: true }])],
+  ['effect-both-lists-at-once', withEffects([{ target: 'state.encounter.count', value: 1 }, { target: 'metadata.ok', value: 1 }])],
+  ['effect-writes-are-sorted-and-deduped', withEffects([
+    { target: 'state.zeta', value: 1 },
+    { target: 'state.alpha', value: 2 },
+    { target: 'state.zeta', value: 3 },
+    { target: 'metadata.zulu', value: 4 },
+    { target: 'metadata.alfa', value: 5 },
+  ])],
+  ['chip-label-placeholders-are-reads', def({ chipLabel: '{{value}} {{params.scale}} {{metadata.house}} {{state.floor}}', parameters: { scale: { type: 'number', default: 1 } } })],
+  ['effect-llm-ref-is-a-read', withEffects([{ target: 'metadata.verdict', value: '{{llm}}' }], { llm: { prompt: 'Answer.', errorMessage: 'dead' } })],
+  // A tool whose ONLY vocabulary is a write is still non-empty — the two new
+  // lists join `isEmptyVocabulary`.
+  ['write-only-is-not-empty', withEffects([{ target: 'state.k', value: 1 }])],
 ];
 
 for (const [id, doc] of corpus) {

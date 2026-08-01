@@ -41,11 +41,33 @@ pub struct PascalResultContent {
     pub opaque_content: String,
 }
 
-/// Build the body of an outcome announcement: the tool's title, and the author's
-/// own message. Deliberately knows nothing about the roll — a table that wants
-/// its number read out says so with `{{value}}`.
-pub fn build_pascal_result_content(tool_title: &str, message: &str) -> PascalResultContent {
-    let body = format!("🎲 **{tool_title}** — {}", js_trim(message));
+/// Build the body of an outcome announcement: a heading line naming the run,
+/// then the author's own message as its own paragraph. Deliberately knows
+/// nothing about the roll — a table that wants its number read out says so with
+/// `{{value}}`.
+///
+/// `chip_label` is the definition's rendered `chipLabel` when it declares one —
+/// the header uses it, the same string as the chip, so transcript and chip never
+/// disagree. Blank (after trimming) or absent falls back to the title.
+///
+/// The blank line is load-bearing: it makes the message its own Markdown block,
+/// so an outcome that begins with `- `, `#`, `1.`, `>`, or a fence renders as
+/// the list/heading/quote its author wrote instead of gluing inline to the bold
+/// heading. Messages posted before v4 `c4d4b0de` keep their one-line bodies —
+/// content is frozen at post time, which is correct for a record, so nothing
+/// re-formats an old row.
+pub fn build_pascal_result_content(
+    tool_title: &str,
+    chip_label: Option<&str>,
+    message: &str,
+) -> PascalResultContent {
+    // v4 `params.chipLabel?.trim() || params.toolTitle` — an all-whitespace
+    // label is falsy after trimming and falls back to the title.
+    let heading = chip_label
+        .map(js_trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or(tool_title);
+    let body = format!("🎲 **{heading}**\n\n{}", js_trim(message));
     PascalResultContent {
         content: body.clone(),
         opaque_content: body,

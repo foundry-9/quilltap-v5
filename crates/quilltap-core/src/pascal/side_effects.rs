@@ -416,6 +416,67 @@ pub fn apply_custom_tool_effects(
     applied
 }
 
+/// The shape both entrances call: `result.effects?.length ? await
+/// applyCustomToolEffects({…}) : []`, wrapped in the one
+/// [`Db::write`](crate::db::runtime::Db::write) closure the applier needs.
+///
+/// Shared rather than written twice because v4 writes the same six lines in
+/// `run-custom-handler.ts` and the chat route, and the ONE deliberate asymmetry
+/// between them (`characterId`) is the caller's argument, not this function's
+/// business — the manual route passes `None` for a run nobody made, so an
+/// unattributed operator roll cannot edit an arbitrary character's sheet.
+pub async fn apply_effects_for_run(
+    db: &crate::db::runtime::Db,
+    chat_id: &str,
+    result: &super::custom_tools::CustomToolRunResult,
+    cascade: Option<StateCascadeResult>,
+    character_id: Option<String>,
+    metadata_snapshot: &Map<String, Value>,
+) -> Vec<AppliedEffect> {
+    let effects = match &result.effects {
+        Some(e) if !e.is_empty() => e.clone(),
+        _ => return Vec::new(),
+    };
+
+    let chat_id_owned = chat_id.to_string();
+    let tool_name = result.tool.clone();
+    let metadata = metadata_snapshot.clone();
+    let outcome = db
+        .write(move |writers| {
+            Ok(apply_custom_tool_effects(
+                writers,
+                ApplyCustomToolEffectsParams {
+                    chat_id: &chat_id_owned,
+                    tool_name: &tool_name,
+                    effects: &effects,
+                    cascade: cascade.as_ref(),
+                    character_id: character_id.as_deref(),
+                    metadata_snapshot: &metadata,
+                },
+            ))
+        })
+        .await;
+
+    match outcome {
+        Ok(applied) => applied,
+        // v5-only: the writer task is gone. v4 has no analogue, and the
+        // module's promise is that nothing here fails a roll that already
+        // happened — so this lands where a failed store lands, with the effects
+        // dropped from the record and a warning in the log.
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chat_id,
+                tool = %result.tool,
+                error = %e,
+                "Custom tool effects could not be applied; the writer was unavailable",
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// v4's `asStateObject` shape guard, applied to the local working copies: a
 /// non-object tier spreads to `{}` in JS (`{...5}` is `{}`), so a defensive
 /// coercion here is faithful rather than additive.

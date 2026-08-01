@@ -42,6 +42,10 @@ fn pascal_writers_match_oracle() {
             "pascalBody" => {
                 let got = build_pascal_result_content(
                     row["toolTitle"].as_str().unwrap(),
+                    // `null` is the row's "no chipLabel key at all"; a present
+                    // empty/whitespace string is a DIFFERENT case (it falls back
+                    // to the title through the trim, not through absence).
+                    row["chipLabel"].as_str(),
                     row["message"].as_str().unwrap(),
                 );
                 assert_eq!(

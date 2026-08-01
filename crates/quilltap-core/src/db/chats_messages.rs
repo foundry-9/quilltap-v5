@@ -270,6 +270,12 @@ pub struct PascalMetaIn {
     pub tool: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_title: Option<String>,
+    /// The definition's `chipLabel` template rendered at roll time (v4
+    /// `c4d4b0de`) — the per-run label the Salon chip and the bubble heading
+    /// share. `.optional()`, so absent on older rows and on tools that declare
+    /// no label; readers fall back to `toolTitle`, then `tool`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chip_label: Option<String>,
     pub definition_tier: String,
     pub definition_mount_id: String,
     pub params: serde_json::Map<String, serde_json::Value>,
@@ -298,9 +304,52 @@ pub struct PascalMetaIn {
     /// `JSON.stringify` emits and the wire therefore carries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm: Option<PascalMetaLlmIn>,
+    /// The side effects this run APPLIED — the audit of the definition's
+    /// `effects` array (v4 `c4d4b0de`). Declared after `llm` and before
+    /// `invokedBy`, which is `chat.types.ts`'s declaration order and therefore
+    /// the wire's key order. `.optional()` — omitted when the run declared or
+    /// applied none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effects: Option<Vec<PascalMetaEffectIn>>,
     pub invoked_by: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_participant_id: Option<String>,
+}
+
+/// Deserialize a present JSON value — INCLUDING `null` — as `Some`. Paired with
+/// `#[serde(default)]`, this reproduces Zod's `.optional()` on an `unknown`:
+/// absent is absent, and `null` is a value.
+fn de_present_value<'de, D>(d: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde_json::Value::deserialize(d).map(Some)
+}
+
+/// One entry of `pascalMeta.effects` — v4's `AppliedEffect` as the wire carries
+/// it (`chat.types.ts:427-432`). `previous` is `z.unknown().optional()`, so an
+/// absent one is an OMITTED key (the store held nothing) while a stored `null`
+/// is a present null; `next` is `z.unknown()` and always present; `tier` is
+/// state-write-only.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PascalMetaEffectIn {
+    pub target: String,
+    /// ⚠ `deserialize_with` is load-bearing. Plain `Option<Value>` maps a JSON
+    /// `null` to `None`, which would erase the difference between "the store
+    /// held nothing" (v4 `undefined`, the key OMITTED) and "the store held
+    /// null" (the key present with a null) — and this type round-trips the
+    /// caller's `pascalMeta` on the way into the row, so the erasure would be
+    /// persisted. `default` still covers the absent case.
+    #[serde(
+        default,
+        deserialize_with = "de_present_value",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub previous: Option<serde_json::Value>,
+    pub next: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
 }
 
 /// The `pascalMeta.llm` record — v4's `LlmConsultResult` as the wire carries it
@@ -774,5 +823,37 @@ fn opt_value_json(v: &Option<Value>) -> Result<Option<String>, DbError> {
     match v {
         Some(val) => Ok(Some(json_text(val)?)),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod pascal_meta_tests {
+    use super::*;
+
+    /// `pascalMeta` round-trips through [`PascalMetaIn`] on the way into the
+    /// row, so anything this type erases is erased in the DATABASE. Two things
+    /// the P4.D35 additions could have lost silently:
+    ///
+    /// 1. `previous` distinguishes ABSENT (v4 `undefined` — the store held
+    ///    nothing) from a stored `null`. A plain `Option<Value>` maps JSON
+    ///    `null` to `None`, which would have collapsed the two.
+    /// 2. The key ORDER — `chipLabel` after `toolTitle`, `effects` after `llm`
+    ///    and before `invokedBy` — is `chat.types.ts`'s declaration order, and
+    ///    with `preserve_order` on it is what the wire carries.
+    #[test]
+    fn pascal_meta_effects_round_trip_preserves_null_and_key_order() {
+        let wire = r#"{"tool":"lockpick","toolTitle":"Lockpick","chipLabel":"Agent lambda","definitionTier":"character","definitionMountId":"m1","params":{},"rollForm":"range","raw":0.5,"value":0.5,"state":"success","outcomeIndex":0,"effects":[{"target":"state.a","previous":null,"next":1,"tier":"chat"},{"target":"metadata.b","next":true},{"target":"state.c","previous":2,"next":3,"tier":"project"}],"invokedBy":"llm"}"#;
+
+        let parsed: PascalMetaIn = serde_json::from_str(wire).expect("pascalMeta parses");
+        let effects = parsed.effects.as_ref().expect("effects survive");
+
+        // A stored null is a VALUE, not an absence.
+        assert_eq!(effects[0].previous, Some(serde_json::Value::Null));
+        // A store that held nothing leaves the key off entirely.
+        assert_eq!(effects[1].previous, None);
+        assert_eq!(effects[2].previous, Some(serde_json::json!(2)));
+
+        // Re-serialized byte-for-byte, key order included.
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), wire);
     }
 }

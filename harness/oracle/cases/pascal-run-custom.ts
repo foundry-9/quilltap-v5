@@ -190,6 +190,53 @@ const containment = {
   ],
 };
 
+// The c4d4b0de "Side effects: writes …" line — targets only, deduplicated, in
+// DECLARATION order. Never values, never conditions.
+const effectsTool = {
+  name: 'lockpick',
+  description: 'work the tumblers',
+  effects: [
+    { target: 'state.encounter.count', value: 1 },
+    { when: { outcome: { eq: 'success' } }, target: 'metadata.lockpick', value: "'broken pick'" },
+    { target: 'state.encounter.count', value: 2 },
+    { target: 'state.alpha', value: 3 },
+  ],
+  outcomes: [
+    { when: { gte: 0.5 }, message: 'open', state: 'success' },
+    { when: true, message: 'stuck', state: 'failure' },
+  ],
+};
+
+// The same tool with the odds withheld: the Side-effects line goes with them.
+const effectsSecret = {
+  name: 'sealed_lock',
+  description: 'a sealed lock',
+  revealOdds: false,
+  effects: [{ target: 'state.encounter.count', value: 1 }],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+// An EMPTY effects array declares none, so no line at all.
+const effectsEmpty = {
+  name: 'no_effects',
+  description: 'declares an empty list',
+  effects: [],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+// Effects AND a consult: the two lines' order (consult first, then effects,
+// then the outcome rows) is the description's contract.
+const effectsAndLlm = {
+  name: 'consulted_lock',
+  description: 'ask, then write',
+  llm: { prompt: 'Speak.', errorMessage: 'nope' },
+  effects: [{ target: 'metadata.verdict', value: '{{llm}}' }],
+  outcomes: [
+    { when: { llm: { ok: true } }, message: 'a', state: 'success' },
+    { when: true, message: 'b', state: 'failure' },
+  ],
+};
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -206,6 +253,12 @@ const cases: Array<[string, unknown[]]> = [
   ['llm-reveal-odds-false', [llmSecret]],
   ['containment', [containment]],
   ['multi-tool-with-llm', [minimal, llmTool, containment]],
+  // The c4d4b0de additions.
+  ['effects-line', [effectsTool]],
+  ['effects-reveal-odds-false', [effectsSecret]],
+  ['effects-empty-array', [effectsEmpty]],
+  ['effects-and-llm-line-order', [effectsAndLlm]],
+  ['multi-tool-with-effects', [minimal, effectsTool, effectsAndLlm]],
 ];
 
 const rows: unknown[] = [];

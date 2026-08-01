@@ -45,6 +45,7 @@ use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamCo
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
+use crate::pascal::side_effects::apply_effects_for_run;
 use crate::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use crate::pascal::tool_vocabulary::collect_tool_vocabulary;
 use crate::services::pascal_writer::{
@@ -53,6 +54,7 @@ use crate::services::pascal_writer::{
 use crate::services::prospero_notifications::{
     post_prospero_custom_tool_error, ProsperoCustomToolErrorArgs,
 };
+use crate::state::cascade::StateCascadeResult;
 
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
@@ -514,8 +516,17 @@ enum RunPrep {
         available: Vec<String>,
     },
     /// Boxed — the discovered definition dwarfs the other variants. Carries the
-    /// tool entry, the AS-character's fact sheet, and the merged state cascade.
-    Ready(Box<(DiscoveredCustomTool, Map<String, Value>, Value)>),
+    /// tool entry, the AS-character's fact sheet, the WHOLE state cascade (v4
+    /// `c4d4b0de` — the effect applier needs the per-tier objects, not just
+    /// `.merged`), and the resolved perspective's character id.
+    Ready(
+        Box<(
+            DiscoveredCustomTool,
+            Map<String, Value>,
+            StateCascadeResult,
+            String,
+        )>,
+    ),
 }
 
 /// v4 `handleRun` — run one tool at the operator's behest.
@@ -602,37 +613,40 @@ pub async fn chat_custom_tool_run(
                     } else {
                         Map::new()
                     };
-                    // The merged state cascade the run's `$state` references
-                    // resolve against (v4 `f48f34dc`). The group tier follows
-                    // the same asymmetry as metadata above: scoped to the named
-                    // character's own groups, or skipped entirely for a run
-                    // nobody made (no `asCharacterId`), rather than borrowing an
-                    // arbitrary participant's groups. Fail-soft — required
-                    // fallbacks keep every run dealable.
+                    // The state cascade the run's `$state` references resolve
+                    // against (v4 `f48f34dc`) — retained WHOLE, not just
+                    // `.merged`, because the effect applier needs the per-tier
+                    // objects to decide where a write lives (v4 `c4d4b0de`).
+                    // The group tier follows the same asymmetry as metadata
+                    // above: scoped to the named character's own groups, or
+                    // skipped entirely for a run nobody made (no
+                    // `asCharacterId`), rather than borrowing an arbitrary
+                    // participant's groups. Fail-soft — required fallbacks keep
+                    // every run dealable.
                     let scope = match &as_char {
                         Some(cid) => crate::state::cascade::GroupScope::Character {
                             character_id: cid.clone(),
                         },
                         None => crate::state::cascade::GroupScope::None,
                     };
-                    let tool_state = crate::state::cascade::resolve_state_cascade(
+                    let cascade = crate::state::cascade::resolve_state_cascade(
                         main,
                         Some(mount),
                         &chat,
                         &scope,
-                    )
-                    .merged;
+                    );
                     Ok(RunPrep::Ready(Box::new((
                         entry.clone(),
                         metadata,
-                        tool_state,
+                        cascade,
+                        perspective.character_id.clone(),
                     ))))
                 }
             }
         })
     });
 
-    let (entry, metadata, tool_state) = match prep {
+    let (entry, metadata, cascade, perspective_character_id) = match prep {
         Ok(RunPrep::NoChat) => return not_found("Chat"),
         Ok(RunPrep::NoPerspectives) => {
             return bad_request(
@@ -655,8 +669,8 @@ pub async fn chat_custom_tool_run(
             })
         }
         Ok(RunPrep::Ready(boxed)) => {
-            let (entry, metadata, tool_state) = *boxed;
-            (entry, metadata, tool_state)
+            let (entry, metadata, cascade, perspective_character_id) = *boxed;
+            (entry, metadata, cascade, perspective_character_id)
         }
         Err(e) => return internal(e),
     };
@@ -704,7 +718,7 @@ pub async fn chat_custom_tool_run(
         parameters.as_ref(),
         private,
         metadata_arg,
-        Some(&tool_state),
+        Some(&cascade.merged),
         &mut rng,
         // v4 builds the invoker only when the definition declares an `llm`
         // block; the chat run attributes the consult to THIS chat, so a
@@ -735,13 +749,34 @@ pub async fn chat_custom_tool_run(
         }
     };
 
+    // Effects apply BEFORE the Pascal post; if the post then fails, the effects
+    // stand — they happened. `characterId` follows the same asymmetry as the
+    // metadata rule above: only a run made AS a character writes to that
+    // character's sheet — a run nobody made writes to nobody's, because an
+    // unattributed operator roll must not edit an arbitrary character.
+    let applied_effects = apply_effects_for_run(
+        db,
+        chat_id,
+        &result,
+        Some(cascade),
+        as_character_id.map(|_| perspective_character_id),
+        &metadata,
+    )
+    .await;
+
     let tool_title = display_title(&entry.definition.name, entry.definition.title.as_deref());
-    let body = build_pascal_result_content(&tool_title, &result.message);
+    let body =
+        build_pascal_result_content(&tool_title, result.chip_label.as_deref(), &result.message);
 
     // pascalMeta — `invokedBy: 'user'`, NO callerParticipantId (v4 handleRun).
     let mut pascal_meta = Map::new();
     pascal_meta.insert("tool".into(), json!(result.tool));
     pascal_meta.insert("toolTitle".into(), json!(tool_title));
+    // `...(result.chipLabel ? { chipLabel } : {})` — v4 `c4d4b0de`, right after
+    // `toolTitle`. `preserve_order` makes the placement byte-sensitive.
+    if let Some(chip_label) = &result.chip_label {
+        pascal_meta.insert("chipLabel".into(), json!(chip_label));
+    }
     pascal_meta.insert(
         "definitionTier".into(),
         serde_json::to_value(entry.tier).unwrap_or(Value::Null),
@@ -787,6 +822,15 @@ pub async fn chat_custom_tool_run(
     }
     if let Some(llm) = &result.llm {
         pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
+    }
+    // `...(appliedEffects.length ? { effects: appliedEffects } : {})` — v4
+    // `c4d4b0de`, after `llm` and before `invokedBy`. Only the writes that
+    // LANDED are recorded; a skipped or dropped effect leaves no trace here.
+    if !applied_effects.is_empty() {
+        pascal_meta.insert(
+            "effects".into(),
+            serde_json::to_value(&applied_effects).unwrap_or(Value::Null),
+        );
     }
     pascal_meta.insert("invokedBy".into(), json!("user"));
 

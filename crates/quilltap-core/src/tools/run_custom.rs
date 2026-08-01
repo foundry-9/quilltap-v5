@@ -26,12 +26,14 @@ use crate::pascal::custom_tools::{
 };
 use crate::pascal::js_value::{json_stringify, number_to_string};
 use crate::pascal::roster::{resolve_custom_tool_roster, DiscoveredCustomTool, RosterContext};
+use crate::pascal::side_effects::apply_effects_for_run;
 use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams, PostedPascalMessage,
 };
 use crate::services::prospero_notifications::{
     post_prospero_custom_tool_error, ProsperoCustomToolErrorArgs,
 };
+use crate::state::cascade::StateCascadeResult;
 use crate::tools::rng::RandomBytes;
 
 // ===========================================================================
@@ -100,6 +102,7 @@ const RUN_CUSTOM_PREAMBLE: &str = concat!(
     "Do not describe the result before calling, and do not re-run a tool to get a better answer.\n",
     "An outcome table may also consult your own character's metadata, so the same tool can deal differently to different characters.\n",
     "Some tools additionally pose a question to a separate model mid-run and let its answer steer the outcome; that consult happens server-side too, and you never speak for it.\n",
+    "Some tools record side effects when they run — adjusting the scene's persistent state or the rolling character's own records, server-side, as part of the roll.\n",
     "\n",
     "Available tools:"
 );
@@ -399,6 +402,22 @@ pub fn build_run_custom_description(roster: &[DiscoveredCustomTool]) -> String {
             // quoting it here would invite this one to answer it.
             lines.push("    Consults a separate model; outcomes may test its answer.".to_string());
         }
+        if let Some(effects) = definition.effects.as_ref().filter(|e| !e.is_empty()) {
+            // Targets only — vocabulary, never values or conditions. Under
+            // `revealOdds: false` this line is gone with the rest of the odds
+            // (the `continue` above): the consequences stay as hidden as the
+            // thresholds. (The human popup still sees the targets via the
+            // vocabulary — the file is the user's own.)
+            //
+            // Deduplicated in DECLARATION order, v4's `[...new Set(...)]`.
+            let mut targets: Vec<&str> = Vec::new();
+            for effect in effects {
+                if !targets.contains(&effect.target.as_str()) {
+                    targets.push(&effect.target);
+                }
+            }
+            lines.push(format!("    Side effects: writes {}", targets.join(", ")));
+        }
         for outcome in &definition.outcomes {
             lines.push(format!(
                 "    {} → {}",
@@ -644,12 +663,14 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         Some(&metadata)
     };
 
-    // The merged state cascade (chat → project → group → general) the run's
-    // `$state` references resolve against (v4 `f48f34dc`). Scoped to the
-    // rolling character's own groups (Knowledge's rule). Fail-soft: every
-    // `$state` ref carries a required fallback, so a run is always dealable
-    // even if state can't be read.
-    let tool_state: Value = {
+    // The state cascade (chat → project → group → general) the run's `$state`
+    // references resolve against (v4 `f48f34dc`) — retained WHOLE, not just
+    // `.merged`, because the effect applier needs the per-tier objects to decide
+    // where a write lives (v4 `c4d4b0de`). Read once here; never re-read.
+    // Scoped to the rolling character's own groups (Knowledge's rule).
+    // Fail-soft: every `$state` ref carries a required fallback, so a run is
+    // always dealable even if state can't be read — state effects then skip.
+    let cascade: Option<StateCascadeResult> = {
         use crate::state::cascade::{resolve_state_cascade, GroupScope};
         let cid = ctx.chat_id.clone();
         let scope = match &ctx.character_id {
@@ -660,19 +681,23 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         };
         db.read_main(|main| {
             let Some(chat) = crate::db::chats_read::find_by_id(main, &cid)? else {
-                return Ok(Value::Object(Map::new()));
+                return Ok(None);
             };
             // A degraded (no mount-index) open still resolves the chat tier.
-            let merged = match db.read_mount_index(|mount| {
-                Ok(resolve_state_cascade(main, Some(mount), &chat, &scope).merged)
+            let resolved = match db.read_mount_index(|mount| {
+                Ok(resolve_state_cascade(main, Some(mount), &chat, &scope))
             }) {
-                Ok(m) => m,
-                Err(_) => resolve_state_cascade(main, None, &chat, &scope).merged,
+                Ok(c) => c,
+                Err(_) => resolve_state_cascade(main, None, &chat, &scope),
             };
-            Ok(merged)
+            Ok(Some(resolved))
         })
-        .unwrap_or_else(|_| Value::Object(Map::new()))
+        .unwrap_or(None)
     };
+    let tool_state: Value = cascade
+        .as_ref()
+        .map(|c| c.merged.clone())
+        .unwrap_or_else(|| Value::Object(Map::new()));
 
     let result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
@@ -698,6 +723,20 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         }
     };
 
+    // Effects apply BEFORE the Pascal post: if the post then fails, the effects
+    // stand — they happened, and the existing "outcome could not be posted"
+    // failure path still tells the model. (An error out of `execute_custom_tool`
+    // means no effects were ever applied.) The applier never fails the run.
+    let applied_effects = apply_effects_for_run(
+        db,
+        &ctx.chat_id,
+        &result,
+        cascade,
+        ctx.character_id.clone(),
+        &metadata,
+    )
+    .await;
+
     let whispered = result.visibility == Visibility::Whisper;
 
     // A private roll is whispered to the rolling character alone. The human
@@ -711,12 +750,18 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
 
     let tool_title = display_title(&entry.definition.name, entry.definition.title.as_deref());
 
-    let body = build_pascal_result_content(&tool_title, &result.message);
+    let body =
+        build_pascal_result_content(&tool_title, result.chip_label.as_deref(), &result.message);
 
     // Assemble `pascalMeta` field-for-field with v4's handler (:208-224).
     let mut pascal_meta = Map::new();
     pascal_meta.insert("tool".into(), json!(result.tool));
     pascal_meta.insert("toolTitle".into(), json!(tool_title));
+    // `...(result.chipLabel ? { chipLabel } : {})` — v4 `c4d4b0de`, right after
+    // `toolTitle`. `preserve_order` makes the placement byte-sensitive.
+    if let Some(chip_label) = &result.chip_label {
+        pascal_meta.insert("chipLabel".into(), json!(chip_label));
+    }
     pascal_meta.insert(
         "definitionTier".into(),
         serde_json::to_value(entry.tier).unwrap_or(Value::Null),
@@ -752,6 +797,15 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     }
     if let Some(llm) = &result.llm {
         pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
+    }
+    // `...(appliedEffects.length ? { effects: appliedEffects } : {})` — v4
+    // `c4d4b0de`, after `llm` and before `invokedBy`. Only the writes that
+    // LANDED are recorded; a skipped or dropped effect leaves no trace here.
+    if !applied_effects.is_empty() {
+        pascal_meta.insert(
+            "effects".into(),
+            serde_json::to_value(&applied_effects).unwrap_or(Value::Null),
+        );
     }
     pascal_meta.insert("invokedBy".into(), json!("llm"));
     if let Some(caller) = &ctx.caller_participant_id {

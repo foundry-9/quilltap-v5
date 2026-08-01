@@ -48091,3 +48091,65 @@ presence, and the `AppliedEffect` key order) is pinned unit-side; the WRITES
 per-store failure isolation, the underscore re-check) are pinned end-to-end by
 the two route differentials over the rebuilt fixture in unit 6. Nothing is
 hand-inserted.
+
+### Lane record — P4.D35 unit 5: both entrances, the writer, the preamble, the vocabulary
+
+The wiring half of `c4d4b0de`:
+
+- **`pascal_writer.rs`** — `build_pascal_result_content` grew a `chip_label`
+  argument and emits the two-block body `🎲 **{heading}**\n\n{message}`, with
+  `chipLabel?.trim() || toolTitle` as the heading. Old rows are untouched:
+  content is frozen at post time, and nothing re-formats a record.
+- **`run_custom.rs`** — the preamble sentence, the per-tool `Side effects:
+  writes …` line (targets only, deduplicated in DECLARATION order, and gone
+  entirely under `revealOdds: false` because it sits after that `continue`),
+  the cascade restructure (the WHOLE `StateCascadeResult` retained, `.merged`
+  taken from it), the apply-before-post call, and the two `pascalMeta`
+  insertions. **The §2 byte-identity pin at `run_custom.rs` fired as the order
+  predicted** — `tools/definitions/data.rs`'s `run_custom` description was
+  updated byte-exactly and `tool_definitions` regenerated.
+- **`api/custom_tools.rs`** — the same restructure in `handleRun`, with the ONE
+  deliberate asymmetry: `character_id` is `as_character_id.map(|_|
+  perspective_character_id)`, so an unattributed operator roll writes to
+  nobody's sheet. `RunPrep::Ready` now carries the cascade and the resolved
+  perspective's id.
+- **`tool_vocabulary.rs`** — `stateWrites`/`metadataWrites` (sorted, the state
+  prefix stripped, the metadata key whole), both joining `is_empty_vocabulary`;
+  the chipLabel and effect-expression placeholder scans; effect-condition
+  metadata keys as READS.
+- **`db/chats_messages.rs`** — `PascalMetaIn.chip_label` after `tool_title`,
+  `effects: Option<Vec<PascalMetaEffectIn>>` after `llm` and before
+  `invoked_by`.
+
+**The shared `apply_effects_for_run` helper** (in `side_effects.rs`) is the
+`Db::write` wrapper both entrances call, because v4 writes the same six lines
+twice and the one difference between them — `characterId` — is the caller's
+argument.
+
+**⚠ A real trap caught and fixed: `Option<Value>` erases a stored `null`.**
+serde maps a JSON `null` to `None` for `Option<T>`, so `PascalMetaEffectIn.previous`
+would have collapsed "the store held nothing" (v4 `undefined`, key OMITTED) into
+"the store held null" — and `PascalMetaIn` round-trips the caller's `pascalMeta`
+on the way into the row, so the erasure would have been PERSISTED. Fixed with a
+`de_present_value` deserializer (`default` covers absence; any present value,
+`null` included, becomes `Some`) and pinned by
+`pascal_meta_effects_round_trip_preserves_null_and_key_order`, which also
+byte-asserts the whole re-serialization so the two new key positions cannot
+drift. Mutation-proven: removing the `deserialize_with` turns it red
+(`None` vs `Some(Null)`).
+
+**Corpus growth this unit:** `pascal_writers` 17 → 29 rows (5 block-opening
+messages + 6 chipLabel arms incl. both fallback routes); `pascal_run_custom`
+13 → 18 (the Side-effects line, its `revealOdds:false` suppression, the
+empty-array no-line rule, the consult-then-effects line order, and a multi-tool
+roster); `pascal_tool_vocabulary` 37 → 48 (both write lists, sorting + dedup,
+the nested/bracket path, the chipLabel scan, and write-only-is-not-empty).
+
+**➜ FOR P4.D36 — a §1 wire addition this lane makes that the SPA must mirror:**
+`ToolVocabulary` (the roster listing's `references` object) gains
+`stateWrites: string[]` and `metadataWrites: string[]`, both always present.
+The SPA's `CustomToolReferences` in `apps/web/src/app/chat/custom-tools.api.ts`
+lacks them; nothing breaks at runtime (extra keys are tolerated), but v4's
+commit also gives the run dialog a "may write" line, which needs them. That
+file is not named in either order's ownership list — D36 should take it, or
+escalate.
