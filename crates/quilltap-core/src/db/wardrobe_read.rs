@@ -33,6 +33,7 @@ use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::DbError;
 use crate::vault_overlay::SeedArchetype;
+use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
 
 /// v4's `hasLinkedVault(character)` — the character row carries a non-empty
 /// `characterDocumentMountPointId`.
@@ -42,17 +43,6 @@ fn linked_vault_mount(character: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-}
-
-/// v4 `!item.archivedAt` — active when `archivedAt` is falsy (`null`, absent, or
-/// the empty string). Mirrors [`super::archetype_wardrobe`]'s filter.
-fn is_archived_truthy(item: &Value) -> bool {
-    match item.get("archivedAt") {
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-        _ => false,
-    }
 }
 
 /// v4 `findByCharacterId` / `getOverlaidWardrobeItems` — a character's overlaid
@@ -104,6 +94,36 @@ pub fn find_by_character_id(
         })
         .filter(|it| include_archived || !is_archived_truthy(it))
         .collect())
+}
+
+/// v4 `findWearablePoolForCharacter` — everything a character can actually wear:
+/// the shared tiers (Quilltap General + any project stores in
+/// `project_mount_point_ids`) merged under the character's own vault. Character
+/// items shadow shared ones on id collision; archived items are dropped.
+///
+/// This is the pool every "what can this character wear?" question should ask —
+/// `wardrobe_list`, chat-start default resolution, the `llm_choose` candidate
+/// list. Filter it (e.g. `isDefault`) *after* the merge, never before: a
+/// personal `isDefault: false` item shadowing a shared default is invisible to a
+/// merge done on pre-filtered lists.
+///
+/// **Do NOT "simplify" this** to call [`read_character_vault_wardrobe`] directly
+/// or to flip `seed_archetypes` on the shared readers. The archetype read is a
+/// *sibling* of the vault read here, not nested inside it, which is what keeps
+/// the recursion guard in [`super::archetype_wardrobe`] (v4
+/// `lib/mount-index/general-wardrobe.ts`) intact.
+///
+/// The `project_mount_point_ids` parameter is deliberately the only tier knob:
+/// the group tier lands later alongside it with no call-site churn.
+pub fn find_wearable_pool_for_character(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Result<Vec<Value>, DbError> {
+    let shared = find_archetypes(main, docs, false, project_mount_point_ids)?;
+    let own = find_by_character_id(main, docs, character_id, false)?;
+    Ok(merge_wearable_pool(&shared, &own))
 }
 
 /// v4 `findByIdsForCharacter` — multiple wardrobe items wearable by a character.

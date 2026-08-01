@@ -16,10 +16,14 @@
 //!   one-sentence layer-vs-replace description.
 //! - [`normalize_no_item_sentinel`] (v4 `wardrobe-handler-shared.ts`) — the
 //!   `"none"`/`"null"`/`""` → absent coercion.
+//! - [`sort_for_default_outfit`] (v4 `default-outfit.ts`) — the deterministic
+//!   layer order for a default outfit.
 
 use std::collections::HashSet;
 
 use serde_json::Value;
+
+use crate::clock::iso_to_ms;
 
 /// The canonical slot order (v4 `WARDROBE_SLOT_TYPES`). Every union / render walks
 /// this order so output is deterministic.
@@ -168,6 +172,33 @@ pub fn describe_outfit_with_omit(slots: &OutfitSlotValues, omit: &[OutfitSlotNam
 // ===========================================================================
 // expand-composites.ts — expandComposites
 // ===========================================================================
+
+/// v4 `sortForDefaultOutfit(items)` — the deterministic layer order for a
+/// default outfit: oldest `createdAt` first, items lacking one last.
+///
+/// Ordering is observable now that personal and shared defaults can occupy the
+/// same slot — slot arrays are read inner-to-outer. Both sides of the wire apply
+/// it (`apps/web`'s `sortForDefaultOutfit` is the mirror) so the composer's
+/// preview and the chat that opens agree.
+///
+/// Nuance carried from the pre-drift port: v4 maps a *missing* `createdAt` to
+/// `+Infinity` and an unparseable one to `NaN` (whose comparator reads as 0 and
+/// so leaves the pair's relative order alone). v5 maps both to `i64::MAX`, which
+/// agrees with v4 on the only shape Quilltap data actually holds — a valid ISO
+/// string or nothing — and keeps the comparator a total order, which Rust's
+/// stable `sort_by` requires.
+pub fn sort_for_default_outfit(items: &[Value]) -> Vec<Value> {
+    let mut out = items.to_vec();
+    let key = |v: &Value| -> i64 {
+        v.get("createdAt")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .and_then(iso_to_ms)
+            .unwrap_or(i64::MAX)
+    };
+    out.sort_by_key(key);
+    out
+}
 
 /// v4 `ExpandResult` (the `cycles` / `truncated` fields are not consumed by the
 /// wardrobe tool handlers, but are ported for fidelity).

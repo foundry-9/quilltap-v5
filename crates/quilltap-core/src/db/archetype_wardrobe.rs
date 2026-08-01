@@ -27,20 +27,10 @@ use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::instance_settings;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::DbError;
+use crate::wearable_pool::is_archived_truthy;
 
 /// The `Wardrobe/` folder, shared by every tier (v4 `CHARACTER_WARDROBE_FOLDER`).
 const WARDROBE_FOLDER: &str = "Wardrobe";
-
-/// v4's `!item.archivedAt` — an item is active (kept when not `includeArchived`)
-/// when `archivedAt` is falsy: `null`, absent, or the empty string.
-fn is_archived_truthy(item: &Value) -> bool {
-    match item.get("archivedAt") {
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-        _ => false,
-    }
-}
 
 /// Read a shared store's `Wardrobe/` items with `characterId` coerced to `null`
 /// and the archived filter applied. v4 calls `readCharacterVaultWardrobe(mount,
@@ -92,6 +82,17 @@ pub fn read_general_wardrobe(
 }
 
 /// v4 `readProjectWardrobe` — a specific project store's shared archetypes.
+///
+/// Archetype seeding is disabled in the underlying reader: a project composite
+/// resolves its components within this same folder, not by recursing through
+/// [`find_archetypes`] (which would loop back here).
+///
+/// Consequence, and a known gap: a project composite whose components live in
+/// *Quilltap General* loses those refs at parse time — the overlay's
+/// component check only sees this folder's items. Same-tier composites (the
+/// common case) are fine. Read-time hydration in
+/// [`crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values`]
+/// recovers the equipped case; the parse-time gap is tracked separately.
 pub fn read_project_wardrobe(
     docs: &DocMountDocumentsRepository,
     mount_point_id: &str,

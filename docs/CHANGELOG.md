@@ -196,6 +196,16 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Gave the wardrobe one place to answer "what can this character actually wear?".
+The answer folds the shared tiers — Quilltap General plus any of the project's
+own stores — underneath the character's own vault, so a character's private
+copy of a house garment hides the shared one, and an archived copy simply
+disappears, letting the shared item show through again. The merge deliberately
+happens on the full lists and only then drops archived items, because a
+character's opt-out from a shared default is itself an item, and filtering
+first would throw it away before it could do its job. The equip path, which
+needs archived garments so it can still name what someone is wearing, does not
+use this and says so.
 
 Planned the next porting round: the reference app moved ten commits in two
 days, and six work orders now cover absorbing all of it — the Pascal

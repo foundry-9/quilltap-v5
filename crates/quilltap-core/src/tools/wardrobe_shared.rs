@@ -32,6 +32,27 @@ use crate::wardrobe::{
     describe_outfit, expand_composites, OutfitSlotValues, Slots, WARDROBE_SLOT_TYPES,
 };
 
+/// v4 `resolveProjectMountPointIds(projectId)` — the project tier for a project
+/// id the caller already holds: its linked document stores. `[]` for a
+/// project-less caller or any lookup failure (v4 catches → `[]`). `mount` reads
+/// `project_doc_mount_links`.
+///
+/// The sibling of [`resolve_project_mount_point_ids_for_chat`], which is this
+/// function plus the chat→project lookup. Chat-start outfit resolution reaches
+/// for this one: the create / add-participant / merge paths all hold the project
+/// id already.
+pub fn resolve_project_mount_point_ids(
+    mount: &Connection,
+    project_id: Option<&str>,
+) -> Vec<String> {
+    let Some(project_id) = project_id.filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    ProjectDocMountLinksRepository::new(mount)
+        .find_by_project_id(project_id)
+        .unwrap_or_default()
+}
+
 /// v4 `resolveProjectMountPointIdsForChat(chatId)` — the project tier for a chat:
 /// load the chat, then its project's linked stores. `[]` for a project-less chat
 /// or any lookup failure (v4 catches → `[]`). `main` reads `chats`, `mount` reads
@@ -45,16 +66,7 @@ pub fn resolve_project_mount_point_ids_for_chat(
         Ok(Some(c)) => c,
         _ => return Vec::new(),
     };
-    let Some(project_id) = chat
-        .get("projectId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    else {
-        return Vec::new();
-    };
-    ProjectDocMountLinksRepository::new(mount)
-        .find_by_project_id(project_id)
-        .unwrap_or_default()
+    resolve_project_mount_point_ids(mount, chat.get("projectId").and_then(Value::as_str))
 }
 
 /// v4 `resolveWardrobeItemAcrossTiers` — resolve one wardrobe item by id
