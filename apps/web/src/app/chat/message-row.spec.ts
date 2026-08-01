@@ -176,9 +176,20 @@ describe('MessageRow — Pascal roll outcome (P4.6ba)', () => {
     ).toBe('pick_lock');
   });
 
-  it('does not render a character avatar for a Pascal row', () => {
+  /**
+   * P4.26 CORRECTION. This case used to assert NO avatar: v5 had no Staff
+   * portraits, so `resolveMessageAuthor` fell through to the role fallback and
+   * would have hung the first cast character's face on the croupier — suppressing
+   * the whole avatar was the lesser wrong. v4 has always drawn Pascal's own
+   * portrait beside the bar (`getMessageAvatar` :1127), and now so does v5.
+   */
+  it('renders Pascal’s own portrait beside the bar (v4 getMessageAvatar)', () => {
     const fixture = render(pascalMsg());
-    expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).toBeNull();
+    const avatar = fixture.nativeElement.querySelector('.qt-chat-desktop-avatar');
+    expect(avatar).not.toBeNull();
+    const img = avatar.querySelector('img');
+    expect(img.getAttribute('src')).toBe('/images/avatars/pascal-avatar.webp');
+    expect(img.getAttribute('alt')).toBe('Pascal');
   });
 
   // --- P4.d21 (v4 231be14c): the bar wears the outcome's own state -----------
@@ -462,5 +473,58 @@ describe('MessageRow — whisper label (P4.17 unit 3)', () => {
     const fixture = render(message({ targetParticipantIds: ['p1', 'ghost'] }));
     const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
     expect(label.textContent.trim()).toBe('whispered to Lorian, unknown');
+  });
+});
+
+/**
+ * P4.26 — v4 gives EVERY Staff row that renders in full the expanded
+ * systemSender header bar (`MessageRow.tsx:277-294`), not Pascal alone. The
+ * three that reach `MessageRow` in v5 are the three `isAnnouncementChip`
+ * exempts: a Carina reference answer, a Suparṇā letter, a Pascal roll.
+ */
+describe('MessageRow — the Staff header bar (P4.26)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('gives a Carina reference answer the bar', () => {
+    const fixture = render(
+      message({
+        systemSender: 'carina',
+        systemKind: 'carina-response',
+        participantId: null,
+        content: 'Eighteen ninety-three.',
+        carinaMeta: { answererId: 'char1', question: 'What year is it?' },
+      }),
+    );
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar).not.toBeNull();
+    // v4 names the DESK in the bar while the portrait beside it is the
+    // answerer's own — that resolution is pinned in `chat-view-model.spec`.
+    expect(bar.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('Carina');
+    expect(bar.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe(
+      'reference answer',
+    );
+    // No roll record, so no accent — the bar stays plain (v4).
+    expect(bar.classList.contains('qt-pascal-result')).toBe(false);
+    // The ordinary author line is replaced by the bar.
+    expect(fixture.nativeElement.querySelector('.qt-chat-message-header')).toBeNull();
+  });
+
+  it('gives a Suparṇā letter the bar with v4’s mail label', () => {
+    const bar = render(
+      message({
+        systemSender: 'suparna',
+        systemKind: 'mail-delivery',
+        participantId: null,
+        content: 'A letter arrives.',
+      }),
+    ).nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('Suparṇā');
+    expect(bar.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe('mail delivery');
+  });
+
+  it('leaves an ordinary character line with its author header and no bar', () => {
+    const fixture = render(message({ content: 'Good evening.' }));
+    expect(fixture.nativeElement.querySelector('.qt-chat-system-bar')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.qt-chat-message-header')).not.toBeNull();
   });
 });

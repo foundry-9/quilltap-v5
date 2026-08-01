@@ -58,6 +58,53 @@ export function splitSwipeGroups(all: MessageDto[]): SplitResult {
   return { messages: displayMessages, swipeStates };
 }
 
+/**
+ * The Brahma Console's pseudo-answerer id (v4
+ * `lib/services/carina/brahma-answerer.ts`, mirrored in Rust as
+ * `services::carina_query::BRAHMA_CARINA_ANSWERER_ID`). It names no character
+ * record, so a Carina row carrying it is resolved by hand.
+ */
+const BRAHMA_CARINA_ANSWERER_ID = 'b4a4c0de-0000-4000-8000-000000000001';
+
+/**
+ * The portrait and prose name behind each Staff sender (v4 `getMessageAvatar`
+ * :1097-1128, transcribed sender for sender; the webp assets are v4's own,
+ * copied byte-identical into `public/images/avatars/`). Carina is deliberately
+ * absent — her answers wear the answerer character's portrait instead.
+ *
+ * Pascal's `title` is v4's: the only Staff member the table gives one.
+ */
+const STAFF_AVATARS: Partial<
+  Record<NonNullable<MessageDto['systemSender']>, { name: string; title: string | null; avatarUrl: string }>
+> = {
+  lantern: { name: 'The Lantern', title: null, avatarUrl: '/images/avatars/lantern-avatar.webp' },
+  aurora: { name: 'Aurora', title: null, avatarUrl: '/images/avatars/aurora-avatar.webp' },
+  librarian: {
+    name: 'The Librarian',
+    title: null,
+    avatarUrl: '/images/avatars/librarian-avatar.webp',
+  },
+  concierge: {
+    name: 'The Concierge',
+    title: null,
+    avatarUrl: '/images/avatars/concierge-avatar.webp',
+  },
+  prospero: { name: 'Prospero', title: null, avatarUrl: '/images/avatars/prospero-avatar.webp' },
+  host: { name: 'The Host', title: null, avatarUrl: '/images/avatars/host-avatar.webp' },
+  commonplaceBook: {
+    name: 'The Commonplace Book',
+    title: null,
+    avatarUrl: '/images/avatars/commonplace-book-avatar.webp',
+  },
+  ariel: { name: 'Ariel', title: null, avatarUrl: '/images/avatars/ariel-avatar.webp' },
+  suparna: { name: 'Suparṇā', title: null, avatarUrl: '/images/avatars/suparna-avatar.webp' },
+  pascal: {
+    name: 'Pascal',
+    title: 'the Croupier',
+    avatarUrl: '/images/avatars/pascal-avatar.webp',
+  },
+};
+
 /** The resolved author display for a message row. */
 export interface MessageAuthor {
   name: string;
@@ -116,6 +163,55 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
       avatarUrl: null,
       isUser: false,
     };
+  }
+
+  // A Staff sender. Every personified writer has a name and a portrait of its
+  // own (v4 `getMessageAvatar` :1097-1128) — reached in v5 by the Staff rows
+  // that render as FULL rows rather than chips: a Carina reference answer, a
+  // Suparṇā letter, a Pascal roll. Without this arm they fell through to the
+  // role fallback below and were attributed to whichever cast member sorted
+  // first — the wrong speaker entirely, the same shape as dogfood finding #31
+  // (P4.26).
+  if (message.systemSender === 'carina') {
+    // A reference answer renders under the ANSWERER character's own name and
+    // avatar — there is no dedicated Carina portrait (v4 :1130-1156).
+    const answererId = message.carinaMeta?.answererId;
+    // The Brahma Console pseudocharacter has no character record.
+    if (answererId === BRAHMA_CARINA_ANSWERER_ID) {
+      return {
+        name: 'Brahma',
+        title: null,
+        avatarUrl: '/images/avatars/brahma-avatar.webp',
+        isUser: false,
+      };
+    }
+    if (answererId) {
+      const participant = chat.participants.find((cp) => cp.character?.id === answererId);
+      if (participant?.character) {
+        return {
+          name: participant.character.name,
+          title: participant.character.title,
+          avatarUrl: normalizeAvatarSrc(participant.character.avatarUrl),
+          isUser: false,
+        };
+      }
+      const offScene = chat.offSceneCharacters?.find((c) => c.id === answererId);
+      if (offScene) {
+        return {
+          name: offScene.name,
+          title: offScene.title,
+          avatarUrl: normalizeAvatarSrc(offScene.avatarUrl),
+          isUser: false,
+        };
+      }
+    }
+    return { name: 'Carina', title: null, avatarUrl: null, isUser: false };
+  }
+  if (message.systemSender) {
+    const staff = STAFF_AVATARS[message.systemSender];
+    if (staff) {
+      return { ...staff, isUser: false };
+    }
   }
 
   // A named participant (character).
@@ -181,17 +277,31 @@ export type RenderItem =
   | { type: 'announcement-group'; chips: AnnouncementChip[] };
 
 /**
- * A Staff-authored announcement collapses to a chip — every `systemSender`
- * EXCEPT Carina and Pascal, whose reference answers / roll outcomes render as
- * their own full row (v4: `MessageRow` renders them as full messages with a
- * header bar rather than a collapsed announcement chip).
+ * A Staff-authored announcement collapses to a chip — a port of v4
+ * `announcement-render-items.ts`'s `isCollapsedAnnouncement` (`ff12f491`),
+ * exemption for exemption:
+ *
+ *  - **Carina** reference answers are real answers, rendered as a full row with
+ *    the ANSWERER character's own avatar and name.
+ *  - **Suparṇā `mail-delivery`** — a letter the operator can see is one
+ *    addressed to their own character (the visibility filter only shows a
+ *    targeted whisper when it targets a user-controlled participant), and those
+ *    "are significant enough to read in full rather than pack into a chip".
+ *  - **Pascal `custom-tool-result`** — the table's binding verdict on the scene,
+ *    "legible in full rather than reduced to a chip the reader has to unpack".
+ *
+ * Both of the latter are KIND-scoped in v4 and were sender-scoped here, so v5
+ * chipped every letter and spread the roll's exemption to Pascal's other kinds
+ * (P4.26). v4's expanded/collapsed term is absent: v5 keeps the chip mounted and
+ * renders the body beneath it (see `AnnouncementGroup`), so a chip never leaves
+ * its group.
  */
 export function isAnnouncementChip(message: MessageDto): boolean {
-  return (
-    message.systemSender != null &&
-    message.systemSender !== 'carina' &&
-    message.systemSender !== 'pascal'
-  );
+  if (message.systemSender == null) return false;
+  if (message.systemSender === 'carina') return false;
+  if (message.systemSender === 'suparna' && message.systemKind === 'mail-delivery') return false;
+  if (message.systemSender === 'pascal' && message.systemKind === 'custom-tool-result') return false;
+  return true;
 }
 
 /**

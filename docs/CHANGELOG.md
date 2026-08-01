@@ -97,6 +97,15 @@ failures that were silent, such as a tool list that would not load, now say so.
 Quilltap has notifications again. A short message appears in the bottom-right
 corner when something finishes or fails, and clears itself after three seconds,
 the way the previous version did.
+The Staff each have their own portrait and name in a conversation again.
+A reference answer from Carina now appears under the character who actually
+answered, a letter from Suparṇā under Suparṇā, and a roll under Pascal —
+instead of borrowing whichever cast member happened to sort first.
+
+A letter and a reference answer are shown in full again rather than folded
+into a chip, and every Staff message shown in full carries its own header
+bar. Pascal's other announcements fold into chips, as they always did in v4.
+
 Opening an announcement in a conversation now shows its text as an ordinary
 message. It had been rendering as small, italic, centred grey type on a muted
 slab — a style no other message uses, and one v4 never applied to an

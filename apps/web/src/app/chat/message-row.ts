@@ -78,30 +78,38 @@ export interface ImageClickEvent {
           </div>
         </div>
       } @else {
-      @if (showAvatar() && !author().isUser && !isPascal()) {
+      @if (showAvatar() && !author().isUser) {
         <div class="qt-chat-desktop-avatar">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
         </div>
       }
 
       <div class="qt-chat-message-body">
-        @if (isPascal()) {
-          <!-- Pascal's roll outcome: the full-row header bar (v4's expanded
-               systemSender header — a static, non-collapsing bar here since the
-               row is always shown). -->
+        @if (isStaffRow()) {
+          <!-- A Staff row that renders in full rather than as a chip (a Carina
+               reference answer, a Suparṇā letter, a Pascal roll) wears v4's
+               expanded systemSender header — dot · sender · kind · time
+               (MessageRow.tsx:277-294 via AnnouncementBarContents). Static and
+               non-collapsing here: v4's bar IS a collapse button, but the three
+               senders that reach it are the ones isCollapsedAnnouncement
+               exempts, so v4's click can never actually collapse them either. -->
           <div
             class="qt-chat-system-bar qt-chat-system-bar-expanded qt-chat-system-bar-static"
-            [class]="pascalAccentClasses()"
+            [class]="staffAccentClasses()"
           >
-            <span class="qt-chat-announcement-dot" [class]="pascalDotClass()"></span>
-            <span class="qt-chat-system-bar-sender">{{ pascalSender() }}</span>
+            <span
+              class="qt-chat-announcement-dot"
+              [class]="staffDotClass()"
+              aria-hidden="true"
+            ></span>
+            <span class="qt-chat-system-bar-sender">{{ staffSender() }}</span>
             <!-- The state is carried by colour alone in the bar; name it for
                  readers who can't see the accent. -->
-            @if (pascalOutcomeState(); as state) {
+            @if (staffOutcomeState(); as state) {
               <span class="sr-only">{{ state }}</span>
             }
-            @if (pascalKind()) {
-              <span class="qt-chat-system-bar-kind">{{ pascalKind() }}</span>
+            @if (staffKind()) {
+              <span class="qt-chat-system-bar-kind">{{ staffKind() }}</span>
             }
             <span class="qt-chat-system-bar-time">{{ timestamp() }}</span>
           </div>
@@ -387,26 +395,27 @@ export class MessageRow {
   protected readonly isCourier = computed(() => this.message().pendingExternalPrompt != null);
 
   /**
-   * A Pascal roll outcome renders as its own full row with a header bar (v4
-   * `MessageRow`'s expanded systemSender header — dot · Pascal · toolTitle ·
-   * time), NOT a collapsed chip (`isAnnouncementChip` carves it out). The
-   * body is the normal markdown pipeline. Pascal has no participant, so the
-   * author-header/avatar path (which falls back to a character name) is
-   * suppressed in favour of this bar.
+   * A Staff-authored row that renders in FULL rather than as a collapsed chip —
+   * a Carina reference answer, a Suparṇā letter, a Pascal roll outcome (the
+   * three `isAnnouncementChip` carves out). v4 gives every such row the expanded
+   * systemSender header bar in place of the ordinary author line
+   * (`MessageRow.tsx:277-294`); v5 had wired it for Pascal alone, so a Carina
+   * answer and a letter arrived with no bar at all (P4.26). The body is the
+   * normal markdown pipeline either way.
    */
-  protected readonly isPascal = computed(() => this.message().systemSender === 'pascal');
-  /** "Pascal". */
-  protected readonly pascalSender = computed(() =>
+  protected readonly isStaffRow = computed(() => this.message().systemSender != null);
+  /** "Pascal", "Suparṇā", "Carina" — v4's staff display-name table. */
+  protected readonly staffSender = computed(() =>
     getSystemSenderDisplayName(this.message().systemSender),
   );
-  /** The tool title (`toolTitle ?? tool`) — v4's header chip subject. */
-  protected readonly pascalKind = computed(() => getSystemKindDisplayLabel(this.message()));
+  /** The kind chip — for a roll, the tool title (`toolTitle ?? tool`). */
+  protected readonly staffKind = computed(() => getSystemKindDisplayLabel(this.message()));
   /**
-   * The outcome the roll landed on (v4 `getAnnouncementOutcomeState`,
-   * `231be14c`), or null for a record that predates the field / carries a state
-   * this build doesn't know.
+   * The outcome a Pascal roll landed on (v4 `getAnnouncementOutcomeState`,
+   * `231be14c`), or null for every other Staff row — and for a record that
+   * predates the field / carries a state this build doesn't know.
    */
-  protected readonly pascalOutcomeState = computed(() =>
+  protected readonly staffOutcomeState = computed(() =>
     getAnnouncementOutcomeState(this.message()),
   );
   /**
@@ -414,14 +423,14 @@ export class MessageRow {
    * falls back to the importance tier — which for Pascal is always `high`, i.e.
    * the same red a deleted file gets. That mismatch is what `231be14c` fixed.
    */
-  protected readonly pascalDotClass = computed(() => {
-    const state = this.pascalOutcomeState();
+  protected readonly staffDotClass = computed(() => {
+    const state = this.staffOutcomeState();
     return state
       ? `qt-chat-announcement-dot-outcome-${state}`
       : `qt-chat-announcement-dot-${getAnnouncementImportance(this.message())}`;
   });
   /** The `qt-pascal-result` accent on the bar's leading edge, else `''`. */
-  protected readonly pascalAccentClasses = computed(() =>
+  protected readonly staffAccentClasses = computed(() =>
     getAnnouncementAccentClasses(this.message()),
   );
 

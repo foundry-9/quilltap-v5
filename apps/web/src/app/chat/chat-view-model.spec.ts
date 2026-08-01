@@ -321,3 +321,166 @@ describe('resolveMessageAuthor — the customAnnouncer character arm', () => {
     expect(author.name).toBe('The Management');
   });
 });
+
+/**
+ * P4.26 — the chip/full-row membership rule, adjudicated against v4
+ * `announcement-render-items.ts`'s `isCollapsedAnnouncement` (`ff12f491`). Two of
+ * v4's three exemptions are KIND-scoped and v5 had them sender-scoped, so every
+ * Suparṇā letter collapsed into a chip and every Pascal announcement escaped one.
+ */
+describe('buildRenderItems — v4’s exemptions are kind-scoped (P4.26)', () => {
+  const types = (messages: MessageDto[]) => buildRenderItems(messages).map((i) => i.type);
+
+  it('keeps a Suparṇā mail-delivery out of the chip group', () => {
+    // "significant enough to read in full rather than pack into a chip" (v4).
+    expect(types([msg({ id: 's', systemSender: 'suparna', systemKind: 'mail-delivery' })])).toEqual([
+      'message',
+    ]);
+  });
+
+  it('still chips a Suparṇā row of any OTHER kind', () => {
+    expect(types([msg({ id: 's', systemSender: 'suparna', systemKind: 'announcement' })])).toEqual([
+      'announcement-group',
+    ]);
+  });
+
+  it('keeps a Pascal roll outcome out of the chip group', () => {
+    expect(
+      types([msg({ id: 'p', systemSender: 'pascal', systemKind: 'custom-tool-result' })]),
+    ).toEqual(['message']);
+  });
+
+  it('chips a Pascal row of any other kind — the error chip is v4’s', () => {
+    expect(
+      types([msg({ id: 'p', systemSender: 'pascal', systemKind: 'custom-tool-error' })]),
+    ).toEqual(['announcement-group']);
+  });
+
+  it('keeps every Carina answer full, whatever its kind', () => {
+    expect(types([msg({ id: 'c', systemSender: 'carina', systemKind: null })])).toEqual(['message']);
+  });
+
+  it('breaks a chip run around the exempt rows rather than swallowing them', () => {
+    expect(
+      types([
+        msg({ id: 'h', systemSender: 'host', systemKind: 'add' }),
+        msg({ id: 's', systemSender: 'suparna', systemKind: 'mail-delivery' }),
+        msg({ id: 'l', systemSender: 'librarian', systemKind: 'saved' }),
+      ]),
+    ).toEqual(['announcement-group', 'message', 'announcement-group']);
+  });
+});
+
+/**
+ * P4.26 — the Staff identity arm. v5 had none, so the three Staff rows that
+ * render in FULL (Carina / Suparṇā / Pascal) fell through to the role fallback
+ * and wore whichever cast character sorted first — dogfood finding #31's shape,
+ * on a different set of rows.
+ */
+describe('resolveMessageAuthor — Staff senders (P4.26)', () => {
+  const cast = (id: string, name: string): ParticipantDetail => ({
+    id: `p-${id}`,
+    type: 'CHARACTER',
+    displayOrder: 0,
+    isActive: true,
+    controlledBy: 'llm',
+    status: 'active',
+    character: { id, name, title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+    connectionProfile: null,
+    imageProfile: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  const chat = (over: Partial<ChatDetail> = {}): ChatDetail =>
+    ({
+      id: 'chat-1',
+      participants: [cast('char-first', 'Aria')],
+      user: { id: 'u', name: 'Bertie', image: null },
+      offSceneCharacters: [],
+      ...over,
+    }) as ChatDetail;
+
+  it('gives each Staff sender v4’s own name and portrait', () => {
+    const table: [NonNullable<MessageDto['systemSender']>, string, string][] = [
+      ['lantern', 'The Lantern', '/images/avatars/lantern-avatar.webp'],
+      ['aurora', 'Aurora', '/images/avatars/aurora-avatar.webp'],
+      ['librarian', 'The Librarian', '/images/avatars/librarian-avatar.webp'],
+      ['concierge', 'The Concierge', '/images/avatars/concierge-avatar.webp'],
+      ['prospero', 'Prospero', '/images/avatars/prospero-avatar.webp'],
+      ['host', 'The Host', '/images/avatars/host-avatar.webp'],
+      ['commonplaceBook', 'The Commonplace Book', '/images/avatars/commonplace-book-avatar.webp'],
+      ['ariel', 'Ariel', '/images/avatars/ariel-avatar.webp'],
+      ['suparna', 'Suparṇā', '/images/avatars/suparna-avatar.webp'],
+      ['pascal', 'Pascal', '/images/avatars/pascal-avatar.webp'],
+    ];
+    for (const [sender, name, avatarUrl] of table) {
+      const author = resolveMessageAuthor(msg({ systemSender: sender }), chat());
+      expect(author).toMatchObject({ name, avatarUrl, isUser: false });
+      // THE GUARD: never borrowed from the cast (the pre-P4.26 behavior).
+      expect(author.name).not.toBe('Aria');
+    }
+  });
+
+  it('is the only Staff member v4 gives a title', () => {
+    expect(resolveMessageAuthor(msg({ systemSender: 'pascal' }), chat()).title).toBe(
+      'the Croupier',
+    );
+    expect(resolveMessageAuthor(msg({ systemSender: 'host' }), chat()).title).toBeNull();
+  });
+
+  it('renders a Carina answer under the ANSWERER character, not Carina', () => {
+    const author = resolveMessageAuthor(
+      msg({
+        systemSender: 'carina',
+        carinaMeta: { answererId: 'char-answerer', question: 'What year is it?' },
+      }),
+      chat({ participants: [cast('char-first', 'Aria'), cast('char-answerer', 'Bram')] }),
+    );
+    expect(author.name).toBe('Bram');
+  });
+
+  it('reaches off-scene for an answerer who has left the room', () => {
+    const author = resolveMessageAuthor(
+      msg({
+        systemSender: 'carina',
+        carinaMeta: { answererId: 'char-gone', question: 'q' },
+      }),
+      chat({
+        offSceneCharacters: [
+          { id: 'char-gone', name: 'Cleo', title: 'the Absent', avatarUrl: 'x.webp' },
+        ] as ChatDetail['offSceneCharacters'],
+      }),
+    );
+    expect(author).toMatchObject({ name: 'Cleo', title: 'the Absent', avatarUrl: '/x.webp' });
+  });
+
+  it('names the Brahma Console’s pseudo-answerer, which has no character record', () => {
+    const author = resolveMessageAuthor(
+      msg({
+        systemSender: 'carina',
+        carinaMeta: { answererId: 'b4a4c0de-0000-4000-8000-000000000001', question: 'q' },
+      }),
+      chat(),
+    );
+    expect(author).toMatchObject({
+      name: 'Brahma',
+      avatarUrl: '/images/avatars/brahma-avatar.webp',
+    });
+  });
+
+  it('falls back to "Carina" when the answerer cannot be resolved at all', () => {
+    expect(resolveMessageAuthor(msg({ systemSender: 'carina' }), chat())).toMatchObject({
+      name: 'Carina',
+      avatarUrl: null,
+    });
+  });
+
+  it('leaves an ordinary participant row untouched', () => {
+    const author = resolveMessageAuthor(
+      msg({ participantId: 'p-char-first' }),
+      chat({ participants: [cast('char-first', 'Aria')] }),
+    );
+    expect(author.name).toBe('Aria');
+  });
+});
