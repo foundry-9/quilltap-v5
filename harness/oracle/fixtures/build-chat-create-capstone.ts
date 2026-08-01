@@ -38,6 +38,18 @@ interface Spec {
 
 const TS = '2026-02-01T00:00:00.000Z';
 
+/** P4.D39 — the tri-tier wardrobe's pinned ids (see section 4b). */
+const W = {
+  generalMountPointId: 'd0000000-0000-4000-8000-0000000000f1',
+  projectId: 'd0000000-0000-4000-8000-0000000000f2',
+  gShirt: 'd0000000-0000-4000-8000-000000000001',
+  gCoat: 'd0000000-0000-4000-8000-000000000002',
+  gBoots: 'd0000000-0000-4000-8000-000000000003',
+  gLivery: 'd0000000-0000-4000-8000-000000000004',
+  pSash: 'd0000000-0000-4000-8000-000000000005',
+  aJacket: 'd0000000-0000-4000-8000-000000000006',
+} as const;
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(readFileSync(join(here, 'chat-create-capstone.json'), 'utf8')) as Spec;
@@ -68,9 +80,8 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, getCollection, closeDatabase } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, ensureCollection, getCollection, closeDatabase, rawQuery } =
+    await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -151,6 +162,131 @@ async function main(): Promise<void> {
       updatedAt: TS,
     } as never);
   }
+
+  // 4b. P4.D39 — the wardrobe, across all THREE tiers, so the chat-start
+  //     dressing this fixture exercises can be measured at all. Before this the
+  //     capstone had no wardrobe of any kind and every created chat's
+  //     `equippedOutfit` was four empty slots.
+  //
+  //     `createdAt` is staggered: layer order within a slot is `createdAt`
+  //     ascending, and with one shared timestamp the ordering claim would be
+  //     unfalsifiable.
+  const seedWardrobe = async (
+    characterId: string | null,
+    id: string,
+    title: string,
+    types: string[],
+    isDefault: boolean,
+    createdAt: string,
+    componentItemIds: string[] = [],
+    description: string | null = null,
+  ): Promise<void> => {
+    await repos.wardrobe.create(
+      {
+        characterId,
+        title,
+        description,
+        imagePrompt: null,
+        types,
+        componentItemIds,
+        appropriateness: null,
+        isDefault,
+        replace: false,
+        migratedFromClothingRecordId: null,
+        archivedAt: null,
+      } as never,
+      { id, createdAt, updatedAt: TS } as never,
+    );
+  };
+
+  // Quilltap General (an ordinary documents store + the instance_settings key).
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: W.generalMountPointId, createdAt: TS, updatedAt: TS },
+  );
+  await rawQuery(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  await rawQuery('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+    'generalMountPointId',
+    W.generalMountPointId,
+  ]);
+
+  // The shared tier. G_SHIRT is the oldest default in the fixture, so it layers
+  // innermost everywhere. G_LIVERY is a COMPOSITE whose two components ALSO live
+  // in General and are neither owned nor separately equipped — the shape that
+  // used to resolve to nothing (v4 defect 4), and the reason the resolver
+  // hydrates the component graph before expanding it.
+  await seedWardrobe(null, W.gShirt, 'House shirt', ['top'], true, '2026-01-01T00:00:00.000Z');
+  await seedWardrobe(null, W.gCoat, 'Livery coat', ['top'], false, '2026-01-02T00:00:00.000Z');
+  await seedWardrobe(null, W.gBoots, 'Livery boots', ['footwear'], false, '2026-01-03T00:00:00.000Z');
+  await seedWardrobe(
+    null,
+    W.gLivery,
+    'The house livery',
+    ['top', 'footwear'],
+    false,
+    '2026-01-04T00:00:00.000Z',
+    [W.gCoat, W.gBoots],
+    'Coat and boots together, as the house wears them.',
+  );
+
+  // The project tier: a store-backed project, its official store's Wardrobe/,
+  // and one project-wide default.
+  const project = await repos.projects.create(
+    { name: 'The Lantern Project', description: null, characterRoster: [], state: {} } as never,
+    { id: W.projectId, createdAt: TS, updatedAt: TS } as never,
+  );
+  const projectMp = project.officialMountPointId as string;
+  if (!projectMp) throw new Error('project official store not minted');
+  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
+  const { createProjectWardrobeItem } = await import(
+    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
+  );
+  await ensureProjectWardrobeFolder(projectMp);
+  await createProjectWardrobeItem(projectMp, {
+    id: W.pSash,
+    characterId: null,
+    title: 'Project sash',
+    description: null,
+    imagePrompt: null,
+    types: ['accessories'],
+    componentItemIds: [],
+    appropriateness: null,
+    isDefault: true,
+    replace: false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    createdAt: '2026-01-05T00:00:00.000Z',
+    updatedAt: TS,
+  } as never);
+
+  // The character tier: ARIA alone owns anything, and it is NEWER than the
+  // shared shirt, so it must layer OUTSIDE it. CLEO owns nothing at all.
+  await seedWardrobe(
+    spec.characters.aria.id as string,
+    W.aJacket,
+    'Aria’s flight jacket',
+    ['top'],
+    true,
+    '2026-01-06T00:00:00.000Z',
+  );
 
   // 5. Materialize the empty tables the create flow writes to (so the Rust port —
   // whose repos never CREATE tables — has them to write/dump). Use the exact

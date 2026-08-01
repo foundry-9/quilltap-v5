@@ -470,6 +470,54 @@
         "progressId": "e0000000-0000-4000-8000-0000000000c3"
       },
       "progressId": "e0000000-0000-4000-8000-0000000000c3"
+    },
+    {
+      "name": "outfit_default_tri_tier",
+      "progressId": "e0000000-0000-4000-8000-0000000000d1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d1",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_llm_choose_shared_composite",
+      "progressId": "e0000000-0000-4000-8000-0000000000d2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d2",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "outfitSelections": [
+          {
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "mode": "llm_choose"
+          }
+        ]
+      },
+      "outfitContent": "{\"top\": [\"d0000000-0000-4000-8000-000000000004\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}"
     }
   ]
 }

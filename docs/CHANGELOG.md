@@ -196,6 +196,14 @@ bundled themes (Art Deco measured a near-invisible 1.07:1 contrast) and failed
 the accessibility bar in two themes in dark mode as well. All six bundled
 themes now clear the WCAG AA 4.5:1 contrast requirement for this label in both
 light and dark mode, matching the reference app's fix.
+Proved the whole thing end to end on the path that creates a chat, against the
+reference app. Two characters open a project chat wearing the shared shirt, the
+project's sash, and — for the one who owns clothes of her own — her jacket
+layered on top in the right order. And when the model picks a shared outfit set
+whose pieces also live in the shared collection, the pieces now appear: the
+creation dialog lists the coat and the boots by name where before it showed an
+empty outfit, because nothing had gone looking for parts the wearer doesn't own.
+
 Proved the outfit-choosing model now sees the shared wardrobe, against the
 reference app. A character who owns no clothes is now asked at all — before,
 the empty candidate list meant the model was skipped entirely and they were
