@@ -409,6 +409,23 @@ export default async function globalSetup(): Promise<void> {
     );
   }
 
+  // P4.24 unification wire: the seeded Inspector rows are dated 2026-02-01, and
+  // with LLM_LOG_CLEANUP now REGISTERED the boot tick's cleanup job would sweep
+  // them under the schema default (enabled, 30 days) before the first beat runs
+  // — the cross-lane blast radius only the unified tree could show (lane B owed
+  // no SPA gate; lanes C/D ran without the registration). Pin the e2e user's
+  // retention to v4's "0 = keep forever" arm: logging stays ENABLED (the LIVE
+  // Inspector walk depends on new rows being written), the handler's zero gate
+  // returns without deleting, and — as a bonus — that arm is now exercised live
+  // at every e2e boot. Full three-key bag in v4's schema key order
+  // (LLMLoggingSettingsSchema: enabled / verboseMode / retentionDays).
+  runCliWrite(
+    cli,
+    `UPDATE chat_settings SET llmLoggingSettings = ` +
+      `'{"enabled":true,"verboseMode":false,"retentionDays":0}' ` +
+      `WHERE userId = '${SINGLE_USER_ID}';`,
+  );
+
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
   // happen BEFORE the server launches (the CLI write-lock refuses a live holder),
   // so the mock listens on the fixed MOCK_LLM_PORT and the spec starts it there.
