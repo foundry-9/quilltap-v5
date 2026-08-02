@@ -129,9 +129,12 @@ catch, since every fixture is built fresh.
     and it shouldn't" is the correct behavior, and the step only bites via
     character mode → Generate → toggle while reviewing. Still owed from Part
     C: the All-Whispers narrowing check on **Prospero's `group-context`
-    whispers** (the leak this round actually closed — #53 is the announcement
-    exemption, a different rule), the six-theme whisper-label legibility pass,
-    and #54's character/custom attribution retest.
+    whispers** — WALKED 2026-08-02, **PASS**: they stayed hidden until All
+    Whispers was toggled on, which is the leak this round closed (#53 is the
+    announcement exemption, a different rule) — and the six-theme
+    whisper-label legibility pass, WALKED, **PASS** ("clearly whisper-y, and
+    legible" in both light and dark modes). Still owed from Part C: #54's
+    character/custom attribution retest.
   - NOT walked this pass (the next pass starts here): the Part C remainder
     above, Part D (tri-tier wardrobe 💸), Part E (the editor's
     sub-list indentation + the OWED store-backed document scan), and all of
@@ -1047,6 +1050,30 @@ catch, since every fixture is built fresh.
     two sides must move together: v5's borrow is a verbatim port, and changing it
     alone would put the Salon out of step with the oracle. Surfaced by the human
     2026-07-27.
+  - **A staff-signed announcement reaches the model anonymous** (finding #54,
+    ruled by the human 2026-08-02: *"staff in v4 and v5 should have
+    attribution, so that's a bug in both versions"*). Attribution keys on
+    `customAnnouncer`, which the dialog writes only in its `character` and
+    `custom` modes; a `staff` announcement carries `systemSender` and passes
+    through untouched. v4's doc-comment defends this as *"Staff announcements
+    carry their identity in their prose already"* — **which holds only when
+    Staff wrote the prose.** An ad-hoc announcement is written by the operator
+    and merely *signed* as the Host or Suparṇā, so nothing in the text need
+    name them, and the model receives the same anonymous block the whole
+    `424a7381` attribution feature exists to abolish. It is the identical
+    defect that feature fixed, in the one announcer kind it skipped. **Scope:**
+    resolve the sender's display name from the existing staff table (v4
+    `lib/chat/staff-display-names.ts`, v5 `staff_display_names.rs` — already a
+    shared table on both sides, so no new data) and emit the same `[Name] `
+    form; the natural shape is to widen `resolveAnnouncerName` to take the
+    message's `systemSender` when `customAnnouncer` is absent, keeping the
+    existing idempotency guard. Touches v4
+    `lib/chat/context/announcement-attribution.ts` + its caller in
+    `buildMessageContext`, then the v5 mirrors
+    `services/announcement_attribution.rs` + `services/message_context.rs`,
+    and the `announcement_attribution_equivalence` corpus gains the staff
+    kind. Note the two sides must move together — v5's pass is a verbatim
+    port, and attributing staff on one side only would break the oracle.
   - **New-chat Play As revert doesn't restore a default profile** (finding #17) —
     if revert-should-restore-a-default is wanted, it's a v4-first change to
     `NewChatForm.handlePlayAsChange`.
