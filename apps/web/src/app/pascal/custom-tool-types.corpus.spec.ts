@@ -7,8 +7,8 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 236 rows generated from v4's REAL
- * `QtapCustomToolSchema` at `231be14c` (see
+ * This replays the COMMITTED oracle corpus — 299 rows generated from v4's REAL
+ * `QtapCustomToolSchema` at `c4d4b0de` (see
  * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
  * byte-compares four things per row:
  *
@@ -90,8 +90,8 @@ const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'defini
 const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 
 /**
- * The corpus is generated at v4 `231be14c` (P4.d19's §3 regen, 236 rows — the
- * availability-gate families joined at the `231be14c` drift round). The map is
+ * The corpus is generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows —
+ * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with
  * replay-verified sentences, and empty it again when the corpus regenerates).

@@ -9,7 +9,7 @@
 //!
 //! Generate the oracle output (v4 @ 231be14c, Node 24
 //! `~/.nvm/versions/node/v24.13.1/bin`; the pinned detached worktree):
-//!   cd /tmp/qt-v4-pin-231be14c
+//!   cd ~/source/quilltap-server
 //!   TZ=UTC npx tsx \
 //!     <V5W>/harness/oracle/cases/pascal-tool-vocabulary.ts \
 //!     > /tmp/oracle-pascal-vocabulary.ndjson

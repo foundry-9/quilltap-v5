@@ -26,7 +26,7 @@
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $WT/harness/oracle/cases/state-cascade.test.ts $STAGE/harness/oracle/cases/
 //!   cp $WT/harness/oracle/fixtures/state-sql-tools.json $STAGE/harness/oracle/fixtures/
-//!   cd /private/tmp/qt-v4-pin-7e6d13e5
+//!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
 //!   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db \
 //!     $N/node --import tsx $WT/harness/oracle/fixtures/build-state-sql-tools-fixture.ts

@@ -22,14 +22,20 @@
 //! produce a vanished or escaping path. Both are pinned by unit tests in
 //! `pascal::roster::read_tool_file_tests`, the way v4 pins them with jest stubs.
 //!
-//! Generate the oracle (v4 @ ff12f491, Node 24 — mirror to /tmp; jest ignores
-//! `.claude/`; run from a worktree PINNED at the baseline):
-//!   M=/tmp/qt-pascal-reader-mirror; mkdir -p $M/cases $M/fixtures
+//! Generate the oracle (Node 24; the v4 checkout at the oracle baseline —
+//! mirror to /tmp; jest ignores `.claude/`; pin a detached worktree only on
+//! drift/dirty). Self-shielding: the fixture DBs AND the `.meta.json` sidecar
+//! the oracle reads are copied to /tmp first, so the sidecar travels with the
+//! copy:
+//!   M=/tmp/qt-pascal-reader-mirror; mkdir -p $M/cases $M/fixtures $M/db
 //!   cp <V5W>/harness/oracle/cases/pascal-definition-reader.test.ts $M/cases/
 //!   cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
-//!   cd /private/tmp/qt-v4-pin-p4d30-ff12f491
-//!   QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
-//!   QT_FIXTURE_PASCAL_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db $M/db/
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db.meta.json $M/db/
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db $M/db/
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_PASCAL_MAIN=$M/db/pascal-run-custom-main.db \
+//!   QT_FIXTURE_PASCAL_MOUNT=$M/db/pascal-run-custom-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-pascal-definition-reader.ndjson \
 //!     npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$M/cases" -- pascal-definition-reader

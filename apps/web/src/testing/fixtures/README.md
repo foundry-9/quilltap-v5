@@ -6,8 +6,8 @@ and investigate the diff — do not patch the fixture.
 
 ## `pascal-custom-tool-definition.oracle.ndjson`
 
-**236 rows** — 10 `title` + 195 `definition` (68 accept / 127 reject) + 31
-`gate`. Drives `app/pascal/custom-tool-types.corpus.spec.ts`, which replays
+**299 rows** — 10 `title` + 258 `definition` + 31 `gate`. Drives
+`app/pascal/custom-tool-types.corpus.spec.ts`, which replays
 every row through the SPA's hand-ported schema module and byte-compares the
 verdict, the parsed data (`JSON.stringify`), the unknown-key report, and the
 full `formatDefinitionIssues` rejection sentence against v4's REAL Zod output.
@@ -24,11 +24,13 @@ roster route and the Workbench library route return it verbatim — so a browser
 that phrased it differently would be disagreeing with the server about the same
 file.
 
-- **Provenance:** v4 `231be14c`, regenerated 2026-07-26 (P4.d19 / §3, from the
-  `/tmp/qt-v4-pin-231be14c` pinned worktree). Byte-identical to the copy the
-  Rust `pascal_custom_tool_definition_equivalence` differential consumed at the
-  same commit — re-verified `diff -q` clean at the round's unification, with
-  that differential re-run green over this exact output. The `7e6d13e5` corpus
+- **Provenance:** v4 `c4d4b0de`, regenerated 2026-08-01 at the `c4d4b0de`
+  drift round's unification (P4.D35's §C extension added 63 definition rows —
+  7 chipLabel, 21 accepted effects, 32 rejected effects, 3 shape-order — from
+  the clean checkout; no pin needed). Byte-identical to the copy the Rust
+  `pascal_custom_tool_definition_equivalence` differential consumed at the
+  same commit, with that differential re-run green over this exact output.
+  The `231be14c` corpus was 236 rows (10 title + 195 definition + 31 gate). The `7e6d13e5` corpus
   was 175 rows (10 title + 165 definition; 58 accept / 107 reject); the
   `6864bf0e` availability-gate drift added **30 definition rows** (the
   `availableWhen`/`withheldWhen` accept/reject arms, the both-clauses rejection,

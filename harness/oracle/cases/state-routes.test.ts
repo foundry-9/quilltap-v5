@@ -13,11 +13,18 @@
  * Validation-failure bodies drop the Zod `details` array (v4-implementation-
  * specific; the settings-routes precedent).
  *
- * Run (Node 24, from the PINNED v4 worktree; stage outside .claude/ first):
+ * Run (Node 24; the v4 checkout must sit at the oracle baseline — pin a
+ * detached worktree only on drift/dirty; stage outside .claude/ first).
+ * Self-contained: builds the /tmp fixture itself rather than assuming the
+ * state-cascade recipe ran first.
  *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<v5 worktree> ; STAGE=/tmp/qt-oracle-stage
+ *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
  *   cp $WT/harness/oracle/cases/state-routes.test.ts $STAGE/harness/oracle/cases/
  *   cp $WT/harness/oracle/fixtures/state-sql-tools.json $STAGE/harness/oracle/fixtures/
- *   cd /private/tmp/qt-v4-pin-7e6d13e5
+ *   cd ~/source/quilltap-server
+ *   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
+ *   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db \
+ *     $N/node --import tsx $WT/harness/oracle/fixtures/build-state-sql-tools-fixture.ts
  *   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
  *   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db QT_ORACLE_OUT=/tmp/oracle-state-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- state-routes

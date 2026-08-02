@@ -11,14 +11,21 @@
 //! keying), and the persisted `CUSTOM_TOOL_CONSULT` `llm_logs` row is diffed
 //! alongside the Pascal message.
 //!
-//! Generate the oracle (v4 @ 616930db, Node 24 — jest ignores `.claude/`, so
-//! mirror the case file to /tmp; see the case-file header):
+//! Generate the oracle (Node 24; the v4 checkout at the oracle baseline —
+//! jest ignores `.claude/`, so mirror the case file to /tmp; see the case-file
+//! header). Self-shielding: the fixture DBs AND the `.meta.json` sidecar the
+//! oracle reads are copied to /tmp first, so the committed fixtures are never
+//! run against directly (the oracle's cases write) and the sidecar travels
+//! with the copy:
 //!   cd ~/source/quilltap-server
-//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
+//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures $M/db
 //!   cp <V5W>/harness/oracle/cases/pascal-run-custom-handler.test.ts $M/cases/
 //!   cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
-//!   QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
-//!   QT_FIXTURE_PASCAL_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db $M/db/
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db.meta.json $M/db/
+//!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db $M/db/
+//!   QT_FIXTURE_PASCAL_MAIN=$M/db/pascal-run-custom-main.db \
+//!   QT_FIXTURE_PASCAL_MOUNT=$M/db/pascal-run-custom-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson \
 //!     npx jest --silent --roots "$PWD" --roots "$M/cases" -- pascal-run-custom-handler
 //! Run:
