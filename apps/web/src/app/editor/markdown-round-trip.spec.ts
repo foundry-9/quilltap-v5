@@ -350,11 +350,27 @@ describe('D17 gate — sub-list indentation unit memory', () => {
  *
  * v4 never WRITES these bytes itself — (c) forces every child to at least the
  * parent marker's width, so v4's own `applyListIndentUnit` could never
- * produce a 2-column child under `1. `. Only hand-written or LLM-generated
- * markdown can reach this input. Per the order: pin BOTH directions (the
- * `TABLE_DIVERGENCES` precedent) and request a human ruling at unification —
- * do NOT build a v4-style structural pre-pass without one, since that would
- * fork v5 off CommonMark for an input v4 itself never produces.
+ * produce a 2-column child under `1. `. Only hand-written, other-tool, or
+ * LLM-generated markdown can reach this input.
+ *
+ * ✅ RULED 2026-08-02 (human): **v5 KEEPS its CommonMark behavior and this
+ * divergence STANDS.** v4's stack is not a considered dialect choice — it is
+ * the workaround that replaced `@lexical/markdown`'s broken
+ * `Math.floor(spaces / 4)`, and being more permissive than CommonMark is a
+ * side effect of that repair. Porting v4's `normalizeListIndentForLexical` (a
+ * rewriting pre-pass over every document on open) to chase it would fork v5
+ * off the spec its own parser implements, for an input v4 itself never
+ * produces.
+ *
+ * The ruling is EVIDENCE-CONDITIONAL, and the evidence is committed:
+ * `harness/tools/list_indent_edge_scan.py` finds this shape in a corpus. It
+ * matters because the consequence is destructive on SAVE, not just on render
+ * — open such a document, edit anything, and the flattened form is written
+ * back, which is the same failure shape v4's own commit existed to fix. If
+ * real documents carry it, adopting the pre-pass becomes right and this block
+ * should be revisited. First run (2026-08-02, the Friday dogfood copy's
+ * disk-backed documents): **0 hits**; the store-backed documents need the real
+ * pepper and belong to a human dogfood pass.
  */
 describe('D17 gate — the (a)-edge divergence: a 2-col child under an ordered parent', () => {
   it('documents the divergence (human ruling requested at unification)', () => {

@@ -367,6 +367,26 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **OWED CHECK (P4.D40's ruling, 2026-08-02) — scan the STORE-BACKED documents
+  for the list-indent edge shape.** The ruling that v5 keeps its CommonMark
+  list behavior is evidence-conditional, and only half the evidence has been
+  gathered. The shape is a list child indented deeper than its parent but short
+  of that parent's content column (`1. a` with a 2-column `- b` under it): v4
+  nests it, v5 reads two sibling lists, and — the part that matters — v5 writes
+  the flattened form back on the next save, so the nesting intent is lost
+  permanently. That is the same failure shape v4's own `4f088e7c` existed to
+  fix, which is why hits would reopen the ruling in favour of porting v4's
+  `normalizeListIndentForLexical` pre-pass.
+
+  The driver is committed: `harness/tools/list_indent_edge_scan.py`. It ran
+  clean (**0 hits**) over the dogfood copy's *disk-backed* markdown, but that
+  was only 3 user documents — the real corpus lives in the encrypted document
+  stores, which need the real pepper. **On the next pass:** export the Friday
+  copy's store-backed documents to a directory (the `quilltap` CLI, or the
+  Scriptorium export) and run the scanner over it. Report the count either way;
+  a clean result closes the question for good, and any hit is a port item with
+  its repair already identified.
+
 - **NEEDS AN ORDER (finding #47, 2026-07-31) — the character vault is the bag
   `dcd9440a` missed, and a corrupt `properties.json` destroys six fields on the
   next edit.** `dcd9440a` (ported as P4.D29) hardened the document-store overlay

@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Ruled the one place the rewritten editor deliberately disagrees with the
+original app, and committed the check that keeps the ruling honest. A list
+item indented two spaces under a numbered parent is read as a sub-list by
+the old editor and as a separate list by the new one, which follows the
+Markdown standard its parser implements. The new behavior stands: the old
+app's rule was a workaround for a since-fixed bug of its own, it never
+writes that shape itself, and chasing it would mean rewriting every
+document on open. Because the disagreement costs the nesting on the next
+save rather than only on screen, the ruling is conditional on evidence — a
+scanner now ships that finds the shape in a body of documents. It reports
+nothing across the documents stored as plain files; the documents held in
+the encrypted stores need the passphrase and are queued for a hands-on
+pass, and anything it finds there reopens the decision with the repair
+already identified.
+
 Unified the round that catches this project up with two days of changes to
 the app it is a rewrite of — ten commits, four of them landing on parts
 already rewritten, absorbed across six parallel workstreams.

@@ -150,12 +150,28 @@ core 0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374. web 0.0.56, cli
   usable default" — stays with the deferred new-chat wardrobe-composer family.
   `outfit-selector.ts` is the reduced stub and loads no wardrobes; nothing
   refuses at runtime, the affordance is simply unbuilt.
-- **P4.D40 — a human ruling is requested.** The `1. a\n  - b` parse edge (a
-  2-column child under an ordered parent) nests under v4's structure-only stack
-  and yields SIBLING lists under CommonMark. v4 never writes those bytes
-  itself, so only hand-written or LLM input reaches it. Landed as a
-  both-directions pinned divergence (the `TABLE_DIVERGENCES` precedent); the
-  question is whether to adopt a v4-style structural pre-pass instead.
+- **P4.D40 — ✅ RULED 2026-08-02 (human): the divergence STANDS.** The
+  `1. a\n  - b` parse edge (a 2-column child under an ordered parent) nests
+  under v4's structure-only stack and yields SIBLING lists under CommonMark. v4
+  never writes those bytes itself, so only hand-written, other-tool, or LLM
+  input reaches it. **v5 keeps its CommonMark behavior and does NOT adopt v4's
+  `normalizeListIndentForLexical` pre-pass** — v4's stack is the workaround
+  that replaced Lexical's broken `Math.floor(spaces / 4)`, not a dialect
+  decision, so chasing it would fork v5 off the spec its own parser
+  implements. Reasoning lives at the pin itself (the D17 gate's divergence
+  block), not only here.
+
+  **The ruling is evidence-conditional, and the evidence is now committed:**
+  `harness/tools/list_indent_edge_scan.py` reports the shape in a corpus
+  (sensitivity-proven against the 3-column form v4 writes and the bullet-parent
+  form CommonMark nests). It matters because the consequence is destructive on
+  **save**, not merely on render — open such a document, edit anything, and the
+  flattened form is written back, which is exactly the failure shape v4's own
+  commit existed to fix. **First run 2026-08-02 over the Friday dogfood copy's
+  disk-backed documents: 0 hits** (3 user documents; the plugin `node_modules`
+  READMEs excluded). The store-backed documents need the real pepper and are an
+  owed item on the next human dogfood pass; hits there reopen the ruling in
+  favour of the pre-pass.
 - **💸 Live proofs owed to the next dogfood pass:** the tri-tier dressing on
   real data (the merged-pool `llm_choose` now fires for characters whose
   wardrobe is entirely shared, which previously skipped the model silently), a

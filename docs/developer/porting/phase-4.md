@@ -3724,13 +3724,16 @@ full Playwright 172/172 zero skips. Versions: core
    announcement rendering on real history, the first completed
    `LLM_LOG_CLEANUP`, walk Parts G/H, the P4.D31 restore-memory-id
    proof, and P4.21's vision proof.
-2. **A human ruling on P4.D40's (a)-edge** (its order header carries the
-   question): `1. a` with a 2-column child nests under v4's stack and
-   makes sibling lists under CommonMark. v4 never writes those bytes, so
-   only hand-written/LLM input reaches it. Landed as a both-directions
-   pinned divergence; the alternative is adopting a v4-style structural
-   pre-pass. Cheap either way, but it should be decided rather than
-   drift.
+2. ~~A human ruling on P4.D40's (a)-edge~~ — **RULED 2026-08-02: v5
+   KEEPS its CommonMark behavior; the divergence STANDS and no structural
+   pre-pass is adopted** (reasoning at the pin in
+   `markdown-round-trip.spec.ts`; order header updated). The ruling is
+   EVIDENCE-CONDITIONAL: `harness/tools/list_indent_edge_scan.py` is
+   committed and found **0 hits** over the dogfood copy's disk-backed
+   documents, but the **store-backed documents need the pepper** and are
+   an owed dogfood item — hits there reopen it in favour of the pre-pass,
+   because the consequence is destructive on SAVE. Nothing to build
+   unless that scan turns something up.
 3. **The toast census's 15 OPEN rows** (the P4.25 lane record enumerates
    each with its owed sentences — `useProjectDetail`'s 20, the files
    family's 13, `useNewChat`'s 9, AuroraView, character edit/new) — a
