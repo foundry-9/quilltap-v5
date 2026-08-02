@@ -90,7 +90,7 @@ export function extractErrorMessage(err: unknown): string {
             [values]="effectiveValues()"
             [disabled]="rolling()"
             idPrefix="bench"
-            (change)="onParamChange($event.param, $event.value)"
+            (paramChange)="onParamChange($event.param, $event.value)"
           />
           <label class="flex items-center gap-2 text-sm">
             <input

@@ -82,7 +82,7 @@ describe('CustomToolParamsForm — rendering', () => {
   it('emits a ParamChange when a field changes', () => {
     const fixture = render();
     const seen: { param: string; value: string | boolean }[] = [];
-    fixture.componentInstance.change.subscribe((c) => seen.push(c));
+    fixture.componentInstance.paramChange.subscribe((c) => seen.push(c));
     const label = fixture.nativeElement.querySelector('#pfx-label') as HTMLInputElement;
     label.value = 'vault';
     label.dispatchEvent(new Event('input'));
@@ -128,7 +128,7 @@ describe('CustomToolParamsForm — rendering', () => {
   it('emits from a stacked textarea the same way the inline input does', () => {
     const fixture = render('stacked');
     const seen: { param: string; value: string | boolean }[] = [];
-    fixture.componentInstance.change.subscribe((c) => seen.push(c));
+    fixture.componentInstance.paramChange.subscribe((c) => seen.push(c));
     const label = fixture.nativeElement.querySelector('#pfx-label') as HTMLTextAreaElement;
     label.value = 'vault';
     label.dispatchEvent(new Event('input'));
@@ -144,5 +144,54 @@ describe('boundsHint (v4 faab6881)', () => {
     expect(boundsHint({ type: 'number', default: 1 })).toBeNull();
     expect(boundsHint({ type: 'string', default: 'x', min: 1, max: 6 })).toBeNull();
     expect(boundsHint({ type: 'boolean', default: true })).toBeNull();
+  });
+});
+/**
+ * Dogfood #51. `AutoGrowTextarea` and this form both once named their output
+ * `change`, which is also a native DOM event that BUBBLES: the inner
+ * `<textarea>`'s change (fired on blur — i.e. the moment you click Run) reached
+ * the same binding and delivered an `Event` object on top of the good string.
+ * The form then persisted it, so the next open showed `[object Event]` in every
+ * field you had touched. The outputs are `valueChange` / `paramChange` now, and
+ * these tests hold that line: a native bubbling change must emit NOTHING.
+ */
+describe('CustomToolParamsForm — native DOM events must not reach the outputs', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function renderStacked(): ComponentFixture<CustomToolParamsForm> {
+    TestBed.configureTestingModule({ imports: [CustomToolParamsForm] });
+    const fixture = TestBed.createComponent(CustomToolParamsForm);
+    fixture.componentRef.setInput('parameters', PARAMS);
+    fixture.componentRef.setInput('values', initialParamValues(PARAMS));
+    fixture.componentRef.setInput('idPrefix', 'pfx');
+    fixture.componentRef.setInput('layout', 'stacked');
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('a blurred textarea emits nothing — no [object Event] reaches the values', () => {
+    const fixture = renderStacked();
+    const seen: { param: string; value: string | boolean }[] = [];
+    fixture.componentInstance.paramChange.subscribe((c) => seen.push(c));
+
+    const label = fixture.nativeElement.querySelector('#pfx-label') as HTMLTextAreaElement;
+    label.value = 'vault';
+    label.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(seen).toEqual([]);
+  });
+
+  it('typing still emits the string, so the guard did not silence the field', () => {
+    const fixture = renderStacked();
+    const seen: { param: string; value: string | boolean }[] = [];
+    fixture.componentInstance.paramChange.subscribe((c) => seen.push(c));
+
+    const label = fixture.nativeElement.querySelector('#pfx-label') as HTMLTextAreaElement;
+    label.value = 'vault';
+    label.dispatchEvent(new Event('input'));
+    // Then blur, as a real run does: the value must survive untouched.
+    label.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(seen).toEqual([{ param: 'label', value: 'vault' }]);
   });
 });

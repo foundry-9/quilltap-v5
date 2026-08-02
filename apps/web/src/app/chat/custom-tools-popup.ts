@@ -157,7 +157,7 @@ interface ReferenceRow {
                       [disabled]="running()"
                       [idPrefix]="'custom-tool-' + keyOf(tool)"
                       layout="stacked"
-                      (change)="onParamChange(keyOf(tool), $event)"
+                      (paramChange)="onParamChange(keyOf(tool), $event)"
                     />
                   </div>
                 } @else {

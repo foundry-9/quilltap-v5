@@ -119,7 +119,7 @@ export function boundsHint(param: CustomToolParameterSpec): string | null {
       [style.min-height.px]="minHeight"
       [style.max-height.px]="maxHeight"
       style="overflow-y: auto"
-      (input)="change.emit($any($event.target).value)"
+      (input)="valueChange.emit($any($event.target).value)"
     ></textarea>
   `,
 })
@@ -127,7 +127,7 @@ export class AutoGrowTextarea {
   readonly id = input.required<string>();
   readonly value = input.required<string>();
   readonly disabled = input(false);
-  readonly change = output<string>();
+  readonly valueChange = output<string>();
 
   protected readonly minHeight = TEXTAREA_MIN_HEIGHT;
   protected readonly maxHeight = TEXTAREA_MAX_HEIGHT;
@@ -160,7 +160,7 @@ export class AutoGrowTextarea {
               type="checkbox"
               [checked]="boolValue(entry.name)"
               [disabled]="disabled()"
-              (change)="change.emit({ param: entry.name, value: $any($event.target).checked })"
+              (change)="paramChange.emit({ param: entry.name, value: $any($event.target).checked })"
             />
             <span [title]="entry.param.description">{{ entry.name }}</span>
           </label>
@@ -172,7 +172,7 @@ export class AutoGrowTextarea {
               class="mt-1"
               [checked]="boolValue(entry.name)"
               [disabled]="disabled()"
-              (change)="change.emit({ param: entry.name, value: $any($event.target).checked })"
+              (change)="paramChange.emit({ param: entry.name, value: $any($event.target).checked })"
             />
             <span class="min-w-0">
               <span class="block text-sm font-medium font-mono">{{ entry.name }}</span>
@@ -195,7 +195,7 @@ export class AutoGrowTextarea {
             [attr.max]="entry.param.type === 'string' ? null : entry.param.max"
             [disabled]="disabled()"
             [class]="entry.param.type === 'string' ? 'qt-input w-40' : 'qt-input w-20'"
-            (input)="change.emit({ param: entry.name, value: $any($event.target).value })"
+            (input)="paramChange.emit({ param: entry.name, value: $any($event.target).value })"
           />
         </div>
       } @else {
@@ -214,7 +214,7 @@ export class AutoGrowTextarea {
               [id]="entry.inputId"
               [value]="textValue(entry.name)"
               [disabled]="disabled()"
-              (change)="change.emit({ param: entry.name, value: $event })"
+              (valueChange)="paramChange.emit({ param: entry.name, value: $event })"
             />
           } @else {
             <input
@@ -225,7 +225,7 @@ export class AutoGrowTextarea {
               [attr.max]="entry.param.max"
               [disabled]="disabled()"
               class="qt-input w-32"
-              (input)="change.emit({ param: entry.name, value: $any($event.target).value })"
+              (input)="paramChange.emit({ param: entry.name, value: $any($event.target).value })"
             />
           }
         </div>
@@ -242,7 +242,7 @@ export class CustomToolParamsForm {
   /** `inline` (default) is the compact row; `stacked` is the roomy dialog form. */
   readonly layout = input<'inline' | 'stacked'>('inline');
 
-  readonly change = output<ParamChange>();
+  readonly paramChange = output<ParamChange>();
 
   protected readonly stacked = computed(() => this.layout() === 'stacked');
 

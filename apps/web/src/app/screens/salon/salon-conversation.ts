@@ -343,7 +343,7 @@ interface CascadePrompt {
           [messagesWithLogs]="messagesWithLogs()"
           [userParticipantIds]="userParticipantIdSet()"
           (viewLlmLogs)="onViewLlmLogs($event)"
-          (copy)="onCopy($event)"
+          (copyMessage)="onCopy($event)"
           (edit)="onEdit($event)"
           (delete)="onDelete($event)"
           (regenerate)="onRegenerate($event)"

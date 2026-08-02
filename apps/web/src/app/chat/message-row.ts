@@ -219,7 +219,7 @@ export interface ImageClickEvent {
                 class="qt-chat-message-action-icon"
                 title="Copy message"
                 aria-label="Copy message"
-                (click)="copy.emit(message())"
+                (click)="copyMessage.emit(message())"
               >
                 <qt-icon name="copy" class="w-4 h-4" />
               </button>
@@ -369,7 +369,7 @@ export class MessageRow {
    */
   readonly isOverheardWhisper = input(false);
 
-  readonly copy = output<MessageDto>();
+  readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();
   readonly delete = output<MessageDto>();
   readonly regenerate = output<MessageDto>();

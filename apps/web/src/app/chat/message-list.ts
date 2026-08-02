@@ -79,7 +79,7 @@ import { VirtualRow } from './virtual-row';
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
                     [isOverheardWhisper]="overheard(item.message)"
                     (viewLlmLogs)="viewLlmLogs.emit($event)"
-                    (copy)="copy.emit($event)"
+                    (copyMessage)="copyMessage.emit($event)"
                     (edit)="edit.emit($event)"
                     (delete)="delete.emit($event)"
                     (regenerate)="regenerate.emit($event)"
@@ -118,7 +118,7 @@ import { VirtualRow } from './virtual-row';
               [chat]="chat()"
               [settings]="settings()"
               [showAvatar]="showAvatars()"
-              (copy)="copy.emit($event)"
+              (copyMessage)="copyMessage.emit($event)"
               (imageClick)="imageClick.emit($event)"
               (saveImage)="saveImage.emit($event)"
               (courierSettled)="courierSettled.emit($event)"
@@ -173,7 +173,7 @@ export class MessageList {
    */
   readonly userParticipantIds = input<ReadonlySet<string>>(new Set<string>());
 
-  readonly copy = output<MessageDto>();
+  readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();
   readonly delete = output<MessageDto>();
   readonly regenerate = output<MessageDto>();

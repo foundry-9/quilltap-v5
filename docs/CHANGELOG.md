@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Fixed two ways the app confused a browser event for a piece of data. Running
+a custom tool left its written-out parameters filled with a machine
+placeholder the next time the tool was opened, because closing a field was
+being mistaken for a change to what it held. The same mistake, found while
+chasing the first, meant that **copying selected text out of a message
+replaced what you copied with the word "undefined"** and claimed the message
+had been copied — so anything you had lined up on the clipboard was lost.
+Copying from a conversation now does what it says, and tool parameters keep
+what you typed.
+
 Restored the Project library button to the Open Document window. A
 conversation that belongs to a project could not reach that project's own
 files from the document picker at all — and turning on "Look everywhere"

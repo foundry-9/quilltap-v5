@@ -191,7 +191,7 @@ import { SLOT_LABEL } from './equipped-slot-row';
                     <button
                       type="button"
                       role="menuitem"
-                      (click)="menuAction(copy)"
+                      (click)="menuAction(copyItem)"
                       class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
                     >
                       Copy
@@ -234,7 +234,7 @@ import { SLOT_LABEL } from './equipped-slot-row';
                 (edit)="edit.emit($event)"
                 (duplicate)="duplicate.emit($event)"
                 (move)="move.emit($event)"
-                (copy)="copy.emit($event)"
+                (copyItem)="copyItem.emit($event)"
                 (delete)="delete.emit($event)"
               />
             }
@@ -264,7 +264,7 @@ export class WardrobeItemRow {
   readonly edit = output<WardrobeItemDto>();
   readonly duplicate = output<WardrobeItemDto>();
   readonly move = output<WardrobeItemDto>();
-  readonly copy = output<WardrobeItemDto>();
+  readonly copyItem = output<WardrobeItemDto>();
   readonly delete = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();

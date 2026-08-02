@@ -279,3 +279,37 @@ describe('MessageList — the overheard-whisper dim (P4.D38 tier 2)', () => {
     expect(fixture.nativeElement.querySelector('.qt-chat-message-whisper-overheard')).toBeNull();
   });
 });
+/**
+ * Dogfood #51, the sharper half. `copy` is a native clipboard event that
+ * BUBBLES, so with the output named `copy`, any Cmd+C over selected text in a
+ * message reached this binding with a `ClipboardEvent` — and the Salon's
+ * handler does `writeText(message.content)`, i.e. `writeText(undefined)`,
+ * overwriting what the user had just copied and toasting success. The output is
+ * `copyMessage` now; a native copy must emit nothing.
+ */
+describe('MessageList — a native copy must not fire the copy action', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('selecting text and copying inside a row emits nothing', () => {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', [message({ id: 'm1', content: 'selectable prose' })]);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.detectChanges();
+
+    const seen: unknown[] = [];
+    fixture.componentInstance.copyMessage.subscribe((c) => seen.push(c));
+    const row = fixture.nativeElement.querySelector('qt-message-row') as HTMLElement;
+    row.dispatchEvent(new Event('copy', { bubbles: true }));
+
+    expect(seen).toEqual([]);
+  });
+});
