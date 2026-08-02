@@ -1784,6 +1784,81 @@ records THERE. Update this summary only when a phase or round completes.
   skips; SPA → 0.5.357, no crate touched. Nothing on the candidate list
   moved. Record: `status-log.md` → "Follow-up — the two flake-prone
   beats deflaked".
+- **The `c4d4b0de` v4-drift catch-up round (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥
+  P4.D38 ∥ P4.D39 ∥ P4.D40): UNIFIED on main (2026-08-01) — ALL SIX
+  ORDERS CLOSED; the oracle baseline MOVES to `c4d4b0de` and the drift
+  debt is CLEARED.** v4 shipped TEN commits in roughly two days, four onto
+  already-ported surfaces. The Pascal side-effects feature end to end (the
+  closed eval-free expression grammar — ported TWICE, Rust + a client-safe
+  TS twin, error sentences byte-identical, tokenizer walking UTF-16 units
+  because v4's positions do; the tiered "write where it lives" applier
+  split pure-plan/impure-commit over v5's four heterogeneous write paths;
+  `chipLabel`; the two-block bubble; the Workbench Side Effects card and
+  dry run) ∥ whispered manual announcements (the audience resolver, the
+  POST-400/preview-silent asymmetry, empty-array→NULL, the
+  audience-replaces-roster rewrite, the "Who hears it" dialog, the chip
+  whisper tag on BOTH render sites since v5 chips only Staff-signed
+  announcements) + announcement attribution in LLM context + the
+  whisper-kind narrowing (**a real v5 leak closed**: Prospero's
+  `group-context` whispers now honour All Whispers) + the whisper-label
+  WCAG values in all six bundled themes ∥ the tri-tier wardrobe at chat
+  start (merged pools filtered `isDefault` LAST so a personal opt-out
+  still shadows a shared default, composite hydration, `join_all` resolve
+  with serial caller-order commit, the 60 s bound, the deliberate-nudity
+  contract) ∥ the editor's sub-list indentation contract (**PARTIAL by
+  design** — v5's CommonMark parser never had v4's flattening bug; it
+  gained unit-preserving export, Tab/Shift-Tab confined to list items, and
+  the toolbar + source-mode controls). Two commits NO-PORT with evidence
+  (`4f7e09fa` flushSync — v5's `afterNextRender` is already the deferred
+  shape; `e1be028b` packaging). `generateDDL` untouched — no D23 re-dump.
+  **The §3 review's headline catch: a `--ours` conflict resolution had
+  silently deleted P4.D39's `futures-util` + tokio-`time` dependency
+  block** (the playbook's "a Cargo.toml conflict is not version-only"
+  rule), found by auditing every lane's non-version delta rather than by a
+  build. It also found **six committed oracle recipes that could no longer
+  run verbatim** — three pointing at retired `/tmp` pins, one leaning on a
+  sibling recipe's staging, two sidecar readers defeated by the sweep's
+  fixture shield — all repaired and green, none a port regression. Wires:
+  three ACTIVATE-AT-UNIFY constants flipped LIVE, the §C corpus
+  re-committed at 299 rows (10 title + 258 definition + 31 gate), and
+  three contracts diffed name-for-name clean. Gate: 409 test binaries /
+  1,798 tests / 0 failed with the round's 64-variable env block and **all
+  42 families positively confirmed to have RUN**; clippy both feature
+  sets; release build; ng test 268 files / 3,639; full Playwright green.
+  Versions: core 0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374.
+  **Outliving the round:** P4.D39's tier-3 client half (defect 2's
+  composer side — rides the deferred new-chat wardrobe-composer family),
+  and **a human ruling requested on P4.D40's (a)-edge** (`1. a` + a
+  2-column child: v4's stack nests it, CommonMark makes siblings; landed
+  as a both-directions pinned divergence). 💸 Live proofs owed to the next
+  dogfood pass: cross-tier effect writes, tri-tier dressing (the
+  merged-pool `llm_choose` now fires where it used to skip the model), and
+  the whispered-announcement flow.
+- **Oracle baseline: `c4d4b0de` (v4 HEAD, 2026-08-01), adopted at the
+  `c4d4b0de` drift-round unification — NO v4 lib drift debt remains.** The
+  ten commits past `ff12f491` are all absorbed or dispositioned (see the
+  round bullet above). v4's tree was CLEAN at `c4d4b0de` throughout the
+  round, so every family regenerated straight from
+  `~/source/quilltap-server`; pin a detached worktree only on drift/dirty
+  (`oracle-regen-pinned-v4-worktree`). SDK majors verified at planning and
+  unchanged (openai 7.2.0, `@openrouter/sdk` 1.2.2). **42 families
+  regenerated there**, including the whole pascal/tool/workbench family
+  over the REBUILT `pascal-run-custom-{main,mount}.db` (new vault ids in
+  its committed `.meta.json` sidecar; a project tier and two
+  effects-bearing tools added, with STORE DUMPS now diffed on all three
+  route families), the post-office/announcer/context-transitive set, and
+  the wardrobe/llm-choose/chat-cast/capstone set (three fixtures gained a
+  shared wardrobe tier — all three had been structurally blind to the
+  merge). Families outside those sets keep their prior regen vintage.
+  ⚠ v4 has shipped ten commits in two days — **drift-check before every
+  round.** ⚠ Since P4.d26 the distill-transitive tier-3 oracles are
+  TZ-SENSITIVE; their recipes pin TZ=UTC. ⚠ The standing committed-fixture
+  rule is unchanged (point oracles at the committed DBs; run
+  fixture-mutating recipes against /tmp copies) — and note that **a recipe
+  naming a `/tmp` pinned worktree from an earlier round is dead on
+  arrival**, since those do not survive between rounds; six such recipes
+  were repaired this round.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `ff12f491` (v4 4.8.0-dev.135, 2026-07-31), adopted at
   the `ff12f491` drift-round unification — NO v4 lib drift debt remains.**
   The nineteen commits past `dcd9440a` are all absorbed or dispositioned

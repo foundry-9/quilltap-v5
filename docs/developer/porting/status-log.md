@@ -9,6 +9,160 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round unified — the `c4d4b0de` v4-drift catch-up (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40), 2026-08-01
+
+**All six orders CLOSED. The oracle baseline MOVES to `c4d4b0de` and the drift
+debt is CLEARED.** v4 had shipped TEN commits in roughly two days, four of them
+landing on already-ported surfaces. v4 was verified at `c4d4b0de` with a clean
+tree at every lane's start AND at unification, so every oracle in this round
+regenerated straight from `~/source/quilltap-server` — no pinned worktree was
+needed anywhere.
+
+### The ten commits, disposed
+
+Ported: `c4d4b0de` (Pascal chipLabel + two-block bubbles + side effects) split
+D35/D36; `a163862c` (whispered announcements) + `424a7381` (announcement
+attribution + the whisper-kind narrowing) split D37/D38; `8bb1a958` (tri-tier
+wardrobe at chat start) = D39; `4f088e7c` (editor sub-lists) = D40, PARTIAL by
+design; `0ec25bdd` + `1c55110b` (whisper-label WCAG) = D38; `ae965a4e` (the
+feature spec) = D35's docs rider. NO-PORT with evidence: `4f7e09fa` (the React
+flushSync fix — v5's `virtual-row.ts:29` `afterNextRender` is already the
+deferred shape v4 moved to) and `e1be028b` (release packaging, dispositioned
+last round). `generateDDL` untouched across all ten — no D23 re-dump.
+
+### Cherry-pick + reconciliation
+
+Six lanes, 38 commits, picked server-before-SPA. **Zero source-level
+conflicts** — ownership held exactly. Every conflict was a version file, plus
+one `apps/web/package-lock.json`. The version recount landed at core 0.0.444,
+harness 0.0.382, host 0.0.56, SPA 0.5.374 (base + total bumps, per the
+playbook — never the merged file).
+
+### What the §3 review caught
+
+**The one that would have shipped: the cherry-pick's `--ours` resolution on
+`crates/quilltap-core/Cargo.toml` silently dropped P4.D39's dependency block.**
+The playbook's rule ("`--theirs`/`--ours` on a Cargo.toml is NOT version-only")
+fired for real: D39 had added `futures-util` and the tokio `time` /
+`test-util` features — with their why-comments — on the same lines region as
+its version bump, so resolving the conflict version-wise deleted the deps its
+own `join_all` and `tokio::time::timeout` need. It was caught by auditing every
+lane's non-version delta to the version files rather than by a build (the build
+would have caught it too, but only after the audit had already restored it).
+Fixed in the wire commit by taking D39's file wholesale and re-applying the
+recounted version.
+
+**Six committed oracle-regen recipes could no longer be executed verbatim** —
+found by running the round's 42 families through `recipe_sweep.py --run`
+(regen-then-run) rather than trusting the committed headers. Three
+(`pascal_custom_tool_definition`, `pascal_tool_vocabulary`,
+`pascal_definition_reader`) still pointed at retired `/tmp` pinned worktrees,
+which do not survive between rounds; `state_routes` assumed the
+`state_cascade` recipe had already built the shared /tmp fixture and staged the
+case directory; and the two families whose oracles read the pascal fixture's
+`.meta.json` sidecar (`pascal_run_custom_handler`, `pascal_definition_reader`)
+lost it under the sweep's fixture shield, which copies only the files a recipe
+names. All six now regenerate from the live checkout, `state_routes` is
+self-contained, and the two sidecar readers copy the sidecar themselves. **None
+was a port regression** — all six went green on re-run. This is the
+`harness-recipes-are-runnable` rule paying for itself a second time.
+
+**The corpus provenance notes were stale** the moment the 299-row corpus
+landed: `custom-tool-types.corpus.spec.ts`'s header comments and the SPA
+fixtures README still described 236 rows at `231be14c`. Corrected (the spec's
+assertions are shape-based, so nothing failed — which is exactly why the
+comments were worth fixing rather than leaving to rot).
+
+**My own gate had two bugs worth recording, both self-inflicted and both
+caught before they could mislead.** A `grep -c SKIP` as a pipeline's last
+command made a fully green workspace run report exit 1 (grep exits 1 on zero
+matches — the `grep | head` trap class, wearing a different hat). And an env-var
+extraction anchored to line start silently dropped every SECOND variable
+sharing a line, which hid `QT_FIXTURE_CC_MOUNT` and let
+`chat_create_capstone_equivalence` SKIP inside a run I would otherwise have
+called clean. Worse, the first full workspace run's "0 SKIP lines" was
+meaningless, because `cargo test` captures test stdout without `--nocapture`.
+The re-run used the complete 64-var block AND `--nocapture`, and every one of
+the round's 42 families is now positively confirmed to have RUN.
+
+Everything else I reviewed personally came back faithful: the side-effects
+applier's tier resolution and its `previous`-absent-vs-`null` distinction (the
+lane's own `de_present_value` fix for `Option<Value>` erasing a stored null is
+correct and pinned), the `spine.rs` two-lane merge (one line each, at their
+named sites), the context-builder's attribution placement and widened whisper
+predicate, whisper-visibility's legacy `!systemKind` arm and check order, the
+editor's `Math.max(step, markerWidth(parent))` rule (line-for-line with v4),
+the announcement 400 message and empty-array→NULL persist, the outfit
+concurrency (resolve concurrently, commit serially in caller order — the
+single-writer rule intact), the 60s timeout, the deliberate-nudity strict
+`Bool(true)`, one theme file byte-compared against v4, and the SPA
+side-effects section down to its doc comments. No stubs, no `todo!()`, no
+live-path unwraps, spelling clean.
+
+### The unification wires
+
+- **Three ACTIVATE-AT-UNIFY constants flipped** now both halves share a branch:
+  `EFFECTS_PREVIEW_LANDED` (the bench dry-run), `CHIP_LABEL_SERVER_LANDED` (a
+  labelled run's chip), `ANNOUNCEMENT_WHISPER_LANDED` (the whisper-announcement
+  walk). All three were NAMED CONSTANTS, not capability probes — D38's record
+  argues the point precisely: the announcement verb already exists on main, so
+  a probe would have read `true` and self-activated into a false pass, posting
+  happily with the audience silently dropped.
+- **The §C corpus re-committed at 299 rows** (10 title + 258 definition + 31
+  gate) from P4.D35's extended case file, byte-identical to the harness regen.
+  D36 had landed the 236-row regen as a *neutrality proof* (the schema
+  additions are output-neutral over every pre-existing row) — a real result,
+  and the extension was always the unifier's to carry.
+- **Three contracts diffed name-for-name, all clean:** `targetParticipantIds`
+  on both announcement verbs (`api/types.rs` ↔ `core-contract.ts`),
+  `stateWrites`/`metadataWrites` (`ToolVocabulary` ↔ `CustomToolReferences`),
+  and `pascalMeta.chipLabel`/`effects` (`PascalMetaIn` ↔ `PascalMeta`). D35's
+  lane record had flagged the vocabulary addition as an escalation ("that file
+  is not named in either order's ownership list — D36 should take it, or
+  escalate"); D36 took it, and the merged contract agrees.
+
+### Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean on BOTH feature sets; `cargo build --release` clean.
+- **42 oracle families regenerated FRESH at `c4d4b0de` and re-run through
+  `recipe_sweep.py --run`** (atomic regen-then-run, fixture shield, SKIP
+  detector) — all green after the six recipe repairs.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the round's full
+  64-variable env block: **409 test binaries / 1,798 tests / 0 failed**, cargo
+  exit 0, and **none of the round's 42 families skipped** (verified by name
+  against the SKIP lines; the 321 SKIPs in the log all belong to families
+  outside this round, which is the normal shape of a per-round env block).
+- `ng test`: **268 files / 3,639 tests / 0 failed.** `ng build` clean.
+- Full Playwright suite against the fresh dist + release binaries: see the
+  CHANGELOG entry for the count.
+
+### Versions
+
+core 0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374. web 0.0.56, cli
+0.0.4, quilltap-tauri 0.0.5 unchanged.
+
+### What outlives the round
+
+- **P4.D39 tier-3 (loud):** defect 2's CLIENT half — the composer's "has a
+  usable default" — stays with the deferred new-chat wardrobe-composer family.
+  `outfit-selector.ts` is the reduced stub and loads no wardrobes; nothing
+  refuses at runtime, the affordance is simply unbuilt.
+- **P4.D40 — a human ruling is requested.** The `1. a\n  - b` parse edge (a
+  2-column child under an ordered parent) nests under v4's structure-only stack
+  and yields SIBLING lists under CommonMark. v4 never writes those bytes
+  itself, so only hand-written or LLM input reaches it. Landed as a
+  both-directions pinned divergence (the `TABLE_DIVERGENCES` precedent); the
+  question is whether to adopt a v4-style structural pre-pass instead.
+- **💸 Live proofs owed to the next dogfood pass:** the tri-tier dressing on
+  real data (the merged-pool `llm_choose` now fires for characters whose
+  wardrobe is entirely shared, which previously skipped the model silently), a
+  custom tool whose effects write across tiers and onto a character's fact
+  sheet, and the whispered-announcement flow.
+- Banked for `p4.9i2`: `help/insert-announcement.md`, `help/chat-participants.md`,
+  `help/custom-tools.md`, `help/chat-state.md`. v5's shipped help text now
+  describes a custom-tool format without `effects` or `chipLabel`.
+
 ## Round record — the import-execute + Post Office + chunk-on-write round (P4.9G4-resumed ∥ P4.9E2A ∥ P4.9E2B ∥ P4.6BK): UNIFIED on main (2026-07-25)
 
 **All four orders CLOSED.** Four lanes, cherry-picked in dependency order (G4 →

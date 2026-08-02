@@ -207,8 +207,13 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
 
     // The chip names the RUN, not the tool: "Labelled — 7", never "Labelled
     // Contrivance".
+    //
+    // No `maybeUnlock` here: this reload lands back on the CHAT, where neither
+    // the passphrase field nor the salon list's "Chats" heading exists, so the
+    // helper's `expect(passphrase.or(chats))` can only time out. The session
+    // was already unlocked on the way in, and the chip assertion below carries
+    // its own wait for the reloaded transcript.
     await page.reload();
-    await maybeUnlock(page);
     const bar = page.locator('.qt-chat-system-bar', { hasText: 'Labelled — 7' }).last();
     await expect(bar).toBeVisible({ timeout: 15_000 });
     await expect(bar).toContainText('Pascal');

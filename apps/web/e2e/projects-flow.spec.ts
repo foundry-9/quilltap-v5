@@ -317,7 +317,10 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await expect(title).toBeVisible();
     await title.fill('Walk livery cloak');
     await card
-      .locator('label', { hasText: 'Default item' })
+      // v4 `8bb1a958` renamed this checkbox's label from the bare "Default
+      // item" to say WHO it dresses, now that a project-tier default reaches
+      // every character in the project (P4.D39).
+      .locator('label', { hasText: 'Worn by default by every character in this project' })
       .locator('input[type="checkbox"]')
       .check();
     await card.getByRole('button', { name: 'Create item' }).click();

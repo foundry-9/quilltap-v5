@@ -2,6 +2,62 @@
 
 ## Recent Changes
 
+Unified the round that catches this project up with two days of changes to
+the app it is a rewrite of — ten commits, four of them landing on parts
+already rewritten, absorbed across six parallel workstreams.
+
+Custom tools can now record side effects. A tool may carry a short list of
+conditional writes that run after the roll: into the scene's persistent
+state — chat, project, group, or the general store, chosen by finding
+where the value already lives — or onto the rolling character's own record
+sheet. A written value can be a literal or a small expression (arithmetic,
+joined text, references to the roll and its parameters), evaluated by a
+closed parser with no identifiers and no function calls. A bad expression
+is refused when the tool is loaded; one that fails at roll time skips that
+single write and never sinks the roll. Tools can also carry a per-run chip
+label, so a roll can name itself in the transcript, and a result whose
+message opens with a list or a heading now renders properly instead of
+being crushed onto one line. The workbench gained a card for authoring all
+of this and shows what a trial run would write without writing it.
+
+Announcements can now be whispered. The Insert Announcement dialog has a
+"Who hears it" section; check nobody and the announcement is public as
+before, check one or more characters and only they receive it in their
+context. The collapsed chip says who it went to. Two related fixes came
+with it: an announcement posted as a named character now tells the model
+who spoke — previously it arrived anonymous, and a character in testing
+attributed a private aside to entirely the wrong member of the staff — and
+one high-volume class of internal whisper stopped ignoring the All
+Whispers toggle. Whisper labels in all six bundled themes were too faint to
+read and now meet the accessibility contrast bar in both light and dark.
+
+Characters are dressed from all three wardrobes at the start of a chat.
+Previously only a character's own wardrobe was read, so shared and
+project-wide garments were invisible: default outfits living in a shared
+wardrobe never got worn, an outfit assembled from shared pieces resolved to
+nothing, and a character whose wardrobe was entirely shared was never even
+offered to the model. Opening a chat with several characters now consults
+for them at the same time rather than one after another (one stalled
+provider used to hold up an entire cast), a stalled request gives up after
+a minute and falls back to defaults, and "wearing nothing on purpose" is
+now distinguishable from "the request failed".
+
+The editor stopped reflowing nested lists. A document indented with four
+spaces, three spaces, or tabs now comes back out the way it went in
+instead of being rewritten to two on the first edit. Tab and Shift-Tab
+indent and outdent list items, with matching toolbar buttons that also
+work in raw-source mode, and Tab still moves focus everywhere else.
+
+The review before merging caught a dependency block that a conflict
+resolution had silently deleted — the code that needed it was landing
+without it — and six recorded instructions for regenerating comparison data
+that could no longer be followed, three of them pointing at scratch
+directories that no longer exist. All were repaired; none was a fault in
+the ported code. Gate: formatting, both lint configurations, a release
+build, 409 test binaries and 1,798 tests with every one of the round's 42
+comparison suites confirmed to have actually run, 3,639 unit tests across
+268 files, a production bundle, and the full end-to-end suite.
+
 Rebuilt the custom-tool test instance so the side effects can actually be
 measured rather than described. It now has a project alongside its conversation,
 group and shared stores, and two tools that write: one whose single roll touches

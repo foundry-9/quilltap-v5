@@ -3677,37 +3677,87 @@ assertion weakened and no product code changed. The suite is
 Record: `status-log.md` → "Follow-up — the two flake-prone beats
 deflaked" and its unification-review subsection.
 
+**Round UNIFIED (2026-08-01) — the `c4d4b0de` v4-drift catch-up
+(P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40): ALL SIX ORDERS
+CLOSED; the oracle baseline MOVES to `c4d4b0de` and the drift debt is
+CLEARED.** v4 had shipped TEN commits in ~two days, four onto ported
+surfaces. Landed: the Pascal side-effects feature end to end (the closed
+eval-free expression grammar in Rust AND a client-safe TS twin, the
+tiered "write where it lives" applier, chipLabel, the two-block bubble,
+the Workbench Side Effects card + dry run) ∥ whispered manual
+announcements (the audience resolver, the POST-400/preview-silent
+asymmetry, the audience-aware in-character rewrite, the "Who hears it"
+dialog, the chip whisper tag on both render sites) + announcement
+attribution in LLM context + the whisper-kind narrowing (Prospero's
+`group-context` whispers now honour All Whispers — a real v5 leak
+closed) + the whisper-label WCAG values in all six themes ∥ the tri-tier
+wardrobe at chat start (merged pools, composite hydration, concurrent
+resolve with serial commit, the 60 s bound, the deliberate-nudity
+contract) ∥ the editor's sub-list indentation contract (PARTIAL by
+design — v5 never had v4's flattening bug; it gained unit-preserving
+export, Tab/Shift-Tab, and the toolbar controls). Two commits are
+NO-PORT with evidence (`4f7e09fa` flushSync; `e1be028b` packaging).
+**The §3 review's headline catch: a `--ours` conflict resolution had
+silently dropped P4.D39's `futures-util`/tokio-`time` dependency block**
+— the playbook's "a Cargo.toml conflict is not version-only" rule, found
+by auditing every lane's non-version delta. It also found SIX committed
+oracle recipes that could no longer run verbatim (retired /tmp pins, a
+recipe leaning on a sibling's staging, two sidecar readers defeated by
+the fixture shield) — repaired, all green, none a port regression.
+Gate: 409 binaries / 1,798 tests / 0 failed with the round's 64-variable
+env block and every one of its 42 families positively confirmed to have
+RUN; clippy both feature sets; release build; ng test 268 files / 3,639;
+full Playwright green (numbers in the CHANGELOG). Versions: core
+0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374.
+
 **Next candidates, in rough value order:**
 
-1. **A dogfood pass over this round's live surfaces** — the toast walk
-   (successes AND failures now speak), the announcement rendering on the
-   Friday copy (the human's own complaint — verify it reads fixed on real
-   history, incl. legacy kind inference), the first boot where
-   `LLM_LOG_CLEANUP` completes (watch the llm-logs partition actually
-   shrink to the window), a corrupt-vault edit refusing loudly — plus
-   everything the standing dogfood list already owes (walk Parts G/H, the
-   P4.D31 restore-memory-id proof, P4.21's vision proof if still unproven).
-2. **The toast census's 15 OPEN rows** (the P4.25 lane record enumerates
+1. **A dogfood pass — now the clear top item, and it owes more than
+   before.** This round's live surfaces join the queue: a custom tool
+   whose effects write across the state tiers and onto a character's
+   fact sheet (💸 real spend on the roll's consult if it has one), the
+   tri-tier dressing on the Friday copy (💸 the merged-pool `llm_choose`
+   now fires for characters whose wardrobe is entirely shared, which
+   previously skipped the model silently), the whispered-announcement
+   flow, and a 4-space-nested Markdown document that must survive an
+   edit without reflowing. Plus everything already owed: the toast walk,
+   announcement rendering on real history, the first completed
+   `LLM_LOG_CLEANUP`, walk Parts G/H, the P4.D31 restore-memory-id
+   proof, and P4.21's vision proof.
+2. **A human ruling on P4.D40's (a)-edge** (its order header carries the
+   question): `1. a` with a 2-column child nests under v4's stack and
+   makes sibling lists under CommonMark. v4 never writes those bytes, so
+   only hand-written/LLM input reaches it. Landed as a both-directions
+   pinned divergence; the alternative is adopting a v4-style structural
+   pre-pass. Cheap either way, but it should be decided rather than
+   drift.
+3. **The toast census's 15 OPEN rows** (the P4.25 lane record enumerates
    each with its owed sentences — `useProjectDetail`'s 20, the files
    family's 13, `useNewChat`'s 9, AuroraView, character edit/new) — a
    natural single SPA lane.
-3. **The app-wide `renderingPatterns`/`dialogueDetection` template gap**
+4. **The app-wide `renderingPatterns`/`dialogueDetection` template gap**
    (P4.26's banked finding): v5 never fetches the chat's roleplay
    template, so EVERY message renders with the defaults where v4 threads
    `template.renderingPatterns` into every row — a Salon-wide fidelity
    gap wanting its own order.
-4. **The autonomous-rooms oracle rot** (new sweep debt, round record):
-   v4's forked job child dies under jest outside the pinned worktree —
-   diagnose and repair the case (or suppress the fork) so the family can
-   regenerate again.
-5. **`p4.9h`** (prompt library + embedding-profiles management + the
-   banked PUT trigger matrix), the workspace per-tab toolbar bridge, the
-   Zod format-validator gap, `p4.9i2`, `p4.9o`, and the standing pools
-   (the `DbError::Key` message-leak class is now cheaper to close — the
-   structured store-unavailable variant already reaches the terminals).
+5. **The autonomous-rooms oracle rot** (sweep debt): v4's forked job
+   child dies under jest outside the pinned worktree — diagnose and
+   repair the case (or suppress the fork) so the family can regenerate
+   again.
+6. **`p4.9h`** (prompt library + embedding-profiles management + the
+   banked PUT trigger matrix), the new-chat wardrobe-composer family
+   (which now also owes P4.D39's deferred client half), the workspace
+   per-tab toolbar bridge, the Zod format-validator gap, `p4.9i2` (whose
+   bank grew again — v5's shipped help text still describes a
+   custom-tool format without `effects` or `chipLabel`), `p4.9o`, and
+   the standing pools.
 
-**Standing regen note:** unchanged — v4 HEAD `e1be028b` is lib-inert past
-the `ff12f491` baseline; oracles regenerate straight from the checkout;
+**Standing regen note:** the oracle baseline is **`c4d4b0de`** (v4 HEAD,
+2026-08-01). v4's tree was clean throughout the round, so oracles
+regenerate straight from `~/source/quilltap-server`; pin a detached
+worktree only on drift/dirty. ⚠ v4 has shipped ten commits in two days —
 drift-check before every round. Recipe regens should go through
-`harness/tools/recipe_sweep.py --run <family>` (atomic regen-then-run, the
-fixture shield, the SKIP detector).
+`harness/tools/recipe_sweep.py --run <family>` (atomic regen-then-run,
+the fixture shield, the SKIP detector); note that a recipe pointing at a
+`/tmp` pinned worktree from an earlier round is dead on arrival, since
+those do not survive between rounds.
