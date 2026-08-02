@@ -134,8 +134,10 @@ live-path unwraps, spelling clean.
   against the SKIP lines; the 321 SKIPs in the log all belong to families
   outside this round, which is the normal shape of a per-round env block).
 - `ng test`: **268 files / 3,639 tests / 0 failed.** `ng build` clean.
-- Full Playwright suite against the fresh dist + release binaries: see the
-  CHANGELOG entry for the count.
+- Full Playwright suite against the fresh dist + release binaries:
+  **172 passed / 0 failed / 0 skipped** (3.9 min). The first run came back
+  170/2; both reds are recorded above under the review findings, and the
+  re-run after the two gesture fixes is the number quoted here.
 
 ### Versions
 

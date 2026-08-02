@@ -1824,7 +1824,8 @@ records THERE. Update this summary only when a phase or round completes.
   three contracts diffed name-for-name clean. Gate: 409 test binaries /
   1,798 tests / 0 failed with the round's 64-variable env block and **all
   42 families positively confirmed to have RUN**; clippy both feature
-  sets; release build; ng test 268 files / 3,639; full Playwright green.
+  sets; release build; ng test 268 files / 3,639; full Playwright 172/172
+  zero skips.
   Versions: core 0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374.
   **Outliving the round:** P4.D39's tier-3 client half (defect 2's
   composer side — rides the deferred new-chat wardrobe-composer family),

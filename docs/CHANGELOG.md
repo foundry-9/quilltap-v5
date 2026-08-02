@@ -56,7 +56,8 @@ directories that no longer exist. All were repaired; none was a fault in
 the ported code. Gate: formatting, both lint configurations, a release
 build, 409 test binaries and 1,798 tests with every one of the round's 42
 comparison suites confirmed to have actually run, 3,639 unit tests across
-268 files, a production bundle, and the full end-to-end suite.
+268 files, a production bundle, and the full end-to-end suite — 172 of
+172, no skips.
 
 Rebuilt the custom-tool test instance so the side effects can actually be
 measured rather than described. It now has a project alongside its conversation,

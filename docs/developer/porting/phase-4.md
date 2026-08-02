@@ -3707,7 +3707,7 @@ the fixture shield) — repaired, all green, none a port regression.
 Gate: 409 binaries / 1,798 tests / 0 failed with the round's 64-variable
 env block and every one of its 42 families positively confirmed to have
 RUN; clippy both feature sets; release build; ng test 268 files / 3,639;
-full Playwright green (numbers in the CHANGELOG). Versions: core
+full Playwright 172/172 zero skips. Versions: core
 0.0.444, harness 0.0.382, host 0.0.56, SPA 0.5.374.
 
 **Next candidates, in rough value order:**
