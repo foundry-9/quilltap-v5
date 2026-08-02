@@ -140,9 +140,36 @@ catch, since every fixture is built fresh.
     the model attributed. **Part C is COMPLETE and its 💸 live proof is
     COLLECTED**; the one item it leaves behind is the ruled staff-attribution
     gap, queued v4-first.
-  - NOT walked this pass (the next pass starts here): the Part C remainder
-    above, Part D (tri-tier wardrobe 💸), Part E (the editor's
-    sub-list indentation + the OWED store-backed document scan), and all of
+  - **Part D (tri-tier wardrobe at chat start) — PASS, and 💸 the P4.D39 live
+    proof is COLLECTED.** A new chat dressed a character (Kumar) from a
+    **merged** pool: the `llm_logs` row carries the wardrobe-assistant prompt
+    and a **14-item candidate list**, and the wardrobe dialog badges those
+    items `· shared` — a pool a vault-only resolve could not have produced,
+    which is exactly what P4.D39 changed (all three wardrobe fixtures were
+    structurally blind to the merge until this round widened them). The pick
+    logs under type **`SUMMARIZATION`**, not a name of its own: `outfit-selection`
+    maps there in BOTH apps (v4 `cheap-llm-tasks/core-execution.ts:53`, v5
+    `llm_logging.rs:374-379`), so hunting for an `OUTFIT*` row finds nothing —
+    read the request instead.
+    **The Part-D script's open question is ANSWERED: `canChooseOutfit` gates
+    the pick on the CLIENT, not the server.** `outfit-selector.ts:47` seeds
+    `mode: 'llm_choose'` for an LLM-controlled character carrying the flag;
+    absent any selection the server defaults to `mode: "default"` and spends
+    nothing (`chat_create.rs:1884`). So a paid pick is always configured, never
+    spontaneous — and a default outfit is not "overridden" by it, since the two
+    are alternative modes.
+    **Composite hydration (step 21) — PASS with a v4-faithful display quirk,
+    human-confirmed against v4:** a composite equips AS A BUNDLE (its header
+    carries the four slot badges plus Break apart / Take off bundle) while the
+    individual slots render `Empty`. The leaves resolve — everything reading
+    "what is he wearing" is correct — but the per-slot view shows the bundle
+    rather than its contents. v4 renders it identically ("it's a bit weird",
+    and it is; not a defect, and not queued).
+    Step 22 (the `isDefault`-last opt-out) is **N/A on this instance** — every
+    item in the pool is shared, with no personal `isDefault: false` copy to
+    shadow one; recorded unwalked rather than manufactured.
+  - NOT walked this pass (the next pass starts here): Part E (the editor's
+    sub-list indentation + the OWED store-backed document scan) and all of
     Part F's carried-over debt.
 
 - **The 2026-07-31 `ff12f491`-round walk, Parts B–F — coverage, and THREE owed
