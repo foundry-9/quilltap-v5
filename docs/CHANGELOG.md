@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Restored the Project library button to the Open Document window. A
+conversation that belongs to a project could not reach that project's own
+files from the document picker at all — and turning on "Look everywhere"
+did not help, because every project's store appeared there except the one
+the conversation lives in. The store was being deliberately set aside for
+a button that had never been built. It is there now, opens the project's
+files, and stays put when the "Look everywhere" switch is toggled.
+
 Recorded a limitation of custom-tool side effects, found while trying them
 on real data: a counter cannot start itself. An effect that adds one to a
 stored value is skipped whenever that value does not exist yet, and the

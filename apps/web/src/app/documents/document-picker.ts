@@ -5,7 +5,13 @@ import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
 import { CollapsibleCard } from '../ui/collapsible-card';
 import { formatBytes } from '../ui/format-bytes';
-import type { AccessibleStoreDto, DocMountFileDto, DocumentScope, RecentDocumentDto } from '../core/core-contract';
+import type {
+  AccessibleStoreDto,
+  DocMountFileDto,
+  DocumentScope,
+  ProjectLibraryTargetDto,
+  RecentDocumentDto,
+} from '../core/core-contract';
 import { DocumentApi } from './document-api';
 import { StandaloneDocumentApi } from './standalone-wire';
 
@@ -44,6 +50,15 @@ interface SelectedMount {
  * endpoint the SPA doesn't consume this round) and the in-picker **new-folder**
  * control (needs `mountFolderCreate`, not a consumed variant). New blank
  * documents (project scope) and store browsing cover the round's opening paths.
+ *
+ * The deferral above once swallowed the **Project library** button whole
+ * (dogfood #50): v4 renders it for either arm, but only its legacy-scope arm
+ * needs the deferred endpoint — the store-backed arm is an ordinary mount
+ * browse. Since the server withholds the chat project's own store from
+ * `stores` on the strength of this button existing, its absence made that
+ * store unreachable by any path. The button is now rendered for the
+ * store-backed arm; a project with NO official store still falls to the
+ * deferral, and shows no button rather than a broken one.
  */
 @Component({
   selector: 'qt-document-picker',
@@ -72,6 +87,28 @@ interface SelectedMount {
                 <span class="block text-sm qt-text-secondary">Create an empty Markdown document</span>
               </span>
             </button>
+
+            <!-- Project library (v4 DocumentPickerModal.tsx:487-501). The
+                 chat's own project store is DELIBERATELY held back from the
+                 accessible-store list server-side ("surfaced separately —
+                 left-column button", api/documents.rs:1131) and stays held back
+                 under look-everywhere, so without this button the store the
+                 conversation lives in is reachable by no path at all. -->
+            @if (projectLibrary(); as library) {
+              <button
+                type="button"
+                class="qt-doc-project-library w-full flex items-center gap-3 p-4 rounded-lg border qt-border-default hover:qt-bg-muted text-left"
+                (click)="browseProjectLibrary(library)"
+              >
+                <span class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center qt-bg-muted">
+                  <qt-icon name="folder" class="w-5 h-5 qt-text-secondary" />
+                </span>
+                <span class="min-w-0">
+                  <span class="block font-medium qt-text-primary">Project library</span>
+                  <span class="block text-sm qt-text-secondary truncate">{{ library.name }}</span>
+                </span>
+              </button>
+            }
 
             @if (ready()) {
             <qt-collapsible-card
@@ -312,6 +349,12 @@ export class DocumentPicker implements OnInit {
   protected readonly step = signal<'source' | 'browse'>('source');
   protected readonly recents = signal<RecentDocumentDto[]>([]);
   protected readonly stores = signal<AccessibleStoreDto[]>([]);
+  /**
+   * The chat project's own document store, which the accessible-store list
+   * never carries (server-side it is moved out of `stores` into this field).
+   * Null on the standalone surface, and on a chat with no project.
+   */
+  protected readonly projectLibrary = signal<ProjectLibraryTargetDto | null>(null);
   protected readonly loading = signal(false);
   /**
    * Gates the collapsible cards until the first fetch settles: a card seeds its
@@ -352,6 +395,10 @@ export class DocumentPicker implements OnInit {
       if (chatId) {
         const result = await this.api!.fetchAccessibleStores(chatId, this.lookEverywhere());
         this.stores.set(result.stores);
+        // Carried across a look-everywhere toggle: the server computes it in
+        // both modes, and the project's own store is withheld from `stores` in
+        // both, so dropping it here would make the button flicker away.
+        this.projectLibrary.set(result.projectLibrary);
       } else {
         this.stores.set(await this.standaloneApi.fetchStores());
       }
@@ -382,16 +429,31 @@ export class DocumentPicker implements OnInit {
     };
   });
 
-  protected async browseStore(store: AccessibleStoreDto): Promise<void> {
-    this.selectedMount.set({ id: store.mountPointId, name: store.name });
+  protected browseStore(store: AccessibleStoreDto): Promise<void> {
+    return this.openMount(store.mountPointId, store.name);
+  }
+
+  /**
+   * v4 routes the Project library button to the project's official store when
+   * it has one (`handleSelectScope('document_store', …)`), which is the same
+   * mount browse a store row performs. v4's other arm — the legacy `project`
+   * scope, taken when a project has NO official store — remains the deferred
+   * FileBrowser path named in this file's header.
+   */
+  protected browseProjectLibrary(library: ProjectLibraryTargetDto): Promise<void> {
+    return this.openMount(library.mountPointId, library.name);
+  }
+
+  private async openMount(mountPointId: string, name: string): Promise<void> {
+    this.selectedMount.set({ id: mountPointId, name });
     this.step.set('browse');
     this.currentFolder.set('');
     this.filesLoading.set(true);
     try {
       const chatId = this.chatId();
       const result = chatId
-        ? await this.api!.listMountFiles(store.mountPointId)
-        : await this.standaloneApi.listMountFiles(store.mountPointId);
+        ? await this.api!.listMountFiles(mountPointId)
+        : await this.standaloneApi.listMountFiles(mountPointId);
       this.mountFiles.set(result.files);
       this.mountFolders.set(result.folders);
     } catch {
