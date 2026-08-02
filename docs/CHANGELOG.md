@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Recorded a limitation of custom-tool side effects, found while trying them
+on real data: a counter cannot start itself. An effect that adds one to a
+stored value is skipped whenever that value does not exist yet, and the
+only thing that would create it is the effect being skipped. The guard
+forms an author reaches for are not available either — the expression
+language has arithmetic and text joining, but no logical operators and no
+defaulting, and a condition cannot ask whether a stored value is present.
+Seed the value once in the state editor and the increment works from then
+on. This matches the original app exactly, so the repair belongs there
+first; it is queued with the other post-release improvements.
+
 Ruled the one place the rewritten editor deliberately disagrees with the
 original app, and committed the check that keeps the ruling honest. A list
 item indented two spaces under a numbered parent is read as a sub-list by
