@@ -579,6 +579,16 @@ describe('CustomToolRunDialog — the reference panel', () => {
     expect(body).toContain('state.encounter.count');
     expect(body).toContain('metadata.lockpick');
     expect(body).toContain('The record of what actually changed rides with the roll itself.');
+    // EXACT, not toContain: the fragment assertions above were blind to the
+    // stray space this caught (dogfood #51 follow-up), and they would be just
+    // as blind to a separator that went missing between two targets.
+    const sentence = body
+      .slice(body.indexOf('When it runs'), body.indexOf('rides with the roll itself.') + 27)
+      .replace(/\s+/g, ' ');
+    expect(sentence).toBe(
+      'When it runs, this tool may also write: state.encounter.count, metadata.lockpick.' +
+        ' The record of what actually changed rides with the roll itself.',
+    );
   });
 
   it('opens the panel for a tool that quotes nothing but writes something', async () => {

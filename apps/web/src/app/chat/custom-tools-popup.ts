@@ -229,8 +229,7 @@ interface ReferenceRow {
                         <span
                           >@if (i > 0) {, }<code class="font-mono qt-text">{{ target }}</code></span
                         >
-                      }
-                      . The record of what actually changed rides with the roll itself.
+                      }. The record of what actually changed rides with the roll itself.
                     </p>
                   }
                 </details>

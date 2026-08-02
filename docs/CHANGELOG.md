@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+Closed a stray gap before the full stop in the run dialog's note about what a
+tool may write.
+
 Fixed two ways the app confused a browser event for a piece of data. Running
 a custom tool left its written-out parameters filled with a machine
 placeholder the next time the tool was opened, because closing a field was
