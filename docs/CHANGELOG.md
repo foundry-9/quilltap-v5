@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Planned the next porting round (documentation only): four parallel work
+orders. The reference app moved one commit — making hard links between
+document stores real, so a file linked into two places stays one file —
+and one order absorbs all of it, including the cleanup of content rows
+that older writes left behind. The other three cover the backup/restore
+faults the latest hands-on walk surfaced (annotations that survive a
+wipe, links and files missing from archives, jobs running mid-restore)
+together with tolerance for databases carried forward from older
+versions; the remaining screens still owed their notification messages;
+and making chat messages render with the conversation's own template
+patterns instead of the defaults.
+
 Fixed a fault that could leave Quilltap unusable, showing an error on every
 screen with no way to recover from inside the app. Settings are stored in a
 table that, on a database carried forward from an older version, can be

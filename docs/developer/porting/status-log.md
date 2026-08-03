@@ -50128,3 +50128,61 @@ above.
 
 Versions: SPA 0.5.357 → 0.5.361 (four commits, one bump each); no crate
 touched.
+
+## Round planned — the `40319484` hard-link-groups drift + restore-remainder round (2026-08-03)
+
+**Drift-check first, per the skill: v4 moved ONE commit past `c4d4b0de` —
+`40319484` "fix(scriptorium): make hard links between document stores real"
+(4.8.0-dev.147, tree clean).** Classified: a REAL behavior change landing on
+ported surfaces — `doc_mount_file_links.linkGroupId` (nullable column +
+partial index, in the Zod schema so `generateDDL` emits it → a D23 re-dump is
+owed), write-through fan-out (`fanOutGroupFileId`), orphaned-content-row GC on
+the write path AND on delete (`gcOrphanedFileRow` — fires on ORDINARY
+rewrites, so every tier-2 family that rewrites a store document moves),
+sibling re-chunking (`lib/mount-index/link-groups.ts`, called from the
+database-store write + doc-edit reindex chain), `linkFile`-binds /
+`copyFile`-doesn't (`hardLinkDbToDb` gains `bindGroup`; the fs→fs leg binds
+after `std::fs::hard_link`), boot-time `ensureLinkGroupColumn` (both v4 repos'
+init — v5's single `builtin_mounts` boot hook, a recorded non-divergence since
+v5 has no `safeQuery` silent-null swallow), export `linkGroupId: ?? null`
+(always present) + import second-pass group re-bind (fresh ids — double-import
+cannot fuse), and the CLI `docs ls`/`--links` counting group members with a
+degrade-to-1 probe. The migration (`add-doc-mount-link-groups-v1`) maps to the
+D23 re-dump + boot ensure + a boot-time orphan-backlog sweep (no v5 migration
+runner); the registry guard test and `prettify.ts` label are NO-PORT; the two
+help docs bank for `p4.9i2`; `qtap-export.schema.json` has no v5 counterpart.
+Survey found NO existing oracle case drives v4's `linkFile` — the new case is
+a named deliverable. `quilltap docs` in v5 is fully live (docs_cmd.rs carries
+the exact `linkCount` SQL v4 changed), so the CLI leg is real work, not a
+refusal.
+
+**The round (four lanes, orders committed under `work-orders/`):**
+
+- **P4.D41** (`p4.d41-hard-link-groups.md`) — the whole drift, Rust + harness
+  + CLI + the export/import legs + the D23 re-dump. Regenerates at `40319484`.
+- **P4.28** (`p4.28-restore-remainder-vintage-tolerance.md`) — dogfood
+  findings #57–#60 (annotations wipe gap, the doc-store link FK failures +
+  uncollected files diagnosed on the BACKUP side, the job pump paused during
+  restore) + the full-INSERT vintage-tolerance sweep + the migration-vintage
+  fixture, under the standing 2026-08-03 backup/restore ruling (v5 FIXES v4's
+  bugs in this family). **Pins its v4 worktree at `c4d4b0de` (PRE-drift)** so
+  its archives/dumps never meet the column P4.D41 introduces; the unifier
+  regenerates the union at `40319484`.
+- **P4.29** (`p4.29-toast-census-open-rows.md`) — the P4.25 census's OPEN
+  rows outside `screens/settings/system/**` (those four ride with P4.28),
+  SPA-only, sentences byte-for-byte with spec pins; census verdicts
+  v4-re-sampled per the 2026-07-31 lesson.
+- **P4.30** (`p4.30-roleplay-template-rendering.md`) — the P4.26-banked
+  app-wide `renderingPatterns`/`dialogueDetection` gap: the SalonView
+  template fetch (v4 `SalonView.tsx:745–776`) threaded into every message
+  row, render-cache invalidation, parity fixtures extended with
+  pattern-bearing vectors; `narrationDelimiters` → composer-toolbar stays
+  with `p4.9l`.
+
+Ownership is disjoint (the §X contract is verbatim-identical in all four
+orders); `api/types.rs` is FROZEN round-wide; version-bump ownership: D41 →
+core/harness/cli, P4.28 → core/harness/host/web/SPA, P4.29/P4.30 → SPA only.
+Deliberately left out of the round: the autonomous-rooms oracle jest rot (a
+maintenance item, no lane owns harness-wide infra this round), `p4.9h`, the
+workspace per-tab toolbar bridge, and finding #61 (re-walk on a fresh copy
+first — the reports came from a #56-damaged scratch instance).
