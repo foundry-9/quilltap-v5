@@ -51009,3 +51009,73 @@ Five tests, all deterministic, over a recording fake pump: the claim window is
 closed for the whole body; an `Err` exit restarts; a panic restarts; an
 already-stopped pump stays stopped and is never started; a `None` pump is a
 no-op.
+
+---
+
+### Lane record — P4.28 unit 5 (the restore-orchestrator INSERT-tolerance survey)
+
+**The survey was run as a MEASUREMENT, not an inspection**, and that changed the
+answer. Rather than read ~38 write sites and reason about which columns a
+migrated table might lack, the committed migration-vintage instance was used as
+the restore TARGET and every writable archive restored into it in both modes,
+with a gate asserting that no raw SQLite sentence reaches the operator
+(`no_restore_phase_names_a_column_a_migrated_table_lacks`, 7 archives × 2 modes).
+
+**First, the fixture was validated against reality.** The `fresh_schema.json`
+column set was diffed against the REAL dogfood instance and against the vintage
+fixture, independently. They agree exactly — same four tables, same columns:
+
+| table | columns `generateDDL` emits that a MIGRATED instance does not have |
+| --- | --- |
+| `characters` | `title`, `identity`, `description`, `manifesto`, `personality`, `scenarios`, `firstMessage`, `exampleDialogues`, `systemPrompts`, `metadata`, `talkativeness`, `canChooseOutfit`, `aliases`, `pronouns`, `physicalDescription` (15) |
+| `projects` | `description`, `instructions`, `state`, `allowAnyCharacter`, `characterRoster`, `color`, `icon`, `defaultDisabledTools`, `defaultDisabledToolGroups`, `defaultAgentModeEnabled`, `defaultAvatarGenerationEnabled`, `defaultImageProfileId`, `defaultRoleplayTemplateId`, `defaultAlertCharactersOfLanternImages`, `answerConfirmationOverride`, `storyBackgroundsEnabled`, `staticBackgroundImageId`, `storyBackgroundImageId`, `backgroundDisplayMode` (19) |
+| `groups` | `description`, `instructions`, `state`, `color`, `icon` (5) |
+| `chat_settings` | `timezone` (1) — **the dogfood #56 column** |
+
+So the vintage split is real, it is wide, and it has a single cause: v4's three
+CUTOVER migrations DROP those columns once the data moves into the vault/store,
+while `generateDDL` still emits them because the Zod schemas still declare them
+for the overlay. A fresh instance has them; nobody's real instance does.
+
+**The measured verdict for the restore path: no site needs `tolerant_insert`
+today.** All 14 restores are clean. That is not luck — the store/vault cutover is
+exactly why: every one of those 40 columns belongs to an entity whose restore
+phase writes the SLIM row and projects the rest into the store or vault, so no
+restore INSERT names any of them. The one exception is `chat_settings.timezone`,
+which P4.28's predecessor already made tolerant (`08284bba`).
+
+#### The adjudication, by write-site family
+
+| restore phase(s) | how it writes | verdict |
+| --- | --- | --- |
+| 6 characters, 13/13a projects + groups | slim row + store/vault projection (`create_character_with_options`, the store-backed creates) | **already tolerant by construction** — the dropped columns are not in the INSERT |
+| 16 chat settings | `db::chat_settings` | **already tolerant** — `tolerant_insert`, landed with #56 |
+| 1 tags, 2 connection profiles, 3 image profiles, 4 embedding profiles, 10 prompt templates, 11 roleplay templates, 12 provider models, 15 plugin configs, 17 folders, 21 character plugin data | typed `create` over a table the chain never dropped a column from | **loud-fail, and correct** — measured clean; a missing column here would mean a genuine schema drift the port must not paper over |
+| 7 chats (+ messages), 9 memories, 22 annotations, 22i chat documents, 22j vector metas + entries, 22k conversation chunks, 22l TF-IDF, 22m embedding status, 22n text replacement rules, 14 llm logs | same | **loud-fail today, and the one real exposure** — see the tripwire below |
+| 22a–22h the doc-store family | typed creates in the mount partition | **loud-fail**; measured clean, and the mount partition's aligners (`alignDocMountPointsSchema` / `alignDocMountFileLinksSchema`) run on every v4 boot, so its columns do not drift |
+| 5 files | the mount-store bridges | **loud-fail**; measured clean |
+| 22o instance settings | upsert by key | **N/A** — two columns, both original |
+
+#### What is NOT fixed, and why — recorded as a live tripwire, not a paragraph
+
+`a_column_a_migration_never_added_still_loses_that_collection` manufactures the
+other kind of vintage (one late-added column dropped: `chats.timelineMode`,
+from the chain's LAST migration) and pins today's behaviour: the whole `chats`
+collection is lost with `table chats has no column named timelineMode`, **and it
+cascades** — the annotations and conversation chunks that reference those chats
+then fail their own foreign keys. One missing column, three collections gone.
+
+That is a real exposure and the repair is real work: ~20 typed `create` methods,
+every one of them under a byte-level differential, where the honest change is
+per-site (`tolerant_insert` is a no-op when every column exists, so the
+differentials would not move — but "would not move" is a claim that has to be
+run, not asserted). Sweeping it at the tail of an already-long lane is how a
+regression gets in. **Ordered instead, with the tripwire failing the moment it
+lands** so the follow-up cannot be forgotten and this test cannot rot into an
+excuse.
+
+The tripwire also exposed a smaller thing worth carrying: `summary.chats` reports
+**2** for a phase in which both chats failed to write, because that counter is an
+INPUT length rather than a write count (the orchestrator says so at
+`RestoreSummary`). Any assertion about what a restore actually wrote has to read
+the table.

@@ -155,6 +155,162 @@ fn constraint_warnings(warnings: &[String]) -> Vec<&String> {
         .collect()
 }
 
+/// Every warning carrying a raw SQLite sentence — WIDER than
+/// [`constraint_warnings`], and deliberately so.
+///
+/// This is the lane's **INSERT-tolerance survey, run as a measurement rather
+/// than an inspection**. `no such column: <table>.<col>` is the failure mode of
+/// dogfood #56 (`chat_settings.timezone`), and the restore orchestrator writes
+/// ~38 collections through explicit column lists, any one of which could name a
+/// column a migrated table lacks. Rather than adjudicate 38 call sites by
+/// reading them, restore the archives into an instance whose schema v4's own
+/// migration chain authored and require that **no** raw SQLite sentence reaches
+/// the operator. Every phase that names a column the vintage table does not have
+/// says so here, by name, in the assertion's message.
+fn raw_sqlite_warnings(warnings: &[String]) -> Vec<&String> {
+    warnings
+        .iter()
+        .filter(|w| w.contains("sqlite error"))
+        .collect()
+}
+
+fn assert_no_raw_sqlite(name: &str, warnings: &[String]) {
+    let raw = raw_sqlite_warnings(warnings);
+    assert!(
+        raw.is_empty(),
+        "[{name}] {} raw SQLite sentence(s) reached the operator — a restore into a \
+         migration-vintage instance must not leak them:\n  {}",
+        raw.len(),
+        raw.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+}
+
+/// The INSERT-tolerance survey proper: every committed archive restored into the
+/// migration-vintage instance, in BOTH modes, with the raw-SQLite gate on. An
+/// archive is what drives which columns each phase actually writes, so covering
+/// all of them is what makes the survey a survey rather than a spot check.
+///
+/// `restore-archive-malformed.zip` and `restore-archive-missing-required.zip`
+/// are excluded: they are parse-failure fixtures and never reach a write.
+#[test]
+fn no_restore_phase_names_a_column_a_migrated_table_lacks() {
+    for archive in [
+        "restore-archive.zip",
+        "restore-archive-legacy.zip",
+        "restore-archive-minimal.zip",
+        "restore-archive-uploads.zip",
+        "restore-archive-gen2.zip",
+        "restore-archive-memory-graph.zip",
+        "restore-archive-orphan-links.zip",
+    ] {
+        for (suffix, mode) in [
+            ("replace", RestoreMode::Replace),
+            ("newacct", RestoreMode::NewAccount),
+        ] {
+            let tag = format!("{}-{suffix}", archive.trim_end_matches(".zip"));
+            let (_instance, warnings, _links) = run_restore(&tag, archive, mode);
+            assert_no_raw_sqlite(&format!("{archive} / {suffix}"), &warnings);
+        }
+    }
+}
+
+/// ## ⚠ KNOWN GAP — a tripwire, and the sensitivity proof for the survey above
+///
+/// The survey passes because the committed vintage instance has been through
+/// v4's WHOLE migration chain, so its column SET matches `generateDDL`'s even
+/// where its constraints do not. The instances that produced dogfood #56 are the
+/// other kind: a table that never got some migration, because v5 has no
+/// migration runner and v4's `generateAlterStatements` is exported and never
+/// called. This test manufactures exactly that — one late-added column dropped —
+/// and pins what the restore does about it today.
+///
+/// **It currently records a FAILURE, deliberately.** The restore's ~38 write
+/// sites use explicit column lists, so a phase whose table lacks a column loses
+/// every row in that collection with a raw `no such column` sentence. Making
+/// them tolerant is the tier-2 repair this lane did NOT take: see the
+/// adjudication table in the lane record for why (the honest fix is per-site,
+/// and every site is under a byte-level differential, so it wants its own round
+/// rather than a blanket sweep at the end of this one).
+///
+/// **When that repair lands this test FAILS**, which is the point: it is a
+/// tripwire, not a permanent excuse. Delete it then — and until then it is what
+/// proves `no_restore_phase_names_a_column_a_migrated_table_lacks` can actually
+/// tell the two situations apart.
+#[test]
+fn a_column_a_migration_never_added_still_loses_that_collection() {
+    let (root, instance) = vintage_instance("droppedcolumn");
+    {
+        let conn = Connection::open(instance.join("quilltap.db")).unwrap();
+        conn.pragma_update(
+            None,
+            "key",
+            format!(
+                "x'{}'",
+                quilltap_core::dbkey::pepper_b64_to_key_hex(TEST_PEPPER).unwrap()
+            ),
+        )
+        .unwrap();
+        // `chats.timelineMode` arrives in `add-episodic-memory-fields-v1`, the
+        // LAST migration in the chain — the most plausible column for a real
+        // instance to be short of.
+        conn.execute("ALTER TABLE chats DROP COLUMN timelineMode", [])
+            .expect("drop the column");
+    }
+
+    let zip = fixtures_dir()
+        .join("restore-archives")
+        .join("restore-archive.zip");
+    let host = TestHost { root: root.clone() };
+    std::fs::create_dir_all(host.temp_dir()).unwrap();
+    let db = open(&instance);
+    let summary = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(restore(
+            &db,
+            &host,
+            &zip,
+            RestoreMode::Replace,
+            SINGLE_USER_ID,
+        ))
+        .expect("restore returned an error");
+    drop(db);
+
+    let raw = raw_sqlite_warnings(&summary.warnings);
+    // SQLite says `no such column: x` on a SELECT and `table t has no column
+    // named x` on an INSERT; the restore is all INSERTs, so it is the latter.
+    let no_such_column: Vec<&&String> = raw
+        .iter()
+        .filter(|w| w.contains("no such column") || w.contains("has no column named"))
+        .collect();
+    assert!(
+        !no_such_column.is_empty(),
+        "TRIPWIRE: the restore now survives a column its table lacks — the tier-2 \
+         tolerance repair has landed, so DELETE this test and keep the survey. \
+         Warnings were:\n  {}",
+        summary.warnings.join("\n  ")
+    );
+    // …and the whole chats collection is lost, which is what the repair is for.
+    // Note the SUMMARY does not say so — `summary.chats` reports 2, because that
+    // counter is an INPUT length for this phase rather than a write count (the
+    // orchestrator's own note). So the only honest measure is the table.
+    let conn = Connection::open(instance.join("quilltap.db")).unwrap();
+    conn.pragma_update(
+        None,
+        "key",
+        format!(
+            "x'{}'",
+            quilltap_core::dbkey::pepper_b64_to_key_hex(TEST_PEPPER).unwrap()
+        ),
+    )
+    .unwrap();
+    assert_eq!(count(&conn, "SELECT COUNT(*) FROM chats"), 0);
+}
+
 /// **Finding #58.** The archive carries 9 of its 28 `doc_mount_file_links` and
 /// 7 `doc_mount_folders` whose mount point was deleted out from under them (see
 /// `build-restore-archive-orphan-links.test.ts` — the miniature of the 43 + 118

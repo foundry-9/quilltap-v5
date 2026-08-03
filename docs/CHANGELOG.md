@@ -41,6 +41,13 @@ forward from an older version gains it on startup. Startup also clears out
 stored file contents that nothing points at any more — every edit to a
 document in a store leaves its previous contents behind, and until now they
 were never collected, so a long-lived instance accumulated dozens of them.
+Checked, against a database built the way real ones are built, that
+restoring a backup never asks for a column the database in front of it does not
+have. It does not — and the check found that the difference between a fresh
+database and a carried-forward one is wider than assumed: forty columns across
+four tables. One case is still not handled, and is recorded with a test that
+fails as soon as it is.
+
 Background jobs are now held still while a restore or a delete-all runs.
 They used to keep claiming work and writing to tables the operation was in the
 middle of emptying and refilling. They start again afterwards however the
