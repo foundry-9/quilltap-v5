@@ -467,6 +467,34 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **✅ STANDING RULING (human, 2026-08-03) — in BACKUP / RESTORE / IMPORT /
+  EXPORT, v5 FIXES v4's bugs rather than reproducing them.** *"I want v5 to fix
+  v4 bugs if you find them, not match them. v4 isn't very well tested."* This is
+  a deliberate, scoped exception to the differential port discipline's default,
+  and it changes what dispositions are available: **"faithfully ported v4 bug,
+  not fixed" is NOT a valid outcome in this family.** Where the v4 survey shows
+  v4 is wrong, fix v5.
+
+  The rationale is the blast radius. Everywhere else a reproduced v4 bug behaves
+  oddly; here it loses the user's data, and it does so on the one path a user
+  reaches for precisely when something has already gone wrong.
+
+  **The machinery already exists — this extends a precedent, it does not invent
+  one.** `EXPECTED_DIVERGENCES` in `system_import_equivalence.rs` and
+  `system_restore_state.rs` pins each divergence in BOTH directions, so it goes
+  red if v4 ever converges; its current members are the sparse-array blob read,
+  the three restore bugs ruled 2026-07-25, and `REPLAY_DEDUPE`. Consequences:
+  the tier-2 state diff in this family is **not** an equality and its divergence
+  list must stay curated; the **writer stays byte-identical** wherever the bug
+  allows (every divergence so far is reader-side only, so v5's archives remain
+  readable by v4); and each v4-side repair is queued on the post-5.0 v4-first
+  list rather than made during the port, since patching v4 moves the oracle
+  baseline.
+
+  ⚠ Note the boundary: a **v5-only** defect is a plain port bug, not a
+  divergence, and owes no pin. The `chat_settings.timezone` INSERT intolerance
+  (finding #56) is the type case — v4 never hits it because v4 runs migrations.
+
 - **A LINT RULE WOULD CLOSE THIS CLASS (finding #51, 2026-08-02) — an Angular
   `output()` must never be named after a DOM event.** Two live bugs came from
   one mistake, and one of them (a Cmd+C in the Salon writing "undefined" over
