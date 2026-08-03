@@ -18,6 +18,18 @@
 //! mocks the writer/reindex modules to no-ops. The `chunkCount` a reindex would
 //! bump is pinned/excluded in every store differential.
 //!
+//! **v4 `40319484` chained `reindexLinkGroupSiblings` onto that same
+//! `triggerReindexIfNeeded` promise** (`shared.ts:474`), so it inherits the seam.
+//! Where v4 actually gets the effect for a DATABASE-backed doc-edit write, v5
+//! gets it too: this file's write dispatch lands bytes through
+//! `database_store::write_database_document`, which runs the chunk pass AND the
+//! group pass itself (v4 calls it from both places; the pass is idempotent).
+//! **Loudly deferred:** for a FILESYSTEM/obsidian doc-edit write the seam is the
+//! only path in v4, and v5 has no reindex there at all — so a hard-linked
+//! filesystem sibling's chunk set is not rebuilt by a doc-edit tool write. That
+//! is the standing reindex deferral's blast radius growing by one case, not a new
+//! seam; it closes when the doc-edit reindex is ported.
+//!
 //! ## The host-filesystem branches (P4.6bg)
 //!
 //! The legacy filesystem/obsidian mount branches (`mountType != 'database'`), the

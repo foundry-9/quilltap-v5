@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+A file hard-linked into a second document store now stays one file. Editing
+either side used to fork them apart silently: the write moved the edited
+location onto fresh contents while the other kept the old ones, so the second
+place served the previous revision indefinitely — to the file browser, to
+search, and to characters. A write through any member of a deliberate link now
+moves every member, and rebuilds the search index for each. Unlinking the
+second-to-last member leaves an ordinary independent file behind. Contents
+nothing points at any more are collected as they are abandoned, not left to
+accumulate.
+
 Started making hard links between document stores real. A fresh instance now
 carries the field that records a deliberate link, and an instance carried
 forward from an older version gains it on startup. Startup also clears out

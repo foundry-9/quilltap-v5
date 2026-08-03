@@ -7,9 +7,15 @@
  * too, so the pass is part of the contract under test). QUILLTAP_JOB_CHILD stays
  * UNSET — for a database-backed store the chunk pass calls no model and is fully
  * deterministic; `emitDocumentWritten` fires into a listener-less emitter here.
- * Proves what state v4 leaves the FIVE mount-index tables in — doc_mount_files /
+ * Proves what state v4 leaves the SIX mount-index tables in — doc_mount_files /
  * doc_mount_documents / doc_mount_file_links / doc_mount_folders /
- * doc_mount_chunks — after a fixed write sequence.
+ * doc_mount_chunks / doc_mount_blobs — after a fixed op sequence.
+ *
+ * [40319484] The corpus also drives v4's REAL `linkBlobContent`, `bindLinkGroup`
+ * and `deleteDatabaseDocument` (op kinds `write-blob` / `bind-group` / `delete`),
+ * which is what puts deliberate hard-link groups, the write-path fan-out, the
+ * orphaned-content-row GC, and the group-of-one NULLing under test. `doc_mount_blobs`
+ * joined the dump with them so the GC's explicit payload delete is measured.
  *
  * NORMALIZATION (done identically on both dumps by the Rust harness): every id is
  * minted internally (`randomUUID`) and every timestamp is internal, so NOTHING is
@@ -38,11 +44,31 @@ import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from '
 import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
-interface Op {
+interface WriteOp {
   kind: 'write';
   relativePath: string;
   content: string;
 }
+interface WriteBlobOp {
+  kind: 'write-blob';
+  relativePath: string;
+  dataHex: string;
+  storedMimeType: string;
+  originalFileName: string;
+  originalMimeType: string;
+  description: string;
+  extractedText: string;
+}
+interface BindGroupOp {
+  kind: 'bind-group';
+  sourcePath: string;
+  destPath: string;
+}
+interface DeleteOp {
+  kind: 'delete';
+  relativePath: string;
+}
+type Op = WriteOp | WriteBlobOp | BindGroupOp | DeleteOp;
 
 interface Spec {
   testPepperBase64: string;
@@ -87,9 +113,53 @@ async function main(): Promise<void> {
   // ported, so it is part of the contract; for a database-backed store it calls
   // no model and is deterministic). QUILLTAP_JOB_CHILD stays UNSET so the pass
   // runs, exactly as it does for every parent-side v4 write.
-  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const { writeDatabaseDocument, deleteDatabaseDocument } = await import(
+    '@/lib/mount-index/database-store'
+  );
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const links = () => getRepositories().docMountFileLinks;
+
   for (const op of spec.ops) {
-    await writeDatabaseDocument(spec.store.id, op.relativePath, op.content);
+    switch (op.kind) {
+      case 'write':
+        await writeDatabaseDocument(spec.store.id, op.relativePath, op.content);
+        break;
+      case 'write-blob': {
+        // [40319484] The BINARY leg — linkBlobContent's fan-out passes no
+        // textState, so a grouped sibling follows the fileId but keeps its own
+        // description / extracted caption.
+        const data = Buffer.from(op.dataHex, 'hex');
+        await links().linkBlobContent({
+          mountPointId: spec.store.id,
+          relativePath: op.relativePath,
+          fileName: op.relativePath.split('/').pop()!,
+          folderId: null,
+          originalFileName: op.originalFileName,
+          originalMimeType: op.originalMimeType,
+          storedMimeType: op.storedMimeType,
+          // Advisory only — linkBlobContent recomputes from the bytes.
+          sha256: '0'.repeat(64),
+          data,
+          description: op.description,
+          extractedText: op.extractedText,
+        });
+        break;
+      }
+      case 'bind-group': {
+        // [40319484] The REAL bindLinkGroup, over the two links resolved by path.
+        // (`docs link` reaches it through file-ops; that leg has its own oracle.)
+        const source = await links().findByMountPointAndPath(spec.store.id, op.sourcePath);
+        const dest = await links().findByMountPointAndPath(spec.store.id, op.destPath);
+        if (!source || !dest) {
+          throw new Error(`bind-group: missing link for ${op.sourcePath} / ${op.destPath}`);
+        }
+        await links().bindLinkGroup(source.id, dest.id);
+        break;
+      }
+      case 'delete':
+        await deleteDatabaseDocument(spec.store.id, op.relativePath);
+        break;
+    }
   }
 
   const midb = getRawMountIndexDatabase();
@@ -108,8 +178,11 @@ async function main(): Promise<void> {
 
   const files = dumpTable('doc_mount_files', 'sha256');
   const documents = dumpTable('doc_mount_documents', 'contentSha256');
-  const links = dumpTable('doc_mount_file_links', 'relativePath');
+  const linkRows = dumpTable('doc_mount_file_links', 'relativePath');
   const folders = dumpTable('doc_mount_folders', 'path');
+  // [40319484] The blob payload joins the dump so the GC's explicit
+  // doc_mount_blobs delete is measured rather than reasoned about.
+  const blobs = dumpTable('doc_mount_blobs', 'sha256');
 
   // Chunk rows have no natural key of their own; append a derived `sortKey`
   // (`<mount name>#<link relativePath>#<zero-padded chunkIndex>`) and order by it — the Rust
@@ -140,9 +213,10 @@ async function main(): Promise<void> {
       case: 'doc-mount-file-links-tier2',
       files,
       documents,
-      links,
+      links: linkRows,
       folders,
       chunks,
+      blobs,
     }) + '\n'
   );
   process.exit(0);

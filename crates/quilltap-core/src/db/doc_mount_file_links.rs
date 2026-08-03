@@ -110,6 +110,12 @@ pub struct LinkRow {
     /// `l.allowEmbed` via v4 `coerceAllow` — the embedding scheduler's
     /// per-document `embed:false` policy gate (P4.6y).
     pub allow_embed: bool,
+    /// `l.linkGroupId` — set when this link belongs to a deliberate hard-link
+    /// group (v4 `40319484`). **Not** the same thing as sharing a `fileId`:
+    /// content rows are sha256-addressed, so unrelated byte-identical files
+    /// share one by coincidence. Only a non-null group means "these are one
+    /// file". Read by the sibling re-index pass.
+    pub link_group_id: Option<String>,
 }
 
 /// A link row joined with its file-row content fields — v4
@@ -139,13 +145,17 @@ pub struct LinkWithContent {
     pub conversion_status: String,
     /// `l.plainTextLength` (P4.6y additive; REAL, nullable).
     pub plain_text_length: Option<f64>,
+    /// `l.linkGroupId` (v4 `40319484` additive — the same
+    /// `DocMountFileLinkWithContent` field [`LinkRow::link_group_id`] carries).
+    pub link_group_id: Option<String>,
 }
 
 const LINK_WITH_CONTENT_SELECT: &str = "SELECT \
        l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName, \
        l.originalFileName, l.originalMimeType, l.extractedText, l.createdAt, \
        f.sha256, f.fileSizeBytes, \
-       f.fileType, f.source, l.description, l.conversionStatus, l.plainTextLength \
+       f.fileType, f.source, l.description, l.conversionStatus, l.plainTextLength, \
+       l.linkGroupId \
      FROM doc_mount_file_links l \
      JOIN doc_mount_files f ON f.id = l.fileId \
      WHERE l.id = ?1";
@@ -174,6 +184,7 @@ fn map_link_with_content(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkWithCo
         source: row.get(12)?,
         description: row.get(13)?,
         conversion_status: row.get(14)?,
+        link_group_id: row.get(16)?,
         plain_text_length: match row.get_ref(15)? {
             rusqlite::types::ValueRef::Integer(i) => Some(i as f64),
             rusqlite::types::ValueRef::Real(f) => Some(f),
@@ -460,6 +471,9 @@ pub struct LinkDocumentResult {
     pub link_id: String,
     pub file_id: String,
     pub document_id: String,
+    /// Hard-link group members this write repointed; each needs re-chunking
+    /// (chunks are keyed by `linkId`). Empty for the ordinary ungrouped write.
+    pub group_siblings: Vec<GroupSibling>,
 }
 
 /// Input to [`DocMountFileLinksRepository::link_blob_content`], mirroring v4's
@@ -497,6 +511,25 @@ pub struct LinkBlobResult {
     pub link_id: String,
     pub file_id: String,
     pub blob_id: String,
+    /// Hard-link group members this write repointed (see
+    /// [`LinkDocumentResult::group_siblings`]).
+    pub group_siblings: Vec<GroupSibling>,
+}
+
+/// The three columns both write paths read off an existing link before
+/// upserting it — v4 selects `id, fileId, linkGroupId` (previously just `id`).
+struct ExistingLink {
+    id: String,
+    file_id: String,
+    link_group_id: Option<String>,
+}
+
+fn map_existing_link(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExistingLink> {
+    Ok(ExistingLink {
+        id: row.get(0)?,
+        file_id: row.get(1)?,
+        link_group_id: row.get(2)?,
+    })
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -537,17 +570,20 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
         self.conn.execute(
             "INSERT INTO doc_mount_file_links (\
-               id, fileId, mountPointId, relativePath, fileName, folderId, \
+               id, fileId, linkGroupId, mountPointId, relativePath, fileName, folderId, \
                originalFileName, originalMimeType, description, descriptionUpdatedAt, \
                conversionStatus, conversionError, plainTextLength, \
                extractedText, extractedTextSha256, extractionStatus, extractionError, \
                chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, \
                lastModified, createdAt, updatedAt\
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, \
-                       ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                       ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             rusqlite::params![
                 id,
                 s("fileId"),
+                // v4 `40319484` additive. An archive taken before the column
+                // existed simply omits it, which is the ordinary un-grouped NULL.
+                os("linkGroupId"),
                 s("mountPointId"),
                 s("relativePath"),
                 s("fileName"),
@@ -624,6 +660,17 @@ impl<'c> DocMountFileLinksRepository<'c> {
         // link lands with chunkCount 0 and stays semantically unsearchable
         // until chunked. Best-effort: a failure warns, never fails the write.
         crate::services::mount_index::reindex_file::reindex_after_database_write(
+            self.conn,
+            mount_point_id,
+            &rel,
+        );
+
+        // `link_document_content` has already repointed every member of this
+        // file's hard-link group at the new content row, but chunks are
+        // per-link: without this pass a sibling path would keep serving the
+        // previous revision's chunks to search and to character context (v4
+        // `database-store.ts:158`, its own try/log after the chunk pass).
+        crate::services::mount_index::link_groups::reindex_link_group_siblings_after_database_write(
             self.conn,
             mount_point_id,
             &rel,
@@ -736,17 +783,19 @@ impl<'c> DocMountFileLinksRepository<'c> {
 
         // 4. Case-insensitive, case-preserving upsert: a write to `NOTES.md`
         //    updates the row stored as `notes.md` and keeps its casing.
-        let existing_link: Option<String> = tx
+        let existing_link: Option<ExistingLink> = tx
             .query_row(
-                "SELECT id FROM doc_mount_file_links \
+                "SELECT id, fileId, linkGroupId FROM doc_mount_file_links \
                  WHERE mountPointId = ?1 AND relativePath = ?2 COLLATE NOCASE",
                 params![input.mount_point_id, canonical_rel],
-                |row| row.get::<_, String>(0),
+                map_existing_link,
             )
             .map(Some)
             .or_else(no_rows_to_none)?;
 
-        let link_id = if let Some(link_id) = existing_link {
+        let mut group_siblings: Vec<GroupSibling> = Vec::new();
+        let link_id = if let Some(existing) = existing_link {
+            let link_id = existing.id;
             tx.execute(
                 "UPDATE doc_mount_file_links SET \
                    fileId = ?1, folderId = ?2, \
@@ -767,6 +816,26 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     link_id,
                 ],
             )?;
+            // Deliberate hard links move together, then the abandoned content row
+            // (if this write orphaned it) is collected. Order matters: the
+            // siblings must already be repointed before the GC counts the
+            // references still pointing at the old row.
+            group_siblings = fan_out_group_file_id(
+                &tx,
+                existing.link_group_id.as_deref(),
+                &link_id,
+                &file_id,
+                &now,
+                Some(&FanOutTextState {
+                    plain_text_length: input.plain_text_length,
+                    allow_embed,
+                    allow_character_read,
+                    allow_character_write,
+                }),
+            )?;
+            if existing.file_id != file_id {
+                gc_orphaned_file_row(&tx, &existing.file_id)?;
+            }
             link_id
         } else {
             let link_id = new_id();
@@ -803,10 +872,21 @@ impl<'c> DocMountFileLinksRepository<'c> {
 
         tx.commit()?;
 
+        if !group_siblings.is_empty() {
+            tracing::debug!(
+                target: "quilltap::mount_index",
+                link_id = %link_id,
+                siblings = group_siblings.len(),
+                file_id = %file_id,
+                "linkDocumentContent: fanned write out to hard-link group",
+            );
+        }
+
         Ok(LinkDocumentResult {
             link_id,
             file_id,
             document_id,
+            group_siblings,
         })
     }
 
@@ -932,17 +1012,19 @@ impl<'c> DocMountFileLinksRepository<'c> {
         // Case-insensitive, case-preserving upsert (see link_document_content):
         // a re-write in a different casing updates the existing row in place and
         // keeps its stored relativePath/fileName casing.
-        let existing_link: Option<String> = tx
+        let existing_link: Option<ExistingLink> = tx
             .query_row(
-                "SELECT id FROM doc_mount_file_links \
+                "SELECT id, fileId, linkGroupId FROM doc_mount_file_links \
                  WHERE mountPointId = ?1 AND relativePath = ?2 COLLATE NOCASE",
                 params![input.mount_point_id, canonical_rel],
-                |row| row.get::<_, String>(0),
+                map_existing_link,
             )
             .map(Some)
             .or_else(no_rows_to_none)?;
 
-        let link_id = if let Some(link_id) = existing_link {
+        let mut group_siblings: Vec<GroupSibling> = Vec::new();
+        let link_id = if let Some(existing) = existing_link {
+            let link_id = existing.id;
             tx.execute(
                 "UPDATE doc_mount_file_links SET \
                    fileId = ?1, folderId = ?2, \
@@ -966,6 +1048,19 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     link_id,
                 ],
             )?;
+            // Bytes are shared, so the whole group moves; each member keeps its
+            // own description and extracted caption (no text state).
+            group_siblings = fan_out_group_file_id(
+                &tx,
+                existing.link_group_id.as_deref(),
+                &link_id,
+                &file_id,
+                &now,
+                None,
+            )?;
+            if existing.file_id != file_id {
+                gc_orphaned_file_row(&tx, &existing.file_id)?;
+            }
             link_id
         } else {
             let link_id = new_id();
@@ -1010,10 +1105,21 @@ impl<'c> DocMountFileLinksRepository<'c> {
 
         tx.commit()?;
 
+        if !group_siblings.is_empty() {
+            tracing::debug!(
+                target: "quilltap::mount_index",
+                link_id = %link_id,
+                siblings = group_siblings.len(),
+                file_id = %file_id,
+                "linkBlobContent: fanned write out to hard-link group",
+            );
+        }
+
         Ok(LinkBlobResult {
             link_id,
             file_id,
             blob_id,
+            group_siblings,
         })
     }
 
@@ -1043,24 +1149,107 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(true)
     }
 
-    /// v4 `DocMountFileLinksRepository.deleteWithGC`: delete the link row, then —
-    /// if it was the last link referencing its file — delete the file row too.
-    /// Chunks cascade off the link (FK `ON DELETE CASCADE`); documents/blobs
-    /// cascade off the file row. The writable open enforces `foreign_keys = ON`,
-    /// so the cascades fire. No-op when the link id is unknown. Returns `fileGC` —
-    /// `true` when this was the last link and the file row was reclaimed (v4
-    /// `deleteWithGC` returns `{ fileGC }`).
-    pub fn delete_with_gc(&self, link_id: &str) -> Result<bool, DbError> {
-        let file_id: Option<String> = self
-            .conn
+    // ========================================================================
+    // Deliberate hard-link groups (v4 `40319484`)
+    // ========================================================================
+
+    /// Enrol two links in the same hard-link group, so a write through either one
+    /// repoints both (see [`fan_out_group_file_id`]) — v4 `bindLinkGroup`.
+    /// Reuses the source's existing group when it already has one, so linking a
+    /// third location to an already-linked file EXTENDS the group rather than
+    /// splitting it (and leaves the source row's `updatedAt` untouched).
+    ///
+    /// Only `docs link` calls this. `docs copy` deliberately does not: a copy
+    /// that happens to share a content row through sha dedup must still fork on
+    /// the next write, which is exactly what a null group gives you.
+    ///
+    /// Returns the group id both links now carry, or `None` if either link is
+    /// gone.
+    pub fn bind_link_group(
+        &self,
+        source_link_id: &str,
+        dest_link_id: &str,
+    ) -> Result<Option<String>, DbError> {
+        let now = now_iso();
+        let tx = self.conn.unchecked_transaction()?;
+
+        let source: Option<(String, Option<String>)> = tx
             .query_row(
-                "SELECT fileId FROM doc_mount_file_links WHERE id = ?1",
-                params![link_id],
+                "SELECT id, linkGroupId FROM doc_mount_file_links WHERE id = ?1",
+                params![source_link_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        let dest_exists: Option<String> = tx
+            .query_row(
+                "SELECT id FROM doc_mount_file_links WHERE id = ?1",
+                params![dest_link_id],
                 |row| row.get::<_, String>(0),
             )
             .map(Some)
             .or_else(no_rows_to_none)?;
-        let Some(file_id) = file_id else {
+
+        let (Some((_, source_group)), Some(_)) = (source, dest_exists) else {
+            return Ok(None);
+        };
+
+        let group_id = source_group.clone().unwrap_or_else(new_id);
+        if source_group.is_none() {
+            tx.execute(
+                "UPDATE doc_mount_file_links SET linkGroupId = ?1, updatedAt = ?2 WHERE id = ?3",
+                params![group_id, now, source_link_id],
+            )?;
+        }
+        tx.execute(
+            "UPDATE doc_mount_file_links SET linkGroupId = ?1, updatedAt = ?2 WHERE id = ?3",
+            params![group_id, now, dest_link_id],
+        )?;
+        tx.commit()?;
+
+        tracing::debug!(
+            target: "quilltap::mount_index",
+            source_link_id = %source_link_id,
+            dest_link_id = %dest_link_id,
+            group_id = %group_id,
+            "Bound links into hard-link group",
+        );
+        Ok(Some(group_id))
+    }
+
+    /// Every link in a hard-link group, joined with content fields — v4
+    /// `findByLinkGroupId`. Used to re-chunk the siblings a write just
+    /// repointed.
+    pub fn find_by_link_group_id(&self, link_group_id: &str) -> Result<Vec<LinkRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare(&Self::join_query("WHERE l.linkGroupId = ?1"))?;
+        let rows = stmt
+            .query_map(params![link_group_id], Self::map_link_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `DocMountFileLinksRepository.deleteWithGC`: delete the link row, then —
+    /// if it was the last link referencing its file — delete the file row and its
+    /// payload too. Chunks cascade off the link (FK `ON DELETE CASCADE`, where the
+    /// tables came from the migration); the document/blob payload is deleted
+    /// EXPLICITLY through [`gc_orphaned_file_row`], because schema-generated
+    /// tables carry no foreign keys at all and a cascade would silently keep every
+    /// payload forever (v4 `40319484` — v5 shared that leak until now). No-op when
+    /// the link id is unknown. Returns `fileGC` — `true` when this was the last
+    /// link and the file row was reclaimed.
+    pub fn delete_with_gc(&self, link_id: &str) -> Result<bool, DbError> {
+        let link: Option<(String, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT fileId, linkGroupId FROM doc_mount_file_links WHERE id = ?1",
+                params![link_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        let Some((file_id, link_group_id)) = link else {
             return Ok(false);
         };
 
@@ -1069,18 +1258,26 @@ impl<'c> DocMountFileLinksRepository<'c> {
             "DELETE FROM doc_mount_file_links WHERE id = ?1",
             params![link_id],
         )?;
-        let remaining: i64 = tx.query_row(
-            "SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = ?1",
-            params![file_id],
-            |row| row.get(0),
-        )?;
-        let file_gc = remaining == 0;
-        if file_gc {
-            tx.execute(
-                "DELETE FROM doc_mount_files WHERE id = ?1",
-                params![file_id],
+
+        // A group of one is not a hard link any more — unlinking the last sibling
+        // must leave an ordinary independent file behind, or the survivor would
+        // keep a dangling group id that a future link could accidentally join.
+        if let Some(group_id) = link_group_id {
+            let survivors: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM doc_mount_file_links WHERE linkGroupId = ?1",
+                params![group_id],
+                |row| row.get(0),
             )?;
+            if survivors <= 1 {
+                tx.execute(
+                    "UPDATE doc_mount_file_links SET linkGroupId = NULL, updatedAt = ?1 \
+                     WHERE linkGroupId = ?2",
+                    params![now_iso(), group_id],
+                )?;
+            }
         }
+
+        let file_gc = gc_orphaned_file_row(&tx, &file_id)?;
         tx.commit()?;
         Ok(file_gc)
     }
@@ -1588,7 +1785,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                l.allowCharacterRead, l.allowCharacterWrite, \
                l.extractedText, l.originalMimeType, l.conversionStatus, l.chunkCount, \
                f.sha256, f.fileSizeBytes, f.fileType, f.source, l.description, \
-               l.extractionStatus, l.allowEmbed \
+               l.extractionStatus, l.allowEmbed, l.linkGroupId \
              FROM doc_mount_file_links l \
              JOIN doc_mount_files f ON f.id = l.fileId \
              {where_clause}"
@@ -1623,6 +1820,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
             description: row.get(18)?,
             extraction_status: row.get(19)?,
             allow_embed: coerce_allow(row.get::<_, Option<i64>>(20)?),
+            link_group_id: row.get(21)?,
         })
     }
 }
@@ -1828,6 +2026,108 @@ pub fn sweep_orphaned_files(conn: &Connection) -> Result<usize, DbError> {
 // ============================================================================
 // Deliberate hard-link groups (v4 `40319484`)
 // ============================================================================
+
+/// Identity of a link, enough to re-index it — v4 `GroupSibling`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupSibling {
+    pub id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+}
+
+/// The text-shaped columns [`fan_out_group_file_id`] carries along; omitted for
+/// blobs (v4's `textState` parameter).
+pub(crate) struct FanOutTextState {
+    pub plain_text_length: i64,
+    pub allow_embed: i64,
+    pub allow_character_read: i64,
+    pub allow_character_write: i64,
+}
+
+/// Fan a content repoint out to the rest of a deliberate hard-link group — v4
+/// `fanOutGroupFileId` (`doc-mount-file-links.repository.ts:62`).
+///
+/// This is what makes `docs link` behave like a POSIX hard link: a write
+/// through any member moves EVERY member onto the new content row, so no member
+/// can silently drift to stale bytes. Callers pass the group id read off the
+/// link they just wrote; a null group is a no-op (an ordinary, independent link
+/// — including one that merely shares a content-addressed `fileId` with an
+/// unrelated file of identical bytes).
+///
+/// Per-link metadata is deliberately NOT propagated. Two consumers of the same
+/// bytes may keep their own `description` and their own extracted text /
+/// caption — that independence is a documented property of the link model, and
+/// only the bytes are shared. Chunks are keyed by `linkId` and are rebuilt by
+/// the caller (see `services::mount_index::link_groups`), not here.
+///
+/// Runs inside the caller's transaction (`conn` is the transaction handle).
+///
+/// Returns the siblings that were repointed (excluding `exclude_link_id`).
+pub(crate) fn fan_out_group_file_id(
+    conn: &Connection,
+    group_id: Option<&str>,
+    exclude_link_id: &str,
+    new_file_id: &str,
+    now: &str,
+    text_state: Option<&FanOutTextState>,
+) -> Result<Vec<GroupSibling>, DbError> {
+    let Some(group_id) = group_id else {
+        return Ok(Vec::new());
+    };
+
+    let siblings: Vec<GroupSibling> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, mountPointId, relativePath FROM doc_mount_file_links \
+             WHERE linkGroupId = ?1 AND id <> ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![group_id, exclude_link_id], |row| {
+                Ok(GroupSibling {
+                    id: row.get(0)?,
+                    mount_point_id: row.get(1)?,
+                    relative_path: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    if siblings.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    match text_state {
+        Some(t) => {
+            conn.execute(
+                "UPDATE doc_mount_file_links SET \
+                   fileId = ?1, plainTextLength = ?2, \
+                   conversionStatus = 'converted', conversionError = NULL, \
+                   allowEmbed = ?3, allowCharacterRead = ?4, allowCharacterWrite = ?5, \
+                   lastModified = ?6, updatedAt = ?7 \
+                 WHERE linkGroupId = ?8 AND id <> ?9",
+                params![
+                    new_file_id,
+                    t.plain_text_length,
+                    t.allow_embed,
+                    t.allow_character_read,
+                    t.allow_character_write,
+                    now,
+                    now,
+                    group_id,
+                    exclude_link_id,
+                ],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "UPDATE doc_mount_file_links SET fileId = ?1, lastModified = ?2, updatedAt = ?3 \
+                 WHERE linkGroupId = ?4 AND id <> ?5",
+                params![new_file_id, now, now, group_id, exclude_link_id],
+            )?;
+        }
+    }
+
+    Ok(siblings)
+}
 
 /// Drop a content row that no link references any more — v4 `gcOrphanedFileRow`
 /// (`doc-mount-file-links.repository.ts:114`).

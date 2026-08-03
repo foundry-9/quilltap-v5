@@ -755,7 +755,8 @@ mod tests {
                content TEXT, tokenCount REAL, headingContext TEXT, embedding BLOB,
                createdAt TEXT, updatedAt TEXT);
              CREATE TABLE doc_mount_file_links (
-               id TEXT PRIMARY KEY, fileId TEXT, mountPointId TEXT, relativePath TEXT,
+               id TEXT PRIMARY KEY, fileId TEXT, linkGroupId TEXT,
+               mountPointId TEXT, relativePath TEXT,
                fileName TEXT, folderId TEXT, originalFileName TEXT, originalMimeType TEXT,
                description TEXT DEFAULT '', descriptionUpdatedAt TEXT,
                conversionStatus TEXT, conversionError TEXT, plainTextLength INTEGER,

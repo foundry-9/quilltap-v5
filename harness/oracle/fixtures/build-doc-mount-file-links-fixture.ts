@@ -81,7 +81,7 @@ async function main(): Promise<void> {
   const { id, createdAt, updatedAt, ...storeData } = spec.store;
   await points.create(storeData as never, { id, createdAt, updatedAt });
 
-  // Materialize the four content tables by running v4's own generated DDL against
+  // Materialize the content tables by running v4's own generated DDL against
   // the raw mount-index handle — the same CREATE TABLE the repos' getCollection
   // would emit, but deterministic and order-independent (no join-read fragility).
   const midb = getRawMountIndexDatabase();
@@ -100,6 +100,27 @@ async function main(): Promise<void> {
       midb.exec(sql);
     }
   }
+
+  // [40319484] doc_mount_blobs has no Zod schema — v4's blobs repository creates
+  // it lazily from hand-written DDL (`doc-mount-blobs.repository.ts:113`). Copied
+  // verbatim so the fixture carries exactly the table v4 would have made, for the
+  // corpus's linkBlobContent leg and the GC's explicit payload delete.
+  midb.exec(`
+    CREATE TABLE IF NOT EXISTS "doc_mount_blobs" (
+      "id" TEXT PRIMARY KEY,
+      "fileId" TEXT NOT NULL,
+      "sha256" TEXT NOT NULL,
+      "sizeBytes" INTEGER NOT NULL,
+      "storedMimeType" TEXT NOT NULL,
+      "data" BLOB NOT NULL,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("fileId") REFERENCES "doc_mount_files" ("id") ON DELETE CASCADE
+    )
+  `);
+  midb.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_blobs_fileId" ON "doc_mount_blobs" ("fileId")'
+  );
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

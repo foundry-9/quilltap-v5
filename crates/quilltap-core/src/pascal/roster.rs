@@ -605,7 +605,8 @@ mod read_tool_file_tests {
                id TEXT PRIMARY KEY, sha256 TEXT, fileSizeBytes INTEGER,
                fileType TEXT, source TEXT, createdAt TEXT, updatedAt TEXT);
              CREATE TABLE doc_mount_file_links (
-               id TEXT PRIMARY KEY, fileId TEXT, mountPointId TEXT, relativePath TEXT,
+               id TEXT PRIMARY KEY, fileId TEXT, linkGroupId TEXT,
+               mountPointId TEXT, relativePath TEXT,
                fileName TEXT, folderId TEXT, lastModified TEXT, createdAt TEXT,
                allowCharacterRead INTEGER, allowCharacterWrite INTEGER,
                extractedText TEXT, originalMimeType TEXT, conversionStatus TEXT,

@@ -50280,3 +50280,161 @@ QT_SCHEMA_OUT=/tmp/qt-fresh-schema-40319484.json \
 QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
   npx tsx <v5>/harness/oracle/provision/build-provision-oracle.ts
 ```
+
+---
+
+## Lane record — P4.D41 units 2 + 3 (the repository core + the sibling re-index)
+
+**Landed as ONE commit on purpose.** The two halves are one v4 mechanism and
+share one differential: the oracle drives `writeDatabaseDocument`, which calls
+the fan-out (unit 2) *and* `reindexLinkGroupSiblings` (unit 3), so unit 2 alone
+could not be checked against v4 without unit 3 in place.
+
+**Unit 2 — the repository core** (`db/doc_mount_file_links.rs`):
+`linkGroupId` through `LinkRow` / `LinkWithContent` / `join_query` /
+`LINK_WITH_CONTENT_SELECT` / `create_from_row` (24 → 25 columns; an archive
+predating the column omits it, which is the ordinary un-grouped NULL);
+`fan_out_group_file_id` with the textState asymmetry exact (the document leg
+carries `plainTextLength` + conversion status + the three `allow*`; the blob leg
+carries only `fileId`/`lastModified`/`updatedAt`; per-link
+`description`/`extractedText` NEVER propagate); both write paths select
+`id, fileId, linkGroupId` off the existing link and return `group_siblings`;
+`gc_orphaned_file_row` wired at both rewrite sites AFTER the fan-out (order is
+load-bearing — the GC's reference count must see the repointed siblings);
+`delete_with_gc` selecting `linkGroupId`, NULLing a group of ≤1 survivor, and
+routing its terminal drop through `gc_orphaned_file_row` (**a required behavior
+change, not a no-op: v5 relied on an `ON DELETE CASCADE` that
+schema-generated tables do not have, so it shared v4's pre-fix payload leak**);
+`bind_link_group` (group extension reuses the source's id and leaves the source
+row's `updatedAt` untouched) + `find_by_link_group_id`.
+
+**Unit 3 — `services/mount_index/link_groups.rs`** + both call sites.
+`reindex_link_group_siblings` never fails (a per-sibling failure is already
+swallowed by `reindex_single_file`'s catch-all; a failure to resolve the group
+is warned here). Two documented mappings:
+
+- **v4's "parent-process only" caveat does not transfer** — it exists for v4's
+  forked job child's buffered writes; v5's job runner is in-process by locked
+  decision, so the v5 analogue simply runs (the same reasoning
+  `reindex_after_database_write` already records for `QUILLTAP_JOB_CHILD`).
+- **Call sites.** v4 calls it from `writeDatabaseDocument` AND from doc-edit's
+  `triggerReindexIfNeeded`. v5's first site is `write_database_document`, which
+  every doc-edit database write also lands through — so the database case is
+  covered. **Loudly deferred:** doc-edit's reindex is a standing v5 no-op seam
+  (the oracle mocks it), so a FILESYSTEM doc-edit write does not rebuild a
+  hard-linked sibling's chunks. That is the standing deferral's blast radius
+  growing by one case; recorded in `tools/doc_edit/shared.rs`'s header.
+- v5's returned count is attempts, not successes (v4 counts successes inside its
+  per-sibling try). Log-only on both sides; nothing branches on it.
+
+### ⚠ A REAL v4 BUG, MEASURED — and v5's ONE deliberate divergence in this family
+
+**`reindexLinkGroupSiblings` is DEAD CODE in v4 `40319484`.** It opens with
+`findByMountPointAndPath(...)` and returns 0 unless the result carries a
+`linkGroupId` — but `queryJoined` (`doc-mount-file-links.repository.ts:1276`),
+which every joined read goes through, **never selects `l.linkGroupId` and never
+maps it**. The commit added the column to the DOCUMENTS repository's four joined
+SELECTs and to the raw statements inside the write transaction, but not to the
+links repository's own joined read.
+
+Measured, not reasoned — a probe against v4's real code at `40319484`:
+
+```
+bound group id = 83bc5a43-…
+findByMountPointAndPath(a).linkGroupId = undefined
+raw column = [{"relativePath":"a.md","linkGroupId":"83bc5a43-…"}, …]
+reindexLinkGroupSiblings returned = 0
+```
+
+The content fan-out works (raw SQL inside the write transaction), so the rows
+move. Only the chunk half is dead — which leaves exactly the symptom v4's own
+commit message says it fixes: **a hard-linked file's other location keeps
+serving the PREVIOUS revision's chunks to semantic search and to character
+context.**
+
+**v5 diverges: its pass runs.** Reproducing the bug would mean deliberately
+dropping a column v5's joined read already carries — porting a bug by
+construction rather than by transcription — and the order's Tier-1 deliverable 3
+requires v5 to have the working pass. The divergence is pinned **in both
+directions** by `CHUNK_DIVERGENCES` in
+`doc_mount_file_links_tier2_equivalence.rs`: every chunk row outside the two
+named paths must match row for row, and each named path must show exactly the
+fresh content on the v5 side and exactly the stale content on the v4 side. **The
+moment v4 adds `l.linkGroupId` to `queryJoined`, this test fails** — by design.
+The v4-side fix is a one-liner (the SELECT list + the mapper) and is queued on
+the post-5.0 v4-side list.
+
+The corpus is deliberately shaped so the divergence is isolatable: the `twins/`
+group is never unlinked (all three members keep real paths, so the divergence is
+nameable by path), and the delete/group-of-one arm uses a separate `pair/` group
+that is never written after binding (so no sibling re-index is involved and its
+orphaned chunk rows are identical on both sides).
+
+### The differential
+
+`doc_mount_file_links_tier2_equivalence` — the corpus grew 8 ops → 28 and the
+dump 5 tables → **6** (`doc_mount_blobs` joined so the GC's explicit payload
+delete is MEASURED, not reasoned about — the FK cascade it replaces does not
+exist on schema-generated tables). Three new op kinds drive v4's REAL
+`bindLinkGroup` / `linkBlobContent` / `deleteDatabaseDocument`.
+`linkGroupId` joined the links table's remapped id columns, which is what proves
+two links share ONE group and that extending a group reuses the anchor's id
+rather than minting a second. The trailing shape assertions moved off hand
+counts onto (a) the exact surviving path list and (b) **the GC invariant as a
+set equality** — live content-row ids == referenced content-row ids, and no
+document/blob payload may outlive its content row.
+
+**Not first-run green** — the first run is what caught the v4 dead-code bug
+above. **Mutation-proofed anyway**, three ways, each caught:
+
+| mutation | caught by |
+| --- | --- |
+| fan-out returns early (siblings never repointed) | `doc_mount_files` diverged |
+| `gc_orphaned_file_row` always declines | `doc_mount_files` diverged |
+| never NULL a group of one | `doc_mount_file_links` diverged |
+
+### Fixture migration (the P4.6ay unit-10 precedent)
+
+v5's joined reads now NAME the column, so every committed
+`crates/quilltap-web/tests/fixtures/*-mount.db` failed with `no such column:
+linkGroupId`. New committed script
+`harness/oracle/fixtures/migrate-fixtures-link-group-column.ts` runs v4's own
+ALTER + partial-index SQL verbatim behind v4's own "only if missing" guard —
+schema only, no content churn, and it reproduces the shape production actually
+has (APPENDED, where `generateDDL` puts the column at position 3; the
+generateDDL shape stays pinned by `fresh_schema.json`). Idempotent. **30
+fixtures migrated.**
+
+Two notes for the unifier:
+
+- **The precedent script had rotted.** `migrate-fixtures-pascal-columns.ts`
+  assumes ONE shared test pepper, and several families minted their own since;
+  it now dies with `SQLITE_NOTADB` partway through. The new script tries each
+  known test pepper in turn and **reports any fixture it could not open**
+  (non-zero exit) rather than skipping silently. The pascal script was left
+  as-is (not this lane's, and it has already done its job).
+- **⚠ The order's Fixtures section says this lane does not touch `system-data-*`
+  / `brahma-*` / `chat-cast-*` / `chat-admin-*`. It had to.** Those fixtures
+  carry `doc_mount_file_links`, so without the column their families are red and
+  the order's own gate cannot pass. Only the schema moved — no row content — and
+  the script is idempotent, so if P4.28 also rewrote `system-data-*` the unifier
+  can simply re-run it after merging. `restore-archives/**` was NOT touched (no
+  `.db` files).
+
+Two in-repo test DDLs also gained the column (`db/database_store.rs`,
+`pascal/roster.rs`); `services/builtin_mounts.rs`'s legacy-vintage DDL
+deliberately did NOT — it is the pre-column instance the boot ensure repairs,
+and it now proves that repair.
+
+**Gate:** `cargo fmt --all --check`, clippy both feature sets, `cargo test
+--workspace --no-fail-fast` all green.
+
+Regen recipe (v4 clean at `40319484`, Node 24, from `~/source/quilltap-server`;
+the case needs the `.qt-oracle-mirror` so `better-sqlite3` + `@/` both resolve):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
+  npx tsx $MIRROR/oracle/fixtures/build-doc-mount-file-links-fixture.ts
+QT_FIXTURE_DOC_MOUNT_FILE_LINKS=/tmp/qt-dmfl-fixture.db \
+  npx tsx $MIRROR/oracle/cases/doc-mount-file-links-tier2.ts > /tmp/oracle-dmfl.ndjson
+```

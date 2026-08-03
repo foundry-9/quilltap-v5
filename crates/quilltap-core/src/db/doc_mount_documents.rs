@@ -503,6 +503,14 @@ impl<'c> DocMountDocumentsRepository<'c> {
 /// `DocMountDocumentWithLink` row (P4.9G4 — the `.qtap` document-store export).
 /// Same 3-table join, same unsorted natural order as v4's raw prepared statement
 /// (`doc-mount-documents.repository.ts:284`).
+///
+/// v4 `40319484` added `l.linkGroupId` to all FOUR of its joined
+/// `DocMountDocumentWithLink` SELECTs. This is the only v5 projection that
+/// mirrors v4's full joined row (it feeds the `.qtap` export, which carries the
+/// column); the other v5 joined reads project the narrow [`VaultFolderDoc`]
+/// subset their consumers actually read — none of which reads a link group — so
+/// they stay as they are (a documented non-divergence, the same restriction
+/// their doc comments already record).
 pub fn find_full_json_by_mount_point_id(
     conn: &Connection,
     mount_point_id: &str,
@@ -512,7 +520,7 @@ pub fn find_full_json_by_mount_point_id(
         "SELECT d.id, d.fileId, d.content, d.contentSha256, d.plainTextLength, \
                 d.createdAt, d.updatedAt, \
                 l.id AS linkId, l.mountPointId, l.relativePath, l.fileName, \
-                l.folderId, l.lastModified, \
+                l.folderId, l.lastModified, l.linkGroupId, \
                 f.fileType \
            FROM doc_mount_file_links l \
            JOIN doc_mount_documents d ON d.fileId = l.fileId \
