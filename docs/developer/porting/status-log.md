@@ -51335,3 +51335,68 @@ Each was reverted and the tree re-verified clean afterwards.
 
 **Gate at this point:** `ng test` 268 files / 3,701 tests / 0 failed;
 `ng build` clean. No Rust touched.
+
+## Lane record — P4.30 unit 4 (the live beat)
+
+`apps/web/e2e/salon-roleplay-template-flow.spec.ts` (new, the lane's ONE e2e
+file): create a template whose narration delimiter is `%` → send a line
+containing `%percent narration%` into "Group Expedition" (the room that may
+safely GROW; "Solo Voyage" carries the token-total baselines) → hang the
+template from the sidebar's Chat section and watch the message ALREADY ON
+SCREEN re-dress itself with no reload → remove it and watch the run go plain
+again → delete the template. The proof is the pair: `%` is untouched by every
+DEFAULT pattern and meaningless to markdown, so the `.qt-chat-narration` class
+can only have come from the fetched template.
+
+**Deliberately no asterisks in the marker line.** The composer is a ProseMirror
+editor with emphasis-on-type input rules (P4.6al); a `*…*` typed into it is the
+editor's story, not the template's. The other half of v4
+`MessageContent.tsx:333-338` — a non-empty custom set REPLACING the defaults —
+is pinned by the captured v4 parity vector
+(`template-custom-patterns-supersede-defaults`) and by `message-list.spec.ts`.
+
+**The one shared-file edit, and why.** The first draft failed on
+`sqlite error: no such table: roleplay_templates` out of the create dialog: the
+committed SALON fixture the shared e2e instance is built from PREDATES that
+table, so the whole templates feature is unreachable there. Two routes were
+tried before settling:
+
+1. Stand up an own instance over the groups-projects fixture (the
+   `settings-flow.spec.ts` P4.6r precedent) — it does carry
+   `roleplay_templates` (4 rows) plus 2 chats. Abandoned: that fixture has no
+   `chat_participants` table at all and its chat list came back empty even
+   after the userId rewrite, so the Salon had nothing to render.
+2. Materialize the table into `global-setup.ts` — CHOSEN. It is the documented
+   idiom in that exact file (`terminal_sessions`, `chat_documents`, `groups`,
+   `embedding_profiles`, `folders` are all materialized the same way, each with
+   the same "schema materialization, NOT a fixture regen" note), the DDL is
+   `fresh_schema.json`'s verbatim, `IF NOT EXISTS` makes it a no-op the day a
+   fixture regen carries it, and an EMPTY table is the honest state.
+
+`global-setup.ts` is outside this lane's literal ownership list but is claimed
+by no lane this round; the edit is a single appended block between two existing
+ones.
+
+**Mutation proof:** dropping the two `[renderingPatterns]`/`[dialogueDetection]`
+bindings from `salon-conversation.ts`'s `qt-message-list` and rebuilding the
+dist turned the beat RED at its "the template applied" assertion — so the beat
+measures the wire, not the fixture.
+
+**Also touched, additively:** `screens/settings/templates/templates.api.ts`
+gains `fetchRoleplayTemplate` (the order's "reuse its service/verb"
+instruction). No existing export changed.
+
+**A finding banked in passing, not fixed** (it is another spec's file):
+`settings-flow.spec.ts`'s `TMPL_USER_TABLES` lists its tables in camelCase
+(`roleplayTemplates`, `imageProfiles`, `apiKeys`) where the real tables are
+snake_case, and its loop tolerates "no such table" — so every one of those
+userId rewrites is a silent no-op. Its own beats pass because they CREATE the
+rows they then read.
+
+**Gate:** full Playwright **173 passed / 0 failed / 0 skips**, the new beat
+live. Two earlier full runs failed 1–3 tests in `salon-dialogs-flow.spec.ts`
+(`:83`, `:325`, `:393`) — the exact file:lines the P4.D40 lane record already
+documents as full-suite-only `toBeVisible` timeouts under machine contention,
+a different subset each run, and all 8 of that file's tests pass in isolation
+here too. Not this lane's: it changes no code that file exercises, and it
+sorts AFTER it ('salon-d' < 'salon-r'), so it cannot even reach it.

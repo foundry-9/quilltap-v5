@@ -160,6 +160,25 @@ export default async function globalSetup(): Promise<void> {
       "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
       'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
   );
+  // The Salon fixture predates the roleplay-templates table; P4.30 threads the
+  // chat's template into every rendered message, so the sidebar's template
+  // picker, the Templates settings tab and the by-id GET all read
+  // `roleplay_templates` — with it absent the create dialog answers a bare
+  // `sqlite error: no such table: roleplay_templates`. An EMPTY table is the
+  // honest state (the fixture has no templates); the DDL is fresh_schema.json's,
+  // verbatim. IF NOT EXISTS keeps it a no-op when a future fixture regen carries
+  // it — schema materialization, NOT a fixture regen (the terminal_sessions
+  // precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "roleplay_templates" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "userId" TEXT, "name" TEXT NOT NULL, ' +
+      '"description" TEXT, "systemPrompt" TEXT NOT NULL, ' +
+      '"isBuiltIn" INTEGER DEFAULT 0, "tags" TEXT DEFAULT \'[]\', ' +
+      '"delimiters" TEXT DEFAULT \'[]\', "renderingPatterns" TEXT DEFAULT \'[]\', ' +
+      '"dialogueDetection" TEXT, "narrationDelimiters" TEXT DEFAULT \'*\', ' +
+      '"createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);',
+  );
   // The Salon fixture predates the general-files `folders` table (v4
   // FolderSchema: path/name/parentFolderId/projectId — all TEXT); the P4.6ae/ah
   // files surface reads it on every /files folder list and the P4.6af data beat

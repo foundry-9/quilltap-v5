@@ -77,6 +77,11 @@ messages. That table was never cleared, so the old notes stayed behind and a
 restore could fail trying to put the backed-up ones back — on databases carried
 forward from older versions, once per note. The original leaves the same rows
 behind; this version does not.
+A hands-on walk now covers the whole path end to end: a template with its
+own narration marks is made, hung on a conversation, and the line already on
+screen re-dresses itself without a reload — then goes plain again when the
+template is taken away.
+
 Conversations now render their messages using their own roleplay template's
 patterns. Until now nothing ever read the template a conversation was set to,
 so every message everywhere was drawn with the built-in marks — a template
