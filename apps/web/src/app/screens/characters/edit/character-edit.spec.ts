@@ -6,12 +6,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterDetail, CoreRequest } from '../../../core/core-contract';
+import { ToastService } from '../../../ui/toast.service';
 import {
   WORKSPACE_HANDLE,
   WORKSPACE_TAB_ID,
   type WorkspaceHandle,
 } from '../../../workspace/workspace-contract';
 import { CharacterEdit } from './character-edit';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 function character(over: Partial<CharacterDetail> = {}): CharacterDetail {
   return {
@@ -284,6 +291,43 @@ describe('CharacterEdit', () => {
       coreWhisperEnabled: null,
       canBeCarina: false,
     });
+  });
+
+  it('toasts "Character saved successfully!" on a successful save (v4 useCharacterEdit.ts:250)', async () => {
+    const fixture = await render(stubClient(character()));
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(toasts()).toEqual([{ type: 'success', message: 'Character saved successfully!' }]);
+  });
+
+  it('toasts AND keeps the inline banner on a failed save (v4 :254-263, a BOTH row)', async () => {
+    const client = stubClient(character());
+    (client as { dispatchData: unknown }).dispatchData = (async (req: {
+      type: string;
+      [k: string]: unknown;
+    }) => {
+      if (req.type === 'characterUpdate') {
+        throw new Error('the registry rejected the new name');
+      }
+      return (await (stubClient(character()).dispatchData as (r: typeof req) => Promise<unknown>)(
+        req,
+      )) as unknown;
+    }) as CoreClient['dispatchData'];
+    const fixture = await render(client);
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'the registry rejected the new name' },
+    ]);
+    expect(fixture.nativeElement.textContent).toContain('the registry rejected the new name');
   });
 });
 

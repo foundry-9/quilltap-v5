@@ -99,6 +99,11 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the character editor confirmation and error messages for saving a
+character and for setting or clearing its avatar, matching the original.
+The avatar picker's inline error banner is gone now that failures raise a
+message the same way the original always did.
+
 Gave the Characters page confirmation and error messages for actions that
 previously finished silently: deleting a character (naming how many chats,
 images, and memories went with it), toggling the favorite star, toggling

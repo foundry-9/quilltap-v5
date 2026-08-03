@@ -18,6 +18,7 @@ import { EntityTabs, type Tab } from '../../../ui/entity-tabs';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
+import { ToastService } from '../../../ui/toast.service';
 import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters.api';
 import { CharacterChooseOutfitCard } from '../choose-outfit-card';
 import { WardrobeDialogService } from '../../../wardrobe/wardrobe-dialog.service';
@@ -242,6 +243,7 @@ const EDIT_TABS: Tab[] = [
 })
 export class CharacterEdit {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
   private readonly wardrobeDialog = inject(WardrobeDialogService);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router);
@@ -343,10 +345,14 @@ export class CharacterEdit {
       });
       this.originalFormData.set(this.formData());
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(id) });
+      // v4 `useCharacterEdit.ts:250` — inline block AND toast (BOTH).
+      this.toasts.showSuccess('Character saved successfully!');
       // Hosted ⇒ close the tab (v4 `useCloseSelfTab`); routed ⇒ back to detail.
       if (!this.closeSelfTab()) this.router.navigate(['/characters', id]);
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to update character');
+      const message = err instanceof Error ? err.message : 'Failed to update character';
+      this.saveError.set(message);
+      this.toasts.showError(message);
     } finally {
       this.saving.set(false);
     }

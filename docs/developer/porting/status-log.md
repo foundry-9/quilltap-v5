@@ -51484,3 +51484,32 @@ assertion, added the success-toast pin), and a new
 `reset-builtins-dialog.spec.ts` (both outcomes, mocking the dialog's raw
 `fetch` leg directly since it does not go through `CoreClient`). `ng test`
 green (24/24 in the touched directory at commit time). No Rust touched.
+
+**Unit 2 — `app/aurora/[id]/edit/CharacterEditView.tsx` +
+`hooks/useCharacterEdit.ts` — RECLASSIFIED, not simply ported (the
+census-verdict trap the order names by name):** re-checking
+`CharacterEditView.tsx`'s 5 listed calls against its actual source found
+all five (`:151` physical-description save success/failure, `:160` a
+second failure arm, `:189` wardrobe-items-created,
+`:226` scenarios-created) live entirely inside `handleWizardApply` — the AI
+Character Wizard's apply-generated-data handler. v5 has never ported that
+wizard; `character-edit.ts` renders only a `disabled` "AI Wizard" button
+with v4's own "not yet available" microcopy, and no code path exists to
+raise these five sentences from. Forcing them on would mean inventing the
+wizard's data-application logic, far outside a toast-only lane. **These 5
+rows move from OPEN to UNPORTED**, riding with the future AI Wizard screen
+lane (see Tier 3 below) — not a regression, the screen was silent before
+and is silent still.
+
+`useCharacterEdit.ts`'s 6 calls are NOT wizard-scoped and landed in full:
+`character-edit.ts`'s `onSubmit` (character-save success/failure — v4
+`:250/:262` is a genuine BOTH row, the existing `saveError` inline banner
+stays) and `avatar-picker-modal.ts`'s `setAvatar`/`clearAvatar` (avatar
+updated/cleared, each with its own failure fallback sentence — v4 has no
+inline surface on either avatar path, so the modal's pre-existing
+v5-invented `error()` banner is retired). Spec pins: extended
+`character-edit.spec.ts` (save success + a failed-save case proving the
+toast AND the inline banner both fire) and a new
+`avatar-picker-modal.spec.ts` (all four outcomes, incl. one exercising v4's
+non-Error-throw fallback-message ternary). `ng test` green (15/15 in the
+touched files). No Rust touched.

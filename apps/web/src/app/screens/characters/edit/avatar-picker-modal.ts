@@ -4,6 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterPhoto } from '../../../core/core-contract';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 import { characterKeys, fetchCharacterPhotos } from '../characters.api';
 
 /**
@@ -11,7 +12,9 @@ import { characterKeys, fetchCharacterPhotos } from '../characters.api';
  * subset): a grid over the character's photo gallery (`characterPhotoList`),
  * pick one and "Set as Avatar" (`characterAvatar {imageId}`), or "Clear
  * Avatar" (`imageId: null`). Uploading new photos into the gallery is a named
- * deferral (v4's `ImageUploadDialog` — out of scope this round).
+ * deferral (v4's `ImageUploadDialog` — out of scope this round). Both
+ * outcomes toast (v4 `useCharacterEdit.ts:306-386`); neither has an inline
+ * surface in v4.
  */
 @Component({
   selector: 'qt-avatar-picker-modal',
@@ -19,10 +22,6 @@ import { characterKeys, fetchCharacterPhotos } from '../characters.api';
   imports: [Modal],
   template: `
     <qt-modal title="Change Avatar" maxWidth="lg" (close)="close.emit()">
-      @if (error()) {
-        <div class="qt-alert-error mb-4">{{ error() }}</div>
-      }
-
       @if (photosQuery.isPending()) {
         <div class="py-8 text-center qt-text-small">Loading photos...</div>
       } @else if (photos().length === 0) {
@@ -71,6 +70,7 @@ import { characterKeys, fetchCharacterPhotos } from '../characters.api';
 })
 export class AvatarPickerModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
   readonly close = output<void>();
@@ -78,7 +78,6 @@ export class AvatarPickerModal {
 
   protected readonly selectedId = signal<string | null>(null);
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected readonly photosQuery = injectQuery(() => ({
     queryKey: characterKeys.photos(this.characterId()),
@@ -94,26 +93,30 @@ export class AvatarPickerModal {
     if (!imageId) {
       return;
     }
-    await this.applyAvatar(imageId);
+    await this.applyAvatar(imageId, 'Avatar updated!', 'Failed to set avatar');
   }
 
   protected async clearAvatar(): Promise<void> {
-    await this.applyAvatar(null);
+    await this.applyAvatar(null, 'Avatar cleared!', 'Failed to clear avatar');
   }
 
-  private async applyAvatar(imageId: string | null): Promise<void> {
+  private async applyAvatar(
+    imageId: string | null,
+    successMessage: string,
+    failureFallback: string,
+  ): Promise<void> {
     this.saving.set(true);
-    this.error.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterAvatar',
         characterId: this.characterId(),
         imageId,
       });
+      this.toasts.showSuccess(successMessage);
       this.saved.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to set avatar');
+      this.toasts.showError(err instanceof Error ? err.message : failureFallback);
     } finally {
       this.saving.set(false);
     }
