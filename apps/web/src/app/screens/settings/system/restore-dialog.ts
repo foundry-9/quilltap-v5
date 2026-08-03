@@ -5,6 +5,7 @@ import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 
 type Step = 'source' | 'preview' | 'mode' | 'progress';
 type RestoreMode = 'replace' | 'import';
@@ -256,6 +257,7 @@ interface RestoreSummary {
 })
 export class RestoreDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   /** Emitted on plain close (Cancel / ✕). */
   readonly close = output<void>();
@@ -370,7 +372,10 @@ export class RestoreDialog {
       this.preview.set((data['preview'] ?? {}) as RestoreSummary);
       this.step.set('preview');
     } catch (err) {
-      this.error.set(this.msg(err, 'Failed to upload backup'));
+      // v4 `useRestoreData.ts:112-116` does BOTH: the inline error AND the toast.
+      const message = this.msg(err, 'Failed to upload backup');
+      this.error.set(message);
+      this.toasts.showError(message);
       this.uploading.set(false);
     } finally {
       this.loadingPreview.set(false);
@@ -428,9 +433,14 @@ export class RestoreDialog {
         mode: this.mode() === 'replace' ? 'replace' : 'new-account',
       });
       this.summary.set((data['summary'] ?? {}) as RestoreSummary);
+      // v4 `useRestoreData.ts:195` — after the summary lands, not before.
+      this.toasts.showSuccess('Backup restored successfully');
     } catch (err) {
-      // v4 `:200` — bounce back to the mode step on error.
-      this.error.set(this.msg(err, 'Failed to restore backup'));
+      // v4 `:200` — bounce back to the mode step on error, with BOTH the inline
+      // message and the toast (`:196-204`).
+      const message = this.msg(err, 'Failed to restore backup');
+      this.error.set(message);
+      this.toasts.showError(message);
       this.step.set('mode');
     } finally {
       this.restoring.set(false);

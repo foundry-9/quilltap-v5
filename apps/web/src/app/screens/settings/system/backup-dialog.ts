@@ -11,10 +11,9 @@ import { triggerUrlDownload } from '../../../core/download-utils';
  * step. On confirm it creates the backup (`systemBackupCreate` → `{backupId,
  * filename?}`) then streams the single-use zip via `GET /system/backup/{id}`
  * (a web-edge leg, reached with an anchor-click through `apiUrl()`). v4's create
- * response has no `filename`, so the client fallback always runs (`:40`). v4's
- * success toast ("Backup downloaded successfully") is still OWED — the download
- * leg is an anchor click with no completion signal to hang it on; recorded as
- * an OPEN census row (P4.25).
+ * response has no `filename`, so the client fallback always runs (`:40`). Both
+ * of v4's toasts are here (P4.28): the error one alongside the inline message
+ * (v4 does both), and the success one right after the download is triggered.
  */
 @Component({
   selector: 'qt-backup-dialog',
@@ -100,6 +99,12 @@ export class BackupDialog {
           (data['filename'] as string | undefined) ||
           `quilltap-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
         triggerUrlDownload(`/api/v1/system/backup/${backupId}`, filename);
+        // v4 `backup-dialog.tsx:43` toasts right after its own
+        // `triggerUrlDownload` returns. The earlier note here — that the toast
+        // was OWED because an anchor click gives no completion signal — read v4
+        // as having one; it does not (its helper resolves on the same click), so
+        // the honest port is v4's own sequence.
+        this.toasts.showSuccess('Backup downloaded successfully');
       }
       this.close.emit();
     } catch (err) {

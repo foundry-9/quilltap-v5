@@ -41,6 +41,10 @@ forward from an older version gains it on startup. Startup also clears out
 stored file contents that nothing points at any more — every edit to a
 document in a store leaves its previous contents behind, and until now they
 were never collected, so a long-lived instance accumulated dozens of them.
+Backup and Restore now raise the same notifications the original does — a
+confirmation when a backup downloads or a restore finishes, and the failure
+message as a notification as well as on the dialog.
+
 Checked, against a database built the way real ones are built, that
 restoring a backup never asks for a column the database in front of it does not
 have. It does not — and the check found that the difference between a fresh

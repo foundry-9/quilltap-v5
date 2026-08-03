@@ -51079,3 +51079,30 @@ The tripwire also exposed a smaller thing worth carrying: `summary.chats` report
 INPUT length rather than a write count (the orchestrator says so at
 `RestoreSummary`). Any assertion about what a restore actually wrote has to read
 the table.
+
+---
+
+### Lane record — P4.28 unit 6 (the four Data & System toast rows from the P4.25 census)
+
+**Two of the four rows were already done, and one census VERDICT was wrong.** The
+2026-07-31 lesson (census verdicts need re-sampling against v4, not trusting)
+applied again:
+
+| census row | v4 | verdict |
+| --- | --- | --- |
+| `components/tools/restore/hooks/useRestoreData.ts` (3) | `showErrorToast` on upload/preview failure (`:116`), `showSuccessToast('Backup restored successfully')` (`:195`), `showErrorToast` on restore failure (`:204`) | **LANDED** — all three, at v4's own moments (the success one AFTER the summary is set), each alongside the inline message v4 also sets |
+| `components/tools/backup-dialog.tsx` (2) | `showErrorToast` (`:58`) + `showSuccessToast('Backup downloaded successfully')` (`:43`) | **LANDED** — the error one was already there; the success one is new |
+| `components/tools/delete-data-card.tsx` (2) | `showSuccessToast('All data has been deleted')` (`:106`) + `showErrorToast` (`:112`) | **ALREADY DONE** — `delete-data-card.ts:283,288` has carried both since P4.9G2. No change |
+| `components/providers/auto-lock-provider.tsx` (1) | — | **THE CENSUS VERDICT WAS WRONG, and v5 already had it right.** The census reads it as "`showWarningToast()` with NO argument, a v4 bug: an empty toast". It is not a `lib/toast` call at all: `showWarningToast` is a LOCAL `useCallback` (`:76-100`, and the file has no `lib/toast` import) that builds a DOM card reading **"Auto-Lock Warning"** / "Quilltap will lock in approximately one minute due to inactivity. Move the mouse or press a key to remain." with a Dismiss button. `auto-lock-provider.ts` renders exactly that, and its own header already recorded the correction. No change, and no "ruled divergence" was owed |
+
+**The backup success toast was previously recorded as OWED on a false premise.**
+`backup-dialog.ts`'s header said the toast could not be raised because "the
+download leg is an anchor click with no completion signal to hang it on". v4's
+leg is the same anchor click — `lib/download-utils.ts`'s browser arm — and v4
+toasts immediately after it returns. So there was nothing to wait for on either
+side, and the port now follows v4's own sequence.
+
+**Pins.** Four specs in `backup-restore-card.spec.ts` over a recording toast
+service, asserting the exact sentences AND their ORDER (the #59 warning precedes
+the download success). **Mutation-proven**: removing the success toast and
+disabling the skipped-files branch turns 2 of them red.
