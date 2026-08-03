@@ -51566,3 +51566,29 @@ in `character-detail.spec.ts` (all three toggle failures + both NPC
 outcomes, including the revert-and-toast case needing the same
 multi-tick settle the list-screen equivalent needed). `ng test` green
 (142/142 across the whole characters family). No Rust touched.
+
+**Unit 5 — `app/aurora/groups/[id]/GroupDetailView.tsx` (2) +
+`app/aurora/groups/hooks/useGroupMembers.ts` (4).** Both files' toasts are
+toast-only in v4 — no inline surface for save, add, or remove (the sole
+inline banner in `GroupDetailView.tsx` is the top-level LOAD failure,
+unrelated). Landed in `group-editor.ts`: save success/failure ("Group
+updated successfully!"), add-member success/failure ("Member added to
+group!"), remove-member success/failure ("Member removed from group!") —
+retiring the shared `saveError` signal + its `qt-error-alert` banner (a
+v5-invented surface these four actions never had in v4), which also
+dropped the now-unused `ErrorAlert` import. One action riding the same
+signal was NOT a census row (`onUnlinkStore`, whose v4 counterpart lives
+in an unported `useGroupMountPoints` hook) — rather than leave it with no
+failure feedback at all once the shared banner was gone, it got the same
+toast treatment for consistency with its three siblings; recorded here
+since it's outside the row list, not claimed as one of the 6. Spec pins:
+found and fixed an EXISTING test in `groups.spec.ts` asserting the old
+inline-alert behavior on save failure (`'surfaces an alert when the save
+fails'` → rewritten to assert the toast and the banner's absence) — the
+census-verdict trap in its "verify against current code" form, catching a
+spec that would otherwise have gone red the moment this unit landed. Five
+more cases added to the same file's existing `GroupEditor` describe block
+(reusing its `stubClient`/`settle`/`toasts` helpers rather than a
+duplicate spec file): save success, add success/failure, remove
+success/failure. `ng test` green (154/154 across groups + characters). No
+Rust touched.

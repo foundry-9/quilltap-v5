@@ -213,17 +213,115 @@ describe('GroupEditor', () => {
         icon: '🎭',
       },
     });
+    // v4 `GroupDetailView.tsx:100` — toast only, no inline surface (P4.29).
+    expect(toasts()).toEqual([{ type: 'success', message: 'Group updated successfully!' }]);
   });
 
-  it('surfaces an alert when the save fails', async () => {
+  it('toasts a failed save with NO inline alert (v4 has none on this path, P4.29)', async () => {
     const fixture = await render(
       stubClient(baseHandler((r) => (r.type === 'groupUpdate' ? new Error('boom') : undefined))),
     );
     const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
     form.dispatchEvent(new Event('submit'));
     await settle(fixture);
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('boom');
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-error-alert')).toBeNull();
+    expect(toasts()).toEqual([{ type: 'error', message: 'boom' }]);
+  });
+
+  it('toasts "Member added to group!" on a successful add (v4 useGroupMembers.ts:64, P4.29)', async () => {
+    const fixture = await render(stubClient(baseHandler()));
+    const memberHeader = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Members'),
+    ) as HTMLButtonElement;
+    memberHeader.click();
+    await settle(fixture);
+    const addBtn = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Add Member',
+    ) as HTMLButtonElement;
+    addBtn.click();
+    await settle(fixture);
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    select.value = 'c2';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const confirmAdd = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Add',
+    ) as HTMLButtonElement;
+    confirmAdd.click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'success', message: 'Member added to group!' }]);
+  });
+
+  it('toasts the server message on a failed add (P4.29)', async () => {
+    const fixture = await render(
+      stubClient(
+        baseHandler((r) =>
+          r.type === 'groupMemberAdd' ? new Error('no room at the club') : undefined,
+        ),
+      ),
+    );
+    const memberHeader = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Members'),
+    ) as HTMLButtonElement;
+    memberHeader.click();
+    await settle(fixture);
+    const addBtn = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Add Member',
+    ) as HTMLButtonElement;
+    addBtn.click();
+    await settle(fixture);
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    select.value = 'c2';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const confirmAdd = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Add',
+    ) as HTMLButtonElement;
+    confirmAdd.click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'error', message: 'no room at the club' }]);
+  });
+
+  it('toasts "Member removed from group!" on a successful remove (v4 useGroupMembers.ts:85, P4.29)', async () => {
+    const fixture = await render(stubClient(baseHandler()));
+    const memberHeader = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Members'),
+    ) as HTMLButtonElement;
+    memberHeader.click();
+    await settle(fixture);
+    const removeBtn = fixture.nativeElement.querySelector(
+      'button[title="Remove member"]',
+    ) as HTMLButtonElement;
+    expect(removeBtn).toBeTruthy();
+    removeBtn.click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'success', message: 'Member removed from group!' }]);
+  });
+
+  it('toasts the server message on a failed remove (P4.29)', async () => {
+    const fixture = await render(
+      stubClient(
+        baseHandler((r) =>
+          r.type === 'groupMemberRemove' ? new Error('the club rules forbid it') : undefined,
+        ),
+      ),
+    );
+    const memberHeader = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Members'),
+    ) as HTMLButtonElement;
+    memberHeader.click();
+    await settle(fixture);
+    const removeBtn = fixture.nativeElement.querySelector(
+      'button[title="Remove member"]',
+    ) as HTMLButtonElement;
+    removeBtn.click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'error', message: 'the club rules forbid it' }]);
   });
 
   it('the Add-Member picker select uses per-option [selected] (finding-#6 discipline)', async () => {

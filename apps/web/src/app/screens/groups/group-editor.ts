@@ -17,9 +17,9 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../core/core-client';
 import type { GroupMemberSummary, GroupSummary } from '../../core/core-contract';
 import { StateEditorModal } from '../../shared/state/state-editor-modal';
-import { ErrorAlert } from '../../ui/error-alert';
 import { Icon } from '../../ui/icon';
 import { LoadingState } from '../../ui/loading-state';
+import { ToastService } from '../../ui/toast.service';
 import { fetchCharacterList } from '../characters/characters.api';
 import { GroupMembersCard } from './group-members-card';
 import { GroupStoresCard } from './group-stores-card';
@@ -44,15 +44,7 @@ import {
 @Component({
   selector: 'qt-group-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    FormsModule,
-    Icon,
-    LoadingState,
-    ErrorAlert,
-    GroupMembersCard,
-    GroupStoresCard,
-    StateEditorModal,
-  ],
+  imports: [FormsModule, Icon, LoadingState, GroupMembersCard, GroupStoresCard, StateEditorModal],
   template: `
     @if (groupQuery.isPending()) {
       <qt-loading-state message="Loading group..." class="mt-12" />
@@ -79,10 +71,6 @@ import {
           </button>
           <h1 class="qt-page-title">Edit Group</h1>
         </div>
-
-        @if (saveError(); as msg) {
-          <qt-error-alert [message]="msg" class="mb-4 max-w-2xl" />
-        }
 
         <form (ngSubmit)="save()" class="max-w-2xl space-y-6">
           <div>
@@ -203,6 +191,7 @@ export class GroupEditor {
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly toasts = inject(ToastService);
 
   /**
    * In-tab drill (p4.9j2, v4 `AuroraView` `selectedGroupId`): the list supplies
@@ -224,7 +213,6 @@ export class GroupEditor {
   protected readonly color = signal('');
   protected readonly icon = signal('');
   protected readonly saving = signal(false);
-  protected readonly saveError = signal<string | null>(null);
 
   protected readonly memberBusy = signal(false);
   protected readonly memberRemoving = signal<string | null>(null);
@@ -290,12 +278,12 @@ export class GroupEditor {
     void this.router.navigate(['/characters']);
   }
 
+  /** v4 `GroupDetailView.tsx:79-108` — toast only, no inline surface. */
   protected async save(): Promise<void> {
     if (this.saving()) {
       return;
     }
     this.saving.set(true);
-    this.saveError.set(null);
     try {
       await updateGroup(this.core, this.id(), {
         name: this.name(),
@@ -305,44 +293,55 @@ export class GroupEditor {
       });
       await this.queryClient.invalidateQueries({ queryKey: groupKeys.detail(this.id()) });
       await this.queryClient.invalidateQueries({ queryKey: groupKeys.list() });
+      this.toasts.showSuccess('Group updated successfully!');
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to save group');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to save group');
     } finally {
       this.saving.set(false);
     }
   }
 
+  /** v4 `useGroupMembers.ts:55-74` — toast only, no inline surface. */
   protected async onAddMember(characterId: string): Promise<void> {
     this.memberBusy.set(true);
     try {
       await addGroupMember(this.core, this.id(), characterId);
       await this.queryClient.invalidateQueries({ queryKey: groupKeys.members(this.id()) });
+      this.toasts.showSuccess('Member added to group!');
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to add member');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to add member');
     } finally {
       this.memberBusy.set(false);
     }
   }
 
+  /** v4 `useGroupMembers.ts:76-95` — toast only, no inline surface. */
   protected async onRemoveMember(characterId: string): Promise<void> {
     this.memberRemoving.set(characterId);
     try {
       await removeGroupMember(this.core, this.id(), characterId);
       await this.queryClient.invalidateQueries({ queryKey: groupKeys.members(this.id()) });
+      this.toasts.showSuccess('Member removed from group!');
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to remove member');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove member');
     } finally {
       this.memberRemoving.set(null);
     }
   }
 
+  /**
+   * Not a census row (v4's store unlinking lives in a different, unported
+   * hook), but retiring the shared `saveError` banner above would otherwise
+   * leave this action's failure with no feedback at all — toast it too, for
+   * consistency with its three siblings in this same component.
+   */
   protected async onUnlinkStore(mountPointId: string): Promise<void> {
     this.storeUnlinking.set(mountPointId);
     try {
       await unlinkGroupStore(this.core, this.id(), mountPointId);
       await this.queryClient.invalidateQueries({ queryKey: groupKeys.stores(this.id()) });
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to unlink store');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to unlink store');
     } finally {
       this.storeUnlinking.set(null);
     }

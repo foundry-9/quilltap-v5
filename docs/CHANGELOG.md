@@ -99,6 +99,11 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the group editor confirmation and error messages for saving a
+group's details and for adding or removing a member, matching the
+original -- which shows none of these inline, only as a passing message.
+An inline error banner v5 had added for these four actions is gone.
+
 Gave the character detail page confirmation and error messages for
 converting between character and NPC, and for the favorite/Carina/
 controlled-by toggles in its header, plus messages for the Details tab's
