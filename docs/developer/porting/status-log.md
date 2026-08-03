@@ -51704,3 +51704,30 @@ with no prior coverage at all (`file-preview-modal.spec.ts`,
 only via Enter since the Create button is disabled on a blank field, same
 as v4's — and `move-to-project-dialog.spec.ts`). `ng test` green (41/41
 across the whole files family). No Rust touched.
+
+**Unit 10 — `components/new-chat/hooks/useNewChat.ts` (9), all landed in
+`new-chat.state.ts`.** v4's hook exposes NO `error` field at all — every
+one of these nine sentences (the load failure, four validation refusals,
+the missing-connection-profile list, the no-LLM-controlled refusal, and
+both create-success sentences plus the create-failure) is toast-only. v5
+had ALREADY ported every SENTENCE correctly, verbatim, into an `error`
+signal the page rendered as an inline banner — the class doc even said so
+explicitly ("v4 shows a toast; the SPA uses a banner") — but was missing
+both success toasts entirely (a silent navigate on create). Since
+`NewChatState` is a plain class the page constructs (not `@Injectable`,
+so no `inject()` inside it), `ToastService` is threaded through the
+constructor the same way `GreenRoomController` already is — a nullable
+4th parameter (`Pick<ToastService, 'showSuccess' | 'showError'> | null`)
+so the two existing specs that construct `NewChatState` directly without
+a toast service keep working unchanged. Every `error.set(...)` call
+became a `toasts?.showError(...)` call; the `error` signal and the page's
+inline banner are both gone. The success wording is simpler than v4's:
+v5's New-Chat screen has no continuation-chat source at all (a named,
+pre-existing deferral — `outfit-selector.ts`'s own doc says so), so the
+non-autonomous arm is unconditionally "Chat created!", never v4's
+"Conversation continued in a new chat!" variant.
+
+Spec pins: a new `new-chat.state.spec.ts` (9 cases, one per row) testing
+`NewChatState` directly with a fake toasts recorder — no TestBed needed,
+since the class has no Angular DI dependencies of its own. `ng test`
+green (59/59 across the whole new-chat family). No Rust touched.

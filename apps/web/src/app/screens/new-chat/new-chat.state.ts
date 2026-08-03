@@ -32,6 +32,7 @@ import type {
   ScenarioDto,
   ScenarioListDto,
 } from '../../core/core-contract';
+import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
 import { buildCreateRequest } from './new-chat.logic';
 import {
@@ -68,8 +69,6 @@ function mapScenario(s: ScenarioDto): ScenarioOption {
 export class NewChatState {
   readonly loading = signal(true);
   readonly creating = signal(false);
-  /** Surfaces load / pre-flight failures (v4 shows a toast; the SPA uses a banner). */
-  readonly error = signal<string | null>(null);
 
   readonly characters = signal<CharacterListItem[]>([]);
   readonly profiles = signal<{ id: string; name: string; provider?: string; modelName?: string }[]>(
@@ -117,6 +116,7 @@ export class NewChatState {
     private readonly core: CoreClient,
     private readonly options: NewChatOptions,
     private readonly greenRoom: GreenRoomController | null = null,
+    private readonly toasts: Pick<ToastService, 'showSuccess' | 'showError'> | null = null,
   ) {
     this.selectedProjectId = signal<string | null>(options.projectId ?? null);
     if (options.initialAutonomous) {
@@ -134,7 +134,6 @@ export class NewChatState {
   /** The batched reference-data load + seeding (v4 `fetchData`). Re-runnable. */
   async load(): Promise<void> {
     this.loading.set(true);
-    this.error.set(null);
     try {
       const projectId = this.selectedProjectId();
       const initialCharacterId = this.options.initialCharacterId;
@@ -233,7 +232,7 @@ export class NewChatState {
       // Faithful participant-union fetch (dead UI — never rendered).
       void this.refreshGroupScenarios();
     } catch (err) {
-      this.error.set('Failed to load chat creation data');
+      this.toasts?.showError('Failed to load chat creation data');
       // eslint-disable-next-line no-console
       console.error('[NewChatState] load failed', err);
     } finally {
@@ -397,17 +396,17 @@ export class NewChatState {
   async handleCreate(): Promise<CreateOutcome> {
     const cast = this.selectedCharacters();
     if (cast.length === 0) {
-      this.error.set('Please select at least one character');
+      this.toasts?.showError('Please select at least one character');
       return null;
     }
     const isAutonomous = this.form().autonomous.enabled;
     if (isAutonomous) {
       if (this.llmSelected().length < 2) {
-        this.error.set('Autonomous rooms need at least two LLM-controlled characters');
+        this.toasts?.showError('Autonomous rooms need at least two LLM-controlled characters');
         return null;
       }
       if (cast.some((sc) => sc.controlledBy === 'user')) {
-        this.error.set('Autonomous rooms have no user — remove user-controlled characters');
+        this.toasts?.showError('Autonomous rooms have no user — remove user-controlled characters');
         return null;
       }
     }
@@ -415,17 +414,16 @@ export class NewChatState {
       (sc) => sc.controlledBy === 'llm' && !sc.connectionProfileId,
     );
     if (missingProfile.length > 0) {
-      this.error.set(
+      this.toasts?.showError(
         `Please select a connection profile for: ${missingProfile.map((sc) => sc.character.name).join(', ')}`,
       );
       return null;
     }
     if (!cast.some((sc) => sc.controlledBy === 'llm')) {
-      this.error.set('At least one character must be LLM-controlled');
+      this.toasts?.showError('At least one character must be LLM-controlled');
       return null;
     }
 
-    this.error.set(null);
     this.creating.set(true);
 
     const progressId =
@@ -439,10 +437,13 @@ export class NewChatState {
       const resp = await this.core.dispatchExpect(body, 'chatCreate');
       const chatId = (resp.data as ChatCreateDto).chat.id;
       this.greenRoom?.complete();
+      // v4 `useNewChat.ts:789-793` — no v5 continuation source, so the
+      // non-autonomous arm is always "Chat created!".
+      this.toasts?.showSuccess(isAutonomous ? 'Autonomous room created!' : 'Chat created!');
       return { chatId, isAutonomous };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create chat';
-      this.error.set(msg);
+      this.toasts?.showError(msg);
       if (progressId) this.greenRoom?.fail(msg);
       return null;
     } finally {

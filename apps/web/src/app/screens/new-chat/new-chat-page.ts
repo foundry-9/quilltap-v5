@@ -1,17 +1,11 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  input,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 
 import { CoreClient } from '../../core/core-client';
 import { LoadingState } from '../../ui/loading-state';
+import { ToastService } from '../../ui/toast.service';
 import { CharacterPickerPanel } from './character-picker-panel';
 import { GreenRoomDialog } from './green-room-dialog';
 import { GreenRoomStore } from './green-room.state';
@@ -90,14 +84,6 @@ import { NewChatState } from './new-chat.state';
           </div>
         }
 
-        @if (state.error(); as err) {
-          <div
-            class="mb-6 rounded-lg border qt-border-destructive/50 qt-bg-destructive/10 p-4 qt-text-destructive"
-          >
-            {{ err }}
-          </div>
-        }
-
         <qt-new-chat-picker [state]="state" [disabled]="state.creating()" />
 
         <div class="mt-6">
@@ -132,6 +118,7 @@ export class NewChatPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly greenRoom = inject(GreenRoomStore);
+  private readonly toasts = inject(ToastService);
   /** Workspace-tab seams (P4.d16 tier 2); null ⇒ routed mode. */
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
@@ -173,6 +160,7 @@ export class NewChatPage implements OnInit {
         initialAutonomous: autonomous,
       },
       this.greenRoom,
+      this.toasts,
     );
     void this.state.load();
   }

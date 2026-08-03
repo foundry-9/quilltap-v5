@@ -99,6 +99,14 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the New Chat screen confirmation and error messages for every
+outcome: loading its data, every validation refusal (no character picked,
+an autonomous room needing two LLM characters and no user, a missing
+connection profile, no LLM-controlled character at all), and both
+creating a chat and creating an autonomous room. An inline banner v5 had
+added for all of these is gone, matching the original, which shows every
+one of them as a passing message only.
+
 Gave the general Files page confirmation and error messages for every
 action: loading the list, deleting a file (both the plain and the
 "delete anyway" paths), syncing the filesystem, and both orphan-cleanup
