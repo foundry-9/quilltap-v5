@@ -7,6 +7,7 @@ import {
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -74,6 +75,12 @@ import {
   type SkipEvent,
   type SkipParticipant,
 } from '../../chat/skip-signal';
+import {
+  narrowRenderingPatterns,
+  type DialogueDetection,
+  type RenderingPattern,
+} from '../../chat/render/roleplay-rendering';
+import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
 import {
   addToQueue,
   createInitialTurnState,
@@ -336,6 +343,8 @@ interface CascadePrompt {
         <qt-message-list
           [messages]="displayMessages()"
           [chat]="chat()!"
+          [renderingPatterns]="renderingPatterns()"
+          [dialogueDetection]="dialogueDetection()"
           [swipeStates]="effectiveSwipeStates()"
           [settings]="settings()"
           [stream]="stream()"
@@ -797,6 +806,40 @@ export class SalonConversation {
     effect(() => this.terminalMode.hydrate(this.chat()));
     effect(() => this.documentMode.hydrate(this.chat()));
 
+    // The roleplay-template fetch — v4 `SalonView.tsx:745-776`, ported arm for
+    // arm. The three reset arms (no id / non-ok / throw) are deliberately the
+    // same reset, which is what lets a chat whose template was deleted keep
+    // rendering with the defaults rather than showing an error.
+    effect(() => {
+      const templateId = this.roleplayTemplateId();
+      const seq = ++this.templateFetchSeq;
+      const reset = () => {
+        if (seq !== this.templateFetchSeq) return;
+        this.roleplayRenderingPatterns.set(undefined);
+        this.roleplayDialogueDetection.set(undefined);
+      };
+      if (!templateId) {
+        reset();
+        return;
+      }
+      untracked(() => {
+        void (async () => {
+          try {
+            const template = await fetchRoleplayTemplate(this.core, templateId);
+            if (seq !== this.templateFetchSeq) return;
+            this.roleplayRenderingPatterns.set(
+              template.renderingPatterns
+                ? narrowRenderingPatterns(template.renderingPatterns)
+                : undefined,
+            );
+            this.roleplayDialogueDetection.set(template.dialogueDetection);
+          } catch {
+            reset();
+          }
+        })();
+      });
+    });
+
     // Report this Salon's story background to the workspace backdrop registry
     // (v4 `useReportWorkspaceBackdrop(url, isSalon: true)`). The host arbitrates
     // (a Salon with a background wins full-screen). Report the raw file URL
@@ -918,6 +961,45 @@ export class SalonConversation {
 
   protected readonly chat = computed(() => this.chatQuery.data() ?? null);
   protected readonly settings = computed(() => this.settingsQuery.data() ?? null);
+
+  // -------------------------------------------------------------------------
+  // The chat's roleplay template (v4 `SalonView.tsx:745-776`)
+  // -------------------------------------------------------------------------
+
+  /**
+   * The template's rendering patterns / dialogue detection, handed to every
+   * rendered row. Before P4.30 nothing fetched them, so EVERY message in v5
+   * rendered with the built-in defaults no matter what template the chat wore.
+   *
+   * `undefined` is the "no template" state, and it is also where all three of
+   * v4's reset arms land — no template id, a non-ok response, or a throw. That
+   * is what makes a chat pointing at a DELETED template fall back to the
+   * defaults instead of failing.
+   */
+  private readonly roleplayRenderingPatterns = signal<RenderingPattern[] | undefined>(undefined);
+  private readonly roleplayDialogueDetection = signal<DialogueDetection | null | undefined>(
+    undefined,
+  );
+  protected readonly renderingPatterns = this.roleplayRenderingPatterns.asReadonly();
+  protected readonly dialogueDetection = this.roleplayDialogueDetection.asReadonly();
+
+  /**
+   * v4's effect keys on `chat?.roleplayTemplateId` — a PRIMITIVE, so it re-runs
+   * only when the id itself moves, not on every chat refetch. This computed is
+   * what gives the effect below the same grain (a signal comparing by `Object.is`
+   * notifies only on a real change), and it is also the reconcile point: change
+   * the template from the sidebar, the chat refetches, this id moves, and the
+   * new template is fetched mid-session.
+   */
+  private readonly roleplayTemplateId = computed(() => this.chat()?.roleplayTemplateId ?? null);
+
+  /**
+   * Guards against an out-of-order response: switch templates twice quickly and
+   * the first fetch may land last. v4 has no such guard (its effect has no
+   * cleanup), but the two only differ under an interleaving no test can pin, and
+   * losing the race writes the WRONG template's patterns into the room.
+   */
+  private templateFetchSeq = 0;
 
   /**
    * The chat's story background (dogfood finding #9): applied as

@@ -20,6 +20,7 @@ import { AnnouncementGroup } from './announcement-group';
 import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-model';
 import { MessageRow, type ImageClickEvent } from './message-row';
+import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import { StreamingMessage } from './streaming-message';
 import { ToolMessage } from './tool-message';
 import { isOverheardWhisper } from './whisper-visibility';
@@ -78,6 +79,8 @@ import { VirtualRow } from './virtual-row';
                     [editing]="item.message.id === editingId()"
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
                     [isOverheardWhisper]="overheard(item.message)"
+                    [renderingPatterns]="renderingPatterns()"
+                    [dialogueDetection]="dialogueDetection()"
                     (viewLlmLogs)="viewLlmLogs.emit($event)"
                     (copyMessage)="copyMessage.emit($event)"
                     (edit)="edit.emit($event)"
@@ -95,7 +98,13 @@ import { VirtualRow } from './virtual-row';
                 } @else if (item.type === 'tool') {
                   <qt-tool-message [message]="item.message" [chat]="chat()" />
                 } @else {
-                  <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" [chat]="chat()" />
+                  <qt-announcement-group
+                    [chips]="item.chips"
+                    [chatId]="chat().id"
+                    [chat]="chat()"
+                    [renderingPatterns]="renderingPatterns()"
+                    [dialogueDetection]="dialogueDetection()"
+                  />
                 }
               </div>
             }
@@ -118,6 +127,8 @@ import { VirtualRow } from './virtual-row';
               [chat]="chat()"
               [settings]="settings()"
               [showAvatar]="showAvatars()"
+              [renderingPatterns]="renderingPatterns()"
+              [dialogueDetection]="dialogueDetection()"
               (copyMessage)="copyMessage.emit($event)"
               (imageClick)="imageClick.emit($event)"
               (saveImage)="saveImage.emit($event)"
@@ -126,12 +137,22 @@ import { VirtualRow } from './virtual-row';
           } @else if (item.type === 'tool') {
             <qt-tool-message [message]="item.message" [chat]="chat()" />
           } @else {
-            <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" [chat]="chat()" />
+            <qt-announcement-group
+              [chips]="item.chips"
+              [chatId]="chat().id"
+              [chat]="chat()"
+              [renderingPatterns]="renderingPatterns()"
+              [dialogueDetection]="dialogueDetection()"
+            />
           }
         }
 
         @if (stream(); as s) {
-          <qt-streaming-message [state]="s" />
+          <qt-streaming-message
+            [state]="s"
+            [renderingPatterns]="renderingPatterns()"
+            [dialogueDetection]="dialogueDetection()"
+          />
         }
 
         <div #endAnchor></div>
@@ -158,6 +179,16 @@ export class MessageList {
   readonly settings = input<ChatSettingsDto | null>(null);
   readonly stream = input<ChatStreamState | null>(null);
   readonly editingId = input<string | null>(null);
+  /**
+   * The chat's roleplay-template rendering patterns and dialogue detection,
+   * fetched by the conversation screen (v4 `SalonView.tsx:745-776`) and handed
+   * to every rendered row — v4 passes the identical pair at its two call sites,
+   * `VirtualizedMessageList.tsx:314-315` (each MessageRow) and `:387-388` (the
+   * streaming bubble). Undefined means the chat has no template, or its template
+   * could not be read; the renderer then falls back to the built-in defaults.
+   */
+  readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
+  readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
   /**
    * The ids of messages that have LLM logs (v4 `messagesWithLogs`, threaded from
    * SalonView through to each row — `SalonView.tsx:1355`).

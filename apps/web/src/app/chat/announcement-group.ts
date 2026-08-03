@@ -6,6 +6,7 @@ import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Icon } from '../ui/icon';
 import type { AnnouncementChip } from './chat-view-model';
 import { MessageContent } from './message-content';
+import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import {
   getAnnouncementAccentClasses,
   getAnnouncementOutcomeState,
@@ -99,6 +100,8 @@ import { ToolMessage } from './tool-message';
               <qt-message-content
                 [content]="chip.message.content"
                 [blobMountPointId]="blobMountPointId()"
+                [renderingPatterns]="renderingPatterns()"
+                [dialogueDetection]="dialogueDetection()"
               />
               @if (terminalSessionId(chip); as sid) {
                 <div class="mt-2">
@@ -118,6 +121,15 @@ export class AnnouncementGroup {
   readonly chatId = input.required<string>();
   /** The parent chat — threaded to an expanded TOOL chip's card for author resolution. */
   readonly chat = input.required<ChatDetail>();
+  /**
+   * The chat's roleplay-template patterns. An EXPANDED announcement is a normal
+   * message body in v4 — it renders through the standalone `MessageRow`, which
+   * receives the same `renderingPatterns` / `dialogueDetection` pair every other
+   * row gets. v5 renders that body inline here instead, so the pair has to reach
+   * this component or a template's marks would stop at the announcement's edge.
+   */
+  readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
+  readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
 
   /**
    * The chat's blob mount point, threaded to the expanded body's markdown img

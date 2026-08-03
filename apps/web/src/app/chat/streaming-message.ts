@@ -4,6 +4,7 @@ import type { ChatStreamState } from '../core/chat-stream.reducer';
 import { Icon } from '../ui/icon';
 import { MessageContent } from './message-content';
 import { QuillAnimation } from './quill-animation';
+import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import { ThinkingBlock } from './thinking-block';
 
 /**
@@ -61,10 +62,19 @@ import { ThinkingBlock } from './thinking-block';
         <div class="qt-chat-message-body">
           <div class="qt-chat-message qt-chat-message-assistant">
             @if (state().reasoning) {
-              <qt-thinking-block [content]="state().reasoning" [collapsed]="false" />
+              <qt-thinking-block
+                [content]="state().reasoning"
+                [collapsed]="false"
+                [renderingPatterns]="renderingPatterns()"
+                [dialogueDetection]="dialogueDetection()"
+              />
             }
             @if (state().content) {
-              <qt-message-content [content]="state().content" />
+              <qt-message-content
+                [content]="state().content"
+                [renderingPatterns]="renderingPatterns()"
+                [dialogueDetection]="dialogueDetection()"
+              />
             }
             <!--
               v4 StreamingMessage:122 — the small quill trails the live prose
@@ -112,4 +122,12 @@ import { ThinkingBlock } from './thinking-block';
  */
 export class StreamingMessage {
   readonly state = input.required<ChatStreamState>();
+  /**
+   * The chat's roleplay-template patterns — v4 passes the very same pair into
+   * `StreamingMessage` that it passes into each settled row
+   * (`VirtualizedMessageList.tsx:387-388`), so a live reply is styled the moment
+   * it streams rather than snapping into the template's marks on reconcile.
+   */
+  readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
+  readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
 }

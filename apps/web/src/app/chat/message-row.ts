@@ -15,6 +15,7 @@ import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
+import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import {
   getAnnouncementAccentClasses,
   getAnnouncementImportance,
@@ -144,7 +145,12 @@ export interface ImageClickEvent {
           }
 
           @for (block of reasoningBlocks(); track block.seq) {
-            <qt-thinking-block [content]="block.content" [collapsed]="thinkingCollapsed()" />
+            <qt-thinking-block
+              [content]="block.content"
+              [collapsed]="thinkingCollapsed()"
+              [renderingPatterns]="renderingPatterns()"
+              [dialogueDetection]="dialogueDetection()"
+            />
           }
 
           @if (editing()) {
@@ -172,7 +178,12 @@ export interface ImageClickEvent {
               </button>
             </div>
           } @else {
-            <qt-message-content [content]="message().content" [blobMountPointId]="blobMountPointId()" />
+            <qt-message-content
+              [content]="message().content"
+              [blobMountPointId]="blobMountPointId()"
+              [renderingPatterns]="renderingPatterns()"
+              [dialogueDetection]="dialogueDetection()"
+            />
           }
 
           @if (imageAttachments().length > 0) {
@@ -355,6 +366,15 @@ export class MessageRow {
   readonly settings = input<ChatSettingsDto | null>(null);
   readonly showAvatar = input(true);
   readonly editing = input(false);
+  /**
+   * The chat's roleplay-template patterns + dialogue detection, threaded to the
+   * row's markdown exactly as v4 threads them
+   * (`VirtualizedMessageList.tsx:314-315` → `MessageRow` → `LazyMessageContent`).
+   * Absent means "no template on this chat" — the renderer then uses the
+   * built-in defaults, which is what every v5 row did before P4.30.
+   */
+  readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
+  readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
   /**
    * Whether this message has LLM logs (v4 `hasLLMLogs` — the Salon derives it
    * from `messagesWithLogs.has(message.id)`).

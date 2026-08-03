@@ -77,6 +77,16 @@ messages. That table was never cleared, so the old notes stayed behind and a
 restore could fail trying to put the backed-up ones back — on databases carried
 forward from older versions, once per note. The original leaves the same rows
 behind; this version does not.
+Conversations now render their messages using their own roleplay template's
+patterns. Until now nothing ever read the template a conversation was set to,
+so every message everywhere was drawn with the built-in marks — a template
+that dressed narration or dialogue differently had no effect on anything you
+could see. Its patterns now reach settled messages, the reply being typed as
+it streams, a character's shown reasoning, and an opened announcement alike,
+and they follow a template swapped mid-conversation without a reload. A
+template that has been deleted, or that supplies no patterns of its own,
+quietly falls back to the built-in marks, as the original does.
+
 Widened the test that holds message rendering to the original's, so it now
 also covers conversations whose roleplay template supplies its own patterns
 rather than the built-in ones. Eleven new cases were captured from the

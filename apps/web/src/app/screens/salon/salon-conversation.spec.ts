@@ -1103,3 +1103,181 @@ describe('audienceCandidates (v4 ChatModals.tsx:325-332, a163862c)', () => {
     expect(text).toContain('Aria');
   });
 });
+
+/**
+ * P4.30 — the chat's roleplay template fetch (v4 `SalonView.tsx:745-776`).
+ *
+ * Before this, nothing in v5 ever read the chat's template, so every message in
+ * every conversation rendered with the built-in defaults. The three reset arms
+ * are ported as ONE reset on purpose: no template id, a non-ok response, and a
+ * throw all land on `undefined`, which is what lets a chat pointing at a DELETED
+ * template keep rendering rather than fail.
+ *
+ * These assert through the DOM rather than the private signals: the wire from
+ * `chat.roleplayTemplateId` to the class on the rendered span is the deliverable,
+ * and a spec that read the signal would pass with the binding removed.
+ */
+describe('SalonConversation — the roleplay template reaches the rendered rows (P4.30)', () => {
+  const CUSTOM_TEMPLATE = {
+    id: 'tpl-1',
+    userId: null,
+    name: 'Guillemets & Ampersands',
+    systemPrompt: '',
+    isBuiltIn: false,
+    tags: [],
+    delimiters: [],
+    renderingPatterns: [{ pattern: '@@[^@]+@@', className: 'qt-chat-emote' }],
+    dialogueDetection: { openingChars: ['«'], closingChars: ['»'], className: 'qt-chat-custom-dialogue' },
+    narrationDelimiters: '*',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
+
+  /** A chat whose one message carries both custom markers. */
+  function templatedChat(roleplayTemplateId: string | null): ChatDetail {
+    return {
+      ...chatDetail(),
+      roleplayTemplateId,
+      messages: [
+        message({
+          id: 'a1',
+          role: 'ASSISTANT',
+          participantId: 'p1',
+          content: 'She paused. @@leans in@@ and whispered.',
+          createdAt: '2024-01-01T00:00:02.000Z',
+        }),
+      ],
+    };
+  }
+
+  /**
+   * A client whose `roleplayTemplateGet` is scripted. `template` may be a value
+   * (the ok arm) or a thrown error (v4's `!res.ok` / catch arms — `dispatchData`
+   * rejects on an error envelope).
+   */
+  function templateClient(
+    chat: ChatDetail,
+    template: Record<string, unknown> | Error | null,
+    seen: string[] = [],
+  ): Partial<CoreClient> {
+    const base = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'roleplayTemplateGet') {
+        seen.push(req.templateId);
+        if (template instanceof Error) throw template;
+        return (template ?? {}) as Record<string, unknown>;
+      }
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    return { ...base, dispatchData: dispatchData as unknown as CoreClient['dispatchData'] };
+  }
+
+  function emotes(fixture: ComponentFixture<SalonConversation>): number {
+    return fixture.nativeElement.querySelectorAll('.qt-chat-emote').length;
+  }
+
+  it('renders with the defaults — and fetches nothing — when the chat has no template', async () => {
+    const seen: string[] = [];
+    const fixture = await render(templateClient(templatedChat(null), CUSTOM_TEMPLATE, seen));
+    expect(seen).toEqual([]);
+    expect(emotes(fixture)).toBe(0);
+  });
+
+  it("applies the fetched template's patterns to a rendered message", async () => {
+    const seen: string[] = [];
+    const fixture = await render(templateClient(templatedChat('tpl-1'), CUSTOM_TEMPLATE, seen));
+    expect(seen).toEqual(['tpl-1']);
+    expect(emotes(fixture)).toBe(1);
+  });
+
+  it('falls back to the defaults when the template GET fails (a deleted template)', async () => {
+    const seen: string[] = [];
+    const fixture = await render(
+      templateClient(templatedChat('tpl-gone'), new Error('NOT_FOUND'), seen),
+    );
+    expect(seen).toEqual(['tpl-gone']);
+    // v4's non-ok arm: reset to undefined, which IS the defaults — the room
+    // still renders.
+    expect(emotes(fixture)).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain('leans in');
+  });
+
+  it('falls back to the defaults when the template carries an EMPTY patterns array', async () => {
+    const fixture = await render(
+      templateClient(templatedChat('tpl-1'), { ...CUSTOM_TEMPLATE, renderingPatterns: [] }),
+    );
+    expect(emotes(fixture)).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain('leans in');
+  });
+
+  it('applies the fetched dialogue detection as well as the patterns', async () => {
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      roleplayTemplateId: 'tpl-1',
+      messages: [
+        message({
+          id: 'a1',
+          role: 'ASSISTANT',
+          participantId: 'p1',
+          content: '«Bonjour, mon ami»',
+          createdAt: '2024-01-01T00:00:02.000Z',
+        }),
+      ],
+    };
+    const fixture = await render(templateClient(chat, CUSTOM_TEMPLATE));
+    expect(fixture.nativeElement.querySelectorAll('.qt-chat-custom-dialogue').length).toBe(1);
+  });
+
+  /**
+   * The reconcile point v4 gets from its effect's `[chat?.roleplayTemplateId]`
+   * dep: change the template from the sidebar, the chat refetches, the id moves,
+   * and the room re-renders through the new template WITHOUT a reload.
+   */
+  it('re-fetches and re-renders when the template changes mid-session', async () => {
+    const seen: string[] = [];
+    const live = { chat: templatedChat(null) };
+    const events$ = new Subject<ScopedEvent>();
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: live.chat } };
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+        };
+      }
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'roleplayTemplateGet') {
+        seen.push(req.templateId);
+        return CUSTOM_TEMPLATE as unknown as Record<string, unknown>;
+      }
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    const client: Partial<CoreClient> = {
+      events$: events$.asObservable(),
+      dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+
+    const fixture = await render(client);
+    expect(seen).toEqual([]);
+    expect(emotes(fixture)).toBe(0);
+
+    // The sidebar saves a template; the chat refetches carrying the new id.
+    live.chat = templatedChat('tpl-1');
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: ['chat', 'chat-1'] });
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    expect(seen).toEqual(['tpl-1']);
+    expect(emotes(fixture)).toBe(1);
+  });
+});

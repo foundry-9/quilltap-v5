@@ -51252,3 +51252,86 @@ no product code changed in this unit.
 **Fixture invalidation:** `apps/web/src/app/chat/render/__fixtures__/
 markdown-fixtures.json` is this lane's own and is consumed by exactly one spec.
 No Rust oracle family reads it.
+
+## Lane record — P4.30 units 2–3 (the template reaches the render)
+
+**What was broken.** v5 never fetched the chat's roleplay template, so EVERY
+message in EVERY conversation rendered with `DEFAULT_RENDERING_PATTERNS` /
+`DEFAULT_DIALOGUE_DETECTION` — the renderer had accepted both inputs since P4.5
+and no caller had ever supplied them (the gap P4.26 banked). A chat wearing a
+template whose patterns differ from the defaults rendered nothing like v4.
+
+**The fetch** (`salon-conversation.ts`, ported from v4 `SalonView.tsx:745-776`
+arm for arm): a signal pair plus an effect keyed on a `roleplayTemplateId`
+COMPUTED, not on `chat()`. That grain is load-bearing — v4's `useEffect` deps
+are `[chat?.roleplayTemplateId]`, a primitive, so it re-runs only when the id
+moves; keying on the chat object would re-fetch the template on every chat
+refetch (of which there are many per turn). All THREE of v4's reset arms (no
+id / non-ok / throw) collapse to the same reset to `undefined`, which is what
+lets a chat pointing at a DELETED template keep rendering on the defaults
+instead of erroring.
+
+Two deliberate departures, both recorded rather than silent:
+
+1. **A generation guard** (`templateFetchSeq`) so an out-of-order response
+   cannot write a stale template's patterns into the room. v4 has no cleanup on
+   that effect; the two differ only under an interleaving no test can pin.
+2. **`roleplayTemplateName` is NOT stored.** Survey found v4 sets it at
+   `SalonView.tsx:140` and READS IT NOWHERE — the only occurrences in the whole
+   checkout are its own declaration and its four setters. Storing dead state to
+   mirror dead state would be a stub; recorded here instead.
+
+**The read path** reuses the P4.6p verb: `fetchRoleplayTemplate` added to
+`screens/settings/templates/templates.api.ts` (the templates data layer — the
+one file this lane touched outside its literal ownership list, on the order's
+own "reuse its service/verb" instruction; purely additive, no existing export
+changed). `Response::RoleplayTemplate` is a BARE template object, so
+`dispatchData`'s `data` is the template.
+
+**The threading.** v4 has two call sites (`VirtualizedMessageList.tsx:314-315`
+per row, `:387-388` for the streaming bubble) and fans out from `MessageRow` to
+the body and to each spliced reasoning block. v5 needed FIVE render surfaces
+fed, because it splits the work differently:
+
+| v5 surface | v4 analog |
+| --- | --- |
+| `message-row` → `qt-message-content` | `MessageRow` → `LazyMessageContent` |
+| `message-row` → `qt-thinking-block` | `MessageRow.tsx:367-372` |
+| `streaming-message` → content + thinking | `StreamingMessage.tsx:104-110,120` |
+| `announcement-group` expanded body | v4 renders an expanded announcement as an ORDINARY `MessageRow`, so it gets the pair too |
+| `message-list` (both row loops + the stream loop) | the two v4 call sites |
+
+The announcement one is the non-obvious leg: v5 renders an expanded
+announcement's body inline in `announcement-group.ts` rather than through a
+standalone row, so without an explicit binding a template's marks would have
+stopped at the announcement's edge. It is threaded and pinned by its own beat
+(the spec clicks the chip open).
+
+**`core-contract.ts` types `RenderingPattern.scope` as a bare `string`** where
+v4's `RenderingPatternSchema` constrains it to `'inline' | 'line'`. The contract
+file is FROZEN this round, so the narrowing lives in
+`render/roleplay-rendering.ts` as `narrowRenderingPatterns` — which only moves
+v4's own `scope === 'line' ? 'line' : 'inline'` coercion one step earlier.
+
+**The render cache** needed no change and is now PROVEN so. Its key already
+carried reference ids for both option objects (mirroring v4's
+`LazyMessageContent.tsx:72-81` reference memo), so a template arriving after
+first paint busts every cached row — but that had only ever been asserted in a
+comment. `render-cache.spec.ts` now proves the arrival, the removal, two
+different sets keyed apart, and that a stable reference still HITS (the cache's
+whole point survives).
+
+**Specs + mutation proofs.** Every new arm was first-run green, so every one was
+proven sensitive by breaking the port and watching it go red:
+
+| mutation | result |
+| --- | --- |
+| `message-list` drops the announcement-group binding | 1 failed (only that beat) |
+| `message-content` never passes the options to the renderer | 5 failed |
+| the cache key drops both refIds | 4 failed |
+| `salon-conversation` drops the message-list bindings | 3 failed |
+
+Each was reverted and the tree re-verified clean afterwards.
+
+**Gate at this point:** `ng test` 268 files / 3,701 tests / 0 failed;
+`ng build` clean. No Rust touched.

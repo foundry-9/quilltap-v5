@@ -26,6 +26,38 @@ export interface DialogueDetection {
   className: string;
 }
 
+/**
+ * A rendering pattern as it arrives on the wire. `core-contract.ts` types
+ * `scope` as a bare `string` where v4's `RenderingPatternSchema` constrains it
+ * to `'inline' | 'line'`; the contract file is frozen, so the narrowing happens
+ * here, at the one boundary where a fetched template enters the renderer.
+ */
+export interface WireRenderingPattern {
+  pattern: string;
+  className: string;
+  flags?: string;
+  scope?: string;
+  hideDelimiters?: boolean;
+}
+
+/**
+ * Narrow a fetched template's patterns to the renderer's type. Anything that is
+ * not exactly `'line'` becomes `'inline'` — which is precisely what
+ * {@link compileRenderingPatterns} (and v4's, verbatim) does with the value
+ * anyway, so this only moves v4's own coercion one step earlier.
+ */
+export function narrowRenderingPatterns(
+  patterns: readonly WireRenderingPattern[],
+): RenderingPattern[] {
+  return patterns.map((p) => ({
+    pattern: p.pattern,
+    className: p.className,
+    ...(p.flags === undefined ? {} : { flags: p.flags }),
+    scope: p.scope === 'line' ? ('line' as const) : ('inline' as const),
+    ...(p.hideDelimiters === undefined ? {} : { hideDelimiters: p.hideDelimiters }),
+  }));
+}
+
 /** Default rendering patterns used when a template doesn't specify any. */
 export const DEFAULT_RENDERING_PATTERNS: RenderingPattern[] = [
   // OOC: ((comments)) - double parentheses

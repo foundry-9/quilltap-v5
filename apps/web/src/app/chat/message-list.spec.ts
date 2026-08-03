@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
  * MessageList is virtualized; the virtualizer forces an empty window when the
@@ -32,6 +32,7 @@ import {
   type ChatStreamState,
 } from '../core/chat-stream.reducer';
 import { MessageList, buildStreamRenderItems } from './message-list';
+import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 
 /** Fold a scoped trace filtered to the subject chat — the consumer's own step. */
 function foldChain(count = Infinity): ChatStreamState {
@@ -311,5 +312,132 @@ describe('MessageList — a native copy must not fire the copy action', () => {
     row.dispatchEvent(new Event('copy', { bubbles: true }));
 
     expect(seen).toEqual([]);
+  });
+});
+
+/**
+ * P4.30 — the chat's roleplay template reaching EVERY rendered row.
+ *
+ * v4 threads `renderingPatterns` / `dialogueDetection` from `SalonView`'s
+ * template fetch into its two `VirtualizedMessageList` call sites (`:314-315`
+ * per row, `:387-388` for the streaming bubble); `MessageRow` fans them out to
+ * the body AND to each spliced reasoning block, and an EXPANDED announcement is
+ * a normal `MessageRow` in v4, so it gets them too. v5 renders four of those
+ * five surfaces through its own components, so each is asserted here.
+ *
+ * The custom set below shares no delimiter with the defaults (`@@…@@`), so each
+ * assertion is paired with its no-template twin: the class appearing is only
+ * meaningful next to the same content NOT wearing it.
+ */
+describe('MessageList — the chat template threads into every rendered row (P4.30)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const CUSTOM: RenderingPattern[] = [{ pattern: '@@[^@]+@@', className: 'qt-chat-emote' }];
+  const CUSTOM_DIALOGUE: DialogueDetection = {
+    openingChars: ['«'],
+    closingChars: ['»'],
+    className: 'qt-chat-custom-dialogue',
+  };
+
+  function render(opts: {
+    messages: MessageDto[];
+    stream?: ChatStreamState | null;
+    patterns?: RenderingPattern[];
+    dialogue?: DialogueDetection | null;
+  }): ComponentFixture<MessageList> {
+    // Several cases render the SAME content twice — once with a template, once
+    // without — and the pair is the whole proof, so the module has to be torn
+    // down between the two.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', opts.messages);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('stream', opts.stream ?? null);
+    if (opts.patterns) fixture.componentRef.setInput('renderingPatterns', opts.patterns);
+    if (opts.dialogue !== undefined) fixture.componentRef.setInput('dialogueDetection', opts.dialogue);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function emotes(fixture: ComponentFixture<MessageList>): number {
+    return fixture.nativeElement.querySelectorAll('.qt-chat-emote').length;
+  }
+
+  it('styles a settled message body with the template patterns', () => {
+    const messages = [message({ id: 'm1', content: 'She paused. @@leans in@@ and whispered.' })];
+    expect(emotes(render({ messages, patterns: CUSTOM }))).toBe(1);
+  });
+
+  it('leaves the same body unstyled with no template (the reset arm)', () => {
+    const messages = [message({ id: 'm1', content: 'She paused. @@leans in@@ and whispered.' })];
+    expect(emotes(render({ messages }))).toBe(0);
+  });
+
+  it('styles a reasoning block with the template patterns (v4 MessageRow:367-372)', () => {
+    const messages = [
+      message({ id: 'm1', content: 'plain body', reasoningContent: 'I should @@pause@@ here.' }),
+    ];
+    expect(emotes(render({ messages, patterns: CUSTOM }))).toBe(1);
+    expect(emotes(render({ messages }))).toBe(0);
+  });
+
+  it('styles the live streaming bubble (v4 VirtualizedMessageList:387-388)', () => {
+    const stream = reduceChatFrame(initialChatStreamState(), {
+      content: 'Ada @@steps closer@@.',
+    });
+    expect(emotes(render({ messages: [], stream, patterns: CUSTOM }))).toBe(1);
+    expect(emotes(render({ messages: [], stream }))).toBe(0);
+  });
+
+  it('styles an EXPANDED announcement body — v4 renders it as an ordinary row', () => {
+    const messages = [
+      message({
+        id: 'a1',
+        role: 'SYSTEM',
+        systemSender: 'host',
+        systemKind: 'add',
+        participantId: null,
+        content: 'The lock @@gives way@@.',
+      }),
+    ];
+    const fixture = render({ messages, patterns: CUSTOM });
+    // Collapsed: only the chip is on screen, so nothing is styled yet.
+    expect(emotes(fixture)).toBe(0);
+    const chipButton = fixture.nativeElement.querySelector(
+      '.qt-chat-announcement-chip',
+    ) as HTMLButtonElement;
+    expect(chipButton).not.toBeNull();
+    chipButton.click();
+    fixture.detectChanges();
+    expect(emotes(fixture)).toBe(1);
+  });
+
+  it('threads the dialogue detection as well as the patterns', () => {
+    const messages = [message({ id: 'm1', content: '«Bonjour, mon ami»' })];
+    const withTemplate = render({ messages, dialogue: CUSTOM_DIALOGUE });
+    expect(
+      withTemplate.nativeElement.querySelectorAll('.qt-chat-custom-dialogue').length,
+    ).toBe(1);
+    const without = render({ messages });
+    expect(without.nativeElement.querySelectorAll('.qt-chat-custom-dialogue').length).toBe(0);
+  });
+
+  it('an EMPTY patterns array renders exactly as no template does (v4 fallback arm)', () => {
+    const messages = [message({ id: 'm1', content: 'A hush falls. [the door creaks open]' })];
+    const empty = render({ messages, patterns: [] });
+    const none = render({ messages });
+    const html = (f: ComponentFixture<MessageList>) =>
+      (f.nativeElement.querySelector('.qt-chat-message-content') as HTMLElement).innerHTML;
+    expect(html(empty)).toBe(html(none));
+    expect(html(empty)).toContain('qt-chat-narration');
   });
 });
