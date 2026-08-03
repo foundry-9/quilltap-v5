@@ -50565,3 +50565,58 @@ it already carries the column from unit 2's migration.
 **Gate:** fmt, clippy both feature sets, `cargo test --workspace --no-fail-fast`
 green; `system_export_equivalence` + `system_import_state` re-run by name over
 oracles regenerated fresh at `40319484`.
+
+---
+
+## Lane record — P4.D41 unit 6 (the CLI's links column counts LINKS)
+
+**Landed.** `crates/quilltap-cli/src/docs_cmd.rs`:
+
+- `LS_FILE_COLUMNS` (a `const`) → `ls_file_columns(conn) -> String`, with v4's
+  per-process PRAGMA probe (`LINK_GROUP_COLUMN_PRESENT: OnceLock<bool>`, v4's
+  module-level `linkGroupColumnPresent`). `linkCount` becomes the
+  `CASE WHEN l.linkGroupId IS NULL THEN 1 ELSE (SELECT COUNT(*) …) END` form and
+  `linkGroupId` rides in the selection; an un-migrated instance degrades both to
+  `1`/`NULL` rather than failing the whole listing. Five call sites bind `cols`.
+- `fetch_links_for_files` → `fetch_link_group_members`, keyed on `linkGroupId`.
+- Both consumers follow: the JSON `links` array and the `--links` sibling
+  expansion now look the group up (and skip entirely when there is none).
+  `LsRow` gains `link_group_id`; `file_id` went with the old lookup and is gone.
+- Help text: the move/copy/link one-liners, the `--links` note, and the
+  `--force`-on-copy note. **Diffed byte-for-byte against v4's
+  `docs-commands.js` help block — identical.**
+
+The bug this fixes is worth restating: content rows are sha256-addressed, so a
+boilerplate or empty file collects dozens of unrelated links that share its
+bytes by coincidence. The old column reported those as hard links — one real
+instance showed 36.
+
+### Tier R differential
+
+The CLI fixture now carries the column (APPENDED, the shape a real instance
+gets from the migration; the `generateDDL` position stays pinned by
+`fresh_schema.json`) plus its partial index, and the seeded corpus grew a case
+that did not exist before: **`notes/coincidence.md`, which shares `F4`'s content
+row and nothing else.** Before this change it would have reported "2 links"
+alongside the genuinely-linked `shared.md` / `shared-too.md` pair; now it
+reports 1 and expands to nothing while the real pair still reports 2. Both are
+in the same listing, so one case shows the distinction.
+
+New case **`docs ls links un-migrated`**, whose pre-hook DROPs the column and
+its index: both launchers must PROBE and degrade rather than fail. 135 → **136
+cases, 0 failures**.
+
+Mutation-proofed:
+
+| mutation | caught |
+| --- | --- |
+| `linkCount` counts shared `fileId` again | 8 case failures |
+| `--links` expansion keyed on `fileId` again | 2 case failures |
+
+**Gate:** fmt, clippy both feature sets, `cargo test --workspace
+--no-fail-fast`, and the Tier R differential (136/136) against v4 at
+`40319484`.
+
+Run: `QT_V4_CHECKOUT=~/source/quilltap-server
+QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node cargo test -p quilltap-cli
+--test cli_differential -- --nocapture` (~140 s).

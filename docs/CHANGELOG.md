@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+The command line no longer reports a file as linked into three dozen places
+when nothing was linked at all. Its links column counted every file that
+happened to store identical bytes — an empty file, a shared boilerplate header
+— because that is all a shared store row means. It now counts links actually
+made, and lists only those under each file. An instance carried forward from
+an older version reports one link per file rather than refusing the listing.
+
 Backups and exports now carry hard links, so a file linked into two stores
 comes back linked rather than as two documents that drift apart on the next
 edit. Importing the same archive twice cannot merge the two copies into one

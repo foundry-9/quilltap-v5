@@ -31,9 +31,9 @@ Write subcommands (server required for database-backed mounts):
   write [--force] [--base64] <mount> <path> [file]  Write a file from <file> or stdin
   delete <mount> <path>                              Idempotent file delete
   mkdir <mount> <path>                               Idempotent folder create
-  move <srcMount> <srcPath> <dstMount> <dstPath>                   Move file (hard-link when possible)
-  copy [--force] <srcMount> <srcPath> <dstMount> <dstPath>         Copy file (hard-link unless --force)
-  link <srcMount> <srcPath> <dstMount> <dstPath>                   Hard-link file (server-required)
+  move <srcMount> <srcPath> <dstMount> <dstPath>                   Move file (relocates the link; no byte copy)
+  copy [--force] <srcMount> <srcPath> <dstMount> <dstPath>         Copy file (independent; shares bytes until either side is written)
+  link <srcMount> <srcPath> <dstMount> <dstPath>                   Hard-link file — one file, two paths; edits show at both (server-required)
   rmdir <mount> <path>                               Delete an empty folder (server-required)
   mvdir <mount> <fromPath> <toPath>                  Rename/move a folder (server-required)
 
@@ -64,14 +64,17 @@ Options:
                             file size, or hard-link count
   -r, --reverse             Reverse sort order
   --links                   For 'ls' / 'dir': under each file with more than
-                            one hard link, list the other mount/path entries
+                            one hard link, list the other mount/path entries.
+                            Counts deliberate links made with 'docs link' — not
+                            unrelated files that merely share identical bytes
   --depth N                 For 'tree': maximum nesting depth (default: 20)
   --max-nodes N             For 'tree': maximum nodes to render (default: 1000)
   --long                    For 'tree': include text/emb columns (reserved for future)
   --force                   For 'read': dump binary to TTY anyway
                             For 'write': overwrite existing destination
                             For 'copy':  overwrite + force a real byte copy
-                                         (skips the default hard-link path)
+                                         (skips the default shared-content path;
+                                          the end state is the same either way)
   --base64                  For 'write': send content as base64 JSON via PUT
                                          .../files/{path} (portable path used
                                          by the file browser; server-required)

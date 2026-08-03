@@ -763,7 +763,45 @@ fn format_ls_date(iso: &str) -> String {
     )
 }
 
-const LS_FILE_COLUMNS: &str = "\n  l.id AS linkId, l.fileId, l.relativePath, l.fileName, l.lastModified,\n  l.extractionStatus, l.extractedTextSha256, l.chunkCount,\n  f.fileType, f.fileSizeBytes, f.source, f.sha256,\n  (SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = l.fileId) AS linkCount,\n  (SELECT COUNT(*) FROM doc_mount_chunks\n    WHERE linkId = l.id AND embedding IS NOT NULL) AS embeddedChunkCount\n";
+/// Cached per process: one PRAGMA per run, not one per prepared statement
+/// (v4 `docs-commands.js`'s module-level `linkGroupColumnPresent`).
+static LINK_GROUP_COLUMN_PRESENT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+fn has_link_group_column(conn: &rusqlite::Connection) -> bool {
+    *LINK_GROUP_COLUMN_PRESENT.get_or_init(|| {
+        let probe = || -> rusqlite::Result<bool> {
+            let mut stmt = conn.prepare("PRAGMA table_info(\"doc_mount_file_links\")")?;
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                if row.get::<_, String>(1)? == "linkGroupId" {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        };
+        probe().unwrap_or(false)
+    })
+}
+
+/// The `links` column counts deliberate hard links — members of this file's
+/// `linkGroupId` — NOT rows sharing a `fileId` (v4 `40319484`). Content rows are
+/// addressed by sha256, so a boilerplate or empty file collects dozens of
+/// unrelated links that share its bytes purely by coincidence; reporting those
+/// as links told the operator a file was linked into 36 stores when nothing had
+/// been linked at all. An instance that has not gained the `linkGroupId` column
+/// yet degrades to `1` rather than failing the whole listing.
+fn ls_file_columns(conn: &rusqlite::Connection) -> String {
+    let present = has_link_group_column(conn);
+    let link_count = if present {
+        "(CASE WHEN l.linkGroupId IS NULL THEN 1 ELSE\n         (SELECT COUNT(*) FROM doc_mount_file_links g WHERE g.linkGroupId = l.linkGroupId) END)"
+    } else {
+        "1"
+    };
+    let link_group_id = if present { "l.linkGroupId" } else { "NULL" };
+    format!(
+        "\n  {link_group_id} AS linkGroupId,\n  l.id AS linkId, l.fileId, l.relativePath, l.fileName, l.lastModified,\n  l.extractionStatus, l.extractedTextSha256, l.chunkCount,\n  f.fileType, f.fileSizeBytes, f.source, f.sha256,\n  {link_count} AS linkCount,\n  (SELECT COUNT(*) FROM doc_mount_chunks\n    WHERE linkId = l.id AND embedding IS NOT NULL) AS embeddedChunkCount\n"
+    )
+}
 
 enum LsTarget {
     Root,
@@ -780,10 +818,11 @@ fn resolve_ls_target(
     if normalized_path.is_empty() {
         return Ok(LsTarget::Root);
     }
+    let cols = ls_file_columns(conn);
     let file = query_maps(
         conn,
         &format!(
-            "\n    SELECT {LS_FILE_COLUMNS}\n    FROM doc_mount_file_links l\n    JOIN doc_mount_files f ON f.id = l.fileId\n    WHERE l.mountPointId = ? AND l.relativePath = ?\n  "
+            "\n    SELECT {cols}\n    FROM doc_mount_file_links l\n    JOIN doc_mount_files f ON f.id = l.fileId\n    WHERE l.mountPointId = ? AND l.relativePath = ?\n  "
         ),
         &[&mount_id, &normalized_path],
     )?;
@@ -844,11 +883,12 @@ fn fetch_ls_rows(
             &[&mount_id, &like, &not_like],
         )?
     };
+    let cols = ls_file_columns(conn);
     let files = if parent_path.is_empty() {
         query_maps(
             conn,
             &format!(
-                "\n        SELECT {LS_FILE_COLUMNS}\n        FROM doc_mount_file_links l\n        JOIN doc_mount_files f ON f.id = l.fileId\n        WHERE l.mountPointId = ?\n          AND l.relativePath NOT LIKE '%/%'\n        ORDER BY l.fileName COLLATE NOCASE\n      "
+                "\n        SELECT {cols}\n        FROM doc_mount_file_links l\n        JOIN doc_mount_files f ON f.id = l.fileId\n        WHERE l.mountPointId = ?\n          AND l.relativePath NOT LIKE '%/%'\n        ORDER BY l.fileName COLLATE NOCASE\n      "
             ),
             &[&mount_id],
         )?
@@ -858,7 +898,7 @@ fn fetch_ls_rows(
         query_maps(
             conn,
             &format!(
-                "\n        SELECT {LS_FILE_COLUMNS}\n        FROM doc_mount_file_links l\n        JOIN doc_mount_files f ON f.id = l.fileId\n        WHERE l.mountPointId = ?\n          AND l.relativePath LIKE ?\n          AND l.relativePath NOT LIKE ?\n        ORDER BY l.fileName COLLATE NOCASE\n      "
+                "\n        SELECT {cols}\n        FROM doc_mount_file_links l\n        JOIN doc_mount_files f ON f.id = l.fileId\n        WHERE l.mountPointId = ?\n          AND l.relativePath LIKE ?\n          AND l.relativePath NOT LIKE ?\n        ORDER BY l.fileName COLLATE NOCASE\n      "
             ),
             &[&mount_id, &like, &not_like],
         )?
@@ -866,27 +906,33 @@ fn fetch_ls_rows(
     Ok((folders, files))
 }
 
-fn fetch_links_for_files(
+/// Members of each named hard-link group, keyed by `linkGroupId` — v4
+/// `fetchLinkGroupMembers` (`40319484`). Grouping is by `linkGroupId` rather
+/// than `fileId` on purpose (see [`ls_file_columns`]): a shared `fileId` only
+/// means "identical bytes", which is not a link.
+fn fetch_link_group_members(
     conn: &rusqlite::Connection,
-    file_ids: &[String],
+    group_ids: &[String],
 ) -> Result<std::collections::HashMap<String, Vec<Map<String, Value>>>, String> {
-    let mut by_file: std::collections::HashMap<String, Vec<Map<String, Value>>> =
+    let mut by_group: std::collections::HashMap<String, Vec<Map<String, Value>>> =
         std::collections::HashMap::new();
-    if file_ids.is_empty() {
-        return Ok(by_file);
+    if group_ids.is_empty() {
+        return Ok(by_group);
     }
-    let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let params: Vec<&dyn rusqlite::ToSql> =
-        file_ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    let placeholders = group_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let params: Vec<&dyn rusqlite::ToSql> = group_ids
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
     let rows = query_maps(
         conn,
         &format!(
-            "\n    SELECT l.fileId, l.relativePath, l.mountPointId, m.name AS mountName\n    FROM doc_mount_file_links l\n    JOIN doc_mount_points m ON m.id = l.mountPointId\n    WHERE l.fileId IN ({placeholders})\n    ORDER BY m.name COLLATE NOCASE, l.relativePath COLLATE NOCASE\n  "
+            "\n    SELECT l.linkGroupId, l.relativePath, l.mountPointId, m.name AS mountName\n    FROM doc_mount_file_links l\n    JOIN doc_mount_points m ON m.id = l.mountPointId\n    WHERE l.linkGroupId IN ({placeholders})\n    ORDER BY m.name COLLATE NOCASE, l.relativePath COLLATE NOCASE\n  "
         ),
         &params,
     )?;
     for r in rows {
-        let file_id = s(&r, "fileId").to_string();
+        let group_id = s(&r, "linkGroupId").to_string();
         let mut link = Map::new();
         link.insert(
             "mountPointId".into(),
@@ -900,9 +946,9 @@ fn fetch_links_for_files(
             "relativePath".into(),
             r.get("relativePath").cloned().unwrap_or(Value::Null),
         );
-        by_file.entry(file_id).or_default().push(link);
+        by_group.entry(group_id).or_default().push(link);
     }
-    Ok(by_file)
+    Ok(by_group)
 }
 
 /// v4 `sortLsFiles` — stable sorts; `name` uses `localeCompare(...,
@@ -972,11 +1018,12 @@ fn handle_ls(
         std::collections::BTreeMap::new();
 
     if flags.recursive {
+        let cols = ls_file_columns(&db.conn);
         let all_files = if normalized_path.is_empty() {
             query_maps(
                 &db.conn,
                 &format!(
-                    "\n            SELECT {LS_FILE_COLUMNS}\n            FROM doc_mount_file_links l\n            JOIN doc_mount_files f ON f.id = l.fileId\n            WHERE l.mountPointId = ?\n            ORDER BY l.relativePath\n          "
+                    "\n            SELECT {cols}\n            FROM doc_mount_file_links l\n            JOIN doc_mount_files f ON f.id = l.fileId\n            WHERE l.mountPointId = ?\n            ORDER BY l.relativePath\n          "
                 ),
                 &[&mount_id],
             )?
@@ -986,7 +1033,7 @@ fn handle_ls(
             query_maps(
                 &db.conn,
                 &format!(
-                    "\n            SELECT {LS_FILE_COLUMNS}\n            FROM doc_mount_file_links l\n            JOIN doc_mount_files f ON f.id = l.fileId\n            WHERE l.mountPointId = ? AND l.relativePath LIKE ?\n            ORDER BY l.relativePath\n          "
+                    "\n            SELECT {cols}\n            FROM doc_mount_file_links l\n            JOIN doc_mount_files f ON f.id = l.fileId\n            WHERE l.mountPointId = ? AND l.relativePath LIKE ?\n            ORDER BY l.relativePath\n          "
                 ),
                 &[&mount_id, &like],
             )?
@@ -1037,16 +1084,16 @@ fn handle_ls(
     files = sort_ls_files(files, &flags.sort, flags.reverse);
 
     let want_links = flags.json || flags.links;
-    let multi_link_file_ids: Vec<String> = if want_links {
+    let linked_group_ids: Vec<String> = if want_links {
         files
             .iter()
-            .filter(|f| n(f, "linkCount") > 1.0)
-            .map(|f| s(f, "fileId").to_string())
+            .filter(|f| n(f, "linkCount") > 1.0 && !s(f, "linkGroupId").is_empty())
+            .map(|f| s(f, "linkGroupId").to_string())
             .collect()
     } else {
         Vec::new()
     };
-    let links_by_file = fetch_links_for_files(&db.conn, &multi_link_file_ids)?;
+    let links_by_group = fetch_link_group_members(&db.conn, &linked_group_ids)?;
 
     // JSON output
     if flags.json {
@@ -1085,8 +1132,12 @@ fn handle_ls(
             }
         }
         for file in &files {
-            let file_id = s(file, "fileId");
-            let others = links_by_file.get(file_id);
+            let group_id = s(file, "linkGroupId");
+            let others = if group_id.is_empty() {
+                None
+            } else {
+                links_by_group.get(group_id)
+            };
             let links: Vec<Value> = match others.filter(|o| !o.is_empty()) {
                 Some(o) => o.iter().cloned().map(Value::Object).collect(),
                 None => {
@@ -1238,7 +1289,9 @@ fn handle_ls(
         text: String,
         emb: String,
         name: String,
-        file_id: String,
+        /// v4 `40319484`: the `--links` sibling expansion keys on the deliberate
+        /// hard-link GROUP, not on a shared (content-addressed) `fileId`.
+        link_group_id: String,
         relative_path: String,
     }
     let header = LsRow {
@@ -1249,7 +1302,7 @@ fn handle_ls(
         text: "text".to_string(),
         emb: "emb".to_string(),
         name: "name".to_string(),
-        file_id: String::new(),
+        link_group_id: String::new(),
         relative_path: String::new(),
     };
     let mut data_rows: Vec<LsRow> = Vec::new();
@@ -1267,7 +1320,7 @@ fn handle_ls(
             text: "-".to_string(),
             emb: "-".to_string(),
             name: format!("{}/", s(folder, "name")),
-            file_id: String::new(),
+            link_group_id: String::new(),
             relative_path: String::new(),
         });
     }
@@ -1285,7 +1338,7 @@ fn handle_ls(
             } else {
                 s(file, "fileName").to_string()
             },
-            file_id: s(file, "fileId").to_string(),
+            link_group_id: s(file, "linkGroupId").to_string(),
             relative_path: s(file, "relativePath").to_string(),
         });
     }
@@ -1335,14 +1388,17 @@ fn handle_ls(
         out::log(&render_line(r, false));
         if flags.links && r.r#type == "-" {
             let empty = Vec::new();
-            let others: Vec<&Map<String, Value>> = links_by_file
-                .get(&r.file_id)
-                .unwrap_or(&empty)
-                .iter()
-                .filter(|l| {
-                    !(s(l, "mountPointId") == mount_id && s(l, "relativePath") == r.relative_path)
-                })
-                .collect();
+            let others: Vec<&Map<String, Value>> = (if r.link_group_id.is_empty() {
+                None
+            } else {
+                links_by_group.get(&r.link_group_id)
+            })
+            .unwrap_or(&empty)
+            .iter()
+            .filter(|l| {
+                !(s(l, "mountPointId") == mount_id && s(l, "relativePath") == r.relative_path)
+            })
+            .collect();
             if !others.is_empty() {
                 let indent_width = w_type + w_links + w_size + w_modified + w_text + w_emb + 6 * 2;
                 let indent = " ".repeat(indent_width);

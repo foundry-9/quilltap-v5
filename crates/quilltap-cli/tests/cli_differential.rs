@@ -559,8 +559,8 @@ fn build_master(master: &Path, live: &Path) {
 
         let mut l = c
             .prepare(
-                "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, folderId, description, conversionStatus, extractedText, extractedTextSha256, extractionStatus, chunkCount, lastModified, createdAt, updatedAt)
-                 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, folderId, description, conversionStatus, extractedText, extractedTextSha256, extractionStatus, chunkCount, lastModified, createdAt, updatedAt, linkGroupId)
+                 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .unwrap();
         // notes/today.md — no chunks.
@@ -578,7 +578,8 @@ fn build_master(master: &Path, live: &Path) {
             0i64,
             TS,
             TS,
-            TS
+            TS,
+            rusqlite::types::Null
         ])
         .unwrap();
         // notes/Knowledge/facts.md — 2 chunks, 1 embedded ('~').
@@ -596,7 +597,8 @@ fn build_master(master: &Path, live: &Path) {
             2i64,
             TS2,
             TS,
-            TS
+            TS,
+            rusqlite::types::Null
         ])
         .unwrap();
         // notes/pic.png — binary with extracted text ('T').
@@ -614,10 +616,12 @@ fn build_master(master: &Path, live: &Path) {
             0i64,
             TS,
             TS,
-            TS
+            TS,
+            rusqlite::types::Null
         ])
         .unwrap();
-        // notes/shared.md + archive/shared-too.md — the hard link pair ('Y').
+        // notes/shared.md + archive/shared-too.md — a DELIBERATE hard link
+        // (`linkGroupId` LG1). Both report links=2 and expand under `--links`.
         l.execute(rusqlite::params![
             "L4",
             "F4",
@@ -632,7 +636,8 @@ fn build_master(master: &Path, live: &Path) {
             1i64,
             TS,
             TS,
-            TS
+            TS,
+            "LG1"
         ])
         .unwrap();
         l.execute(rusqlite::params![
@@ -649,7 +654,29 @@ fn build_master(master: &Path, live: &Path) {
             0i64,
             TS,
             TS,
-            TS
+            TS,
+            "LG1"
+        ])
+        .unwrap();
+        // [40319484] notes/coincidence.md shares F4's content row by sha dedup
+        // and NOTHING else — the case that used to report "2 links". It must now
+        // report 1 and expand to nothing, while L4/L5 still report 2.
+        l.execute(rusqlite::params![
+            "L7",
+            "F4",
+            N1,
+            "coincidence.md",
+            "coincidence.md",
+            rusqlite::types::Null,
+            "converted",
+            rusqlite::types::Null,
+            rusqlite::types::Null,
+            "none",
+            0i64,
+            TS,
+            TS,
+            TS,
+            rusqlite::types::Null
         ])
         .unwrap();
         // attic/attic-note.md — filesystem-backed.
@@ -667,7 +694,8 @@ fn build_master(master: &Path, live: &Path) {
             0i64,
             TS,
             TS,
-            TS
+            TS,
+            rusqlite::types::Null
         ])
         .unwrap();
 
@@ -847,8 +875,14 @@ CREATE TABLE IF NOT EXISTS "doc_mount_file_links" (
   "allowCharacterWrite" INTEGER NOT NULL DEFAULT 1,
   "lastModified" TEXT NOT NULL,
   "createdAt" TEXT NOT NULL,
-  "updatedAt" TEXT NOT NULL
+  "updatedAt" TEXT NOT NULL,
+  -- v4 `40319484`: deliberate hard-link groups. APPENDED, which is the shape a
+  -- real instance gets it in (from the migration / ensureLinkGroupColumn); the
+  -- generateDDL position is separately pinned by fresh_schema.json.
+  "linkGroupId" TEXT DEFAULT NULL
 );
+CREATE INDEX IF NOT EXISTS "idx_doc_mount_file_links_linkGroupId"
+  ON "doc_mount_file_links" ("linkGroupId") WHERE "linkGroupId" IS NOT NULL;
 CREATE TABLE IF NOT EXISTS "doc_mount_documents" (
   "id" TEXT PRIMARY KEY,
   "fileId" TEXT NOT NULL REFERENCES "doc_mount_files"("id") ON DELETE CASCADE,
@@ -1567,6 +1601,28 @@ fn cli_differential() {
     ctx.case_with("docs unknown verb", &dd(&["frob"]), CaseOpts::default());
     ctx.case_with("docs ls usage", &dd(&["ls"]), CaseOpts::default());
     ctx.case_with("docs no args", &["docs".to_string()], CaseOpts::default());
+
+    // [40319484] The un-migrated instance: `linkGroupId` absent. Both launchers
+    // must PROBE for it and degrade the links column to 1 rather than failing
+    // the whole listing with `no such column`.
+    let no_link_group_column_pre = |live: &Path| {
+        let path = live.join("instA/data/quilltap-mount-index.db");
+        let w = Writer::open_writable(&path, PEPPER).unwrap();
+        w.connection()
+            .execute_batch(
+                "DROP INDEX IF EXISTS \"idx_doc_mount_file_links_linkGroupId\";\
+                 ALTER TABLE \"doc_mount_file_links\" DROP COLUMN \"linkGroupId\";",
+            )
+            .unwrap();
+    };
+    ctx.case_with(
+        "docs ls links un-migrated",
+        &dd(&["ls", "notes", "--links"]),
+        CaseOpts {
+            pre: Some(Box::new(no_link_group_column_pre)),
+            ..Default::default()
+        },
+    );
 
     // The pre-link-table schema refusal (drop the table via surgery).
     let old_schema_pre = |live: &Path| {
