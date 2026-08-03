@@ -51157,3 +51157,15 @@ full Playwright **172 passed / 0 failed / 0 skipped**, including
 Versions: core **0.0.448**, harness **0.0.384**, SPA **0.5.382**; host, web, cli
 and tauri unchanged (the `PumpPause` wire is core-side; `job_pump.rs` itself was
 not edited).
+
+**Drift check, lane start and lane end (P4.28).** At lane start v4 HEAD was the
+round baseline `40319484`, with an in-flight custom-tool-presets feature dirty
+in the working tree. **By lane end that feature had LANDED: v4 HEAD is
+`c988fbd2` ("feat(pascal): run presets for custom tools"), one commit past the
+round baseline** — `lib/pascal/tool-presets.ts` (new), `lib/pascal/
+custom-tool.types.ts`, `app/api/v1/chats/[id]/custom-tools/route.ts`,
+`lib/query/keys.ts`. It lands on the PORTED Pascal custom-tools surface, so a
+drift catch-up is owed — but it is **not this lane's**: P4.28 pinned its v4
+worktree at `c4d4b0de` for every oracle and archive, nothing in its scope is
+drift-driven, and no family it regenerated imports those files. Recorded for the
+round's planner.
