@@ -576,6 +576,63 @@ pub(crate) fn tolerant_select_list(
         .join(", "))
 }
 
+/// The write-side twin of [`tolerant_select_list`], for the same reason and the
+/// same instances: build an INSERT that DROPS columns the live table lacks,
+/// carrying each column's bound value with it so the positional parameters stay
+/// aligned.
+///
+/// The read side got this treatment when `chat_settings.timezone` first turned
+/// up missing on a real instance; the write side did not, and the gap bit on
+/// the third dogfood sighting of the class. A full INSERT is rare in normal
+/// operation — settings are saved through UPDATE builders that name only the
+/// patched columns — so the intolerance stayed invisible until a restore, and
+/// then until `chat_settings_get` tried to create a default row and returned a
+/// 500 on EVERY page load with no way out through the UI.
+///
+/// Dropping the column is the correct repair rather than a lenient one: v4
+/// writes these rows through Zod objects whose absent keys simply are not in
+/// the INSERT either, so a column that does not exist takes its default (or
+/// NULL) on both sides. This is NOT a schema change — v5 still never issues
+/// DDL of its own (D23); it writes what the table in front of it can hold.
+pub(crate) fn tolerant_insert(
+    conn: &rusqlite::Connection,
+    table: &str,
+    cols: &[(&str, &dyn rusqlite::ToSql)],
+) -> Result<usize, rusqlite::Error> {
+    let present = present_columns(conn, table)?;
+    let kept: Vec<&(&str, &dyn rusqlite::ToSql)> =
+        cols.iter().filter(|(c, _)| present.contains(*c)).collect();
+
+    let names = kept
+        .iter()
+        .map(|(c, _)| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let placeholders = (1..=kept.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("INSERT INTO \"{table}\" ({names}) VALUES ({placeholders})");
+    conn.execute(
+        &sql,
+        rusqlite::params_from_iter(kept.iter().map(|(_, v)| *v)),
+    )
+}
+
+/// The column names the live `table` actually has, per `PRAGMA table_info`.
+fn present_columns(
+    conn: &rusqlite::Connection,
+    table: &str,
+) -> Result<std::collections::HashSet<String>, rusqlite::Error> {
+    let mut present = std::collections::HashSet::new();
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        present.insert(r.get::<_, String>(1)?);
+    }
+    Ok(present)
+}
+
 pub(crate) fn js_number_to_json(f: f64) -> Value {
     if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
         Value::from(f as i64)
@@ -592,5 +649,65 @@ fn order_key(row: &Map<String, Value>, col: &str) -> String {
         Some(Value::String(s)) => s.clone(),
         Some(Value::Null) | None => String::new(),
         Some(v) => v.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tolerant_write_tests {
+    /// The write-side twin of the tolerant SELECT, proven on its own so both
+    /// call sites in `chat_settings` inherit the guarantee: a column the live
+    /// table lacks is DROPPED (with its bind) instead of erroring, and the
+    /// remaining parameters stay correctly aligned — the part a hand-rolled
+    /// filter gets wrong, since dropping a name without its value shifts every
+    /// later `?n`.
+    #[test]
+    fn tolerant_insert_drops_absent_columns_and_keeps_binds_aligned() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        // No `timezone` column — the migration-vintage shape.
+        conn.execute_batch("CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT, width INTEGER);")
+            .unwrap();
+
+        let id = "s1".to_string();
+        let name = "Charlie".to_string();
+        let width: i64 = 256;
+        let timezone = "America/Chicago".to_string();
+        // `timezone` sits in the MIDDLE, so a mis-aligned drop would land
+        // "America/Chicago" in `width` rather than simply losing a column.
+        super::tolerant_insert(
+            &conn,
+            "t",
+            &[
+                ("id", &id),
+                ("name", &name),
+                ("timezone", &timezone),
+                ("width", &width),
+            ],
+        )
+        .expect("the absent column is dropped, not fatal");
+
+        let (got_name, got_width): (String, i64) = conn
+            .query_row("SELECT name, width FROM t WHERE id = 's1'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(got_name, "Charlie");
+        assert_eq!(got_width, 256, "the bind after the dropped column");
+    }
+
+    /// When every column is present the statement is an ordinary full INSERT —
+    /// the tolerance must not quietly drop anything on a healthy instance.
+    #[test]
+    fn tolerant_insert_writes_every_column_when_the_table_has_them() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (id TEXT PRIMARY KEY, timezone TEXT);")
+            .unwrap();
+        let id = "s1".to_string();
+        let timezone = "America/Chicago".to_string();
+        super::tolerant_insert(&conn, "t", &[("id", &id), ("timezone", &timezone)]).unwrap();
+
+        let got: String = conn
+            .query_row("SELECT timezone FROM t WHERE id = 's1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(got, "America/Chicago");
     }
 }

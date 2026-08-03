@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Fixed a fault that could leave Quilltap unusable, showing an error on every
+screen with no way to recover from inside the app. Settings are stored in a
+table that, on a database carried forward from an older version, can be
+missing a column this version knows about. Reading such a table already
+coped; writing to it did not. Because Quilltap creates a settings row
+whenever it finds none — which is exactly the state a restore leaves behind
+if it could not put the old one back — the app would try that write on every
+page load and fail. Writes now leave out columns the database in front of
+them does not have, which is what the original does too. No database is
+altered in the process.
+
 Stopped the editor from destroying nested lists in documents written
 elsewhere. A list whose sub-items were indented a little less than the
 parent's text begins — common in hand-written and Obsidian markdown, and

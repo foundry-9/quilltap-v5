@@ -450,11 +450,21 @@ impl<'c> ChatSettingsRepository<'c> {
         Self { conn }
     }
 
-    /// Insert chat settings with the given pinned id + timestamps. All ~33
+    /// Insert chat settings with the given pinned id + timestamps. All ~35
     /// columns are written explicitly in schema order; the JSON-object columns
     /// bind compact JSON text (schema key order), the boolean columns bind
     /// `i64::from(bool)`, `sidebarWidth` binds `i64` (INTEGER affinity), the
     /// nullable columns bind `Option<String>` (`None` → SQL NULL).
+    ///
+    /// Goes through [`crate::db::tolerant_insert`], so a column the live table
+    /// LACKS is dropped from the statement rather than erroring. A real
+    /// migration-vintage instance can be missing `timezone` (the read side has
+    /// tolerated that since the second Friday dogfood finding); this write did
+    /// not, and the consequence was not confined to the rare full INSERT —
+    /// `chat_settings_get` creates a default row when none exists, so an
+    /// instance that lost its settings row answered EVERY page load with a 500
+    /// and could not be repaired from the UI (third dogfood sighting of the
+    /// class, 2026-08-03).
     pub fn create(&self, data: &ChatSettingsCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let tag_styles = to_json("tagStyles", &data.tag_styles)?;
         let cheap_llm_settings = to_json("cheapLLMSettings", &data.cheap_llm_settings)?;
@@ -488,57 +498,66 @@ impl<'c> ChatSettingsRepository<'c> {
             to_json("dangerousContentSettings", &data.dangerous_content_settings)?;
         let auto_lock_settings = to_json("autoLockSettings", &data.auto_lock_settings)?;
 
-        self.conn.execute(
-            "INSERT INTO chat_settings \
-               (id, userId, avatarDisplayMode, avatarDisplayStyle, tagStyles, cheapLLMSettings, \
-                imageDescriptionProfileId, uncensoredImageDescriptionProfileId, \
-                defaultRoleplayTemplateId, themePreference, sidebarWidth, defaultTimestampConfig, \
-                memoryCascadePreferences, autoHousekeepingSettings, memoryExtractionLimits, \
-                autonomousRoomSettings, tokenDisplaySettings, contextCompressionSettings, \
-                llmLoggingSettings, autoDetectRng, customTools, compositionModeDefault, \
-                composerSpellcheck, \
-                textReplacementsEnabled, autoScrollOnResponseComplete, agentModeSettings, \
-                coreWhisper, thinkingDisplay, storyBackgroundsSettings, dangerousContentSettings, \
-                autoLockSettings, timezone, createdAt, updatedAt, answerConfirmationSettings) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
-                     ?35)",
-            params![
-                opts.id,
-                data.user_id,
-                data.avatar_display_mode,
-                data.avatar_display_style,
-                tag_styles,
-                cheap_llm_settings,
-                data.image_description_profile_id,
-                data.uncensored_image_description_profile_id,
-                data.default_roleplay_template_id,
-                theme_preference,
-                data.sidebar_width,
-                default_timestamp_config,
-                memory_cascade_preferences,
-                auto_housekeeping_settings,
-                memory_extraction_limits,
-                autonomous_room_settings,
-                token_display_settings,
-                context_compression_settings,
-                llm_logging_settings,
-                i64::from(data.auto_detect_rng),
-                i64::from(data.custom_tools),
-                i64::from(data.composition_mode_default),
-                i64::from(data.composer_spellcheck),
-                i64::from(data.text_replacements_enabled),
-                i64::from(data.auto_scroll_on_response_complete),
-                agent_mode_settings,
-                core_whisper,
-                thinking_display,
-                story_backgrounds_settings,
-                dangerous_content_settings,
-                auto_lock_settings,
-                data.timezone,
-                opts.created_at,
-                opts.updated_at,
-                answer_confirmation_settings,
+        // Booleans bind as i64; bound to locals so the `&dyn ToSql` refs below
+        // outlive the call.
+        let auto_detect_rng = i64::from(data.auto_detect_rng);
+        let custom_tools = i64::from(data.custom_tools);
+        let composition_mode_default = i64::from(data.composition_mode_default);
+        let composer_spellcheck = i64::from(data.composer_spellcheck);
+        let text_replacements_enabled = i64::from(data.text_replacements_enabled);
+        let auto_scroll_on_response_complete = i64::from(data.auto_scroll_on_response_complete);
+
+        crate::db::tolerant_insert(
+            self.conn,
+            "chat_settings",
+            &[
+                ("id", &opts.id),
+                ("userId", &data.user_id),
+                ("avatarDisplayMode", &data.avatar_display_mode),
+                ("avatarDisplayStyle", &data.avatar_display_style),
+                ("tagStyles", &tag_styles),
+                ("cheapLLMSettings", &cheap_llm_settings),
+                (
+                    "imageDescriptionProfileId",
+                    &data.image_description_profile_id,
+                ),
+                (
+                    "uncensoredImageDescriptionProfileId",
+                    &data.uncensored_image_description_profile_id,
+                ),
+                (
+                    "defaultRoleplayTemplateId",
+                    &data.default_roleplay_template_id,
+                ),
+                ("themePreference", &theme_preference),
+                ("sidebarWidth", &data.sidebar_width),
+                ("defaultTimestampConfig", &default_timestamp_config),
+                ("memoryCascadePreferences", &memory_cascade_preferences),
+                ("autoHousekeepingSettings", &auto_housekeeping_settings),
+                ("memoryExtractionLimits", &memory_extraction_limits),
+                ("autonomousRoomSettings", &autonomous_room_settings),
+                ("tokenDisplaySettings", &token_display_settings),
+                ("contextCompressionSettings", &context_compression_settings),
+                ("llmLoggingSettings", &llm_logging_settings),
+                ("autoDetectRng", &auto_detect_rng),
+                ("customTools", &custom_tools),
+                ("compositionModeDefault", &composition_mode_default),
+                ("composerSpellcheck", &composer_spellcheck),
+                ("textReplacementsEnabled", &text_replacements_enabled),
+                (
+                    "autoScrollOnResponseComplete",
+                    &auto_scroll_on_response_complete,
+                ),
+                ("agentModeSettings", &agent_mode_settings),
+                ("coreWhisper", &core_whisper),
+                ("thinkingDisplay", &thinking_display),
+                ("storyBackgroundsSettings", &story_backgrounds_settings),
+                ("dangerousContentSettings", &dangerous_content_settings),
+                ("autoLockSettings", &auto_lock_settings),
+                ("timezone", &data.timezone),
+                ("createdAt", &opts.created_at),
+                ("updatedAt", &opts.updated_at),
+                ("answerConfirmationSettings", &answer_confirmation_settings),
             ],
         )?;
         Ok(())
@@ -1162,14 +1181,18 @@ pub fn update_for_user(
     col_names.push("updatedAt".to_string());
     binds.push(Box::new(now.to_string()));
 
-    let placeholders: Vec<String> = (1..=binds.len()).map(|i| format!("?{i}")).collect();
-    let sql = format!(
-        "INSERT INTO chat_settings ({}) VALUES ({})",
-        col_names.join(", "),
-        placeholders.join(", ")
-    );
-    let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
-    conn.execute(&sql, refs.as_slice())?;
+    // Drop any column the live table lacks (with its bind), rather than
+    // erroring. THIS is the statement a migration-vintage instance dies on:
+    // `chat_settings_get` creates a default row whenever none exists, so an
+    // instance missing `timezone` answered every page load with
+    // `no column named timezone` and could not be repaired from the UI. See
+    // `crate::db::tolerant_insert`.
+    let pairs: Vec<(&str, &dyn ToSql)> = col_names
+        .iter()
+        .map(String::as_str)
+        .zip(binds.iter().map(|b| b.as_ref()))
+        .collect();
+    crate::db::tolerant_insert(conn, "chat_settings", &pairs)?;
     Ok(true)
 }
 
@@ -1248,6 +1271,61 @@ mod tests {
         assert!(row.get("timezone").is_none());
         assert_eq!(row["avatarDisplayMode"], "ALWAYS");
         assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+    }
+
+    /// The THIRD Friday dogfood sighting of the missing-column class
+    /// (2026-08-03), and the one that bricked the app. The read side has
+    /// tolerated a missing `timezone` since the second; the WRITE side did not,
+    /// and `update_for_user`'s create branch is reached from
+    /// `chat_settings_get` whenever no settings row exists — which is exactly
+    /// the state a replace-mode restore leaves behind when its own settings
+    /// insert failed for the same reason. Result: every page load answered
+    /// `sqlite error: table chat_settings has no column named timezone`, with
+    /// no way to repair it from the UI.
+    ///
+    /// Drives the real broken gesture (create-on-read with NO assignments),
+    /// not the repository method in isolation.
+    #[test]
+    fn update_for_user_creates_a_row_on_a_table_lacking_timezone() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Migration-vintage: every seeded column EXCEPT `timezone`.
+        let seed: SeedRow = serde_json::from_str(CHAT_SETTINGS_SEED_JSON).unwrap();
+        // Types matter: `sidebarWidth` and the booleans read back as i64, so a
+        // blanket TEXT table would fail the RE-READ rather than the insert and
+        // hide what this test is for. Derive affinity from the seed's own JSON.
+        let cols = seed
+            .columns
+            .iter()
+            .filter(|c| c.as_str() != "timezone")
+            .map(|c| {
+                let ty = match seed.values.get(c) {
+                    Some(serde_json::Value::Number(_)) => "INTEGER",
+                    _ => "TEXT",
+                };
+                format!("\"{c}\" {ty}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        conn.execute_batch(&format!(
+            "CREATE TABLE chat_settings (id TEXT PRIMARY KEY, userId TEXT, {cols}, \
+             createdAt TEXT, updatedAt TEXT);"
+        ))
+        .unwrap();
+
+        let created =
+            update_for_user(&conn, "u1", &[], "2026-08-03T00:00:00.000Z").expect("create branch");
+        assert!(created, "no row existed, so this is the create branch");
+
+        // And the row is readable — the pair of tolerances has to compose, since
+        // the failing path is read -> create -> re-read.
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert!(row.get("timezone").is_none(), "absent column stays absent");
+        assert_eq!(row["userId"], "u1");
+
+        // A second call takes the UPDATE branch and must not re-create.
+        let created_again =
+            update_for_user(&conn, "u1", &[], "2026-08-03T00:00:01.000Z").expect("update branch");
+        assert!(!created_again, "the row now exists");
     }
 
     /// Unit 10's accepted consequence, pinned: v5 adopts `customTools` WITHOUT
