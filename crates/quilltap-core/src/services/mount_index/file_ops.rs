@@ -506,14 +506,24 @@ pub fn delete_at_dest(
 }
 
 /// v4 `hardLinkDbToDb` — a second link row sharing the source's fileId,
-/// preserving the source link's metadata.
+/// preserving the source link's metadata. Returns the dest link id it minted.
+///
+/// `bind_group` is what separates `link` from `copy` (v4 `40319484`). Both end
+/// up sharing a `fileId` — the store is content-addressed, so identical bytes
+/// always land on one row — but only a linked pair is enrolled in a hard-link
+/// group, and only a group survives a write: writing through a grouped link
+/// repoints every member, while writing through a merely-deduped copy forks it
+/// onto its own content row. Without that distinction a `copy` would inherit
+/// edits from its original, and two unrelated files with identical bytes would
+/// rewrite each other.
 fn hard_link_db_to_db(
     conn: &Connection,
     source_file_id: &str,
     source_link_id: &str,
     dest_mount_point_id: &str,
     dest_relative_path: &str,
-) -> Result<(), MountFileError> {
+    bind_group: bool,
+) -> Result<String, MountFileError> {
     let links = DocMountFileLinksRepository::new(conn);
     let source_link = links.find_by_id_with_content(source_link_id)?;
     let Some(source_link) = source_link else {
@@ -528,7 +538,7 @@ fn hard_link_db_to_db(
     } else {
         None
     };
-    insert_link_row(
+    let dest_link_id = insert_link_row(
         conn,
         source_file_id,
         &source_link.file_type,
@@ -542,8 +552,11 @@ fn hard_link_db_to_db(
         Some(&source_link.conversion_status),
         source_link.plain_text_length,
     )?;
+    if bind_group {
+        links.bind_link_group(source_link_id, &dest_link_id)?;
+    }
     // v4 emitDocumentWritten — the watcher deferral.
-    Ok(())
+    Ok(dest_link_id)
 }
 
 /// v4 `updateLinkLocation` — the db→db move (same fileId, new location).
@@ -643,6 +656,9 @@ pub fn copy_file(
             dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor)?;
             strategy = FileOpStrategy::ByteCopy;
         } else {
+            // No group: a copy is an independent file that merely starts out
+            // sharing a deduped content row. The first write to either side
+            // forks it (v4 `40319484`).
             hard_link_db_to_db(
                 conn,
                 &file_id,
@@ -652,6 +668,7 @@ pub fn copy_file(
                     .expect("link id with file id"),
                 &dest_mount.id,
                 &dest_rel,
+                false,
             )?;
             dest_sha = source_info.sha256.clone();
             strategy = FileOpStrategy::DbLink;
@@ -888,7 +905,7 @@ pub fn link_file(
                 FileOpErrorCode::SourceNotFound,
             )));
         };
-        hard_link_db_to_db(conn, file_id, link_id, &dest_mount.id, &dest_rel)?;
+        hard_link_db_to_db(conn, file_id, link_id, &dest_mount.id, &dest_rel, true)?;
         strategy = FileOpStrategy::DbLink;
     } else if source_is_fs && dest_is_fs {
         let source_abs = source_info.absolute_path.clone().expect("fs source abs");
@@ -914,6 +931,24 @@ pub fn link_file(
                 "processMountFile after fs link failed for {dest_rel} (mount {}): {e}",
                 dest_mount.id
             );
+        }
+        // The OS already shares the bytes through the inode, so no content
+        // fan-out is needed here — but the index doesn't know the two paths are
+        // the same file, and a write through one would leave the other's row
+        // (sha, size, chunks) stale. Record the group so the sibling gets
+        // re-indexed (v4 `40319484`). Warn, never fail: the link itself
+        // succeeded.
+        let links = DocMountFileLinksRepository::new(conn);
+        let dest_link = links.find_by_mount_point_and_path(&dest_mount.id, &dest_rel)?;
+        match (source_info.link_id.as_deref(), dest_link) {
+            (Some(source_link_id), Some(dest_link)) => {
+                links.bind_link_group(source_link_id, &dest_link.id)?;
+            }
+            _ => eprintln!(
+                "fs link created but could not be bound into a link group: \
+                 {}:{source_rel} → {}:{dest_rel}",
+                source_mount.id, dest_mount.id
+            ),
         }
         strategy = FileOpStrategy::FsLink;
     } else {

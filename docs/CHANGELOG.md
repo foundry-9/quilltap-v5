@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Linking a file into a second store and copying it there are now different
+things, as they read. A link makes one file with two paths: edit either and
+both change. A copy is its own file from the moment it is written, even though
+it shares storage with the original until then.
+
 A file hard-linked into a second document store now stays one file. Editing
 either side used to fork them apart silently: the write moved the edited
 location onto fresh contents while the other kept the old ones, so the second

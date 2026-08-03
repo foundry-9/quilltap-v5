@@ -50438,3 +50438,65 @@ QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
 QT_FIXTURE_DOC_MOUNT_FILE_LINKS=/tmp/qt-dmfl-fixture.db \
   npx tsx $MIRROR/oracle/cases/doc-mount-file-links-tier2.ts > /tmp/oracle-dmfl.ndjson
 ```
+
+---
+
+## Lane record — P4.D41 unit 4 (file-ops: `link` binds, `copy` does not)
+
+**Landed.** `hard_link_db_to_db` gains `bind_group: bool` and RETURNS the dest
+link id it minted; `copy_file`'s db-link branch passes `false`, `link_file`'s
+db→db branch passes `true`, and `link_file`'s fs→fs branch looks the dest link
+up after the OS `hard_link` + `process_mount_file` and calls `bind_link_group`,
+warning (never failing) when either id is missing — the link itself already
+succeeded.
+
+The distinction is the single user-visible thing the drift is about: both a copy
+and a link end up sharing the source's content row (the store is
+content-addressed, so identical bytes always land on one row), and they are
+indistinguishable until something is written. Then the group forks them apart in
+opposite directions — a write through a grouped link repoints every member,
+while a write through a merely-deduped copy moves only itself.
+
+### New differential — `mount_link_groups_equivalence`
+
+**This surface had NO oracle coverage at all before this family.** The order's
+survey said so and it held: nothing drove v4's real `linkFile`. New oracle case
+`harness/oracle/cases/mount-link-groups.ts` drives v4's REAL `copyFile` /
+`linkFile` / `writeDatabaseDocument` over a fresh copy of the shared
+doc-mount-file-links fixture, in BOTH storage shapes:
+
+- **DB → DB** — copy, link, link a third location, then write through a
+  NON-anchor member. Asserts one group across all three, all three on one
+  content row, and the copy left behind on the ORIGINAL content row.
+- **FS → FS** — two filesystem mounts minted on a scratch directory (pinned
+  ids), the source indexed through v4's real `processMountFile` first, then
+  `linkFile`. Indexing the source matters: an unindexed filesystem source has no
+  link id to bind, which is the arm v4 only warns about, so without it the leg
+  would pass while proving nothing.
+
+Group ids and content-row ids are minted internally, so both dumps replace them
+with **first-seen labels in dump order** — what is asserted is the RELATIONSHIP
+(who shares a group, who shares content), never a value. Mount ids are pinned;
+the scratch base paths are per-run and never appear in the dump.
+
+**First-run green**, so mutation-proofed per the D24 rule — three ways, each
+caught:
+
+| mutation | caught |
+| --- | --- |
+| `copy_file` passes `bind_group: true` (copies inherit edits) | yes |
+| `link_file`'s db→db passes `false` (links drift apart) | yes |
+| the fs→fs `bind_link_group` call removed | yes |
+
+**Gate:** fmt, clippy both feature sets, `cargo test --workspace --no-fail-fast`
+green; both this family and the extended `doc_mount_file_links_tier2` re-run by
+name over fresh `40319484` oracles.
+
+Regen recipe (v4 clean at `40319484`, Node 24, from `~/source/quilltap-server`,
+`MIRROR=~/source/quilltap-server/.qt-oracle-mirror`):
+
+```
+QT_FIXTURE_MOUNT_LINK_GROUPS=/tmp/qt-dmfl-fixture.db \
+  node --import tsx $MIRROR/oracle/cases/mount-link-groups.ts \
+  > /tmp/oracle-mount-link-groups.ndjson
+```
