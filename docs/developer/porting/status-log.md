@@ -51400,3 +51400,49 @@ documents as full-suite-only `toBeVisible` timeouts under machine contention,
 a different subset each run, and all 8 of that file's tests pass in isolation
 here too. Not this lane's: it changes no code that file exercises, and it
 sorts AFTER it ('salon-d' < 'salon-r'), so it cannot even reach it.
+
+## Lane record — P4.30 close-out (deferrals + the gate)
+
+**Tier 1: all five items landed.** The fetch with v4's exact reset semantics
+re-firing on `roleplayTemplateId` change (1); threading into every rendered
+row across both list paths plus the streaming bubble, reasoning blocks and
+expanded announcements (2); the render-cache story — no change needed, and now
+PROVEN rather than asserted in a comment (3); the differential, 40 → 51 vectors
+captured from v4's REAL renderer with the existing 40 byte-identical (4); and
+v4's fallback logic ported case-for-case (5).
+
+**Tier 2: both items disposed.** The e2e beat landed (unit 4). The
+`roleplayTemplateName` display was surveyed as the order asked and there is
+NOTHING TO PORT: v4 sets it and reads it nowhere — its declaration
+(`SalonView.tsx:140`) and its four setters are its only occurrences in the
+whole checkout. Recorded, not built.
+
+**Tier 3 deferrals (loud, named, and named in the code too — see the doc
+comment on `roleplayRenderingPatterns` in `salon-conversation.ts`):**
+
+- **`narrationDelimiters` → the composer formatting toolbar (`p4.9l`).** v4
+  threads it `ChatComposer.tsx:327` → `FormattingToolbar.tsx:382-407`. v5 has
+  no FormattingToolbar at all, so the value has no consumer to reach; it is
+  NOT fetched-and-stored, because state nothing reads is a stub. It joins the
+  fetch the day `p4.9l` lands — one line in the same effect.
+- **Announcement-specific rendering residue** stays with P4.26, as the order
+  directs. What this lane DID take from that surface is the app-wide leg only:
+  the expanded announcement body now receives the same pattern pair every other
+  message body does, because in v4 that body IS an ordinary `MessageRow`.
+
+**The gate.** `cargo fmt --all --check` clean, and **zero Rust changed** —
+`git diff --name-only <base>..HEAD` matches no `.rs` or `Cargo.*` path, so no
+clippy/`cargo test` run was owed (the order says so explicitly). `ng test` 268
+files / **3,701 tests / 0 failed**; `ng build` clean; full Playwright **173
+passed / 0 failed / 0 skips** on a clean run, with the new beat live.
+
+Three further full Playwright runs each failed a DIFFERENT 1–3 test subset —
+`salon-dialogs-flow:83/:325/:393`, `wardrobe-flow:253`, `workbench-flow:349` —
+every one of them a file:line already documented in this log as a full-suite-
+only `toBeVisible` timeout under machine contention, and all 20 of those tests
+pass when the three files are re-run together in isolation. None is reachable
+from anything this lane changed, and the pattern (a different set each run,
+never the same test twice) is the documented signature of contention rather
+than a regression.
+
+**Version:** SPA 0.5.383. No crate touched.

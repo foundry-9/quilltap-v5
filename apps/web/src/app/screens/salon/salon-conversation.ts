@@ -975,6 +975,17 @@ export class SalonConversation {
    * v4's reset arms land — no template id, a non-ok response, or a throw. That
    * is what makes a chat pointing at a DELETED template fall back to the
    * defaults instead of failing.
+   *
+   * Two of v4's four fetched values are DELIBERATELY not kept here:
+   *
+   * - `narrationDelimiters` feeds v4's `FormattingToolbar` (`ChatComposer.tsx
+   *   :327` → `FormattingToolbar.tsx:382-407`). v5 has no composer formatting
+   *   toolbar at all — the standing `p4.9l` deferral — so the value has no
+   *   consumer to reach. It joins this fetch the day that lane lands; keeping
+   *   it now would be state nothing reads.
+   * - `roleplayTemplateName` is set by v4 (`SalonView.tsx:140`) and READ
+   *   NOWHERE — its declaration and its four setters are its only occurrences
+   *   in the whole v4 checkout. Mirroring dead state would be a stub.
    */
   private readonly roleplayRenderingPatterns = signal<RenderingPattern[] | undefined>(undefined);
   private readonly roleplayDialogueDetection = signal<DialogueDetection | null | undefined>(
