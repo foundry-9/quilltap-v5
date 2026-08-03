@@ -28,6 +28,13 @@
  *                                 chunk (the delete sweep of doc_mount_chunks).
  *   - `system-data-llmlogs.db`  — the llm-logs PARTITION carrying a small corpus.
  *
+ * P4.28 (dogfood #57) widened `conversation_annotations` from one row to THREE:
+ * one per chat plus one whose `chatId` matches no chat. Deleting all data must
+ * take all three; a chat-scoped cascade would leave the orphan, so the third row
+ * is what makes `system_delete_data_equivalence`'s wipe arm discriminating
+ * rather than merely non-zero. Widening the family obliges re-running all six
+ * `system_*` differentials — see the finish-P4.9G1 precedent.
+ *
  * The `background_jobs` rows pin `scheduledAt` in the past (2020) and give every
  * row a DISTINCT `scheduledAt`/`createdAt` so the tasks-queue sort (priority
  * DESC, scheduledAt ASC) and the newest-first `findByUserId` are deterministic
@@ -103,6 +110,15 @@ const PROMPT_TEMPLATE_1 = 'b2000000-0000-4000-8000-000000000001';
 const PLUGIN_CONFIG_1 = 'b3000000-0000-4000-8000-000000000001';
 const CHAR_PLUGIN_DATA_1 = 'b4000000-0000-4000-8000-000000000001';
 const ANNOTATION_1 = 'b5000000-0000-4000-8000-000000000001';
+// P4.28 (dogfood #57) — two more annotation rows, so the wipe arm in
+// `system_delete_data_equivalence` can tell a TABLE-WIDE truncate from a
+// chat-scoped cascade. `ANNOTATION_2` hangs off the second chat;
+// `ANNOTATION_ORPHAN`'s `chatId` matches no chat at all, which is the state v4
+// leaves behind every time a chat is deleted on the modern DDL (no FK, no
+// cascade). A cascade-shaped wipe would leave the orphan; a truncate takes it.
+const ANNOTATION_2 = 'b5000000-0000-4000-8000-000000000002';
+const ANNOTATION_ORPHAN = 'b5000000-0000-4000-8000-000000000003';
+const ORPHANED_CHAT_ID = 'c1000000-0000-4000-8000-0000000000ff';
 const CHAT_DOCUMENT_1 = 'b7000000-0000-4000-8000-000000000001';
 const CONV_CHUNK_1 = 'b8000000-0000-4000-8000-000000000001';
 const TFIDF_VOCAB_1 = 'b9000000-0000-4000-8000-000000000001';
@@ -646,6 +662,26 @@ async function main(): Promise<void> {
       content: 'A note in the margin.',
     } as never,
     { id: ANNOTATION_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.conversationAnnotations.create(
+    {
+      chatId: CHAT_2,
+      messageIndex: 0,
+      sourceMessageId: null,
+      characterName: 'Riya',
+      content: 'A second note, on the second chat.',
+    } as never,
+    { id: ANNOTATION_2, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.conversationAnnotations.create(
+    {
+      chatId: ORPHANED_CHAT_ID,
+      messageIndex: 4,
+      sourceMessageId: null,
+      characterName: 'Lorian',
+      content: 'An annotation whose chat is already gone.',
+    } as never,
+    { id: ANNOTATION_ORPHAN, createdAt: TS, updatedAt: TS } as never,
   );
   await repos.chatDocuments.create(
     {

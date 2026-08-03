@@ -5,7 +5,7 @@
 //! [`delete_user_data`] is the seam restore's `replace` mode consumes (P4.9G5);
 //! its signature is pinned by the round's Shared contract §2.
 //!
-//! ## The three deliberate, named divergences
+//! ## The four deliberate, named divergences
 //!
 //! 1. **Id collection is slim, not overlaid.** v4 gathers its delete lists with
 //!    the overlaid finders (`characters.findByUserId`, `projects.findAll`,
@@ -34,6 +34,10 @@
 //!    [`crate::db::vault_wardrobe_public::delete_vault_wardrobe_item`]; it is NOT
 //!    exercised by the corpus (flagged, like `cascade_delete`'s legacy-file
 //!    branch).
+//! 4. **`conversation_annotations` is wiped.** v4 never deletes the table on any
+//!    path, so a replace-mode restore collides with the survivors. v5 truncates
+//!    it — see [`V5_EXTRA_MAIN_TABLES`] for the full reasoning, the vintage
+//!    evidence and the ruling it is made under (dogfood finding #57).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -170,6 +174,43 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
     "text_replacement_rules",
 ];
 
+/// ## ⚠ DELIBERATE DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes what v4 leaks
+///
+/// `conversation_annotations` appears in **no** v4 delete path. It is not in
+/// `clearFormat3Entities`' main list, `deleteUserData` never collects it, and
+/// `chats.repository.delete()` sweeps only the message rows — so on v4 the table
+/// survives "delete all my data" and survives a `replace`-mode restore's wipe.
+///
+/// That is not merely untidy. The table is chat-scoped and the backup collects
+/// it per chat, so a replace-mode restore re-inserts every archived annotation
+/// on top of the survivors. On a **migration-vintage** instance the migrated DDL
+/// carries `UNIQUE("chatId","messageIndex","characterName")` (v4
+/// `migrations/scripts/sqlite-initial-schema.ts:188`, repeated in
+/// `create-conversation-tables.ts:68`) which `generateDDL` does NOT emit — so the
+/// re-insert collides and the restore reports
+/// `UNIQUE constraint failed: conversation_annotations.chatId, messageIndex,
+/// characterName` once per archived annotation. That is exactly what the
+/// 2026-08-03 Part F walk saw, eight times.
+///
+/// Whether v4 *sometimes* gets away with it is a vintage accident too: the
+/// oldest DDL (`sqlite-initial-schema.ts:189`) also declares
+/// `FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE`, so on
+/// that vintage the per-chat deletes cascade the annotations away; the later
+/// `create-conversation-tables.ts` DDL and `generateDDL` both omit the FK, and
+/// there the rows simply persist.
+///
+/// Under the **standing ruling of 2026-08-03** (backup/restore/import/export:
+/// v5 FIXES v4's bugs rather than reproducing them) v5 truncates the table here.
+/// The divergence is pinned in both directions by
+/// `system_delete_data_equivalence`; the v4-side repair is queued on the
+/// post-5.0 v4-first list in `dogfood-findings.md`.
+///
+/// Kept as its own list rather than folded into [`FORMAT3_MAIN_TABLES`] so the
+/// v4 list stays a verbatim transcription and the addition is visible as an
+/// addition. Statement order among these truncates carries no meaning — they are
+/// independent `DELETE`s with no foreign keys between them.
+const V5_EXTRA_MAIN_TABLES: &[&str] = &["conversation_annotations"];
+
 /// v4's mount-index truncate list (:62).
 const FORMAT3_MOUNT_TABLES: &[&str] = &[
     "doc_mount_chunks",
@@ -192,7 +233,7 @@ const FORMAT3_MOUNT_TABLES: &[&str] = &[
 /// migrations write keys that are not part of a backup, and restore upserts the
 /// backup's rows by key.
 pub fn clear_format3_entities(main: &Connection, mount: Option<&Connection>) {
-    for table in FORMAT3_MAIN_TABLES {
+    for table in FORMAT3_MAIN_TABLES.iter().chain(V5_EXTRA_MAIN_TABLES) {
         let _ = main.execute(&format!("DELETE FROM \"{table}\""), []);
     }
     // v4: `isMountIndexDegraded()` / a null handle → skip the sibling sweep.

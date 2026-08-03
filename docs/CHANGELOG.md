@@ -41,6 +41,12 @@ forward from an older version gains it on startup. Startup also clears out
 stored file contents that nothing points at any more — every edit to a
 document in a store leaves its previous contents behind, and until now they
 were never collected, so a long-lived instance accumulated dozens of them.
+Deleting all your data, and restoring a backup over the top of an
+existing library, now also clear the notes characters leave on individual
+messages. That table was never cleared, so the old notes stayed behind and a
+restore could fail trying to put the backed-up ones back — on databases carried
+forward from older versions, once per note. The original leaves the same rows
+behind; this version does not.
 
 Planned the next porting round (documentation only): four parallel work
 orders. The reference app moved one commit — making hard links between

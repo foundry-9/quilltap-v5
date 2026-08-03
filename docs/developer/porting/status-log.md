@@ -50728,3 +50728,103 @@ re-run BY NAME over fresh `40319484` oracles, zero SKIP; the CLI Tier R
 differential 136/136; `provisioning_equivalence` + `builtin_mounts_equivalence`
 green. **No `apps/web` change anywhere in this lane — no ng/Playwright run
 owed.**
+### Lane record — P4.28 unit 1 (dogfood #57: `conversation_annotations` is never wiped)
+
+**Landed.** `conversation_annotations` now goes with the wipe. The table joins
+`services::delete_all`'s new `V5_EXTRA_MAIN_TABLES`, chained onto
+`FORMAT3_MAIN_TABLES` inside `clear_format3_entities` — a separate list so v4's
+array stays a verbatim transcription and the addition reads as an addition.
+
+**v4's verdict, established at the `c4d4b0de` pin:** v4 deletes this table on
+**no path at all**. It is absent from `clearFormat3Entities`' `mainTables`
+(`lib/backup/restore/delete-service.ts:34`), `deleteUserData` never collects it,
+and `chats.repository.delete()` sweeps only the message rows. So the leak is
+v4's, and under the standing 2026-08-03 ruling (backup/restore/import/export:
+v5 FIXES v4's bugs) v5 diverges deliberately rather than reproducing it. The
+v4-side one-liner is queued on the post-5.0 list in `dogfood-findings.md`.
+
+**Two corrections to the order's premises, both worth carrying.**
+
+1. **The differential was not blind for the stated reason.** The order says the
+   fixture "has no annotation rows — 0-vs-0 passes". It always had ONE row
+   (`build-system-data-fixture.ts` has seeded `ANNOTATION_1` since P4.9G5); the
+   two sides agreed at 1-vs-1 because *neither* wiped. Adding the wipe would
+   therefore have shown up without touching the fixture at all.
+2. **The UNIQUE constraint the walk tripped is a VINTAGE artifact, and that is
+   the more important finding.** `generateDDL` emits the table with no
+   constraints beyond the primary key. Both migration DDLs declare
+   `UNIQUE("chatId","messageIndex","characterName")`
+   (`migrations/scripts/sqlite-initial-schema.ts:188` and
+   `create-conversation-tables.ts:68`), and the older of the two additionally
+   declares `FOREIGN KEY("chatId") REFERENCES "chats"("id") ON DELETE CASCADE`.
+   So whether v4 "gets away with" never wiping depends on which vintage the
+   instance carries — and a freshly provisioned instance can never reproduce the
+   walk's failure, which is precisely why every differential in the repo was
+   silent about it. (This is the same shape as finding #56 and the reason the
+   lane's migration-vintage fixture exists.)
+
+**The fixture was widened anyway, for a different reason than the order gave.**
+One annotation row cannot distinguish a table-wide truncate from a chat-scoped
+cascade — under "delete all my data" every chat goes, so both shapes reach 0.
+`build-system-data-fixture.ts` now seeds THREE: `ANNOTATION_1` on chat 1,
+`ANNOTATION_2` on chat 2, and `ANNOTATION_ORPHAN` whose `chatId` matches no chat
+at all. The orphan is the discriminating row, and it is not hypothetical — it is
+exactly the residue v4 leaves behind every time a chat is deleted on the modern
+DDL. It is also invisible to backup (collection is per existing chat), so the
+export/backup/import oracles carry `ANNOTATION_2` but not `ANNOTATION_ORPHAN`;
+that asymmetry is expected and was used as the freshness check.
+
+**The divergence pin.** `system_delete_data_equivalence` gained
+`ANNOTATION_DIVERGENCE_KEY` + `WIPING_CASES`. On the four cases that actually run
+the wipe, `main.conversation_annotations` is excluded from the equality
+comparison and asserted in BOTH directions instead: rust must be `0` **and** the
+oracle must be non-zero. If v4 ever lands the queued fix, the second assertion
+fails with a message telling the next lane to delete the entry rather than let
+the two sides agree silently. The other three cases (which write nothing) still
+compare that key for equality like any other.
+
+**Mutation proof (the D24 rule).** Emptying `V5_EXTRA_MAIN_TABLES` turns the
+four wiping cases red with
+`main.conversation_annotations: v5 must WIPE it (rust 3, expected 0)`, and the
+three non-wiping cases stay green — so the arm is sensitive to the fix and only
+to the fix.
+
+**Fixture + oracle churn.** Widening `system-data-{main,mount,llmlogs}.db`
+invalidates every family that reads it. That is **SEVEN**, not the six the order
+names — the order missed `system_import_state`:
+
+| family | oracle NDJSON | result |
+| --- | --- | --- |
+| `system_delete_data_equivalence` | `/tmp/oracle-system-delete-data.ndjson` | 7 cases OK |
+| `system_jobs_routes_equivalence` | `/tmp/oracle-system-jobs.ndjson` | OK |
+| `system_jobs_collection_equivalence` | `/tmp/oracle-system-jobs-collection.ndjson` | OK |
+| `system_export_equivalence` | `/tmp/oracle-system-export.ndjson` | 43 rows OK |
+| `system_backup_equivalence` | `/tmp/oracle-system-backup.ndjson` | archive bytes OK |
+| `system_import_equivalence` | `/tmp/oracle-system-import.ndjson` | OK |
+| `system_import_state` | `/tmp/oracle-system-import-execute.ndjson` | OK |
+
+All seven regenerated fresh from the pinned worktree
+`/private/tmp/qt-v4-pin-p4.28-c4d4b0de` and re-run by name with `--nocapture`,
+zero SKIP. Freshness was checked by grepping each NDJSON for the new rows
+(`"main.conversation_annotations":3` in the delete-data oracle — which also
+records v4 leaving all three standing after its own wipe — and `ANNOTATION_2`'s
+id in the export/backup/import oracles).
+
+**Regen recipes.** The fixture builder, then each family in its OWN clean jest
+invocation with an ANCHORED filter (`-- "<case>\.test\.ts$"`; an unanchored
+`system-import` also matches `system-import-execute` and the two share
+`QT_ORACLE_OUT`):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+PIN=/private/tmp/qt-v4-pin-p4.28-c4d4b0de     # git worktree add --detach, at c4d4b0de
+                                              # + node_modules symlinks (see the memory note)
+FX=$W/crates/quilltap-web/tests/fixtures
+# 1. the fixture (writes the three committed .db files in place)
+cd $PIN
+QT_FIXTURE_SD_MAIN=$FX/system-data-main.db QT_FIXTURE_SD_MOUNT=$FX/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$FX/system-data-llmlogs.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-system-data-fixture.ts
+rm -f $FX/*.db-journal            # the builder leaves stray empty journals
+# 2. each oracle, per its own case header, from $PIN rather than ~/source/quilltap-server
+```
