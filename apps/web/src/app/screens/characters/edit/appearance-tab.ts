@@ -4,6 +4,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterPhysicalDescription } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
+import { ToastService } from '../../../ui/toast.service';
 import { fetchCharacter, fetchDepictionGuidelines, characterKeys } from '../characters.api';
 
 /** The physical-description editable form (the fields New/Edit both send, v4-faithful). */
@@ -158,7 +159,17 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
             />
           </div>
 
-          <div class="flex justify-end">
+          <div class="flex justify-end gap-3">
+            @if (hasPhysicalDescription()) {
+              <button
+                type="button"
+                class="qt-button-secondary"
+                [disabled]="savingPhysical()"
+                (click)="clearPhysicalDescription()"
+              >
+                Clear
+              </button>
+            }
             <button
               type="button"
               class="qt-button-primary"
@@ -216,6 +227,7 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
 export class CharacterAppearanceTab {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
 
@@ -253,6 +265,12 @@ export class CharacterAppearanceTab {
     () => !this.characterQuery.data()?.characterDocumentMountPointId,
   );
 
+  /** v4 `DescriptionsTab.tsx:132-133`: the Clear button only shows once a
+   *  physical description already exists to remove. */
+  protected readonly hasPhysicalDescription = computed(
+    () => !!this.characterQuery.data()?.physicalDescription,
+  );
+
   // `enabled` is v4's load short-circuit (`AestheticEditorField.tsx:54-56` — the
   // effect returns before `fetch` when `disabledHint` is set). Its dep array
   // (`:76`) carries `disabledHint`, so the fetch fires once the character lands
@@ -279,6 +297,12 @@ export class CharacterAppearanceTab {
   }
 
   protected async savePhysicalDescription(): Promise<void> {
+    // v4 `DescriptionsTab.tsx:92-96` — the client-side name guard.
+    if (!this.physicalForm().name.trim()) {
+      this.toasts.showError('Name is required');
+      return;
+    }
+    const hadOne = this.hasPhysicalDescription();
     this.savingPhysical.set(true);
     this.physicalError.set(null);
     try {
@@ -290,10 +314,43 @@ export class CharacterAppearanceTab {
       await this.queryClient.invalidateQueries({
         queryKey: characterKeys.detail(this.characterId()),
       });
-    } catch (err) {
-      this.physicalError.set(
-        err instanceof Error ? err.message : 'Failed to save physical descriptions',
+      // v4 `:121` — "updated" once one already existed, else "created".
+      this.toasts.showSuccess(
+        hadOne ? 'Physical description updated' : 'Physical description created',
       );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save physical description';
+      this.physicalError.set(message);
+      this.toasts.showError(message);
+    } finally {
+      this.savingPhysical.set(false);
+    }
+  }
+
+  /** v4 `DescriptionsTab.tsx:132-155` — confirm, PUT `physicalDescription: null`. */
+  protected async clearPhysicalDescription(): Promise<void> {
+    if (!this.hasPhysicalDescription()) {
+      return;
+    }
+    if (!window.confirm('Remove the physical description for this character?')) {
+      return;
+    }
+    this.savingPhysical.set(true);
+    this.physicalError.set(null);
+    try {
+      await this.core.dispatchData({
+        type: 'characterUpdate',
+        characterId: this.characterId(),
+        character: { physicalDescription: null },
+      });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.detail(this.characterId()),
+      });
+      this.toasts.showSuccess('Physical description cleared');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to clear physical description';
+      this.physicalError.set(message);
+      this.toasts.showError(message);
     } finally {
       this.savingPhysical.set(false);
     }

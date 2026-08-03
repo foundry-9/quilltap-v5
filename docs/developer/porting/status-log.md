@@ -51513,3 +51513,25 @@ toast AND the inline banner both fire) and a new
 `avatar-picker-modal.spec.ts` (all four outcomes, incl. one exercising v4's
 non-Error-throw fallback-message ternary). `ng test` green (15/15 in the
 touched files). No Rust touched.
+
+**Unit 3 — `app/aurora/[id]/view/components/DescriptionsTab.tsx` (5) — a
+SECOND file-mapping correction.** The order's survey pointed this row at
+`screens/characters/view/tabs/details-tab.ts`; that file is v4's read-only
+`CharacterDetails.tsx` + the template replace/restore logic, an unrelated
+screen with zero physical-description fields. The real port target,
+confirmed by content, is `screens/characters/edit/appearance-tab.ts` (v4's
+`CharacterEditView.tsx:333-347` stacks `DescriptionsTab` + the depiction
+guidelines editor under one Appearance tab — the class doc already names
+`DescriptionsTab.tsx` as its source). Landed: the client-side "Name is
+required" guard, save success (worded "updated" vs "created" off whether a
+description already existed, matching v4's `pd ?` ternary) and failure, and
+—genuinely missing, not just untoasted— **a Clear button**: v4's tab has
+one (`handleClear`, a `confirm()` + PUT `physicalDescription: null`) that
+v5's port had dropped entirely, so its two toasts had no trigger to attach
+to. Added it in full (confirm dialog, dispatch, both toasts) rather than
+leave the row half-closed; it only renders once a physical description
+exists, matching v4's own conditional. Spec pins: 8 new cases in
+`appearance-tab.spec.ts` covering the guard, both save-success wordings,
+save failure, both clear outcomes, the declined-confirm no-op, and clear
+failure. `ng test` green (13/13 in the file, 133/133 across the whole
+characters family). No Rust touched.

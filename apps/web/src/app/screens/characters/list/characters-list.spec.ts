@@ -347,7 +347,9 @@ describe('CharactersList toasts (v4 AuroraView.tsx)', () => {
     };
   }
 
-  async function confirmDelete(client: Partial<CoreClient>): Promise<ComponentFixture<CharactersList>> {
+  async function confirmDelete(
+    client: Partial<CoreClient>,
+  ): Promise<ComponentFixture<CharactersList>> {
     const fixture = await render(client);
     findButton(fixture, 'Delete this character').click();
     for (let i = 0; i < 4; i++) {

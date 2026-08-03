@@ -165,11 +165,7 @@ const EDIT_TABS: Tab[] = [
                       [characterId]="characterId()"
                       [canChooseOutfit]="character()?.canChooseOutfit ?? false"
                     />
-                    <button
-                      type="button"
-                      class="qt-button-primary"
-                      (click)="openWardrobe()"
-                    >
+                    <button type="button" class="qt-button-primary" (click)="openWardrobe()">
                       Open wardrobe for {{ character()?.name || 'this character' }}
                     </button>
                   </div>

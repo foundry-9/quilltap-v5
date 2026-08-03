@@ -77,7 +77,7 @@ describe('CharacterImportDialog', () => {
     expect(toasts()).toEqual([{ type: 'success', message: 'Character imported successfully!' }]);
   });
 
-  it('toasts v4\'s fixed sentence when the JSON file is malformed (no inline surface, v4 :291-311)', async () => {
+  it("toasts v4's fixed sentence when the JSON file is malformed (no inline surface, v4 :291-311)", async () => {
     const fixture = await render(stubClient());
     const cmp = fixture.componentInstance as unknown as {
       onPick(files: FileList): void;
@@ -90,8 +90,7 @@ describe('CharacterImportDialog', () => {
     expect(toasts()).toEqual([
       {
         type: 'error',
-        message:
-          "Failed to import character. Make sure it's a valid SillyTavern PNG or JSON file.",
+        message: "Failed to import character. Make sure it's a valid SillyTavern PNG or JSON file.",
       },
     ]);
     expect(fixture.nativeElement.textContent).not.toContain('Failed to import character');

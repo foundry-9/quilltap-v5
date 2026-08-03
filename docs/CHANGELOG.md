@@ -99,6 +99,10 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the character editor's Appearance tab a Clear button for the physical
+description, matching the original, and confirmation and error messages
+for saving or clearing it — including refusing to save without a name.
+
 Gave the character editor confirmation and error messages for saving a
 character and for setting or clearing its avatar, matching the original.
 The avatar picker's inline error banner is gone now that failures raise a

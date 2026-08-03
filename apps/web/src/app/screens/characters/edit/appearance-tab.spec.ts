@@ -1,11 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import { RichEditor } from '../../../editor/rich-editor';
+import { ToastService } from '../../../ui/toast.service';
 import { CharacterAppearanceTab } from './appearance-tab';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 type Req = { type: string; [k: string]: unknown };
 
@@ -49,7 +56,9 @@ function stubClient(
   };
 }
 
-async function render(client: Partial<CoreClient>): Promise<ComponentFixture<CharacterAppearanceTab>> {
+async function render(
+  client: Partial<CoreClient>,
+): Promise<ComponentFixture<CharacterAppearanceTab>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [CharacterAppearanceTab],
@@ -155,6 +164,138 @@ describe('CharacterAppearanceTab (edit) — the seven markdown fields', () => {
     const save = seen.find((r) => r.type === 'characterDepictionGuidelinesUpdate');
     expect(save).toBeTruthy();
     expect(save!['content']).toBe('Never depicted **unmasked**.');
+  });
+});
+
+/** v4 `DescriptionsTab.tsx:92-155` — the name guard and both save/clear outcomes. */
+describe('CharacterAppearanceTab (edit) — physical-description toasts', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function toastClient(opts: {
+    hasExisting?: boolean;
+    name?: string;
+    updateThrows?: string;
+  }): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: Req) => {
+        if (req.type === 'characterGet') {
+          return {
+            character: {
+              id: 'c1',
+              characterDocumentMountPointId: 'mp1',
+              physicalDescription:
+                opts.hasExisting === false
+                  ? null
+                  : { ...PHYSICAL, name: opts.name ?? PHYSICAL.name },
+            },
+          };
+        }
+        if (req.type === 'characterDepictionGuidelines') {
+          return { content: '' };
+        }
+        if (req.type === 'characterUpdate') {
+          if (opts.updateThrows) {
+            throw new Error(opts.updateThrows);
+          }
+          return { character: {} };
+        }
+        return {};
+      }) as unknown as CoreClient['dispatchData'],
+    };
+  }
+
+  it('refuses an empty name without dispatching (v4 :92-96)', async () => {
+    const fixture = await render(toastClient({ hasExisting: false }));
+    const nameInput = fixture.nativeElement.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(nameInput.value).toBe('');
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'Name is required' }]);
+  });
+
+  it('toasts "created" for a brand-new physical description and shows no Clear button', async () => {
+    const fixture = await render(toastClient({ hasExisting: false }));
+    const clear = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).find((b) => b.textContent?.trim() === 'Clear');
+    expect(clear).toBeUndefined();
+
+    const nameInput = fixture.nativeElement.querySelector('input[type="text"]') as HTMLInputElement;
+    nameInput.value = 'Lorian';
+    nameInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'success', message: 'Physical description created' }]);
+  });
+
+  it('toasts "updated" when one already existed, and toasts a failed save', async () => {
+    const fixture = await render(toastClient({ hasExisting: true }));
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Physical description updated' }]);
+  });
+
+  it('toasts the server message on a failed save', async () => {
+    const fixture = await render(
+      toastClient({ hasExisting: true, updateThrows: 'the scribe is out to lunch' }),
+    );
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'the scribe is out to lunch' }]);
+  });
+
+  it('clears with a confirm + success toast, sending physicalDescription: null', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const seen: Req[] = [];
+    const client = toastClient({ hasExisting: true });
+    const inner = client.dispatchData as unknown as (r: Req) => Promise<unknown>;
+    client.dispatchData = (async (req: Req) => {
+      seen.push(req);
+      return inner(req);
+    }) as unknown as CoreClient['dispatchData'];
+    const fixture = await render(client);
+
+    clickButtonWithText(fixture, 'Clear');
+    await settle(fixture);
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Remove the physical description for this character?',
+    );
+    const update = seen.find((r) => r.type === 'characterUpdate');
+    expect((update!['character'] as Record<string, unknown>)['physicalDescription']).toBeNull();
+    expect(toasts()).toEqual([{ type: 'success', message: 'Physical description cleared' }]);
+  });
+
+  it('does nothing when the clear confirm is declined', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const seen: Req[] = [];
+    const client = toastClient({ hasExisting: true });
+    const inner = client.dispatchData as unknown as (r: Req) => Promise<unknown>;
+    client.dispatchData = (async (req: Req) => {
+      seen.push(req);
+      return inner(req);
+    }) as unknown as CoreClient['dispatchData'];
+    const fixture = await render(client);
+
+    clickButtonWithText(fixture, 'Clear');
+    await settle(fixture);
+
+    expect(seen.some((r) => r.type === 'characterUpdate')).toBe(false);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('toasts the server message on a failed clear', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fixture = await render(
+      toastClient({ hasExisting: true, updateThrows: 'the archive is sealed' }),
+    );
+    clickButtonWithText(fixture, 'Clear');
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'the archive is sealed' }]);
   });
 });
 

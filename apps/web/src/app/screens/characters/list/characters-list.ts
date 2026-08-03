@@ -105,115 +105,117 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     } @else if (selectedGroupId(); as gid) {
       <qt-group-editor [groupId]="gid" (back)="onGroupBack()" />
     } @else {
-    <div class="character-page qt-page-container text-foreground">
-      <div
-        class="flex flex-wrap items-center justify-between gap-4 border-b qt-border-default/60 pb-6"
-      >
-        <h1 class="qt-page-title">Characters</h1>
-        <div class="flex flex-wrap gap-3">
-          <button
-            type="button"
-            class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-            title="Reset built-in characters to first-run defaults"
-            (click)="resetOpen.set(true)"
-          >
-            Reset Built-in Characters
-          </button>
-          <button
-            type="button"
-            class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-            (click)="importOpen.set(true)"
-          >
-            Import from SillyTavern
-          </button>
-          <button
-            type="button"
-            class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
-            title="AI generation of character from any text source (not yet available)"
-            disabled
-          >
-            Summon From Lore
-          </button>
-          <button
-            type="button"
-            class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-            title="Create a new group"
-            (click)="groupsSection.openCreate()"
-          >
-            Create Group
-          </button>
-          <a
-            [routerLink]="inTab() ? null : '/characters/new'"
-            (click)="inTab() && openNewCharacter($event)"
-            class="qt-button character-toolbar__button character-toolbar__button--primary inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-md transition hover:qt-bg-primary/90"
-          >
-            Create Character
-          </a>
+      <div class="character-page qt-page-container text-foreground">
+        <div
+          class="flex flex-wrap items-center justify-between gap-4 border-b qt-border-default/60 pb-6"
+        >
+          <h1 class="qt-page-title">Characters</h1>
+          <div class="flex flex-wrap gap-3">
+            <button
+              type="button"
+              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+              title="Reset built-in characters to first-run defaults"
+              (click)="resetOpen.set(true)"
+            >
+              Reset Built-in Characters
+            </button>
+            <button
+              type="button"
+              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+              (click)="importOpen.set(true)"
+            >
+              Import from SillyTavern
+            </button>
+            <button
+              type="button"
+              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
+              title="AI generation of character from any text source (not yet available)"
+              disabled
+            >
+              Summon From Lore
+            </button>
+            <button
+              type="button"
+              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+              title="Create a new group"
+              (click)="groupsSection.openCreate()"
+            >
+              Create Group
+            </button>
+            <a
+              [routerLink]="inTab() ? null : '/characters/new'"
+              (click)="inTab() && openNewCharacter($event)"
+              class="qt-button character-toolbar__button character-toolbar__button--primary inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-md transition hover:qt-bg-primary/90"
+            >
+              Create Character
+            </a>
+          </div>
         </div>
+
+        <!-- Groups section (v4 AuroraView.tsx) — above the characters grid. -->
+        <qt-groups-section #groupsSection (openGroup)="selectedGroupId.set($event)" />
+
+        @if (charactersQuery.isPending()) {
+          <qt-loading-state message="Loading characters..." class="mt-12" />
+        } @else if (charactersQuery.isError()) {
+          <qt-error-alert
+            [message]="'Error: ' + errorMessage()"
+            [retryable]="true"
+            class="mt-8"
+            (retry)="charactersQuery.refetch()"
+          />
+        } @else if (visibleCharacters().length === 0) {
+          <div
+            class="character-empty-state mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"
+          >
+            <p class="mb-4 text-lg qt-text-secondary">No characters yet</p>
+            <a
+              [routerLink]="inTab() ? null : '/characters/new'"
+              (click)="inTab() && openNewCharacter($event)"
+              class="qt-text-primary hover:text-primary/80"
+            >
+              Create your first character
+            </a>
+          </div>
+        } @else {
+          <div
+            class="character-card-grid mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+          >
+            @for (character of visibleCharacters(); track character.id) {
+              <qt-character-card
+                [character]="character"
+                [profile]="profileFor(character.defaultConnectionProfileId)"
+                [inTab]="inTab()"
+                (view)="drillView(character.id)"
+                (openChat)="drillChat(character.id)"
+                (favorite)="toggleFavorite(character)"
+                (toggleCarina)="toggleCarina(character)"
+                (toggleControlledBy)="toggleControlledBy(character)"
+                (exportCharacter)="exportCharacter(character)"
+                (exportPng)="exportPng(character)"
+                (deleteCharacter)="deleteTarget.set(character)"
+              />
+            }
+          </div>
+        }
       </div>
 
-      <!-- Groups section (v4 AuroraView.tsx) — above the characters grid. -->
-      <qt-groups-section #groupsSection (openGroup)="selectedGroupId.set($event)" />
-
-      @if (charactersQuery.isPending()) {
-        <qt-loading-state message="Loading characters..." class="mt-12" />
-      } @else if (charactersQuery.isError()) {
-        <qt-error-alert
-          [message]="'Error: ' + errorMessage()"
-          [retryable]="true"
-          class="mt-8"
-          (retry)="charactersQuery.refetch()"
-        />
-      } @else if (visibleCharacters().length === 0) {
-        <div
-          class="character-empty-state mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"
-        >
-          <p class="mb-4 text-lg qt-text-secondary">No characters yet</p>
-          <a
-            [routerLink]="inTab() ? null : '/characters/new'"
-            (click)="inTab() && openNewCharacter($event)"
-            class="qt-text-primary hover:text-primary/80"
-          >
-            Create your first character
-          </a>
-        </div>
-      } @else {
-        <div class="character-card-grid mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          @for (character of visibleCharacters(); track character.id) {
-            <qt-character-card
-              [character]="character"
-              [profile]="profileFor(character.defaultConnectionProfileId)"
-              [inTab]="inTab()"
-              (view)="drillView(character.id)"
-              (openChat)="drillChat(character.id)"
-              (favorite)="toggleFavorite(character)"
-              (toggleCarina)="toggleCarina(character)"
-              (toggleControlledBy)="toggleControlledBy(character)"
-              (exportCharacter)="exportCharacter(character)"
-              (exportPng)="exportPng(character)"
-              (deleteCharacter)="deleteTarget.set(character)"
-            />
-          }
-        </div>
+      @if (importOpen()) {
+        <qt-character-import-dialog (close)="importOpen.set(false)" (imported)="onImported()" />
       }
-    </div>
 
-    @if (importOpen()) {
-      <qt-character-import-dialog (close)="importOpen.set(false)" (imported)="onImported()" />
-    }
+      @if (deleteTarget(); as target) {
+        <qt-character-delete-dialog
+          [characterId]="target.id"
+          [characterName]="target.name"
+          (close)="deleteTarget.set(null)"
+          (confirmed)="onDeleteConfirm(target, $event)"
+        />
+      }
 
-    @if (deleteTarget(); as target) {
-      <qt-character-delete-dialog
-        [characterId]="target.id"
-        [characterName]="target.name"
-        (close)="deleteTarget.set(null)"
-        (confirmed)="onDeleteConfirm(target, $event)"
-      />
-    }
-
-    @if (resetOpen()) {
-      <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset()" />
-    }
+      @if (resetOpen()) {
+        <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset()" />
+      }
     }
   `,
 })

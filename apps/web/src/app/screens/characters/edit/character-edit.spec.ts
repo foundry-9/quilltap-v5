@@ -324,9 +324,7 @@ describe('CharacterEdit', () => {
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
 
-    expect(toasts()).toEqual([
-      { type: 'error', message: 'the registry rejected the new name' },
-    ]);
+    expect(toasts()).toEqual([{ type: 'error', message: 'the registry rejected the new name' }]);
     expect(fixture.nativeElement.textContent).toContain('the registry rejected the new name');
   });
 });

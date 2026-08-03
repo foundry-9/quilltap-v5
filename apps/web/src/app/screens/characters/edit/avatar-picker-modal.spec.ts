@@ -30,7 +30,9 @@ function toasts(): { type: string; message: string }[] {
     .map((t) => ({ type: t.type, message: t.message }));
 }
 
-function stubClient(onAvatar: (req: { type: string; [k: string]: unknown }) => unknown): Partial<CoreClient> {
+function stubClient(
+  onAvatar: (req: { type: string; [k: string]: unknown }) => unknown,
+): Partial<CoreClient> {
   return {
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       if (req.type === 'characterPhotoList') {
