@@ -7,11 +7,16 @@
  * compile time). Covers `detectListIndentUnit`, `applyListIndentUnit`, and the
  * source-mode `indentSourceLines`/`outdentSourceLines` helpers, mirroring the
  * inventory of v4's own `__tests__/unit/components/chat/lexical/transformers/
- * list-indentation.test.ts` (160 lines). NOT covered: `normalizeListIndentForLexical`
- * / `LEXICAL_LIST_INDENT_SIZE` — the import-side four-space rewrite has no v5
- * analog (v5's CommonMark parser resolves nesting depth from document
- * structure natively; see the P4.D40 order's item (a) disposition and the
- * `editor/list-indentation.ts` module doc).
+ * list-indentation.test.ts` (160 lines), plus `normalizeListIndentForLexical`
+ * — the import-side four-space rewrite.
+ *
+ * That last family was NOT covered until 2026-08-03. The P4.D40 disposition
+ * held that v5 needed no analog, because its CommonMark parser resolves nesting
+ * from structure natively and v4 cannot author the one shape they disagree on.
+ * The ruling was evidence-conditional, and the evidence arrived: a dogfood scan
+ * of the Friday copy's document stores found 30 instances of that shape across
+ * five real Obsidian documents, where v5's save flattened the nesting for good.
+ * v5 now runs the pre-pass on import, and these rows are what pins it to v4.
  *
  * Emits ONE deterministic JSON corpus (pretty-printed) that
  * `apps/web/src/app/editor/list-indentation.oracle.spec.ts` replays row-for-row
@@ -32,6 +37,7 @@ import {
   applyListIndentUnit,
   detectListIndentUnit,
   indentSourceLines,
+  normalizeListIndentForLexical,
   outdentSourceLines,
 } from '@/components/chat/lexical/transformers/list-indentation'
 
@@ -157,6 +163,81 @@ recordSource('leaves non-list lines alone', ['Some prose.', '- a'].join('\n'), 0
 recordSource('outdents a tab-indented line', '- a\n\t- b', 5, 5, 2, 'outdent')
 
 // ---------------------------------------------------------------------------
+// normalizeListIndentForLexical — the IMPORT-side four-space rewrite.
+//
+// Added 2026-08-03, when the P4.D40 ruling's evidence condition was met: the
+// dogfood scan of the Friday copy's document stores found 30 instances of the
+// (a)-edge shape across five real Obsidian documents, where a v5 save flattened
+// the nesting permanently. See the order's status header.
+//
+// Two groups: v4's own test inventory (the first seven), then the four shapes
+// the scan actually found — which the original disposition never contemplated,
+// because a two-digit ordered marker needs FOUR columns and a tab lands short
+// of a nested parent's content column.
+// ---------------------------------------------------------------------------
+
+interface NormalizeCase {
+  name: string
+  md: string
+  out: string
+}
+
+const normalizeInputs: { name: string; md: string }[] = [
+  // --- v4's own test file, arm for arm ---------------------------------------
+  {
+    name: 'lifts two-space nesting onto the four-space grid',
+    md: ['- Jackie (3 nodes)', '  - Implant', '  - Notation Engine', '- Charlie'].join('\n'),
+  },
+  { name: 'three-space nesting', md: '- a\n   - b' },
+  { name: 'tab nesting', md: '- a\n\t- b' },
+  { name: 'already four-space nesting', md: '- a\n    - b' },
+  {
+    name: 'resolves depth from structure, not raw column count',
+    md: ['- a', '  - b', '    - c', '  - d', '- e'].join('\n'),
+  },
+  { name: 'nested ordered list', md: '1. a\n   1. b\n2. c' },
+  { name: 'mixed markers under an ordered parent', md: '1. a\n   - b' },
+  {
+    name: 'starts a fresh list after an intervening block',
+    md: ['- a', '  - b', '', 'Some prose.', '', '- c', '  - d'].join('\n'),
+  },
+  {
+    name: 'leaves fenced code blocks and frontmatter untouched',
+    md: [
+      '---', 'tags:', '  - alpha', '  - beta', '---', '',
+      '```yaml', 'list:', '  - not a bullet', '```', '',
+      '- a', '  - b',
+    ].join('\n'),
+  },
+  {
+    name: 'leaves thematic breaks and emphasis alone',
+    md: ['---', '', '*emphasis* and text', '', '- a'].join('\n'),
+  },
+
+  // --- the shapes the 2026-08-03 dogfood scan found on real documents --------
+  {
+    name: 'DOGFOOD: two-digit ordered marker with a 3-column child (Future Quilltap Plans.md:76)',
+    md: '20. Personal assistant mode\n   - **Risk:** Security, billing, ethics\n   - **Hosting stance:** Will not host',
+  },
+  {
+    name: 'DOGFOOD: one-space bullet child (Best. Song. Ever. (Outlines).md:110)',
+    md: '* The book\n * How to read it\n * My take on the theme',
+  },
+  {
+    name: 'DOGFOOD: tab child under a 2-column nested ordered item (Worldview Syllabus.md:28)',
+    md: '4. Week four\n  5. (March 30): [[Week 5 - Sinning]]\n\t- **Key Scripture:** Romans 7:14-25\n\t- **Topics:** Slavery to sin',
+  },
+  {
+    name: 'DOGFOOD: the v4-canonical control that was never at risk',
+    md: '1. a\n   - b',
+  },
+]
+const normalizeCases: NormalizeCase[] = normalizeInputs.map((c) => ({
+  ...c,
+  out: normalizeListIndentForLexical(c.md),
+}))
+
+// ---------------------------------------------------------------------------
 // Emit.
 // ---------------------------------------------------------------------------
 
@@ -168,6 +249,7 @@ const corpus = {
   detect: detectCases,
   apply: applyCases,
   source: sourceCases,
+  normalize: normalizeCases,
 }
 
 process.stdout.write(JSON.stringify(corpus, null, 2) + '\n')

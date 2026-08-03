@@ -42,9 +42,12 @@
  *     fixed width on the first edit: {@link parseMarkdown} detects the unit a
  *     `unitToken` was loaded with and {@link serializeMarkdown} re-indents to
  *     it as a post-pass ({@link list-indentation}, v4's `detectListIndentUnit`
- *     / `applyListIndentUnit`). v5's CommonMark parser never had v4's
- *     IMPORT-side flattening bug (nesting depth already comes from document
- *     structure), so only the export-side half of v4's fix applies here.
+ *     / `applyListIndentUnit`). Since 2026-08-03 {@link parseMarkdown} also
+ *     runs v4's IMPORT-side `normalizeListIndentForLexical` pre-pass, so a
+ *     child indented deeper than its parent but short of that parent's CONTENT
+ *     column parses as a child rather than starting a sibling list — the shape
+ *     real Obsidian documents turned out to carry, and which v5 used to
+ *     flatten permanently on save.
  *
  * @module editor/markdown-dialect
  */
@@ -65,6 +68,7 @@ import {
   DEFAULT_LIST_INDENT_UNIT,
   detectListIndentUnit,
   getListIndentUnit,
+  normalizeListIndentForLexical,
   setListIndentUnit,
 } from './list-indentation';
 
@@ -672,8 +676,15 @@ export const dialectSerializer = new MarkdownSerializer(
  * needs its own export to preserve non-default nesting.
  */
 export function parseMarkdown(text: string, unitToken?: object): PMNode {
+  // Detect on the ORIGINAL bytes — normalizing first would make every document
+  // look like a four-space one and the export would reflow it.
   if (unitToken) setListIndentUnit(unitToken, detectListIndentUnit(text));
-  return dialectParser.parse(text);
+  // Then lift nesting onto the four-space grid, so a child indented deeper than
+  // its parent but short of that parent's CONTENT column still parses as a
+  // child rather than starting a sibling list (v4 `MarkdownBridgePlugin`
+  // :163 does the same at its import). Without this, saving flattens the
+  // nesting permanently — see `normalizeListIndentForLexical`.
+  return dialectParser.parse(normalizeListIndentForLexical(text));
 }
 
 /**

@@ -204,10 +204,10 @@ const IDEMPOTENT: { name: string; md: string; trace: string }[] = [
     trace: 'CHECK_LIST + UNORDERED_LIST in one list',
   },
   // --- sub-list indentation (P4.D40, v4 `4f088e7c`) --------------------------
-  // v5's CommonMark parser never had v4's import-side flattening bug (nesting
-  // depth already comes from document structure), so these pin the EXPORT-side
-  // fix: a document's own nesting unit survives instead of reflowing to a
-  // fixed width. Each `roundTrip` call threads a fresh unit token through both
+  // Both halves of v4's fix are now in force: the IMPORT-side pre-pass
+  // (`normalizeListIndentForLexical`, adopted 2026-08-03 — see the divergence
+  // block's replacement below) and the EXPORT-side unit memory these pin — a
+  // document's own nesting unit survives instead of reflowing to a fixed width. Each `roundTrip` call threads a fresh unit token through both
   // `parseMarkdown` and `serializeMarkdown` (see the helper above), so these
   // exercise `detectListIndentUnit` + `applyListIndentUnit` end-to-end, not
   // just the pure functions (already differential-tested in
@@ -372,19 +372,63 @@ describe('D17 gate — sub-list indentation unit memory', () => {
  * disk-backed documents): **0 hits**; the store-backed documents need the real
  * pepper and belong to a human dogfood pass.
  */
-describe('D17 gate — the (a)-edge divergence: a 2-col child under an ordered parent', () => {
-  it('documents the divergence (human ruling requested at unification)', () => {
-    const input = '1. a\n  - b';
-    // v5's actual bytes, asserted so the divergence cannot silently drift.
-    expect(roundTrip(input), 'v5 parses two sibling lists, not one nested list').toBe(
-      '1. a\n\n- b',
-    );
-    // v4's recorded behavior (nesting), asserted to still be what v5 diverges
-    // FROM — if this ever passes, the divergence has been resolved and this
-    // whole block should be deleted, not updated.
-    expect(roundTrip(input), 'the divergence would be resolved — update the gate').not.toBe(
-      '1. a\n   - b',
-    );
+/**
+ * The (a)-edge, RESOLVED (2026-08-03). This block replaces the divergence pin
+ * that stood here — per that pin's own instruction to delete rather than update
+ * it once v5 stopped diverging.
+ *
+ * The history is worth keeping, because the first ruling was reasonable on the
+ * evidence it had. v5's CommonMark parser requires a list child to reach its
+ * parent item's CONTENT column; v4's structural stack does not, so the two
+ * disagreed on any child indented deeper than its parent but short of that
+ * column. The ruling (2026-08-02) was that v5 should keep CommonMark, since
+ * v4's own export rule cannot author those bytes — and it was made explicitly
+ * conditional on scanning real documents for the shape.
+ *
+ * The scan (2026-08-03, `harness/tools/list_indent_edge_scan.py` over the
+ * Friday copy's document stores) found 30 instances across five real Obsidian
+ * documents. Two of the shapes had never been contemplated: a two-digit ordered
+ * marker (`20. ` needs FOUR columns, so a three-space child is short) and a tab
+ * child under a nested ordered item. Because v5 wrote the flattened form back
+ * on the next save, the nesting was lost permanently rather than merely
+ * rendered wrong — the same failure v4's `4f088e7c` existed to fix.
+ *
+ * Every vector below is the REAL byte sequence from one of those documents.
+ */
+describe('D17 gate — the (a)-edge: real documents the 2026-08-03 scan found', () => {
+  const REAL: { name: string; md: string; why: string }[] = [
+    {
+      name: 'two-digit ordered marker, 3-column children (Future Quilltap Plans.md:76)',
+      md: '20. Personal assistant mode\n   - **Risk:** Security\n   - **Hosting stance:** Will not host',
+      why: 'the children used to leave the list item entirely and become a separate top-level list',
+    },
+    {
+      name: 'one-space bullet children (Best. Song. Ever. (Outlines).md:110)',
+      md: '* The book\n * How to read it\n * My take on the theme',
+      why: 'the children used to flatten into three siblings of the parent',
+    },
+    {
+      name: 'tab children under a 2-column nested ordered item (Worldview Syllabus.md:28)',
+      md: '4. Week four\n  5. (March 30): [[Week 5 - Sinning]]\n\t- **Key Scripture:** Romans 7:14-25',
+      why: 'week 5 used to become a sibling of week 4, re-parenting its scripture',
+    },
+  ];
+
+  for (const c of REAL) {
+    it(`preserves the nesting: ${c.name}`, () => {
+      // The round trip must not flatten. Asserting on STRUCTURE (each child
+      // still indented under its parent) rather than exact bytes, because the
+      // export re-indents to the document's own detected unit — which is the
+      // separate, already-pinned behavior above.
+      const out = roundTrip(c.md);
+      const lines = out.split('\n').filter((l) => l.trim() !== '');
+      const childIndents = lines.slice(1).map((l) => l.match(/^ */)![0].length);
+      expect(childIndents.every((n) => n > 0), `${c.why}\n\nGOT:\n${out}`).toBe(true);
+    });
+  }
+
+  it('the v4-canonical form was never at risk and is unchanged', () => {
+    expect(roundTrip('1. a\n   - b')).toBe('1. a\n   - b');
   });
 });
 

@@ -166,5 +166,77 @@
       "outValue": "- a\n- b",
       "outCursor": 7
     }
+  ],
+  "normalize": [
+    {
+      "name": "lifts two-space nesting onto the four-space grid",
+      "md": "- Jackie (3 nodes)\n  - Implant\n  - Notation Engine\n- Charlie",
+      "out": "- Jackie (3 nodes)\n    - Implant\n    - Notation Engine\n- Charlie"
+    },
+    {
+      "name": "three-space nesting",
+      "md": "- a\n   - b",
+      "out": "- a\n    - b"
+    },
+    {
+      "name": "tab nesting",
+      "md": "- a\n\t- b",
+      "out": "- a\n    - b"
+    },
+    {
+      "name": "already four-space nesting",
+      "md": "- a\n    - b",
+      "out": "- a\n    - b"
+    },
+    {
+      "name": "resolves depth from structure, not raw column count",
+      "md": "- a\n  - b\n    - c\n  - d\n- e",
+      "out": "- a\n    - b\n        - c\n    - d\n- e"
+    },
+    {
+      "name": "nested ordered list",
+      "md": "1. a\n   1. b\n2. c",
+      "out": "1. a\n    1. b\n2. c"
+    },
+    {
+      "name": "mixed markers under an ordered parent",
+      "md": "1. a\n   - b",
+      "out": "1. a\n    - b"
+    },
+    {
+      "name": "starts a fresh list after an intervening block",
+      "md": "- a\n  - b\n\nSome prose.\n\n- c\n  - d",
+      "out": "- a\n    - b\n\nSome prose.\n\n- c\n    - d"
+    },
+    {
+      "name": "leaves fenced code blocks and frontmatter untouched",
+      "md": "---\ntags:\n  - alpha\n  - beta\n---\n\n```yaml\nlist:\n  - not a bullet\n```\n\n- a\n  - b",
+      "out": "---\ntags:\n  - alpha\n  - beta\n---\n\n```yaml\nlist:\n  - not a bullet\n```\n\n- a\n    - b"
+    },
+    {
+      "name": "leaves thematic breaks and emphasis alone",
+      "md": "---\n\n*emphasis* and text\n\n- a",
+      "out": "---\n\n*emphasis* and text\n\n- a"
+    },
+    {
+      "name": "DOGFOOD: two-digit ordered marker with a 3-column child (Future Quilltap Plans.md:76)",
+      "md": "20. Personal assistant mode\n   - **Risk:** Security, billing, ethics\n   - **Hosting stance:** Will not host",
+      "out": "20. Personal assistant mode\n    - **Risk:** Security, billing, ethics\n    - **Hosting stance:** Will not host"
+    },
+    {
+      "name": "DOGFOOD: one-space bullet child (Best. Song. Ever. (Outlines).md:110)",
+      "md": "* The book\n * How to read it\n * My take on the theme",
+      "out": "* The book\n    * How to read it\n    * My take on the theme"
+    },
+    {
+      "name": "DOGFOOD: tab child under a 2-column nested ordered item (Worldview Syllabus.md:28)",
+      "md": "4. Week four\n  5. (March 30): [[Week 5 - Sinning]]\n\t- **Key Scripture:** Romans 7:14-25\n\t- **Topics:** Slavery to sin",
+      "out": "4. Week four\n    5. (March 30): [[Week 5 - Sinning]]\n        - **Key Scripture:** Romans 7:14-25\n        - **Topics:** Slavery to sin"
+    },
+    {
+      "name": "DOGFOOD: the v4-canonical control that was never at risk",
+      "md": "1. a\n   - b",
+      "out": "1. a\n    - b"
+    }
   ]
 }

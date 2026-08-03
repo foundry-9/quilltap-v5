@@ -1,17 +1,12 @@
 /**
  * List indentation for the v4 composer markdown dialect (the `4f088e7c`
- * editor re-port, v5 PARTIAL scope).
+ * editor re-port).
  *
  * v4's Lexical bridge hard-codes a four-space import grid
  * (`LEXICAL_LIST_INDENT_SIZE`) and, on export, reflows every nested list to a
  * fixed unit unless it remembers the unit the document was loaded with — see
  * `components/chat/lexical/transformers/list-indentation.ts` in the v4
- * checkout. v5's bridge (`markdown-dialect.ts`, markdown-it/CommonMark) never
- * had the IMPORT-side bug: nesting depth already comes from document
- * structure, not a fixed divisor (v4's item (a); the ONE recorded edge is a
- * `1. a\n  - b` ordered-parent 2-column child, pinned as a divergence in
- * `markdown-round-trip.spec.ts`). So this module ports only the EXPORT-side
- * half of v4's fix:
+ * checkout. This module ports BOTH halves of that fix:
  *
  * - {@link detectListIndentUnit} reads the nesting unit a document was
  *   written with (v4's exact stack algorithm and ordered/bullet-parented
@@ -33,11 +28,17 @@
  *   (`markdown-dialect.ts`) can thread it through without depending on
  *   ProseMirror or Angular.
  *
- * NOT ported: `normalizeListIndentForLexical` (the import-side four-space
- * rewrite) and `LEXICAL_LIST_INDENT_SIZE` — Lexical-specific, no v5 analog
- * (v4 item (a) disposition, recorded in the status log). Fenced code blocks
- * and a leading YAML frontmatter block pass through {@link mapListLines}
- * untouched, exactly as v4's `mapListLines` does (item (d)).
+ * - {@link normalizeListIndentForLexical} is the IMPORT-side four-space
+ *   rewrite (v4's item (a)). This one was DEFERRED at the original port and
+ *   adopted 2026-08-03: the reasoning was that v5's CommonMark parser resolves
+ *   depth from structure natively and so needed no pre-pass, which held for
+ *   every document v4 itself can write and failed for documents written by
+ *   anything else. See that function's own doc for the evidence that changed
+ *   the ruling.
+ *
+ * Fenced code blocks and a leading YAML frontmatter block pass through
+ * {@link mapListLines} untouched, exactly as v4's `mapListLines` does
+ * (item (d)).
  *
  * @module editor/list-indentation
  */
@@ -200,6 +201,49 @@ function mapListLines(
   }
 
   return out.join('\n');
+}
+
+/**
+ * The four-space grid v4's Lexical import counts nesting in
+ * (v4 `LEXICAL_LIST_INDENT_SIZE`). v5 has no Lexical, but the width is not
+ * arbitrary here either: it is the smallest step that clears EVERY marker's
+ * content column (`20. ` is the widest at four), so a normalized document
+ * re-parses under CommonMark as the tree its author wrote.
+ */
+const LEXICAL_LIST_INDENT_SIZE = 4;
+
+/**
+ * Rewrite list indentation onto the four-space grid so the parser resolves the
+ * nesting the author actually wrote. Depth comes from document STRUCTURE (the
+ * `mapListLines` stack), so two-space, three-space, four-space and tab-indented
+ * documents all import identically (v4 `normalizeListIndentForLexical`, ported
+ * verbatim).
+ *
+ * WHY v5 needs this despite implementing CommonMark. CommonMark requires a
+ * child to reach its parent item's CONTENT column; anything short of it starts
+ * a sibling list instead. v4's structural stack has no such rule, so the two
+ * disagree on any child indented deeper than its parent but short of that
+ * content column — `1. a` with a two-column `- b` under it, and, as real
+ * documents turned out to prefer, `20. a` with a THREE-column child (a
+ * two-digit marker needs four) or a tab child under a nested ordered item.
+ *
+ * The P4.D40 disposition was that v5 needed no analog, since v4's own export
+ * rule cannot author those bytes. That held for v4-written documents and not
+ * for anyone else's: the 2026-08-03 dogfood scan found 30 instances across five
+ * real Obsidian documents, and because v5 writes the flattened form back on the
+ * next save, the nesting was lost permanently rather than merely rendered
+ * wrongly — the same failure shape v4's own `4f088e7c` existed to fix. Running
+ * the pre-pass on import is that commit's other half.
+ *
+ * Pairs with {@link applyListIndentUnit}: normalize on the way in, re-apply the
+ * document's own remembered unit on the way out, so a two-space document is
+ * still two-space after a round trip.
+ */
+export function normalizeListIndentForLexical(markdown: string): string {
+  return mapListLines(markdown, (info) => {
+    const width = info.depth * LEXICAL_LIST_INDENT_SIZE;
+    return ' '.repeat(width) + info.marker + info.remainder;
+  });
 }
 
 /**

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Stopped the editor from destroying nested lists in documents written
+elsewhere. A list whose sub-items were indented a little less than the
+parent's text begins — common in hand-written and Obsidian markdown, and
+easy to produce under a numbered item like `20.`, whose text starts four
+columns in — was read as two separate lists rather than one nested one.
+Opening such a document and saving it wrote the flattened version back, so
+the nesting was lost for good rather than merely displayed wrongly. In one
+real case the sub-points stopped belonging to their numbered item
+altogether. Indentation is now resolved from the shape of the document, as
+the original does, and a document still saves at whatever indent width it
+was written with. Found by scanning real documents: thirty instances across
+five files.
+
 Removed an unused import from the Groups section of the Characters page. It
 had been declaring an error-alert component it never displayed, which the
 compiler flagged on every build. Nothing on the page changes: the original
