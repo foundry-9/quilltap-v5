@@ -77,6 +77,13 @@ messages. That table was never cleared, so the old notes stayed behind and a
 restore could fail trying to put the backed-up ones back — on databases carried
 forward from older versions, once per note. The original leaves the same rows
 behind; this version does not.
+Widened the test that holds message rendering to the original's, so it now
+also covers conversations whose roleplay template supplies its own patterns
+rather than the built-in ones. Eleven new cases were captured from the
+original app itself, covering custom patterns, custom dialogue marks, and
+both of the ways a template can fall back to the defaults. Every one of the
+forty existing cases came back unchanged. No visible behavior changed here;
+this is the measuring stick the next change is checked against.
 
 Planned the next porting round (documentation only): four parallel work
 orders. The reference app moved one commit — making hard links between

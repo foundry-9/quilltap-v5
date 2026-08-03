@@ -198,5 +198,139 @@
     "name": "math-single-dollar-in-code",
     "input": "Run `echo $\\HOME{}` please.",
     "html": "<p>Run <code>echo $\\HOME{}</code> please.</p>"
+  },
+  {
+    "name": "template-custom-patterns-inline",
+    "input": "She paused. @@leans in@@ and whispered.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "@@[^@]+@@",
+          "className": "qt-chat-emote"
+        },
+        {
+          "pattern": "^:: .+$",
+          "className": "qt-chat-aside",
+          "flags": "m",
+          "scope": "line"
+        }
+      ]
+    },
+    "html": "<p>She paused. <span class=\"qt-chat-emote\">@@leans in@@</span> and whispered.</p>"
+  },
+  {
+    "name": "template-custom-patterns-inline-reset",
+    "input": "She paused. @@leans in@@ and whispered.",
+    "options": {},
+    "html": "<p>She paused. @@leans in@@ and whispered.</p>"
+  },
+  {
+    "name": "template-custom-patterns-supersede-defaults",
+    "input": "She *looks around* and @@leans in@@.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "@@[^@]+@@",
+          "className": "qt-chat-emote"
+        },
+        {
+          "pattern": "^:: .+$",
+          "className": "qt-chat-aside",
+          "flags": "m",
+          "scope": "line"
+        }
+      ]
+    },
+    "html": "<p>She <em>looks around</em> and <span class=\"qt-chat-emote\">@@leans in@@</span>.</p>"
+  },
+  {
+    "name": "template-custom-patterns-line-scope",
+    "input": ":: a stage direction on its own line",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "@@[^@]+@@",
+          "className": "qt-chat-emote"
+        },
+        {
+          "pattern": "^:: .+$",
+          "className": "qt-chat-aside",
+          "flags": "m",
+          "scope": "line"
+        }
+      ]
+    },
+    "html": "<p class=\"qt-chat-aside\">:: a stage direction on its own line</p>"
+  },
+  {
+    "name": "template-custom-patterns-line-scope-reset",
+    "input": ":: a stage direction on its own line",
+    "options": {},
+    "html": "<p>:: a stage direction on its own line</p>"
+  },
+  {
+    "name": "template-empty-patterns-falls-back",
+    "input": "A hush falls. [the door creaks open]",
+    "options": {
+      "renderingPatterns": []
+    },
+    "html": "<p>A hush falls. <span class=\"qt-chat-narration\">[the door creaks open]</span></p>"
+  },
+  {
+    "name": "template-custom-patterns-hide-delimiters",
+    "input": "%%he turns to the window%%",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "%%(?<rpBody>[^%]+)%%",
+          "className": "qt-chat-narration",
+          "hideDelimiters": true
+        }
+      ]
+    },
+    "html": "<p><span class=\"qt-chat-narration\">he turns to the window</span></p>"
+  },
+  {
+    "name": "template-custom-patterns-rpbody-escape",
+    "input": "%%she said *softly* now%% and left.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "%%(?<rpBody>[^%]+)%%",
+          "className": "qt-chat-narration"
+        }
+      ]
+    },
+    "html": "<p><span class=\"qt-chat-narration\">%%she said *softly* now%%</span> and left.</p>"
+  },
+  {
+    "name": "template-custom-dialogue-detection",
+    "input": "«Bonjour, mon ami»",
+    "options": {
+      "dialogueDetection": {
+        "openingChars": [
+          "«"
+        ],
+        "closingChars": [
+          "»"
+        ],
+        "className": "qt-chat-custom-dialogue"
+      }
+    },
+    "html": "<p class=\"qt-chat-custom-dialogue\">«Bonjour, mon ami»</p>"
+  },
+  {
+    "name": "template-custom-dialogue-detection-reset",
+    "input": "«Bonjour, mon ami»",
+    "options": {},
+    "html": "<p>«Bonjour, mon ami»</p>"
+  },
+  {
+    "name": "template-null-dialogue-detection-falls-back",
+    "input": "\"Hello there,\" she said warmly.",
+    "options": {
+      "dialogueDetection": null
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"Hello there,\"</span> she said warmly.</p>"
   }
 ]

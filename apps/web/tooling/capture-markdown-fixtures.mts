@@ -6,11 +6,18 @@
  * `{ input, html }` pairs, which `markdown-renderer.spec.ts` byte-compares against
  * the v5 port. This is the tier-4/5 "capture from v4" step.
  *
- * Regenerate (from the pinned v4 worktree so its tsconfig `@/` aliases
- * resolve, and so the capture reads the round's baseline even when the live
- * checkout has drifted — the import below points INTO the pin):
- *   cd /private/tmp/qt-v4-pin-7e6d13e5 && ./node_modules/.bin/tsx \
+ * Regenerate — run tsx FROM the v4 checkout (its cwd is what resolves the `@/`
+ * tsconfig aliases the renderer's own imports use), and point `QT_V4_ROOT` at
+ * the SAME tree so the capture reads v4's real renderer:
+ *   cd ~/source/quilltap-server && QT_V4_ROOT=$PWD ./node_modules/.bin/tsx \
  *     <v5>/apps/web/tooling/capture-markdown-fixtures.mts
+ *
+ * On drift (v4 HEAD past the round's baseline, or a dirty tree) make a detached
+ * worktree at the baseline and use it for BOTH — `cd <pin> && QT_V4_ROOT=$PWD …`
+ * (the `oracle-regen-pinned-v4-worktree` recipe). `QT_V4_ROOT` defaults to
+ * `~/source/quilltap-server`. This used to be a hard-coded `/private/tmp/qt-v4-
+ * pin-7e6d13e5` import, which no longer exists — a pinned /tmp worktree never
+ * survives a round, so the path is a parameter now.
  *
  * The corpus deliberately avoids language-LABELED code fences: rehype-highlight's
  * output depends on the transitive highlight.js version, so labeled blocks would
@@ -26,14 +33,65 @@
  */
 
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// v4's real server renderer (absolute path into the PINNED baseline worktree —
-// never the live checkout, which may have drifted past the round's baseline).
-import { renderMarkdownToHtml } from '/private/tmp/qt-v4-pin-7e6d13e5/lib/services/markdown-renderer.service.ts';
+/** The v4 checkout (or pinned baseline worktree) whose renderer is the oracle. */
+const V4_ROOT = process.env['QT_V4_ROOT'] ?? resolve(homedir(), 'source/quilltap-server');
 
-const CORPUS: { name: string; input: string }[] = [
+// v4's real server renderer, loaded from that tree. Dynamic so the path is a
+// parameter — see the module note.
+const { renderMarkdownToHtml } = (await import(
+  pathToFileURL(resolve(V4_ROOT, 'lib/services/markdown-renderer.service.ts')).href
+)) as {
+  renderMarkdownToHtml: (content: string, options?: RenderOptions) => Promise<string>;
+};
+
+/**
+ * The render options a corpus entry may pin. Mirrors v4's
+ * `MarkdownRenderOptions` — the two template-driven inputs P4.30 threads from
+ * the chat's roleplay template into every rendered row. `undefined` (the key
+ * absent) is the "no template / reset" arm; `[]` and `null` are v4's two
+ * fallback arms, which are deliberately NOT the same shape (an empty patterns
+ * array falls back to the defaults, an explicit-null dialogueDetection does
+ * too — `MessageContent.tsx:333-338`).
+ */
+interface RenderOptions {
+  renderingPatterns?: {
+    pattern: string;
+    className: string;
+    flags?: string;
+    scope?: 'inline' | 'line';
+    hideDelimiters?: boolean;
+  }[];
+  dialogueDetection?: {
+    openingChars: string[];
+    closingChars: string[];
+    className: string;
+  } | null;
+}
+
+/**
+ * A custom pattern set that shares NO delimiter with the defaults, so a vector
+ * rendered with it and the same vector rendered with none (the reset arm) are
+ * byte-distinguishable. `@@`/`::` are deliberately markdown- and HTML-inert:
+ * the roleplay pass runs over rendered HTML, so a delimiter containing `<`/`>`
+ * would already be entity-escaped and could never match.
+ */
+const CUSTOM_PATTERNS: RenderOptions['renderingPatterns'] = [
+  { pattern: '@@[^@]+@@', className: 'qt-chat-emote' },
+  { pattern: '^:: .+$', className: 'qt-chat-aside', flags: 'm', scope: 'line' },
+];
+
+/** A custom paragraph-level dialogue detection using guillemets. */
+const CUSTOM_DIALOGUE: RenderOptions['dialogueDetection'] = {
+  openingChars: ['«'],
+  closingChars: ['»'],
+  className: 'qt-chat-custom-dialogue',
+};
+
+const CORPUS: { name: string; input: string; options?: RenderOptions }[] = [
   { name: 'plain', input: 'Just a plain sentence.' },
   { name: 'bold', input: 'This is **bold** text.' },
   { name: 'italic-narration', input: 'She *looks around* nervously.' },
@@ -79,13 +137,89 @@ const CORPUS: { name: string; input: string }[] = [
   { name: 'math-bare-token-companion', input: 'where $K$ is the scalar and $\\mathcal{P}$ the invariant' },
   { name: 'math-bare-token-alone', input: 'where $K$ is the Kretschmann scalar' },
   { name: 'math-single-dollar-in-code', input: 'Run `echo $\\HOME{}` please.' },
+  // --- P4.30: the chat's roleplay template threaded into the render ---------
+  // Each custom vector is paired with a `-reset` twin over the SAME input and
+  // NO options, so the pair is the proof that the template reached the render
+  // (v4's three reset arms all land on this second shape).
+  {
+    name: 'template-custom-patterns-inline',
+    input: 'She paused. @@leans in@@ and whispered.',
+    options: { renderingPatterns: CUSTOM_PATTERNS },
+  },
+  {
+    name: 'template-custom-patterns-inline-reset',
+    input: 'She paused. @@leans in@@ and whispered.',
+    options: {},
+  },
+  {
+    // The custom set REPLACES the defaults: `*looks around*` must come back a
+    // bare <em>, with no qt-chat-narration span.
+    name: 'template-custom-patterns-supersede-defaults',
+    input: 'She *looks around* and @@leans in@@.',
+    options: { renderingPatterns: CUSTOM_PATTERNS },
+  },
+  {
+    name: 'template-custom-patterns-line-scope',
+    input: ':: a stage direction on its own line',
+    options: { renderingPatterns: CUSTOM_PATTERNS },
+  },
+  {
+    name: 'template-custom-patterns-line-scope-reset',
+    input: ':: a stage direction on its own line',
+    options: {},
+  },
+  {
+    // The empty-array fallback arm: identical bytes to `bracket-narration`.
+    name: 'template-empty-patterns-falls-back',
+    input: 'A hush falls. [the door creaks open]',
+    options: { renderingPatterns: [] },
+  },
+  {
+    // hideDelimiters + the named `rpBody` group: the whole block is one wrap
+    // span and the `%%` delimiters are dropped from the output.
+    name: 'template-custom-patterns-hide-delimiters',
+    input: '%%he turns to the window%%',
+    options: {
+      renderingPatterns: [
+        { pattern: '%%(?<rpBody>[^%]+)%%', className: 'qt-chat-narration', hideDelimiters: true },
+      ],
+    },
+  },
+  {
+    // The same named group WITHOUT hideDelimiters drives the rpBody-interior
+    // markdown escape instead (`escapeMarkdownInBrackets`).
+    name: 'template-custom-patterns-rpbody-escape',
+    input: '%%she said *softly* now%% and left.',
+    options: {
+      renderingPatterns: [{ pattern: '%%(?<rpBody>[^%]+)%%', className: 'qt-chat-narration' }],
+    },
+  },
+  {
+    name: 'template-custom-dialogue-detection',
+    input: '«Bonjour, mon ami»',
+    options: { dialogueDetection: CUSTOM_DIALOGUE },
+  },
+  {
+    name: 'template-custom-dialogue-detection-reset',
+    input: '«Bonjour, mon ami»',
+    options: {},
+  },
+  {
+    // The `||` fallback arm: an explicit null is the default detection.
+    name: 'template-null-dialogue-detection-falls-back',
+    input: '"Hello there," she said warmly.',
+    options: { dialogueDetection: null },
+  },
 ];
 
 async function main() {
-  const out: { name: string; input: string; html: string }[] = [];
+  const out: { name: string; input: string; options?: RenderOptions; html: string }[] = [];
   for (const c of CORPUS) {
-    const html = await renderMarkdownToHtml(c.input);
-    out.push({ name: c.name, input: c.input, html });
+    // `undefined` options exercise v4's own default (`options = {}`), which is
+    // exactly what the pre-P4.30 vectors captured — so they come back
+    // byte-identical and stay the baseline-neutrality proof.
+    const html = await renderMarkdownToHtml(c.input, c.options);
+    out.push(c.options ? { name: c.name, input: c.input, options: c.options, html } : { name: c.name, input: c.input, html });
   }
 
   const here = dirname(fileURLToPath(import.meta.url));

@@ -51169,3 +51169,86 @@ drift catch-up is owed — but it is **not this lane's**: P4.28 pinned its v4
 worktree at `c4d4b0de` for every oracle and archive, nothing in its scope is
 drift-driven, and no family it regenerated imports those files. Recorded for the
 round's planner.
+## Lane record — P4.30 unit 1 (the parity corpus learns the template)
+
+**Branch:** `claude/p4-30-roleplay-template-de683c`. SPA-only; zero Rust.
+
+**Drift check at lane start (2026-08-03):** v4 HEAD is `40319484`, the round's
+baseline — `git log 40319484..HEAD` is empty. The tree is DIRTY with an
+in-flight custom-tool-presets feature (`app/api/v1/chats/[id]/custom-tools/
+route.ts`, `components/chat/CustomToolRunDialog.tsx`, `lib/pascal/
+custom-tool.types.ts`, `lib/query/keys.ts`, plus two untracked files). None of
+them is reachable from `lib/services/markdown-renderer.service.ts` — the only
+v4 module this lane's oracle imports — so the capture ran against the live
+checkout rather than a pinned worktree. If a later unit needs a v4 module the
+in-flight work touches, pin first.
+
+**The dead recipe, repaired.** `tooling/capture-markdown-fixtures.mts` imported
+v4's renderer from a hard-coded `/private/tmp/qt-v4-pin-7e6d13e5/…` — a pinned
+worktree from the P4.d9 round that has not existed for weeks (the standing
+"a /tmp pin never survives a round" trap; six such recipes were repaired in the
+`c4d4b0de` round and this one was missed because no lane had regenerated the
+corpus since). The import is now a dynamic import off `QT_V4_ROOT`, defaulting
+to `~/source/quilltap-server`.
+
+**Regen recipe (the whole recipe, runnable as written):**
+
+```bash
+cd ~/source/quilltap-server && QT_V4_ROOT=$PWD ./node_modules/.bin/tsx \
+  ~/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts
+```
+
+`cd` into the v4 tree is load-bearing separately from `QT_V4_ROOT`: the cwd is
+what resolves the `@/…` tsconfig aliases inside v4's own renderer imports. On
+drift or a dirty tree, make a detached worktree at the baseline and use it for
+both (`cd <pin> && QT_V4_ROOT=$PWD …`).
+
+**What the corpus gained.** 40 → 51 vectors. Each entry may now carry an
+`options` bag (v4's `MarkdownRenderOptions`), captured from v4's REAL renderer
+with those options — so the template arms are measured, not reasoned:
+
+- `template-custom-patterns-inline` + its `-reset` twin (same input, no
+  options): the pair is the proof the template reached the render.
+- `template-custom-patterns-supersede-defaults`: `*looks around*` comes back a
+  bare `<em>` — the custom set REPLACES the defaults, it does not join them.
+- `template-custom-patterns-line-scope` + `-reset`: a `scope: 'line'` rule.
+- `template-empty-patterns-falls-back`: v4 itself captured the same bytes as
+  `bracket-narration`.
+- `template-custom-patterns-hide-delimiters` / `-rpbody-escape`: the two
+  `(?<rpBody>…)` paths (wrap-block strip vs interior markdown escape).
+- `template-custom-dialogue-detection` + `-reset`, and
+  `template-null-dialogue-detection-falls-back`.
+
+The custom delimiters are `@@`, `::` and `%%` on purpose: the roleplay pass runs
+over RENDERED HTML, so any delimiter containing `<`/`>` is already entity-escaped
+by the time a pattern could match it and can never fire.
+
+**Baseline neutrality: all 40 pre-existing vectors came back byte-identical**
+(name, input and html compared one by one against the pre-regen file), and none
+of them acquired an `options` key — absent options is exactly v4's own
+`options = {}` default, which is what they were captured under.
+
+**The spec.** `markdown-renderer.spec.ts` now passes `fixture.options` through,
+and gained (a) a corpus-shape assertion — both patterns arms and both dialogue
+arms must be present, so a truncated corpus cannot pass silently (the standing
+"assert shape, not hand counts" rule) — and (b) a `describe` porting v4
+`MessageContent.tsx:333-338` case-for-case: the asymmetry is that an EMPTY
+patterns array falls back while dialogue detection falls back only on nullish.
+70 tests green.
+
+**Mutation proofs (every new arm is first-run green, so each was proven
+sensitive by breaking the port and watching it go red):**
+
+| mutation in `markdown-renderer.ts` | result |
+| --- | --- |
+| `patterns = renderingPatterns` (drop the empty-array fallback) | 2 failed |
+| `dialogueConfig = dialogueDetection` (drop the `\|\|` fallback) | 2 failed |
+| `patterns = DEFAULT_RENDERING_PATTERNS` (ignore the template) | 6 failed |
+| `dialogueConfig = DEFAULT_DIALOGUE_DETECTION` (ignore the template) | 2 failed |
+
+`markdown-renderer.ts` was restored byte-for-byte afterwards (`git diff` clean);
+no product code changed in this unit.
+
+**Fixture invalidation:** `apps/web/src/app/chat/render/__fixtures__/
+markdown-fixtures.json` is this lane's own and is consumed by exactly one spec.
+No Rust oracle family reads it.
