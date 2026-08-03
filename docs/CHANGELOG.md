@@ -41,6 +41,19 @@ forward from an older version gains it on startup. Startup also clears out
 stored file contents that nothing points at any more — every edit to a
 document in a store leaves its previous contents behind, and until now they
 were never collected, so a long-lived instance accumulated dozens of them.
+Restoring a backup no longer fails on document-store rows whose store is
+gone. A store deleted at some point in the past can leave its file links and
+folders behind; the backup copies them out faithfully, and putting them back
+used to fail with a bare database error — once per row, naming a filename and
+nothing else. Restore now checks that a row's parent is in the backup before
+trying, and says which rows it skipped and why. Nothing about how backups are
+written has changed, so archives you already have benefit too.
+
+Creating a backup now tells you when it could not read one of your files.
+Those files were skipped in silence, and the only sign was an error at restore
+time, possibly months later. The names now come back with the backup, and the
+skips are written to the server log as well.
+
 Deleting all your data, and restoring a backup over the top of an
 existing library, now also clear the notes characters leave on individual
 messages. That table was never cleared, so the old notes stayed behind and a

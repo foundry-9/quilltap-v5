@@ -82,6 +82,18 @@ export class BackupDialog {
     this.loading.set(true);
     try {
       const data = await this.core.dispatchData({ type: 'systemBackupCreate' });
+      // ⚠ v5-only key (dogfood #59): the names of files whose bytes could not be
+      // read, absent when there were none. v4 warns to the server log and tells
+      // the operator nothing, so they discover the loss at RESTORE time — the
+      // 2026-08-03 walk hit 19 of them. Warn rather than error: the backup IS
+      // valid and downloading, it is simply short of those files.
+      const skipped = (data['skippedFiles'] as string[] | undefined) ?? [];
+      if (skipped.length > 0) {
+        this.toasts.showWarning(
+          `${skipped.length} file${skipped.length === 1 ? '' : 's'} could not be read and ` +
+            `${skipped.length === 1 ? 'is' : 'are'} missing from this backup: ${skipped.join(', ')}`,
+        );
+      }
       const backupId = data['backupId'] as string | undefined;
       if (backupId) {
         const filename =

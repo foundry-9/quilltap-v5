@@ -37,6 +37,12 @@ pub struct StageReport {
     pub files_skipped: usize,
     pub blobs_staged: usize,
     pub blobs_skipped: usize,
+    /// The `originalFilename` of every user file whose bytes could not be
+    /// staged, in collection order (dogfood #59). v4 has no analogue — it warns
+    /// to its module logger and forgets. The names reach the operator through
+    /// the backup response, because this is the last moment at which the loss is
+    /// still recoverable.
+    pub skipped_files: Vec<String>,
 }
 
 /// The host directories v4 copies wholesale into the archive. `None` for a host
@@ -167,10 +173,30 @@ pub fn stage_backup(
 
     // User files, one at a time (`:638`). `storageKey`-less rows are skipped
     // silently — v4's `if (file.storageKey)` guard, not an error.
+    //
+    // ## ⚠ dogfood #59 — a skip here is where the operator's files go missing
+    //
+    // v4 `moduleLogger.warn('Failed to download file for backup, skipping', …)`
+    // and continues, so one unreadable file cannot sink a backup. v5 counted the
+    // skip and said NOTHING AT ALL — not even to the log — which is how the
+    // 2026-08-03 walk learned about it only at RESTORE time, months later, as 19
+    // × `File not found in backup: <name>`. Measured on that instance: 17 of the
+    // 2,085 `files` rows carry a legacy disk key (`<projectId>/<name>`) whose
+    // bytes are no longer under `<base>/files` — the document-store cutover moved
+    // them and left the rows behind. The rows are broken, not the backup, but the
+    // backup is where the operator can still do something about it.
+    //
+    // So: parity with v4's logger below, and — the actual repair — the names ride
+    // out on [`StageReport::skipped_files`] and reach the operator in the backup
+    // response. See `api::system_backup::backup_create`.
     for file in &data.files {
         let Some(key) = file.get("storageKey").and_then(Value::as_str) else {
             continue;
         };
+        let name = file
+            .get("originalFilename")
+            .and_then(Value::as_str)
+            .unwrap_or(key);
         match download_by_key(db, backend, key) {
             Ok(bytes) => {
                 let dest = join_relative(&staging_dir.join("files"), key);
@@ -179,11 +205,28 @@ pub fn stage_backup(
                 }
                 match std::fs::write(&dest, bytes) {
                     Ok(()) => report.files_staged += 1,
-                    Err(_) => report.files_skipped += 1,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "quilltap::backup",
+                            storage_key = key,
+                            error = %e,
+                            "Failed to stage file for backup, skipping",
+                        );
+                        report.files_skipped += 1;
+                        report.skipped_files.push(name.to_string());
+                    }
                 }
             }
-            // v4 warns and continues so one unreadable file cannot sink a backup.
-            Err(_) => report.files_skipped += 1,
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::backup",
+                    storage_key = key,
+                    error = %e,
+                    "Failed to download file for backup, skipping",
+                );
+                report.files_skipped += 1;
+                report.skipped_files.push(name.to_string());
+            }
         }
     }
 
@@ -204,9 +247,24 @@ pub fn stage_backup(
             match bytes {
                 Some(b) => match std::fs::write(blobs_dir.join(id), b) {
                     Ok(()) => report.blobs_staged += 1,
-                    Err(_) => report.blobs_skipped += 1,
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "quilltap::backup",
+                            blob_id = id,
+                            error = %e,
+                            "Failed to stage doc-store blob for backup, skipping",
+                        );
+                        report.blobs_skipped += 1;
+                    }
                 },
-                None => report.blobs_skipped += 1,
+                None => {
+                    tracing::warn!(
+                        target: "quilltap::backup",
+                        blob_id = id,
+                        "Doc-store blob bytes missing, skipping",
+                    );
+                    report.blobs_skipped += 1;
+                }
             }
         }
     }

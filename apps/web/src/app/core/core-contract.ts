@@ -5708,7 +5708,11 @@ export interface ChatRegenerateAvatarRequest {
 //   POST /api/v1/system/tools?action=import-preview|import-execute (multipart legs)
 // ===========================================================================
 
-/** v4 `POST /api/v1/system/backup` — body `{}`; response `{backupId, manifest}`. */
+/**
+ * v4 `POST /api/v1/system/backup` — body `{}`; response `{backupId, manifest}`,
+ * plus a v5-only `skippedFiles: string[]` present ONLY when a user file's bytes
+ * could not be read (dogfood #59; `api/system_backup.rs` carries the reasoning).
+ */
 export interface SystemBackupCreateRequest {
   type: 'systemBackupCreate';
 }

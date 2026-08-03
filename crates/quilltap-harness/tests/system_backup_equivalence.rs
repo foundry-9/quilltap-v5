@@ -445,7 +445,7 @@ fn system_backup_equivalence() {
         // makes both counts 0 and stages neither subtree.
         let manifest = create_manifest(USER, &data, NORMALIZED, NORMALIZED, HostCounts::default());
         let staging = scratch.root.join("staging");
-        stage_backup(
+        let staged = stage_backup(
             &db,
             &backend,
             &data,
@@ -454,6 +454,28 @@ fn system_backup_equivalence() {
             &HostDirs::default(),
         )
         .expect("stage");
+
+        // ⚠ DELIBERATE DIVERGENCE (dogfood #59) — v5 REPORTS what it could not
+        // stage. v4 warns to its module logger and forgets, so the operator only
+        // learns at restore time (`File not found in backup: <name>`), which is
+        // exactly how the 2026-08-03 walk found 19 of them. There is nothing to
+        // diff against here — v4 has no analogue — so the two arms are asserted
+        // directly, in both directions: the healthy case must report NOTHING (so
+        // the response key stays absent and the body byte-identical to v4's), and
+        // the missing-bytes case must name the file.
+        if seed_file_bytes {
+            assert!(
+                staged.skipped_files.is_empty(),
+                "[{name}] a healthy backup must report no skipped files, got {:?}",
+                staged.skipped_files
+            );
+        } else {
+            assert_eq!(
+                staged.skipped_files,
+                vec!["portrait.png".to_string()],
+                "[{name}] the file whose bytes are gone must be named"
+            );
+        }
 
         // Debugging aid: `QT_BACKUP_DUMP=<dir>` copies each case's staged tree
         // out before the scratch is dropped.

@@ -48,6 +48,35 @@ pub fn backup_create(db: &Db, host: &dyn BackupHost) -> Response {
     body.insert("success".into(), Value::Bool(true));
     body.insert("backupId".into(), Value::String(backup_id));
     body.insert("manifest".into(), created.manifest);
+    // ## ⚠ DELIBERATE DIVERGENCE (dogfood #59, 2026-08-03) — say what was left out
+    //
+    // v4's body is `{success, backupId, manifest}` and nothing else: a file whose
+    // bytes could not be read is warned to the module logger and dropped, so the
+    // operator is told at RESTORE time, possibly months later, as
+    // `File not found in backup: <name>`. That is what the 2026-08-03 walk hit —
+    // 19 of them, from `files` rows whose legacy disk keys outlived their bytes.
+    //
+    // Under the standing 2026-08-03 backup/restore ruling the names come back
+    // with the backup. The key is OMITTED when nothing was skipped, so the happy
+    // path's body stays byte-identical to v4's and the divergence exists only on
+    // an instance that actually has the problem.
+    //
+    // Blind spot, stated: no differential covers this route's BODY (the backup
+    // family diffs the archive tree), so `system_backup_equivalence`'s two-armed assertion on
+    // `StageReport::skipped_files` is what holds the shape it is built from.
+    if !created.staged.skipped_files.is_empty() {
+        body.insert(
+            "skippedFiles".into(),
+            Value::Array(
+                created
+                    .staged
+                    .skipped_files
+                    .into_iter()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+    }
     Response::System(Value::Object(body))
 }
 

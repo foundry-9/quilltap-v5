@@ -1107,6 +1107,11 @@ fn restore_on_writer(
 // The mount-index family (22a-22e, 22f, 22g, 22h, 22h-i, 22h-ii, 22i)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// The ids one collection carries, for the referential pre-check below.
+fn id_set(rows: &[Value]) -> std::collections::HashSet<String> {
+    rows.iter().map(id_of).collect()
+}
+
 fn restore_mount_family(
     main: &Connection,
     mount: &Connection,
@@ -1116,6 +1121,52 @@ fn restore_mount_family(
     c: &mut Counters,
     w: &mut Vec<String>,
 ) {
+    // ## ⚠ DELIBERATE DIVERGENCE (dogfood #58, 2026-08-03) — an archive can be
+    // ## referentially broken, and a restore must say so in words
+    //
+    // The backup's doc-store collections are raw `SELECT *` dumps (v4
+    // `dumpMountIndexTable`, ported in `collect.rs`), so whatever the mount
+    // index holds is what the archive carries — **including rows whose parent
+    // is gone**. That is not hypothetical: measured on the real dogfood
+    // instance, 2026-08-03, `doc_mount_file_links` held **43** rows whose
+    // `mountPointId` matched no `doc_mount_points` row and `doc_mount_folders`
+    // held **118**, left behind by document stores deleted without them. Nothing
+    // notices while they sit there — read connections do not enable foreign
+    // keys, and a `generateDDL` link table declares none at all.
+    //
+    // Restore is where it lands. v5 opens writable connections with
+    // `PRAGMA foreign_keys = ON`, and a **migration-vintage** `doc_mount_file_links`
+    // carries `fileId` → `doc_mount_files` and `mountPointId` →
+    // `doc_mount_points` (v4 `migrations/scripts/add-doc-mount-file-links.ts:190`),
+    // so each orphan failed with a bare `FOREIGN KEY constraint failed` — 50-odd
+    // of them on the 2026-08-03 walk, naming a filename and no cause.
+    //
+    // Under the standing 2026-08-03 backup/restore ruling (v5 FIXES v4's bugs in
+    // this family) each phase below now checks that a row's parent is IN THE
+    // ARCHIVE before attempting the insert, and skips it with a sentence naming
+    // what is missing. Three things about the shape, all deliberate:
+    //
+    // 1. The check is against what the ARCHIVE CONTAINS, not against what the
+    //    preceding phase managed to write. A parent that failed to restore for
+    //    some other reason already produced its own warning, and conflating the
+    //    two would turn one fault into two — and would make this check's
+    //    behaviour depend on unrelated failures.
+    // 2. It is **reader-side only**. `collect.rs` still dumps every row, so v5's
+    //    archives stay byte-identical and readable by v4 (the standing shape for
+    //    this family's divergences), and — the point — an archive the user
+    //    ALREADY HAS becomes restorable. A collect-side filter would help nobody
+    //    who has been taking backups.
+    // 3. It is invisible on every committed archive but
+    //    `restore-archive-orphan-links.zip`, because all the others were built
+    //    from healthy instances. `restore_vintage_state` is what proves it.
+    //
+    // The ROOT cause — a `doc_mount_points` delete that does not take its links
+    // and folders with it — belongs to the mount-index delete path, which this
+    // lane does not own. Recorded as a handoff in the lane record.
+    let archived_points = id_set(&data.doc_mount_points);
+    let archived_files = id_set(&data.doc_mount_files);
+    let mut usable_links: std::collections::HashSet<String> = id_set(&data.doc_mount_file_links);
+
     // 22a. Mount points. The archive carries these rows as the raw `SELECT *`
     // gave them up — pattern arrays as JSON text, `enabled` as INTEGER 0/1 — so
     // coerce back to domain shape (v4 `mount-index-coercion.ts`, applied at v4's
@@ -1164,6 +1215,13 @@ fn restore_mount_family(
         let mut sorted: Vec<&Value> = data.doc_mount_folders.iter().collect();
         sorted.sort_by_key(|f| s(f, "path").len());
         for f in sorted {
+            if !archived_points.contains(&s(f, "mountPointId")) {
+                w.push(format!(
+                    "Skipped doc-store folder \"{}\": its document store is not in the backup",
+                    s(f, "name")
+                ));
+                continue;
+            }
             let create = crate::db::doc_mount_folders::DmfCreate {
                 mount_point_id: s(f, "mountPointId"),
                 parent_id: os(f, "parentId"),
@@ -1217,6 +1275,21 @@ fn restore_mount_family(
     {
         let repo = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
         for link in &data.doc_mount_file_links {
+            let missing = if !archived_points.contains(&s(link, "mountPointId")) {
+                Some("its document store is not in the backup")
+            } else if !archived_files.contains(&s(link, "fileId")) {
+                Some("its file content row is not in the backup")
+            } else {
+                None
+            };
+            if let Some(why) = missing {
+                usable_links.remove(&id_of(link));
+                w.push(format!(
+                    "Skipped doc-store file link \"{}\": {why}",
+                    s(link, "relativePath")
+                ));
+                continue;
+            }
             let coerced = super::mount_index_coercion::coerce_doc_mount_file_link_row(link);
             warn_row!(
                 w,
@@ -1234,6 +1307,13 @@ fn restore_mount_family(
     {
         let repo = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         for d in &data.doc_mount_documents {
+            if !archived_files.contains(&s(d, "fileId")) {
+                w.push(
+                    "Skipped doc-store document: its file content row is not in the backup"
+                        .to_string(),
+                );
+                continue;
+            }
             let create = crate::db::doc_mount_documents::DmdCreate {
                 file_id: s(d, "fileId"),
                 content: s(d, "content"),
@@ -1262,6 +1342,12 @@ fn restore_mount_family(
         let blobs_dir = root_path.join("mount-blobs");
         for (i, blob) in data.doc_mount_blobs.iter().enumerate() {
             let id = id_of(blob);
+            if !archived_files.contains(&s(blob, "fileId")) {
+                w.push(format!(
+                    "Skipped doc-store blob {id}: its file content row is not in the backup"
+                ));
+                continue;
+            }
             // v4 `:505-508`: in new-account mode the metadata id is remapped but
             // the bytes on disk are still keyed by the ORIGINAL id, so the two are
             // paired by index — the same trick phase 5 uses for user files.
@@ -1338,6 +1424,12 @@ fn restore_mount_family(
     {
         let repo = crate::db::doc_mount_chunks::DocMountChunksRepository::new(mount);
         for chunk in &data.doc_mount_chunks {
+            // `usable_links` starts as the archive's link ids and loses the ones
+            // 22d skipped, so a chunk whose link never landed goes with it.
+            if !usable_links.contains(&s(chunk, "linkId")) {
+                w.push("Skipped doc-store chunk: its file link is not in the backup".to_string());
+                continue;
+            }
             let create = crate::db::doc_mount_chunks::DmcCreate {
                 link_id: s(chunk, "linkId"),
                 mount_point_id: s(chunk, "mountPointId"),
@@ -1367,6 +1459,13 @@ fn restore_mount_family(
     {
         let repo = crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(mount);
         for link in &data.project_doc_mount_links {
+            if !archived_points.contains(&s(link, "mountPointId")) {
+                w.push(
+                    "Skipped project↔store link: its document store is not in the backup"
+                        .to_string(),
+                );
+                continue;
+            }
             let create = crate::db::project_doc_mount_links::PdmlCreate {
                 project_id: s(link, "projectId"),
                 mount_point_id: s(link, "mountPointId"),
@@ -1389,6 +1488,12 @@ fn restore_mount_family(
     {
         let repo = crate::db::group_doc_mount_links::GroupDocMountLinksRepository::new(mount);
         for link in &data.group_doc_mount_links {
+            if !archived_points.contains(&s(link, "mountPointId")) {
+                w.push(
+                    "Skipped group↔store link: its document store is not in the backup".to_string(),
+                );
+                continue;
+            }
             let create = crate::db::group_doc_mount_links::GdmlCreate {
                 group_id: s(link, "groupId"),
                 mount_point_id: s(link, "mountPointId"),

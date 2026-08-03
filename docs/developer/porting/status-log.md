@@ -50828,3 +50828,141 @@ QT_FIXTURE_SD_LLM=$FX/system-data-llmlogs.db \
 rm -f $FX/*.db-journal            # the builder leaves stray empty journals
 # 2. each oracle, per its own case header, from $PIN rather than ~/source/quilltap-server
 ```
+
+---
+
+### Lane record — P4.28 units 3 + 4 (the migration-vintage fixture; dogfood #58 + #59)
+
+**The finding under the findings.** Every restore/backup/delete differential in
+the repo provisions its target from `fresh_schema.json` — v4's `generateDDL`.
+**No real long-lived instance has that schema.** Its tables were authored by
+`migrations/scripts/*` and grown by `ALTER TABLE ADD COLUMN`, and where the two
+shapes disagree is on CONSTRAINTS, which a row-count or row-value diff over a
+fresh target can never see. That is the single reason the whole suite was silent
+about #56, #57 and #58 at once.
+
+#### The migration-vintage fixture (`crates/quilltap-web/tests/fixtures/migration-vintage/`)
+
+Built by **replaying v4's real migration chain from nothing**
+(`harness/oracle/fixtures/build-migration-vintage-fixture.ts`), not by
+transcribing DDL: 100 migrations run, 75 skipped, keyed with the restore
+family's test pepper, deliberately empty of user rows (its value is the DDL, and
+an empty instance is where a `replace` restore arrives anyway).
+
+Two things the chain does not do on its own, both handled and both recorded in
+the builder's header:
+
+- The mount-index partition only gets `doc_mount_points` + `doc_mount_folders`
+  from the chain (the three `provision-*-mount` migrations). The other five
+  tables are authored at RUNTIME from `generateDDL`. Exactly ONE of them differs
+  on an instance old enough to predate the content-addressing refactor —
+  `doc_mount_file_links` — so the builder runs **v4's own
+  `addDocMountFileLinksMigration.run()`** to author it (its step 1 is a
+  `CREATE TABLE IF NOT EXISTS`, so authoring ORDER decides which DDL wins) and
+  then `generateDDL`s the remaining four. Both of v4's boot-time schema aligners
+  run afterwards, which is how a real instance gains the per-document policy
+  columns on a link table that predates them — without them the fixture would be
+  a vintage no instance actually reaches.
+- Recorded limitation: `doc_mount_documents` and `doc_mount_chunks` also carry
+  foreign keys on a real pre-refactor instance (from the same migration's
+  rebuild steps) and take the `generateDDL` shape here, because reaching those
+  steps means hand-writing the pre-refactor tables they upgrade — the
+  transcription the builder exists to avoid.
+
+**Validated against reality, not against reasoning:** the fixture's
+`doc_mount_file_links` DDL was diffed against the real dogfood instance's and is
+**byte-identical**.
+
+#### #58 — diagnosed, and it is neither hypothesis
+
+The order offered two leads (restore ordering; per-mount collect scoping). Both
+are wrong, and the measurement says so: 22c files precede 22d links, `fileId`
+orphans number **zero**, and the collector dumps whole tables.
+
+What is actually there, measured on the dogfood copy:
+**43 `doc_mount_file_links` rows whose `mountPointId` matches no
+`doc_mount_points` row**, across exactly 21 vanished character-vault mount
+points, with `relativePath`s `physical-prompts.json` (21) +
+`physical-description.md` (21) + `images/avatar.webp` (1) = 43 — the walk's three
+repeating names and its "~50". Plus **118** orphaned `doc_mount_folders`.
+
+The chain is: a document store is deleted without its links and folders → nobody
+notices (read connections do not enable foreign keys; a `generateDDL` link table
+declares none) → backup's raw `SELECT *` carries the orphans verbatim → restore
+inserts them where the constraints ARE live, and each fails with a bare
+`FOREIGN KEY constraint failed` naming a filename and no cause.
+
+**Fix — reader-side only.** Each doc-store phase checks that a row's parent is
+IN THE ARCHIVE before inserting, and skips it with a sentence naming what is
+missing (folders, links on both parents, documents, blobs, chunks, and the
+project/group store links). Three deliberate properties, all argued at the call
+site: the check is against archive CONTENT rather than against what the previous
+phase managed to write (so it cannot turn one fault into two); the collector is
+untouched, so v5's archives stay byte-identical, v4-readable, and — the point —
+**an archive the user already has becomes restorable**, which a collect-side
+filter would do nothing for; and it is invisible on every healthy archive.
+
+⚠ **The root cause is NOT fixed and is not this lane's.** The mount-index delete
+path that leaves the children behind lives in `services/mount_index/**`, owned by
+the hard-link-groups lane this round. Handoff: a v5-side repair should ride that
+surface, and the v4-side item is queued in `dogfood-findings.md`.
+
+#### #59 — the backup was silent, which is the whole bug
+
+Of the dogfood copy's 2,085 `files` rows, 2,068 carry a `mount-blob:` key and
+**17 carry a legacy disk key** (`<projectId>/<name>`) whose bytes are gone —
+`<base>/files/` holds only `_general/` and `_thumbnails/`. Staging's
+`download_by_key` fails, `files_skipped` is incremented, and v5 said **nothing at
+all**, where v4 at least warns to its module logger. So the loss surfaces at
+restore, months later. Nothing here touches the RULED files-phase divergence: no
+phase moved and no row changed.
+
+Fixed in two parts: `tracing::warn!` at all three swallow sites (v4 parity), and
+the skipped names carried out on `StageReport::skipped_files` → a v5-only
+`skippedFiles` key on the backup response → a warning toast naming them. The key
+is OMITTED when nothing was skipped, so a healthy body stays byte-identical to
+v4's and the divergence exists only on an instance that has the problem.
+
+#### Proof
+
+New `restore_vintage_state` (no env var — it can never silently skip):
+
+| arm | what it holds |
+| --- | --- |
+| `orphaned_doc_store_rows_are_skipped_by_name_not_by_constraint` | zero bare constraint failures; 9 named link skips + 7 folder skips + the dependent chunk skips; all 19 healthy links restored; zero orphans in the result |
+| `annotations_restore_onto_a_vintage_instance_without_colliding` | a `replace` restore over a seeded surviving annotation, on the vintage target where the migrated UNIQUE is live |
+
+The #58 arm was **red before the fix with the walk's exact message** — nine ×
+`Failed to restore doc-store file link "…": sqlite error: FOREIGN KEY constraint
+failed` — which is the repro, not a mutation proof after the fact.
+
+`system_backup_equivalence` gained a two-armed assertion on
+`StageReport::skipped_files` (healthy → empty; `backup_missing_file` → names
+`portrait.png`). `system_restore_state` + `system_restore_equivalence` were
+re-run over a freshly regenerated oracle at the pin: **15 cases, all green**, so
+the #58 fix is provably invisible to healthy archives.
+
+#### Fixtures added (nothing existing moved)
+
+- `crates/quilltap-web/tests/fixtures/migration-vintage/{quilltap,quilltap-mount-index,quilltap-llm-logs}.db`
+- `crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-orphan-links.zip`
+  — a THIRD archive builder
+  (`build-restore-archive-orphan-links.test.ts`), per the `p4.d23` precedent, so
+  the other eight archives are byte-untouched (`system_backup_equivalence`
+  re-proves it). It copies the `system-data-*` fixture, deletes ONE character
+  vault's `doc_mount_points` row (pinned by NAME, so a fixture rebuild cannot
+  silently orphan nothing) leaving its 9 links and 7 folders behind, and runs
+  v4's REAL `createBackup`.
+
+Both builders carry their regen recipe in their header; both must run from the
+lane's pinned worktree `/private/tmp/qt-v4-pin-p4.28-c4d4b0de`.
+
+**Gotcha worth carrying:** a BARE package specifier in an oracle/builder script
+resolves from the v5 file's directory, which has no `node_modules` — the
+migration-vintage builder needs `better-sqlite3` and had to reach it as
+`join(process.cwd(), 'node_modules', 'better-sqlite3', 'lib', 'index.js')`.
+Same family as the existing jest bare-import note, but it bites the tsx path too.
+Second: `QUILLTAP_DATA_DIR` is the instance BASE and v4's `getDataDir()` appends
+`data/`, while `SQLITE_PATH` is an absolute override — point the env at
+`<scratch>/data` and the main partition lands where you look while the
+mount-index and llm-logs siblings land in `<scratch>/data/data`.
