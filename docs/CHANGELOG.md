@@ -41,6 +41,12 @@ forward from an older version gains it on startup. Startup also clears out
 stored file contents that nothing points at any more — every edit to a
 document in a store leaves its previous contents behind, and until now they
 were never collected, so a long-lived instance accumulated dozens of them.
+Background jobs are now held still while a restore or a delete-all runs.
+They used to keep claiming work and writing to tables the operation was in the
+middle of emptying and refilling. They start again afterwards however the
+operation ends, including when it fails — unless you had stopped them yourself,
+in which case they stay stopped.
+
 Restoring a backup no longer fails on document-store rows whose store is
 gone. A store deleted at some point in the past can leave its file links and
 folders behind; the backup copies them out faithfully, and putting them back

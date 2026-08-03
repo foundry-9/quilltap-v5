@@ -50966,3 +50966,46 @@ Second: `QUILLTAP_DATA_DIR` is the instance BASE and v4's `getDataDir()` appends
 `data/`, while `SQLITE_PATH` is an absolute override — point the env at
 `<scratch>/data` and the main partition lands where you look while the
 mount-index and llm-logs siblings land in `<scratch>/data/data`.
+
+---
+
+### Lane record — P4.28 unit 2 (dogfood #60: jobs kept running through the restore)
+
+**Landed.** `api::system_data::PumpPause` — an RAII guard that stops the host
+job pump and starts it again when it drops. Taken at the top of BOTH dispatch
+arms that empty and repopulate the database: `SystemRestoreExecute` (43 tables,
+three partitions) and `SystemDeleteData`, which carries the identical hazard and
+which the order was right to name alongside it.
+
+A guard rather than a stop/start pair for the reason guards exist: the restore
+path has early returns, `?`s and a panic route, and a pump left stopped by a
+failed restore would be a worse bug than the one being fixed. Three of the five
+tests exist for exactly those exits.
+
+**The one subtlety worth recording:** the guard reads `status().running` on the
+way in and restarts only if the pump WAS running. The Tasks Queue Stop button is
+a deliberate operator choice, and a restore that silently undid it would be
+overriding a decision with a side effect. Pinned by
+`a_pump_the_operator_had_already_stopped_stays_stopped`.
+
+**Honest limit, stated on the type and not buried:** `stop()` clears the shared
+`running` gate `pump_loop` checks BEFORE `pump_claim()`, so no NEW job is claimed
+while the guard is alive. A job already in flight when the guard is taken runs to
+completion — v5 never kills a handler mid-job (the standing divergence from v4's
+SIGTERM) and `HostJobPump::status` reports `in_flight: 0` unconditionally, so
+there is nothing to wait on. **Named deferral:** closing that window needs an
+in-flight counter on the host runner (which would also retire the
+`ProcessorStatus` simplification `job_pump.rs`'s header already documents).
+
+**The order's progress-surface item needed no code, and its premise was wrong.**
+It asks for "a progress surface in the restore dialog… v4's wizard reports step
+progress". v4's actual affordance is a spinner and the single sentence
+"Restoring your backup..." (`components/tools/restore/RestoreProgress.tsx` at the
+pin) — no steps, no percentage. v5's `restore-dialog.ts:162-166` has carried
+exactly that, spinner and sentence, since P4.9G1. Matching v4's affordance rather
+than an invented one is what the order asked for, and it was already matched.
+
+Five tests, all deterministic, over a recording fake pump: the claim window is
+closed for the whole body; an `Err` exit restarts; a panic restarts; an
+already-stopped pump stays stopped and is never started; a `None` pump is a
+no-op.

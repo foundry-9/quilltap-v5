@@ -860,7 +860,12 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::SystemDeleteData { confirm } => match self.ready_db() {
-                Ok(db) => super::system_data::delete_data(&db, SINGLE_USER_ID, &confirm).await,
+                Ok(db) => {
+                    // dogfood #60 — no job may claim while the tables are being
+                    // emptied. See `system_data::PumpPause`.
+                    let _pump = super::system_data::PumpPause::new(self.job_pump_control());
+                    super::system_data::delete_data(&db, SINGLE_USER_ID, &confirm).await
+                }
                 Err(r) => r,
             },
             // ── end P4.9G3 ──
@@ -1354,6 +1359,10 @@ impl CoreEngine {
             },
             Request::SystemRestoreExecute { upload_id, mode } => match self.ready_backup_host() {
                 Ok((db, host)) => {
+                    // dogfood #60 — a restore truncates and repopulates 43 tables
+                    // across three partitions; nothing may write into the middle
+                    // of that. See `system_data::PumpPause`.
+                    let _pump = super::system_data::PumpPause::new(self.job_pump_control());
                     super::system_backup::restore_execute(&db, host.as_ref(), &upload_id, &mode)
                         .await
                 }

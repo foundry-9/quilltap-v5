@@ -77,6 +77,67 @@ pub trait JobPumpControl: Send + Sync {
     fn wake(&self);
 }
 
+/// ## ⚠ DELIBERATE DIVERGENCE (dogfood #60, 2026-08-03) — hold the pump still
+///
+/// A restore truncates and repopulates 43 tables across three partitions, and a
+/// `delete_all` empties them. v4 runs neither with its job processor stopped, so
+/// a handler can claim a job and write into the middle of it — and the 2026-08-03
+/// walk watched scheduled jobs run straight through a restore. Under the
+/// standing 2026-08-03 backup/restore ruling that v4 does not do it either is
+/// not a defence in this family.
+///
+/// This guard stops the pump for the duration of an operation and starts it
+/// again on **every** exit — the early `return`s, the `?`s, and a panic — which
+/// is the whole reason it is a guard and not two calls. Constructing it is the
+/// stop; dropping it is the start.
+///
+/// ### What it does and does not guarantee
+///
+/// `stop()` clears the shared `running` gate that `pump_loop` checks **before**
+/// `pump_claim()`, so no NEW job is claimed while the guard is alive. A job
+/// already in flight when the guard is taken runs to completion: v5 never kills
+/// a handler mid-job (the documented divergence from v4's SIGTERM), and the
+/// runner exposes no in-flight counter to wait on. Narrowing that last window
+/// needs an in-flight count on the host runner and is recorded as a named
+/// deferral rather than silently assumed away.
+///
+/// A `None` pump (read-only embedders, canned assemblies) is a no-op: those
+/// hosts have no cadence to hold.
+pub struct PumpPause {
+    pump: Option<std::sync::Arc<dyn JobPumpControl>>,
+    /// Whether the pump was running when the guard was taken. A pump the
+    /// operator had already stopped by hand (the Tasks Queue Stop button) must
+    /// still be stopped afterwards — restarting it would override a deliberate
+    /// choice with a side effect.
+    was_running: bool,
+}
+
+impl PumpPause {
+    /// Stop the pump (if there is one) and hold it stopped until the guard drops.
+    pub fn new(pump: Option<std::sync::Arc<dyn JobPumpControl>>) -> Self {
+        let was_running = match &pump {
+            Some(p) => {
+                let running = p.status().running;
+                p.stop();
+                running
+            }
+            None => false,
+        };
+        Self { pump, was_running }
+    }
+}
+
+impl Drop for PumpPause {
+    fn drop(&mut self) {
+        if !self.was_running {
+            return;
+        }
+        if let Some(p) = &self.pump {
+            p.start();
+        }
+    }
+}
+
 // ── Pure helpers (v4 `route.ts` `estimateTokensForJob` / `getJobTypeName`) ────
 
 /// v4 `estimateTokensForJob(job)` (`tools/route.ts:80`). `payload` is the parsed
@@ -698,5 +759,113 @@ pub async fn delete_data(db: &Db, user_id: &str, confirm: &str) -> Response {
             tracing::error!(target: "quilltap::system_data", error = %e, "Delete all data failed");
             Response::error(ErrorKind::Internal, "Failed to delete data")
         }
+    }
+}
+
+#[cfg(test)]
+mod pump_pause_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A pump that records what it was told, in order, and reports the same
+    /// `running` gate the host's real one does.
+    #[derive(Default)]
+    struct FakePump {
+        running: AtomicBool,
+        starts: AtomicUsize,
+        stops: AtomicUsize,
+    }
+
+    impl JobPumpControl for FakePump {
+        fn status(&self) -> ProcessorStatus {
+            ProcessorStatus {
+                running: self.running.load(Ordering::SeqCst),
+                processing: false,
+                in_flight: 0,
+                child_crashed: false,
+            }
+        }
+        fn start(&self) {
+            self.running.store(true, Ordering::SeqCst);
+            self.starts.fetch_add(1, Ordering::SeqCst);
+        }
+        fn stop(&self) {
+            self.running.store(false, Ordering::SeqCst);
+            self.stops.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake(&self) {}
+    }
+
+    fn running_pump() -> Arc<FakePump> {
+        let p = Arc::new(FakePump::default());
+        p.running.store(true, Ordering::SeqCst);
+        p
+    }
+
+    #[test]
+    fn the_pump_is_stopped_for_the_whole_body_and_started_after() {
+        let pump = running_pump();
+        {
+            let _guard = PumpPause::new(Some(pump.clone() as Arc<dyn JobPumpControl>));
+            // This is the claim window: anything the body does happens here, and
+            // `pump_loop` checks exactly this gate before claiming.
+            assert!(
+                !pump.status().running,
+                "no job may be claimed while the guard is alive"
+            );
+        }
+        assert!(pump.status().running, "the pump must come back");
+        assert_eq!(pump.stops.load(Ordering::SeqCst), 1);
+        assert_eq!(pump.starts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn an_early_return_still_restarts_it() {
+        let pump = running_pump();
+        fn body(pump: Arc<FakePump>) -> Result<(), &'static str> {
+            let _guard = PumpPause::new(Some(pump.clone() as Arc<dyn JobPumpControl>));
+            assert!(!pump.status().running);
+            Err("the restore failed") // the `?`-shaped exit the guard exists for
+        }
+        assert!(body(pump.clone()).is_err());
+        assert!(
+            pump.status().running,
+            "a failed restore must not leave the pump stopped forever"
+        );
+    }
+
+    #[test]
+    fn a_panic_still_restarts_it() {
+        let pump = running_pump();
+        let p = pump.clone();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _guard = PumpPause::new(Some(p.clone() as Arc<dyn JobPumpControl>));
+            panic!("mid-restore");
+        }));
+        assert!(result.is_err());
+        assert!(pump.status().running, "unwinding must still restart it");
+    }
+
+    #[test]
+    fn a_pump_the_operator_had_already_stopped_stays_stopped() {
+        // The Tasks Queue Stop button is a deliberate choice; a restore must not
+        // quietly undo it on the way out.
+        let pump = Arc::new(FakePump::default()); // `running` false from the start
+        {
+            let _guard = PumpPause::new(Some(pump.clone() as Arc<dyn JobPumpControl>));
+        }
+        assert!(!pump.status().running);
+        assert_eq!(
+            pump.starts.load(Ordering::SeqCst),
+            0,
+            "the guard must not start a pump that was not running"
+        );
+    }
+
+    #[test]
+    fn no_pump_is_a_no_op() {
+        // Read-only embedders and canned assemblies have no cadence to hold.
+        drop(PumpPause::new(None));
     }
 }
