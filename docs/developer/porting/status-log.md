@@ -51106,3 +51106,35 @@ side, and the port now follows v4's own sequence.
 service, asserting the exact sentences AND their ORDER (the #59 warning precedes
 the download success). **Mutation-proven**: removing the success toast and
 disabling the skipped-files branch turns 2 of them red.
+
+---
+
+### Lane record — P4.28 gate + the fixture blast radius
+
+**Committed fixtures this lane moved, and what each invalidates.**
+
+| fixture | change | invalidates |
+| --- | --- | --- |
+| `system-data-{main,mount,llmlogs}.db` | widened: `conversation_annotations` 1 → 3 rows (unit 1) | the SEVEN families that read it — `system_delete_data_equivalence`, `system_jobs_routes_equivalence`, `system_jobs_collection_equivalence`, `system_export_equivalence`, `system_backup_equivalence`, `system_import_equivalence`, `system_import_state` — **plus** `backup_uuid_remap_equivalence`, whose committed corpus is GENERATED from it (the order named six; the count is eight once the corpus is included) |
+| `harness/oracle/fixtures/uuid-remap-corpus.json` | regenerated | `backup_uuid_remap_equivalence` |
+| `migration-vintage/*.db` | NEW | nothing (new consumer only) |
+| `restore-archives/restore-archive-orphan-links.zip` | NEW, via a separate builder | nothing; the other EIGHT archives are byte-untouched and `system_backup_equivalence` re-proves the archive bytes |
+
+The uuid-remap corpus diff was audited rather than accepted: it is **only** minted
+vault-mount-point ids, physical-description ids, write-clock stamps, and the one
+new `ANNOTATION_2` row. `ANNOTATION_ORPHAN` is correctly ABSENT — backup collects
+annotations per existing chat, so an annotation whose chat is gone is invisible to
+a backup, which is the same fact the finding rests on.
+
+**Oracles regenerated fresh from the pinned worktree
+`/private/tmp/qt-v4-pin-p4.28-c4d4b0de` (v4 `c4d4b0de`, PRE-drift per the round's
+two-vintage split):** system-delete-data, system-jobs, system-jobs-collection,
+system-export, system-backup, system-import, system-import-execute,
+system-restore, backup-uuid-remap, backup-mount-index-coercion. Each in its OWN
+clean jest invocation with an ANCHORED `-- "<case>\.test\.ts$"` filter — an
+unanchored `system-import` also matches `system-import-execute`, and the two share
+`QT_ORACLE_OUT`.
+
+⚠ **Expect these families to go RED at unification until the unifier regenerates
+them at `40319484`.** That is the round's deliberate vintage seam (P4.D41 adds
+`doc_mount_file_links.linkGroupId`), not a lane bug.
