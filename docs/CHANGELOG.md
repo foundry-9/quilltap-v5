@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Editing a document in a store no longer leaves its previous contents behind
+for good. Every edit stores the new version under a new entry and repoints the
+file at it; the entry it left was never collected, so a long-lived instance
+accumulated dozens of abandoned document and image bodies. They are now
+collected as they are abandoned, and any backlog is cleared at startup.
+
 The command line no longer reports a file as linked into three dozen places
 when nothing was linked at all. Its links column counted every file that
 happened to store identical bytes — an empty file, a shared boilerplate header

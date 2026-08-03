@@ -121,6 +121,29 @@ async function main(): Promise<void> {
     }
   }
 
+  // [40319484] `gcOrphanedFileRow` runs inside every content-addressed rewrite
+  // and deletes from `doc_mount_blobs` unconditionally, so a mount index that
+  // lacks the table now throws `no such table` on the SECOND write to any path.
+  // v4's blobs repository creates it lazily from hand-written DDL
+  // (`doc-mount-blobs.repository.ts:113`); copied verbatim so the fixture carries
+  // exactly the table a real instance has (it is in `fresh_schema.json` too).
+  midb.exec(`
+    CREATE TABLE IF NOT EXISTS "doc_mount_blobs" (
+      "id" TEXT PRIMARY KEY,
+      "fileId" TEXT NOT NULL,
+      "sha256" TEXT NOT NULL,
+      "sizeBytes" INTEGER NOT NULL,
+      "storedMimeType" TEXT NOT NULL,
+      "data" BLOB NOT NULL,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("fileId") REFERENCES "doc_mount_files" ("id") ON DELETE CASCADE
+    )
+  `);
+  midb.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_blobs_fileId" ON "doc_mount_blobs" ("fileId")'
+  );
+
   // The vector tables the gate touches. v4's repos create their table lazily on
   // first use, so a fixture that seeds no vectors would leave `vector_indices`
   // absent — the oracle's own gate run would then create it while the Rust side

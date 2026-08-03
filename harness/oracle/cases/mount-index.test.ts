@@ -129,7 +129,7 @@ const MOUNT_TABLES: Record<string, string> = {
     'originalMimeType, description, descriptionUpdatedAt, conversionStatus, conversionError, ' +
     'plainTextLength, extractedText, extractedTextSha256, extractionStatus, extractionError, ' +
     'chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, lastModified, createdAt, ' +
-    'updatedAt FROM doc_mount_file_links ORDER BY mountPointId, relativePath',
+    'updatedAt, linkGroupId FROM doc_mount_file_links ORDER BY mountPointId, relativePath',
   documents:
     'SELECT id, fileId, content, contentSha256, plainTextLength, createdAt, updatedAt ' +
     'FROM doc_mount_documents ORDER BY contentSha256',

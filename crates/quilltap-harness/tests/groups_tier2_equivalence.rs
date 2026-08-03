@@ -508,8 +508,15 @@ fn groups_tier2_matches_oracle() {
     };
     assert_eq!(rows("groups").len(), 5, "5 group rows");
     assert_eq!(rows("points").len(), 5, "5 mount-point rows");
-    assert_eq!(rows("files").len(), 15, "15 deduped file rows");
-    assert_eq!(rows("documents").len(), 16, "16 document rows");
+    // 11, not 15: v4 `40319484` collects the content row every store rewrite
+    // abandons (`gcOrphanedFileRow`), so the four orphans the old corpus counted
+    // are gone on both sides.
+    assert_eq!(rows("files").len(), 11, "11 deduped file rows");
+    assert_eq!(
+        rows("documents").len(),
+        11,
+        "11 document rows (each collected orphan took its payload)"
+    );
     assert_eq!(rows("links").len(), 20, "20 link rows (5 stores × 4 files)");
     assert_eq!(rows("folders").len(), 0, "0 folders (all files top-level)");
     assert_eq!(rows("groupLinks").len(), 5, "5 group→store links");

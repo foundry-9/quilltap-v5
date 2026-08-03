@@ -117,7 +117,7 @@ pub const MOUNT_TABLES: &[(&str, &str)] = &[
          originalMimeType, description, descriptionUpdatedAt, conversionStatus, conversionError, \
          plainTextLength, extractedText, extractedTextSha256, extractionStatus, extractionError, \
          chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, lastModified, createdAt, \
-         updatedAt FROM doc_mount_file_links ORDER BY mountPointId, relativePath",
+         updatedAt, linkGroupId FROM doc_mount_file_links ORDER BY mountPointId, relativePath",
     ),
     (
         "documents",

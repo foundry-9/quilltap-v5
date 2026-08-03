@@ -50620,3 +50620,111 @@ Mutation-proofed:
 Run: `QT_V4_CHECKOUT=~/source/quilltap-server
 QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node cargo test -p quilltap-cli
 --test cli_differential -- --nocapture` (~140 s).
+
+---
+
+## Lane record — P4.D41 unit 8 (the dump constant + the mass regen)
+
+**Landed.** `linkGroupId` appended to the `links` SELECT in the harness dump
+constant (`mount_common/mod.rs` `MOUNT_TABLES`) **and its three oracle-side
+mirrors** (`mount-index.test.ts`, `mount-ops.test.ts`, `mount-write.test.ts`) —
+the constant is duplicated, not shared, so all four move together.
+
+### The regen: 51 families, 49 GREEN
+
+Run family-by-family through `harness/tools/recipe_sweep.py --run` (each in its
+own clean invocation, oracle deleted first), over oracles regenerated fresh at
+`40319484`.
+
+**⚠ THE FINDING THE SWEEP EXISTS FOR — a REAL v4 hazard, 20 families red at
+once.** v4's new `gcOrphanedFileRow` runs inside EVERY content-addressed rewrite
+and issues `DELETE FROM doc_mount_blobs` **unconditionally**. But
+`doc_mount_blobs` has no Zod schema: v4's blobs repository creates it lazily
+from hand-written DDL on first access. So on any mount index that lacks the
+table, **v4 itself now throws `no such table: doc_mount_blobs` on the SECOND
+write to any path** — the first write creates a link, the second orphans a
+content row and reaches the GC. Twenty fixture families broke on v4's own code
+before v5 was even consulted:
+
+```
+vault-character-write oracle failed: SqliteError: no such table: doc_mount_blobs
+    at gcOrphanedFileRow (…/doc-mount-file-links.repository.ts:144:6)
+    at DocMountFileLinksRepository.linkDocumentContent (…:1097:71)
+    at async writeDatabaseDocument (…/database-store.ts:121:3)
+```
+
+Real instances are safe — `doc_mount_blobs` is in `fresh_schema.json`'s
+mountIndex, so a provisioned instance has it — but an instance whose mount index
+predates the blobs table (a restore from an old backup, a hand-built index)
+would hit it. **Recorded for the v4-side list; not a v5 divergence** (v5's
+`gc_orphaned_file_row` is a faithful port and fails identically).
+
+Fixed at the root rather than in the port: **all 71 fixture builders that create
+`doc_mount_file_links` without `doc_mount_blobs` now create it**, from v4's own
+hand-written DDL verbatim — which is also exactly what a real instance carries.
+Two mechanical passes (44 + 27) covering both loop shapes; zero left over.
+
+**Two families' hand-count assertions moved, exactly as the order predicted**
+("REGENERATED oracles will legitimately show FEWER rows after rewrites"):
+
+| family | was | now | why |
+| --- | --- | --- | --- |
+| `characters_create_tier2` | 10 files / 10 documents | 9 / 9 | the default-`properties.json` row the scaffold's rewrite abandoned is now collected — the old comment literally said "9 live + 1 orphaned" |
+| `groups_tier2` | 15 files / 16 documents | 11 / 11 | four store rewrites, four collected orphans, each taking its payload |
+
+Both are the drift landing, not a v5 bug; the comments now say so.
+
+### ⚠ TWO FAMILIES ARE RED AND IT IS NOT THIS DRIFT — `doc_text` + `doc_fm`
+
+Both diverge on **`chunkCount` 1 (v5) vs 0 (v4)** for every doc-edit op that
+lands bytes in a database store. Cause: the doc-edit oracle cases
+`jest.doMock('@/lib/doc-edit/reindex-file')` to silence the fire-and-forget
+`triggerReindexIfNeeded` the port omits — but `writeDatabaseDocument` imports
+that SAME module for its own P4.6BK chunk pass, so the mock silences v4's
+chunk-on-write too. v5 chunks (P4.6BK, deliberate); mocked-v4 does not.
+
+**Proven pre-existing, not this lane:** with the new hard-link-group pass
+disabled by probe, the divergence is unchanged; and
+`git show ceeec560:…/doc_mount_file_links.rs` already contains
+`reindex_after_database_write`. It has been invisible because both families'
+committed recipes cannot run from a `.claude/worktrees/` checkout at all (jest
+ignores `.claude/` paths), so nothing has regenerated their oracles in a while.
+
+**Deliberately NOT papered over.** The two candidate fixes both change what the
+family proves — un-mock v4's reindex (and inherit `triggerReindexIfNeeded`'s
+embedding-enqueue + stats side effects), or exclude `chunkCount` (and stop
+proving the chunk pass at all) — so this is a call for the doc-edit oracle's
+owner, not for a drift lane. Recorded here with the exact reproduction.
+
+### Tier-2 deliverable 10 — the neutrality sweep: 38 families, 31 GREEN
+
+The remaining doc-mount-table readers (attach-mount-file, photos, groups /
+projects / post-office / scenarios routes, the embedding families, the vault
+read overlays, characters reads/mutations, mount read/chunker/convert,
+`system_import_equivalence`, …). **The seven non-green are all recipe plumbing,
+none a differential red**: five cannot run from a `.claude/worktrees/` checkout
+(jest ignores `.claude/`; `tsx` will not resolve from the v5 tree), one is a
+sweep-shield sidecar gap (`photos-main.db.meta.json` not copied), one pair is
+the known "recipe is not self-contained" class. Same bucket P4.D32 recorded as
+28 unrunnable recipes; this lane did not widen it.
+
+### Tier-2 deliverable 9 — DEFERRED LOUDLY
+
+A grouped-link pair inside a COMMITTED `*-mount.db` fixture was not added.
+Adding one changes fixture bytes every other family reading that file depends
+on, and this round's ownership already forced this lane into P4.28's
+`system-data-*` (below). The group arms instead run against fixtures built
+deterministically per run — `mount_link_groups` binds its groups through v4's
+real `linkFile`, and the CLI Tier R fixture seeds a committed-SHAPE group
+(column appended, partial index, one deliberate pair + one coincidental
+byte-share) in-test. Worth revisiting in a round that owns a doc-mount fixture
+outright.
+
+### Gate
+
+`cargo fmt --all --check`; clippy both feature sets; `cargo test --workspace
+--no-fail-fast` green; 49/51 deliverable-8 families + 31/38 neutrality families
+re-run BY NAME over fresh `40319484` oracles, zero SKIP; the CLI Tier R
+differential 136/136; `provisioning_equivalence` + `builtin_mounts_equivalence`
+green. **No `apps/web` change anywhere in this lane — no ng/Playwright run
+owed.**

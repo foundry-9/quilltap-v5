@@ -412,15 +412,21 @@ fn characters_create_tier2_matches_oracle() {
         11,
         "11 links (6 md + 3 json + 1 prompt + 1 scenario)"
     );
-    // 9 live files + 1 orphaned default-properties.json (orphan-on-rewrite). The
-    // scaffold's metadata.json `{}` survives — a create with no `metadata` skips
-    // the guarded managed-field write, so it is not rewritten (no orphan).
+    // 9 live files. The default-properties.json row the scaffold's rewrite
+    // abandoned used to linger here as a tenth, orphaned row; v4 `40319484`
+    // collects it on the write path (`gcOrphanedFileRow`), so it is gone on both
+    // sides. The scaffold's metadata.json `{}` survives — a create with no
+    // `metadata` skips the guarded managed-field write, so it is never rewritten.
     assert_eq!(
         rows("files").len(),
-        10,
-        "10 files (9 live + 1 orphaned default props)"
+        9,
+        "9 files (no orphan survives the write)"
     );
-    assert_eq!(rows("documents").len(), 10, "10 documents");
+    assert_eq!(
+        rows("documents").len(),
+        9,
+        "9 documents (the orphan's payload went with it)"
+    );
 
     // The chunk pass (P4.6BK): the freshly provisioned vault is chunked.
     assert!(
