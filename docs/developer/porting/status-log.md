@@ -51731,3 +51731,96 @@ Spec pins: a new `new-chat.state.spec.ts` (9 cases, one per row) testing
 `NewChatState` directly with a fake toasts recorder — no TestBed needed,
 since the class has no Angular DI dependencies of its own. `ng test`
 green (59/59 across the whole new-chat family). No Rust touched.
+
+**Unit 11 — `components/providers/qtap-link-provider.tsx` (3) —
+RECLASSIFIED, zero code change (the census-verdict trap, an eighth
+instance).** The order pointed this row at
+`workspace/chrome/link-interceptor.ts`; that file is the port of a
+DIFFERENT v4 component — `WorkspaceLinkInterceptor.tsx`, the in-app
+`<a href>` tab-navigation interceptor — not `QtapLinkProvider`, the
+`qtap://`-scheme click handler that resolves a link's target (document /
+image / unresolvable) and opens the Document Mode pane, the image modal,
+or one of these three toasts. Confirmed by content, then confirmed
+absent: no `QtapLinkContext`, `qtap-target`, `resolveDocumentExistsForChat`,
+or `openDocumentForChat` equivalent exists anywhere in v5.
+`chat/render/qtap-linkify.ts` (P4.30's file) only turns bare `qtap://`
+text into clickable markdown anchors — a pure render-time transform with
+no click handler behind it, so those anchors are inert links today. Since
+building the actual handler would mean writing a new provider/context
+integrated with chat message rendering (P4.30's ownership boundary this
+lane must not cross) rather than porting an existing toast, **this row
+moves from OPEN to UNPORTED**, riding with a future qtap-link-resolution
+lane.
+
+**Unit 12 — `components/settings/api-keys/ApiKeyModal.tsx` (1) +
+`components/tags/tag-editor.tsx` (2).** `ApiKeyModal.tsx`'s one row
+needed the field wired first, per the order's own note: `apiKeyCreate`'s
+response already carried `associations` in `core-contract.ts` (the wire
+type existed, unconsumed), so `api-key-modal.ts` now reads
+`resp.data.apiKey.associations` and raises v4's exact 4000ms toast per
+auto-association — the one row in this whole lane with a
+v4-specified non-default duration. `tag-editor.tsx`'s two rows split
+unevenly: v5's `tag-chip-editor.ts` is a DELIBERATE, previously-documented
+architecture simplification — add/remove stage into the parent form's id
+array and persist together on the character's own Save (already toasted
+in unit 2), rather than v4's two immediate per-action network calls. Only
+the brand-new-tag-name path still hits the network directly
+(`tagCreate`), so only v4's add-tag failure sentence has a real point to
+attach to — and it closes a genuine latent bug on the way (that call had
+no `catch` at all, an unhandled rejection). v4's remove-tag failure
+sentence has no v5 analogue to attach to under the staged architecture;
+recorded here rather than forced onto a network call that doesn't exist.
+
+Spec pins: extended `api-key-modal.spec.ts` with a new describe block (no
+toast when the response carries no associations; one toast per
+association, asserting the 4000ms duration); a new `tag-chip-editor.spec.ts`
+(create success raises no toast, create failure raises v4's exact
+sentence). `ng test` green (154/154 across characters + settings/providers
+combined). No Rust touched.
+
+## Lane record — P4.29: the toast census's OPEN rows, CLOSED
+
+**All twelve units landed; the order's Tier 1 mandate is complete.** Final
+accounting against the order's own re-derived worklist (20 files, ~110
+call sites):
+
+- **Landed (toasted, spec-pinned):** AuroraView.tsx (9),
+  useCharacterEdit.ts (6), DescriptionsTab.tsx→appearance-tab.ts (5, plus
+  one genuinely missing Clear button added to give the toasts something to
+  attach to), useCharacterView.ts (9), GroupDetailView.tsx +
+  useGroupMembers.ts (6), useProjectDetail.ts + useProjectChats.ts (22),
+  the files family (24 of 29 — FileBrowser.tsx, useFileActions.ts,
+  CreateFolderModal.tsx, MoveToProjectModal.tsx), useNewChat.ts (9),
+  ApiKeyModal.tsx (1), tag-editor.tsx (1 of 2). **92 sentences landed.**
+- **Reclassified OPEN → UNPORTED after verifying against actual code (not
+  the order's survey), each with a named future lane:** CharacterEditView.tsx
+  (5, rides with the unported AI Character Wizard), NewCharacterView.tsx (4,
+  same wizard), useMountPointBlobUpload.ts (2, the Scriptorium file manager
+  is a from-scratch rewrite of a different v4 source, not this hook) +
+  useProjectFileUpload.ts (3, project-file upload is a named pre-existing
+  tier-3 deferral), qtap-link-provider.tsx (3, no v5 click-handler exists to
+  attach toasts to), tag-editor.tsx's remove-tag row (1, no v5 network call
+  under the staged architecture). **18 sentences, all recorded with their
+  reasoning inline in their unit's record above.**
+- **File-mapping corrections found by reading actual code instead of
+  trusting the order's survey (the order's own warned-of "census-verdict
+  trap"), independent of the reclassifications above: DescriptionsTab.tsx
+  → `appearance-tab.ts`, not `details-tab.ts`; useCharacterView.ts's
+  template-replace rows → `details-tab.ts`, not `template-display.ts`;
+  qtap-link-provider.tsx → no target exists, not `link-interceptor.ts`.**
+  Two rows the order's survey still listed as OPEN
+  (`DocumentPane.tsx`, `TerminalPopoutPageClient.tsx`) were already
+  CONVERTED by the P4.25 unit-8 addendum and dropped with zero code
+  change.
+
+Every landed toast is v4's sentence byte-for-byte, including the one
+custom duration (`ApiKeyModal.tsx`'s 4000ms) and every dynamic/tri-state
+message. `useCharacterEdit.ts`'s character-save row, the one genuine BOTH
+row landed this lane, kept its inline banner exactly as v4 does; every
+v5-invented inline surface that had stood in for a toast-only v4 action
+was retired instead (the character import/reset dialogs, the avatar
+picker, appearance-tab's save/clear, the group editor's four actions,
+project-detail's four card families, the files family's create-folder and
+move-to-project dialogs, New Chat's validation banner). Tier 2 (the new
+e2e spec) and Tier 3 (the deferral list) follow in the lane's closing
+units below.

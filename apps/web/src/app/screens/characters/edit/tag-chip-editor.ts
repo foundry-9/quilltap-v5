@@ -12,6 +12,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../../core/core-client';
 import type { TagDto } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
+import { ToastService } from '../../../ui/toast.service';
 import { fetchTags, tagKeys } from '../characters.api';
 
 /**
@@ -25,6 +26,13 @@ import { fetchTags, tagKeys } from '../characters.api';
  * flagged in the port report). Creating a brand-new tag (one that doesn't yet
  * exist in the catalog) still goes through `tagCreate` immediately, since a
  * tag id has to exist before it can be staged.
+ *
+ * v4's two toasts (`tag-editor.tsx:140,167`, "Failed to add tag"/"Failed to
+ * remove tag") guard v4's own IMMEDIATE add-tag/remove-tag persistence; this
+ * port's staged add/remove never touches the network on their own (they
+ * fold into the parent's `characterUpdate` Save, already toasted there), so
+ * only the add side has a real failure point left — the `tagCreate` call
+ * for a brand-new name, which carries v4's add-tag fallback sentence.
  */
 @Component({
   selector: 'qt-tag-chip-editor',
@@ -106,6 +114,7 @@ import { fetchTags, tagKeys } from '../characters.api';
 })
 export class TagChipEditor {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   /** Tag ids currently on the character (the form's staged array). */
   readonly tagIds = input.required<string[]>();
@@ -176,6 +185,9 @@ export class TagChipEditor {
         this.tagIdsChange.emit([...this.tagIds(), tag.id]);
       }
       this.cancelAdd();
+    } catch {
+      // v4 `tag-editor.tsx:140` — the create-tag step shares the add-tag catch.
+      this.toasts.showError('Failed to add tag. Please try again.');
     } finally {
       this.creating.set(false);
     }

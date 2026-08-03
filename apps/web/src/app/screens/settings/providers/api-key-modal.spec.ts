@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { ToastService } from '../../../ui/toast.service';
 import { ApiKeyModal } from './api-key-modal';
 
 /**
@@ -14,8 +15,18 @@ import { ApiKeyModal } from './api-key-modal';
  */
 
 const PROVIDERS = [
-  { name: 'ANTHROPIC', displayName: 'Anthropic', type: 'llm', configRequirements: { requiresApiKey: true } },
-  { name: 'OPENAI', displayName: 'OpenAI', type: 'llm', configRequirements: { requiresApiKey: true } },
+  {
+    name: 'ANTHROPIC',
+    displayName: 'Anthropic',
+    type: 'llm',
+    configRequirements: { requiresApiKey: true },
+  },
+  {
+    name: 'OPENAI',
+    displayName: 'OpenAI',
+    type: 'llm',
+    configRequirements: { requiresApiKey: true },
+  },
 ];
 
 function stubClient(): Partial<CoreClient> {
@@ -66,5 +77,89 @@ describe('ApiKeyModal — provider select (dogfood-#6)', () => {
     fixture.detectChanges();
     expect(select.value).toBe('ANTHROPIC');
     expect(Array.from(select.options).find((o) => o.value === 'ANTHROPIC')!.selected).toBe(true);
+  });
+});
+
+/** v4 `ApiKeyModal.tsx:104-112` — one 4000ms toast per auto-association. */
+describe('ApiKeyModal auto-association toasts', () => {
+  function toasts(): { type: string; message: string; duration: number }[] {
+    return TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message, duration: t.duration }));
+  }
+
+  function stubCreateClient(associations?: { profileId: string; profileName: string }[]) {
+    return {
+      dispatchExpect: (async (req: { type: string }) => {
+        if (req.type === 'providerList') {
+          return { type: 'providers', data: { providers: PROVIDERS, count: PROVIDERS.length } };
+        }
+        return { type: 'apiKey', data: { apiKey: { id: 'k1', label: 'My Key', associations } } };
+      }) as unknown as CoreClient['dispatchExpect'],
+    };
+  }
+
+  async function renderWith(client: Partial<CoreClient>): Promise<ComponentFixture<ApiKeyModal>> {
+    TestBed.configureTestingModule({
+      imports: [ApiKeyModal],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+      ],
+    });
+    const fixture = TestBed.createComponent(ApiKeyModal);
+    fixture.detectChanges();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  async function fillAndSubmit(fixture: ComponentFixture<ApiKeyModal>): Promise<void> {
+    const label = fixture.nativeElement.querySelector('#qt-key-label') as HTMLInputElement;
+    label.value = 'My Key';
+    label.dispatchEvent(new Event('input'));
+    const select = fixture.nativeElement.querySelector('#qt-key-provider') as HTMLSelectElement;
+    select.value = 'ANTHROPIC';
+    select.dispatchEvent(new Event('change'));
+    const key = fixture.nativeElement.querySelector('#qt-key-value') as HTMLInputElement;
+    key.value = 'sk-test';
+    key.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const submit = (
+      Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+    ).find((b) => b.textContent?.trim() === 'Create API Key')!;
+    submit.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('raises no toast when the key carries no auto-associations', async () => {
+    const fixture = await renderWith(stubCreateClient(undefined));
+    await fillAndSubmit(fixture);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('toasts one 4000ms sentence per auto-association', async () => {
+    const fixture = await renderWith(
+      stubCreateClient([
+        { profileId: 'p1', profileName: 'Claude Default' },
+        { profileId: 'p2', profileName: 'Claude Vision' },
+      ]),
+    );
+    await fillAndSubmit(fixture);
+    expect(toasts()).toEqual([
+      {
+        type: 'success',
+        message: 'Claude Default linked to API key "My Key"',
+        duration: 4000,
+      },
+      {
+        type: 'success',
+        message: 'Claude Vision linked to API key "My Key"',
+        duration: 4000,
+      },
+    ]);
   });
 });

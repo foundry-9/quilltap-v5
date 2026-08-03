@@ -99,6 +99,11 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the API key dialog a confirmation message for each connection
+profile it automatically links to a newly created key, matching the
+original. Gave the character tag editor an error message when creating a
+brand-new tag fails.
+
 Gave the New Chat screen confirmation and error messages for every
 outcome: loading its data, every validation refusal (no character picked,
 an autonomous room needing two LLM characters and no user, a missing

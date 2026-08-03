@@ -14,6 +14,7 @@ import type { ProviderInfo } from '../../../core/core-contract';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 
 interface ProviderOption {
   value: string;
@@ -101,6 +102,7 @@ interface ProviderOption {
 })
 export class ApiKeyModal {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
   readonly saved = output<void>();
@@ -140,10 +142,11 @@ export class ApiKeyModal {
     this.saving.set(true);
     this.error.set(null);
     try {
-      await this.core.dispatchExpect(
+      const label = this.label().trim();
+      const resp = await this.core.dispatchExpect(
         {
           type: 'apiKeyCreate',
-          label: this.label().trim(),
+          label,
           provider: this.provider(),
           apiKey: this.apiKey().trim(),
         },
@@ -151,6 +154,10 @@ export class ApiKeyModal {
       );
       this.saved.emit();
       this.close.emit();
+      // v4 `ApiKeyModal.tsx:104-112` — one 4000ms toast per auto-association.
+      for (const assoc of resp.data.apiKey.associations ?? []) {
+        this.toasts.showSuccess(`${assoc.profileName} linked to API key "${label}"`, 4000);
+      }
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to create API key');
     } finally {
