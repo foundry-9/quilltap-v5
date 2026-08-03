@@ -40,6 +40,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 
 interface Spec {
   testPepperBase64: string;
@@ -109,7 +110,6 @@ async function loadQtap(bytes: Buffer): Promise<{ manifest: unknown; data: Recor
 
 /** Every table in one partition, in rowid (insertion) order; BLOBs → sha256. */
 function dumpPartition(db: import('better-sqlite3').Database): Record<string, unknown> {
-  const { createHash } = require('node:crypto');
   const tables = (
     db
       .prepare(
@@ -186,6 +186,75 @@ function rewriteIds(payload: unknown): unknown {
     text = text.split(id).join(replacement);
   });
   return JSON.parse(text);
+}
+
+/**
+ * [40319484] The hand-built hard-link-group payload.
+ *
+ * Two documents carry the SAME exported `linkGroupId`, so the import's second
+ * pass must re-bind them into one group; a third carries a group id nothing else
+ * shares, so it must arrive as an inert group of ONE (left un-linked — a group
+ * of one is not a link); a fourth carries none at all.
+ *
+ * Deliberately imported TWICE (see `executeTwiceCase`) under `duplicate`, which
+ * mints a second store: the exported group id is only a grouping TOKEN, and
+ * re-binding mints a fresh id, so the two copies must end up in two independent
+ * groups rather than fused into one.
+ */
+function linkGroupPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const MP = 'ac000000-0000-4000-8000-000000000001';
+  const GRP = 'ac000000-0000-4000-8000-0000000000a1';
+  const LONE = 'ac000000-0000-4000-8000-0000000000a2';
+  const doc = (rel: string, content: string, linkGroupId: string | null) => ({
+    mountPointId: MP,
+    relativePath: rel,
+    fileName: rel,
+    fileType: 'markdown',
+    content,
+    contentSha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+    plainTextLength: content.length,
+    lastModified: '2026-01-01T00:00:00.000Z',
+    folderId: null,
+    linkGroupId,
+  });
+  const shared = '# Shared\n\nOne file, two paths.';
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'document-stores',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      // `executeImport` reads `data.mountPoints` / `.folders` / `.documents` /
+      // `.blobs` / `.projectLinks` (execute.ts:350) — NOT the `documentStore*`
+      // names the RESULT counts use.
+      mountPoints: [
+        {
+          id: MP,
+          name: 'Linked Store',
+          basePath: '',
+          mountType: 'database',
+          storeType: 'documents',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+        },
+      ],
+      folders: [],
+      documents: [
+        doc('pair-a.md', shared, GRP),
+        doc('pair-b.md', shared, GRP),
+        doc('lonely.md', '# Lonely\n\nMy group members stayed home.', LONE),
+        doc('plain.md', '# Plain\n\nNever linked at all.', null),
+      ],
+      blobs: [],
+      projectLinks: [],
+    },
+  };
 }
 
 /** The hand-built legacy-folds payload (scenario string, outfitPresets,
@@ -388,6 +457,37 @@ function executeCase(
   };
 }
 
+/**
+ * kind 'execute_twice': run v4's REAL `executeImport` over the SAME payload
+ * twice, in one instance. The only arm that can prove a re-imported archive does
+ * not FUSE with its earlier copy (see `linkGroupPayload`).
+ */
+function executeTwiceCase(
+  name: string,
+  payload: (spec: Spec) => Promise<unknown> | unknown,
+  options: Record<string, unknown>,
+) {
+  return {
+    name,
+    run: async (spec: Spec, dumpAll: () => Record<string, unknown>) => {
+      const exportData = await payload(spec);
+      const preState = dumpAll();
+      const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+      const result = await executeImport(spec.userId, exportData as never, options as never);
+      const result2 = await executeImport(spec.userId, exportData as never, options as never);
+      return {
+        kind: 'execute_twice',
+        exportData,
+        options,
+        result,
+        result2,
+        preState,
+        state: dumpAll(),
+      };
+    },
+  };
+}
+
 function mockRequest(url: string, method: string, body: unknown): unknown {
   return {
     method,
@@ -524,6 +624,11 @@ async function main(): Promise<void> {
     executeCase('execute_legacy_folds', () => legacyFoldsPayload(), {
       conflictStrategy: 'skip',
       includeMemories: true,
+      includeRelatedEntities: false,
+    }),
+    executeTwiceCase('execute_link_groups_twice', () => linkGroupPayload(), {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
       includeRelatedEntities: false,
     }),
     routeCase('route_missing_export_data', () => ({})),

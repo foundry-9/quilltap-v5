@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+Backups and exports now carry hard links, so a file linked into two stores
+comes back linked rather than as two documents that drift apart on the next
+edit. Importing the same archive twice cannot merge the two copies into one
+file: the link is re-made from scratch each time, never reused by name.
+
 Linking a file into a second store and copying it there are now different
 things, as they read. A link makes one file with two paths: edit either and
 both change. A copy is its own file from the moment it is written, even though

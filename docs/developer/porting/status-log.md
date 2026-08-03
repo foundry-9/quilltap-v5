@@ -50500,3 +50500,68 @@ QT_FIXTURE_MOUNT_LINK_GROUPS=/tmp/qt-dmfl-fixture.db \
   node --import tsx $MIRROR/oracle/cases/mount-link-groups.ts \
   > /tmp/oracle-mount-link-groups.ndjson
 ```
+
+---
+
+## Lane record — P4.D41 unit 5 (export carries the group; import re-binds it)
+
+**Landed.**
+
+- **Export** (`services/qtap_export/records.rs`): `linkGroupId` appended to the
+  `doc_mount_document` key list, right after `folderId` — v4's writer position.
+  v4's `export/types.ts` comment says the field is "omitted for the ordinary
+  un-linked case"; **the writer does not omit it** (`linkGroupId: d.linkGroupId
+  ?? null`), so it is always present and null when unlinked. The writer's bytes
+  are the contract, and the differential compares them byte for byte.
+- **Import** (`services/quilltap_import/document_stores.rs`): the document loop
+  collects `members_by_exported_group` in insertion order (v4 iterates a `Map`),
+  then a SECOND pass re-binds each group of ≥2 through `bind_link_group`, with
+  v4's verbatim warning `Failed to restore hard link for group "<id>": <msg>`. A
+  group whose other members fell outside the export arrives with one member and
+  is left un-linked — a group of one is not a link. **The exported id is only a
+  grouping TOKEN**: re-binding mints a fresh one, so importing the same archive
+  twice cannot fuse the two copies.
+
+### Differentials
+
+**Export — `system_export_equivalence`, regenerated at `40319484`.** This family
+already diffs the NDJSON line for line, so the new key is proven at v4's exact
+position with v4's exact `null`. Mutation: dropping `linkGroupId` from v5's key
+list → `stream_document-stores_all: line 10 differs`.
+
+**Import — `system_import_state`, a new case + a new case KIND.** The committed
+archives carry no group (they predate the column), so the arm needs a payload
+that does: `linkGroupPayload()` in `system-import-execute.test.ts` is
+hand-built beside the existing `legacyFoldsPayload()` — four documents, two
+sharing one exported group, one in a group of ONE, one with none.
+
+The "cannot fuse" property needs the SAME payload imported twice into one
+instance, which no existing case shape could express, so the oracle gained
+`executeTwiceCase` → `kind: 'execute_twice'`, and the Rust side runs
+`execute_import` `runs` times and additionally compares the SECOND result body.
+Under `duplicate` the second import mints `Linked Store (imported)`, and the
+oracle shows what must happen: **two stores, two DIFFERENT group ids**, with
+`lonely.md` and `plain.md` NULL in both. 11 → **12 cases**.
+
+⚠ One premise correction: the payload's data keys are `mountPoints` / `folders`
+/ `documents` / `blobs` / `projectLinks` (`execute.ts:350`), **not** the
+`documentStore*` names the result COUNTS use. The first draft used the count
+names and the whole section was silently skipped — the case passed while
+importing nothing. Worth remembering: an import case that imports nothing looks
+exactly like an import case that works.
+
+First-run green once the keys were right, so mutation-proofed:
+
+| mutation | caught |
+| --- | --- |
+| import never re-binds (the `< 2` guard always true) | `doc_mount_file_links` differs |
+| `bind_link_group` reuses one fixed id (the two imports FUSE) | `doc_mount_file_links` differs |
+| export drops `linkGroupId` | `stream_document-stores_all: line 10 differs` |
+
+**Fixture note:** no fixture bytes changed here — the payload is built by the
+case. `system-data-*` is only the target instance (freshly copied per case), and
+it already carries the column from unit 2's migration.
+
+**Gate:** fmt, clippy both feature sets, `cargo test --workspace --no-fail-fast`
+green; `system_export_equivalence` + `system_import_state` re-run by name over
+oracles regenerated fresh at `40319484`.

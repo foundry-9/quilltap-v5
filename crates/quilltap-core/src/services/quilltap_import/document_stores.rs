@@ -250,6 +250,13 @@ pub(super) fn import_document_stores(
 
     // Documents — database-backed only. `linkDocumentContent` handles file +
     // document + link in one shot (and derives the folder from relativePath).
+    //
+    // Hard-link groups are re-established in a SECOND pass, keyed by the group id
+    // the export carried. The imported ids are never reused directly: they are
+    // only a grouping token here, and re-binding through `bind_link_group` mints
+    // a fresh id, so importing the same archive twice can't fuse the two copies
+    // into one group (v4 `40319484`).
+    let mut members_by_exported_group: Vec<(String, Vec<String>)> = Vec::new();
     let links_repo = DocMountFileLinksRepository::new(mount);
     for doc in documents {
         let Some(target_mount_id) = id_maps.mount_points.get(&s(doc, "mountPointId")) else {
@@ -277,10 +284,41 @@ pub(super) fn import_document_stores(
             allow_character_write: None,
         });
         match out {
-            Ok(_) => counts.documents += 1,
+            Ok(result) => {
+                if let Some(exported_group) = opt_s(doc, "linkGroupId") {
+                    // Insertion order preserved (v4 iterates a Map) — the anchor
+                    // is the first member the document loop imported.
+                    match members_by_exported_group
+                        .iter_mut()
+                        .find(|(g, _)| *g == exported_group)
+                    {
+                        Some((_, members)) => members.push(result.link_id),
+                        None => {
+                            members_by_exported_group.push((exported_group, vec![result.link_id]))
+                        }
+                    }
+                }
+                counts.documents += 1;
+            }
             Err(e) => warnings.push(format!(
                 "Failed to import document \"{relative_path}\": {e}"
             )),
+        }
+    }
+
+    // A group whose other members fell outside the export's scope arrives with a
+    // single member and is simply left un-linked — a group of one is not a link.
+    for (exported_group_id, member_link_ids) in &members_by_exported_group {
+        if member_link_ids.len() < 2 {
+            continue;
+        }
+        let (anchor, rest) = member_link_ids.split_first().expect("non-empty group");
+        for member_id in rest {
+            if let Err(e) = links_repo.bind_link_group(anchor, member_id) {
+                warnings.push(format!(
+                    "Failed to restore hard link for group \"{exported_group_id}\": {e}"
+                ));
+            }
         }
     }
 

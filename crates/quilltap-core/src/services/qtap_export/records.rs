@@ -582,6 +582,11 @@ pub(super) fn stream_document_stores(
                     "plainTextLength",
                     "lastModified",
                     "folderId",
+                    // v4 `40319484`: `linkGroupId: d.linkGroupId ?? null` —
+                    // ALWAYS present, null when unlinked. (The type comment in
+                    // v4's `export/types.ts` says "omitted"; the writer does not
+                    // omit. The writer's bytes are the contract.)
+                    "linkGroupId",
                 ] {
                     d.insert(key.into(), doc.get(key).cloned().unwrap_or(Value::Null));
                 }

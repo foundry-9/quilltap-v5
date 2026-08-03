@@ -679,7 +679,14 @@ fn system_import_execute_state_equivalence() {
         let name = case["name"].as_str().unwrap();
         match case["kind"].as_str().unwrap_or("") {
             "execute" => {
-                run_execute_case(name, case, &user_id, &mut failures);
+                run_execute_case(name, case, &user_id, &mut failures, 1);
+                ran += 1;
+            }
+            // [40319484] The only arm that can prove a re-imported archive does
+            // not FUSE with its earlier copy: the same payload, twice, into one
+            // instance.
+            "execute_twice" => {
+                run_execute_case(name, case, &user_id, &mut failures, 2);
                 ran += 1;
             }
             "route" => {
@@ -693,7 +700,7 @@ fn system_import_execute_state_equivalence() {
         }
     }
 
-    assert_eq!(ran, 11, "expected 11 cases, ran {ran}");
+    assert_eq!(ran, 12, "expected 12 cases, ran {ran}");
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
@@ -702,7 +709,13 @@ fn system_import_execute_state_equivalence() {
     );
 }
 
-fn run_execute_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<String>) {
+fn run_execute_case(
+    name: &str,
+    case: &Value,
+    user_id: &str,
+    failures: &mut Vec<String>,
+    runs: usize,
+) {
     let scratch = fresh_fixture(name);
 
     // The PRE-import baseline: both sides copy the same fixture bytes, so the
@@ -720,14 +733,24 @@ fn run_execute_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<
     let uid = user_id.to_string();
 
     let db = open_db(&scratch);
-    let result = db
+    let results = db
         .write_blocking(move |ws| {
             let main = ws.main().connection();
             let mount = ws.mount_index().expect("fixture has a mount partition");
-            execute_import(main, mount.connection(), &uid, &export, &opts).map_err(|e| match e {
-                quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
-                other => panic!("unexpected parse-side error from execute: {other}"),
-            })
+            let mut out = Vec::new();
+            for _ in 0..runs {
+                out.push(
+                    execute_import(main, mount.connection(), &uid, &export, &opts).map_err(
+                        |e| match e {
+                            quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
+                            other => {
+                                panic!("unexpected parse-side error from execute: {other}")
+                            }
+                        },
+                    )?,
+                );
+            }
+            Ok(out)
         })
         .expect("execute_import ran");
     drop(db);
@@ -738,13 +761,38 @@ fn run_execute_case(name: &str, case: &Value, user_id: &str, failures: &mut Vec<
 
     compare_execute(
         name,
-        &result.to_value(),
+        &results[0].to_value(),
         &case["result"],
         &got_state,
         &want_state,
         &literals,
         failures,
     );
+    if runs > 1 {
+        // The second run's body is compared too — a fused re-import would show
+        // up in its counts long before the state diff.
+        let (got2, want2) = (results[1].to_value(), case["result2"].clone());
+        let literals2 = literals.clone();
+        let (got_norm, _) = normalize_side(
+            &literals2,
+            derived_hashes(&got_state, &literals2),
+            &got2,
+            &got_state,
+            &HashSet::new(),
+        );
+        let (want_norm, _) = normalize_side(
+            &literals2,
+            derived_hashes(&want_state, &literals2),
+            &want2,
+            &want_state,
+            &HashSet::new(),
+        );
+        if got_norm != want_norm {
+            failures.push(format!(
+                "[{name}] SECOND import result body differs\n  rust:   {got_norm}\n  oracle: {want_norm}"
+            ));
+        }
+    }
 
     if name == "execute_duplicate_all" {
         assert_phantom_dangles(name, &literals, &got_state, failures);
