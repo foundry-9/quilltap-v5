@@ -51138,3 +51138,22 @@ unanchored `system-import` also matches `system-import-execute`, and the two sha
 ⚠ **Expect these families to go RED at unification until the unifier regenerates
 them at `40319484`.** That is the round's deliberate vintage seam (P4.D41 adds
 `doc_mount_file_links.linkGroupId`), not a lane bug.
+
+**P4.28 lane gate (all green, on the branch):** `cargo fmt --all --check`;
+`cargo clippy --workspace --all-targets -D warnings` in BOTH feature sets
+(default + `quilltap-core/native-transport`); `cargo build --workspace
+--release`; `cargo test --workspace --no-fail-fast` with the lane's ten-variable
+oracle block — **410 test binaries / 1,810 tests / 0 failed**; the twelve owned
+and fixture-affected families re-run BY NAME with `--nocapture` — **zero SKIP**
+(`system_restore_state`, `system_restore_equivalence`,
+`system_backup_equivalence`, `system_delete_data_equivalence`,
+`backup_uuid_remap_equivalence`, `backup_mount_index_coercion_equivalence`,
+`system_export_equivalence`, `system_import_equivalence`, `system_import_state`,
+`system_jobs_routes_equivalence`, `system_jobs_collection_equivalence`, and the
+new `restore_vintage_state`); `ng test` **268 files / 3,668**; `ng build` clean;
+full Playwright **172 passed / 0 failed / 0 skipped**, including
+`zzz-restore-destructive.spec.ts` re-run **unmodified**.
+
+Versions: core **0.0.448**, harness **0.0.384**, SPA **0.5.382**; host, web, cli
+and tauri unchanged (the `PumpPause` wire is core-side; `job_pump.rs` itself was
+not edited).
