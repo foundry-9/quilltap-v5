@@ -99,6 +99,15 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the general Files page confirmation and error messages for every
+action: loading the list, deleting a file (both the plain and the
+"delete anyway" paths), syncing the filesystem, and both orphan-cleanup
+actions. All of these had shown a plain browser alert box on failure and
+nothing at all on success. Also added a confirmation for downloading a
+file, and for creating a folder (including trying to move it to another
+project) -- an inline error banner v5 had added for the create-folder
+and move-to-project dialogs is gone, matching the original.
+
 Gave the project detail page confirmation and error messages across all
 of its settings: the header save, Allow Any Character, removing a
 character from the roster, agent mode, answer confirmation, the default

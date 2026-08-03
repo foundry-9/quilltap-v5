@@ -51657,3 +51657,50 @@ where a test needed two independent renders (each gets its own
 `ToastService` instance — a prior render's toasts do not carry over).
 `ng test` green (50/50 across the whole prospero family). No Rust
 touched.
+
+**Unit 9 — the files family: `FileBrowser.tsx` (13) + `useFileActions.ts`
+(6) + `CreateFolderModal.tsx` (3) + `MoveToProjectModal.tsx` (2) fully
+ported; `useMountPointBlobUpload.ts` (2) and `useProjectFileUpload.ts` (3)
+RECLASSIFIED to UNPORTED — a fifth and sixth instance of the
+census-verdict trap.** `files-browser.ts` (v4's `FileBrowser.tsx`,
+legacy-only per its own class doc) had used `window.alert` for every one
+of its five failure paths and raised NO success feedback at all; all five
+converted to `toasts.showError`, and five matching success toasts added
+(load has none in v4 either — but v4's load failure genuinely toasts, so
+one was added inside the query's `queryFn` catch, the one place in this
+whole lane a toast rides alongside an app-wide structural inline-error
+convention rather than a retired one — recorded as a deliberate,
+reasoned exception, not a new pattern). `useFileActions.ts`'s 6 calls
+split: the 4 delete/dissociate ones were ALREADY covered by
+`files-browser.ts`'s own delete flow (the same v4 hook's logic, inlined
+there); the remaining 2 (download success/failure) landed in
+`file-preview-modal.ts`, the one action that component performs itself —
+its class doc now says so explicitly. `CreateFolderModal.tsx` and
+`MoveToProjectModal.tsx` landed in full in their same-named v5 dialogs,
+retiring both dialogs' v5-invented inline `error()` banners (v4 has
+neither).
+
+The two upload hooks have no v5 counterpart to attach to, for two
+DIFFERENT reasons found by reading the actual target files rather than
+trusting the order's mapping: `useMountPointBlobUpload.ts` → the order
+said `screens/scriptorium/store-detail.ts` upload leg, but that leg is
+`qt-file-manager`, a wholesale rewrite ported from a DIFFERENT v4 source
+(`components/files/svar/createSvarAdapter.ts`, the P4.6z/aa D18 round)
+with its own unified single-file-at-a-time upload and its own inline
+error banner covering all six of its gestures — not a port of this hook,
+and structurally incapable of v4's batched "N files uploaded" wording
+since it never uploads more than one file per gesture.
+`useProjectFileUpload.ts` → `project-files-card.ts`'s own class doc
+already names project-file upload NOT SHIPPED THIS ROUND (a pre-existing,
+explicit tier-3 deferral predating this lane). Both ride with their
+future upload-feature lanes.
+
+Spec pins: extended `files-browser.spec.ts` with 14 new cases (load
+failure, both delete arms, sync, both cleanup actions — success and
+failure per action where the code path supports it) and removed the
+now-vestigial `vi.stubGlobal('alert', …)` scaffold; three new spec files
+with no prior coverage at all (`file-preview-modal.spec.ts`,
+`create-folder-dialog.spec.ts` — including the empty-name guard reachable
+only via Enter since the Create button is disabled on a blank field, same
+as v4's — and `move-to-project-dialog.spec.ts`). `ng test` green (41/41
+across the whole files family). No Rust touched.

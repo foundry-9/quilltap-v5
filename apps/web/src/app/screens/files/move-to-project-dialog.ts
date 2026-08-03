@@ -12,6 +12,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../core/core-client';
 import type { ProjectSummary } from '../../core/core-contract';
 import { Modal } from '../../ui/modal';
+import { ToastService } from '../../ui/toast.service';
 
 const GENERAL_FILES_VALUE = '__general__';
 
@@ -86,10 +87,6 @@ const GENERAL_FILES_VALUE = '__general__';
             characters will be preserved.
           }
         </p>
-
-        @if (error(); as e) {
-          <p class="qt-alert-error text-sm" role="alert">{{ e }}</p>
-        }
       </div>
 
       <div qt-modal-footer class="flex justify-end gap-2">
@@ -115,6 +112,7 @@ const GENERAL_FILES_VALUE = '__general__';
 })
 export class MoveToProjectDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly fileId = input.required<string>();
   readonly fileName = input.required<string>();
@@ -128,7 +126,6 @@ export class MoveToProjectDialog {
   protected readonly selectedValue = signal('');
   protected readonly folderPath = signal('/');
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected readonly projectsQuery = injectQuery(() => ({
     queryKey: ['projects'],
@@ -161,10 +158,10 @@ export class MoveToProjectDialog {
     this.folderPath.set('/');
   }
 
+  /** v4 `MoveToProjectModal.tsx:73-113` — toast only, no inline surface. */
   protected async onMove(): Promise<void> {
     if (!this.selectedValue()) return;
     this.saving.set(true);
-    this.error.set(null);
     const targetProjectId = this.isGeneralFilesSelected() ? null : this.selectedProjectId();
     try {
       await this.core.dispatchData({
@@ -178,8 +175,9 @@ export class MoveToProjectDialog {
         : (this.availableProjects().find((p) => p.id === targetProjectId)?.name ?? 'project');
       this.success.emit({ projectId: targetProjectId, projectName });
       this.close.emit();
+      this.toasts.showSuccess(`"${this.fileName()}" moved to ${projectName}`);
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to move file');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to move file');
     } finally {
       this.saving.set(false);
     }

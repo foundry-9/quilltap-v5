@@ -14,6 +14,7 @@ import {
 import type { FileEntry } from '../../core/core-contract';
 import { fileUrl } from '../../images/image-urls';
 import { formatBytes } from '../../ui/format-bytes';
+import { ToastService } from '../../ui/toast.service';
 import {
   fileDisplayName,
   formatFileDate,
@@ -227,6 +228,7 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
 })
 export class FilePreviewModal {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly toasts = inject(ToastService);
 
   readonly file = input.required<FileEntry>();
   readonly files = input.required<FileEntry[]>();
@@ -336,13 +338,21 @@ export class FilePreviewModal {
     this.navigate.emit(this.files()[this.currentIndex() + 1]);
   }
 
+  /** v4 `useFileActions.ts:70-83` — delete/dissociate toasts live where the
+   *  parent FileBrowser owns those flows (`files-browser.ts`); this is the
+   *  one action this modal performs itself. */
   protected download(): void {
-    const a = document.createElement('a');
-    a.href = this.url();
-    a.download = this.name() || 'download';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    try {
+      const a = document.createElement('a');
+      a.href = this.url();
+      a.download = this.name() || 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      this.toasts.showSuccess('Download started');
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to download file');
+    }
   }
 
   protected async copyText(): Promise<void> {

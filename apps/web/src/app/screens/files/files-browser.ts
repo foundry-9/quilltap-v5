@@ -12,6 +12,7 @@ import { CoreClient } from '../../core/core-client';
 import type { FileAssociations, FileEntry } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
+import { ToastService } from '../../ui/toast.service';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FileDeleteConfirmation } from './file-delete-confirmation';
 import { FileGrid } from './file-grid';
@@ -243,6 +244,7 @@ interface DeleteConfirmation {
 export class FilesBrowser {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly toasts = inject(ToastService);
 
   protected readonly folderIcon = '\u{1F4C1}';
   protected readonly broomIcon = '\u{1F9F9}';
@@ -263,11 +265,17 @@ export class FilesBrowser {
   protected readonly query = injectQuery(() => ({
     queryKey: ['files', 'general'],
     queryFn: async (): Promise<FilesData> => {
-      const [files, folders] = await Promise.all([
-        this.core.filesList({ filter: 'general' }),
-        this.core.filesFoldersList(),
-      ]);
-      return { files, folders: folders as unknown as DbFolder[] };
+      try {
+        const [files, folders] = await Promise.all([
+          this.core.filesList({ filter: 'general' }),
+          this.core.filesFoldersList(),
+        ]);
+        return { files, folders: folders as unknown as DbFolder[] };
+      } catch (err) {
+        // v4 `FileBrowser.tsx:337` — toasts on every failed fetch.
+        this.toasts.showError('Failed to load files');
+        throw err;
+      }
     },
   }));
 
@@ -367,11 +375,12 @@ export class FilesBrowser {
         });
         return;
       }
-      window.alert(resp.data.message || 'Failed to delete file');
+      this.toasts.showError(resp.data.message || 'Failed to delete file');
       return;
     }
     if (this.selectedFile()?.id === fileId) this.selectedFile.set(null);
     await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
+    this.toasts.showSuccess('File deleted');
   }
 
   protected async onConfirmDeleteWithDissociation(): Promise<void> {
@@ -387,8 +396,9 @@ export class FilesBrowser {
       if (this.selectedFile()?.id === confirmation.fileId) this.selectedFile.set(null);
       this.deleteConfirmation.set(null);
       await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
+      this.toasts.showSuccess('File deleted');
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to delete file');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete file');
     } finally {
       this.isDeleting.set(false);
     }
@@ -404,10 +414,11 @@ export class FilesBrowser {
     try {
       const resp = await this.core.dispatch({ type: 'filesSync' });
       if (resp.type === 'error') {
-        window.alert(resp.data.message || 'Failed to sync filesystem');
+        this.toasts.showError(resp.data.message || 'Failed to sync filesystem');
         return;
       }
       await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
+      this.toasts.showSuccess('Filesystem sync complete');
     } finally {
       this.isSyncing.set(false);
     }
@@ -427,7 +438,9 @@ export class FilesBrowser {
         uniqueSize: (data['uniqueSize'] as number) ?? 0,
       });
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to analyze orphaned files');
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to analyze orphaned files',
+      );
     } finally {
       this.isCleaningUp.set(false);
     }
@@ -441,14 +454,26 @@ export class FilesBrowser {
     await this.runCleanup('delete');
   }
 
+  /** v4 `handleCleanupMove`/`handleCleanupDelete` — the dynamic success sentence. */
   private async runCleanup(mode: 'move' | 'delete'): Promise<void> {
     this.isCleaningUp.set(true);
     try {
-      await this.core.dispatchData({ type: 'filesCleanupOrphans', mode, dryRun: false });
+      const data = await this.core.dispatchData({
+        type: 'filesCleanupOrphans',
+        mode,
+        dryRun: false,
+      });
       this.cleanupStats.set(null);
       await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
+      this.toasts.showSuccess(cleanupSuccessMessage(mode, data));
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Failed to clean up orphaned files');
+      this.toasts.showError(
+        err instanceof Error
+          ? err.message
+          : mode === 'move'
+            ? 'Failed to clean up orphaned files'
+            : 'Failed to delete orphaned files',
+      );
     } finally {
       this.isCleaningUp.set(false);
     }
@@ -458,6 +483,28 @@ export class FilesBrowser {
     const err = this.query.error();
     return err instanceof Error ? err.message : 'Failed to load files.';
   }
+}
+
+/** v4 `FileBrowser.tsx:594-639` — the cleanup success sentence, built from the
+ *  server's counts (moved/deleted always present; rescuedCount conditional). */
+function cleanupSuccessMessage(mode: 'move' | 'delete', data: Record<string, unknown>): string {
+  const rescuedCount = Number(data['rescuedCount'] ?? 0);
+  if (mode === 'move') {
+    const moved = Number(data['moved'] ?? 0);
+    const deleted = Number(data['deleted'] ?? 0);
+    const parts = [`Moved ${moved} file${moved !== 1 ? 's' : ''} to /orphans/`];
+    if (deleted > 0) parts.push(`removed ${deleted} duplicate${deleted !== 1 ? 's' : ''}`);
+    if (rescuedCount > 0) {
+      parts.push(`rescued ${rescuedCount} referenced file${rescuedCount !== 1 ? 's' : ''}`);
+    }
+    return parts.join(', ');
+  }
+  const deleted = Number(data['deleted'] ?? 0);
+  const parts = [`Removed ${deleted} orphaned file${deleted !== 1 ? 's' : ''}`];
+  if (rescuedCount > 0) {
+    parts.push(`rescued ${rescuedCount} referenced file${rescuedCount !== 1 ? 's' : ''}`);
+  }
+  return parts.join(', ');
 }
 
 /**
@@ -470,7 +517,7 @@ function extractAssociations(error: unknown): FileAssociations | null {
   const data = (error ?? {}) as Record<string, unknown>;
   const candidate =
     (data['associations'] as FileAssociations | undefined) ??
-    ((data['details'] as { associations?: FileAssociations } | undefined)?.associations);
+    (data['details'] as { associations?: FileAssociations } | undefined)?.associations;
   if (candidate && Array.isArray(candidate.characters) && Array.isArray(candidate.messages)) {
     return candidate;
   }

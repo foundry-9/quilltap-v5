@@ -2,12 +2,15 @@ import { ChangeDetectionStrategy, Component, inject, input, output, signal } fro
 
 import { CoreClient } from '../../core/core-client';
 import { Modal } from '../../ui/modal';
+import { ToastService } from '../../ui/toast.service';
 
 /**
  * Create a new folder in the current directory (v4
  * `FolderManagement/CreateFolderModal.tsx`). The new path is derived from the
  * current folder + trimmed name; dispatch is idempotent (v4 `alreadyExists`).
- * On success the parent refetches and navigates into the created folder.
+ * On success the parent refetches and navigates into the created folder. All
+ * three outcomes (empty name, success, failure) are toast only — v4 has no
+ * inline surface here.
  */
 @Component({
   selector: 'qt-create-folder-dialog',
@@ -32,9 +35,6 @@ import { Modal } from '../../ui/modal';
       <p class="qt-text-xs qt-text-secondary">
         Will be created in: <span class="font-mono">{{ currentFolder() }}</span>
       </p>
-      @if (error(); as e) {
-        <p class="qt-alert-error text-sm mt-2" role="alert">{{ e }}</p>
-      }
 
       <div qt-modal-footer class="flex justify-end gap-2">
         <button
@@ -59,6 +59,7 @@ import { Modal } from '../../ui/modal';
 })
 export class CreateFolderDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly currentFolder = input.required<string>();
   readonly projectId = input<string | null>(null);
@@ -69,18 +70,16 @@ export class CreateFolderDialog {
 
   protected readonly folderName = signal('');
   protected readonly saving = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected async onCreate(): Promise<void> {
     const trimmedName = this.folderName().trim();
     if (!trimmedName) {
-      this.error.set('Folder name cannot be empty');
+      this.toasts.showError('Folder name cannot be empty');
       return;
     }
     const current = this.currentFolder();
     const newFolderPath = current === '/' ? `/${trimmedName}/` : `${current}${trimmedName}/`;
     this.saving.set(true);
-    this.error.set(null);
     try {
       const data = await this.core.dispatchData({
         type: 'filesFolderCreate',
@@ -90,8 +89,9 @@ export class CreateFolderDialog {
       const folder = data['folder'] as { path?: string } | undefined;
       this.success.emit(folder?.path || newFolderPath);
       this.close.emit();
+      this.toasts.showSuccess(data['alreadyExists'] ? 'Folder already exists' : 'Folder created');
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to create folder');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to create folder');
     } finally {
       this.saving.set(false);
     }

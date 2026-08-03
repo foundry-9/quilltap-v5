@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { CoreResponse, FileEntry } from '../../core/core-contract';
+import { ToastService } from '../../ui/toast.service';
 import { FilesBrowser } from './files-browser';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 function file(partial: Partial<FileEntry> & { id: string }): FileEntry {
   return {
@@ -69,7 +76,6 @@ describe('FilesBrowser', () => {
       'confirm',
       vi.fn(() => true),
     );
-    vi.stubGlobal('alert', vi.fn());
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -137,7 +143,9 @@ describe('FilesBrowser', () => {
     const fixture = await render(
       stubClient(log, [file({ id: 'lonely' })], { type: 'ack', data: {} }),
     );
-    (fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement).click();
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
 
@@ -157,7 +165,9 @@ describe('FilesBrowser', () => {
       } as never,
     };
     const fixture = await render(stubClient(log, [file({ id: 'linked' })], errorEnvelope));
-    (fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement).click();
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
 
@@ -173,5 +183,209 @@ describe('FilesBrowser', () => {
       fileId: 'linked',
       dissociate: true,
     });
+  });
+});
+
+/**
+ * v4 `FileBrowser.tsx` toasts (P4.29): the load failure, both delete arms,
+ * sync, and both cleanup actions. v5 had used `window.alert` for every one of
+ * these failures and raised no success feedback at all.
+ */
+describe('FilesBrowser toasts', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  /** A stub with independently scriptable dispatch()/dispatchData() outcomes. */
+  function flexClient(opts: {
+    files?: FileEntry[];
+    loadFails?: boolean;
+    dispatchResult?: CoreResponse;
+    dispatchDataHandler?: (req: { type: string; [k: string]: unknown }) => unknown;
+  }): Partial<CoreClient> {
+    return {
+      filesList: (async () => {
+        if (opts.loadFails) throw new Error('network down');
+        return opts.files ?? [];
+      }) as CoreClient['filesList'],
+      filesFoldersList: (async () => []) as CoreClient['filesFoldersList'],
+      filesGenerateThumbnails: (async () => undefined) as CoreClient['filesGenerateThumbnails'],
+      dispatch: (async () =>
+        opts.dispatchResult ?? { type: 'ack', data: {} }) as CoreClient['dispatch'],
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        const out = opts.dispatchDataHandler?.(req);
+        if (out instanceof Error) throw out;
+        return (out ?? {}) as Record<string, unknown>;
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  it('toasts "Failed to load files" on a fetch failure', async () => {
+    const fixture = await render(flexClient({ loadFails: true }));
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to load files' }]);
+  });
+
+  it('toasts "File deleted" on a clean delete', async () => {
+    const fixture = await render(flexClient({ files: [file({ id: 'a' })] }));
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'success', message: 'File deleted' }]);
+  });
+
+  it('toasts the server message on a failed (non-associations) delete', async () => {
+    const fixture = await render(
+      flexClient({
+        files: [file({ id: 'a' })],
+        dispatchResult: { type: 'error', data: { message: 'disk is full' } as never },
+      }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'error', message: 'disk is full' }]);
+  });
+
+  it('toasts "File deleted" on a successful dissociate-confirm', async () => {
+    const fixture = await render(
+      flexClient({
+        files: [file({ id: 'linked' })],
+        dispatchResult: {
+          type: 'error',
+          data: {
+            message: 'linked',
+            associations: { characters: [], messages: [] },
+          } as never,
+        },
+      }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const confirmBtn = Array.from(
+      fixture.nativeElement.querySelectorAll('[role=dialog] button'),
+    ).find((b) => (b as HTMLElement).textContent?.includes('Delete Anyway')) as HTMLButtonElement;
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'success', message: 'File deleted' }]);
+  });
+
+  it('toasts "Filesystem sync complete" on success, and a failure', async () => {
+    const fixture = await render(flexClient({}));
+    (
+      fixture.nativeElement.querySelector(
+        'button[title="Sync filesystem — scan disk for new or removed files"]',
+      ) as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'success', message: 'Filesystem sync complete' }]);
+
+    TestBed.resetTestingModule();
+    const failing = await render(
+      flexClient({ dispatchResult: { type: 'error', data: { message: 'sync busy' } as never } }),
+    );
+    (
+      failing.nativeElement.querySelector(
+        'button[title="Sync filesystem — scan disk for new or removed files"]',
+      ) as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'error', message: 'sync busy' }]);
+  });
+
+  it('toasts the dynamic cleanup-move sentence, and a failure', async () => {
+    const fixture = await render(
+      flexClient({
+        files: [file({ id: 'orphan', fileStatus: 'orphaned' })],
+        dispatchDataHandler: (r) =>
+          r.type === 'filesCleanupOrphans' && r['dryRun'] === true
+            ? { orphanedCount: 1, rescuedCount: 0, duplicateCount: 0, uniqueCount: 1 }
+            : { moved: 2, deleted: 1, rescuedCount: 1 },
+      }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title*="click to clean up"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const moveBtn = (
+      Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+    ).find((b) => b.textContent?.includes('Relocate to /orphans/'));
+    expect(moveBtn).toBeTruthy();
+    moveBtn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([
+      {
+        type: 'success',
+        message: 'Moved 2 files to /orphans/, removed 1 duplicate, rescued 1 referenced file',
+      },
+    ]);
+  });
+
+  it('toasts the dynamic cleanup-delete sentence', async () => {
+    const fixture = await render(
+      flexClient({
+        files: [file({ id: 'orphan', fileStatus: 'orphaned' })],
+        dispatchDataHandler: (r) =>
+          r.type === 'filesCleanupOrphans' && r['dryRun'] === true
+            ? { orphanedCount: 1, rescuedCount: 0, duplicateCount: 0, uniqueCount: 1 }
+            : { deleted: 3, rescuedCount: 0 },
+      }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title*="click to clean up"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('button.bg-destructive') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'success', message: 'Removed 3 orphaned files' }]);
+  });
+
+  it('toasts "Failed to analyze orphaned files" on a non-Error rejection', async () => {
+    const client = flexClient({ files: [file({ id: 'orphan', fileStatus: 'orphaned' })] });
+    client.dispatchData = (async () => Promise.reject('offline')) as CoreClient['dispatchData'];
+    const fixture = await render(client);
+    (
+      fixture.nativeElement.querySelector('button[title*="click to clean up"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to analyze orphaned files' }]);
+  });
+
+  it('toasts the server message on a failed dissociate-confirm', async () => {
+    const fixture = await render(
+      flexClient({
+        files: [file({ id: 'linked' })],
+        dispatchResult: {
+          type: 'error',
+          data: { message: 'linked', associations: { characters: [], messages: [] } } as never,
+        },
+        dispatchDataHandler: (r) =>
+          r.type === 'fileDelete' ? new Error('vault is sealed') : undefined,
+      }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const confirmBtn = Array.from(
+      fixture.nativeElement.querySelectorAll('[role=dialog] button'),
+    ).find((b) => (b as HTMLElement).textContent?.includes('Delete Anyway')) as HTMLButtonElement;
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toasts()).toEqual([{ type: 'error', message: 'vault is sealed' }]);
   });
 });
