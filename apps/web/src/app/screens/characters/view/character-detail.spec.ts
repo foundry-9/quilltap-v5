@@ -2,16 +2,23 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterDetail as CharacterDetailDto } from '../../../core/core-contract';
+import { ToastService } from '../../../ui/toast.service';
 import {
   WORKSPACE_HANDLE,
   WORKSPACE_TAB_ID,
   type WorkspaceHandle,
 } from '../../../workspace/workspace-contract';
 import { CharacterDetail } from './character-detail';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 function character(over: Partial<CharacterDetailDto> = {}): CharacterDetailDto {
   return {
@@ -216,6 +223,85 @@ describe('CharacterDetail', () => {
   });
 });
 
+/** v4 `useCharacterView.ts:606-680` — the toggle toasts the list screen already
+ *  covers; this pins the SAME arms on the detail screen's own header. */
+describe('CharacterDetail toasts', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function failingStub(failType: string, message?: string): Partial<CoreClient> {
+    const base = stubClient(character({}));
+    return {
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        if (req.type === failType) {
+          throw message ? new Error(message) : new Error();
+        }
+        return (base.dispatchData as (r: typeof req) => Promise<unknown>)(req);
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  function button(fixture: ComponentFixture<CharacterDetail>, title: string): HTMLButtonElement {
+    return [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.title === title,
+    ) as HTMLButtonElement;
+  }
+
+  it("toasts v4's sentence when the favorite toggle fails", async () => {
+    const fixture = await render(failingStub('characterFavorite', 'Failed to toggle favorite'));
+    button(fixture, 'Add to favorites').click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle favorite' }]);
+  });
+
+  it("toasts v4's sentence when the Carina toggle fails", async () => {
+    const fixture = await render(
+      failingStub('characterToggleCarina', 'Failed to toggle Carina eligibility'),
+    );
+    button(fixture, 'Enable Carina answers (@-queries)').click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle Carina eligibility' }]);
+  });
+
+  it("toasts v4's sentence when the controlled-by toggle fails", async () => {
+    const fixture = await render(
+      failingStub('characterToggleControlledBy', 'Failed to toggle controlled-by'),
+    );
+    button(fixture, 'Switch to user control').click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle controlled-by' }]);
+  });
+
+  it('toasts "Converted to NPC" / "Converted to Character" on success', async () => {
+    const fixture = await render(stubClient(character({ npc: false })));
+    const convert = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Convert to NPC',
+    ) as HTMLButtonElement;
+    convert.click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'success', message: 'Converted to NPC' }]);
+  });
+
+  it('reverts and toasts on a failed NPC toggle', async () => {
+    const fixture = await render(failingStub('characterUpdate', 'the ledger will not budge'));
+    const convert = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Convert to NPC',
+    ) as HTMLButtonElement;
+    convert.click();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(toasts()).toEqual([{ type: 'error', message: 'the ledger will not budge' }]);
+    expect(fixture.nativeElement.textContent).toContain('Convert to NPC');
+  });
+});
+
 /**
  * The start-chat auto-open (p4.9j3 item 2, v4 `CharacterDetailView` `:136-143`).
  * v5 DIVERGENCE: no in-place NewChatModal — the guard navigates to the
@@ -241,9 +327,7 @@ describe('CharacterDetail (start-chat auto-open guard)', () => {
                 provide: ActivatedRoute,
                 useValue: {
                   paramMap: of(convertToParamMap({ id: 'c1' })),
-                  queryParamMap: of(
-                    convertToParamMap(opts.action ? { action: opts.action } : {}),
-                  ),
+                  queryParamMap: of(convertToParamMap(opts.action ? { action: opts.action } : {})),
                 },
               },
             ]),
@@ -332,8 +416,8 @@ describe('CharacterDetail (workspace-tab mode)', () => {
   it('renders "back" as a button that closes the tab (v4 CharacterViewTab)', async () => {
     const { handle: h, closed } = handle();
     const fixture = await render(stubClient(character({})), h);
-    const back = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
-      (b) => (b as HTMLButtonElement).textContent?.includes('Back to Characters'),
+    const back = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Back to Characters'),
     ) as HTMLButtonElement;
     expect(back).toBeTruthy();
     // No routerLink anchor in tab mode.

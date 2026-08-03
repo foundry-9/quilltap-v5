@@ -99,6 +99,11 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the character detail page confirmation and error messages for
+converting between character and NPC, and for the favorite/Carina/
+controlled-by toggles in its header, plus messages for the Details tab's
+four name-to-template and template-to-name replacement buttons.
+
 Gave the character editor's Appearance tab a Clear button for the physical
 description, matching the original, and confirmation and error messages
 for saving or clearing it — including refusing to save without a name.

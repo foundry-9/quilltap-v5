@@ -29,6 +29,7 @@ import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { EntityTabs, type Tab } from '../../../ui/entity-tabs';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
+import { ToastService } from '../../../ui/toast.service';
 import {
   characterKeys,
   fetchCharacter,
@@ -206,6 +207,7 @@ export class CharacterDetail {
   private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
+  private readonly toasts = inject(ToastService);
   /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
@@ -356,40 +358,50 @@ export class CharacterDetail {
   }
 
   protected async toggleFavorite(): Promise<void> {
-    await this.optimisticToggle(this.togglingFavorite, 'characterFavorite', (c) => ({
-      ...c,
-      isFavorite: !c.isFavorite,
-    }));
+    await this.optimisticToggle(
+      this.togglingFavorite,
+      'characterFavorite',
+      (c) => ({ ...c, isFavorite: !c.isFavorite }),
+      'Failed to toggle favorite',
+    );
   }
 
   protected async toggleCarina(): Promise<void> {
-    await this.optimisticToggle(this.togglingCarina, 'characterToggleCarina', (c) => ({
-      ...c,
-      canBeCarina: !c.canBeCarina,
-    }));
+    await this.optimisticToggle(
+      this.togglingCarina,
+      'characterToggleCarina',
+      (c) => ({ ...c, canBeCarina: !c.canBeCarina }),
+      'Failed to toggle Carina eligibility',
+    );
   }
 
   protected async toggleControlledBy(): Promise<void> {
-    await this.optimisticToggle(this.togglingControlledBy, 'characterToggleControlledBy', (c) => ({
-      ...c,
-      controlledBy: c.controlledBy === 'user' ? 'llm' : 'user',
-    }));
+    await this.optimisticToggle(
+      this.togglingControlledBy,
+      'characterToggleControlledBy',
+      (c) => ({ ...c, controlledBy: c.controlledBy === 'user' ? 'llm' : 'user' }),
+      'Failed to toggle controlled-by',
+    );
   }
 
+  /** v4 `useCharacterView.ts:606-625` — "Convert to NPC/Character" toasts both ways. */
   protected async toggleNpc(): Promise<void> {
     const c = this.character();
     if (!c) return;
     const key = characterKeys.detail(this.id());
+    const nextNpc = !c.npc;
     this.togglingNpc.set(true);
-    this.queryClient.setQueryData<CharacterDetailDto>(key, { ...c, npc: !c.npc });
+    this.queryClient.setQueryData<CharacterDetailDto>(key, { ...c, npc: nextNpc });
     try {
       await this.core.dispatchData({
         type: 'characterUpdate',
         characterId: this.id(),
-        character: { npc: !c.npc },
+        character: { npc: nextNpc },
       });
-    } catch {
+      this.toasts.showSuccess(nextNpc ? 'Converted to NPC' : 'Converted to Character');
+    } catch (err) {
       this.queryClient.setQueryData<CharacterDetailDto>(key, c);
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to toggle NPC status');
     } finally {
       this.togglingNpc.set(false);
     }
@@ -399,6 +411,7 @@ export class CharacterDetail {
     busy: WritableSignal<boolean>,
     type: 'characterFavorite' | 'characterToggleCarina' | 'characterToggleControlledBy',
     apply: (c: CharacterDetailDto) => CharacterDetailDto,
+    failureMessage: string,
   ): Promise<void> {
     const c = this.character();
     if (!c) return;
@@ -408,8 +421,9 @@ export class CharacterDetail {
     this.queryClient.setQueryData<CharacterDetailDto>(key, apply(previous));
     try {
       await this.core.dispatchData({ type, characterId: this.id() });
-    } catch {
+    } catch (err) {
       this.queryClient.setQueryData<CharacterDetailDto>(key, previous);
+      this.toasts.showError(err instanceof Error ? err.message : failureMessage);
     } finally {
       busy.set(false);
     }

@@ -1,11 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterDetail, CharacterListItem } from '../../../../core/core-contract';
+import { ToastService } from '../../../../ui/toast.service';
 import { CharacterDetailsTab } from './details-tab';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 /**
  * dogfood-#6 regression (the final select-audit site, closing the standing
@@ -93,18 +100,21 @@ function partner(id: string, name: string, title: string | null = null): Charact
   };
 }
 
-function render(): ComponentFixture<CharacterDetailsTab> {
+function render(
+  client: Partial<CoreClient> = { dispatchData: async () => ({}) },
+  char: CharacterDetail = character(),
+): ComponentFixture<CharacterDetailsTab> {
   TestBed.configureTestingModule({
     imports: [CharacterDetailsTab],
     providers: [
       provideRouter([]),
       provideTanStackQuery(new QueryClient()),
-      { provide: CoreClient, useValue: { dispatchData: async () => ({}) } },
+      { provide: CoreClient, useValue: client },
     ],
   });
   const fixture = TestBed.createComponent(CharacterDetailsTab);
   fixture.componentRef.setInput('characterId', 'self');
-  fixture.componentRef.setInput('character', character());
+  fixture.componentRef.setInput('character', char);
   fixture.componentRef.setInput('defaultPartnerName', 'Jeeves');
   fixture.componentRef.setInput('userControlledCharacters', []);
   fixture.detectChanges();
@@ -166,5 +176,110 @@ describe('CharacterDetailsTab — reverse-{{user}} select (dogfood-#6)', () => {
     fixture.detectChanges();
     expect(select.value).toBe('other2');
     expect(Array.from(select.options).find((o) => o.value === 'other2')!.selected).toBe(true);
+  });
+});
+
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+/** v4 `useCharacterView.ts:237-308` — the four template replace/restore toasts. */
+describe('CharacterDetailsTab — template replace/restore toasts', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function replaceCharButton(fixture: ComponentFixture<CharacterDetailsTab>): HTMLButtonElement {
+    return [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) =>
+        b.title?.startsWith('Replace') && b.title?.includes('with {{char}}'),
+    ) as HTMLButtonElement;
+  }
+
+  it('toasts the dynamic success sentence and dispatches characterUpdate', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = render(
+      {
+        dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+          seen.push(req);
+          return {};
+        }) as CoreClient['dispatchData'],
+      },
+      character({ identity: 'Bertie is a gentleman.' }),
+    );
+
+    const btn = replaceCharButton(fixture);
+    expect(btn).toBeTruthy();
+    btn.click();
+    await settle(fixture);
+
+    expect(seen.some((r) => r.type === 'characterUpdate')).toBe(true);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Replaced character name with {{char}}' },
+    ]);
+  });
+
+  it('toasts "No replacements needed" without dispatching, for an empty transform', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = render({
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        seen.push(req);
+        return {};
+      }) as CoreClient['dispatchData'],
+    });
+    const inst = fixture.componentInstance as unknown as {
+      replaceTemplate(type: 'char' | 'user'): Promise<void>;
+    };
+    // No {{char}} literal present in this character's fields, so the
+    // transform is a no-op — call the handler directly since the button
+    // itself only renders once `templateCounts().charCount > 0`.
+    await inst.replaceTemplate('char');
+    await settle(fixture);
+
+    expect(seen.some((r) => r.type === 'characterUpdate')).toBe(false);
+    expect(toasts()).toEqual([{ type: 'success', message: 'No replacements needed' }]);
+  });
+
+  it('joins collected partial-failure messages into one error toast', async () => {
+    const fixture = render(
+      {
+        dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+          if (req.type === 'characterUpdate') {
+            throw new Error('the character record is locked');
+          }
+          return {};
+        }) as CoreClient['dispatchData'],
+      },
+      character({ identity: 'Bertie is a gentleman.' }),
+    );
+
+    replaceCharButton(fixture).click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'error', message: 'the character record is locked' }]);
+  });
+
+  it('reverseTemplate toasts its own dynamic sentence', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = render(
+      {
+        dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+          seen.push(req);
+          return {};
+        }) as CoreClient['dispatchData'],
+      },
+      character({ identity: 'This is {{char}}.' }),
+    );
+    const inst = fixture.componentInstance as unknown as {
+      reverseTemplate(type: 'char' | 'user', chosenName?: string): Promise<void>;
+    };
+    await inst.reverseTemplate('char');
+    await settle(fixture);
+
+    expect(seen.some((r) => r.type === 'characterUpdate')).toBe(true);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Restored {{char}} to Bertie' }]);
   });
 });

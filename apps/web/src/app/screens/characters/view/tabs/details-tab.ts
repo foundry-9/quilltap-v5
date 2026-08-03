@@ -6,6 +6,7 @@ import { CoreClient } from '../../../../core/core-client';
 import type { CharacterDetail, CharacterListItem } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { Modal } from '../../../../ui/modal';
+import { ToastService } from '../../../../ui/toast.service';
 import { characterKeys } from '../../characters.api';
 import { TemplateDisplay } from '../template-display';
 import {
@@ -172,10 +173,7 @@ interface DetailField {
             [value] evaluated before the options render leaves the native control
             blank (the P4.6aa select-audit; this closes the standing finding-#6 audit).
           -->
-          <select
-            class="qt-select"
-            (change)="reverseUserSelection.set($any($event.target).value)"
-          >
+          <select class="qt-select" (change)="reverseUserSelection.set($any($event.target).value)">
             @for (char of otherUserControlled(); track char.id) {
               <option [value]="char.id" [selected]="char.id === reverseUserSelection()">
                 {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}
@@ -202,6 +200,7 @@ interface DetailField {
 export class CharacterDetailsTab {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
   readonly character = input.required<CharacterDetail>();
@@ -278,7 +277,12 @@ export class CharacterDetailsTab {
     const template = type === 'char' ? '{{char}}' : '{{user}}';
     this.replacingTemplate.set(type);
     try {
-      await this.runTemplateSave((text) => replaceWithTemplate(text, name, template));
+      await this.runTemplateSave(
+        (text) => replaceWithTemplate(text, name, template),
+        `Replaced ${type === 'char' ? 'character name' : 'user character name'} with ${template}`,
+      );
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to replace template');
     } finally {
       this.replacingTemplate.set(null);
     }
@@ -289,7 +293,12 @@ export class CharacterDetailsTab {
     if (!name) return;
     this.reversingTemplate.set(type);
     try {
-      await this.runTemplateSave((text) => replaceTemplateWithName(text, type, name));
+      await this.runTemplateSave(
+        (text) => replaceTemplateWithName(text, type, name),
+        type === 'char' ? `Restored {{char}} to ${name}` : `Restored {{user}} to ${name}`,
+      );
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to restore template');
     } finally {
       this.reversingTemplate.set(null);
     }
@@ -310,33 +319,59 @@ export class CharacterDetailsTab {
     }
   }
 
-  private async runTemplateSave(transform: (text: string) => string): Promise<void> {
+  /**
+   * v4 `useCharacterView.ts:237-262` over `applyCharacterFieldUpdates`: partial
+   * failures are COLLECTED, not thrown (each endpoint is independent and
+   * idempotent), so one failing prompt write doesn't stop the others or hide
+   * behind a generic exception. `errors` empty ⇒ success toast; non-empty ⇒
+   * every collected message joined into one error toast. An empty transform
+   * (nothing changed) short-circuits before any dispatch.
+   */
+  private async runTemplateSave(
+    transform: (text: string) => string,
+    successMsg: string,
+  ): Promise<void> {
     const { mainUpdates, changedSystemPrompts } = applyTemplateTransform(
       this.character(),
       transform,
     );
     if (Object.keys(mainUpdates).length === 0 && changedSystemPrompts.length === 0) {
+      this.toasts.showSuccess('No replacements needed');
       return;
     }
     const characterId = this.characterId();
+    const errors: string[] = [];
     try {
       for (const prompt of changedSystemPrompts) {
-        await this.core.dispatchData({
-          type: 'characterPromptUpdate',
-          characterId,
-          promptId: prompt.id,
-          content: prompt.content,
-        });
+        try {
+          await this.core.dispatchData({
+            type: 'characterPromptUpdate',
+            characterId,
+            promptId: prompt.id,
+            content: prompt.content,
+          });
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : 'A system prompt could not be saved.');
+        }
       }
       if (Object.keys(mainUpdates).length > 0) {
-        await this.core.dispatchData({
-          type: 'characterUpdate',
-          characterId,
-          character: mainUpdates,
-        });
+        try {
+          await this.core.dispatchData({
+            type: 'characterUpdate',
+            characterId,
+            character: mainUpdates,
+          });
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : 'The character could not be updated.');
+        }
       }
     } finally {
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(characterId) });
+    }
+    if (errors.length > 0) {
+      this.toasts.showError(errors.join(' '));
+    } else {
+      this.toasts.showSuccess(successMsg);
     }
   }
 }

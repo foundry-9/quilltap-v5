@@ -51535,3 +51535,34 @@ exists, matching v4's own conditional. Spec pins: 8 new cases in
 save failure, both clear outcomes, the declined-confirm no-op, and clear
 failure. `ng test` green (13/13 in the file, 133/133 across the whole
 characters family). No Rust touched.
+
+**Unit 4 — `app/aurora/[id]/view/hooks/useCharacterView.ts` (9 of 32 —
+the still-OPEN remainder).** The order's survey pointed this row at
+`character-detail` / `template-display`; `template-display.ts` turned out
+to have nothing to do with it (it's the pure `{{char}}`/`{{user}}`
+highlighter, no toasts anywhere in v4 or v5) — the correct second file is
+`screens/characters/view/tabs/details-tab.ts`, which already carried the
+template replace/reverse buttons and their (untoasted) save plumbing.
+Landed there: `runTemplateSave` restructured to match v4's
+`applyCharacterFieldUpdates` contract exactly — collect per-endpoint
+failures into an array rather than throwing on the first one (each of the
+prompt-update / main-PUT endpoints is independent and idempotent), then a
+single joined error toast on any failures or the caller-supplied dynamic
+success sentence ("Replaced character name with {{char}}" /
+"Restored {{user}} to <name>") when none. A genuine latent bug fixed on
+the way: v5's version had NO catch anywhere in this path — a network or
+server failure was an unhandled rejection, not a silent no-op, so every
+caller now gets its `catch` too (the outer "Failed to replace/restore
+template" fallback for anything not already collected). Separately, in
+`character-detail.ts`: the three header-toggle failures (favorite/Carina/
+controlled-by — same v4 sentences as the list screen's P4.29-unit-1 port)
+and the NPC-conversion success/failure pair ("Converted to NPC"/
+"Converted to Character", reverting the optimistic flip on failure). Spec
+pins: 4 new cases in `details-tab.spec.ts` (dynamic success, the
+no-op "No replacements needed" branch invoked directly since its gating
+button structurally cannot render for an empty transform, the joined
+partial-failure toast, and the reverse arm's own sentence) and 5 new cases
+in `character-detail.spec.ts` (all three toggle failures + both NPC
+outcomes, including the revert-and-toast case needing the same
+multi-tick settle the list-screen equivalent needed). `ng test` green
+(142/142 across the whole characters family). No Rust touched.
