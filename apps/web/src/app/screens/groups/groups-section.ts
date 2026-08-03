@@ -12,7 +12,6 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { CoreClient } from '../../core/core-client';
-import { ErrorAlert } from '../../ui/error-alert';
 import { GroupCard } from './group-card';
 import { GroupCreateDialog } from './group-create-dialog';
 import { deleteGroup, fetchGroups, groupKeys, type GroupCardModel } from './groups.api';
@@ -28,11 +27,10 @@ import { ToastService } from '../../ui/toast.service';
 @Component({
   selector: 'qt-groups-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GroupCard, GroupCreateDialog, ErrorAlert],
+  imports: [GroupCard, GroupCreateDialog],
   template: `
     <div class="mt-8">
       <h2 class="qt-heading-2 mb-6 text-foreground">Groups</h2>
-
 
       @if (groups().length === 0) {
         <div

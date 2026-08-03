@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Removed an unused import from the Groups section of the Characters page. It
+had been declaring an error-alert component it never displayed, which the
+compiler flagged on every build. Nothing on the page changes: the original
+also shows no error banner there, so a groups list that fails to load reads
+as an empty one in both.
+
 Closed a stray gap before the full stop in the run dialog's note about what a
 tool may write.
 
