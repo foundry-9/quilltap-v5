@@ -99,6 +99,13 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the Characters page confirmation and error messages for actions that
+previously finished silently: deleting a character (naming how many chats,
+images, and memories went with it), toggling the favorite star, toggling
+whether Carina will answer for a character, toggling who controls a
+character, importing from SillyTavern, and resetting the built-in
+characters. Two dialogs also lost inline error banners the original never
+had, now that the same failures raise a toast instead.
 
 Planned the next porting round (documentation only): four parallel work
 orders. The reference app moved one commit — making hard links between

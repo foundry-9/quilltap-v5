@@ -1,13 +1,14 @@
-import { ChangeDetectionStrategy, Component, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
 
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 import { resetBuiltinCharacters } from '../characters.api';
 
 /**
  * The Reset Built-in Characters confirm dialog (v4 `AuroraView.tsx` reset
  * dialog). Calls the WEB-EDGE `?action=reset-builtins` route (live since P4.4u4)
- * and emits `done` with the v4 success-toast text on success, or surfaces the
- * server error inline. Copy is v4-verbatim.
+ * and toasts both outcomes — v4 (`:313-335`) has no inline surface for either.
+ * Copy is v4-verbatim.
  */
 @Component({
   selector: 'qt-reset-builtins-dialog',
@@ -19,9 +20,6 @@ import { resetBuiltinCharacters } from '../characters.api';
         This will delete existing Lorian and Riya records if present, then re-import their first-run
         versions.
       </p>
-      @if (error()) {
-        <div class="qt-alert-error mt-3">{{ error() }}</div>
-      }
 
       <div qt-modal-footer class="flex gap-3 justify-end">
         <button
@@ -45,21 +43,22 @@ import { resetBuiltinCharacters } from '../characters.api';
   `,
 })
 export class ResetBuiltinsDialog {
+  private readonly toasts = inject(ToastService);
+
   readonly close = output<void>();
-  readonly done = output<string>();
+  readonly done = output<void>();
 
   protected readonly resetting = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected async reset(): Promise<void> {
     this.resetting.set(true);
-    this.error.set(null);
     try {
       await resetBuiltinCharacters();
-      this.done.emit('Built-in characters reset successfully.');
+      this.toasts.showSuccess('Built-in characters reset successfully.');
+      this.done.emit();
       this.close.emit();
     } catch (err) {
-      this.error.set(
+      this.toasts.showError(
         err instanceof Error && err.message ? err.message : 'Failed to reset built-in characters',
       );
     } finally {

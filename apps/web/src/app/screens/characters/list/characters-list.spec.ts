@@ -5,12 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterListItem } from '../../../core/core-contract';
+import { ToastService } from '../../../ui/toast.service';
 import {
   WORKSPACE_HANDLE,
   WORKSPACE_TAB_ID,
   type WorkspaceHandle,
 } from '../../../workspace/workspace-contract';
-import { CharactersList, sortCharacters } from './characters-list';
+import { CharactersList, formatCharacterDeleteSuccess, sortCharacters } from './characters-list';
 
 function character(over: Partial<CharacterListItem>): CharacterListItem {
   return {
@@ -237,6 +238,181 @@ describe('CharactersList', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('⭐');
     expect(seen).toContain('characterFavorite');
+  });
+});
+
+describe('formatCharacterDeleteSuccess (v4 AuroraView.tsx:188-199)', () => {
+  it('names only the character when nothing cascaded', () => {
+    expect(formatCharacterDeleteSuccess({})).toBe('Character deleted');
+  });
+
+  it('pluralizes each cascaded count independently', () => {
+    expect(
+      formatCharacterDeleteSuccess({ deletedChats: 1, deletedImages: 3, deletedMemories: 1 }),
+    ).toBe('Character deleted. 1 chat deleted. 3 images deleted. 1 memory deleted');
+    expect(
+      formatCharacterDeleteSuccess({ deletedChats: 2, deletedImages: 0, deletedMemories: 5 }),
+    ).toBe('Character deleted. 2 chats deleted. 5 memories deleted');
+  });
+});
+
+/** Toast pins (P4.29): the census's remaining OPEN `AuroraView.tsx` arms. */
+describe('CharactersList toasts (v4 AuroraView.tsx)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function toasts(): { type: string; message: string }[] {
+    return TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message }));
+  }
+
+  function findButton(fixture: ComponentFixture<CharactersList>, title: string): HTMLButtonElement {
+    return fixture.nativeElement.querySelector(`button[title="${title}"]`);
+  }
+
+  it('reverts and toasts the v4 sentence when the favorite toggle fails', async () => {
+    const fixture = await render(
+      stubClient([character({ id: 'a', name: 'Bertie', isFavorite: false })], (req) => {
+        if (req.type === 'characterFavorite') {
+          throw new Error('Failed to toggle favorite');
+        }
+      }),
+    );
+    findButton(fixture, 'Add to favorites').click();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle favorite' }]);
+    expect(fixture.nativeElement.textContent).toContain('☆');
+  });
+
+  it('toasts the v4 sentence when the Carina toggle fails', async () => {
+    const fixture = await render(
+      stubClient([character({ id: 'a', name: 'Bertie', canBeCarina: false })], (req) => {
+        if (req.type === 'characterToggleCarina') {
+          throw new Error('Failed to toggle Carina eligibility');
+        }
+      }),
+    );
+    findButton(fixture, 'Enable Carina answers (@-queries)').click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle Carina eligibility' }]);
+  });
+
+  it('toasts the v4 sentence when the controlled-by toggle fails', async () => {
+    const fixture = await render(
+      stubClient([character({ id: 'a', name: 'Bertie', controlledBy: 'llm' })], (req) => {
+        if (req.type === 'characterToggleControlledBy') {
+          throw new Error('Failed to toggle controlled-by');
+        }
+      }),
+    );
+    findButton(fixture, 'Switch to user control').click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to toggle controlled-by' }]);
+  });
+
+  function deleteClient(
+    onDelete: (req: { type: string; [k: string]: unknown }) => Promise<unknown>,
+  ): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        switch (req.type) {
+          case 'characterList':
+            return { characters: [character({ id: 'a', name: 'Bertie' })] };
+          case 'connectionProfileList':
+            return { profiles: [] };
+          case 'characterCascadePreview':
+            return {
+              characterId: 'a',
+              characterName: 'Bertie',
+              exclusiveChats: [],
+              exclusiveCharacterImageCount: 0,
+              exclusiveChatImageCount: 0,
+              totalExclusiveImageCount: 0,
+              memoryCount: 0,
+            };
+          case 'characterDelete':
+            return onDelete(req);
+          default:
+            return {};
+        }
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  async function confirmDelete(client: Partial<CoreClient>): Promise<ComponentFixture<CharactersList>> {
+    const fixture = await render(client);
+    findButton(fixture, 'Delete this character').click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const confirm = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Delete Character',
+    ) as HTMLButtonElement;
+    expect(confirm).toBeTruthy();
+    confirm.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('deletes with a pluralized success toast and refetches (v4 handleDeleteConfirm)', async () => {
+    const fixture = await confirmDelete(
+      deleteClient(async () => ({
+        success: true,
+        deletedChats: 2,
+        deletedImages: 0,
+        deletedMemories: 1,
+      })),
+    );
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Character deleted. 2 chats deleted. 1 memory deleted' },
+    ]);
+    expect(fixture.nativeElement.querySelector('qt-character-delete-dialog')).toBeNull();
+  });
+
+  it('toasts a failed delete and keeps the dialog open (v4 :201-203)', async () => {
+    const fixture = await confirmDelete(
+      deleteClient(async () => {
+        throw new Error('the registry has misplaced the file');
+      }),
+    );
+    expect(toasts()).toEqual([{ type: 'error', message: 'the registry has misplaced the file' }]);
+    expect(fixture.nativeElement.querySelector('qt-character-delete-dialog')).toBeTruthy();
+  });
+
+  it('closes the reset dialog and refetches on a successful reset (dialog toasts its own outcome)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })),
+    );
+    const fixture = await render(stubClient([character({ id: 'a', name: 'Bertie' })]));
+
+    findButton(fixture, 'Reset built-in characters to first-run defaults').click();
+    fixture.detectChanges();
+    const confirm = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Reset Built-ins',
+    ) as HTMLButtonElement;
+    expect(confirm).toBeTruthy();
+    confirm.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // The dialog itself raises the "Built-in characters reset successfully."
+    // toast (pinned in reset-builtins-dialog.spec.ts); here we only prove the
+    // list-level wiring: the dialog closes and the roster refetches.
+    expect(fixture.nativeElement.querySelector('qt-reset-builtins-dialog')).toBeNull();
   });
 });
 

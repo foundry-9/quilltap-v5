@@ -51446,3 +51446,41 @@ never the same test twice) is the documented signature of contention rather
 than a regression.
 
 **Version:** SPA 0.5.383. No crate touched.
+## Lane record — P4.29: the toast census's OPEN rows (in progress)
+
+Branch `claude/toast-census-open-rows-bc4082`. Drift-checked at lane start:
+v4 HEAD is exactly `40319484` (the baseline); the checkout carries an
+in-flight uncommitted Pascal custom-tool-presets feature that touches none
+of this lane's files. **Append-only addendum to the P4.25 census** (never
+editing the original table): this lane re-verified every row the order's
+own survey listed by grepping actual v5 code for `toasts.` call counts
+before touching it. Two rows the order's survey listed as still OPEN
+(`app/salon/[id]/components/DocumentPane.tsx`,
+`app/salon/[id]/terminal/[sessionId]/TerminalPopoutPageClient.tsx`) were
+already CONVERTED by the P4.25 unit-8 addendum — confirmed against code and
+dropped from this lane's worklist without any change.
+
+**Unit 1 — `app/aurora/AuroraView.tsx` (9 of 10 remaining OPEN arms
+CLOSED):** `screens/characters/list/characters-list.ts` +
+`character-import-dialog.ts` + `reset-builtins-dialog.ts`. All nine
+sentences ported byte-for-byte: the delete success (pluralized cascade
+counts via the new `formatCharacterDeleteSuccess` helper) and failure, the
+three optimistic-toggle failures (favorite / Carina / controlled-by, each
+with v4's own sentence), the SillyTavern import success and its one fixed
+failure sentence for both the JSON and PNG legs, and the built-in reset's
+success/failure pair. Two v5-invented inline error surfaces were retired in
+the process — `character-import-dialog.ts`'s `error()` paragraph and
+`reset-builtins-dialog.ts`'s `qt-alert-error` block — because v4 has no
+inline surface on either path (not a BOTH row); the reset dialog now owns
+its own toasting rather than bubbling a message string up through `done`.
+A latent gap fixed on the way: `onDeleteConfirm` had no `catch` at all (an
+unhandled rejection on failure); it now matches v4's shape exactly —
+success closes the dialog and refetches, failure leaves it open with
+nothing invalidated. Spec pins: extended `characters-list.spec.ts` (new
+`formatCharacterDeleteSuccess` unit tests + a `CharactersList toasts`
+describe covering all three toggle failures and both delete outcomes),
+extended `character-import-dialog.spec.ts` (fixed its now-stale inline-text
+assertion, added the success-toast pin), and a new
+`reset-builtins-dialog.spec.ts` (both outcomes, mocking the dialog's raw
+`fetch` leg directly since it does not go through `CoreClient`). `ng test`
+green (24/24 in the touched directory at commit time). No Rust touched.

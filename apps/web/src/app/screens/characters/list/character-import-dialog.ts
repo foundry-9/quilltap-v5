@@ -3,12 +3,15 @@ import { ChangeDetectionStrategy, Component, inject, output, signal } from '@ang
 import { apiUrl } from '../../../core/api-url';
 import { CoreClient } from '../../../core/core-client';
 import { Modal } from '../../../ui/modal';
+import { ToastService } from '../../../ui/toast.service';
 
 /**
  * The SillyTavern import dialog (v4 `AuroraView.tsx` import form). A JSON file is
  * read client-side and dispatched as `characterImport { payload }`; a PNG posts
  * multipart to lane A's web route (`POST /api/v1/characters?action=import`) — the
  * only leg dispatch can't carry. Emits `imported` on success so the list refetches.
+ * v4 has no inline error surface for this form (`:291-311`) — both outcomes are
+ * toasts only.
  */
 @Component({
   selector: 'qt-character-import-dialog',
@@ -29,9 +32,6 @@ import { Modal } from '../../../ui/modal';
           (change)="onPick($any($event.target).files)"
         />
       </div>
-      @if (error()) {
-        <p class="qt-text-destructive qt-text-small mb-2">{{ error() }}</p>
-      }
 
       <div qt-modal-footer class="flex gap-2 justify-end">
         <button
@@ -56,17 +56,16 @@ import { Modal } from '../../../ui/modal';
 })
 export class CharacterImportDialog {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   readonly close = output<void>();
   readonly imported = output<void>();
 
   protected readonly file = signal<File | null>(null);
   protected readonly busy = signal(false);
-  protected readonly error = signal<string | null>(null);
 
   protected onPick(files: FileList | null): void {
     this.file.set(files && files.length > 0 ? files[0] : null);
-    this.error.set(null);
   }
 
   protected async submit(): Promise<void> {
@@ -75,7 +74,6 @@ export class CharacterImportDialog {
       return;
     }
     this.busy.set(true);
-    this.error.set(null);
     try {
       if (file.name.toLowerCase().endsWith('.json')) {
         const payload = JSON.parse(await file.text());
@@ -94,8 +92,10 @@ export class CharacterImportDialog {
       }
       this.imported.emit();
       this.close.emit();
+      this.toasts.showSuccess('Character imported successfully!');
     } catch {
-      this.error.set(
+      // v4 `AuroraView.tsx:308` — the same sentence for every failure mode.
+      this.toasts.showError(
         "Failed to import character. Make sure it's a valid SillyTavern PNG or JSON file.",
       );
     } finally {

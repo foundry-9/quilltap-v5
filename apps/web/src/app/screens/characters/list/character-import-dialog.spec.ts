@@ -2,7 +2,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { ToastService } from '../../../ui/toast.service';
 import { CharacterImportDialog } from './character-import-dialog';
+
+function toasts(): { type: string; message: string }[] {
+  return TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+}
 
 interface DispatchReq {
   type: string;
@@ -66,9 +73,11 @@ describe('CharacterImportDialog', () => {
     expect(call?.payload).toEqual(card);
     expect(importedEmitted).toBe(true);
     expect(closeEmitted).toBe(true);
+    // v4 `AuroraView.tsx:306` — the import success toast.
+    expect(toasts()).toEqual([{ type: 'success', message: 'Character imported successfully!' }]);
   });
 
-  it('surfaces a friendly error when the JSON file is malformed', async () => {
+  it('toasts v4\'s fixed sentence when the JSON file is malformed (no inline surface, v4 :291-311)', async () => {
     const fixture = await render(stubClient());
     const cmp = fixture.componentInstance as unknown as {
       onPick(files: FileList): void;
@@ -78,6 +87,13 @@ describe('CharacterImportDialog', () => {
     cmp.onPick([bad] as unknown as FileList);
     await cmp.submit();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Failed to import character');
+    expect(toasts()).toEqual([
+      {
+        type: 'error',
+        message:
+          "Failed to import character. Make sure it's a valid SillyTavern PNG or JSON file.",
+      },
+    ]);
+    expect(fixture.nativeElement.textContent).not.toContain('Failed to import character');
   });
 });

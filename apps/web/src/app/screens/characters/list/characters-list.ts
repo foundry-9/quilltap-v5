@@ -17,6 +17,7 @@ import type { CharacterConnectionProfile, CharacterListItem } from '../../../cor
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
+import { ToastService } from '../../../ui/toast.service';
 import {
   characterKeys,
   downloadCharacterPng,
@@ -32,6 +33,24 @@ import { CharacterDeleteDialog, type DeleteChoice } from './character-delete-dia
 import { CharacterImportDialog } from './character-import-dialog';
 import { ResetBuiltinsDialog } from './reset-builtins-dialog';
 import { CharacterDetail } from '../view/character-detail';
+
+/** v4 `AuroraView.tsx:188-199`: the delete-success sentence, pluralized per count. */
+export function formatCharacterDeleteSuccess(data: Record<string, unknown>): string {
+  const parts: string[] = ['Character deleted'];
+  const chats = Number(data['deletedChats'] ?? 0);
+  const images = Number(data['deletedImages'] ?? 0);
+  const memories = Number(data['deletedMemories'] ?? 0);
+  if (chats > 0) {
+    parts.push(`${chats} chat${chats === 1 ? '' : 's'} deleted`);
+  }
+  if (images > 0) {
+    parts.push(`${images} image${images === 1 ? '' : 's'} deleted`);
+  }
+  if (memories > 0) {
+    parts.push(`${memories} memor${memories === 1 ? 'y' : 'ies'} deleted`);
+  }
+  return parts.join('. ');
+}
 
 /** v4 `AuroraView.tsx:125-140` sort: NPCs last → favorites first → chats desc → name. */
 export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
@@ -133,10 +152,6 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
         </div>
       </div>
 
-      @if (resetMessage(); as msg) {
-        <div class="qt-alert-success mt-4">{{ msg }}</div>
-      }
-
       <!-- Groups section (v4 AuroraView.tsx) — above the characters grid. -->
       <qt-groups-section #groupsSection (openGroup)="selectedGroupId.set($event)" />
 
@@ -197,7 +212,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     }
 
     @if (resetOpen()) {
-      <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset($event)" />
+      <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset()" />
     }
     }
   `,
@@ -206,6 +221,7 @@ export class CharactersList {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
+  private readonly toasts = inject(ToastService);
   /** Non-null ⇒ hosted as a workspace tab; card / group opens drill in place. */
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
   /** Hosted ⇒ Create-Character opens a tab rather than routing (v4 openTab). */
@@ -268,7 +284,6 @@ export class CharactersList {
 
   protected readonly importOpen = signal(false);
   protected readonly resetOpen = signal(false);
-  protected readonly resetMessage = signal<string | null>(null);
   protected readonly deleteTarget = signal<CharacterListItem | null>(null);
 
   protected readonly charactersQuery = injectQuery(() => ({
@@ -308,30 +323,37 @@ export class CharactersList {
   // --- Optimistic toggles (v4 `mutateCharacters(updater, {revalidate:false})`) ---
 
   protected async toggleFavorite(character: CharacterListItem): Promise<void> {
-    await this.optimisticToggle(character.id, 'characterFavorite', (c) => ({
-      ...c,
-      isFavorite: !c.isFavorite,
-    }));
+    await this.optimisticToggle(
+      character.id,
+      'characterFavorite',
+      (c) => ({ ...c, isFavorite: !c.isFavorite }),
+      'Failed to toggle favorite',
+    );
   }
 
   protected async toggleCarina(character: CharacterListItem): Promise<void> {
-    await this.optimisticToggle(character.id, 'characterToggleCarina', (c) => ({
-      ...c,
-      canBeCarina: !c.canBeCarina,
-    }));
+    await this.optimisticToggle(
+      character.id,
+      'characterToggleCarina',
+      (c) => ({ ...c, canBeCarina: !c.canBeCarina }),
+      'Failed to toggle Carina eligibility',
+    );
   }
 
   protected async toggleControlledBy(character: CharacterListItem): Promise<void> {
-    await this.optimisticToggle(character.id, 'characterToggleControlledBy', (c) => ({
-      ...c,
-      controlledBy: c.controlledBy === 'user' ? 'llm' : 'user',
-    }));
+    await this.optimisticToggle(
+      character.id,
+      'characterToggleControlledBy',
+      (c) => ({ ...c, controlledBy: c.controlledBy === 'user' ? 'llm' : 'user' }),
+      'Failed to toggle controlled-by',
+    );
   }
 
   private async optimisticToggle(
     id: string,
     type: 'characterFavorite' | 'characterToggleCarina' | 'characterToggleControlledBy',
     apply: (c: CharacterListItem) => CharacterListItem,
+    failureMessage: string,
   ): Promise<void> {
     const key = characterKeys.list();
     const previous = this.queryClient.getQueryData<CharacterListItem[]>(key);
@@ -340,10 +362,11 @@ export class CharactersList {
     );
     try {
       await this.core.dispatchData({ type, characterId: id });
-    } catch {
-      // Roll back to server truth on failure (v4 shows an error toast + revalidates).
+    } catch (err) {
+      // Roll back to server truth on failure (v4 `AuroraView.tsx:206-249`).
       this.queryClient.setQueryData<CharacterListItem[]>(key, previous);
       await this.queryClient.invalidateQueries({ queryKey: key });
+      this.toasts.showError(err instanceof Error ? err.message : failureMessage);
     }
   }
 
@@ -365,15 +388,18 @@ export class CharactersList {
     choice: DeleteChoice,
   ): Promise<void> {
     try {
-      await this.core.dispatchData({
+      const data = await this.core.dispatchData({
         type: 'characterDelete',
         characterId: character.id,
         cascadeChats: choice.cascadeChats,
         cascadeImages: choice.cascadeImages,
       });
-    } finally {
       this.deleteTarget.set(null);
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+      this.toasts.showSuccess(formatCharacterDeleteSuccess(data));
+    } catch (err) {
+      // v4 `AuroraView.tsx:201-203` leaves the dialog open and does not refetch.
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete character');
     }
   }
 
@@ -381,9 +407,8 @@ export class CharactersList {
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
   }
 
-  protected async onReset(message: string): Promise<void> {
+  protected async onReset(): Promise<void> {
     this.resetOpen.set(false);
-    this.resetMessage.set(message);
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
   }
 }
