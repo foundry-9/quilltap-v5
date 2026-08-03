@@ -99,6 +99,15 @@ original app itself, covering custom patterns, custom dialogue marks, and
 both of the ways a template can fall back to the defaults. Every one of the
 forty existing cases came back unchanged. No visible behavior changed here;
 this is the measuring stick the next change is checked against.
+Gave the project detail page confirmation and error messages across all
+of its settings: the header save, Allow Any Character, removing a
+character from the roster, agent mode, answer confirmation, the default
+roleplay template, avatar generation, Lantern image announcements, the
+story-background display mode, the default image profile, and removing a
+chat from the project. None of these showed anything before. An inline
+error banner v5 had added for four of these actions is gone, matching
+the original, which shows none of them inline.
+
 Gave the group editor confirmation and error messages for saving a
 group's details and for adding or removing a member, matching the
 original -- which shows none of these inline, only as a passing message.

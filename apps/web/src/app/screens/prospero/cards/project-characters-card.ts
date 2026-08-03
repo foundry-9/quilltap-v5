@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
@@ -6,9 +6,9 @@ import { CoreClient } from '../../../core/core-client';
 import type { ProjectDetail, ProjectRosterCharacter } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { Avatar } from '../../../ui/avatar';
+import { ToastService } from '../../../ui/toast.service';
 import { characterAvatarSrc } from '../../characters/characters.api';
 import { projectKeys, removeProjectCharacter, updateProject } from '../projects.api';
 
@@ -21,7 +21,7 @@ import { projectKeys, removeProjectCharacter, updateProject } from '../projects.
 @Component({
   selector: 'qt-project-characters-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CollapsibleCard, ErrorAlert, Icon, Avatar],
+  imports: [RouterLink, CollapsibleCard, Icon, Avatar],
   template: `
     <qt-collapsible-card
       title="Characters"
@@ -29,10 +29,6 @@ import { projectKeys, removeProjectCharacter, updateProject } from '../projects.
       icon="characters"
       [defaultOpen]="defaultOpen()"
     >
-      @if (saveError(); as msg) {
-        <qt-error-alert [message]="msg" class="mb-3" />
-      }
-
       <div class="flex items-center justify-between px-2 py-3 qt-bg-muted rounded-lg mb-3">
         <div>
           <h4 class="qt-label text-foreground">Allow Any Character</h4>
@@ -110,7 +106,7 @@ export class ProjectCharactersCard {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   private readonly quickHide = inject(QuickHideService);
-  protected readonly saveError = signal<string | null>(null);
+  private readonly toasts = inject(ToastService);
 
   /**
    * v4 `CharactersCard.tsx:31-38`: dedupe by id (a character can appear twice
@@ -141,25 +137,31 @@ export class ProjectCharactersCard {
     return `${n} chat${n !== 1 ? 's' : ''}`;
   }
 
+  /** v4 `useProjectDetail.ts:87-105` — toast only, no inline surface. */
   protected async toggleAllowAny(): Promise<void> {
-    this.saveError.set(null);
     try {
-      await updateProject(this.core, this.project().id, {
+      const updated = await updateProject(this.core, this.project().id, {
         allowAnyCharacter: !this.project().allowAnyCharacter,
       });
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+      this.toasts.showSuccess(
+        updated.allowAnyCharacter
+          ? 'Any character can now participate'
+          : 'Only roster characters can participate',
+      );
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to update setting');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update setting');
     }
   }
 
+  /** v4 `useProjectDetail.ts:270-286` — toast only, no inline surface. */
   protected async removeCharacter(characterId: string): Promise<void> {
-    this.saveError.set(null);
     try {
       await removeProjectCharacter(this.core, this.project().id, characterId);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+      this.toasts.showSuccess('Character removed from project');
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to remove character');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove character');
     }
   }
 }

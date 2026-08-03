@@ -51592,3 +51592,68 @@ more cases added to the same file's existing `GroupEditor` describe block
 duplicate spec file): save success, add success/failure, remove
 success/failure. `ng test` green (154/154 across groups + characters). No
 Rust touched.
+
+**Unit 6 — `app/aurora/new/NewCharacterView.tsx` (4) — RECLASSIFIED, zero
+code change (the census-verdict trap, a third time).** All four calls
+(`:171/:175/:179` physical-description save success/failure, `:206`
+wardrobe-items-created) live inside `handleSubmit`'s
+post-creation-save-pending-wizard-data block, gated entirely on
+`pendingPhysicalDescription.current`/`pendingWardrobeItems.current` —
+both refs are populated ONLY by `handleWizardApply`, the same AI Character
+Wizard apply handler unit 2 already found unported. `new-character.ts`
+carries the identical `disabled` "AI Wizard" button with v4's own "not yet
+available" microcopy and no wizard modal at all, so there is no code path
+that ever sets those refs. **These 4 rows move from OPEN to UNPORTED**,
+riding with the same future AI Wizard screen lane as unit 2's five. The
+census's "BOTH" label was again the general inline `error` banner
+(`:260`, the base character-creation failure, already correctly ported
+with no toast) conflated with the unrelated wizard-only toasts — the base
+creation flow has no toast in v4 either way (success navigates silently;
+failure is inline-only), so nothing there was ever open. No files
+changed; no spec added; folded into the next unit's commit rather than a
+content-free one of its own.
+
+**Unit 7 — `app/prospero/[id]/hooks/useProjectDetail.ts` (20) +
+`useProjectChats.ts` (2), the census's largest single block.** All ten
+`useProjectDetail.ts` per-field handlers are toast-only in v4 (no inline
+surface anywhere save the top-level LOAD failure, same pattern as every
+other file this lane has ported), mapped to the four v5 files that
+already implement each field's save call: `project-detail.ts` itself
+(the header name/description/instructions save — v4 `handleSave`),
+`project-characters-card.ts` (Allow Any Character toggle + remove
+character), `project-model-behavior-card.ts` (agent mode, answer
+confirmation, default roleplay template), and
+`project-image-generation-card.ts` (avatar generation, Lantern
+announcements, background display mode, default image profile). Every
+dynamic success sentence carries v4's own branching verbatim (tri-state
+enabled/disabled/inherit wording, the pluralization-free but
+mode-labeled background message, the "set" vs "inherit" phrasing for
+profile/template). All four files' shared `saveError` inline banners
+(each a v5-invented surface for these specific actions) are retired,
+dropping now-unused `ErrorAlert` imports/signals in three of the four.
+`useProjectChats.ts`'s 2 calls landed in `project-chats-section.ts`'s
+`onRemove` — note v4's `useProjectChats.ts` has NO inline error surface
+at all, not even for its own load/loadMore failures (pure
+`console.error`), so the pre-existing v5 `error` signal used for THOSE
+paths is left untouched (out of this census row's scope); only `onRemove`
+stopped feeding that shared signal.
+
+As with units 5 and 6, `onUnlinkStore` in `project-detail.ts` is NOT a
+census row (v4's store-unlink hook is unported) but got the same toast
+treatment as its siblings once the shared banner it relied on was gone,
+for consistency — recorded, not claimed as one of the 22.
+
+Spec pins: found and fixed FOUR existing tests in `projects.spec.ts`
+asserting the retired `.qt-alert-error` presence or (for the header save)
+raw inline text containing the error message — all four rewritten to
+assert the toast and the banner's absence, the same trap units 5's
+`groups.spec.ts` fix and the order's own "census-verdict trap" lesson
+both name. Twenty-one more cases added across the same file's four
+existing describe blocks (reusing their `stubClient`/`settle`/`toasts`/
+`project` helpers) plus a new `project-chats-section.spec.ts` (2 cases,
+no prior spec existed): every handler's success sentence(s) and at least
+one failure per card, including a `TestBed.resetTestingModule()` fix
+where a test needed two independent renders (each gets its own
+`ToastService` instance — a prior render's toasts do not carry over).
+`ng test` green (50/50 across the whole prospero family). No Rust
+touched.

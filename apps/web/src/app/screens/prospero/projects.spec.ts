@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { RichEditor } from '../../editor/rich-editor';
-import type { ProjectDetail, ProjectFileDto } from '../../core/core-contract';
+import type { ProjectDetail, ProjectFileDto, RoleplayTemplateDto } from '../../core/core-contract';
 import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
@@ -65,6 +65,22 @@ function project(over: Partial<ProjectDetail> = {}): ProjectDetail {
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
     ...over,
+  };
+}
+
+function tmpl(id: string, name: string): RoleplayTemplateDto {
+  return {
+    id,
+    userId: 'u',
+    name,
+    systemPrompt: 'x',
+    isBuiltIn: false,
+    tags: [],
+    delimiters: [],
+    renderingPatterns: [],
+    narrationDelimiters: '*',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
   };
 }
 
@@ -227,7 +243,8 @@ describe('ProsperoList (in-tab drill)', () => {
 
     // The header's back restores the list.
     const back = [...fixture.nativeElement.querySelectorAll('button')].find(
-      (b: HTMLButtonElement) => b.textContent?.includes('Projects') && !b.textContent?.includes('Create'),
+      (b: HTMLButtonElement) =>
+        b.textContent?.includes('Projects') && !b.textContent?.includes('Create'),
     ) as HTMLButtonElement;
     expect(back).toBeTruthy();
     back.click();
@@ -258,8 +275,9 @@ describe('ProsperoList (in-tab drill)', () => {
     fixture.detectChanges();
     await settle(fixture);
     expect(
-      fixture.debugElement.query(By.directive(ProjectDetailScreen)).componentInstance
-        .projectIdInput(),
+      fixture.debugElement
+        .query(By.directive(ProjectDetailScreen))
+        .componentInstance.projectIdInput(),
     ).toBe('p2');
   });
 });
@@ -285,7 +303,7 @@ describe('ProjectModelBehaviorCard', () => {
     return fixture;
   }
 
-  it('immediate-saves the agent mode select and surfaces an alert when it fails', async () => {
+  it('immediate-saves the agent mode select and toasts on success/failure (P4.29, v4 has no inline surface)', async () => {
     const seen: DispatchReq[] = [];
     const fixture = await render(
       stubClient((r) => {
@@ -303,8 +321,9 @@ describe('ProjectModelBehaviorCard', () => {
     await settle(fixture);
     const put = seen.find((r) => r.type === 'projectUpdate');
     expect(put).toMatchObject({ projectId: 'p1', project: { defaultAgentModeEnabled: true } });
-    // The failed immediate save surfaces the alert.
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+    // The failed immediate save toasts, with no inline alert (v4 has none here).
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+    expect(toasts()).toEqual([{ type: 'error', message: 'nope' }]);
   });
 
   it('the Default Roleplay Template select is live (P4.6r) and enabled', async () => {
@@ -316,6 +335,96 @@ describe('ProjectModelBehaviorCard', () => {
       'select[aria-label="Default Roleplay Template"]',
     ) as HTMLSelectElement;
     expect(rp.disabled).toBe(false);
+  });
+
+  it("toasts each of v4's three agent-mode success sentences", async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ defaultAgentModeEnabled: null }),
+    );
+    const agentSelect = fixture.nativeElement.querySelector(
+      'select[aria-label="Agent Mode"]',
+    ) as HTMLSelectElement;
+    agentSelect.value = 'enabled';
+    agentSelect.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    agentSelect.value = 'disabled';
+    agentSelect.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    agentSelect.value = 'inherit';
+    agentSelect.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Agent mode enabled by default for project' },
+      { type: 'success', message: 'Agent mode disabled by default for project' },
+      { type: 'success', message: 'Agent mode set to inherit from global/character' },
+    ]);
+  });
+
+  it('toasts the answer-confirmation success sentence, and a failure', async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ answerConfirmationOverride: null }),
+    );
+    const select = fixture.nativeElement.querySelector(
+      'select[aria-label="Answer Confirmation"]',
+    ) as HTMLSelectElement;
+    select.value = 'ON';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Answer confirmation enabled by default for project' },
+    ]);
+
+    TestBed.resetTestingModule();
+    const failing = await render(
+      stubClient((r) => (r.type === 'projectUpdate' ? new Error('confirmation rejected') : {})),
+      project({ answerConfirmationOverride: 'ON' }),
+    );
+    const failSelect = failing.nativeElement.querySelector(
+      'select[aria-label="Answer Confirmation"]',
+    ) as HTMLSelectElement;
+    failSelect.value = 'OFF';
+    failSelect.dispatchEvent(new Event('change'));
+    await settle(failing);
+    // A fresh TestBed module ⇒ a fresh ToastService; only this render's toast.
+    expect(toasts()).toEqual([{ type: 'error', message: 'confirmation rejected' }]);
+  });
+
+  it('toasts the roleplay-template success sentences (set + inherit), and a failure', async () => {
+    const fixture = await render(
+      stubClient((r) => (r.type === 'roleplayTemplateList' ? [tmpl('t1', 'Epic')] : {})),
+      project({ defaultRoleplayTemplateId: null }),
+    );
+    const select = fixture.nativeElement.querySelector(
+      'select[aria-label="Default Roleplay Template"]',
+    ) as HTMLSelectElement;
+    select.value = 't1';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Default roleplay template set for project' },
+      { type: 'success', message: 'Roleplay template set to inherit from global' },
+    ]);
+
+    TestBed.resetTestingModule();
+    const failing = await render(
+      stubClient((r) => {
+        if (r.type === 'roleplayTemplateList') return [tmpl('t1', 'Epic')];
+        return r.type === 'projectUpdate' ? new Error('template rejected') : {};
+      }),
+      project({ defaultRoleplayTemplateId: null }),
+    );
+    const failSelect = failing.nativeElement.querySelector(
+      'select[aria-label="Default Roleplay Template"]',
+    ) as HTMLSelectElement;
+    failSelect.value = 't1';
+    failSelect.dispatchEvent(new Event('change'));
+    await settle(failing);
+    expect(toasts()).toEqual([{ type: 'error', message: 'template rejected' }]);
   });
 });
 
@@ -340,7 +449,7 @@ describe('ProjectCharactersCard', () => {
     return fixture;
   }
 
-  it('toggles Allow Any Character with an immediate PUT and alerts on failure', async () => {
+  it('toggles Allow Any Character with an immediate PUT and toasts (P4.29, v4 has no inline surface)', async () => {
     const seen: DispatchReq[] = [];
     const fixture = await render(
       stubClient((r) => {
@@ -358,7 +467,8 @@ describe('ProjectCharactersCard', () => {
       projectId: 'p1',
       project: { allowAnyCharacter: true },
     });
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+    expect(toasts()).toEqual([{ type: 'error', message: 'boom' }]);
   });
 
   it('renders the roster with the no-add-picker note when empty', async () => {
@@ -369,6 +479,56 @@ describe('ProjectCharactersCard', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Characters are added when chats are associated',
     );
+  });
+
+  it('toasts the v4 sentence for each Allow-Any-Character direction', async () => {
+    const fixture = await render(
+      stubClient((r) =>
+        r.type === 'projectUpdate' ? { project: project({ allowAnyCharacter: true }) } : {},
+      ),
+      project({ allowAnyCharacter: false }),
+    );
+    (
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Allow Any Character"]',
+      ) as HTMLButtonElement
+    ).click();
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Any character can now participate' }]);
+  });
+
+  it('removes a roster character with a success toast, and toasts a failure', async () => {
+    const roster = [
+      {
+        id: 'c1',
+        name: 'Bertie',
+        defaultImageId: null,
+        defaultImage: null,
+        tags: [],
+        chatCount: 0,
+      },
+    ];
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ roster }),
+    );
+    (
+      fixture.nativeElement.querySelector('button[title="Remove from roster"]') as HTMLButtonElement
+    ).click();
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'success', message: 'Character removed from project' }]);
+
+    TestBed.resetTestingModule();
+    const failing = await render(
+      stubClient((r) => (r.type === 'projectCharacterRemove' ? new Error('cannot remove') : {})),
+      project({ roster }),
+    );
+    (
+      failing.nativeElement.querySelector('button[title="Remove from roster"]') as HTMLButtonElement
+    ).click();
+    await settle(failing);
+    // A fresh TestBed module ⇒ a fresh ToastService; only this render's toast.
+    expect(toasts()).toEqual([{ type: 'error', message: 'cannot remove' }]);
   });
 });
 
@@ -457,9 +617,11 @@ describe('ProjectDetailScreen', () => {
         instructions: 'Be dramatic',
       },
     });
+    // v4 `useProjectDetail.ts:79` — toast only, no inline surface (P4.29).
+    expect(toasts()).toEqual([{ type: 'success', message: 'Project updated!' }]);
   });
 
-  it('surfaces an alert when the header save fails', async () => {
+  it('toasts a failed header save with NO inline alert (v4 has none on this path, P4.29)', async () => {
     const fixture = await render(
       stubClient(
         baseHandler((r) => (r.type === 'projectUpdate' ? new Error('save failed') : undefined)),
@@ -477,7 +639,8 @@ describe('ProjectDetailScreen', () => {
       ) as HTMLButtonElement
     ).click();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('save failed');
+    expect(fixture.nativeElement.querySelector('qt-error-alert')).toBeNull();
+    expect(toasts()).toEqual([{ type: 'error', message: 'save failed' }]);
   });
 });
 
@@ -505,11 +668,13 @@ describe('ProjectImageGenerationCard', () => {
   /** The Save button of the card's first (lantern) aesthetic field. */
   function saveButton(fixture: ComponentFixture<ProjectImageGenerationCard>): HTMLButtonElement {
     return [
-      ...fixture.nativeElement.querySelector('qt-project-aesthetic-field')!.querySelectorAll('button'),
+      ...fixture.nativeElement
+        .querySelector('qt-project-aesthetic-field')!
+        .querySelectorAll('button'),
     ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
   }
 
-  it('immediate-saves the background display mode and alerts on failure', async () => {
+  it('immediate-saves the background display mode and toasts (P4.29, v4 has no inline surface)', async () => {
     const seen: DispatchReq[] = [];
     const fixture = await render(
       stubClient((r) => {
@@ -529,7 +694,8 @@ describe('ProjectImageGenerationCard', () => {
       projectId: 'p1',
       project: { backgroundDisplayMode: 'project' },
     });
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+    expect(toasts()).toEqual([{ type: 'error', message: 'bg fail' }]);
   });
 
   it('the Default Image Profile select is live (P4.6r) and enabled', async () => {
@@ -541,6 +707,103 @@ describe('ProjectImageGenerationCard', () => {
       'select[aria-label="Default Image Profile"]',
     ) as HTMLSelectElement;
     expect(prof.disabled).toBe(false);
+  });
+
+  it("toasts each of v4's avatar-generation and Lantern-announcement sentences", async () => {
+    const fixture = await render(
+      stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
+      project({
+        defaultAvatarGenerationEnabled: null,
+        defaultAlertCharactersOfLanternImages: null,
+      }),
+    );
+    const avatar = fixture.nativeElement.querySelector(
+      'select[aria-label="Avatar Generation"]',
+    ) as HTMLSelectElement;
+    avatar.value = 'enabled';
+    avatar.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    avatar.value = 'disabled';
+    avatar.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    const announce = fixture.nativeElement.querySelector(
+      'select[aria-label="Announce Lantern Images"]',
+    ) as HTMLSelectElement;
+    announce.value = 'enabled';
+    announce.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    announce.value = 'inherit';
+    announce.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Avatar generation enabled by default for project' },
+      { type: 'success', message: 'Avatar generation disabled by default for project' },
+      {
+        type: 'success',
+        message: 'Lantern image announcements enabled by default for project',
+      },
+      {
+        type: 'success',
+        message: 'Lantern image announcements set to inherit from global',
+      },
+    ]);
+  });
+
+  it('toasts the image-profile success sentences (set + inherit), and a failure', async () => {
+    const fixture = await render(
+      stubClient((r) => {
+        if (r.type === 'projectAestheticGet') return { content: '' };
+        return {};
+      }),
+      project({ defaultImageProfileId: 'ip1' }),
+    );
+    const select = fixture.nativeElement.querySelector(
+      'select[aria-label="Default Image Profile"]',
+    ) as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Image profile set to inherit from global' },
+    ]);
+
+    TestBed.resetTestingModule();
+    const failing = await render(
+      stubClient((r) => {
+        if (r.type === 'projectAestheticGet') return { content: '' };
+        return r.type === 'projectUpdate' ? new Error('profile rejected') : {};
+      }),
+      project({ defaultImageProfileId: 'ip1' }),
+    );
+    const failSelect = failing.nativeElement.querySelector(
+      'select[aria-label="Default Image Profile"]',
+    ) as HTMLSelectElement;
+    failSelect.value = '';
+    failSelect.dispatchEvent(new Event('change'));
+    await settle(failing);
+    expect(toasts()).toEqual([{ type: 'error', message: 'profile rejected' }]);
+  });
+
+  it('toasts each Story-Backgrounds mode label on success', async () => {
+    const fixture = await render(
+      stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
+      project({ backgroundDisplayMode: 'theme' }),
+    );
+    const bg = fixture.nativeElement.querySelector(
+      'select[aria-label="Story Backgrounds"]',
+    ) as HTMLSelectElement;
+    bg.value = 'latest_chat';
+    bg.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    bg.value = 'static';
+    bg.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Background set to latest chat background' },
+      { type: 'success', message: 'Background set to static background' },
+    ]);
   });
 
   it('saves the edited aesthetic content through projectAestheticSet', async () => {
@@ -595,9 +858,7 @@ describe('ProjectImageGenerationCard', () => {
     const content = 'Muted __sepia__ tones.';
     const fixture = await render(
       stubClient((r) =>
-        r.type === 'projectAestheticGet'
-          ? { content: r['kind'] === 'lantern' ? content : '' }
-          : {},
+        r.type === 'projectAestheticGet' ? { content: r['kind'] === 'lantern' ? content : '' } : {},
       ),
       project(),
     );

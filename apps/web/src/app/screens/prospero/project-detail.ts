@@ -18,8 +18,8 @@ import type {
   DocumentStoreSummary,
   ProjectDetail as ProjectDetailDto,
 } from '../../core/core-contract';
-import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
+import { ToastService } from '../../ui/toast.service';
 import { GroupStoresCard } from '../groups/group-stores-card';
 import { ProjectChatsSection } from './cards/project-chats-section';
 import { ProjectCharactersCard } from './cards/project-characters-card';
@@ -55,7 +55,6 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LoadingState,
-    ErrorAlert,
     ProjectHeader,
     GroupStoresCard,
     ProjectFilesCard,
@@ -93,10 +92,6 @@ import {
           (back)="goBack()"
         />
 
-        @if (saveError(); as msg) {
-          <qt-error-alert [message]="msg" class="mt-4" />
-        }
-
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 grid-flow-row-dense">
           <qt-project-files-card [projectId]="id()" [defaultOpen]="firstVisit()" />
           <qt-group-stores-card
@@ -130,6 +125,7 @@ export class ProjectDetailScreen {
   private readonly queryClient = injectQueryClient();
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly toasts = inject(ToastService);
 
   /**
    * In-tab drill (p4.9j2, v4 `ProsperoView` `selectedProjectId`): when the list
@@ -153,7 +149,6 @@ export class ProjectDetailScreen {
   protected readonly firstVisit = signal(false);
 
   protected readonly isEditing = signal(false);
-  protected readonly saveError = signal<string | null>(null);
   protected readonly editForm = signal<ProjectEditForm>({
     name: '',
     description: '',
@@ -237,8 +232,8 @@ export class ProjectDetailScreen {
     this.isEditing.set(false);
   }
 
+  /** v4 `useProjectDetail.ts:63-85` — toast only, no inline surface. */
   protected async save(): Promise<void> {
-    this.saveError.set(null);
     const form = this.editForm();
     try {
       await updateProject(this.core, this.id(), {
@@ -248,18 +243,26 @@ export class ProjectDetailScreen {
       });
       this.isEditing.set(false);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.id()) });
+      this.toasts.showSuccess('Project updated!');
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to update project');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update project');
     }
   }
 
+  /**
+   * Not a census row (v4's store unlinking lives in a different, unported
+   * hook), but retiring the shared `saveError` banner above would otherwise
+   * leave this action's failure with no feedback at all — toast it too, for
+   * consistency with its siblings in this same component (the same call the
+   * group editor made in P4.29 unit 5).
+   */
   protected async onUnlinkStore(mountPointId: string): Promise<void> {
     this.storeUnlinking.set(mountPointId);
     try {
       await unlinkProjectStore(this.core, this.id(), mountPointId);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.stores(this.id()) });
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : 'Failed to unlink store');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to unlink store');
     } finally {
       this.storeUnlinking.set(null);
     }

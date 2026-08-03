@@ -4,7 +4,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../core/core-client';
 import type { ImageProfileDto, ProjectDetail } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { ErrorAlert } from '../../../ui/error-alert';
+import { ToastService } from '../../../ui/toast.service';
 import { fetchImageProfiles, imageProfileKeys } from '../../settings/images/image-profiles.api';
 import { projectKeys, updateProject } from '../projects.api';
 import { ProjectAestheticField } from './project-aesthetic-field';
@@ -22,7 +22,7 @@ import { ProjectAestheticField } from './project-aesthetic-field';
 @Component({
   selector: 'qt-project-image-generation-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, ErrorAlert, ProjectAestheticField],
+  imports: [CollapsibleCard, ProjectAestheticField],
   template: `
     <qt-collapsible-card
       title="Image Generation"
@@ -31,10 +31,6 @@ import { ProjectAestheticField } from './project-aesthetic-field';
       [defaultOpen]="defaultOpen()"
       class="col-span-full block"
     >
-      @if (saveError(); as msg) {
-        <qt-error-alert [message]="msg" class="mb-3" />
-      }
-
       <div class="space-y-4">
         <div class="p-3 rounded-lg qt-border qt-bg-surface">
           <h4 class="qt-label text-foreground mb-1">Avatar Generation</h4>
@@ -165,7 +161,7 @@ export class ProjectImageGenerationCard {
 
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
-  protected readonly saveError = signal<string | null>(null);
+  private readonly toasts = inject(ToastService);
   protected readonly savingProfile = signal(false);
 
   private readonly profilesQuery = injectQuery(() => ({
@@ -174,9 +170,7 @@ export class ProjectImageGenerationCard {
   }));
 
   protected readonly imageProfiles = computed(() => this.profilesQuery.data() ?? []);
-  protected readonly imageProfileValue = computed(
-    () => this.project().defaultImageProfileId ?? '',
-  );
+  protected readonly imageProfileValue = computed(() => this.project().defaultImageProfileId ?? '');
 
   protected readonly avatarValue = computed(() =>
     triState(this.project().defaultAvatarGenerationEnabled),
@@ -201,33 +195,60 @@ export class ProjectImageGenerationCard {
     }
   });
 
+  /** v4 `useProjectDetail.ts:155-177`. */
   protected onAvatar(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
+    const enabled = v === 'inherit' ? null : v === 'enabled';
     void this.save(
-      { defaultAvatarGenerationEnabled: v === 'inherit' ? null : v === 'enabled' },
+      { defaultAvatarGenerationEnabled: enabled },
+      enabled === null
+        ? 'Avatar generation set to inherit from global'
+        : enabled
+          ? 'Avatar generation enabled by default for project'
+          : 'Avatar generation disabled by default for project',
       'Failed to update avatar generation',
     );
   }
 
+  /** v4 `useProjectDetail.ts:221-243`. */
   protected onAnnounce(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
+    const enabled = v === 'inherit' ? null : v === 'enabled';
     void this.save(
-      { defaultAlertCharactersOfLanternImages: v === 'inherit' ? null : v === 'enabled' },
+      { defaultAlertCharactersOfLanternImages: enabled },
+      enabled === null
+        ? 'Lantern image announcements set to inherit from global'
+        : enabled
+          ? 'Lantern image announcements enabled by default for project'
+          : 'Lantern image announcements disabled by default for project',
       'Failed to update Lantern image announcement setting',
     );
   }
 
+  /** v4 `useProjectDetail.ts:245-268`. */
   protected onBackground(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
-    void this.save({ backgroundDisplayMode: v }, 'Failed to update background mode');
+    const modeLabels: Record<string, string> = {
+      theme: 'theme background',
+      latest_chat: 'latest chat background',
+      project: 'project background',
+      static: 'static background',
+    };
+    void this.save(
+      { backgroundDisplayMode: v },
+      `Background set to ${modeLabels[v]}`,
+      'Failed to update background mode',
+    );
   }
 
+  /** v4 `useProjectDetail.ts:179-198`. */
   protected async onImageProfile(event: Event): Promise<void> {
     const v = (event.target as HTMLSelectElement).value;
     this.savingProfile.set(true);
     try {
       await this.save(
         { defaultImageProfileId: v || null },
+        v ? 'Default image profile set for project' : 'Image profile set to inherit from global',
         'Failed to update default image profile',
       );
     } finally {
@@ -235,13 +256,17 @@ export class ProjectImageGenerationCard {
     }
   }
 
-  private async save(patch: Record<string, unknown>, fallback: string): Promise<void> {
-    this.saveError.set(null);
+  private async save(
+    patch: Record<string, unknown>,
+    successMsg: string,
+    fallback: string,
+  ): Promise<void> {
     try {
       await updateProject(this.core, this.project().id, patch);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+      this.toasts.showSuccess(successMsg);
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : fallback);
+      this.toasts.showError(err instanceof Error ? err.message : fallback);
     }
   }
 }

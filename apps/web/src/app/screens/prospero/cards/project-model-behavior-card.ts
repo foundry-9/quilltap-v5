@@ -4,7 +4,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { CoreClient } from '../../../core/core-client';
 import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { ErrorAlert } from '../../../ui/error-alert';
+import { ToastService } from '../../../ui/toast.service';
 import { fetchRoleplayTemplates, templateKeys } from '../../settings/templates/templates.api';
 import { ProjectToolSettingsModal } from '../project-tool-settings-modal';
 import { projectKeys, updateProject } from '../projects.api';
@@ -28,7 +28,7 @@ import { projectKeys, updateProject } from '../projects.api';
 @Component({
   selector: 'qt-project-model-behavior-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, ErrorAlert, ProjectToolSettingsModal],
+  imports: [CollapsibleCard, ProjectToolSettingsModal],
   template: `
     <qt-collapsible-card
       title="Model Behavior"
@@ -36,10 +36,6 @@ import { projectKeys, updateProject } from '../projects.api';
       icon="cpu"
       [defaultOpen]="defaultOpen()"
     >
-      @if (saveError(); as msg) {
-        <qt-error-alert [message]="msg" class="mb-3" />
-      }
-
       <div class="space-y-4">
         <div class="p-3 rounded-lg qt-border qt-bg-surface">
           <h4 class="qt-label text-foreground mb-1">Agent Mode</h4>
@@ -103,7 +99,9 @@ import { projectKeys, updateProject } from '../projects.api';
               Inherit from global default
             </option>
             @for (t of roleplayTemplates(); track t.id) {
-              <option [value]="t.id" [selected]="roleplayTemplateValue() === t.id">{{ t.name }}</option>
+              <option [value]="t.id" [selected]="roleplayTemplateValue() === t.id">
+                {{ t.name }}
+              </option>
             }
           </select>
           @if (savingTemplate()) {
@@ -144,7 +142,7 @@ export class ProjectModelBehaviorCard {
 
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
-  protected readonly saveError = signal<string | null>(null);
+  private readonly toasts = inject(ToastService);
   protected readonly savingTemplate = signal(false);
   protected readonly showToolSettings = signal(false);
 
@@ -204,27 +202,46 @@ export class ProjectModelBehaviorCard {
     () => this.project().answerConfirmationOverride ?? 'inherit',
   );
 
+  /** v4 `useProjectDetail.ts:107-129`. */
   protected async onAgentMode(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     const enabled = value === 'inherit' ? null : value === 'enabled';
-    await this.save({ defaultAgentModeEnabled: enabled }, 'Failed to update agent mode');
+    await this.save(
+      { defaultAgentModeEnabled: enabled },
+      enabled === null
+        ? 'Agent mode set to inherit from global/character'
+        : enabled
+          ? 'Agent mode enabled by default for project'
+          : 'Agent mode disabled by default for project',
+      'Failed to update agent mode',
+    );
   }
 
+  /** v4 `useProjectDetail.ts:131-153`. */
   protected async onAnswerConfirmation(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     const override = value === 'inherit' ? null : (value as 'ON' | 'OFF');
     await this.save(
       { answerConfirmationOverride: override },
+      override === null
+        ? 'Answer confirmation set to inherit from global'
+        : override === 'ON'
+          ? 'Answer confirmation enabled by default for project'
+          : 'Answer confirmation disabled by default for project',
       'Failed to update answer confirmation',
     );
   }
 
+  /** v4 `useProjectDetail.ts:200-219`. */
   protected async onRoleplayTemplate(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     this.savingTemplate.set(true);
     try {
       await this.save(
         { defaultRoleplayTemplateId: value || null },
+        value
+          ? 'Default roleplay template set for project'
+          : 'Roleplay template set to inherit from global',
         'Failed to update default roleplay template',
       );
     } finally {
@@ -232,13 +249,17 @@ export class ProjectModelBehaviorCard {
     }
   }
 
-  private async save(patch: Record<string, unknown>, fallback: string): Promise<void> {
-    this.saveError.set(null);
+  private async save(
+    patch: Record<string, unknown>,
+    successMsg: string,
+    fallback: string,
+  ): Promise<void> {
     try {
       await updateProject(this.core, this.project().id, patch);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+      this.toasts.showSuccess(successMsg);
     } catch (err) {
-      this.saveError.set(err instanceof Error ? err.message : fallback);
+      this.toasts.showError(err instanceof Error ? err.message : fallback);
     }
   }
 }

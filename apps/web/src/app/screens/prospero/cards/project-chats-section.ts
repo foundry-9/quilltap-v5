@@ -5,6 +5,7 @@ import { CoreClient } from '../../../core/core-client';
 import type { EnrichedChatSummary } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
+import { ToastService } from '../../../ui/toast.service';
 import { ChatCard } from '../../salon/chat-card';
 import { fetchProjectChats, removeProjectChat } from '../projects.api';
 
@@ -96,6 +97,7 @@ export class ProjectChatsSection {
 
   private readonly core = inject(CoreClient);
   private readonly quickHide = inject(QuickHideService);
+  private readonly toasts = inject(ToastService);
 
   protected readonly chats = signal<EnrichedChatSummary[]>([]);
 
@@ -179,14 +181,15 @@ export class ProjectChatsSection {
     }
   }
 
+  /** v4 `useProjectChats.ts:88-105` — toast only, no inline surface. */
   protected async onRemove(chatId: string): Promise<void> {
-    this.error.set(null);
     try {
       await removeProjectChat(this.core, this.projectId(), chatId);
       this.chats.update((prev) => prev.filter((c) => c.id !== chatId));
       this.total.update((t) => Math.max(0, t - 1));
+      this.toasts.showSuccess('Chat removed from project');
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'Failed to remove chat');
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove chat');
     }
   }
 }
