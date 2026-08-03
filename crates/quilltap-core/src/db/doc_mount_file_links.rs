@@ -1824,3 +1824,224 @@ pub fn sweep_orphaned_files(conn: &Connection) -> Result<usize, DbError> {
     )?;
     Ok(changes)
 }
+
+// ============================================================================
+// Deliberate hard-link groups (v4 `40319484`)
+// ============================================================================
+
+/// Drop a content row that no link references any more — v4 `gcOrphanedFileRow`
+/// (`doc-mount-file-links.repository.ts:114`).
+///
+/// Every write to a database-backed mount is content-addressed: it
+/// finds-or-creates a `doc_mount_files` row for the NEW sha and repoints the
+/// link at it. Without this the row the link just left behind lingers forever,
+/// holding its `doc_mount_documents` / `doc_mount_blobs` payload — a slow leak
+/// that had accumulated dozens of orphans in the wild. Content rows still
+/// referenced by some other link (a real hard link, or an unrelated file that
+/// happens to have identical bytes) are left alone.
+///
+/// The payload rows are deleted explicitly rather than left to the FK cascade.
+/// `ON DELETE CASCADE` is only present on databases whose tables came from the
+/// add-doc-mount-file-links migration; tables created from the Zod schema by
+/// `generateDDL` carry no foreign keys at all, so on those instances a cascade
+/// would silently keep every payload forever. Deleting children first is a
+/// no-op where the cascade does exist.
+///
+/// Runs inside the caller's transaction (`conn` is the transaction handle).
+///
+/// Returns `true` when the row was collected.
+pub(crate) fn gc_orphaned_file_row(conn: &Connection, file_id: &str) -> Result<bool, DbError> {
+    let still: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = ?1",
+        params![file_id],
+        |row| row.get(0),
+    )?;
+    if still > 0 {
+        return Ok(false);
+    }
+    conn.execute(
+        "DELETE FROM doc_mount_documents WHERE fileId = ?1",
+        params![file_id],
+    )?;
+    conn.execute(
+        "DELETE FROM doc_mount_blobs WHERE fileId = ?1",
+        params![file_id],
+    )?;
+    conn.execute(
+        "DELETE FROM doc_mount_files WHERE id = ?1",
+        params![file_id],
+    )?;
+    Ok(true)
+}
+
+/// Collect the backlog of content rows abandoned by content-addressed rewrites
+/// before [`gc_orphaned_file_row`] existed — v4 migration
+/// `add-doc-mount-link-groups-v1` step 2.
+///
+/// v5 has no migration runner (a locked deferral), so this runs from the
+/// `services::builtin_mounts` boot hook instead, on the P4.d7 boot-repair
+/// precedent: idempotent every boot, a cheap indexed no-op once the backlog is
+/// gone (the write path now reaps eagerly).
+///
+/// It deliberately reuses [`gc_orphaned_file_row`] rather than being a third
+/// independent reaper: the count re-check is trivially true for a row already
+/// known to be orphaned, and the payload deletes then cannot drift apart from
+/// the write path's. Distinct from [`sweep_orphaned_files`], which is v4's
+/// unchanged maintenance sweep (cascade-reliant, and ported byte-faithfully).
+///
+/// Returns the number of content rows collected.
+pub fn sweep_orphaned_link_content(conn: &Connection) -> Result<usize, DbError> {
+    // v4's migration `shouldRun` gates on `doc_mount_file_links` existing; the
+    // sweep additionally names the three content tables. A legacy-vintage mount
+    // index can be missing any of them, and where v4 contains a migration
+    // failure (`success: false`, logged) a throw from this boot hook would abort
+    // startup — so the gate covers everything the sweep touches.
+    for table in [
+        "doc_mount_file_links",
+        "doc_mount_files",
+        "doc_mount_documents",
+        "doc_mount_blobs",
+    ] {
+        let exists: Option<String> = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        if exists.is_none() {
+            return Ok(0);
+        }
+    }
+
+    let orphans: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT f.id FROM doc_mount_files f \
+             WHERE NOT EXISTS (SELECT 1 FROM doc_mount_file_links l WHERE l.fileId = f.id)",
+        )?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+
+    let tx = conn.unchecked_transaction()?;
+    let mut collected = 0usize;
+    for file_id in &orphans {
+        if gc_orphaned_file_row(&tx, file_id)? {
+            collected += 1;
+        }
+    }
+    tx.commit()?;
+
+    if collected > 0 {
+        tracing::info!(
+            target: "quilltap::mount_repair",
+            collected,
+            "Collected orphaned document-store content rows left by content-addressed rewrites",
+        );
+    }
+    Ok(collected)
+}
+
+#[cfg(test)]
+mod orphan_backlog_tests {
+    use super::*;
+
+    /// The four tables the backlog sweep touches, in their `generateDDL` shape
+    /// (no foreign keys — which is exactly why the payload deletes are explicit).
+    fn mount_index_db() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE \"doc_mount_files\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"sha256\" TEXT NOT NULL, \"fileSizeBytes\" REAL);\
+             CREATE TABLE \"doc_mount_documents\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"content\" TEXT);\
+             CREATE TABLE \"doc_mount_blobs\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"data\" BLOB);\
+             CREATE TABLE \"doc_mount_file_links\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"linkGroupId\" TEXT);",
+        )
+        .unwrap();
+        db
+    }
+
+    fn seed_content(db: &Connection, file_id: &str) {
+        db.execute(
+            "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes) VALUES (?1, ?1, 10)",
+            params![file_id],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO doc_mount_documents (id, fileId, content) VALUES (?1 || '-d', ?1, 'x')",
+            params![file_id],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO doc_mount_blobs (id, fileId, data) VALUES (?1 || '-b', ?1, x'00')",
+            params![file_id],
+        )
+        .unwrap();
+    }
+
+    fn count(db: &Connection, sql: &str) -> i64 {
+        db.query_row(sql, [], |row| row.get(0)).unwrap()
+    }
+
+    #[test]
+    fn collects_orphans_with_their_payload_and_leaves_referenced_rows_alone() {
+        let db = mount_index_db();
+        seed_content(&db, "orphan");
+        seed_content(&db, "kept");
+        db.execute(
+            "INSERT INTO doc_mount_file_links (id, fileId) VALUES ('l1', 'kept')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(sweep_orphaned_link_content(&db).unwrap(), 1);
+
+        // The payload goes with the file row — `ON DELETE CASCADE` does not exist
+        // on schema-generated tables, so a cascade would have kept both forever.
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 1);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 1);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_blobs"), 1);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM doc_mount_files WHERE id = 'kept'"
+            ),
+            1
+        );
+
+        // Idempotent: the next boot finds nothing.
+        assert_eq!(sweep_orphaned_link_content(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn is_a_no_op_on_a_legacy_vintage_index_missing_the_content_tables() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE \"doc_mount_file_links\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL)",
+        )
+        .unwrap();
+        assert_eq!(sweep_orphaned_link_content(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn gc_leaves_a_content_row_that_another_link_still_references() {
+        let db = mount_index_db();
+        seed_content(&db, "shared");
+        db.execute(
+            "INSERT INTO doc_mount_file_links (id, fileId) VALUES ('l1', 'shared')",
+            [],
+        )
+        .unwrap();
+
+        assert!(!gc_orphaned_file_row(&db, "shared").unwrap());
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 1);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 1);
+    }
+}

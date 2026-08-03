@@ -147,6 +147,19 @@ fn ensure_mount_index_tables(mount_index: &Connection) -> Result<(), DbError> {
     mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)?;
     mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)?;
     mount_index_case_repair::repair_mount_point_name_collisions(mount_index)?;
+    // v4 `40319484` (migration `add-doc-mount-link-groups-v1`): deliberate
+    // hard-link groups. Step 1 — the `linkGroupId` column + its partial index.
+    // v4 calls this from the two repositories that name the column, because its
+    // `safeQuery` would otherwise turn "no such column" into "every document
+    // silently does not exist"; v5 has no such swallow (a missing column is a
+    // hard error), so the two call sites collapse to this one boot hook, exactly
+    // as the three case-repair helpers above already do.
+    mount_index_case_repair::ensure_link_group_column(mount_index)?;
+    // Step 2 — collect the backlog of content rows abandoned by
+    // content-addressed rewrites before the write path started reaping them.
+    // v5 has no migration runner, so this is the boot-repair analogue: cheap and
+    // idempotent once the backlog is gone.
+    crate::db::doc_mount_file_links::sweep_orphaned_link_content(mount_index)?;
     Ok(())
 }
 

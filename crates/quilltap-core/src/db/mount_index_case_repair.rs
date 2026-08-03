@@ -464,6 +464,58 @@ pub fn ensure_link_nocase_unique_index(db: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
+pub const LINK_GROUP_INDEX: &str = "idx_doc_mount_file_links_linkGroupId";
+
+/// Ensure `doc_mount_file_links.linkGroupId` (deliberate hard-link groups)
+/// exists, along with its partial index — v4 `ensureLinkGroupColumn`
+/// (`mount-index-case-repair.ts:299`).
+///
+/// v4 calls this from BOTH repositories that touch the column (links, and
+/// documents through its joined view) because its `safeQuery` turns the
+/// resulting "no such column" into a null result — a missing column would
+/// present as *every document silently not existing*. **That premise does not
+/// transfer to v5** (a documented non-divergence): v5 has no such swallow, so a
+/// missing column is a hard `rusqlite` error, loud by construction. The two v4
+/// lazy-init call sites therefore collapse to the single once-per-startup boot
+/// hook in `services::builtin_mounts`, exactly as the three
+/// `ensure*NocaseUniqueIndex` helpers already do.
+///
+/// v5 has no migration runner (a locked deferral), so this — plus the
+/// `generateDDL` column on fresh instances — is the whole of v4's
+/// `add-doc-mount-link-groups-v1` step 1.
+///
+/// Idempotent; one PRAGMA on the happy path.
+pub fn ensure_link_group_column(db: &Connection) -> Result<(), DbError> {
+    // On a fresh database the links table may not exist yet — only the links
+    // repository creates it (with the column already in it, from the schema).
+    if !table_exists(db, "doc_mount_file_links")? {
+        return Ok(());
+    }
+
+    let has_column = {
+        let mut stmt = db.prepare("PRAGMA table_info(\"doc_mount_file_links\")")?;
+        let mut found = false;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            if row.get::<_, String>(1)? == "linkGroupId" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_column {
+        db.execute_batch(
+            "ALTER TABLE \"doc_mount_file_links\" ADD COLUMN \"linkGroupId\" TEXT DEFAULT NULL",
+        )?;
+    }
+    db.execute_batch(&format!(
+        "CREATE INDEX IF NOT EXISTS \"{LINK_GROUP_INDEX}\" \
+         ON \"doc_mount_file_links\" (\"linkGroupId\") WHERE \"linkGroupId\" IS NOT NULL"
+    ))?;
+    Ok(())
+}
+
 // ============================================================================
 // Vault (mount-point) names — app-level uniqueness, repaired at boot
 // ============================================================================
@@ -543,4 +595,79 @@ pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbErro
         }
     }
     Ok(renamed)
+}
+
+#[cfg(test)]
+mod link_group_column_tests {
+    use super::*;
+
+    /// A pre-`40319484` mount index: the links table as `generateDDL` emitted it
+    /// before the column existed (only the columns the helper reads matter).
+    fn pre_column_db() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE \"doc_mount_file_links\" (\
+               \"id\" TEXT PRIMARY KEY NOT NULL, \"fileId\" TEXT NOT NULL, \
+               \"mountPointId\" TEXT NOT NULL, \"relativePath\" TEXT NOT NULL)",
+        )
+        .unwrap();
+        db
+    }
+
+    fn has_column(db: &Connection, name: &str) -> bool {
+        let mut stmt = db
+            .prepare("PRAGMA table_info(\"doc_mount_file_links\")")
+            .unwrap();
+        let mut rows = stmt.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            if row.get::<_, String>(1).unwrap() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn index_sql(db: &Connection) -> Option<String> {
+        db.query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            params![LINK_GROUP_INDEX],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .unwrap()
+        .flatten()
+    }
+
+    #[test]
+    fn adds_the_column_and_its_partial_index_to_an_existing_instance() {
+        let db = pre_column_db();
+        assert!(!has_column(&db, "linkGroupId"));
+
+        ensure_link_group_column(&db).unwrap();
+
+        assert!(has_column(&db, "linkGroupId"));
+        let sql = index_sql(&db).expect("partial index created");
+        // v4 creates it PARTIAL — the vast majority of links are ungrouped.
+        assert!(sql.contains("WHERE \"linkGroupId\" IS NOT NULL"), "{sql}");
+    }
+
+    #[test]
+    fn is_idempotent_across_boots() {
+        let db = pre_column_db();
+        ensure_link_group_column(&db).unwrap();
+        // A second boot must not attempt the ALTER again (SQLite would error
+        // with "duplicate column name").
+        ensure_link_group_column(&db).unwrap();
+        assert!(has_column(&db, "linkGroupId"));
+        assert!(index_sql(&db).is_some());
+    }
+
+    #[test]
+    fn is_a_no_op_before_the_links_table_exists() {
+        // v4: whichever repository initializes first calls this, and only the
+        // links repository creates the table.
+        let db = Connection::open_in_memory().unwrap();
+        ensure_link_group_column(&db).unwrap();
+        assert!(index_sql(&db).is_none());
+    }
 }

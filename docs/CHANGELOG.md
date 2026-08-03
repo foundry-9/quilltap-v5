@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Started making hard links between document stores real. A fresh instance now
+carries the field that records a deliberate link, and an instance carried
+forward from an older version gains it on startup. Startup also clears out
+stored file contents that nothing points at any more — every edit to a
+document in a store leaves its previous contents behind, and until now they
+were never collected, so a long-lived instance accumulated dozens of them.
+
 Planned the next porting round (documentation only): four parallel work
 orders. The reference app moved one commit — making hard links between
 document stores real, so a file linked into two places stays one file —

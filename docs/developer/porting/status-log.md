@@ -50186,3 +50186,97 @@ Deliberately left out of the round: the autonomous-rooms oracle jest rot (a
 maintenance item, no lane owns harness-wide infra this round), `p4.9h`, the
 workspace per-tab toolbar bridge, and finding #61 (re-walk on a fresh copy
 first — the reports came from a #56-damaged scratch instance).
+
+---
+
+## Lane record — P4.D41 unit 1 (the D23 re-dump + the boot ensure + the backlog sweep)
+
+**Branch:** `claude/hard-link-groups-porting-6d5687`. **Drift-check at lane
+start:** `git log 40319484..HEAD --oneline` in `~/source/quilltap-server` is
+EMPTY and `git status --short` is clean — v4 HEAD *is* `40319484`, so every
+oracle in this lane regenerates straight from the checkout (no pinned
+worktree needed).
+
+**Landed.**
+
+1. **`provisioning/fresh_schema.json` re-dumped** from v4's LIVE `generateDDL`
+   at `40319484` (`dump-fresh-schema.ts`, never hand-edited). The diff is
+   EXACTLY the drift and nothing else:
+   - `main` — **byte-identical** (79 statements).
+   - `llmLogs` — **byte-identical** (3 statements).
+   - `mountIndex` 29 → 30: `doc_mount_file_links` gains `"linkGroupId" TEXT`
+     (position 3, right after `fileId` — the Zod field order), and the partial
+     index `CREATE INDEX "idx_doc_mount_file_links_linkGroupId" ON
+     "doc_mount_file_links" ("linkGroupId") WHERE "linkGroupId" IS NOT NULL`
+     appears. **`generateDDL` DOES emit the partial index** — the order asked
+     this to be verified rather than assumed; it does, so a fresh instance gets
+     both halves without the boot ensure.
+   - Two partitions byte-identical is the D23 proof that no other v4 schema
+     movement is hiding in this commit.
+2. **`db::mount_index_case_repair::ensure_link_group_column`** — v4
+   `ensureLinkGroupColumn` (PRAGMA `table_info`, conditional ALTER, then
+   `CREATE INDEX IF NOT EXISTS` the partial index; a no-op before the links
+   table exists). Note the two shapes differ by construction and both are v4's:
+   `generateDDL` puts the column at position 3, the ALTER appends it — exactly
+   the same split `pascalMeta` has (the P4.6ay unit-10 precedent).
+3. **The `safeQuery` premise does NOT transfer — recorded as a non-divergence.**
+   v4 calls the ensure from BOTH repositories that name the column because its
+   `safeQuery` turns "no such column" into a null result, so a missing column
+   would present as *every document silently not existing*. v5 has no such
+   swallow: a missing column is a hard `rusqlite` error, loud by construction.
+   The two v4 lazy-init call sites therefore collapse to the SINGLE boot hook
+   `services::builtin_mounts::ensure_mount_index_tables`, exactly as the three
+   `ensure*NocaseUniqueIndex` helpers already do (the `0a0419f5` precedent,
+   already documented in that hook's comment).
+4. **The migration's step 2 as a boot-repair pass** —
+   `db::doc_mount_file_links::sweep_orphaned_link_content`, v5's analogue of
+   `add-doc-mount-link-groups-v1`'s orphan-backlog cleanup (v5 has no migration
+   runner: the locked deferral). Idempotent every boot, per the P4.d7 /
+   fictional-clock-anchor boot-repair precedent.
+   - **Reconciled, not a third reaper** (the order's instruction): it reuses
+     `gc_orphaned_file_row` per orphan rather than re-implementing the delete
+     trio, so the boot pass and the write path can never drift apart.
+   - **`sweep_orphaned_files` is deliberately UNCHANGED.** v4's
+     `sweepOrphanedFiles` is untouched by `40319484` — it still deletes only
+     `doc_mount_files` and relies on the cascade — so the v5 port stays
+     byte-faithful. Changing it would put `maintenance_sweep_tier2_equivalence`
+     at odds with v4's real code. The two are distinct on purpose and the
+     doc comments say so.
+   - **One gate the order did not predict:** the sweep names four tables, and a
+     legacy-vintage mount index can be missing any of them. v4's migration
+     gates on `doc_mount_file_links` alone and *contains* a failure
+     (`success: false`, logged); a throw from v5's boot hook would abort
+     startup instead. The gate therefore covers every table the sweep touches.
+     Caught by the existing `boot_hook_repairs_legacy_vintage_collisions`
+     test, which builds exactly that vintage.
+5. **`gc_orphaned_file_row`** landed here (rather than with unit 2's write-path
+   wiring) because the backlog sweep is its first caller. Its write-path and
+   `delete_with_gc` call sites are unit 2's.
+
+**Verification.**
+
+- `provisioning_equivalence` — **GREEN** over a freshly regenerated oracle at
+  `40319484` (main 79 / mount-index 30 / llm-logs 3). This is the D23 tripwire
+  and it now agrees with the re-dump.
+- `verify-v5-provisioned.ts` — **v4 opened and read the v5-provisioned
+  instance** carrying the new column and index.
+- `builtin_mounts_equivalence` — **GREEN** over a freshly regenerated oracle
+  (3 states: empty / dangling / live), i.e. the boot hook's two new steps are
+  observationally inert on a fresh instance.
+- Six new unit tests: `ensure_link_group_column` (adds column + PARTIAL index /
+  idempotent across boots / no-op before the table exists) and the backlog
+  sweep (collects orphan + payload, leaves referenced rows alone, idempotent /
+  no-op on a legacy vintage / `gc_orphaned_file_row` declines a still-shared
+  row).
+- Gate: `cargo fmt --all --check`, clippy both feature sets, `cargo test
+  --workspace --no-fail-fast` all green.
+
+Regen recipes (both run from `~/source/quilltap-server`, v4 clean at
+`40319484`, Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+```
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema-40319484.json \
+  npx tsx <v5>/harness/oracle/provision/dump-fresh-schema.ts
+QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
+  npx tsx <v5>/harness/oracle/provision/build-provision-oracle.ts
+```
