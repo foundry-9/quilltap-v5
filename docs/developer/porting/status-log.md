@@ -52211,3 +52211,28 @@ the drift + #58, and its tripwire keeps the exposure pinned meanwhile);
 the dogfood pass (human-driven, and now also owes P4.31's live proof —
 the reaper against the Friday copy's 43+118 — plus the standing queue);
 `p4.9h`, `p4.9i2`, `p4.9l`, and the standing pools.
+
+## Ruling — the doc-edit oracle reindex un-mock (2026-08-04, human)
+
+**"Un-mock the reindex."** The `doc_text`/`doc_fm` stale-RED (P4.D41
+unit 8's finding: the oracle cases' `jest.doMock('@/lib/doc-edit/
+reindex-file')` silences v4's OWN P4.6BK chunk-on-write, so mocked-v4
+diverges from chunking-v5 on `chunkCount`) is resolved by removing the
+mock, not by normalizing `chunkCount` out of the diff: **the family
+GROWS to prove the chunk pass on the doc-edit path.** The
+exclude-the-field alternative is REJECTED — it would stop proving the
+chunk pass anywhere on this surface. Scope verified at planning:
+`reindexSingleFile` is the module's only export and never enqueues
+embedding jobs; the separate `embedding-scheduler` and librarian-writer
+mocks STAY (the ruling covers the reindex module only). All six
+mock-bearing cases (`doc-{text,fm,ui,enum,blob,fs}.test.ts`) un-mock for
+consistency, with per-family moved/unmoved verdicts recorded.
+
+Ordered as `work-orders/p4.32-doc-edit-oracle-unmock-reindex.md` — a
+standalone harness/oracle-only lane that JOINS the already-running
+`49769ec4` round without touching its three in-flight orders (its
+ownership was chosen disjoint; collisions escalate to the unifier). If
+un-mocked v4 turns out to write anything v5 does not beyond
+`chunkCount`, that is a REAL port finding — escalate, never normalize.
+The lane also repairs the six families' unrunnable recipe headers (the
+D32/D41 sweep debt that let this red sit invisible).

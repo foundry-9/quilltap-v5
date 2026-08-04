@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Ruled and ordered the repair for the two long-red document-editing
+equivalence checks: the test oracle had been silencing the reference
+app's own chunk-on-write step, making the reference look like it skipped
+indexing when it doesn't. The oracle now runs the real indexing code, so
+the comparison also proves edited documents get chunked for search. The
+repair runs as a fourth lane alongside the round already in flight.
+
 Planned the next porting round and committed its three work orders: a
 re-port of the reference app's new provider-request bounding (so a
 stalled model call can no longer wedge a turn for ten minutes), a
