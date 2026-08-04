@@ -53007,3 +53007,25 @@ before diagnosing code.**
 
 core `0.0.455`, harness `0.0.391`, web `0.0.57` (the committed fixture dir);
 host / cli / tauri / SPA untouched.
+
+### ⚠ v4 DRIFTED during this lane — `49769ec4` → `4bbeab47`
+
+One commit landed after the round baseline was pinned:
+**`4bbeab47` "feat(salon): pick a roleplay template when creating a chat"**
+(4.8.0-dev.151). It touches a PORTED surface — `app/api/v1/chats/route.ts`
+(+29 lines) — plus the New-Chat SPA (`NewChatForm` / `useNewChat` / `types` /
+`NewChatModal` / `NewChatPageClient`), `help/chats.md` and
+`help/templates-in-chats.md`. **A drift catch-up is OWED**, server side and SPA
+side; the help docs join the `p4.9i2` bank.
+
+**It does not touch this lane.** None of P4.31's families import the drifted
+file: `store-delete` drives `app/api/v1/mount-points/[id]/route.ts`,
+`system-import-execute` drives `lib/import/quilltap-import/execute.ts` and the
+system-tools route, and the nine doc-mount tier-2 cases drive repositories.
+Verified by name, not assumed. Every oracle this lane regenerated is therefore
+valid at either vintage, and no family needs re-running for the move.
+
+The baseline paragraph in `CLAUDE.md` is the unifier's to move (this lane
+edited neither `CLAUDE.md` nor `phase-4.md`, per the order). Until the catch-up
+runs, regenerate chat-create-family oracles from a worktree pinned at
+`49769ec4`; everything else regenerates straight from the checkout.
