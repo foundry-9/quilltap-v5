@@ -21,6 +21,7 @@ import {
   type ParamChange,
   type ParameterFormValues,
 } from './custom-tool-params-form';
+import { CustomToolPresets } from './custom-tool-presets';
 import {
   customToolsKeys,
   fetchCustomToolsRoster,
@@ -83,7 +84,7 @@ interface ReferenceRow {
 @Component({
   selector: 'qt-custom-tools-popup',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal, CustomToolParamsForm],
+  imports: [Icon, Modal, CustomToolParamsForm, CustomToolPresets],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (available()) {
@@ -166,6 +167,21 @@ interface ReferenceRow {
                   </p>
                 }
               </section>
+
+              <!-- Presets only make sense where there is something to preserve: a
+                   tool with parameters, run as a character whose vault can hold
+                   the file. -->
+              @if (paramNames().length > 0 && tool.vaultMountPointId) {
+                <qt-custom-tool-presets
+                  [toolName]="tool.name"
+                  [toolTitle]="tool.title"
+                  [parameters]="tool.parameters"
+                  [vaultMountPointId]="tool.vaultMountPointId"
+                  [values]="valuesFor(keyOf(tool), tool)"
+                  [disabled]="running()"
+                  (valuesReplace)="onValuesReplace(keyOf(tool), $event)"
+                />
+              }
 
               <!-- Above the reference panel on purpose: this is the last decision
                    the operator makes about the run, and the panel below it is
@@ -562,6 +578,15 @@ export class CustomToolsPopup {
       ...prev,
       [key]: { ...(prev[key] ?? {}), [change.param]: change.value },
     }));
+  }
+
+  /**
+   * Replace one tool's whole value set — a preset load or a reset to defaults
+   * (v4 `onValuesReplace`, which it had to thread down as a prop because the
+   * state lived in the dialog; here the popup simply owns the signal).
+   */
+  protected onValuesReplace(key: string, next: ParameterFormValues): void {
+    this.formValues.update((prev) => ({ ...prev, [key]: next }));
   }
 
   protected setPrivate(key: string, value: boolean): void {

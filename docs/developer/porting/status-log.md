@@ -53104,3 +53104,71 @@ is a keystroke FILTER, not a validator: it can yield `''` or `-x`, both of
 which `PRESET_NAME_PATTERN` refuses. v4 makes that explicit in a test and so
 does the port — the Save button's pattern check is the second gate, not a
 redundancy.
+## Lane record — P4.D43 unit 3: the run dialog's Presets section
+
+**Order:** deliverable 3 (all ten surveyed behaviors) + the ONE named
+`core-contract.ts` addition + `customToolsKeys.presets`.
+
+**One deviation from the order's letter, for a lifecycle reason.** The order
+suggested folding the section into `custom-tools-popup.ts` and having the popup
+update its own `formValues` signal. The value half is done exactly that way
+(`onValuesReplace(key, next)` — the popup owns the state, so v4's prop
+threading is unnecessary). The section itself, though, is its own component,
+`apps/web/src/app/chat/custom-tool-presets.ts`, because the typed preset NAME
+must not outlive the form: in v4 it is state inside `ToolPresetsSection`, which
+React unmounts whenever the dialog closes or the operator goes back to the
+picker. v5's popup is deliberately always-mounted and its memory deliberately
+survives a close, so an inline signal would have kept a stale name around
+forever. Keeping v4's own component split makes the popup's `@if` destroy the
+section exactly where React destroys it — the correct behavior falls out of the
+structure instead of needing hand-written resets. The file is new and
+unclaimed; no other lane in the round touches `apps/web`.
+
+`custom-tool-params-form.ts` was NOT touched: no form-level `valuesReplace`
+output was needed, since the section talks to the popup directly.
+
+**Fidelity notes.** All nine user-visible sentences are byte-for-byte v4's
+(three toasts, the two inline fallbacks, the four dropdown placeholders), as
+are both aria-labels, the `preset-name` placeholder and the `font-mono` input.
+The save writes `coerceParamValues(...)` 2-space-pretty (COERCED, not the
+form's loose strings) at `Tools/{tool}.{preset}.settings.json`, and refreshes
+by INVALIDATING v4's own query key rather than refetching this one observer.
+Loading keeps v4's loose binding whole: only declared parameters, only
+primitive values, `boolean ? Boolean(v) : String(v)`, unmentioned parameters
+untouched, extra keys ignored in silence, and the loaded name copied into the
+input so a re-save updates the hand just taken up.
+
+**Coverage of the vault-less arm (order deliverable 8).** Reachable in the
+component tier where the committed fixture cannot go: a roster entry with
+`vaultMountPointId: null` hides the section, and so does one from an older
+server where the key is absent entirely.
+
+**Mutation proofs (D24 — all 23 assertions were green on first run).** Eleven
+mutations, every one RED, each caught by the assertion that should catch it:
+loose binding accepting non-primitives; the listing sorted the other way; the
+save writing raw instead of coerced values; the save writing compact instead of
+2-space; the loaded name not copied into the input; the keystroke filter not
+applied; the render gate ignoring the vault; the render gate ignoring the
+parameter count; no refresh after a save; the refresh naming the wrong key.
+
+**⚠ A trap worth recording: two of those mutations came back GREEN at first,
+and both readings were wrong in DIFFERENT ways.**
+
+1. The first gate mutation weakened only the `@if` condition, which makes
+   `[vaultMountPointId]="tool.vaultMountPointId"` a compile error
+   (`string | null | undefined` is not `string`). `ng test` never reached the
+   suite, my summary regex found no `Tests N failed` line, and a BUILD FAILURE
+   read as "0 failed" — a green hat on a red result. The mutation harness now
+   requires `Application bundle generation complete` in the output before it
+   will believe any count.
+2. The second gate mutation genuinely built and genuinely did not go red —
+   because my own spec helper was broken. `openForm` looked for a roster row
+   containing "Force the Lock" and, when it missed, fell back to "whatever
+   button is second in the DOM", which for the no-parameter tool clicked the
+   modal's ✕. Three assertions had been passing against a dialog that never
+   reached its form phase at all. `openForm` now takes the title, throws when
+   the row is missing, and asserts the `Run {title}` button before returning.
+
+The second is the one to carry forward: a mutation that stays green is not
+always a blind assertion — sometimes it is a harness that never ran the
+gesture it claims to make.

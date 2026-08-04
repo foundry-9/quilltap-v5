@@ -58,6 +58,17 @@ survive forever. The obvious repair -- clear the folders too -- turned
 out to delete a character vault's own scaffolding (Outfits, Prompts,
 Scenarios, Wardrobe), so the behavior is unchanged pending a decision
 about which folders an overwrite may claim.
+The custom-tool run dialog can now keep named presets. Set a tool's
+parameters the way you like them, give the arrangement a name, and it
+is filed in the running character's vault as an ordinary JSON document
+— visible in the Scriptorium, hand-editable, and carried along by
+backup and export. A dropdown deals a saved preset back into the form,
+and a Reset button returns to the tool's declared defaults. Loading is
+forgiving on purpose: a preset saved against an older version of a tool
+fills in whatever still applies and leaves the rest alone, rather than
+refusing to load. The section only appears where it can do something —
+a tool that takes parameters, run as a character with a vault.
+
 Ported the naming rules for custom-tool presets: a preset is a plain
 JSON file in the character's vault, named for the tool and the preset
 together, and the name is locked to lowercase letters, digits, dashes

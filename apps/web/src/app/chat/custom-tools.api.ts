@@ -18,6 +18,18 @@ import type {
 export const customToolsKeys = {
   /** The roster for one chat — the same key the popup refetches fresh on open. */
   byChat: (chatId: string) => ['customTools', chatId] as const,
+  /**
+   * Run presets for one tool in one character's vault —
+   * `Tools/{toolName}.{preset}.settings.json`, listed by the run dialog (v4
+   * `queryKeys.customTools.presets`). Invalidated after a save; refetched per
+   * dialog open, same doctrine as `byChat` (the files live in a store the user
+   * edits).
+   *
+   * v5 has no central keys module — keys are per-feature — so this sits beside
+   * `byChat` rather than in v4's `lib/query/keys.ts`.
+   */
+  presets: (vaultMountPointId: string, toolName: string) =>
+    ['customTools', 'presets', vaultMountPointId, toolName] as const,
 };
 
 /**

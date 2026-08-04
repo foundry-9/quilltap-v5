@@ -676,6 +676,14 @@ export interface CustomToolListing {
   characterLabel?: string;
   /** Disambiguates a character-labeled variant on the run call. */
   asCharacterId: string;
+  /**
+   * That character's vault mount, where run presets
+   * (`Tools/{name}.{preset}.settings.json`) are kept (v4 `c988fbd2`, mirrored
+   * by P4.D43). **Null** for a character whose vault could not be resolved, and
+   * absent on a roster from an older server — either way the run dialog hides
+   * its preset controls.
+   */
+  vaultMountPointId?: string | null;
   definitionPath: string;
   mountName: string;
   /** Which store holds the file — Pascal's Workbench (P4.6bb) edits it by this pair. */
