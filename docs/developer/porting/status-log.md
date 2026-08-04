@@ -53172,3 +53172,65 @@ and both readings were wrong in DIFFERENT ways.**
 The second is the one to carry forward: a mutation that stays green is not
 always a blind assertion — sometimes it is a harness that never ran the
 gesture it claims to make.
+
+## Lane record — P4.D43 unit 4: the live preset beat, and the lane's close
+
+**Order:** deliverables 5, 6 and 7. Branch
+`claude/p4-d43-pascal-presets-1c4b3d`; the order's OPEN items are all landed.
+
+**The e2e beat (deliverable 5).** `salon-custom-tools-flow.spec.ts` gains
+`save a preset into the vault, deal it back, and reset to defaults`. Nothing in
+it is stubbed: the save is a real `mountFileWrite` into ARIA's character vault
+on the running server, the list is a real `mountFilesList` over it, and the
+load reads back the bytes the save left — which is the whole point of presets
+being ordinary vault documents, and the proof they stayed that way.
+
+The seeded roster's three tools take no parameters, so the beat authors its own
+parameterised definition through the mount-file verb, exactly as the neighbouring
+`chipLabel` beat does and for the same reason: the claim under test is the
+preset's round trip, and leaning on whatever the fixture happens to declare
+would be asserting something the beat does not control. Two deliberate choices
+in the assertions: the roster's `vaultMountPointId` is checked TRUTHY up front,
+so a server-side regression reads as the fact it is rather than as a locator
+timeout twenty lines later; and "no preset yet" is asserted as the OPTION's
+ABSENCE rather than the empty-vault placeholder, so a re-run against an
+instance already holding some other preset still proves the save is what
+created this one.
+
+**The `{{state.path}}` verify (deliverable 6) — both halves recorded.**
+1. `apps/web/public/schemas/qtap-custom-tool.schema.json` is **byte-identical**
+   to v4's at the pin (`diff` clean), and `c988fbd2` touched **zero** files
+   under `public/schemas/` — so v5's asset already carries the fix
+   (`:128` reads `… {{metadata.key}}, {{state.path}} — but not {{llm}} …`).
+   There is no Rust describe-string twin to move: v5 has no zod, and the §C
+   corpus carries no describe strings at all (299 rows, zero occurrences of
+   `What to ask`), so **no §C regen is triggered**.
+2. The `builder-form.ts` `PROMPT_HINT` omission is a **faithful no-op, not a
+   miss**: v4's own `BuilderForm.tsx:625` still reads `… {{params.name}}, and
+   {{metadata.key}}.` with no `{{state.path}}`, and `c988fbd2` did not touch it.
+   Recorded here so a later drift round does not "fix" v5 out of parity.
+
+**Tier 3, deferred loudly (unchanged from the order):**
+- `help/custom-tools.md`'s new Presets section → the **`p4.9i2` bank**. v5 has
+  no help surface; this is the third time that file has joined the bank.
+- Preset DELETION UI and Workbench-bench presets — **out of scope in v4
+  itself** (its own spec doc says so). Not invented here.
+
+**Gate (run over the complete lane).** `cargo fmt --all --check` clean; clippy
+`--workspace --all-targets -D warnings` clean on BOTH feature sets;
+`cargo build --release` clean; `cargo test --workspace --no-fail-fast` = **411
+test binaries / 1,822 tests / 0 failed**;
+`pascal_custom_tools_route_equivalence` re-run BY NAME with `--nocapture` —
+24 cases, **zero SKIP**, over an NDJSON grepped for the drift's own marker.
+SPA: `ng build` clean, `ng test` **278 files / 3,828 tests / 0 failed** (+48
+from this lane's two new specs), full Playwright **177 passed / 0 failed /
+0 skips** with the new preset beat LIVE.
+
+**Fixtures:** none changed anywhere in the lane. No other oracle family is
+invalidated. **Versions:** core 0.0.452 → 0.0.453; SPA 0.5.395 → 0.5.397.
+Harness source was not touched, so it keeps 0.0.388.
+
+**For the unifier — the baseline-move slice.** The lane consumed v4 at
+`49769ec4` with a clean tree and no drift, so the round's baseline paragraph
+can say: *`c988fbd2` is fully absorbed; the pascal route family regenerated at
+`49769ec4`; no other family's regen vintage moved.*

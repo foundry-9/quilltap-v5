@@ -219,4 +219,98 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await expect(bar).toContainText('Pascal');
     await expect(bar).not.toContainText('Labelled Contrivance');
   });
+
+  /**
+   * P4.D43 (v4 `c988fbd2`) — run presets, end to end against a real vault.
+   *
+   * The seeded roster's three tools take no parameters, so this beat authors its
+   * own parameterised definition through the mount-file verb, exactly as the
+   * `chipLabel` beat above does and for the same reason: the claim under test is
+   * the preset's round trip through the vault, and leaning on whatever the
+   * fixture happens to declare would make it assert something it does not
+   * control.
+   *
+   * Nothing here stubs a file: the save is a real `mountFileWrite` into ARIA's
+   * character vault, the list is a real `mountFilesList` over it, and the load
+   * reads back the bytes the save left. That is the whole point of the feature
+   * being ordinary vault documents — this walk is the proof it stayed that way.
+   */
+  test('save a preset into the vault, deal it back, and reset to defaults', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+    const ctx = await pwRequest.newContext();
+
+    const rosterRes = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'chatCustomToolsList', chatId },
+    });
+    const roster = (await rosterRes.json()) as {
+      data?: { tools?: Array<{ mountPointId: string; vaultMountPointId?: string | null }> };
+    };
+    const mountPointId = roster.data?.tools?.[0]?.mountPointId;
+    expect(mountPointId, 'the seeded Tools roster should resolve').toBeTruthy();
+    // The server field this lane added — without it the section never renders,
+    // so a silent regression there would otherwise surface as a locator timeout
+    // twenty lines below rather than as the fact it is.
+    expect(
+      roster.data?.tools?.[0]?.vaultMountPointId,
+      'the roster should carry the running character’s vault (P4.D43)',
+    ).toBeTruthy();
+
+    const definition = {
+      $schema: '/schemas/qtap-custom-tool.schema.json',
+      name: 'e2e_preset',
+      title: 'Preset Contrivance',
+      description: 'A parameterised contrivance for the preset walk.',
+      roll: { min: 1, max: 1 },
+      parameters: { bonus: { type: 'number', default: 0, description: 'Skill bonus.' } },
+      outcomes: [{ when: true, message: 'Settled at {{value}}.', state: 'info' }],
+    };
+    const write = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'mountFileWrite',
+        mountPointId,
+        path: 'Tools/e2e_preset.tool.json',
+        content: `${JSON.stringify(definition, null, 2)}\n`,
+      },
+    });
+    expect(write.ok()).toBe(true);
+    await ctx.dispose();
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Custom tools' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button').filter({ hasText: 'Preset Contrivance' }).first().click();
+
+    // The section is dealt: parameters to preserve, and a vault to keep them in.
+    const bonus = dialog.locator('input[type="number"]');
+    await expect(bonus).toBeVisible();
+    const presetSelect = dialog.getByLabel('Load a saved preset for Preset Contrivance');
+    await expect(presetSelect).toBeVisible();
+    // Nothing named "brute" yet — asserted as the option's ABSENCE rather than
+    // the empty-vault placeholder, so a re-run against an instance that already
+    // holds some other preset still proves the save below is what created it.
+    await expect(presetSelect.locator('option', { hasText: 'brute' })).toHaveCount(0);
+
+    // Set a value and file it under a name.
+    await bonus.fill('3');
+    await dialog.getByLabel('Name to save this preset under').fill('brute');
+    await dialog.getByRole('button', { name: 'Save preset' }).click();
+    await expect(page.getByText('Preset “brute” filed in the character\'s vault.')).toBeVisible();
+    // The refreshed listing found the file the save wrote.
+    await expect(presetSelect.locator('option', { hasText: 'brute' })).toHaveCount(1);
+
+    // Change the value, then deal the saved hand back.
+    await bonus.fill('9');
+    await presetSelect.selectOption('brute');
+    await expect(bonus).toHaveValue('3');
+    // The loaded name lands in the input, so a re-save updates this preset.
+    await expect(dialog.getByLabel('Name to save this preset under')).toHaveValue('brute');
+
+    // And back to what the definition declares.
+    await dialog.getByRole('button', { name: 'Reset to defaults' }).click();
+    await expect(bonus).toHaveValue('0');
+  });
 });

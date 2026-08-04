@@ -58,6 +58,11 @@ survive forever. The obvious repair -- clear the folders too -- turned
 out to delete a character vault's own scaffolding (Outfits, Prompts,
 Scenarios, Wardrobe), so the behavior is unchanged pending a decision
 about which folders an overwrite may claim.
+Added an end-to-end walk for run presets against a real server and a
+real vault — save a preset, change the values, deal the preset back,
+reset to defaults — and mirrored the reference app's design note for
+the feature.
+
 The custom-tool run dialog can now keep named presets. Set a tool's
 parameters the way you like them, give the arrangement a name, and it
 is filed in the running character's vault as an ordinary JSON document
