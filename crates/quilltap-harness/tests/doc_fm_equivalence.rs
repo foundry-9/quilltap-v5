@@ -10,8 +10,9 @@
 //! pre-seeded two-database fixture (a transparent character with a full vault + a
 //! project-linked SECOND store for the cross-store copy + a corpus of files and
 //! folders), in order (state accumulates). Each op's Output +
-//! `formatDocEditResults` string are compared against v4's; then three content
-//! tables (`doc_mount_file_links` / `doc_mount_folders` / `doc_mount_documents`)
+//! `formatDocEditResults` string are compared against v4's; then four content
+//! tables (`doc_mount_file_links` / `doc_mount_folders` / `doc_mount_documents` /
+//! `doc_mount_chunks`)
 //! plus the MAIN-db `chat_messages` (the W4.6c Librarian move/copy/delete/folder
 //! announcement rows) are dumped and diffed.
 //!
@@ -364,7 +365,7 @@ fn doc_fm_matches_oracle() {
 }
 
 /// The database-store paths this corpus WRITES — every one of which the chunk pass
-/// must leave chunked. Deliberately NOT "any link with `chunkCount > 0`: the fixture
+/// must leave chunked. Deliberately NOT "any link with `chunkCount > 0`": the fixture
 /// seeds four already-chunked vault files (`metadata.json` / `properties.json` /
 /// `state.json` / `physical-prompts.json`), and an "at least one nonzero" arm sailed
 /// through on those alone while the ops chunked nothing at all — the mutation proof

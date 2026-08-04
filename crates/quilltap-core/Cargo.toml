@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.460"
+version = "0.0.461"
 edition = "2021"
 publish = false
 
@@ -96,11 +96,14 @@ jiff = "0.2.31"
 # so no scheduler is pulled into the core. The `macros` + `rt-multi-thread`
 # features (for `#[tokio::test]`) live in dev-dependencies below.
 #
-# `time` joins `sync` for P4.D39's `OUTFIT_LLM_TIMEOUT_MS`: v4 bounds the
-# chat-start wardrobe consult with a `Promise.race` against a `setTimeout`, and
-# `tokio::time::timeout` is the mapping. It brings the timer TYPES only — the
-# driver still comes from whichever runtime the caller is already on (every one
-# in the tree is built with `enable_all`).
+# `time` joined `sync` for P4.D39's `OUTFIT_LLM_TIMEOUT_MS` and is now
+# load-bearing at FOUR call sites (P4.D42 added the transport stream bound, the
+# cheap-LLM attempt deadline, and the memory-recap phase ceiling). It brings the
+# timer TYPES only — the driver comes from whichever runtime the caller is on,
+# so "every runtime in the tree is built with `enable_all`/`enable_time`" is a
+# LOAD-BEARING INVARIANT, not an observation: a runtime built without the time
+# driver panics the moment any of those four awaits is reached (two harness
+# test runtimes did exactly that in P4.D42's sweep).
 tokio = { version = "1", default-features = false, features = ["sync", "time"] }
 
 # P4.D39: `futures_util::future::join_all` is the faithful mapping of v4's

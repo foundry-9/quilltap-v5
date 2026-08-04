@@ -253,6 +253,16 @@ describe('run presets — when the section is dealt at all', () => {
     expect(html.indexOf('What you are setting')).toBeLessThan(html.indexOf('Presets'));
     expect(html.indexOf('Presets')).toBeLessThan(html.indexOf('Roll privately'));
   });
+
+  it('renders as a block, so the popup’s vertical rhythm applies to it', async () => {
+    // An unknown element defaults to `display: inline`, which drops the
+    // parent's `space-y-5` margin entirely (the `qt-collapsible-card` /
+    // P4.9E1B bug class). The component pins `:host { display: block }`.
+    const fixture = await openForm(stub([UNLOCK]));
+    const host = fixture.nativeElement.querySelector('qt-custom-tool-presets') as HTMLElement;
+    expect(host).not.toBeNull();
+    expect(getComputedStyle(host).display).toBe('block');
+  });
 });
 
 describe('run presets — listing', () => {

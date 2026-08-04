@@ -35,7 +35,12 @@
 //!     armed before `fetch` and `clearTimeout`-ed in a `finally` once the
 //!     response resolves (openrouter `provider.ts:597`, ollama `:188`) — and the
 //!     semantics the OpenAI/Anthropic SDK timeouts already have. A whole-exchange
-//!     ceiling here would truncate a long generation mid-answer.
+//!     ceiling here would truncate a long generation mid-answer. (One v4 corner
+//!     is deliberately NOT carried: google streaming applies an EXPLICIT budget
+//!     as `httpOptions.timeout`, which bounds the whole request — v4 avoids
+//!     truncation there only by never defaulting it. v5 is headers-only
+//!     unconditionally, strictly safer, and no v5 streaming caller sets a
+//!     budget today.)
 //!
 //! Retries follow v4's `buildSdkRequestOptions` contract: a caller-supplied
 //! budget is a **ceiling on a single attempt**, so a request that carries one

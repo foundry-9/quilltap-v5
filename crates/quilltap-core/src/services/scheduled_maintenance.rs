@@ -229,7 +229,16 @@ pub async fn run_scheduled_maintenance(
         .await
     {
         Ok(r) => summary.parentless_store_rows_reaped = r.links + r.folders + r.chunks + r.content,
-        Err(_) => summary.failures.push("parentless".to_string()),
+        Err(e) => {
+            // The swallow-site rule (P4.9G3's lesson): a failure that only
+            // becomes a summary key leaves nothing to diagnose with.
+            tracing::error!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "The parentless-store-children reaper failed during the maintenance sweep",
+            );
+            summary.failures.push("parentless".to_string());
+        }
     }
 
     // 5. Closed terminal sessions + transcript files.

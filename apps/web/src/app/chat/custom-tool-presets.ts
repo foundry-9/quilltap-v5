@@ -50,6 +50,13 @@ import { customToolsKeys } from './custom-tools.api';
 @Component({
   selector: 'qt-custom-tool-presets',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // An unknown element defaults to `display: inline`, and vertical margins do
+  // not apply to inline boxes — so without this the popup's `space-y-5` gap
+  // vanishes and the card butts flush against "Roll privately". The same bug
+  // class as `qt-collapsible-card` (P4.9E1B, `_surfaces.css`), which went
+  // beyond cosmetics and swallowed clicks; caught here by the unification
+  // review before it shipped.
+  styles: [':host { display: block; }'],
   template: `
     <section class="rounded-lg qt-border p-5 space-y-4">
       <div>

@@ -167,6 +167,11 @@ pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection) -> u64 {
 /// v4 `providerBudgetFor(selection)` — the hard per-request budget handed to the
 /// provider ([`CompletionParams::request_timeout_ms`]), five seconds inside the
 /// caller's own deadline: 40 000 ms remote / 175 000 ms local.
+// The subtraction below must never underflow: both are v4 literals today,
+// but if either ever moves, make it a compile error rather than a wrap.
+const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_MS > PROVIDER_BUDGET_HEADROOM_MS);
+const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS > PROVIDER_BUDGET_HEADROOM_MS);
+
 pub fn provider_budget_for(selection: &CheapLlmSelection) -> i64 {
     (cheap_llm_deadline_for(selection) - PROVIDER_BUDGET_HEADROOM_MS) as i64
 }

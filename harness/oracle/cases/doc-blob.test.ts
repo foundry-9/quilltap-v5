@@ -16,8 +16,10 @@
  * bytes unchanged, storedMimeType = the input mime, sha256 = sha256(raw)). The
  * Rust port has no sharp; its write handler does the same passthrough, so both
  * sides store byte-identical blobs. `normaliseBlobRelativePath` stays REAL both
- * sides. P4.32: `@/lib/doc-edit/reindex-file` is REAL (blob paths have no
- * detectable text type, so the pass returns early and this family is unmoved by it);
+ * sides. P4.32: `@/lib/doc-edit/reindex-file` is REAL — and this family is
+ * unmoved because the blob handlers never invoke it at all (no
+ * `triggerReindexIfNeeded`, no `writeDatabaseDocument`; only transcode +
+ * `linkBlobContent`), NOT because the pass short-circuits on the file type;
  * the TOOL-level `triggerReindexIfNeeded` + embedding scheduler stay no-op seams.
  *
  * Ops run in a SINGLE module graph on ONE fixture copy, in order (state

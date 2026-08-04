@@ -544,6 +544,13 @@ pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
 ///     explicit. `gc_orphaned_file_row` is the existing chokepoint that already
 ///     deletes documents + blobs + the file row for exactly this reason, and it
 ///     spares a file another store still hard-links.
+///  3½. A quieter fourth difference rides divergences 2–3: v4's repos wrap
+///     these deletes in `safeQuery`, so a mount index MISSING one of the named
+///     tables still answers 200; v5 names them without a gate, so the same
+///     delete 500s and rolls back whole. Deliberate — both tables are in
+///     `fresh_schema.json` and referenced all over v5, so the arm is
+///     unreachable on any ensured schema, and a half-vintage index failing
+///     LOUDLY beats it half-cascading.
 ///  3. **`group_doc_mount_links` is deleted alongside `project_doc_mount_links`.**
 ///     v4 deletes only the project links; its sole group-link delete is
 ///     `deleteByGroupId`, which no store delete calls. A group that had linked

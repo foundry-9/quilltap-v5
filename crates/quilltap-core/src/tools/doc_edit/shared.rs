@@ -15,8 +15,8 @@
 //! re-index (`triggerReindexIfNeeded`). Both are fire-and-forget side effects that
 //! never appear in the tool result, so — like the wave-3 whisper-posting seams and
 //! the standing reindex deferral — the port omits them. Since P4.32 (the ruled
-//! reindex un-mock, 2026-08-04) the differential oracle mocks the librarian
-//! writers and `triggerReindexIfNeeded` ONLY — `@/lib/doc-edit/reindex-file`
+//! reindex un-mock, 2026-08-04) the differential oracle seams the librarian
+//! writers, `triggerReindexIfNeeded`, and the embedding scheduler — `@/lib/doc-edit/reindex-file`
 //! runs REAL, so v4's own chunk-on-write executes in the oracle and the
 //! `chunkCount` it bumps is positively asserted (equal AND nonzero on pinned
 //! written paths) by the `doc_text`/`doc_fm` differentials, not excluded.

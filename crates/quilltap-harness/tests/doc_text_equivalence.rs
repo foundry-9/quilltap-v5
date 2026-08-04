@@ -9,7 +9,7 @@
 //! an official store + a corpus of text/json/markdown files + a chat with the
 //! character as a participant), in order (state accumulates — the insert.md ops
 //! chain). Each op's Output + `formatDocEditResults` string are compared against
-//! v4's; then three tables are dumped and diffed: the two mount-index content
+//! v4's; then four tables are dumped and diffed: the two mount-index content
 //! tables (`doc_mount_documents` / `doc_mount_file_links`) plus the MAIN-db
 //! `chat_messages`, which holds the Group 6 Librarian doc-save write announcements
 //! (`change:{diff}`/`{created,body}`) each mutating write handler now emits. The
@@ -437,7 +437,7 @@ fn doc_text_matches_oracle() {
 }
 
 /// The database-store paths this corpus WRITES — every one of which the chunk pass
-/// must leave chunked. Deliberately NOT "any link with `chunkCount > 0`: the fixture
+/// must leave chunked. Deliberately NOT "any link with `chunkCount > 0`": the fixture
 /// seeds four already-chunked vault files (`metadata.json` / `properties.json` /
 /// `state.json` / `physical-prompts.json`), and an "at least one nonzero" arm sailed
 /// through on those alone while the ops chunked nothing at all — the mutation proof

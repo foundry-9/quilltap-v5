@@ -2282,24 +2282,29 @@ impl ReapedStoreChildren {
 /// set cannot drift from the write path's.
 ///
 /// Idempotent every boot and a cheap indexed no-op once the backlog is gone.
-/// Fail-soft on table existence (the P4.d7 / P4.D41 boot-repair shape): a
-/// legacy-vintage mount index missing any table it touches makes the whole pass
-/// a no-op rather than aborting startup.
+/// Fail-soft on table existence (the P4.d7 / P4.D41 boot-repair shape), in TWO
+/// tiers rather than all-or-nothing — the unification review's catch: the
+/// content tables are lazily created (`doc_mount_blobs` only when a blob is
+/// first stored), so gating the whole pass on all seven would silently no-op
+/// the #58 repair forever on a text-only instance, which is exactly the shape
+/// that carries the damage. Instead:
+///
+///  - missing any of the four tables the reaper itself sweeps
+///    (`doc_mount_points` / `doc_mount_file_links` / `doc_mount_folders` /
+///    `doc_mount_chunks`) → the whole pass is a no-op, WARNED;
+///  - missing any of the three content tables (`doc_mount_files` /
+///    `doc_mount_documents` / `doc_mount_blobs`) → links/folders/chunks are
+///    still reaped, the content-GC leg is skipped, WARNED. A skipped content
+///    leg can strand `doc_mount_files` rows — but those are exactly what
+///    [`sweep_orphaned_link_content`] collects once the tables exist, so
+///    nothing is lost for good.
 ///
 /// Deliberately NOT in scope (recorded, not silently covered): a folder whose
 /// PARENT FOLDER is missing while its store lives, and a chunk whose `linkId` is
 /// dead under a live store. Both key on something other than `mountPointId`;
 /// P4.28 named the first as unmeasured and neither is what #58 is.
 pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChildren, DbError> {
-    for table in [
-        "doc_mount_points",
-        "doc_mount_file_links",
-        "doc_mount_folders",
-        "doc_mount_chunks",
-        "doc_mount_files",
-        "doc_mount_documents",
-        "doc_mount_blobs",
-    ] {
+    let table_exists = |table: &str| -> Result<bool, DbError> {
         let exists: Option<String> = conn
             .query_row(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
@@ -2308,14 +2313,39 @@ pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChi
             )
             .map(Some)
             .or_else(no_rows_to_none)?;
-        if exists.is_none() {
+        Ok(exists.is_some())
+    };
+    for table in [
+        "doc_mount_points",
+        "doc_mount_file_links",
+        "doc_mount_folders",
+        "doc_mount_chunks",
+    ] {
+        if !table_exists(table)? {
+            tracing::warn!(
+                target: "quilltap::mount_repair",
+                missing = table,
+                "Orphan reaper skipped whole: a table it sweeps is missing",
+            );
             return Ok(ReapedStoreChildren::default());
+        }
+    }
+    let mut gc_content = true;
+    for table in ["doc_mount_files", "doc_mount_documents", "doc_mount_blobs"] {
+        if !table_exists(table)? {
+            tracing::warn!(
+                target: "quilltap::mount_repair",
+                missing = table,
+                "Orphan reaper: content tables incomplete; reaping links/folders/chunks only",
+            );
+            gc_content = false;
+            break;
         }
     }
 
     // The file ids the doomed links reference — snapshotted BEFORE the delete,
     // for the same reason `cascade_delete` snapshots its own.
-    let doomed_files: Vec<String> = {
+    let doomed_files: Vec<String> = if gc_content {
         let mut stmt = conn.prepare(
             "SELECT DISTINCT l.fileId FROM doc_mount_file_links l \
              WHERE NOT EXISTS (SELECT 1 FROM doc_mount_points p WHERE p.id = l.mountPointId)",
@@ -2324,17 +2354,23 @@ pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChi
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
         rows
+    } else {
+        Vec::new()
     };
 
+    // `NOT EXISTS`, not `NOT IN` — the same NULL-safe predicate the snapshot
+    // above and the differential's census use, so the delete and its own
+    // verification can never disagree on a NULL (unreachable on today's
+    // NOT NULL schema, but the predicates should not be able to drift apart).
     let tx = conn.unchecked_transaction()?;
     let chunks = tx.execute(
-        "DELETE FROM doc_mount_chunks WHERE mountPointId NOT IN \
-         (SELECT id FROM doc_mount_points)",
+        "DELETE FROM doc_mount_chunks AS c WHERE NOT EXISTS \
+         (SELECT 1 FROM doc_mount_points p WHERE p.id = c.mountPointId)",
         [],
     )?;
     let links = tx.execute(
-        "DELETE FROM doc_mount_file_links WHERE mountPointId NOT IN \
-         (SELECT id FROM doc_mount_points)",
+        "DELETE FROM doc_mount_file_links AS l WHERE NOT EXISTS \
+         (SELECT 1 FROM doc_mount_points p WHERE p.id = l.mountPointId)",
         [],
     )?;
     let mut content = 0usize;
@@ -2344,8 +2380,8 @@ pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChi
         }
     }
     let folders = tx.execute(
-        "DELETE FROM doc_mount_folders WHERE mountPointId NOT IN \
-         (SELECT id FROM doc_mount_points)",
+        "DELETE FROM doc_mount_folders AS f WHERE NOT EXISTS \
+         (SELECT 1 FROM doc_mount_points p WHERE p.id = f.mountPointId)",
         [],
     )?;
     tx.commit()?;
@@ -2467,5 +2503,86 @@ mod orphan_backlog_tests {
         assert!(!gc_orphaned_file_row(&db, "shared").unwrap());
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 1);
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 1);
+    }
+}
+
+#[cfg(test)]
+mod store_children_gate_tests {
+    //! The reaper's two-tier fail-soft gate (the unification review's catch):
+    //! the all-or-nothing seven-table gate would have silently no-opped the
+    //! #58 repair FOREVER on a text-only instance, because `doc_mount_blobs`
+    //! is lazily created and the boot hook ensures only points + folders.
+
+    use super::*;
+
+    fn reaper_db(with_content_tables: bool, with_links: bool) -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, name TEXT NOT NULL);\
+             CREATE TABLE doc_mount_folders (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+             CREATE TABLE doc_mount_chunks (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);",
+        )
+        .unwrap();
+        if with_links {
+            db.execute_batch(
+                "CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY, \
+                   fileId TEXT NOT NULL, mountPointId TEXT NOT NULL);",
+            )
+            .unwrap();
+        }
+        if with_content_tables {
+            db.execute_batch(
+                "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_blobs (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);",
+            )
+            .unwrap();
+        }
+        db
+    }
+
+    /// A text-only instance — `doc_mount_blobs` never lazily created — MUST
+    /// still have its #58 damage reaped. The old seven-table gate returned
+    /// `default()` here; this is red with that gate restored.
+    #[test]
+    fn reaps_links_folders_chunks_even_when_the_content_tables_are_missing() {
+        let db = reaper_db(false, true);
+        db.execute_batch(
+            "INSERT INTO doc_mount_points VALUES ('live','Keeper');\
+             INSERT INTO doc_mount_file_links VALUES ('l1','f1','ghost'),('l2','f2','live');\
+             INSERT INTO doc_mount_folders VALUES ('fo1','ghost'),('fo2','live');\
+             INSERT INTO doc_mount_chunks VALUES ('c1','ghost');",
+        )
+        .unwrap();
+
+        let reaped = sweep_orphaned_store_children(&db).unwrap();
+        assert_eq!(
+            (reaped.links, reaped.folders, reaped.chunks, reaped.content),
+            (1, 1, 1, 0),
+            "the content leg is skipped (its tables are absent), never the reap itself"
+        );
+        let survivors: i64 = db
+            .query_row("SELECT COUNT(*) FROM doc_mount_file_links", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(survivors, 1, "the live store's link must survive");
+    }
+
+    /// Missing one of the four tables the reaper itself sweeps is the genuine
+    /// legacy-vintage arm: the whole pass declines, and startup proceeds.
+    #[test]
+    fn is_a_whole_no_op_when_a_swept_table_is_missing() {
+        let db = reaper_db(true, false);
+        db.execute_batch("INSERT INTO doc_mount_folders VALUES ('fo1','ghost');")
+            .unwrap();
+        assert_eq!(
+            sweep_orphaned_store_children(&db).unwrap(),
+            ReapedStoreChildren::default()
+        );
+        let folders: i64 = db
+            .query_row("SELECT COUNT(*) FROM doc_mount_folders", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(folders, 1, "a declined pass must not delete anything");
     }
 }

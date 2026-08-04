@@ -259,6 +259,12 @@ async function main(): Promise<void> {
   // seamed. It is a SEPARATE, still-standing v5 deferral (`tools/doc_edit/shared.rs`
   // header: "the port omits them"), and unlike `writeDatabaseDocument`'s awaited
   // chunk pass it is NOT awaited by anything: `triggerReindexIfNeeded` kicks off
+  // — ⚠ ONE entrance stays un-sealed and un-awaited: `file-management-handlers
+  // .ts:259` fires `reindexSingleFile(...).catch(...)` directly on the
+  // FILESYSTEM branch of `doc_move_file`. Unreachable from this corpus today
+  // (its stores are database-backed / its only move is `general`-scope), so the
+  // run is race-free — but an fs-mount `doc_move_file` op added later would
+  // reintroduce the fire-and-forget race the seam otherwise removes. —
   // `reindexSingleFile(...).then(reindexLinkGroupSiblings).then(enqueue+refreshStats)`
   // and returns, so its writes race the dump. Leaving it live would (a) make the
   // FILESYSTEM branch mint mount-index link + chunk rows v5 never writes — the

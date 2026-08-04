@@ -233,7 +233,7 @@ async function main(): Promise<void> {
     }
     outLines.push(JSON.stringify({ case: 'doc-text', ops: opResults }));
 
-    // Dump the two content tables from the mount-index DB (raw handle).
+    // Dump the three content tables from the mount-index DB (raw handle).
     const midb = getRawMountIndexDatabase();
     if (!midb) throw new Error('mount-index DB handle unavailable for dump');
     const dumpTable = (table: string, orderBy: string) => {

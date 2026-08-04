@@ -1485,7 +1485,12 @@ pub const MEMORY_RECAP_PHASE_TIMEOUT_MS: u64 = 60_000;
 /// [`generate_memory_recap`](crate::services::memory_recap::generate_memory_recap)
 /// returns no `Result` (it fails soft to `MemoryRecapResult::default()` on a DB
 /// failure of its own), so a fired ceiling maps onto that same default — the
-/// identical observable outcome.
+/// identical observable outcome. v4's catch also does two OBSERVABLE things this
+/// wrapper reproduces (the unification review's catch — the first cut dropped
+/// both): it pushes `Failed to generate memory recap: <message>` into the
+/// context's `warnings` (a diffed comparand in the tier-3 family), and it logs
+/// at ERROR (`logger.error('[ContextManager] Memory recap generation failed')`),
+/// not warn.
 ///
 /// Extracted rather than left inline because a fired ceiling is wall-clock
 /// behavior no NDJSON corpus can observe (the canned providers never stall) and
@@ -1497,6 +1502,7 @@ pub(crate) async fn memory_recap_within_phase_budget(
     work: impl std::future::Future<Output = crate::services::memory_recap::MemoryRecapResult>,
     chat_id: &str,
     character_id: &str,
+    warnings: &mut Vec<String>,
 ) -> crate::services::memory_recap::MemoryRecapResult {
     match tokio::time::timeout(
         std::time::Duration::from_millis(MEMORY_RECAP_PHASE_TIMEOUT_MS),
@@ -1506,7 +1512,12 @@ pub(crate) async fn memory_recap_within_phase_budget(
     {
         Ok(recap) => recap,
         Err(_) => {
-            tracing::warn!(
+            // v4's `withTimeout` message, through v4's own catch prefix.
+            warnings.push(format!(
+                "Failed to generate memory recap: Memory recap exceeded its \
+                 {MEMORY_RECAP_PHASE_TIMEOUT_MS}ms phase budget"
+            ));
+            tracing::error!(
                 target: "quilltap::build_context",
                 chat_id,
                 character_id,
@@ -2063,6 +2074,7 @@ where
             ),
             &input.chat.id,
             &input.character.id,
+            &mut warnings,
         )
         .await;
         if !recap.content.is_empty() {
@@ -3346,13 +3358,28 @@ mod phase_ceiling_tests {
     #[tokio::test(start_paused = true)]
     async fn a_stalled_recap_is_dropped_at_the_ceiling() {
         let started = tokio::time::Instant::now();
-        let recap =
-            memory_recap_within_phase_budget(std::future::pending(), "chat-1", "char-1").await;
+        let mut warnings = Vec::new();
+        let recap = memory_recap_within_phase_budget(
+            std::future::pending(),
+            "chat-1",
+            "char-1",
+            &mut warnings,
+        )
+        .await;
         // `MemoryRecapResult::default()` is exactly the empty-content shape v4's
         // fail-soft catch leaves behind.
         assert_eq!(recap.content, MemoryRecapResult::default().content);
         assert!(recap.content.is_empty());
         assert_eq!(started.elapsed().as_millis() as u64, 60_000);
+        // v4's catch pushes its prefixed message into the context warnings — a
+        // diffed comparand in the tier-3 family (the unification review's catch).
+        assert_eq!(
+            warnings,
+            vec![
+                "Failed to generate memory recap: Memory recap exceeded its 60000ms phase budget"
+                    .to_string()
+            ]
+        );
     }
 
     /// The other half, and the one that makes the first half safe: a recap that
@@ -3367,24 +3394,34 @@ mod phase_ceiling_tests {
                 content: "## What You Remember\n…".to_string(),
             }
         };
-        let recap = memory_recap_within_phase_budget(work, "chat-1", "char-1").await;
+        let mut warnings = Vec::new();
+        let recap = memory_recap_within_phase_budget(work, "chat-1", "char-1", &mut warnings).await;
         assert_eq!(recap.content, "## What You Remember\n…");
+        assert!(warnings.is_empty(), "a landed recap must push no warning");
     }
 
     /// A fired ceiling narrates itself — the incident this whole re-port exists
-    /// for was ten silent minutes on "Recalling…".
+    /// for was ten silent minutes on "Recalling…". At ERROR, because that is
+    /// v4's own level (`logger.error('[ContextManager] Memory recap generation
+    /// failed')`).
     #[tokio::test(start_paused = true)]
-    async fn a_fired_ceiling_warns_with_its_context() {
+    async fn a_fired_ceiling_logs_error_with_its_context() {
         use tracing_subscriber::layer::SubscriberExt;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
         {
             let _guard = tracing::subscriber::set_default(subscriber);
-            memory_recap_within_phase_budget(std::future::pending(), "chat-42", "char-7").await;
+            memory_recap_within_phase_budget(
+                std::future::pending(),
+                "chat-42",
+                "char-7",
+                &mut Vec::new(),
+            )
+            .await;
         }
         let captured = logs.lock().unwrap().join("\n");
         for expected in [
-            "WARN quilltap::build_context",
+            "ERROR quilltap::build_context",
             "Memory recap exceeded its phase budget",
             "chat_id=chat-42",
             "character_id=char-7",
@@ -3409,6 +3446,7 @@ mod phase_ceiling_tests {
                 async { MemoryRecapResult::default() },
                 "chat-1",
                 "char-1",
+                &mut Vec::new(),
             )
             .await;
         }
