@@ -21,14 +21,29 @@
 //! Librarian announcements are a documented seam: mocked to no-ops in the oracle and
 //! NOT posted here, so `chat_messages` stays untouched (not dumped).
 //!
-//! Build the fixtures + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
-//!   cd ~/source/quilltap-server
+//! Regenerate the fixture + oracle (Node 24, from the v4 checkout). STAGE the case
+//! OUTSIDE `.claude/` — v4's jest ignores those paths in BOTH testPathIgnorePatterns
+//! and modulePathIgnorePatterns, so a `--roots` into a worktree matches ZERO tests,
+//! leaves the previous NDJSON in place, and the family then passes against a stale
+//! oracle. That is how the P4.32 stale-RED stayed invisible; the recipe below runs
+//! verbatim (`harness/tools/recipe_sweep.py --run doc_fs_equivalence`).
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+//!   STAGE=/tmp/qt-oracle-stage-doc-fs
+//!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+//!   cp $W/harness/oracle/cases/doc-fs.test.ts $STAGE/harness/oracle/cases/
+//!   cp $W/harness/oracle/fixtures/doc-fs.json $STAGE/harness/oracle/fixtures/
+//!   cd ~/source/quilltap-server        # or a worktree pinned at the baseline
 //!   QT_FIXTURE_DFS_MAIN=/tmp/qt-dfs-main.db QT_FIXTURE_DFS_MOUNT=/tmp/qt-dfs-mount.db \
-//!     $N/node --import tsx $V5/harness/oracle/fixtures/build-doc-fs-fixture.ts
+//!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-fs-fixture.ts
 //!   QT_FIXTURE_DFS_MAIN=/tmp/qt-dfs-main.db QT_FIXTURE_DFS_MOUNT=/tmp/qt-dfs-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-doc-fs.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-fs
+//!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-fs\.test\.ts$"
+//!
+//! The fixture pair is NOT committed: the builder MINTS it (fresh UUIDs every run),
+//! so the oracle and `cargo test` must both point at the SAME build — rebuild, then
+//! regenerate, then run, in that order. The jest filter is ANCHORED so a sibling
+//! `doc-f*` case can never be picked up silently (`oracle-regen-silent-stale-pass`).
 //! Run:
 //!   QT_ORACLE_DFS=/tmp/oracle-doc-fs.ndjson \
 //!   QT_FIXTURE_DFS_MAIN=/tmp/qt-dfs-main.db QT_FIXTURE_DFS_MOUNT=/tmp/qt-dfs-mount.db \

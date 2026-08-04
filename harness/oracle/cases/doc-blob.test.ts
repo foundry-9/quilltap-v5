@@ -16,7 +16,9 @@
  * bytes unchanged, storedMimeType = the input mime, sha256 = sha256(raw)). The
  * Rust port has no sharp; its write handler does the same passthrough, so both
  * sides store byte-identical blobs. `normaliseBlobRelativePath` stays REAL both
- * sides. The Librarian announcements + reindex are documented no-op seams.
+ * sides. P4.32: `@/lib/doc-edit/reindex-file` is REAL (blob paths have no
+ * detectable text type, so the pass returns early and this family is unmoved by it);
+ * the TOOL-level `triggerReindexIfNeeded` + embedding scheduler stay no-op seams.
  *
  * Ops run in a SINGLE module graph on ONE fixture copy, in order (state
  * accumulates). After every op, dumps the three store tables. Emits two NDJSON
@@ -24,15 +26,26 @@
  *   line 1: { case, ops: [{ name, tool, output, formatted }, ...] }
  *   line 2: { case, dumps: { blobs, fileLinks, files, chatMessages } }
  *
- * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run (Node 24, from the v4 checkout). STAGE this case OUTSIDE `.claude/` — v4's
+ * jest ignores those paths in BOTH testPathIgnorePatterns and modulePathIgnorePatterns,
+ * so `--roots` into a worktree matches ZERO tests, leaves the previous NDJSON in place,
+ * and the Rust family then passes against a stale oracle (that is how the P4.32
+ * stale-RED stayed invisible). The jest filter is ANCHORED for the same reason.
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   STAGE=/tmp/qt-oracle-stage-doc-blob
+ *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+ *   cp $W/harness/oracle/cases/doc-blob.test.ts $STAGE/harness/oracle/cases/
+ *   cp $W/harness/oracle/fixtures/doc-blob.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DBLOB_MAIN=/tmp/qt-dblob-main.db QT_FIXTURE_DBLOB_MOUNT=/tmp/qt-dblob-mount.db \
- *     $N/npx tsx $V5/harness/oracle/fixtures/build-doc-blob-fixture.ts
+ *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-blob-fixture.ts
  *   QT_FIXTURE_DBLOB_MAIN=/tmp/qt-dblob-main.db QT_FIXTURE_DBLOB_MOUNT=/tmp/qt-dblob-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-doc-blob.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-blob
+ *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+ *       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-blob\.test\.ts$"
+ *
+ * The fixture pair is NOT committed — the builder MINTS it (fresh UUIDs every run) —
+ * so rebuild, regenerate, then `cargo test` against that SAME build, in that order.
  */
 
 import * as fs from 'fs';

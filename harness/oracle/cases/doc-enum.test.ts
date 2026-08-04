@@ -12,7 +12,7 @@
  * better-sqlite3-multiple-ciphers cipher binding, so store provisioning + the
  * vault read overlay run genuinely. See [[jest-real-db-oracle]].
  *
- * grep/list are READ-only handlers, so the fire-and-forget Librarian / reindex /
+ * grep/list are READ-only handlers, so the Librarian / reindex / trigger /
  * embedding-scheduler side effects never fire; they are jest.mock'd to no-ops here
  * to stay harmless (matching the Rust port, which omits them).
  *
@@ -21,15 +21,26 @@
  *   { case, ops: [{ name, tool, output, formatted }, ...] }
  * No table dump — nothing mutates.
  *
- * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run (Node 24, from the v4 checkout). STAGE this case OUTSIDE `.claude/` — v4's
+ * jest ignores those paths in BOTH testPathIgnorePatterns and modulePathIgnorePatterns,
+ * so `--roots` into a worktree matches ZERO tests, leaves the previous NDJSON in place,
+ * and the Rust family then passes against a stale oracle (that is how the P4.32
+ * stale-RED stayed invisible). The jest filter is ANCHORED for the same reason.
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   STAGE=/tmp/qt-oracle-stage-doc-enum
+ *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+ *   cp $W/harness/oracle/cases/doc-enum.test.ts $STAGE/harness/oracle/cases/
+ *   cp $W/harness/oracle/fixtures/doc-enum.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DEN_MAIN=/tmp/qt-den-main.db QT_FIXTURE_DEN_MOUNT=/tmp/qt-den-mount.db \
- *     $N/npx tsx $V5/harness/oracle/fixtures/build-doc-enum-fixture.ts
+ *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-enum-fixture.ts
  *   QT_FIXTURE_DEN_MAIN=/tmp/qt-den-main.db QT_FIXTURE_DEN_MOUNT=/tmp/qt-den-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-doc-enum.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-enum
+ *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+ *       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-enum\.test\.ts$"
+ *
+ * The fixture pair is NOT committed — the builder MINTS it (fresh UUIDs every run) —
+ * so rebuild, regenerate, then `cargo test` against that SAME build, in that order.
  */
 
 import * as fs from 'fs';

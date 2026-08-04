@@ -12,25 +12,38 @@
  * better-sqlite3-multiple-ciphers cipher binding, so store provisioning + the
  * vault read/write overlay run genuinely. See [[jest-real-db-oracle]].
  *
- * The handlers' fire-and-forget side effects (Librarian announcements, reindex,
- * embedding-scheduler) are documented Rust seams — jest.mock'd to no-ops here so
- * they don't perturb the DB (matching the Rust port, which omits them).
+ * P4.32: the DATABASE-STORE CHUNK PASS IS LIVE. `@/lib/doc-edit/reindex-file` runs
+ * for real, so `writeDatabaseDocument`'s awaited chunk-on-write builds the same
+ * `doc_mount_chunks` rows + `chunkCount` rollups the Rust port builds. What stays
+ * seamed is the TOOL-level `triggerReindexIfNeeded` (a separate, still-standing v5
+ * deferral) and the embedding scheduler — both no-ops, matching the port.
  *
  * Ops run in a SINGLE module graph on ONE fixture copy, in order (state
- * accumulates — the insert.md ops chain). After every op, dumps the two content
- * tables. Emits two NDJSON lines:
+ * accumulates — the insert.md ops chain). After every op, dumps the content tables.
+ * Emits two NDJSON lines:
  *   line 1: { case, ops: [{ name, tool, output, formatted }, ...] }
- *   line 2: { case, dumps: { documents, fileLinks } }
+ *   line 2: { case, dumps: { documents, fileLinks, chunks, chatMessages } }
  *
- * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run (Node 24, from the v4 checkout). STAGE this case OUTSIDE `.claude/` — v4's
+ * jest ignores those paths in BOTH testPathIgnorePatterns and modulePathIgnorePatterns,
+ * so `--roots` into a worktree matches ZERO tests, leaves the previous NDJSON in place,
+ * and the Rust family then passes against a stale oracle (that is how the P4.32
+ * stale-RED stayed invisible). The jest filter is ANCHORED for the same reason.
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   STAGE=/tmp/qt-oracle-stage-doc-text
+ *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+ *   cp $W/harness/oracle/cases/doc-text.test.ts $STAGE/harness/oracle/cases/
+ *   cp $W/harness/oracle/fixtures/doc-text.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DT_MAIN=/tmp/qt-dt-main.db QT_FIXTURE_DT_MOUNT=/tmp/qt-dt-mount.db \
- *     $N/npx tsx $V5/harness/oracle/fixtures/build-doc-text-fixture.ts
+ *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-text-fixture.ts
  *   QT_FIXTURE_DT_MAIN=/tmp/qt-dt-main.db QT_FIXTURE_DT_MOUNT=/tmp/qt-dt-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-doc-text.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-text
+ *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+ *       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-text\.test\.ts$"
+ *
+ * The fixture pair is NOT committed — the builder MINTS it (fresh UUIDs every run) —
+ * so rebuild, regenerate, then `cargo test` against that SAME build, in that order.
  */
 
 import * as fs from 'fs';

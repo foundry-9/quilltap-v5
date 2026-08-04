@@ -25,15 +25,29 @@
 //! `resolve_tiered_mount_pool` + the SQL natural order. The arrays are compared
 //! AS-IS (unsorted); a genuine enumeration divergence would be a real bug.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   V5=~/source/quilltap-v5
-//!   cd ~/source/quilltap-server
+//! Regenerate the fixture + oracle (Node 24, from the v4 checkout). STAGE the case
+//! OUTSIDE `.claude/` — v4's jest ignores those paths in BOTH testPathIgnorePatterns
+//! and modulePathIgnorePatterns, so a `--roots` into a worktree matches ZERO tests,
+//! leaves the previous NDJSON in place, and the family then passes against a stale
+//! oracle. That is how the P4.32 stale-RED stayed invisible; the recipe below runs
+//! verbatim (`harness/tools/recipe_sweep.py --run doc_enum_equivalence`).
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+//!   STAGE=/tmp/qt-oracle-stage-doc-enum
+//!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+//!   cp $W/harness/oracle/cases/doc-enum.test.ts $STAGE/harness/oracle/cases/
+//!   cp $W/harness/oracle/fixtures/doc-enum.json $STAGE/harness/oracle/fixtures/
+//!   cd ~/source/quilltap-server        # or a worktree pinned at the baseline
 //!   QT_FIXTURE_DEN_MAIN=/tmp/qt-den-main.db QT_FIXTURE_DEN_MOUNT=/tmp/qt-den-mount.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-doc-enum-fixture.ts
+//!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-enum-fixture.ts
 //!   QT_FIXTURE_DEN_MAIN=/tmp/qt-den-main.db QT_FIXTURE_DEN_MOUNT=/tmp/qt-den-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-doc-enum.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-enum
+//!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-enum\.test\.ts$"
+//!
+//! The fixture pair is NOT committed: the builder MINTS it (fresh UUIDs every run),
+//! so the oracle and `cargo test` must both point at the SAME build — rebuild, then
+//! regenerate, then run, in that order. The jest filter is ANCHORED so a sibling
+//! `doc-f*` case can never be picked up silently (`oracle-regen-silent-stale-pass`).
 //! Run:
 //!   QT_ORACLE_DEN=/tmp/oracle-doc-enum.ndjson \
 //!   QT_FIXTURE_DEN_MAIN=/tmp/qt-den-main.db QT_FIXTURE_DEN_MOUNT=/tmp/qt-den-mount.db \

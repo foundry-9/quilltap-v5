@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Rewrote the regeneration recipes carried in all six document-editing
+equivalence checks. The old ones pointed the reference app's test runner
+at a path it silently ignores, so a regeneration matched nothing, left
+the previous output sitting on disk, and let the check pass against a
+stale comparison — which is how the chunk-on-write difference stayed
+hidden. Each recipe now stages its case where the runner can see it,
+names its target exactly, and was executed start to finish to prove it
+works. Documentation inside the tests only.
+
 Repaired the two long-red document-editing equivalence checks. The test
 oracle had been silencing the reference app's own chunk-on-write step
 along with a separate, still-unported trigger, so the reference looked

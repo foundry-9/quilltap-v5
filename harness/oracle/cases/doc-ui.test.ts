@@ -15,8 +15,9 @@
  * W4.6c: the Librarian open announcement + documentHiddenFromCharacters gate are now
  * LIVE (the REAL writer module) — the chat_messages open-announcement rows land on
  * both sides and are diffed (the open is an actual message, so it also bumps the
- * chat's updatedAt). Reindex + embedding-scheduler stay documented Rust seams —
- * jest.mock'd to no-ops so they don't perturb the DB (matching the Rust port).
+ * chat's updatedAt). P4.32: `@/lib/doc-edit/reindex-file` is REAL; the seams left
+ * are the TOOL-level `triggerReindexIfNeeded` + the embedding-scheduler, jest.mock'd
+ * to no-ops so they don't perturb the DB (matching the Rust port).
  *
  * Ops run in a SINGLE module graph on ONE fixture copy, in order (state
  * accumulates). After every op, dumps `chat_documents` + a `chats` subset (both
@@ -24,15 +25,26 @@
  *   line 1: { case, ops: [{ name, tool, output, formatted }, ...] }
  *   line 2: { case, dumps: { chatDocuments, chats, chatMessages } }
  *
- * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run (Node 24, from the v4 checkout). STAGE this case OUTSIDE `.claude/` — v4's
+ * jest ignores those paths in BOTH testPathIgnorePatterns and modulePathIgnorePatterns,
+ * so `--roots` into a worktree matches ZERO tests, leaves the previous NDJSON in place,
+ * and the Rust family then passes against a stale oracle (that is how the P4.32
+ * stale-RED stayed invisible). The jest filter is ANCHORED for the same reason.
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+ *   STAGE=/tmp/qt-oracle-stage-doc-ui
+ *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+ *   cp $W/harness/oracle/cases/doc-ui.test.ts $STAGE/harness/oracle/cases/
+ *   cp $W/harness/oracle/fixtures/doc-ui.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DUI_MAIN=/tmp/qt-dui-main.db QT_FIXTURE_DUI_MOUNT=/tmp/qt-dui-mount.db \
- *     $N/npx tsx $V5/harness/oracle/fixtures/build-doc-ui-fixture.ts
+ *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-ui-fixture.ts
  *   QT_FIXTURE_DUI_MAIN=/tmp/qt-dui-main.db QT_FIXTURE_DUI_MOUNT=/tmp/qt-dui-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-doc-ui.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- doc-ui
+ *     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+ *       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-ui\.test\.ts$"
+ *
+ * The fixture pair is NOT committed — the builder MINTS it (fresh UUIDs every run) —
+ * so rebuild, regenerate, then `cargo test` against that SAME build, in that order.
  */
 
 import * as fs from 'fs';
