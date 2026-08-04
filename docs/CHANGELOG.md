@@ -2,6 +2,32 @@
 
 ## Recent Changes
 
+Unified the hard-link-groups drift and restore-remainder round onto the
+main line: four parallel lanes, all closed. Hard links between document
+stores are now real in v5 exactly as the reference app just made them —
+a file linked into two places stays one file when either side is edited,
+copies stay independent, orphaned content left behind by old edits is
+collected on every write and swept once at startup, links survive export
+and import as links, and the command-line file listing counts deliberate
+links rather than coincidentally identical bytes. Along the way the port
+found the reference app's own sibling-reindex half of that feature is
+dead code (its fix is queued upstream) plus a crash it can hit on old
+databases. The backup family closed out the latest walk's findings:
+wiping data now clears conversation annotations, restoring an archive
+with orphaned rows skips them with plain-English sentences instead of
+fifty raw database errors, a backup that cannot collect a file now says
+so at backup time, and background jobs hold still while a restore or
+delete-all is rewriting the shelves. A new migration-vintage test
+fixture — the reference app's real migration chain replayed from
+nothing — makes these vintage-shaped faults provable for the first
+time. The remaining screens owed notification messages got them
+(ninety-two sentences, byte-for-byte), and every conversation now
+renders with its own roleplay template's patterns instead of the
+defaults. The unification review caught and fixed a twin-write-path gap
+that would have left hard-linked siblings stale on the main editing
+surfaces, sealed the round's deliberate two-vintage oracle seam, and
+pinned every new deliberate divergence in both directions.
+
 Editing a document in a store no longer leaves its previous contents behind
 for good. Every edit stores the new version under a new entry and repoints the
 file at it; the entry it left was never collected, so a long-lived instance

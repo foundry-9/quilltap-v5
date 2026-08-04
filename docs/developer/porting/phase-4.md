@@ -3764,3 +3764,56 @@ drift-check before every round. Recipe regens should go through
 the fixture shield, the SKIP detector); note that a recipe pointing at a
 `/tmp` pinned worktree from an earlier round is dead on arrival, since
 those do not survive between rounds.
+
+## The hard-link-groups + restore-remainder round (P4.D41 ∥ P4.28 ∥ P4.29 ∥ P4.30) — UNIFIED 2026-08-03
+
+All four orders CLOSED; the oracle baseline MOVES to **`40319484`**
+(4.8.0-dev.147). Findings #57–#60 closed; the toast census's OPEN rows are
+zero (18 sentences reclassified UNPORTED with named future lanes); every
+conversation renders with its own template's patterns. Round record:
+`status-log.md`.
+
+**Next candidates, in rough value order:**
+
+1. **The `c988fbd2` drift catch-up (Pascal run presets)** — v4 shipped it
+   mid-round: `lib/pascal/tool-presets.ts` (new) + `custom-tool.types.ts` +
+   the chat custom-tools route + `CustomToolRunDialog.tsx` + `lib/query/
+   keys.ts` + `help/custom-tools.md`. Lands on the PORTED Pascal
+   custom-tools surface (P4.6ay / P4.D35); the pascal/workbench families
+   are its blast radius. Drift-check before planning — v4 has been shipping
+   daily.
+2. **The mount-index delete path leaves children behind (the #58 ROOT
+   CAUSE)** — a `doc_mount_points` delete that takes neither its links nor
+   its folders is how the real instance accumulated 43+118 orphans. P4.28
+   fixed the restore side only; the delete path lives in
+   `services/mount_index/**` and wants a small order of its own (v4-side
+   twin queued on the post-5.0 list).
+3. **The `doc_text` + `doc_fm` stale-RED** (pre-existing, surfaced by
+   P4.D41's mass regen): their oracle cases mock the reindex module, which
+   ALSO silences v4's P4.6BK chunk-on-write, so mocked-v4 diverges from
+   chunking-v5 on `chunkCount`. Both candidate fixes change what the family
+   proves — the doc-edit oracle owner's ruling, then the repair.
+4. **The vintage INSERT-tolerance follow-up** — the live tripwire
+   `a_column_a_migration_never_added_still_loses_that_collection` pins the
+   exposure (one late-vintage missing column loses `chats` + two cascading
+   collections); the repair is ~20 typed creates adjudicated per-site over
+   the committed migration-vintage fixture.
+5. **A dogfood pass** — it owes this round's live proofs (a real `docs
+   link` + edit-either-side walk on the Friday copy, the restore of a
+   damaged archive with the new skip sentences, the pump pause, template
+   patterns on real chats, the backup skipped-files toast) plus the
+   standing queue (walk Part F items 15/16, #61's fresh-copy re-walk, the
+   P4.D31/P4.21/D33 💸 proofs).
+6. The standing pools: `p4.9h`, `p4.9i2` (the bank grew `help/
+   custom-tools.md` again), `p4.9l` (composer toolbar — `narrationDelimiters`
+   joins the template fetch when it lands), the P4.D41 tier-2 item 9
+   committed grouped-pair fixture, the PumpPause in-flight counter, and the
+   toast census's UNPORTED rows riding their future screen lanes.
+
+**Standing regen note:** the oracle baseline is **`40319484`**
+(4.8.0-dev.147, 2026-08-03). ⚠ v4 HEAD is `c988fbd2`, ONE commit past it
+(the item-1 drift): regenerate pascal-family oracles only from a worktree
+PINNED at `40319484` until that catch-up runs; the system/backup/restore/
+doc-mount families were verified untainted by name and regenerate straight
+from the checkout. The distill-transitive TZ pins, the committed-fixture
+rule, and the recipe-sweep driver notes all stand unchanged.

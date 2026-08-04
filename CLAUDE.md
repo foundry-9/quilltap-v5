@@ -1835,6 +1835,69 @@ records THERE. Update this summary only when a phase or round completes.
   dogfood pass: cross-tier effect writes, tri-tier dressing (the
   merged-pool `llm_choose` now fires where it used to skip the model), and
   the whispered-announcement flow.
+- **The hard-link-groups + restore-remainder round (P4.D41 ∥ P4.28 ∥ P4.29 ∥
+  P4.30): UNIFIED on main (2026-08-03) — ALL FOUR CLOSED; the oracle baseline
+  MOVES to `40319484` and dogfood findings #57–#60 CLOSE.** The whole
+  `40319484` drift absorbed in one lane: `doc_mount_file_links.linkGroupId`
+  through the D23 re-dump + the boot ensure + the orphan-backlog sweep, the
+  write fan-out with orphan GC (**a required v5 behavior change too — v5
+  relied on an `ON DELETE CASCADE` schema-generated tables don't have**),
+  `link_groups` sibling re-chunking, link-binds/copy-doesn't, export/import
+  carry, and the CLI's group-keyed links count (Tier R 136/136) — with TWO
+  v4-side bugs found and queued (v4's own sibling-reindex pass is DEAD CODE
+  — `queryJoined` never selects the column — pinned as v5's one deliberate
+  divergence in this family via `CHUNK_DIVERGENCES`; and `gcOrphanedFileRow`
+  throws on a mount index lacking the lazily-created blobs table) ∥ the
+  restore/backup remainder under the standing ruling: annotations wiped
+  (v4 never wipes them — pinned), #58 diagnosed to orphaned rows from
+  store-deletes-without-children (43+118 measured on the real instance;
+  fixed reader-side with named skip sentences + its own committed archive;
+  **the delete-path ROOT CAUSE still needs an order**), #59's silent
+  skipped-files now warn + surface, the job pump held still through
+  restore/delete-all (RAII, operator-stop respected), the INSERT-tolerance
+  survey run as a 7-archive × 2-mode MEASUREMENT over the NEW committed
+  migration-vintage fixture (v4's real migration chain replayed; no restore
+  site needs tolerance today; the one exposure pinned by a live tripwire) ∥
+  the toast census's OPEN rows → ZERO (92 sentences byte-for-byte, 18
+  reclassified UNPORTED with named lanes, invented inline surfaces retired)
+  ∥ roleplay-template rendering threaded into every message surface (the
+  P4.26-banked app-wide gap; parity corpus 40 → 51 captured from v4's real
+  renderer; `roleplayTemplateName` proven dead in v4 itself — nothing to
+  port). **The §3 unification review caught the round's would-have-shipped
+  bug:** the group re-chunk pass had reached only the repo-method twin of
+  `write_database_document` — the free-function twin (doc-edit / Document
+  Mode / scenarios / characters API) got it on the unify branch with a
+  mutation-proven pin; the review also sealed the predicted two-vintage
+  seam (the vintage test now mirrors boot), added the #58 v4-convergence
+  pin + the PumpPause WIRING test, restored v4's fixed files-browser
+  failure sentences, and retired one more invented inline banner. Gate:
+  411 test binaries / 1,833 / 0 with the round's env block; the round's
+  families by name zero SKIP over fresh `40319484` oracles; clippy both
+  feature sets; release build; ng 276 files / 3,780; full Playwright green
+  (numbers in the round record). Standing loud: the `c988fbd2` Pascal
+  run-presets drift catch-up OWED; `doc_text`/`doc_fm` stale-RED
+  (pre-existing oracle-mock conflict with chunk-on-write — needs its own
+  ruling); the vintage-tolerance follow-up tripwire. Versions: core
+  0.0.452, harness 0.0.388, cli 0.0.5, SPA 0.5.395; host/web/tauri
+  unchanged. Round record: `status-log.md`.
+- **Oracle baseline: `40319484` (v4 4.8.0-dev.147, 2026-08-03), adopted at
+  the hard-link-groups round's unification.** The one commit past
+  `c4d4b0de` is fully absorbed. **⚠ v4 HEAD is `c988fbd2`, ONE commit past
+  the baseline — "feat(pascal): run presets for custom tools" — landing on
+  the PORTED Pascal custom-tools surface: a drift catch-up is OWED**
+  (`lib/pascal/tool-presets.ts` new + `custom-tool.types.ts` + the chat
+  custom-tools route + `CustomToolRunDialog` + `lib/query/keys.ts`;
+  `help/custom-tools.md` joins the `p4.9i2` bank). Regenerate
+  pascal-family oracles from a worktree PINNED at `40319484` until it
+  runs; the system/backup/restore/doc-mount families were verified
+  untainted by name (the drift's four lib files are all pascal-side) and
+  regenerate straight from the checkout. The round regenerated: the ten
+  system-family oracles + the uuid-remap corpus at the union vintage,
+  the doc-mount-file-links + mount-link-groups families (NEW), the 49-of-51
+  deliverable-8 sweep, and the 31-of-38 neutrality sweep. ⚠ The
+  distill-transitive TZ=UTC pins, the committed-fixture regen rule, and
+  the `/tmp`-pins-die-between-rounds rule stand unchanged.
+  The previous baseline paragraph follows for history:
 - **Oracle baseline: `c4d4b0de` (v4 HEAD, 2026-08-01), adopted at the
   `c4d4b0de` drift-round unification — NO v4 lib drift debt remains.** The
   ten commits past `ff12f491` are all absorbed or dispositioned (see the

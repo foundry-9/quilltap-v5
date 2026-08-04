@@ -51938,3 +51938,151 @@ arm, never the success sentence this spec is meant to pin. Folder
 creation (`filesFolderCreate`, confirmed live in
 `crates/quilltap-core/src/api/engine.rs`) replaced it as a third
 genuinely-live files beat.
+
+## Round record — the hard-link-groups + restore-remainder round (P4.D41 ∥ P4.28 ∥ P4.29 ∥ P4.30), UNIFIED 2026-08-03
+
+Four lanes, four orders, all CLOSED; the oracle baseline MOVES `c4d4b0de` →
+**`40319484`** (4.8.0-dev.147). Cherry-picked in dependency order onto
+`unify/hard-link-groups-round` (30 lane commits, zero source conflicts —
+the only conflicts were version files and the PREDICTED `system-data-mount.db`
+fixture seam), then the reconcile, the wires, the §3 review's fixes, and the
+full gate. Lane records precede this entry.
+
+### The unification wires (what no single lane could do)
+
+1. **The two-vintage seam, sealed exactly as planned.** P4.28 regenerated
+   `system-data-mount.db` at its `c4d4b0de` pin, silently reverting P4.D41's
+   `linkGroupId` fixture migration on that ONE file —
+   `migrate-fixtures-link-group-column.ts` re-run over the merged fixtures
+   (1 migrated, 29 already-done), then ALL TEN system-family oracles + the
+   uuid-remap corpus regenerated at the union vintage and re-run by name
+   (the corpus diff audited: `linkGroupId` keys + write-clock stamps,
+   nothing else). v4 HEAD had moved to `c988fbd2` mid-round; its four lib
+   files are all pascal-side, verified by name against every regenerated
+   family, so the regen ran straight from the checkout.
+2. **The predicted cross-lane red arrived on schedule and was fixed
+   production-faithfully.** P4.D41's 25-column `create_from_row` INSERT met
+   P4.28's deliberately pre-column migration-vintage fixture — both #58
+   arms red with `no such column: linkGroupId` on a target no production
+   restore can ever see (restore only runs inside a booted engine whose
+   builtin-mounts hook already aligned the column). `restore_vintage_state`'s
+   `open()` now mirrors boot (`ensure_link_group_column` on its private
+   copy), which keeps the fixture deliberately pre-column AND makes the
+   test a live proof of the boot ensure.
+3. **The §X contract held:** `api/types.rs` untouched by all four lanes
+   (verified by diff); no name-for-name reconciliation was owed.
+
+### What the §3 review found (three parallel reviewers + own-hands checks; every fix mutation-proven)
+
+**The one that would have shipped — the twin write path (P4.D41,
+BLOCKING).** The group re-chunk pass had reached only the REPO-METHOD twin
+of `write_database_document` (the vault writers' path, which is also the
+path the tier-2 differential drives). The FREE-FUNCTION twin in
+`db/database_store.rs` — the path the doc-edit tools, Document Mode,
+scenarios and the characters API actually land on — ran only the own-file
+chunk pass, so editing a hard-linked store document on the primary
+user-visible surfaces repointed the group but left the sibling's chunks
+stale: the exact symptom v4 `40319484` exists to fix, surviving both lanes'
+green gates because the differential never drives that twin. Fixed on the
+unify branch (the courier fold-episode "twin write paths, one got the fix"
+shape, now twice-precedented); pinned by
+`write_rechunks_hard_link_group_siblings` in `database_store.rs`'s tests,
+proven red with the call deleted. The `tools/doc_edit/shared.rs` header's
+"runs the chunk pass AND the group pass" claim — false when written — is
+true now.
+
+**The #58 divergence had no v4-convergence pin (P4.28, blocking-leaning).**
+The standing ruling requires every divergence pinned in BOTH directions;
+#57 had it, #58 did not — nothing would have failed the day v4 grew its own
+orphan handling. Added `restore_orphan_links_replace` to the
+`system-restore` oracle (15 → 16 lines) + a dedicated arm in
+`system_restore_state`: v5 must land ZERO orphans, the oracle must land
+EXACTLY 9 links / 7 folders / 4 chunks (with a retire-the-divergence
+message), the three summary counters must trail by exactly those deltas,
+v5's warnings must be v4's plus exactly the skip sentences, and the healthy
+remainder still diffs row-for-row under the family's own normalizer.
+Mutation-proven by disabling the skip check (both the table and summary
+arms fired).
+
+**The PumpPause WIRING was unpinned (P4.28).** The five semantics tests
+stayed green with either dispatch arm's `let _pump = …` deleted. Added
+`delete_data_and_restore_execute_take_the_pump_pause` in `engine.rs`'s
+tests (a recording pump + an empty backup host on the assembly; both arms
+must cycle stop→start even on their early-refusal paths), proven red with
+the delete arm's guard deleted.
+
+**Three SPA fidelity finds (P4.29).** The files-browser sync / analyze /
+cleanup failure arms leaked server messages where v4 deliberately discards
+the error and shows ONE fixed sentence each (`FileBrowser.tsx:562/:588/
+:612/:635`) — restored, and `onSync` gained v4's catch (a transport throw
+previously toasted nothing and became an unhandled rejection); the spec's
+expectation moved to the fixed sentence with the why on it. The
+appearance-tab kept a v5-invented inline error banner alongside the new
+toasts where v4's DescriptionsTab is toast-only — retired, consistent with
+the lane's own policy everywhere else.
+
+**Softened to v4's never-fail (P4.D41).** Both `link_file` bind arms
+propagated a `DbError` after the link itself had succeeded, where v4 wraps
+the lookup AND the bind in `safeQuery` — a bind failure now warns and
+leaves an ungrouped link, never fails a succeeded link. Plus a doc-only
+fix: the orphan-archive builder's header said "11 links + 8 folders"; the
+committed artifact carries 9 + 7 (of 28 links, with 4 chunks) — corrected.
+
+**Recorded, not fixed (NOTE-grade, with owners):** PumpPause snapshots
+`was_running` at construction (an operator Stop pressed MID-restore is
+restarted at drop — a TOCTOU corner the type should document);
+the guard is taken before sentinel validation (a wrong-confirm request
+cycles the pump harmlessly — and that is what makes the wiring test cheap);
+the chunk-skip warning sentence says "not in the backup" for a chunk whose
+link was itself skipped (transitively true); `link_groups.rs` logs via
+`eprintln!` (the standing P4.18 sibling-owned sweep) and drops v4's closing
+debug line; the fs sibling path is `format!("{}/{}")` not a join
+(POSIX-harmless, log-only consumer); import treats an explicit `""`
+`linkGroupId` as a group where v4's truthiness skips it (unreachable from
+any real archive); the CLI's `LsRow` dropped the vestigial `fileId` v4
+keeps (zero output difference); #59's `skippedFiles` key is additive-only
+and unpinned against a future v4 analogue; `global-setup.ts`'s
+`roleplay_templates` block omits the two indexes (perf-only, precedent
+mixed); the api-key toast interpolates the client-trimmed label where v4
+uses the server's; the group-members non-ok arm toasts where v4 is silent
+(better UX, micro-divergence); a folder whose PARENT FOLDER (not store) is
+missing from an archive is the one unmeasured orphan variant the #58
+checks don't name.
+
+### The gate (on the unify branch, after every fix)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets; release build clean.
+- `cargo test --workspace --no-fail-fast` with the round's sixteen-variable
+  env block: ****411 test binaries / 1,819 tests / 0 failed** (the one mid-edit red in an earlier interim run was this unification's own in-progress orphan arm, re-run green)**.
+- The round's families re-run BY NAME over oracles regenerated FRESH at
+  `40319484`, zero SKIP: the ten system families + `backup_uuid_remap` +
+  `backup_mount_index_coercion` + `restore_vintage_state` (env-less by
+  design) + `doc_mount_file_links_tier2` + `mount_link_groups` (both from a
+  rebuilt `.qt-oracle-mirror` + fresh fixture) + the CLI Tier R 136/136
+  (lane-run at the same baseline).
+- SPA: `ng test` **276 files / 3,780 / 0 failed**; `ng build` clean; full
+  Playwright ****175 passed / 1 failed / 0 skipped (4.9 m)** — the failure is the DOCUMENTED wardrobe `set_all` full-suite flake (`wardrobe-flow.spec.ts:253`, the same file:line the P4.6bj round record names), re-proven green in isolation (3/3, :253 at 522 ms), the established disposition for that beat**.
+
+Versions: core 0.0.445 → **0.0.452**, harness 0.0.382 → **0.0.388**, cli
+0.0.4 → **0.0.5**, SPA 0.5.380 → **0.5.395** (recounted as base + total
+bumps per the playbook — the take-theirs picks kept only one lane's line);
+host / web / tauri unchanged.
+
+### Standing after the round (the next `/setupphase` reads this)
+
+- **The `c988fbd2` Pascal run-presets drift catch-up is OWED** (see
+  `phase-4.md`'s candidates — item 1).
+- **The #58 ROOT CAUSE needs an order:** the mount-index delete path
+  deletes a store without its links/folders (`services/mount_index/**`);
+  the v4-side twin is queued on the post-5.0 list.
+- **`doc_text` + `doc_fm` are stale-RED, pre-existing:** their oracle's
+  reindex mock silences v4's P4.6BK chunk-on-write, so mocked-v4 diverges
+  from chunking-v5 on `chunkCount`; both candidate fixes change what the
+  family proves — a ruling for the doc-edit oracle owner. Their env vars
+  were deliberately NOT set at this gate; the exact reproduction is in
+  P4.D41's unit-8 lane record.
+- The vintage-tolerance follow-up tripwire, the PumpPause in-flight
+  window, P4.D41's tier-2 item 9 (a committed grouped-pair fixture), #61's
+  fresh-copy re-walk, and the round's live proofs all ride the phase-plan
+  candidates list.
