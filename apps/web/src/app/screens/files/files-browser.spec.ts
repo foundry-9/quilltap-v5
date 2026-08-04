@@ -301,7 +301,10 @@ describe('FilesBrowser toasts', () => {
       ) as HTMLButtonElement
     ).click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(toasts()).toEqual([{ type: 'error', message: 'sync busy' }]);
+    // v4 `FileBrowser.tsx:562` deliberately DISCARDS the error and shows one
+    // fixed sentence — the server's own message ("sync busy" above) must NOT
+    // leak through (the unification review's fidelity catch).
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to sync filesystem' }]);
   });
 
   it('toasts the dynamic cleanup-move sentence, and a failure', async () => {

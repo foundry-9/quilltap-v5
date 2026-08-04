@@ -227,6 +227,22 @@ pub fn write_database_document(
         &rel,
     );
 
+    // `link_document_content` above has already repointed every member of this
+    // file's hard-link group at the new content row, but chunks are per-link:
+    // without this pass a sibling path would keep serving the previous
+    // revision's chunks to search and to character context (v4
+    // `database-store.ts:158`, its own try/log after the chunk pass). This
+    // free-function twin of the repo's `write_database_document` is the path
+    // the doc-edit tools, Document Mode, scenarios and the characters API land
+    // on — the P4.D41 unification review found the group pass had reached only
+    // the repo-method twin, exactly the courier fold-episode "twin write
+    // paths, one got the fix" shape.
+    crate::services::mount_index::link_groups::reindex_link_group_siblings_after_database_write(
+        conn,
+        mount_point_id,
+        &rel,
+    );
+
     // v4 returns `new Date(now).getTime()` for a `now` minted in the same JS
     // millisecond the repo stamps `lastModified` with (single-threaded, both
     // `new Date()` calls land in one tick), so v4's returned mtime EQUALS the
@@ -851,6 +867,56 @@ mod tests {
         assert!(
             contents.iter().all(|c| c.contains("Replacement")),
             "overwrite must replace the chunk set, got: {contents:?}"
+        );
+    }
+
+    /// The unification-review regression pin: the group re-chunk pass must run
+    /// on THIS free-function twin, not only on the repo-method twin the tier-2
+    /// differential drives. The doc-edit tools, Document Mode, scenarios and
+    /// the characters API all land here — losing the pass here re-opens the
+    /// exact stale-sibling symptom v4 `40319484` exists to fix.
+    #[test]
+    fn write_rechunks_hard_link_group_siblings() {
+        let conn = open_store_db();
+        seed(&conn, "left.md", "Shared bytes, first revision.");
+        seed(&conn, "right.md", "Shared bytes, first revision.");
+        // Deliberately link the two (identical bytes already share a content
+        // row; only the group makes them one FILE).
+        let repo = DocMountFileLinksRepository::new(&conn);
+        let id_of = |rel: &str| -> String {
+            conn.query_row(
+                "SELECT id FROM doc_mount_file_links WHERE relativePath = ?1",
+                [rel],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        repo.bind_link_group(&id_of("left.md"), &id_of("right.md"))
+            .unwrap()
+            .expect("both links exist");
+
+        // Write through ONE member via the FREE FUNCTION.
+        write_database_document(&conn, MP, "left.md", "Second revision, shared.").unwrap();
+
+        // The SIBLING's chunk set must carry the new bytes.
+        let sibling_chunks: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT c.content FROM doc_mount_chunks c
+                     JOIN doc_mount_file_links l ON l.id = c.linkId
+                     WHERE l.relativePath = 'right.md' ORDER BY c.chunkIndex",
+                )
+                .unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert!(
+            !sibling_chunks.is_empty()
+                && sibling_chunks.iter().all(|c| c.contains("Second revision")),
+            "the hard-linked sibling must be re-chunked by the free-function write \
+             (got: {sibling_chunks:?})"
         );
     }
 

@@ -162,6 +162,20 @@ const RESTORE_CASES: Array<{
     archive: 'restore-archive-memory-graph.zip',
     mode: 'new-account',
   },
+
+  // ── P4.28 (dogfood #58): the referentially-broken archive ────────────────
+  //
+  // `restore-archive-orphan-links.zip` carries 9 `doc_mount_file_links` rows,
+  // 7 `doc_mount_folders` rows and their 4 chunks whose `doc_mount_points`
+  // parent is NOT in the archive (a document store deleted without its
+  // children — measured on the real dogfood instance, 2026-08-03). On this
+  // oracle's fresh generateDDL target the tables carry no foreign keys, so v4
+  // inserts every orphan SILENTLY; v5 deliberately skips each one with a
+  // sentence naming what is missing (the standing backup/restore ruling —
+  // v5 fixes v4's bugs). The Rust side asserts the divergence in BOTH
+  // directions, so this case is the tripwire that fires the day v4 grows its
+  // own orphan handling.
+  { name: 'restore_orphan_links_replace', archive: 'restore-archive-orphan-links.zip' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

@@ -408,17 +408,25 @@ export class FilesBrowser {
   // Sync + orphan cleanup (tier 2)
   // ---------------------------------------------------------------------------
 
-  /** v4 handleSync — surfaces lane A's loud `filesSync` refusal faithfully. */
+  /**
+   * v4 handleSync — surfaces lane A's loud `filesSync` refusal faithfully.
+   * v4 deliberately DISCARDS the error and shows one fixed sentence
+   * (`FileBrowser.tsx:562`), and its catch also covers a transport throw —
+   * both carried here (the unification review caught the `err.message`
+   * variants and the missing catch).
+   */
   protected async onSync(): Promise<void> {
     this.isSyncing.set(true);
     try {
       const resp = await this.core.dispatch({ type: 'filesSync' });
       if (resp.type === 'error') {
-        this.toasts.showError(resp.data.message || 'Failed to sync filesystem');
+        this.toasts.showError('Failed to sync filesystem');
         return;
       }
       await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
       this.toasts.showSuccess('Filesystem sync complete');
+    } catch {
+      this.toasts.showError('Failed to sync filesystem');
     } finally {
       this.isSyncing.set(false);
     }
@@ -437,10 +445,10 @@ export class FilesBrowser {
         totalSize: (data['totalSize'] as number) ?? 0,
         uniqueSize: (data['uniqueSize'] as number) ?? 0,
       });
-    } catch (err) {
-      this.toasts.showError(
-        err instanceof Error ? err.message : 'Failed to analyze orphaned files',
-      );
+    } catch {
+      // v4's fixed sentence — the error is deliberately discarded
+      // (`FileBrowser.tsx:588`).
+      this.toasts.showError('Failed to analyze orphaned files');
     } finally {
       this.isCleaningUp.set(false);
     }
@@ -466,13 +474,11 @@ export class FilesBrowser {
       this.cleanupStats.set(null);
       await this.queryClient.invalidateQueries({ queryKey: ['files', 'general'] });
       this.toasts.showSuccess(cleanupSuccessMessage(mode, data));
-    } catch (err) {
+    } catch {
+      // v4's fixed per-mode sentences — the error is deliberately discarded
+      // (`FileBrowser.tsx:612`/`:635`).
       this.toasts.showError(
-        err instanceof Error
-          ? err.message
-          : mode === 'move'
-            ? 'Failed to clean up orphaned files'
-            : 'Failed to delete orphaned files',
+        mode === 'move' ? 'Failed to clean up orphaned files' : 'Failed to delete orphaned files',
       );
     } finally {
       this.isCleaningUp.set(false);

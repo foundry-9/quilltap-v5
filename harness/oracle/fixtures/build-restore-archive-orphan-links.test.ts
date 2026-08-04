@@ -31,8 +31,9 @@
  * `FOREIGN KEY constraint failed`.
  *
  * This archive reproduces that in miniature: the committed `system-data-*`
- * fixture with ONE character vault's mount point deleted and its 11 links + 8
- * folders left behind, backed up by v4's **REAL** `createBackup`. The deletion
+ * fixture with ONE character vault's mount point deleted and its 9 links + 7
+ * folders (and their 4 chunks, of the archive's 28 links total) left behind,
+ * backed up by v4's **REAL** `createBackup`. The deletion
  * is a plain `DELETE` on the mount-index connection — which is precisely how the
  * real ones arose, since neither app's delete path is running with the
  * constraint on.

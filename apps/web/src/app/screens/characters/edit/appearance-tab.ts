@@ -88,10 +88,6 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
           </p>
         </div>
 
-        @if (physicalError()) {
-          <div class="qt-alert-error">{{ physicalError() }}</div>
-        }
-
         @if (characterQuery.isPending()) {
           <div class="py-6 text-center qt-text-secondary">Loading physical description...</div>
         } @else {
@@ -233,7 +229,6 @@ export class CharacterAppearanceTab {
 
   protected readonly physicalForm = signal<PhysicalDescriptionForm>(EMPTY_PHYSICAL_FORM);
   protected readonly savingPhysical = signal(false);
-  protected readonly physicalError = signal<string | null>(null);
 
   protected readonly guidelinesDraft = signal('');
   protected readonly savingGuidelines = signal(false);
@@ -304,7 +299,6 @@ export class CharacterAppearanceTab {
     }
     const hadOne = this.hasPhysicalDescription();
     this.savingPhysical.set(true);
-    this.physicalError.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterUpdate',
@@ -319,9 +313,10 @@ export class CharacterAppearanceTab {
         hadOne ? 'Physical description updated' : 'Physical description created',
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save physical description';
-      this.physicalError.set(message);
-      this.toasts.showError(message);
+      // v4 `DescriptionsTab.tsx` is toast-only — no inline error surface.
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to save physical description',
+      );
     } finally {
       this.savingPhysical.set(false);
     }
@@ -336,7 +331,6 @@ export class CharacterAppearanceTab {
       return;
     }
     this.savingPhysical.set(true);
-    this.physicalError.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterUpdate',
@@ -348,9 +342,9 @@ export class CharacterAppearanceTab {
       });
       this.toasts.showSuccess('Physical description cleared');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to clear physical description';
-      this.physicalError.set(message);
-      this.toasts.showError(message);
+      this.toasts.showError(
+        err instanceof Error ? err.message : 'Failed to clear physical description',
+      );
     } finally {
       this.savingPhysical.set(false);
     }

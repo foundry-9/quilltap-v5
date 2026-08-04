@@ -553,7 +553,16 @@ fn hard_link_db_to_db(
         source_link.plain_text_length,
     )?;
     if bind_group {
-        links.bind_link_group(source_link_id, &dest_link_id)?;
+        // Warn, never fail — v4 wraps `bindLinkGroup` in `safeQuery` (log +
+        // null), so once the dest link row exists a bind failure can only
+        // leave the pair ungrouped, never fail the link the caller was told
+        // about.
+        if let Err(e) = links.bind_link_group(source_link_id, &dest_link_id) {
+            eprintln!(
+                "bindLinkGroup after db link failed for {dest_relative_path} \
+                 (mount {dest_mount_point_id}): {e}"
+            );
+        }
     }
     // v4 emitDocumentWritten — the watcher deferral.
     Ok(dest_link_id)
@@ -939,10 +948,27 @@ pub fn link_file(
         // re-indexed (v4 `40319484`). Warn, never fail: the link itself
         // succeeded.
         let links = DocMountFileLinksRepository::new(conn);
-        let dest_link = links.find_by_mount_point_and_path(&dest_mount.id, &dest_rel)?;
+        // Both legs warn-and-continue on a DB error too: v4 wraps the lookup
+        // AND the bind in `safeQuery` (log + null), so after the OS hard link
+        // succeeds v4 structurally cannot fail this arm — worst case is an
+        // ungrouped link and a log line.
+        let dest_link = links
+            .find_by_mount_point_and_path(&dest_mount.id, &dest_rel)
+            .unwrap_or_else(|e| {
+                eprintln!(
+                    "looking up the fs-linked dest row failed for {dest_rel} (mount {}): {e}",
+                    dest_mount.id
+                );
+                None
+            });
         match (source_info.link_id.as_deref(), dest_link) {
             (Some(source_link_id), Some(dest_link)) => {
-                links.bind_link_group(source_link_id, &dest_link.id)?;
+                if let Err(e) = links.bind_link_group(source_link_id, &dest_link.id) {
+                    eprintln!(
+                        "bindLinkGroup after fs link failed for {dest_rel} (mount {}): {e}",
+                        dest_mount.id
+                    );
+                }
             }
             _ => eprintln!(
                 "fs link created but could not be bound into a link group: \

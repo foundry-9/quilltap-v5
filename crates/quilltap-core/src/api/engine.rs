@@ -5381,6 +5381,159 @@ mod tests {
         assert!(data.join("quilltap-llm-logs.dbkey").exists());
     }
 
+    // ── The dogfood-#60 guard WIRING (the unification-review pin) ────────────
+    //
+    // `system_data::pump_pause_tests` proves the guard's semantics; this proves
+    // the two dispatch arms actually TAKE it — delete either `let _pump = …`
+    // line and one assertion below goes red. Both arms cycle the pump even when
+    // their body refuses early (wrong sentinel / unknown upload), which is what
+    // makes the wiring observable without a real restore.
+
+    struct RecordingPump {
+        running: std::sync::atomic::AtomicBool,
+        starts: AtomicUsize,
+        stops: AtomicUsize,
+    }
+    impl crate::api::system_data::JobPumpControl for RecordingPump {
+        fn status(&self) -> crate::api::system_data::ProcessorStatus {
+            crate::api::system_data::ProcessorStatus {
+                running: self.running.load(Ordering::SeqCst),
+                processing: false,
+                in_flight: 0,
+                child_crashed: false,
+            }
+        }
+        fn start(&self) {
+            self.running.store(true, Ordering::SeqCst);
+            self.starts.fetch_add(1, Ordering::SeqCst);
+        }
+        fn stop(&self) {
+            self.running.store(false, Ordering::SeqCst);
+            self.stops.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake(&self) {}
+    }
+
+    /// A backup host whose upload store is empty — `SystemRestoreExecute`
+    /// refuses right after the guard is taken, which is all the wiring test
+    /// needs.
+    struct EmptyBackupHost {
+        tmp: PathBuf,
+    }
+    impl crate::services::backup::BackupHost for EmptyBackupHost {
+        fn storage(&self) -> Arc<dyn crate::services::file_storage::StorageBackend> {
+            Arc::new(crate::services::file_storage::NotConfiguredStorageBackend)
+        }
+        fn pixel_codec(&self) -> Arc<dyn crate::services::file_storage::PixelCodec> {
+            Arc::new(crate::services::file_storage::NotConfiguredPixelCodec)
+        }
+        fn temp_dir(&self) -> PathBuf {
+            self.tmp.clone()
+        }
+        fn host_dirs(&self) -> crate::services::backup::HostDirs {
+            crate::services::backup::HostDirs {
+                npm_plugins: None,
+                themes: None,
+            }
+        }
+        fn app_version(&self) -> String {
+            "test".into()
+        }
+        fn now_ms(&self) -> i64 {
+            0
+        }
+        fn store_backup(&self, _backup_id: &str, _zip_path: &std::path::Path) {}
+        fn take_backup(&self, _backup_id: &str) -> Option<PathBuf> {
+            None
+        }
+        fn store_upload(&self, _upload_id: &str, _zip_path: &std::path::Path) {}
+        fn get_upload(&self, _upload_id: &str) -> Option<PathBuf> {
+            None
+        }
+        fn remove_upload(&self, _upload_id: &str) {}
+    }
+
+    struct PumpWiringAssembler {
+        pump: Arc<RecordingPump>,
+        tmp: PathBuf,
+    }
+    impl EngineAssembler for PumpWiringAssembler {
+        fn assemble(
+            &self,
+            _db: &Db,
+            _events: &broadcast::Sender<Event>,
+            _pepper: &str,
+            _data_dir: &std::path::Path,
+            _bus: &Arc<CreationProgressBus>,
+        ) -> Result<EngineAssembly, String> {
+            let mut a = EngineAssembly::shutdown_only(Box::new(NoopShutdown));
+            a.job_pump = Some(self.pump.clone());
+            a.backup_host = Some(Arc::new(EmptyBackupHost {
+                tmp: self.tmp.clone(),
+            }));
+            Ok(a)
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_data_and_restore_execute_take_the_pump_pause() {
+        let base = make_instance();
+        let pump = Arc::new(RecordingPump {
+            running: std::sync::atomic::AtomicBool::new(true),
+            starts: AtomicUsize::new(0),
+            stops: AtomicUsize::new(0),
+        });
+        let engine = CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(PumpWiringAssembler {
+                pump: pump.clone(),
+                tmp: base.path().join("tmp"),
+            }),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        // The wrong-sentinel refusal still cycles the pump: the guard is taken
+        // before validation (recorded as a harmless claim-window note in the
+        // round record), which is exactly what lets the wiring be proven cheap.
+        match engine
+            .dispatch(Request::SystemDeleteData {
+                confirm: "not the sentinel".into(),
+            })
+            .await
+        {
+            Response::Error(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            (
+                pump.stops.load(Ordering::SeqCst),
+                pump.starts.load(Ordering::SeqCst)
+            ),
+            (1, 1),
+            "SystemDeleteData must stop the pump and start it again"
+        );
+
+        match engine
+            .dispatch(Request::SystemRestoreExecute {
+                upload_id: "00000000-0000-4000-8000-000000000000".into(),
+                mode: "replace".into(),
+            })
+            .await
+        {
+            Response::Error(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(
+            (
+                pump.stops.load(Ordering::SeqCst),
+                pump.starts.load(Ordering::SeqCst)
+            ),
+            (2, 2),
+            "SystemRestoreExecute must stop the pump and start it again"
+        );
+    }
+
     #[test]
     fn missing_main_db_refuses_boot() {
         let base = tempdir().unwrap();

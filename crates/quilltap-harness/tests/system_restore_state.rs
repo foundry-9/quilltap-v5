@@ -814,6 +814,7 @@ fn archive_for(name: &str) -> &'static str {
         "restore_memory_graph_replace" | "restore_memory_graph_new_account" => {
             "restore-archive-memory-graph.zip"
         }
+        "restore_orphan_links_replace" => "restore-archive-orphan-links.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1081,7 +1082,10 @@ fn system_restore_state_equivalence() {
         );
     }
 
-    assert_eq!(seen, 10, "expected all ten restore cases in the oracle");
+    assert_eq!(
+        seen, 11,
+        "expected all eleven restore cases in the oracle (ten + the #58 orphan-links arm)"
+    );
     assert!(
         failures.is_empty(),
         "{} restore-state difference(s):\n{}",
@@ -1770,6 +1774,192 @@ fn assert_phase_order_residual(
     failures
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// The #58 orphaned-rows divergence (P4.28 + this round's unification wire)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// ## ⚠ THE RULED ORPHAN-SKIP DIVERGENCE (dogfood #58, 2026-08-03)
+///
+/// `restore-archive-orphan-links.zip` carries 9 `doc_mount_file_links` rows,
+/// 7 `doc_mount_folders` rows and 4 chunks whose `doc_mount_points` parent is
+/// NOT in the archive (a store deleted without its children, dumped verbatim by
+/// backup's raw `SELECT *`). Under the standing 2026-08-03 backup/restore
+/// ruling v5 SKIPS each one with a sentence naming what is missing, while v4 on
+/// this family's FK-less generateDDL target inserts every orphan silently.
+/// Asserted in both directions: the v5 side must land ZERO orphans and the
+/// oracle side must land EXACTLY the 9/7/4 — so the moment v4 grows its own
+/// orphan handling this fails with a retire-the-divergence instruction. The
+/// healthy remainder of all three tables is still diffed row for row.
+const ORPHAN_LINKS_CASE: &str = "restore_orphan_links_replace";
+const ORPHAN_TABLES: &[&str] = &[
+    "doc_mount_file_links",
+    "doc_mount_folders",
+    "doc_mount_chunks",
+];
+/// (links, folders, chunks) the committed archive carries orphaned — pinned by
+/// the builder (`build-restore-archive-orphan-links.test.ts`, victim store
+/// deleted BY NAME) and by `restore_vintage_state`'s own arms.
+const ORPHAN_COUNTS: (usize, usize, usize) = (9, 7, 4);
+
+fn orphan_ids(rows: &[Value], key: &str, parents: &HashSet<String>) -> Vec<String> {
+    rows.iter()
+        .filter(|r| {
+            r.get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|v| !parents.contains(v))
+        })
+        .map(|r| {
+            r.get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
+}
+
+fn table_ids(rows: &[Value]) -> HashSet<String> {
+    rows.iter()
+        .filter_map(|r| r.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The (parent key, expected oracle-side orphan count) for one of the three
+/// tables, plus the parent id set for each side. Chunks hang off links, not
+/// points, so their parent set is the same side's LINK ids.
+#[allow(clippy::too_many_arguments)]
+fn assert_orphan_divergence(
+    name: &str,
+    table: &str,
+    got_rows: &[Value],
+    want_rows: &[Value],
+    got_points: &HashSet<String>,
+    want_points: &HashSet<String>,
+    got_links: &HashSet<String>,
+    want_links: &HashSet<String>,
+    literals: &HashSet<String>,
+    shas_got: &HashSet<String>,
+    shas_want: &HashSet<String>,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    let (parent_key, got_parents, want_parents, want_expected) = match table {
+        "doc_mount_file_links" => ("mountPointId", got_points, want_points, ORPHAN_COUNTS.0),
+        "doc_mount_folders" => ("mountPointId", got_points, want_points, ORPHAN_COUNTS.1),
+        "doc_mount_chunks" => ("linkId", got_links, want_links, ORPHAN_COUNTS.2),
+        other => panic!("assert_orphan_divergence: unexpected table {other}"),
+    };
+
+    let got_orphans = orphan_ids(got_rows, parent_key, got_parents);
+    if !got_orphans.is_empty() {
+        failures.push(format!(
+            "[{name}] mountIndex.{table}: v5 landed {} orphaned row(s) — the #58 skip check \
+             was reverted or bypassed ({:?})",
+            got_orphans.len(),
+            got_orphans
+        ));
+    }
+    let want_orphans = orphan_ids(want_rows, parent_key, want_parents);
+    if want_orphans.len() != want_expected {
+        failures.push(format!(
+            "[{name}] mountIndex.{table}: the oracle landed {} orphaned row(s) where the \
+             committed archive carries {want_expected} — if v4 has stopped inserting orphans \
+             it has adopted its own #58 handling and this divergence must be RE-RULED (retire \
+             the ORPHAN_LINKS_CASE arm and let the tables diff normally); if the count merely \
+             moved, the archive was rebuilt and these pins must move with it.",
+            want_orphans.len()
+        ));
+    }
+
+    // The healthy remainder must still agree row for row, under the same
+    // per-table labelling the main path uses — the divergence is EXACTLY the
+    // orphans, nothing else.
+    let healthy = |rows: &[Value], parents: &HashSet<String>| -> Vec<Value> {
+        rows.iter()
+            .filter(|r| {
+                r.get(parent_key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|v| parents.contains(v))
+            })
+            .cloned()
+            .collect()
+    };
+    let mut n_got = Normalizer::new(literals.clone(), shas_got.clone());
+    let mut n_want = Normalizer::new(literals.clone(), shas_want.clone());
+    let g = n_got.value(&Value::Array(healthy(got_rows, got_parents)));
+    let w = n_want.value(&Value::Array(healthy(want_rows, want_parents)));
+    if g != w {
+        failures.push(format!(
+            "[{name}] mountIndex.{table}: the HEALTHY rows diverged — the #58 carve-out only \
+             covers the orphans\n  rust:   {g}\n  oracle: {w}"
+        ));
+    }
+    failures
+}
+
+/// v5's warnings for the orphan case are v4's plus exactly the skip sentences;
+/// v4 must have none of them. Both directions, like the table half.
+fn assert_orphan_warnings(name: &str, gv: &Value, wv: &Value, failures: &mut Vec<String>) {
+    let arr = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let got = arr(gv);
+    let want = arr(wv);
+    let is_skip = |w: &String| w.starts_with("Skipped doc-store ");
+
+    let want_skips = want.iter().filter(|w| is_skip(w)).count();
+    if want_skips != 0 {
+        failures.push(format!(
+            "[{name}] warnings: the oracle carries {want_skips} \"Skipped doc-store\" \
+             sentence(s) — v4 has adopted the #58 skip check; re-rule the divergence."
+        ));
+    }
+
+    let (links, folders, chunks) = ORPHAN_COUNTS;
+    let count = |suffix: &str, prefix: &str| {
+        got.iter()
+            .filter(|w| w.starts_with(prefix) && w.ends_with(suffix))
+            .count()
+    };
+    let link_skips = count(
+        "its document store is not in the backup",
+        "Skipped doc-store file link \"",
+    );
+    let folder_skips = count(
+        "its document store is not in the backup",
+        "Skipped doc-store folder \"",
+    );
+    let chunk_skips = got
+        .iter()
+        .filter(|w| *w == "Skipped doc-store chunk: its file link is not in the backup")
+        .count();
+    if (link_skips, folder_skips, chunk_skips) != (links, folders, chunks) {
+        failures.push(format!(
+            "[{name}] warnings: expected {links}/{folders}/{chunks} link/folder/chunk skip \
+             sentences, got {link_skips}/{folder_skips}/{chunk_skips}"
+        ));
+    }
+
+    // Minus the skips, the two sides must agree (as multisets — order within a
+    // phase is stable but the skips interleave).
+    let mut got_rest: Vec<&String> = got.iter().filter(|w| !is_skip(w)).collect();
+    let mut want_rest: Vec<&String> = want.iter().collect();
+    got_rest.sort();
+    want_rest.sort();
+    if got_rest != want_rest {
+        failures.push(format!(
+            "[{name}] warnings (minus the #58 skips) diverged\n  rust:   {got_rest:?}\n  \
+             oracle: {want_rest:?}"
+        ));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn compare_case(
     name: &str,
@@ -1793,14 +1983,41 @@ fn compare_case(
         let wv = &want_summary[k];
         if k == "warnings" {
             // The dedupe cases' warnings ARE the divergence — v4 reports its own
-            // refused rows and v5 reports nothing. Asserted, not diffed.
-            if !dedupe {
+            // refused rows and v5 reports nothing. Asserted, not diffed. The
+            // orphan case's warnings are likewise the #58 divergence: v5 adds
+            // exactly the skip sentences, v4 must have none.
+            if name == ORPHAN_LINKS_CASE {
+                assert_orphan_warnings(name, gv, wv, failures);
+            } else if !dedupe {
                 compare_warnings(name, gv, wv, failures);
             }
             continue;
         }
         if dedupe && REPLAY_DEDUPE_SUMMARY_KEYS.contains(&k.as_str()) {
             continue;
+        }
+        // The #58 orphan case's three doc-store counters ARE the divergence:
+        // they count WRITTEN rows, so v5 (which skips the orphans) must trail
+        // v4 by exactly the orphan counts — both directions, like the tables.
+        if name == ORPHAN_LINKS_CASE {
+            let delta = match k.as_str() {
+                "docMountFileLinks" => Some(ORPHAN_COUNTS.0 as i64),
+                "docMountFolders" => Some(ORPHAN_COUNTS.1 as i64),
+                "docMountChunks" => Some(ORPHAN_COUNTS.2 as i64),
+                _ => None,
+            };
+            if let Some(delta) = delta {
+                let g = gv.as_i64().unwrap_or(-1);
+                let w = wv.as_i64().unwrap_or(-1);
+                if w != g + delta {
+                    failures.push(format!(
+                        "[{name}] summary.{k}: rust {g} vs oracle {w} — expected the oracle to \
+                         lead by exactly {delta} (the #58 orphans v4 inserts silently). If the \
+                         two now agree, v4 has adopted the skip check: re-rule the divergence."
+                    ));
+                }
+                continue;
+            }
         }
         if gv != wv {
             failures.push(format!("[{name}] summary.{k}: rust {gv} vs oracle {wv}"));
@@ -1888,12 +2105,77 @@ fn compare_case(
         })
         .unwrap_or_default();
 
+    // The #58 orphan case needs each side's parent id sets before the loop —
+    // the orphan predicate is per-side (v4 restores the orphaned links, so a
+    // chunk that is orphaned on the v5 side has a live parent on v4's).
+    let orphan_case = name == ORPHAN_LINKS_CASE;
+    let (got_points, want_points, got_links, want_links) = if orphan_case {
+        let empty = Vec::new();
+        let g_mi = got.get("mountIndex");
+        let g_pts = table_ids(
+            g_mi.and_then(|t| t.get("doc_mount_points"))
+                .unwrap_or(&empty),
+        );
+        let g_lnk = table_ids(
+            g_mi.and_then(|t| t.get("doc_mount_file_links"))
+                .unwrap_or(&empty),
+        );
+        let w_pts = table_ids(
+            &want["mountIndex"]["doc_mount_points"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+        );
+        // The want-side chunk parent set is the HEALTHY links only: v4 restored
+        // the point-orphaned links too, so a chunk hanging off one has a live
+        // linkId row — its orphanhood is transitive through the missing store.
+        let w_rows = want["mountIndex"]["doc_mount_file_links"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let w_lnk: HashSet<String> = w_rows
+            .iter()
+            .filter(|r| {
+                r.get("mountPointId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|v| w_pts.contains(v))
+            })
+            .filter_map(|r| r.get("id").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect();
+        (g_pts, w_pts, g_lnk, w_lnk)
+    } else {
+        Default::default()
+    };
+
     for (partition, tables) in got {
         for (table, rows) in tables {
             // The ruled dedupe divergence: these five hold different rows by
             // design. `assert_replay_dedupe` above states exactly how, in both
             // directions, instead of diffing them.
             if dedupe && REPLAY_DEDUPE_TABLES.contains(&(partition.as_str(), table.as_str())) {
+                continue;
+            }
+            // The #58 orphan divergence: three tables asserted in both
+            // directions instead of diffed; the healthy remainder still
+            // compared row for row inside the helper.
+            if orphan_case && partition == "mountIndex" && ORPHAN_TABLES.contains(&table.as_str()) {
+                failures.extend(assert_orphan_divergence(
+                    name,
+                    table,
+                    rows,
+                    &want[partition][table]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default(),
+                    &got_points,
+                    &want_points,
+                    &got_links,
+                    &want_links,
+                    &literals,
+                    &shas_got,
+                    &shas_want,
+                ));
                 continue;
             }
             let mut n_got = Normalizer::new(literals.clone(), shas_got.clone());
