@@ -230,7 +230,9 @@ fn doc_mount_points_tier2_matches_oracle() {
                     assert!(found, "update target {id} not found in fixture");
                 }
                 Op::Delete { id } => {
-                    let removed = repo.delete(id).expect("doc_mount_points.delete");
+                    let removed = repo
+                        .delete_row_only(id)
+                        .expect("doc_mount_points.delete_row_only");
                     assert!(removed, "delete target {id} not found in fixture");
                 }
             }

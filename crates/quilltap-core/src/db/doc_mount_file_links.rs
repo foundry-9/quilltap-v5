@@ -2245,6 +2245,130 @@ pub fn sweep_orphaned_link_content(conn: &Connection) -> Result<usize, DbError> 
     Ok(collected)
 }
 
+/// What one run of [`sweep_orphaned_store_children`] collected.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReapedStoreChildren {
+    pub links: usize,
+    pub folders: usize,
+    pub chunks: usize,
+    /// `doc_mount_files` rows (plus their document / blob payload) collected
+    /// because the reaped links were their last reference.
+    pub content: usize,
+}
+
+impl ReapedStoreChildren {
+    /// True when the pass found nothing — the steady state after the first boot.
+    pub fn is_empty(&self) -> bool {
+        self.links == 0 && self.folders == 0 && self.chunks == 0 && self.content == 0
+    }
+}
+
+/// The ORPHAN REAPER (P4.31) — collect the `doc_mount_file_links`,
+/// `doc_mount_folders` and `doc_mount_chunks` whose `mountPointId` matches no
+/// surviving `doc_mount_points` row, plus the file content those links were the
+/// last reference to.
+///
+/// This is the repair half of dogfood finding #58. `api::mount_points::
+/// cascade_delete` stops NEW orphans; these are the ones already on disk — 43
+/// links and 118 folders across 21 vanished character vaults on the measured
+/// instance (2026-08-03), which no query in either app has ever looked for.
+/// v4 offers no equivalent, so this is a deliberate v5 divergence, pinned in
+/// both directions by `store_delete_equivalence`'s `reap_orphans` arm.
+///
+/// Distinct from its two neighbours, which key on the OPPOSITE end and cannot
+/// see these rows: [`sweep_orphaned_link_content`] and [`sweep_orphaned_files`]
+/// both collect content with no LINK, and every orphan here still has one. It
+/// deliberately reuses [`gc_orphaned_file_row`] for the payload so the delete
+/// set cannot drift from the write path's.
+///
+/// Idempotent every boot and a cheap indexed no-op once the backlog is gone.
+/// Fail-soft on table existence (the P4.d7 / P4.D41 boot-repair shape): a
+/// legacy-vintage mount index missing any table it touches makes the whole pass
+/// a no-op rather than aborting startup.
+///
+/// Deliberately NOT in scope (recorded, not silently covered): a folder whose
+/// PARENT FOLDER is missing while its store lives, and a chunk whose `linkId` is
+/// dead under a live store. Both key on something other than `mountPointId`;
+/// P4.28 named the first as unmeasured and neither is what #58 is.
+pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChildren, DbError> {
+    for table in [
+        "doc_mount_points",
+        "doc_mount_file_links",
+        "doc_mount_folders",
+        "doc_mount_chunks",
+        "doc_mount_files",
+        "doc_mount_documents",
+        "doc_mount_blobs",
+    ] {
+        let exists: Option<String> = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        if exists.is_none() {
+            return Ok(ReapedStoreChildren::default());
+        }
+    }
+
+    // The file ids the doomed links reference — snapshotted BEFORE the delete,
+    // for the same reason `cascade_delete` snapshots its own.
+    let doomed_files: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT l.fileId FROM doc_mount_file_links l \
+             WHERE NOT EXISTS (SELECT 1 FROM doc_mount_points p WHERE p.id = l.mountPointId)",
+        )?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+
+    let tx = conn.unchecked_transaction()?;
+    let chunks = tx.execute(
+        "DELETE FROM doc_mount_chunks WHERE mountPointId NOT IN \
+         (SELECT id FROM doc_mount_points)",
+        [],
+    )?;
+    let links = tx.execute(
+        "DELETE FROM doc_mount_file_links WHERE mountPointId NOT IN \
+         (SELECT id FROM doc_mount_points)",
+        [],
+    )?;
+    let mut content = 0usize;
+    for file_id in &doomed_files {
+        if gc_orphaned_file_row(&tx, file_id)? {
+            content += 1;
+        }
+    }
+    let folders = tx.execute(
+        "DELETE FROM doc_mount_folders WHERE mountPointId NOT IN \
+         (SELECT id FROM doc_mount_points)",
+        [],
+    )?;
+    tx.commit()?;
+    let reaped = ReapedStoreChildren {
+        links,
+        folders,
+        chunks,
+        content,
+    };
+
+    if !reaped.is_empty() {
+        tracing::info!(
+            target: "quilltap::mount_repair",
+            links = reaped.links,
+            folders = reaped.folders,
+            chunks = reaped.chunks,
+            content = reaped.content,
+            "Reaped document-store rows whose mount point no longer exists",
+        );
+    }
+    Ok(reaped)
+}
+
 #[cfg(test)]
 mod orphan_backlog_tests {
     use super::*;

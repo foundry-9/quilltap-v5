@@ -479,9 +479,10 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
     }
 }
 
-/// v4 `DELETE /api/v1/mount-points/[id]` — 404 / the ordered cascade (detach seam
-/// → chunks → files [+ orphaned-file GC via the link snapshot] → documents →
-/// blobs → folders → per-link project-link delete → the point) → `{message}`.
+/// v4 `DELETE /api/v1/mount-points/[id]` — 404 / the cascade → `{message}`.
+///
+/// The wire is v4's byte-for-byte; the WRITES deliberately are not. See
+/// [`cascade_delete`].
 pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
     let existing = db.read_mount_index(|conn| {
         DocMountPointsRepository::new(conn).find_full_json_by_id(mount_point_id)
@@ -504,70 +505,97 @@ pub async fn mount_point_delete(db: &Db, mount_point_id: &str) -> Response {
     }
 }
 
-/// The exact v4 route cascade (the detach watcher is a fire-and-forget host seam,
-/// omitted). Each repo's `deleteByMountPointId` is replicated by its SQL: chunks +
-/// folders + project-links are plain `WHERE mountPointId` deletes; `files`
-/// snapshots the mount's file ids, drops the link rows, then GCs orphaned files;
-/// `documents`/`blobs` GC keys off the (now-empty) link table, exactly as v4.
+/// THE store-delete chokepoint (P4.31) — every removal of a `doc_mount_points`
+/// row in production goes through here, inside ONE transaction, and takes the
+/// store's children with it.
+///
+/// This is dogfood finding #58's root cause. The measured damage on the real
+/// instance (2026-08-03) was 43 orphaned `doc_mount_file_links` + 118 orphaned
+/// `doc_mount_folders` across 21 vanished character vaults; P4.28 taught the
+/// RESTORE to survive them, and this is the end that stops minting them. Nothing
+/// else enforces it: read connections set no `PRAGMA foreign_keys`, and a
+/// `generateDDL` link table declares no foreign keys at all (only the
+/// migration-vintage schema carries the cascade), so a partial cascade leaves
+/// rows nothing will ever collect.
+///
+/// The detach watcher is a fire-and-forget host seam and is omitted, as before.
+/// Chunks / links / folders / project-links stay exactly v4's scoped deletes.
+/// **Three deliberate divergences from v4** (`app/api/v1/mount-points/[id]/
+/// route.ts:167-215` at `49769ec4`), each pinned in BOTH directions by
+/// `store_delete_equivalence` so it fails the day v4 repairs its own side:
+///
+///  1. **The whole cascade is one transaction.** v4 runs seven independent
+///     awaited repo calls; a failure at any of them leaves the store half-gone
+///     and the survivors unreachable. `unchecked_transaction` is the same shape
+///     `sweep_orphaned_link_content` already uses on this connection.
+///  2. **Content dies through [`gc_orphaned_file_row`], not through v4's dead
+///     document/blob steps.** v4's `docMountDocuments.deleteByMountPointId`
+///     (`doc-mount-documents.repository.ts:327-343`) selects the file ids from
+///     `doc_mount_file_links` — *after* `docMountFiles.deleteByMountPointId` has
+///     emptied that table — so it matches nothing and `doc_mount_documents`
+///     (which has no foreign key on either schema vintage) leaks forever. Its
+///     `docMountBlobs.deleteByMountPointId` (`doc-mount-blobs.repository.ts:
+///     628-655`) is a copy-paste of the files step: it re-deletes links and
+///     files and never names `doc_mount_blobs`. That one is currently invisible
+///     — `doc_mount_blobs` is the one mount table whose hand-written DDL carries
+///     `ON DELETE CASCADE`, on BOTH vintages, and both apps enable
+///     `foreign_keys = ON` on their writers — but relying on that is relying on
+///     a pragma this cascade does not set for itself, so the collect is
+///     explicit. `gc_orphaned_file_row` is the existing chokepoint that already
+///     deletes documents + blobs + the file row for exactly this reason, and it
+///     spares a file another store still hard-links.
+///  3. **`group_doc_mount_links` is deleted alongside `project_doc_mount_links`.**
+///     v4 deletes only the project links; its sole group-link delete is
+///     `deleteByGroupId`, which no store delete calls. A group that had linked
+///     the store keeps a join row pointing at nothing.
 fn cascade_delete(conn: &Connection, mount_point_id: &str) -> Result<(), DbError> {
+    let tx = conn.unchecked_transaction()?;
+
     // 1. chunks.
-    conn.execute(
+    tx.execute(
         "DELETE FROM doc_mount_chunks WHERE mountPointId = ?1",
         rusqlite::params![mount_point_id],
     )?;
-    // 2. files.deleteByMountPointId — snapshot file ids, drop links, GC orphans.
+
+    // 2. links, then the content each link was the last reference to. The
+    // snapshot must be taken BEFORE the link delete — that ordering is exactly
+    // what v4's documents step gets wrong.
     let affected: Vec<String> = {
-        let mut stmt = conn
-            .prepare("SELECT DISTINCT fileId FROM doc_mount_file_links WHERE mountPointId = ?1")?;
+        let mut stmt =
+            tx.prepare("SELECT DISTINCT fileId FROM doc_mount_file_links WHERE mountPointId = ?1")?;
         let rows = stmt.query_map(rusqlite::params![mount_point_id], |r| r.get::<_, String>(0))?;
         rows.collect::<Result<Vec<_>, _>>()?
     };
-    conn.execute(
+    tx.execute(
         "DELETE FROM doc_mount_file_links WHERE mountPointId = ?1",
         rusqlite::params![mount_point_id],
     )?;
     for fid in &affected {
-        conn.execute(
-            "DELETE FROM doc_mount_files WHERE id = ?1 \
-             AND NOT EXISTS (SELECT 1 FROM doc_mount_file_links l WHERE l.fileId = ?1)",
-            rusqlite::params![fid],
-        )?;
+        crate::db::doc_mount_file_links::gc_orphaned_file_row(&tx, fid)?;
     }
-    // 3. documents.deleteByMountPointId — keyed off the (now-empty) link table.
-    conn.execute(
-        "DELETE FROM doc_mount_documents WHERE fileId IN \
-         (SELECT DISTINCT fileId FROM doc_mount_file_links WHERE mountPointId = ?1)",
-        rusqlite::params![mount_point_id],
-    )?;
-    // 4. blobs.deleteByMountPointId — snapshot keyed off the (now-empty) link table.
-    let blob_affected: Vec<String> = {
-        let mut stmt = conn
-            .prepare("SELECT DISTINCT fileId FROM doc_mount_file_links WHERE mountPointId = ?1")?;
-        let rows = stmt.query_map(rusqlite::params![mount_point_id], |r| r.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    };
-    for fid in &blob_affected {
-        conn.execute(
-            "DELETE FROM doc_mount_files WHERE id = ?1 \
-             AND NOT EXISTS (SELECT 1 FROM doc_mount_file_links l WHERE l.fileId = ?1)",
-            rusqlite::params![fid],
-        )?;
-    }
-    // 5. folders (explicit — no FK cascade).
-    conn.execute(
+
+    // 3. folders (explicit — no FK cascade on either vintage).
+    tx.execute(
         "DELETE FROM doc_mount_folders WHERE mountPointId = ?1",
         rusqlite::params![mount_point_id],
     )?;
-    // 6. project links (v4 finds then per-link deletes → net a scoped delete).
-    conn.execute(
+
+    // 4. project links (v4 finds then per-link deletes → net a scoped delete).
+    tx.execute(
         "DELETE FROM project_doc_mount_links WHERE mountPointId = ?1",
         rusqlite::params![mount_point_id],
     )?;
-    // 7. the point itself.
-    conn.execute(
-        "DELETE FROM doc_mount_points WHERE id = ?1",
+
+    // 5. group links — divergence 3 above.
+    tx.execute(
+        "DELETE FROM group_doc_mount_links WHERE mountPointId = ?1",
         rusqlite::params![mount_point_id],
     )?;
+
+    // 6. the point itself.
+    DocMountPointsRepository::new(&tx).delete_row_only(mount_point_id)?;
+
+    tx.commit()?;
     Ok(())
 }
 
@@ -581,7 +609,7 @@ fn mount_conn(ws: &crate::db::runtime::WriterSet) -> Result<&Connection, DbError
 
 #[cfg(test)]
 mod tests {
-    use super::derive_mount_capabilities;
+    use super::{cascade_delete, derive_mount_capabilities};
     use serde_json::json;
 
     #[test]
@@ -604,5 +632,157 @@ mod tests {
         let disabled =
             json!({ "enabled": false, "conversionStatus": "idle", "scanStatus": "idle" });
         assert_eq!(derive_mount_capabilities(&disabled)["canWrite"], false);
+    }
+
+    /// The mount-index tables the two cascade tests below build, in their
+    /// generateDDL shape MINUS every foreign key — including `doc_mount_blobs`'
+    /// `ON DELETE CASCADE`, which is the only one the real schema has. The
+    /// cascade must not depend on a pragma it does not set for itself.
+    fn fk_free_mount_index(with_project_links: bool) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "OFF").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, name TEXT NOT NULL);\
+             CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL);\
+             CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);\
+             CREATE TABLE doc_mount_blobs (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);\
+             CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY, fileId TEXT NOT NULL, \
+               mountPointId TEXT NOT NULL, linkGroupId TEXT);\
+             CREATE TABLE doc_mount_folders (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+             CREATE TABLE doc_mount_chunks (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+             CREATE TABLE group_doc_mount_links (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+             INSERT INTO doc_mount_points VALUES ('mp','Doomed'),('other','Keeper');\
+             INSERT INTO doc_mount_files VALUES ('f1','aa'),('shared','bb');\
+             INSERT INTO doc_mount_documents VALUES ('d1','f1'),('dshared','shared');\
+             INSERT INTO doc_mount_blobs VALUES ('b1','f1');\
+             INSERT INTO doc_mount_file_links VALUES \
+               ('l1','f1','mp',NULL),('l2','shared','mp','g'),('l3','shared','other','g');\
+             INSERT INTO doc_mount_folders VALUES ('fo1','mp');\
+             INSERT INTO doc_mount_chunks VALUES ('c1','mp');\
+             INSERT INTO group_doc_mount_links VALUES ('g1','mp');",
+        )
+        .unwrap();
+        if with_project_links {
+            conn.execute_batch(
+                "CREATE TABLE project_doc_mount_links (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+                 INSERT INTO project_doc_mount_links VALUES ('p1','mp');",
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    /// P4.31 — the half of the cascade no fixture built by v4 can prove.
+    ///
+    /// `doc_mount_blobs` is the one mount table whose DDL carries
+    /// `fileId … ON DELETE CASCADE`, and both apps enable `foreign_keys = ON` on
+    /// their writers, so `store_delete_equivalence` sees the blob die on both
+    /// sides however the delete is written — v4's dead blobs step included.
+    /// Here the foreign key is absent and the pragma off, and the blob (and the
+    /// document, which has no FK on any vintage) is collected anyway. Replace
+    /// the `gc_orphaned_file_row` call with v4's raw file delete and this goes
+    /// red where the differential stays green.
+    #[test]
+    fn cascade_collects_blobs_and_documents_without_any_foreign_key() {
+        let conn = fk_free_mount_index(true);
+        cascade_delete(&conn, "mp").unwrap();
+
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_blobs"),
+            0,
+            "blob collected"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_documents WHERE id='d1'"),
+            0,
+            "document"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_files WHERE id='f1'"),
+            0,
+            "file"
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM doc_mount_chunks"), 0, "chunks");
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_folders"),
+            0,
+            "folders"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM project_doc_mount_links"),
+            0,
+            "project links"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM group_doc_mount_links"),
+            0,
+            "group links"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_points WHERE id='mp'"),
+            0,
+            "the store"
+        );
+
+        // The hard-linked survivor: `other` still links it, so neither the file
+        // nor its document may be collected.
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_files WHERE id='shared'"),
+            1
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_documents WHERE id='dshared'"),
+            1
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_file_links"),
+            1,
+            "only l3 remains"
+        );
+    }
+
+    /// P4.31 — a failure anywhere in the cascade must leave the store WHOLE
+    /// rather than half-deleted (v4 runs seven independent awaited repo calls,
+    /// which is how a partial cascade mints permanent orphans). With
+    /// `project_doc_mount_links` absent, step 4 throws after chunks, links,
+    /// content and folders have already gone; the transaction rolls all of it
+    /// back. Run the cascade's statements loose on `conn` and this goes red.
+    #[test]
+    fn cascade_is_all_or_nothing() {
+        let conn = fk_free_mount_index(false);
+        assert!(cascade_delete(&conn, "mp").is_err());
+
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_chunks"),
+            1,
+            "chunks rolled back"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_file_links"),
+            3,
+            "links rolled back"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_files"),
+            2,
+            "content rolled back"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_documents"),
+            2,
+            "documents rolled back"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_folders"),
+            1,
+            "folders rolled back"
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_points"),
+            2,
+            "the store survives"
+        );
     }
 }

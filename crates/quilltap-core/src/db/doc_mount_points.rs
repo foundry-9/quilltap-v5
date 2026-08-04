@@ -377,9 +377,26 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(())
     }
 
-    /// Delete the mount point `id`. Returns `Ok(false)` when no row matched (v4's
-    /// `_delete` "deletedCount === 0 -> false").
-    pub fn delete(&self, id: &str) -> Result<bool, DbError> {
+    /// Delete the mount point ROW AND NOTHING ELSE. Returns `Ok(false)` when no
+    /// row matched (v4's `_delete` "deletedCount === 0 -> false").
+    ///
+    /// ⚠ **Not a store delete.** Removing a `doc_mount_points` row on its own is
+    /// dogfood finding #58: its file links, folders, chunks, document/blob
+    /// content and group/project join rows all survive it, unreachable and
+    /// uncollectable — the mount tables carry no foreign keys on the
+    /// `generateDDL` vintage, and read connections enable none anyway. The
+    /// measured cost was 43 orphaned links + 118 orphaned folders on one real
+    /// instance.
+    ///
+    /// The name says `_row_only` so that no future caller can reach for it by
+    /// accident. **The one production caller is
+    /// `api::mount_points::cascade_delete`**, which calls it last, inside the
+    /// transaction that has already taken the children. Anything else that
+    /// wants to remove a store calls that. The differential harness calls this
+    /// directly to mirror v4's bare `repos.docMountPoints.delete` in
+    /// `doc_mount_points_tier2_equivalence` — that is a repository-op
+    /// differential, not a delete path, and its semantics are byte-exact v4.
+    pub fn delete_row_only(&self, id: &str) -> Result<bool, DbError> {
         let affected = self
             .conn
             .execute("DELETE FROM doc_mount_points WHERE id = ?1", params![id])?;

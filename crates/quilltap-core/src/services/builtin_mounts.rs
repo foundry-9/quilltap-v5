@@ -160,6 +160,15 @@ fn ensure_mount_index_tables(mount_index: &Connection) -> Result<(), DbError> {
     // v5 has no migration runner, so this is the boot-repair analogue: cheap and
     // idempotent once the backlog is gone.
     crate::db::doc_mount_file_links::sweep_orphaned_link_content(mount_index)?;
+    // P4.31 (dogfood finding #58): reap the links / folders / chunks whose mount
+    // point is gone, and the content they were the last reference to. v4 has no
+    // such pass — this is the repair half of the store-delete cascade, and the
+    // only thing that cleans an instance that already carries the damage (43
+    // links + 118 folders measured on the real one). Deliberately AFTER the
+    // backlog sweep above: that one collects content with no link at all, this
+    // one collects links with no store, and running the cheaper, older pass
+    // first leaves this one strictly less to do.
+    crate::db::doc_mount_file_links::sweep_orphaned_store_children(mount_index)?;
     Ok(())
 }
 
@@ -354,6 +363,95 @@ mod tests {
         assert!(
             !has("idx_doc_mount_file_links_mp_path"),
             "legacy link index dropped"
+        );
+    }
+
+    /// P4.31 WIRING pin (dogfood finding #58). `store_delete_equivalence`'s
+    /// `reap_orphans` arm proves what the reaper DOES; it calls the sweep
+    /// directly, because running the real boot hook against the fixture would
+    /// mint the three built-in stores and move the census out from under the
+    /// oracle. This proves the other half — that the boot hook actually calls
+    /// it. Delete the `sweep_orphaned_store_children` line from
+    /// `ensure_mount_index_tables` and this goes red; a semantics test would
+    /// not (the P4.D41 lesson).
+    #[test]
+    fn boot_hook_reaps_parentless_store_children() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_blobs (id TEXT PRIMARY KEY, fileId TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_file_links (\
+                   id TEXT PRIMARY KEY, fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, \
+                   relativePath TEXT NOT NULL, fileName TEXT NOT NULL, folderId TEXT, \
+                   createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);\
+                 CREATE TABLE doc_mount_chunks (id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL);\
+                 -- The store this all belonged to is GONE, exactly as on the real
+                 -- instance: 43 links + 118 folders across 21 vanished vaults.
+                 INSERT INTO doc_mount_files VALUES ('f1','aa');\
+                 INSERT INTO doc_mount_documents VALUES ('d1','f1');\
+                 INSERT INTO doc_mount_blobs VALUES ('b1','f1');\
+                 INSERT INTO doc_mount_file_links VALUES \
+                   ('l1','f1','vanished','notes.md','notes.md',NULL,'2024-01-01T00:00:00.000Z',\
+                    '2024-01-01T00:00:00.000Z');\
+                 INSERT INTO doc_mount_chunks VALUES ('c1','vanished');",
+            )
+            .unwrap();
+        // `doc_mount_points` + `doc_mount_folders` are created by the boot hook
+        // itself; plant the orphaned folder once they exist.
+        ensure_mount_index_tables(&mount).unwrap();
+        mount
+            .execute_batch(
+                "INSERT INTO doc_mount_folders (id, mountPointId, parentId, name, path, createdAt, updatedAt) \
+                 VALUES ('fo1','vanished',NULL,'notes','notes','2024-01-01T00:00:00.000Z',\
+                         '2024-01-01T00:00:00.000Z');",
+            )
+            .unwrap();
+
+        let count = |sql: &str| -> i64 { mount.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_folders WHERE mountPointId='vanished'"),
+            1
+        );
+
+        ensure_builtin_mounts(&main, &mount).unwrap();
+
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_file_links WHERE mountPointId='vanished'"),
+            0
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_folders WHERE mountPointId='vanished'"),
+            0
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_chunks WHERE mountPointId='vanished'"),
+            0
+        );
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_files"),
+            0,
+            "content collected"
+        );
+        assert_eq!(count("SELECT COUNT(*) FROM doc_mount_documents"), 0);
+        assert_eq!(count("SELECT COUNT(*) FROM doc_mount_blobs"), 0);
+        // The three built-in stores were still provisioned, each with folders of
+        // its own — the reaper must not have taken those.
+        assert_eq!(
+            count("SELECT COUNT(*) FROM doc_mount_points"),
+            3,
+            "built-ins provisioned"
+        );
+        assert!(
+            count("SELECT COUNT(*) FROM doc_mount_folders") > 0,
+            "built-in folders kept"
         );
     }
 }

@@ -52693,3 +52693,194 @@ an edit):
 **Versions at lane end:** core **0.0.455**, host **0.0.57**, harness
 **0.0.389**. (quilltap-web / cli / tauri untouched; `apps/web` untouched, so
 no SPA gate is owed.)
+---
+
+## Lane record — P4.31 unit 1: the store-delete cascade + the orphan reaper
+
+Branch `claude/p4-31-store-delete-cascade-6ff95e`, v4 pinned at the round
+baseline `49769ec4` (drift-checked at lane start: `git log 49769ec4..HEAD`
+empty, tree clean — no pin worktree needed, oracles regenerate straight from
+`~/source/quilltap-server`).
+
+This is dogfood finding #58's root cause, closed at both ends: the delete
+that mints orphans, and the backlog already on disk.
+
+### What landed
+
+**1. The cascade chokepoint** (`api/mount_points.rs`). `cascade_delete` now
+runs inside ONE `unchecked_transaction` on the mount-index writer and routes
+content through the existing `gc_orphaned_file_row`, with three deliberate
+divergences from v4's route (`app/api/v1/mount-points/[id]/route.ts:167-215`):
+
+- the whole cascade is atomic (v4 runs seven independent awaited repo calls;
+  a partial one is exactly how a permanent orphan is minted);
+- documents and blobs die through `gc_orphaned_file_row` instead of v4's two
+  dead steps — its `docMountDocuments.deleteByMountPointId` reads the link
+  table AFTER `docMountFiles.deleteByMountPointId` emptied it, and its
+  `docMountBlobs.deleteByMountPointId` is a copy-paste of the files step that
+  never names `doc_mount_blobs`;
+- `group_doc_mount_links` is deleted alongside `project_doc_mount_links` (v4's
+  only group-link delete is `deleteByGroupId`, which no store delete calls).
+
+A file another store still hard-links is spared — `gc_orphaned_file_row`'s
+refcount check, which the raw `DELETE FROM doc_mount_files` it replaced also
+had, and which the fixture now exercises in both directions.
+
+**2. Path B defused.** `DocMountPointsRepository::delete` → `delete_row_only`,
+semantics byte-identical (its tier-2 differential is unchanged and re-run), with
+a doc-comment naming #58 and the one legitimate production caller. The rename is
+the point: no future caller reaches it by accident. `doc_mount_points_tier2_
+equivalence` updated at the call site only.
+
+**3. The boot orphan reaper.** New
+`db::doc_mount_file_links::sweep_orphaned_store_children` — reaps the
+`doc_mount_file_links` / `doc_mount_folders` / `doc_mount_chunks` whose
+`mountPointId` matches no `doc_mount_points` row, collecting the content the
+dead links were the last reference to through `gc_orphaned_file_row`.
+Registered in `services::builtin_mounts::ensure_mount_index_tables` beside
+`sweep_orphaned_link_content` (the P4.d7 / P4.D41 boot-repair precedent);
+fail-soft on table existence; idempotent (the differential runs it twice and
+asserts the second pass finds nothing). **This is what will clean the real
+instance's 43 links + 118 folders on its next boot** — the owed live proof.
+
+The two existing sweeps could not have absorbed this: both key on content with
+no LINK, and every orphan here still has one. The orphan is one level up.
+
+**4. The new committed fixture family + differential.**
+`store-delete-{main,mount}.db` (+ `harness/oracle/fixtures/store-delete.json`
+and `build-store-delete-fixture.ts`): a Target Store carrying two exclusive
+documents, a blob, folders, chunks, a group link and a project link; a Keeper
+Store holding its own file PLUS a cross-store hard link to the target's
+appendix (v4's real `linkFile`, one `doc_mount_files` row under one
+`linkGroupId`); and PLANTED ORPHANS — a third store built whole and then
+stripped of its `doc_mount_points` row with a bare `DELETE`, the same
+orphan-maker `build-restore-archive-orphan-links.test.ts` uses and the same way
+the real ones arose. The builder REFUSES to write a fixture whose orphan shape
+drifts from the pinned 2 links / 4 folders / 3 chunks, and re-checks that the
+links actually survived the point delete (a schema that grew a `mountPointId`
+foreign key would silently plant nothing).
+
+`store_delete_equivalence` (7 arms) drives v4's REAL DELETE route and diffs a
+WHOLE-TABLE census — counts, orphan counts, and row dumps of all nine mount
+tables. **The scoped-count lesson, measured:** the existing
+`mount_points_routes_equivalence`'s `dump_cascade` counts the deleted store's
+children through subqueries over that store's own link rows, which the cascade
+has just emptied — so it reads 0 on both sides however much either app leaked.
+That family is structurally blind to this class and needed no carve-out; it was
+regenerated at the pin and re-run GREEN with the fix in place (the survey's ⚠
+about a documents-arm carve-out is answered: not reachable).
+
+### The divergence pins, both directions
+
+Both divergences are expressed as *dangling-reference predicates*, not named row
+ids, so one predicate finds v4's leak and, run over v5's state, proves v5 left
+none — and a fixture rebuild cannot invalidate them. The expected v5 census is
+COMPUTED from the oracle's by removing exactly those rows; everything else is
+compared row for row, with no table excluded and no normalizer that could hide
+an unrelated difference.
+
+| arm | v4 leaked documents | v4 leaked group links | reaper |
+|---|---|---|---|
+| `pristine` | 0 | 0 | — |
+| `delete_target` | 2 | 1 | — |
+| `delete_keeper` | 1 | 0 (keeper links no group) | — |
+| `delete_twice` | 2 | 1 | — |
+| `delete_404` | 0 | 0 | — |
+| `delete_ghost_404` | 0 | 0 | — |
+| `reap_orphans` | 0 | 0 | v5 → 0, v4 → 2/4/3 |
+
+Each count is exact, so an arm that stopped exercising its shape fails instead
+of passing hollow; each carries the "v4 has CONVERGED — retire this divergence"
+message. The planted-orphan shape is additionally asserted on the ORACLE side in
+EVERY case (nothing in v4 reaps them), so the reaper arm cannot pass by having
+nothing to reap, and on v5's side outside the reaper arm (the cascade reaps its
+own store's children, not the whole partition).
+
+### A survey premise disproved by measuring it
+
+The order predicted a third divergence: v4's dead blobs step leaking
+`doc_mount_blobs`. It does not. `doc_mount_blobs` is the ONE mount table whose
+hand-written DDL carries `fileId … ON DELETE CASCADE` — on the generateDDL
+vintage AND the migration vintage, verified by dumping both — and v4 enables
+`foreign_keys = ON` on its mount-index client (`mount-index-client.ts:76`)
+exactly as v5 does on its writers. The blob dies on both sides regardless of
+which app deletes it; `delete_target`'s oracle census drops it 2 → 1. v5
+collects it explicitly anyway, because a cascade should not depend on a pragma
+it does not set for itself, and because the migration-vintage `doc_mount_
+documents` genuinely has no FK on either vintage. That half is proven by the
+unit test `cascade_collects_blobs_and_documents_without_any_foreign_key`, which
+builds the tables with NO foreign keys and the pragma OFF — a shape no fixture
+built by v4 can produce.
+
+### Mutation proofs (the D24 rule — every arm was first-run green)
+
+| mutation | expected red | observed |
+|---|---|---|
+| A: drop the `group_doc_mount_links` delete | delete arms | `delete_target` + `delete_twice`: census mismatch + "v5 left 1 dangling group_doc_mount_links.mountPointId" |
+| B: restore v4's dead document ordering | delete arms | all three delete arms: "v5 left 2/1/2 dangling doc_mount_documents.fileId" |
+| C: reaper skips folders | reaper arm | "v5 left 4 orphaned doc_mount_folders rows after the reaper" |
+| D: `gc_orphaned_file_row` ignores the refcount | delete arms | `doc_mount_files` 7 vs 8 — the hard-linked appendix destroyed |
+| E: delete the boot registration | the WIRING pin | `boot_hook_reaps_parentless_store_children` red (the P4.D41 lesson: a semantics test would have stayed green) |
+
+The transaction has its own test (`cascade_is_all_or_nothing`: with
+`project_doc_mount_links` absent, step 4 throws after chunks, links, content and
+folders have gone, and every one rolls back).
+
+### Neighbouring families re-run at the pin
+
+All regenerated through `harness/tools/recipe_sweep.py --run` and re-run by
+name, zero SKIP: `mount_points_routes_equivalence`,
+`doc_mount_points_tier2_equivalence`, `doc_mount_file_links_tier2_equivalence`,
+`group_doc_mount_links_tier2_equivalence`,
+`project_doc_mount_links_tier2_equivalence`,
+`doc_mount_documents_tier2_equivalence`, `doc_mount_blobs_tier2_equivalence`,
+`doc_mount_files_tier2_equivalence`, `doc_mount_folders_tier2_equivalence`,
+`doc_mount_chunks_tier2_equivalence`, `mount_link_groups_equivalence`.
+
+⚠ TWO pre-existing recipe hazards, hit while doing this and recorded for the
+next maintenance sweep (neither is a port regression):
+
+- `doc_mount_files_tier2_equivalence` and `doc_mount_folders_tier2_equivalence`
+  BOTH publish `/tmp/oracle-dmf.ndjson` and `/tmp/qt-dmf-fixture.db`
+  (`recipe_sweep.py --collisions` lists it). Run one after the other and the
+  first family reads the second's oracle — which is exactly how it failed in
+  this lane's first full workspace run, reading as a port regression. Each is
+  green in its own clean invocation; the gate points `files` at private copies
+  (`/tmp/oracle-dmfiles.ndjson`, `/tmp/qt-dmfiles-fixture.db`). The recipes were
+  left alone: they belong to families this order says to re-run, not edit.
+- `mount_link_groups_equivalence`'s recipe needs a `.qt-oracle-mirror/oracle`
+tree inside the v4 checkout that nothing creates; the header's comment says
+`cp -R harness/oracle → here` while its paths read `$MIRROR/oracle/...`. Create
+it as `~/source/quilltap-server/.qt-oracle-mirror/oracle`. Pre-existing, not a
+regression; recorded for the next sweep.
+
+### Fixture regen recipe (verbatim)
+
+```
+cd ~/source/quilltap-server
+W=<this worktree>
+QT_FIXTURE_SD_MAIN=$W/crates/quilltap-web/tests/fixtures/store-delete-main.db \
+QT_FIXTURE_SD_MOUNT=$W/crates/quilltap-web/tests/fixtures/store-delete-mount.db \
+  ~/.nvm/versions/node/v24.13.1/bin/node --import tsx \
+    $W/harness/oracle/fixtures/build-store-delete-fixture.ts
+```
+
+The oracle's own recipe is in `harness/oracle/cases/store-delete.test.ts` and is
+machine-extractable (`recipe_sweep.py --show store_delete_equivalence`). The new
+fixture is consumed by `store_delete_equivalence` ALONE — it invalidates no other
+family.
+
+### Tier-3 deferrals, recorded not silently covered
+
+- The unmeasured orphan variant P4.28 named — a folder whose PARENT FOLDER, not
+  store, is missing. The reaper keys on `mountPointId` only, so it does NOT
+  cover it; scope deliberately unextended. Named in the reaper's doc comment.
+- `doc_mount_documents` rows orphaned by the OLD dead-ordering path while their
+  store still EXISTS. Out of the reaper's parentless-by-mount key; a possible
+  future sweep arm (the predicate already exists in
+  `store_delete_equivalence::dangling`).
+- Chunks whose `linkId` is dead under a live store — same shape, same reason.
+- The group/project delete paths leave the official store standing on purpose
+  (v4 design); the character cascade never touches the vault store. Those are
+  the SOURCE of the stray stores someone later deletes via the route, recorded
+  and unchanged.

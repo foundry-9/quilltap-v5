@@ -40,6 +40,16 @@ minutes, and a caller can hand down a shorter budget for one attempt,
 which is never retried past. Streaming is bounded differently on
 purpose: the ceiling there covers only how long a provider may take to
 *start* answering, so a long reply is never cut off mid-sentence.
+Deleting a document store now takes its contents with it, in one
+all-or-nothing step: the files, folders, links, chunks, document bodies,
+image data and the group and project links that pointed at it. Before
+this, several of those were left behind with nothing referencing them —
+invisible, unreachable, and impossible to clean up — which is what made
+restoring a backup report dozens of raw database errors. A file that two
+stores share is still spared: only the last store to let go of it takes
+the contents down. Startup now also sweeps up the leftovers a database
+has already accumulated, and the daily maintenance pass does the same
+for servers that run for weeks without restarting.
 
 Planned the next porting round and committed its three work orders: a
 re-port of the reference app's new provider-request bounding (so a
