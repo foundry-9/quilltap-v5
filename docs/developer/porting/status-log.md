@@ -9,6 +9,153 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D44 unit 1 (the server tri-state) + unit 2 (the differential), 2026-08-04
+
+Branch `claude/p4-newchat-roleplay-template-acd0f0`. The `4bbeab47` drift's
+server half: `POST /api/v1/chats` (v5: the `chatCreate` dispatch verb) accepts a
+tri-state `roleplayTemplateId`.
+
+### Drift check
+
+v4 clean at `7fe9fe40` (the round baseline) at lane start — `git log
+7fe9fe40..HEAD` empty, `git status --short` empty. Every oracle regenerated
+straight from `~/source/quilltap-server`; no pinned worktree needed.
+
+### The port
+
+- `ChatCreateRequest.roleplay_template_id: Option<Option<String>>` via the new
+  `de_double_opt_string`. The double-`Option` precedent is the sibling
+  `timestamp_config`, but the SEMANTICS INVERT: `timestampConfig`'s `.optional()`
+  is not nullable so an explicit `null` REJECTS, where
+  `roleplayTemplateId`'s `.nullable().optional()` makes `null` a deliberate
+  "no template". Both arms are now in the corpus, three cases apart.
+- The existence check (`db::roleplay_templates::find_full_json_by_id`, v4's
+  `repos.roleplayTemplates.findById` — id-scoped, not user-scoped) runs on a
+  TRUTHY id only, mirroring v4's `if (validatedData.roleplayTemplateId)`, and
+  BEFORE the chain so an unresolvable id can never fall back silently →
+  `BadRequest("Roleplay template not found")`, byte-matching v4.
+- The chain is `explicit key (id or null) > project default > settings default
+  > null`, keyed on `req.roleplay_template_id.is_some()` — v4's
+  `typeof … !== 'undefined'`.
+- A `tracing::debug!` analog of v4's resolution log line (log output is outside
+  the differential contract — the P4.18 ruling — so this is an analog, not an
+  obligation).
+
+**Known standing gap, not this lane's:** v4's `z.uuid()` 400s a malformed id as
+`Validation error` before the existence check ever runs; v5 has no format
+validation on this bag (the standing Zod format-validator gap recorded at
+P4.D29), so a non-UUID string reaches the existence check and 400s with the
+template message instead. No corpus case exercises it; no behavior change here.
+
+### The fixture extension (the lane's largest single cost)
+
+`build-chat-create-capstone.ts` + `chat-create-capstone.json` gained:
+
+- three roleplay templates via v4's REAL `repos.roleplayTemplates.create` with
+  pinned ids — `c1…c1` (the user/global default), `c2…c2` (the Lantern
+  project's default), `c3…c3` (reachable ONLY by an explicit pick, and
+  `isBuiltIn`/`userId: null` so the built-in read path is exercised too). A
+  fourth id `c9…c9` is deliberately NEVER seeded — the 400 arm needs an id that
+  genuinely does not resolve;
+- `chat_settings.defaultRoleplayTemplateId = c1…c1`;
+- `projects.defaultRoleplayTemplateId = c2…c2` hung on the EXISTING Lantern
+  project rather than a new one, so no second store is minted and the two
+  standing outfit cases exercise project-over-user precedence for free.
+
+**The 14 standing cases are disturbed, deliberately and symmetrically.** Because
+the user default is now set, every case bakes a non-null
+`chats.roleplayTemplateId` where it used to bake `null` (`c1` for the twelve
+project-less cases, `c2` for the two project cases). Both sides regenerate
+together and all 14 still match every section — the change is a broadening of
+coverage, not a regression: it turns the default chain itself into something the
+standing corpus proves on every run. Nothing else in the fixture moved. The
+roleplay template is consumed at message-send time (v4's
+`participant-resolver.service`), never at creation, so no system prompt or
+message body shifted.
+
+### The five new cases (v4 test → oracle case)
+
+| v4 `route.roleplay-template.test.ts` | oracle case | v4's answer |
+| --- | --- | --- |
+| falls back to the user default when none is requested | `rt_omitted_user_default` | `c1…c1` |
+| prefers the project default over the user default | `rt_project_default_beats_user` | `c2…c2` |
+| honours an explicitly chosen template over both defaults | `rt_explicit_beats_both_defaults` | `c3…c3` |
+| honours an explicit null as "no template" | `rt_explicit_null_means_no_template` | `null` |
+| rejects a template id that does not exist | `rt_unresolvable_id_rejected` | 400 `Roleplay template not found` |
+
+19 cases, all green, zero SKIP.
+
+### ⚠ The finding: the differential was BLIND, and the mutation test is what caught it
+
+All 19 passed on the first run, so per the D24 rule each new arm was
+mutation-proven — and two mutations did not fire:
+
+- swapping the project/user precedence: **PASSED**;
+- making the explicit key stop winning: `rt_explicit_beats_both_defaults`
+  **PASSED** (only the explicit-`null` case failed).
+
+The cause is the harness's own `normalize()`, which remaps every UUID to a
+first-appearance token so that MINTED ids line up across the two sides. Template
+ids are UUIDs too, and in these cases the id appears exactly once in the whole
+dump — so a row carrying the project default and a row carrying an explicitly
+picked template both render as the same `<uN>`, and the sections compare equal.
+Only the `null`-vs-id arms were ever falsifiable. This is the P4.D31
+`<minted-N>`-normalizer trap in a new dress: a symmetric normalizer erases the
+very distinction the case exists to prove.
+
+Fixed with a new `roleplay_template_id` section (`chat_template_ids`) that
+compares the LITERAL `chats.roleplayTemplateId` of every row with no
+normalization at all. That is exact here because these ids are fixture-baked and
+identical on both sides — the remap only ever needed to cover minted values. The
+section prints its value per case, so the corpus now reads as a table of what
+each arm resolved to.
+
+Re-run under the same two mutations: the precedence swap fails
+`outfit_default_tri_tier` on `roleplay_template_id`, and the explicit-key
+mutation fails `rt_explicit_beats_both_defaults` on the same section. The
+existence-check removal fails the reject arm. All three fingerprints produced by
+mutation, then reverted.
+
+### Regeneration recipe (unchanged shape; the file header carries it verbatim)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+cd ~/source/quilltap-server
+QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-chat-create-capstone.ts
+TMPO=/tmp/qt-cc-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/chat-create-capstone.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/chat-create-capstone.json  "$TMPO/fixtures/"
+TZ=UTC QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db QT_ORACLE_OUT=/tmp/oracle-chat-create.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- chat-create-capstone   # TZ=UTC pins the cron case
+```
+
+Run: `QT_ORACLE_CC` + the three `QT_FIXTURE_CC_*` →
+`cargo test -p quilltap-harness --test chat_create_capstone_equivalence`.
+The family is /tmp-built (no committed fixture moves), so no other oracle family
+is invalidated by this extension.
+
+### ⚠ Inherited red — sibling-owned, NOT this lane's
+
+At the `7fe9fe40` baseline the capstone family also reds on
+`single_char_first_message` → section `chat_messages`, one string: v5's Aurora
+opening-outfit whisper still reads `*Aurora regards … and pronounces upon their
+attire —*` where v4 at the baseline reads `Aurora regards … and pronounces upon
+their attire:`. That is the OTHER drift commit (`7fe9fe40`, "stop teaching
+models asterisk narration") landing on
+`services/aurora_notifications.rs` — **P4.D45's file, explicitly outside this
+lane's ownership**, so it was not touched. Verified by applying D45's one-line
+change locally, without committing it: the family goes 19/19 green. Every result
+recorded above (the 19-case green run and all three mutation fingerprints) was
+measured with that one line applied and then reverted; the branch as committed
+carries the unmodified writer. **The unifier should expect this family to go
+green the moment P4.D45 merges, and should re-run it after the merge.**
+
+Versions: core 0.0.463, harness 0.0.396.
+
 ## Round unified — the `c4d4b0de` v4-drift catch-up (P4.D35 ∥ P4.D36 ∥ P4.D37 ∥ P4.D38 ∥ P4.D39 ∥ P4.D40), 2026-08-01
 
 **All six orders CLOSED. The oracle baseline MOVES to `c4d4b0de` and the drift

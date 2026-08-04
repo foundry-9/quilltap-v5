@@ -10,7 +10,9 @@
  *     Cleo: firstMessage present, talkativeness 0; Bram: firstMessage EMPTY —
  *     the generated-greeting ladder), each with a real linked vault,
  *   - two connection profiles (one apiKeyId=null, one with an apiKeyId),
- *   - one api key.
+ *   - one api key,
+ *   - three roleplay templates + the user/global and project defaults that name
+ *     two of them (P4.D44 — the create-time template picker).
  * Both v4's real `handleCreate` and the Rust port read a FRESH COPY of the SAME
  * baked fixture per case, so the created-chat ids/timestamps are minted afresh on
  * each side and remapped in the diff.
@@ -34,6 +36,12 @@ interface Spec {
   connectionProfiles: Array<Record<string, unknown>>;
   apiKeys: Array<Record<string, unknown>>;
   characters: Record<string, Record<string, unknown>>;
+  /** P4.D44 — the roleplay templates the create-time picker resolves against. */
+  roleplayTemplates: Array<Record<string, unknown>>;
+  /** The user/global default (`chat_settings.defaultRoleplayTemplateId`). */
+  roleplayTemplateUserDefaultId: string;
+  /** The project default, hung on the existing Lantern project. */
+  roleplayTemplateProjectDefaultId: string;
 }
 
 const TS = '2026-02-01T00:00:00.000Z';
@@ -154,8 +162,29 @@ async function main(): Promise<void> {
     { id: spec.userId, createdAt: TS, updatedAt: TS } as never,
   );
 
-  // 2. Default chat settings (creates the table + a default row).
-  await repos.chatSettings.updateForUser(spec.userId, {} as never);
+  // 2a. P4.D44 — the roleplay templates the create-time picker chooses among.
+  // Seeded BEFORE chat_settings so the user/global default it names exists.
+  // Three distinct rows keep the three resolution arms (user default / project
+  // default / explicit pick) individually identifiable in a diff; a fourth id
+  // (`roleplayTemplateMissingId` in the spec) is deliberately NEVER seeded, so
+  // the 400 arm has an id that genuinely does not resolve.
+  const { RoleplayTemplateSchema } = await import('@/lib/schemas/types');
+  await ensureCollection('roleplay_templates', RoleplayTemplateSchema);
+  for (const tpl of spec.roleplayTemplates) {
+    const { id, ...rest } = tpl as Record<string, unknown>;
+    await repos.roleplayTemplates.create(rest as never, {
+      id,
+      createdAt: TS,
+      updatedAt: TS,
+    } as never);
+  }
+
+  // 2. Default chat settings (creates the table + a default row). The
+  // user/global roleplay-template default rides along, so every case whose
+  // request omits the key walks the real default chain.
+  await repos.chatSettings.updateForUser(spec.userId, {
+    defaultRoleplayTemplateId: spec.roleplayTemplateUserDefaultId,
+  } as never);
 
   // 3. Api keys (pinned ids via a direct collection insert — createApiKey mints
   // its own id), then connection profiles.
@@ -272,8 +301,17 @@ async function main(): Promise<void> {
 
   // The project tier: a store-backed project, its official store's Wardrobe/,
   // and one project-wide default.
+  // P4.D44 hangs the PROJECT roleplay-template default here rather than on a new
+  // project row: the two standing outfit cases already pass this `projectId`, so
+  // the project > user precedence gets exercised without minting a second store.
   const project = await repos.projects.create(
-    { name: 'The Lantern Project', description: null, characterRoster: [], state: {} } as never,
+    {
+      name: 'The Lantern Project',
+      description: null,
+      characterRoster: [],
+      state: {},
+      defaultRoleplayTemplateId: spec.roleplayTemplateProjectDefaultId,
+    } as never,
     { id: W.projectId, createdAt: TS, updatedAt: TS } as never,
   );
   const projectMp = project.officialMountPointId as string;

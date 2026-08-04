@@ -27,6 +27,18 @@ illustrates itself in unquoted prose instead of quoted asterisk spans;
 that block goes into the system prompt on every tool-enabled turn, so it
 was the one unconditional source. This also retires a stale wording gap
 in that same rule, left over from an earlier upstream change.
+Chat creation now accepts an explicit roleplay template. The create
+request carries a tri-state `roleplayTemplateId`: present — including an
+explicit `null`, which means "no template" — beats both the project
+default and the user's global default; omitted keeps the old default
+chain; an id that resolves to nothing is rejected with "Roleplay template
+not found". The chat-creation differential's fixture gained three
+roleplay templates and both defaults, and five new cases cover the five
+resolution arms. The fixture change also gave every pre-existing case a
+real template to carry, and that exposed a hole in the differential
+itself: the id-normalizing diff could not tell one template id from
+another, so two of the new arms passed even with the resolution
+deliberately broken. The template id is now compared literally.
 
 Planned the next porting round and committed its work orders — four
 lanes. Two absorb the reference app's newest drift: the New Chat form

@@ -8,6 +8,13 @@
 //! to a first-appearance token (so the created chat/participant/message ids line up
 //! by structure; the fixture-baked ids are identical both sides → identical tokens).
 //!
+//! P4.D44 extended the fixture with three roleplay templates plus the two
+//! defaults that name them (`chat_settings.defaultRoleplayTemplateId` and the
+//! Lantern project's `defaultRoleplayTemplateId`), and added the five `rt_*`
+//! cases mirroring v4's `route.roleplay-template.test.ts`. Because the user
+//! default is now set, EVERY case bakes a non-null `chats.roleplayTemplateId` —
+//! that is the default chain being walked, proven on both sides.
+//!
 //! The Rust side injects the same seams v4's oracle mocks: canned model providers
 //! (empty for the no-model corpus), `NoApiKeys`, a pinned `random01` (v4 mocks
 //! `Math.random`), the wall clock, and an active `CreationProgressEmitter` over a
@@ -266,6 +273,31 @@ fn dto_drop_null_seam(dto: &Value) -> Value {
         }
     }
     dto
+}
+
+/// The LITERAL `roleplayTemplateId` of every `chats` row, in row order, with no
+/// normalization whatsoever.
+///
+/// ⚠ This exists because [`normalize`] would otherwise make the P4.D44 arms
+/// unfalsifiable. Every template id is a UUID, and `normalize` remaps UUIDs to
+/// first-appearance tokens — so a row carrying the PROJECT default and a row
+/// carrying an EXPLICITLY PICKED template both render as the same `<uN>` when
+/// the id appears nowhere else in the dump. Mutation testing caught exactly
+/// that: swapping the project/user precedence, and making the explicit key stop
+/// winning, both left the `chats` section byte-identical. The fixture bakes
+/// these ids on BOTH sides (they are not minted), so comparing them literally is
+/// exact — the remap only ever needed to cover minted values.
+fn chat_template_ids(dump: &Value) -> Value {
+    Value::Array(
+        dump.get("rows")
+            .and_then(Value::as_array)
+            .map(|rows| {
+                rows.iter()
+                    .map(|r| r.get("roleplayTemplateId").cloned().unwrap_or(Value::Null))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    )
 }
 
 /// Strip the `ts` field off each progress frame (nondeterministic wall clock).
@@ -574,6 +606,25 @@ fn chat_create_capstone_matches_oracle() {
         ];
 
         let mut failed: Vec<String> = Vec::new();
+
+        // P4.D44: the un-normalized template-id proof (see `chat_template_ids`).
+        // Compared BEFORE the normalizing sections so a template-resolution
+        // divergence is reported as itself rather than hiding behind `<uN>`.
+        let got_tpl = chat_template_ids(&got_chats);
+        let want_tpl = chat_template_ids(&want["tables"]["chats"]);
+        if got_tpl != want_tpl {
+            eprintln!(
+                "[{}] section `roleplay_template_id` MISMATCH:\n  GOT : {got_tpl}\n  WANT: {want_tpl}",
+                c.name
+            );
+            failed.push("roleplay_template_id".to_string());
+        } else {
+            eprintln!(
+                "[{}] section `roleplay_template_id` OK ({got_tpl}).",
+                c.name
+            );
+        }
+
         for (name, got_v, want_v) in &sections {
             let g = norm_section(got_v);
             let w = norm_section(want_v);

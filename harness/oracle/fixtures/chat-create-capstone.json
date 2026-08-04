@@ -7,6 +7,51 @@
   "ariaId": "a1000000-0000-4000-8000-0000000000a1",
   "cleoId": "a2000000-0000-4000-8000-0000000000a2",
   "bramId": "a3000000-0000-4000-8000-0000000000a3",
+  "roleplayTemplateUserDefaultId": "c1000000-0000-4000-8000-0000000000c1",
+  "roleplayTemplateProjectDefaultId": "c2000000-0000-4000-8000-0000000000c2",
+  "roleplayTemplateChosenId": "c3000000-0000-4000-8000-0000000000c3",
+  "roleplayTemplateMissingId": "c9000000-0000-4000-8000-0000000000c9",
+  "roleplayTemplates": [
+    {
+      "id": "c1000000-0000-4000-8000-0000000000c1",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "House Style",
+      "description": "The user's global default.",
+      "systemPrompt": "Write in the house style.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-0000000000c2",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Lantern Style",
+      "description": "The Lantern Project's default.",
+      "systemPrompt": "Write as the Lantern Project prefers.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-0000000000c3",
+      "userId": null,
+      "name": "Chosen By Hand",
+      "description": "Neither default — only ever reached by an explicit pick.",
+      "systemPrompt": "Write however the operator asked.",
+      "isBuiltIn": true,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*"
+    }
+  ],
   "connectionProfiles": [
     {
       "id": "b1000000-0000-4000-8000-000000000001",
@@ -518,6 +563,96 @@
         ]
       },
       "outfitContent": "{\"top\": [\"d0000000-0000-4000-8000-000000000004\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}"
+    },
+    {
+      "name": "rt_omitted_user_default",
+      "progressId": "e0000000-0000-4000-8000-0000000000e1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_project_default_beats_user",
+      "progressId": "e0000000-0000-4000-8000-0000000000e2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e2",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_explicit_beats_both_defaults",
+      "progressId": "e0000000-0000-4000-8000-0000000000e3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e3",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "roleplayTemplateId": "c3000000-0000-4000-8000-0000000000c3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_explicit_null_means_no_template",
+      "progressId": "e0000000-0000-4000-8000-0000000000e4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e4",
+        "roleplayTemplateId": null,
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rt_unresolvable_id_rejected",
+      "progressId": "e0000000-0000-4000-8000-0000000000e5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000e5",
+        "roleplayTemplateId": "c9000000-0000-4000-8000-0000000000c9",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
     }
   ]
 }

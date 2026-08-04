@@ -129,6 +129,18 @@ fn de_double_opt_value<'de, D: serde::Deserializer<'de>>(
     Ok(Some(if v.is_null() { None } else { Some(v) }))
 }
 
+/// The double-`Option` deserializer for a `z.string().nullable().optional()`
+/// field: absent → `None`, explicit `null` → `Some(None)`, a string →
+/// `Some(Some(s))`. Unlike [`de_double_opt_value`]'s consumer, the `null` arm is
+/// MEANINGFUL here rather than a rejection (see
+/// [`ChatCreateRequest::roleplay_template_id`]).
+fn de_double_opt_string<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    use serde::Deserialize as _;
+    Ok(Some(Option::<String>::deserialize(de)?))
+}
+
 /// The chat-creation request (v4 `createChatSchema`). Every field carries a
 /// serde default so a sparse dispatch payload deserializes.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -152,6 +164,19 @@ pub struct ChatCreateRequest {
     pub project_id: Option<String>,
     /// Chat-level image profile (shared by all participants).
     pub image_profile_id: Option<String>,
+    /// v4 [`4bbeab47`] `roleplayTemplateId: z.uuid().nullable().optional()` —
+    /// the roleplay template for the new chat, chosen in the New Chat dialog.
+    /// When the key is PRESENT it wins outright — including an explicit `null`,
+    /// which means "no template" — over the project default and the user's
+    /// global default. Omit the key entirely to fall back to that default
+    /// chain. The double `Option` keeps all three arms expressible (absent →
+    /// `None`, null → `Some(None)`, id → `Some(Some(id))`).
+    ///
+    /// ⚠ The `null` arm is the mirror-image of [`Self::timestamp_config`]'s:
+    /// there `.optional()` is NOT nullable so a null REJECTS; here
+    /// `.nullable().optional()` makes null a deliberate choice.
+    #[serde(deserialize_with = "de_double_opt_string")]
+    pub roleplay_template_id: Option<Option<String>>,
     pub outfit_selections: Option<Vec<Value>>,
     pub avatar_generation_enabled: Option<bool>,
     pub continuation_from_chat_id: Option<String>,
@@ -525,13 +550,43 @@ where
         .or(project_default_image_profile_id)
         .or(built.first_image_profile_id.clone());
 
-    let default_roleplay_template_id: Option<String> = project_default_roleplay_template_id
-        .or_else(|| {
-            chat_settings
-                .as_ref()
-                .and_then(|s| s.get("defaultRoleplayTemplateId").and_then(Value::as_str))
-                .map(str::to_string)
-        });
+    // Resolve the roleplay template (v4 `4bbeab47`): explicit request (including
+    // a deliberate null) > project default > user/global default > null. Baked
+    // onto the chat at creation so the choice — or the project's preference —
+    // sticks. A truthy id must resolve or the whole create is a 400, checked
+    // BEFORE the chain so an unresolvable id never silently falls back.
+    if let Some(Some(requested)) = req.roleplay_template_id.as_ref() {
+        if !requested.is_empty()
+            && crate::db::roleplay_templates::find_full_json_by_id(main, requested)?.is_none()
+        {
+            return Err(HandleCreateError::BadRequest(
+                "Roleplay template not found".to_string(),
+            ));
+        }
+    }
+    let user_default_roleplay_template_id: Option<String> = chat_settings
+        .as_ref()
+        .and_then(|s| s.get("defaultRoleplayTemplateId").and_then(Value::as_str))
+        .map(str::to_string);
+    let default_roleplay_template_id: Option<String> = match &req.roleplay_template_id {
+        // v4 `typeof validatedData.roleplayTemplateId !== 'undefined'` — the key
+        // was present, so its value (id or null) wins over both defaults.
+        Some(explicit) => explicit.clone(),
+        None => project_default_roleplay_template_id
+            .clone()
+            .or_else(|| user_default_roleplay_template_id.clone()),
+    };
+    // v4's `logger.debug('[Chats v1] Resolved roleplay template for new chat')`.
+    // Log output is explicitly outside the differential contract (the P4.18
+    // ruling), so this is an analog, not an obligation.
+    tracing::debug!(
+        requested = ?req.roleplay_template_id.as_ref().and_then(Option::as_deref),
+        requested_explicitly = req.roleplay_template_id.is_some(),
+        project_default = ?project_default_roleplay_template_id,
+        user_default = ?user_default_roleplay_template_id,
+        resolved = ?default_roleplay_template_id,
+        "[Chats v1] Resolved roleplay template for new chat"
+    );
 
     let composition_mode_default = chat_settings
         .as_ref()
